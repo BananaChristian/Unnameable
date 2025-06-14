@@ -16,23 +16,6 @@ This project contains the core implementation of the Quil compiler written in C+
 
 ---
 
-## Project structure
-quil/
-├── ast.hpp
-├── lexer/
-│   ├── lexer.cpp
-│   └── lexer.hpp
-├── parser/
-│   ├── parser.cpp
-│   └── parser.hpp
-├── token/
-│   ├── token.cpp
-│   └── token.hpp
-├── quil.cpp      <-- Entry point
-
-
-
-
 ## 🔧 Example: Input → Tokens → AST
 
 ```quil
@@ -67,7 +50,9 @@ Return Statement:
                     └── x - 5
               └── + (y * 8)
         └── - (6 * y)
----Raw output
+
+
+RAW OUTPUT
 Quil is running (type 'exit' to quit)
 >> return x-5+y*8-6*y;
 
