@@ -1,18 +1,73 @@
 # Quil Compiler
 
-Quil is a modern, lightweight programming language designed to be fast, minimal, and expressive.  
-This project contains the implementation of the Quil compiler in C++, built from scratch with a custom lexer, parser,abstract syntax tree (AST) and a simple REPL for testing.
+**Quil** is a modern, lightweight programming language designed to be fast, minimal, and expressive.  
+This project contains the core implementation of the Quil compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
+
+---
 
 ## ✨ Features
 
-- [x] Custom lexer and tokenizer
-- [x] Pratt parser for expression parsing
-- [x] Infix and prefix expression handling
-- [x] Return statements and expression evaluation
-- [ ] Semantic analysis (WIP)
-- [ ] Code generation / bytecode / VM
+- ✅ Custom lexer and tokenizer
+- ✅ Pratt parser for precedence-based expression parsing
+- ✅ Infix and prefix expression handling
+- ✅ Return statements and expression evaluation
+- 🚧 Semantic analysis *(Work In Progress)*
+- 🛠️ Code generation / bytecode / VM *(Planned)*
 
-## 🔧 Example Input and output
+---
+
+## Project structure
+quil/
+├── ast.hpp
+├── lexer/
+│   ├── lexer.cpp
+│   └── lexer.hpp
+├── parser/
+│   ├── parser.cpp
+│   └── parser.hpp
+├── token/
+│   ├── token.cpp
+│   └── token.hpp
+├── quil.cpp      <-- Entry point
+
+
+
+
+## 🔧 Example: Input → Tokens → AST
+
+```quil
+>> return x-5+y*8-6*y;
+Type: RETURN, Literal: "return"
+Type: IDENTIFIER, Literal: "x"
+Type: MINUS, Literal: "-"
+Type: INTEGER, Literal: "5"
+Type: PLUS, Literal: "+"
+Type: IDENTIFIER, Literal: "y"
+Type: ASTERISK, Literal: "*"
+Type: INTEGER, Literal: "8"
+Type: MINUS, Literal: "-"
+Type: INTEGER, Literal: "6"
+Type: ASTERISK, Literal: "*"
+Type: IDENTIFIER, Literal: "y"
+Type: SEMICOLON, Literal: ";"
+
+[DEBUG] Parsing return expression token: x
+[DEBUG] Initial left expression: Identifier Expression: x
+[DEBUG] parsing infix with operator: -
+[DEBUG] Updated left expression: (x - 5)
+[DEBUG] parsing infix with operator: +
+[DEBUG] Updated left expression: ((x - 5) + (y * 8))
+[DEBUG] parsing infix with operator: -
+[DEBUG] Updated left expression: (((x - 5) + (y * 8)) - (6 * y))
+
+Return Statement:
+  └── Infix Expression:
+        └── Infix Expression:
+              └── Infix Expression:
+                    └── x - 5
+              └── + (y * 8)
+        └── - (6 * y)
+---Raw output
 Quil is running (type 'exit' to quit)
 >> return x-5+y*8-6*y;
 
@@ -62,4 +117,3 @@ Parser finished
  Node ->  Return Statement: ( Token: return Value: Infix Expression: (Infix Expression: (Infix Expression: (Identifier Expression: x - Identifier Expression: 5) + Infix Expression: (Identifier Expression: y * Identifier Expression: 8)) - Infix Expression: (Identifier Expression: 6 * Identifier Expression: y)))
 
 >> 
-
