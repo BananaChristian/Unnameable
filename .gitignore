@@ -1,0 +1,7 @@
+.o
+.vscode
+quilc
+
+*~
+*.log
+*.out
