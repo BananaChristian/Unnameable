@@ -66,22 +66,11 @@ class Parser{
 
     private:
         //---------------PARSING STATEMENTS--------------------
-        //PARSING KEYWORDS
-        //DATA TYPE KEYWORDS
-        unique_ptr<Statement> parseKeywords(TokenType type);
-        //Parsing the boolean keyword
-        unique_ptr<Statement> parseBoolKeyword();
-        //Parsing the int keyword
-        unique_ptr<Statement> parseIntKeyword();
-        //Parsing the string keyword
-        unique_ptr<Statement> parseStringKeyword();
-        //Parsing the float keyword
-        unique_ptr<Statement> parseFloatKeyword();
-        //Parsing the auto keyword
-        unique_ptr<Statement> parseAutoKeyword();
-        
-        //Parsing let statements
-        unique_ptr<Statement> parseLetStatement();
+        //Parsing let statements with type
+        unique_ptr<Statement> parseLetStatementWithType();
+
+        //Parsing let statements without type
+        unique_ptr<Statement> parseLetStatementWithoutType();
 
         //Parsing return statements
         unique_ptr<Statement> parseReturnStatement();
@@ -121,7 +110,4 @@ class Parser{
         //Peeking functions
         Token currentToken();
         Token nextToken();
-
-
-
 };

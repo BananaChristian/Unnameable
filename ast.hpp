@@ -2,6 +2,7 @@
 #include "token/token.hpp"
 #include <memory>
 #include <string>
+#include <optional>
 using namespace std;
 
 // GENERAL AST NODE
@@ -131,14 +132,38 @@ struct Statement : Node
 // Let statement node
 struct LetStatement : Statement
 {
-    Token assign_token;
-    unique_ptr<Expression> left;
-    unique_ptr<Expression> right;
+    Token data_type_token;
+    Token ident_token;
+    optional<Token> assign_token;
+    unique_ptr<Expression> value;
     string toString() override
     {
-        return "Let Statement: (" + left->toString() + " = " + right->toString() + ")";
+        string result = "Let Statement: ( Data type: " + data_type_token.TokenLiteral +
+                        " Variable name: " + ident_token.TokenLiteral;
+
+        if (value)
+        {
+            result += " Value: " + value->toString();
+        }
+        else
+        {
+            result += " Value: <uninitialized>";
+        }
+
+        result += ")";
+        return result;
     }
-    LetStatement(Token assign_t, unique_ptr<Expression> l, unique_ptr<Expression> r) : Statement(assign_t), assign_token(assign_t), left(move(l)), right(move(r)) {};
+
+    LetStatement(Token data_t, Token ident_t, optional<Token> assign_t, unique_ptr<Expression> val) : data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
+};
+
+struct LetStatementNoType: Statement{
+    Token ident_token;
+    unique_ptr<Expression> value;
+    string toString() override{
+        return "Let Statement no data type: (Variable: " + ident_token.TokenLiteral+ " Value: "+ value->toString()+")";
+    };
+    LetStatementNoType(Token ident,unique_ptr<Expression> val):Statement(ident), ident_token(ident),value(move(val)){};
 };
 
 // Return statement node
@@ -149,65 +174,9 @@ struct ReturnStatement : Statement
     string toString() override
     {
         return "Return Statement: ( Token: " + return_stmt.TokenLiteral + " Value: " +
-           (return_value ? return_value->toString() : "void") + ")";
+               (return_value ? return_value->toString() : "void") + ")";
     }
     ReturnStatement(Token ret, unique_ptr<Expression> ret_val) : Statement(ret), return_stmt(ret), return_value(move(ret_val)) {};
-};
-
-// DATA TYPE KEYWORD NODES
-// Boolean key word
-struct BooleanKeyword : Statement
-{
-    Token boolean_tok;
-    string toString() override
-    {
-        return "Boolean keyword: " + boolean_tok.TokenLiteral;
-    }
-    BooleanKeyword(Token bool_tok) : Statement(bool_tok), boolean_tok(bool_tok) {};
-};
-
-// Int keyword
-struct IntKeyword : Statement
-{
-    Token int_token;
-    string toString() override
-    {
-        return "Int keyword: " + int_token.TokenLiteral;
-    };
-    IntKeyword(Token int_tok) : Statement(int_tok), int_token(int_tok) {};
-};
-
-// String keyword
-struct StringKeyword : Statement
-{
-    Token string_token;
-    string toString() override
-    {
-        return "String keyword: " + string_token.TokenLiteral;
-    };
-    StringKeyword(Token string_tok) : Statement(string_tok), string_token(string_tok) {};
-};
-
-// Float keyword
-struct FloatKeyword : Statement
-{
-    Token float_token;
-    string toString() override
-    {
-        return "Float keyword: " + float_token.TokenLiteral;
-    };
-    FloatKeyword(Token float_tok) : Statement(float_tok), float_token(float_tok) {};
-};
-
-// Auto keyword
-struct AutoKeyword : Statement
-{
-    Token auto_token;
-    string toString() override
-    {
-        return "Auto  keyword: " + auto_token.TokenLiteral;
-    };
-    AutoKeyword(Token auto_tok) : Statement(auto_tok), auto_token(auto_tok) {};
 };
 
 enum class Precedence

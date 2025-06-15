@@ -11,18 +11,18 @@ using namespace std;
 int main() {
     string input_line;
 
-    cout << "Quil is running (type 'exit' to quit)" << endl;
+    cout << "Iron is running (type 'exit' to quit)" << endl;
 
     while (true) {
         cout << ">> ";
 
         if (!getline(cin, input_line)) {
-            cout << "\nExiting Quil REPL." << endl;
+            cout << "\nExiting Iron REPL." << endl;
             break;
         }
 
         if (input_line == "exit") {
-            cout << "Exiting Quil REPL." << endl;
+            cout << "Exiting Iron REPL." << endl;
             break;
         }
 
