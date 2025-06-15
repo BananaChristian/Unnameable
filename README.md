@@ -1,24 +1,24 @@
-# Quil Compiler
+# Iron Compiler
 
-**Quil** is a modern, lightweight programming language designed to be fast, minimal, and expressive.  
+**Iron** is a modern, lightweight programming language designed to be fast, minimal, and expressive.  
 This project contains the core implementation of the Quil compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
 
 ---
 
-## ✨ Features
+## Features
 
-- ✅ Custom lexer and tokenizer
-- ✅ Pratt parser for precedence-based expression parsing
-- ✅ Infix and prefix expression handling
-- ✅ Return statements and expression evaluation
-- 🚧 Semantic analysis *(Work In Progress)*
-- 🛠️ Code generation / bytecode / VM *(Planned)*
+- Custom lexer and tokenizer
+- Pratt parser for precedence-based expression parsing
+- Infix and prefix expression handling
+-  Return statements and expression evaluation
+- Semantic analysis *(Work In Progress)*
+- Code generation / bytecode / VM *(Planned)*
 
 ---
 
-## 🔧 Example: Input → Tokens → AST
+## Example: Input → Tokens → AST
 
-```quil
+```iron
 >> return x-5+y*8-6*y;
 Type: RETURN, Literal: "return"
 Type: IDENTIFIER, Literal: "x"
@@ -53,7 +53,7 @@ Return Statement:
 
 
 RAW OUTPUT
-Quil is running (type 'exit' to quit)
+Iron is running (type 'exit' to quit)
 >> return x-5+y*8-6*y;
 
 --- Tokens ---
