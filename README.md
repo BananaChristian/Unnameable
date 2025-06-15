@@ -1,7 +1,7 @@
 # Iron Compiler
 
 **Iron** is a modern, lightweight programming language designed to be fast, minimal, and expressive.  
-This project contains the core implementation of the Quil compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
+This project contains the core implementation of the Iron compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
 
 ---
 
