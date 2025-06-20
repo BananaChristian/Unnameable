@@ -5,109 +5,131 @@
 #include <map>
 using namespace std;
 
-class Parser{
+class Parser
+{
     vector<Token> tokenInput;
     int currentPos;
     int nextPos;
 
-    public:
-        //Parser class declaration
-        Parser(vector<Token>& tokenInput);
-        //Main parser program
-        vector<unique_ptr<Node>> parseProgram();
+    // Precedence and token type map
+    map<TokenType, Precedence> precedence{
+        {TokenType::ASSIGN, Precedence::PREC_ASSIGNMENT},
+        {TokenType::OR, Precedence::PREC_OR},
+        {TokenType::AND, Precedence::PREC_AND},
+        {TokenType::EQUALS, Precedence::PREC_EQUALITY},
+        {TokenType::NOT_EQUALS, Precedence::PREC_EQUALITY},
+        {TokenType::GREATER_THAN, Precedence::PREC_COMPARISON},
+        {TokenType::LESS_THAN, Precedence::PREC_COMPARISON},
+        {TokenType::GT_OR_EQ, Precedence::PREC_COMPARISON},
+        {TokenType::LT_OR_EQ, Precedence::PREC_COMPARISON},
+        {TokenType::PLUS, Precedence::PREC_TERM},
+        {TokenType::MINUS, Precedence::PREC_TERM},
+        {TokenType::ASTERISK, Precedence::PREC_FACTOR},
+        {TokenType::DIVIDE, Precedence::PREC_FACTOR},
+        {TokenType::BANG, Precedence::PREC_UNARY},
+        {TokenType::FULLSTOP, Precedence::PREC_CALL},
+        {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
+    };
 
-        //Precedence and token type map
-        map<TokenType,Precedence> precedence{
-            {TokenType::ASSIGN,Precedence::PREC_ASSIGNMENT},
-            {TokenType::OR,Precedence::PREC_OR},
-            {TokenType::AND,Precedence::PREC_AND},
-            {TokenType::EQUALS,Precedence::PREC_EQUALITY},
-            {TokenType::NOT_EQUALS,Precedence::PREC_EQUALITY},
-            {TokenType::GREATER_THAN,Precedence::PREC_COMPARISON},
-            {TokenType::LESS_THAN,Precedence::PREC_COMPARISON},
-            {TokenType::GT_OR_EQ,Precedence::PREC_COMPARISON},
-            {TokenType::LT_OR_EQ,Precedence::PREC_COMPARISON},
-            {TokenType::PLUS,Precedence::PREC_TERM},
-            {TokenType::MINUS,Precedence::PREC_TERM},
-            {TokenType::ASTERISK,Precedence::PREC_FACTOR},
-            {TokenType::DIVIDE,Precedence::PREC_FACTOR},
-            {TokenType::BANG,Precedence::PREC_UNARY},
-            {TokenType::FULLSTOP,Precedence::PREC_CALL},
-            {TokenType::IDENTIFIER,Precedence::PREC_PRIMARY},
-        };
-        //Sliding across the token input from the lexer;
-        void advance();
+public:
+    // Parser class declaration
+    Parser(vector<Token> &tokenInput);
+    // Main parser program
+    vector<unique_ptr<Node>> parseProgram();
 
-        //Functions for registering the functions neccesary for parsing the different tokens
-        void registerPrefixFns();
-        void registerInfixFns();
+    // Sliding across the token input from the lexer;
+    void advance();
 
-        //Function to register keyword parsing functions
-        void registerKeywordParseFns();
+    // Functions for registering the functions neccesary for parsing the different tokens
+    void registerPrefixFns();
+    void registerInfixFns();
 
-        //Function to register statement parsing functions
-        void registerStatementParseFns();
+    // Function to register keyword parsing functions
+    void registerKeywordParseFns();
 
-        //Function to get the precedence depending on the token type
-        Precedence get_precedence(TokenType type);
+    // Function to register statement parsing functions
+    void registerStatementParseFns();
 
-        
-        using prefixParseFns=unique_ptr<Expression>(Parser::*)();
-        using infixParseFns=unique_ptr<Expression>(Parser::*)(unique_ptr<Expression>);
+    // Function to get the precedence depending on the token type
+    Precedence get_precedence(TokenType type);
 
-        using keywordParseFns=unique_ptr<Statement>(Parser::*)();
-        using stmtParseFns=unique_ptr<Statement>(Parser::*)();
+    using prefixParseFns = unique_ptr<Expression> (Parser::*)();
+    using infixParseFns = unique_ptr<Expression> (Parser::*)(unique_ptr<Expression>);
 
-        map<TokenType,prefixParseFns> PrefixParseFunctionsMap;
-        map<TokenType,infixParseFns> InfixParseFunctionsMap;
+    using keywordParseFns = unique_ptr<Statement> (Parser::*)();
+    using stmtParseFns = unique_ptr<Statement> (Parser::*)();
 
-        map<TokenType,keywordParseFns> KeywordParseFunctionsMap;
-        map<TokenType,stmtParseFns> StatementParseFunctionsMap;
+    map<TokenType, prefixParseFns> PrefixParseFunctionsMap;
+    map<TokenType, infixParseFns> InfixParseFunctionsMap;
 
-    private:
-        //---------------PARSING STATEMENTS--------------------
-        //Parsing let statements with type
-        unique_ptr<Statement> parseLetStatementWithType();
+    map<TokenType, keywordParseFns> KeywordParseFunctionsMap;
+    map<TokenType, stmtParseFns> StatementParseFunctionsMap;
 
-        //Parsing let statements without type
-        unique_ptr<Statement> parseLetStatementWithoutType();
+private:
+    //---------------PARSING STATEMENTS--------------------
+    // General statement parsing function
+    unique_ptr<Statement> parseStatement();
 
-        //Parsing return statements
-        unique_ptr<Statement> parseReturnStatement();
+    // Parsing let statements with type
+    unique_ptr<Statement> parseLetStatementWithType();
 
-        //Parsing grouped expressions
-        unique_ptr<Expression> parseGroupedExpression();
+    // Parsing let statements without type
+    unique_ptr<Statement> parseLetStatementWithoutType();
 
-        //--------------PARSING EXPRESSIONS--------------------
-        //Main expression parsing function
-        unique_ptr<Expression> parseExpression(Precedence precedence);
+    // Parsing if statement
+    unique_ptr<Statement> parseIfStatement();
 
-        //Infix expression parsing function
-        unique_ptr<Expression> parseInfixExpression(unique_ptr<Expression> left);
+    // Parsing return statements
+    unique_ptr<Statement> parseReturnStatement();
 
-        //Prefix expression parsing function
-        unique_ptr<Expression> parsePrefixExpression();
+    //Parsing for statement
+    unique_ptr<Statement> parseForStatement();
 
-        //Parsing identifiers 
-        unique_ptr<Expression> parseIdentifier();
+    //Parsing while loops
+    unique_ptr<Statement> parseWhileStatement();
 
-        //Parsing data type literals
-        //Integer
-        unique_ptr<Expression> parseIntegerLiteral();
+    // Parsing block statements
+    unique_ptr<Statement> parseBlockStatement();
 
-        //Boolean
-        unique_ptr<Expression> parseBooleanLiteral();
+    // Parsing grouped expressions
+    unique_ptr<Expression> parseGroupedExpression();
 
-        //Float
-        unique_ptr<Expression> parseFloatLiteral();
+    //--------------PARSING EXPRESSIONS--------------------
+    // Main expression parsing function
+    unique_ptr<Expression> parseExpression(Precedence precedence);
 
-        //Char
-        unique_ptr<Expression> parseCharLiteral();
+    // Infix expression parsing function
+    unique_ptr<Expression> parseInfixExpression(unique_ptr<Expression> left);
 
-        //String
-        unique_ptr<Expression> parseStringLiteral();
+    // Prefix expression parsing function
+    unique_ptr<Expression> parsePrefixExpression();
 
-        //Peeking functions
-        Token currentToken();
-        Token nextToken();
+    // Parsing identifiers
+    unique_ptr<Expression> parseIdentifier();
+
+    // Parsing block expressions
+    unique_ptr<Expression> parseBlockExpression();
+
+    // Parsing data type literals
+    // Integer
+    unique_ptr<Expression> parseIntegerLiteral();
+
+    // Boolean
+    unique_ptr<Expression> parseBooleanLiteral();
+
+    // Float
+    unique_ptr<Expression> parseFloatLiteral();
+
+    // Char
+    unique_ptr<Expression> parseCharLiteral();
+
+    // String
+    unique_ptr<Expression> parseStringLiteral();
+
+    // Peeking functions
+    Token currentToken();
+    Token nextToken();
+
+    // Checking for the statement start
+    bool isStatementStart(const Token &token);
 };

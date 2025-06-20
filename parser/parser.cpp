@@ -13,6 +13,25 @@ Parser::Parser(vector<Token> &tokenInput) : tokenInput(tokenInput), currentPos(0
     registerPrefixFns();
     registerKeywordParseFns();
     registerStatementParseFns();
+
+    precedence={
+        {TokenType::ASSIGN, Precedence::PREC_ASSIGNMENT},
+        {TokenType::OR, Precedence::PREC_OR},
+        {TokenType::AND, Precedence::PREC_AND},
+        {TokenType::EQUALS, Precedence::PREC_EQUALITY},
+        {TokenType::NOT_EQUALS, Precedence::PREC_EQUALITY},
+        {TokenType::GREATER_THAN, Precedence::PREC_COMPARISON},
+        {TokenType::LESS_THAN, Precedence::PREC_COMPARISON},
+        {TokenType::GT_OR_EQ, Precedence::PREC_COMPARISON},
+        {TokenType::LT_OR_EQ, Precedence::PREC_COMPARISON},
+        {TokenType::PLUS, Precedence::PREC_TERM},
+        {TokenType::MINUS, Precedence::PREC_TERM},
+        {TokenType::ASTERISK, Precedence::PREC_FACTOR},
+        {TokenType::DIVIDE, Precedence::PREC_FACTOR},
+        {TokenType::BANG, Precedence::PREC_UNARY},
+        {TokenType::FULLSTOP, Precedence::PREC_CALL},
+        {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
+    };
 }
 
 // MAIN PARSER FUNCTION
@@ -49,6 +68,19 @@ vector<unique_ptr<Node>> Parser::parseProgram()
                 program.push_back(move(stmt));
             }
         }
+        else if (current.type == TokenType::IF)
+        {
+            auto stmt = parseIfStatement();
+            if (stmt)
+            {
+                program.push_back(move(stmt));
+            }
+        }else if(current.type==TokenType::WHILE){
+            auto stmt=parseWhileStatement();
+            if(stmt){
+                program.push_back(move(stmt));
+            }
+        }
         else if (current.type == TokenType::IDENTIFIER)
         {
             Token peek_token = nextToken();
@@ -77,6 +109,56 @@ vector<unique_ptr<Node>> Parser::parseProgram()
 
 //------------PARSING FUNCTIONS SECTION----------
 //-----------PARSING STATEMENTS----------
+// General statement parser function
+unique_ptr<Statement> Parser::parseStatement()
+{
+    Token current = currentToken();
+
+    if (current.type == TokenType::INT ||
+        current.type == TokenType::FLOAT_KEYWORD ||
+        current.type == TokenType::STRING_KEYWORD ||
+        current.type == TokenType::BOOL_KEYWORD ||
+        current.type == TokenType::AUTO)
+    {
+        return parseLetStatementWithType();
+    }
+    else if (current.type == TokenType::RETURN)
+    {
+        return parseReturnStatement();
+    }
+    else if (current.type == TokenType::IF)
+    {
+        return parseIfStatement();
+    }
+    else if (current.type == TokenType::WHILE)
+    {
+        return parseWhileStatement();
+    }
+    else if (current.type == TokenType::IDENTIFIER)
+    {
+        Token peek_token_ = nextToken(); 
+        if (peek_token_.type == TokenType::ASSIGN)
+        {
+            return parseLetStatementWithoutType();
+        }
+        else
+        {
+            auto expr = parseExpression(Precedence::PREC_NONE);
+            if (expr) {
+                if (currentToken().type == TokenType::SEMICOLON) {
+                    advance();
+                }
+                return make_unique<ExpressionStatement>(current,move(expr)); 
+            }
+            return nullptr;
+        }
+    }
+
+    cerr << "[ERROR] Unexpected token type at start of statement: " << current.TokenLiteral << endl;
+    advance();
+    return nullptr;
+}
+
 // Parsing let statements with types
 unique_ptr<Statement> Parser::parseLetStatementWithoutType()
 {
@@ -93,7 +175,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithoutType()
 
     unique_ptr<Expression> value = parseExpression(Precedence::PREC_NONE);
 
-    return make_unique<LetStatementNoType>(ident_token,move(value));
+    return make_unique<LetStatementNoType>(ident_token, move(value));
 }
 
 unique_ptr<Statement> Parser::parseLetStatementWithType()
@@ -168,6 +250,103 @@ unique_ptr<Statement> Parser::parseReturnStatement()
     return make_unique<ReturnStatement>(return_stmt, move(return_value));
 }
 
+//Parse for loops
+/*
+unique_ptr<Statement> Parser::parseForStatement(){
+    Token for_k=currentToken();
+    advance();
+    auto expr=parseExpression(Precedence::PREC_NONE);
+
+}
+*/
+
+
+//Parsing while statements
+unique_ptr<Statement> Parser::parseWhileStatement(){
+    Token while_key=currentToken();
+    cout<<"WHILE KEYWORD"<<endl;
+    advance();
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        cout << "[DEBUG] Expected '(' after 'while', got: " << currentToken().TokenLiteral << endl;
+        return nullptr;
+    }
+    advance();
+    auto condition=parseExpression(Precedence::PREC_NONE);
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        cout << "[DEBUG] Expected ')' after while condition, got: " << currentToken().TokenLiteral << endl;
+        return nullptr;
+    }
+    advance();
+    auto result=parseBlockStatement();
+    return make_unique<WhileStatement>(while_key,move(condition),move(result));
+}
+
+
+// Parsing if statements`
+unique_ptr<Statement> Parser::parseIfStatement()
+{
+    Token if_stmt = currentToken();
+    advance();
+
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        cout << "[DEBUG] Expected '(' after 'if', got: " << currentToken().TokenLiteral << endl;
+        return nullptr;
+    }
+    advance();
+
+    auto condition = parseExpression(Precedence::PREC_NONE);
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        cout << "[DEBUG] Expected ')' got: " << currentToken().TokenLiteral << endl;
+        return nullptr;
+    }
+    advance();
+    auto if_result = parseBlockStatement();
+
+    optional<Token> elseif_stmt;
+    optional<unique_ptr<Expression>> elseif_condition;
+    optional<unique_ptr<Statement>> elseif_result;
+
+    if (currentToken().type == TokenType::ELSE_IF)
+    {
+        elseif_stmt = currentToken();
+        advance();
+
+        if (currentToken().type != TokenType::LPAREN)
+        {
+            cout << "[DEBUG] Expected '(' after 'elseif', got: " << currentToken().TokenLiteral << endl;
+            return nullptr;
+        }
+
+        elseif_condition = parseGroupedExpression();
+        elseif_result = parseBlockStatement();
+    }
+
+    optional<Token> else_stmt;
+    optional<unique_ptr<Statement>> else_result;
+
+    if (currentToken().type == TokenType::ELSE)
+    {
+        else_stmt = currentToken();
+        advance();
+
+        else_result = parseBlockStatement();
+    }
+
+    return make_unique<ifStatement>(
+        if_stmt,
+        move(condition),
+        move(if_result),
+        move(elseif_stmt),
+        move(elseif_condition),
+        move(elseif_result),
+        move(else_stmt),
+        move(else_result));
+}
+
 // Parsing identifiers
 unique_ptr<Expression> Parser::parseIdentifier()
 {
@@ -192,6 +371,9 @@ unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
     auto left_expression = (this->*PrefixParseFnIt->second)();
     cout << "[DEBUG] Initial left expression: " << left_expression->toString() << endl;
 
+    //cout << "[DEBUG] Current token for precedence check: " << currentToken().TokenLiteral << " has precedence: " << get_precedence(currentToken().type) << endl;
+
+
     while (precedence < get_precedence(currentToken().type))
     {
         cout << "[DEBUG] Looping for token: " << currentToken().TokenLiteral << endl;
@@ -203,9 +385,9 @@ unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
             break;
         }
 
+
         left_expression = (this->*InfixParseFnIt->second)(std::move(left_expression));
         cout << "[DEBUG] Updated left expression: " << left_expression->toString() << endl;
-        // advance();
     }
 
     return left_expression;
@@ -271,17 +453,116 @@ unique_ptr<Expression> Parser::parseStringLiteral()
 // Grouped expression parse function
 unique_ptr<Expression> Parser::parseGroupedExpression()
 {
-    advance();
+    Token lparen = currentToken();
+    advance(); // skip '('
+
+    if (currentToken().type == TokenType::RPAREN)
+    {
+        cerr << "[ERROR] Empty grouped expression after '('\n";
+        return nullptr;
+    }
+
     auto expr = parseExpression(Precedence::PREC_NONE);
+    if (!expr)
+    {
+        cerr << "[ERROR] Failed to parse expression inside grouped expr.\n";
+        return nullptr;
+    }
+
     if (currentToken().type != TokenType::RPAREN)
     {
-        cout << "Current token: " << currentToken().TokenLiteral << endl;
-        cerr << "[ERROR] Expected ')'" << endl;
+        cerr << "[ERROR] Expected ')' to close grouped expression, got: " << currentToken().TokenLiteral << endl;
+        return nullptr;
+    }
+
+    advance(); // skip ')'
+    return expr;
+}
+
+// Parsing block expressions
+unique_ptr<Expression> Parser::parseBlockExpression()
+{
+    Token lbrace = currentToken();
+    cout << "[DEBUG]: Encountered the {" << endl;
+    if (lbrace.type != currentToken().type)
+    {
+        cout << "[ERROR]: Encountered " << currentToken().TokenLiteral << endl;
+        return nullptr;
+    }
+    advance();
+    auto block = make_unique<BlockExpression>(lbrace);
+    while (currentToken().type != TokenType::RBRACE)
+    {
+        if (currentToken().type == TokenType::END)
+        {
+            cout << "[ERROR] Unterminated block experession" << endl;
+            return nullptr;
+        }
+
+        if (isStatementStart(currentToken()))
+        {
+            auto stmt = parseStatement();
+            if (stmt)
+            {
+                block->statements.push_back(move(stmt));
+            }
+            else
+            {
+                auto expr = parseExpression(Precedence::PREC_NONE);
+                if (expr)
+                {
+                    block->finalexpr = move(expr);
+                }
+                break;
+            }
+        }
+    }
+
+    if (currentToken().type != TokenType::RBRACE)
+    {
+        cout << "[ERROR]Expected } got" << currentToken().TokenLiteral << endl;
         return nullptr;
     }
 
     advance();
-    return expr;
+    return block;
+}
+
+// Parsing block statements
+unique_ptr<Statement> Parser::parseBlockStatement()
+{
+    Token lbrace = currentToken();
+    if (lbrace.type != TokenType::LBRACE)
+    {
+        cerr << "[ERROR] Expected '{' to start block.\n";
+        return nullptr;
+    }
+    advance();
+    vector<unique_ptr<Statement>> statements;
+
+    while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
+    {
+        auto stmt = parseStatement();
+        if (stmt != nullptr)
+        {
+            statements.push_back(move(stmt));
+        }
+        else
+        {
+            cerr << "[ERROR] Failed to parse statement within block. Skipping token: " << currentToken().TokenLiteral << endl;
+            advance();
+        }
+    }
+
+    if (currentToken().type != TokenType::RBRACE)
+    {
+        cerr << "[ERROR]Expected } to close block got: " << currentToken().TokenLiteral << endl;
+        return nullptr;
+    }
+
+    advance();
+
+    return make_unique<BlockStatement>(lbrace, move(statements));
 }
 
 //----------HELPER FUNCTIONS---------------
@@ -295,6 +576,19 @@ void Parser::advance()
     }
 }
 
+// Checking for statement starters
+bool Parser::isStatementStart(const Token &token)
+{
+    if (token.type == TokenType::FUNCTION || token.type == TokenType::RETURN || token.type == TokenType::WHILE)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
 // Registration functions
 // Registering infix functions for a particular token type
 void Parser::registerInfixFns()
@@ -304,6 +598,10 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::DIVIDE] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::ASTERISK] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::MODULUS] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::GREATER_THAN] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::LESS_THAN] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::GT_OR_EQ] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::LT_OR_EQ] = &Parser::parseInfixExpression;
 }
 
 // Registering prefix functions for a particular token type
@@ -317,7 +615,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;
-    PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseGroupedExpression;
+    PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
 }
 
 // Registering keyword parsing functions
@@ -330,12 +628,15 @@ void Parser::registerStatementParseFns()
 {
     StatementParseFunctionsMap[TokenType::ASSIGN] = &Parser::parseLetStatementWithType;
     StatementParseFunctionsMap[TokenType::RETURN] = &Parser::parseReturnStatement;
+    StatementParseFunctionsMap[TokenType::IF] = &Parser::parseIfStatement;
+    StatementParseFunctionsMap[TokenType::WHILE]=&Parser::parseWhileStatement;
 }
 
 // Precedence getting function
 Precedence Parser::get_precedence(TokenType type)
 {
     Precedence prec = precedence.count(type) ? precedence[type] : Precedence::PREC_NONE;
+    cout << "[DEBUG] Checking precedence map size: " << precedence.size() << endl;
     return prec;
 }
 

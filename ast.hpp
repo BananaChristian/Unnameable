@@ -2,6 +2,7 @@
 #include "token/token.hpp"
 #include <memory>
 #include <string>
+#include <vector>
 #include <optional>
 using namespace std;
 
@@ -129,6 +130,18 @@ struct Statement : Node
     Statement(Token stmt) : statement(stmt) {};
 };
 
+struct ExpressionStatement:Statement{
+    Token expr;
+    unique_ptr<Expression> expression;
+    string toString() override {
+        if (expression) {
+            return expression->toString() + ";";
+        }
+        return ";";
+    }
+    ExpressionStatement(Token exp,unique_ptr<Expression> expr) :Statement(exp),expr(exp), expression(move(expr)) {};
+};
+
 // Let statement node
 struct LetStatement : Statement
 {
@@ -157,13 +170,15 @@ struct LetStatement : Statement
     LetStatement(Token data_t, Token ident_t, optional<Token> assign_t, unique_ptr<Expression> val) : data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
 };
 
-struct LetStatementNoType: Statement{
+struct LetStatementNoType : Statement
+{
     Token ident_token;
     unique_ptr<Expression> value;
-    string toString() override{
-        return "Let Statement no data type: (Variable: " + ident_token.TokenLiteral+ " Value: "+ value->toString()+")";
+    string toString() override
+    {
+        return "Let Statement no data type: (Variable: " + ident_token.TokenLiteral + " Value: " + value->toString() + ")";
     };
-    LetStatementNoType(Token ident,unique_ptr<Expression> val):Statement(ident), ident_token(ident),value(move(val)){};
+    LetStatementNoType(Token ident, unique_ptr<Expression> val) : Statement(ident), ident_token(ident), value(move(val)) {};
 };
 
 // Return statement node
@@ -177,6 +192,142 @@ struct ReturnStatement : Statement
                (return_value ? return_value->toString() : "void") + ")";
     }
     ReturnStatement(Token ret, unique_ptr<Expression> ret_val) : Statement(ret), return_stmt(ret), return_value(move(ret_val)) {};
+};
+
+// If statement node
+struct ifStatement : Statement
+{
+    Token if_stmt;
+    unique_ptr<Expression> condition;
+    unique_ptr<Statement> if_result;
+
+    optional<Token> elseif_stmt;
+    optional<unique_ptr<Expression>> elseif_condition;
+    optional<unique_ptr<Statement>> elseif_result;
+
+    optional<Token> else_stmt;
+    optional<unique_ptr<Statement>> else_result;
+
+    string toString() override
+    {
+        string result = "IfStatement:\n";
+
+        if (condition)
+            result += "  if (" + condition->toString() + ") {\n";
+        else
+            result += "  if (<null condition>) {\n";
+
+        if (if_result)
+            result += "    " + if_result->toString() + "\n";
+        else
+            result += "    <null if_result>\n";
+
+        result += "  }\n";
+
+        if (elseif_stmt.has_value())
+        {
+            result += "  else if (";
+
+            if (elseif_condition.has_value() && *elseif_condition)
+                result += (*elseif_condition)->toString();
+            else
+                result += "<null elseif_condition>";
+
+            result += ") {\n";
+
+            if (elseif_result.has_value() && *elseif_result)
+                result += "    " + (*elseif_result)->toString() + "\n";
+            else
+                result += "    <null elseif_result>\n";
+
+            result += "  }\n";
+        }
+
+        // ELSE block
+        if (else_stmt.has_value())
+        {
+            result += "  else {\n";
+
+            if (else_result.has_value() && *else_result)
+                result += "    " + (*else_result)->toString() + "\n";
+            else
+                result += "    <null else_result>\n";
+
+            result += "  }\n";
+        }
+
+        return result;
+    }
+
+    ifStatement(Token if_st, unique_ptr<Expression> condition_e, unique_ptr<Statement> if_r,
+                optional<Token> elseif_st, optional<unique_ptr<Expression>> elseif_cond, optional<unique_ptr<Statement>> elseif_r,
+                optional<Token> else_st, optional<unique_ptr<Statement>> else_r) : Statement(if_st),
+                                                                                   if_stmt(if_st), condition(move(condition_e)), if_result(move(if_r)),
+                                                                                   elseif_stmt(elseif_st), elseif_condition(move(elseif_cond)), elseif_result(move(elseif_r)),
+                                                                                   else_stmt(else_st), else_result(move(else_r)) {};
+};
+
+struct ForStatement: Statement{
+    Token for_key;
+    unique_ptr<Expression> condition;
+    unique_ptr<Statement> loop;
+
+    ForStatement(Token for_k,unique_ptr<Expression> condition,unique_ptr<Statement> l):Statement(for_k),for_key(for_k),condition(move(condition)),loop(move(l)){};
+};
+
+struct WhileStatement: Statement{
+    Token while_key;
+    unique_ptr<Expression> condition;
+    unique_ptr<Statement> loop;
+
+    string toString() override{
+        return "While : "+ condition->toString() + loop->toString();
+    }
+
+    WhileStatement(Token while_k,unique_ptr<Expression> condition,unique_ptr<Statement> l):Statement(while_k),while_key(while_k),condition(move(condition)),loop(move(l)){};
+};
+
+// Block statement
+struct BlockStatement : Statement
+{
+    Token brace;
+    vector<unique_ptr<Statement>> statements;
+    string toString() override {
+        string out = "{ "; 
+        for (const auto& s : statements) {
+            if (s) { 
+                out += s->toString();
+            }
+        }
+        out += " }"; 
+        return out;
+    }
+    BlockStatement(Token brac, vector<unique_ptr<Statement>> cont) : Statement(brace), brace(brac), statements(move(cont)) {}
+};
+
+// BLOCKS
+//  Block expression
+struct BlockExpression : Expression
+{
+    Token brace;
+    vector<unique_ptr<Statement>> statements;
+    optional<unique_ptr<Expression>> finalexpr;
+
+    string toString() override
+    {
+        string out = "BlockExpression:\n";
+        for (auto &stmt : statements)
+        {
+            out += stmt->toString() + "\n";
+        }
+        if (finalexpr.has_value() && finalexpr.value())
+        {
+            out += "Final Expression: " + finalexpr.value()->toString();
+        }
+        return out;
+    };
+
+    BlockExpression(Token lbrace) : Expression(lbrace) {};
 };
 
 enum class Precedence
