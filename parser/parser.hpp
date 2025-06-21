@@ -3,16 +3,16 @@
 #include <string>
 #include <vector>
 #include <map>
-using namespace std;
+
 
 class Parser
 {
-    vector<Token> tokenInput;
+    std::vector<Token> tokenInput;
     int currentPos;
     int nextPos;
 
     // Precedence and token type map
-    map<TokenType, Precedence> precedence{
+    std::map<TokenType, Precedence> precedence{
         {TokenType::ASSIGN, Precedence::PREC_ASSIGNMENT},
         {TokenType::OR, Precedence::PREC_OR},
         {TokenType::AND, Precedence::PREC_AND},
@@ -28,14 +28,15 @@ class Parser
         {TokenType::DIVIDE, Precedence::PREC_FACTOR},
         {TokenType::BANG, Precedence::PREC_UNARY},
         {TokenType::FULLSTOP, Precedence::PREC_CALL},
+        {TokenType::LPAREN,Precedence::PREC_CALL},
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
     };
 
 public:
     // Parser class declaration
-    Parser(vector<Token> &tokenInput);
+    Parser(std::vector<Token> &tokenInput);
     // Main parser program
-    vector<unique_ptr<Node>> parseProgram();
+    std::vector<std::unique_ptr<Node>> parseProgram();
 
     // Sliding across the token input from the lexer;
     void advance();
@@ -53,78 +54,84 @@ public:
     // Function to get the precedence depending on the token type
     Precedence get_precedence(TokenType type);
 
-    using prefixParseFns = unique_ptr<Expression> (Parser::*)();
-    using infixParseFns = unique_ptr<Expression> (Parser::*)(unique_ptr<Expression>);
+    using prefixParseFns = std::unique_ptr<Expression> (Parser::*)();
+    using infixParseFns = std::unique_ptr<Expression> (Parser::*)(std::unique_ptr<Expression>);
 
-    using keywordParseFns = unique_ptr<Statement> (Parser::*)();
-    using stmtParseFns = unique_ptr<Statement> (Parser::*)();
+    using keywordParseFns = std::unique_ptr<Statement> (Parser::*)();
+    using stmtParseFns = std::unique_ptr<Statement> (Parser::*)();
 
-    map<TokenType, prefixParseFns> PrefixParseFunctionsMap;
-    map<TokenType, infixParseFns> InfixParseFunctionsMap;
+    std::map<TokenType, prefixParseFns> PrefixParseFunctionsMap;
+    std::map<TokenType, infixParseFns> InfixParseFunctionsMap;
 
-    map<TokenType, keywordParseFns> KeywordParseFunctionsMap;
-    map<TokenType, stmtParseFns> StatementParseFunctionsMap;
+    std::map<TokenType, keywordParseFns> KeywordParseFunctionsMap;
+    std::map<TokenType, stmtParseFns> StatementParseFunctionsMap;
 
 private:
     //---------------PARSING STATEMENTS--------------------
     // General statement parsing function
-    unique_ptr<Statement> parseStatement();
+    std::unique_ptr<Statement> parseStatement();
 
     // Parsing let statements with type
-    unique_ptr<Statement> parseLetStatementWithType();
+    std::unique_ptr<Statement> parseLetStatementWithType();
 
     // Parsing let statements without type
-    unique_ptr<Statement> parseLetStatementWithoutType();
+    std::unique_ptr<Statement> parseLetStatementWithoutType();
 
     // Parsing if statement
-    unique_ptr<Statement> parseIfStatement();
+    std::unique_ptr<Statement> parseIfStatement();
 
     // Parsing return statements
-    unique_ptr<Statement> parseReturnStatement();
+    std::unique_ptr<Statement> parseReturnStatement();
 
     //Parsing for statement
-    unique_ptr<Statement> parseForStatement();
+    std::unique_ptr<Statement> parseForStatement();
 
     //Parsing while loops
-    unique_ptr<Statement> parseWhileStatement();
+    std::unique_ptr<Statement>parseWhileStatement();
 
     // Parsing block statements
-    unique_ptr<Statement> parseBlockStatement();
-
-    // Parsing grouped expressions
-    unique_ptr<Expression> parseGroupedExpression();
+    std::unique_ptr<Statement> parseBlockStatement();
 
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
-    unique_ptr<Expression> parseExpression(Precedence precedence);
+    std::unique_ptr<Expression> parseExpression(Precedence precedence);
 
     // Infix expression parsing function
-    unique_ptr<Expression> parseInfixExpression(unique_ptr<Expression> left);
+    std::unique_ptr<Expression> parseInfixExpression(std::unique_ptr<Expression> left);
 
     // Prefix expression parsing function
-    unique_ptr<Expression> parsePrefixExpression();
+    std::unique_ptr<Expression> parsePrefixExpression();
 
     // Parsing identifiers
-    unique_ptr<Expression> parseIdentifier();
+    std::unique_ptr<Expression> parseIdentifier();
 
     // Parsing block expressions
-    unique_ptr<Expression> parseBlockExpression();
+    std::unique_ptr<Expression> parseBlockExpression();
+
+    // Parsing grouped expressions
+    std::unique_ptr<Expression> parseGroupedExpression();
 
     // Parsing data type literals
     // Integer
-    unique_ptr<Expression> parseIntegerLiteral();
+    std::unique_ptr<Expression> parseIntegerLiteral();
 
     // Boolean
-    unique_ptr<Expression> parseBooleanLiteral();
+    std::unique_ptr<Expression> parseBooleanLiteral();
 
     // Float
-    unique_ptr<Expression> parseFloatLiteral();
+    std::unique_ptr<Expression> parseFloatLiteral();
 
     // Char
-    unique_ptr<Expression> parseCharLiteral();
+    std::unique_ptr<Expression> parseCharLiteral();
 
     // String
-    unique_ptr<Expression> parseStringLiteral();
+    std::unique_ptr<Expression> parseStringLiteral();
+
+    //Call expression parse function
+    std::unique_ptr<Expression> parseCallExpression(std::unique_ptr<Expression> left);
+
+    //Parsing call arguments
+    std::vector<std::unique_ptr<Expression>> parseCallArguments();
 
     // Peeking functions
     Token currentToken();

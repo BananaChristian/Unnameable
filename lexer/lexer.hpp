@@ -21,7 +21,7 @@ class Lexer
 
         {"if", TokenType::IF},
         {"else", TokenType::ELSE},
-        {"else if", TokenType::ELSE_IF},
+        {"elseif", TokenType::ELSE_IF},
         {"while", TokenType::WHILE},
         {"for", TokenType::FOR},
         {"break", TokenType::BREAK},
