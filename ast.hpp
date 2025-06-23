@@ -5,7 +5,6 @@
 #include <vector>
 #include <optional>
 
-
 // GENERAL AST NODE
 struct Node
 {
@@ -93,21 +92,67 @@ struct StringLiteral : Expression
     StringLiteral(Token string_t) : Expression(string_t), string_token(string_t) {};
 };
 
-//Call expression
-struct CallExpression: Expression{
+// Call expression
+struct CallExpression : Expression
+{
     std::unique_ptr<Expression> function_identifier;
     std::vector<std::unique_ptr<Expression>> parameters;
-    std::string toString() override {
+    std::string toString() override
+    {
         std::string args_str;
-        for (size_t i = 0; i < parameters.size(); ++i) {
+        for (size_t i = 0; i < parameters.size(); ++i)
+        {
             args_str += parameters[i]->toString();
-            if (i < parameters.size() - 1) args_str += ", ";
+            if (i < parameters.size() - 1)
+                args_str += ", ";
         }
         return function_identifier->toString() + "(" + args_str + ")";
     }
 
+    CallExpression(Token tok, std::unique_ptr<Expression> fn_ident, std::vector<std::unique_ptr<Expression>> params) : Expression(tok), function_identifier(std::move(fn_ident)), parameters(std::move(params)) {};
+};
 
-    CallExpression(Token tok,std::unique_ptr<Expression> fn_ident,std::vector<std::unique_ptr<Expression>> params):Expression(tok),function_identifier(std::move(fn_ident)),parameters(std::move(params)){};
+// Function expression struct node
+struct FunctionExpression : Expression
+{
+    Token func_key;
+    std::vector<std::unique_ptr<Expression>> call;
+    std::unique_ptr<Expression> return_type;
+
+    std::unique_ptr<Expression> block;
+
+    std::string toString() override
+    {
+        std::string cl = "(";
+        for (size_t i = 0; i < call.size(); ++i)
+        {
+            cl += call[i] ? call[i]->toString() : "<null>";
+            if (i < call.size() - 1)
+            {
+                cl += ", ";
+            }
+        }
+        cl += ")";
+
+        std::string ret_str = return_type ? return_type->toString() : "<no type>";
+        std::string block_str = block ? block->toString() : "<no block>";
+
+        return "FunctionExpression: " + func_key.TokenLiteral + " " +
+               "Function parameters: " + cl +
+               " Return type: " + ret_str +
+               " Function block: " + block_str;
+    }
+
+    FunctionExpression(Token fn, std::vector<std::unique_ptr<Expression>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
+};
+
+//Return type expression
+struct ReturnTypeExpression:Expression{
+    Token typeToken;
+    std::string toString() override{
+        return "Type expression: "+ typeToken.TokenLiteral;
+    }
+    ReturnTypeExpression(Token type): Expression(type),typeToken(type){};
 };
 
 // Prefix expression node for syntax like !true;
@@ -147,16 +192,19 @@ struct Statement : Node
     Statement(Token stmt) : statement(stmt) {};
 };
 
-struct ExpressionStatement:Statement{
+struct ExpressionStatement : Statement
+{
     Token expr;
     std::unique_ptr<Expression> expression;
-    std::string toString() override {
-        if (expression) {
+    std::string toString() override
+    {
+        if (expression)
+        {
             return expression->toString() + ";";
         }
         return ";";
     }
-    ExpressionStatement(Token exp,std::unique_ptr<Expression> expr) :Statement(exp),expr(exp), expression(move(expr)) {};
+    ExpressionStatement(Token exp, std::unique_ptr<Expression> expr) : Statement(exp), expr(exp), expression(move(expr)) {};
 };
 
 // Let statement node
@@ -169,7 +217,7 @@ struct LetStatement : Statement
     std::string toString() override
     {
         std::string result = "Let Statement: ( Data type: " + data_type_token.TokenLiteral +
-                        " Variable name: " + ident_token.TokenLiteral;
+                             " Variable name: " + ident_token.TokenLiteral;
 
         if (value)
         {
@@ -279,29 +327,32 @@ struct ifStatement : Statement
     ifStatement(Token if_st, std::unique_ptr<Expression> condition_e, std::unique_ptr<Statement> if_r,
                 std::optional<Token> elseif_st, std::optional<std::unique_ptr<Expression>> elseif_cond, std::optional<std::unique_ptr<Statement>> elseif_r,
                 std::optional<Token> else_st, std::optional<std::unique_ptr<Statement>> else_r) : Statement(if_st),
-                                                                                   if_stmt(if_st), condition(move(condition_e)), if_result(move(if_r)),
-                                                                                   elseif_stmt(elseif_st), elseif_condition(move(elseif_cond)), elseif_result(move(elseif_r)),
-                                                                                   else_stmt(else_st), else_result(move(else_r)) {};
+                                                                                                  if_stmt(if_st), condition(move(condition_e)), if_result(move(if_r)),
+                                                                                                  elseif_stmt(elseif_st), elseif_condition(move(elseif_cond)), elseif_result(move(elseif_r)),
+                                                                                                  else_stmt(else_st), else_result(move(else_r)) {};
 };
 
-struct ForStatement: Statement{
+struct ForStatement : Statement
+{
     Token for_key;
     std::unique_ptr<Expression> condition;
     std::unique_ptr<Statement> loop;
 
-    ForStatement(Token for_k,std::unique_ptr<Expression> condition,std::unique_ptr<Statement> l):Statement(for_k),for_key(for_k),condition(move(condition)),loop(move(l)){};
+    ForStatement(Token for_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(for_k), for_key(for_k), condition(move(condition)), loop(move(l)) {};
 };
 
-struct WhileStatement: Statement{
+struct WhileStatement : Statement
+{
     Token while_key;
     std::unique_ptr<Expression> condition;
     std::unique_ptr<Statement> loop;
 
-    std::string toString() override{
-        return "While : "+ condition->toString() + loop->toString();
+    std::string toString() override
+    {
+        return "While : " + condition->toString() + loop->toString();
     }
 
-    WhileStatement(Token while_k,std::unique_ptr<Expression> condition,std::unique_ptr<Statement> l):Statement(while_k),while_key(while_k),condition(move(condition)),loop(move(l)){};
+    WhileStatement(Token while_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(while_k), while_key(while_k), condition(move(condition)), loop(move(l)) {};
 };
 
 // Block statement
@@ -309,14 +360,17 @@ struct BlockStatement : Statement
 {
     Token brace;
     std::vector<std::unique_ptr<Statement>> statements;
-    std::string toString() override {
-        std::string out = "{ "; 
-        for (const auto& s : statements) {
-            if (s) { 
+    std::string toString() override
+    {
+        std::string out = "{ ";
+        for (const auto &s : statements)
+        {
+            if (s)
+            {
                 out += s->toString();
             }
         }
-        out += " }"; 
+        out += " }";
         return out;
     }
     BlockStatement(Token brac, std::vector<std::unique_ptr<Statement>> cont) : Statement(brace), brace(brac), statements(move(cont)) {}
@@ -345,7 +399,6 @@ struct BlockExpression : Expression
     };
 
     BlockExpression(Token lbrace) : Expression(lbrace) {};
-
 };
 
 enum class Precedence

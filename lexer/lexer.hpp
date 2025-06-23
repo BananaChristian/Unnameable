@@ -10,7 +10,7 @@ class Lexer
     string input;
     unordered_map<string, TokenType> keywords = {
         {"auto", TokenType::AUTO},
-        {"func", TokenType::FUNCTION},
+        {"work", TokenType::FUNCTION},
         {"return", TokenType::RETURN},
         {"const", TokenType::CONSTANT},
         {"cast", TokenType::CAST},

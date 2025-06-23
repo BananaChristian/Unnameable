@@ -91,7 +91,7 @@ private:
 
     // Parsing block statements
     std::unique_ptr<Statement> parseBlockStatement();
-
+    
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
     std::unique_ptr<Expression> parseExpression(Precedence precedence);
@@ -104,6 +104,9 @@ private:
 
     // Parsing identifiers
     std::unique_ptr<Expression> parseIdentifier();
+
+    //Parsing for expression
+    std::unique_ptr<Expression> parseFunctionExpression();
 
     // Parsing block expressions
     std::unique_ptr<Expression> parseBlockExpression();
@@ -132,6 +135,10 @@ private:
 
     //Parsing call arguments
     std::vector<std::unique_ptr<Expression>> parseCallArguments();
+
+    //Parsing function parameters
+    std::vector<std::unique_ptr<Expression>> parseFunctionParameters();
+
 
     // Peeking functions
     Token currentToken();

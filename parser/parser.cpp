@@ -30,7 +30,7 @@ Parser::Parser(vector<Token> &tokenInput) : tokenInput(tokenInput), currentPos(0
         {TokenType::DIVIDE, Precedence::PREC_FACTOR},
         {TokenType::BANG, Precedence::PREC_UNARY},
         {TokenType::FULLSTOP, Precedence::PREC_CALL},
-        {TokenType::LPAREN,Precedence::PREC_CALL},
+        {TokenType::LPAREN, Precedence::PREC_CALL},
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
     };
 }
@@ -49,64 +49,85 @@ vector<unique_ptr<Node>> Parser::parseProgram()
         {
             break;
         }
+
+        unique_ptr<Node> node = nullptr;
+
         if (current.type == TokenType::INT ||
             current.type == TokenType::FLOAT_KEYWORD ||
             current.type == TokenType::STRING_KEYWORD ||
             current.type == TokenType::BOOL_KEYWORD ||
             current.type == TokenType::AUTO)
         {
-            auto stmt = parseLetStatementWithType();
-            if (stmt)
-            {
-                program.push_back(move(stmt));
-            }
+            node = parseLetStatementWithType();
         }
         else if (current.type == TokenType::RETURN)
         {
-            auto stmt = parseReturnStatement();
-            if (stmt)
-            {
-                program.push_back(move(stmt));
-            }
+            node = parseReturnStatement();
         }
         else if (current.type == TokenType::IF)
         {
-            auto stmt = parseIfStatement();
-            if (stmt)
-            {
-                program.push_back(move(stmt));
-            }
+            node = parseIfStatement();
         }
         else if (current.type == TokenType::WHILE)
         {
-            auto stmt = parseWhileStatement();
-            if (stmt)
-            {
-                program.push_back(move(stmt));
-            }
+            node = parseWhileStatement();
+        }
+        else if (current.type == TokenType::FUNCTION)
+        {
+            node = parseFunctionExpression();
         }
         else if (current.type == TokenType::IDENTIFIER)
         {
             Token peek_token = nextToken();
             if (peek_token.type == TokenType::ASSIGN)
             {
-                auto stmt = parseLetStatementWithoutType();
-                if (stmt)
-                {
-                    program.push_back(move(stmt));
-                }
+                node = parseLetStatementWithoutType();
             }
             else
             {
                 auto expr = parseExpression(Precedence::PREC_NONE);
                 if (expr)
                 {
-                    program.push_back(move(expr));
+                    if (currentToken().type == TokenType::SEMICOLON)
+                    {
+                        advance();
+                        node = make_unique<ExpressionStatement>(current, std::move(expr));
+                        cout << "[DEBUG] Parsed expression statement (IDENTIFIER case).\n";
+                    }
+                    else
+                    {
+                        cerr << "[ERROR] Expected ';' after expression statement, got: " << currentToken().TokenLiteral << "\n";
+                    }
                 }
             }
         }
+        else
+        {
+            // Handling general expression statements like (1+2)*3;
+            auto expr = parseExpression(Precedence::PREC_NONE);
+            if (expr)
+            {
+                if (currentToken().type == TokenType::SEMICOLON)
+                {
+                    advance();
+                    node = make_unique<ExpressionStatement>(current, std::move(expr));
+                    cout << "[DEBUG] Parsed generic expression statement.\n";
+                }
+                else
+                {
+                    cerr << "[ERROR] Expected ';' after expression statement, got: " << currentToken().TokenLiteral << "\n";
+                }
+            }
+        }
+
+        if (node)
+        {
+            program.push_back(std::move(node));
+        }
+
         advance();
     }
+
     cout << "Parser finished" << endl;
     return program;
 }
@@ -145,25 +166,30 @@ unique_ptr<Statement> Parser::parseStatement()
         {
             return parseLetStatementWithoutType();
         }
-        else
-        {
-            auto expr = parseExpression(Precedence::PREC_NONE);
-            if (expr)
-            {
-                if (currentToken().type == TokenType::SEMICOLON)
-                {
-                    advance();
-                }
-                return make_unique<ExpressionStatement>(current, move(expr));
-            }
-            return nullptr;
-        }
     }
 
-    cerr << "[ERROR] Unexpected token type at start of statement: " << current.TokenLiteral << endl;
+    auto expr = parseExpression(Precedence::PREC_NONE);
+    if (expr)
+    {
+        if (currentToken().type == TokenType::SEMICOLON)
+        {
+            advance();
+        }
+        else
+        {
+            cerr << "[ERROR] Expected ';' after expression statement, got: " << currentToken().TokenLiteral << "\n";
+            return nullptr;
+        }
+
+        std::cout << "[DEBUG] Parsed generic expression statement.\n";
+        return make_unique<ExpressionStatement>(current, move(expr));
+    }
+
+    cerr << "[ERROR] Unexpected token at start of statement: " << current.TokenLiteral << "\n";
     advance();
     return nullptr;
 }
+
 
 // Parsing let statements with types
 unique_ptr<Statement> Parser::parseLetStatementWithoutType()
@@ -482,7 +508,7 @@ unique_ptr<Expression> Parser::parseGroupedExpression()
 
 unique_ptr<Expression> Parser::parseCallExpression(unique_ptr<Expression> left)
 {
-    std::cout << "[DEBUG] Entered parseCallExpression for: " << left->toString() << "\n";
+    cout << "[DEBUG] Entered parseCallExpression for: " << left->toString() << "\n";
     Token call_token = currentToken(); // We expect a left parenthesis here
 
     if (call_token.type != TokenType::LPAREN)
@@ -506,6 +532,8 @@ unique_ptr<Expression> Parser::parseCallExpression(unique_ptr<Expression> left)
     return make_unique<CallExpression>(call_token, move(left), move(args));
 }
 
+// Parsing function call arguments
+
 vector<unique_ptr<Expression>> Parser::parseCallArguments()
 {
     vector<unique_ptr<Expression>> args;
@@ -515,8 +543,9 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
     }
 
     auto firstArg = parseExpression(Precedence::PREC_NONE);
-    if (!firstArg) {
-        std::cerr << "Failed to parse first function argument.\n";
+    if (!firstArg)
+    {
+        cerr << "Failed to parse first function argument.\n";
         return args;
     }
     args.push_back(std::move(firstArg));
@@ -525,18 +554,151 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
     {
         advance();
         auto arg = parseExpression(Precedence::PREC_NONE);
-        if (!arg) {
-            std::cerr << "Failed to parse function argument after comma.\n";
+        if (!arg)
+        {
+            cerr << "Failed to parse function argument after comma.\n";
             return args;
         }
         args.push_back(std::move(arg));
     }
 
-    if (nextToken().type == TokenType::RPAREN) {
+    if (nextToken().type == TokenType::RPAREN)
+    {
         advance(); // consume RPAREN
-    } else {
-        std::cerr << "Expected ')' after function arguments but got '" 
+    }
+    else
+    {
+        std::cerr << "Expected ')' after function arguments but got '"
                   << nextToken().TokenLiteral << "'\n";
+    }
+
+    return args;
+}
+
+// Parsing function expression
+unique_ptr<Expression> Parser::parseFunctionExpression()
+{
+    cout << "[TEST]Function parser is working\n";
+    //--------Dealing with work keyword---------------
+    Token func_tok = currentToken(); // The token represting the keyword for functions (work)
+    advance();
+
+    //----------Dealing with function name------------
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        cerr << "[ERROR]Expected function name after keyword work\n";
+        return nullptr;
+    }
+    auto func_name = parseIdentifier();
+
+    //---Dealing with the call itself
+    auto call = parseFunctionParameters(); // We might get some arguments or not so we call the parse call expression
+
+    unique_ptr<Expression> return_type = nullptr;
+    //--Checking for colons
+    if (currentToken().type == TokenType::COLON)
+    {
+        advance(); // Move past the colon signs
+        switch (currentToken().type)
+        {
+        case TokenType::INT:
+        case TokenType::FLOAT_KEYWORD:
+        case TokenType::STRING_KEYWORD:
+        case TokenType::BOOL_KEYWORD:
+        case TokenType::AUTO:
+        case TokenType::VOID:
+            return_type = make_unique<ReturnTypeExpression>(currentToken());
+            advance();
+            break;
+        default:
+            std::cerr << "[ERROR] Unexpected return type: " << currentToken().TokenLiteral << "\n";
+            return nullptr;
+        }
+    }
+    else
+    {
+        cout << "Expected colon : after function call but got->" << currentToken().TokenLiteral << "'\n";
+    }
+
+    std::cout << "[DEBUG]: Encountered the " << currentToken().TokenLiteral << "\n";
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        std::cerr << "[ERROR] Expected '{' after return type, but got: " << currentToken().TokenLiteral << "\n";
+        return nullptr;
+    }
+    auto block = parseBlockExpression(); // Parsing the blocks
+    if (!block)
+    {
+        cerr << "[ERROR] Failed to parse function body.\n";
+        return nullptr;
+    }
+
+    return make_unique<FunctionExpression>(func_tok, move(call), move(return_type), move(block));
+}
+
+// Parsing function
+vector<unique_ptr<Expression>> Parser::parseFunctionParameters()
+{
+    std::cout << "PARSING FUNCTION PARAMETERS\n";
+    std::vector<std::unique_ptr<Expression>> args; // Decldaring the empty vector
+
+    // Checking if the current token is the lparen
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        std::cout << "[ERROR]Expected a ( to start a function parameter" << "\n";
+        return args;
+    }
+
+    // Advancing from the lparen
+    advance();
+
+    if (currentToken().type == TokenType::RPAREN)
+    {
+        advance();
+        if (currentToken().type == TokenType::COLON)
+        {
+            // advance(); // Consume the COLON ':'
+            cout << "Encountered " << currentToken().TokenLiteral << "\n";
+        }
+        else
+        {
+            std::cerr << "[ERROR] Expected ':' after empty parameter list, but got: " << currentToken().TokenLiteral << "\n";
+        }
+        return args; // Return an empty vector of arguments
+    }
+
+    auto firstParam = parseExpression(Precedence::PREC_NONE); // Parsing the fisrt parameter i.e 1
+
+    if (!firstParam)
+    { // Checking if it failed to parse the 1st parameter
+        cerr << "Failed to parse first parameter.\n";
+        return args;
+    }
+    args.push_back(move(firstParam)); // If its parsed we add it to the vector
+
+    while (currentToken().type == TokenType::COMMA)
+    {                                                      // If we still have commas
+        advance();                                         // Advance from the comma to the second parameter
+        auto arg = parseExpression(Precedence::PREC_NONE); // Parse the second parameter
+        if (!arg)
+        { // It it fails to parse the second parameter
+            cerr << "Failed to parse parameter after comma\n";
+            return args;
+        }
+        args.push_back(move(arg));
+    }
+
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        cerr << "[ERROR] Expected ')' after function parameters, but got: " << currentToken().TokenLiteral << "\n";
+        return args;
+    }
+    advance();
+
+    //--THIS IS WHERE THE FUNCTION HAS TO DEFER FROM PARSE CALL EXPRESSION
+    if (currentToken().type != TokenType::COLON)
+    {
+        cerr << "Expected : after function closing but got" << currentToken().TokenLiteral << "'\n";
     }
 
     return args;
@@ -546,10 +708,9 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
 unique_ptr<Expression> Parser::parseBlockExpression()
 {
     Token lbrace = currentToken();
-    cout << "[DEBUG]: Encountered the {" << endl;
     if (lbrace.type != currentToken().type)
     {
-        cout << "[ERROR]: Encountered " << currentToken().TokenLiteral << endl;
+        cout << "[ERROR]: Encountered " << currentToken().TokenLiteral << "\n";
         return nullptr;
     }
     advance();
@@ -562,22 +723,19 @@ unique_ptr<Expression> Parser::parseBlockExpression()
             return nullptr;
         }
 
-        if (isStatementStart(currentToken()))
+        auto stmt = parseStatement();
+        if (stmt)
         {
-            auto stmt = parseStatement();
-            if (stmt)
+            block->statements.push_back(move(stmt));
+        }
+        else
+        {
+            auto expr = parseExpression(Precedence::PREC_NONE);
+            if (expr)
             {
-                block->statements.push_back(move(stmt));
+                block->finalexpr = move(expr);
             }
-            else
-            {
-                auto expr = parseExpression(Precedence::PREC_NONE);
-                if (expr)
-                {
-                    block->finalexpr = move(expr);
-                }
-                break;
-            }
+            break;
         }
     }
 
@@ -678,6 +836,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::CHAR] = &Parser::parseCharLiteral;
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
+    PrefixParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;
     PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
 }
