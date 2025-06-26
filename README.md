@@ -16,11 +16,11 @@ This project contains the core implementation of the Iron compiler written in C+
 
 ## Data types in Iron
 
--Integers
--Booleans
--Strings
--Chars
--Floats 
+- Integers
+- Booleans
+- Strings
+- Chars
+- Floats 
 
 ---
 
@@ -79,22 +79,22 @@ while(x>5){
 ---
 ## FUTURE ADDITIONS FOR LEXER SUPPORT
 
--Unicode
--UTF-8 multibyte characters 
--UTF-16 
--UTF-32
+- Unicode
+- UTF-8 multibyte characters 
+- UTF-16 
+- UTF-32
 
 ---
 ## FUTURE ADDITIONS FOR PARSER SUPPORT
 
--High order functions
--For loops
--Pattern matching
--Function parameters as expressions
+- High order functions
+- For loops
+- Pattern matching
+- Function parameters as expressions
 
 
 ---
 ## REQUIREMENTS 
 
--C++17 or later
--g++ or clang 
+- C++17 or later
+- g++ or clang 
