@@ -72,13 +72,19 @@ private:
     std::unique_ptr<Statement> parseStatement();
 
     // Parsing let statements with type
-    std::unique_ptr<Statement> parseLetStatementWithType();
+    std::unique_ptr<Statement> parseLetStatementWithType(bool isParam=false);
 
     // Parsing let statements without type
-    std::unique_ptr<Statement> parseLetStatementWithoutType();
+    std::unique_ptr<Statement> parseLetStatementWithoutType(bool isParam=false);
+
+    //A function to determine whether to parse Let with type or no type
+    std::unique_ptr<Statement> parseLetStatement();
 
     // Parsing if statement
     std::unique_ptr<Statement> parseIfStatement();
+
+    //Parsing the function statement
+    std::unique_ptr<Statement> parseFunctionStatement();
 
     // Parsing return statements
     std::unique_ptr<Statement> parseReturnStatement();
@@ -137,7 +143,7 @@ private:
     std::vector<std::unique_ptr<Expression>> parseCallArguments();
 
     //Parsing function parameters
-    std::vector<std::unique_ptr<Expression>> parseFunctionParameters();
+    std::vector<std::unique_ptr<Statement>> parseFunctionParameters();
 
 
     // Peeking functions

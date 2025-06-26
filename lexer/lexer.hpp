@@ -68,6 +68,7 @@ private:
     char currentChar();
     bool isDigit();
     bool isLetter(char character);
+    void readComments();
     Token readNumbers();
     Token readIdentifiers();
     Token readString();

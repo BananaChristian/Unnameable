@@ -140,6 +140,8 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: POINTER";
         case TokenType::READ:
             return "Token Type: READ";
+        case TokenType::BANG:
+            return "Token Type: BANG";
         default:
             return "Token Type: ILLEGAL";
     }

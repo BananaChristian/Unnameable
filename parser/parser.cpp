@@ -138,6 +138,13 @@ vector<unique_ptr<Node>> Parser::parseProgram()
 unique_ptr<Statement> Parser::parseStatement()
 {
     Token current = currentToken();
+    std::cout << "[DEBUG] parseStatement starting with token: " << current.TokenLiteral << std::endl;
+
+    if (current.type == TokenType::SEMICOLON)
+    {
+        advance();
+        return nullptr;
+    }
 
     if (current.type == TokenType::INT ||
         current.type == TokenType::FLOAT_KEYWORD ||
@@ -190,9 +197,8 @@ unique_ptr<Statement> Parser::parseStatement()
     return nullptr;
 }
 
-
 // Parsing let statements with types
-unique_ptr<Statement> Parser::parseLetStatementWithoutType()
+unique_ptr<Statement> Parser::parseLetStatementWithoutType(bool isParam)
 {
     Token ident_token = currentToken();
     cout << "[DEBUG] Identifier token: " + ident_token.TokenLiteral << endl;
@@ -207,10 +213,16 @@ unique_ptr<Statement> Parser::parseLetStatementWithoutType()
 
     unique_ptr<Expression> value = parseExpression(Precedence::PREC_NONE);
 
+    if(!isParam&&currentToken().type==TokenType::SEMICOLON){
+        advance();
+    }else{
+        cout<<"[ERROR]: Expected a semi colon but got: "<<currentToken().TokenLiteral<<"\n";
+    }
+
     return make_unique<LetStatementNoType>(ident_token, move(value));
 }
 
-unique_ptr<Statement> Parser::parseLetStatementWithType()
+unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 {
     Token dataType_token = currentToken();
     cout << "[DEBUG] Data type token: " + dataType_token.TokenLiteral << endl;
@@ -242,12 +254,58 @@ unique_ptr<Statement> Parser::parseLetStatementWithType()
         cout << "[DEBUG] Encountered semicolon token" << endl;
     }
 
-    if (currentToken().type == TokenType::SEMICOLON)
+    if (!isParam&&currentToken().type == TokenType::SEMICOLON)
     {
         advance();
+    }else{
+        cout<<"[ERROR]: Expected a semi colon but got: "<<currentToken().TokenLiteral<<"\n";
     }
 
     return make_unique<LetStatement>(dataType_token, ident_token, assign_token, move(value));
+}
+
+/*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
+But I have no choice  but to make it also decide how to parse a function if it was a parameter now I will fix the name in the future but for now let me just continue
+*/ 
+std::unique_ptr<Statement> Parser::parseLetStatement()
+{
+    Token current = currentToken();
+
+    if (current.type == TokenType::INT ||
+        current.type == TokenType::FLOAT_KEYWORD ||
+        current.type == TokenType::STRING_KEYWORD ||
+        current.type == TokenType::BOOL_KEYWORD ||
+        current.type == TokenType::AUTO)
+    {
+        //TODO: Will add support for functions as parameters later for now will only supoort simple parameters
+        return parseLetStatementWithType(true);
+    }else if(
+        current.type==TokenType::IDENTIFIER
+    ){
+        if(nextToken().type==TokenType::ASSIGN){
+            return parseLetStatementWithoutType(true);
+        }
+    }
+    std::cerr << "[ERROR]: Failed to decide how to parse parameter variable. Token: " << current.TokenLiteral << "\n";
+    return nullptr;
+}
+
+//Parsing function statement
+std::unique_ptr<Statement> Parser::parseFunctionStatement(){
+    Token current=currentToken();//Getting the token holding the data type
+    advance();// Advancing to get the identifier and parse it 
+    if(currentToken().type!= TokenType::IDENTIFIER){
+        std::cout<<"Expected function name but instead got: "<<currentToken().TokenLiteral<<"\n";
+        return nullptr;
+    }
+    auto ident=parseIdentifier();//Parsing the identifier token it will advance us to the next token(We expect this token to be LPAREN) automatically 
+
+    auto args=parseCallArguments();//This parses the call arguments it will also advance us to the next token which will be another RPAREN or a comma and not the one closing the argument parens
+
+    /*Here I am facing a dillema should I advance it past the comma,
+    personally I dont think so that will cause it to skip the comma or the closing RPAREN
+    and that would cause segfaults so I will stop here*/
+    return make_unique<FunctionStatement>(current,move(ident),move(args));
 }
 
 // Parsing return statements
@@ -453,6 +511,7 @@ unique_ptr<Expression> Parser::parseIntegerLiteral()
 unique_ptr<Expression> Parser::parseBooleanLiteral()
 {
     Token bool_tok = currentToken();
+    advance();
     return make_unique<BooleanLiteral>(bool_tok);
 }
 
@@ -460,6 +519,7 @@ unique_ptr<Expression> Parser::parseBooleanLiteral()
 unique_ptr<Expression> Parser::parseFloatLiteral()
 {
     Token float_tok = currentToken();
+    advance();
     return make_unique<FloatLiteral>(float_tok);
 }
 
@@ -467,6 +527,7 @@ unique_ptr<Expression> Parser::parseFloatLiteral()
 unique_ptr<Expression> Parser::parseCharLiteral()
 {
     Token char_tok = currentToken();
+    advance();
     return make_unique<CharLiteral>(char_tok);
 }
 
@@ -474,6 +535,7 @@ unique_ptr<Expression> Parser::parseCharLiteral()
 unique_ptr<Expression> Parser::parseStringLiteral()
 {
     Token string_tok = currentToken();
+    advance();
     return make_unique<StringLiteral>(string_tok);
 }
 
@@ -521,14 +583,6 @@ unique_ptr<Expression> Parser::parseCallExpression(unique_ptr<Expression> left)
 
     auto args = parseCallArguments(); // Calling the parse call arguments inorder to parse the arguments
 
-    if (currentToken().type != TokenType::RPAREN)
-    {
-        cerr << "Expected ')' after arguments in function call, but got '"
-             << currentToken().TokenLiteral << "'\n";
-    }
-
-    advance();
-
     return make_unique<CallExpression>(call_token, move(left), move(args));
 }
 
@@ -539,6 +593,7 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
     vector<unique_ptr<Expression>> args;
     if (currentToken().type == TokenType::RPAREN)
     {
+        advance();
         return args;
     }
 
@@ -562,14 +617,14 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
         args.push_back(std::move(arg));
     }
 
-    if (nextToken().type == TokenType::RPAREN)
+    if (currentToken().type == TokenType::RPAREN)
     {
-        advance(); // consume RPAREN
+        advance(); // consume ')'
     }
     else
     {
         std::cerr << "Expected ')' after function arguments but got '"
-                  << nextToken().TokenLiteral << "'\n";
+                  << currentToken().TokenLiteral << "'\n";
     }
 
     return args;
@@ -637,10 +692,10 @@ unique_ptr<Expression> Parser::parseFunctionExpression()
 }
 
 // Parsing function
-vector<unique_ptr<Expression>> Parser::parseFunctionParameters()
+vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
 {
     std::cout << "PARSING FUNCTION PARAMETERS\n";
-    std::vector<std::unique_ptr<Expression>> args; // Decldaring the empty vector
+    std::vector<std::unique_ptr<Statement>> args; // Decldaring the empty vector
 
     // Checking if the current token is the lparen
     if (currentToken().type != TokenType::LPAREN)
@@ -667,7 +722,7 @@ vector<unique_ptr<Expression>> Parser::parseFunctionParameters()
         return args; // Return an empty vector of arguments
     }
 
-    auto firstParam = parseExpression(Precedence::PREC_NONE); // Parsing the fisrt parameter i.e 1
+    auto firstParam = parseLetStatement(); // Parsing the fisrt parameter i.e 1
 
     if (!firstParam)
     { // Checking if it failed to parse the 1st parameter
@@ -679,7 +734,7 @@ vector<unique_ptr<Expression>> Parser::parseFunctionParameters()
     while (currentToken().type == TokenType::COMMA)
     {                                                      // If we still have commas
         advance();                                         // Advance from the comma to the second parameter
-        auto arg = parseExpression(Precedence::PREC_NONE); // Parse the second parameter
+        auto arg = parseLetStatement(); // Parse the second parameter
         if (!arg)
         { // It it fails to parse the second parameter
             cerr << "Failed to parse parameter after comma\n";
@@ -794,6 +849,7 @@ void Parser::advance()
     {
         currentPos = nextPos;
         nextPos++;
+        std::cout << "[TRACE]: Advanced to token: " << currentToken().TokenLiteral << "\n";
     }
 }
 
@@ -823,6 +879,11 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::LESS_THAN] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::GT_OR_EQ] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LT_OR_EQ] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::OR] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::EQUALS] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::ASSIGN] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseCallExpression;
 }
 
@@ -836,6 +897,8 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::CHAR] = &Parser::parseCharLiteral;
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
+    PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
+    PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;
     PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
@@ -849,7 +912,7 @@ void Parser::registerKeywordParseFns()
 // Registering the statement parsing functions
 void Parser::registerStatementParseFns()
 {
-    StatementParseFunctionsMap[TokenType::ASSIGN] = &Parser::parseLetStatementWithType;
+    StatementParseFunctionsMap[TokenType::ASSIGN] = &Parser::parseLetStatement;
     StatementParseFunctionsMap[TokenType::RETURN] = &Parser::parseReturnStatement;
     StatementParseFunctionsMap[TokenType::IF] = &Parser::parseIfStatement;
     StatementParseFunctionsMap[TokenType::WHILE] = &Parser::parseWhileStatement;

@@ -23,7 +23,8 @@ void Lexer::advance()
 
 char Lexer::peekChar()
 {
-    if(nextPosition>= input.length()){
+    if (nextPosition >= input.length())
+    {
         return '\0';
     }
     char nextCharacter = input[nextPosition];
@@ -38,9 +39,19 @@ char Lexer::currentChar()
 
 void Lexer::skipWhiteSpace()
 {
-    while (currentChar() == ' ' || currentChar() == '\n' || currentChar() == '\t')
+    while (true)
     {
-        advance();
+        while (currentChar() == ' ' || currentChar() == '\n' || currentChar() == '\t')
+        {
+            advance();
+        }
+
+        if (currentChar() == '#')
+        {
+            readComments();
+            continue;
+        }
+        break;
     }
 }
 
@@ -94,6 +105,18 @@ bool Lexer::isLetter(char character)
         return true;
     }
     return false;
+}
+
+void Lexer::readComments()
+{
+    if (currentChar() == '#')
+    {
+        advance();
+        while (currentChar() != '\0' && currentChar() != '\n')
+        {
+            advance();
+        }
+    }
 }
 
 Token Lexer::readString()
@@ -347,12 +370,15 @@ Token Lexer::tokenize()
     }
 };
 
-void Lexer::updateTokenList(){
+void Lexer::updateTokenList()
+{
     token_list.clear();
-    while(true){
-        Token tok=tokenize();
+    while (true)
+    {
+        Token tok = tokenize();
         token_list.push_back(tok);
-        if(tok.type==TokenType::END){
+        if (tok.type == TokenType::END)
+        {
             break;
         }
     }

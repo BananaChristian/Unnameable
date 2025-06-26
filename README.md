@@ -8,97 +8,86 @@ This project contains the core implementation of the Iron compiler written in C+
 ## Features
 
 - Custom lexer and tokenizer
-- Pratt parser for precedence-based expression parsing
-- Infix and prefix expression handling
--  Return statements and expression evaluation
-- Semantic analysis *(Work In Progress)*
-- Code generation / bytecode / VM *(Planned)*
+- Custom parser *(In development)*
+- Semantic analysis *(Planned)*
+- LLVM IR *(Planned)*
 
 ---
 
-## Example: Input → Tokens → AST
+## Data types in Iron
+-Integers
+-Booleans
+-Strings
+-Chars
+-Floats 
 
-```iron
->> return x-5+y*8-6*y;
-Type: RETURN, Literal: "return"
-Type: IDENTIFIER, Literal: "x"
-Type: MINUS, Literal: "-"
-Type: INTEGER, Literal: "5"
-Type: PLUS, Literal: "+"
-Type: IDENTIFIER, Literal: "y"
-Type: ASTERISK, Literal: "*"
-Type: INTEGER, Literal: "8"
-Type: MINUS, Literal: "-"
-Type: INTEGER, Literal: "6"
-Type: ASTERISK, Literal: "*"
-Type: IDENTIFIER, Literal: "y"
-Type: SEMICOLON, Literal: ";"
+---
 
-[DEBUG] Parsing return expression token: x
-[DEBUG] Initial left expression: Identifier Expression: x
-[DEBUG] parsing infix with operator: -
-[DEBUG] Updated left expression: (x - 5)
-[DEBUG] parsing infix with operator: +
-[DEBUG] Updated left expression: ((x - 5) + (y * 8))
-[DEBUG] parsing infix with operator: -
-[DEBUG] Updated left expression: (((x - 5) + (y * 8)) - (6 * y))
+## Comments in Iron
+```
+#This is a comment in iron
+```
 
-Return Statement:
-  └── Infix Expression:
-        └── Infix Expression:
-              └── Infix Expression:
-                    └── x - 5
-              └── + (y * 8)
-        └── - (6 * y)
+## Variable declarations and AST output
+```
+int x;
+x=2;
+
+string name="Iron";
+
+float pi=3.14;
+```
+
+## Type inference
+```
+auto x;
+x=2;
+```
+
+## Functions in iron
+```
+work greet(string name): string{return "Hello"+ name;}
+```
+
+## Function calls in Iron
+```
+greet("Iron");
+add(1,2);
+config();
+```
+## Control flow in Iron
+```
+if(age>18){
+      return "adult";
+}elseif(x<18){
+      return "Not an adult";
+}else{
+      return "Don't know";
+}
+```
+
+## While loops
+```
+while(x>5){
+      return x;
+}
+```
+---
+## FUTURE ADDITIONS FOR LEXER SUPPORT
+-Unicode
+-UTF-8 multibyte characters 
+-UTF-16 
+-UTF-32
+
+---
+## FUTURE ADDITIONS FOR PARSER SUPPORT
+-High order functions
+-For loops
+-Pattern matching
+-Function parameters as expressions
 
 
-RAW OUTPUT
-Iron is running (type 'exit' to quit)
->> return x-5+y*8-6*y;
-
---- Tokens ---
-  Type: Token Type: RETURN, Literal: "return"
-  Type: Token Type: IDENTIFIER, Literal: "x"
-  Type: Token Type: MINUS, Literal: "-"
-  Type: Token Type:INTEGER, Literal: "5"
-  Type: Token Type: PLUS, Literal: "+"
-  Type: Token Type: IDENTIFIER, Literal: "y"
-  Type: Token Type: ASTERISK, Literal: "*"
-  Type: Token Type:INTEGER, Literal: "8"
-  Type: Token Type: MINUS, Literal: "-"
-  Type: Token Type:INTEGER, Literal: "6"
-  Type: Token Type: ASTERISK, Literal: "*"
-  Type: Token Type: IDENTIFIER, Literal: "y"
-  Type: Token Type: SEMICOLON, Literal: ";"
-  Type: Token Type:END, Literal: ""
-Parsing token: return
-[DEBUG] Parsing return expression token: x
-[DEBUG] Initial left expression: Identifier Expression: x
-[DEBUG] Looping for token: -
-[DEBUG] parsing infix with operator: -
-[DEBUG] Initial left expression: Identifier Expression: 5
-[DEBUG] Updated left expression: Infix Expression: (Identifier Expression: x - Identifier Expression: 5)
-[DEBUG] Looping for token: +
-[DEBUG] parsing infix with operator: +
-[DEBUG] Initial left expression: Identifier Expression: y
-[DEBUG] Looping for token: *
-[DEBUG] parsing infix with operator: *
-[DEBUG] Initial left expression: Identifier Expression: 8
-[DEBUG] Updated left expression: Infix Expression: (Identifier Expression: y * Identifier Expression: 8)
-[DEBUG] Updated left expression: Infix Expression: (Infix Expression: (Identifier Expression: x - Identifier Expression: 5) + Infix Expression: (Identifier Expression: y * Identifier Expression: 8))
-[DEBUG] Looping for token: -
-[DEBUG] parsing infix with operator: -
-[DEBUG] Initial left expression: Identifier Expression: 6
-[DEBUG] Looping for token: *
-[DEBUG] parsing infix with operator: *
-[DEBUG] Initial left expression: Identifier Expression: y
-[DEBUG] Updated left expression: Infix Expression: (Identifier Expression: 6 * Identifier Expression: y)
-[DEBUG] Updated left expression: Infix Expression: (Infix Expression: (Infix Expression: (Identifier Expression: x - Identifier Expression: 5) + Infix Expression: (Identifier Expression: y * Identifier Expression: 8)) - Infix Expression: (Identifier Expression: 6 * Identifier Expression: y))
-[DEBUG] return_value EXISTS: ;
-Parsing token: 
-Parser finished
-
---- AST ---
- Node ->  Return Statement: ( Token: return Value: Infix Expression: (Infix Expression: (Infix Expression: (Identifier Expression: x - Identifier Expression: 5) + Infix Expression: (Identifier Expression: y * Identifier Expression: 8)) - Infix Expression: (Identifier Expression: 6 * Identifier Expression: y)))
-
->> 
+---
+## REQUIREMENTS 
+-C++17 or later
+-g++ or clang 
