@@ -42,8 +42,7 @@ float pi=3.14;
 
 ## Type inference
 ```
-auto x;
-x=2;
+auto x=2;
 ```
 
 ## Functions in iron
