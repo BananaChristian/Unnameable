@@ -178,7 +178,7 @@ struct PrefixExpression : Expression
         return "Prefix Expression: (" + operat.TokenLiteral + operand->toString() + ")";
     }
     PrefixExpression(Token opr, std::unique_ptr<Expression> oprand)
-    : Expression(opr), operat(opr), operand(std::move(oprand)) {}
+        : Expression(opr), operat(opr), operand(std::move(oprand)) {}
 };
 
 // Infix Expression node for syntax like x+y;
@@ -211,16 +211,40 @@ struct ExpressionStatement : Statement
     ExpressionStatement(Token exp, std::unique_ptr<Expression> expr) : Statement(exp), expr(exp), expression(move(expr)) {};
 };
 
+// Break statement node
+struct BreakStatement : Statement
+{
+    Token break_tok;
+    std::string toString()
+    {
+        return "Break Statement: " + break_tok.TokenLiteral;
+    }
+    BreakStatement(Token break_t) : Statement(break_t), break_tok(break_t) {};
+};
+
+// Continue statement struct
+struct ContinueStatement : Statement
+{
+    Token cont_tok;
+    std::string toString()
+    {
+        return "Continue Statement: " + cont_tok.TokenLiteral;
+    }
+    ContinueStatement(Token cont_t) : Statement(cont_t), cont_tok(cont_t) {};
+};
+
 // Let statement node
 struct LetStatement : Statement
 {
+    bool isFixed = false;
     Token data_type_token;
     Token ident_token;
     std::optional<Token> assign_token;
     std::unique_ptr<Expression> value;
     std::string toString() override
     {
-        std::string result = "Let Statement: ( Data type: " + data_type_token.TokenLiteral +
+        std::string isConst = isFixed ? "fixed" : "";
+        std::string result = "Let Statement: (" + isConst + " Data Type:" + data_type_token.TokenLiteral +
                              " Variable name: " + ident_token.TokenLiteral;
 
         if (value)
@@ -236,7 +260,7 @@ struct LetStatement : Statement
         return result;
     }
 
-    LetStatement(Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
+    LetStatement(Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val, bool fixed = false) : isFixed(fixed), data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
 };
 
 struct LetStatementNoType : Statement
@@ -339,10 +363,33 @@ struct ifStatement : Statement
 struct ForStatement : Statement
 {
     Token for_key;
-    std::unique_ptr<Expression> condition;
-    std::unique_ptr<Statement> loop;
+    std::unique_ptr<Statement> initializer; // int i;
+    std::unique_ptr<Expression> condition;  // i < 10
+    std::unique_ptr<Expression> step;       // i = i + 1
+    std::unique_ptr<Statement> body;        // the loop body
 
-    ForStatement(Token for_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(for_k), for_key(for_k), condition(move(condition)), loop(move(l)) {};
+    ForStatement(Token for_k,
+                 std::unique_ptr<Statement> init,
+                 std::unique_ptr<Expression> cond,
+                 std::unique_ptr<Expression> step,
+                 std::unique_ptr<Statement> body)
+        : Statement(for_k),
+          for_key(for_k),
+          initializer(std::move(init)),
+          condition(std::move(cond)),
+          step(std::move(step)),
+          body(std::move(body)) {};
+
+    std::string toString() override
+    {
+        std::string out = "ForStatement(\n";
+        out += "  Init: " + (initializer ? initializer->toString() : "null") + "\n";
+        out += "  Cond: " + (condition ? condition->toString() : "null") + "\n";
+        out += "  Step: " + (step ? step->toString() : "null") + "\n";
+        out += "  Body: " + (body ? body->toString() : "null") + "\n";
+        out += ")";
+        return out;
+    }
 };
 
 struct WhileStatement : Statement
@@ -359,23 +406,26 @@ struct WhileStatement : Statement
     WhileStatement(Token while_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(while_k), while_key(while_k), condition(move(condition)), loop(move(l)) {};
 };
 
-//Function statement node
-struct FunctionStatement: Statement{
-    Token data_type;//The function's return data type
-    std::unique_ptr<Expression> ident;//The functions name
-    std::vector<std::unique_ptr<Expression>> args; //The functions parameters
-    
-    std::string toString() override{
+// Function statement node
+struct FunctionStatement : Statement
+{
+    Token data_type;                               // The function's return data type
+    std::unique_ptr<Expression> ident;             // The functions name
+    std::vector<std::unique_ptr<Expression>> args; // The functions parameters
+
+    std::string toString() override
+    {
         std::string results;
         std::string arguments;
-        for(auto &param:args){
-            arguments+=param->toString();
+        for (auto &param : args)
+        {
+            arguments += param->toString();
         }
-        results="Function Statement: "+ data_type.TokenLiteral + " " +ident->toString() + " " + "(" + arguments + ")";
+        results = "Function Statement: " + data_type.TokenLiteral + " " + ident->toString() + " " + "(" + arguments + ")";
         return results;
     };
 
-    FunctionStatement(Token data,std::unique_ptr<Expression> id,  std::vector<std::unique_ptr<Expression>> params): Statement(data),data_type(data),ident(move(id)),args(move(params)){};
+    FunctionStatement(Token data, std::unique_ptr<Expression> id, std::vector<std::unique_ptr<Expression>> params) : Statement(data), data_type(data), ident(move(id)), args(move(params)) {};
 };
 
 // Block statement

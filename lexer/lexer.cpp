@@ -270,11 +270,29 @@ Token Lexer::tokenize()
             return Token{"!", TokenType::BANG};
         }
     case '+':
-        advance();
-        return Token{"+", TokenType::PLUS};
+        if (peekChar() == '+')
+        {
+            advance();
+            advance();
+            return Token{"++", TokenType::PLUS_PLUS};
+        }
+        else
+        {
+            advance();
+            return Token{"+", TokenType::PLUS};
+        }
     case '-':
-        advance();
-        return Token{"-", TokenType::MINUS};
+        if (peekChar() == '-')
+        {
+            advance();
+            advance();
+            return Token{"--", TokenType::MINUS_MINUS};
+        }
+        else
+        {
+            advance();
+            return Token{"-", TokenType::MINUS};
+        }
     case '*':
         advance();
         return Token{"*", TokenType::ASTERISK};

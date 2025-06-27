@@ -6,7 +6,9 @@ enum class TokenType{
     //Aritmetic Operators
     ASSIGN,//=
     PLUS,//+
+    PLUS_PLUS,//++
     MINUS,//-
+    MINUS_MINUS,//--
     ASTERISK,//x
     DIVIDE,///
     MODULUS,//"%"

@@ -22,8 +22,12 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: LESS THAN OR EQUAL TO";
         case TokenType::PLUS:
             return "Token Type: PLUS";
+        case TokenType::PLUS_PLUS:
+            return "TokenType: PLUS PLUS";
         case TokenType::MINUS:
             return"Token Type: MINUS";
+        case TokenType::MINUS_MINUS:
+            return "Token Type: MINUS MINUS";
         case TokenType::DIVIDE:
             return"Token Type: DIVIDE";
         case TokenType::OR:

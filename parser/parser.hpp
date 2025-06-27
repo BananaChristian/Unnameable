@@ -27,6 +27,8 @@ class Parser
         {TokenType::ASTERISK, Precedence::PREC_FACTOR},
         {TokenType::DIVIDE, Precedence::PREC_FACTOR},
         {TokenType::BANG, Precedence::PREC_UNARY},
+        {TokenType::MINUS_MINUS,Precedence::PREC_UNARY},
+        {TokenType::PLUS_PLUS,Precedence::PREC_UNARY},
         {TokenType::FULLSTOP, Precedence::PREC_CALL},
         {TokenType::LPAREN,Precedence::PREC_CALL},
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
@@ -72,7 +74,7 @@ private:
     std::unique_ptr<Statement> parseStatement();
 
     // Parsing let statements with type
-    std::unique_ptr<Statement> parseLetStatementWithType(bool isParam=false);
+    std::unique_ptr<Statement> parseLetStatementWithType(bool isParam=false,bool isFixed=false);
 
     // Parsing let statements without type
     std::unique_ptr<Statement> parseLetStatementWithoutType(bool isParam=false);
@@ -94,6 +96,12 @@ private:
 
     //Parsing while loops
     std::unique_ptr<Statement>parseWhileStatement();
+
+    //Parsing break statement
+    std::unique_ptr<Statement> parseBreakStatement();
+
+    //Parsing continue statement
+    std::unique_ptr<Statement> parseContinueStatement();
 
     // Parsing block statements
     std::unique_ptr<Statement> parseBlockStatement();
@@ -135,6 +143,9 @@ private:
 
     // String
     std::unique_ptr<Expression> parseStringLiteral();
+
+    //Parsing ++ or --
+    std::unique_ptr<Expression> parsePostfixUnary();
 
     //Call expression parse function
     std::unique_ptr<Expression> parseCallExpression(std::unique_ptr<Expression> left);

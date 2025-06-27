@@ -12,7 +12,7 @@ class Lexer
         {"auto", TokenType::AUTO},
         {"work", TokenType::FUNCTION},
         {"return", TokenType::RETURN},
-        {"const", TokenType::CONSTANT},
+        {"fixed", TokenType::CONSTANT},
         {"cast", TokenType::CAST},
         {"class", TokenType::CLASS},
         {"self", TokenType::SELF},
