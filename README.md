@@ -15,20 +15,22 @@ This project contains the core implementation of the Iron compiler written in C+
 ---
 
 ## Data types in Iron
--Integers
--Booleans
--Strings
--Chars
--Floats 
+
+- Integers
+- Booleans
+- Strings
+- Chars
+- Floats 
 
 ---
 
 ## Comments in Iron
+
 ```
 #This is a comment in iron
 ```
 
-## Variable declarations and AST output
+## Variable declarations 
 ```
 int x;
 x=2;
@@ -46,7 +48,9 @@ x=2;
 
 ## Functions in iron
 ```
-work greet(string name): string{return "Hello"+ name;}
+work greet(string name): string{
+      return "Hello"+ name;
+}
 ```
 
 ## Function calls in Iron
@@ -74,20 +78,23 @@ while(x>5){
 ```
 ---
 ## FUTURE ADDITIONS FOR LEXER SUPPORT
--Unicode
--UTF-8 multibyte characters 
--UTF-16 
--UTF-32
+
+- Unicode
+- UTF-8 multibyte characters 
+- UTF-16 
+- UTF-32
 
 ---
 ## FUTURE ADDITIONS FOR PARSER SUPPORT
--High order functions
--For loops
--Pattern matching
--Function parameters as expressions
+
+- High order functions
+- For loops
+- Pattern matching
+- Function parameters as expressions
 
 
 ---
 ## REQUIREMENTS 
--C++17 or later
--g++ or clang 
+
+- C++17 or later
+- g++ or clang 
