@@ -82,6 +82,12 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: PUBLIC";
         case TokenType::PRIVATE:
             return "Token Type: PRIVATE";
+        case TokenType::START:
+            return "Token Type: START";
+        case TokenType::WAIT:
+            return "Token Type: WAIT";
+        case TokenType::SIGNAL:
+            return "Tokenn Type: SIGNAL";
         case TokenType::IF:
             return "Token Type: IF";
         case TokenType::ELSE:

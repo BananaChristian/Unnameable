@@ -59,6 +59,10 @@ enum class TokenType{
     SELF,
     PUBLIC,
     PRIVATE,
+    START,//start
+    WAIT,//wait
+    SIGNAL,//signal
+
 
     //Control flow
     IF,

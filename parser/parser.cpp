@@ -83,6 +83,18 @@ vector<unique_ptr<Node>> Parser::parseProgram()
         {
             node = parseBreakStatement();
         }
+        else if (current.type == TokenType::SIGNAL)
+        {
+            node = parseSignalStatement();
+        }
+        else if (current.type == TokenType::START)
+        {
+            node = parseStartStatement();
+        }
+        else if (current.type == TokenType::WAIT)
+        {
+            node = parseWaitStatement();
+        }
         else if (current.type == TokenType::CONTINUE)
         {
             node = parseContinueStatement();
@@ -150,7 +162,7 @@ unique_ptr<Statement> Parser::parseStatement()
 {
     Token current = currentToken();
     std::cout << "[DEBUG] parseStatement starting with token: " << current.TokenLiteral << std::endl;
-    bool isFixed=false;
+    bool isFixed = false;
     if (current.type == TokenType::SEMICOLON)
     {
         advance();
@@ -167,9 +179,9 @@ unique_ptr<Statement> Parser::parseStatement()
     }
     else if (current.type == TokenType::CONSTANT)
     {
-        isFixed=true;
+        isFixed = true;
         advance();
-        current=currentToken();
+        current = currentToken();
     }
     else if (current.type == TokenType::RETURN)
     {
@@ -178,6 +190,18 @@ unique_ptr<Statement> Parser::parseStatement()
     else if (current.type == TokenType::IF)
     {
         return parseIfStatement();
+    }
+    else if (current.type == TokenType::SIGNAL)
+    {
+        return parseSignalStatement();
+    }
+    else if (current.type == TokenType::WAIT)
+    {
+        return parseWaitStatement();
+    }
+    else if (current.type == TokenType::START)
+    {
+        return parseStartStatement();
     }
     else if (current.type == TokenType::WHILE)
     {
@@ -250,7 +274,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithoutType(bool isParam)
     return make_unique<LetStatementNoType>(ident_token, move(value));
 }
 
-unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam,bool isFixed)
+unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam, bool isFixed)
 {
     Token dataType_token = currentToken();
     cout << "[DEBUG] Data type token: " + dataType_token.TokenLiteral << endl;
@@ -320,6 +344,75 @@ std::unique_ptr<Statement> Parser::parseLetStatement()
     }
     std::cerr << "[ERROR]: Failed to decide how to parse parameter variable. Token: " << current.TokenLiteral << "\n";
     return nullptr;
+}
+
+// Parsing signal statement
+std::unique_ptr<Statement> Parser::parseSignalStatement()
+{
+    Token signal_token = currentToken();
+    advance();
+    auto ident = parseIdentifier();
+    if (currentToken().type != TokenType::ASSIGN)
+    {
+        std::cout << "[ERROR]Expected an = but got-> " << currentToken().TokenLiteral << "\n";
+        return nullptr;
+    }
+    advance(); // Move past the = sign
+    if (currentToken().type != TokenType::START)
+    {
+        std::cout << "[ERROR]Expected a thread starter but got->" << currentToken().TokenLiteral << "\n";
+        return nullptr;
+    }
+    auto start = parseStartStatement();
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        cout << "[ERROR]: Expected ( after start but got ->" << currentToken().TokenLiteral << "\n";
+        return nullptr;
+    }
+    advance();
+    auto func_name = parseIdentifier();
+    auto func_arg = parseCallExpression(std::move(func_name));
+    advance();
+    if (currentToken().type != TokenType::SEMICOLON)
+    {
+        cout << "[ERROR]: Expected ; after ) but got->" << currentToken().TokenLiteral << "\n";
+        return nullptr;
+    }
+
+    return make_unique<SignalStatement>(signal_token, std::move(ident), std::move(start), std::move(func_arg));
+}
+
+// Parsing start statement
+std::unique_ptr<Statement> Parser::parseStartStatement()
+{
+    Token start = currentToken();
+    advance();
+    return make_unique<StartStatement>(start);
+}
+
+std::unique_ptr<Statement> Parser::parseWaitStatement()
+{
+    Token wait = currentToken();
+    advance();
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        std::cout << "Expected ( after wait but got ->" << currentToken().TokenLiteral << "\n";
+        return nullptr;
+    }
+    advance();
+    auto call = parseIdentifier();
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        std::cout << "Expected ) after argument but got ->" << currentToken().TokenLiteral << "\n";
+        return nullptr;
+    }
+    advance();
+    if (currentToken().type != TokenType::SEMICOLON)
+    {
+        std::cout << "Expected ; after ) but got ->" << currentToken().TokenLiteral << "\n";
+        return nullptr;
+    }
+    return make_unique<WaitStatement>(wait, std::move(call));
 }
 
 // Parsing function statement
@@ -1001,6 +1094,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::IF] = &Parser::parseIfStatement;
     StatementParseFunctionsMap[TokenType::WHILE] = &Parser::parseWhileStatement;
     StatementParseFunctionsMap[TokenType::FOR] = &Parser::parseForStatement;
+    StatementParseFunctionsMap[TokenType::SIGNAL] = &Parser::parseSignalStatement;
+    StatementParseFunctionsMap[TokenType::START] = &Parser::parseStartStatement;
 }
 
 // Precedence getting function

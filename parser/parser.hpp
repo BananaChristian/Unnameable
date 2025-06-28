@@ -85,6 +85,15 @@ private:
     // Parsing if statement
     std::unique_ptr<Statement> parseIfStatement();
 
+    //Parsing signal statement
+    std::unique_ptr<Statement> parseSignalStatement();
+
+    //Parsing start statement
+    std::unique_ptr<Statement> parseStartStatement();
+
+    //Parsing wait statement
+    std::unique_ptr<Statement> parseWaitStatement();
+
     //Parsing the function statement
     std::unique_ptr<Statement> parseFunctionStatement();
 

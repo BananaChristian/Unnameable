@@ -274,6 +274,42 @@ struct LetStatementNoType : Statement
     LetStatementNoType(Token ident, std::unique_ptr<Expression> val) : Statement(ident), ident_token(ident), value(move(val)) {};
 };
 
+// Signal statement node
+struct SignalStatement : Statement
+{
+    Token signal_token;
+    std::unique_ptr<Expression> identifier;
+    std::unique_ptr<Statement> tstart;
+    std::unique_ptr<Expression> func_arg;
+
+    std::string toString() override
+    {
+        std::string result = "Signal Statement: " + signal_token.TokenLiteral + " " + identifier->toString() + "=" + tstart->toString() + "(" + func_arg->toString() + ")";
+        return result;
+    }
+
+    SignalStatement(Token signal, std::unique_ptr<Expression> ident, std::unique_ptr<Statement> thread_st, std::unique_ptr<Expression> arg) : Statement(signal), identifier(std::move(ident)), tstart(std::move(thread_st)), func_arg(move(arg)) {};
+};
+
+// Start statement
+struct StartStatement: Statement{
+    Token start_tok;
+    std::string toString() override{
+        return "Start Statement: " +start_tok.TokenLiteral;
+    }
+    StartStatement(Token start): Statement(start),start_tok(std::move(start)){};
+};
+
+// Wait statement
+struct WaitStatement: Statement{
+    Token wait_token;
+    std::unique_ptr<Expression> arg; 
+    std::string toString() override {
+        return "Wait Statement: "+ wait_token.TokenLiteral + "(" + arg->toString() + ")";
+    };
+    WaitStatement(Token wait,std::unique_ptr<Expression> a): Statement(wait),arg(std::move(a)){};
+};
+
 // Return statement node
 struct ReturnStatement : Statement
 {
