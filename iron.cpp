@@ -5,6 +5,7 @@
 #include "lexer/lexer.hpp"
 #include "token/token.hpp"
 #include "parser/parser.hpp"
+#include "semantic analyzer/semantics.hpp"
 
 int main()
 {
@@ -58,6 +59,12 @@ int main()
             }
 
             std::cout << "\n";
+
+            
+            std::cout << "\n--- Semantic Analysis ---\n";
+            for(const auto &node: nodes){
+                Semantics analyzer(node.get());
+            }
             continue;
         }
 

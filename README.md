@@ -7,9 +7,9 @@ This project contains the core implementation of the Iron compiler written in C+
 
 ## Features
 
-- Custom lexer and tokenizer
-- Custom parser *(In development)*
-- Semantic analysis *(Planned)*
+- Custom lexer and tokenizer *(To be extended)*
+- Custom parser *(To be extended)*
+- Semantic analysis *(In development)*
 - LLVM IR *(Planned)*
 
 ---
