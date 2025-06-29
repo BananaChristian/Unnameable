@@ -180,6 +180,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
     if (current.type == TokenType::INT ||
         current.type == TokenType::FLOAT_KEYWORD ||
         current.type == TokenType::STRING_KEYWORD ||
+        current.type == TokenType::CHAR_KEYWORD ||
         current.type == TokenType::BOOL_KEYWORD ||
         current.type == TokenType::AUTO)
     {
