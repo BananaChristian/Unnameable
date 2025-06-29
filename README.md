@@ -1,6 +1,14 @@
 # Iron Compiler
 
-**Iron** is a modern, lightweight programming language designed to be fast, minimal, and expressive.  
+**Iron** is a modern, lightweight programming language designed to be fast, minimal, and expressive.
+It exists to make low level development **clear**,**accesible** and **fun** for everyone, especially for beginners and builders on modest machines.
+Born from frustration with the complexity of C++, the strictness of Rust, and rawness of C, Iron aims to strike a balance **fast and powerful, yet simple and predictable**
+
+No matter what you’re building — an OS, a game engine, or your first kernel —  
+you shouldn't need a PhD or wrestle with books just to understand memory management.
+
+Iron is here to bring the joy back to low-level programming.
+
 This project contains the core implementation of the Iron compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
 
 ---
