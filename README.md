@@ -11,16 +11,12 @@ Iron is here to bring the joy back to low-level programming.
 
 This project contains the core implementation of the Iron compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
 
----
-
 ## Features
 
 - Custom lexer and tokenizer
 - Custom parser *(In development)*
 - Semantic analysis *(Planned)*
 - LLVM IR *(Planned)*
-
----
 
 ## Data types in Iron
 
@@ -29,8 +25,6 @@ This project contains the core implementation of the Iron compiler written in C+
 - Strings
 - Chars
 - Floats 
-
----
 
 ## Comments in Iron
 
@@ -83,15 +77,13 @@ while(x>5){
       return x;
 }
 ```
----
 ## FUTURE ADDITIONS FOR LEXER SUPPORT
 
 - Unicode
 - UTF-8 multibyte characters 
 - UTF-16 
 - UTF-32
-
----
+  
 ## FUTURE ADDITIONS FOR PARSER SUPPORT
 
 - High order functions
@@ -99,8 +91,6 @@ while(x>5){
 - Pattern matching
 - Function parameters as expressions
 
-
----
 ## REQUIREMENTS 
 
 - C++17 or later
