@@ -6,45 +6,62 @@
 #include "token/token.hpp"
 #include "parser/parser.hpp"
 
-using namespace std;
+int main()
+{
+    std::cout << "Iron is running (type 'done' to compile, 'exit' to quit)" << endl;
 
-int main() {
-    string input_line;
+    std::vector<std::string> input_lines;
 
-    cout << "Iron is running (type 'exit' to quit)" << endl;
-
-    while (true) {
+    while (true)
+    {
         cout << ">> ";
+        std::string input_line;
 
-        if (!getline(cin, input_line)) {
-            cout << "\nExiting Iron REPL." << endl;
+        if (!getline(cin, input_line))
+        {
+            std::cout << "\nExiting Iron REPL." << endl;
             break;
         }
 
-        if (input_line == "exit") {
-            cout << "Exiting Iron REPL." << endl;
+        if (input_line == "exit")
+        {
+            std::cout << "Exiting Iron REPL." << endl;
             break;
         }
 
-        Lexer lexer(input_line);
-        lexer.updateTokenList(); 
-        vector<Token> tokens = lexer.token_list;
+        if (input_line == "done")
+        {
+            std::string full_input;
+            for (const auto &line : input_lines)
+            {
+                full_input += line + "\n";
+            }
+            input_lines.clear();
+            Lexer lexer(full_input);
+            lexer.updateTokenList();
+            std::vector<Token> tokens = lexer.token_list;
 
-        cout << "\n--- Tokens ---\n";
-        for (const auto& token : tokens) {
-            cout << "  Type: " << TokenTypeToLiteral(token.type)
-                 << ", Literal: \"" << token.TokenLiteral << "\"\n";
+            std::cout << "\n--- Tokens ---\n";
+            for (const auto &token : tokens)
+            {
+                cout << "  Type: " << TokenTypeToLiteral(token.type)
+                     << ", Literal: \"" << token.TokenLiteral << "\"\n";
+            }
+
+            Parser parser(tokens);
+            std::vector<std::unique_ptr<Node>> nodes = parser.parseProgram();
+
+            std::cout << "\n--- AST ---\n";
+            for (const auto &node : nodes)
+            {
+                std::cout << " Node ->  " << node->toString() << endl;
+            }
+
+            std::cout << "\n";
+            continue;
         }
 
-        Parser parser(tokens);
-        vector<unique_ptr<Node>> nodes = parser.parseProgram();
-
-        cout << "\n--- AST ---\n";
-        for (const auto& node : nodes) {
-            cout << " Node ->  " << node->toString() << endl;
-        }
-
-        cout << "\n";
+        input_lines.push_back(input_line);
     }
 
     return 0;

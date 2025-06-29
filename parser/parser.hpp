@@ -59,13 +59,11 @@ public:
     using prefixParseFns = std::unique_ptr<Expression> (Parser::*)();
     using infixParseFns = std::unique_ptr<Expression> (Parser::*)(std::unique_ptr<Expression>);
 
-    using keywordParseFns = std::unique_ptr<Statement> (Parser::*)();
     using stmtParseFns = std::unique_ptr<Statement> (Parser::*)();
 
     std::map<TokenType, prefixParseFns> PrefixParseFunctionsMap;
     std::map<TokenType, infixParseFns> InfixParseFunctionsMap;
-
-    std::map<TokenType, keywordParseFns> KeywordParseFunctionsMap;
+    
     std::map<TokenType, stmtParseFns> StatementParseFunctionsMap;
 
 private:
@@ -74,13 +72,13 @@ private:
     std::unique_ptr<Statement> parseStatement();
 
     // Parsing let statements with type
-    std::unique_ptr<Statement> parseLetStatementWithType(bool isParam=false,bool isFixed=false);
+    std::unique_ptr<Statement> parseLetStatementWithType(bool isParam=false);
 
     // Parsing let statements without type
     std::unique_ptr<Statement> parseLetStatementWithoutType(bool isParam=false);
 
     //A function to determine whether to parse Let with type or no type
-    std::unique_ptr<Statement> parseLetStatement();
+    std::unique_ptr<Statement> parseLetStatementDecider();
 
     // Parsing if statement
     std::unique_ptr<Statement> parseIfStatement();
@@ -166,9 +164,13 @@ private:
     std::vector<std::unique_ptr<Statement>> parseFunctionParameters();
 
 
+    //HELPER FUNCTIONS
     // Peeking functions
     Token currentToken();
     Token nextToken();
+
+    //Wrapper function
+    std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
 
     // Checking for the statement start
     bool isStatementStart(const Token &token);

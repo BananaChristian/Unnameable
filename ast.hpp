@@ -236,15 +236,13 @@ struct ContinueStatement : Statement
 // Let statement node
 struct LetStatement : Statement
 {
-    bool isFixed = false;
     Token data_type_token;
     Token ident_token;
     std::optional<Token> assign_token;
     std::unique_ptr<Expression> value;
     std::string toString() override
     {
-        std::string isConst = isFixed ? "fixed" : "";
-        std::string result = "Let Statement: (" + isConst + " Data Type:" + data_type_token.TokenLiteral +
+        std::string result = "Let Statement: ( Data Type:" + data_type_token.TokenLiteral +
                              " Variable name: " + ident_token.TokenLiteral;
 
         if (value)
@@ -260,7 +258,7 @@ struct LetStatement : Statement
         return result;
     }
 
-    LetStatement(Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val, bool fixed = false) : isFixed(fixed), data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
+    LetStatement(Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
 };
 
 struct LetStatementNoType : Statement
