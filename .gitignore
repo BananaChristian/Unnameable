@@ -6,5 +6,7 @@ Fecore
 *.log
 *.out
 
+test.fe
+
 TODO
 LOGS

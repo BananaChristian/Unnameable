@@ -9,6 +9,7 @@ using namespace std;
 //--------------PARSER CLASS CONSTRUCTOR-------------
 Parser::Parser(vector<Token> &tokenInput) : tokenInput(tokenInput), currentPos(0), nextPos(1)
 {
+    lastToken = tokenInput.empty() ? Token{"", TokenType::ILLEGAL, 999, 999} : tokenInput[0];
     registerInfixFns();
     registerPrefixFns();
     registerStatementParseFns();
@@ -84,7 +85,7 @@ unique_ptr<Statement> Parser::parseStatement()
         }
         else
         {
-            cerr << "[ERROR] Expected ';' after expression statement, got: " << currentToken().TokenLiteral << "\n";
+            logError("Expected ';' after expression statement, got: ");
             return nullptr;
         }
 
@@ -92,7 +93,7 @@ unique_ptr<Statement> Parser::parseStatement()
         return make_unique<ExpressionStatement>(current, move(expr));
     }
 
-    cerr << "[ERROR] Unexpected token at start of statement: " << current.TokenLiteral << "\n";
+    logError("Unexpected token at start of statement:  ");
     advance();
     return nullptr;
 }
@@ -106,7 +107,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithoutType(bool isParam)
 
     if (currentToken().type != TokenType::ASSIGN)
     {
-        cout << "[DEBUG]Expected = after identifier" << endl;
+        logError("Expected = after identifier");
         return nullptr;
     }
     advance();
@@ -119,7 +120,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithoutType(bool isParam)
     }
     else
     {
-        cout << "[ERROR]: Expected a semi colon but got: " << currentToken().TokenLiteral << "\n";
+        logError("Expected a semi colon ");
     }
 
     return make_unique<LetStatementNoType>(ident_token, move(value));
@@ -134,9 +135,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 
     if (currentToken().type != TokenType::IDENTIFIER)
     {
-        cout << "[DEBUG] Expected variable name after data type '"
-             << dataType_token.TokenLiteral << "' but got '"
-             << currentToken().TokenLiteral << "'" << endl;
+        logError("Expected variable name after data type ");
         return nullptr;
     }
 
@@ -164,7 +163,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     }
     else
     {
-        cout << "[ERROR]: Expected a semi colon but got: " << currentToken().TokenLiteral << "\n";
+        logError("Expected a semi colon");
     }
 
     return make_unique<LetStatement>(dataType_token, ident_token, assign_token, move(value));
@@ -207,19 +206,19 @@ std::unique_ptr<Statement> Parser::parseSignalStatement()
     auto ident = parseIdentifier();
     if (currentToken().type != TokenType::ASSIGN)
     {
-        std::cout << "[ERROR]Expected an = but got-> " << currentToken().TokenLiteral << "\n";
+        logError("Expected an =");
         return nullptr;
     }
     advance(); // Move past the = sign
     if (currentToken().type != TokenType::START)
     {
-        std::cout << "[ERROR]Expected a thread starter but got->" << currentToken().TokenLiteral << "\n";
+        logError("Expected a thread starter");
         return nullptr;
     }
     auto start = parseStartStatement();
     if (currentToken().type != TokenType::LPAREN)
     {
-        cout << "[ERROR]: Expected ( after start but got ->" << currentToken().TokenLiteral << "\n";
+        logError("Expected ( after start keyword");
         return nullptr;
     }
     advance();
@@ -229,6 +228,7 @@ std::unique_ptr<Statement> Parser::parseSignalStatement()
     if (currentToken().type != TokenType::SEMICOLON)
     {
         cout << "[ERROR]: Expected ; after ) but got->" << currentToken().TokenLiteral << "\n";
+        logError("Expected ; after )");
         return nullptr;
     }
 
@@ -250,20 +250,20 @@ std::unique_ptr<Statement> Parser::parseWaitStatement()
     advance();
     if (currentToken().type != TokenType::LPAREN)
     {
-        std::cout << "Expected ( after wait but got ->" << currentToken().TokenLiteral << "\n";
+        logError("Expected ( after wait keyword");
         return nullptr;
     }
     advance();
     auto call = parseIdentifier();
     if (currentToken().type != TokenType::RPAREN)
     {
-        std::cout << "Expected ) after argument but got ->" << currentToken().TokenLiteral << "\n";
+        logError("Expected ) after argument");
         return nullptr;
     }
     advance();
     if (currentToken().type != TokenType::SEMICOLON)
     {
-        std::cout << "Expected ; after ) but got ->" << currentToken().TokenLiteral << "\n";
+        logError("Expected ; after )");
         return nullptr;
     }
     return make_unique<WaitStatement>(wait, std::move(call));
@@ -276,7 +276,7 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement()
     advance();                      // Advancing to get the identifier and parse it
     if (currentToken().type != TokenType::IDENTIFIER)
     {
-        std::cout << "Expected function name but instead got: " << currentToken().TokenLiteral << "\n";
+        logError("Expected function name ");
         return nullptr;
     }
     auto ident = parseIdentifier(); // Parsing the identifier token it will advance us to the next token(We expect this token to be LPAREN) automatically
@@ -294,7 +294,7 @@ unique_ptr<Statement> Parser::parseReturnStatement()
 
     if (currentToken().type == TokenType::SEMICOLON || currentToken().type == TokenType::END)
     {
-        cout << "[DEBUG] Return is void" << endl;
+        logError("Return is void");
         return make_unique<ReturnStatement>(return_stmt, nullptr);
     }
 
@@ -303,11 +303,7 @@ unique_ptr<Statement> Parser::parseReturnStatement()
 
     if (!return_value)
     {
-        cout << "[DEBUG] return_value is NULL" << endl;
-    }
-    else
-    {
-        cout << "[DEBUG] return_value EXISTS: " << currentToken().TokenLiteral << endl;
+        logError("Return Value is NULL");
     }
 
     if (currentToken().type == TokenType::SEMICOLON)
@@ -325,7 +321,7 @@ unique_ptr<Statement> Parser::parseForStatement()
     advance();
     if (currentToken().type != TokenType::LPAREN)
     {
-        cout << "[ERROR]: Expected a ( but got -> " << currentToken().TokenLiteral << endl;
+        logError("Expected a ( ");
         return nullptr;
     }
     advance();
@@ -335,7 +331,7 @@ unique_ptr<Statement> Parser::parseForStatement()
 
     if (currentToken().type != TokenType::SEMICOLON)
     {
-        std::cout << "[ERROR]: Expected ';' after condition, got -> " << currentToken().TokenLiteral << "\n";
+        logError("Expected ';' after condition");
         return nullptr;
     }
     advance(); // skip ';'
@@ -343,14 +339,14 @@ unique_ptr<Statement> Parser::parseForStatement()
     auto step = parseExpression(Precedence::PREC_NONE);
     if (currentToken().type != TokenType::RPAREN)
     {
-        std::cout << "[ERROR]: Expected ')' after step, got -> " << currentToken().TokenLiteral << "\n";
+        logError("Expected ')' after step");
         return nullptr;
     }
     advance(); // skip ')'
 
     if (currentToken().type != TokenType::LBRACE)
     {
-        cout << "[ERROR]: Expected { but got-> " << currentToken().TokenLiteral << "\n";
+        logError("Expected { ");
         return nullptr;
     }
     auto block = parseBlockStatement(); // Parsing the block
@@ -367,18 +363,17 @@ unique_ptr<Statement> Parser::parseForStatement()
 unique_ptr<Statement> Parser::parseWhileStatement()
 {
     Token while_key = currentToken();
-    cout << "WHILE KEYWORD" << endl;
     advance();
     if (currentToken().type != TokenType::LPAREN)
     {
-        cout << "[DEBUG] Expected '(' after 'while', got: " << currentToken().TokenLiteral << endl;
+        logError(" Expected ')' after keyword while ");
         return nullptr;
     }
     advance();
     auto condition = parseExpression(Precedence::PREC_NONE);
     if (currentToken().type != TokenType::RPAREN)
     {
-        cout << "[DEBUG] Expected ')' after while condition, got: " << currentToken().TokenLiteral << endl;
+        logError(" Expected ')' after while condition");
         return nullptr;
     }
     advance();
@@ -412,7 +407,7 @@ unique_ptr<Statement> Parser::parseIfStatement()
 
     if (currentToken().type != TokenType::LPAREN)
     {
-        cout << "[DEBUG] Expected '(' after 'if', got: " << currentToken().TokenLiteral << endl;
+        logError("Expected '(' after 'if' ");
         return nullptr;
     }
     advance();
@@ -421,6 +416,7 @@ unique_ptr<Statement> Parser::parseIfStatement()
     if (currentToken().type != TokenType::RPAREN)
     {
         cout << "[DEBUG] Expected ')' got: " << currentToken().TokenLiteral << endl;
+        logError("Expected ')' got: ");
         return nullptr;
     }
     advance();
@@ -438,6 +434,7 @@ unique_ptr<Statement> Parser::parseIfStatement()
         if (currentToken().type != TokenType::LPAREN)
         {
             cout << "[DEBUG] Expected '(' after 'elseif', got: " << currentToken().TokenLiteral << endl;
+            logError("Expected '(' after 'elseif'");
             return nullptr;
         }
 
@@ -471,6 +468,10 @@ unique_ptr<Statement> Parser::parseIfStatement()
 unique_ptr<Expression> Parser::parseIdentifier()
 {
     auto ident = make_unique<Identifier>(currentToken());
+    if (!ident)
+    {
+        logError("Failed to parse identifier: ");
+    }
     advance();
     return ident;
 }
@@ -578,20 +579,23 @@ unique_ptr<Expression> Parser::parseGroupedExpression()
 
     if (currentToken().type == TokenType::RPAREN)
     {
-        cerr << "[ERROR] Empty grouped expression after '('\n";
+        std::cerr << "[ERROR] Empty grouped expression after '('\n";
+        logError("Empty grouped expression after '('");
         return nullptr;
     }
 
     auto expr = parseExpression(Precedence::PREC_NONE);
     if (!expr)
     {
-        cerr << "[ERROR] Failed to parse expression inside grouped expr.\n";
+        std::cerr << "[ERROR] Failed to parse expression inside grouped expr.\n";
+        logError("Empty grouped expression after '('");
         return nullptr;
     }
 
     if (currentToken().type != TokenType::RPAREN)
     {
-        cerr << "[ERROR] Expected ')' to close grouped expression, got: " << currentToken().TokenLiteral << endl;
+        std::cerr << "[ERROR] Expected ')' to close grouped expression, got: " << currentToken().TokenLiteral << endl;
+        logError("Expected ')' to close grouped expression ");
         return nullptr;
     }
 
@@ -606,7 +610,7 @@ unique_ptr<Expression> Parser::parseCallExpression(unique_ptr<Expression> left)
 
     if (call_token.type != TokenType::LPAREN)
     { // Checking if we encounter the left parenthesis after the function name has been declared
-        cout << "Expected ( after " << left->toString() << endl;
+        logError("Expected ( after function name");
         return nullptr;
     }
 
@@ -654,8 +658,7 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
     }
     else
     {
-        std::cerr << "Expected ')' after function arguments but got '"
-                  << currentToken().TokenLiteral << "'\n";
+        logError("Expected ')' after function arguments");
     }
 
     return args;
@@ -672,7 +675,7 @@ unique_ptr<Expression> Parser::parseFunctionExpression()
     //----------Dealing with function name------------
     if (currentToken().type != TokenType::IDENTIFIER)
     {
-        cerr << "[ERROR]Expected function name after keyword work\n";
+        logError("Expected function name after keyword work");
         return nullptr;
     }
     auto func_name = parseIdentifier();
@@ -697,21 +700,13 @@ unique_ptr<Expression> Parser::parseFunctionExpression()
             advance();
             break;
         default:
-            std::cerr << "[ERROR] Unexpected return type: " << currentToken().TokenLiteral << "\n";
+            logError("Unexpected return type: ");
             return nullptr;
         }
     }
-    else
-    {
-        cout << "Expected colon : after function call but got->" << currentToken().TokenLiteral << "'\n";
-    }
 
     std::cout << "[DEBUG]: Encountered the " << currentToken().TokenLiteral << "\n";
-    if (currentToken().type != TokenType::LBRACE)
-    {
-        std::cerr << "[ERROR] Expected '{' after return type, but got: " << currentToken().TokenLiteral << "\n";
-        return nullptr;
-    }
+    
     auto block = parseBlockExpression(); // Parsing the blocks
     if (!block)
     {
@@ -731,7 +726,7 @@ vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
     // Checking if the current token is the lparen
     if (currentToken().type != TokenType::LPAREN)
     {
-        std::cout << "[ERROR]Expected a ( to start a function parameter" << "\n";
+        logError("Expected a ( to start a function parameter ");
         return args;
     }
 
@@ -741,15 +736,11 @@ vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
     if (currentToken().type == TokenType::RPAREN)
     {
         advance();
-        if (currentToken().type == TokenType::COLON)
+        if (currentToken().type != TokenType::COLON)
         {
-            // advance(); // Consume the COLON ':'
-            cout << "Encountered " << currentToken().TokenLiteral << "\n";
+            logError("Expected ':' after empty parameter list ");
         }
-        else
-        {
-            std::cerr << "[ERROR] Expected ':' after empty parameter list, but got: " << currentToken().TokenLiteral << "\n";
-        }
+
         return args; // Return an empty vector of arguments
     }
 
@@ -776,7 +767,7 @@ vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
 
     if (currentToken().type != TokenType::RPAREN)
     {
-        cerr << "[ERROR] Expected ')' after function parameters, but got: " << currentToken().TokenLiteral << "\n";
+        logError("Expected ')' after function parameters ");
         return args;
     }
     advance();
@@ -784,7 +775,7 @@ vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
     //--THIS IS WHERE THE FUNCTION HAS TO DEFER FROM PARSE CALL EXPRESSION
     if (currentToken().type != TokenType::COLON)
     {
-        cerr << "Expected : after function closing but got" << currentToken().TokenLiteral << "'\n";
+        logError("Expected : after function closing ");
     }
 
     return args;
@@ -794,9 +785,9 @@ vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
 unique_ptr<Expression> Parser::parseBlockExpression()
 {
     Token lbrace = currentToken();
-    if (lbrace.type != currentToken().type)
+    if (lbrace.type != TokenType::LBRACE)
     {
-        cout << "[ERROR]: Encountered " << currentToken().TokenLiteral << "\n";
+        logError("Expexted { after data type");
         return nullptr;
     }
     advance();
@@ -805,7 +796,7 @@ unique_ptr<Expression> Parser::parseBlockExpression()
     {
         if (currentToken().type == TokenType::END)
         {
-            cout << "[ERROR] Unterminated block experession" << endl;
+            logError("Unterminated block experession");
             return nullptr;
         }
 
@@ -827,7 +818,7 @@ unique_ptr<Expression> Parser::parseBlockExpression()
 
     if (currentToken().type != TokenType::RBRACE)
     {
-        cout << "[ERROR]Expected } got" << currentToken().TokenLiteral << endl;
+        logError("Expected } ");
         return nullptr;
     }
 
@@ -841,7 +832,7 @@ unique_ptr<Statement> Parser::parseBlockStatement()
     Token lbrace = currentToken();
     if (lbrace.type != TokenType::LBRACE)
     {
-        cerr << "[ERROR] Expected '{' to start block.\n";
+        logError("[ERROR] Expected '{' to start block");
         return nullptr;
     }
     advance();
@@ -863,7 +854,7 @@ unique_ptr<Statement> Parser::parseBlockStatement()
 
     if (currentToken().type != TokenType::RBRACE)
     {
-        cerr << "[ERROR]Expected } to close block got: " << currentToken().TokenLiteral << endl;
+        logError("Expected } to close block");
         return nullptr;
     }
 
@@ -878,22 +869,10 @@ void Parser::advance()
 {
     if (nextPos < tokenInput.size())
     {
+        lastToken = currentToken();
         currentPos = nextPos;
         nextPos++;
         std::cout << "[TRACE]: Advanced to token: " << currentToken().TokenLiteral << "\n";
-    }
-}
-
-// Checking for statement starters
-bool Parser::isStatementStart(const Token &token)
-{
-    if (token.type == TokenType::FUNCTION || token.type == TokenType::RETURN || token.type == TokenType::WHILE)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
     }
 }
 
@@ -967,7 +946,6 @@ void Parser::registerStatementParseFns()
 Precedence Parser::get_precedence(TokenType type)
 {
     Precedence prec = precedence.count(type) ? precedence[type] : Precedence::PREC_NONE;
-    std::cout << "PRECEDENCE SIZE TEST:" + precedence.size() << endl;
     return prec;
 }
 
@@ -983,4 +961,34 @@ Token Parser::nextToken()
 {
     Token next = tokenInput[nextPos];
     return next;
+}
+
+// Error logging
+void Parser::logError(const std::string &message)
+{
+    Token token = getErrorToken();
+    if (token.line == 0 && token.column == 0)
+    {
+        std::cerr << "[PANIC]: Logging an uninitialized token! Investigate token flow.\n";
+    }
+    std::cerr << "[PARSER ERROR]: " << message << " At line: " << token.line << " column: " << token.column << "\n";
+    errors.push_back(
+        ParseError{
+            message,
+            token.line,
+            token.column});
+}
+
+// Getting the error token
+Token Parser::getErrorToken()
+{
+    if (currentPos >= tokenInput.size())
+    {
+        if (lastToken.line == 0)
+        {
+            return Token{"", TokenType::ILLEGAL, 999, 999}; 
+        }
+        return lastToken;
+    }
+    return tokenInput[currentPos-1];
 }

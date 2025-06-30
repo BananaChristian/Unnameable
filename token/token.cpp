@@ -20,6 +20,10 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: LESS THAN";
         case TokenType::LT_OR_EQ:
             return "Token Type: LESS THAN OR EQUAL TO";
+        case TokenType::BITWISE_AND:
+            return "Token Type: BITWISE AND";
+        case TokenType::BITWISE_OR:
+            return "Token Type: BITWISE OR";
         case TokenType::PLUS:
             return "Token Type: PLUS";
         case TokenType::PLUS_PLUS:

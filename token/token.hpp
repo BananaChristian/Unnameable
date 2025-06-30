@@ -24,6 +24,8 @@ enum class TokenType{
     LT_OR_EQ,//<=
     SHIFT_RIGHT,//>>
     SHIFT_LEFT,//<<
+    BITWISE_AND,//&
+    BITWISE_OR,//&
 
     //Delimiters
     LBRACE,//{
@@ -106,6 +108,8 @@ enum class TokenType{
 struct Token{
     std::string TokenLiteral;
     TokenType type;
+    int line;
+    int column;
 };
 
 std::string TokenTypeToLiteral(TokenType type);

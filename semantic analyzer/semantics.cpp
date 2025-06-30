@@ -16,6 +16,7 @@ void Semantics::analyzer(Node *node)
     {
         return;
     }
+    std::cout<<"Analyzing AST\n";
     auto analyzerIt = analyzerFunctionsMap.find(typeid(*node));
     if (analyzerIt != analyzerFunctionsMap.end())
     {
@@ -30,6 +31,7 @@ void Semantics::analyzer(Node *node)
 // WALKING FUNCTIONS FOR DIFFERENT NODES
 void Semantics::analyzeLetStatements(Node *node)
 {
+    std::cout<<"[SEMANTIC LOG]: Analyzing let statement: "<<dynamic_cast<LetStatement*>(node)->toString()<<"\n";
     auto letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
         return;
@@ -92,7 +94,26 @@ void Semantics::analyzeLetStatements(Node *node)
     symbolTable.back()[varName] = sym;
 }
 
-void Semantics::analyzeIntegerLiteral(Node* node){}
+void Semantics::analyzeIntegerLiteral(Node* node){
+    std::cout << "[SEMANTIC LOG] Analyzing IntegerLiteral: " << dynamic_cast<IntegerLiteral*>(node)->int_token.TokenLiteral << "\n";
+    if(!node) return;
+
+    IntegerLiteral* intNode= dynamic_cast<IntegerLiteral*>(node);
+    if(!intNode){
+        std::cerr<<"[SEMANTIC ERROR]: Failed to analyze integer node received wrong node"<<"\n";
+        return;
+    }
+    std::string intName=intNode->int_token.TokenLiteral;
+    TypeSystem intType=TypeSystem::INTEGER;
+
+    annotations[intNode]=SemanticInfo{
+        .nodeType=intType,
+        .isMutable=true,
+        .isConstant=false,
+        .scopeDepth=(int)symbolTable.size()-1
+    };
+}
+
 void Semantics::analyzeFloatLiteral(Node* node) {}
 void Semantics::analyzeStringLiteral(Node* node) {}
 void Semantics::analyzeBooleanLiteral(Node* node) {}

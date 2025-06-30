@@ -5,7 +5,11 @@
 #include <string>
 using namespace std;
 
-Lexer::Lexer(string &input_str) : input(input_str), currentPosition(0), nextPosition(1) {};
+#define CAPTURE_POS       \
+    int tokenLine = line; \
+    int tokenColumn = column;
+
+Lexer::Lexer(const string &sourceCode) : input(sourceCode), currentPosition(0), nextPosition(1), line(1), column(0) {};
 
 // Lexer advance function
 void Lexer::advance()
@@ -13,6 +17,17 @@ void Lexer::advance()
     if (nextPosition < input.length())
     {
         currentPosition = nextPosition;
+        if (input[currentPosition] == '\n')
+        {
+            line++;
+            std::cout<<"LINE"<<line<<"\n";
+            column = 0;
+        }
+        else
+        {
+            std::cout<<"COLUMN"<<column<<"\n";
+            column++;
+        }
         nextPosition++;
     }
     else
@@ -57,7 +72,8 @@ void Lexer::skipWhiteSpace()
 
 Token Lexer::readNumbers()
 {
-    string number;
+    std::string number;
+    CAPTURE_POS;
     while (currentChar() >= '0' && currentChar() <= '9')
     {
         number += currentChar();
@@ -71,22 +87,23 @@ Token Lexer::readNumbers()
                 number += currentChar();
                 advance();
             }
-            return Token{number, TokenType::FLOAT};
+            return Token{number, TokenType::FLOAT, tokenLine, tokenColumn};
         }
     }
-    return Token{number, TokenType::INTEGER};
+    return Token{number, TokenType::INTEGER, tokenLine, tokenColumn};
 }
 
 Token Lexer::readIdentifiers()
 {
-    string identifier;
+    std::string identifier;
+    CAPTURE_POS;
     while (isLetter(currentChar()))
     {
         identifier += currentChar();
         advance();
     }
     TokenType type = keywords.count(identifier) ? keywords[identifier] : TokenType::IDENTIFIER;
-    return Token{identifier, type};
+    return Token{identifier, type, tokenLine, tokenColumn};
 };
 
 bool Lexer::isDigit()
@@ -122,6 +139,7 @@ void Lexer::readComments()
 Token Lexer::readString()
 {
     std::string value;
+    CAPTURE_POS;
     advance();
 
     while (currentChar() != '\0' && currentChar() != '\n')
@@ -129,7 +147,7 @@ Token Lexer::readString()
         if (currentChar() == '"')
         {
             advance();
-            return Token{value, TokenType::STRING};
+            return Token{value, TokenType::STRING, tokenLine, tokenColumn};
         }
 
         if (currentChar() == '\\')
@@ -159,8 +177,11 @@ Token Lexer::readString()
                 value += '\0';
                 break;
             default:
-                return Token{"Invalid escape sequence", TokenType::ILLEGAL};
+                logError("Invalid escape sequence", tokenLine, tokenColumn);
+                return Token{"Invalid escape sequence", TokenType::ILLEGAL, tokenLine, tokenColumn};
             }
+
+            advance();
         }
         else
         {
@@ -168,11 +189,13 @@ Token Lexer::readString()
         }
         advance();
     }
-    return Token{"Unterminated string", TokenType::ILLEGAL};
+    logError("Unterminated string", tokenLine, tokenColumn);
+    return Token{"Unterminated string", TokenType::ILLEGAL, tokenLine, tokenColumn};
 }
 
 Token Lexer::readChar()
 {
+    CAPTURE_POS;
     advance();
 
     if (currentChar() == '\\')
@@ -205,13 +228,15 @@ Token Lexer::readChar()
             unescaped = '\\';
             break;
         default:
-            return Token{"Invalid escape", TokenType::ILLEGAL};
+            logError("Invalid escape", tokenLine, tokenColumn);
+            return Token{"Invalid escape", TokenType::ILLEGAL, tokenLine, tokenColumn};
         }
 
         advance();
         if (currentChar() != '\'')
         {
-            return Token{"Missing closing quote", TokenType::ILLEGAL};
+            logError("Missing closing quote", tokenLine, tokenColumn);
+            return Token{"Missing closing quote", TokenType::ILLEGAL, tokenLine, tokenColumn};
         }
 
         advance();
@@ -246,145 +271,220 @@ Token Lexer::tokenize()
     switch (character)
     {
     case '=':
+    {
+        CAPTURE_POS;
         if (peekChar() == '=')
         {
             advance();
             advance();
-            return Token{"==", TokenType::EQUALS};
+            return Token{"==", TokenType::EQUALS, tokenLine, tokenColumn};
         }
         else
         {
             advance();
-            return Token{"=", TokenType::ASSIGN};
+            return Token{"=", TokenType::ASSIGN, tokenLine, tokenColumn};
         }
+    }
     case '!':
+    {
+        CAPTURE_POS;
         if (peekChar() == '=')
         {
             advance();
             advance();
-            return Token{"!=", TokenType::NOT_EQUALS};
+            return Token{"!=", TokenType::NOT_EQUALS, tokenLine, tokenColumn};
         }
         else
         {
             advance();
-            return Token{"!", TokenType::BANG};
+            return Token{"!", TokenType::BANG, tokenLine, tokenColumn};
         }
+    }
     case '+':
+    {
+        CAPTURE_POS;
         if (peekChar() == '+')
         {
             advance();
             advance();
-            return Token{"++", TokenType::PLUS_PLUS};
+            return Token{"++", TokenType::PLUS_PLUS, tokenLine, tokenColumn};
         }
         else
         {
             advance();
-            return Token{"+", TokenType::PLUS};
+            return Token{"+", TokenType::PLUS, tokenLine, tokenColumn};
         }
+    }
     case '-':
+    {
+        CAPTURE_POS;
         if (peekChar() == '-')
         {
             advance();
             advance();
-            return Token{"--", TokenType::MINUS_MINUS};
+            return Token{"--", TokenType::MINUS_MINUS, tokenLine, tokenColumn};
         }
         else
         {
             advance();
-            return Token{"-", TokenType::MINUS};
+            return Token{"-", TokenType::MINUS, tokenLine, tokenColumn};
         }
+    }
     case '*':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{"*", TokenType::ASTERISK};
+        return Token{"*", TokenType::ASTERISK, tokenLine, tokenColumn};
+    }
     case '/':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{"/", TokenType::DIVIDE};
+        return Token{"/", TokenType::DIVIDE, tokenLine, tokenColumn};
+    }
     case '&':
+    {
+        CAPTURE_POS;
         if (peekChar() == '&')
         {
             advance();
             advance();
-            return Token{"&&", TokenType::AND};
+            return Token{"&&", TokenType::AND, tokenLine, tokenColumn};
         }
+        else
+        {
+            advance();
+            return Token{"&", TokenType::BITWISE_AND, tokenLine, tokenColumn};
+        }
+    }
     case '|':
+    {
+        CAPTURE_POS;
         if (peekChar() == '|')
         {
             advance();
             advance();
-            return Token{"||", TokenType::OR};
+            return Token{"||", TokenType::OR, tokenLine, tokenColumn};
         }
+        else
+        {
+            advance();
+            return Token{"|", TokenType::BITWISE_OR, tokenLine, tokenColumn};
+        }
+    }
     case '>':
+    {
+        CAPTURE_POS;
         if (peekChar() == '>')
         {
             advance();
             advance();
-            return Token{">>", TokenType::SHIFT_RIGHT};
+            return Token{">>", TokenType::SHIFT_RIGHT, tokenLine, tokenColumn};
         }
         else if (peekChar() == '=')
         {
             advance();
             advance();
-            return Token{">=", TokenType::GT_OR_EQ};
+            return Token{">=", TokenType::GT_OR_EQ, tokenLine, tokenColumn};
         }
         else
         {
             advance();
-            return Token{">", TokenType::GREATER_THAN};
+            return Token{">", TokenType::GREATER_THAN, tokenLine, tokenColumn};
         }
+    }
     case '<':
+    {
+        CAPTURE_POS;
         if (peekChar() == '<')
         {
             advance();
             advance();
-            return Token{"<<", TokenType::SHIFT_LEFT};
+            return Token{"<<", TokenType::SHIFT_LEFT, tokenLine, tokenColumn};
         }
         else if (peekChar() == '=')
         {
             advance();
             advance();
-            return Token{"<=", TokenType::LT_OR_EQ};
+            return Token{"<=", TokenType::LT_OR_EQ, tokenLine, tokenColumn};
         }
         else
         {
             advance();
-            return Token{"<", TokenType::LESS_THAN};
+            return Token{"<", TokenType::LESS_THAN, tokenLine, tokenColumn};
         }
+    }
     case '{':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{"{", TokenType::LBRACE};
+        return Token{"{", TokenType::LBRACE, tokenLine, tokenColumn};
+    }
     case '}':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{"}", TokenType::RBRACE};
+        return Token{"}", TokenType::RBRACE, tokenLine, tokenColumn};
+    }
     case '[':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{"[", TokenType::LBRACKET};
+        return Token{"[", TokenType::LBRACKET, tokenLine, tokenColumn};
+    }
     case ']':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{"]", TokenType::RBRACKET};
+        return Token{"]", TokenType::RBRACKET, tokenLine, tokenColumn};
+    }
     case '(':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{"(", TokenType::LPAREN};
+        return Token{"(", TokenType::LPAREN, tokenLine, tokenColumn};
+    }
     case ')':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{")", TokenType::RPAREN};
+        return Token{")", TokenType::RPAREN, tokenLine, tokenColumn};
+    }
     case ';':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{";", TokenType::SEMICOLON};
+        return Token{";", TokenType::SEMICOLON, tokenLine, tokenColumn};
+    }
     case ',':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{",", TokenType::COMMA};
+        return Token{",", TokenType::COMMA, tokenLine, tokenColumn};
+    }
     case ':':
+    {
+        CAPTURE_POS;
         advance();
-        return Token{":", TokenType::COLON};
+        return Token{":", TokenType::COLON, tokenLine, tokenColumn};
+    }
     case '"':
         return readString();
     case '\'':
+    {
         return readChar();
+    }
     case '\0':
+    {
         return Token{"", TokenType::END};
+    }
     default:
+    {
+        CAPTURE_POS;
         advance();
-        return Token{string(1, character), TokenType::ILLEGAL};
+        logError("Unexpected character: ", tokenLine, tokenColumn);
+        return Token{string(1, character), TokenType::ILLEGAL, tokenLine, tokenColumn};
+    }
     }
 };
 
@@ -400,4 +500,9 @@ void Lexer::updateTokenList()
             break;
         }
     }
+}
+
+void Lexer::logError(const std::string &message, int line, int column)
+{
+    std::cerr << "[TOKEN ERROR]: At line " << line << " column " << column << " : " << message << "\n";
 }

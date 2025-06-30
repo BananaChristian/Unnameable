@@ -4,6 +4,11 @@
 #include <vector>
 #include <map>
 
+struct ParseError{
+    std::string message;
+    int line;
+    int column;
+};
 
 class Parser
 {
@@ -34,6 +39,8 @@ class Parser
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
     };
 
+    Token lastToken;
+
 public:
     // Parser class declaration
     Parser(std::vector<Token> &tokenInput);
@@ -46,9 +53,6 @@ public:
     // Functions for registering the functions neccesary for parsing the different tokens
     void registerPrefixFns();
     void registerInfixFns();
-
-    // Function to register keyword parsing functions
-    void registerKeywordParseFns();
 
     // Function to register statement parsing functions
     void registerStatementParseFns();
@@ -65,6 +69,7 @@ public:
     std::map<TokenType, infixParseFns> InfixParseFunctionsMap;
     
     std::map<TokenType, stmtParseFns> StatementParseFunctionsMap;
+    std::vector<ParseError> errors;
 
 private:
     //---------------PARSING STATEMENTS--------------------
@@ -172,6 +177,9 @@ private:
     //Wrapper function
     std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
 
-    // Checking for the statement start
-    bool isStatementStart(const Token &token);
+    //Error logging 
+    void logError(const std::string& message);
+
+    //Getting the error token
+    Token  getErrorToken();
 };

@@ -1,14 +1,18 @@
 #pragma once
 #include "token/token.hpp"
+#include <string>
+#include <unordered_map>
 #include <vector>
-using namespace std;
 
 class Lexer
 {
     int currentPosition;
     int nextPosition;
-    string input;
-    unordered_map<string, TokenType> keywords = {
+    std::string input;
+    int line=1;
+    int column=0;
+
+    std::unordered_map<std::string, TokenType> keywords = {
         {"auto", TokenType::AUTO},
         {"work", TokenType::FUNCTION},
         {"return", TokenType::RETURN},
@@ -57,11 +61,11 @@ class Lexer
     };
 
 public:
-    Lexer(string &input);
+    Lexer(const std::string& sourceCode);
     Token tokenize();
-    vector<Token> outputTokens;
+    std::vector<Token> outputTokens;
 
-    vector<Token> token_list;
+    std::vector<Token> token_list;
     void updateTokenList();
 
 private:
@@ -76,4 +80,5 @@ private:
     Token readIdentifiers();
     Token readString();
     Token readChar();
+    void logError(const std::string& message,int line,int column);
 };
