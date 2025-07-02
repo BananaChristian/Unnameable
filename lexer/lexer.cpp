@@ -20,12 +20,10 @@ void Lexer::advance()
         if (input[currentPosition] == '\n')
         {
             line++;
-            std::cout<<"LINE"<<line<<"\n";
             column = 0;
         }
         else
         {
-            std::cout<<"COLUMN"<<column<<"\n";
             column++;
         }
         nextPosition++;

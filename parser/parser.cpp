@@ -85,7 +85,7 @@ unique_ptr<Statement> Parser::parseStatement()
         }
         else
         {
-            logError("Expected ';' after expression statement, got: ");
+            logError("Expected ';' after expression statement");
             return nullptr;
         }
 
@@ -939,6 +939,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::STRING_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::CHAR_KEYWORD]=&Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatementWithTypeWrapper;
 }
 

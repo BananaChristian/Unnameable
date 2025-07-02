@@ -62,9 +62,10 @@ int main(int argc, char **argv)
         }
 
         std::cout << "\n--- Semantic Analysis ---\n";
+        Semantics analyzer;
         for (const auto &node : nodes)
         {
-            Semantics analyzer(node.get());
+            analyzer.analyzer(node.get());
         }
     }
     catch (const std::exception &e)

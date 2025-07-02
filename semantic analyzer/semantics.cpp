@@ -2,11 +2,10 @@
 #include "semantics.hpp"
 #include "ast.hpp"
 
-Semantics::Semantics(Node *node)
+Semantics::Semantics()
 {
     symbolTable.push_back({});
     registerAnalyzerFunctions();
-    analyzer(node);
 };
 
 // Main walker function
@@ -16,7 +15,7 @@ void Semantics::analyzer(Node *node)
     {
         return;
     }
-    std::cout<<"Analyzing AST\n";
+    std::cout << "Analyzing AST node: "<<node->toString()<<"\n";
     auto analyzerIt = analyzerFunctionsMap.find(typeid(*node));
     if (analyzerIt != analyzerFunctionsMap.end())
     {
@@ -31,7 +30,8 @@ void Semantics::analyzer(Node *node)
 // WALKING FUNCTIONS FOR DIFFERENT NODES
 void Semantics::analyzeLetStatements(Node *node)
 {
-    std::cout<<"[SEMANTIC LOG]: Analyzing let statement: "<<dynamic_cast<LetStatement*>(node)->toString()<<"\n";
+    std::cout << "[SEMANTIC LOG]: Analyzing let statement: " << dynamic_cast<LetStatement *>(node)->toString() << "\n";
+    std::cout << "[DEBUG]: Current symbol table size: " << symbolTable.size() << "\n";
     auto letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
         return;
@@ -44,6 +44,7 @@ void Semantics::analyzeLetStatements(Node *node)
     if (!letStmt->value && declaredTypeStr == "auto")
     {
         std::cerr << "[SEMANTIC ERROR] Cannot use 'auto' without initialization in variable '" << varName << "'\n";
+        logError("Cannot use 'auto' without initialization in variable ", letStmt);
     }
 
     // Analysing the assigned expressions value if it exists
@@ -92,32 +93,170 @@ void Semantics::analyzeLetStatements(Node *node)
         .scopeDepth = (int)symbolTable.size() - 1};
 
     symbolTable.back()[varName] = sym;
+    std::cout << "[DEBUG] Inserted '" << varName << "' into scope 0\n";
+
 }
 
-void Semantics::analyzeIntegerLiteral(Node* node){
-    std::cout << "[SEMANTIC LOG] Analyzing IntegerLiteral: " << dynamic_cast<IntegerLiteral*>(node)->int_token.TokenLiteral << "\n";
-    if(!node) return;
-
-    IntegerLiteral* intNode= dynamic_cast<IntegerLiteral*>(node);
-    if(!intNode){
-        std::cerr<<"[SEMANTIC ERROR]: Failed to analyze integer node received wrong node"<<"\n";
+void Semantics::analyzeLetStatementsNoType(Node *node)
+{
+    std::cout << "[SEMANTIC LOG] Analyzing Let Statement No type: " << dynamic_cast<LetStatementNoType *>(node)->ident_token.TokenLiteral << "\n";
+    auto stmtNode = dynamic_cast<LetStatementNoType *>(node);
+    if (!stmtNode)
+        return;
+    // Getting the datatype of x by walking the scope stack to see if it was stored somewhere
+    auto identifierName = stmtNode->ident_token.TokenLiteral;
+    auto identSymbol = resolveSymbol(identifierName);
+    if (!identSymbol)
+    {
+        std::cerr << "[SEMANTIC ERROR]: Variable '" << identifierName << "' not declared.\n";
         return;
     }
-    std::string intName=intNode->int_token.TokenLiteral;
-    TypeSystem intType=TypeSystem::INTEGER;
+    auto identType = identSymbol->nodeType;
 
-    annotations[intNode]=SemanticInfo{
-        .nodeType=intType,
-        .isMutable=true,
-        .isConstant=false,
-        .scopeDepth=(int)symbolTable.size()-1
-    };
+    auto valueType = inferExpressionType(stmtNode->value.get());
+    if (identType != valueType)
+    {
+        std::cerr << "[SEMANTIC ERROR]: Type mismatch: " << identifierName << " doesnt match " << TypeSystemString(valueType) << "\n";
+        return;
+    }
+
+    annotations[stmtNode] = SemanticInfo{
+        .nodeType = identType,
+        .isMutable = true,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
 }
 
-void Semantics::analyzeFloatLiteral(Node* node) {}
-void Semantics::analyzeStringLiteral(Node* node) {}
-void Semantics::analyzeBooleanLiteral(Node* node) {}
-void Semantics::analyzeCharLiteral(Node* node) {}
+void Semantics::analyzeIntegerLiteral(Node *node)
+{
+    std::cout << "[SEMANTIC LOG] Analyzing IntegerLiteral: " << dynamic_cast<IntegerLiteral *>(node)->int_token.TokenLiteral << "\n";
+    if (!node)
+        return;
+
+    IntegerLiteral *intNode = dynamic_cast<IntegerLiteral *>(node);
+    if (!intNode)
+    {
+        std::cerr << "[SEMANTIC ERROR]: Failed to analyze integer node received wrong node" << "\n";
+        return;
+    }
+    std::string intName = intNode->int_token.TokenLiteral;
+    TypeSystem intType = TypeSystem::INTEGER;
+
+    annotations[intNode] = SemanticInfo{
+        .nodeType = intType,
+        .isMutable = true,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
+}
+
+void Semantics::analyzeFloatLiteral(Node *node)
+{
+    std::cout << "[SEMANTIC LOG] Analyzing FloatLiteral: " << dynamic_cast<FloatLiteral *>(node)->float_token.TokenLiteral << "\n";
+    if (!node)
+        return;
+    FloatLiteral *fltNode = dynamic_cast<FloatLiteral *>(node);
+    if (!fltNode)
+    {
+        std::cerr << "[SEMANTIC ERROR]: Failed to analyze float node recieved";
+        return;
+    }
+    std::string fltName = fltNode->float_token.TokenLiteral;
+    TypeSystem fltType = TypeSystem::FLOAT;
+
+    annotations[fltNode] = SemanticInfo{
+        .nodeType = fltType,
+        .isMutable = true,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
+}
+
+void Semantics::analyzeStringLiteral(Node *node)
+{
+    if (!node)
+        return;
+    StringLiteral *strNode = dynamic_cast<StringLiteral *>(node);
+    std::cout << "[SEMANTIC LOG]: Analyzing string node: " << strNode->string_token.TokenLiteral << "\n";
+    if (!strNode)
+    {
+        std::cout << "Failed to analyze string node\n";
+        return;
+    }
+    TypeSystem strType = TypeSystem::STRING;
+    annotations[strNode] = SemanticInfo{
+        .nodeType = strType,
+        .isMutable = true,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
+}
+void Semantics::analyzeBooleanLiteral(Node *node)
+{
+    if (!node)
+        return;
+    BooleanLiteral *boolNode = dynamic_cast<BooleanLiteral *>(node);
+    std::cout << "[SEMANTIC LOG]: Analyzing boolean node: " << boolNode->boolean_token.TokenLiteral << "\n";
+    if (!boolNode)
+    {
+        std::cout << "Failed to analyze boolean node\n";
+        return;
+    }
+    TypeSystem boolType = TypeSystem::BOOLEAN;
+    annotations[boolNode] = SemanticInfo{
+        .nodeType = boolType,
+        .isMutable = true,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
+}
+
+void Semantics::analyzeCharLiteral(Node *node)
+{
+    if (!node)
+        return;
+    CharLiteral *charNode = dynamic_cast<CharLiteral *>(node);
+    std::cout << "[SEMANTIC LOG]: Analyzing char node: " << charNode->char_token.TokenLiteral << "\n";
+    if (!charNode)
+    {
+        std::cout << "Failed to analyze char node\n";
+        return;
+    }
+    TypeSystem charType = TypeSystem::CHAR;
+    annotations[charNode] = SemanticInfo{
+        .nodeType = charType,
+        .isMutable = true,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
+}
+
+void Semantics::analyzeInfixExpression(Node *node)
+{
+    std::cout << "[SEMANTIC LOG]: Analyzing infix node\n";
+    auto infixNode = dynamic_cast<InfixExpression *>(node);
+    if (!infixNode)
+        return;
+    TypeSystem leftType = inferExpressionType(infixNode->left_operand.get());
+    TypeSystem rightType = inferExpressionType(infixNode->right_operand.get());
+
+    TypeSystem resultType;
+    if ((leftType == TypeSystem::INTEGER && rightType == TypeSystem::FLOAT) || (leftType == TypeSystem::FLOAT && rightType == TypeSystem::INTEGER))
+    {
+        resultType = TypeSystem::FLOAT;
+    }
+    else if (leftType != rightType)
+    {
+        std::cerr << "[SEMANTIC ERROR]: Type mismatch (" << TypeSystemString(leftType) << " vs " << TypeSystemString(rightType) << ")\n";
+        return;
+    }
+    else
+    {
+        resultType = leftType;
+    }
+    if (!infixNode)
+        return;
+    annotations[infixNode] = SemanticInfo{
+        .nodeType = resultType,
+        .isMutable = false,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
+}
 
 // HELPER FUNCTIONS
 // Functions registers analyzer functions for different nodes
@@ -128,7 +267,9 @@ void Semantics::registerAnalyzerFunctions()
     analyzerFunctionsMap[typeid(FloatLiteral)] = &Semantics::analyzeFloatLiteral;
     analyzerFunctionsMap[typeid(StringLiteral)] = &Semantics::analyzeStringLiteral;
     analyzerFunctionsMap[typeid(CharLiteral)] = &Semantics::analyzeCharLiteral;
-    analyzerFunctionsMap[typeid(BooleanLiteral)]=&Semantics::analyzeBooleanLiteral;
+    analyzerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::analyzeBooleanLiteral;
+    analyzerFunctionsMap[typeid(InfixExpression)] = &Semantics::analyzeInfixExpression;
+    analyzerFunctionsMap[typeid(LetStatementNoType)] = &Semantics::analyzeLetStatementsNoType;
 }
 
 // Function maps the type string to the respective type system
@@ -236,4 +377,29 @@ std::string Semantics::TypeSystemString(TypeSystem type)
     default:
         return "Type: UNKOWN ";
     }
+}
+
+std::optional<Symbol> Semantics::resolveSymbol(const std::string &name)
+{
+    for (int i = symbolTable.size() - 1; i >= 0; --i)
+    {
+        auto &scope = symbolTable[i];
+        std::cout << "[DEBUG] Searching for '" << name << "' in scope level " << i << "\n";
+        for (auto& [key, val] : scope) {
+            std::cout << "    >> Key in scope: '" << key << "'\n";
+        }
+        if (scope.find(name) != scope.end())
+        {
+            std::cout << "[DEBUG] Found match for '" << name << "'\n";
+            return scope[name];
+        }
+    }
+    std::cout << "[DEBUG] No match for '" << name << "'\n";
+    return std::nullopt;
+}
+
+// Error logging function
+void Semantics::logError(const std::string &message, Node *node)
+{
+    std::cerr << "[SEMANTIC ERROR]: " << message << "line: " << node->token.line << " column: " << node->token.column << "\n";
 }

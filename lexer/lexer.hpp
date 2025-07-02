@@ -37,6 +37,7 @@ class Lexer
         {"int", TokenType::INT},
         {"string", TokenType::STRING_KEYWORD},
         {"float", TokenType::FLOAT_KEYWORD},
+        {"double",TokenType::DOUBLE_KEYWORD},
         {"void", TokenType::VOID},
         {"char", TokenType::CHAR_KEYWORD},
         {"true", TokenType::TRUE},

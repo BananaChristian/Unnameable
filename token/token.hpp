@@ -47,6 +47,7 @@ enum class TokenType{
     STRING_KEYWORD,
     FLOAT,
     FLOAT_KEYWORD,
+    DOUBLE_KEYWORD,
     INTEGER,
     CHAR_KEYWORD,
     BOOL_KEYWORD,
@@ -85,6 +86,7 @@ enum class TokenType{
     VOID,
     TRUE,
     FALSE,
+    DOUBLE,
     ARRAY,
 
     //Memory management keywords
