@@ -1,6 +1,6 @@
 # Unnameable Compiler
 
-**Unnameable** is a modern, lightweight programming language designed to be fast, minimal, and expressive.
+**Unnameable** is a statically type, Ahead of time compiled modern, lightweight programming language written in C++. It is designed to be fast, minimal, and expressive.
 It exists to make low level development **clear**,**accesible** and **fun** for everyone, especially for beginners and builders on modest machines.
 Born from frustration with the complexity of C++, the strictness of Rust, and rawness of C, Unnameable aims to strike a balance **fast and powerful, yet simple and predictable**
 
