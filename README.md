@@ -1,15 +1,15 @@
-# Blank Compiler
+# Unnameable Compiler
 
-**Blank** is a modern, lightweight programming language designed to be fast, minimal, and expressive.
+**Unnameable** is a modern, lightweight programming language designed to be fast, minimal, and expressive.
 It exists to make low level development **clear**,**accesible** and **fun** for everyone, especially for beginners and builders on modest machines.
-Born from frustration with the complexity of C++, the strictness of Rust, and rawness of C, Iron aims to strike a balance **fast and powerful, yet simple and predictable**
+Born from frustration with the complexity of C++, the strictness of Rust, and rawness of C, Unnameable aims to strike a balance **fast and powerful, yet simple and predictable**
 
 No matter what you’re building an OS, a game engine, or your first kernel 
 you shouldn't need a PhD or wrestle with books just to understand memory management.
 
 Blank is here to bring the joy back to low-level programming.
 
-This project contains the core implementation of the Iron compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
+This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
 
 ## Features
 
@@ -18,7 +18,7 @@ This project contains the core implementation of the Iron compiler written in C+
 - Semantic analysis *(In development)*
 - LLVM IR *(Planned)*
 
-## Data types in Blank
+## Data types in Unnameable
 
 - Integers
 - Booleans
@@ -26,10 +26,10 @@ This project contains the core implementation of the Iron compiler written in C+
 - Chars
 - Floats 
 
-## Comments in Blank
+## Comments in Unnameable
 
 ```
-#This is a comment in blank
+#This is a comment in Unnameable
 ```
 
 ## Variable declarations 
@@ -47,20 +47,20 @@ float pi=3.14;
 auto x=2;
 ```
 
-## Functions in blank
+## Functions in Unnameable
 ```
 work greet(string name): string{
       return "Hello"+ name;
 }
 ```
 
-## Function calls in Blank
+## Function calls in Unnameable
 ```
 greet("Blank");
 add(1,2);
 config();
 ```
-## Control flow in Blank
+## Control flow in Unnameable
 ```
 if(age>18){
       return "adult";
