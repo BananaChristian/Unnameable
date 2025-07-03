@@ -49,6 +49,8 @@ public:
     std::map<std::type_index, analyzerFuncs> analyzerFunctionsMap;
 
     //----------WALKER FUNCTIONS FOR DIFFERENT NODES---------
+    void analyzeIfStatements(Node *node);
+    void analyzeBlockStatements(Node *node);
     void analyzeLetStatements(Node *node);
     void analyzeLetStatementsNoType(Node *node);
     void analyzeInfixExpression(Node *node);
@@ -62,6 +64,8 @@ private:
     //---------HELPER FUNCTIONS----------
     void registerAnalyzerFunctions();
     void logError(const std::string &message, Node *node);
+    TypeSystem resultOf(TokenType operatorType,TypeSystem leftType,TypeSystem rightType);
+    TypeSystem resultOfUnary(TokenType operatorType,TypeSystem operandType);
     TypeSystem mapTypeStringToTypeSystem(const std::string &typeStr);
     TypeSystem inferExpressionType(Expression *expr);
     std::string TypeSystemString(TypeSystem type);

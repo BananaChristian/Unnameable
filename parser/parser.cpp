@@ -455,13 +455,13 @@ unique_ptr<Statement> Parser::parseIfStatement()
 
     return make_unique<ifStatement>(
         if_stmt,
-        move(condition),
-        move(if_result),
-        move(elseif_stmt),
-        move(elseif_condition),
-        move(elseif_result),
-        move(else_stmt),
-        move(else_result));
+        std::move(condition),
+        std::move(if_result),
+        std::move(elseif_stmt),
+        std::move(elseif_condition),
+        std::move(elseif_result),
+        std::move(else_stmt),
+        std::move(else_result));
 }
 
 // Parsing identifiers
@@ -843,7 +843,7 @@ unique_ptr<Statement> Parser::parseBlockStatement()
         auto stmt = parseStatement();
         if (stmt != nullptr)
         {
-            statements.push_back(move(stmt));
+            statements.push_back(std::move(stmt));
         }
         else
         {
@@ -860,7 +860,7 @@ unique_ptr<Statement> Parser::parseBlockStatement()
 
     advance();
 
-    return make_unique<BlockStatement>(lbrace, move(statements));
+    return make_unique<BlockStatement>(lbrace, std::move(statements));
 }
 
 //----------HELPER FUNCTIONS---------------

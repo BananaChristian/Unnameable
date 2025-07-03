@@ -15,7 +15,7 @@ void Semantics::analyzer(Node *node)
     {
         return;
     }
-    std::cout << "Analyzing AST node: "<<node->toString()<<"\n";
+    std::cout << "Analyzing AST node: " << node->toString() << "\n";
     auto analyzerIt = analyzerFunctionsMap.find(typeid(*node));
     if (analyzerIt != analyzerFunctionsMap.end())
     {
@@ -28,6 +28,73 @@ void Semantics::analyzer(Node *node)
 }
 
 // WALKING FUNCTIONS FOR DIFFERENT NODES
+void Semantics::analyzeIfStatements(Node *node)
+{
+    auto ifNode = dynamic_cast<ifStatement *>(node);
+    if (!ifNode)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing if statement" << ifNode->toString() << "\n";
+    if (ifNode->condition)
+    {
+        analyzer(ifNode->condition.get());
+        auto condType = inferExpressionType(ifNode->condition.get());
+        std::cout << "Condition Type: " << TypeSystemString(condType) << "\n";
+        if (condType != TypeSystem::BOOLEAN)
+        {
+            logError("If condition must be boolean type", ifNode->condition.get());
+        }
+    }
+    std::cout << "Now analyzing if statement conditions\n";
+    if (ifNode->if_result)
+    {
+        analyzeBlockStatements(ifNode->if_result.get());
+    }
+
+    if (ifNode->elseif_condition.has_value() && ifNode->elseif_condition)
+    {
+        std::cout << "[SEMANTIC LOG]: Analyzing else-if condition\n";
+        analyzer(ifNode->elseif_condition.value().get());
+        auto elseifcondType = inferExpressionType(ifNode->elseif_condition.value().get());
+
+        if (elseifcondType != TypeSystem::BOOLEAN)
+        {
+            logError("If condition must be boolean type ", ifNode->elseif_condition.value().get());
+        }
+
+        if (ifNode->elseif_result.has_value() && ifNode->elseif_result)
+        {
+            std::cout << "[SEMANTIC LOG]: Analyzing else-if block\n";
+            analyzeBlockStatements(ifNode->elseif_result.value().get());
+        }
+    }
+
+    if (ifNode->else_result.has_value() && ifNode->else_result)
+    {
+        std::cout << "[SEMANTIC LOG]: Analyzing else block\n";
+        analyzeBlockStatements(ifNode->else_result.value().get());
+    }
+
+    annotations[ifNode] = SemanticInfo{
+        .nodeType = TypeSystem::BOOLEAN,
+        .isMutable = false,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1,
+    };
+}
+
+void Semantics::analyzeBlockStatements(Node *node)
+{
+    symbolTable.push_back({});
+    auto blockStmt = dynamic_cast<BlockStatement *>(node);
+    auto &stmts = blockStmt->statements;
+    for (const auto &stmt : stmts)
+    {
+        std::cout << "Analyzing statement in statement block: " << stmt->toString() << "\n";
+        analyzer(stmt.get());
+    }
+    symbolTable.pop_back();
+}
+
 void Semantics::analyzeLetStatements(Node *node)
 {
     std::cout << "[SEMANTIC LOG]: Analyzing let statement: " << dynamic_cast<LetStatement *>(node)->toString() << "\n";
@@ -94,7 +161,6 @@ void Semantics::analyzeLetStatements(Node *node)
 
     symbolTable.back()[varName] = sym;
     std::cout << "[DEBUG] Inserted '" << varName << "' into scope 0\n";
-
 }
 
 void Semantics::analyzeLetStatementsNoType(Node *node)
@@ -235,20 +301,8 @@ void Semantics::analyzeInfixExpression(Node *node)
     TypeSystem leftType = inferExpressionType(infixNode->left_operand.get());
     TypeSystem rightType = inferExpressionType(infixNode->right_operand.get());
 
-    TypeSystem resultType;
-    if ((leftType == TypeSystem::INTEGER && rightType == TypeSystem::FLOAT) || (leftType == TypeSystem::FLOAT && rightType == TypeSystem::INTEGER))
-    {
-        resultType = TypeSystem::FLOAT;
-    }
-    else if (leftType != rightType)
-    {
-        std::cerr << "[SEMANTIC ERROR]: Type mismatch (" << TypeSystemString(leftType) << " vs " << TypeSystemString(rightType) << ")\n";
-        return;
-    }
-    else
-    {
-        resultType = leftType;
-    }
+    TypeSystem resultType = resultOf(infixNode->operat.type, leftType, rightType);
+
     if (!infixNode)
         return;
     annotations[infixNode] = SemanticInfo{
@@ -269,7 +323,10 @@ void Semantics::registerAnalyzerFunctions()
     analyzerFunctionsMap[typeid(CharLiteral)] = &Semantics::analyzeCharLiteral;
     analyzerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::analyzeBooleanLiteral;
     analyzerFunctionsMap[typeid(InfixExpression)] = &Semantics::analyzeInfixExpression;
+    analyzerFunctionsMap[typeid(PrefixExpression)]=&Semantics::analyzeInfixExpression;
     analyzerFunctionsMap[typeid(LetStatementNoType)] = &Semantics::analyzeLetStatementsNoType;
+    analyzerFunctionsMap[typeid(ifStatement)] = &Semantics::analyzeIfStatements;
+    analyzerFunctionsMap[typeid(BlockStatement)] = &Semantics::analyzeBlockStatements;
 }
 
 // Function maps the type string to the respective type system
@@ -337,23 +394,15 @@ TypeSystem Semantics::inferExpressionType(Expression *expr)
     {
         TypeSystem leftType = inferExpressionType(infix->left_operand.get());
         TypeSystem rightType = inferExpressionType(infix->right_operand.get());
-        if (leftType == rightType)
-        {
-            return leftType;
-        }
 
-        if ((leftType == TypeSystem::INTEGER && rightType == TypeSystem::FLOAT) || (leftType == TypeSystem::FLOAT && rightType == TypeSystem::INTEGER))
-        {
-            return TypeSystem::FLOAT;
-        }
+        TokenType operatType = infix->operat.type;
 
-        std::cerr << "Type mismatch in infix expression: " << TypeSystemString(leftType) << "vs" << TypeSystemString(rightType) << "\n";
-        return TypeSystem::UNKNOWN;
+        return resultOf(operatType,leftType,rightType);
     }
 
     if (auto prefix = dynamic_cast<PrefixExpression *>(expr))
     {
-        return inferExpressionType(prefix->operand.get());
+        return resultOfUnary(prefix->operat.type,inferExpressionType(prefix->operand.get()));
     }
 
     return TypeSystem::UNKNOWN;
@@ -385,7 +434,8 @@ std::optional<Symbol> Semantics::resolveSymbol(const std::string &name)
     {
         auto &scope = symbolTable[i];
         std::cout << "[DEBUG] Searching for '" << name << "' in scope level " << i << "\n";
-        for (auto& [key, val] : scope) {
+        for (auto &[key, val] : scope)
+        {
             std::cout << "    >> Key in scope: '" << key << "'\n";
         }
         if (scope.find(name) != scope.end())
@@ -398,8 +448,81 @@ std::optional<Symbol> Semantics::resolveSymbol(const std::string &name)
     return std::nullopt;
 }
 
+TypeSystem Semantics::resultOf(TokenType operatorType, TypeSystem leftType, TypeSystem rightType)
+{
+    if (operatorType == TokenType::AND || operatorType == TokenType::OR)
+    {
+        if (leftType == TypeSystem::BOOLEAN && rightType == TypeSystem::BOOLEAN)
+        {
+            return TypeSystem::BOOLEAN;
+        }
+        else
+        {
+            return TypeSystem::UNKNOWN;
+        }
+    }
+    bool isComparison = (operatorType == TokenType::GREATER_THAN || operatorType == TokenType::LESS_THAN || operatorType == TokenType::GT_OR_EQ || operatorType == TokenType::LT_OR_EQ||operatorType==TokenType::EQUALS||operatorType==TokenType::NOT_EQUALS);
+    if (isComparison)
+    {
+        if ((leftType != rightType) && !((leftType == TypeSystem::INTEGER && rightType == TypeSystem::FLOAT) || (leftType == TypeSystem::FLOAT && rightType == TypeSystem::INTEGER)))
+        {
+            return TypeSystem::UNKNOWN;
+        }
+        return TypeSystem::BOOLEAN;
+    }
+    else
+    {
+        if (leftType == rightType)
+        {
+            return leftType;
+        }
+        if ((leftType == TypeSystem::INTEGER && rightType == TypeSystem::FLOAT) || (leftType == TypeSystem::FLOAT && rightType == TypeSystem::INTEGER))
+        {
+            return TypeSystem::FLOAT;
+        }
+    }
+
+    return TypeSystem::UNKNOWN;
+}
+
+TypeSystem Semantics::resultOfUnary(TokenType operatorType, TypeSystem operandType) {
+    if (operatorType == TokenType::BANG) {
+        if (operandType != TypeSystem::BOOLEAN) {
+            std::cerr << "[SEMANTIC ERROR]: Cannot apply '!' to type "
+                      << TypeSystemString(operandType) << "\n";
+            return TypeSystem::UNKNOWN;
+        }
+        return TypeSystem::BOOLEAN;
+    }
+
+    if (operatorType == TokenType::MINUS_MINUS || operatorType == TokenType::PLUS_PLUS) {
+        if (operandType == TypeSystem::INTEGER || operandType == TypeSystem::FLOAT) {
+            return operandType;  // Avoid repeating return logic
+        }
+
+        std::cerr << "[SEMANTIC ERROR]: Cannot apply '++' or '--' to type "
+                  << TypeSystemString(operandType) << "\n";
+        return TypeSystem::UNKNOWN;
+    }
+
+    std::cerr << "[SEMANTIC ERROR]: Unsupported unary operator "
+              << static_cast<int>(operatorType)
+              << " on type " << TypeSystemString(operandType) << "\n";
+    return TypeSystem::UNKNOWN;
+}
+
+
 // Error logging function
 void Semantics::logError(const std::string &message, Node *node)
 {
-    std::cerr << "[SEMANTIC ERROR]: " << message << "line: " << node->token.line << " column: " << node->token.column << "\n";
+    if (!node)
+    {
+        std::cerr << "[SEMANTIC ERROR]: " << message << " (at unknown location)\n";
+        return;
+    }
+
+    std::cerr << "[SEMANTIC ERROR]: " << message
+              << " (line: " << node->token.line
+              << ", column: " << node->token.column << ")\n";
 }
+
