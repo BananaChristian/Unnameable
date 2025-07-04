@@ -64,7 +64,7 @@ unique_ptr<Statement> Parser::parseStatement()
         Token peek_token = nextToken();
         if (peek_token.type == TokenType::ASSIGN)
         {
-            return parseLetStatementWithoutType();
+            return parseAssignmentStatement();
         }
     }
 
@@ -99,7 +99,7 @@ unique_ptr<Statement> Parser::parseStatement()
 }
 
 // Parsing let statements with types
-unique_ptr<Statement> Parser::parseLetStatementWithoutType(bool isParam)
+unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 {
     Token ident_token = currentToken();
     cout << "[DEBUG] Identifier token: " + ident_token.TokenLiteral << endl;
@@ -123,7 +123,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithoutType(bool isParam)
         logError("Expected a semi colon ");
     }
 
-    return make_unique<LetStatementNoType>(ident_token, move(value));
+    return make_unique<AssignmentStatement>(ident_token, move(value));
 }
 
 // Parsing let statements that have data types
@@ -191,7 +191,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
     {
         if (nextToken().type == TokenType::ASSIGN)
         {
-            return parseLetStatementWithoutType(true);
+            return parseAssignmentStatement(true);
         }
     }
     std::cerr << "[ERROR]: Failed to decide how to parse parameter variable. Token: " << current.TokenLiteral << "\n";
@@ -272,18 +272,14 @@ std::unique_ptr<Statement> Parser::parseWaitStatement()
 // Parsing function statement
 std::unique_ptr<Statement> Parser::parseFunctionStatement()
 {
-    Token current = currentToken(); // Getting the token holding the data type
-    advance();                      // Advancing to get the identifier and parse it
-    if (currentToken().type != TokenType::IDENTIFIER)
-    {
-        logError("Expected function name ");
+    Token funcToken=currentToken();
+  
+    std::unique_ptr<Expression>funcExpr=parseFunctionExpression();
+    if(!funcExpr){
         return nullptr;
     }
-    auto ident = parseIdentifier(); // Parsing the identifier token it will advance us to the next token(We expect this token to be LPAREN) automatically
-
-    auto args = parseCallArguments(); // This parses the call arguments it will also advance us to the next token which will be another RPAREN or a comma and not the one closing the argument parens
-
-    return make_unique<FunctionStatement>(current, move(ident), move(args));
+    
+    return make_unique<FunctionStatement>(funcToken,std::move(funcExpr));
 }
 
 // Parsing return statements
@@ -909,7 +905,6 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
-    PrefixParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;
     PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
     PrefixParseFunctionsMap[TokenType::PLUS_PLUS] = &Parser::parsePrefixExpression;
@@ -940,6 +935,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::STRING_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR_KEYWORD]=&Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::FUNCTION]=&Parser::parseFunctionStatement;
     StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatementWithTypeWrapper;
 }
 

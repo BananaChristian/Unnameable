@@ -80,7 +80,7 @@ private:
     std::unique_ptr<Statement> parseLetStatementWithType(bool isParam=false);
 
     // Parsing let statements without type
-    std::unique_ptr<Statement> parseLetStatementWithoutType(bool isParam=false);
+    std::unique_ptr<Statement> parseAssignmentStatement(bool isParam=false);
 
     //A function to determine whether to parse Let with type or no type
     std::unique_ptr<Statement> parseLetStatementDecider();

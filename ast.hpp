@@ -261,15 +261,15 @@ struct LetStatement : Statement
     LetStatement(Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
 };
 
-struct LetStatementNoType : Statement
+struct AssignmentStatement : Statement
 {
     Token ident_token;
     std::unique_ptr<Expression> value;
     std::string toString() override
     {
-        return "Let Statement no data type: (Variable: " + ident_token.TokenLiteral + " Value: " + value->toString() + ")";
+        return "Assignment statement: (Variable: " + ident_token.TokenLiteral + " Value: " + value->toString() + ")";
     };
-    LetStatementNoType(Token ident, std::unique_ptr<Expression> val) : Statement(ident), ident_token(ident), value(move(val)) {};
+    AssignmentStatement(Token ident, std::unique_ptr<Expression> val) : Statement(ident), ident_token(ident), value(move(val)) {};
 };
 
 // Signal statement node
@@ -440,26 +440,14 @@ struct WhileStatement : Statement
     WhileStatement(Token while_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(while_k), while_key(while_k), condition(move(condition)), loop(move(l)) {};
 };
 
-// Function statement node
-struct FunctionStatement : Statement
-{
-    Token data_type;                               // The function's return data type
-    std::unique_ptr<Expression> ident;             // The functions name
-    std::vector<std::unique_ptr<Expression>> args; // The functions parameters
-
-    std::string toString() override
-    {
-        std::string results;
-        std::string arguments;
-        for (auto &param : args)
-        {
-            arguments += param->toString();
-        }
-        results = "Function Statement: " + data_type.TokenLiteral + " " + ident->toString() + " " + "(" + arguments + ")";
-        return results;
-    };
-
-    FunctionStatement(Token data, std::unique_ptr<Expression> id, std::vector<std::unique_ptr<Expression>> params) : Statement(data), data_type(data), ident(move(id)), args(move(params)) {};
+//Function Statement
+struct FunctionStatement: Statement{
+    Token token;
+    std::unique_ptr<Expression> funcExpr;
+    std::string toString() override{
+        return "Function Statement: "+ funcExpr->toString();
+    }
+    FunctionStatement(Token funcStmtTok,std::unique_ptr<Expression> expr):Statement(funcStmtTok),funcExpr(std::move(expr)){};
 };
 
 // Block statement

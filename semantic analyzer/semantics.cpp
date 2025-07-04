@@ -24,10 +24,197 @@ void Semantics::analyzer(Node *node)
     else
     {
         std::cout << "Failed to find analyzer for node: " << node->toString() << "\n";
+        std::cout << "Actual runtime type: " << typeid(*node).name() << "\n";
     }
 }
 
 // WALKING FUNCTIONS FOR DIFFERENT NODES
+void Semantics::analyzeFunctionStatement(Node *node)
+{
+    auto funcExpr = dynamic_cast<FunctionExpression *>(node);
+    if (!funcExpr)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing function statement node: " << funcExpr->toString() << "\n";
+    auto& funcCall = funcExpr->call;
+    std::vector<TypeSystem> paramTypes;
+    TypeSystem callType;
+    for (const auto &call : funcCall)
+    {
+        auto callNode = call.get();
+        callType = inferExpressionType(callNode);
+        paramTypes.push_back(callType);
+        analyzer(call.get());
+    }
+
+    auto retType = funcExpr->return_type.get();
+    TypeSystem retTypeSystem;
+    if (!retType)
+        return;
+    analyzer(retType);
+    retTypeSystem = inferExpressionType(retType);
+
+    symbolTable.back()[funcExpr->func_key.TokenLiteral] = Symbol{
+        .nodeName = funcExpr->func_key.TokenLiteral,
+        .nodeType = retTypeSystem,
+        .parameterTypes = paramTypes,
+        .kind = SymbolKind::FUNCTION,
+        .isMutable = false,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1,
+    };
+    symbolTable.push_back({});
+
+    auto funcBlock = funcExpr->block.get();
+    if (!funcBlock)
+        return;
+    analyzer(funcBlock);
+
+    symbolTable.pop_back();
+}
+
+void Semantics::analyzeFunctionCallExpression(Node *node)
+{
+    auto callExp = dynamic_cast<CallExpression *>(node);
+    if (!callExp)
+        return;
+    std::cout << "[SEMANTIC LOGS]: Analyzing call expression " << callExp->toString() << "\n";
+    auto funcIdent = callExp->function_identifier.get();
+    if (!funcIdent)
+        return;
+    analyzeIdentifierExpression(funcIdent);
+
+    auto symbol = resolveSymbol(funcIdent->token.TokenLiteral);
+    if (!symbol)
+        return;
+    if (symbol->parameterTypes.size() != callExp->parameters.size())
+    {
+        logError("Mismatched number of arguments", node);
+        return;
+    }
+
+    for (size_t i = 0; i < callExp->parameters.size(); ++i)
+    {
+        analyzer(callExp->parameters[i].get());
+        auto argType = inferExpressionType(callExp->parameters[i].get());
+
+        if (argType != symbol->parameterTypes[i])
+        {
+            logError("Type mismatch in argument " + std::to_string(i), callExp->parameters[i].get());
+        }
+    }
+    annotations[callExp] = SemanticInfo{
+        .nodeType = symbol->nodeType,
+        .isMutable = false,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1,
+    };
+}
+
+void Semantics::analyzeIdentifierExpression(Node *node)
+{
+    auto identExp = dynamic_cast<Identifier *>(node);
+    if (!identExp)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing function statement node: " << identExp->toString() << "\n";
+    auto identExpName = identExp->token.TokenLiteral;
+    auto symbol = resolveSymbol(identExpName);
+
+    if (!symbol)
+    {
+        logError("Use of undeclared identifier ", identExp);
+        annotations[identExp] = SemanticInfo{
+            .nodeType = TypeSystem::UNKNOWN,
+            .isMutable = false,
+            .isConstant = false,
+            .scopeDepth = (int)symbolTable.size() - 1,
+        };
+        return;
+    }
+    auto identType = symbol->nodeType;
+
+    annotations[identExp] = SemanticInfo{
+        .nodeType = identType,
+        .isMutable = false,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1,
+    };
+}
+
+void Semantics::analyzeForStatement(Node *node)
+{
+
+    auto forStmt = dynamic_cast<ForStatement *>(node);
+    if (!forStmt)
+        return;
+    symbolTable.push_back({});
+    std::cout << "[SEMANTIC LOG]: Analyzing for loop node " << forStmt->toString() << "\n";
+    auto forInit = forStmt->initializer.get();
+    if (!forInit)
+        return;
+    analyzer(forInit);
+    auto forCond = forStmt->condition.get();
+    TypeSystem forCondType;
+    if (forCond)
+    {
+        forCondType = inferExpressionType(forCond);
+        std::cout << "[SEMANTIC LOG]: For loop condition type " << TypeSystemString(forCondType) << "\n";
+        if (forCondType != TypeSystem::BOOLEAN)
+        {
+            logError("For loop condition is not a boolean", forStmt);
+        }
+    }
+
+    auto forStep = forStmt->step.get();
+    if (!forStep)
+        return;
+    analyzer(forStep);
+
+    auto forBlock = forStmt->body.get();
+    if (!forBlock)
+        return;
+    analyzer(forBlock);
+
+    annotations[forStmt] = SemanticInfo{
+        .nodeType = TypeSystem::UNKNOWN,
+        .isMutable = false,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
+
+    symbolTable.pop_back();
+}
+
+void Semantics::analyzeWhileStatement(Node *node)
+{
+    auto whileStmt = dynamic_cast<WhileStatement *>(node);
+    if (!whileStmt)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing while statement node " << whileStmt->toString() << "\n";
+    auto whileCond = whileStmt->condition.get();
+    TypeSystem condType;
+    if (whileCond)
+    {
+        analyzer(whileCond);
+        condType = inferExpressionType(whileCond);
+        std::cout << "While condition type:" << TypeSystemString(condType) << "\n";
+        if (condType != TypeSystem::BOOLEAN)
+        {
+            logError("While condition type must be a boolean", whileCond);
+        }
+    }
+    // Analyzing content of the while block
+    auto blockStmt = whileStmt->loop.get();
+    if (blockStmt)
+    {
+        analyzeBlockStatements(blockStmt);
+    }
+
+    annotations[whileStmt] = SemanticInfo{
+        .nodeType = condType,
+        .isMutable = false,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1};
+}
+
 void Semantics::analyzeIfStatements(Node *node)
 {
     auto ifNode = dynamic_cast<ifStatement *>(node);
@@ -163,10 +350,10 @@ void Semantics::analyzeLetStatements(Node *node)
     std::cout << "[DEBUG] Inserted '" << varName << "' into scope 0\n";
 }
 
-void Semantics::analyzeLetStatementsNoType(Node *node)
+void Semantics::analyzeAssignmentStatement(Node *node)
 {
-    std::cout << "[SEMANTIC LOG] Analyzing Let Statement No type: " << dynamic_cast<LetStatementNoType *>(node)->ident_token.TokenLiteral << "\n";
-    auto stmtNode = dynamic_cast<LetStatementNoType *>(node);
+    std::cout << "[SEMANTIC LOG] Analyzing Assignment statement: " << dynamic_cast<AssignmentStatement *>(node)->ident_token.TokenLiteral << "\n";
+    auto stmtNode = dynamic_cast<AssignmentStatement *>(node);
     if (!stmtNode)
         return;
     // Getting the datatype of x by walking the scope stack to see if it was stored somewhere
@@ -323,10 +510,15 @@ void Semantics::registerAnalyzerFunctions()
     analyzerFunctionsMap[typeid(CharLiteral)] = &Semantics::analyzeCharLiteral;
     analyzerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::analyzeBooleanLiteral;
     analyzerFunctionsMap[typeid(InfixExpression)] = &Semantics::analyzeInfixExpression;
-    analyzerFunctionsMap[typeid(PrefixExpression)]=&Semantics::analyzeInfixExpression;
-    analyzerFunctionsMap[typeid(LetStatementNoType)] = &Semantics::analyzeLetStatementsNoType;
+    analyzerFunctionsMap[typeid(PrefixExpression)] = &Semantics::analyzeInfixExpression;
+    analyzerFunctionsMap[typeid(AssignmentStatement)] = &Semantics::analyzeAssignmentStatement;
     analyzerFunctionsMap[typeid(ifStatement)] = &Semantics::analyzeIfStatements;
+    analyzerFunctionsMap[typeid(ForStatement)] = &Semantics::analyzeForStatement;
+    analyzerFunctionsMap[typeid(WhileStatement)] = &Semantics::analyzeWhileStatement;
     analyzerFunctionsMap[typeid(BlockStatement)] = &Semantics::analyzeBlockStatements;
+    analyzerFunctionsMap[typeid(Identifier)] = &Semantics::analyzeIdentifierExpression;
+    analyzerFunctionsMap[typeid(FunctionStatement)] = &Semantics::analyzeFunctionStatement;
+    analyzerFunctionsMap[typeid(CallExpression)] = &Semantics::analyzeFunctionCallExpression;
 }
 
 // Function maps the type string to the respective type system
@@ -346,36 +538,36 @@ TypeSystem Semantics::mapTypeStringToTypeSystem(const std::string &typeStr)
 }
 
 // Type inference helper function
-TypeSystem Semantics::inferExpressionType(Expression *expr)
+TypeSystem Semantics::inferExpressionType(Node *node)
 {
-    if (!expr)
+    if (!node)
         return TypeSystem::UNKNOWN;
-    if (auto inLit = dynamic_cast<IntegerLiteral *>(expr))
+    if (auto inLit = dynamic_cast<IntegerLiteral *>(node))
     {
         return TypeSystem::INTEGER;
     }
 
-    if (auto fltLit = dynamic_cast<FloatLiteral *>(expr))
+    if (auto fltLit = dynamic_cast<FloatLiteral *>(node))
     {
         return TypeSystem::FLOAT;
     }
 
-    if (auto strLit = dynamic_cast<StringLiteral *>(expr))
+    if (auto strLit = dynamic_cast<StringLiteral *>(node))
     {
         return TypeSystem::STRING;
     }
 
-    if (auto chrLit = dynamic_cast<CharLiteral *>(expr))
+    if (auto chrLit = dynamic_cast<CharLiteral *>(node))
     {
         return TypeSystem::CHAR;
     }
 
-    if (auto boolLit = dynamic_cast<BooleanLiteral *>(expr))
+    if (auto boolLit = dynamic_cast<BooleanLiteral *>(node))
     {
         return TypeSystem::BOOLEAN;
     }
 
-    if (auto ident = dynamic_cast<Identifier *>(expr))
+    if (auto ident = dynamic_cast<Identifier *>(node))
     {
         std::string name = ident->identifier.TokenLiteral;
         for (auto it = symbolTable.rbegin(); it != symbolTable.rend(); ++it)
@@ -390,19 +582,19 @@ TypeSystem Semantics::inferExpressionType(Expression *expr)
         return TypeSystem::UNKNOWN;
     }
 
-    if (auto infix = dynamic_cast<InfixExpression *>(expr))
+    if (auto infix = dynamic_cast<InfixExpression *>(node))
     {
         TypeSystem leftType = inferExpressionType(infix->left_operand.get());
         TypeSystem rightType = inferExpressionType(infix->right_operand.get());
 
         TokenType operatType = infix->operat.type;
 
-        return resultOf(operatType,leftType,rightType);
+        return resultOf(operatType, leftType, rightType);
     }
 
-    if (auto prefix = dynamic_cast<PrefixExpression *>(expr))
+    if (auto prefix = dynamic_cast<PrefixExpression *>(node))
     {
-        return resultOfUnary(prefix->operat.type,inferExpressionType(prefix->operand.get()));
+        return resultOfUnary(prefix->operat.type, inferExpressionType(prefix->operand.get()));
     }
 
     return TypeSystem::UNKNOWN;
@@ -461,7 +653,7 @@ TypeSystem Semantics::resultOf(TokenType operatorType, TypeSystem leftType, Type
             return TypeSystem::UNKNOWN;
         }
     }
-    bool isComparison = (operatorType == TokenType::GREATER_THAN || operatorType == TokenType::LESS_THAN || operatorType == TokenType::GT_OR_EQ || operatorType == TokenType::LT_OR_EQ||operatorType==TokenType::EQUALS||operatorType==TokenType::NOT_EQUALS);
+    bool isComparison = (operatorType == TokenType::GREATER_THAN || operatorType == TokenType::LESS_THAN || operatorType == TokenType::GT_OR_EQ || operatorType == TokenType::LT_OR_EQ || operatorType == TokenType::EQUALS || operatorType == TokenType::NOT_EQUALS);
     if (isComparison)
     {
         if ((leftType != rightType) && !((leftType == TypeSystem::INTEGER && rightType == TypeSystem::FLOAT) || (leftType == TypeSystem::FLOAT && rightType == TypeSystem::INTEGER)))
@@ -485,9 +677,12 @@ TypeSystem Semantics::resultOf(TokenType operatorType, TypeSystem leftType, Type
     return TypeSystem::UNKNOWN;
 }
 
-TypeSystem Semantics::resultOfUnary(TokenType operatorType, TypeSystem operandType) {
-    if (operatorType == TokenType::BANG) {
-        if (operandType != TypeSystem::BOOLEAN) {
+TypeSystem Semantics::resultOfUnary(TokenType operatorType, TypeSystem operandType)
+{
+    if (operatorType == TokenType::BANG)
+    {
+        if (operandType != TypeSystem::BOOLEAN)
+        {
             std::cerr << "[SEMANTIC ERROR]: Cannot apply '!' to type "
                       << TypeSystemString(operandType) << "\n";
             return TypeSystem::UNKNOWN;
@@ -495,9 +690,11 @@ TypeSystem Semantics::resultOfUnary(TokenType operatorType, TypeSystem operandTy
         return TypeSystem::BOOLEAN;
     }
 
-    if (operatorType == TokenType::MINUS_MINUS || operatorType == TokenType::PLUS_PLUS) {
-        if (operandType == TypeSystem::INTEGER || operandType == TypeSystem::FLOAT) {
-            return operandType;  // Avoid repeating return logic
+    if (operatorType == TokenType::MINUS_MINUS || operatorType == TokenType::PLUS_PLUS)
+    {
+        if (operandType == TypeSystem::INTEGER || operandType == TypeSystem::FLOAT)
+        {
+            return operandType; // Avoid repeating return logic
         }
 
         std::cerr << "[SEMANTIC ERROR]: Cannot apply '++' or '--' to type "
@@ -510,7 +707,6 @@ TypeSystem Semantics::resultOfUnary(TokenType operatorType, TypeSystem operandTy
               << " on type " << TypeSystemString(operandType) << "\n";
     return TypeSystem::UNKNOWN;
 }
-
 
 // Error logging function
 void Semantics::logError(const std::string &message, Node *node)
@@ -525,4 +721,3 @@ void Semantics::logError(const std::string &message, Node *node)
               << " (line: " << node->token.line
               << ", column: " << node->token.column << ")\n";
 }
-

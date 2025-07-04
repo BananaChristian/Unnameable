@@ -16,6 +16,11 @@ enum class TypeSystem
     UNKNOWN,
 };
 
+enum class SymbolKind{
+    VARIABLE,
+    FUNCTION,
+};
+
 // Meta data struct that will be attached to each node after semantic analysis
 struct SemanticInfo
 {
@@ -30,6 +35,8 @@ struct Symbol
 {
     std::string nodeName;
     TypeSystem nodeType;
+    std::vector<TypeSystem> parameterTypes;
+    SymbolKind kind;
     bool isMutable;
     bool isConstant;
     int scopeDepth;
@@ -49,10 +56,15 @@ public:
     std::map<std::type_index, analyzerFuncs> analyzerFunctionsMap;
 
     //----------WALKER FUNCTIONS FOR DIFFERENT NODES---------
+    void analyzeFunctionStatement(Node *node);
+    void analyzeIdentifierExpression(Node *node);
+    void analyzeForStatement(Node *node);
+    void analyzeWhileStatement(Node *node);
+    void analyzeFunctionCallExpression(Node *node);
     void analyzeIfStatements(Node *node);
     void analyzeBlockStatements(Node *node);
     void analyzeLetStatements(Node *node);
-    void analyzeLetStatementsNoType(Node *node);
+    void analyzeAssignmentStatement(Node *node);
     void analyzeInfixExpression(Node *node);
     void analyzeIntegerLiteral(Node *node);
     void analyzeFloatLiteral(Node *node);
@@ -67,7 +79,7 @@ private:
     TypeSystem resultOf(TokenType operatorType,TypeSystem leftType,TypeSystem rightType);
     TypeSystem resultOfUnary(TokenType operatorType,TypeSystem operandType);
     TypeSystem mapTypeStringToTypeSystem(const std::string &typeStr);
-    TypeSystem inferExpressionType(Expression *expr);
+    TypeSystem inferExpressionType(Node *node);
     std::string TypeSystemString(TypeSystem type);
     std::optional<Symbol> resolveSymbol(const std::string& name);
 };

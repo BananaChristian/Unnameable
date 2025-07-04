@@ -25,15 +25,15 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        std::cerr << "Usage: iron <source-file.fe>\n";
+        std::cerr << "Usage: iron <source-file.unn>\n";
         return 1;
     }
 
     std::string filepath = argv[1];
 
-    if (filepath.substr(filepath.find_last_of('.') + 1) != "fe")
+    if (filepath.substr(filepath.find_last_of('.') + 1) != "unn")
     {
-        std::cerr << "[WARNING] File doesn't have .fe extension. Continuing anyway...\n";
+        std::cerr << "[WARNING] File doesn't have .unn extension. Continuing anyway...\n";
     }
 
     try

@@ -1,12 +1,12 @@
 .o
 .vscode
-Fecore
+void
 
 *~
 *.log
 *.out
 
-test.fe
+test.unn
 
 TODO
 LOGS
