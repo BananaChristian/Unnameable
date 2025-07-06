@@ -92,6 +92,8 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: WAIT";
         case TokenType::SIGNAL:
             return "Tokenn Type: SIGNAL";
+        case TokenType::ERROR:
+            return "Token Type: ERROR";
         case TokenType::IF:
             return "Token Type: IF";
         case TokenType::ELSE:

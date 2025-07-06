@@ -6,6 +6,8 @@
 #include <vector>
 using namespace std;
 
+#define CPPREST_FORCE_REBUILD
+
 //--------------PARSER CLASS CONSTRUCTOR-------------
 Parser::Parser(vector<Token> &tokenInput) : tokenInput(tokenInput), currentPos(0), nextPos(1)
 {
@@ -272,14 +274,15 @@ std::unique_ptr<Statement> Parser::parseWaitStatement()
 // Parsing function statement
 std::unique_ptr<Statement> Parser::parseFunctionStatement()
 {
-    Token funcToken=currentToken();
-  
-    std::unique_ptr<Expression>funcExpr=parseFunctionExpression();
-    if(!funcExpr){
+    Token funcToken = currentToken();
+
+    std::unique_ptr<Expression> funcExpr = parseFunctionExpression();
+    if (!funcExpr)
+    {
         return nullptr;
     }
-    
-    return make_unique<FunctionStatement>(funcToken,std::move(funcExpr));
+
+    return make_unique<FunctionStatement>(funcToken, std::move(funcExpr));
 }
 
 // Parsing return statements
@@ -291,7 +294,7 @@ unique_ptr<Statement> Parser::parseReturnStatement()
     if (currentToken().type == TokenType::SEMICOLON || currentToken().type == TokenType::END)
     {
         logError("Return is void");
-        return make_unique<ReturnStatement>(return_stmt, nullptr);
+        return make_unique<ReturnStatement>(return_stmt, nullptr, nullptr);
     }
 
     cout << "[DEBUG] Parsing return expression token: " << currentToken().TokenLiteral << endl;
@@ -302,12 +305,19 @@ unique_ptr<Statement> Parser::parseReturnStatement()
         logError("Return Value is NULL");
     }
 
+    std::unique_ptr<Statement> error_stmt = nullptr;
+    if (currentToken().type == TokenType::COMMA)
+    {
+        error_stmt = parseErrorStatement();
+        advance();
+    }
+
     if (currentToken().type == TokenType::SEMICOLON)
     {
         advance();
     }
 
-    return make_unique<ReturnStatement>(return_stmt, move(return_value));
+    return make_unique<ReturnStatement>(return_stmt, std::move(return_value), std::move(error_stmt));
 }
 
 // Parse for loops
@@ -702,7 +712,7 @@ unique_ptr<Expression> Parser::parseFunctionExpression()
     }
 
     std::cout << "[DEBUG]: Encountered the " << currentToken().TokenLiteral << "\n";
-    
+
     auto block = parseBlockExpression(); // Parsing the blocks
     if (!block)
     {
@@ -775,6 +785,24 @@ vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
     }
 
     return args;
+}
+
+// Parsing error expressions
+std::unique_ptr<Expression> Parser::parseErrorExpression()
+{
+    Token err_tok = currentToken();
+    advance();
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        logError("Expected ( ");
+    }
+    advance();
+    auto err_message = parseExpression(Precedence::PREC_NONE);
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        logError("Expected )");
+    }
+    return make_unique<ErrorExpression>(err_tok, std::move(err_message));
 }
 
 // Parsing block expressions
@@ -917,6 +945,13 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithTypeWrapper()
     return parseLetStatementWithType();
 }
 
+std::unique_ptr<Statement> Parser::parseErrorStatement()
+{
+    Token err_token = currentToken();
+    auto errExpr = parseErrorExpression();
+    return make_unique<ErrorStatement>(err_token, std::move(errExpr));
+}
+
 // Registering the statement parsing functions
 void Parser::registerStatementParseFns()
 {
@@ -934,9 +969,10 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::STRING_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::CHAR_KEYWORD]=&Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::FUNCTION]=&Parser::parseFunctionStatement;
+    StatementParseFunctionsMap[TokenType::CHAR_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionStatement;
     StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::ERROR] = &Parser::parseErrorStatement;
 }
 
 // Precedence getting function
@@ -983,9 +1019,9 @@ Token Parser::getErrorToken()
     {
         if (lastToken.line == 0)
         {
-            return Token{"", TokenType::ILLEGAL, 999, 999}; 
+            return Token{"", TokenType::ILLEGAL, 999, 999};
         }
         return lastToken;
     }
-    return tokenInput[currentPos-1];
+    return tokenInput[currentPos - 1];
 }

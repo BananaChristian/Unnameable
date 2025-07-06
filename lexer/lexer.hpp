@@ -50,6 +50,7 @@ class Lexer
         {"make", TokenType::MAKE},
         {"signal",TokenType::SIGNAL},
         {"start",TokenType::START},
+        {"error",TokenType::ERROR},
         {"wait",TokenType::WAIT},
         {"unsafe", TokenType::UNSAFE},
         {"alloc", TokenType::ALLOCATE},

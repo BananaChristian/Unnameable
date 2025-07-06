@@ -65,6 +65,7 @@ enum class TokenType{
     START,//start
     WAIT,//wait
     SIGNAL,//signal
+    ERROR,//error
 
 
     //Control flow

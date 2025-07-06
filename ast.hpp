@@ -168,6 +168,19 @@ struct ReturnTypeExpression : Expression
     ReturnTypeExpression(Token type) : Expression(type), typeToken(type) {};
 };
 
+// Error expression
+struct ErrorExpression : Expression
+{
+    Token error_token;
+    std::unique_ptr<Expression> err_message;
+    std::string toString() override
+    {
+        return "Error expression: " + err_message->toString();
+    };
+
+    ErrorExpression(Token err_token, std::unique_ptr<Expression> message) : Expression(err_token), error_token(err_token), err_message(std::move(message)) {};
+};
+
 // Prefix expression node for syntax like !true;
 struct PrefixExpression : Expression
 {
@@ -208,7 +221,7 @@ struct ExpressionStatement : Statement
         }
         return ";";
     }
-    ExpressionStatement(Token exp, std::unique_ptr<Expression> expr) : Statement(exp), expr(exp), expression(move(expr)) {};
+    ExpressionStatement(Token exp, std::unique_ptr<Expression> expr) : Statement(exp), expr(exp), expression(std::move(expr)) {};
 };
 
 // Break statement node
@@ -226,11 +239,23 @@ struct BreakStatement : Statement
 struct ContinueStatement : Statement
 {
     Token cont_tok;
-    std::string toString()
+    std::string toString() override
     {
         return "Continue Statement: " + cont_tok.TokenLiteral;
     }
     ContinueStatement(Token cont_t) : Statement(cont_t), cont_tok(cont_t) {};
+};
+
+// Error statement
+struct ErrorStatement : Statement
+{
+    Token errorStmt_token;
+    std::unique_ptr<Expression> errorExpr;
+    std::string toString() override
+    {
+        return "Error statement: " + errorExpr->toString();
+    };
+    ErrorStatement(Token err, std::unique_ptr<Expression> errExpr) : Statement(err), errorExpr(std::move(errExpr)) {};
 };
 
 // Let statement node
@@ -290,22 +315,26 @@ struct SignalStatement : Statement
 };
 
 // Start statement
-struct StartStatement: Statement{
+struct StartStatement : Statement
+{
     Token start_tok;
-    std::string toString() override{
-        return "Start Statement: " +start_tok.TokenLiteral;
+    std::string toString() override
+    {
+        return "Start Statement: " + start_tok.TokenLiteral;
     }
-    StartStatement(Token start): Statement(start),start_tok(std::move(start)){};
+    StartStatement(Token start) : Statement(start), start_tok(std::move(start)) {};
 };
 
 // Wait statement
-struct WaitStatement: Statement{
+struct WaitStatement : Statement
+{
     Token wait_token;
-    std::unique_ptr<Expression> arg; 
-    std::string toString() override {
-        return "Wait Statement: "+ wait_token.TokenLiteral + "(" + arg->toString() + ")";
+    std::unique_ptr<Expression> arg;
+    std::string toString() override
+    {
+        return "Wait Statement: " + wait_token.TokenLiteral + "(" + arg->toString() + ")";
     };
-    WaitStatement(Token wait,std::unique_ptr<Expression> a): Statement(wait),arg(std::move(a)){};
+    WaitStatement(Token wait, std::unique_ptr<Expression> a) : Statement(wait), arg(std::move(a)) {};
 };
 
 // Return statement node
@@ -313,12 +342,13 @@ struct ReturnStatement : Statement
 {
     Token return_stmt;
     std::unique_ptr<Expression> return_value;
+    std::unique_ptr<Statement> error_val;
     std::string toString() override
     {
         return "Return Statement: ( Token: " + return_stmt.TokenLiteral + " Value: " +
-               (return_value ? return_value->toString() : "void") + ")";
+               (return_value ? return_value->toString() : "void") + "), Error: " + (error_val?error_val->toString():"no error return");
     }
-    ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val) : Statement(ret), return_stmt(ret), return_value(move(ret_val)) {};
+    ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val, std::unique_ptr<Statement> err) : Statement(ret), return_stmt(ret), return_value(move(ret_val)),error_val(std::move(err)) {};
 };
 
 // If statement node
@@ -440,14 +470,16 @@ struct WhileStatement : Statement
     WhileStatement(Token while_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(while_k), while_key(while_k), condition(move(condition)), loop(move(l)) {};
 };
 
-//Function Statement
-struct FunctionStatement: Statement{
+// Function Statement
+struct FunctionStatement : Statement
+{
     Token token;
     std::unique_ptr<Expression> funcExpr;
-    std::string toString() override{
-        return "Function Statement: "+ funcExpr->toString();
+    std::string toString() override
+    {
+        return "Function Statement: " + funcExpr->toString();
     }
-    FunctionStatement(Token funcStmtTok,std::unique_ptr<Expression> expr):Statement(funcStmtTok),funcExpr(std::move(expr)){};
+    FunctionStatement(Token funcStmtTok, std::unique_ptr<Expression> expr) : Statement(funcStmtTok), funcExpr(std::move(expr)) {};
 };
 
 // Block statement

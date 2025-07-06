@@ -128,6 +128,12 @@ private:
     // Prefix expression parsing function
     std::unique_ptr<Expression> parsePrefixExpression();
 
+    //Error expression
+    std::unique_ptr<Expression> parseErrorExpression();
+
+    //Error statement
+    std::unique_ptr<Statement> parseErrorStatement();
+
     // Parsing identifiers
     std::unique_ptr<Expression> parseIdentifier();
 
