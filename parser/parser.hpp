@@ -162,6 +162,9 @@ private:
     // String
     std::unique_ptr<Expression> parseStringLiteral();
 
+    //Tuples
+    std::unique_ptr<Expression> parseTupleExpression();
+
     //Parsing ++ or --
     std::unique_ptr<Expression> parsePostfixUnary();
 
@@ -182,6 +185,9 @@ private:
 
     //Wrapper function
     std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
+
+    //Function to select how to parse grouped expression
+    std::unique_ptr<Expression> parseGroupedOrTupleExpression();
 
     //Error logging 
     void logError(const std::string& message);

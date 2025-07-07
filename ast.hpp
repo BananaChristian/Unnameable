@@ -168,6 +168,26 @@ struct ReturnTypeExpression : Expression
     ReturnTypeExpression(Token type) : Expression(type), typeToken(type) {};
 };
 
+// Tuple expression
+struct TupleExpression : Expression
+{
+    Token lparen;
+    std::vector<std::unique_ptr<Expression>> elements;
+    std::string toString() override
+    {
+        std::string out = "Tuple Expression: (";
+        for (size_t i = 0; i < elements.size(); ++i)
+        {
+            out += elements[i]->toString();
+            if (i != elements.size() - 1)
+                out += ", ";
+        }
+        out += ")";
+        return out;
+    }
+    TupleExpression(Token lpar, std::vector<std::unique_ptr<Expression>> components) : Expression(lpar), elements(std::move(components)) {};
+};
+
 // Error expression
 struct ErrorExpression : Expression
 {
@@ -346,9 +366,9 @@ struct ReturnStatement : Statement
     std::string toString() override
     {
         return "Return Statement: ( Token: " + return_stmt.TokenLiteral + " Value: " +
-               (return_value ? return_value->toString() : "void") + "), Error: " + (error_val?error_val->toString():"no error return");
+               (return_value ? return_value->toString() : "void") + "), Error: " + (error_val ? error_val->toString() : "no error return");
     }
-    ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val, std::unique_ptr<Statement> err) : Statement(ret), return_stmt(ret), return_value(move(ret_val)),error_val(std::move(err)) {};
+    ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val, std::unique_ptr<Statement> err) : Statement(ret), return_stmt(ret), return_value(move(ret_val)), error_val(std::move(err)) {};
 };
 
 // If statement node

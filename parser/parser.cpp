@@ -303,13 +303,18 @@ unique_ptr<Statement> Parser::parseReturnStatement()
     if (!return_value)
     {
         logError("Return Value is NULL");
+        return nullptr;
     }
 
     std::unique_ptr<Statement> error_stmt = nullptr;
     if (currentToken().type == TokenType::COMMA)
     {
-        error_stmt = parseErrorStatement();
         advance();
+        error_stmt = parseErrorStatement();
+        if (!error_stmt)
+        {
+            return nullptr;
+        }
     }
 
     if (currentToken().type == TokenType::SEMICOLON)
@@ -580,33 +585,43 @@ unique_ptr<Expression> Parser::parseStringLiteral()
 // Grouped expression parse function
 unique_ptr<Expression> Parser::parseGroupedExpression()
 {
-    Token lparen = currentToken();
+    Token firstToken=currentToken();
     advance();
-
-    if (currentToken().type == TokenType::RPAREN)
-    {
-        std::cerr << "[ERROR] Empty grouped expression after '('\n";
-        logError("Empty grouped expression after '('");
-        return nullptr;
-    }
 
     auto expr = parseExpression(Precedence::PREC_NONE);
     if (!expr)
     {
-        std::cerr << "[ERROR] Failed to parse expression inside grouped expr.\n";
         logError("Empty grouped expression after '('");
         return nullptr;
     }
 
     if (currentToken().type != TokenType::RPAREN)
     {
-        std::cerr << "[ERROR] Expected ')' to close grouped expression, got: " << currentToken().TokenLiteral << endl;
         logError("Expected ')' to close grouped expression ");
         return nullptr;
     }
 
     advance();
     return expr;
+}
+
+std::unique_ptr<Expression> Parser::parseGroupedOrTupleExpression()
+{
+    std::cout << "PARSING GROUPED OR TUPLE EXPRESSIONS\n";
+    Token lparen = currentToken();
+    if (lparen.type != TokenType::LPAREN)
+    {
+        logError("Expected '(' but got: " + lparen.TokenLiteral);
+        return nullptr;
+    }
+    advance();
+
+    if (nextToken().type == TokenType::COMMA)
+    {
+        return parseTupleExpression();
+    }
+
+    return parseGroupedExpression();
 }
 
 unique_ptr<Expression> Parser::parseCallExpression(unique_ptr<Expression> left)
@@ -627,8 +642,41 @@ unique_ptr<Expression> Parser::parseCallExpression(unique_ptr<Expression> left)
     return make_unique<CallExpression>(call_token, move(left), move(args));
 }
 
-// Parsing function call arguments
+// Parsing tuple expressions
+std::unique_ptr<Expression> Parser::parseTupleExpression()
+{
+    Token firstToken = currentToken();
+    std::vector<unique_ptr<Expression>> elements;
+    while (true)
+    {
+        auto expr = parseExpression(Precedence::PREC_NONE);
+        if (!expr)
+        {
+            logError("Invalid expression in tuple");
+            return nullptr;
+        }
+        elements.push_back(std::move(expr));
 
+        if (currentToken().type == TokenType::COMMA)
+        {
+            advance();
+        }
+        else if (currentToken().type == TokenType::RPAREN)
+        {
+            advance();
+            break;
+        }
+        else
+        {
+            logError("Expected ',' or ')' in tuple but got: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
+    }
+
+    return make_unique<TupleExpression>(firstToken, std::move(elements));
+}
+
+// Parsing function call arguments
 vector<unique_ptr<Expression>> Parser::parseCallArguments()
 {
     vector<unique_ptr<Expression>> args;
@@ -933,7 +981,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
-    PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;
+    PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedOrTupleExpression;
     PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
     PrefixParseFunctionsMap[TokenType::PLUS_PLUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS_MINUS] = &Parser::parsePrefixExpression;
