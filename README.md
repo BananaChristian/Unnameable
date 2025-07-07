@@ -87,7 +87,6 @@ while(x>5){
 ## FUTURE ADDITIONS FOR PARSER SUPPORT
 
 - High order functions
-- For loops
 - Pattern matching
 - Function parameters as expressions
 
