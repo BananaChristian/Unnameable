@@ -53,7 +53,7 @@ work greet(string name): string{
       return "Hello"+ name;
 }
 ```
-##Error handling
+## Error handling
 ```
 work greet(string name): string{
       return "Hello"+ name,error("Got an error");
@@ -84,7 +84,7 @@ while(x>5){
 }
 ```
 
-##For loops
+## For loops
 ```
 for(int i;i>10;i++){
     int x;
