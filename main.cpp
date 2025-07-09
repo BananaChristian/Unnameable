@@ -63,6 +63,7 @@ int main(int argc, char **argv)
 
         std::cout << "\n--- Semantic Analysis ---\n";
         Semantics analyzer;
+        analyzer.preDeclareFunctions(nodes);
         for (const auto &node : nodes)
         {
             analyzer.analyzer(node.get());

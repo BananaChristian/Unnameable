@@ -13,7 +13,9 @@ enum class TypeSystem
     BOOLEAN,
     STRING,
     CHAR,
+    VOID,
     UNKNOWN,
+    INVALID,
 };
 
 enum class SymbolKind{
@@ -46,23 +48,29 @@ struct Symbol
 class Semantics
 {
     std::unordered_map<Node *, SemanticInfo> annotations;             // Annotations map this will store the meta data per AST node
+    std::vector<std::optional<TypeSystem>> returnTypeStack;
     std::vector<std::unordered_map<std::string, Symbol>> symbolTable; // This the symbol table which is a stack of hashmaps that will store info about the node during analysis
 
 public:
     Semantics();     // Semantics class analyzer
+
     void analyzer(Node *node); // The walker that will traverse the AST
+    void preDeclareFunctions(std::vector<std::unique_ptr<Node>> &program);
 
     using analyzerFuncs = void (Semantics::*)(Node *);
     std::map<std::type_index, analyzerFuncs> analyzerFunctionsMap;
 
     //----------WALKER FUNCTIONS FOR DIFFERENT NODES---------
+    void analyzeReturnStatement(Node *node);
     void analyzeFunctionStatement(Node *node);
+    void analyzeFunctionExpression(Node *node);
     void analyzeIdentifierExpression(Node *node);
     void analyzeForStatement(Node *node);
     void analyzeWhileStatement(Node *node);
     void analyzeFunctionCallExpression(Node *node);
     void analyzeIfStatements(Node *node);
     void analyzeBlockStatements(Node *node);
+    void analyzeBlockExpression(Node *node);
     void analyzeLetStatements(Node *node);
     void analyzeAssignmentStatement(Node *node);
     void analyzeInfixExpression(Node *node);
@@ -70,6 +78,8 @@ public:
     void analyzeFloatLiteral(Node *node);
     void analyzeStringLiteral(Node *node);
     void analyzeCharLiteral(Node *node);
+    void analyzeErrorStatement(Node *node);
+    void analyzeErrorExpression(Node *node);
     void analyzeBooleanLiteral(Node *node);
 
 private:
@@ -80,6 +90,8 @@ private:
     TypeSystem resultOfUnary(TokenType operatorType,TypeSystem operandType);
     TypeSystem mapTypeStringToTypeSystem(const std::string &typeStr);
     TypeSystem inferExpressionType(Node *node);
+    TypeSystem analyzeReturnTypeExpression(Node *node);
+    bool blockAlwaysReturns(Node *block);
     std::string TypeSystemString(TypeSystem type);
     std::optional<Symbol> resolveSymbol(const std::string& name);
 };

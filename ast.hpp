@@ -154,7 +154,7 @@ struct FunctionExpression : Expression
                " Function block: " + block_str;
     }
 
-    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
+    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn),func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
 // Return type expression

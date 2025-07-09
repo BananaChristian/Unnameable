@@ -16,6 +16,9 @@ void Semantics::analyzer(Node *node)
         return;
     }
     std::cout << "Analyzing AST node: " << node->toString() << "\n";
+    // std::cout << "Type from map: " << typeid(ReturnStatement).name() << "\n";
+    std::cout << "Type at runtime: " << typeid(*node).name() << "\n";
+
     auto analyzerIt = analyzerFunctionsMap.find(typeid(*node));
     if (analyzerIt != analyzerFunctionsMap.end())
     {
@@ -28,14 +31,127 @@ void Semantics::analyzer(Node *node)
     }
 }
 
+void Semantics::preDeclareFunctions(std::vector<std::unique_ptr<Node>> &program)
+{
+    std::cout << "[SEMANTIC LOG]: Pre declaring all functions\n";
+    if (symbolTable.empty())
+    {
+        symbolTable.push_back({});
+    }
+
+    for (const auto &node : program)
+    {
+        if (auto funcStmt = dynamic_cast<FunctionStatement *>(node.get()))
+        {
+            auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
+            if (!funcExpr)
+                continue;
+            std::cout << "[DEBUG] Function key literal: '" << funcExpr->func_key.TokenLiteral << "'\n";
+
+            TypeSystem returnType = analyzeReturnTypeExpression(funcExpr->return_type.get());
+
+            std::vector<TypeSystem> paramTypes;
+            for (const auto &param : funcExpr->call)
+            {
+                paramTypes.push_back(inferExpressionType(param.get()));
+            }
+
+            symbolTable.back()[funcExpr->func_key.TokenLiteral] = Symbol{
+                .nodeName = funcExpr->func_key.TokenLiteral,
+                .nodeType = returnType,
+                .parameterTypes = paramTypes,
+                .kind = SymbolKind::FUNCTION,
+                .isMutable = false,
+                .isConstant = false,
+                .scopeDepth = (int)symbolTable.size() - 1,
+            };
+
+            std::cout << "[PREDECLARE]: Inserted '" << funcExpr->func_key.TokenLiteral
+                      << "' into scope level " << symbolTable.size() - 1 << "\n";
+        }
+    }
+}
+
 // WALKING FUNCTIONS FOR DIFFERENT NODES
+void Semantics::analyzeErrorStatement(Node *node)
+{
+    auto errStmt = dynamic_cast<ErrorStatement *>(node);
+    if (!errStmt)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing error statement\n";
+    auto errExpr=errStmt->errorExpr.get();
+    analyzer(errExpr);
+}
+
+void Semantics::analyzeErrorExpression(Node *node)
+{
+    auto errExpr = dynamic_cast<ErrorExpression *>(node);
+    if (!errExpr)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing error expression\n";
+    auto errInfo=errExpr->err_message.get();
+    analyzer(errInfo);
+}
+
+void Semantics::analyzeReturnStatement(Node *node)
+{
+    auto returnStmt = dynamic_cast<ReturnStatement *>(node);
+    if (!returnStmt)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing return statement node\n";
+    if (returnTypeStack.empty())
+    {
+        logError("Return statement not inside a function", returnStmt);
+        return;
+    }
+
+    auto expectedType = returnTypeStack.back();
+
+    if (!expectedType.has_value())
+    {
+        logError("No return type found in stack", returnStmt);
+    }
+    if (!returnStmt->return_value) // no return value expression
+    {
+        if (expectedType.value() != TypeSystem::VOID)
+        {
+            logError("Return with no value in function ", returnStmt);
+        }
+    }
+    else // has a return expression
+    {
+        TypeSystem actualType = inferExpressionType(returnStmt->return_value.get());
+        if (actualType != expectedType.value())
+        {
+            logError("Type mismatch in return ", returnStmt);
+        }
+    }
+}
+
 void Semantics::analyzeFunctionStatement(Node *node)
 {
-    auto funcExpr = dynamic_cast<FunctionExpression *>(node);
+    auto funcStmt = dynamic_cast<FunctionStatement *>(node);
+    if (!funcStmt)
+    {
+        std::cerr << "[ERROR] Node is not a FunctionStatement!\n";
+        return;
+    }
+    auto exprBasePtr = funcStmt->funcExpr.get(); // Expression*
+    auto funcExpr = dynamic_cast<FunctionExpression *>(exprBasePtr);
     if (!funcExpr)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing function statement node: " << funcExpr->toString() << "\n";
-    auto& funcCall = funcExpr->call;
+    auto retType = funcExpr->return_type.get();
+    if (!retType)
+    {
+        logError("Function missing return type ", funcExpr);
+        return;
+    }
+
+    TypeSystem retTypeSystem = analyzeReturnTypeExpression(retType);
+    returnTypeStack.push_back(retTypeSystem);
+
+    auto &funcCall = funcExpr->call;
     std::vector<TypeSystem> paramTypes;
     TypeSystem callType;
     for (const auto &call : funcCall)
@@ -45,13 +161,6 @@ void Semantics::analyzeFunctionStatement(Node *node)
         paramTypes.push_back(callType);
         analyzer(call.get());
     }
-
-    auto retType = funcExpr->return_type.get();
-    TypeSystem retTypeSystem;
-    if (!retType)
-        return;
-    analyzer(retType);
-    retTypeSystem = inferExpressionType(retType);
 
     symbolTable.back()[funcExpr->func_key.TokenLiteral] = Symbol{
         .nodeName = funcExpr->func_key.TokenLiteral,
@@ -68,7 +177,90 @@ void Semantics::analyzeFunctionStatement(Node *node)
     if (!funcBlock)
         return;
     analyzer(funcBlock);
+    if (retTypeSystem == TypeSystem::VOID)
+    {
+        auto blockStmt = dynamic_cast<BlockStatement *>(funcBlock);
+        if (blockStmt)
+        {
+            for (const auto &stmt : blockStmt->statements)
+            {
+                if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get()))
+                {
+                    if (retStmt->return_value) // If return has a value → error
+                    {
+                        logError("Void function '" + funcExpr->func_key.TokenLiteral + "' cannot return a value", retStmt);
+                    }
+                }
+            }
+        }
+    }
+    std::cout << "returnTypeStack size: " << returnTypeStack.size() << "\n";
+    returnTypeStack.pop_back();
+    symbolTable.pop_back();
+}
 
+void Semantics::analyzeFunctionExpression(Node *node)
+{
+    auto funcExpr = dynamic_cast<FunctionExpression *>(node);
+    if (!funcExpr)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing function expression node: " << funcExpr->toString() << "\n";
+    auto retType = funcExpr->return_type.get();
+    if (!retType)
+    {
+        logError("Function missing return type ", funcExpr);
+        return;
+    }
+
+    TypeSystem retTypeSystem = analyzeReturnTypeExpression(retType);
+    returnTypeStack.push_back(retTypeSystem);
+
+    auto &funcCall = funcExpr->call;
+    std::vector<TypeSystem> paramTypes;
+    TypeSystem callType;
+    for (const auto &call : funcCall)
+    {
+        auto callNode = call.get();
+        callType = inferExpressionType(callNode);
+        paramTypes.push_back(callType);
+        analyzer(call.get());
+    }
+
+    symbolTable.back()[funcExpr->func_key.TokenLiteral] = Symbol{
+        .nodeName = funcExpr->func_key.TokenLiteral,
+        .nodeType = retTypeSystem,
+        .parameterTypes = paramTypes,
+        .kind = SymbolKind::FUNCTION,
+        .isMutable = false,
+        .isConstant = false,
+        .scopeDepth = (int)symbolTable.size() - 1,
+    };
+    symbolTable.push_back({});
+
+    auto funcBlock = funcExpr->block.get();
+    if (!funcBlock)
+        return;
+    analyzer(funcBlock);
+    if (retTypeSystem == TypeSystem::VOID)
+    {
+        auto blockStmt = dynamic_cast<BlockStatement *>(funcBlock);
+        if (blockStmt)
+        {
+            for (const auto &stmt : blockStmt->statements)
+            {
+                if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get()))
+                {
+                    if (retStmt->return_value) // If return has a value → error
+                    {
+                        logError("Void function '" + funcExpr->func_key.TokenLiteral + "' cannot return a value", retStmt);
+                    }
+                }
+            }
+        }
+    }
+
+    std::cout << "returnTypeStack size: " << returnTypeStack.size() << "\n";
+    returnTypeStack.pop_back();
     symbolTable.pop_back();
 }
 
@@ -77,15 +269,26 @@ void Semantics::analyzeFunctionCallExpression(Node *node)
     auto callExp = dynamic_cast<CallExpression *>(node);
     if (!callExp)
         return;
-    std::cout << "[SEMANTIC LOGS]: Analyzing call expression " << callExp->toString() << "\n";
-    auto funcIdent = callExp->function_identifier.get();
-    if (!funcIdent)
-        return;
-    analyzeIdentifierExpression(funcIdent);
 
-    auto symbol = resolveSymbol(funcIdent->token.TokenLiteral);
-    if (!symbol)
+    std::cout << "[SEMANTIC LOGS]: Analyzing call expression " << callExp->toString() << "\n";
+
+    auto funcIdent = dynamic_cast<Identifier *>(callExp->function_identifier.get());
+    if (!funcIdent)
+    {
+        logError("Function call target is not an identifier", node);
         return;
+    }
+
+    std::cout << "[DEBUG] Function call target token literal: '" << funcIdent->token.TokenLiteral << "'\n";
+
+    std::string funcName = funcIdent->token.TokenLiteral;
+    auto symbol = resolveSymbol(funcName);
+    if (!symbol)
+    {
+        logError("Function '" + funcName + "' not declared", node);
+        return;
+    }
+
     if (symbol->parameterTypes.size() != callExp->parameters.size())
     {
         logError("Mismatched number of arguments", node);
@@ -102,6 +305,7 @@ void Semantics::analyzeFunctionCallExpression(Node *node)
             logError("Type mismatch in argument " + std::to_string(i), callExp->parameters[i].get());
         }
     }
+
     annotations[callExp] = SemanticInfo{
         .nodeType = symbol->nodeType,
         .isMutable = false,
@@ -273,10 +477,14 @@ void Semantics::analyzeBlockStatements(Node *node)
 {
     symbolTable.push_back({});
     auto blockStmt = dynamic_cast<BlockStatement *>(node);
+    if (!blockStmt)
+        return;
     auto &stmts = blockStmt->statements;
     for (const auto &stmt : stmts)
     {
         std::cout << "Analyzing statement in statement block: " << stmt->toString() << "\n";
+        std::cout << "Analyzing statement in statement block: " << stmt->toString()
+                  << " | Actual type: " << typeid(*stmt).name() << "\n";
         analyzer(stmt.get());
     }
     symbolTable.pop_back();
@@ -297,7 +505,6 @@ void Semantics::analyzeLetStatements(Node *node)
     // Checking if the user provided a variable after using auto if not we get the error early
     if (!letStmt->value && declaredTypeStr == "auto")
     {
-        std::cerr << "[SEMANTIC ERROR] Cannot use 'auto' without initialization in variable '" << varName << "'\n";
         logError("Cannot use 'auto' without initialization in variable ", letStmt);
     }
 
@@ -423,6 +630,21 @@ void Semantics::analyzeFloatLiteral(Node *node)
         .scopeDepth = (int)symbolTable.size() - 1};
 }
 
+void Semantics::analyzeBlockExpression(Node *node)
+{
+    auto blockExpr = dynamic_cast<BlockExpression *>(node);
+    // Analyze all statements inside the block
+    for (auto &stmt : blockExpr->statements)
+    {
+        analyzer(stmt.get()); // Dispatch to statement analyzer
+    }
+    // If you have finalexpr (expression after statements), analyze that too
+    if (blockExpr->finalexpr)
+    {
+        analyzer(blockExpr->finalexpr.value().get());
+    }
+}
+
 void Semantics::analyzeStringLiteral(Node *node)
 {
     if (!node)
@@ -519,6 +741,11 @@ void Semantics::registerAnalyzerFunctions()
     analyzerFunctionsMap[typeid(Identifier)] = &Semantics::analyzeIdentifierExpression;
     analyzerFunctionsMap[typeid(FunctionStatement)] = &Semantics::analyzeFunctionStatement;
     analyzerFunctionsMap[typeid(CallExpression)] = &Semantics::analyzeFunctionCallExpression;
+    analyzerFunctionsMap[typeid(ReturnStatement)] = &Semantics::analyzeReturnStatement;
+    analyzerFunctionsMap[typeid(BlockExpression)] = &Semantics::analyzeBlockExpression;
+    analyzerFunctionsMap[typeid(FunctionExpression)] = &Semantics::analyzeFunctionExpression;
+    analyzerFunctionsMap[typeid(ErrorStatement)] = &Semantics::analyzeErrorStatement;
+    analyzerFunctionsMap[typeid(ErrorExpression)] = &Semantics::analyzeErrorExpression;
 }
 
 // Function maps the type string to the respective type system
@@ -595,6 +822,44 @@ TypeSystem Semantics::inferExpressionType(Node *node)
     if (auto prefix = dynamic_cast<PrefixExpression *>(node))
     {
         return resultOfUnary(prefix->operat.type, inferExpressionType(prefix->operand.get()));
+    }
+
+    if (auto funcExpr = dynamic_cast<FunctionExpression *>(node))
+    {
+        TypeSystem retType = analyzeReturnTypeExpression(funcExpr->return_type.get());
+
+        if (retType == TypeSystem::VOID)
+        {
+            logError("Cannot assign a void function definition to a variable", funcExpr);
+            return TypeSystem::VOID;
+        }
+
+        return retType;
+    }
+
+    if (auto callExpr = dynamic_cast<CallExpression *>(node))
+    {
+        auto ident = dynamic_cast<Identifier *>(callExpr->function_identifier.get());
+        if (!ident)
+        {
+            std::cerr << "[SEMANTIC ERROR]: Call target is not an identifier\n";
+            return TypeSystem::UNKNOWN;
+        }
+
+        std::string funcName = ident->identifier.TokenLiteral;
+
+        // Search the symbol table for the function
+        for (auto it = symbolTable.rbegin(); it != symbolTable.rend(); ++it)
+        {
+            auto symIt = it->find(funcName);
+            if (symIt != it->end() && symIt->second.kind == SymbolKind::FUNCTION)
+            {
+                return symIt->second.nodeType; // Return function return type
+            }
+        }
+
+        std::cerr << "[SEMANTIC ERROR]: Function '" << funcName << "' not declared\n";
+        return TypeSystem::UNKNOWN;
     }
 
     return TypeSystem::UNKNOWN;
@@ -706,6 +971,85 @@ TypeSystem Semantics::resultOfUnary(TokenType operatorType, TypeSystem operandTy
               << static_cast<int>(operatorType)
               << " on type " << TypeSystemString(operandType) << "\n";
     return TypeSystem::UNKNOWN;
+}
+
+TypeSystem Semantics::analyzeReturnTypeExpression(Node *node)
+{
+    auto retExpr = dynamic_cast<ReturnTypeExpression *>(node);
+    if (!retExpr)
+    {
+        return TypeSystem::INVALID;
+    }
+
+    TokenType retType = retExpr->typeToken.type;
+    if (retType == TokenType::INT)
+    {
+        return TypeSystem::INTEGER;
+    }
+
+    if (retType == TokenType::FLOAT_KEYWORD)
+    {
+        return TypeSystem::FLOAT;
+    }
+
+    if (retType == TokenType::STRING_KEYWORD)
+    {
+        return TypeSystem::STRING;
+    }
+
+    if (retType == TokenType::CHAR_KEYWORD)
+    {
+        return TypeSystem::CHAR;
+    }
+
+    if (retType == TokenType::BOOL_KEYWORD)
+    {
+        return TypeSystem::BOOLEAN;
+    }
+
+    if (retType == TokenType::VOID)
+    {
+        return TypeSystem::VOID;
+    }
+
+    return TypeSystem::UNKNOWN;
+}
+
+bool Semantics::blockAlwaysReturns(Node *block)
+{
+    auto blockNode = dynamic_cast<BlockExpression *>(block);
+    if (!blockNode || blockNode->statements.empty())
+        return false;
+
+    Node *lastStmt = blockNode->statements.back().get();
+
+    if (auto ret = dynamic_cast<ReturnStatement *>(lastStmt))
+    {
+        return true;
+    }
+
+    if (auto ifStmt = dynamic_cast<ifStatement *>(lastStmt))
+    {
+        bool thenReturns = false;
+        bool elseReturns = false;
+
+        if (auto thenBlock = dynamic_cast<BlockExpression *>(ifStmt->if_result.get()))
+        {
+            thenReturns = blockAlwaysReturns(thenBlock);
+        }
+
+        if (ifStmt->elseif_result.has_value())
+        {
+            if (auto elseBlock = dynamic_cast<BlockExpression *>(ifStmt->elseif_result.value().get()))
+            {
+                elseReturns = blockAlwaysReturns(elseBlock);
+            }
+        }
+
+        return thenReturns && elseReturns;
+    }
+
+    return false;
 }
 
 // Error logging function

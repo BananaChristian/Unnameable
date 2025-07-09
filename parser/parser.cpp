@@ -291,10 +291,15 @@ unique_ptr<Statement> Parser::parseReturnStatement()
     Token return_stmt = currentToken();
     advance();
 
-    if (currentToken().type == TokenType::SEMICOLON || currentToken().type == TokenType::END)
+    if (currentToken().type == TokenType::SEMICOLON)
     {
-        logError("Return is void");
+        advance();
         return make_unique<ReturnStatement>(return_stmt, nullptr, nullptr);
+    }
+    else if (currentToken().type == TokenType::END)
+    {
+        logError("Unexpected end of input after return");
+        return nullptr;
     }
 
     cout << "[DEBUG] Parsing return expression token: " << currentToken().TokenLiteral << endl;
@@ -585,7 +590,7 @@ unique_ptr<Expression> Parser::parseStringLiteral()
 // Grouped expression parse function
 unique_ptr<Expression> Parser::parseGroupedExpression()
 {
-    Token firstToken=currentToken();
+    Token firstToken = currentToken();
     advance();
 
     auto expr = parseExpression(Precedence::PREC_NONE);
@@ -727,12 +732,16 @@ unique_ptr<Expression> Parser::parseFunctionExpression()
     advance();
 
     //----------Dealing with function name------------
-    if (currentToken().type != TokenType::IDENTIFIER)
+    auto identExpr = parseIdentifier();
+    auto identNode = dynamic_cast<Identifier *>(identExpr.get());
+
+    if (!identNode)
     {
-        logError("Expected function name after keyword work");
+        logError("Expected identifier for function name after 'work'");
         return nullptr;
     }
-    auto func_name = parseIdentifier();
+
+    Token identToken = identNode->identifier;
 
     //---Dealing with the call itself
     auto call = parseFunctionParameters(); // We might get some arguments or not so we call the parse call expression
@@ -768,7 +777,7 @@ unique_ptr<Expression> Parser::parseFunctionExpression()
         return nullptr;
     }
 
-    return make_unique<FunctionExpression>(func_tok, move(call), move(return_type), move(block));
+    return make_unique<FunctionExpression>(identToken, move(call), move(return_type), move(block));
 }
 
 // Parsing function patamemters
@@ -877,16 +886,10 @@ unique_ptr<Expression> Parser::parseBlockExpression()
         {
             block->statements.push_back(move(stmt));
         }
-        else
-        {
-            auto expr = parseExpression(Precedence::PREC_NONE);
-            if (expr)
-            {
-                block->finalexpr = move(expr);
-            }
-            break;
-        }
     }
+
+    std::cout << "[DEBUG] Block contains " << block->statements.size()
+              << " statement(s). Final expression present: " << (block->finalexpr != nullptr) << "\n";
 
     if (currentToken().type != TokenType::RBRACE)
     {
@@ -985,6 +988,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
     PrefixParseFunctionsMap[TokenType::PLUS_PLUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS_MINUS] = &Parser::parsePrefixExpression;
+    PrefixParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionExpression;
 }
 
 // Wrapper function for letstatement with type
