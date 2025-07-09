@@ -53,6 +53,12 @@ work greet(string name): string{
       return "Hello"+ name;
 }
 ```
+##Error handling
+```
+work greet(string name): string{
+      return "Hello"+ name,error("Got an error");
+}
+```
 
 ## Function calls in Unnameable
 ```
@@ -75,6 +81,14 @@ if(age>18){
 ```
 while(x>5){
       return x;
+}
+```
+
+##For loops
+```
+for(int i;i>10;i++){
+    int x;
+    x=x+1;
 }
 ```
 ## FUTURE ADDITIONS FOR LEXER SUPPORT
