@@ -7,7 +7,7 @@ Born from frustration with the complexity of C++, the strictness of Rust, and ra
 No matter what you’re building an OS, a game engine, or your first kernel 
 you shouldn't need a PhD or wrestle with books just to understand memory management.
 
-Blank is here to bring the joy back to low-level programming.
+Unnameable is here to bring the joy back to low-level programming.
 
 This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
 
