@@ -341,23 +341,12 @@ struct ComponentStatement : Statement
     std::vector<std::unique_ptr<Statement>> privateData;
     std::vector<std::unique_ptr<Statement>> privateMethods;
 
-    std::optional<std::unique_ptr<Statement>> dataBlock;
-    std::optional<std::unique_ptr<Statement>> behaviorBlock;
-
     std::vector<std::unique_ptr<Statement>> usedDataBlocks;
     std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
 
     std::string toString() override
     {
         std::string result = "Component Statement: " + component_name->toString() + " {\n";
-        std::cout << "[DEBUG] ComponentStatement toString called.\n";
-        std::cout << "[DEBUG] privateData size: " << privateData.size() << "\n";
-        std::cout << "[DEBUG] privateMethods size: " << privateMethods.size() << "\n";
-        std::cout << "[DEBUG] usedDataBlocks size: " << usedDataBlocks.size() << "\n";
-        std::cout << "[DEBUG] usedBehaviorBlocks size: " << usedBehaviorBlocks.size() << "\n";
-        std::cout << "[DEBUG] dataBlock exists: " << (dataBlock.has_value() ? "yes" : "no") << "\n";
-        std::cout << "[DEBUG] behaviorBlock exists: " << (behaviorBlock.has_value() ? "yes" : "no") << "\n";
-
         // Private data
         for (const auto &field : privateData)
         {
@@ -382,18 +371,6 @@ struct ComponentStatement : Statement
             result += "  " + use->toString() + "\n";
         }
 
-        // Public data block
-        if (dataBlock.has_value())
-        {
-            result += "  " + (*dataBlock)->toString() + "\n";
-        }
-
-        // Public behavior block
-        if (behaviorBlock.has_value())
-        {
-            result += "  " + (*behaviorBlock)->toString() + "\n";
-        }
-
         result += "}";
         return result;
     }
@@ -403,8 +380,6 @@ struct ComponentStatement : Statement
         std::unique_ptr<Expression> name,
         std::vector<std::unique_ptr<Statement>> private_data,
         std::vector<std::unique_ptr<Statement>> private_methods,
-        std::optional<std::unique_ptr<Statement>> data_block,
-        std::optional<std::unique_ptr<Statement>> behavior_block,
         std::vector<std::unique_ptr<Statement>> used_data_blocks,
         std::vector<std::unique_ptr<Statement>> used_behavior_blocks)
         : Statement(component),
@@ -412,8 +387,6 @@ struct ComponentStatement : Statement
           component_name(std::move(name)),
           privateData(std::move(private_data)),
           privateMethods(std::move(private_methods)),
-          dataBlock(std::move(data_block)),
-          behaviorBlock(std::move(behavior_block)),
           usedDataBlocks(std::move(used_data_blocks)),
           usedBehaviorBlocks(std::move(used_behavior_blocks)) {}
 };

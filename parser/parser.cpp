@@ -416,9 +416,6 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
     std::vector<unique_ptr<Statement>> privateData; // An empty vector where the private data if created shall all be stored
     std::vector<unique_ptr<Statement>> privateMethods;
 
-    std::optional<std::unique_ptr<Statement>> dataBlock;
-    std::optional<std::unique_ptr<Statement>> behaviorBlock;
-
     std::vector<std::unique_ptr<Statement>> usedDataBlocks;
     std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
     Token component_token = currentToken();
@@ -458,14 +455,6 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
                 advance(); // skip the unexpected token
             }
             break;
-        case TokenType::DATA:
-            stmt = parseDataStatement();
-            dataBlock = std::move(stmt);
-            break;
-        case TokenType::BEHAVIOR:
-            stmt = parseBehaviorStatement();
-            behaviorBlock = std::move(stmt);
-            break;
         case TokenType::INT:
         case TokenType::STRING_KEYWORD:
         case TokenType::FLOAT_KEYWORD:
@@ -499,8 +488,6 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
         std::move(component_name),
         std::move(privateData),
         std::move(privateMethods),
-        std::move(dataBlock),
-        std::move(behaviorBlock),
         std::move(usedDataBlocks),
         std::move(usedBehaviorBlocks));
 }

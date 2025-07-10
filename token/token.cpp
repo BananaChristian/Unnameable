@@ -88,6 +88,8 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: DATA";
         case TokenType::USE:
             return "Token Type: USE";
+        case TokenType::INIT:
+            return "Token Type: INIT";
         case TokenType::START:
             return "Token Type: START";
         case TokenType::WAIT:

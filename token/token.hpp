@@ -62,6 +62,7 @@ enum class TokenType{
     DATA,//data keyword token for class 
     BEHAVIOR,//behavior keyword token for class method blocks
     USE,//use keyword that allows use of external data and behavior blocks
+    INIT,//constructor keyword
     START,//start
     WAIT,//wait
     SIGNAL,//signal

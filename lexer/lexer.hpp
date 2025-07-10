@@ -23,6 +23,7 @@ class Lexer
         {"data", TokenType::DATA},
         {"behavior", TokenType::BEHAVIOR},
         {"use",TokenType::USE},
+        {"init",TokenType::INIT},
 
         {"if", TokenType::IF},
         {"else", TokenType::ELSE},
