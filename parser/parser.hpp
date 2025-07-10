@@ -117,6 +117,18 @@ private:
 
     // Parsing block statements
     std::unique_ptr<Statement> parseBlockStatement();
+
+    //Parsing component statements
+    std::unique_ptr<Statement> parseComponentStatement();
+
+    //Parsing use statements
+    std::unique_ptr<Statement> parseUseStatement();
+
+    //Parsing behavior statements
+    std::unique_ptr<Statement> parseBehaviorStatement();
+
+    //Parsing data statements
+    std::unique_ptr<Statement> parseDataStatement();
     
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function

@@ -2,6 +2,7 @@
 #include "token/token.hpp"
 #include <memory>
 #include <string>
+#include <iostream>
 #include <vector>
 #include <optional>
 
@@ -154,7 +155,7 @@ struct FunctionExpression : Expression
                " Function block: " + block_str;
     }
 
-    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn),func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
+    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
 // Return type expression
@@ -264,6 +265,157 @@ struct ContinueStatement : Statement
         return "Continue Statement: " + cont_tok.TokenLiteral;
     }
     ContinueStatement(Token cont_t) : Statement(cont_t), cont_tok(cont_t) {};
+};
+
+// Use statement struct
+struct UseStatement : Statement
+{
+    Token use_token;
+    Token kind_token; // "data" or "behavior"
+    std::unique_ptr<Expression> blockName;
+    std::optional<std::unique_ptr<Expression>> functionCall;
+
+    std::string toString() override
+    {
+        std::string result = "Use statement: ";
+        result += kind_token.TokenLiteral + " ";
+        result += blockName->toString();
+        if (functionCall.has_value())
+        {
+            result += "." + (*functionCall)->toString();
+        }
+        return result + ";";
+    }
+
+    UseStatement(Token useTok, Token kindTok, std::unique_ptr<Expression> name, std::optional<std::unique_ptr<Expression>> call)
+        : Statement(useTok), use_token(useTok), kind_token(kindTok), blockName(std::move(name)), functionCall(std::move(call)) {}
+};
+
+// Data statement struct
+struct DataStatement : Statement
+{
+    Token data_token;
+    std::unique_ptr<Expression> dataBlockName;
+    std::vector<std::unique_ptr<Statement>> fields;
+
+    std::string toString() override
+    {
+        std::string result = "Data statement: " + dataBlockName->toString() + " {\n";
+        for (const auto &field : fields)
+        {
+            result += "  " + field->toString() + "\n";
+        }
+        result += "}";
+        return result;
+    }
+
+    DataStatement(Token data, std::unique_ptr<Expression> block_name, std::vector<std::unique_ptr<Statement>> data_fields) : Statement(data), data_token(data), dataBlockName(std::move(block_name)), fields(std::move(data_fields)) {};
+};
+
+// Behavior statement struct
+struct BehaviorStatement : Statement
+{
+    Token behavior_token;
+    std::unique_ptr<Expression> behaviorBlockName;
+    std::vector<std::unique_ptr<Statement>> functions;
+    std::string toString() override
+    {
+        std::string result = "Behavior statement: " + behaviorBlockName->toString() + " {\n";
+        for (const auto &func : functions)
+        {
+            result += "  " + func->toString() + "\n";
+        }
+        result += "}";
+        return result;
+    }
+
+    BehaviorStatement(Token behavior, std::unique_ptr<Expression> behavior_name, std::vector<std::unique_ptr<Statement>> funcs) : Statement(behavior), behavior_token(behavior), behaviorBlockName(std::move(behavior_name)), functions(std::move(funcs)) {};
+};
+
+// Component statement struct
+struct ComponentStatement : Statement
+{
+    Token component_token;
+    std::unique_ptr<Expression> component_name;
+
+    std::vector<std::unique_ptr<Statement>> privateData;
+    std::vector<std::unique_ptr<Statement>> privateMethods;
+
+    std::optional<std::unique_ptr<Statement>> dataBlock;
+    std::optional<std::unique_ptr<Statement>> behaviorBlock;
+
+    std::vector<std::unique_ptr<Statement>> usedDataBlocks;
+    std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
+
+    std::string toString() override
+    {
+        std::string result = "Component Statement: " + component_name->toString() + " {\n";
+        std::cout << "[DEBUG] ComponentStatement toString called.\n";
+        std::cout << "[DEBUG] privateData size: " << privateData.size() << "\n";
+        std::cout << "[DEBUG] privateMethods size: " << privateMethods.size() << "\n";
+        std::cout << "[DEBUG] usedDataBlocks size: " << usedDataBlocks.size() << "\n";
+        std::cout << "[DEBUG] usedBehaviorBlocks size: " << usedBehaviorBlocks.size() << "\n";
+        std::cout << "[DEBUG] dataBlock exists: " << (dataBlock.has_value() ? "yes" : "no") << "\n";
+        std::cout << "[DEBUG] behaviorBlock exists: " << (behaviorBlock.has_value() ? "yes" : "no") << "\n";
+
+        // Private data
+        for (const auto &field : privateData)
+        {
+            result += " " + field->toString() + "\n";
+        }
+
+        // Private methods
+        for (const auto &method : privateMethods)
+        {
+            result += "  " + method->toString() + "\n";
+        }
+
+        // Used data blocks
+        for (const auto &use : usedDataBlocks)
+        {
+            result += "  " + use->toString() + "\n";
+        }
+
+        // Used behavior blocks
+        for (const auto &use : usedBehaviorBlocks)
+        {
+            result += "  " + use->toString() + "\n";
+        }
+
+        // Public data block
+        if (dataBlock.has_value())
+        {
+            result += "  " + (*dataBlock)->toString() + "\n";
+        }
+
+        // Public behavior block
+        if (behaviorBlock.has_value())
+        {
+            result += "  " + (*behaviorBlock)->toString() + "\n";
+        }
+
+        result += "}";
+        return result;
+    }
+
+    ComponentStatement(
+        Token component,
+        std::unique_ptr<Expression> name,
+        std::vector<std::unique_ptr<Statement>> private_data,
+        std::vector<std::unique_ptr<Statement>> private_methods,
+        std::optional<std::unique_ptr<Statement>> data_block,
+        std::optional<std::unique_ptr<Statement>> behavior_block,
+        std::vector<std::unique_ptr<Statement>> used_data_blocks,
+        std::vector<std::unique_ptr<Statement>> used_behavior_blocks)
+        : Statement(component),
+          component_token(component),
+          component_name(std::move(name)),
+          privateData(std::move(private_data)),
+          privateMethods(std::move(private_methods)),
+          dataBlock(std::move(data_block)),
+          behaviorBlock(std::move(behavior_block)),
+          usedDataBlocks(std::move(used_data_blocks)),
+          usedBehaviorBlocks(std::move(used_behavior_blocks)) {}
 };
 
 // Error statement

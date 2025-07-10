@@ -78,14 +78,16 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: CONSTANT";
         case TokenType::CAST:
             return "Token Type: CAST";
-        case TokenType::CLASS:
-            return "Token Type: CLASS";
+        case TokenType::COMPONENT:
+            return "Token Type: COMPONENT";
         case TokenType::SELF:
             return "Token Type: SELF";
-        case TokenType::PUBLIC:
-            return "Token Type: PUBLIC";
-        case TokenType::PRIVATE:
-            return "Token Type: PRIVATE";
+        case TokenType::BEHAVIOR:
+            return "Token Type: BEHAVIOR";
+        case TokenType::DATA:
+            return "Token Type: DATA";
+        case TokenType::USE:
+            return "Token Type: USE";
         case TokenType::START:
             return "Token Type: START";
         case TokenType::WAIT:
@@ -158,6 +160,8 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: READ";
         case TokenType::BANG:
             return "Token Type: BANG";
+        case TokenType::FULLSTOP:
+            return "Token Type: FULLSTOP";
         default:
             return "Token Type: ILLEGAL";
     }

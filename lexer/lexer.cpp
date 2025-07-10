@@ -298,6 +298,11 @@ Token Lexer::tokenize()
             return Token{"!", TokenType::BANG, tokenLine, tokenColumn};
         }
     }
+    case '.':{
+        CAPTURE_POS;
+        advance();
+        return Token{".",TokenType::FULLSTOP,tokenLine,tokenColumn};
+    }
     case '+':
     {
         CAPTURE_POS;

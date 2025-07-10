@@ -45,7 +45,6 @@ enum class TokenType{
 
     IDENTIFIER,
     STRING_KEYWORD,
-    FLOAT,
     FLOAT_KEYWORD,
     DOUBLE_KEYWORD,
     INTEGER,
@@ -58,10 +57,11 @@ enum class TokenType{
     RETURN,
     CONSTANT,
     CAST,
-    CLASS,
+    COMPONENT,//component key word for classes
     SELF,
-    PUBLIC,
-    PRIVATE,
+    DATA,//data keyword token for class 
+    BEHAVIOR,//behavior keyword token for class method blocks
+    USE,//use keyword that allows use of external data and behavior blocks
     START,//start
     WAIT,//wait
     SIGNAL,//signal
@@ -85,6 +85,7 @@ enum class TokenType{
     STRING,
     CHAR,
     VOID,
+    FLOAT,
     TRUE,
     FALSE,
     DOUBLE,

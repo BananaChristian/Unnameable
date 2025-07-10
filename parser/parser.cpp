@@ -165,7 +165,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     }
     else
     {
-        logError("Expected a semi colon");
+        logError("Expected a semi colon but got:" + currentToken().TokenLiteral);
     }
 
     return make_unique<LetStatement>(dataType_token, ident_token, assign_token, move(value));
@@ -185,7 +185,6 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
         current.type == TokenType::BOOL_KEYWORD ||
         current.type == TokenType::AUTO)
     {
-        // TODO: Will add support for functions as parameters later for now will only supoort simple parameters
         return parseLetStatementWithType(true);
     }
     else if (
@@ -271,6 +270,241 @@ std::unique_ptr<Statement> Parser::parseWaitStatement()
     return make_unique<WaitStatement>(wait, std::move(call));
 }
 
+// Parsing use statement
+std::unique_ptr<Statement> Parser::parseUseStatement()
+{
+    std::optional<std::unique_ptr<Expression>> functionCall;
+    Token use_token = currentToken();
+    advance(); // Consume the use keyword token
+
+    Token kind_token;
+    if (currentToken().type == TokenType::DATA || currentToken().type == TokenType::BEHAVIOR)
+    {
+        kind_token = currentToken();
+        advance(); // Consume 'data' or 'behavior'
+    }
+    else
+    {
+        logError("Expected either 'data' or 'behavior' keyword but got: " + currentToken().TokenLiteral);
+    }
+
+    if (currentToken().type == TokenType::FULLSTOP)
+    {
+        logError("Expected data block name but you are starting with a fullstop");
+    }
+
+    std::unique_ptr<Expression> expr = parseExpression(Precedence::PREC_NONE);
+
+    if (currentToken().type == TokenType::SEMICOLON)
+    {
+        advance();
+    }
+    else
+    {
+        logError("Expected ';' after use statement");
+    }
+
+    return make_unique<UseStatement>(
+        use_token,
+        kind_token,
+        std::move(expr),
+        std::move(functionCall));
+}
+
+// Parsing behavior statement
+std::unique_ptr<Statement> Parser::parseBehaviorStatement()
+{
+    std::vector<std::unique_ptr<Statement>> functions;
+    Token behavior_token = currentToken();
+    advance(); // Consuming the behavior keyword token
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected behavior block name");
+    }
+    auto behavior_name = parseIdentifier();
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        logError("Expected { to start behavior block");
+    }
+    advance(); // Consuming the behavior lparen
+    while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
+    {
+        auto funcStmt = parseStatement();
+        if (!funcStmt)
+        {
+            logError("Failed to parse function statement");
+            continue;
+        }
+        if (auto func = dynamic_cast<FunctionStatement *>(funcStmt.get()))
+        {
+            functions.push_back(std::move(funcStmt));
+        }
+        else
+        {
+            logError("Only function statements allowed inside behavior block");
+        }
+    }
+    if (currentToken().type != TokenType::RBRACE)
+    {
+        logError("Expected } to close behavior block");
+    }
+    advance();
+
+    return make_unique<BehaviorStatement>(
+        behavior_token,
+        std::move(behavior_name),
+        std::move(functions));
+}
+
+// Parsing data behavior
+std::unique_ptr<Statement> Parser::parseDataStatement()
+{
+    std::vector<std::unique_ptr<Statement>> fields;
+    Token data_token = currentToken();
+    advance(); // Consuming the data keyword token
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected data block name");
+    }
+    auto dataBlockName = parseIdentifier();
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        logError("Expected { to start data block");
+    }
+
+    advance(); // Consuming the LPAREN
+
+    while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
+    {
+        auto dataStmt = parseStatement();
+        if (auto letStmt = dynamic_cast<LetStatement *>(dataStmt.get()))
+        {
+            TokenType declaredType = letStmt->data_type_token.type; // or however you store the type
+            if (declaredType == TokenType::INT ||
+                declaredType == TokenType::FLOAT_KEYWORD ||
+                declaredType == TokenType::STRING_KEYWORD ||
+                declaredType == TokenType::BOOL_KEYWORD ||
+                declaredType == TokenType::CHAR_KEYWORD)
+            {
+                fields.push_back(std::move(dataStmt));
+            }
+            else
+            {
+                logError("Only type declarations are allowed inside data block. Got: " + dataStmt->token.TokenLiteral);
+            }
+        }
+        else
+        {
+            logError("Only let statements allowed inside data block");
+        }
+    }
+    if (currentToken().type != TokenType::RBRACE)
+    {
+        logError("Expected } to close data block");
+    }
+    advance();
+
+    return make_unique<DataStatement>(
+        data_token,
+        std::move(dataBlockName),
+        std::move(fields));
+}
+
+// Parsing component statements
+std::unique_ptr<Statement> Parser::parseComponentStatement()
+{
+    std::vector<unique_ptr<Statement>> privateData; // An empty vector where the private data if created shall all be stored
+    std::vector<unique_ptr<Statement>> privateMethods;
+
+    std::optional<std::unique_ptr<Statement>> dataBlock;
+    std::optional<std::unique_ptr<Statement>> behaviorBlock;
+
+    std::vector<std::unique_ptr<Statement>> usedDataBlocks;
+    std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
+    Token component_token = currentToken();
+    advance(); // Consume the keyword component
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected component name");
+    }
+    auto component_name = parseIdentifier();
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        logError("Expected { but got: " + currentToken().TokenLiteral);
+    }
+    advance(); // Consuming the LPAREN
+    // Now here we are inside the block so we have to parse the stuff inside
+
+    while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
+    {
+        std::unique_ptr<Statement> stmt = nullptr;
+
+        switch (currentToken().type)
+        {
+        case TokenType::USE:
+            if (nextToken().type == TokenType::BEHAVIOR)
+            {
+                stmt = parseUseStatement();
+                usedBehaviorBlocks.push_back(std::move(stmt));
+            }
+            else if (nextToken().type == TokenType::DATA)
+            {
+                stmt = parseUseStatement();
+                usedDataBlocks.push_back(std::move(stmt));
+            }
+            else
+            {
+                logError("Expected 'use data' or 'use behavior', got: " + nextToken().TokenLiteral);
+                advance(); // skip the unexpected token
+            }
+            break;
+        case TokenType::DATA:
+            stmt = parseDataStatement();
+            dataBlock = std::move(stmt);
+            break;
+        case TokenType::BEHAVIOR:
+            stmt = parseBehaviorStatement();
+            behaviorBlock = std::move(stmt);
+            break;
+        case TokenType::INT:
+        case TokenType::STRING_KEYWORD:
+        case TokenType::FLOAT_KEYWORD:
+        case TokenType::BOOL_KEYWORD:
+        case TokenType::CHAR_KEYWORD:
+            stmt = parseLetStatementWithType(false);
+            privateData.push_back(std::move(stmt));
+            break;
+        case TokenType::IDENTIFIER:
+            stmt = parseAssignmentStatement(false);
+            privateData.push_back(std::move(stmt));
+            break;
+        case TokenType::FUNCTION:
+            stmt = parseFunctionStatement();
+            privateMethods.push_back(std::move(stmt));
+            break;
+        default:
+            logError("Unknown statement inside component block: " + currentToken().TokenLiteral);
+            advance();
+            continue;
+        }
+    }
+    if (currentToken().type != TokenType::RBRACE)
+    {
+        logError("Expected } to close component block");
+    }
+    advance(); // Consume the RPAREN
+
+    return std::make_unique<ComponentStatement>(
+        component_token,
+        std::move(component_name),
+        std::move(privateData),
+        std::move(privateMethods),
+        std::move(dataBlock),
+        std::move(behaviorBlock),
+        std::move(usedDataBlocks),
+        std::move(usedBehaviorBlocks));
+}
+
 // Parsing function statement
 std::unique_ptr<Statement> Parser::parseFunctionStatement()
 {
@@ -286,7 +520,7 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement()
 }
 
 // Parsing return statements
-unique_ptr<Statement> Parser::parseReturnStatement()
+std::unique_ptr<Statement> Parser::parseReturnStatement()
 {
     Token return_stmt = currentToken();
     advance();
@@ -302,7 +536,7 @@ unique_ptr<Statement> Parser::parseReturnStatement()
         return nullptr;
     }
 
-    cout << "[DEBUG] Parsing return expression token: " << currentToken().TokenLiteral << endl;
+    std::cout << "[DEBUG] Parsing return expression token: " << currentToken().TokenLiteral << endl;
     auto return_value = parseExpression(Precedence::PREC_NONE);
 
     if (!return_value)
@@ -964,6 +1198,7 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::LESS_THAN] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::GT_OR_EQ] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LT_OR_EQ] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::FULLSTOP] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::OR] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
@@ -1025,6 +1260,10 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionStatement;
     StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::ERROR] = &Parser::parseErrorStatement;
+    StatementParseFunctionsMap[TokenType::COMPONENT] = &Parser::parseComponentStatement;
+    StatementParseFunctionsMap[TokenType::BEHAVIOR] = &Parser::parseBehaviorStatement;
+    StatementParseFunctionsMap[TokenType::DATA] = &Parser::parseDataStatement;
+    StatementParseFunctionsMap[TokenType::USE] = &Parser::parseUseStatement;
 }
 
 // Precedence getting function
