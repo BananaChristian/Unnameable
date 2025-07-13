@@ -332,6 +332,14 @@ struct BehaviorStatement : Statement
     BehaviorStatement(Token behavior, std::unique_ptr<Expression> behavior_name, std::vector<std::unique_ptr<Statement>> funcs) : Statement(behavior), behavior_token(behavior), behaviorBlockName(std::move(behavior_name)), functions(std::move(funcs)) {};
 };
 
+// Init statement
+struct InitStatement : Statement
+{
+    Token init_token;
+    std::vector<std::unique_ptr<Statement>> constructor_args;
+    std::unique_ptr<Statement> block;
+};
+
 // Component statement struct
 struct ComponentStatement : Statement
 {
@@ -625,6 +633,42 @@ struct FunctionStatement : Statement
         return "Function Statement: " + funcExpr->toString();
     }
     FunctionStatement(Token funcStmtTok, std::unique_ptr<Expression> expr) : Statement(funcStmtTok), funcExpr(std::move(expr)) {};
+};
+
+// Function declaration statement
+struct FunctionDeclaration : Statement
+{
+    Token work_keyword_token;
+    std::unique_ptr<Expression> function_name;
+    std::vector<std::unique_ptr<Statement>> parameters;
+    std::unique_ptr<Expression> return_type;
+
+    std::string toString() override
+    {
+        std::string arguments;
+        for (auto &param : parameters)
+        {
+            arguments += param->toString();
+        }
+        return "Function Declaration Statement: " + work_keyword_token.TokenLiteral + " " +
+               (function_name ? function_name->toString() : "[null_name]") + " " +
+               arguments + " " +
+               (return_type ? return_type->toString() : "[no_return]");
+    }
+
+    FunctionDeclaration(Token work, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type) : Statement(work), work_keyword_token(work), function_name(std::move(identifier)), parameters(std::move(params)), return_type(std::move(ret_type)) {};
+};
+
+//Function Declaration expression
+struct FunctionDeclarationExpression : Expression
+{
+    Token work_token;
+    std::unique_ptr<Statement> funcDeclrStmt;
+    std::string toString() override
+    {
+        return "Function Declaration Expression: " + funcDeclrStmt->toString();
+    }
+    FunctionDeclarationExpression(Token work, std::unique_ptr<Statement> declaration) : Expression(work), funcDeclrStmt(std::move(declaration)) {};
 };
 
 // Block statement

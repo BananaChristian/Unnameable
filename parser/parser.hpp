@@ -4,6 +4,8 @@
 #include <vector>
 #include <map>
 
+#define CPPREST_FORCE_REBUILD
+
 struct ParseError{
     std::string message;
     int line;
@@ -195,7 +197,7 @@ private:
     Token currentToken();
     Token nextToken();
 
-    //Wrapper function
+    //Wrapper functions
     std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
 
     //Function to select how to parse grouped expression

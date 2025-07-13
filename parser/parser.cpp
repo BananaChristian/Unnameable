@@ -505,7 +505,6 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement()
 
     return make_unique<FunctionStatement>(funcToken, std::move(funcExpr));
 }
-
 // Parsing return statements
 std::unique_ptr<Statement> Parser::parseReturnStatement()
 {
@@ -945,9 +944,9 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
 }
 
 // Parsing function expression
-unique_ptr<Expression> Parser::parseFunctionExpression()
+std::unique_ptr<Expression> Parser::parseFunctionExpression()
 {
-    cout << "[TEST]Function parser is working\n";
+    std::cout << "[TEST]Function parser is working\n";
     //--------Dealing with work keyword---------------
     Token func_tok = currentToken(); // The token represting the keyword for functions (work)
     advance();
@@ -990,11 +989,21 @@ unique_ptr<Expression> Parser::parseFunctionExpression()
     }
 
     std::cout << "[DEBUG]: Encountered the " << currentToken().TokenLiteral << "\n";
+    if (currentToken().type == TokenType::SEMICOLON)
+    {
+        advance(); // consume the semicolon
+        auto decl = make_unique<FunctionDeclaration>(
+            func_tok,
+            std::move(identExpr),
+            std::move(call),
+            std::move(return_type));
+        return make_unique<FunctionDeclarationExpression>(func_tok, std::move(decl));
+    }
 
     auto block = parseBlockExpression(); // Parsing the blocks
     if (!block)
     {
-        cerr << "[ERROR] Failed to parse function body.\n";
+        std::cerr << "[ERROR] Failed to parse function body.\n";
         return nullptr;
     }
 
@@ -1005,7 +1014,7 @@ unique_ptr<Expression> Parser::parseFunctionExpression()
 vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
 {
     std::cout << "PARSING FUNCTION PARAMETERS\n";
-    std::vector<std::unique_ptr<Statement>> args; // Decldaring the empty vector
+    std::vector<std::unique_ptr<Statement>> args; // Declaring the empty vector
 
     // Checking if the current token is the lparen
     if (currentToken().type != TokenType::LPAREN)
