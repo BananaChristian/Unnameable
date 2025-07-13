@@ -1,110 +1,177 @@
 # Unnameable Compiler
 
-**Unnameable** is a statically type, Ahead of time compiled modern, lightweight programming language written in C++. It is designed to be fast, minimal, and expressive.
-It exists to make low level development **clear**,**accesible** and **fun** for everyone, especially for beginners and builders on modest machines.
-Born from frustration with the complexity of C++, the strictness of Rust, and rawness of C, Unnameable aims to strike a balance **fast and powerful, yet simple and predictable**
+**Unnameable** is a statically typed, ahead-of-time compiled modern programming language written in C++. It is designed to be fast, minimal, and expressive.
 
-No matter what you’re building an OS, a game engine, or your first kernel 
-you shouldn't need a PhD or wrestle with books just to understand memory management.
+It exists to make low-level development **clear**, **accessible**, and **fun** for everyone especially for beginners and builders working on modest machines.
+
+Born from the frustration with the complexity of C++, the strictness of Rust, and the rawness of C, Unnameable aims to strike a balance:
+
+> **Fast and powerful, yet simple and predictable.**
+
+No matter what you’re building — an OS, a game engine, or your first kernel — you shouldn't need a PhD or wrestle with books just to understand memory management.
 
 Unnameable is here to bring the joy back to low-level programming.
 
-This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, and a simple REPL for testing.
+---
 
-## Features
+This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, semantic analyzer.
 
-- Custom lexer and tokenizer *(To be extended)*
-- Custom parser *(To be extended)*
-- Semantic analysis *(In development)*
-- LLVM IR *(Planned)*
+---
 
-## Data types in Unnameable
+## ✨ Features
 
-- Integers
-- Booleans
-- Strings
-- Chars
-- Floats 
+- Custom Lexer and Tokenizer *(in progress)*
+- Custom Parser *(in progress)*
+- Semantic Analyzer *(active development)*
+- Component system (OOP-like support)
+- Support for constructors and method dispatch
+- Support for `self` keyword and instance field access
+- LLVM IR Codegen *(planned)*
 
-## Comments in Unnameable
+---
 
+## 🧠 Data Types
+
+- `int` — 32-bit integers
+- `bool` — true/false values
+- `string` — UTF-8 strings *(basic support)*
+- `char` — single characters
+- `float` — 32-bit floating-point numbers
+
+---
+
+## 💬 Comments
+
+```unn
+# This is a comment in Unnameable
 ```
-#This is a comment in Unnameable
-```
 
-## Variable declarations 
-```
+
+## 📦Variables and type inference
+```unn
 int x;
-x=2;
+x = 2;
 
-string name="Iron";
+string name = "Iron";
 
-float pi=3.14;
+float pi = 3.14;
+
+auto y = 42;  # Type inferred as int
+
+
 ```
 
-## Type inference
-```
-auto x=2;
-```
-
-## Functions in Unnameable
-```
-work greet(string name): string{
-      return "Hello"+ name;
+##  ⚒️ Functions
+```unn
+work greet(string name): string {
+    return "Hello" + name;
 }
-```
-## Error handling
-```
-work greet(string name): string{
-      return "Hello"+ name,error("Got an error");
-}
+
 ```
 
-## Function calls in Unnameable
+## ⚠️ Error handling
+```unn
+work greet(string name): string {
+    return "Hello" + name, error("Got an error");
+}
+
 ```
-greet("Blank");
-add(1,2);
+
+
+## 🧬Function calls
+```
+greet("John");
+add(1, 2);
 config();
-```
-## Control flow in Unnameable
-```
-if(age>18){
-      return "adult";
-}elseif(x<18){
-      return "Not an adult";
-}else{
-      return "Don't know";
-}
+
 ```
 
-## While loops
+## 🔁 Control flow
 ```
-while(x>5){
-      return x;
+if (age > 18) {
+    return "adult";
+} elseif (age < 18) {
+    return "minor";
+} else {
+    return "unknown";
 }
+
 ```
 
-## For loops
+## 🔚Loops
+*While loops*
 ```
-for(int i;i>10;i++){
+while (x > 5) {
+    return x;
+}
+
+```
+
+*For loops*
+```
+for (int i; i < 10; i++) {
     int x;
-    x=x+1;
+    x = x + 1;
 }
+
 ```
-## FUTURE ADDITIONS FOR LEXER SUPPORT
 
-- Unicode
-- UTF-8 multibyte characters 
-- UTF-16 
-- UTF-32
-  
-## FUTURE ADDITIONS FOR PARSER SUPPORT
+## 🧱 Component System (OOP-like structure)
+Unnameable supports components, clean structures for organizing data and behavior, like classes, but lightweight and predictable.
 
+```unn
+behavior combat{
+      work kick() :void;
+      work punch(): void;
+      work super(): void;
+}
+
+data attributes{
+      int health_extra;
+      int speed;
+}
+
+component Player {
+    int health;
+
+    #This is the constructor for the component
+    init(int h) {
+        self.health = h;
+    }
+
+    use behavior combat;
+    use behavior combat.super();
+
+    use data attributes;
+
+    work greet(): string {
+        return "Hello, I have " + self.health + " HP";
+    }
+}
+
+let p = new Player(100);
+p.greet();
+
+```
+
+## 🔮 Future Lexer additions
+- Unicode support
+- UTF-8 multibyte characters
+- UTF-16 / UTF-32 decoding
+
+## 🧠 Future additions
 - High order functions
 - Pattern matching
-- Function parameters as expressions
+- Function parameters as first-class expressions
 
-## REQUIREMENTS 
-
+## 🧰 Requirements
 - C++17 or later
-- g++ or clang 
+- g++ or clang
+- Make(optional for building)
+
+## 🌍Philosophy
+Unnameable is designed to make systems programming less painful and soul draining.
+The language upholds the principles of clarity and predictability to allow it's user to build powerful things.
+
+## ⚙️ Current status
+This project is under active and early development and is still highly experimental. If you want to explore,contribute, or just follow the journey feel free to fork,play or reach out.
