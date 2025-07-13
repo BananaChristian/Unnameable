@@ -58,7 +58,7 @@ enum class TokenType{
     CONSTANT,
     CAST,
     COMPONENT,//component key word for classes
-    SELF,
+    SELF,//self keyword for a component instance
     DATA,//data keyword token for class 
     BEHAVIOR,//behavior keyword token for class method blocks
     USE,//use keyword that allows use of external data and behavior blocks
@@ -67,6 +67,7 @@ enum class TokenType{
     WAIT,//wait
     SIGNAL,//signal
     ERROR,//error
+    NEW,//new keyword for a new instance of a component
 
 
     //Control flow

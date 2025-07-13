@@ -92,7 +92,7 @@ unique_ptr<Statement> Parser::parseStatement()
         }
 
         std::cout << "[DEBUG] Parsed generic expression statement.\n";
-        return make_unique<ExpressionStatement>(current, move(expr));
+        return std::make_unique<ExpressionStatement>(current, move(expr));
     }
 
     logError("Unexpected token at start of statement:  ");
@@ -101,10 +101,10 @@ unique_ptr<Statement> Parser::parseStatement()
 }
 
 // Parsing let statements with types
-unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
+std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 {
     Token ident_token = currentToken();
-    cout << "[DEBUG] Identifier token: " + ident_token.TokenLiteral << endl;
+    std::cout << "[DEBUG] Identifier token: " + ident_token.TokenLiteral << endl;
     advance();
 
     if (currentToken().type != TokenType::ASSIGN)
@@ -114,7 +114,7 @@ unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     }
     advance();
 
-    unique_ptr<Expression> value = parseExpression(Precedence::PREC_NONE);
+    std::unique_ptr<Expression> value = parseExpression(Precedence::PREC_NONE);
 
     if (!isParam && currentToken().type == TokenType::SEMICOLON)
     {
@@ -125,7 +125,7 @@ unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
         logError("Expected a semi colon but got: " + currentToken().TokenLiteral);
     }
 
-    return make_unique<AssignmentStatement>(ident_token, move(value));
+    return std::make_unique<AssignmentStatement>(ident_token, move(value));
 }
 
 // Parsing let statements that have data types
@@ -769,8 +769,31 @@ unique_ptr<Statement> Parser::parseIfStatement()
 }
 
 // Parsing identifiers
-unique_ptr<Expression> Parser::parseIdentifier()
+std::unique_ptr<Expression> Parser::parseIdentifier()
 {
+    if(currentToken().type==TokenType::SELF){
+        Token self_token=currentToken();
+        advance();
+
+        if(currentToken().type!= TokenType::FULLSTOP){
+            logError("Exprected a . after self but got: "+currentToken().TokenLiteral);
+            return nullptr;
+        }
+
+        advance();
+
+        if(currentToken().type!=TokenType::IDENTIFIER){
+            logError("Expected an identifer after . but got"+ currentToken().TokenLiteral);
+            return nullptr;
+        }
+        Token field_token=currentToken();
+        advance();
+
+        return make_unique<FieldAccessExpression>(
+            std::make_unique<Identifier>(self_token),
+            field_token
+        );
+    }
     auto ident = make_unique<Identifier>(currentToken());
     if (!ident)
     {
@@ -815,24 +838,44 @@ unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
 }
 
 // Inifix parse function definition
-unique_ptr<Expression> Parser::parseInfixExpression(unique_ptr<Expression> left)
+std::unique_ptr<Expression> Parser::parseInfixExpression(unique_ptr<Expression> left)
 {
     Token operat = currentToken();
-    cout << "[DEBUG] parsing infix with operator: " << operat.TokenLiteral << endl;
+    std::cout << "[DEBUG] parsing infix with operator: " << operat.TokenLiteral << endl;
     Precedence prec = get_precedence(operat.type);
     advance();
     auto right = parseExpression(prec);
-    return make_unique<InfixExpression>(move(left), operat, move(right));
+    return std::make_unique<InfixExpression>(move(left), operat, move(right));
 }
 
 // Prefix parse function definition
-unique_ptr<Expression> Parser::parsePrefixExpression()
+std::unique_ptr<Expression> Parser::parsePrefixExpression()
 {
     Token operat = currentToken();
     Precedence operatorPrecedence = get_precedence(operat.type);
     advance();
     auto operand = parseExpression(operatorPrecedence);
-    return make_unique<PrefixExpression>(operat, move(operand));
+    return std::make_unique<PrefixExpression>(operat, move(operand));
+}
+
+std::unique_ptr<Expression> Parser::parseNewComponentExpression(){
+    Token new_token=currentToken();
+    advance();//Consuming the new keyword open
+    Token component_name=currentToken();
+    if(component_name.type!=TokenType::IDENTIFIER){
+        logError("Expected identifier for component name after new but got: "+component_name.TokenLiteral);
+        return nullptr;
+    }
+    advance();//Consuming the component name
+    if (currentToken().type != TokenType::LPAREN) {
+        logError("Expected '(' after component name in 'new' expression");
+        return nullptr;
+    }
+    advance();//Consume the lparen
+    auto args=parseCallArguments();
+
+    return std::make_unique<NewComponentExpression>(new_token,component_name,std::move(args));
+
 }
 
 // Integer literal parse function
@@ -1281,6 +1324,8 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::CHAR] = &Parser::parseCharLiteral;
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
+    PrefixParseFunctionsMap[TokenType::NEW]=&Parser::parseNewComponentExpression;
+    PrefixParseFunctionsMap[TokenType::SELF]=&Parser::parseIdentifier;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedOrTupleExpression;

@@ -20,6 +20,7 @@ class Lexer
         {"cast", TokenType::CAST},
         {"component", TokenType::COMPONENT},
         {"self", TokenType::SELF},
+        {"new",TokenType::NEW},
         {"data", TokenType::DATA},
         {"behavior", TokenType::BEHAVIOR},
         {"use",TokenType::USE},

@@ -49,6 +49,38 @@ struct Identifier : Expression
     Identifier(Token ident) : Expression(ident), identifier(ident) {};
 };
 
+struct FieldAccessExpression : Expression {
+    std::unique_ptr<Expression> base;  // e.g. self
+    Token field;
+
+    std::string toString() override {
+        return "Field Access Expression: "+ base->toString() + "." + field.TokenLiteral;
+    }
+
+    FieldAccessExpression(std::unique_ptr<Expression> baseExpr, Token fieldToken)
+        :Expression(fieldToken), base(std::move(baseExpr)), field(fieldToken) {};
+
+    
+};
+
+struct NewComponentExpression: Expression{
+    Token new_token;                      // token for 'new'
+    Token component_name;                 // e.g. 'Player'
+    std::vector<std::unique_ptr<Expression>> arguments;
+
+    std::string toString() override {
+        std::string args_str;
+        for (auto &arg : arguments) {
+            args_str += arg->toString() + ", ";
+        }
+        return "NewExpressionComponent: new " + component_name.TokenLiteral + "(" + args_str + ")";
+    }
+
+    NewComponentExpression(Token newTok, Token compName, std::vector<std::unique_ptr<Expression>> args)
+        :Expression(newTok), new_token(newTok), component_name(compName), arguments(std::move(args)) {}
+
+};
+
 // Integer literal
 struct IntegerLiteral : Expression
 {
