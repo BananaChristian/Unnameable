@@ -338,6 +338,18 @@ struct InitStatement : Statement
     Token init_token;
     std::vector<std::unique_ptr<Statement>> constructor_args;
     std::unique_ptr<Statement> block;
+
+    std::string toString() override
+    {
+        std::string args;
+        for (auto &arguments : constructor_args)
+        {
+            args += arguments->toString();
+        }
+        return "Init Statement: " + init_token.TokenLiteral + " (" + args + ") " + block->toString();
+    }
+
+    InitStatement(Token init, std::vector<std::unique_ptr<Statement>> args, std::unique_ptr<Statement> block_content) : Statement(init), constructor_args(std::move(args)), block(std::move(block_content)) {};
 };
 
 // Component statement struct
@@ -659,7 +671,7 @@ struct FunctionDeclaration : Statement
     FunctionDeclaration(Token work, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type) : Statement(work), work_keyword_token(work), function_name(std::move(identifier)), parameters(std::move(params)), return_type(std::move(ret_type)) {};
 };
 
-//Function Declaration expression
+// Function Declaration expression
 struct FunctionDeclarationExpression : Expression
 {
     Token work_token;

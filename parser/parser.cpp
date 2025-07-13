@@ -109,7 +109,7 @@ unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 
     if (currentToken().type != TokenType::ASSIGN)
     {
-        logError("Expected = after identifier");
+        logError("Expected = after identifier but got: " + currentToken().TokenLiteral);
         return nullptr;
     }
     advance();
@@ -122,7 +122,7 @@ unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     }
     else
     {
-        logError("Expected a semi colon ");
+        logError("Expected a semi colon but got: " + currentToken().TokenLiteral);
     }
 
     return make_unique<AssignmentStatement>(ident_token, move(value));
@@ -137,7 +137,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 
     if (currentToken().type != TokenType::IDENTIFIER)
     {
-        logError("Expected variable name after data type ");
+        logError("Expected variable name after data type but got: " + currentToken().TokenLiteral);
         return nullptr;
     }
 
@@ -159,13 +159,26 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
         cout << "[DEBUG] Encountered semicolon token" << endl;
     }
 
-    if (!isParam && currentToken().type == TokenType::SEMICOLON)
+    if (!isParam)
     {
-        advance();
+        if (currentToken().type == TokenType::SEMICOLON)
+        {
+            advance();
+        }
+        else
+        {
+            logError("Expected a semicolon but got: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
     }
     else
     {
-        logError("Expected a semi colon but got:" + currentToken().TokenLiteral);
+        // If it's a function parameter, we expect either ')' or ',' next
+        if (currentToken().type != TokenType::COMMA && currentToken().type != TokenType::RPAREN)
+        {
+            logError("Expected ',' or ')' after parameter declaration but got: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
     }
 
     return make_unique<LetStatement>(dataType_token, ident_token, assign_token, move(value));
@@ -490,6 +503,61 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
         std::move(privateMethods),
         std::move(usedDataBlocks),
         std::move(usedBehaviorBlocks));
+}
+
+std::unique_ptr<Statement> Parser::parseInitConstructorStatement()
+{
+    Token init_token = currentToken();
+    advance(); // Consume 'init'
+
+    std::vector<std::unique_ptr<Statement>> args;
+
+    // Expect LPAREN
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        logError("Expected '(' after 'init', but got: " + currentToken().TokenLiteral);
+        return nullptr;
+    }
+    advance(); // consume '('
+
+    // Parse arguments until RPAREN
+    while (currentToken().type != TokenType::RPAREN && currentToken().type != TokenType::END)
+    {
+        // Parse argument
+        auto arg = parseLetStatementDecider();
+        if (arg)
+        {
+            args.push_back(std::move(arg));
+        }
+
+        if (currentToken().type == TokenType::COMMA)
+        {
+            advance(); // consume comma and continue
+        }
+        else if (currentToken().type != TokenType::RPAREN)
+        {
+            logError("Expected ',' or ')' in init argument list, got: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
+    }
+
+    // Expect closing RPAREN
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        logError("Expected ')' to close init argument list");
+        return nullptr;
+    }
+    advance(); // consume ')'
+
+    // Parse the block statement
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        logError("[ERROR] Expected '{' to start init block but got: " + currentToken().TokenLiteral);
+        return nullptr;
+    }
+
+    auto block = parseBlockStatement();
+    return make_unique<InitStatement>(init_token, std::move(args), std::move(block));
 }
 
 // Parsing function statement
@@ -1137,7 +1205,7 @@ unique_ptr<Statement> Parser::parseBlockStatement()
     Token lbrace = currentToken();
     if (lbrace.type != TokenType::LBRACE)
     {
-        logError("[ERROR] Expected '{' to start block");
+        logError("[ERROR] Expected '{' to start block but got:" + lbrace.TokenLiteral);
         return nullptr;
     }
     advance();
@@ -1260,6 +1328,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::BEHAVIOR] = &Parser::parseBehaviorStatement;
     StatementParseFunctionsMap[TokenType::DATA] = &Parser::parseDataStatement;
     StatementParseFunctionsMap[TokenType::USE] = &Parser::parseUseStatement;
+    StatementParseFunctionsMap[TokenType::INIT] = &Parser::parseInitConstructorStatement;
 }
 
 // Precedence getting function

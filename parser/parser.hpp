@@ -123,6 +123,9 @@ private:
     //Parsing component statements
     std::unique_ptr<Statement> parseComponentStatement();
 
+    //Parsing constructor statement
+    std::unique_ptr<Statement> parseInitConstructorStatement();
+
     //Parsing use statements
     std::unique_ptr<Statement> parseUseStatement();
 
