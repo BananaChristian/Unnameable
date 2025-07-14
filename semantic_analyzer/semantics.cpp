@@ -2,6 +2,8 @@
 #include "semantics.hpp"
 #include "ast.hpp"
 
+#define CPPREST_FORCE_REBUILD
+
 Semantics::Semantics()
 {
     symbolTable.push_back({});
@@ -79,8 +81,17 @@ void Semantics::analyzeErrorStatement(Node *node)
     if (!errStmt)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing error statement\n";
-    auto errExpr=errStmt->errorExpr.get();
+    auto errExpr = errStmt->errorExpr.get();
     analyzer(errExpr);
+}
+
+void Semantics::analyzeExpressionStatement(Node *node)
+{
+    auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
+    if (!exprStmt)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing expression statement\n";
+    analyzer(exprStmt->expression.get());
 }
 
 void Semantics::analyzeErrorExpression(Node *node)
@@ -89,7 +100,7 @@ void Semantics::analyzeErrorExpression(Node *node)
     if (!errExpr)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing error expression\n";
-    auto errInfo=errExpr->err_message.get();
+    auto errInfo = errExpr->err_message.get();
     analyzer(errInfo);
 }
 
@@ -512,7 +523,14 @@ void Semantics::analyzeLetStatements(Node *node)
     if (letStmt->value)
     {
         analyzer(letStmt->value.get());
-        TypeSystem exprType = inferExpressionType(letStmt->value.get());
+        TypeSystem exprType = TypeSystem::UNKNOWN;
+        auto it = annotations.find(letStmt->value.get());
+        std::string customType = "";
+        if (it != annotations.end())
+        {
+            exprType = it->second.nodeType;
+            customType = it->second.customTypeName;
+        }
 
         if (varType == TypeSystem::UNKNOWN)
         {
@@ -746,6 +764,12 @@ void Semantics::registerAnalyzerFunctions()
     analyzerFunctionsMap[typeid(FunctionExpression)] = &Semantics::analyzeFunctionExpression;
     analyzerFunctionsMap[typeid(ErrorStatement)] = &Semantics::analyzeErrorStatement;
     analyzerFunctionsMap[typeid(ErrorExpression)] = &Semantics::analyzeErrorExpression;
+    analyzerFunctionsMap[typeid(DataStatement)] = &Semantics::analyzeDataStatementBlock;
+    analyzerFunctionsMap[typeid(BehaviorStatement)] = &Semantics::analyzeBehaviorStatementBlock;
+    analyzerFunctionsMap[typeid(ComponentStatement)] = &Semantics::analyzeComponentStatementBlock;
+    analyzerFunctionsMap[typeid(FieldAccessExpression)] = &Semantics::analyzeFieldAccessExpression;
+    analyzerFunctionsMap[typeid(NewComponentExpression)] = &Semantics::analyzeNewComponentExpression;
+    analyzerFunctionsMap[typeid(ExpressionStatement)] = &Semantics::analyzeExpressionStatement;
 }
 
 // Function maps the type string to the respective type system

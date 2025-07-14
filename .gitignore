@@ -6,6 +6,8 @@ void
 *.log
 *.out
 
+language_design.md
+
 test.unn
 
 TODO

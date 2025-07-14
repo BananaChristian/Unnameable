@@ -286,7 +286,7 @@ std::unique_ptr<Statement> Parser::parseWaitStatement()
 // Parsing use statement
 std::unique_ptr<Statement> Parser::parseUseStatement()
 {
-    std::optional<std::unique_ptr<Expression>> functionCall;
+    std::optional<std::unique_ptr<Expression>> functionCallOrData;
     Token use_token = currentToken();
     advance(); // Consume the use keyword token
 
@@ -321,7 +321,7 @@ std::unique_ptr<Statement> Parser::parseUseStatement()
         use_token,
         kind_token,
         std::move(expr),
-        std::move(functionCall));
+        std::move(functionCallOrData));
 }
 
 // Parsing behavior statement
@@ -431,6 +431,9 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
 
     std::vector<std::unique_ptr<Statement>> usedDataBlocks;
     std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
+    
+    std::optional<std::unique_ptr<Statement>> initConstructor;
+
     Token component_token = currentToken();
     advance(); // Consume the keyword component
     if (currentToken().type != TokenType::IDENTIFIER)
@@ -484,6 +487,15 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
             stmt = parseFunctionStatement();
             privateMethods.push_back(std::move(stmt));
             break;
+        case TokenType::INIT:
+            if(initConstructor.has_value()){
+                logError("Duplicate init constructor in component");
+                advance();
+                break;
+            }
+            stmt=parseInitConstructorStatement();
+            initConstructor=std::move(stmt);
+            break;
         default:
             logError("Unknown statement inside component block: " + currentToken().TokenLiteral);
             advance();
@@ -502,7 +514,9 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
         std::move(privateData),
         std::move(privateMethods),
         std::move(usedDataBlocks),
-        std::move(usedBehaviorBlocks));
+        std::move(usedBehaviorBlocks),
+        std::move(initConstructor)
+    );
 }
 
 std::unique_ptr<Statement> Parser::parseInitConstructorStatement()

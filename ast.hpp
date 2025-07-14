@@ -49,36 +49,38 @@ struct Identifier : Expression
     Identifier(Token ident) : Expression(ident), identifier(ident) {};
 };
 
-struct FieldAccessExpression : Expression {
-    std::unique_ptr<Expression> base;  // e.g. self
+struct FieldAccessExpression : Expression
+{
+    std::unique_ptr<Expression> base; // e.g. self
     Token field;
 
-    std::string toString() override {
-        return "Field Access Expression: "+ base->toString() + "." + field.TokenLiteral;
+    std::string toString() override
+    {
+        return "Field Access Expression: " + base->toString() + "." + field.TokenLiteral;
     }
 
     FieldAccessExpression(std::unique_ptr<Expression> baseExpr, Token fieldToken)
-        :Expression(fieldToken), base(std::move(baseExpr)), field(fieldToken) {};
-
-    
+        : Expression(fieldToken), base(std::move(baseExpr)), field(fieldToken) {};
 };
 
-struct NewComponentExpression: Expression{
-    Token new_token;                      // token for 'new'
-    Token component_name;                 // e.g. 'Player'
+struct NewComponentExpression : Expression
+{
+    Token new_token;      // token for 'new'
+    Token component_name; // e.g. 'Player'
     std::vector<std::unique_ptr<Expression>> arguments;
 
-    std::string toString() override {
+    std::string toString() override
+    {
         std::string args_str;
-        for (auto &arg : arguments) {
+        for (auto &arg : arguments)
+        {
             args_str += arg->toString() + ", ";
         }
         return "NewExpressionComponent: new " + component_name.TokenLiteral + "(" + args_str + ")";
     }
 
     NewComponentExpression(Token newTok, Token compName, std::vector<std::unique_ptr<Expression>> args)
-        :Expression(newTok), new_token(newTok), component_name(compName), arguments(std::move(args)) {}
-
+        : Expression(newTok), new_token(newTok), component_name(compName), arguments(std::move(args)) {}
 };
 
 // Integer literal
@@ -305,22 +307,23 @@ struct UseStatement : Statement
     Token use_token;
     Token kind_token; // "data" or "behavior"
     std::unique_ptr<Expression> blockName;
-    std::optional<std::unique_ptr<Expression>> functionCall;
+
+    std::optional<std::unique_ptr<Expression>> functionCallOrData;
 
     std::string toString() override
     {
         std::string result = "Use statement: ";
         result += kind_token.TokenLiteral + " ";
         result += blockName->toString();
-        if (functionCall.has_value())
+        if (functionCallOrData.has_value())
         {
-            result += "." + (*functionCall)->toString();
+            result += "." + (*functionCallOrData)->toString();
         }
         return result + ";";
     }
 
     UseStatement(Token useTok, Token kindTok, std::unique_ptr<Expression> name, std::optional<std::unique_ptr<Expression>> call)
-        : Statement(useTok), use_token(useTok), kind_token(kindTok), blockName(std::move(name)), functionCall(std::move(call)) {}
+        : Statement(useTok), use_token(useTok), kind_token(kindTok), blockName(std::move(name)), functionCallOrData(std::move(call)) {}
 };
 
 // Data statement struct
@@ -396,6 +399,8 @@ struct ComponentStatement : Statement
     std::vector<std::unique_ptr<Statement>> usedDataBlocks;
     std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
 
+    std::optional<std::unique_ptr<Statement>> initConstructor;
+
     std::string toString() override
     {
         std::string result = "Component Statement: " + component_name->toString() + " {\n";
@@ -423,6 +428,12 @@ struct ComponentStatement : Statement
             result += "  " + use->toString() + "\n";
         }
 
+        // Init constructor
+        if (initConstructor.has_value())
+        {
+            result += " " + (*initConstructor)->toString();
+        }
+
         result += "}";
         return result;
     }
@@ -433,14 +444,16 @@ struct ComponentStatement : Statement
         std::vector<std::unique_ptr<Statement>> private_data,
         std::vector<std::unique_ptr<Statement>> private_methods,
         std::vector<std::unique_ptr<Statement>> used_data_blocks,
-        std::vector<std::unique_ptr<Statement>> used_behavior_blocks)
+        std::vector<std::unique_ptr<Statement>> used_behavior_blocks,
+        std::optional<std::unique_ptr<Statement>> init)
         : Statement(component),
           component_token(component),
           component_name(std::move(name)),
           privateData(std::move(private_data)),
           privateMethods(std::move(private_methods)),
           usedDataBlocks(std::move(used_data_blocks)),
-          usedBehaviorBlocks(std::move(used_behavior_blocks)) {}
+          usedBehaviorBlocks(std::move(used_behavior_blocks)),
+          initConstructor(std::move(init)) {}
 };
 
 // Error statement

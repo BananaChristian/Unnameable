@@ -7,7 +7,8 @@ SRC=main.cpp\
 	lexer/lexer.cpp\
 	parser/parser.cpp\
 	token/token.cpp\
-	semantic_analyzer/semantics.cpp
+	semantic_analyzer/semantics.cpp\
+	semantic_analyzer/component_semantics.cpp
 
 $(OUT):$(SRC)
 	$(CXX) $(CXXFLAGS) $(SRC) -o $(OUT)
