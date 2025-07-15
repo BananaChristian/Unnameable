@@ -330,8 +330,15 @@ void Semantics::analyzeIdentifierExpression(Node *node)
     auto identExp = dynamic_cast<Identifier *>(node);
     if (!identExp)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing function statement node: " << identExp->toString() << "\n";
-    auto identExpName = identExp->token.TokenLiteral;
+    std::cout << "[SEMANTIC LOG]: Analyzing identifier node: " << identExp->toString() << "\n";
+    auto identExpName = identExp->identifier.TokenLiteral;
+    std::cout<<"[IDENTIFIER NAME]: "<<identExpName<<"\n";
+    
+    if (identExpName == "self")
+    {
+        return;
+    }
+
     auto symbol = resolveSymbol(identExpName);
 
     if (!symbol)
@@ -730,8 +737,10 @@ void Semantics::analyzeInfixExpression(Node *node)
 
     TypeSystem resultType = resultOf(infixNode->operat.type, leftType, rightType);
 
-    if (!infixNode)
-        return;
+    // Analyzing the left and right sides of the infix expression
+    analyzer(infixNode->left_operand.get());
+    analyzer(infixNode->right_operand.get());
+
     annotations[infixNode] = SemanticInfo{
         .nodeType = resultType,
         .isMutable = false,

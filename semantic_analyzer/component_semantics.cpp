@@ -289,8 +289,8 @@ void Semantics::analyzeFieldAccessExpression(Node *node)
                     {
                         found = true;
                         annotations[selfExpr] = SemanticInfo{
-                            .nodeType = inferExpressionType(letStmt), // assuming you have a type field here
-                            .isMutable = false,                       // or however you track mutability
+                            .nodeType = inferExpressionType(letStmt), 
+                            .isMutable = false,                       
                             .isConstant = false,
                             .scopeDepth = (int)symbolTable.size() - 1,
                         };
