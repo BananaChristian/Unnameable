@@ -154,6 +154,27 @@ p.greet();
 
 ```
 
+## 🔒Immutability and Mutability
+Unnameable supports explicit control over variable mutability with the keywords *const* and *mut*
+- `const` declares an immutable variable. It must be initialized at declaration and cannot be reassigned later. This ensures safety and predictability.
+
+```
+const int x = 42;  # Immutable, cannot be changed
+```
+- `mut` declares a mutable variable. It can be reassigned multiple times after declaration.
+```
+mut int y;       # Mutable, can assign later
+y = 10;
+y = 20;          # Allowed
+```
+If no mutability keyword is given, variables are immutable by default, and must be assigned a value only once, either at declaration or later.
+Type inference with auto works together with *mut* and *const* for example
+```
+mut auto z = 5;    # Mutable variable with inferred type int
+const auto w = 3;  # Immutable variable with inferred type int
+
+```
+
 ## 🔮 Future Lexer additions
 - Unicode support
 - UTF-8 multibyte characters
