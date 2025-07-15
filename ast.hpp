@@ -6,6 +6,12 @@
 #include <vector>
 #include <optional>
 
+enum class Mutability{
+    IMMUTABLE,
+    MUTABLE,
+    CONSTANT
+};
+
 // GENERAL AST NODE
 struct Node
 {
@@ -471,13 +477,18 @@ struct ErrorStatement : Statement
 // Let statement node
 struct LetStatement : Statement
 {
+    Mutability mutability;
     Token data_type_token;
     Token ident_token;
     std::optional<Token> assign_token;
     std::unique_ptr<Expression> value;
-    std::string toString() override
+     std::string toString() override
     {
-        std::string result = "Let Statement: ( Data Type:" + data_type_token.TokenLiteral +
+        std::string mut_str = "";
+        if (mutability == Mutability::MUTABLE) mut_str = "mutable ";
+        else if (mutability == Mutability::CONSTANT) mut_str = "constant ";
+
+        std::string result = "Let Statement: (" + mut_str + "Data Type: " + data_type_token.TokenLiteral +
                              " Variable name: " + ident_token.TokenLiteral;
 
         if (value)
@@ -493,7 +504,7 @@ struct LetStatement : Statement
         return result;
     }
 
-    LetStatement(Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
+    LetStatement(Mutability muta,Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) :mutability(muta), data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
 };
 
 struct AssignmentStatement : Statement

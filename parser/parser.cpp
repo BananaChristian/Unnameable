@@ -131,6 +131,18 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 // Parsing let statements that have data types
 unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 {
+    Mutability mutability=Mutability::IMMUTABLE;
+    Token mutability_token=currentToken();
+    if(mutability_token.type==TokenType::CONST){
+        mutability=Mutability::CONSTANT;
+        advance();
+    }
+
+    if(mutability_token.type==TokenType::MUT){
+        mutability=Mutability::MUTABLE;
+        advance();
+    }
+
     Token dataType_token = currentToken();
     cout << "[DEBUG] Data type token: " + dataType_token.TokenLiteral << endl;
     advance();
@@ -144,8 +156,8 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     Token ident_token = currentToken();
     advance();
 
-    optional<Token> assign_token;
-    unique_ptr<Expression> value = nullptr;
+    std::optional<Token> assign_token;
+    std::unique_ptr<Expression> value = nullptr;
 
     if (currentToken().type == TokenType::ASSIGN)
     {
@@ -181,7 +193,14 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
         }
     }
 
-    return make_unique<LetStatement>(dataType_token, ident_token, assign_token, move(value));
+    if(mutability==Mutability::CONSTANT){
+        if(value==nullptr){
+            logError("Uninitialized const variable");
+            return nullptr;
+        }
+    }
+
+    return make_unique<LetStatement>(mutability,dataType_token, ident_token, assign_token, move(value));
 }
 
 /*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
@@ -1380,6 +1399,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::STRING_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::CONST]=&Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::MUT]=&Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionStatement;
     StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::ERROR] = &Parser::parseErrorStatement;

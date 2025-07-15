@@ -332,8 +332,8 @@ void Semantics::analyzeIdentifierExpression(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing identifier node: " << identExp->toString() << "\n";
     auto identExpName = identExp->identifier.TokenLiteral;
-    std::cout<<"[IDENTIFIER NAME]: "<<identExpName<<"\n";
-    
+    std::cout << "[IDENTIFIER NAME]: " << identExpName << "\n";
+
     if (identExpName == "self")
     {
         return;
@@ -513,10 +513,27 @@ void Semantics::analyzeLetStatements(Node *node)
     std::cout << "[SEMANTIC LOG]: Analyzing let statement: " << dynamic_cast<LetStatement *>(node)->toString() << "\n";
     std::cout << "[DEBUG]: Current symbol table size: " << symbolTable.size() << "\n";
     auto letStmt = dynamic_cast<LetStatement *>(node);
+    bool isConstant = false;
+    bool isMutable = false;
     if (!letStmt)
         return;
     std::string declaredTypeStr = letStmt->data_type_token.TokenLiteral; // Getting the data type of the variable
     std::string varName = letStmt->ident_token.TokenLiteral;             // Getting the variable name
+    // Checking for the mutability
+    if (letStmt->mutability == Mutability::MUTABLE)
+    {
+        isMutable = true;
+    }
+    else if (letStmt->mutability == Mutability::CONSTANT)
+    {
+        isConstant = true;
+    }
+
+    if (isConstant && letStmt->value && !isConstantExpression(letStmt->value.get()))
+    {
+        logError("Const variable '" + varName + "' must be assigned a compile-time constant expression", letStmt);
+        return;
+    }
 
     TypeSystem varType = mapTypeStringToTypeSystem(declaredTypeStr); // Getting the type of the variable
 
@@ -527,6 +544,7 @@ void Semantics::analyzeLetStatements(Node *node)
     }
 
     // Analysing the assigned expressions value if it exists
+    bool wasInitialised = letStmt->value != nullptr; // Checking the value was initialised
     if (letStmt->value)
     {
         analyzer(letStmt->value.get());
@@ -568,14 +586,16 @@ void Semantics::analyzeLetStatements(Node *node)
     Symbol sym{
         .nodeName = varName,
         .nodeType = varType,
-        .isMutable = true,
-        .isConstant = false,
-        .scopeDepth = (int)symbolTable.size() - 1};
+        .isMutable = isMutable,
+        .isConstant = isConstant,
+        .initialized = wasInitialised,
+        .scopeDepth = (int)symbolTable.size() - 1,
+    };
 
     annotations[letStmt] = SemanticInfo{
         .nodeType = varType,
-        .isMutable = true,
-        .isConstant = false,
+        .isMutable = isMutable,
+        .isConstant = isConstant,
         .scopeDepth = (int)symbolTable.size() - 1};
 
     symbolTable.back()[varName] = sym;
@@ -593,9 +613,28 @@ void Semantics::analyzeAssignmentStatement(Node *node)
     auto identSymbol = resolveSymbol(identifierName);
     if (!identSymbol)
     {
-        std::cerr << "[SEMANTIC ERROR]: Variable '" << identifierName << "' not declared.\n";
+        logError("Variable '" + identifierName + "' not declared", node);
         return;
     }
+
+    if (!identSymbol->isMutable)
+    {
+        if (identSymbol->initialized)
+        {
+            logError("Cannot assign to immutable variable '" + identifierName + "'", node);
+            return;
+        }
+        else
+        {
+            // This is the first assignment — allow it
+            identSymbol->initialized = true;
+        }
+    }
+    else
+    {
+        identSymbol->initialized = true;
+    }
+
     auto identType = identSymbol->nodeType;
 
     auto valueType = inferExpressionType(stmtNode->value.get());
@@ -918,7 +957,7 @@ std::string Semantics::TypeSystemString(TypeSystem type)
     }
 }
 
-std::optional<Symbol> Semantics::resolveSymbol(const std::string &name)
+Symbol *Semantics::resolveSymbol(const std::string &name)
 {
     for (int i = symbolTable.size() - 1; i >= 0; --i)
     {
@@ -931,11 +970,11 @@ std::optional<Symbol> Semantics::resolveSymbol(const std::string &name)
         if (scope.find(name) != scope.end())
         {
             std::cout << "[DEBUG] Found match for '" << name << "'\n";
-            return scope[name];
+            return &scope[name]; // Returning a pointer to actual symbol
         }
     }
     std::cout << "[DEBUG] No match for '" << name << "'\n";
-    return std::nullopt;
+    return nullptr;
 }
 
 TypeSystem Semantics::resultOf(TokenType operatorType, TypeSystem leftType, TypeSystem rightType)
@@ -1085,16 +1124,61 @@ bool Semantics::blockAlwaysReturns(Node *block)
     return false;
 }
 
+bool Semantics::isConstantExpression(Node *expr)
+{
+    if (!expr)
+        return false;
+
+    // Literal expressions are always constant
+    if (dynamic_cast<IntegerLiteral *>(expr))
+        return true;
+    if (dynamic_cast<FloatLiteral *>(expr))
+        return true;
+    if (dynamic_cast<BooleanLiteral *>(expr))
+        return true;
+    if (dynamic_cast<StringLiteral *>(expr))
+        return true;
+
+    // Unary operations on constants, e.g. -5
+    if (auto unary = dynamic_cast<PrefixExpression *>(expr))
+    {
+        return isConstantExpression(unary->operand.get());
+    }
+
+    // Binary operations: only if both sides are constant
+    if (auto binary = dynamic_cast<InfixExpression *>(expr))
+    {
+        return isConstantExpression(binary->left_operand.get()) && isConstantExpression(binary->right_operand.get());
+    }
+
+    // Variable lookups and function calls are NOT constant
+    return false;
+}
+
 // Error logging function
 void Semantics::logError(const std::string &message, Node *node)
 {
+    Token token=getErrorToken(node);
     if (!node)
     {
         std::cerr << "[SEMANTIC ERROR]: " << message << " (at unknown location)\n";
         return;
     }
 
+    if(token.line==0&&token.column==0){
+        std::cerr<<"[PANIC]: Logging an uninitialized token\n";
+    }
+
     std::cerr << "[SEMANTIC ERROR]: " << message
               << " (line: " << node->token.line
               << ", column: " << node->token.column << ")\n";
+}
+
+Token Semantics::getErrorToken(Node *node)
+{
+    if (!node)
+    {
+        return Token{"", TokenType::ILLEGAL, 999, 999};
+    }
+    return node->token;
 }

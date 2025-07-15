@@ -74,8 +74,8 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: AUTO";
         case TokenType::RETURN:
             return "Token Type: RETURN";
-        case TokenType::CONSTANT:
-            return "Token Type: CONSTANT";
+        case TokenType::CONST:
+            return "Token Type: CONST";
         case TokenType::CAST:
             return "Token Type: CAST";
         case TokenType::COMPONENT:
@@ -140,8 +140,8 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: FALSE";
         case TokenType::ARRAY:
             return "Token Type: ARRAY";
-        case TokenType::ZONE:
-            return "Token Type: ZONE";
+        case TokenType::MUT:
+            return "Token Type: MUT";
         case TokenType::UNIQUE:
             return "Token Type: UNIQUE";
         case TokenType::MAKE:

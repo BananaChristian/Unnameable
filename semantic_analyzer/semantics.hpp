@@ -45,6 +45,7 @@ struct Symbol
     SymbolKind kind;
     bool isMutable;
     bool isConstant;
+    bool initialized=false;
     int scopeDepth;
 };
 
@@ -103,6 +104,7 @@ private:
     //---------HELPER FUNCTIONS----------
     void registerAnalyzerFunctions();
     void logError(const std::string &message, Node *node);
+    Token getErrorToken(Node *node);
     TypeSystem resultOf(TokenType operatorType,TypeSystem leftType,TypeSystem rightType);
     TypeSystem resultOfUnary(TokenType operatorType,TypeSystem operandType);
     TypeSystem mapTypeStringToTypeSystem(const std::string &typeStr);
@@ -110,5 +112,6 @@ private:
     TypeSystem analyzeReturnTypeExpression(Node *node);
     bool blockAlwaysReturns(Node *block);
     std::string TypeSystemString(TypeSystem type);
-    std::optional<Symbol> resolveSymbol(const std::string& name);
+    Symbol* resolveSymbol(const std::string& name);
+    bool isConstantExpression(Node *node);
 };

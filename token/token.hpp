@@ -55,7 +55,6 @@ enum class TokenType{
     FUNCTION,
     AUTO,
     RETURN,
-    CONSTANT,
     CAST,
     COMPONENT,//component key word for classes
     SELF,//self keyword for a component instance
@@ -68,6 +67,8 @@ enum class TokenType{
     SIGNAL,//signal
     ERROR,//error
     NEW,//new keyword for a new instance of a component
+    CONST,
+    MUT,
 
 
     //Control flow
@@ -92,9 +93,7 @@ enum class TokenType{
     FALSE,
     DOUBLE,
     ARRAY,
-
-    //Memory management keywords
-    ZONE,
+    
     UNIQUE,
     MAKE,
     UNSAFE,

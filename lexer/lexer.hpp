@@ -16,7 +16,6 @@ class Lexer
         {"auto", TokenType::AUTO},
         {"work", TokenType::FUNCTION},
         {"return", TokenType::RETURN},
-        {"fixed", TokenType::CONSTANT},
         {"cast", TokenType::CAST},
         {"component", TokenType::COMPONENT},
         {"self", TokenType::SELF},
@@ -48,7 +47,9 @@ class Lexer
         {"bool",TokenType::BOOL_KEYWORD},
         {"arr", TokenType::ARRAY},
 
-        {"zone", TokenType::ZONE},
+        {"const", TokenType::CONST},
+        {"mut", TokenType::MUT},
+
         {"unique", TokenType::UNIQUE},
         {"make", TokenType::MAKE},
         {"signal",TokenType::SIGNAL},
