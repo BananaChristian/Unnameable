@@ -90,6 +90,12 @@ private:
     // Parsing if statement
     std::unique_ptr<Statement> parseIfStatement();
 
+    //Parsing switch statement
+    std::unique_ptr<Statement> parseSwitchStatement();
+
+    //Parsing case clause
+    std::unique_ptr<Statement> parseCaseClause();
+
     //Parsing signal statement
     std::unique_ptr<Statement> parseSignalStatement();
 

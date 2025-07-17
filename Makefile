@@ -6,6 +6,7 @@ OUT=void
 SRC=main.cpp\
 	lexer/lexer.cpp\
 	parser/parser.cpp\
+	parser/extended_parser.cpp\
 	token/token.cpp\
 	semantic_analyzer/semantics.cpp\
 	semantic_analyzer/component_semantics.cpp

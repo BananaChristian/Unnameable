@@ -6,7 +6,8 @@
 #include <vector>
 #include <optional>
 
-enum class Mutability{
+enum class Mutability
+{
     IMMUTABLE,
     MUTABLE,
     CONSTANT
@@ -482,11 +483,13 @@ struct LetStatement : Statement
     Token ident_token;
     std::optional<Token> assign_token;
     std::unique_ptr<Expression> value;
-     std::string toString() override
+    std::string toString() override
     {
         std::string mut_str = "";
-        if (mutability == Mutability::MUTABLE) mut_str = "mutable ";
-        else if (mutability == Mutability::CONSTANT) mut_str = "constant ";
+        if (mutability == Mutability::MUTABLE)
+            mut_str = "mutable ";
+        else if (mutability == Mutability::CONSTANT)
+            mut_str = "constant ";
 
         std::string result = "Let Statement: (" + mut_str + "Data Type: " + data_type_token.TokenLiteral +
                              " Variable name: " + ident_token.TokenLiteral;
@@ -504,7 +507,7 @@ struct LetStatement : Statement
         return result;
     }
 
-    LetStatement(Mutability muta,Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) :mutability(muta), data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
+    LetStatement(Mutability muta, Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : mutability(muta), data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
 };
 
 struct AssignmentStatement : Statement
@@ -643,6 +646,65 @@ struct ifStatement : Statement
                                                                                                   if_stmt(if_st), condition(move(condition_e)), if_result(move(if_r)),
                                                                                                   elseif_stmt(elseif_st), elseif_condition(move(elseif_cond)), elseif_result(move(elseif_r)),
                                                                                                   else_stmt(else_st), else_result(move(else_r)) {};
+};
+
+struct CaseClause : Statement
+{
+    Token case_token;
+    std::unique_ptr<Expression> condition;
+    std::vector<std::unique_ptr<Statement>> body;
+
+    std::string toString() override
+    {
+        std::string body_content;
+        for (const auto &b : body)
+        {
+            body_content += "\n    " + b->toString();
+        }
+        return "case " + condition->toString() + ":" + body_content;
+    }
+
+    CaseClause(Token token, std::unique_ptr<Expression> cond, std::vector<std::unique_ptr<Statement>> stmt)
+        : Statement(token), case_token(token), condition(std::move(cond)), body(std::move(stmt)) {}
+};
+
+struct SwitchStatement : Statement
+{
+    Token switch_token;
+    std::unique_ptr<Expression> switch_expr;
+    // Inside the braces
+    // Cases
+    std::vector<std::unique_ptr<Statement>> case_clauses;
+    // Default case
+    Token default_token;
+    std::vector<std::unique_ptr<Statement>> default_statements;
+
+    std::string toString() override
+    {
+        std::string result = "switch (" + switch_expr->toString() + ") {\n";
+
+        // Print all case clauses
+        for (const auto &clause : case_clauses)
+        {
+            result += clause->toString(); 
+        }
+
+        // Print default statements if they exist
+        if (!default_statements.empty())
+        {
+            result += "\n  default:\n";
+            for (const auto &stmt : default_statements)
+            {
+                result += "    " + stmt->toString() + "\n";
+            }
+        }
+
+        result += "}";
+        return result;
+    }
+
+    SwitchStatement(Token token, std::unique_ptr<Expression> expr, std::vector<std::unique_ptr<Statement>> cases, Token default_tok, std::vector<std::unique_ptr<Statement>> default_stmts)
+        : Statement(token), switch_token(token), switch_expr(std::move(expr)), case_clauses(std::move(cases)), default_token(default_tok), default_statements(std::move(default_stmts)) {}
 };
 
 struct ForStatement : Statement

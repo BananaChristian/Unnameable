@@ -32,6 +32,7 @@ class Lexer
         {"for", TokenType::FOR},
         {"break", TokenType::BREAK},
         {"continue", TokenType::CONTINUE},
+        
         {"switch", TokenType::SWITCH},
         {"case", TokenType::CASE},
         {"default", TokenType::DEFAULT},

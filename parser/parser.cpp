@@ -131,15 +131,17 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 // Parsing let statements that have data types
 unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 {
-    Mutability mutability=Mutability::IMMUTABLE;
-    Token mutability_token=currentToken();
-    if(mutability_token.type==TokenType::CONST){
-        mutability=Mutability::CONSTANT;
+    Mutability mutability = Mutability::IMMUTABLE;
+    Token mutability_token = currentToken();
+    if (mutability_token.type == TokenType::CONST)
+    {
+        mutability = Mutability::CONSTANT;
         advance();
     }
 
-    if(mutability_token.type==TokenType::MUT){
-        mutability=Mutability::MUTABLE;
+    if (mutability_token.type == TokenType::MUT)
+    {
+        mutability = Mutability::MUTABLE;
         advance();
     }
 
@@ -193,14 +195,16 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
         }
     }
 
-    if(mutability==Mutability::CONSTANT){
-        if(value==nullptr){
+    if (mutability == Mutability::CONSTANT)
+    {
+        if (value == nullptr)
+        {
             logError("Uninitialized const variable");
             return nullptr;
         }
     }
 
-    return make_unique<LetStatement>(mutability,dataType_token, ident_token, assign_token, move(value));
+    return make_unique<LetStatement>(mutability, dataType_token, ident_token, assign_token, move(value));
 }
 
 /*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
@@ -450,7 +454,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
 
     std::vector<std::unique_ptr<Statement>> usedDataBlocks;
     std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
-    
+
     std::optional<std::unique_ptr<Statement>> initConstructor;
 
     Token component_token = currentToken();
@@ -507,13 +511,14 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
             privateMethods.push_back(std::move(stmt));
             break;
         case TokenType::INIT:
-            if(initConstructor.has_value()){
+            if (initConstructor.has_value())
+            {
                 logError("Duplicate init constructor in component");
                 advance();
                 break;
             }
-            stmt=parseInitConstructorStatement();
-            initConstructor=std::move(stmt);
+            stmt = parseInitConstructorStatement();
+            initConstructor = std::move(stmt);
             break;
         default:
             logError("Unknown statement inside component block: " + currentToken().TokenLiteral);
@@ -534,8 +539,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
         std::move(privateMethods),
         std::move(usedDataBlocks),
         std::move(usedBehaviorBlocks),
-        std::move(initConstructor)
-    );
+        std::move(initConstructor));
 }
 
 std::unique_ptr<Statement> Parser::parseInitConstructorStatement()
@@ -804,28 +808,30 @@ unique_ptr<Statement> Parser::parseIfStatement()
 // Parsing identifiers
 std::unique_ptr<Expression> Parser::parseIdentifier()
 {
-    if(currentToken().type==TokenType::SELF){
-        Token self_token=currentToken();
+    if (currentToken().type == TokenType::SELF)
+    {
+        Token self_token = currentToken();
         advance();
 
-        if(currentToken().type!= TokenType::FULLSTOP){
-            logError("Exprected a . after self but got: "+currentToken().TokenLiteral);
+        if (currentToken().type != TokenType::FULLSTOP)
+        {
+            logError("Exprected a . after self but got: " + currentToken().TokenLiteral);
             return nullptr;
         }
 
         advance();
 
-        if(currentToken().type!=TokenType::IDENTIFIER){
-            logError("Expected an identifer after . but got"+ currentToken().TokenLiteral);
+        if (currentToken().type != TokenType::IDENTIFIER)
+        {
+            logError("Expected an identifer after . but got" + currentToken().TokenLiteral);
             return nullptr;
         }
-        Token field_token=currentToken();
+        Token field_token = currentToken();
         advance();
 
         return make_unique<FieldAccessExpression>(
             std::make_unique<Identifier>(self_token),
-            field_token
-        );
+            field_token);
     }
     auto ident = make_unique<Identifier>(currentToken());
     if (!ident)
@@ -891,24 +897,26 @@ std::unique_ptr<Expression> Parser::parsePrefixExpression()
     return std::make_unique<PrefixExpression>(operat, move(operand));
 }
 
-std::unique_ptr<Expression> Parser::parseNewComponentExpression(){
-    Token new_token=currentToken();
-    advance();//Consuming the new keyword open
-    Token component_name=currentToken();
-    if(component_name.type!=TokenType::IDENTIFIER){
-        logError("Expected identifier for component name after new but got: "+component_name.TokenLiteral);
+std::unique_ptr<Expression> Parser::parseNewComponentExpression()
+{
+    Token new_token = currentToken();
+    advance(); // Consuming the new keyword open
+    Token component_name = currentToken();
+    if (component_name.type != TokenType::IDENTIFIER)
+    {
+        logError("Expected identifier for component name after new but got: " + component_name.TokenLiteral);
         return nullptr;
     }
-    advance();//Consuming the component name
-    if (currentToken().type != TokenType::LPAREN) {
+    advance(); // Consuming the component name
+    if (currentToken().type != TokenType::LPAREN)
+    {
         logError("Expected '(' after component name in 'new' expression");
         return nullptr;
     }
-    advance();//Consume the lparen
-    auto args=parseCallArguments();
+    advance(); // Consume the lparen
+    auto args = parseCallArguments();
 
-    return std::make_unique<NewComponentExpression>(new_token,component_name,std::move(args));
-
+    return std::make_unique<NewComponentExpression>(new_token, component_name, std::move(args));
 }
 
 // Integer literal parse function
@@ -1357,8 +1365,8 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::CHAR] = &Parser::parseCharLiteral;
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
-    PrefixParseFunctionsMap[TokenType::NEW]=&Parser::parseNewComponentExpression;
-    PrefixParseFunctionsMap[TokenType::SELF]=&Parser::parseIdentifier;
+    PrefixParseFunctionsMap[TokenType::NEW] = &Parser::parseNewComponentExpression;
+    PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseIdentifier;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedOrTupleExpression;
@@ -1399,8 +1407,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::STRING_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::CONST]=&Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::MUT]=&Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::CONST] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::MUT] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionStatement;
     StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::ERROR] = &Parser::parseErrorStatement;
@@ -1409,6 +1417,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::DATA] = &Parser::parseDataStatement;
     StatementParseFunctionsMap[TokenType::USE] = &Parser::parseUseStatement;
     StatementParseFunctionsMap[TokenType::INIT] = &Parser::parseInitConstructorStatement;
+    StatementParseFunctionsMap[TokenType::SWITCH] = &Parser::parseSwitchStatement;
+    StatementParseFunctionsMap[TokenType::CASE]=&Parser::parseCaseClause;
 }
 
 // Precedence getting function
