@@ -98,6 +98,23 @@ if (age > 18) {
 
 ```
 
+## 🔀 Switch statements
+```
+string name="Mellisa";
+
+switch (name) {
+    case "Brenda":
+        return "That is not her";
+    case "Charity":
+        return "Getting close";
+    case "Mellisa":
+        return "That is her";
+    default:
+        return "You are way off";
+}
+
+```
+
 ## 🔚Loops
 *While loops*
 ```
@@ -182,7 +199,7 @@ const auto w = 3;  # Immutable variable with inferred type int
 
 ## 🧠 Future additions
 - High order functions
-- Pattern matching
+- Pattern matching to switch statements
 - Function parameters as first-class expressions
 
 ## 🧰 Requirements
