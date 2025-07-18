@@ -8,7 +8,7 @@ Born from the frustration with the complexity of C++, the strictness of Rust, an
 
 > **Fast and powerful, yet simple and predictable.**
 
-No matter what you’re building — an OS, a game engine, or your first kernel — you shouldn't need a PhD or wrestle with books just to understand memory management.
+No matter what you’re building an OS, a game engine, or your first kernel you shouldn't need a PhD or wrestle with books just to understand memory management.
 
 Unnameable is here to bring the joy back to low-level programming.
 
