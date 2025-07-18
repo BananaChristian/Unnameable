@@ -171,6 +171,28 @@ p.greet();
 
 ```
 
+## 🎭Enums
+Unnameable supports `enum class` as the default way to define enums a clean and type-safe way to group related symbolic values under a single name.
+
+```
+enum class Animal {
+    CAT,
+    DOG,
+}
+
+auto pet = Animal::CAT;
+
+enum class HttpStatus {
+    OK = 200,
+    NotFound = 404,
+    InternalServerError = 500,
+}
+
+auto code = HttpStatus::NotFound;
+
+```
+
+
 ## 🔒Immutability and Mutability
 Unnameable supports explicit control over variable mutability with the keywords *const* and *mut*
 - `const` declares an immutable variable. It must be initialized at declaration and cannot be reassigned later. This ensures safety and predictability.
