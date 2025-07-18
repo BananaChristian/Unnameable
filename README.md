@@ -23,9 +23,6 @@ This project contains the core implementation of the Unnameable compiler written
 - Custom Lexer and Tokenizer *(in progress)*
 - Custom Parser *(in progress)*
 - Semantic Analyzer *(active development)*
-- Component system (OOP-like support)
-- Support for constructors and method dispatch
-- Support for `self` keyword and instance field access
 - LLVM IR Codegen *(planned)*
 
 ---
