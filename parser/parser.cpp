@@ -1347,6 +1347,7 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::GT_OR_EQ] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LT_OR_EQ] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::FULLSTOP] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::SCOPE_OPERATOR]=&Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::OR] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
@@ -1419,6 +1420,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::INIT] = &Parser::parseInitConstructorStatement;
     StatementParseFunctionsMap[TokenType::SWITCH] = &Parser::parseSwitchStatement;
     StatementParseFunctionsMap[TokenType::CASE]=&Parser::parseCaseClause;
+    StatementParseFunctionsMap[TokenType::ENUM]=&Parser::parseEnumClassStatement;
 }
 
 // Precedence getting function

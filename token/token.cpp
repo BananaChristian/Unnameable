@@ -74,6 +74,10 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: AUTO";
         case TokenType::RETURN:
             return "Token Type: RETURN";
+        case TokenType::ENUM:
+            return "Token Type:ENUM";
+        case TokenType::CLASS:
+            return "Token Type: CLASS";
         case TokenType::CONST:
             return "Token Type: CONST";
         case TokenType::CAST:
@@ -110,6 +114,8 @@ string TokenTypeToLiteral(TokenType type){
             return "Token Type: WHILE";
         case TokenType::FOR:
             return "Token Type: FOR";
+        case TokenType::SCOPE_OPERATOR:
+            return "Token Type: SCOPE OPERATOR";
         case TokenType::BREAK:
             return "Token Type: BREAK";
         case TokenType::CONTINUE:

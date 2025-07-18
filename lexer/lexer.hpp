@@ -17,6 +17,10 @@ class Lexer
         {"work", TokenType::FUNCTION},
         {"return", TokenType::RETURN},
         {"cast", TokenType::CAST},
+
+        {"enum",TokenType::ENUM},
+        {"class", TokenType::CLASS},
+
         {"component", TokenType::COMPONENT},
         {"self", TokenType::SELF},
         {"new",TokenType::NEW},

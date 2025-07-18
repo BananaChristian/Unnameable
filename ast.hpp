@@ -686,7 +686,7 @@ struct SwitchStatement : Statement
         // Print all case clauses
         for (const auto &clause : case_clauses)
         {
-            result += clause->toString(); 
+            result += clause->toString();
         }
 
         // Print default statements if they exist
@@ -705,6 +705,29 @@ struct SwitchStatement : Statement
 
     SwitchStatement(Token token, std::unique_ptr<Expression> expr, std::vector<std::unique_ptr<Statement>> cases, Token default_tok, std::vector<std::unique_ptr<Statement>> default_stmts)
         : Statement(token), switch_token(token), switch_expr(std::move(expr)), case_clauses(std::move(cases)), default_token(default_tok), default_statements(std::move(default_stmts)) {}
+};
+
+
+//Enum class struct
+struct EnumClassStatement : Statement
+{
+    Token enum_token;
+    Token class_token;
+    std::unique_ptr<Expression> enum_identifier;
+    std::vector<std::unique_ptr<Expression>> enum_content;
+    std::string toString()
+    {
+        std::string enum_block;
+        for (const auto &enum_cont : enum_content)
+        {
+            enum_block += enum_cont->toString()+",\n";
+        }
+        return "Enum class statement: " + enum_identifier->toString() + " { " + enum_block + " }";
+    }
+    EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::vector<std::unique_ptr<Expression>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
+                                                                                                                                                      class_token(class_tok),
+                                                                                                                                                      enum_identifier(std::move(enum_ident)),
+                                                                                                                                                      enum_content(std::move(enum_block)) {};
 };
 
 struct ForStatement : Statement

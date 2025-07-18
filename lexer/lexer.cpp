@@ -298,10 +298,11 @@ Token Lexer::tokenize()
             return Token{"!", TokenType::BANG, tokenLine, tokenColumn};
         }
     }
-    case '.':{
+    case '.':
+    {
         CAPTURE_POS;
         advance();
-        return Token{".",TokenType::FULLSTOP,tokenLine,tokenColumn};
+        return Token{".", TokenType::FULLSTOP, tokenLine, tokenColumn};
     }
     case '+':
     {
@@ -468,8 +469,17 @@ Token Lexer::tokenize()
     case ':':
     {
         CAPTURE_POS;
-        advance();
-        return Token{":", TokenType::COLON, tokenLine, tokenColumn};
+        if (peekChar() == ':')
+        {
+            advance();
+            advance();
+            return Token{"::", TokenType::SCOPE_OPERATOR, tokenLine, tokenColumn};
+        }
+        else
+        {
+            advance();
+            return Token{":", TokenType::COLON, tokenLine, tokenColumn};
+        }
     }
     case '"':
         return readString();

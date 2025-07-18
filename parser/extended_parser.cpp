@@ -4,6 +4,7 @@
 #define CPPREST_FORCE_REBUILD
 
 //-----------------------SWITCH STATEMENT SUPPORT---------------------------//
+// Parsing case clause
 std::unique_ptr<Statement> Parser::parseCaseClause()
 {
     std::vector<std::unique_ptr<Statement>> body;
@@ -40,6 +41,7 @@ std::unique_ptr<Statement> Parser::parseCaseClause()
     return std::make_unique<CaseClause>(case_token, std::move(condition), std::move(body));
 }
 
+// Parsing switch statement
 std::unique_ptr<Statement> Parser::parseSwitchStatement()
 {
     std::vector<std::unique_ptr<Statement>> case_clauses;
@@ -103,7 +105,7 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement()
         else
         {
             logError("Unexpected token in switch statement: " + currentToken().TokenLiteral);
-            advance(); 
+            advance();
         }
     }
 
@@ -121,4 +123,48 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement()
         std::move(case_clauses),
         default_token,
         std::move(default_body));
+}
+
+// Parsing enum class statement
+std::unique_ptr<Statement> Parser::parseEnumClassStatement()
+{
+    std::vector<std::unique_ptr<Expression>> enum_block;
+
+    Token enum_token = currentToken();
+    advance(); // Consume the enum keyword token
+    Token class_token = currentToken();
+    if (class_token.type != TokenType::CLASS)
+    {
+        logError("Expected keyword class after keyword enum but got: " + currentToken().TokenLiteral);
+    }
+    advance();                           // Consume the class keyword token
+    auto enum_ident = parseIdentifier(); // Parsing the enum class's name
+
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        logError("Expected { but got: " + currentToken().TokenLiteral);
+    }
+    advance(); // Consume the { token
+
+    while (currentToken().type != TokenType::RBRACE)
+    {
+        auto enumClassStmt = parseExpression(Precedence::PREC_NONE);
+        enum_block.push_back(std::move(enumClassStmt));
+        if (currentToken().type == TokenType::COMMA)
+        {
+            advance();
+        }
+        if(currentToken().type==TokenType::SEMICOLON){
+            logError("Please do not use semi colons inside enum class use :");
+            advance();
+        }
+    }
+
+    if (currentToken().type != TokenType::RBRACE)
+    {
+        logError("Expected } but got: " + currentToken().TokenLiteral);
+    }
+    advance(); // Consume the } token
+
+    return std::make_unique<EnumClassStatement>(enum_token, class_token, std::move(enum_ident), std::move(enum_block));
 }

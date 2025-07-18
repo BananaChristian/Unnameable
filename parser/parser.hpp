@@ -38,6 +38,7 @@ class Parser
         {TokenType::PLUS_PLUS,Precedence::PREC_UNARY},
         {TokenType::FULLSTOP, Precedence::PREC_CALL},
         {TokenType::LPAREN,Precedence::PREC_CALL},
+        {TokenType::SCOPE_OPERATOR,Precedence::PREC_CALL},
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
     };
 
@@ -92,6 +93,9 @@ private:
 
     //Parsing switch statement
     std::unique_ptr<Statement> parseSwitchStatement();
+
+    //Parsing enum class statement
+    std::unique_ptr<Statement> parseEnumClassStatement();
 
     //Parsing case clause
     std::unique_ptr<Statement> parseCaseClause();

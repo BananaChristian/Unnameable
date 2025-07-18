@@ -2,46 +2,47 @@
 #include <string>
 #include <unordered_map>
 
-enum class TokenType{
-    //Aritmetic Operators
-    ASSIGN,//=
-    PLUS,//+
-    PLUS_PLUS,//++
-    MINUS,//-
-    MINUS_MINUS,//--
-    ASTERISK,//x
-    DIVIDE,///
-    MODULUS,//"%"
+enum class TokenType
+{
+    // Aritmetic Operators
+    ASSIGN,      //=
+    PLUS,        //+
+    PLUS_PLUS,   //++
+    MINUS,       //-
+    MINUS_MINUS, //--
+    ASTERISK,    // x
+    DIVIDE,      ///
+    MODULUS,     //"%"
 
-    //Logical Operators
-    EQUALS,//==
-    NOT_EQUALS,//"!="
-    AND,//&&
-    OR,//||
-    GREATER_THAN,//>
-    LESS_THAN,//<
-    GT_OR_EQ,//>=
-    LT_OR_EQ,//<=
-    SHIFT_RIGHT,//>>
-    SHIFT_LEFT,//<<
-    BITWISE_AND,//&
-    BITWISE_OR,//&
+    // Logical Operators
+    EQUALS,       //==
+    NOT_EQUALS,   //"!="
+    AND,          //&&
+    OR,           //||
+    GREATER_THAN, //>
+    LESS_THAN,    //<
+    GT_OR_EQ,     //>=
+    LT_OR_EQ,     //<=
+    SHIFT_RIGHT,  //>>
+    SHIFT_LEFT,   //<<
+    BITWISE_AND,  //&
+    BITWISE_OR,   //&
 
-    //Delimiters
-    LBRACE,//{
-    RBRACE,//}
-    LBRACKET,//[
-    RBRACKET,//]
-    LPAREN,//(
-    RPAREN,//)
+    // Delimiters
+    LBRACE,   //{
+    RBRACE,   //}
+    LBRACKET, //[
+    RBRACKET, //]
+    LPAREN,   //(
+    RPAREN,   //)
 
-    //Punctuation
-    SEMICOLON,//;
-    COLON,//:
-    FULLSTOP,//.
-    COMMA,//,
-    BANG,//"!"
-
+    // Punctuation
+    SEMICOLON, //;
+    COLON,     //:
+    FULLSTOP,  //.
+    COMMA,     //,
+    BANG,      //"!"
+    SCOPE_OPERATOR, //"::"
 
     IDENTIFIER,
     STRING_KEYWORD,
@@ -51,27 +52,31 @@ enum class TokenType{
     CHAR_KEYWORD,
     BOOL_KEYWORD,
 
-    //Keywords
+    // Keywords
     FUNCTION,
     AUTO,
     RETURN,
     CAST,
-    COMPONENT,//component key word for classes
-    SELF,//self keyword for a component instance
-    DATA,//data keyword token for class 
-    BEHAVIOR,//behavior keyword token for class method blocks
-    USE,//use keyword that allows use of external data and behavior blocks
-    INIT,//constructor keyword
-    START,//start
-    WAIT,//wait
-    SIGNAL,//signal
-    ERROR,//error
-    NEW,//new keyword for a new instance of a component
+
+    ENUM,
+    CLASS,
+
+    COMPONENT, // component key word for classes
+    SELF,      // self keyword for a component instance
+    DATA,      // data keyword token for class
+    BEHAVIOR,  // behavior keyword token for class method blocks
+    USE,       // use keyword that allows use of external data and behavior blocks
+    INIT,      // constructor keyword
+
+    START,  // start
+    WAIT,   // wait
+    SIGNAL, // signal
+    ERROR,  // error
+    NEW,    // new keyword for a new instance of a component
     CONST,
     MUT,
 
-
-    //Control flow
+    // Control flow
     IF,
     ELSE,
     ELSE_IF,
@@ -83,7 +88,7 @@ enum class TokenType{
     CASE,
     DEFAULT,
 
-    //Data types
+    // Data types
     INT,
     STRING,
     CHAR,
@@ -93,7 +98,7 @@ enum class TokenType{
     FALSE,
     DOUBLE,
     ARRAY,
-    
+
     UNIQUE,
     MAKE,
     UNSAFE,
@@ -110,7 +115,8 @@ enum class TokenType{
 
 };
 
-struct Token{
+struct Token
+{
     std::string TokenLiteral;
     TokenType type;
     int line;
