@@ -6,8 +6,8 @@
 
 class Lexer
 {
-    int currentPosition;
-    int nextPosition;
+    size_t currentPosition;
+    size_t nextPosition;
     std::string input;
     int line=1;
     int column=0;
@@ -80,16 +80,21 @@ public:
     void updateTokenList();
 
 private:
+    size_t getUTF8CharLength(size_t pos);
+    char32_t decodeUTF8(size_t pos);
     void advance();
     void skipWhiteSpace();
-    char peekChar();
-    char currentChar();
-    bool isDigit();
-    bool isLetter(char character);
+    char32_t peekChar();
+    char32_t currentChar();
+    bool isDigit(char32_t ch);
     void readComments();
     Token readNumbers();
+    char convertUnicodeDigit(char32_t ch);
     Token readIdentifiers();
+    bool isIdentifierStart(char32_t ch);
+    bool isIdentifierContinue(char32_t ch);
     Token readString();
+    void appendUTF8(std::string& str, char32_t ch);
     Token readChar();
     void logError(const std::string& message,int line,int column);
 };

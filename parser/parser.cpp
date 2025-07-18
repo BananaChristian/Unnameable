@@ -4,12 +4,12 @@
 #include <iostream>
 #include <memory>
 #include <vector>
-using namespace std;
+
 
 #define CPPREST_FORCE_REBUILD
 
 //--------------PARSER CLASS CONSTRUCTOR-------------
-Parser::Parser(vector<Token> &tokenInput) : tokenInput(tokenInput), currentPos(0), nextPos(1)
+Parser::Parser(std::vector<Token> &tokenInput) : tokenInput(tokenInput), currentPos(0), nextPos(1)
 {
     lastToken = tokenInput.empty() ? Token{"", TokenType::ILLEGAL, 999, 999} : tokenInput[0];
     registerInfixFns();
@@ -18,13 +18,13 @@ Parser::Parser(vector<Token> &tokenInput) : tokenInput(tokenInput), currentPos(0
 }
 
 // MAIN PARSER FUNCTION
-vector<unique_ptr<Node>> Parser::parseProgram()
+std::vector<std::unique_ptr<Node>> Parser::parseProgram()
 {
-    vector<unique_ptr<Node>> program;
+    std::vector<std::unique_ptr<Node>> program;
 
     while (currentPos < tokenInput.size())
     {
-        cout << "Parsing token: " << currentToken().TokenLiteral << endl;
+        std::cout << "Parsing token: " << currentToken().TokenLiteral << "\n";
         Token current = currentToken();
 
         if (current.type == TokenType::END)
@@ -32,7 +32,7 @@ vector<unique_ptr<Node>> Parser::parseProgram()
             break;
         }
 
-        unique_ptr<Node> node = parseStatement();
+        std::unique_ptr<Node> node = parseStatement();
 
         if (node)
         {
@@ -44,17 +44,17 @@ vector<unique_ptr<Node>> Parser::parseProgram()
         }
     }
 
-    cout << "Parser finished" << endl;
+    std::cout << "Parser finished\n";
     return program;
 }
 
 //------------PARSING FUNCTIONS SECTION----------
 //-----------PARSING STATEMENTS----------
 // General statement parser function
-unique_ptr<Statement> Parser::parseStatement()
+std::unique_ptr<Statement> Parser::parseStatement()
 {
     Token current = currentToken();
-    std::cout << "[DEBUG] parseStatement starting with token: " << current.TokenLiteral << std::endl;
+    std::cout << "[DEBUG] parseStatement starting with token: " << current.TokenLiteral << "\n";
     if (current.type == TokenType::SEMICOLON)
     {
         advance();
@@ -104,7 +104,7 @@ unique_ptr<Statement> Parser::parseStatement()
 std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 {
     Token ident_token = currentToken();
-    std::cout << "[DEBUG] Identifier token: " + ident_token.TokenLiteral << endl;
+    std::cout << "[DEBUG] Identifier token: " + ident_token.TokenLiteral << "\n";
     advance();
 
     if (currentToken().type != TokenType::ASSIGN)
@@ -129,7 +129,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 }
 
 // Parsing let statements that have data types
-unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
+std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 {
     Mutability mutability = Mutability::IMMUTABLE;
     Token mutability_token = currentToken();
@@ -146,7 +146,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     }
 
     Token dataType_token = currentToken();
-    cout << "[DEBUG] Data type token: " + dataType_token.TokenLiteral << endl;
+    std::cout << "[DEBUG] Data type token: " + dataType_token.TokenLiteral << "\n";
     advance();
 
     if (currentToken().type != TokenType::IDENTIFIER)
@@ -164,13 +164,13 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     if (currentToken().type == TokenType::ASSIGN)
     {
         assign_token = currentToken();
-        cout << "[DEBUG] Encountered assignment token" << endl;
+        std::cout << "[DEBUG] Encountered assignment token" << "\n";
         advance();
         value = parseExpression(Precedence::PREC_NONE);
     }
     else if (currentToken().type == TokenType::SEMICOLON)
     {
-        cout << "[DEBUG] Encountered semicolon token" << endl;
+        std::cout << "[DEBUG] Encountered semicolon token" << "\n";
     }
 
     if (!isParam)
@@ -204,7 +204,7 @@ unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
         }
     }
 
-    return make_unique<LetStatement>(mutability, dataType_token, ident_token, assign_token, move(value));
+    return std::make_unique<LetStatement>(mutability, dataType_token, ident_token, assign_token, move(value));
 }
 
 /*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
@@ -264,12 +264,12 @@ std::unique_ptr<Statement> Parser::parseSignalStatement()
     advance();
     if (currentToken().type != TokenType::SEMICOLON)
     {
-        cout << "[ERROR]: Expected ; after ) but got->" << currentToken().TokenLiteral << "\n";
+        std::cout << "[ERROR]: Expected ; after ) but got->" << currentToken().TokenLiteral << "\n";
         logError("Expected ; after )");
         return nullptr;
     }
 
-    return make_unique<SignalStatement>(signal_token, std::move(ident), std::move(start), std::move(func_arg));
+    return std::make_unique<SignalStatement>(signal_token, std::move(ident), std::move(start), std::move(func_arg));
 }
 
 // Parsing start statement
@@ -277,7 +277,7 @@ std::unique_ptr<Statement> Parser::parseStartStatement()
 {
     Token start = currentToken();
     advance();
-    return make_unique<StartStatement>(start);
+    return std::make_unique<StartStatement>(start);
 }
 
 // Parsing wait statement
@@ -303,7 +303,7 @@ std::unique_ptr<Statement> Parser::parseWaitStatement()
         logError("Expected ; after )");
         return nullptr;
     }
-    return make_unique<WaitStatement>(wait, std::move(call));
+    return std::make_unique<WaitStatement>(wait, std::move(call));
 }
 
 // Parsing use statement
@@ -340,7 +340,7 @@ std::unique_ptr<Statement> Parser::parseUseStatement()
         logError("Expected ';' after use statement");
     }
 
-    return make_unique<UseStatement>(
+    return std::make_unique<UseStatement>(
         use_token,
         kind_token,
         std::move(expr),
@@ -386,7 +386,7 @@ std::unique_ptr<Statement> Parser::parseBehaviorStatement()
     }
     advance();
 
-    return make_unique<BehaviorStatement>(
+    return std::make_unique<BehaviorStatement>(
         behavior_token,
         std::move(behavior_name),
         std::move(functions));
@@ -440,7 +440,7 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
     }
     advance();
 
-    return make_unique<DataStatement>(
+    return std::make_unique<DataStatement>(
         data_token,
         std::move(dataBlockName),
         std::move(fields));
@@ -449,8 +449,8 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
 // Parsing component statements
 std::unique_ptr<Statement> Parser::parseComponentStatement()
 {
-    std::vector<unique_ptr<Statement>> privateData; // An empty vector where the private data if created shall all be stored
-    std::vector<unique_ptr<Statement>> privateMethods;
+    std::vector<std::unique_ptr<Statement>> privateData; // An empty vector where the private data if created shall all be stored
+    std::vector<std::unique_ptr<Statement>> privateMethods;
 
     std::vector<std::unique_ptr<Statement>> usedDataBlocks;
     std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
@@ -594,7 +594,7 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement()
     }
 
     auto block = parseBlockStatement();
-    return make_unique<InitStatement>(init_token, std::move(args), std::move(block));
+    return std::make_unique<InitStatement>(init_token, std::move(args), std::move(block));
 }
 
 // Parsing function statement
@@ -608,7 +608,7 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement()
         return nullptr;
     }
 
-    return make_unique<FunctionStatement>(funcToken, std::move(funcExpr));
+    return std::make_unique<FunctionStatement>(funcToken, std::move(funcExpr));
 }
 // Parsing return statements
 std::unique_ptr<Statement> Parser::parseReturnStatement()
@@ -619,7 +619,7 @@ std::unique_ptr<Statement> Parser::parseReturnStatement()
     if (currentToken().type == TokenType::SEMICOLON)
     {
         advance();
-        return make_unique<ReturnStatement>(return_stmt, nullptr, nullptr);
+        return std::make_unique<ReturnStatement>(return_stmt, nullptr, nullptr);
     }
     else if (currentToken().type == TokenType::END)
     {
@@ -627,7 +627,7 @@ std::unique_ptr<Statement> Parser::parseReturnStatement()
         return nullptr;
     }
 
-    std::cout << "[DEBUG] Parsing return expression token: " << currentToken().TokenLiteral << endl;
+    std::cout << "[DEBUG] Parsing return expression token: " << currentToken().TokenLiteral << "\n";
     auto return_value = parseExpression(Precedence::PREC_NONE);
 
     if (!return_value)
@@ -652,11 +652,11 @@ std::unique_ptr<Statement> Parser::parseReturnStatement()
         advance();
     }
 
-    return make_unique<ReturnStatement>(return_stmt, std::move(return_value), std::move(error_stmt));
+    return std::make_unique<ReturnStatement>(return_stmt, std::move(return_value), std::move(error_stmt));
 }
 
 // Parse for loops
-unique_ptr<Statement> Parser::parseForStatement()
+std::unique_ptr<Statement> Parser::parseForStatement()
 {
     Token for_k = currentToken();
     advance();
@@ -701,7 +701,7 @@ unique_ptr<Statement> Parser::parseForStatement()
 }
 
 // Parsing while statements
-unique_ptr<Statement> Parser::parseWhileStatement()
+std::unique_ptr<Statement> Parser::parseWhileStatement()
 {
     Token while_key = currentToken();
     advance();
@@ -719,7 +719,7 @@ unique_ptr<Statement> Parser::parseWhileStatement()
     }
     advance();
     auto result = parseBlockStatement();
-    return make_unique<WhileStatement>(while_key, move(condition), move(result));
+    return std::make_unique<WhileStatement>(while_key, move(condition), move(result));
 }
 
 // Parse break statement
@@ -728,7 +728,7 @@ std::unique_ptr<Statement> Parser::parseBreakStatement()
     Token break_tok = currentToken();
     advance();
     advance();
-    return make_unique<BreakStatement>(break_tok);
+    return std::make_unique<BreakStatement>(break_tok);
 }
 
 // Parse continue statement
@@ -737,11 +737,11 @@ std::unique_ptr<Statement> Parser::parseContinueStatement()
     Token cont_tok = currentToken();
     advance();
     advance();
-    return make_unique<ContinueStatement>(cont_tok);
+    return std::make_unique<ContinueStatement>(cont_tok);
 }
 
 // Parsing if statements`
-unique_ptr<Statement> Parser::parseIfStatement()
+std::unique_ptr<Statement> Parser::parseIfStatement()
 {
     Token if_stmt = currentToken();
     advance();
@@ -756,16 +756,16 @@ unique_ptr<Statement> Parser::parseIfStatement()
     auto condition = parseExpression(Precedence::PREC_NONE);
     if (currentToken().type != TokenType::RPAREN)
     {
-        cout << "[DEBUG] Expected ')' got: " << currentToken().TokenLiteral << endl;
+        std::cout << "[DEBUG] Expected ')' got: " << currentToken().TokenLiteral << "\n";
         logError("Expected ')' got: ");
         return nullptr;
     }
     advance();
     auto if_result = parseBlockStatement();
 
-    optional<Token> elseif_stmt;
-    optional<unique_ptr<Expression>> elseif_condition;
-    optional<unique_ptr<Statement>> elseif_result;
+    std::optional<Token> elseif_stmt;
+    std::optional<std::unique_ptr<Expression>> elseif_condition;
+    std::optional<std::unique_ptr<Statement>> elseif_result;
 
     if (currentToken().type == TokenType::ELSE_IF)
     {
@@ -774,7 +774,7 @@ unique_ptr<Statement> Parser::parseIfStatement()
 
         if (currentToken().type != TokenType::LPAREN)
         {
-            cout << "[DEBUG] Expected '(' after 'elseif', got: " << currentToken().TokenLiteral << endl;
+            std::cout << "[DEBUG] Expected '(' after 'elseif', got: " << currentToken().TokenLiteral << "\n";
             logError("Expected '(' after 'elseif'");
             return nullptr;
         }
@@ -783,8 +783,8 @@ unique_ptr<Statement> Parser::parseIfStatement()
         elseif_result = parseBlockStatement();
     }
 
-    optional<Token> else_stmt;
-    optional<unique_ptr<Statement>> else_result;
+    std::optional<Token> else_stmt;
+    std::optional<std::unique_ptr<Statement>> else_result;
 
     if (currentToken().type == TokenType::ELSE)
     {
@@ -794,7 +794,7 @@ unique_ptr<Statement> Parser::parseIfStatement()
         else_result = parseBlockStatement();
     }
 
-    return make_unique<ifStatement>(
+    return std::make_unique<ifStatement>(
         if_stmt,
         std::move(condition),
         std::move(if_result),
@@ -829,11 +829,11 @@ std::unique_ptr<Expression> Parser::parseIdentifier()
         Token field_token = currentToken();
         advance();
 
-        return make_unique<FieldAccessExpression>(
+        return std::make_unique<FieldAccessExpression>(
             std::make_unique<Identifier>(self_token),
             field_token);
     }
-    auto ident = make_unique<Identifier>(currentToken());
+    auto ident = std::make_unique<Identifier>(currentToken());
     if (!ident)
     {
         logError("Failed to parse identifier: ");
@@ -845,42 +845,42 @@ std::unique_ptr<Expression> Parser::parseIdentifier()
 //-----------PARSING EXPRESSIONS----------
 // Expression parsing section
 // Main Expression parsing function
-unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
+std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
 {
     auto PrefixParseFnIt = PrefixParseFunctionsMap.find(currentToken().type); // Creating an iterator pointer to loop through the map
 
     if (PrefixParseFnIt == PrefixParseFunctionsMap.end()) // Checking if the iterator has reached the end of the map
     {
-        cerr << "[ERROR] No prefix parse function for token: " << currentToken().TokenLiteral << endl;
+        std::cerr << "[ERROR] No prefix parse function for token: " << currentToken().TokenLiteral << "\n";
         return nullptr;
     }
 
     auto left_expression = (this->*PrefixParseFnIt->second)(); // Calling the neccesary prefix function after encountering that particular token
-    cout << "[DEBUG] Initial left expression: " << left_expression->toString() << endl;
+    std::cout << "[DEBUG] Initial left expression: " << left_expression->toString() << "\n";
 
     while (precedence < get_precedence(currentToken().type)) // Looping as long as the precedence is lower than the precedence of the current token
     {
-        cout << "[DEBUG] Looping for token: " << currentToken().TokenLiteral << endl;
+        std::cout << "[DEBUG] Looping for token: " << currentToken().TokenLiteral << "\n";
         auto InfixParseFnIt = InfixParseFunctionsMap.find(currentToken().type); // Creating the iterator pointer for the infix map
 
         if (InfixParseFnIt == InfixParseFunctionsMap.end()) // Checking if the iterator has reached the end of the map
         {
-            cout << "[DEBUG] No infix parser found for: " << currentToken().TokenLiteral << endl;
+            std::cout << "[DEBUG] No infix parser found for: " << currentToken().TokenLiteral << "\n";
             break;
         }
 
         left_expression = (this->*InfixParseFnIt->second)(std::move(left_expression)); // If we find the infix parse function for that token we call the function
-        cout << "[DEBUG] Updated left expression: " << left_expression->toString() << endl;
+        std::cout << "[DEBUG] Updated left expression: " << left_expression->toString() << "\n";
     }
 
     return left_expression; // Returning the expression that was parsed it can be either prefix or infix
 }
 
 // Inifix parse function definition
-std::unique_ptr<Expression> Parser::parseInfixExpression(unique_ptr<Expression> left)
+std::unique_ptr<Expression> Parser::parseInfixExpression(std::unique_ptr<Expression> left)
 {
     Token operat = currentToken();
-    std::cout << "[DEBUG] parsing infix with operator: " << operat.TokenLiteral << endl;
+    std::cout << "[DEBUG] parsing infix with operator: " << operat.TokenLiteral << "\n";
     Precedence prec = get_precedence(operat.type);
     advance();
     auto right = parseExpression(prec);
@@ -920,47 +920,47 @@ std::unique_ptr<Expression> Parser::parseNewComponentExpression()
 }
 
 // Integer literal parse function
-unique_ptr<Expression> Parser::parseIntegerLiteral()
+std::unique_ptr<Expression> Parser::parseIntegerLiteral()
 {
-    auto ident = make_unique<IntegerLiteral>(currentToken());
+    auto ident = std::make_unique<IntegerLiteral>(currentToken());
     advance();
     return ident;
 }
 
 // Boolean literal parse function
-unique_ptr<Expression> Parser::parseBooleanLiteral()
+std::unique_ptr<Expression> Parser::parseBooleanLiteral()
 {
     Token bool_tok = currentToken();
     advance();
-    return make_unique<BooleanLiteral>(bool_tok);
+    return std::make_unique<BooleanLiteral>(bool_tok);
 }
 
 // Float literal parse function
-unique_ptr<Expression> Parser::parseFloatLiteral()
+std::unique_ptr<Expression> Parser::parseFloatLiteral()
 {
     Token float_tok = currentToken();
     advance();
-    return make_unique<FloatLiteral>(float_tok);
+    return std::make_unique<FloatLiteral>(float_tok);
 }
 
 // Char literal parse function
-unique_ptr<Expression> Parser::parseCharLiteral()
+std::unique_ptr<Expression> Parser::parseCharLiteral()
 {
     Token char_tok = currentToken();
     advance();
-    return make_unique<CharLiteral>(char_tok);
+    return std::make_unique<CharLiteral>(char_tok);
 }
 
 // String literal parse function
-unique_ptr<Expression> Parser::parseStringLiteral()
+std::unique_ptr<Expression> Parser::parseStringLiteral()
 {
     Token string_tok = currentToken();
     advance();
-    return make_unique<StringLiteral>(string_tok);
+    return std::make_unique<StringLiteral>(string_tok);
 }
 
 // Grouped expression parse function
-unique_ptr<Expression> Parser::parseGroupedExpression()
+std::unique_ptr<Expression> Parser::parseGroupedExpression()
 {
     Token firstToken = currentToken();
     advance();
@@ -1001,9 +1001,9 @@ std::unique_ptr<Expression> Parser::parseGroupedOrTupleExpression()
     return parseGroupedExpression();
 }
 
-unique_ptr<Expression> Parser::parseCallExpression(unique_ptr<Expression> left)
+std::unique_ptr<Expression> Parser::parseCallExpression(std::unique_ptr<Expression> left)
 {
-    cout << "[DEBUG] Entered parseCallExpression for: " << left->toString() << "\n";
+    std::cout << "[DEBUG] Entered parseCallExpression for: " << left->toString() << "\n";
     Token call_token = currentToken(); // We expect a left parenthesis here
 
     if (call_token.type != TokenType::LPAREN)
@@ -1016,14 +1016,14 @@ unique_ptr<Expression> Parser::parseCallExpression(unique_ptr<Expression> left)
 
     auto args = parseCallArguments(); // Calling the parse call arguments inorder to parse the arguments
 
-    return make_unique<CallExpression>(call_token, move(left), move(args));
+    return std::make_unique<CallExpression>(call_token, move(left), move(args));
 }
 
 // Parsing tuple expressions
 std::unique_ptr<Expression> Parser::parseTupleExpression()
 {
     Token firstToken = currentToken();
-    std::vector<unique_ptr<Expression>> elements;
+    std::vector<std::unique_ptr<Expression>> elements;
     while (true)
     {
         auto expr = parseExpression(Precedence::PREC_NONE);
@@ -1050,13 +1050,13 @@ std::unique_ptr<Expression> Parser::parseTupleExpression()
         }
     }
 
-    return make_unique<TupleExpression>(firstToken, std::move(elements));
+    return std::make_unique<TupleExpression>(firstToken, std::move(elements));
 }
 
 // Parsing function call arguments
-vector<unique_ptr<Expression>> Parser::parseCallArguments()
+std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments()
 {
-    vector<unique_ptr<Expression>> args;
+    std::vector<std::unique_ptr<Expression>> args;
     if (currentToken().type == TokenType::RPAREN)
     {
         advance();
@@ -1066,7 +1066,7 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
     auto firstArg = parseExpression(Precedence::PREC_NONE);
     if (!firstArg)
     {
-        cerr << "Failed to parse first function argument.\n";
+        std::cerr << "Failed to parse first function argument.\n";
         return args;
     }
     args.push_back(std::move(firstArg));
@@ -1077,7 +1077,7 @@ vector<unique_ptr<Expression>> Parser::parseCallArguments()
         auto arg = parseExpression(Precedence::PREC_NONE);
         if (!arg)
         {
-            cerr << "Failed to parse function argument after comma.\n";
+            std::cerr << "Failed to parse function argument after comma.\n";
             return args;
         }
         args.push_back(std::move(arg));
@@ -1118,7 +1118,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     //---Dealing with the call itself
     auto call = parseFunctionParameters(); // We might get some arguments or not so we call the parse call expression
 
-    unique_ptr<Expression> return_type = nullptr;
+    std::unique_ptr<Expression> return_type = nullptr;
     //--Checking for colons
     if (currentToken().type == TokenType::COLON)
     {
@@ -1131,7 +1131,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         case TokenType::BOOL_KEYWORD:
         case TokenType::AUTO:
         case TokenType::VOID:
-            return_type = make_unique<ReturnTypeExpression>(currentToken());
+            return_type = std::make_unique<ReturnTypeExpression>(currentToken());
             advance();
             break;
         default:
@@ -1144,12 +1144,12 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     if (currentToken().type == TokenType::SEMICOLON)
     {
         advance(); // consume the semicolon
-        auto decl = make_unique<FunctionDeclaration>(
+        auto decl = std::make_unique<FunctionDeclaration>(
             func_tok,
             std::move(identExpr),
             std::move(call),
             std::move(return_type));
-        return make_unique<FunctionDeclarationExpression>(func_tok, std::move(decl));
+        return std::make_unique<FunctionDeclarationExpression>(func_tok, std::move(decl));
     }
 
     auto block = parseBlockExpression(); // Parsing the blocks
@@ -1159,11 +1159,11 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         return nullptr;
     }
 
-    return make_unique<FunctionExpression>(identToken, move(call), move(return_type), move(block));
+    return std::make_unique<FunctionExpression>(identToken, move(call), move(return_type), move(block));
 }
 
 // Parsing function patamemters
-vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
+std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters()
 {
     std::cout << "PARSING FUNCTION PARAMETERS\n";
     std::vector<std::unique_ptr<Statement>> args; // Declaring the empty vector
@@ -1193,7 +1193,7 @@ vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
 
     if (!firstParam)
     { // Checking if it failed to parse the 1st parameter
-        cerr << "Failed to parse first parameter.\n";
+        std::cerr << "Failed to parse first parameter.\n";
         return args;
     }
     args.push_back(move(firstParam)); // If its parsed we add it to the vector
@@ -1204,7 +1204,7 @@ vector<unique_ptr<Statement>> Parser::parseFunctionParameters()
         auto arg = parseLetStatementDecider(); // Parse the second parameter
         if (!arg)
         { // It it fails to parse the second parameter
-            cerr << "Failed to parse parameter after comma\n";
+            std::cerr << "Failed to parse parameter after comma\n";
             return args;
         }
         args.push_back(move(arg));
@@ -1241,11 +1241,11 @@ std::unique_ptr<Expression> Parser::parseErrorExpression()
     {
         logError("Expected )");
     }
-    return make_unique<ErrorExpression>(err_tok, std::move(err_message));
+    return std::make_unique<ErrorExpression>(err_tok, std::move(err_message));
 }
 
 // Parsing block expressions
-unique_ptr<Expression> Parser::parseBlockExpression()
+std::unique_ptr<Expression> Parser::parseBlockExpression()
 {
     Token lbrace = currentToken();
     if (lbrace.type != TokenType::LBRACE)
@@ -1254,7 +1254,7 @@ unique_ptr<Expression> Parser::parseBlockExpression()
         return nullptr;
     }
     advance();
-    auto block = make_unique<BlockExpression>(lbrace);
+    auto block = std::make_unique<BlockExpression>(lbrace);
     while (currentToken().type != TokenType::RBRACE)
     {
         if (currentToken().type == TokenType::END)
@@ -1284,7 +1284,7 @@ unique_ptr<Expression> Parser::parseBlockExpression()
 }
 
 // Parsing block statements
-unique_ptr<Statement> Parser::parseBlockStatement()
+std::unique_ptr<Statement> Parser::parseBlockStatement()
 {
     Token lbrace = currentToken();
     if (lbrace.type != TokenType::LBRACE)
@@ -1293,7 +1293,7 @@ unique_ptr<Statement> Parser::parseBlockStatement()
         return nullptr;
     }
     advance();
-    vector<unique_ptr<Statement>> statements;
+    std::vector<std::unique_ptr<Statement>> statements;
 
     while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
     {
@@ -1304,7 +1304,7 @@ unique_ptr<Statement> Parser::parseBlockStatement()
         }
         else
         {
-            cerr << "[ERROR] Failed to parse statement within block. Skipping token: " << currentToken().TokenLiteral << endl;
+            std::cerr << "[ERROR] Failed to parse statement within block. Skipping token: " << currentToken().TokenLiteral << "\n";
             advance();
         }
     }
@@ -1317,7 +1317,7 @@ unique_ptr<Statement> Parser::parseBlockStatement()
 
     advance();
 
-    return make_unique<BlockStatement>(lbrace, std::move(statements));
+    return std::make_unique<BlockStatement>(lbrace, std::move(statements));
 }
 
 //----------HELPER FUNCTIONS---------------
@@ -1387,7 +1387,7 @@ std::unique_ptr<Statement> Parser::parseErrorStatement()
 {
     Token err_token = currentToken();
     auto errExpr = parseErrorExpression();
-    return make_unique<ErrorStatement>(err_token, std::move(errExpr));
+    return std::make_unique<ErrorStatement>(err_token, std::move(errExpr));
 }
 
 // Registering the statement parsing functions
