@@ -205,37 +205,65 @@ Token Lexer::readIdentifiers()
 
 bool Lexer::isIdentifierStart(char32_t ch)
 {
-    return (ch >= U'A' && ch <= U'Z') ||
-           (ch >= U'a' && ch <= U'z') ||
-           (ch == U'_') ||
-           (ch >= 0x00C0 && ch <= 0x00FF) || // Latin-1 Supplement
-           (ch >= 0x0100 && ch <= 0x017F) || // Latin Extended-A
-           (ch >= 0x0180 && ch <= 0x024F) || // Latin Extended-B
-           (ch >= 0x0250 && ch <= 0x02AF) || // IPA Extensions
-           (ch >= 0x0370 && ch <= 0x03FF) || // Greek and Coptic
-           (ch >= 0x0400 && ch <= 0x04FF) || // Cyrillic
-           (ch >= 0x0530 && ch <= 0x058F) || // Armenian
-           (ch >= 0x0590 && ch <= 0x05FF) || // Hebrew
-           (ch >= 0x0600 && ch <= 0x06FF) || // Arabic
-           (ch >= 0x0700 && ch <= 0x074F) || // Syriac
-           (ch >= 0x0780 && ch <= 0x07BF) || // Thaana
-           (ch >= 0x0900 && ch <= 0x097F) || // Devanagari
-           (ch >= 0x0980 && ch <= 0x09FF) || // Bengali
-           (ch >= 0x0A00 && ch <= 0x0A7F) || // Gurmukhi
-           (ch >= 0x0A80 && ch <= 0x0AFF) || // Gujarati
-           (ch >= 0x0B00 && ch <= 0x0B7F) || // Oriya
-           (ch >= 0x0B80 && ch <= 0x0BFF) || // Tamil
-           (ch >= 0x0C00 && ch <= 0x0C7F) || // Telugu
-           (ch >= 0x0C80 && ch <= 0x0CFF) || // Kannada
-           (ch >= 0x0D00 && ch <= 0x0D7F) || // Malayalam
-           (ch >= 0x0D80 && ch <= 0x0DFF) || // Sinhala
-           (ch >= 0x0E00 && ch <= 0x0E7F) || // Thai
-           (ch >= 0x0E80 && ch <= 0x0EFF) || // Lao
-           (ch >= 0x0F00 && ch <= 0x0FFF) || // Tibetan
-           (ch >= 0x10A0 && ch <= 0x10FF) || // Georgian
-           (ch >= 0x1100 && ch <= 0x11FF) || // Hangul Jamo
-           (ch >= 0x1E00 && ch <= 0x1EFF) || // Latin Extended Additional
-           (ch >= 0xFF00 && ch <= 0xFFEF);   // Fullwidth ASCII
+    return
+        // Basic Latin
+        (ch >= U'A' && ch <= U'Z') ||
+        (ch >= U'a' && ch <= U'z') ||
+        (ch == U'_') ||
+
+        // Latin-based scripts
+        (ch >= 0x00C0 && ch <= 0x00FF) || // Latin-1 Supplement
+        (ch >= 0x0100 && ch <= 0x017F) || // Latin Extended-A
+        (ch >= 0x0180 && ch <= 0x024F) || // Latin Extended-B
+        (ch >= 0x0250 && ch <= 0x02AF) || // IPA Extensions
+        (ch >= 0x1E00 && ch <= 0x1EFF) || // Latin Extended Additional
+
+        // Greek, Cyrillic, Hebrew, Arabic, etc.
+        (ch >= 0x0370 && ch <= 0x03FF) || // Greek and Coptic
+        (ch >= 0x0400 && ch <= 0x04FF) || // Cyrillic
+        (ch >= 0x0530 && ch <= 0x058F) || // Armenian
+        (ch >= 0x0590 && ch <= 0x05FF) || // Hebrew
+        (ch >= 0x0600 && ch <= 0x06FF) || // Arabic
+        (ch >= 0x0700 && ch <= 0x074F) || // Syriac
+        (ch >= 0x0780 && ch <= 0x07BF) || // Thaana
+
+        // Indian scripts
+        (ch >= 0x0900 && ch <= 0x0DFF) || // Devanagari to Malayalam
+        (ch >= 0x0E00 && ch <= 0x0E7F) || // Thai
+        (ch >= 0x0E80 && ch <= 0x0EFF) || // Lao
+        (ch >= 0x0F00 && ch <= 0x0FFF) || // Tibetan
+
+        // Georgian and Hangul
+        (ch >= 0x10A0 && ch <= 0x10FF) || // Georgian
+        (ch >= 0x1100 && ch <= 0x11FF) || // Hangul Jamo
+
+        // Chinese, Japanese, Korean
+        (ch >= 0x3040 && ch <= 0x309F) || // Hiragana
+        (ch >= 0x30A0 && ch <= 0x30FF) || // Katakana
+        (ch >= 0x31F0 && ch <= 0x31FF) || // Katakana Phonetic Extensions
+        (ch >= 0x4E00 && ch <= 0x9FFF) || // CJK Unified Ideographs (Chinese)
+        (ch >= 0xAC00 && ch <= 0xD7AF) || // Hangul Syllables
+
+        // Emoji and Symbols
+        (ch >= 0x1F300 && ch <= 0x1F5FF) || // Miscellaneous Symbols and Pictographs
+        (ch >= 0x1F600 && ch <= 0x1F64F) || // Emoticons (Emoji)
+        (ch >= 0x1F680 && ch <= 0x1F6FF) || // Transport and Map Symbols
+        (ch >= 0x1F700 && ch <= 0x1F77F) || // Alchemical Symbols
+
+        // Fullwidth compatibility
+        (ch >= 0xFF00 && ch <= 0xFFEF) || // Fullwidth ASCII & Halfwidth Katakana
+
+        (ch >= 0x3400 && ch <= 0x4DBF) ||   // CJK Unified Ideographs Extension A
+        (ch >= 0x4E00 && ch <= 0x9FFF) ||   // CJK Unified Ideographs
+        (ch >= 0x20000 && ch <= 0x2A6DF) || // CJK Unified Ideographs Extension B
+        (ch >= 0x2A700 && ch <= 0x2B73F) || // CJK Unified Ideographs Extension C
+        (ch >= 0x2B740 && ch <= 0x2B81F) || // CJK Unified Ideographs Extension D
+        (ch >= 0x2B820 && ch <= 0x2CEAF) || // CJK Unified Ideographs Extension E
+        (ch >= 0x2CEB0 && ch <= 0x2EBEF) || // CJK Unified Ideographs Extension F
+        (ch >= 0x30000 && ch <= 0x3134F) || // CJK Unified Ideographs Extension G
+
+        (ch >= 0xF900 && ch <= 0xFAFF) || // CJK Compatibility Ideographs
+        (ch >= 0x2F800 && ch <= 0x2FA1F); // CJK Compatibility Ideographs Supplement
 }
 
 bool Lexer::isIdentifierContinue(char32_t ch)
