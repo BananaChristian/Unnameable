@@ -194,6 +194,9 @@ private:
     // Float
     std::unique_ptr<Expression> parseFloatLiteral();
 
+    //Double
+    std::unique_ptr<Expression> parseDoubleLiteral();
+
     // Char
     std::unique_ptr<Expression> parseCharLiteral();
 

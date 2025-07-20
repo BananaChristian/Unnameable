@@ -215,7 +215,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 
 std::unique_ptr<Statement> Parser::parseLetStatementWithGenericType(bool isParam)
 {
-    Mutability mutability=Mutability::IMMUTABLE;
+    Mutability mutability = Mutability::IMMUTABLE;
     Token typeToken = currentToken(); // Like 'T'
     advance();
 
@@ -1028,6 +1028,14 @@ std::unique_ptr<Expression> Parser::parseFloatLiteral()
     return std::make_unique<FloatLiteral>(float_tok);
 }
 
+// Double literal parse function
+std::unique_ptr<Expression> Parser::parseDoubleLiteral()
+{
+    Token double_tok = currentToken();
+    advance();
+    return std::make_unique<DoubleLiteral>(double_tok);
+}
+
 // Char literal parse function
 std::unique_ptr<Expression> Parser::parseCharLiteral()
 {
@@ -1326,8 +1334,8 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters(const st
     args.push_back(move(firstParam)); // If its parsed we add it to the vector
 
     while (currentToken().type == TokenType::COMMA)
-    {                                                       // If we still have commas
-        advance();                                          // Advance from the comma to the second parameter
+    {                                                                 // If we still have commas
+        advance();                                                    // Advance from the comma to the second parameter
         auto arg = parseParamLetStatementWithGenerics(genericParams); // Parse the second parameter
         if (!arg)
         { // It it fails to parse the second parameter
@@ -1491,6 +1499,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::TRUE] = &Parser::parseBooleanLiteral;
     PrefixParseFunctionsMap[TokenType::FALSE] = &Parser::parseBooleanLiteral;
     PrefixParseFunctionsMap[TokenType::FLOAT] = &Parser::parseFloatLiteral;
+    PrefixParseFunctionsMap[TokenType::DOUBLE] = &Parser::parseDoubleLiteral;
     PrefixParseFunctionsMap[TokenType::CHAR] = &Parser::parseCharLiteral;
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
@@ -1533,6 +1542,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::WAIT] = &Parser::parseWaitStatement;
     StatementParseFunctionsMap[TokenType::INT] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::DOUBLE_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::STRING_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;

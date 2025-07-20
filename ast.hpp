@@ -137,6 +137,17 @@ struct FloatLiteral : Expression
     FloatLiteral(Token float_t) : Expression(float_t), float_token(float_t) {};
 };
 
+// Double literal
+struct DoubleLiteral : Expression
+{
+    Token double_token;
+    std::string toString() override
+    {
+        return "Double Literal: " + double_token.TokenLiteral;
+    }
+    DoubleLiteral(Token double_t) : Expression(double_t), double_token(double_t) {};
+};
+
 // Char literal
 struct CharLiteral : Expression
 {

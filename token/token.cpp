@@ -146,6 +146,8 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: QUESTION MARK";
     case TokenType::BOOL_KEYWORD:
         return "Token Type: BOOL_KEYWORD";
+    case TokenType::DOUBLE_KEYWORD:
+        return "Token Type: DOUBLE_KEYWORD";
     case TokenType::NULLABLE:
         return "Token Type: NULL";
     case TokenType::TRUE:

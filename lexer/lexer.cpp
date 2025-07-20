@@ -161,6 +161,11 @@ Token Lexer::readNumbers()
                 number += currentChar();
                 advance();
             }
+            if (currentChar() == U'd' || currentChar() == U'D')
+            {
+                advance(); // consume 'd'
+                return Token{number, TokenType::DOUBLE, tokenLine, tokenColumn};
+            }
             return Token{number, TokenType::FLOAT, tokenLine, tokenColumn};
         }
     }

@@ -31,10 +31,11 @@ This project contains the core implementation of the Unnameable compiler written
 
 - `int` — 32-bit integers
 - `bool` — true/false values
-- `string` — UTF-8 strings *(basic support)*
+- `string` — UTF-8 encoded sequence of characters.
+May contain Unicode text. (Basic support: no slicing or advanced string ops yet.)
 - `char` — single characters
 - `float` — 32-bit floating-point numbers
-
+-  `double`— 64-bit floating point number
 ---
 
 ## 💬 Comments
