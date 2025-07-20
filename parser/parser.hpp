@@ -163,9 +163,6 @@ private:
     // Error statement
     std::unique_ptr<Statement> parseErrorStatement();
 
-    // Lambda expression
-    std::unique_ptr<Expression> parseLambdaExpression(std::unique_ptr<Expression> left);
-
     // New component expression parse function declaration
     std::unique_ptr<Expression> parseNewComponentExpression();
 

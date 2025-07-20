@@ -199,35 +199,6 @@ struct FunctionExpression : Expression
     FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
-struct LambdaExpression : Expression
-{
-    Token lambda_token;
-    std::vector<std::unique_ptr<Expression>> parameters;
-    std::vector<std::unique_ptr<Expression>> blockExpr;
-
-    std::string toString()
-    {
-        std::string params;
-        for (const auto &param : parameters)
-        {
-            params += param->toString();
-        }
-        std::string block;
-        for (const auto &content : blockExpr)
-        {
-            block += content->toString();
-        }
-
-        return "Lambda Expression: ( " + params + " ) " + " => " + "{" + block + "}";
-    }
-
-    LambdaExpression(Token lambda,
-                     std::vector<std::unique_ptr<Expression>> params,
-                     std::vector<std::unique_ptr<Expression>> block) : Expression(lambda),
-                                                                       parameters(std::move(params)),
-                                                                       blockExpr(std::move(block)) {};
-};
-
 // Return type expression
 struct ReturnTypeExpression : Expression
 {

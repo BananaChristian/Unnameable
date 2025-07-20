@@ -1350,7 +1350,6 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::OR] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
-    InfixParseFunctionsMap[TokenType::ARROW] = &Parser::parseLambdaExpression;
     InfixParseFunctionsMap[TokenType::EQUALS] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::ASSIGN] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseCallExpression;
