@@ -8,7 +8,7 @@ Born from the frustration with the complexity of C++, the strictness of Rust, an
 
 > **Fast and powerful, yet simple and predictable.**
 
-No matter what you’re building — an OS, a game engine, or your first kernel — you shouldn't need a PhD or wrestle with books just to understand memory management.
+No matter what you’re building an OS, a game engine, or your first kernel you shouldn't need a PhD or wrestle with books just to understand memory management.
 
 Unnameable is here to bring the joy back to low-level programming.
 
@@ -79,6 +79,25 @@ work greet(string name): string {
 
 ```
 
+## 🌐Multilingual identifier support
+Unnameable supports identifiers in:
+- Latin (English, French, German, etc.)
+- Cyrillic (e.g., Russian, Ukrainian)
+- Greek
+- Hebrew
+- Arabic
+- Devanagari (Hindi, Marathi, Sanskrit)
+- Thai, Lao, Tibetan
+- Georgian, Hangul (Korean)
+- **Chinese (all major CJK ideograph ranges)**
+- Japanese (Hiragana, Katakana, Kanji)
+- Full emoji support 😎🔥🧠
+  
+```
+auto test="😂";
+string 萌="cute";
+
+```
 
 ## 🧬Function calls
 ```
@@ -217,9 +236,7 @@ const auto w = 3;  # Immutable variable with inferred type int
 ```
 
 ## 🔮 Future Lexer additions
-- Unicode support
-- UTF-8 multibyte characters
-- UTF-16 / UTF-32 decoding
+- Even more unicode support for identifiers
 
 ## 🧠 Future additions
 - High order functions
