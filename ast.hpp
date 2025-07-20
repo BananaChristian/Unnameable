@@ -6,6 +6,8 @@
 #include <vector>
 #include <optional>
 
+#define CPPREST_FORCE_REBUILD
+
 enum class Mutability
 {
     IMMUTABLE,
@@ -181,6 +183,7 @@ struct CallExpression : Expression
 struct FunctionExpression : Expression
 {
     Token func_key;
+    std::vector<Token> generic_parameters;
     std::vector<std::unique_ptr<Statement>> call;
     std::unique_ptr<Expression> return_type;
     bool isNullable = false;
@@ -199,22 +202,36 @@ struct FunctionExpression : Expression
         }
         cl += ")";
 
-        std::string nullStr="";
+        std::string nullStr = "";
         if (isNullable)
         {
             nullStr += "?";
+        }
+
+        std::string genStr = "";
+        if (!generic_parameters.empty())
+        {
+            genStr += "<";
+            for (size_t i = 0; i < generic_parameters.size(); ++i)
+            {
+                genStr += generic_parameters[i].TokenLiteral;
+                if (i < generic_parameters.size() - 1)
+                    genStr += ",";
+            }
+            genStr += ">";
         }
 
         std::string ret_str = return_type ? return_type->toString() : "<no type>";
         std::string block_str = block ? block->toString() : "<no block>";
 
         return "FunctionExpression: " + func_key.TokenLiteral + " " +
+               "Function generics: " + genStr +
                "Function parameters: " + cl +
                " Return type: " + ret_str + nullStr +
                " Function block: " + block_str;
     }
 
-    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, bool isNull, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), isNullable(isNull), block(std::move(bl)) {};
+    FunctionExpression(Token fn, std::vector<Token> generics, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, bool isNull, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), generic_parameters(generics), call(std::move(c)), return_type(std::move(return_t)), isNullable(isNull), block(std::move(bl)) {};
 };
 
 // Return type expression
@@ -821,10 +838,13 @@ struct FunctionStatement : Statement
 // Function declaration statement
 struct FunctionDeclaration : Statement
 {
+
     Token work_keyword_token;
+    std::vector<Token> genericParams;
     std::unique_ptr<Expression> function_name;
     std::vector<std::unique_ptr<Statement>> parameters;
     std::unique_ptr<Expression> return_type;
+    bool isNullable = false;
 
     std::string toString() override
     {
@@ -833,13 +853,39 @@ struct FunctionDeclaration : Statement
         {
             arguments += param->toString();
         }
+        std::string nullStr = "";
+        if (isNullable)
+        {
+            nullStr += "?";
+        }
+
+        std::string genStr = "";
+        if (!genericParams.empty())
+        {
+            genStr += "<";
+            for (size_t i = 0; i < genericParams.size(); ++i)
+            {
+                genStr += genericParams[i].TokenLiteral;
+                if (i < genericParams.size() - 1)
+                    genStr += ",";
+            }
+            genStr += ">";
+        }
+
         return "Function Declaration Statement: " + work_keyword_token.TokenLiteral + " " +
+               genStr +
                (function_name ? function_name->toString() : "[null_name]") + " " +
                arguments + " " +
-               (return_type ? return_type->toString() : "[no_return]");
+               (return_type ? return_type->toString() : "[no_return]") + nullStr;
     }
 
-    FunctionDeclaration(Token work, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type) : Statement(work), work_keyword_token(work), function_name(std::move(identifier)), parameters(std::move(params)), return_type(std::move(ret_type)) {};
+    FunctionDeclaration(Token work, std::vector<Token> generics, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type, bool isNull) : Statement(work),
+                                                                                                                                                                                                              work_keyword_token(work),
+                                                                                                                                                                                                              genericParams(generics),
+                                                                                                                                                                                                              function_name(std::move(identifier)),
+                                                                                                                                                                                                              parameters(std::move(params)),
+                                                                                                                                                                                                              return_type(std::move(ret_type)),
+                                                                                                                                                                                                              isNullable(isNull) {};
 };
 
 // Function Declaration expression
