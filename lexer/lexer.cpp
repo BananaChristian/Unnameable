@@ -461,6 +461,12 @@ Token Lexer::tokenize()
             advance();
             return Token{"==", TokenType::EQUALS, tokenLine, tokenColumn};
         }
+        else if (peekChar() == U'>')
+        {
+            advance();
+            advance();
+            return Token{"=>", TokenType::ARROW, tokenLine, tokenColumn};
+        }
         else
         {
             advance();

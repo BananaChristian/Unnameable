@@ -66,6 +66,11 @@ work greet(string name): string {
 
 ```
 
+## Lambdas
+```
+string greet= (string name)=> "Hello"+name;
+```
+
 ## ⚠️ Error handling
 ```unn
 work greet(string name): string {

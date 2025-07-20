@@ -23,6 +23,7 @@ enum class TokenType
     LESS_THAN,    //<
     GT_OR_EQ,     //>=
     LT_OR_EQ,     //<=
+    ARROW,        //=>
     SHIFT_RIGHT,  //>>
     SHIFT_LEFT,   //<<
     BITWISE_AND,  //&
@@ -37,11 +38,11 @@ enum class TokenType
     RPAREN,   //)
 
     // Punctuation
-    SEMICOLON, //;
-    COLON,     //:
-    FULLSTOP,  //.
-    COMMA,     //,
-    BANG,      //"!"
+    SEMICOLON,      //;
+    COLON,          //:
+    FULLSTOP,       //.
+    COMMA,          //,
+    BANG,           //"!"
     SCOPE_OPERATOR, //"::"
 
     IDENTIFIER,

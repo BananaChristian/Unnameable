@@ -6,6 +6,8 @@ void
 *.log
 *.out
 
+semantics
+
 language_design.md
 
 test.unn

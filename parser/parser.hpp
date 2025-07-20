@@ -6,7 +6,8 @@
 
 #define CPPREST_FORCE_REBUILD
 
-struct ParseError{
+struct ParseError
+{
     std::string message;
     int line;
     int column;
@@ -21,6 +22,7 @@ class Parser
     // Precedence and token type map
     std::map<TokenType, Precedence> precedence{
         {TokenType::ASSIGN, Precedence::PREC_ASSIGNMENT},
+        {TokenType::ARROW, Precedence::PREC_ASSIGNMENT},
         {TokenType::OR, Precedence::PREC_OR},
         {TokenType::AND, Precedence::PREC_AND},
         {TokenType::EQUALS, Precedence::PREC_EQUALITY},
@@ -34,11 +36,11 @@ class Parser
         {TokenType::ASTERISK, Precedence::PREC_FACTOR},
         {TokenType::DIVIDE, Precedence::PREC_FACTOR},
         {TokenType::BANG, Precedence::PREC_UNARY},
-        {TokenType::MINUS_MINUS,Precedence::PREC_UNARY},
-        {TokenType::PLUS_PLUS,Precedence::PREC_UNARY},
+        {TokenType::MINUS_MINUS, Precedence::PREC_UNARY},
+        {TokenType::PLUS_PLUS, Precedence::PREC_UNARY},
         {TokenType::FULLSTOP, Precedence::PREC_CALL},
-        {TokenType::LPAREN,Precedence::PREC_CALL},
-        {TokenType::SCOPE_OPERATOR,Precedence::PREC_CALL},
+        {TokenType::LPAREN, Precedence::PREC_CALL},
+        {TokenType::SCOPE_OPERATOR, Precedence::PREC_CALL},
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
     };
 
@@ -70,7 +72,7 @@ public:
 
     std::map<TokenType, prefixParseFns> PrefixParseFunctionsMap;
     std::map<TokenType, infixParseFns> InfixParseFunctionsMap;
-    
+
     std::map<TokenType, stmtParseFns> StatementParseFunctionsMap;
     std::vector<ParseError> errors;
 
@@ -80,71 +82,71 @@ private:
     std::unique_ptr<Statement> parseStatement();
 
     // Parsing let statements with type
-    std::unique_ptr<Statement> parseLetStatementWithType(bool isParam=false);
+    std::unique_ptr<Statement> parseLetStatementWithType(bool isParam = false);
 
     // Parsing let statements without type
-    std::unique_ptr<Statement> parseAssignmentStatement(bool isParam=false);
+    std::unique_ptr<Statement> parseAssignmentStatement(bool isParam = false);
 
-    //A function to determine whether to parse Let with type or no type
+    // A function to determine whether to parse Let with type or no type
     std::unique_ptr<Statement> parseLetStatementDecider();
 
     // Parsing if statement
     std::unique_ptr<Statement> parseIfStatement();
 
-    //Parsing switch statement
+    // Parsing switch statement
     std::unique_ptr<Statement> parseSwitchStatement();
 
-    //Parsing enum class statement
+    // Parsing enum class statement
     std::unique_ptr<Statement> parseEnumClassStatement();
 
-    //Parsing case clause
+    // Parsing case clause
     std::unique_ptr<Statement> parseCaseClause();
 
-    //Parsing signal statement
+    // Parsing signal statement
     std::unique_ptr<Statement> parseSignalStatement();
 
-    //Parsing start statement
+    // Parsing start statement
     std::unique_ptr<Statement> parseStartStatement();
 
-    //Parsing wait statement
+    // Parsing wait statement
     std::unique_ptr<Statement> parseWaitStatement();
 
-    //Parsing the function statement
+    // Parsing the function statement
     std::unique_ptr<Statement> parseFunctionStatement();
 
     // Parsing return statements
     std::unique_ptr<Statement> parseReturnStatement();
 
-    //Parsing for statement
+    // Parsing for statement
     std::unique_ptr<Statement> parseForStatement();
 
-    //Parsing while loops
-    std::unique_ptr<Statement>parseWhileStatement();
+    // Parsing while loops
+    std::unique_ptr<Statement> parseWhileStatement();
 
-    //Parsing break statement
+    // Parsing break statement
     std::unique_ptr<Statement> parseBreakStatement();
 
-    //Parsing continue statement
+    // Parsing continue statement
     std::unique_ptr<Statement> parseContinueStatement();
 
     // Parsing block statements
     std::unique_ptr<Statement> parseBlockStatement();
 
-    //Parsing component statements
+    // Parsing component statements
     std::unique_ptr<Statement> parseComponentStatement();
 
-    //Parsing constructor statement
+    // Parsing constructor statement
     std::unique_ptr<Statement> parseInitConstructorStatement();
 
-    //Parsing use statements
+    // Parsing use statements
     std::unique_ptr<Statement> parseUseStatement();
 
-    //Parsing behavior statements
+    // Parsing behavior statements
     std::unique_ptr<Statement> parseBehaviorStatement();
 
-    //Parsing data statements
+    // Parsing data statements
     std::unique_ptr<Statement> parseDataStatement();
-    
+
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
     std::unique_ptr<Expression> parseExpression(Precedence precedence);
@@ -155,19 +157,22 @@ private:
     // Prefix expression parsing function
     std::unique_ptr<Expression> parsePrefixExpression();
 
-    //Error expression
+    // Error expression
     std::unique_ptr<Expression> parseErrorExpression();
 
-    //Error statement
+    // Error statement
     std::unique_ptr<Statement> parseErrorStatement();
 
-    //New component expression parse function declaration
+    // Lambda expression
+    std::unique_ptr<Expression> parseLambdaExpression(std::unique_ptr<Expression> left);
+
+    // New component expression parse function declaration
     std::unique_ptr<Expression> parseNewComponentExpression();
 
     // Parsing identifiers
     std::unique_ptr<Expression> parseIdentifier();
 
-    //Parsing for expression
+    // Parsing for expression
     std::unique_ptr<Expression> parseFunctionExpression();
 
     // Parsing block expressions
@@ -192,36 +197,35 @@ private:
     // String
     std::unique_ptr<Expression> parseStringLiteral();
 
-    //Tuples
+    // Tuples
     std::unique_ptr<Expression> parseTupleExpression();
 
-    //Parsing ++ or --
+    // Parsing ++ or --
     std::unique_ptr<Expression> parsePostfixUnary();
 
-    //Call expression parse function
+    // Call expression parse function
     std::unique_ptr<Expression> parseCallExpression(std::unique_ptr<Expression> left);
 
-    //Parsing call arguments
+    // Parsing call arguments
     std::vector<std::unique_ptr<Expression>> parseCallArguments();
 
-    //Parsing function parameters
+    // Parsing function parameters
     std::vector<std::unique_ptr<Statement>> parseFunctionParameters();
 
-
-    //HELPER FUNCTIONS
-    // Peeking functions
+    // HELPER FUNCTIONS
+    //  Peeking functions
     Token currentToken();
     Token nextToken();
 
-    //Wrapper functions
+    // Wrapper functions
     std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
 
-    //Function to select how to parse grouped expression
+    // Function to select how to parse grouped expression
     std::unique_ptr<Expression> parseGroupedOrTupleExpression();
 
-    //Error logging 
-    void logError(const std::string& message);
+    // Error logging
+    void logError(const std::string &message);
 
-    //Getting the error token
-    Token  getErrorToken();
+    // Getting the error token
+    Token getErrorToken();
 };

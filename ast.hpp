@@ -199,6 +199,35 @@ struct FunctionExpression : Expression
     FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
+struct LambdaExpression : Expression
+{
+    Token lambda_token;
+    std::vector<std::unique_ptr<Expression>> parameters;
+    std::vector<std::unique_ptr<Expression>> blockExpr;
+
+    std::string toString()
+    {
+        std::string params;
+        for (const auto &param : parameters)
+        {
+            params += param->toString();
+        }
+        std::string block;
+        for (const auto &content : blockExpr)
+        {
+            block += content->toString();
+        }
+
+        return "Lambda Expression: ( " + params + " ) " + " => " + "{" + block + "}";
+    }
+
+    LambdaExpression(Token lambda,
+                     std::vector<std::unique_ptr<Expression>> params,
+                     std::vector<std::unique_ptr<Expression>> block) : Expression(lambda),
+                                                                       parameters(std::move(params)),
+                                                                       blockExpr(std::move(block)) {};
+};
+
 // Return type expression
 struct ReturnTypeExpression : Expression
 {
@@ -648,6 +677,7 @@ struct ifStatement : Statement
                                                                                                   else_stmt(else_st), else_result(move(else_r)) {};
 };
 
+// Case clause struct used in switch-case statement
 struct CaseClause : Statement
 {
     Token case_token;
@@ -707,8 +737,7 @@ struct SwitchStatement : Statement
         : Statement(token), switch_token(token), switch_expr(std::move(expr)), case_clauses(std::move(cases)), default_token(default_tok), default_statements(std::move(default_stmts)) {}
 };
 
-
-//Enum class struct
+// Enum class struct
 struct EnumClassStatement : Statement
 {
     Token enum_token;
@@ -720,14 +749,14 @@ struct EnumClassStatement : Statement
         std::string enum_block;
         for (const auto &enum_cont : enum_content)
         {
-            enum_block += enum_cont->toString()+",\n";
+            enum_block += enum_cont->toString() + ",\n";
         }
         return "Enum class statement: " + enum_identifier->toString() + " { " + enum_block + " }";
     }
     EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::vector<std::unique_ptr<Expression>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
-                                                                                                                                                      class_token(class_tok),
-                                                                                                                                                      enum_identifier(std::move(enum_ident)),
-                                                                                                                                                      enum_content(std::move(enum_block)) {};
+                                                                                                                                                       class_token(class_tok),
+                                                                                                                                                       enum_identifier(std::move(enum_ident)),
+                                                                                                                                                       enum_content(std::move(enum_block)) {};
 };
 
 struct ForStatement : Statement

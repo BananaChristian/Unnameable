@@ -4,6 +4,7 @@
 #include <string>
 #include <typeindex>
 #include "ast.hpp"
+#include "token.hpp"
 
 #define CPPREST_FORCE_REBUILD
 

@@ -40,7 +40,7 @@ class Lexer
         {"switch", TokenType::SWITCH},
         {"case", TokenType::CASE},
         {"default", TokenType::DEFAULT},
-
+        
         {"int", TokenType::INT},
         {"string", TokenType::STRING_KEYWORD},
         {"float", TokenType::FLOAT_KEYWORD},
