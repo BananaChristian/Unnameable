@@ -9,8 +9,8 @@ class Lexer
     size_t currentPosition;
     size_t nextPosition;
     std::string input;
-    int line=1;
-    int column=0;
+    int line = 1;
+    int column = 0;
 
     std::unordered_map<std::string, TokenType> keywords = {
         {"auto", TokenType::AUTO},
@@ -18,16 +18,16 @@ class Lexer
         {"return", TokenType::RETURN},
         {"cast", TokenType::CAST},
 
-        {"enum",TokenType::ENUM},
+        {"enum", TokenType::ENUM},
         {"class", TokenType::CLASS},
 
         {"component", TokenType::COMPONENT},
         {"self", TokenType::SELF},
-        {"new",TokenType::NEW},
+        {"new", TokenType::NEW},
         {"data", TokenType::DATA},
         {"behavior", TokenType::BEHAVIOR},
-        {"use",TokenType::USE},
-        {"init",TokenType::INIT},
+        {"use", TokenType::USE},
+        {"init", TokenType::INIT},
 
         {"if", TokenType::IF},
         {"else", TokenType::ELSE},
@@ -36,20 +36,22 @@ class Lexer
         {"for", TokenType::FOR},
         {"break", TokenType::BREAK},
         {"continue", TokenType::CONTINUE},
-        
+
         {"switch", TokenType::SWITCH},
         {"case", TokenType::CASE},
         {"default", TokenType::DEFAULT},
 
+        {"null", TokenType::NULLABLE},
+
         {"int", TokenType::INT},
         {"string", TokenType::STRING_KEYWORD},
         {"float", TokenType::FLOAT_KEYWORD},
-        {"double",TokenType::DOUBLE_KEYWORD},
+        {"double", TokenType::DOUBLE_KEYWORD},
         {"void", TokenType::VOID},
         {"char", TokenType::CHAR_KEYWORD},
         {"true", TokenType::TRUE},
         {"false", TokenType::FALSE},
-        {"bool",TokenType::BOOL_KEYWORD},
+        {"bool", TokenType::BOOL_KEYWORD},
         {"arr", TokenType::ARRAY},
 
         {"const", TokenType::CONST},
@@ -57,10 +59,10 @@ class Lexer
 
         {"unique", TokenType::UNIQUE},
         {"make", TokenType::MAKE},
-        {"signal",TokenType::SIGNAL},
-        {"start",TokenType::START},
-        {"error",TokenType::ERROR},
-        {"wait",TokenType::WAIT},
+        {"signal", TokenType::SIGNAL},
+        {"start", TokenType::START},
+        {"error", TokenType::ERROR},
+        {"wait", TokenType::WAIT},
         {"unsafe", TokenType::UNSAFE},
         {"alloc", TokenType::ALLOCATE},
         {"gc", TokenType::GC},
@@ -72,7 +74,7 @@ class Lexer
     };
 
 public:
-    Lexer(const std::string& sourceCode);
+    Lexer(const std::string &sourceCode);
     Token tokenize();
     std::vector<Token> outputTokens;
 
@@ -94,7 +96,7 @@ private:
     bool isIdentifierStart(char32_t ch);
     bool isIdentifierContinue(char32_t ch);
     Token readString();
-    void appendUTF8(std::string& str, char32_t ch);
+    void appendUTF8(std::string &str, char32_t ch);
     Token readChar();
-    void logError(const std::string& message,int line,int column);
+    void logError(const std::string &message, int line, int column);
 };

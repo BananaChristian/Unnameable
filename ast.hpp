@@ -90,6 +90,18 @@ struct NewComponentExpression : Expression
         : Expression(newTok), new_token(newTok), component_name(compName), arguments(std::move(args)) {}
 };
 
+// Null literal
+struct NullLiteral : Expression
+{
+    Token null_token;
+    std::string toString() override
+    {
+        return "Null Literal: " + null_token.TokenLiteral;
+    }
+
+    NullLiteral(Token null_tok) : Expression(null_tok), null_token(null_tok) {};
+};
+
 // Integer literal
 struct IntegerLiteral : Expression
 {
@@ -171,7 +183,7 @@ struct FunctionExpression : Expression
     Token func_key;
     std::vector<std::unique_ptr<Statement>> call;
     std::unique_ptr<Expression> return_type;
-
+    bool isNullable = false;
     std::unique_ptr<Expression> block;
 
     std::string toString() override
@@ -187,16 +199,22 @@ struct FunctionExpression : Expression
         }
         cl += ")";
 
+        std::string nullStr="";
+        if (isNullable)
+        {
+            nullStr += "?";
+        }
+
         std::string ret_str = return_type ? return_type->toString() : "<no type>";
         std::string block_str = block ? block->toString() : "<no block>";
 
         return "FunctionExpression: " + func_key.TokenLiteral + " " +
                "Function parameters: " + cl +
-               " Return type: " + ret_str +
+               " Return type: " + ret_str + nullStr +
                " Function block: " + block_str;
     }
 
-    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
+    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, bool isNull, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), isNullable(isNull), block(std::move(bl)) {};
 };
 
 // Return type expression
@@ -480,18 +498,24 @@ struct LetStatement : Statement
 {
     Mutability mutability;
     Token data_type_token;
+    bool isNullable = false;
     Token ident_token;
     std::optional<Token> assign_token;
     std::unique_ptr<Expression> value;
     std::string toString() override
     {
         std::string mut_str = "";
+        std::string nullStr = "";
+        if (isNullable)
+        {
+            nullStr += "?";
+        }
         if (mutability == Mutability::MUTABLE)
             mut_str = "mutable ";
         else if (mutability == Mutability::CONSTANT)
             mut_str = "constant ";
 
-        std::string result = "Let Statement: (" + mut_str + "Data Type: " + data_type_token.TokenLiteral +
+        std::string result = "Let Statement: (" + mut_str + "Data Type: " + data_type_token.TokenLiteral + nullStr +
                              " Variable name: " + ident_token.TokenLiteral;
 
         if (value)
@@ -507,7 +531,13 @@ struct LetStatement : Statement
         return result;
     }
 
-    LetStatement(Mutability muta, Token data_t, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : mutability(muta), data_type_token(data_t), ident_token(ident_t), assign_token(assign_t), Statement(data_t), value(move(val)) {};
+    LetStatement(Mutability muta, Token data_t, bool isNull, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : mutability(muta),
+                                                                                                                                              data_type_token(data_t),
+                                                                                                                                              isNullable(isNull),
+                                                                                                                                              ident_token(ident_t),
+                                                                                                                                              assign_token(assign_t),
+                                                                                                                                              Statement(data_t),
+                                                                                                                                              value(move(val)) {};
 };
 
 struct AssignmentStatement : Statement

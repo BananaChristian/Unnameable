@@ -44,6 +44,7 @@ enum class TokenType
     COMMA,          //,
     BANG,           //"!"
     SCOPE_OPERATOR, //"::"
+    QUESTION_MARK,
 
     IDENTIFIER,
     STRING_KEYWORD,
@@ -99,6 +100,8 @@ enum class TokenType
     FALSE,
     DOUBLE,
     ARRAY,
+
+    NULLABLE,
 
     UNIQUE,
     MAKE,

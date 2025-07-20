@@ -191,6 +191,9 @@ private:
     // Char
     std::unique_ptr<Expression> parseCharLiteral();
 
+    //Null
+    std::unique_ptr<Expression> parseNullLiteral();
+
     // String
     std::unique_ptr<Expression> parseStringLiteral();
 

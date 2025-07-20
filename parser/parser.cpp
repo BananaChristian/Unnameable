@@ -131,6 +131,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 {
     Mutability mutability = Mutability::IMMUTABLE;
+    bool isNullable = false;
     Token mutability_token = currentToken();
     if (mutability_token.type == TokenType::CONST)
     {
@@ -147,6 +148,12 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     Token dataType_token = currentToken();
     std::cout << "[DEBUG] Data type token: " + dataType_token.TokenLiteral << "\n";
     advance();
+
+    if (currentToken().type == TokenType::QUESTION_MARK)
+    {
+        isNullable = true;
+        advance();
+    }
 
     if (currentToken().type != TokenType::IDENTIFIER)
     {
@@ -203,7 +210,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
         }
     }
 
-    return std::make_unique<LetStatement>(mutability, dataType_token, ident_token, assign_token, move(value));
+    return std::make_unique<LetStatement>(mutability, dataType_token, isNullable, ident_token, assign_token, move(value));
 }
 
 /*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
@@ -918,6 +925,14 @@ std::unique_ptr<Expression> Parser::parseNewComponentExpression()
     return std::make_unique<NewComponentExpression>(new_token, component_name, std::move(args));
 }
 
+// Null literal parse function
+std::unique_ptr<Expression> Parser::parseNullLiteral()
+{
+    auto ident = std::make_unique<NullLiteral>(currentToken());
+    advance();
+    return ident;
+}
+
 // Integer literal parse function
 std::unique_ptr<Expression> Parser::parseIntegerLiteral()
 {
@@ -1097,6 +1112,7 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments()
 // Parsing function expression
 std::unique_ptr<Expression> Parser::parseFunctionExpression()
 {
+    bool isNullable = false;
     std::cout << "[TEST]Function parser is working\n";
     //--------Dealing with work keyword---------------
     Token func_tok = currentToken(); // The token represting the keyword for functions (work)
@@ -1131,7 +1147,12 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         case TokenType::AUTO:
         case TokenType::VOID:
             return_type = std::make_unique<ReturnTypeExpression>(currentToken());
-            advance();
+            advance(); // Consume the data type literal
+            if (currentToken().type == TokenType::QUESTION_MARK)
+            {
+                isNullable = true;
+                advance();
+            }
             break;
         default:
             logError("Unexpected return type: ");
@@ -1158,7 +1179,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         return nullptr;
     }
 
-    return std::make_unique<FunctionExpression>(identToken, move(call), move(return_type), move(block));
+    return std::make_unique<FunctionExpression>(identToken, move(call), move(return_type), isNullable, move(block));
 }
 
 // Parsing function patamemters
@@ -1359,6 +1380,7 @@ void Parser::registerInfixFns()
 void Parser::registerPrefixFns()
 {
     PrefixParseFunctionsMap[TokenType::INTEGER] = &Parser::parseIntegerLiteral;
+    PrefixParseFunctionsMap[TokenType::NULLABLE] = &Parser::parseNullLiteral;
     PrefixParseFunctionsMap[TokenType::TRUE] = &Parser::parseBooleanLiteral;
     PrefixParseFunctionsMap[TokenType::FALSE] = &Parser::parseBooleanLiteral;
     PrefixParseFunctionsMap[TokenType::FLOAT] = &Parser::parseFloatLiteral;

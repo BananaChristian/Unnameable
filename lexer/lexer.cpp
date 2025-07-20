@@ -488,6 +488,12 @@ Token Lexer::tokenize()
             return Token{"!", TokenType::BANG, tokenLine, tokenColumn};
         }
     }
+    case U'?':
+    {
+        CAPTURE_POS;
+        advance();
+        return Token{"?", TokenType::QUESTION_MARK, tokenLine, tokenColumn};
+    }
     case U'.':
     {
         CAPTURE_POS;

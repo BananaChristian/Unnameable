@@ -142,8 +142,12 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: CHAR KEYWORD";
     case TokenType::CHAR:
         return "Token Type: CHAR";
+    case TokenType::QUESTION_MARK:
+        return "Token Type: QUESTION MARK";
     case TokenType::BOOL_KEYWORD:
         return "Token Type: BOOL_KEYWORD";
+    case TokenType::NULLABLE:
+        return "Token Type: NULL";
     case TokenType::TRUE:
         return "Token Type: TRUE";
     case TokenType::FALSE:
