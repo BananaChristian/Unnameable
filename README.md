@@ -58,6 +58,17 @@ auto y = 42;  # Type inferred as int
 
 ```
 
+## Null Safety
+By default all the variables, function return types are not nullable but with the ? on a data type this acknowledges that the variable or data type are nullable.
+This means the compiler will force you to explicitly deal with these but It wont allow null to be passed into variables or returned from a function
+```
+string? name= null;
+work greet(string? name): string?{
+    return "Hello" + name;
+}
+
+```
+
 ##  ⚒️ Functions
 ```unn
 work greet(string name): string {
