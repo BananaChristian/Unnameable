@@ -275,7 +275,21 @@ void Lexer::readComments()
 {
     if (currentChar() == U'#')
     {
-        advance();
+        advance(); // Consume the #
+        if (currentChar() == U'#')
+        {
+            advance(); // Consume the #
+            while (currentChar() != U'\0')
+            {
+                if (currentChar() == U'#' && peekChar() == U'#')
+                {
+                    advance(); // Consume *
+                    advance(); // Consume #
+                    break;
+                }
+                advance();
+            }
+        }
         while (currentChar() != U'\0' && currentChar() != U'\n')
         {
             advance();
