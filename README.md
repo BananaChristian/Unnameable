@@ -67,6 +67,9 @@ work greet(string? name): string?{
     return "Hello" + name;
 }
 
+#Function declarations
+work greet(string? name): string?;
+
 ```
 
 ##  ⚒️ Functions
@@ -75,6 +78,17 @@ work greet(string name): string {
     return "Hello" + name;
 }
 
+```
+
+## Generic and multigenerics
+```
+work <T>greet(T name): T{
+    return T;
+};
+
+work <T,M> info(T name, M age): T{
+    return T;
+}
 ```
 
 ## ⚠️ Error handling
