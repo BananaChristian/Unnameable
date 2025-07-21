@@ -6,7 +6,7 @@ void
 *.log
 *.out
 
-semantics
+semantic_analyzer
 
 language_design.md
 

@@ -7,7 +7,7 @@
 #include "lexer/lexer.hpp"
 #include "token/token.hpp"
 #include "parser/parser.hpp"
-#include "semantic_analyzer/semantics.hpp"
+#include "semantics/semantics_test.hpp"
 
 std::string readFileToString(const std::string &filepath)
 {
@@ -62,11 +62,10 @@ int main(int argc, char **argv)
         }
 
         std::cout << "\n--- Semantic Analysis ---\n";
-        Semantics analyzer;
-        analyzer.preDeclareFunctions(nodes);
+        Semantics semantics;
         for (const auto &node : nodes)
         {
-            analyzer.analyzer(node.get());
+            semantics.walker(node.get());
         }
     }
     catch (const std::exception &e)
