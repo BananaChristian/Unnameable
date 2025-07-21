@@ -59,6 +59,8 @@ string name = "Iron";
 
 float pi = 3.14;
 
+double pi=3.14d;
+
 auto y = 42;  # Type inferred as int
 
 
