@@ -7,6 +7,8 @@ void
 *.out
 
 semantic_analyzer
+component_semantics.cpp
+semantics.cpp
 
 language_design.md
 
