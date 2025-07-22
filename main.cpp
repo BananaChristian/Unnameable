@@ -7,7 +7,7 @@
 #include "lexer/lexer.hpp"
 #include "token/token.hpp"
 #include "parser/parser.hpp"
-#include "semantics/semantics_test.hpp"
+#include "semantics/semantics.hpp"
 
 std::string readFileToString(const std::string &filepath)
 {

@@ -8,8 +8,10 @@ SRC=main.cpp\
 	parser/parser.cpp\
 	parser/extended_parser.cpp\
 	token/token.cpp\
-	semantics/semantics_main.cpp\
-	semantics/semantics_variables.cpp
+	semantics/core.cpp\
+	semantics/flow.cpp\
+	semantics/expr.cpp\
+	semantics/vars.cpp
 
 $(OUT):$(SRC)
 	$(CXX) $(CXXFLAGS) $(SRC) -o $(OUT)

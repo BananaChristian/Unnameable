@@ -1,4 +1,4 @@
-#include "semantics_test.hpp"
+#include "semantics.hpp"
 
 // Walking the data type literals
 void Semantics::walkNullLiteral(Node *node)
@@ -85,12 +85,45 @@ void Semantics::walkDoubleLiteral(Node *node)
     auto dbLiteral = dynamic_cast<DoubleLiteral *>(node);
     if (!dbLiteral)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the double literal \n";
+    std::cout << "[SEMANTIC LOG] Analyzing the double literal \n";
     metaData[dbLiteral] = {
         .symbolDataType = DataType::DOUBLE,
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
+}
+
+// Walking the identifier expression
+void Semantics::walkIdentifierExpression(Node *node)
+{
+    auto identExpr = dynamic_cast<Identifier *>(node);
+    if (!identExpr)
+        return;
+    std::cout << "[SEMANTIC LOG] Analyzing identifier node: " << identExpr->toString() << "\n";
+    auto identName = identExpr->identifier.TokenLiteral;
+    if (identName == "self")
+    {
+        return;
+    }
+    auto symbolInfo = resolveSymbolInfo(identName);
+    if (!symbolInfo)
+    {
+        std::cerr << "[SEMANTIC ERROR] Use of undeclared identifer " << identName << "\n";
+        metaData[identExpr] = {
+            .symbolDataType = DataType::UNKNOWN,
+            .isNullable = false,
+            .isMutable = false,
+            .isConstant = false,
+            .isInitialized = false};
+        return;
+    }
+    auto identExprType = symbolInfo->symbolDataType;
+    metaData[identExpr] = {
+        .symbolDataType = identExprType,
+        .isNullable = symbolInfo->isNullable,
+        .isMutable = symbolInfo->isMutable,
+        .isConstant = symbolInfo->isConstant,
+        .isInitialized = symbolInfo->isInitialized};
 }
 
 // Walking the let statement and assign statement

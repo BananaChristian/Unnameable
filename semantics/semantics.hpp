@@ -1,4 +1,5 @@
 #include "ast.hpp"
+#include <string>
 #include <typeindex>
 
 // Type system tracker
@@ -55,13 +56,32 @@ private:
     void walkFloatLiteral(Node *node);
     void walkNullLiteral(Node *node);
 
+    // Waling infix and prefix expressions
+    void walkInfixExpression(Node *node);
+    void walkPrefixExpression(Node *node);
+
+    // Waling identifier expression
+    void walkIdentifierExpression(Node *node);
+
     // Walking the let statements and assignment statements
     void walkLetStatement(Node *node);
     void walkAssignStatement(Node *node);
 
+    // Walking control flow nodes
+    void walkWhileStatement(Node *node);
+    void walkWalkSwitchStatement(Node *node);
+
+    // Walking blocks
+    void walkBlockStatement(Node *node);
+
     // HELPER FUNCTIONS
     void registerWalkerFunctions();
     DataType inferNodeDataType(Node *node);
+    DataType inferInfixExpressionType(Node *node);
+    DataType inferPrefixExpressionType(Node *node);
+    DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType);
+    DataType resultOfUnary(TokenType operatorType, DataType oprendType);
     SymbolInfo *resolveSymbolInfo(const std::string &name);
+    std::string dataTypetoString(DataType type);
     void logSemanticErrors(const std::string &message);
 };
