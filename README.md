@@ -139,7 +139,7 @@ config();
 ```
 if (age > 18) {
     return "adult";
-} elseif (age < 18) {
+} elif (age < 18) {
     return "minor";
 } else {
     return "unknown";

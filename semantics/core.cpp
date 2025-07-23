@@ -45,6 +45,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(AssignmentStatement)] = &Semantics::walkAssignStatement;
 
     // Walker registration for control flow
+    walkerFunctionsMap[typeid(ifStatement)] = &Semantics::walkIfStatement;
 
     // Walker registration for loops
     walkerFunctionsMap[typeid(WhileStatement)] = &Semantics::walkWhileStatement;

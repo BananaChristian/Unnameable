@@ -69,6 +69,7 @@ private:
 
     // Walking control flow nodes
     void walkWhileStatement(Node *node);
+    void walkIfStatement(Node *node);
     void walkWalkSwitchStatement(Node *node);
 
     // Walking blocks
