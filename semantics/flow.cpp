@@ -49,18 +49,28 @@ void Semantics::walkIfStatement(Node *node)
     walker(ifResult);
 
     // Dealing with the else if conditon
-    auto elseifStmt = ifStmt->elseif_condition.value().get();
-    DataType elseIfCondType = inferNodeDataType(elseifStmt);
-    if (elseIfCondType != DataType::BOOLEAN)
+    if (ifStmt->elseif_condition.has_value())
     {
-        std::cerr << "[SEMANTIC ERROR] Expected boolean type but got: " + dataTypetoString(ifStmtType) + "\n";
+        auto elseifStmt = ifStmt->elseif_condition.value().get();
+        DataType elseIfCondType = inferNodeDataType(elseifStmt);
+        if (elseIfCondType != DataType::BOOLEAN)
+        {
+            std::cerr << "[SEMANTIC ERROR] Expected boolean type but got: " + dataTypetoString(ifStmtType) + "\n";
+        }
+        walker(elseifStmt);
     }
-    walker(elseifStmt);
+
     // Dealing with else if result
-    auto elseifResult = ifStmt->elseif_result.value().get();
-    walker(elseifResult);
+    if (ifStmt->elseif_result.has_value())
+    {
+        auto elseifResult = ifStmt->elseif_result.value().get();
+        walker(elseifResult);
+    }
 
     // Dealing with else statement result
-    auto elseStmt = ifStmt->elseif_result.value().get();
-    walker(elseStmt);
+    if (ifStmt->else_result.has_value())
+    {
+        auto elseStmt = ifStmt->else_result.value().get();
+        walker(elseStmt);
+    }
 }
