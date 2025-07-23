@@ -34,6 +34,7 @@ class Lexer
         {"elif", TokenType::ELSE_IF},
         {"while", TokenType::WHILE},
         {"for", TokenType::FOR},
+        {"each",TokenType::EACH},
         {"break", TokenType::BREAK},
         {"continue", TokenType::CONTINUE},
 

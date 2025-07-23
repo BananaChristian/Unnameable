@@ -820,6 +820,34 @@ struct ForStatement : Statement
     }
 };
 
+struct EachStatement : Statement
+{
+    Token each_key;
+    std::unique_ptr<Statement> iteratorVar;
+    std::unique_ptr<Expression> iterable;
+    std::unique_ptr<Statement> body;
+
+    EachStatement(Token for_k,
+                  std::unique_ptr<Statement> iterVar,
+                  std::unique_ptr<Expression> iterable,
+                  std::unique_ptr<Statement> body)
+        : Statement(for_k),
+          each_key(for_k),
+          iteratorVar(std::move(iterVar)),
+          iterable(std::move(iterable)),
+          body(std::move(body)) {}
+
+    std::string toString() override
+    {
+        std::string out = "EachStatement(\n";
+        out += "  Var: " + (iteratorVar ? iteratorVar->toString() : "null") + "\n";
+        out += "  Iterable: " + (iterable ? iterable->toString() : "null") + "\n";
+        out += "  Body: " + (body ? body->toString() : "null") + "\n";
+        out += ")";
+        return out;
+    }
+};
+
 struct WhileStatement : Statement
 {
     Token while_key;

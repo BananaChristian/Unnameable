@@ -1,5 +1,8 @@
 #include "semantics.hpp"
 
+
+#define CPPREST_FORCE_REBUILD
+
 Semantics::Semantics()
 {
     symbolTable.push_back({});
@@ -43,12 +46,14 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for let statement and assignment statements
     walkerFunctionsMap[typeid(LetStatement)] = &Semantics::walkLetStatement;
     walkerFunctionsMap[typeid(AssignmentStatement)] = &Semantics::walkAssignStatement;
+    walkerFunctionsMap[typeid(EachStatement)]=&Semantics::walkEachStatement;
 
     // Walker registration for control flow
-    walkerFunctionsMap[typeid(ifStatement)] = &Semantics::walkIfStatement;
+    walkerFunctionsMap[typeid(ifStatement)]=&Semantics::walkIfStatement;
 
     // Walker registration for loops
     walkerFunctionsMap[typeid(WhileStatement)] = &Semantics::walkWhileStatement;
+    walkerFunctionsMap[typeid(ForStatement)] = &Semantics::walkForStatement;
 
     // Walker registration for blocks
     walkerFunctionsMap[typeid(BlockStatement)] = &Semantics::walkBlockStatement;

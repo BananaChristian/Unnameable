@@ -736,13 +736,14 @@ std::unique_ptr<Statement> Parser::parseReturnStatement()
 std::unique_ptr<Statement> Parser::parseForStatement()
 {
     Token for_k = currentToken();
-    advance();
+    advance(); // Consume 'for'
     if (currentToken().type != TokenType::LPAREN)
     {
-        logError("Expected a ( ");
+        logError("Expected '(' after 'for' ");
         return nullptr;
     }
-    advance();
+    advance(); // Consume the '('
+
     auto initializer = parseLetStatementWithType(); // like `int i;`
 
     auto condition = parseExpression(Precedence::PREC_NONE);
@@ -764,7 +765,7 @@ std::unique_ptr<Statement> Parser::parseForStatement()
 
     if (currentToken().type != TokenType::LBRACE)
     {
-        logError("Expected { ");
+        logError("Expected '{' ");
         return nullptr;
     }
     auto block = parseBlockStatement(); // Parsing the block
@@ -775,6 +776,52 @@ std::unique_ptr<Statement> Parser::parseForStatement()
         std::move(condition),
         std::move(step),
         std::move(block));
+}
+
+std::unique_ptr<Statement> Parser::parseEachStatement()
+{
+    Token each_key = currentToken();
+    advance(); // Consume the 'each' token
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        logError("Expected '(' after 'each'");
+        return nullptr;
+    }
+    advance(); // Skip '('
+
+    // Parse the iterator variable (e.g., `auto x`)
+    auto iterVar = parseLetStatementDecider(); // could be an identifier or declaration
+    
+    if (currentToken().type != TokenType::COLON)
+    {
+        logError("Expected ':' in each loop but got: " + currentToken().TokenLiteral);
+        return nullptr;
+    }
+    advance(); // skip ':'
+
+    // Parse the iterable (e.g., list)
+    auto iterable = parseExpression(Precedence::PREC_NONE);
+
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        logError("Expected ')' after iterable expression");
+        return nullptr;
+    }
+    advance(); // skip ')'
+
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        logError("Expected '{' after foreach loop");
+        return nullptr;
+    }
+
+    auto body = parseBlockStatement();
+
+    return std::make_unique<EachStatement>(
+        each_key,
+        std::move(iterVar),
+        std::move(iterable),
+        std::move(body));
 }
 
 // Parsing while statements
@@ -1535,6 +1582,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::IF] = &Parser::parseIfStatement;
     StatementParseFunctionsMap[TokenType::WHILE] = &Parser::parseWhileStatement;
     StatementParseFunctionsMap[TokenType::FOR] = &Parser::parseForStatement;
+    StatementParseFunctionsMap[TokenType::EACH] = &Parser::parseEachStatement;
     StatementParseFunctionsMap[TokenType::BREAK] = &Parser::parseBreakStatement;
     StatementParseFunctionsMap[TokenType::CONTINUE] = &Parser::parseContinueStatement;
     StatementParseFunctionsMap[TokenType::SIGNAL] = &Parser::parseSignalStatement;

@@ -118,6 +118,8 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: WHILE";
     case TokenType::FOR:
         return "Token Type: FOR";
+    case TokenType::EACH:
+        return "Token Type: EACH";
     case TokenType::SCOPE_OPERATOR:
         return "Token Type: SCOPE OPERATOR";
     case TokenType::BREAK:

@@ -74,3 +74,43 @@ void Semantics::walkIfStatement(Node *node)
         walker(elseStmt);
     }
 }
+
+void Semantics::walkForStatement(Node *node)
+{
+    auto forStmt = dynamic_cast<ForStatement *>(node);
+    if (!forStmt)
+        return;
+    std::cout << "[SEMANTIC LOG] Analyzing for statement " << forStmt->toString() << "\n";
+
+    // Handling the initializer
+    auto initializer = forStmt->initializer.get();
+    walker(initializer);
+    // Handling the condition
+    auto condition = forStmt->condition.get();
+    walker(condition);
+    // Handling the steps
+    auto step = forStmt->step.get();
+    walker(step);
+    // Handling the block
+    auto block = forStmt->step.get();
+    walker(block);
+}
+
+void Semantics::walkEachStatement(Node *node)
+{
+    auto eachStmt = dynamic_cast<EachStatement *>(node);
+    if (!eachStmt)
+        return;
+    std::cout << "[SEMANTIC LOG] Analyzing each statement " << eachStmt->toString() << "\n";
+    // Handling iterator variable
+    auto iterVar = eachStmt->iteratorVar.get();
+    walker(iterVar);
+
+    // Handling iterable
+    auto iter = eachStmt->iterable.get();
+    walker(iter);
+
+    // Handling each stmt block
+    auto block = eachStmt->body.get();
+    walker(block);
+}

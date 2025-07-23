@@ -84,7 +84,7 @@ private:
     // Parsing let statements with type
     std::unique_ptr<Statement> parseLetStatementWithType(bool isParam = false);
 
-    //Parsing let statements with generic types
+    // Parsing let statements with generic types
     std::unique_ptr<Statement> parseLetStatementWithGenericType(bool isParam);
 
     // Parsing let statements without type
@@ -94,7 +94,7 @@ private:
     std::unique_ptr<Statement> parseLetStatementDecider();
 
     // A function to determine whether to parse Let with type or no type and generics
-    std::unique_ptr<Statement> parseParamLetStatementWithGenerics(const std::vector<Token>& genericParams);
+    std::unique_ptr<Statement> parseParamLetStatementWithGenerics(const std::vector<Token> &genericParams);
 
     // Parsing if statement
     std::unique_ptr<Statement> parseIfStatement();
@@ -125,6 +125,9 @@ private:
 
     // Parsing for statement
     std::unique_ptr<Statement> parseForStatement();
+
+    // Parsing for each statement
+    std::unique_ptr<Statement> parseEachStatement();
 
     // Parsing while loops
     std::unique_ptr<Statement> parseWhileStatement();
@@ -194,13 +197,13 @@ private:
     // Float
     std::unique_ptr<Expression> parseFloatLiteral();
 
-    //Double
+    // Double
     std::unique_ptr<Expression> parseDoubleLiteral();
 
     // Char
     std::unique_ptr<Expression> parseCharLiteral();
 
-    //Null
+    // Null
     std::unique_ptr<Expression> parseNullLiteral();
 
     // String
@@ -219,7 +222,7 @@ private:
     std::vector<std::unique_ptr<Expression>> parseCallArguments();
 
     // Parsing function parameters
-    std::vector<std::unique_ptr<Statement>> parseFunctionParameters(const std::vector<Token>& genericParams);
+    std::vector<std::unique_ptr<Statement>> parseFunctionParameters(const std::vector<Token> &genericParams);
 
     // HELPER FUNCTIONS
     //  Peeking functions
@@ -232,8 +235,8 @@ private:
     // Function to select how to parse grouped expression
     std::unique_ptr<Expression> parseGroupedOrTupleExpression();
 
-    //Checker for generics
-    bool isGeneric(const std::string& typeName, const std::vector<Token>& genericParams);
+    // Checker for generics
+    bool isGeneric(const std::string &typeName, const std::vector<Token> &genericParams);
 
     // Error logging
     void logError(const std::string &message);

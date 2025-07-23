@@ -84,6 +84,7 @@ enum class TokenType
     ELSE_IF,
     WHILE,
     FOR,
+    EACH,
     BREAK,
     CONTINUE,
     SWITCH,
