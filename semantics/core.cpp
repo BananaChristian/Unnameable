@@ -1,6 +1,5 @@
 #include "semantics.hpp"
 
-
 #define CPPREST_FORCE_REBUILD
 
 Semantics::Semantics()
@@ -46,10 +45,16 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for let statement and assignment statements
     walkerFunctionsMap[typeid(LetStatement)] = &Semantics::walkLetStatement;
     walkerFunctionsMap[typeid(AssignmentStatement)] = &Semantics::walkAssignStatement;
-    walkerFunctionsMap[typeid(EachStatement)]=&Semantics::walkEachStatement;
+    walkerFunctionsMap[typeid(EachStatement)] = &Semantics::walkEachStatement;
 
     // Walker registration for control flow
-    walkerFunctionsMap[typeid(ifStatement)]=&Semantics::walkIfStatement;
+    walkerFunctionsMap[typeid(ifStatement)] = &Semantics::walkIfStatement;
+    walkerFunctionsMap[typeid(SwitchStatement)] = &Semantics::walkSwitchStatement;
+    walkerFunctionsMap[typeid(CaseClause)] = &Semantics::walkCaseStatement;
+
+    // Loop disruption statements
+    walkerFunctionsMap[typeid(BreakStatement)] = &Semantics::walkBreakStatement;
+    walkerFunctionsMap[typeid(ContinueStatement)] = &Semantics::walkContinueStatement;
 
     // Walker registration for loops
     walkerFunctionsMap[typeid(WhileStatement)] = &Semantics::walkWhileStatement;
@@ -61,6 +66,8 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for the main expression types
     walkerFunctionsMap[typeid(InfixExpression)] = &Semantics::walkInfixExpression;
     walkerFunctionsMap[typeid(PrefixExpression)] = &Semantics::walkPrefixExpression;
+
+    walkerFunctionsMap[typeid(ExpressionStatement)] = &Semantics::walkExpressionStatement;
 }
 
 DataType Semantics::inferNodeDataType(Node *node)

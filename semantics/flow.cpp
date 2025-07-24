@@ -26,8 +26,11 @@ void Semantics::walkWhileStatement(Node *node)
         std::cerr << "[SEMANTIC ERROR] Expected boolean type but got: " + dataTypetoString(whileCondType) + "\n";
     }
     walker(whileCondition);
+
+    loopContext.push_back(true);
     auto whileLoop = whileStmt->loop.get();
     walker(whileLoop);
+    loopContext.pop_back();
 }
 
 void Semantics::walkIfStatement(Node *node)
@@ -75,6 +78,73 @@ void Semantics::walkIfStatement(Node *node)
     }
 }
 
+void Semantics::walkCaseStatement(Node *node)
+{
+    auto caseStmt = dynamic_cast<CaseClause *>(node);
+    if (!caseStmt)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analysing case clause: " << caseStmt->toString() << "\n";
+    // Dealing with the condition
+    auto condition = caseStmt->condition.get();
+    walker(condition);
+
+    // Dealing with the body
+    auto &body = caseStmt->body;
+    for (auto &content : body)
+    {
+        walker(content.get());
+    }
+}
+
+void Semantics::walkSwitchStatement(Node *node)
+{
+    auto switchStmt = dynamic_cast<SwitchStatement *>(node);
+    if (!switchStmt)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analysing switch statement: " << switchStmt->toString() << "\n";
+
+    // Dealing with the switch expression
+    auto switchExpr = switchStmt->switch_expr.get();
+    auto switchType = inferNodeDataType(switchExpr);
+    auto switchExprName = switchStmt->switch_expr->expression.TokenLiteral;
+    SymbolInfo *symbolInfo = resolveSymbolInfo(switchExprName);
+    bool isConstant = symbolInfo->isConstant;
+    bool isMutable = symbolInfo->isMutable;
+    bool isNullable = symbolInfo->isNullable;
+    bool isInitialized = symbolInfo->isInitialized;
+    walker(switchExpr);
+
+    // Dealing with the case clauses
+    auto caseType = DataType::UNKNOWN;
+    
+    loopContext.push_back(false);
+    auto &caseClause = switchStmt->case_clauses;
+    for (auto &caseSt : caseClause)
+    {
+        caseType = inferNodeDataType(caseSt.get());
+        if (caseType != switchType)
+        {
+            std::cerr << "[SEMANTIC ERROR] Type mismatch in switch case\n";
+        }
+        walker(caseSt.get());
+    }
+    loopContext.pop_back();
+
+    // Dealing with the default statement
+    auto &defaults = switchStmt->default_statements;
+    for (auto &content : defaults)
+    {
+        walker(content.get());
+    }
+
+    metaData[switchStmt] = {
+        .symbolDataType = switchType,
+        .isNullable = isNullable,
+        .isMutable = isMutable,
+        .isConstant = isConstant,
+        .isInitialized = isInitialized};
+}
+
 void Semantics::walkForStatement(Node *node)
 {
     auto forStmt = dynamic_cast<ForStatement *>(node);
@@ -92,8 +162,10 @@ void Semantics::walkForStatement(Node *node)
     auto step = forStmt->step.get();
     walker(step);
     // Handling the block
-    auto block = forStmt->step.get();
+    loopContext.push_back(true);
+    auto block = forStmt->body.get();
     walker(block);
+    loopContext.pop_back();
 }
 
 void Semantics::walkEachStatement(Node *node)
@@ -111,6 +183,32 @@ void Semantics::walkEachStatement(Node *node)
     walker(iter);
 
     // Handling each stmt block
+    loopContext.push_back(true);
     auto block = eachStmt->body.get();
     walker(block);
+    loopContext.pop_back();
+}
+
+void Semantics::walkBreakStatement(Node *node)
+{
+    auto breakStmt = dynamic_cast<BreakStatement *>(node);
+    if (!breakStmt)
+        return;
+    std::cout << "[SEMANTIC LOG] Analysing break statement " << breakStmt->toString() << "\n";
+    if (loopContext.empty())
+    {
+        std::cerr << "[SEMANTIC ERROR] 'break' used outside a loop\n ";
+    }
+}
+
+void Semantics::walkContinueStatement(Node *node)
+{
+    auto continueStmt = dynamic_cast<ContinueStatement *>(node);
+    if (!continueStmt)
+        return;
+    std::cout << "[SEMANTIC LOG] Analysing continue statement " << continueStmt->toString() << "\n";
+    if (loopContext.empty() || !loopContext.back())
+    {
+        std::cerr << "[SEMANTIC ERROR] 'continue' used outside a loop\n ";
+    }
 }

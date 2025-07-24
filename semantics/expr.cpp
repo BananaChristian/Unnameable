@@ -38,3 +38,12 @@ void Semantics::walkPrefixExpression(Node *node)
         .isConstant = false,
         .isInitialized = false};
 }
+
+void Semantics::walkExpressionStatement(Node *node)
+{
+    auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
+    if (!exprStmt)
+        return;
+    std::cout << "[SEMANTIC LOG] Analysing the expression statement " << exprStmt->toString() << "\n";
+    walker(exprStmt->expression.get());
+}

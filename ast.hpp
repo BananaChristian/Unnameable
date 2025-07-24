@@ -745,7 +745,7 @@ struct SwitchStatement : Statement
         // Print all case clauses
         for (const auto &clause : case_clauses)
         {
-            result += clause->toString();
+            result += clause->toString() +"\n";
         }
 
         // Print default statements if they exist

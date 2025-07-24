@@ -45,6 +45,7 @@ public:
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
     std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable;
     std::unordered_map<Node *, SymbolInfo> metaData;
+    std::vector<bool> loopContext;
 
 private:
     // Walking the data type literals
@@ -63,16 +64,24 @@ private:
     // Waling identifier expression
     void walkIdentifierExpression(Node *node);
 
+    // Walking expression statement
+    void walkExpressionStatement(Node *node);
+
     // Walking the let statements and assignment statements
     void walkLetStatement(Node *node);
     void walkAssignStatement(Node *node);
+
+    // Walking the loop disruption statements
+    void walkBreakStatement(Node *node);
+    void walkContinueStatement(Node *node);
 
     // Walking control flow nodes
     void walkWhileStatement(Node *node);
     void walkForStatement(Node *node);
     void walkEachStatement(Node *node);
     void walkIfStatement(Node *node);
-    void walkWalkSwitchStatement(Node *node);
+    void walkSwitchStatement(Node *node);
+    void walkCaseStatement(Node *node);
 
     // Walking blocks
     void walkBlockStatement(Node *node);
