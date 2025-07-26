@@ -492,7 +492,7 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
         auto dataStmt = parseStatement();
         if (auto letStmt = dynamic_cast<LetStatement *>(dataStmt.get()))
         {
-            TokenType declaredType = letStmt->data_type_token.type; // or however you store the type
+            TokenType declaredType = letStmt->data_type_token.type; 
             if (declaredType == TokenType::INT ||
                 declaredType == TokenType::FLOAT_KEYWORD ||
                 declaredType == TokenType::STRING_KEYWORD ||

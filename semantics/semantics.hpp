@@ -12,6 +12,7 @@ enum class DataType
     DOUBLE,
     CHAR,
     NULLABLE,
+    ERROR,
     UNKNOWN
 };
 
@@ -43,7 +44,8 @@ public:
     void walker(Node *node);
     using walkerFunctions = void (Semantics::*)(Node *);
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
-    std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable;
+    std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable; 
+    std::unordered_map<std::string,std::vector<SymbolInfo>> sharedDataBlocks;
     std::unordered_map<Node *, SymbolInfo> metaData;
     std::vector<bool> loopContext;
 
@@ -56,6 +58,14 @@ private:
     void walkDoubleLiteral(Node *node);
     void walkFloatLiteral(Node *node);
     void walkNullLiteral(Node *node);
+
+    // Walking the component functions declaration
+    void walkEnumClassStatement(Node *node);
+    void walkComponentStatement(Node *node);
+    void walkInitStatement(Node *node);
+    void walkUseStatement(Node *node);
+    void walkBehaviorStatement(Node *node);
+    void walkDataStatement(Node *node);
 
     // Waling infix and prefix expressions
     void walkInfixExpression(Node *node);
@@ -74,6 +84,9 @@ private:
     // Walking the loop disruption statements
     void walkBreakStatement(Node *node);
     void walkContinueStatement(Node *node);
+
+    void walkErrorStatement(Node *node);
+    void walkErrorExpression(Node *node);
 
     // Walking control flow nodes
     void walkWhileStatement(Node *node);
@@ -95,5 +108,6 @@ private:
     DataType resultOfUnary(TokenType operatorType, DataType oprendType);
     SymbolInfo *resolveSymbolInfo(const std::string &name);
     std::string dataTypetoString(DataType type);
-    void logSemanticErrors(const std::string &message);
+    Token getErrorToken(Node *node);
+    void logSemanticErrors(const std::string &message, Node *node);
 };

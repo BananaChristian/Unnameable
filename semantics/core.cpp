@@ -56,6 +56,10 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(BreakStatement)] = &Semantics::walkBreakStatement;
     walkerFunctionsMap[typeid(ContinueStatement)] = &Semantics::walkContinueStatement;
 
+    // Walker registration for return and error statements
+    walkerFunctionsMap[typeid(ErrorStatement)] = &Semantics::walkErrorStatement;
+    walkerFunctionsMap[typeid(ErrorExpression)] = &Semantics::walkErrorExpression;
+
     // Walker registration for loops
     walkerFunctionsMap[typeid(WhileStatement)] = &Semantics::walkWhileStatement;
     walkerFunctionsMap[typeid(ForStatement)] = &Semantics::walkForStatement;
@@ -68,6 +72,9 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(PrefixExpression)] = &Semantics::walkPrefixExpression;
 
     walkerFunctionsMap[typeid(ExpressionStatement)] = &Semantics::walkExpressionStatement;
+
+    // Walker registration for the component system
+    walkerFunctionsMap[typeid(DataStatement)] = &Semantics::walkDataStatement;
 }
 
 DataType Semantics::inferNodeDataType(Node *node)
@@ -102,6 +109,10 @@ DataType Semantics::inferNodeDataType(Node *node)
     if (auto nullLit = dynamic_cast<NullLiteral *>(node))
     {
         return DataType::NULLABLE;
+    }
+    if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
+    {
+        return DataType::ERROR;
     }
 
     // Dealing with the let statement node type
@@ -322,7 +333,6 @@ DataType Semantics::resultOfUnary(TokenType operatorType, DataType operandType)
         {
             return operandType;
         }
-
         std::cerr << "[SEMANTIC ERROR] Cannot apply " << TokenTypeToLiteral(operatorType) << " to " << dataTypetoString(operandType) << "\n";
         return DataType::UNKNOWN;
     }
@@ -371,4 +381,22 @@ std::string Semantics::dataTypetoString(DataType type)
     default:
         return "unknown";
     }
+}
+
+Token Semantics::getErrorToken(Node *node)
+{
+    if (!node)
+    {
+        // Return a default token or handle the error case
+        return Token{"Invalid node", TokenType::ILLEGAL, 0, 0};
+    }
+    return node->token;
+}
+
+void Semantics::logSemanticErrors(const std::string &message, Node *node)
+{
+    Token errorToken = getErrorToken(node);
+    int tokenLine = errorToken.line;
+    int tokenColumn = errorToken.column;
+    std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << "\n";
 }

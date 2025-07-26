@@ -9,6 +9,7 @@ SRC=main.cpp\
 	parser/extended_parser.cpp\
 	token/token.cpp\
 	semantics/core.cpp\
+	semantics/components.cpp\
 	semantics/flow.cpp\
 	semantics/expr.cpp\
 	semantics/vars.cpp
