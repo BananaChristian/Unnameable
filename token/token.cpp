@@ -174,6 +174,8 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: DROP";
     case TokenType::ELEVATE:
         return "Token Type: ELEVATE";
+    case TokenType::MODULUS:
+        return "Token Type: MODULUS";
     case TokenType::WRITE:
         return "Token Type: WRITE";
     case TokenType::POINTER:

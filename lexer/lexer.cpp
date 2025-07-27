@@ -561,6 +561,12 @@ Token Lexer::tokenize()
         advance();
         return Token{"/", TokenType::DIVIDE, tokenLine, tokenColumn};
     }
+    case U'%':
+    {
+        CAPTURE_POS;
+        advance();
+        return Token{"%", TokenType::MODULUS, tokenLine, tokenColumn};
+    }
     case U'&':
     {
         CAPTURE_POS;

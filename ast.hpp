@@ -701,9 +701,9 @@ struct ifStatement : Statement
     ifStatement(Token if_st, std::unique_ptr<Expression> condition_e, std::unique_ptr<Statement> if_r,
                 std::optional<Token> elseif_st, std::optional<std::unique_ptr<Expression>> elseif_cond, std::optional<std::unique_ptr<Statement>> elseif_r,
                 std::optional<Token> else_st, std::optional<std::unique_ptr<Statement>> else_r) : Statement(if_st),
-                                                                                                  if_stmt(if_st), condition(move(condition_e)), if_result(move(if_r)),
-                                                                                                  elseif_stmt(elseif_st), elseif_condition(move(elseif_cond)), elseif_result(move(elseif_r)),
-                                                                                                  else_stmt(else_st), else_result(move(else_r)) {};
+                                                                                                  if_stmt(if_st), condition(std::move(condition_e)), if_result(std::move(if_r)),
+                                                                                                  elseif_stmt(elseif_st), elseif_condition(std::move(elseif_cond)), elseif_result(std::move(elseif_r)),
+                                                                                                  else_stmt(else_st), else_result(std::move(else_r)) {};
 };
 
 // Case clause struct used in switch-case statement

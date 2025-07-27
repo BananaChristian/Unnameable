@@ -223,6 +223,9 @@ DataType Semantics::inferPrefixExpressionType(Node *node)
     return resultOfUnary(prefixOperator, operandType);
 }
 
+Identifier *lastLeftIdent = nullptr;
+Identifier *lastRightIdent = nullptr;
+
 DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType)
 {
     // Dealing with logical operators

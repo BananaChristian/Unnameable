@@ -1,3 +1,6 @@
+#ifndef SEMANTICS_HPP
+#define SEMANTICS_HPP
+
 #include "ast.hpp"
 #include <string>
 #include <typeindex>
@@ -44,10 +47,12 @@ public:
     void walker(Node *node);
     using walkerFunctions = void (Semantics::*)(Node *);
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
-    std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable; 
-    std::unordered_map<std::string,std::vector<SymbolInfo>> sharedDataBlocks;
+    std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable;
+    std::unordered_map<std::string, std::vector<SymbolInfo>> sharedDataBlocks;
     std::unordered_map<Node *, SymbolInfo> metaData;
     std::vector<bool> loopContext;
+
+    SymbolInfo *resolveSymbolInfo(const std::string &name);
 
 private:
     // Walking the data type literals
@@ -60,11 +65,6 @@ private:
     void walkNullLiteral(Node *node);
 
     // Walking the component functions declaration
-    void walkEnumClassStatement(Node *node);
-    void walkComponentStatement(Node *node);
-    void walkInitStatement(Node *node);
-    void walkUseStatement(Node *node);
-    void walkBehaviorStatement(Node *node);
     void walkDataStatement(Node *node);
 
     // Waling infix and prefix expressions
@@ -106,8 +106,9 @@ private:
     DataType inferPrefixExpressionType(Node *node);
     DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType);
     DataType resultOfUnary(TokenType operatorType, DataType oprendType);
-    SymbolInfo *resolveSymbolInfo(const std::string &name);
     std::string dataTypetoString(DataType type);
     Token getErrorToken(Node *node);
     void logSemanticErrors(const std::string &message, Node *node);
 };
+
+#endif

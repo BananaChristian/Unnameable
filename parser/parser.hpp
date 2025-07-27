@@ -35,6 +35,7 @@ class Parser
         {TokenType::MINUS, Precedence::PREC_TERM},
         {TokenType::ASTERISK, Precedence::PREC_FACTOR},
         {TokenType::DIVIDE, Precedence::PREC_FACTOR},
+        {TokenType::MODULUS, Precedence::PREC_FACTOR},
         {TokenType::BANG, Precedence::PREC_UNARY},
         {TokenType::MINUS_MINUS, Precedence::PREC_UNARY},
         {TokenType::PLUS_PLUS, Precedence::PREC_UNARY},

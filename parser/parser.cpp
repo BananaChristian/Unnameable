@@ -492,7 +492,7 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
         auto dataStmt = parseStatement();
         if (auto letStmt = dynamic_cast<LetStatement *>(dataStmt.get()))
         {
-            TokenType declaredType = letStmt->data_type_token.type; 
+            TokenType declaredType = letStmt->data_type_token.type;
             if (declaredType == TokenType::INT ||
                 declaredType == TokenType::FLOAT_KEYWORD ||
                 declaredType == TokenType::STRING_KEYWORD ||
@@ -791,7 +791,7 @@ std::unique_ptr<Statement> Parser::parseEachStatement()
 
     // Parse the iterator variable (e.g., `auto x`)
     auto iterVar = parseLetStatementDecider(); // could be an identifier or declaration
-    
+
     if (currentToken().type != TokenType::COLON)
     {
         logError("Expected ':' in each loop but got: " + currentToken().TokenLiteral);

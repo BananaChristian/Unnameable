@@ -8,6 +8,7 @@
 #include "token/token.hpp"
 #include "parser/parser.hpp"
 #include "semantics/semantics.hpp"
+#include "irgen/irgen.hpp"
 
 std::string readFileToString(const std::string &filepath)
 {
@@ -67,6 +68,10 @@ int main(int argc, char **argv)
         {
             semantics.walker(node.get());
         }
+        std::cout << "\n--- LLVM IR Generation ---\n";
+        IRGenerator irgen(semantics);
+        irgen.generate(nodes); // <--- pass vector of nodes
+        irgen.dumpIR();        // Print the IR
     }
     catch (const std::exception &e)
     {
