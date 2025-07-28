@@ -23,7 +23,7 @@ This project contains the core implementation of the Unnameable compiler written
 - Custom Lexer and Tokenizer *(in progress)*
 - Custom Parser *(in progress)*
 - Semantic Analyzer *(active development)*
-- LLVM IR Codegen *(planned)*
+- LLVM IR Codegen *(active development)*
 
 ---
 
