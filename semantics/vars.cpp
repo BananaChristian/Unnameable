@@ -8,8 +8,8 @@ void Semantics::walkNullLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the null literal \n";
     metaData[nullLiteral] = {
-        .symbolDataType = DataType::NULLABLE,
-        .isNullable = false,
+        .symbolDataType = DataType::UNKNOWN,
+        .isNullable = true,
         .isMutable = false,
         .isConstant = false};
 }
@@ -160,7 +160,8 @@ void Semantics::walkLetStatement(Node *node)
 
     if (!isNullable && letStmtLiteral && letStmtLiteral->expression.TokenLiteral == "null")
     {
-        std::cerr << "[SEMANTIC ERROR]: Cannot assign null to a non-nullable variable '" << letStmtName << "'\n";
+        logSemanticErrors("Cannot assign null to a non-nullable variable '" + letStmtName + "'", letStmt);
+        return;
     }
 
     if (!letStmtLiteral && isConstant == true)
@@ -208,7 +209,8 @@ void Semantics::walkAssignStatement(Node *node)
     // Null safety check
     if (!symbol->isNullable && assignStmt->value && assignStmt->value->token.type == TokenType::NULLABLE)
     {
-        std::cerr << "[SEMANTIC ERROR]: Cannot assign null to non-nullable variable '" << assignName << "'\n";
+        logSemanticErrors("Cannot assign null to non-nullable variable '" + assignName + "'", assignStmt);
+        return;
     }
 
     // Constant check

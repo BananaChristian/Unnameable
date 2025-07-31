@@ -268,6 +268,38 @@ llvm::Value *IRGenerator::generateDoubleLiteral(Node *node)
     return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), value); // Returning double value
 }
 
+llvm::Value *IRGenerator::generateNullLiteral(Node *node)
+{
+    auto nullLit = dynamic_cast<NullLiteral *>(node);
+    if (!nullLit)
+    {
+        throw std::runtime_error("Invalid null literal");
+    }
+    auto it = semantics.metaData.find(node);
+
+    DataType type = it->second.symbolDataType;
+    std::cout<<"Submitted data type: "<<semantics.dataTypetoString(type)<<"\n";
+
+    switch (type)
+    {
+    case DataType::NULLABLE_STR:
+        return llvm::ConstantPointerNull::get(llvm::Type::getInt8PtrTy(context));
+    case DataType::NULLABLE_INT:
+        return llvm::ConstantInt::get(context, llvm::APInt(32, 1 << 31));
+    case DataType::NULLABLE_FLT:
+        return llvm::ConstantFP::get(context, llvm::APFloat::getQNaN(llvm::APFloat::IEEEsingle()));
+    case DataType::NULLABLE_BOOLEAN:
+        return llvm::ConstantInt::get(context, llvm::APInt(1, 2, false));
+    case DataType::NULLABLE_DOUBLE:
+        return llvm::ConstantFP::get(context, llvm::APFloat::getQNaN(llvm::APFloat::IEEEdouble()));
+    case DataType::NULLABLE_CHAR:
+        return llvm::ConstantInt::get(context, llvm::APInt(8, 0));
+    default:
+        throw std::runtime_error("Unsupported null type");
+    }
+}
+
+// Generator function for identifier expression
 llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
 {
     auto identExpr = dynamic_cast<Identifier *>(node);
@@ -307,6 +339,18 @@ llvm::Type *IRGenerator::getLLVMType(DataType type)
         return llvm::Type::getInt8Ty(context);
     case DataType::STRING:
         return llvm::Type::getInt8PtrTy(context);
+    case DataType::NULLABLE_STR:
+        return llvm::Type::getInt8PtrTy(context);
+    case DataType::NULLABLE_CHAR:
+        return llvm::Type::getInt8Ty(context);
+    case DataType::NULLABLE_INT:
+        return llvm::Type::getInt32Ty(context);
+    case DataType::NULLABLE_FLT:
+        return llvm::Type::getFloatTy(context);
+    case DataType::NULLABLE_DOUBLE:
+        return llvm::Type::getDoubleTy(context);
+    case DataType::NULLABLE_BOOLEAN:
+        return llvm::Type::getInt1Ty(context);
     case DataType::NULLABLE:
         return llvm::Type::getVoidTy(context);
     default:
@@ -329,6 +373,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(FloatLiteral)] = &IRGenerator::generateFloatLiteral;
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
+    expressionGeneratorsMap[typeid(NullLiteral)] = &IRGenerator::generateNullLiteral;
 }
 
 void IRGenerator::dumpIR()

@@ -49,6 +49,7 @@ private:
     llvm::Value *generateFloatLiteral(Node *node);
     llvm::Value *generateDoubleLiteral(Node *node);
     llvm::Value *generateIntegerLiteral(Node *node);
+    llvm::Value *generateNullLiteral(Node *node);
     llvm::Value *generateIdentifierExpression(Node *node);
 
     // HELPER FUNCTIONS

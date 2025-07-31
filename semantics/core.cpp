@@ -1,4 +1,5 @@
 #include "semantics.hpp"
+#include "ast.hpp"
 
 #define CPPREST_FORCE_REBUILD
 
@@ -121,26 +122,50 @@ DataType Semantics::inferNodeDataType(Node *node)
         auto letStmtDataToken = letStmt->data_type_token;
         if (letStmtDataToken.type == TokenType::INT)
         {
+            if (letStmt->isNullable)
+            {
+                return DataType::NULLABLE_INT;
+            }
             return DataType::INTEGER;
         }
         if (letStmtDataToken.type == TokenType::FLOAT_KEYWORD)
         {
+            if (letStmt->isNullable)
+            {
+                return DataType::NULLABLE_FLT;
+            }
             return DataType::FLOAT;
         }
         if (letStmtDataToken.type == TokenType::DOUBLE_KEYWORD)
         {
+            if (letStmt->isNullable)
+            {
+                return DataType::NULLABLE_DOUBLE;
+            }
             return DataType::DOUBLE;
         }
         if (letStmtDataToken.type == TokenType::STRING_KEYWORD)
         {
+            if (letStmt->isNullable)
+            {
+                return DataType::NULLABLE_STR;
+            }
             return DataType::STRING;
         }
         if (letStmtDataToken.type == TokenType::CHAR_KEYWORD)
         {
+            if (letStmt->isNullable)
+            {
+                return DataType::NULLABLE_CHAR;
+            }
             return DataType::CHAR;
         }
         if (letStmtDataToken.type == TokenType::BOOL_KEYWORD)
         {
+            if (letStmt->isNullable)
+            {
+                return DataType::NULLABLE_BOOLEAN;
+            }
             return DataType::BOOLEAN;
         }
         if (letStmtDataToken.type == TokenType::AUTO)
@@ -381,6 +406,18 @@ std::string Semantics::dataTypetoString(DataType type)
         return "char";
     case DataType::NULLABLE:
         return "null";
+    case DataType::NULLABLE_STR:
+        return "string?";
+    case DataType::NULLABLE_INT:
+        return "int?";
+    case DataType::NULLABLE_FLT:
+        return "float?";
+    case DataType::NULLABLE_CHAR:
+        return "char?";
+    case DataType::NULLABLE_DOUBLE:
+        return "double?";
+    case DataType::NULLABLE_BOOLEAN:
+        return "bool?";
     default:
         return "unknown";
     }

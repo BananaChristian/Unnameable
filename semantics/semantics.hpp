@@ -9,11 +9,17 @@
 enum class DataType
 {
     INTEGER,
+    NULLABLE_INT,
     BOOLEAN,
+    NULLABLE_BOOLEAN,
     STRING,
+    NULLABLE_STR,
     FLOAT,
+    NULLABLE_FLT,
     DOUBLE,
+    NULLABLE_DOUBLE,
     CHAR,
+    NULLABLE_CHAR,
     NULLABLE,
     ERROR,
     UNKNOWN
@@ -53,6 +59,8 @@ public:
     std::vector<bool> loopContext;
 
     SymbolInfo *resolveSymbolInfo(const std::string &name);
+
+    std::string dataTypetoString(DataType type);
 
 private:
     // Walking the data type literals
@@ -106,7 +114,6 @@ private:
     DataType inferPrefixExpressionType(Node *node);
     DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType);
     DataType resultOfUnary(TokenType operatorType, DataType oprendType);
-    std::string dataTypetoString(DataType type);
     Token getErrorToken(Node *node);
     void logSemanticErrors(const std::string &message, Node *node);
 };
