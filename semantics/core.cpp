@@ -40,7 +40,6 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
     walkerFunctionsMap[typeid(CharLiteral)] = &Semantics::walkCharLiteral;
     walkerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::walkBooleanLiteral;
-    walkerFunctionsMap[typeid(NullLiteral)] = &Semantics::walkNullLiteral;
     walkerFunctionsMap[typeid(Identifier)] = &Semantics::walkIdentifierExpression;
 
     // Walker registration for let statement and assignment statements
@@ -92,6 +91,11 @@ DataType Semantics::inferNodeDataType(Node *node)
         return DataType::FLOAT;
     }
 
+    if (auto dbLit = dynamic_cast<DoubleLiteral *>(node))
+    {
+        return DataType::DOUBLE;
+    }
+
     if (auto strLit = dynamic_cast<StringLiteral *>(node))
     {
         return DataType::STRING;
@@ -107,10 +111,6 @@ DataType Semantics::inferNodeDataType(Node *node)
         return DataType::BOOLEAN;
     }
 
-    if (auto nullLit = dynamic_cast<NullLiteral *>(node))
-    {
-        return DataType::NULLABLE;
-    }
     if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
     {
         return DataType::ERROR;
@@ -122,50 +122,26 @@ DataType Semantics::inferNodeDataType(Node *node)
         auto letStmtDataToken = letStmt->data_type_token;
         if (letStmtDataToken.type == TokenType::INT)
         {
-            if (letStmt->isNullable)
-            {
-                return DataType::NULLABLE_INT;
-            }
             return DataType::INTEGER;
         }
         if (letStmtDataToken.type == TokenType::FLOAT_KEYWORD)
         {
-            if (letStmt->isNullable)
-            {
-                return DataType::NULLABLE_FLT;
-            }
             return DataType::FLOAT;
         }
         if (letStmtDataToken.type == TokenType::DOUBLE_KEYWORD)
         {
-            if (letStmt->isNullable)
-            {
-                return DataType::NULLABLE_DOUBLE;
-            }
             return DataType::DOUBLE;
         }
         if (letStmtDataToken.type == TokenType::STRING_KEYWORD)
         {
-            if (letStmt->isNullable)
-            {
-                return DataType::NULLABLE_STR;
-            }
             return DataType::STRING;
         }
         if (letStmtDataToken.type == TokenType::CHAR_KEYWORD)
         {
-            if (letStmt->isNullable)
-            {
-                return DataType::NULLABLE_CHAR;
-            }
             return DataType::CHAR;
         }
         if (letStmtDataToken.type == TokenType::BOOL_KEYWORD)
         {
-            if (letStmt->isNullable)
-            {
-                return DataType::NULLABLE_BOOLEAN;
-            }
             return DataType::BOOLEAN;
         }
         if (letStmtDataToken.type == TokenType::AUTO)
@@ -173,7 +149,8 @@ DataType Semantics::inferNodeDataType(Node *node)
             auto letStmtValue = letStmt->value.get();
             if (!letStmtValue)
             {
-                std::cerr << "[SEMANTIC ERROR] Cannot infer without a value\n";
+                logSemanticErrors("Cannot infer without a value", letStmt);
+                return DataType::UNKNOWN;
             }
             return inferNodeDataType(letStmtValue);
         }
@@ -185,9 +162,9 @@ DataType Semantics::inferNodeDataType(Node *node)
         auto assignSymbol = resolveSymbolInfo(assignStmtIdent);
         auto assignStmtVal = assignStmt->value.get();
         DataType assignStmtValType = inferNodeDataType(assignStmtVal);
-        if (assignSymbol->symbolDataType != assignStmtValType)
+        if (!isTypeCompatible(assignSymbol->symbolDataType, assignStmtValType))
         {
-            std::cerr << "[SEMANTIC ERROR] Type mismatch";
+            logSemanticErrors("Type mismatch expected '" + dataTypetoString(assignStmtValType) + "' but got '" + dataTypetoString(assignSymbol->symbolDataType) + "'", assignStmt);
         }
         else
         {
@@ -388,6 +365,27 @@ SymbolInfo *Semantics::resolveSymbolInfo(const std::string &name)
     return nullptr;
 }
 
+DataType Semantics::tokenTypeToDataType(TokenType type, bool isNullable)
+{
+    switch (type)
+    {
+    case TokenType::INT:
+        return isNullable ? DataType::NULLABLE_INT : DataType::INTEGER;
+    case TokenType::FLOAT_KEYWORD:
+        return isNullable ? DataType::NULLABLE_FLT : DataType::FLOAT;
+    case TokenType::DOUBLE_KEYWORD:
+        return isNullable ? DataType::NULLABLE_DOUBLE : DataType::DOUBLE;
+    case TokenType::STRING_KEYWORD:
+        return isNullable ? DataType::NULLABLE_STR : DataType::STRING;
+    case TokenType::CHAR_KEYWORD:
+        return isNullable ? DataType::NULLABLE_CHAR : DataType::CHAR;
+    case TokenType::BOOL_KEYWORD:
+        return isNullable ? DataType::NULLABLE_BOOLEAN : DataType::BOOLEAN;
+    default:
+        return DataType::UNKNOWN;
+    }
+}
+
 std::string Semantics::dataTypetoString(DataType type)
 {
     switch (type)
@@ -404,8 +402,6 @@ std::string Semantics::dataTypetoString(DataType type)
         return "double";
     case DataType::CHAR:
         return "char";
-    case DataType::NULLABLE:
-        return "null";
     case DataType::NULLABLE_STR:
         return "string?";
     case DataType::NULLABLE_INT:
@@ -421,6 +417,22 @@ std::string Semantics::dataTypetoString(DataType type)
     default:
         return "unknown";
     }
+}
+
+bool Semantics::isTypeCompatible(DataType expected, DataType actual)
+{
+    if (expected == actual)
+        return true;
+    if ((expected == DataType::NULLABLE_INT && actual == DataType::INTEGER) ||
+        (expected == DataType::NULLABLE_FLT && actual == DataType::FLOAT) ||
+        (expected == DataType::NULLABLE_DOUBLE && actual == DataType::DOUBLE) ||
+        (expected == DataType::NULLABLE_STR && actual == DataType::STRING) ||
+        (expected == DataType::NULLABLE_CHAR && actual == DataType::CHAR) ||
+        (expected == DataType::NULLABLE_BOOLEAN && actual == DataType::BOOLEAN))
+    {
+        return true;
+    }
+    return false;
 }
 
 Token Semantics::getErrorToken(Node *node)

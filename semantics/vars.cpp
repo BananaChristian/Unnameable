@@ -1,19 +1,6 @@
 #include "semantics.hpp"
 
 // Walking the data type literals
-void Semantics::walkNullLiteral(Node *node)
-{
-    auto nullLiteral = dynamic_cast<NullLiteral *>(node);
-    if (!nullLiteral)
-        return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the null literal \n";
-    metaData[nullLiteral] = {
-        .symbolDataType = DataType::UNKNOWN,
-        .isNullable = true,
-        .isMutable = false,
-        .isConstant = false};
-}
-
 void Semantics::walkBooleanLiteral(Node *node)
 {
     auto boolLiteral = dynamic_cast<BooleanLiteral *>(node);
@@ -126,68 +113,106 @@ void Semantics::walkIdentifierExpression(Node *node)
         .isInitialized = symbolInfo->isInitialized};
 }
 
-// Walking the let statement and assign statement
+// Walking let statement
 void Semantics::walkLetStatement(Node *node)
 {
     auto letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
         return;
+    std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
 
-    std::cout << "[SEMANTIC LOG]: Analyzing the let statement\n";
-
-    auto letStmtName = letStmt->ident_token.TokenLiteral;
-    auto letStmtLiteral = letStmt->value.get();
     bool isNullable = letStmt->isNullable;
+    bool isInitialized = false;
 
-    // Mutability setup
+    auto letStmtValue = letStmt->value.get();
+
+    DataType declaredType = DataType::UNKNOWN; // Defaulting to the normal data type check
+    if (letStmtValue)
+    {
+        walker(letStmtValue);
+        isInitialized = true;
+        auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue);
+        if (nullVal)
+        {
+            if (!isNullable)
+            {
+                logSemanticErrors("Cannot assign 'null' to a non-nullable value " + letStmt->ident_token.TokenLiteral, letStmt);
+                declaredType = DataType::UNKNOWN;
+            }
+            else
+            {
+                switch (letStmt->data_type_token.type)
+                {
+                case TokenType::INT:
+                    declaredType = DataType::NULLABLE_INT;
+                    break;
+                case TokenType::FLOAT_KEYWORD:
+                    declaredType = DataType::NULLABLE_FLT;
+                    break;
+                case TokenType::DOUBLE_KEYWORD:
+                    declaredType = DataType::NULLABLE_DOUBLE;
+                    break;
+                case TokenType::STRING_KEYWORD:
+                    declaredType = DataType::NULLABLE_STR;
+                    break;
+                case TokenType::CHAR_KEYWORD:
+                    declaredType = DataType::NULLABLE_CHAR;
+                    break;
+                case TokenType::BOOL_KEYWORD:
+                    declaredType = DataType::NULLABLE_BOOLEAN;
+                    break;
+                default:
+                    declaredType = DataType::UNKNOWN;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            declaredType = inferNodeDataType(letStmtValue);
+        }
+    }
+    else
+    {
+        declaredType = inferNodeDataType(letStmt);
+    }
+
+    //  Check for type mismatch if type is explicitly declared (not inferred via auto)
+    if (letStmt->data_type_token.type != TokenType::AUTO)
+    {
+        DataType expectedType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
+        if (expectedType != declaredType)
+        {
+            logSemanticErrors("Type mismatch in 'let' statement. Expected '" + dataTypetoString(expectedType) + "' but got '" + dataTypetoString(declaredType) + "'", letStmt);
+            return;
+        }
+    }
+
+    std::cout << "LET STATEMENT DATA TYPE: " << dataTypetoString(declaredType) << "\n";
+
+    // Checking for mutability and constance
     bool isMutable = false;
     bool isConstant = false;
-
-    switch (letStmt->mutability)
+    if (letStmt->mutability == Mutability::MUTABLE)
     {
-    case Mutability::MUTABLE:
         isMutable = true;
-        break;
-    case Mutability::CONSTANT:
+    }
+    else if (letStmt->mutability == Mutability::CONSTANT)
+    {
         isConstant = true;
-        break;
-    case Mutability::IMMUTABLE:
-    default:
-        break; // defaults already false
     }
 
-    bool isInitialized = (letStmtLiteral != nullptr);
-
-    if (!isNullable && letStmtLiteral && letStmtLiteral->expression.TokenLiteral == "null")
-    {
-        logSemanticErrors("Cannot assign null to a non-nullable variable '" + letStmtName + "'", letStmt);
-        return;
-    }
-
-    if (!letStmtLiteral && isConstant == true)
-    {
-        std::cerr << "[SEMANTIC ERROR]: Constant variable '" << letStmtName << "needs a value assigned to it" << "'\n";
-    }
-
-    if (letStmtLiteral)
-    {
-        walker(letStmtLiteral); // Analyze the value
-    }
-
-    DataType declaredType = inferNodeDataType(letStmt);
-
-    SymbolInfo symbol{
+    // Creating metadata about the let statement node
+    SymbolInfo symbol = {
         .symbolDataType = declaredType,
         .isNullable = isNullable,
         .isMutable = isMutable,
         .isConstant = isConstant,
         .isInitialized = isInitialized};
-
-    // Attach meta info to node
     metaData[letStmt] = symbol;
 
-    // Register in current scope
-    symbolTable.back()[letStmtName] = symbol;
+    // Pushing the let statement to current scope
+    symbolTable.back()[letStmt->ident_token.TokenLiteral] = symbol;
 }
 
 void Semantics::walkAssignStatement(Node *node)
@@ -206,11 +231,24 @@ void Semantics::walkAssignStatement(Node *node)
         return;
     }
 
-    // Null safety check
-    if (!symbol->isNullable && assignStmt->value && assignStmt->value->token.type == TokenType::NULLABLE)
+    // Null safety check — allow assigning null only if symbol is nullable
+    if (assignStmt->value && assignStmt->value->token.type == TokenType::NULLABLE)
     {
-        logSemanticErrors("Cannot assign null to non-nullable variable '" + assignName + "'", assignStmt);
-        return;
+        if (!symbol->isNullable)
+        {
+            logSemanticErrors("Cannot assign null to non-nullable variable '" + assignName + "'", assignStmt);
+            return;
+        }
+    }
+    else
+    {
+        // If not null, check type compatibility explicitly
+        DataType valueType = inferNodeDataType(assignStmt->value.get());
+        if (!isTypeCompatible(symbol->symbolDataType, valueType))
+        {
+            logSemanticErrors("Type mismatch expected '" + dataTypetoString(symbol->symbolDataType) + "' but got '" + dataTypetoString(valueType) + "'", assignStmt);
+            return;
+        }
     }
 
     // Constant check

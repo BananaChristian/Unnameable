@@ -3,7 +3,7 @@ CXXFLAGS = -std=c++17 -g -I. -Ilexer -Iparser -Itoken -Isemantic_analyzer
 LLVM_CXXFLAGS = $(shell llvm-config --cxxflags | sed 's/-std=c++[0-9]*//g;s/-fno-exceptions//g')
 LLVM_LDFLAGS = $(shell llvm-config --ldflags --system-libs --libs core irreader support analysis transformutils bitwriter)
 
-OUT = void
+OUT = unnc
 
 SRC = main.cpp \
       lexer/lexer.cpp \

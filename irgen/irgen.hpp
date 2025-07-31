@@ -46,10 +46,13 @@ private:
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);
     llvm::Value *generatePrefixExpression(Node *node);
+    llvm::Value *generateStringLiteral(Node *node);
+    llvm::Value *generateCharLiteral(Node *node);
+    llvm::Value *generateBooleanLiteral(Node *node);
     llvm::Value *generateFloatLiteral(Node *node);
     llvm::Value *generateDoubleLiteral(Node *node);
     llvm::Value *generateIntegerLiteral(Node *node);
-    llvm::Value *generateNullLiteral(Node *node);
+    llvm::Value *generateNullLiteral(NullLiteral *nullLit, DataType type);
     llvm::Value *generateIdentifierExpression(Node *node);
 
     // HELPER FUNCTIONS
@@ -57,6 +60,7 @@ private:
     void registerExpressionGeneratorFunctions();
     llvm::Value *generateExpression(Node *node);
     llvm::Type *getLLVMType(DataType type);
+    char decodeCharLiteral(const std::string &literal);
 };
 
 #endif

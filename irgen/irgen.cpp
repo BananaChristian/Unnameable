@@ -70,7 +70,15 @@ void IRGenerator::generateLetStatement(Node *node)
     namedValues[letStmt->ident_token.TokenLiteral] = alloca;
     if (letStmt->value)
     {
-        llvm::Value *initValue = generateExpression(letStmt->value.get());
+        llvm::Value *initValue = nullptr;
+        if (auto nullLit = dynamic_cast<NullLiteral *>(letStmt->value.get()))
+        {
+            initValue = generateNullLiteral(nullLit, symbol->symbolDataType);
+        }
+        else
+        {
+            initValue = generateExpression(letStmt->value.get());
+        }
         if (!initValue)
         {
             throw std::runtime_error("Failed to generate IR for initializer of: " + letStmt->ident_token.TokenLiteral);
@@ -220,6 +228,75 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
                              " at line " + std::to_string(prefix->operat.line));
 }
 
+llvm::Value *IRGenerator::generateStringLiteral(Node *node)
+{
+    std::cout << "INSIDE GENERATE IR FOR STRING\n";
+    auto strLit = dynamic_cast<StringLiteral *>(node);
+    if (!strLit)
+    {
+        throw std::runtime_error("Invalid string literal");
+    }
+    auto it = semantics.metaData.find(strLit);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("String literal not found in metadata");
+    }
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::STRING && dt != DataType::NULLABLE_STR)
+    {
+        throw std::runtime_error("Type error: Expected STRING or NULLABLE_STR for StringLiteral ");
+    }
+    std::string raw = strLit->string_token.TokenLiteral;
+    llvm::Value *strConst = builder.CreateGlobalStringPtr(raw);
+    return strConst;
+}
+
+llvm::Value *IRGenerator::generateCharLiteral(Node *node)
+{
+    auto charLit = dynamic_cast<CharLiteral *>(node);
+    if (!charLit)
+    {
+        throw std::runtime_error("Invalid char literal");
+    }
+    auto it = semantics.metaData.find(charLit);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Char literal not found in metadata");
+    }
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::CHAR && dt != DataType::NULLABLE_CHAR)
+    {
+        throw std::runtime_error("Type error: Expected CHAR for CharLiteral");
+    }
+    std::string tokenLiteral = charLit->char_token.TokenLiteral;
+
+    char c = decodeCharLiteral(tokenLiteral);
+    return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), static_cast<uint8_t>(c), false);
+}
+
+llvm::Value *IRGenerator::generateBooleanLiteral(Node *node)
+{
+    auto boolLit = dynamic_cast<BooleanLiteral *>(node);
+    if (!boolLit)
+    {
+        throw std::runtime_error("Invalid boolean type");
+    }
+    auto it = semantics.metaData.find(boolLit);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Boolean literal not found in metadata");
+    }
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::BOOLEAN && dt != DataType::NULLABLE_BOOLEAN)
+    {
+        throw std::runtime_error("Type error: Expected BOOLEAN for BooleanLiteral");
+    }
+
+    bool value = (boolLit->boolean_token.TokenLiteral == "true");
+
+    return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), value);
+}
+
 llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
 {
     auto intLit = dynamic_cast<IntegerLiteral *>(node);
@@ -228,9 +305,14 @@ llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
         throw std::runtime_error("Invalid integer literal");
     }
     auto it = semantics.metaData.find(node);
-    if (it == semantics.metaData.end() || it->second.symbolDataType != DataType::INTEGER)
+    if (it == semantics.metaData.end())
     {
-        throw std::runtime_error("Type error: Expected INTEGER for IntegerLiteral");
+        throw std::runtime_error("Integer literal not found in metadata");
+    }
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::INTEGER && dt != DataType::NULLABLE_INT)
+    {
+        throw std::runtime_error("Type error: Expected INTEGER or NULLABLE_INT for IntegerLiteral");
     }
     int64_t value = std::stoll(intLit->int_token.TokenLiteral);
     return llvm::ConstantInt::get(context, llvm::APInt(32, value, true));
@@ -244,9 +326,14 @@ llvm::Value *IRGenerator::generateFloatLiteral(Node *node)
         throw std::runtime_error("Invalid float literal");
     }
     auto it = semantics.metaData.find(node);
-    if (it == semantics.metaData.end() || it->second.symbolDataType != DataType::FLOAT)
+    if (it == semantics.metaData.end())
     {
-        throw std::runtime_error("Type error: Expected float for FloatLiteral");
+        throw std::runtime_error("Float literal not found in metadata");
+    }
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::FLOAT && dt != DataType::NULLABLE_FLT)
+    {
+        throw std::runtime_error("Type error: Expected Float or NULLABLE_FLT for FloatLiteral ");
     }
     float value = std::stof(fltLit->float_token.TokenLiteral);
     return llvm::ConstantFP::get(llvm::Type::getFloatTy(context), value);
@@ -260,25 +347,23 @@ llvm::Value *IRGenerator::generateDoubleLiteral(Node *node)
         throw std::runtime_error("Invalid double literal");
     }
     auto it = semantics.metaData.find(node); // Creating an iterator to find specific meta data about the double literal
-    if (it == semantics.metaData.end() || it->second.symbolDataType != DataType::DOUBLE)
+    if (it == semantics.metaData.end())
     {
-        throw std::runtime_error("Type error: Expected 'double' for DoubleLiteral");
-    } // Checking if we have metaData about the double literal and if so we check to see if the data type is double
+        throw std::runtime_error("Double literal not found in metadata");
+    }
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::DOUBLE && dt != DataType::NULLABLE_DOUBLE)
+    {
+        throw std::runtime_error("Type error: Expected DOUBLE for DoubleLiteral");
+    }
+    // Checking if we have metaData about the double literal and if so we check to see if the data type is double
     double value = std::stod(dbLit->double_token.TokenLiteral);            // Converting the double literal from a string to a double
     return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), value); // Returning double value
 }
 
-llvm::Value *IRGenerator::generateNullLiteral(Node *node)
+llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType type)
 {
-    auto nullLit = dynamic_cast<NullLiteral *>(node);
-    if (!nullLit)
-    {
-        throw std::runtime_error("Invalid null literal");
-    }
-    auto it = semantics.metaData.find(node);
-
-    DataType type = it->second.symbolDataType;
-    std::cout<<"Submitted data type: "<<semantics.dataTypetoString(type)<<"\n";
+    std::cout << "Submitted data type: " << semantics.dataTypetoString(type) << "\n";
 
     switch (type)
     {
@@ -351,8 +436,8 @@ llvm::Type *IRGenerator::getLLVMType(DataType type)
         return llvm::Type::getDoubleTy(context);
     case DataType::NULLABLE_BOOLEAN:
         return llvm::Type::getInt1Ty(context);
-    case DataType::NULLABLE:
-        return llvm::Type::getVoidTy(context);
+    case DataType::UNKNOWN:
+        throw std::runtime_error("Unknown data type encountered");
     default:
         return nullptr;
     }
@@ -369,11 +454,44 @@ void IRGenerator::registerExpressionGeneratorFunctions()
 {
     expressionGeneratorsMap[typeid(InfixExpression)] = &IRGenerator::generateInfixExpression;
     expressionGeneratorsMap[typeid(PrefixExpression)] = &IRGenerator::generatePrefixExpression;
+    expressionGeneratorsMap[typeid(StringLiteral)] = &IRGenerator::generateStringLiteral;
+    expressionGeneratorsMap[typeid(CharLiteral)] = &IRGenerator::generateCharLiteral;
+    expressionGeneratorsMap[typeid(BooleanLiteral)] = &IRGenerator::generateBooleanLiteral;
     expressionGeneratorsMap[typeid(IntegerLiteral)] = &IRGenerator::generateIntegerLiteral;
     expressionGeneratorsMap[typeid(FloatLiteral)] = &IRGenerator::generateFloatLiteral;
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
-    expressionGeneratorsMap[typeid(NullLiteral)] = &IRGenerator::generateNullLiteral;
+}
+
+char IRGenerator::decodeCharLiteral(const std::string &literal)
+{
+    if (literal.length() == 3 && literal.front() == '\'' && literal.back() == '\'')
+    {
+        return literal[1];
+    }
+    else if (literal.length() == 4 && literal.front() == '\'' && literal.back() == '\'' && literal[1] == '\\')
+    {
+        switch (literal[2])
+        {
+        case 'n':
+            return '\n';
+        case 't':
+            return '\t';
+        case '\\':
+            return '\\';
+        case '\'':
+            return '\'';
+        case '\"':
+            return '\"';
+        case 'r':
+            return '\r';
+        case '0':
+            return '\0';
+        default:
+            throw std::runtime_error("Unknown escape sequence in char literal: " + literal);
+        }
+    }
+    throw std::runtime_error("Invalid char literal: " + literal);
 }
 
 void IRGenerator::dumpIR()

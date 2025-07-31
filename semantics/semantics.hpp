@@ -20,7 +20,6 @@ enum class DataType
     NULLABLE_DOUBLE,
     CHAR,
     NULLABLE_CHAR,
-    NULLABLE,
     ERROR,
     UNKNOWN
 };
@@ -70,7 +69,6 @@ private:
     void walkCharLiteral(Node *node);
     void walkDoubleLiteral(Node *node);
     void walkFloatLiteral(Node *node);
-    void walkNullLiteral(Node *node);
 
     // Walking the component functions declaration
     void walkDataStatement(Node *node);
@@ -115,6 +113,8 @@ private:
     DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType);
     DataType resultOfUnary(TokenType operatorType, DataType oprendType);
     Token getErrorToken(Node *node);
+    DataType tokenTypeToDataType(TokenType type, bool isNullable);
+    bool isTypeCompatible(DataType expected, DataType actual);
     void logSemanticErrors(const std::string &message, Node *node);
 };
 
