@@ -20,13 +20,7 @@ void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program)
 
     for (const auto &node : program)
     {
-        auto generatorIt = generatorFunctionsMap.find(typeid(*node));
-        if (generatorIt == generatorFunctionsMap.end())
-        {
-            std::cout << "Failed to find IR generator for : " << node->toString() << "\n";
-            return;
-        }
-        (this->*generatorIt->second)(node.get());
+        generateStatement(node.get());
     }
 
     builder.CreateRet(llvm::ConstantInt::get(context, llvm::APInt(32, 0)));
@@ -39,12 +33,22 @@ llvm::Value *IRGenerator::generateExpression(Node *node)
     auto exprIt = expressionGeneratorsMap.find(typeid(*node));
     if (exprIt == expressionGeneratorsMap.end())
     {
-        throw std::runtime_error("Unsupported expression type");
+        throw std::runtime_error("Could not find expression type IR generator: " + node->toString());
     }
     return (this->*exprIt->second)(node);
 }
 
 // GENERATOR FUNCTIONS
+void IRGenerator::generateStatement(Node *node)
+{
+    auto generatorIt = generatorFunctionsMap.find(typeid(*node));
+    if (generatorIt == generatorFunctionsMap.end())
+    {
+        std::cout << "Failed to find IR generator for : " << node->toString() << "\n";
+        return;
+    }
+    (this->*generatorIt->second)(node);
+}
 // STATEMENT GENERATOR FUNCTIONS
 // Let statement IR generator function
 void IRGenerator::generateLetStatement(Node *node)
@@ -85,6 +89,66 @@ void IRGenerator::generateLetStatement(Node *node)
         }
         builder.CreateStore(initValue, alloca);
     }
+}
+
+// While statement IR generator function
+void IRGenerator::generateWhileStatement(Node *node)
+{
+    llvm::Function *function = builder.GetInsertBlock()->getParent();
+
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(context, "while.cond", function);
+    llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(context, "while.body");
+    llvm::BasicBlock *afterBB = llvm::BasicBlock::Create(context, "while.end");
+
+    builder.CreateBr(condBB);
+
+    builder.SetInsertPoint(condBB);
+    auto whileStmt = dynamic_cast<WhileStatement *>(node);
+    llvm::Value *condVal = generateExpression(whileStmt->condition.get());
+    if (!condVal->getType()->isIntegerTy(1))
+    {
+        std::cerr << "[IR ERROR] While condition must be boolean\n";
+    }
+    builder.CreateCondBr(condVal, loopBB, afterBB);
+
+    function->getBasicBlockList().push_back(loopBB);
+    builder.SetInsertPoint(loopBB);
+
+    generateStatement(whileStmt->loop.get());
+
+    loopBlocksStack.pop_back();
+    builder.CreateBr(condBB);
+
+    function->getBasicBlockList().push_back(afterBB);
+    builder.SetInsertPoint(afterBB);
+}
+
+void IRGenerator::generateBreakStatement(Node *node)
+{
+    if (loopBlocksStack.empty())
+    {
+        throw std::runtime_error("Break statement not inside a loop");
+    }
+
+    llvm::BasicBlock *afterBB = loopBlocksStack.back().afterBB;
+    builder.CreateBr(afterBB);
+
+    llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, "after.break", builder.GetInsertBlock()->getParent());
+    builder.SetInsertPoint(contBB);
+}
+
+void IRGenerator::generateContinueStatement(Node *node)
+{
+    if (loopBlocksStack.empty())
+    {
+        throw std::runtime_error("Continue statement not inside a loop");
+    }
+
+    llvm::BasicBlock *condBB = loopBlocksStack.back().condBB;
+    builder.CreateBr(condBB);
+
+    llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, "after.continue", builder.GetInsertBlock()->getParent());
+    builder.SetInsertPoint(contBB);
 }
 
 // Expression statement IR generator function
@@ -150,13 +214,59 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         throw std::runtime_error("Meta data missing for infix node");
     }
     DataType resultType = it->second.symbolDataType;
-    if (!(resultType == DataType::INTEGER || resultType == DataType::FLOAT || resultType == DataType::DOUBLE))
+    if (!(resultType == DataType::INTEGER || resultType == DataType::FLOAT || resultType == DataType::DOUBLE || resultType == DataType::BOOLEAN))
     {
         throw std::runtime_error("InfixExpression type must be int, float,or double ");
     }
     DataType leftType = semantics.metaData[infix->left_operand.get()].symbolDataType;
     DataType rightType = semantics.metaData[infix->right_operand.get()].symbolDataType;
 
+    if (resultType == DataType::BOOLEAN)
+    {
+        if (left->getType() != builder.getInt1Ty())
+        {
+            left = builder.CreateICmpNE(left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
+        }
+        if (right->getType() != builder.getInt1Ty())
+        {
+            right = builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
+        }
+
+        switch (infix->operat.type)
+        {
+        case TokenType::EQUALS:
+            return leftType == DataType::INTEGER ? builder.CreateICmpEQ(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOEQ(left, right, "fcmptmp")
+                                                                                             : leftType == DataType::DOUBLE  ? builder.CreateFCmpOEQ(left, right, "fcmptmp")
+                                                                                                                             : throw std::runtime_error("EQUALITY not supported for this type");
+        case TokenType::NOT_EQUALS:
+            return leftType == DataType::INTEGER ? builder.CreateICmpNE(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpONE(left, right, "fcmptmp")
+                                                                                             : leftType == DataType::DOUBLE  ? builder.CreateFCmpONE(left, right, "fcmptmp")
+                                                                                                                             : throw std::runtime_error("INEQUALITY not supported for this type");
+        case TokenType::LESS_THAN:
+            return leftType == DataType::INTEGER ? builder.CreateICmpSLT(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOLT(left, right, "fcmptmp")
+                                                                                              : leftType == DataType::DOUBLE  ? builder.CreateFCmpOLT(left, right, "fcmptmp")
+                                                                                                                              : throw std::runtime_error("LT not supported for this type");
+        case TokenType::LT_OR_EQ:
+            return leftType == DataType::INTEGER ? builder.CreateICmpSLE(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOLE(left, right, "fcmptmp")
+                                                                                              : leftType == DataType::DOUBLE  ? builder.CreateFCmpOLE(left, right, "fcmptmp")
+                                                                                                                              : throw std::runtime_error("LE not supported for this type");
+        case TokenType::GREATER_THAN:
+            return leftType == DataType::INTEGER ? builder.CreateICmpSGT(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOGT(left, right, "fcmptmp")
+                                                                                              : leftType == DataType::DOUBLE  ? builder.CreateFCmpOGT(left, right, "fcmptmp")
+                                                                                                                              : throw std::runtime_error("GT not supported for this type");
+        case TokenType::GT_OR_EQ:
+            return leftType == DataType::INTEGER ? builder.CreateICmpSGE(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOGE(left, right, "fcmptmp")
+                                                                                              : leftType == DataType::DOUBLE  ? builder.CreateFCmpOGE(left, right, "fcmptmp")
+                                                                                                                              : throw std::runtime_error("GE not supported for this type");
+        case TokenType::AND:
+            return builder.CreateAnd(left, right, "andtmp");
+        case TokenType::OR:
+            return builder.CreateOr(left, right, "ortmp");
+        default:
+            throw std::runtime_error("Unsupported infix operator: " + infix->operat.TokenLiteral +
+                                     " at line " + std::to_string(infix->operat.line));
+        }
+    }
     if (resultType == DataType::FLOAT)
     {
         if (leftType == DataType::INTEGER)
@@ -448,6 +558,9 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(LetStatement)] = &IRGenerator::generateLetStatement;
     generatorFunctionsMap[typeid(ExpressionStatement)] = &IRGenerator::generateExpressionStatement;
     generatorFunctionsMap[typeid(AssignmentStatement)] = &IRGenerator::generateAssignmentStatement;
+    generatorFunctionsMap[typeid(WhileStatement)] = &IRGenerator::generateWhileStatement;
+    generatorFunctionsMap[typeid(BreakStatement)] = &IRGenerator::generateBreakStatement;
+    generatorFunctionsMap[typeid(ContinueStatement)] = &IRGenerator::generateContinueStatement;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions()

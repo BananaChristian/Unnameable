@@ -16,6 +16,12 @@
 
 class Node;
 
+struct LoopBlocks
+{
+    llvm::BasicBlock *condBB;
+    llvm::BasicBlock *afterBB;
+};
+
 class IRGenerator
 {
 public:
@@ -29,6 +35,7 @@ public:
 
     std::unordered_map<std::type_index, generatorFunctions> generatorFunctionsMap;
     std::unordered_map<std::type_index, expressionGenerators> expressionGeneratorsMap;
+    std::vector<LoopBlocks> loopBlocksStack;
 
 private:
     llvm::LLVMContext context;
@@ -42,6 +49,8 @@ private:
     void generateExpressionStatement(Node *node);
     void generateAssignmentStatement(Node *node);
     void generateWhileStatement(Node *node);
+    void generateBreakStatement(Node *node);
+    void generateContinueStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);
@@ -59,6 +68,7 @@ private:
     void registerGeneratorFunctions();
     void registerExpressionGeneratorFunctions();
     llvm::Value *generateExpression(Node *node);
+    void generateStatement(Node *node);
     llvm::Type *getLLVMType(DataType type);
     char decodeCharLiteral(const std::string &literal);
 };
