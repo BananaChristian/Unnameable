@@ -282,3 +282,12 @@ The language upholds the principles of clarity and predictability to allow it's 
 
 ## ⚙️ Current status
 This project is under active and early development and is still highly experimental. If you want to explore,contribute, or just follow the journey feel free to fork,play or reach out.
+
+---
+
+📜 License
+
+Unnameable is dual-licensed under the MIT License and Apache License 2.0.
+You may choose either license to use this project.
+
+> See LICENSE-MIT and LICENSE-APACHE for full details
