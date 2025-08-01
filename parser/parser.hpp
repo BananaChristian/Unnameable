@@ -59,6 +59,7 @@ public:
     // Functions for registering the functions neccesary for parsing the different tokens
     void registerPrefixFns();
     void registerInfixFns();
+    void registerPostfixFns();
 
     // Function to register statement parsing functions
     void registerStatementParseFns();
@@ -68,11 +69,13 @@ public:
 
     using prefixParseFns = std::unique_ptr<Expression> (Parser::*)();
     using infixParseFns = std::unique_ptr<Expression> (Parser::*)(std::unique_ptr<Expression>);
+    using postfixParseFns = std::unique_ptr<Expression> (Parser::*)(std::unique_ptr<Expression>);
 
     using stmtParseFns = std::unique_ptr<Statement> (Parser::*)();
 
     std::map<TokenType, prefixParseFns> PrefixParseFunctionsMap;
     std::map<TokenType, infixParseFns> InfixParseFunctionsMap;
+    std::map<TokenType, postfixParseFns> PostfixParseFunctionsMap;
 
     std::map<TokenType, stmtParseFns> StatementParseFunctionsMap;
     std::vector<ParseError> errors;
@@ -166,6 +169,9 @@ private:
 
     // Prefix expression parsing function
     std::unique_ptr<Expression> parsePrefixExpression();
+
+    // Postfix expression parsing function
+    std::unique_ptr<Expression> parsePostfixExpression(std::unique_ptr<Expression> left);
 
     // Error expression
     std::unique_ptr<Expression> parseErrorExpression();

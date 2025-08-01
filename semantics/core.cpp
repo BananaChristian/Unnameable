@@ -70,6 +70,7 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for the main expression types
     walkerFunctionsMap[typeid(InfixExpression)] = &Semantics::walkInfixExpression;
     walkerFunctionsMap[typeid(PrefixExpression)] = &Semantics::walkPrefixExpression;
+    walkerFunctionsMap[typeid(PostfixExpression)] = &Semantics::walkPostfixExpression;
 
     walkerFunctionsMap[typeid(ExpressionStatement)] = &Semantics::walkExpressionStatement;
 
@@ -182,6 +183,11 @@ DataType Semantics::inferNodeDataType(Node *node)
         return inferPrefixExpressionType(prefixExpr);
     }
 
+    if (auto postfixExpr = dynamic_cast<PostfixExpression *>(node))
+    {
+        return inferPostfixExpressionType(postfixExpr);
+    }
+
     if (auto ident = dynamic_cast<Identifier *>(node))
     {
         std::string name = ident->identifier.TokenLiteral;
@@ -223,6 +229,16 @@ DataType Semantics::inferPrefixExpressionType(Node *node)
     auto prefixOperator = prefixNode->operat.type;
     DataType operandType = inferNodeDataType(prefixNode->operand.get());
     return resultOfUnary(prefixOperator, operandType);
+}
+
+DataType Semantics::inferPostfixExpressionType(Node *node)
+{
+    auto postfixNode = dynamic_cast<PostfixExpression *>(node);
+    if (!postfixNode)
+        return DataType::UNKNOWN;
+    DataType operandType = inferNodeDataType(postfixNode->operand.get());
+    auto postfixOperator = postfixNode->operator_token.type;
+    return resultOfUnary(postfixOperator, operandType);
 }
 
 Identifier *lastLeftIdent = nullptr;

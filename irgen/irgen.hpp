@@ -49,12 +49,15 @@ private:
     void generateExpressionStatement(Node *node);
     void generateAssignmentStatement(Node *node);
     void generateWhileStatement(Node *node);
+    void generateForStatement(Node *node);
     void generateBreakStatement(Node *node);
     void generateContinueStatement(Node *node);
+    void generateBlockStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);
     llvm::Value *generatePrefixExpression(Node *node);
+    llvm::Value *generatePostfixExpression(Node *node);
     llvm::Value *generateStringLiteral(Node *node);
     llvm::Value *generateCharLiteral(Node *node);
     llvm::Value *generateBooleanLiteral(Node *node);

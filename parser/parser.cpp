@@ -13,6 +13,7 @@ Parser::Parser(std::vector<Token> &tokenInput) : tokenInput(tokenInput), current
     lastToken = tokenInput.empty() ? Token{"", TokenType::ILLEGAL, 999, 999} : tokenInput[0];
     registerInfixFns();
     registerPrefixFns();
+    registerPostfixFns();
     registerStatementParseFns();
 }
 
@@ -744,7 +745,7 @@ std::unique_ptr<Statement> Parser::parseForStatement()
     }
     advance(); // Consume the '('
 
-    auto initializer = parseLetStatementWithType(); // like `int i;`
+    auto initializer = parseLetStatementWithType(); // like `mut int i;`
 
     auto condition = parseExpression(Precedence::PREC_NONE);
 
@@ -756,6 +757,11 @@ std::unique_ptr<Statement> Parser::parseForStatement()
     advance(); // skip ';'
 
     auto step = parseExpression(Precedence::PREC_NONE);
+    if (!(dynamic_cast<PrefixExpression *>(step.get()) || dynamic_cast<PostfixExpression *>(step.get())))
+    {
+        logError("Step expression must be a prefix or postfix increment/decrement (e.g., ++i, i++)");
+        return nullptr;
+    }
     if (currentToken().type != TokenType::RPAREN)
     {
         logError("Expected ')' after step");
@@ -982,19 +988,38 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
     auto left_expression = (this->*PrefixParseFnIt->second)(); // Calling the neccesary prefix function after encountering that particular token
     std::cout << "[DEBUG] Initial left expression: " << left_expression->toString() << "\n";
 
-    while (precedence < get_precedence(currentToken().type)) // Looping as long as the precedence is lower than the precedence of the current token
+    while (true)
     {
-        std::cout << "[DEBUG] Looping for token: " << currentToken().TokenLiteral << "\n";
-        auto InfixParseFnIt = InfixParseFunctionsMap.find(currentToken().type); // Creating the iterator pointer for the infix map
+        Precedence currentPrecedence = get_precedence(currentToken().type);
 
-        if (InfixParseFnIt == InfixParseFunctionsMap.end()) // Checking if the iterator has reached the end of the map
+        // If current token is a postfix operator (e.g., ++, --)
+        auto PostfixParseFnIt = PostfixParseFunctionsMap.find(currentToken().type);
+        if (PostfixParseFnIt != PostfixParseFunctionsMap.end())
         {
-            std::cout << "[DEBUG] No infix parser found for: " << currentToken().TokenLiteral << "\n";
+            // Only parse if postfix precedence is >= incoming precedence
+            if (precedence >= currentPrecedence)
+                break;
+
+            std::cout << "[DEBUG] Parsing postfix token: " << currentToken().TokenLiteral << "\n";
+            left_expression = (this->*PostfixParseFnIt->second)(std::move(left_expression));
+            std::cout << "[DEBUG] Updated left expression (postfix): " << left_expression->toString() << "\n";
+            continue;
+        }
+
+        // Handle infix operators
+        auto InfixParseFnIt = InfixParseFunctionsMap.find(currentToken().type);
+        if (InfixParseFnIt == InfixParseFunctionsMap.end())
+        {
+            std::cout << "[DEBUG] No infix or postfix parser found for: " << currentToken().TokenLiteral << "\n";
             break;
         }
 
-        left_expression = (this->*InfixParseFnIt->second)(std::move(left_expression)); // If we find the infix parse function for that token we call the function
-        std::cout << "[DEBUG] Updated left expression: " << left_expression->toString() << "\n";
+        if (precedence >= currentPrecedence)
+            break;
+
+        std::cout << "[DEBUG] Parsing infix token: " << currentToken().TokenLiteral << "\n";
+        left_expression = (this->*InfixParseFnIt->second)(std::move(left_expression));
+        std::cout << "[DEBUG] Updated left expression (infix): " << left_expression->toString() << "\n";
     }
 
     return left_expression; // Returning the expression that was parsed it can be either prefix or infix
@@ -1019,6 +1044,14 @@ std::unique_ptr<Expression> Parser::parsePrefixExpression()
     advance();
     auto operand = parseExpression(operatorPrecedence);
     return std::make_unique<PrefixExpression>(operat, move(operand));
+}
+
+// Postfix expression parser function definition
+std::unique_ptr<Expression> Parser::parsePostfixExpression(std::unique_ptr<Expression> left)
+{
+    Token op = currentToken();
+    advance(); // Consume ++ or --
+    return std::make_unique<PostfixExpression>(std::move(left), op);
 }
 
 std::unique_ptr<Expression> Parser::parseNewComponentExpression()
@@ -1511,7 +1544,6 @@ void Parser::advance()
         lastToken = currentToken();
         currentPos = nextPos;
         nextPos++;
-        std::cout << "[TRACE]: Advanced to token: " << currentToken().TokenLiteral << "\n";
     }
 }
 
@@ -1559,6 +1591,13 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::PLUS_PLUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS_MINUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionExpression;
+}
+
+// Registering the postfix parse functions
+void Parser::registerPostfixFns()
+{
+    PostfixParseFunctionsMap[TokenType::PLUS_PLUS] = &Parser::parsePostfixExpression;
+    PostfixParseFunctionsMap[TokenType::MINUS_MINUS] = &Parser::parsePostfixExpression;
 }
 
 // Wrapper function for letstatement with type

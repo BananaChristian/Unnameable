@@ -302,6 +302,19 @@ struct PrefixExpression : Expression
         : Expression(opr), operat(opr), operand(std::move(oprand)) {}
 };
 
+// Postfix expression node for syntax like i++
+struct PostfixExpression : Expression
+{
+    std::unique_ptr<Expression> operand;
+    Token operator_token;
+
+    std::string toString() override
+    {
+        return "Postfix Expression: (" + operand->toString() + operator_token.TokenLiteral + ")";
+    }
+    PostfixExpression(std::unique_ptr<Expression> op,Token operat) : Expression(operat), operand(std::move(op)), operator_token(operat) {};
+};
+
 // Infix Expression node for syntax like x+y;
 struct InfixExpression : Expression
 {
@@ -745,7 +758,7 @@ struct SwitchStatement : Statement
         // Print all case clauses
         for (const auto &clause : case_clauses)
         {
-            result += clause->toString() +"\n";
+            result += clause->toString() + "\n";
         }
 
         // Print default statements if they exist
@@ -946,7 +959,7 @@ struct BlockStatement : Statement
     std::vector<std::unique_ptr<Statement>> statements;
     std::string toString() override
     {
-        std::string out = "{ ";
+        std::string out = "Block Statement: { ";
         for (const auto &s : statements)
         {
             if (s)
@@ -996,6 +1009,7 @@ enum class Precedence
     PREC_TERM,       // + -
     PREC_FACTOR,     // "* /"
     PREC_UNARY,      // "! -"
-    PREC_CALL,       // . ()
+    PREC_POSTFIX,
+    PREC_CALL, // . ()
     PREC_PRIMARY
 };

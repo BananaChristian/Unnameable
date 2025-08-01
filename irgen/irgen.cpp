@@ -44,7 +44,7 @@ void IRGenerator::generateStatement(Node *node)
     auto generatorIt = generatorFunctionsMap.find(typeid(*node));
     if (generatorIt == generatorFunctionsMap.end())
     {
-        std::cout << "Failed to find IR generator for : " << node->toString() << "\n";
+        std::cout << "Failed to find statement IR generator for : " << node->toString() << "\n";
         return;
     }
     (this->*generatorIt->second)(node);
@@ -94,35 +94,157 @@ void IRGenerator::generateLetStatement(Node *node)
 // While statement IR generator function
 void IRGenerator::generateWhileStatement(Node *node)
 {
+    auto whileStmt = dynamic_cast<WhileStatement *>(node);
+    if (!whileStmt)
+    {
+        throw std::runtime_error("Invalid while statement");
+    }
+
     llvm::Function *function = builder.GetInsertBlock()->getParent();
-
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(context, "while.cond", function);
-    llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(context, "while.body");
-    llvm::BasicBlock *afterBB = llvm::BasicBlock::Create(context, "while.end");
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "while.body");
+    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "while.end");
 
+    std::cerr << "[IR DEBUG] Creating branch to while.cond\n";
     builder.CreateBr(condBB);
 
     builder.SetInsertPoint(condBB);
-    auto whileStmt = dynamic_cast<WhileStatement *>(node);
+    std::cerr << "[IR DEBUG] Generating while condition\n";
     llvm::Value *condVal = generateExpression(whileStmt->condition.get());
+    if (!condVal)
+    {
+        throw std::runtime_error("Invalid while condition");
+    }
+
     if (!condVal->getType()->isIntegerTy(1))
     {
-        std::cerr << "[IR ERROR] While condition must be boolean\n";
+        condVal = builder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "whilecond.bool");
     }
-    builder.CreateCondBr(condVal, loopBB, afterBB);
 
-    function->getBasicBlockList().push_back(loopBB);
-    builder.SetInsertPoint(loopBB);
+    std::cerr << "[IR DEBUG] Creating conditional branch\n";
+    builder.CreateCondBr(condVal, bodyBB, endBB);
 
+    function->getBasicBlockList().push_back(bodyBB);
+    builder.SetInsertPoint(bodyBB);
+    std::cerr << "[IR DEBUG] Generating while body\n";
+    loopBlocksStack.push_back({condBB, endBB}); // Fix: Push LoopBlocks
     generateStatement(whileStmt->loop.get());
+    loopBlocksStack.pop_back(); // Fix: Pop LoopBlocks
+    std::cerr << "[IR DEBUG] Finished generating while body\n";
 
-    loopBlocksStack.pop_back();
-    builder.CreateBr(condBB);
+    if (!builder.GetInsertBlock()->getTerminator())
+    {
+        std::cerr << "[IR DEBUG] Adding branch to while.cond\n";
+        builder.CreateBr(condBB);
+    }
+    else
+    {
+        std::cerr << "[IR WARNING] While body block already has terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+    }
 
-    function->getBasicBlockList().push_back(afterBB);
-    builder.SetInsertPoint(afterBB);
+    function->getBasicBlockList().push_back(endBB);
+    builder.SetInsertPoint(endBB);
 }
 
+// IR code gen for a for loop
+void IRGenerator::generateForStatement(Node *node)
+{
+    auto forStmt = dynamic_cast<ForStatement *>(node);
+    if (!forStmt)
+        return;
+
+    llvm::Function *function = builder.GetInsertBlock()->getParent();
+
+    // Handle initializer
+    if (forStmt->initializer)
+    {
+        std::cerr << "[IR DEBUG] Generating initializer\n";
+        generateStatement(forStmt->initializer.get());
+    }
+
+    // Create all necessary blocks
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(context, "loop.cond", function);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "loop.body");
+    llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(context, "loop.step");
+    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "loop.end");
+
+    // Jump to condition
+    std::cerr << "[IR DEBUG] Creating branch to loop.cond\n";
+    builder.CreateBr(condBB);
+
+    // Condition block
+    builder.SetInsertPoint(condBB);
+    std::cerr << "[IR DEBUG] Generating condition\n";
+    llvm::Value *condVal = generateExpression(forStmt->condition.get());
+    if (!condVal)
+    {
+        std::cerr << "[IR ERROR] For loop has invalid condition.\n";
+        return;
+    }
+
+    // Verify condition type in metadata
+    auto it = semantics.metaData.find(forStmt->condition.get());
+    if (it == semantics.metaData.end() || it->second.symbolDataType != DataType::BOOLEAN)
+    {
+        std::cerr << "[IR ERROR] For loop condition must evaluate to boolean.\n";
+        return;
+    }
+
+    // Promote i32 -> i1 if necessary
+    if (!condVal->getType()->isIntegerTy(1))
+    {
+        if (condVal->getType()->isIntegerTy(32))
+        {
+            condVal = builder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "loopcond.bool");
+        }
+        else
+        {
+            std::cerr << "[IR ERROR] For loop condition must be boolean or i32\n";
+            return;
+        }
+    }
+
+    std::cerr << "[IR DEBUG] Creating conditional branch\n";
+    builder.CreateCondBr(condVal, bodyBB, endBB);
+    function->getBasicBlockList().push_back(bodyBB);
+
+    // Loop body
+    builder.SetInsertPoint(bodyBB);
+    loopBlocksStack.push_back({condBB, endBB});
+    std::cerr << "[IR DEBUG] Generating loop body\n";
+    generateStatement(forStmt->body.get());
+    std::cerr << "[IR DEBUG] Finished generating loop body\n";
+    loopBlocksStack.pop_back();
+
+    // Ensure branch to step if no terminator
+    if (!builder.GetInsertBlock()->getTerminator())
+    {
+        std::cerr << "[IR DEBUG] Adding branch to loop.step\n";
+        builder.CreateBr(stepBB);
+    }
+    else
+    {
+        std::cerr << "[IR WARNING] Loop body block already has terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+    }
+
+    function->getBasicBlockList().push_back(stepBB);
+    builder.SetInsertPoint(stepBB);
+
+    // Loop step
+    if (forStmt->step)
+    {
+        std::cerr << "[IR DEBUG] Generating loop step\n";
+        generateExpression(forStmt->step.get());
+    }
+
+    // Jump back to condition
+    std::cerr << "[IR DEBUG] Creating branch to loop.cond\n";
+    builder.CreateBr(condBB);
+
+    // Add end block and move builder there
+    function->getBasicBlockList().push_back(endBB);
+    builder.SetInsertPoint(endBB);
+}
 void IRGenerator::generateBreakStatement(Node *node)
 {
     if (loopBlocksStack.empty())
@@ -131,10 +253,8 @@ void IRGenerator::generateBreakStatement(Node *node)
     }
 
     llvm::BasicBlock *afterBB = loopBlocksStack.back().afterBB;
+    std::cerr << "[IR DEBUG] Generating break to " << afterBB->getName().str() << "\n";
     builder.CreateBr(afterBB);
-
-    llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, "after.break", builder.GetInsertBlock()->getParent());
-    builder.SetInsertPoint(contBB);
 }
 
 void IRGenerator::generateContinueStatement(Node *node)
@@ -145,10 +265,8 @@ void IRGenerator::generateContinueStatement(Node *node)
     }
 
     llvm::BasicBlock *condBB = loopBlocksStack.back().condBB;
+    std::cerr << "[IR DEBUG] Generating continue to " << condBB->getName().str() << "\n";
     builder.CreateBr(condBB);
-
-    llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, "after.continue", builder.GetInsertBlock()->getParent());
-    builder.SetInsertPoint(contBB);
 }
 
 // Expression statement IR generator function
@@ -168,27 +286,46 @@ void IRGenerator::generateAssignmentStatement(Node *node)
     auto assignStmt = dynamic_cast<AssignmentStatement *>(node);
     if (!assignStmt)
         return;
+
     SymbolInfo *symbol = semantics.resolveSymbolInfo(assignStmt->ident_token.TokenLiteral);
     if (!symbol)
     {
         throw std::runtime_error("Symbol '" + assignStmt->ident_token.TokenLiteral + "' not found");
     }
 
-    llvm::Type *varType = getLLVMType(symbol->symbolDataType);
-    if (!varType)
+    llvm::Value *ptr = namedValues[assignStmt->ident_token.TokenLiteral];
+    if (!ptr)
     {
-        throw std::runtime_error("Invalid type for variable: " + assignStmt->ident_token.TokenLiteral);
+        throw std::runtime_error("No memory allocated for variable: " + assignStmt->ident_token.TokenLiteral);
     }
-    llvm::AllocaInst *alloca = builder.CreateAlloca(varType, nullptr, assignStmt->ident_token.TokenLiteral);
-    namedValues[assignStmt->ident_token.TokenLiteral] = alloca;
-    if (assignStmt->value)
+
+    llvm::Value *initValue = generateExpression(assignStmt->value.get());
+    if (!initValue)
     {
-        llvm::Value *initValue = generateExpression(assignStmt->value.get());
-        if (!initValue)
+        throw std::runtime_error("Failed to generate IR for assign statement");
+    }
+
+    builder.CreateStore(initValue, ptr);
+}
+
+void IRGenerator::generateBlockStatement(Node *node)
+{
+    auto blockStmt = dynamic_cast<BlockStatement *>(node);
+    if (!blockStmt)
+    {
+        throw std::runtime_error("Invalid block statement");
+    }
+
+    std::cerr << "[IR DEBUG] Generating block statement with " << blockStmt->statements.size() << " statements\n";
+    for (const auto &stmt : blockStmt->statements)
+    {
+        std::cerr << "[IR DEBUG] Processing block statement child of type: " << typeid(*stmt).name() << " - " << stmt->toString() << "\n";
+        generateStatement(stmt.get());
+        if (builder.GetInsertBlock()->getTerminator())
         {
-            throw std::runtime_error("Failed to generate IR for assign statement");
+            std::cerr << "[IR DEBUG] Terminator found in block statement child: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+            break;
         }
-        builder.CreateStore(initValue, alloca);
     }
 }
 
@@ -216,48 +353,58 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     DataType resultType = it->second.symbolDataType;
     if (!(resultType == DataType::INTEGER || resultType == DataType::FLOAT || resultType == DataType::DOUBLE || resultType == DataType::BOOLEAN))
     {
-        throw std::runtime_error("InfixExpression type must be int, float,or double ");
+        throw std::runtime_error("InfixExpression type must be int, float, double, or boolean");
     }
     DataType leftType = semantics.metaData[infix->left_operand.get()].symbolDataType;
     DataType rightType = semantics.metaData[infix->right_operand.get()].symbolDataType;
 
     if (resultType == DataType::BOOLEAN)
     {
-        if (left->getType() != builder.getInt1Ty())
+        // Only cast to i1 for logical operators (AND, OR), not for comparisons
+        if (infix->operat.type == TokenType::AND || infix->operat.type == TokenType::OR)
         {
-            left = builder.CreateICmpNE(left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
-        }
-        if (right->getType() != builder.getInt1Ty())
-        {
-            right = builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
+            if (left->getType() != builder.getInt1Ty())
+            {
+                left = builder.CreateICmpNE(left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
+            }
+            if (right->getType() != builder.getInt1Ty())
+            {
+                right = builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
+            }
         }
 
         switch (infix->operat.type)
         {
         case TokenType::EQUALS:
-            return leftType == DataType::INTEGER ? builder.CreateICmpEQ(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOEQ(left, right, "fcmptmp")
-                                                                                             : leftType == DataType::DOUBLE  ? builder.CreateFCmpOEQ(left, right, "fcmptmp")
-                                                                                                                             : throw std::runtime_error("EQUALITY not supported for this type");
+            return leftType == DataType::INTEGER  ? builder.CreateICmpEQ(left, right, "cmptmp")
+                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOEQ(left, right, "fcmptmp")
+                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOEQ(left, right, "fcmptmp")
+                                                  : throw std::runtime_error("EQUALITY not supported for this type");
         case TokenType::NOT_EQUALS:
-            return leftType == DataType::INTEGER ? builder.CreateICmpNE(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpONE(left, right, "fcmptmp")
-                                                                                             : leftType == DataType::DOUBLE  ? builder.CreateFCmpONE(left, right, "fcmptmp")
-                                                                                                                             : throw std::runtime_error("INEQUALITY not supported for this type");
+            return leftType == DataType::INTEGER  ? builder.CreateICmpNE(left, right, "cmptmp")
+                   : leftType == DataType::FLOAT  ? builder.CreateFCmpONE(left, right, "fcmptmp")
+                   : leftType == DataType::DOUBLE ? builder.CreateFCmpONE(left, right, "fcmptmp")
+                                                  : throw std::runtime_error("INEQUALITY not supported for this type");
         case TokenType::LESS_THAN:
-            return leftType == DataType::INTEGER ? builder.CreateICmpSLT(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOLT(left, right, "fcmptmp")
-                                                                                              : leftType == DataType::DOUBLE  ? builder.CreateFCmpOLT(left, right, "fcmptmp")
-                                                                                                                              : throw std::runtime_error("LT not supported for this type");
+            return leftType == DataType::INTEGER  ? builder.CreateICmpSLT(left, right, "cmptmp")
+                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOLT(left, right, "fcmptmp")
+                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOLT(left, right, "fcmptmp")
+                                                  : throw std::runtime_error("LT not supported for this type");
         case TokenType::LT_OR_EQ:
-            return leftType == DataType::INTEGER ? builder.CreateICmpSLE(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOLE(left, right, "fcmptmp")
-                                                                                              : leftType == DataType::DOUBLE  ? builder.CreateFCmpOLE(left, right, "fcmptmp")
-                                                                                                                              : throw std::runtime_error("LE not supported for this type");
+            return leftType == DataType::INTEGER  ? builder.CreateICmpSLE(left, right, "cmptmp")
+                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOLE(left, right, "fcmptmp")
+                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOLE(left, right, "fcmptmp")
+                                                  : throw std::runtime_error("LE not supported for this type");
         case TokenType::GREATER_THAN:
-            return leftType == DataType::INTEGER ? builder.CreateICmpSGT(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOGT(left, right, "fcmptmp")
-                                                                                              : leftType == DataType::DOUBLE  ? builder.CreateFCmpOGT(left, right, "fcmptmp")
-                                                                                                                              : throw std::runtime_error("GT not supported for this type");
+            return leftType == DataType::INTEGER  ? builder.CreateICmpSGT(left, right, "cmptmp")
+                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOGT(left, right, "fcmptmp")
+                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOGT(left, right, "fcmptmp")
+                                                  : throw std::runtime_error("GT not supported for this type");
         case TokenType::GT_OR_EQ:
-            return leftType == DataType::INTEGER ? builder.CreateICmpSGE(left, right, "cmptmp") : leftType == DataType::FLOAT ? builder.CreateFCmpOGE(left, right, "fcmptmp")
-                                                                                              : leftType == DataType::DOUBLE  ? builder.CreateFCmpOGE(left, right, "fcmptmp")
-                                                                                                                              : throw std::runtime_error("GE not supported for this type");
+            return leftType == DataType::INTEGER  ? builder.CreateICmpSGE(left, right, "cmptmp")
+                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOGE(left, right, "fcmptmp")
+                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOGE(left, right, "fcmptmp")
+                                                  : throw std::runtime_error("GE not supported for this type");
         case TokenType::AND:
             return builder.CreateAnd(left, right, "andtmp");
         case TokenType::OR:
@@ -267,6 +414,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
                                      " at line " + std::to_string(infix->operat.line));
         }
     }
+
     if (resultType == DataType::FLOAT)
     {
         if (leftType == DataType::INTEGER)
@@ -289,18 +437,25 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
             right = builder.CreateSIToFP(right, llvm::Type::getDoubleTy(context), "inttodouble");
         }
     }
+
     switch (infix->operat.type)
     {
     case TokenType::PLUS:
-        return resultType == DataType::INTEGER ? builder.CreateAdd(left, right, "addtmp") : builder.CreateFAdd(left, right, "faddtmp");
+        return resultType == DataType::INTEGER ? builder.CreateAdd(left, right, "addtmp")
+                                               : builder.CreateFAdd(left, right, "faddtmp");
     case TokenType::MINUS:
-        return resultType == DataType::INTEGER ? builder.CreateSub(left, right, "addtmp") : builder.CreateFSub(left, right, "fsubtmp");
+        return resultType == DataType::INTEGER ? builder.CreateSub(left, right, "subtmp")
+                                               : builder.CreateFSub(left, right, "fsubtmp");
     case TokenType::ASTERISK:
-        return resultType == DataType::INTEGER ? builder.CreateMul(left, right, "multmp") : builder.CreateFMul(left, right, "fmultmp");
+        return resultType == DataType::INTEGER ? builder.CreateMul(left, right, "multmp")
+                                               : builder.CreateFMul(left, right, "fmultmp");
     case TokenType::DIVIDE:
-        return resultType == DataType::INTEGER ? builder.CreateSDiv(left, right, "divtmp") : builder.CreateFDiv(left, right, "fdivtmp");
+        return resultType == DataType::INTEGER ? builder.CreateSDiv(left, right, "divtmp")
+                                               : builder.CreateFDiv(left, right, "fdivtmp");
     case TokenType::MODULUS:
-        return resultType == DataType::INTEGER ? builder.CreateSRem(left, right, "modtmp") : throw std::runtime_error("Modulus not supported for FLOAT or DOUBLE at line " + std::to_string(infix->operat.line));
+        return resultType == DataType::INTEGER ? builder.CreateSRem(left, right, "modtmp")
+                                               : throw std::runtime_error("Modulus not supported for FLOAT or DOUBLE at line " +
+                                                                          std::to_string(infix->operat.line));
     default:
         throw std::runtime_error("Unsupported infix operator: " + infix->operat.TokenLiteral +
                                  " at line " + std::to_string(infix->operat.line));
@@ -326,16 +481,122 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
         throw std::runtime_error("Meta data missing for prefix node");
     }
     DataType resultType = it->second.symbolDataType;
-    if (!(resultType == DataType::INTEGER || resultType == DataType::FLOAT || resultType == DataType::DOUBLE))
+    switch (prefix->operat.type)
     {
-        throw std::runtime_error("Prefix expression ");
-    }
-    if (prefix->operat.type == TokenType::MINUS)
+    case TokenType::MINUS:
+        return resultType == DataType::INTEGER
+                   ? builder.CreateNeg(operand, "negtmp")
+                   : builder.CreateFNeg(operand, "fnegtmp");
+
+    case TokenType::BANG:
+        // Expecting a boolean type (i1)
+        return builder.CreateNot(operand, "nottmp");
+
+    case TokenType::PLUS_PLUS:
+    case TokenType::MINUS_MINUS:
     {
-        return resultType == DataType::INTEGER ? builder.CreateNeg(operand, "negtmp") : builder.CreateFNeg(operand, "fnegtmp");
+        // Only valid on identifiers (e.g., ++x or --x)
+        auto ident = dynamic_cast<Identifier *>(prefix->operand.get());
+        if (!ident)
+        {
+            throw std::runtime_error("Prefix ++/-- must be used on a variable");
+        }
+
+        llvm::Value *varPtr = namedValues[ident->identifier.TokenLiteral];
+        if (!varPtr)
+        {
+            throw std::runtime_error("Undefined variable in ++/--: " + ident->identifier.TokenLiteral);
+        }
+
+        llvm::Value *loaded = builder.CreateLoad(varPtr->getType()->getPointerElementType(), varPtr, "loadtmp");
+
+        llvm::Value *updated = nullptr;
+        if (resultType == DataType::INTEGER)
+        {
+            llvm::Value *delta = llvm::ConstantInt::get(loaded->getType(), 1);
+            updated = prefix->operat.type == TokenType::PLUS_PLUS
+                          ? builder.CreateAdd(loaded, delta, "preinctmp")
+                          : builder.CreateSub(loaded, delta, "predectmp");
+        }
+        else if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+        {
+            llvm::Value *delta = llvm::ConstantFP::get(loaded->getType(), 1.0);
+            updated = prefix->operat.type == TokenType::PLUS_PLUS
+                          ? builder.CreateFAdd(loaded, delta, "preincfptmp")
+                          : builder.CreateFSub(loaded, delta, "predecfptmp");
+        }
+        else
+        {
+            throw std::runtime_error("Unsupported type for ++/--");
+        }
+
+        builder.CreateStore(updated, varPtr);
+        return updated;
     }
-    throw std::runtime_error("Unsupported prefix operator: " + prefix->operat.TokenLiteral +
-                             " at line " + std::to_string(prefix->operat.line));
+
+    default:
+        throw std::runtime_error("Unsupported prefix operator: " + prefix->operat.TokenLiteral +
+                                 " at line " + std::to_string(prefix->operat.line));
+    }
+}
+
+llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
+{
+    auto postfix = dynamic_cast<PostfixExpression *>(node);
+    if (!postfix)
+    {
+        throw std::runtime_error("Invalid postfix expression");
+    }
+
+    // Ensuring the operand is an identifier or a dereferenceable expression
+    auto identifier = dynamic_cast<Identifier *>(postfix->operand.get());
+    if (!identifier)
+    {
+        throw std::runtime_error("Postfix operand must be a variable");
+    }
+
+    llvm::Value *varPtr = namedValues[identifier->identifier.TokenLiteral];
+    if (!varPtr)
+    {
+        throw std::runtime_error("Unknown variable name in postfix expression: " + identifier->identifier.TokenLiteral);
+    }
+
+    // Loading the original value
+    llvm::Value *originalValue = builder.CreateLoad(varPtr->getType()->getPointerElementType(), varPtr, "loadtmp");
+
+    // Determine type
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Meta data missing for postfix node");
+    }
+    DataType resultType = it->second.symbolDataType;
+
+    // Generate increment or decrement
+    llvm::Value *updatedValue = nullptr;
+    if (postfix->operator_token.type == TokenType::PLUS_PLUS)
+    {
+        updatedValue = (resultType == DataType::INTEGER)
+                           ? builder.CreateAdd(originalValue, llvm::ConstantInt::get(originalValue->getType(), 1), "inc")
+                           : builder.CreateFAdd(originalValue, llvm::ConstantFP::get(originalValue->getType(), 1.0), "finc");
+    }
+    else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
+    {
+        updatedValue = (resultType == DataType::INTEGER)
+                           ? builder.CreateSub(originalValue, llvm::ConstantInt::get(originalValue->getType(), 1), "dec")
+                           : builder.CreateFSub(originalValue, llvm::ConstantFP::get(originalValue->getType(), 1.0), "fdec");
+    }
+    else
+    {
+        throw std::runtime_error("Unsupported postfix operator: " + postfix->operator_token.TokenLiteral +
+                                 " at line " + std::to_string(postfix->operator_token.line));
+    }
+
+    // Store the updated value back to the variable
+    builder.CreateStore(updatedValue, varPtr);
+
+    // Return the original value (since it's postfix)
+    return originalValue;
 }
 
 llvm::Value *IRGenerator::generateStringLiteral(Node *node)
@@ -559,14 +820,17 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(ExpressionStatement)] = &IRGenerator::generateExpressionStatement;
     generatorFunctionsMap[typeid(AssignmentStatement)] = &IRGenerator::generateAssignmentStatement;
     generatorFunctionsMap[typeid(WhileStatement)] = &IRGenerator::generateWhileStatement;
+    generatorFunctionsMap[typeid(ForStatement)] = &IRGenerator::generateForStatement;
     generatorFunctionsMap[typeid(BreakStatement)] = &IRGenerator::generateBreakStatement;
     generatorFunctionsMap[typeid(ContinueStatement)] = &IRGenerator::generateContinueStatement;
+    generatorFunctionsMap[typeid(BlockStatement)] = &IRGenerator::generateBlockStatement;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions()
 {
     expressionGeneratorsMap[typeid(InfixExpression)] = &IRGenerator::generateInfixExpression;
     expressionGeneratorsMap[typeid(PrefixExpression)] = &IRGenerator::generatePrefixExpression;
+    expressionGeneratorsMap[typeid(PostfixExpression)] = &IRGenerator::generatePostfixExpression;
     expressionGeneratorsMap[typeid(StringLiteral)] = &IRGenerator::generateStringLiteral;
     expressionGeneratorsMap[typeid(CharLiteral)] = &IRGenerator::generateCharLiteral;
     expressionGeneratorsMap[typeid(BooleanLiteral)] = &IRGenerator::generateBooleanLiteral;

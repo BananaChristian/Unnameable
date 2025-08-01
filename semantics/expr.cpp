@@ -29,6 +29,33 @@ void Semantics::walkPrefixExpression(Node *node)
     std::cout << "[SEMANTIC LOG] Analyzing prefix expression " + prefixExpr->toString() + "\n";
     auto prefixExprOperand = prefixExpr->operand.get();
     DataType prefixType = inferNodeDataType(prefixExpr);
+    if (prefixExpr->operat.type == TokenType::PLUS_PLUS || prefixExpr->operat.type == TokenType::MINUS_MINUS)
+    {
+        if (auto ident = dynamic_cast<Identifier *>(prefixExprOperand))
+        {
+            auto symbol = resolveSymbolInfo(ident->expression.TokenLiteral);
+            if (!symbol)
+            {
+                logSemanticErrors("Undefined variable in prefix expression '" + ident->expression.TokenLiteral + "'", prefixExpr);
+                return;
+            }
+            if (!symbol->isMutable)
+            {
+                logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral + "' to immutable variable '" + ident->expression.TokenLiteral + "'", prefixExpr);
+                return;
+            }
+            if (!symbol->isInitialized)
+            {
+                logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral + "' to uninitialized variable '" + ident->expression.TokenLiteral + "'", prefixExpr);
+                return;
+            }
+        }
+        else
+        {
+            logSemanticErrors("Prefix operator '" + prefixExpr->operat.TokenLiteral + "' can only be applied to identifiers", prefixExpr);
+            return;
+        }
+    }
     walker(prefixExprOperand);
 
     metaData[prefixExpr] = {
@@ -36,6 +63,50 @@ void Semantics::walkPrefixExpression(Node *node)
         .isNullable = false,
         .isMutable = false,
         .isConstant = false,
+        .isInitialized = false};
+}
+
+void Semantics::walkPostfixExpression(Node *node)
+{
+    auto postfixExpr = dynamic_cast<PostfixExpression *>(node);
+    if (!postfixExpr)
+        return;
+    std::cout << "[SEMANTIC LOG] Analyzing postfix expression " + postfixExpr->toString() + "\n";
+    DataType postfixType = inferNodeDataType(postfixExpr);
+    auto postfixOperand = postfixExpr->operand.get();
+    if (postfixExpr->operator_token.type == TokenType::PLUS_PLUS || postfixExpr->operator_token.type == TokenType::MINUS_MINUS)
+    {
+        if (auto ident = dynamic_cast<Identifier *>(postfixOperand))
+        {
+            auto symbol = resolveSymbolInfo(ident->expression.TokenLiteral);
+            if (!symbol)
+            {
+                logSemanticErrors("Undefined variable in postfix expression '" + ident->expression.TokenLiteral + "'", postfixExpr);
+                return;
+            }
+            if (!symbol->isMutable)
+            {
+                logSemanticErrors("Cannot apply '" + postfixExpr->operator_token.TokenLiteral + "' to immutable variable '" + ident->expression.TokenLiteral + "'", postfixExpr);
+                return;
+            }
+            if (!symbol->isInitialized)
+            {
+                logSemanticErrors("Cannot apply '" + postfixExpr->operator_token.TokenLiteral + "' to uninitialized variable '" + ident->expression.TokenLiteral + "'", postfixExpr);
+                return;
+            }
+        }
+        else
+        {
+            logSemanticErrors("Postfix operator '" + postfixExpr->operator_token.TokenLiteral + "' can only be applied to identifiers", postfixExpr);
+            return;
+        }
+    }
+    walker(postfixOperand);
+
+    metaData[postfixExpr] = {
+        .symbolDataType = postfixType,
+        .isNullable = false,
+        .isMutable = false,
         .isInitialized = false};
 }
 

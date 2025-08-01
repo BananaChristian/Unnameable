@@ -175,7 +175,7 @@ while (x > 5) {
 
 *For loops*
 ```
-for (int i; i < 10; i++) {
+for (mut int i; i < 10; i++) {
     int x;
     x = x + 1;
 }

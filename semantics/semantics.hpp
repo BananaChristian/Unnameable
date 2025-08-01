@@ -1,3 +1,4 @@
+#define CPPREST_FORCE_REBUILD
 #ifndef SEMANTICS_HPP
 #define SEMANTICS_HPP
 
@@ -73,9 +74,10 @@ private:
     // Walking the component functions declaration
     void walkDataStatement(Node *node);
 
-    // Waling infix and prefix expressions
+    // Waling infix, prefix and postfix expressions
     void walkInfixExpression(Node *node);
     void walkPrefixExpression(Node *node);
+    void walkPostfixExpression(Node *node);
 
     // Waling identifier expression
     void walkIdentifierExpression(Node *node);
@@ -110,6 +112,7 @@ private:
     DataType inferNodeDataType(Node *node);
     DataType inferInfixExpressionType(Node *node);
     DataType inferPrefixExpressionType(Node *node);
+    DataType inferPostfixExpressionType(Node *node);
     DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType);
     DataType resultOfUnary(TokenType operatorType, DataType oprendType);
     Token getErrorToken(Node *node);
