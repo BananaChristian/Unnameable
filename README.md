@@ -4,8 +4,6 @@
 
 It exists to make low-level development **clear**, **accessible**, and **fun** for everyone especially for beginners and builders working on modest machines.
 
-Born from the frustration with the complexity of C++, the strictness of Rust, and the rawness of C, Unnameable aims to strike a balance:
-
 > **Fast and powerful, yet simple and predictable.**
 
 No matter what you’re building an OS, a game engine, or your first kernel you shouldn't need a PhD or wrestle with books just to understand memory management.
