@@ -33,6 +33,26 @@ void Semantics::walkWhileStatement(Node *node)
     loopContext.pop_back();
 }
 
+void Semantics::walkElifStatement(Node *node)
+{
+    auto elifStmt = dynamic_cast<elifStatement *>(node);
+    if (!elifStmt)
+        return;
+    std::cout << "[SEMANTIC LOG] Analysing elif statement: " << elifStmt->toString() << "\n";
+    auto elifCondition = elifStmt->elif_condition.get();
+    DataType elifConditionType = inferNodeDataType(elifCondition);
+    if (elifConditionType != DataType::BOOLEAN)
+    {
+        logSemanticErrors("Expected boolean type but got" + dataTypetoString(elifConditionType), elifStmt);
+        return;
+    }
+    walker(elifCondition);
+
+    // Handling the elif results
+    auto elifResults = elifStmt->elif_result.get();
+    walker(elifResults);
+}
+
 void Semantics::walkIfStatement(Node *node)
 {
     auto ifStmt = dynamic_cast<ifStatement *>(node);
@@ -44,6 +64,7 @@ void Semantics::walkIfStatement(Node *node)
     if (ifStmtType != DataType::BOOLEAN)
     {
         logSemanticErrors("Expected boolean type but got: " + dataTypetoString(ifStmtType), node);
+        return;
     }
     walker(ifStmtCondition);
 
@@ -51,23 +72,15 @@ void Semantics::walkIfStatement(Node *node)
     auto ifResult = ifStmt->if_result.get();
     walker(ifResult);
 
-    // Dealing with the else if conditon
-    if (ifStmt->elseif_condition.has_value())
+    // Dealing with the elif clauses
+    auto &elifClauses = ifStmt->elifClauses;
+    if (!elifClauses.empty())
     {
-        auto elseifStmt = ifStmt->elseif_condition.value().get();
-        DataType elseIfCondType = inferNodeDataType(elseifStmt);
-        if (elseIfCondType != DataType::BOOLEAN)
-        {
-            logSemanticErrors("Expected boolean type but got: " + dataTypetoString(ifStmtType), node);
-        }
-        walker(elseifStmt);
-    }
 
-    // Dealing with else if result
-    if (ifStmt->elseif_result.has_value())
-    {
-        auto elseifResult = ifStmt->elseif_result.value().get();
-        walker(elseifResult);
+        for (const auto &clause : elifClauses)
+        {
+            walkElifStatement(clause.get());
+        }
     }
 
     // Dealing with else statement result

@@ -870,6 +870,29 @@ std::unique_ptr<Statement> Parser::parseContinueStatement()
     return std::make_unique<ContinueStatement>(cont_tok);
 }
 
+// Parsing elif statements
+std::unique_ptr<Statement> Parser::parseElifStatement()
+{
+    Token elif_stmt = currentToken();
+    advance();
+
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        std::cout << "[DEBUG] Expected '(' after 'elif', got: " << currentToken().TokenLiteral << "\n";
+        logError("Expected '(' after 'elseif'");
+        return nullptr;
+    }
+
+    auto elif_condition = parseGroupedExpression();
+    auto elif_result = parseBlockStatement();
+    auto elifClause = std::make_unique<elifStatement>(
+        elif_stmt,
+        std::move(elif_condition),
+        std::move(elif_result));
+
+    return elifClause;
+}
+
 // Parsing if statements`
 std::unique_ptr<Statement> Parser::parseIfStatement()
 {
@@ -893,24 +916,11 @@ std::unique_ptr<Statement> Parser::parseIfStatement()
     advance();
     auto if_result = parseBlockStatement();
 
-    std::optional<Token> elseif_stmt;
-    std::optional<std::unique_ptr<Expression>> elseif_condition;
-    std::optional<std::unique_ptr<Statement>> elseif_result;
-
-    if (currentToken().type == TokenType::ELSE_IF)
+    std::vector<std::unique_ptr<Statement>> elifClauses;
+    while (currentToken().type == TokenType::ELSE_IF)
     {
-        elseif_stmt = currentToken();
-        advance();
-
-        if (currentToken().type != TokenType::LPAREN)
-        {
-            std::cout << "[DEBUG] Expected '(' after 'elseif', got: " << currentToken().TokenLiteral << "\n";
-            logError("Expected '(' after 'elseif'");
-            return nullptr;
-        }
-
-        elseif_condition = parseGroupedExpression();
-        elseif_result = parseBlockStatement();
+        auto elifClause = parseElifStatement();
+        elifClauses.push_back(std::move(elifClause));
     }
 
     std::optional<Token> else_stmt;
@@ -928,9 +938,7 @@ std::unique_ptr<Statement> Parser::parseIfStatement()
         if_stmt,
         std::move(condition),
         std::move(if_result),
-        std::move(elseif_stmt),
-        std::move(elseif_condition),
-        std::move(elseif_result),
+        std::move(elifClauses),
         std::move(else_stmt),
         std::move(else_result));
 }
@@ -1531,6 +1539,10 @@ std::unique_ptr<Statement> Parser::parseBlockStatement()
     }
 
     advance();
+
+    if(currentToken().type==TokenType::SEMICOLON){
+        advance();
+    }
 
     return std::make_unique<BlockStatement>(lbrace, std::move(statements));
 }

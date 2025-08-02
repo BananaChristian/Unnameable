@@ -312,7 +312,7 @@ struct PostfixExpression : Expression
     {
         return "Postfix Expression: (" + operand->toString() + operator_token.TokenLiteral + ")";
     }
-    PostfixExpression(std::unique_ptr<Expression> op,Token operat) : Expression(operat), operand(std::move(op)), operator_token(operat) {};
+    PostfixExpression(std::unique_ptr<Expression> op, Token operat) : Expression(operat), operand(std::move(op)), operator_token(operat) {};
 };
 
 // Infix Expression node for syntax like x+y;
@@ -646,6 +646,24 @@ struct ReturnStatement : Statement
     ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val, std::unique_ptr<Statement> err) : Statement(ret), return_stmt(ret), return_value(move(ret_val)), error_val(std::move(err)) {};
 };
 
+// Elif statement node
+struct elifStatement : Statement
+{
+    Token elif_token;
+    std::unique_ptr<Expression> elif_condition;
+    std::unique_ptr<Statement> elif_result;
+
+    std::string toString() override
+    {
+        return "elifStatement: " + elif_token.TokenLiteral + "(" + elif_condition->toString() + ") {" + elif_result->toString() + "}";
+    }
+
+    elifStatement(Token token, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> result) : Statement(token),
+                                                                                                           elif_token(token),
+                                                                                                           elif_condition(std::move(condition)),
+                                                                                                           elif_result(std::move(result)) {};
+};
+
 // If statement node
 struct ifStatement : Statement
 {
@@ -653,9 +671,7 @@ struct ifStatement : Statement
     std::unique_ptr<Expression> condition;
     std::unique_ptr<Statement> if_result;
 
-    std::optional<Token> elseif_stmt;
-    std::optional<std::unique_ptr<Expression>> elseif_condition;
-    std::optional<std::unique_ptr<Statement>> elseif_result;
+    std::vector<std::unique_ptr<Statement>> elifClauses;
 
     std::optional<Token> else_stmt;
     std::optional<std::unique_ptr<Statement>> else_result;
@@ -676,23 +692,12 @@ struct ifStatement : Statement
 
         result += "  }\n";
 
-        if (elseif_stmt.has_value())
+        if (!elifClauses.empty())
         {
-            result += "  else if (";
-
-            if (elseif_condition.has_value() && *elseif_condition)
-                result += (*elseif_condition)->toString();
-            else
-                result += "<null elseif_condition>";
-
-            result += ") {\n";
-
-            if (elseif_result.has_value() && *elseif_result)
-                result += "    " + (*elseif_result)->toString() + "\n";
-            else
-                result += "    <null elseif_result>\n";
-
-            result += "  }\n";
+            for (const auto &elifs : elifClauses)
+            {
+                result += elifs->toString();
+            }
         }
 
         // ELSE block
@@ -712,10 +717,10 @@ struct ifStatement : Statement
     }
 
     ifStatement(Token if_st, std::unique_ptr<Expression> condition_e, std::unique_ptr<Statement> if_r,
-                std::optional<Token> elseif_st, std::optional<std::unique_ptr<Expression>> elseif_cond, std::optional<std::unique_ptr<Statement>> elseif_r,
+                std::vector<std::unique_ptr<Statement>> elifStmts,
                 std::optional<Token> else_st, std::optional<std::unique_ptr<Statement>> else_r) : Statement(if_st),
                                                                                                   if_stmt(if_st), condition(std::move(condition_e)), if_result(std::move(if_r)),
-                                                                                                  elseif_stmt(elseif_st), elseif_condition(std::move(elseif_cond)), elseif_result(std::move(elseif_r)),
+                                                                                                  elifClauses(std::move(elifStmts)),
                                                                                                   else_stmt(else_st), else_result(std::move(else_r)) {};
 };
 

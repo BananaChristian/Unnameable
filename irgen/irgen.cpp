@@ -127,9 +127,9 @@ void IRGenerator::generateWhileStatement(Node *node)
     function->getBasicBlockList().push_back(bodyBB);
     builder.SetInsertPoint(bodyBB);
     std::cerr << "[IR DEBUG] Generating while body\n";
-    loopBlocksStack.push_back({condBB, endBB}); // Fix: Push LoopBlocks
+    loopBlocksStack.push_back({condBB, endBB}); 
     generateStatement(whileStmt->loop.get());
-    loopBlocksStack.pop_back(); // Fix: Pop LoopBlocks
+    loopBlocksStack.pop_back(); 
     std::cerr << "[IR DEBUG] Finished generating while body\n";
 
     if (!builder.GetInsertBlock()->getTerminator())
@@ -144,6 +144,133 @@ void IRGenerator::generateWhileStatement(Node *node)
 
     function->getBasicBlockList().push_back(endBB);
     builder.SetInsertPoint(endBB);
+}
+
+// IR code gen for an if statement
+void IRGenerator::generateIfStatement(Node *node)
+{
+    auto ifStmt = dynamic_cast<ifStatement *>(node);
+    if (!ifStmt)
+    {
+        throw std::runtime_error("Invalid if statement");
+    }
+
+    std::cerr << "[IR DEBUG] Generating if statement\n";
+
+    // Generation of condition for the if
+    llvm::Value *condVal = generateExpression(ifStmt->condition.get());
+    if (!condVal)
+    {
+        throw std::runtime_error("Invalid if condition");
+    }
+
+    if (!condVal->getType()->isIntegerTy(1))
+    {
+        condVal = builder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "ifcond.bool");
+    }
+
+    // Create basic blocks
+    llvm::Function *function = builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(context, "then", function);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(context, "ifmerge");
+
+    // Determine the next block (first elif, else, or merge)
+    llvm::BasicBlock *nextBB = nullptr;
+    if (!ifStmt->elifClauses.empty())
+    {
+        nextBB = llvm::BasicBlock::Create(context, "elif0");
+    }
+    else if (ifStmt->else_result.has_value())
+    {
+        nextBB = llvm::BasicBlock::Create(context, "else");
+    }
+    else
+    {
+        nextBB = mergeBB;
+    }
+
+    // Conditional branch for if
+    std::cerr << "[IR DEBUG] Creating conditional branch for if\n";
+    builder.CreateCondBr(condVal, thenBB, nextBB);
+
+    // Generate then branch
+    builder.SetInsertPoint(thenBB);
+    std::cerr << "[IR DEBUG] Generating then branch\n";
+    generateStatement(ifStmt->if_result.get());
+    if (!builder.GetInsertBlock()->getTerminator())
+    {
+        std::cerr << "[IR DEBUG] Adding branch to ifmerge from then\n";
+        builder.CreateBr(mergeBB);
+    }
+    else
+    {
+        std::cerr << "[IR DEBUG] Skipping branch to ifmerge from then due to terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+    }
+
+    // Generating elif branches
+    for (size_t i = 0; i < ifStmt->elifClauses.size(); ++i)
+    {
+        function->getBasicBlockList().push_back(nextBB);
+        builder.SetInsertPoint(nextBB);
+        std::cerr << "[IR DEBUG] Generating elif branch " << i << "\n";
+
+        const auto &elifStmt = ifStmt->elifClauses[i];
+        auto elif = dynamic_cast<elifStatement *>(elifStmt.get());
+        llvm::Value *elifCondVal = generateExpression(elif->elif_condition.get());
+        if (!elifCondVal)
+        {
+            throw std::runtime_error("Invalid elif condition");
+        }
+        if (!elifCondVal->getType()->isIntegerTy(1))
+        {
+            elifCondVal = builder.CreateICmpNE(elifCondVal, llvm::ConstantInt::get(elifCondVal->getType(), 0), "elifcond.bool");
+        }
+
+        llvm::BasicBlock *elifBodyBB = llvm::BasicBlock::Create(context, "elif.body" + std::to_string(i), function);
+        llvm::BasicBlock *nextElifBB = (i + 1 < ifStmt->elifClauses.size()) ? llvm::BasicBlock::Create(context, "elif" + std::to_string(i + 1))
+                                                                            : (ifStmt->else_result.has_value() ? llvm::BasicBlock::Create(context, "else") : mergeBB);
+
+        std::cerr << "[IR DEBUG] Creating conditional branch for elif " << i << "\n";
+        builder.CreateCondBr(elifCondVal, elifBodyBB, nextElifBB);
+
+        builder.SetInsertPoint(elifBodyBB);
+        std::cerr << "[IR DEBUG] Generating elif body " << i << "\n";
+        generateStatement(elif->elif_result.get());
+        if (!builder.GetInsertBlock()->getTerminator())
+        {
+            std::cerr << "[IR DEBUG] Adding branch to ifmerge from elif " << i << "\n";
+            builder.CreateBr(mergeBB);
+        }
+        else
+        {
+            std::cerr << "[IR DEBUG] Skipping branch " << i << " to ifmerge from elif due to terminator " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+        }
+
+        nextBB = nextElifBB;
+    }
+
+    // Generate else branch if present
+    if (ifStmt->else_result.has_value())
+    {
+        function->getBasicBlockList().push_back(nextBB);
+        builder.SetInsertPoint(nextBB);
+        std::cerr << "[IR DEBUG] Generating else branch\n";
+        generateStatement(ifStmt->else_result.value().get());
+        if (!builder.GetInsertBlock()->getTerminator())
+        {
+            std::cerr << "[IR DEBUG] Adding branch to ifmerge from else\n";
+            builder.CreateBr(mergeBB);
+        }
+        else
+        {
+           std::cerr << "[IR DEBUG] Skipping branch to ifmerge from else due to terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+        }
+    }
+
+    // Finalize with merge block
+    function->getBasicBlockList().push_back(mergeBB);
+    builder.SetInsertPoint(mergeBB);
+    std::cerr << "[IR DEBUG] Finished generating if statement\n";
 }
 
 // IR code gen for a for loop
@@ -821,6 +948,7 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(AssignmentStatement)] = &IRGenerator::generateAssignmentStatement;
     generatorFunctionsMap[typeid(WhileStatement)] = &IRGenerator::generateWhileStatement;
     generatorFunctionsMap[typeid(ForStatement)] = &IRGenerator::generateForStatement;
+    generatorFunctionsMap[typeid(ifStatement)] = &IRGenerator::generateIfStatement;
     generatorFunctionsMap[typeid(BreakStatement)] = &IRGenerator::generateBreakStatement;
     generatorFunctionsMap[typeid(ContinueStatement)] = &IRGenerator::generateContinueStatement;
     generatorFunctionsMap[typeid(BlockStatement)] = &IRGenerator::generateBlockStatement;

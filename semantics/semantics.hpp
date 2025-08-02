@@ -101,6 +101,7 @@ private:
     void walkForStatement(Node *node);
     void walkEachStatement(Node *node);
     void walkIfStatement(Node *node);
+    void walkElifStatement(Node *node);
     void walkSwitchStatement(Node *node);
     void walkCaseStatement(Node *node);
 

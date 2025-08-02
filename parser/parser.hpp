@@ -103,6 +103,9 @@ private:
     // Parsing if statement
     std::unique_ptr<Statement> parseIfStatement();
 
+    // Parsing elif statement
+    std::unique_ptr<Statement> parseElifStatement();
+
     // Parsing switch statement
     std::unique_ptr<Statement> parseSwitchStatement();
 

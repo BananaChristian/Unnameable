@@ -50,6 +50,7 @@ private:
     void generateAssignmentStatement(Node *node);
     void generateWhileStatement(Node *node);
     void generateForStatement(Node *node);
+    void generateIfStatement(Node *node);
     void generateBreakStatement(Node *node);
     void generateContinueStatement(Node *node);
     void generateBlockStatement(Node *node);
