@@ -1282,7 +1282,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     bool isNullable = false;
     std::cout << "[TEST]Function parser is working\n";
     //--------Dealing with work keyword---------------
-    Token func_tok = currentToken(); // The token represting the keyword for functions (work)
+    Token func_tok = currentToken(); // The token representing the keyword for functions (work)
     advance();
 
     std::vector<Token> genericParams;
@@ -1345,7 +1345,6 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         case TokenType::FLOAT_KEYWORD:
         case TokenType::STRING_KEYWORD:
         case TokenType::BOOL_KEYWORD:
-        case TokenType::AUTO:
         case TokenType::VOID:
             return_type = std::make_unique<ReturnTypeExpression>(currentToken());
             advance(); // Consume the data type literal
@@ -1356,7 +1355,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
             }
             break;
         default:
-            logError("Unexpected return type: ");
+            logError("Unexpected return type '" + currentToken().TokenLiteral+"'");
             return nullptr;
         }
     }
@@ -1382,10 +1381,10 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         return nullptr;
     }
 
-    return std::make_unique<FunctionExpression>(identToken, genericParams, move(call), move(return_type), isNullable, move(block));
+    return std::make_unique<FunctionExpression>(identToken, genericParams, std::move(call), std::move(return_type), isNullable, std::move(block));
 }
 
-// Parsing function patamemters
+// Parsing function paramemters
 std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters(const std::vector<Token> &genericParams)
 {
     std::cout << "PARSING FUNCTION PARAMETERS\n";
@@ -1473,7 +1472,7 @@ std::unique_ptr<Expression> Parser::parseBlockExpression()
     Token lbrace = currentToken();
     if (lbrace.type != TokenType::LBRACE)
     {
-        logError("Expexted { after data type");
+        logError("Expected { after data type");
         return nullptr;
     }
     advance();
@@ -1540,7 +1539,8 @@ std::unique_ptr<Statement> Parser::parseBlockStatement()
 
     advance();
 
-    if(currentToken().type==TokenType::SEMICOLON){
+    if (currentToken().type == TokenType::SEMICOLON)
+    {
         advance();
     }
 

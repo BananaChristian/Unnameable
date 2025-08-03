@@ -56,6 +56,11 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(BreakStatement)] = &Semantics::walkBreakStatement;
     walkerFunctionsMap[typeid(ContinueStatement)] = &Semantics::walkContinueStatement;
 
+    // Walker registration for functions
+    walkerFunctionsMap[typeid(FunctionStatement)] = &Semantics::walkFunctionStatement;
+    walkerFunctionsMap[typeid(FunctionExpression)] = &Semantics::walkFunctionExpression;
+    walkerFunctionsMap[typeid(ReturnStatement)] = &Semantics::walkReturnStatement;
+
     // Walker registration for return and error statements
     walkerFunctionsMap[typeid(ErrorStatement)] = &Semantics::walkErrorStatement;
     walkerFunctionsMap[typeid(ErrorExpression)] = &Semantics::walkErrorExpression;
@@ -66,6 +71,7 @@ void Semantics::registerWalkerFunctions()
 
     // Walker registration for blocks
     walkerFunctionsMap[typeid(BlockStatement)] = &Semantics::walkBlockStatement;
+    walkerFunctionsMap[typeid(BlockExpression)] = &Semantics::walkBlockExpression;
 
     // Walker registration for the main expression types
     walkerFunctionsMap[typeid(InfixExpression)] = &Semantics::walkInfixExpression;
@@ -203,6 +209,11 @@ DataType Semantics::inferNodeDataType(Node *node)
             std::cerr << "[SEMANTIC ERROR] Undefined variable: " << name << "\n";
             return DataType::UNKNOWN;
         }
+    }
+
+    if (auto retTypeExpr = dynamic_cast<ReturnTypeExpression *>(node))
+    {
+        return tokenTypeToDataType(retTypeExpr->expression.type, false);
     }
 
     return DataType::UNKNOWN;
@@ -397,6 +408,8 @@ DataType Semantics::tokenTypeToDataType(TokenType type, bool isNullable)
         return isNullable ? DataType::NULLABLE_CHAR : DataType::CHAR;
     case TokenType::BOOL_KEYWORD:
         return isNullable ? DataType::NULLABLE_BOOLEAN : DataType::BOOLEAN;
+    case TokenType::VOID:
+        return DataType::VOID;
     default:
         return DataType::UNKNOWN;
     }
@@ -430,6 +443,10 @@ std::string Semantics::dataTypetoString(DataType type)
         return "double?";
     case DataType::NULLABLE_BOOLEAN:
         return "bool?";
+    case DataType::VOID:
+        return "void";
+    case DataType::ERROR:
+        return "error";
     default:
         return "unknown";
     }
@@ -437,8 +454,16 @@ std::string Semantics::dataTypetoString(DataType type)
 
 bool Semantics::isTypeCompatible(DataType expected, DataType actual)
 {
+    if (actual == DataType::ERROR)
+    {
+        return true;
+    }
     if (expected == actual)
         return true;
+    if (expected == DataType::VOID && actual == DataType::UNKNOWN)
+    {
+        return true;
+    }
     if ((expected == DataType::NULLABLE_INT && actual == DataType::INTEGER) ||
         (expected == DataType::NULLABLE_FLT && actual == DataType::FLOAT) ||
         (expected == DataType::NULLABLE_DOUBLE && actual == DataType::DOUBLE) ||
@@ -451,6 +476,107 @@ bool Semantics::isTypeCompatible(DataType expected, DataType actual)
     return false;
 }
 
+bool Semantics::hasReturnPath(Node *node)
+{
+    if (currentFunction && currentFunction->returnType == DataType::VOID)
+    {
+        return true; // Void functions don't need returns
+    }
+
+    if (auto blockStmt = dynamic_cast<BlockStatement *>(node))
+    {
+        for (const auto &stmt : blockStmt->statements)
+        {
+            if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get()))
+            {
+                if (retStmt->error_val || retStmt->return_value ||
+                    (currentFunction->isNullable && !retStmt->return_value))
+                {
+                    return true; // Error, value, or null return
+                }
+            }
+            if (auto ifStmt = dynamic_cast<ifStatement *>(stmt.get()))
+            {
+                auto thenBlock = dynamic_cast<BlockStatement *>(ifStmt->if_result.get());
+                bool hasThenReturn = thenBlock && hasReturnPath(thenBlock);
+                bool hasElseReturn = ifStmt->else_result.has_value() &&
+                                     hasReturnPath(dynamic_cast<BlockStatement *>(
+                                         ifStmt->else_result.value().get()));
+                if (hasThenReturn && hasElseReturn)
+                {
+                    return true;
+                }
+                bool hasElifReturn = true;
+                for (const auto &elif : ifStmt->elifClauses)
+                {
+                    auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
+                    if (elifStmt)
+                    {
+                        auto elifBlock = dynamic_cast<BlockStatement *>(elifStmt->elif_result.get());
+                        hasElifReturn &= elifBlock && hasReturnPath(elifBlock);
+                    }
+                }
+                if (hasThenReturn && hasElifReturn && hasElseReturn)
+                {
+                    return true;
+                }
+            }
+        }
+        return false; // BlockStatement has no finalexpr
+    }
+
+    if (auto blockExpr = dynamic_cast<BlockExpression *>(node))
+    {
+        for (const auto &stmt : blockExpr->statements)
+        {
+            if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get()))
+            {
+                if (retStmt->error_val || retStmt->return_value ||
+                    (currentFunction->isNullable && !retStmt->return_value))
+                {
+                    return true; // Error, value, or null return
+                }
+            }
+            if (auto ifStmt = dynamic_cast<ifStatement *>(stmt.get()))
+            {
+                auto thenBlock = dynamic_cast<BlockStatement *>(ifStmt->if_result.get());
+                bool hasThenReturn = thenBlock && hasReturnPath(thenBlock);
+                bool hasElseReturn = ifStmt->else_result.has_value() &&
+                                     hasReturnPath(dynamic_cast<BlockStatement *>(
+                                         ifStmt->else_result.value().get()));
+                if (hasThenReturn && hasElseReturn)
+                {
+                    return true;
+                }
+                bool hasElifReturn = true;
+                for (const auto &elif : ifStmt->elifClauses)
+                {
+                    auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
+                    if (elifStmt)
+                    {
+                        auto elifBlock = dynamic_cast<BlockStatement *>(elifStmt->elif_result.get());
+                        hasElifReturn &= elifBlock && hasReturnPath(elifBlock);
+                    }
+                }
+                if (hasThenReturn && hasElifReturn && hasElseReturn)
+                {
+                    return true;
+                }
+            }
+        }
+        if (blockExpr->finalexpr.has_value())
+        {
+            DataType exprType = inferNodeDataType(blockExpr->finalexpr.value().get());
+            return exprType == DataType::ERROR ||
+                   isTypeCompatible(currentFunction->returnType, exprType) ||
+                   (dynamic_cast<NullLiteral *>(blockExpr->finalexpr.value().get()) &&
+                    currentFunction->isNullable);
+        }
+        return false;
+    }
+
+    return false;
+}
 Token Semantics::getErrorToken(Node *node)
 {
     if (!node)

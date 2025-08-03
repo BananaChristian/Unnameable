@@ -15,6 +15,7 @@ SRC = main.cpp \
       semantics/flow.cpp \
       semantics/expr.cpp \
       semantics/vars.cpp \
+      semantics/fp.cpp\
       irgen/irgen.cpp
 
 $(OUT): $(SRC)

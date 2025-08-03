@@ -22,6 +22,7 @@ enum class DataType
     CHAR,
     NULLABLE_CHAR,
     ERROR,
+    VOID,
     UNKNOWN
 };
 
@@ -33,6 +34,8 @@ struct SymbolInfo
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialized = false;
+    std::vector<DataType> paramTypes;
+    DataType returnType;
 };
 
 // Information about the current scope
@@ -56,6 +59,7 @@ public:
     std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable;
     std::unordered_map<std::string, std::vector<SymbolInfo>> sharedDataBlocks;
     std::unordered_map<Node *, SymbolInfo> metaData;
+    std::optional<SymbolInfo> currentFunction;
     std::vector<bool> loopContext;
 
     SymbolInfo *resolveSymbolInfo(const std::string &name);
@@ -105,8 +109,14 @@ private:
     void walkSwitchStatement(Node *node);
     void walkCaseStatement(Node *node);
 
+    // walking functional programming nodes
+    void walkFunctionStatement(Node *node);
+    void walkFunctionExpression(Node *node);
+    void walkReturnStatement(Node *node);
+
     // Walking blocks
     void walkBlockStatement(Node *node);
+    void walkBlockExpression(Node *node);
 
     // HELPER FUNCTIONS
     void registerWalkerFunctions();
@@ -119,6 +129,7 @@ private:
     Token getErrorToken(Node *node);
     DataType tokenTypeToDataType(TokenType type, bool isNullable);
     bool isTypeCompatible(DataType expected, DataType actual);
+    bool hasReturnPath(Node *node);
     void logSemanticErrors(const std::string &message, Node *node);
 };
 

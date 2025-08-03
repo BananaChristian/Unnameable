@@ -131,6 +131,12 @@ void Semantics::walkErrorExpression(Node *node)
     auto errMessage = errExpr->err_message.get();
 
     walker(errMessage);
+    DataType msgType = inferNodeDataType(errMessage);
+
+    if (msgType == DataType::UNKNOWN)
+    {
+        logSemanticErrors("Invalid error message type: " + dataTypetoString(msgType), errExpr);
+    }
     metaData[errExpr] = {
         .symbolDataType = errType,
         .isNullable = false,
