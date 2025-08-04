@@ -12,11 +12,11 @@ Unnameable is here to bring the joy back to low-level programming.
 
 ---
 
-This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, semantic analyzer.
+This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, semantic analyzer and LLVM IR codegen.
 
 ---
 
-## ✨ Features
+## Features
 
 - Custom Lexer and Tokenizer *(in progress)*
 - Custom Parser *(in progress)*
@@ -25,7 +25,7 @@ This project contains the core implementation of the Unnameable compiler written
 
 ---
 
-## 🧠 Data Types
+## Data Types
 
 - `int` — 32-bit integers
 - `bool` — true/false values
@@ -36,7 +36,7 @@ May contain Unicode text. (Basic support: no slicing or advanced string ops yet.
 -  `double`— 64-bit floating point number
 ---
 
-## 💬 Comments
+## Comments
 
 ```unn
 # This is a comment in Unnameable
@@ -48,7 +48,7 @@ In unnameable
 ```
 
 
-## 📦Variables and type inference
+## Variables and type inference
 ```unn
 int x;
 x = 2;
@@ -78,7 +78,7 @@ work greet(string? name): string?;
 
 ```
 
-##  ⚒️ Functions
+##  Functions
 ```unn
 work greet(string name): string {
     return "Hello" + name;
@@ -97,7 +97,7 @@ work <T,M> info(T name, M age): T{
 }
 ```
 
-## ⚠️ Error handling
+## Error handling
 ```unn
 work greet(string name): string {
     return "Hello" + name, error("Got an error");
@@ -105,7 +105,7 @@ work greet(string name): string {
 
 ```
 
-## 🌐Multilingual identifier support
+## Multilingual identifier support
 Unnameable supports identifiers in:
 - Latin (English, French, German, etc.)
 - Cyrillic (e.g., Russian, Ukrainian)
@@ -120,12 +120,12 @@ Unnameable supports identifiers in:
 - Full emoji support 😎🔥🧠
   
 ```
-auto test="😂";
+auto laugh="😂";
 string 萌="cute";
 
 ```
 
-## 🧬Function calls
+## Function calls
 ```
 greet("John");
 add(1, 2);
@@ -133,7 +133,7 @@ config();
 
 ```
 
-## 🔁 Control flow
+## Control flow
 ```
 if (age > 18) {
     return "adult";
@@ -145,7 +145,7 @@ if (age > 18) {
 
 ```
 
-## 🔀 Switch statements
+## Switch statements
 ```
 string name="Mellisa";
 
@@ -162,7 +162,7 @@ switch (name) {
 
 ```
 
-## 🔚Loops
+## Loops
 *While loops*
 ```
 while (x > 5) {
@@ -180,7 +180,7 @@ for (mut int i; i < 10; i++) {
 
 ```
 
-## 🧱 Component System (OOP-like structure)
+## Component System (OOP-like structure)
 Unnameable supports components, clean structures for organizing data and behavior, like classes, but lightweight and predictable.
 
 ```unn
@@ -218,7 +218,7 @@ p.greet();
 
 ```
 
-## 🎭Enums
+## Enums
 Unnameable supports `enum class` as the default way to define enums a clean and type-safe way to group related symbolic values under a single name.
 
 ```
@@ -240,7 +240,7 @@ auto code = HttpStatus::NotFound;
 ```
 
 
-## 🔒Immutability and Mutability
+## Immutability and Mutability
 Unnameable supports explicit control over variable mutability with the keywords *const* and *mut*
 - `const` declares an immutable variable. It must be initialized at declaration and cannot be reassigned later. This ensures safety and predictability.
 
@@ -261,29 +261,29 @@ const auto w = 3;  # Immutable variable with inferred type int
 
 ```
 
-## 🔮 Future Lexer additions
+## Future Lexer additions
 - Even more unicode support for identifiers
 
-## 🧠 Future additions
+## Future additions
 - High order functions
 - Pattern matching to switch statements
 - Function parameters as first-class expressions
 
-## 🧰 Requirements
+## Requirements
 - C++17 or later
 - g++ or clang
 - Make(optional for building)
 
-## 🌍Philosophy
+## Philosophy
 Unnameable is designed to make systems programming less painful and soul draining.
 The language upholds the principles of clarity and predictability to allow it's user to build powerful things.
 
-## ⚙️ Current status
+## Current status
 This project is under active and early development and is still highly experimental. If you want to explore,contribute, or just follow the journey feel free to fork,play or reach out.
 
 ---
 
-📜 License
+License
 
 Unnameable is dual-licensed under the MIT License and Apache License 2.0.
 You may choose either license to use this project.
