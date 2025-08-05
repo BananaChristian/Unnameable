@@ -156,9 +156,6 @@ void Semantics::walkReturnStatement(Node *node)
         return;
     }
 
-    std::cout << "RETURN VALUE TYPE: " << dataTypetoString(valueType) << "\n";
-    std::cout << "CURRENT FUNCTION RETURN TYPE: " << dataTypetoString(currentFunction->returnType) << "\n";
-
     metaData[retStmt] = SymbolInfo{valueType, genericName, isValueNullable};
 }
 
@@ -187,14 +184,27 @@ void Semantics::walkFunctionExpression(Node *node)
     SymbolInfo *symbol = resolveSymbolInfo(funcName);
     if (symbol)
     {
-        logSemanticErrors("Already used this name '" + funcName + "'", funcExpr);
-        return;
+        if (symbol->isDefined)
+        {
+            logSemanticErrors("Function '" + funcName + "' already defined", funcExpr);
+            return;
+        }
+        if (symbol->isDeclaration)
+        {
+            if (!areSignaturesCompatible(*symbol, funcExpr))
+            {
+                logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration", funcExpr);
+                return;
+            }
+        }
     }
 
-    symbolTable.push_back({});
+    //symbolTable.push_back({});
 
     SymbolInfo funcInfo;
     funcInfo.isNullable = funcExpr->isNullable;
+    funcInfo.isDeclaration = false;
+    funcInfo.isDefined = true;
     std::vector<std::pair<DataType, std::string>> paramTypes;
     funcInfo.genericParams.clear();
 
@@ -220,7 +230,6 @@ void Semantics::walkFunctionExpression(Node *node)
         }
         // Set currentFunction before processing parameters
         currentFunction = funcInfo;
-        std::cout << "FIRST CURRENT INFO DATA TYPE :" << dataTypetoString(currentFunction->symbolDataType) << "\n";
         walkFunctionParameterLetStatement(param.get());
         auto paramInfo = metaData.find(param.get());
         if (paramInfo == metaData.end())
@@ -233,7 +242,7 @@ void Semantics::walkFunctionExpression(Node *node)
                   << "' stored with type: " << dataTypetoString(paramInfo->second.symbolDataType) << "\n";
     }
 
-    // Process return type
+    // Processing return type
     auto retType = dynamic_cast<ReturnTypeExpression *>(funcExpr->return_type.get());
     if (!retType)
     {
@@ -284,7 +293,109 @@ void Semantics::walkFunctionExpression(Node *node)
 
     symbolTable.back()[funcName] = funcInfo;
     metaData[funcExpr] = funcInfo;
-    symbolTable.pop_back();
+    //symbolTable.pop_back();
     std::cout << "SECOND CURRENT INFO DATA TYPE :" << dataTypetoString(currentFunction->symbolDataType) << "\n";
+    currentFunction = std::nullopt;
+}
+
+void Semantics::walkFunctionDeclarationExpression(Node *node)
+{
+    auto funcDeclExpr = dynamic_cast<FunctionDeclarationExpression *>(node);
+    if (!funcDeclExpr)
+        return;
+    std::cout << "[SEMANTIC LOG] Analysing function declaration  expression\n";
+    // Since this is a wrapper for function declaration statement I am gonna call the walker directly
+    walkFunctionDeclarationStatement(funcDeclExpr->funcDeclrStmt.get());
+}
+
+void Semantics::walkFunctionDeclarationStatement(Node *node)
+{
+    auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(node);
+    if (!funcDeclrStmt)
+        return;
+    std::cout << "[SEMANTIC LOG] Analyzing function declaration statement\n";
+    // Getting the function name
+    std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
+    // Checking if the declaration already exists
+    auto symbol = resolveSymbolInfo(funcName);
+    if (symbol)
+    {
+        logSemanticErrors("Already used this name '" + funcName, funcDeclrStmt);
+        return;
+    }
+
+    // Creating a new scope for the function parameters
+    symbolTable.push_back({});
+
+    // Constructing the function signature
+    SymbolInfo funcInfo;
+    funcInfo.isNullable = funcDeclrStmt->isNullable;
+    funcInfo.isDeclaration = true;
+    funcInfo.isDefined = false;
+    std::vector<std::pair<DataType, std::string>> paramTypes;
+    funcInfo.genericParams.clear();
+
+    // Dealing with generic parameters
+    for (const auto &generic : funcDeclrStmt->genericParams)
+    {
+        if (generic.type != TokenType::IDENTIFIER)
+        {
+            logSemanticErrors("Invalid generic type '" + generic.TokenLiteral + "'", funcDeclrStmt);
+        }
+        funcInfo.genericParams.push_back(generic.TokenLiteral);
+    }
+
+    currentFunction = funcInfo;
+    // Dealing with normal parameters
+    for (const auto &param : funcDeclrStmt->parameters)
+    {
+        walkFunctionParameterLetStatement(param.get());
+        auto paramInfo = metaData.find(param.get());
+        if (paramInfo == metaData.end())
+        {
+        }
+        paramTypes.emplace_back(paramInfo->second.symbolDataType, paramInfo->second.genericName);
+    }
+
+    // Processing the return type
+    auto retType = dynamic_cast<ReturnTypeExpression *>(funcDeclrStmt->return_type.get());
+    if (!retType)
+    {
+        logSemanticErrors("Unexpected function return type", funcDeclrStmt->return_type.get());
+        return;
+    }
+
+    DataType returnType = tokenTypeToDataType(retType->expression.type, funcDeclrStmt->isNullable);
+    std::string returnGenericName;
+
+    if (retType->expression.type == TokenType::IDENTIFIER)
+    {
+        returnType = DataType::GENERIC;
+        returnGenericName = retType->expression.TokenLiteral;
+        if (std::find(funcInfo.genericParams.begin(), funcInfo.genericParams.end(),
+                      returnGenericName) == funcInfo.genericParams.end())
+        {
+            logSemanticErrors("Undefined generic type in return '" + returnGenericName + "'", retType);
+            return;
+        }
+    }
+    else if (returnType == DataType::UNKNOWN)
+    {
+        logSemanticErrors("Invalid return type '" + retType->expression.TokenLiteral + "'", retType);
+        return;
+    }
+
+    funcInfo.symbolDataType = returnType;
+    funcInfo.genericName = returnGenericName;
+    funcInfo.returnType = returnType;
+    funcInfo.returnGenericName = returnGenericName;
+    funcInfo.paramTypes = paramTypes;
+
+    currentFunction = funcInfo;
+
+    symbolTable.back()[funcName] = funcInfo;
+    metaData[funcDeclrStmt] = funcInfo;
+
+    symbolTable.pop_back();
     currentFunction = std::nullopt;
 }

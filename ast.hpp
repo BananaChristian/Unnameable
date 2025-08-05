@@ -988,10 +988,10 @@ struct BlockExpression : Expression
 
     std::string toString() override
     {
-        std::string out = "BlockExpression:\n";
+        std::string out = "BlockExpression: { \n";
         for (auto &stmt : statements)
         {
-            out += stmt->toString() + "\n";
+            out += stmt->toString() + "} \n";
         }
         if (finalexpr.has_value() && finalexpr.value())
         {

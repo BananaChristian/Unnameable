@@ -59,6 +59,8 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for functions
     walkerFunctionsMap[typeid(FunctionStatement)] = &Semantics::walkFunctionStatement;
     walkerFunctionsMap[typeid(FunctionExpression)] = &Semantics::walkFunctionExpression;
+    walkerFunctionsMap[typeid(FunctionDeclaration)] = &Semantics::walkFunctionDeclarationStatement;
+    walkerFunctionsMap[typeid(FunctionDeclarationExpression)] = &Semantics::walkFunctionDeclarationExpression;
     walkerFunctionsMap[typeid(ReturnStatement)] = &Semantics::walkReturnStatement;
 
     // Walker registration for return and error statements
@@ -590,6 +592,67 @@ Token Semantics::getErrorToken(Node *node)
         return Token{"Invalid node", TokenType::ILLEGAL, 0, 0};
     }
     return node->token;
+}
+
+bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr)
+{
+    // Check generics
+    if (declInfo.genericParams.size() != funcExpr->generic_parameters.size())
+    {
+        return false;
+    }
+    for (size_t i = 0; i < declInfo.genericParams.size(); ++i)
+    {
+        if (declInfo.genericParams[i] != funcExpr->generic_parameters[i].TokenLiteral)
+        {
+            return false;
+        }
+    }
+
+    // Check parameters
+    if (declInfo.paramTypes.size() != funcExpr->call.size())
+    {
+        return false;
+    }
+    for (size_t i = 0; i < declInfo.paramTypes.size(); ++i)
+    {
+        auto letStmt = dynamic_cast<LetStatement *>(funcExpr->call[i].get());
+        if (!letStmt)
+            return false;
+        DataType paramType = tokenTypeToDataType(letStmt->data_type_token.type, letStmt->isNullable);
+        std::string paramGenericName = letStmt->data_type_token.type == TokenType::IDENTIFIER ? letStmt->data_type_token.TokenLiteral : "";
+        // Find declaration's parameter metadata
+        bool declParamNullable = false;
+        for (const auto &pair : metaData)
+        {
+            if (auto declLetStmt = dynamic_cast<LetStatement *>(pair.first))
+            {
+                if (declLetStmt->ident_token.TokenLiteral == letStmt->ident_token.TokenLiteral &&
+                    pair.second.symbolDataType == declInfo.paramTypes[i].first &&
+                    pair.second.genericName == declInfo.paramTypes[i].second)
+                {
+                    declParamNullable = pair.second.isNullable;
+                    break;
+                }
+            }
+        }
+        if (paramType != declInfo.paramTypes[i].first ||
+            paramGenericName != declInfo.paramTypes[i].second ||
+            letStmt->isNullable != declParamNullable)
+        {
+            return false;
+        }
+    }
+
+    // Check return type
+    auto retType = dynamic_cast<ReturnTypeExpression *>(funcExpr->return_type.get());
+    if (!retType)
+        return false;
+    DataType returnType = tokenTypeToDataType(retType->expression.type, funcExpr->isNullable);
+    std::string returnGenericName = retType->expression.type == TokenType::IDENTIFIER ? retType->expression.TokenLiteral : "";
+    return returnType == declInfo.returnType &&
+           returnGenericName == declInfo.returnGenericName &&
+           funcExpr->isNullable == declInfo.isNullable;
 }
 
 void Semantics::logSemanticErrors(const std::string &message, Node *node)
