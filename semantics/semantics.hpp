@@ -23,6 +23,7 @@ enum class DataType
     NULLABLE_CHAR,
     ERROR,
     VOID,
+    GENERIC,
     UNKNOWN
 };
 
@@ -30,12 +31,15 @@ enum class DataType
 struct SymbolInfo
 {
     DataType symbolDataType;
+    std::string genericName;
     bool isNullable = false;
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialized = false;
-    std::vector<DataType> paramTypes;
+    std::vector<std::pair<DataType, std::string>> paramTypes;
     DataType returnType;
+    std::string returnGenericName;
+    std::vector<std::string> genericParams;
 };
 
 // Information about the current scope
@@ -91,6 +95,7 @@ private:
 
     // Walking the let statements and assignment statements
     void walkLetStatement(Node *node);
+    void walkFunctionParameterLetStatement(Node *node);
     void walkAssignStatement(Node *node);
 
     // Walking the loop disruption statements

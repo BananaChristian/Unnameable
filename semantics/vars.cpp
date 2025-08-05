@@ -1,4 +1,5 @@
 #include "semantics.hpp"
+#include <algorithm>
 
 // Walking the data type literals
 void Semantics::walkBooleanLiteral(Node *node)
@@ -121,12 +122,19 @@ void Semantics::walkLetStatement(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
 
+    auto existing = metaData.find(node);
+    if (existing != metaData.end() && existing->second.symbolDataType == DataType::GENERIC)
+    {
+        std::cout << "[SEMANTIC LOG]: Skipping already analyzed generic parameter: " << letStmt->ident_token.TokenLiteral << "\n";
+        return;
+    }
+
     bool isNullable = letStmt->isNullable;
     bool isInitialized = false;
 
     auto letStmtValue = letStmt->value.get();
 
-    DataType declaredType = DataType::UNKNOWN; // Defaulting to the normal data type check
+    DataType declaredType = DataType::UNKNOWN; // Defaulting to the unknown data type
     if (letStmtValue)
     {
         walker(letStmtValue);
@@ -213,6 +221,78 @@ void Semantics::walkLetStatement(Node *node)
 
     // Pushing the let statement to current scope
     symbolTable.back()[letStmt->ident_token.TokenLiteral] = symbol;
+}
+
+// walking generic let statements
+void Semantics::walkFunctionParameterLetStatement(Node *node)
+{
+    auto letStmt = dynamic_cast<LetStatement *>(node);
+    if (!letStmt)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing function parameter let statement " << letStmt->toString() << "\n";
+
+    // Getting mutability and nullability info about the let statement
+    bool isNullable = letStmt->isNullable;
+    bool isMutable = (letStmt->mutability == Mutability::MUTABLE);
+    bool isConstant = (letStmt->mutability == Mutability::CONSTANT);
+
+    DataType declaredType = DataType::UNKNOWN;
+    std::string genericName;
+
+    // Handling generic types
+    if (letStmt->data_type_token.type == TokenType::IDENTIFIER)
+    {
+        if (!currentFunction)
+        {
+            logSemanticErrors("Generic type '" + letStmt->data_type_token.TokenLiteral + "' used outside function scope", letStmt);
+            return;
+        }
+
+        if (letStmt->value)
+        {
+            logSemanticErrors("Cannot explicitly assign a value to a generic consider using 'auto' ", letStmt);
+            return;
+        }
+
+        genericName = letStmt->data_type_token.TokenLiteral;
+        if (std::find(currentFunction->genericParams.begin(), currentFunction->genericParams.end(),
+                      genericName) == currentFunction->genericParams.end())
+        {
+            logSemanticErrors("Undefined generic type '" + genericName + "' in function parameter", node);
+            return;
+        }
+        declaredType = DataType::GENERIC;
+    }
+    else
+    {
+        walkLetStatement(node);
+        auto paramInfo = metaData.find(node);
+        if (paramInfo == metaData.end())
+        {
+            logSemanticErrors("Parameter '" + letStmt->ident_token.TokenLiteral + "' not analyzed", node);
+            return;
+        }
+        declaredType = paramInfo->second.symbolDataType;
+        genericName = paramInfo->second.genericName;
+        isNullable = paramInfo->second.isNullable;
+        isMutable = paramInfo->second.isMutable;
+        isConstant = paramInfo->second.isConstant;
+    }
+
+    std::cout << "FUNCTION PARAMETER DATA TYPE: " << dataTypetoString(declaredType) << "\n";
+
+    // Store symbol info
+    SymbolInfo symbol = {
+        .symbolDataType = declaredType,
+        .genericName = genericName,
+        .isNullable = isNullable,
+        .isMutable = isMutable,
+        .isConstant = isConstant,
+        .isInitialized = false // Parameters are not initialized
+    };
+
+    metaData[letStmt] = symbol;
+    symbolTable.back()[letStmt->ident_token.TokenLiteral]=symbol;
 }
 
 void Semantics::walkAssignStatement(Node *node)

@@ -217,16 +217,19 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 std::unique_ptr<Statement> Parser::parseLetStatementWithGenericType(bool isParam)
 {
     Mutability mutability = Mutability::IMMUTABLE;
-    Token typeToken = currentToken(); // Like 'T'
-    advance();
-
-    if (currentToken().type != TokenType::IDENTIFIER)
+    if (currentToken().type == TokenType::MUT)
     {
-        logError("Expected identifier after generic type in let parameter");
+        mutability = Mutability::MUTABLE;
+        advance();
+    }
+    
+    if (currentToken().type == TokenType::CONST)
+    {
+        logError("Do not use constant on a generic type ");
         return nullptr;
     }
 
-    Token identToken = currentToken();
+    Token typeToken = currentToken(); // Like 'T'
     advance();
 
     // Optional: support nullable?
@@ -236,6 +239,15 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithGenericType(bool isParam
         isNullable = true;
         advance();
     }
+
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected identifier after generic type in let parameter");
+        return nullptr;
+    }
+
+    Token identToken = currentToken();
+    advance();
 
     std::optional<Token> assign_token;
     std::unique_ptr<Expression> value = nullptr;
@@ -280,6 +292,11 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
 
 std::unique_ptr<Statement> Parser::parseParamLetStatementWithGenerics(const std::vector<Token> &genericParams)
 {
+    if (currentToken().type == TokenType::MUT || currentToken().type == TokenType::CONST)
+    {
+        advance();
+    }
+
     Token current = currentToken();
 
     if (current.type == TokenType::INT ||
@@ -309,7 +326,7 @@ std::unique_ptr<Statement> Parser::parseParamLetStatementWithGenerics(const std:
         }
     }
 
-    std::cerr << "[ERROR]: Unrecognized parameter type or name: " << current.TokenLiteral << "\n";
+    logError("Unrecognized parameter type or name '" + current.TokenLiteral + "'");
     return nullptr;
 }
 
@@ -1295,7 +1312,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         {
             if (currentToken().type != TokenType::IDENTIFIER)
             {
-                logError("Expected generic type identifier in generic parameter list but got: " + currentToken().TokenLiteral);
+                logError("Expected generic type identifier in generic parameter list but got '" + currentToken().TokenLiteral + "'");
                 return nullptr;
             }
             genericParams.push_back(currentToken());
@@ -1313,7 +1330,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
             }
             else
             {
-                logError("Expected ',' or '>' in generic parameter list but got: " + currentToken().TokenLiteral);
+                logError("Expected ',' or '>' in generic parameter list but got '" + currentToken().TokenLiteral + "'");
                 return nullptr;
             }
         }
@@ -1346,6 +1363,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         case TokenType::STRING_KEYWORD:
         case TokenType::BOOL_KEYWORD:
         case TokenType::VOID:
+        case TokenType::IDENTIFIER:
             return_type = std::make_unique<ReturnTypeExpression>(currentToken());
             advance(); // Consume the data type literal
             if (currentToken().type == TokenType::QUESTION_MARK)
@@ -1355,7 +1373,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
             }
             break;
         default:
-            logError("Unexpected return type '" + currentToken().TokenLiteral+"'");
+            logError("Unexpected return type '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
     }
@@ -1387,7 +1405,6 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
 // Parsing function paramemters
 std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters(const std::vector<Token> &genericParams)
 {
-    std::cout << "PARSING FUNCTION PARAMETERS\n";
     std::vector<std::unique_ptr<Statement>> args; // Declaring the empty vector
 
     // Checking if the current token is the lparen

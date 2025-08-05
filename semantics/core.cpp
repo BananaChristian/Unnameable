@@ -202,6 +202,7 @@ DataType Semantics::inferNodeDataType(Node *node)
         auto symbol = resolveSymbolInfo(name);
         if (symbol)
         {
+            std::cout << "IDENTIFIER DATA TYPE: " << dataTypetoString(symbol->symbolDataType) << "\n";
             return symbol->symbolDataType;
         }
         else
@@ -410,6 +411,8 @@ DataType Semantics::tokenTypeToDataType(TokenType type, bool isNullable)
         return isNullable ? DataType::NULLABLE_BOOLEAN : DataType::BOOLEAN;
     case TokenType::VOID:
         return DataType::VOID;
+    case TokenType::IDENTIFIER:
+        return DataType::GENERIC;
     default:
         return DataType::UNKNOWN;
     }
@@ -447,6 +450,8 @@ std::string Semantics::dataTypetoString(DataType type)
         return "void";
     case DataType::ERROR:
         return "error";
+    case DataType::GENERIC:
+        return "generic";
     default:
         return "unknown";
     }
