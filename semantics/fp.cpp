@@ -331,20 +331,22 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
 {
     auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(node);
     if (!funcDeclrStmt)
-        return;
-    std::cout << "[SEMANTIC LOG] Analyzing function declaration statement\n";
-    // Getting the function name
-    std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
-    // Checking if the declaration already exists
-    auto symbol = resolveSymbolInfo(funcName);
-    if (symbol)
     {
-        logSemanticErrors("Already used this name '" + funcName, funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
+        logSemanticErrors("Invalid function declaration statement", node->token.line, node->token.column);
         return;
     }
+    std::cout << "[SEMANTIC LOG] Analyzing function declaration statement\n";
 
-    // Creating a new scope for the function parameters
-    symbolTable.push_back({});
+    // Getting the function name
+    std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
+
+    // Checking if the declaration already exists
+    auto symbol = resolveSymbolInfo(funcName);
+    if (symbol && (symbol->isDeclaration || symbol->isDefined))
+    {
+        logSemanticErrors("Already used this name '" + funcName + "'", funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
+        return;
+    }
 
     // Constructing the function signature
     SymbolInfo funcInfo;
@@ -360,11 +362,13 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
         if (generic.type != TokenType::IDENTIFIER)
         {
             logSemanticErrors("Invalid generic type '" + generic.TokenLiteral + "'", funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
+            return;
         }
         funcInfo.genericParams.push_back(generic.TokenLiteral);
     }
 
     currentFunction = funcInfo;
+
     // Dealing with normal parameters
     for (const auto &param : funcDeclrStmt->parameters)
     {
@@ -372,6 +376,9 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
         auto paramInfo = metaData.find(param.get());
         if (paramInfo == metaData.end())
         {
+            logSemanticErrors("Parameter '" + dynamic_cast<LetStatement *>(param.get())->ident_token.TokenLiteral + "' not analyzed",
+                              param.get()->statement.line, param.get()->statement.column);
+            return;
         }
         paramTypes.emplace_back(paramInfo->second.symbolDataType, paramInfo->second.genericName);
     }
@@ -412,9 +419,12 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
 
     currentFunction = funcInfo;
 
-    symbolTable.back()[funcName] = funcInfo;
+    // Store in global scope
+    symbolTable[0][funcName] = funcInfo;
     metaData[funcDeclrStmt] = funcInfo;
 
-    symbolTable.pop_back();
+    std::cout << "[SEMANTIC LOG] Stored function declaration for '" << funcName << "' with return type: "
+              << dataTypetoString(funcInfo.returnType) << "\n";
+
     currentFunction = std::nullopt;
 }
