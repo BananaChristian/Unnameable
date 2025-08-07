@@ -584,15 +584,6 @@ bool Semantics::hasReturnPath(Node *node)
 
     return false;
 }
-Token Semantics::getErrorToken(Node *node)
-{
-    if (!node)
-    {
-        // Return a default token or handle the error case
-        return Token{"Invalid node", TokenType::ILLEGAL, 0, 0};
-    }
-    return node->token;
-}
 
 bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr)
 {
@@ -657,7 +648,7 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
 
 void Semantics::logSemanticErrors(const std::string &message, Node *node)
 {
-    Token errorToken = getErrorToken(node);
+    Token errorToken =node->token;
     int tokenLine = errorToken.line;
     int tokenColumn = errorToken.column;
     std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << "\n";

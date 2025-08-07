@@ -136,7 +136,6 @@ private:
     DataType inferPostfixExpressionType(Node *node);
     DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType);
     DataType resultOfUnary(TokenType operatorType, DataType oprendType);
-    Token getErrorToken(Node *node);
     DataType tokenTypeToDataType(TokenType type, bool isNullable);
     bool isTypeCompatible(DataType expected, DataType actual);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
