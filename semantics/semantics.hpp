@@ -140,7 +140,7 @@ private:
     bool isTypeCompatible(DataType expected, DataType actual);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool hasReturnPath(Node *node);
-    void logSemanticErrors(const std::string &message, Node *node);
+    void logSemanticErrors(const std::string &message, int tokenLine,int tokenColumn);
 };
 
 #endif

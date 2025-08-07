@@ -158,7 +158,7 @@ DataType Semantics::inferNodeDataType(Node *node)
             auto letStmtValue = letStmt->value.get();
             if (!letStmtValue)
             {
-                logSemanticErrors("Cannot infer without a value", letStmt);
+                logSemanticErrors("Cannot infer without a value", letStmt->data_type_token.line, letStmt->data_type_token.column);
                 return DataType::UNKNOWN;
             }
             return inferNodeDataType(letStmtValue);
@@ -173,7 +173,7 @@ DataType Semantics::inferNodeDataType(Node *node)
         DataType assignStmtValType = inferNodeDataType(assignStmtVal);
         if (!isTypeCompatible(assignSymbol->symbolDataType, assignStmtValType))
         {
-            logSemanticErrors("Type mismatch expected '" + dataTypetoString(assignStmtValType) + "' but got '" + dataTypetoString(assignSymbol->symbolDataType) + "'", assignStmt);
+            logSemanticErrors("Type mismatch expected '" + dataTypetoString(assignStmtValType) + "' but got '" + dataTypetoString(assignSymbol->symbolDataType) + "'", assignStmt->ident_token.line, assignStmt->ident_token.column);
         }
         else
         {
@@ -209,7 +209,7 @@ DataType Semantics::inferNodeDataType(Node *node)
         }
         else
         {
-            std::cerr << "[SEMANTIC ERROR] Undefined variable: " << name << "\n";
+            logSemanticErrors("[Undefined variable '" + name + "'", ident->expression.line, ident->expression.column);
             return DataType::UNKNOWN;
         }
     }
@@ -646,10 +646,7 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
            funcExpr->isNullable == declInfo.isNullable;
 }
 
-void Semantics::logSemanticErrors(const std::string &message, Node *node)
+void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
 {
-    Token errorToken =node->token;
-    int tokenLine = errorToken.line;
-    int tokenColumn = errorToken.column;
     std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << "\n";
 }

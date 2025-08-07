@@ -22,7 +22,7 @@ void Semantics::walkBlockExpression(Node *node)
             if (currentFunction->returnType == DataType::VOID)
             {
                 logSemanticErrors("Void function cannot have a final expression",
-                                  blockExpr->finalexpr.value().get());
+                                  blockExpr->finalexpr.value().get()->expression.line, blockExpr->finalexpr.value().get()->expression.column);
             }
             else
             {
@@ -35,7 +35,7 @@ void Semantics::walkBlockExpression(Node *node)
                     logSemanticErrors("Final expression type " + dataTypetoString(exprType) +
                                           " does not match function return type " +
                                           dataTypetoString(currentFunction->returnType),
-                                      blockExpr->finalexpr.value().get());
+                                      blockExpr->finalexpr.value().get()->expression.line, blockExpr->finalexpr.value().get()->expression.column);
                 }
             }
         }
@@ -47,12 +47,12 @@ void Semantics::walkReturnStatement(Node *node)
     auto retStmt = dynamic_cast<ReturnStatement *>(node);
     if (!retStmt)
     {
-        logSemanticErrors("Invalid return statement node", retStmt);
+        logSemanticErrors("Invalid return statement node", retStmt->return_stmt.line, retStmt->return_stmt.column);
         return;
     }
     if (!currentFunction)
     {
-        logSemanticErrors("Invalid return statement as not in the current function", retStmt);
+        logSemanticErrors("Invalid return statement as not in the current function", retStmt->return_stmt.line, retStmt->return_stmt.column);
         return;
     }
     std::cout << "[SEMANTIC LOG] Analyzing return statement\n";
@@ -61,7 +61,7 @@ void Semantics::walkReturnStatement(Node *node)
     {
         if (currentFunction->returnType != DataType::VOID)
         {
-            logSemanticErrors("Non-void function requires a return statement", retStmt);
+            logSemanticErrors("Non-void function requires a return statement", retStmt->return_stmt.line, retStmt->return_stmt.column);
         }
         return;
     }
@@ -72,7 +72,7 @@ void Semantics::walkReturnStatement(Node *node)
         auto errorStmt = dynamic_cast<ErrorStatement *>(retStmt->error_val.get());
         if (!errorStmt)
         {
-            logSemanticErrors("Invalid error value in return", retStmt->error_val.get());
+            logSemanticErrors("Invalid error value in return", retStmt->error_val.get()->statement.line, retStmt->error_val.get()->statement.column);
         }
         walker(retStmt->error_val.get());
         return;
@@ -82,7 +82,7 @@ void Semantics::walkReturnStatement(Node *node)
     {
         if (!currentFunction->isNullable)
         {
-            logSemanticErrors("Non-void function requires a return value", retStmt);
+            logSemanticErrors("Non-void function requires a return value", retStmt->return_stmt.line, retStmt->return_stmt.column);
         }
         return;
     }
@@ -139,7 +139,7 @@ void Semantics::walkReturnStatement(Node *node)
         {
             logSemanticErrors("Cannot return 'null' for non-nullable type '" +
                                   dataTypetoString(currentFunction->returnType) + "'",
-                              node);
+                              node->token.line, node->token.column);
             return;
         }
     }
@@ -149,7 +149,7 @@ void Semantics::walkReturnStatement(Node *node)
         {
             logSemanticErrors("Return value generic type '" + genericName +
                                   "' does not match expected '" + currentFunction->returnGenericName + "'",
-                              node);
+                              node->token.line, node->token.column);
             return;
         }
     }
@@ -157,7 +157,7 @@ void Semantics::walkReturnStatement(Node *node)
     {
         logSemanticErrors("Return value type '" + dataTypetoString(valueType) +
                               "' does not match '" + dataTypetoString(currentFunction->returnType) + "'",
-                          node);
+                          node->token.line, node->token.column);
         return;
     }
 
@@ -180,7 +180,7 @@ void Semantics::walkFunctionExpression(Node *node)
     auto funcExpr = dynamic_cast<FunctionExpression *>(node);
     if (!funcExpr)
     {
-        logSemanticErrors("Invalid function expression", node);
+        logSemanticErrors("Invalid function expression", node->token.line, node->token.column);
         return;
     }
     std::cout << "[SEMANTIC LOG] Analyzing function expression: " << funcExpr->toString() << "\n";
@@ -191,16 +191,14 @@ void Semantics::walkFunctionExpression(Node *node)
     SymbolInfo *symbol = resolveSymbolInfo(funcName);
     if (symbol && symbol->isDefined)
     {
-        logSemanticErrors("Function '" + funcName + "' already defined at line: " + 
-                         std::to_string(funcExpr->func_key.line) + ", column: " + 
-                         std::to_string(funcExpr->func_key.column), funcExpr);
+        logSemanticErrors("Function name '" + funcName + "' already used", funcExpr->func_key.line, funcExpr->func_key.column);
         return;
     }
     if (symbol && symbol->isDeclaration)
     {
         if (!areSignaturesCompatible(*symbol, funcExpr))
         {
-            logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration", funcExpr);
+            logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration", funcExpr->func_key.line, funcExpr->func_key.column);
             return;
         }
     }
@@ -216,14 +214,14 @@ void Semantics::walkFunctionExpression(Node *node)
     {
         if (generic.type != TokenType::IDENTIFIER)
         {
-            logSemanticErrors("Invalid generic type: " + generic.TokenLiteral, funcExpr);
+            logSemanticErrors("Invalid generic type: " + generic.TokenLiteral, funcExpr->func_key.line, funcExpr->func_key.column);
             return;
         }
         funcInfo.genericParams.push_back(generic.TokenLiteral);
     }
 
     currentFunction = funcInfo;
-    std::cout << "[SEMANTIC LOG] Set currentFunction for '" << funcName << "' with return type: " 
+    std::cout << "[SEMANTIC LOG] Set currentFunction for '" << funcName << "' with return type: "
               << dataTypetoString(funcInfo.returnType) << "\n";
 
     // Pushing scope for function block
@@ -234,7 +232,7 @@ void Semantics::walkFunctionExpression(Node *node)
         auto letStmt = dynamic_cast<LetStatement *>(param.get());
         if (!letStmt)
         {
-            logSemanticErrors("Invalid parameter: expected let statement", param.get());
+            logSemanticErrors("Invalid parameter: expected let statement", param.get()->statement.line, param.get()->statement.column);
             symbolTable.pop_back();
             return;
         }
@@ -242,7 +240,7 @@ void Semantics::walkFunctionExpression(Node *node)
         auto paramInfo = metaData.find(param.get());
         if (paramInfo == metaData.end())
         {
-            logSemanticErrors("Parameter '" + letStmt->ident_token.TokenLiteral + "' not analyzed", param.get());
+            logSemanticErrors("Parameter '" + letStmt->ident_token.TokenLiteral + "' not analyzed", param.get()->statement.line, param.get()->statement.column);
             symbolTable.pop_back();
             return;
         }
@@ -254,7 +252,7 @@ void Semantics::walkFunctionExpression(Node *node)
     auto retType = dynamic_cast<ReturnTypeExpression *>(funcExpr->return_type.get());
     if (!retType)
     {
-        logSemanticErrors("Unexpected function return type", funcExpr->return_type.get());
+        logSemanticErrors("Unexpected function return type", funcExpr->return_type.get()->expression.line, funcExpr->return_type.get()->expression.column);
         symbolTable.pop_back();
         return;
     }
@@ -267,14 +265,14 @@ void Semantics::walkFunctionExpression(Node *node)
         if (std::find(funcInfo.genericParams.begin(), funcInfo.genericParams.end(),
                       returnGenericName) == funcInfo.genericParams.end())
         {
-            logSemanticErrors("Undefined generic type in return: " + returnGenericName, retType);
+            logSemanticErrors("Undefined generic type in return: " + returnGenericName, retType->expression.line, retType->expression.column);
             symbolTable.pop_back();
             return;
         }
     }
     else if (returnType == DataType::UNKNOWN)
     {
-        logSemanticErrors("Invalid return type: " + retType->expression.TokenLiteral, retType);
+        logSemanticErrors("Invalid return type: " + retType->expression.TokenLiteral, retType->expression.line, retType->expression.column);
         symbolTable.pop_back();
         return;
     }
@@ -285,7 +283,7 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo.paramTypes = paramTypes;
 
     currentFunction = funcInfo;
-    std::cout << "[SEMANTIC LOG] Updated currentFunction for '" << funcName << "' with return type: " 
+    std::cout << "[SEMANTIC LOG] Updated currentFunction for '" << funcName << "' with return type: "
               << dataTypetoString(funcInfo.returnType) << "\n";
 
     // Saving outer function context
@@ -294,7 +292,7 @@ void Semantics::walkFunctionExpression(Node *node)
     auto block = dynamic_cast<BlockExpression *>(funcExpr->block.get());
     if (!block)
     {
-        logSemanticErrors("Invalid function body", funcExpr->block.get());
+        logSemanticErrors("Invalid function body", funcExpr->block.get()->expression.line, funcExpr->block.get()->expression.column);
         symbolTable.pop_back();
         return;
     }
@@ -303,14 +301,14 @@ void Semantics::walkFunctionExpression(Node *node)
 
     if (returnType != DataType::VOID && !hasReturnPath(block))
     {
-        logSemanticErrors("Non-void function '" + funcName + "' must have a return value or error", funcExpr);
+        logSemanticErrors("Non-void function '" + funcName + "' must have a return value or error", funcExpr->expression.line, funcExpr->expression.column);
         symbolTable.pop_back();
         return;
     }
 
     // Restoring outer function context
     currentFunction = outerFunction;
-    std::cout << "[SEMANTIC LOG] Restored currentFunction for '" << funcName << "' with return type: " 
+    std::cout << "[SEMANTIC LOG] Restored currentFunction for '" << funcName << "' with return type: "
               << (currentFunction ? dataTypetoString(currentFunction->returnType) : "none") << "\n";
 
     // Storing function in parent scope
@@ -341,7 +339,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     auto symbol = resolveSymbolInfo(funcName);
     if (symbol)
     {
-        logSemanticErrors("Already used this name '" + funcName, funcDeclrStmt);
+        logSemanticErrors("Already used this name '" + funcName, funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
         return;
     }
 
@@ -361,7 +359,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     {
         if (generic.type != TokenType::IDENTIFIER)
         {
-            logSemanticErrors("Invalid generic type '" + generic.TokenLiteral + "'", funcDeclrStmt);
+            logSemanticErrors("Invalid generic type '" + generic.TokenLiteral + "'", funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
         }
         funcInfo.genericParams.push_back(generic.TokenLiteral);
     }
@@ -382,7 +380,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     auto retType = dynamic_cast<ReturnTypeExpression *>(funcDeclrStmt->return_type.get());
     if (!retType)
     {
-        logSemanticErrors("Unexpected function return type", funcDeclrStmt->return_type.get());
+        logSemanticErrors("Unexpected function return type", funcDeclrStmt->return_type.get()->expression.line, funcDeclrStmt->return_type.get()->expression.column);
         return;
     }
 
@@ -396,13 +394,13 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
         if (std::find(funcInfo.genericParams.begin(), funcInfo.genericParams.end(),
                       returnGenericName) == funcInfo.genericParams.end())
         {
-            logSemanticErrors("Undefined generic type in return '" + returnGenericName + "'", retType);
+            logSemanticErrors("Undefined generic type in return '" + returnGenericName + "'", retType->expression.line, retType->expression.column);
             return;
         }
     }
     else if (returnType == DataType::UNKNOWN)
     {
-        logSemanticErrors("Invalid return type '" + retType->expression.TokenLiteral + "'", retType);
+        logSemanticErrors("Invalid return type '" + retType->expression.TokenLiteral + "'", retType->expression.line, retType->expression.column);
         return;
     }
 

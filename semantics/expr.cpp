@@ -36,23 +36,23 @@ void Semantics::walkPrefixExpression(Node *node)
             auto symbol = resolveSymbolInfo(ident->expression.TokenLiteral);
             if (!symbol)
             {
-                logSemanticErrors("Undefined variable in prefix expression '" + ident->expression.TokenLiteral + "'", prefixExpr);
+                logSemanticErrors("Undefined variable in prefix expression '" + ident->expression.TokenLiteral + "'", prefixExpr->expression.line, prefixExpr->expression.column);
                 return;
             }
             if (!symbol->isMutable)
             {
-                logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral + "' to immutable variable '" + ident->expression.TokenLiteral + "'", prefixExpr);
+                logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral + "' to immutable variable '" + ident->expression.TokenLiteral + "'", prefixExpr->expression.line, prefixExpr->expression.column);
                 return;
             }
             if (!symbol->isInitialized)
             {
-                logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral + "' to uninitialized variable '" + ident->expression.TokenLiteral + "'", prefixExpr);
+                logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral + "' to uninitialized variable '" + ident->expression.TokenLiteral + "'", prefixExpr->expression.line, prefixExpr->expression.column);
                 return;
             }
         }
         else
         {
-            logSemanticErrors("Prefix operator '" + prefixExpr->operat.TokenLiteral + "' can only be applied to identifiers", prefixExpr);
+            logSemanticErrors("Prefix operator '" + prefixExpr->operat.TokenLiteral + "' can only be applied to identifiers", prefixExpr->expression.line, prefixExpr->expression.column);
             return;
         }
     }
@@ -81,23 +81,23 @@ void Semantics::walkPostfixExpression(Node *node)
             auto symbol = resolveSymbolInfo(ident->expression.TokenLiteral);
             if (!symbol)
             {
-                logSemanticErrors("Undefined variable in postfix expression '" + ident->expression.TokenLiteral + "'", postfixExpr);
+                logSemanticErrors("Undefined variable in postfix expression '" + ident->expression.TokenLiteral + "'", postfixExpr->expression.line, postfixExpr->expression.column);
                 return;
             }
             if (!symbol->isMutable)
             {
-                logSemanticErrors("Cannot apply '" + postfixExpr->operator_token.TokenLiteral + "' to immutable variable '" + ident->expression.TokenLiteral + "'", postfixExpr);
+                logSemanticErrors("Cannot apply '" + postfixExpr->operator_token.TokenLiteral + "' to immutable variable '" + ident->expression.TokenLiteral + "'", postfixExpr->expression.line, postfixExpr->expression.column);
                 return;
             }
             if (!symbol->isInitialized)
             {
-                logSemanticErrors("Cannot apply '" + postfixExpr->operator_token.TokenLiteral + "' to uninitialized variable '" + ident->expression.TokenLiteral + "'", postfixExpr);
+                logSemanticErrors("Cannot apply '" + postfixExpr->operator_token.TokenLiteral + "' to uninitialized variable '" + ident->expression.TokenLiteral + "'", postfixExpr->expression.line, postfixExpr->expression.column);
                 return;
             }
         }
         else
         {
-            logSemanticErrors("Postfix operator '" + postfixExpr->operator_token.TokenLiteral + "' can only be applied to identifiers", postfixExpr);
+            logSemanticErrors("Postfix operator '" + postfixExpr->operator_token.TokenLiteral + "' can only be applied to identifiers", postfixExpr->expression.line, postfixExpr->expression.column);
             return;
         }
     }
@@ -135,7 +135,7 @@ void Semantics::walkErrorExpression(Node *node)
 
     if (msgType == DataType::UNKNOWN)
     {
-        logSemanticErrors("Invalid error message type: " + dataTypetoString(msgType), errExpr);
+        logSemanticErrors("Invalid error message type '" + dataTypetoString(msgType) + "'", errExpr->error_token.line, errExpr->error_token.column);
     }
     metaData[errExpr] = {
         .symbolDataType = errType,

@@ -43,7 +43,7 @@ void Semantics::walkElifStatement(Node *node)
     DataType elifConditionType = inferNodeDataType(elifCondition);
     if (elifConditionType != DataType::BOOLEAN)
     {
-        logSemanticErrors("Expected boolean type but got" + dataTypetoString(elifConditionType), elifStmt);
+        logSemanticErrors("Expected boolean type but got" + dataTypetoString(elifConditionType), elifStmt->elif_token.line, elifStmt->elif_token.column);
         return;
     }
     walker(elifCondition);
@@ -63,7 +63,7 @@ void Semantics::walkIfStatement(Node *node)
     DataType ifStmtType = inferNodeDataType(ifStmtCondition);
     if (ifStmtType != DataType::BOOLEAN)
     {
-        logSemanticErrors("Expected boolean type but got: " + dataTypetoString(ifStmtType), node);
+        logSemanticErrors("Expected boolean type but got: " + dataTypetoString(ifStmtType), node->token.line, node->token.column);
         return;
     }
     walker(ifStmtCondition);
@@ -137,7 +137,7 @@ void Semantics::walkSwitchStatement(Node *node)
         caseType = inferNodeDataType(caseSt.get());
         if (caseType != switchType)
         {
-            logSemanticErrors("Type mismatch in switch case ", node);
+            logSemanticErrors("Type mismatch in switch case ", node->token.line, node->token.column);
         }
         walker(caseSt.get());
     }
@@ -210,7 +210,7 @@ void Semantics::walkBreakStatement(Node *node)
     std::cout << "[SEMANTIC LOG] Analysing break statement " << breakStmt->toString() << "\n";
     if (loopContext.empty())
     {
-        logSemanticErrors(" 'break' used outside a loop ", node);
+        logSemanticErrors(" 'break' used outside a loop ", node->token.line, node->token.column);
     }
 }
 

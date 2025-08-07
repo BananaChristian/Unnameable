@@ -144,7 +144,7 @@ void Semantics::walkLetStatement(Node *node)
         {
             if (!isNullable)
             {
-                logSemanticErrors("Cannot assign 'null' to a non-nullable value " + letStmt->ident_token.TokenLiteral, letStmt);
+                logSemanticErrors("Cannot assign 'null' to a non-nullable value '" + letStmt->ident_token.TokenLiteral + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
                 declaredType = DataType::UNKNOWN;
             }
             else
@@ -191,7 +191,7 @@ void Semantics::walkLetStatement(Node *node)
         DataType expectedType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
         if (expectedType != declaredType)
         {
-            logSemanticErrors("Type mismatch in 'let' statement. Expected '" + dataTypetoString(expectedType) + "' but got '" + dataTypetoString(declaredType) + "'", letStmt);
+            logSemanticErrors("Type mismatch in 'let' statement. Expected '" + dataTypetoString(expectedType) + "' but got '" + dataTypetoString(declaredType) + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
         }
     }
@@ -244,13 +244,13 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
     {
         if (!currentFunction)
         {
-            logSemanticErrors("Generic type '" + letStmt->data_type_token.TokenLiteral + "' used outside function scope", letStmt);
+            logSemanticErrors("Generic type '" + letStmt->data_type_token.TokenLiteral + "' used outside function scope", letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
         }
 
         if (letStmt->value)
         {
-            logSemanticErrors("Cannot explicitly assign a value to a generic consider using 'auto' ", letStmt);
+            logSemanticErrors("Cannot explicitly assign a value to a generic consider using 'auto' ", letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
         }
 
@@ -258,7 +258,7 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
         if (std::find(currentFunction->genericParams.begin(), currentFunction->genericParams.end(),
                       genericName) == currentFunction->genericParams.end())
         {
-            logSemanticErrors("Undefined generic type '" + genericName + "' in function parameter", node);
+            logSemanticErrors("Undefined generic type '" + genericName + "' in function parameter", node->token.line, node->token.column);
             return;
         }
         declaredType = DataType::GENERIC;
@@ -269,7 +269,7 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
         auto paramInfo = metaData.find(node);
         if (paramInfo == metaData.end())
         {
-            logSemanticErrors("Parameter '" + letStmt->ident_token.TokenLiteral + "' not analyzed", node);
+            logSemanticErrors("Parameter '" + letStmt->ident_token.TokenLiteral + "' not analyzed", node->token.line, node->token.column);
             return;
         }
         declaredType = paramInfo->second.symbolDataType;
@@ -292,7 +292,7 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
     };
 
     metaData[letStmt] = symbol;
-    symbolTable.back()[letStmt->ident_token.TokenLiteral]=symbol;
+    symbolTable.back()[letStmt->ident_token.TokenLiteral] = symbol;
 }
 
 void Semantics::walkAssignStatement(Node *node)
@@ -316,7 +316,7 @@ void Semantics::walkAssignStatement(Node *node)
     {
         if (!symbol->isNullable)
         {
-            logSemanticErrors("Cannot assign null to non-nullable variable '" + assignName + "'", assignStmt);
+            logSemanticErrors("Cannot assign null to non-nullable variable '" + assignName + "'", assignStmt->ident_token.line, assignStmt->ident_token.column);
             return;
         }
     }
@@ -326,7 +326,7 @@ void Semantics::walkAssignStatement(Node *node)
         DataType valueType = inferNodeDataType(assignStmt->value.get());
         if (!isTypeCompatible(symbol->symbolDataType, valueType))
         {
-            logSemanticErrors("Type mismatch expected '" + dataTypetoString(symbol->symbolDataType) + "' but got '" + dataTypetoString(valueType) + "'", assignStmt);
+            logSemanticErrors("Type mismatch expected '" + dataTypetoString(symbol->symbolDataType) + "' but got '" + dataTypetoString(valueType) + "'", assignStmt->ident_token.line,assignStmt->ident_token.column);
             return;
         }
     }

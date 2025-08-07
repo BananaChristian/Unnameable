@@ -15,7 +15,7 @@ void Semantics::walkDataStatement(Node *node)
     auto dataBlockSymbolInfo = resolveSymbolInfo(dataBlockName);
     if (dataBlockSymbolInfo)
     {
-        logSemanticErrors("Cannot reuse name '" + dataBlockName + "' for data block", node);
+        logSemanticErrors("Cannot reuse name '" + dataBlockName + "' for data block", node->token.line, node->token.column);
         return;
     }
 
