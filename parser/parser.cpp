@@ -134,23 +134,20 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     Mutability mutability = Mutability::IMMUTABLE;
     bool isNullable = false;
     Token mutability_token = currentToken();
-    std::cout << "CURRENT TOKEN WHEN WE ENTER LET STATEMENT PARSER: " << mutability_token.TokenLiteral << "\n";
 
     if (mutability_token.type == TokenType::CONST)
     {
         mutability = Mutability::CONSTANT;
         std::cout << "CURRENT TOKEN: " << mutability_token.TokenLiteral << "\n";
         advance();
-        mutability_token = currentToken(); // Update token after advancing
-        std::cout << "NEXT TOKEN: " << mutability_token.TokenLiteral << "\n";
+        mutability_token = currentToken();
     }
     else if (mutability_token.type == TokenType::MUT)
     {
         mutability = Mutability::MUTABLE;
         std::cout << "CURRENT TOKEN: " << mutability_token.TokenLiteral << "\n";
         advance();
-        mutability_token = currentToken(); // Update token after advancing
-        std::cout << "NEXT TOKEN: " << mutability_token.TokenLiteral << "\n";
+        mutability_token = currentToken();
     }
 
     Token dataType_token = currentToken();
@@ -304,7 +301,7 @@ std::unique_ptr<Statement> Parser::parseParamLetStatementWithGenerics(const std:
 
     if (current.type == TokenType::MUT ||
         current.type == TokenType::CONST ||
-        current.type == TokenType::INT ||
+        current.type == TokenType::INTEGER_KEYWORD ||
         current.type == TokenType::FLOAT_KEYWORD ||
         current.type == TokenType::STRING_KEYWORD ||
         current.type == TokenType::CHAR_KEYWORD ||
@@ -1114,10 +1111,66 @@ std::unique_ptr<Expression> Parser::parseNullLiteral()
     return ident;
 }
 
-// Integer literal parse function
+// 16 bit signed integer literal parse function
+std::unique_ptr<Expression> Parser::parseShortLiteral()
+{
+    auto ident = std::make_unique<ShortLiteral>(currentToken());
+    advance();
+    return ident;
+}
+
+// 16 bit unsigned integer literal parse function
+std::unique_ptr<Expression> Parser::parseUnsignedShortLiteral()
+{
+    auto ident = std::make_unique<UnsignedShortLiteral>(currentToken());
+    advance();
+    return ident;
+}
+
+// 32 bit signed Integer literal parse function
 std::unique_ptr<Expression> Parser::parseIntegerLiteral()
 {
     auto ident = std::make_unique<IntegerLiteral>(currentToken());
+    advance();
+    return ident;
+}
+
+// 32 bit unsigned Integer literal parse function
+std::unique_ptr<Expression> Parser::parseUnsignedIntegerLiteral()
+{
+    auto ident = std::make_unique<UnsignedIntegerLiteral>(currentToken());
+    advance();
+    return ident;
+}
+
+// Signed 64 bit integer parse function
+std::unique_ptr<Expression> Parser::parseLongLiteral()
+{
+    auto ident = std::make_unique<LongLiteral>(currentToken());
+    advance();
+    return ident;
+}
+
+// UnSigned 64 bit integer parse function
+std::unique_ptr<Expression> Parser::parseUnsignedLongLiteral()
+{
+    auto ident = std::make_unique<UnsignedLongLiteral>(currentToken());
+    advance();
+    return ident;
+}
+
+// Signed 128 bit integer parse function
+std::unique_ptr<Expression> Parser::parseExtraLiteral()
+{
+    auto ident = std::make_unique<ExtraLiteral>(currentToken());
+    advance();
+    return ident;
+}
+
+// UnSigned 128 bit integer parse function
+std::unique_ptr<Expression> Parser::parseUnsignedExtraLiteral()
+{
+    auto ident = std::make_unique<UnsignedExtraLiteral>(currentToken());
     advance();
     return ident;
 }
@@ -1607,7 +1660,15 @@ void Parser::registerInfixFns()
 // Registering prefix functions for a particular token type
 void Parser::registerPrefixFns()
 {
-    PrefixParseFunctionsMap[TokenType::INTEGER] = &Parser::parseIntegerLiteral;
+    PrefixParseFunctionsMap[TokenType::SHORT] = &Parser::parseShortLiteral;
+    PrefixParseFunctionsMap[TokenType::USHORT] = &Parser::parseUnsignedShortLiteral;
+    PrefixParseFunctionsMap[TokenType::INT] = &Parser::parseIntegerLiteral;
+    PrefixParseFunctionsMap[TokenType::UINT] = &Parser::parseUnsignedIntegerLiteral;
+    PrefixParseFunctionsMap[TokenType::LONG] = &Parser::parseLongLiteral;
+    PrefixParseFunctionsMap[TokenType::ULONG] = &Parser::parseUnsignedLongLiteral;
+    PrefixParseFunctionsMap[TokenType::EXTRA] = &Parser::parseExtraLiteral;
+    PrefixParseFunctionsMap[TokenType::UEXTRA] = &Parser::parseUnsignedExtraLiteral;
+
     PrefixParseFunctionsMap[TokenType::NULLABLE] = &Parser::parseNullLiteral;
     PrefixParseFunctionsMap[TokenType::TRUE] = &Parser::parseBooleanLiteral;
     PrefixParseFunctionsMap[TokenType::FALSE] = &Parser::parseBooleanLiteral;
@@ -1661,7 +1722,16 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::SIGNAL] = &Parser::parseSignalStatement;
     StatementParseFunctionsMap[TokenType::START] = &Parser::parseStartStatement;
     StatementParseFunctionsMap[TokenType::WAIT] = &Parser::parseWaitStatement;
-    StatementParseFunctionsMap[TokenType::INT] = &Parser::parseLetStatementWithTypeWrapper;
+
+    StatementParseFunctionsMap[TokenType::SHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::USHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::INTEGER_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::UINT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::LONG_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::ULONG_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::EXTRA_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::UEXTRA_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+
     StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::DOUBLE_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::STRING_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;

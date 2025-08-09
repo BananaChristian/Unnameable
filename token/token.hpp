@@ -50,8 +50,6 @@ enum class TokenType
     STRING_KEYWORD,
     FLOAT_KEYWORD,
     DOUBLE_KEYWORD,
-    INTEGER,
-    CHAR_KEYWORD,
     BOOL_KEYWORD,
 
     // Keywords
@@ -92,9 +90,35 @@ enum class TokenType
     DEFAULT,
 
     // Data types
-    INT,
+    SHORT, // Signed int 16 bit
+    SHORT_KEYWORD,
+    USHORT, // Unsigned int 16 bit
+    USHORT_KEYWORD,
+
+    INT, // Signed int 32 bit
+    INTEGER_KEYWORD,
+    UINT, // Unsingned int 32 bit
+    UINT_KEYWORD,
+
+    LONG, // Signed int 64 bit
+    LONG_KEYWORD,
+    ULONG, // Unsigned int 64 bit
+    ULONG_KEYWORD,
+
+    EXTRA, // Signed int 128 bit
+    EXTRA_KEYWORD,
+    UEXTRA, // Unsigned int 128 bit
+    UEXTRA_KEYWORD,
+
     STRING,
-    CHAR,
+
+    CHAR, // 8 bit char
+    CHAR_KEYWORD,
+    CHAR16, // 16 bit char
+    CHAR16_KEYWORD,
+    CHAR32, // 32 bit char
+    CHAR32_KEYWORD,
+
     VOID,
     FLOAT,
     TRUE,

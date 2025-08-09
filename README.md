@@ -26,12 +26,23 @@ This project contains the core implementation of the Unnameable compiler written
 ---
 
 ## Data Types
+- `short` — 16-bit signed integers
+- `ushort` — 16-bit usigned integers
+- `int` — 32-bit signed integers
+- `uint` — 32-bit unsigned integers
+- `long` — 64-bit signed integers
+- `ulong` — 64-bit unsigned integers 
+- `extra` — 128-bit signed integers
+- `uextra` — 64-bit unsigned integers
 
-- `int` — 32-bit integers
 - `bool` — true/false values
 - `string` — UTF-8 encoded sequence of characters.
 May contain Unicode text. (Basic support: no slicing or advanced string ops yet.)
-- `char` — single characters
+
+- `char` — 8 bit chars
+- `char16` — 16 bit chars
+- `char32` — 32 bit chars
+
 - `float` — 32-bit floating-point numbers
 -  `double`— 64-bit floating point number
 ---
@@ -51,7 +62,11 @@ In unnameable
 ## Variables and type inference
 ```unn
 int x;
+uint x=8u;
 x = 2;
+
+short y=8s;
+ushort m=8us;
 
 string name = "Iron";
 

@@ -104,7 +104,29 @@ struct NullLiteral : Expression
     NullLiteral(Token null_tok) : Expression(null_tok), null_token(null_tok) {};
 };
 
-// Integer literal
+// Signed 16 bit Integer literal
+struct ShortLiteral : Expression
+{
+    Token short_token;
+    std::string toString() override
+    {
+        return "Short Literal: " + short_token.TokenLiteral;
+    }
+    ShortLiteral(Token short_t) : Expression(short_t), short_token(short_t) {};
+};
+
+// Unsigned 16 bit Ineteger literal
+struct UnsignedShortLiteral : Expression
+{
+    Token ushort_token;
+    std::string toString() override
+    {
+        return "UnsignedShort Literal: " + ushort_token.TokenLiteral;
+    }
+    UnsignedShortLiteral(Token ushort_t) : Expression(ushort_t), ushort_token(ushort_t) {};
+};
+
+// Signed 32 bit Integer literal
 struct IntegerLiteral : Expression
 {
     Token int_token;
@@ -113,6 +135,61 @@ struct IntegerLiteral : Expression
         return "Integer Literal: " + int_token.TokenLiteral;
     }
     IntegerLiteral(Token int_t) : Expression(int_t), int_token(int_t) {};
+};
+
+// Unsigned 32 bit integer literal
+struct UnsignedIntegerLiteral : Expression
+{
+    Token uint_token;
+    std::string toString() override
+    {
+        return "UnsignedInteger Literal: " + uint_token.TokenLiteral;
+    }
+    UnsignedIntegerLiteral(Token uint_t) : Expression(uint_t), uint_token(uint_t) {};
+};
+
+// Signed 64 bit integer literal
+struct LongLiteral : Expression
+{
+    Token long_token;
+    std::string toString() override
+    {
+        return "Long Literal: " + long_token.TokenLiteral;
+    }
+    LongLiteral(Token long_t) : Expression(long_t), long_token(long_t) {};
+};
+
+// Unsigned 64 bit integer literal
+struct UnsignedLongLiteral : Expression
+{
+    Token ulong_token;
+    std::string toString() override
+    {
+        return "UnsignedLong Literal: " + ulong_token.TokenLiteral;
+    }
+    UnsignedLongLiteral(Token ulong_t) : Expression(ulong_t), ulong_token(ulong_t) {};
+};
+
+// Signed 128 bit integer literal
+struct ExtraLiteral : Expression
+{
+    Token extra_token;
+    std::string toString() override
+    {
+        return "Extra Literal: " + extra_token.TokenLiteral;
+    }
+    ExtraLiteral(Token extra_t) : Expression(extra_t), extra_token(extra_t) {};
+};
+
+// Unsigned 128 bit integer literal
+struct UnsignedExtraLiteral : Expression
+{
+    Token uextra_token;
+    std::string toString() override
+    {
+        return "UnsignedExtra Literal: " + uextra_token.TokenLiteral;
+    }
+    UnsignedExtraLiteral(Token uextra_t) : Expression(uextra_t), uextra_token(uextra_t) {};
 };
 
 // Boolean literal
@@ -148,7 +225,7 @@ struct DoubleLiteral : Expression
     DoubleLiteral(Token double_t) : Expression(double_t), double_token(double_t) {};
 };
 
-// Char literal
+// 8 bit Char literal
 struct CharLiteral : Expression
 {
     Token char_token;
@@ -157,6 +234,28 @@ struct CharLiteral : Expression
         return "Char Literal: " + char_token.TokenLiteral;
     }
     CharLiteral(Token char_t) : Expression(char_t), char_token(char_t) {};
+};
+
+// 16 bit Char literal
+struct Char16Literal : Expression
+{
+    Token char16_token;
+    std::string toString() override
+    {
+        return "Char16 Literal: " + char16_token.TokenLiteral;
+    }
+    Char16Literal(Token char16t) : Expression(char16t), char16_token(char16t) {};
+};
+
+// 32 bit Char literal
+struct Char32Literal : Expression
+{
+    Token char32_token;
+    std::string toString() override
+    {
+        return "Char32 Literal: " + char32_token.TokenLiteral;
+    }
+    Char32Literal(Token char32t) : Expression(char32t), char32_token(char32t) {};
 };
 
 // String literal

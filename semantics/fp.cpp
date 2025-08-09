@@ -187,7 +187,7 @@ void Semantics::walkFunctionExpression(Node *node)
 
     std::string funcName = funcExpr->func_key.TokenLiteral;
 
-    // Check for duplicates in global scope
+    // Checking for duplicates in global scope
     SymbolInfo *symbol = resolveSymbolInfo(funcName);
     if (symbol && symbol->isDefined)
     {
@@ -203,7 +203,7 @@ void Semantics::walkFunctionExpression(Node *node)
         }
     }
 
-    // Create the initial funcInfo with minimal info for recursion
+    // Creating the initial funcInfo with minimal info for recursion
     SymbolInfo funcInfo;
     funcInfo.isNullable = funcExpr->isNullable;
     funcInfo.isDeclaration = true; // Mark as declared early for recursion
@@ -211,7 +211,7 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo.returnType = DataType::UNKNOWN; // Initially unknown return type
     funcInfo.genericParams.clear();
 
-    // Store generic params
+    // Storing generic params
     for (const auto &generic : funcExpr->generic_parameters)
     {
         if (generic.type != TokenType::IDENTIFIER)
@@ -298,7 +298,7 @@ void Semantics::walkFunctionExpression(Node *node)
     symbolTable[0][funcName] = funcInfo;
     metaData[funcExpr] = funcInfo;
 
-    currentFunction = funcInfo;  // update currentFunction with final info
+    currentFunction = funcInfo;  // updating currentFunction with final info
     std::cout << "[SEMANTIC LOG] Updated currentFunction for '" << funcName << "' with return type: "
               << dataTypetoString(funcInfo.returnType) << "\n";
 

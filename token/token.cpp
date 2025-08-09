@@ -66,8 +66,6 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: IDENTIFIER";
     case TokenType::END:
         return "Token Type:END";
-    case TokenType::INTEGER:
-        return "Token Type:INTEGER";
     case TokenType::FLOAT:
         return "Token Type: FLOAT";
     case TokenType::VOID:
@@ -132,18 +130,63 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: CASE";
     case TokenType::DEFAULT:
         return "Token Type: DEFAULT";
+
+    case TokenType::SHORT:
+        return "Token Type: SHORT";
+    case TokenType::SHORT_KEYWORD:
+        return "Token Type: SHORT KEYWORD";
+    case TokenType::USHORT:
+        return "TokenType: USHORT";
+    case TokenType::USHORT_KEYWORD:
+        return "Token Type: USHORT KEYWORD";
+
     case TokenType::INT:
         return "Token Type: INT";
+    case TokenType::INTEGER_KEYWORD:
+        return "Token Type: INTEGER KEYWORD";
+    case TokenType::UINT:
+        return "Token Type: UNINT";
+    case TokenType::UINT_KEYWORD:
+        return "Token Type: UINT KEYWORD";
+
+    case TokenType::LONG:
+        return "TokenType: LONG";
+    case TokenType::LONG_KEYWORD:
+        return "Token Type: LONG KEYWORD";
+    case TokenType::ULONG:
+        return "Token Type: ULONG";
+    case TokenType::ULONG_KEYWORD:
+        return "Token Type: ULONG KEYWORD";
+
+    case TokenType::EXTRA:
+        return "Token Type: EXTRA";
+    case TokenType::EXTRA_KEYWORD:
+        return "TokenType:: EXTRA_KEYWORD";
+    case TokenType::UEXTRA:
+        return "Token Type: UEXTRA";
+    case TokenType::UEXTRA_KEYWORD:
+        return "TokenType:: UEXTRA_KEYWORD";
+
+    case TokenType::CHAR:
+        return "Token Type: CHAR";
+    case TokenType::CHAR_KEYWORD:
+        return "Token Type: CHAR KEYWORD";
+    case TokenType::CHAR16:
+        return "Token Type: CHAR16";
+    case TokenType::CHAR16_KEYWORD:
+        return "Token Type: CHAR16 KEYWORD";
+    case TokenType::CHAR32:
+        return "Token Type: CHAR32";
+    case TokenType::CHAR32_KEYWORD:
+        return "Token Type: CHAR32 KEYWORD";
+
     case TokenType::STRING:
         return "Token Type: STRING";
     case TokenType::STRING_KEYWORD:
         return "Token Type: STRING KEYWORD";
     case TokenType::FLOAT_KEYWORD:
         return "Token Type: FLOAT KEYWORD";
-    case TokenType::CHAR_KEYWORD:
-        return "Token Type: CHAR KEYWORD";
-    case TokenType::CHAR:
-        return "Token Type: CHAR";
+
     case TokenType::QUESTION_MARK:
         return "Token Type: QUESTION MARK";
     case TokenType::BOOL_KEYWORD:

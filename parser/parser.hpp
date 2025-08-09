@@ -198,8 +198,29 @@ private:
     std::unique_ptr<Expression> parseGroupedExpression();
 
     // Parsing data type literals
-    // Integer
+    // Signed 16 bit integer
+    std::unique_ptr<Expression> parseShortLiteral();
+
+    // Unsigned 16 bit integer
+    std::unique_ptr<Expression> parseUnsignedShortLiteral();
+
+    // Signed 32 bit Integer
     std::unique_ptr<Expression> parseIntegerLiteral();
+
+    // Unsigned 32 bit integer
+    std::unique_ptr<Expression> parseUnsignedIntegerLiteral();
+
+    // Signed 64 bit integer
+    std::unique_ptr<Expression> parseLongLiteral();
+
+    // UnSigned 64 bit integer
+    std::unique_ptr<Expression> parseUnsignedLongLiteral();
+
+    // Signed 128 bit integer
+    std::unique_ptr<Expression> parseExtraLiteral();
+
+    // Unsigned 128 bit integer
+    std::unique_ptr<Expression> parseUnsignedExtraLiteral();
 
     // Boolean
     std::unique_ptr<Expression> parseBooleanLiteral();

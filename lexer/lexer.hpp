@@ -34,7 +34,7 @@ class Lexer
         {"elif", TokenType::ELSE_IF},
         {"while", TokenType::WHILE},
         {"for", TokenType::FOR},
-        {"each",TokenType::EACH},
+        {"each", TokenType::EACH},
         {"break", TokenType::BREAK},
         {"continue", TokenType::CONTINUE},
 
@@ -44,12 +44,27 @@ class Lexer
 
         {"null", TokenType::NULLABLE},
 
-        {"int", TokenType::INT},
+        {"short", TokenType::SHORT_KEYWORD},
+        {"ushort", TokenType::USHORT_KEYWORD},
+
+        {"int", TokenType::INTEGER_KEYWORD},
+        {"uint", TokenType::UINT_KEYWORD},
+
+        {"long", TokenType::LONG_KEYWORD},
+        {"ulong", TokenType::ULONG_KEYWORD},
+
+        {"extra", TokenType::EXTRA_KEYWORD},
+        {"uextra", TokenType::UEXTRA_KEYWORD},
+
+        {"char", TokenType::CHAR_KEYWORD},
+        {"char16", TokenType::CHAR16_KEYWORD},
+        {"char32", TokenType::CHAR32_KEYWORD},
+
         {"string", TokenType::STRING_KEYWORD},
         {"float", TokenType::FLOAT_KEYWORD},
         {"double", TokenType::DOUBLE_KEYWORD},
         {"void", TokenType::VOID},
-        {"char", TokenType::CHAR_KEYWORD},
+
         {"true", TokenType::TRUE},
         {"false", TokenType::FALSE},
         {"bool", TokenType::BOOL_KEYWORD},

@@ -152,6 +152,43 @@ Token Lexer::readNumbers()
     {
         number += convertUnicodeDigit(currentChar());
         advance();
+        if (currentChar() == U'u')
+        {
+            advance(); // Consume the u
+            if (currentChar() == U'l')
+            {
+                advance(); // Consume the l
+                return Token{number, TokenType::ULONG, tokenLine, tokenColumn};
+            }
+            if (currentChar() == U's')
+            {
+                advance();
+                return Token{number, TokenType::USHORT, tokenLine, tokenColumn};
+            }
+            if (currentChar() == U'e')
+            {
+                advance();
+                return Token{number, TokenType::UEXTRA, tokenLine, tokenColumn};
+            }
+            return Token{number, TokenType::UINT, tokenLine, tokenColumn};
+        }
+        if (currentChar() == U's')
+        {
+            advance();
+            return Token{number, TokenType::SHORT, tokenLine, tokenColumn};
+        }
+        if (currentChar() == U'l')
+        {
+            advance();
+            return Token{number, TokenType::LONG, tokenLine, tokenColumn};
+        }
+        if (currentChar() == U'e')
+        {
+            advance();
+            return Token{number, TokenType::EXTRA, tokenLine, tokenColumn};
+        }
+
+        // Dealing with decimals
         if (currentChar() == U'.')
         {
             number += currentChar();
@@ -169,7 +206,7 @@ Token Lexer::readNumbers()
             return Token{number, TokenType::FLOAT, tokenLine, tokenColumn};
         }
     }
-    return Token{number, TokenType::INTEGER, tokenLine, tokenColumn};
+    return Token{number, TokenType::INT, tokenLine, tokenColumn};
 }
 
 bool Lexer::isDigit(char32_t ch)
@@ -390,12 +427,28 @@ void Lexer::appendUTF8(std::string &str, char32_t ch)
 Token Lexer::readChar()
 {
     CAPTURE_POS;
-    advance(); // Skip opening single quote
 
-    std::string charValue; // Stores UTF-8 encoded char
+    // Step 1: Check for prefix
+    char32_t prefix = 0;
+    if (currentChar() == U'u' || currentChar() == U'U' || currentChar() == U'L')
+    {
+        prefix = currentChar();
+        advance();
+    }
 
+    // Step 2: Expect opening single quote
+    if (currentChar() != U'\'')
+    {
+        logError("Expected opening single quote for char literal", tokenLine, tokenColumn);
+        return Token{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
+    }
+    advance(); // Skip opening quote
+
+    std::string charValue; // UTF-8 encoded char
+
+    // Step 3: Read char or escape sequence
     if (currentChar() == U'\\')
-    {              // Escape sequence
+    {
         advance(); // Skip backslash
         char32_t escapedChar = currentChar();
         char32_t unescapedChar;
@@ -428,13 +481,11 @@ Token Lexer::readChar()
             return Token{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
         }
 
-        // Convert to UTF-8
         appendUTF8(charValue, unescapedChar);
         advance();
     }
     else
     {
-        // Regular Unicode character
         if (currentChar() == U'\'' || currentChar() == U'\n' || currentChar() == U'\0')
         {
             logError("Empty or invalid character", tokenLine, tokenColumn);
@@ -445,15 +496,30 @@ Token Lexer::readChar()
         advance();
     }
 
-    // Expect closing quote
+    // Step 4: Expect closing quote
     if (currentChar() != U'\'')
     {
         logError("Missing closing quote", tokenLine, tokenColumn);
         return Token{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
     }
-
     advance(); // Skip closing quote
-    return Token{charValue, TokenType::CHAR, tokenLine, tokenColumn};
+
+    // Step 5: Determine token type based on prefix
+    TokenType type = TokenType::CHAR; // default 8-bit char
+    switch (prefix)
+    {
+    case U'u':
+        type = TokenType::CHAR16;
+        break;
+    case U'U':
+        type = TokenType::CHAR32;
+        break;
+    default:
+        type = TokenType::CHAR;
+        break;
+    }
+
+    return Token{charValue, type, tokenLine, tokenColumn};
 }
 
 Token Lexer::tokenize()
@@ -467,6 +533,10 @@ Token Lexer::tokenize()
     }
     else if (isIdentifierStart(character))
     {
+        if ((character == U'u' || character == U'U') && peekChar() == U'\'')
+        {
+            return readChar();
+        }
         return readIdentifiers();
     }
     switch (character)

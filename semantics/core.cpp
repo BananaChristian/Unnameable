@@ -420,7 +420,7 @@ DataType Semantics::tokenTypeToDataType(TokenType type, bool isNullable)
 {
     switch (type)
     {
-    case TokenType::INT:
+    case TokenType::INTEGER_KEYWORD:
         return isNullable ? DataType::NULLABLE_INT : DataType::INTEGER;
     case TokenType::FLOAT_KEYWORD:
         return isNullable ? DataType::NULLABLE_FLT : DataType::FLOAT;

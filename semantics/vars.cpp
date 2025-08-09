@@ -151,7 +151,7 @@ void Semantics::walkLetStatement(Node *node)
             {
                 switch (letStmt->data_type_token.type)
                 {
-                case TokenType::INT:
+                case TokenType::INTEGER_KEYWORD:
                     declaredType = DataType::NULLABLE_INT;
                     break;
                 case TokenType::FLOAT_KEYWORD:
