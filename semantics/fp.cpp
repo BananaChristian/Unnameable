@@ -80,7 +80,7 @@ void Semantics::walkReturnStatement(Node *node)
 
     if (!retStmt->return_value)
     {
-        if (!currentFunction->isNullable)
+        if (currentFunction->returnType != DataType::VOID)
         {
             logSemanticErrors("Non-void function requires a return value", retStmt->return_stmt.line, retStmt->return_stmt.column);
         }
@@ -187,26 +187,26 @@ void Semantics::walkFunctionExpression(Node *node)
 
     std::string funcName = funcExpr->func_key.TokenLiteral;
 
-    // Checking for duplicates in current scope
+    // Check for duplicates in global scope
     SymbolInfo *symbol = resolveSymbolInfo(funcName);
     if (symbol && symbol->isDefined)
     {
-        logSemanticErrors("Function name '" + funcName + "' already used", funcExpr->func_key.line, funcExpr->func_key.column);
+        logSemanticErrors("Function name '" + funcName + "' already used in global scope", funcExpr->func_key.line, funcExpr->func_key.column);
         return;
     }
     if (symbol && symbol->isDeclaration)
     {
         if (!areSignaturesCompatible(*symbol, funcExpr))
         {
-            logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration", funcExpr->func_key.line, funcExpr->func_key.column);
+            logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope", funcExpr->func_key.line, funcExpr->func_key.column);
             return;
         }
     }
 
     SymbolInfo funcInfo;
     funcInfo.isNullable = funcExpr->isNullable;
-    funcInfo.isDeclaration = false;
-    funcInfo.isDefined = true;
+    funcInfo.isDeclaration = true; // Mark as declared early for recursion
+    funcInfo.isDefined = false;
     std::vector<std::pair<DataType, std::string>> paramTypes;
     funcInfo.genericParams.clear();
 
@@ -224,7 +224,7 @@ void Semantics::walkFunctionExpression(Node *node)
     std::cout << "[SEMANTIC LOG] Set currentFunction for '" << funcName << "' with return type: "
               << dataTypetoString(funcInfo.returnType) << "\n";
 
-    // Pushing scope for function block
+    // Push scope for function parameters and block
     symbolTable.push_back({});
 
     for (const auto &param : funcExpr->call)
@@ -244,10 +244,17 @@ void Semantics::walkFunctionExpression(Node *node)
             symbolTable.pop_back();
             return;
         }
+        symbolTable.back()[letStmt->ident_token.TokenLiteral] = paramInfo->second;
         paramTypes.emplace_back(paramInfo->second.symbolDataType, paramInfo->second.genericName);
         std::cout << "[SEMANTIC LOG] Parameter '" << letStmt->ident_token.TokenLiteral
                   << "' stored with type: " << dataTypetoString(paramInfo->second.symbolDataType) << "\n";
     }
+
+    // Store function declaration in global scope after parameters
+    funcInfo.paramTypes = paramTypes;
+    symbolTable[0][funcName] = funcInfo;
+    std::cout << "[SEMANTIC LOG] Stored function declaration for '" << funcName << "' in global scope with return type: "
+              << dataTypetoString(funcInfo.returnType) << "\n";
 
     auto retType = dynamic_cast<ReturnTypeExpression *>(funcExpr->return_type.get());
     if (!retType)
@@ -286,18 +293,24 @@ void Semantics::walkFunctionExpression(Node *node)
     std::cout << "[SEMANTIC LOG] Updated currentFunction for '" << funcName << "' with return type: "
               << dataTypetoString(funcInfo.returnType) << "\n";
 
-    // Saving outer function context
+    // Save outer function context
     std::optional<SymbolInfo> outerFunction = currentFunction;
 
     auto block = dynamic_cast<BlockExpression *>(funcExpr->block.get());
     if (!block)
     {
-        logSemanticErrors("Invalid function body", funcExpr->block.get()->expression.line, funcExpr->block.get()->expression.column);
+        logSemanticErrors("Invalid function body", funcExpr->block.get()->expression.line, funcExpr->block->expression.column);
         symbolTable.pop_back();
         return;
     }
     std::cout << "[SEMANTIC LOG] Processing function block for '" << funcName << "'\n";
-    walker(block);
+    // Process block statements, ensuring nested functions restore currentFunction
+    for (const auto &stmt : block->statements)
+    {
+        std::optional<SymbolInfo> tempFunction = currentFunction; // Save before each statement
+        walker(stmt.get());
+        currentFunction = tempFunction; // Restore after each statement
+    }
 
     if (returnType != DataType::VOID && !hasReturnPath(block))
     {
@@ -306,15 +319,21 @@ void Semantics::walkFunctionExpression(Node *node)
         return;
     }
 
-    // Restoring outer function context
+    // Update function as defined after successful block processing
+    funcInfo.isDeclaration = true;
+    funcInfo.isDefined = true;
+    symbolTable[0][funcName] = funcInfo;
+    metaData[funcExpr] = funcInfo;
+    std::cout << "[SEMANTIC LOG] Updated function definition for '" << funcName << "' in global scope with return type: "
+              << dataTypetoString(funcInfo.returnType) << "\n";
+
+    // Pop function scope
+    symbolTable.pop_back();
+
+    // Restore outer function context
     currentFunction = outerFunction;
     std::cout << "[SEMANTIC LOG] Restored currentFunction for '" << funcName << "' with return type: "
               << (currentFunction ? dataTypetoString(currentFunction->returnType) : "none") << "\n";
-
-    // Storing function in parent scope
-    size_t parentScopeIndex = symbolTable.size() > 1 ? symbolTable.size() - 2 : 0;
-    symbolTable[parentScopeIndex][funcName] = funcInfo;
-    metaData[funcExpr] = funcInfo;
 }
 
 void Semantics::walkFunctionDeclarationExpression(Node *node)
@@ -427,4 +446,120 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
               << dataTypetoString(funcInfo.returnType) << "\n";
 
     currentFunction = std::nullopt;
+}
+
+void Semantics::walkFunctionCallExpression(Node *node)
+{
+    auto funcCall = dynamic_cast<CallExpression *>(node);
+    if (!funcCall)
+    {
+        logSemanticErrors("Invalid function call expression", node->token.line, node->token.column);
+        return;
+    }
+
+    std::cout << "[SEMANTIC LOG] Analysing function call\n";
+
+    std::string callName = funcCall->function_identifier->expression.TokenLiteral;
+    SymbolInfo *callSymbolInfo = resolveSymbolInfo(callName);
+
+    // Check if function exists
+    if (!callSymbolInfo)
+    {
+        logSemanticErrors("Function name '" + callName + "' has not been defined or declared anywhere ",
+                          funcCall->expression.line, funcCall->expression.column);
+        return;
+    }
+
+    // Checking if the function is declared
+    if (!callSymbolInfo->isDeclaration)
+    {
+        logSemanticErrors("Function '" + callName + "' was not declared anywhere",
+                          funcCall->expression.line, funcCall->expression.column);
+        return;
+    }
+
+    // Check if function is defined
+    /*
+    if (!callSymbolInfo->isDefined)
+    {
+        logSemanticErrors("Function '" + callName + "' was not defined anywhere",
+                          funcCall->expression.line, funcCall->expression.column);
+    }
+    */
+
+    // Check if call signature matches
+    if (!isCallCompatible(*callSymbolInfo, funcCall))
+    {
+        logSemanticErrors("Function call to '" + callName + "' has incompatible arguments",
+                          funcCall->expression.line, funcCall->expression.column);
+        return;
+    }
+
+    // Store metaData for the call
+    SymbolInfo callSymbol;
+    callSymbol.symbolDataType = callSymbolInfo->returnType;
+    callSymbol.isNullable = callSymbolInfo->isNullable;
+
+    // Handle generic return type
+    if (callSymbolInfo->returnType == DataType::GENERIC)
+    {
+        std::unordered_map<std::string, DataType> genericBindings;
+        for (size_t i = 0; i < funcCall->parameters.size(); ++i)
+        {
+            auto &param = funcCall->parameters[i];
+            const auto &expectedType = callSymbolInfo->paramTypes[i];
+            DataType argType = DataType::UNKNOWN;
+
+            if (auto nullLit = dynamic_cast<NullLiteral *>(param.get()))
+            {
+                if (expectedType.first == DataType::NULLABLE_INT ||
+                    expectedType.first == DataType::NULLABLE_STR ||
+                    expectedType.first == DataType::NULLABLE_BOOLEAN ||
+                    expectedType.first == DataType::NULLABLE_FLT ||
+                    expectedType.first == DataType::NULLABLE_DOUBLE ||
+                    expectedType.first == DataType::NULLABLE_CHAR)
+                {
+                    argType = expectedType.first;
+                }
+            }
+            else
+            {
+                argType = inferNodeDataType(param.get());
+            }
+
+            if (argType == DataType::UNKNOWN)
+            {
+                logSemanticErrors("Could not infer type for argument at position " + std::to_string(i + 1),
+                                  param->expression.line, param->expression.column);
+                return;
+            }
+
+            if (expectedType.first == DataType::GENERIC)
+            {
+                genericBindings[expectedType.second] = argType;
+            }
+        }
+
+        auto it = genericBindings.find(callSymbolInfo->returnGenericName);
+        if (it != genericBindings.end())
+        {
+            callSymbol.symbolDataType = it->second;
+            callSymbol.isNullable = (callSymbolInfo->returnType == DataType::NULLABLE_INT ||
+                                     callSymbolInfo->returnType == DataType::NULLABLE_STR ||
+                                     callSymbolInfo->returnType == DataType::NULLABLE_BOOLEAN ||
+                                     callSymbolInfo->returnType == DataType::NULLABLE_FLT ||
+                                     callSymbolInfo->returnType == DataType::NULLABLE_DOUBLE ||
+                                     callSymbolInfo->returnType == DataType::NULLABLE_CHAR);
+        }
+        else
+        {
+            logSemanticErrors("Could not infer generic return type for call to '" + callName + "'",
+                              funcCall->expression.line, funcCall->expression.column);
+            return;
+        }
+    }
+
+    metaData[funcCall] = callSymbol;
+    std::cout << "[SEMANTIC LOG] Stored metaData for call to '" << callName
+              << "' with return type: " << dataTypetoString(callSymbol.symbolDataType) << "\n";
 }

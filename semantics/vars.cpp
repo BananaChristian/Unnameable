@@ -228,18 +228,34 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
 {
     auto letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
+    {
+        logSemanticErrors("Invalid parameter let statement", node->token.line, node->token.column);
         return;
+    }
     std::cout << "[SEMANTIC LOG]: Analyzing function parameter let statement " << letStmt->toString() << "\n";
 
-    // Getting mutability and nullability info about the let statement
+    // Debug mutability
+    std::string mutabilityStr = (letStmt->mutability == Mutability::MUTABLE) ? "MUTABLE" : (letStmt->mutability == Mutability::CONSTANT) ? "CONSTANT"
+                                                                                                                                         : "IMMUTABLE";
+    std::cout << "[SEMANTIC LOG]: Parameter '" << letStmt->ident_token.TokenLiteral
+              << "' mutability: " << mutabilityStr << "\n";
+
     bool isNullable = letStmt->isNullable;
-    bool isMutable = (letStmt->mutability == Mutability::MUTABLE);
-    bool isConstant = (letStmt->mutability == Mutability::CONSTANT);
+    bool isMutable = false;
+    bool isConstant = false;
+    if (letStmt->mutability == Mutability::MUTABLE)
+    {
+        isMutable = true;
+    }
+
+    if (letStmt->mutability == Mutability::CONSTANT)
+    {
+        isConstant = true;
+    }
 
     DataType declaredType = DataType::UNKNOWN;
     std::string genericName;
 
-    // Handling generic types
     if (letStmt->data_type_token.type == TokenType::IDENTIFIER)
     {
         if (!currentFunction)
@@ -247,13 +263,11 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
             logSemanticErrors("Generic type '" + letStmt->data_type_token.TokenLiteral + "' used outside function scope", letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
         }
-
         if (letStmt->value)
         {
             logSemanticErrors("Cannot explicitly assign a value to a generic consider using 'auto' ", letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
         }
-
         genericName = letStmt->data_type_token.TokenLiteral;
         if (std::find(currentFunction->genericParams.begin(), currentFunction->genericParams.end(),
                       genericName) == currentFunction->genericParams.end())
@@ -265,34 +279,31 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
     }
     else
     {
-        walkLetStatement(node);
-        auto paramInfo = metaData.find(node);
-        if (paramInfo == metaData.end())
+        declaredType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
+        if (declaredType == DataType::UNKNOWN)
         {
-            logSemanticErrors("Parameter '" + letStmt->ident_token.TokenLiteral + "' not analyzed", node->token.line, node->token.column);
+            logSemanticErrors("Invalid parameter type: " + letStmt->data_type_token.TokenLiteral,
+                              letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
         }
-        declaredType = paramInfo->second.symbolDataType;
-        genericName = paramInfo->second.genericName;
-        isNullable = paramInfo->second.isNullable;
-        isMutable = paramInfo->second.isMutable;
-        isConstant = paramInfo->second.isConstant;
     }
 
     std::cout << "FUNCTION PARAMETER DATA TYPE: " << dataTypetoString(declaredType) << "\n";
 
-    // Store symbol info
     SymbolInfo symbol = {
         .symbolDataType = declaredType,
         .genericName = genericName,
         .isNullable = isNullable,
         .isMutable = isMutable,
         .isConstant = isConstant,
-        .isInitialized = false // Parameters are not initialized
+        .isInitialized = true // Parameters are not initialized
     };
 
     metaData[letStmt] = symbol;
     symbolTable.back()[letStmt->ident_token.TokenLiteral] = symbol;
+    std::cout << "[SEMANTIC LOG] Parameter '" << letStmt->ident_token.TokenLiteral
+              << "' stored with type: " << dataTypetoString(declaredType)
+              << ", mutable: " << (isMutable ? "true" : "false") << "\n";
 }
 
 void Semantics::walkAssignStatement(Node *node)
@@ -326,7 +337,7 @@ void Semantics::walkAssignStatement(Node *node)
         DataType valueType = inferNodeDataType(assignStmt->value.get());
         if (!isTypeCompatible(symbol->symbolDataType, valueType))
         {
-            logSemanticErrors("Type mismatch expected '" + dataTypetoString(symbol->symbolDataType) + "' but got '" + dataTypetoString(valueType) + "'", assignStmt->ident_token.line,assignStmt->ident_token.column);
+            logSemanticErrors("Type mismatch expected '" + dataTypetoString(symbol->symbolDataType) + "' but got '" + dataTypetoString(valueType) + "'", assignStmt->ident_token.line, assignStmt->ident_token.column);
             return;
         }
     }

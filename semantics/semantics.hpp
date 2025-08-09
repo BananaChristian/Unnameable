@@ -40,9 +40,9 @@ struct SymbolInfo
     DataType returnType;
     std::string returnGenericName;
     std::vector<std::string> genericParams;
-    //Function flags
+    // Function flags
     bool isDeclaration = false;
-    bool isDefined=false;
+    bool isDefined = false;
 };
 
 // Information about the current scope
@@ -122,6 +122,7 @@ private:
     void walkFunctionExpression(Node *node);
     void walkFunctionDeclarationStatement(Node *node);
     void walkFunctionDeclarationExpression(Node *node);
+    void walkFunctionCallExpression(Node *node);
     void walkReturnStatement(Node *node);
 
     // Walking blocks
@@ -139,8 +140,9 @@ private:
     DataType tokenTypeToDataType(TokenType type, bool isNullable);
     bool isTypeCompatible(DataType expected, DataType actual);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
+    bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool hasReturnPath(Node *node);
-    void logSemanticErrors(const std::string &message, int tokenLine,int tokenColumn);
+    void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
 };
 
 #endif

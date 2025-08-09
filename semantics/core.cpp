@@ -61,6 +61,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(FunctionExpression)] = &Semantics::walkFunctionExpression;
     walkerFunctionsMap[typeid(FunctionDeclaration)] = &Semantics::walkFunctionDeclarationStatement;
     walkerFunctionsMap[typeid(FunctionDeclarationExpression)] = &Semantics::walkFunctionDeclarationExpression;
+    walkerFunctionsMap[typeid(CallExpression)] = &Semantics::walkFunctionCallExpression;
     walkerFunctionsMap[typeid(ReturnStatement)] = &Semantics::walkReturnStatement;
 
     // Walker registration for return and error statements
@@ -209,7 +210,7 @@ DataType Semantics::inferNodeDataType(Node *node)
         }
         else
         {
-            logSemanticErrors("[Undefined variable '" + name + "'", ident->expression.line, ident->expression.column);
+            logSemanticErrors("Undefined variable '" + name + "'", ident->expression.line, ident->expression.column);
             return DataType::UNKNOWN;
         }
     }
@@ -217,6 +218,20 @@ DataType Semantics::inferNodeDataType(Node *node)
     if (auto retTypeExpr = dynamic_cast<ReturnTypeExpression *>(node))
     {
         return tokenTypeToDataType(retTypeExpr->expression.type, false);
+    }
+
+    if (auto callExpr = dynamic_cast<CallExpression *>(node))
+    {
+        auto symbol = resolveSymbolInfo(callExpr->function_identifier->expression.TokenLiteral);
+        if (symbol)
+        {
+            return symbol->symbolDataType;
+        }
+        else
+        {
+            logSemanticErrors("Undefined function name '" + callExpr->function_identifier->expression.TokenLiteral + "'", callExpr->function_identifier->expression.line, callExpr->function_identifier->expression.column);
+            return DataType::UNKNOWN;
+        }
     }
 
     return DataType::UNKNOWN;
@@ -271,6 +286,12 @@ DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, Da
         {
             return DataType::UNKNOWN;
         }
+    }
+
+    if (operatorType == TokenType::ASSIGN)
+    {
+        std::cerr << "Cannot use '=' in binary operations it is only for assignments\n";
+        return DataType::UNKNOWN;
     }
 
     // Dealing with comparison operators
@@ -644,6 +665,106 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
     return returnType == declInfo.returnType &&
            returnGenericName == declInfo.returnGenericName &&
            funcExpr->isNullable == declInfo.isNullable;
+}
+
+bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr)
+{
+    // Check parameter count
+    if (funcInfo.paramTypes.size() != callExpr->parameters.size())
+    {
+        logSemanticErrors("Call has " + std::to_string(callExpr->parameters.size()) +
+                              " arguments, but function expects " + std::to_string(funcInfo.paramTypes.size()),
+                          callExpr->expression.line, callExpr->expression.column);
+        return false;
+    }
+
+    // Infer types for arguments and compare with expected types
+    std::unordered_map<std::string, DataType> genericBindings; // Track generic type bindings
+
+    for (size_t i = 0; i < callExpr->parameters.size(); ++i)
+    {
+        auto &param = callExpr->parameters[i];
+        const auto &expectedType = funcInfo.paramTypes[i];
+        DataType argType = DataType::UNKNOWN;
+
+        // Handle null literal based on expected type
+        if (auto nullLit = dynamic_cast<NullLiteral *>(param.get()))
+        {
+            if (expectedType.first == DataType::NULLABLE_INT ||
+                expectedType.first == DataType::NULLABLE_STR ||
+                expectedType.first == DataType::NULLABLE_BOOLEAN ||
+                expectedType.first == DataType::NULLABLE_FLT ||
+                expectedType.first == DataType::NULLABLE_DOUBLE ||
+                expectedType.first == DataType::NULLABLE_CHAR)
+            {
+                argType = expectedType.first; // Assign nullable type (e.g., NULLABLE_INT for int?)
+            }
+            else
+            {
+                logSemanticErrors("Cannot pass null to non-nullable parameter at position " + std::to_string(i + 1) +
+                                      ": expected " + dataTypetoString(expectedType.first),
+                                  param->expression.line, param->expression.column);
+                return false;
+            }
+        }
+        else
+        {
+            argType = inferNodeDataType(param.get());
+            if (argType == DataType::UNKNOWN)
+            {
+                logSemanticErrors("Could not infer type for argument at position " + std::to_string(i + 1),
+                                  param->expression.line, param->expression.column);
+                return false;
+            }
+        }
+
+        // Handle generic parameters
+        if (expectedType.first == DataType::GENERIC)
+        {
+            if (genericBindings.find(expectedType.second) == genericBindings.end())
+            {
+                genericBindings[expectedType.second] = argType;
+            }
+            else if (!isTypeCompatible(genericBindings[expectedType.second], argType))
+            {
+                logSemanticErrors("Inconsistent generic type '" + expectedType.second +
+                                      "' in function call: expected " + dataTypetoString(genericBindings[expectedType.second]) +
+                                      ", got " + dataTypetoString(argType),
+                                  param->expression.line, param->expression.column);
+                return false;
+            }
+        }
+        else if (!isTypeCompatible(expectedType.first, argType))
+        {
+            logSemanticErrors("Argument type mismatch at position " + std::to_string(i + 1) +
+                                  ": expected " + dataTypetoString(expectedType.first) +
+                                  ", got " + dataTypetoString(argType),
+                              param->expression.line, param->expression.column);
+            return false;
+        }
+    }
+
+    // Validate generic return type
+    if (funcInfo.returnType == DataType::GENERIC)
+    {
+        auto it = genericBindings.find(funcInfo.returnGenericName);
+        if (it == genericBindings.end())
+        {
+            logSemanticErrors("Could not infer generic return type '" + funcInfo.returnGenericName + "'",
+                              callExpr->expression.line, callExpr->expression.column);
+            return false;
+        }
+        // Ensure inferred return type is compatible
+        if (!isTypeCompatible(funcInfo.returnType, it->second))
+        {
+            logSemanticErrors("Inferred generic return type '" + dataTypetoString(it->second) +
+                                  "' does not match expected type",
+                              callExpr->expression.line, callExpr->expression.column);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)

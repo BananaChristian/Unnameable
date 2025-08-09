@@ -84,7 +84,7 @@ void Semantics::walkPostfixExpression(Node *node)
                 logSemanticErrors("Undefined variable in postfix expression '" + ident->expression.TokenLiteral + "'", postfixExpr->expression.line, postfixExpr->expression.column);
                 return;
             }
-            if (!symbol->isMutable)
+            if (symbol->isMutable==false)
             {
                 logSemanticErrors("Cannot apply '" + postfixExpr->operator_token.TokenLiteral + "' to immutable variable '" + ident->expression.TokenLiteral + "'", postfixExpr->expression.line, postfixExpr->expression.column);
                 return;

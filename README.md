@@ -69,18 +69,18 @@ By default all the variables, function return types are not nullable but with th
 This means the compiler will force you to explicitly deal with these but It wont allow null to be passed into variables or returned from a function
 ```
 string? name= null;
-work greet(string? name): string?{
+func greet(string? name): string?{
     return "Hello" + name;
 }
 
 #Function declarations
-work greet(string? name): string?;
+func greet(string? name): string?;
 
 ```
 
 ##  Functions
 ```unn
-work greet(string name): string {
+func greet(string name): string {
     return "Hello" + name;
 }
 
@@ -88,18 +88,18 @@ work greet(string name): string {
 
 ## Generic and multigenerics
 ```
-work <T>greet(T name): T{
+func <T>greet(T name): T{
     return T;
 };
 
-work <T,M> info(T name, M age): T{
+func <T,M> info(T name, M age): T{
     return T;
 }
 ```
 
 ## Error handling
 ```unn
-work greet(string name): string {
+func greet(string name): string {
     return "Hello" + name, error("Got an error");
 }
 
@@ -185,9 +185,9 @@ Unnameable supports components, clean structures for organizing data and behavio
 
 ```unn
 behavior combat{
-      work kick() :void;
-      work punch(): void;
-      work super(): void;
+      func kick() :void;
+      func punch(): void;
+      func super(): void;
 }
 
 data attributes{
@@ -208,7 +208,7 @@ component Player {
 
     use data attributes;
 
-    work greet(): string {
+    func greet(): string {
         return "Hello, I have " + self.health + " HP";
     }
 }

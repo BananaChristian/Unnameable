@@ -134,16 +134,23 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     Mutability mutability = Mutability::IMMUTABLE;
     bool isNullable = false;
     Token mutability_token = currentToken();
+    std::cout << "CURRENT TOKEN WHEN WE ENTER LET STATEMENT PARSER: " << mutability_token.TokenLiteral << "\n";
+
     if (mutability_token.type == TokenType::CONST)
     {
         mutability = Mutability::CONSTANT;
+        std::cout << "CURRENT TOKEN: " << mutability_token.TokenLiteral << "\n";
         advance();
+        mutability_token = currentToken(); // Update token after advancing
+        std::cout << "NEXT TOKEN: " << mutability_token.TokenLiteral << "\n";
     }
-
-    if (mutability_token.type == TokenType::MUT)
+    else if (mutability_token.type == TokenType::MUT)
     {
         mutability = Mutability::MUTABLE;
+        std::cout << "CURRENT TOKEN: " << mutability_token.TokenLiteral << "\n";
         advance();
+        mutability_token = currentToken(); // Update token after advancing
+        std::cout << "NEXT TOKEN: " << mutability_token.TokenLiteral << "\n";
     }
 
     Token dataType_token = currentToken();
@@ -222,7 +229,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithGenericType(bool isParam
         mutability = Mutability::MUTABLE;
         advance();
     }
-    
+
     if (currentToken().type == TokenType::CONST)
     {
         logError("Do not use constant on a generic type ");
@@ -292,14 +299,12 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
 
 std::unique_ptr<Statement> Parser::parseParamLetStatementWithGenerics(const std::vector<Token> &genericParams)
 {
-    if (currentToken().type == TokenType::MUT || currentToken().type == TokenType::CONST)
-    {
-        advance();
-    }
 
     Token current = currentToken();
 
-    if (current.type == TokenType::INT ||
+    if (current.type == TokenType::MUT ||
+        current.type == TokenType::CONST ||
+        current.type == TokenType::INT ||
         current.type == TokenType::FLOAT_KEYWORD ||
         current.type == TokenType::STRING_KEYWORD ||
         current.type == TokenType::CHAR_KEYWORD ||
