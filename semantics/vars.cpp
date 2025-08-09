@@ -185,6 +185,13 @@ void Semantics::walkLetStatement(Node *node)
         declaredType = inferNodeDataType(letStmt);
     }
 
+    //If we dont have a value(A variable declaration)
+    if (!letStmtValue)
+    {
+        DataType expectedType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
+        declaredType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
+    }
+
     //  Check for type mismatch if type is explicitly declared (not inferred via auto)
     if (letStmt->data_type_token.type != TokenType::AUTO)
     {
