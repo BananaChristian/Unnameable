@@ -33,7 +33,7 @@ This project contains the core implementation of the Unnameable compiler written
 - `long` — 64-bit signed integers
 - `ulong` — 64-bit unsigned integers 
 - `extra` — 128-bit signed integers
-- `uextra` — 64-bit unsigned integers
+- `uextra` — 128-bit unsigned integers
 
 - `bool` — true/false values
 - `string` — UTF-8 encoded sequence of characters.
