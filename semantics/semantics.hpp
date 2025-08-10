@@ -9,18 +9,51 @@
 // Type system tracker
 enum class DataType
 {
-    INTEGER,
+    SHORT_INT, // 16 BIT signed integer
+    NULLABLE_SHORT_INT,
+
+    USHORT_INT, // 16 BUT unsigned integer
+    NULLABLE_USHORT_INT,
+
+    INTEGER, // 32 BIT signed integer
     NULLABLE_INT,
+
+    UINTEGER, // 32 BIT unsigned integer
+    NULLABLE_UINT,
+
+    LONG_INT, // 64 BIT signed integer
+    NULLABLE_LONG_INT,
+
+    ULONG_INT, // 64 BIT unsigned integer
+    NULLABLE_ULONG_INT,
+
+    EXTRA_INT, // 128 BIT signed integer
+    NULLABLE_EXTRA_INT,
+
+    UEXTRA_INT, // 128 BIT unsigned integer
+    NULLABLE_UEXTRA_INT,
+
     BOOLEAN,
     NULLABLE_BOOLEAN,
+
     STRING,
     NULLABLE_STR,
+
     FLOAT,
     NULLABLE_FLT,
+
     DOUBLE,
     NULLABLE_DOUBLE,
-    CHAR,
+
+    CHAR, // 8 BIT Char
     NULLABLE_CHAR,
+
+    CHAR16, // 16 BIT Char
+    NULLABLE_CHAR16,
+
+    CHAR32, // 32 BIT Char
+    NULLABLE_CHAR32,
+
     ERROR,
     VOID,
     GENERIC,
@@ -75,10 +108,22 @@ public:
 
 private:
     // Walking the data type literals
+    void walkShortLiteral(Node *node);
+    void walkUnsignedShortLiteral(Node *node);
     void walkIntegerLiteral(Node *node);
+    void walkUnsignedIntegerLiteral(Node *node);
+    void walkLongLiteral(Node *node);
+    void walkUnsignedLongLiteral(Node *node);
+    void walkExtraLiteral(Node *node);
+    void walkUnsignedExtraLiteral(Node *node);
+
     void walkStringLiteral(Node *node);
     void walkBooleanLiteral(Node *node);
+
     void walkCharLiteral(Node *node);
+    void walkChar16Literal(Node *node);
+    void walkChar32Literal(Node *node);
+
     void walkDoubleLiteral(Node *node);
     void walkFloatLiteral(Node *node);
 
@@ -142,6 +187,14 @@ private:
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool hasReturnPath(Node *node);
+    bool isInteger(DataType t);
+    bool isNullableInteger(DataType t);
+    bool isFloat(DataType t);
+    bool isNullableFloat(DataType t);
+    bool isBoolean(DataType t);
+    bool isString(DataType t);
+    bool isChar(DataType t);
+    bool isNullable(DataType t);
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
 };
 

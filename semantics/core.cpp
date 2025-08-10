@@ -34,11 +34,22 @@ void Semantics::walker(Node *node)
 void Semantics::registerWalkerFunctions()
 {
     // Walker registration for the native data type literals
+    walkerFunctionsMap[typeid(ShortLiteral)] = &Semantics::walkShortLiteral;
+    walkerFunctionsMap[typeid(UnsignedShortLiteral)] = &Semantics::walkUnsignedShortLiteral;
     walkerFunctionsMap[typeid(IntegerLiteral)] = &Semantics::walkIntegerLiteral;
+    walkerFunctionsMap[typeid(UnsignedIntegerLiteral)] = &Semantics::walkUnsignedIntegerLiteral;
+    walkerFunctionsMap[typeid(LongLiteral)] = &Semantics::walkLongLiteral;
+    walkerFunctionsMap[typeid(UnsignedLongLiteral)] = &Semantics::walkUnsignedLongLiteral;
+    walkerFunctionsMap[typeid(ExtraLiteral)] = &Semantics::walkExtraLiteral;
+    walkerFunctionsMap[typeid(UnsignedExtraLiteral)] = &Semantics::walkUnsignedExtraLiteral;
     walkerFunctionsMap[typeid(FloatLiteral)] = &Semantics::walkFloatLiteral;
     walkerFunctionsMap[typeid(DoubleLiteral)] = &Semantics::walkDoubleLiteral;
     walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
+
     walkerFunctionsMap[typeid(CharLiteral)] = &Semantics::walkCharLiteral;
+    walkerFunctionsMap[typeid(Char16Literal)] = &Semantics::walkChar16Literal;
+    walkerFunctionsMap[typeid(Char32Literal)] = &Semantics::walkChar32Literal;
+
     walkerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::walkBooleanLiteral;
     walkerFunctionsMap[typeid(Identifier)] = &Semantics::walkIdentifierExpression;
 
@@ -91,70 +102,88 @@ DataType Semantics::inferNodeDataType(Node *node)
 {
     if (!node)
         return DataType::UNKNOWN;
+
+    if (auto shortLit = dynamic_cast<ShortLiteral *>(node))
+        return DataType::SHORT_INT;
+    if (auto ushortLit = dynamic_cast<UnsignedShortLiteral *>(node))
+        return DataType::USHORT_INT;
+
+    if (auto longLit = dynamic_cast<LongLiteral *>(node))
+        return DataType::LONG_INT;
+    if (auto ulongLit = dynamic_cast<UnsignedLongLiteral *>(node))
+        return DataType::ULONG_INT;
+
+    if (auto extraLit = dynamic_cast<ExtraLiteral *>(node))
+        return DataType::EXTRA_INT;
+    if (auto uextraLit = dynamic_cast<UnsignedExtraLiteral *>(node))
+        return DataType::UEXTRA_INT;
+
     if (auto inLit = dynamic_cast<IntegerLiteral *>(node))
-    {
         return DataType::INTEGER;
-    }
+
+    if (auto uintLit = dynamic_cast<UnsignedIntegerLiteral *>(node))
+        return DataType::UINTEGER;
 
     if (auto fltLit = dynamic_cast<FloatLiteral *>(node))
-    {
         return DataType::FLOAT;
-    }
 
     if (auto dbLit = dynamic_cast<DoubleLiteral *>(node))
-    {
         return DataType::DOUBLE;
-    }
 
     if (auto strLit = dynamic_cast<StringLiteral *>(node))
-    {
         return DataType::STRING;
-    }
 
     if (auto chrLit = dynamic_cast<CharLiteral *>(node))
-    {
         return DataType::CHAR;
-    }
+
+    if (auto char16Lit = dynamic_cast<Char16Literal *>(node))
+        return DataType::CHAR16;
+    if (auto char32Lit = dynamic_cast<Char32Literal *>(node))
+        return DataType::CHAR32;
 
     if (auto boolLit = dynamic_cast<BooleanLiteral *>(node))
-    {
         return DataType::BOOLEAN;
-    }
 
     if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
-    {
         return DataType::ERROR;
-    }
 
     // Dealing with the let statement node type
     if (auto letStmt = dynamic_cast<LetStatement *>(node))
     {
         auto letStmtDataToken = letStmt->data_type_token;
-        if (letStmtDataToken.type == TokenType::INT)
+        switch (letStmtDataToken.type)
         {
+        case TokenType::SHORT_KEYWORD:
+            return DataType::SHORT_INT;
+        case TokenType::USHORT_KEYWORD:
+            return DataType::USHORT_INT;
+        case TokenType::INTEGER_KEYWORD:
             return DataType::INTEGER;
-        }
-        if (letStmtDataToken.type == TokenType::FLOAT_KEYWORD)
-        {
+        case TokenType::UINT_KEYWORD:
+            return DataType::UINTEGER;
+        case TokenType::LONG_KEYWORD:
+            return DataType::LONG_INT;
+        case TokenType::ULONG_KEYWORD:
+            return DataType::ULONG_INT;
+        case TokenType::EXTRA_KEYWORD:
+            return DataType::EXTRA_INT;
+        case TokenType::UEXTRA_KEYWORD:
+            return DataType::UEXTRA_INT;
+        case TokenType::FLOAT_KEYWORD:
             return DataType::FLOAT;
-        }
-        if (letStmtDataToken.type == TokenType::DOUBLE_KEYWORD)
-        {
+        case TokenType::DOUBLE_KEYWORD:
             return DataType::DOUBLE;
-        }
-        if (letStmtDataToken.type == TokenType::STRING_KEYWORD)
-        {
+        case TokenType::STRING_KEYWORD:
             return DataType::STRING;
-        }
-        if (letStmtDataToken.type == TokenType::CHAR_KEYWORD)
-        {
+        case TokenType::CHAR_KEYWORD:
             return DataType::CHAR;
-        }
-        if (letStmtDataToken.type == TokenType::BOOL_KEYWORD)
-        {
+        case TokenType::CHAR16_KEYWORD:
+            return DataType::CHAR16;
+        case TokenType::CHAR32_KEYWORD:
+            return DataType::CHAR32;
+        case TokenType::BOOL_KEYWORD:
             return DataType::BOOLEAN;
-        }
-        if (letStmtDataToken.type == TokenType::AUTO)
+        case TokenType::AUTO:
         {
             auto letStmtValue = letStmt->value.get();
             if (!letStmtValue)
@@ -163,6 +192,10 @@ DataType Semantics::inferNodeDataType(Node *node)
                 return DataType::UNKNOWN;
             }
             return inferNodeDataType(letStmtValue);
+        }
+        default:
+            logSemanticErrors("Unknown data type in let statement", letStmtDataToken.line, letStmtDataToken.column);
+            return DataType::UNKNOWN;
         }
     }
 
@@ -275,26 +308,22 @@ Identifier *lastRightIdent = nullptr;
 
 DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType)
 {
-    // Dealing with logical operators
+    // Logical operators: &&, ||
     if (operatorType == TokenType::AND || operatorType == TokenType::OR)
     {
-        if (leftType == DataType::BOOLEAN && rightType == DataType::BOOLEAN)
-        {
+        if (isBoolean(leftType) && isBoolean(rightType))
             return DataType::BOOLEAN;
-        }
         else
-        {
             return DataType::UNKNOWN;
-        }
     }
 
     if (operatorType == TokenType::ASSIGN)
     {
-        std::cerr << "Cannot use '=' in binary operations it is only for assignments\n";
+        std::cerr << "Cannot use '=' in binary operations; only for assignments\n";
         return DataType::UNKNOWN;
     }
 
-    // Dealing with comparison operators
+    // Comparison operators
     bool isComparison = (operatorType == TokenType::GREATER_THAN ||
                          operatorType == TokenType::GT_OR_EQ ||
                          operatorType == TokenType::LESS_THAN ||
@@ -305,23 +334,19 @@ DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, Da
     if (isComparison)
     {
         if (leftType == rightType)
-        {
             return DataType::BOOLEAN;
-        }
-        else
-        {
-            std::cerr << "[SEMANTIC ERROR] Cannot compare " << dataTypetoString(leftType) << " and " << dataTypetoString(rightType) << "\n";
-            return DataType::UNKNOWN;
-        }
+
+        std::cerr << "[SEMANTIC ERROR] Cannot compare " << dataTypetoString(leftType) << " and " << dataTypetoString(rightType) << "\n";
+        return DataType::UNKNOWN;
     }
 
-    // Allowing string concatenation
-    if (operatorType == TokenType::PLUS && leftType == DataType::STRING && rightType == DataType::STRING)
+    // String concatenation
+    if (operatorType == TokenType::PLUS && isString(leftType) && isString(rightType))
     {
         return DataType::STRING;
     }
 
-    // Dealing with arithmetic operators
+    // Arithmetic operators: +, -, %, /, *
     bool isArithmetic = (operatorType == TokenType::PLUS ||
                          operatorType == TokenType::MINUS ||
                          operatorType == TokenType::MODULUS ||
@@ -330,12 +355,13 @@ DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, Da
 
     if (isArithmetic)
     {
-
-        if ((leftType == DataType::INTEGER && rightType == DataType::FLOAT) || (leftType == DataType::FLOAT && rightType == DataType::INTEGER))
+        // Promote mixed int/float combinations
+        if ((isInteger(leftType) && isFloat(rightType)) || (isFloat(leftType) && isInteger(rightType)))
         {
             return DataType::FLOAT;
         }
-        if ((leftType == DataType::INTEGER && rightType == DataType::DOUBLE) || (leftType == DataType::DOUBLE && rightType == DataType::INTEGER))
+        // Promote int/double or float/double to double
+        if ((isInteger(leftType) && rightType == DataType::DOUBLE) || (leftType == DataType::DOUBLE && isInteger(rightType)))
         {
             return DataType::DOUBLE;
         }
@@ -349,11 +375,9 @@ DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, Da
         {
             return leftType;
         }
-        else
-        {
-            std::cout << "[SEMANTIC ERROR] Type mismatch " + dataTypetoString(leftType) + " does not match " + dataTypetoString(rightType) + "\n";
-            return DataType::UNKNOWN;
-        }
+
+        std::cerr << "[SEMANTIC ERROR] Type mismatch: " << dataTypetoString(leftType) << " does not match " << dataTypetoString(rightType) << "\n";
+        return DataType::UNKNOWN;
     }
 
     std::cerr << "[SEMANTIC ERROR] Unknown binary operator: " << TokenTypeToLiteral(operatorType) << " with types "
@@ -363,37 +387,28 @@ DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, Da
 
 DataType Semantics::resultOfUnary(TokenType operatorType, DataType operandType)
 {
-    // Handling the bang(!)
-    if (operatorType == TokenType::BANG)
+    switch (operatorType)
     {
-        if (operandType != DataType::BOOLEAN)
+    case TokenType::BANG:
+        if (!isBoolean(operandType))
         {
             std::cerr << "[SEMANTIC ERROR] Cannot apply '!' to type " << dataTypetoString(operandType) << "\n";
             return DataType::UNKNOWN;
         }
         return DataType::BOOLEAN;
-    }
 
-    if (operatorType == TokenType::MINUS || operatorType == TokenType::PLUS)
-    {
-        if (operandType == DataType::INTEGER || operandType == DataType::FLOAT || operandType == DataType::DOUBLE)
+    case TokenType::MINUS:
+    case TokenType::PLUS:
+    case TokenType::PLUS_PLUS:
+    case TokenType::MINUS_MINUS:
+        if (isInteger(operandType) || isFloat(operandType))
             return operandType;
-
         std::cerr << "[SEMANTIC ERROR] Cannot apply " << TokenTypeToLiteral(operatorType) << " to " << dataTypetoString(operandType) << "\n";
         return DataType::UNKNOWN;
-    }
 
-    if (operatorType == TokenType::PLUS_PLUS || operatorType == TokenType::MINUS_MINUS)
-    {
-        if (operandType == DataType::INTEGER || operandType == DataType::FLOAT || operandType == DataType::DOUBLE)
-        {
-            return operandType;
-        }
-        std::cerr << "[SEMANTIC ERROR] Cannot apply " << TokenTypeToLiteral(operatorType) << " to " << dataTypetoString(operandType) << "\n";
+    default:
         return DataType::UNKNOWN;
     }
-
-    return DataType::UNKNOWN;
 }
 
 SymbolInfo *Semantics::resolveSymbolInfo(const std::string &name)
@@ -420,16 +435,37 @@ DataType Semantics::tokenTypeToDataType(TokenType type, bool isNullable)
 {
     switch (type)
     {
+    case TokenType::SHORT_KEYWORD:
+        return isNullable ? DataType::NULLABLE_SHORT_INT : DataType::SHORT_INT;
+    case TokenType::USHORT_KEYWORD:
+        return isNullable ? DataType::NULLABLE_USHORT_INT : DataType::USHORT_INT;
     case TokenType::INTEGER_KEYWORD:
         return isNullable ? DataType::NULLABLE_INT : DataType::INTEGER;
+    case TokenType::UINT_KEYWORD:
+        return isNullable ? DataType::NULLABLE_UINT : DataType::UINTEGER;
+    case TokenType::LONG_KEYWORD:
+        return isNullable ? DataType::NULLABLE_LONG_INT : DataType::LONG_INT;
+    case TokenType::ULONG_KEYWORD:
+        return isNullable ? DataType::NULLABLE_ULONG_INT : DataType::ULONG_INT;
+    case TokenType::EXTRA_KEYWORD:
+        return isNullable ? DataType::NULLABLE_EXTRA_INT : DataType::EXTRA_INT;
+    case TokenType::UEXTRA_KEYWORD:
+        return isNullable ? DataType::NULLABLE_UEXTRA_INT : DataType::UEXTRA_INT;
+
     case TokenType::FLOAT_KEYWORD:
         return isNullable ? DataType::NULLABLE_FLT : DataType::FLOAT;
     case TokenType::DOUBLE_KEYWORD:
         return isNullable ? DataType::NULLABLE_DOUBLE : DataType::DOUBLE;
     case TokenType::STRING_KEYWORD:
         return isNullable ? DataType::NULLABLE_STR : DataType::STRING;
+
     case TokenType::CHAR_KEYWORD:
         return isNullable ? DataType::NULLABLE_CHAR : DataType::CHAR;
+    case TokenType::CHAR16_KEYWORD:
+        return isNullable ? DataType::NULLABLE_CHAR16 : DataType::CHAR16;
+    case TokenType::CHAR32_KEYWORD:
+        return isNullable ? DataType::NULLABLE_CHAR32 : DataType::CHAR32;
+
     case TokenType::BOOL_KEYWORD:
         return isNullable ? DataType::NULLABLE_BOOLEAN : DataType::BOOLEAN;
     case TokenType::VOID:
@@ -445,8 +481,22 @@ std::string Semantics::dataTypetoString(DataType type)
 {
     switch (type)
     {
+    case DataType::SHORT_INT:
+        return "short";
+    case DataType::USHORT_INT:
+        return "ushort";
     case DataType::INTEGER:
         return "int";
+    case DataType::UINTEGER:
+        return "uint";
+    case DataType::LONG_INT:
+        return "long";
+    case DataType::ULONG_INT:
+        return "ulong";
+    case DataType::EXTRA_INT:
+        return "extra";
+    case DataType::UEXTRA_INT:
+        return "uextra";
     case DataType::BOOLEAN:
         return "bool";
     case DataType::STRING:
@@ -457,14 +507,36 @@ std::string Semantics::dataTypetoString(DataType type)
         return "double";
     case DataType::CHAR:
         return "char";
+    case DataType::CHAR16:
+        return "char16";
+    case DataType::CHAR32:
+        return "char32";
     case DataType::NULLABLE_STR:
         return "string?";
+    case DataType::NULLABLE_SHORT_INT:
+        return "short?";
+    case DataType::NULLABLE_USHORT_INT:
+        return "ushort?";
     case DataType::NULLABLE_INT:
         return "int?";
+    case DataType::NULLABLE_UINT:
+        return "uint?";
+    case DataType::NULLABLE_LONG_INT:
+        return "long?";
+    case DataType::NULLABLE_ULONG_INT:
+        return "ulong?";
+    case DataType::NULLABLE_EXTRA_INT:
+        return "extra?";
+    case DataType::NULLABLE_UEXTRA_INT:
+        return "uextra?";
     case DataType::NULLABLE_FLT:
         return "float?";
     case DataType::NULLABLE_CHAR:
         return "char?";
+    case DataType::NULLABLE_CHAR16:
+        return "char16?";
+    case DataType::NULLABLE_CHAR32:
+        return "char32";
     case DataType::NULLABLE_DOUBLE:
         return "double?";
     case DataType::NULLABLE_BOOLEAN:
@@ -492,7 +564,14 @@ bool Semantics::isTypeCompatible(DataType expected, DataType actual)
     {
         return true;
     }
-    if ((expected == DataType::NULLABLE_INT && actual == DataType::INTEGER) ||
+    if ((expected == DataType::NULLABLE_SHORT_INT && actual == DataType::SHORT_INT) ||
+        (expected == DataType::NULLABLE_USHORT_INT && actual == DataType::USHORT_INT) ||
+        (expected == DataType::NULLABLE_INT && actual == DataType::INTEGER) ||
+        (expected == DataType::NULLABLE_UINT && actual == DataType::UINTEGER) ||
+        (expected == DataType::NULLABLE_LONG_INT && actual == DataType::LONG_INT) ||
+        (expected == DataType::NULLABLE_ULONG_INT && actual == DataType::ULONG_INT) ||
+        (expected == DataType::NULLABLE_EXTRA_INT && actual == DataType::EXTRA_INT) ||
+        (expected == DataType::NULLABLE_UEXTRA_INT && actual == DataType::UEXTRA_INT) ||
         (expected == DataType::NULLABLE_FLT && actual == DataType::FLOAT) ||
         (expected == DataType::NULLABLE_DOUBLE && actual == DataType::DOUBLE) ||
         (expected == DataType::NULLABLE_STR && actual == DataType::STRING) ||
@@ -770,4 +849,72 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
 {
     std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << "\n";
+}
+
+bool Semantics::isInteger(DataType t)
+{
+    return t == DataType::SHORT_INT || t == DataType::USHORT_INT ||
+           t == DataType::INTEGER || t == DataType::UINTEGER ||
+           t == DataType::LONG_INT || t == DataType::ULONG_INT ||
+           t == DataType::EXTRA_INT || t == DataType::UEXTRA_INT;
+}
+
+bool Semantics::isNullableInteger(DataType t)
+{
+    return t == DataType::NULLABLE_SHORT_INT || t == DataType::NULLABLE_USHORT_INT ||
+           t == DataType::NULLABLE_INT || t == DataType::NULLABLE_UINT ||
+           t == DataType::NULLABLE_LONG_INT || t == DataType::NULLABLE_ULONG_INT ||
+           t == DataType::NULLABLE_EXTRA_INT || t == DataType::NULLABLE_UEXTRA_INT;
+}
+
+bool Semantics::isFloat(DataType t)
+{
+    return t == DataType::FLOAT || t == DataType::DOUBLE;
+}
+
+bool Semantics::isNullableFloat(DataType t)
+{
+    return t == DataType::NULLABLE_FLT || t == DataType::NULLABLE_DOUBLE;
+}
+
+bool Semantics::isBoolean(DataType t)
+{
+    return t == DataType::BOOLEAN || t == DataType::NULLABLE_BOOLEAN;
+}
+
+bool Semantics::isString(DataType t)
+{
+    return t == DataType::STRING || t == DataType::NULLABLE_STR;
+}
+
+bool Semantics::isChar(DataType t)
+{
+    return t == DataType::CHAR || t == DataType::NULLABLE_CHAR ||
+           t == DataType::CHAR16 || t == DataType::NULLABLE_CHAR16 ||
+           t == DataType::CHAR32 || t == DataType::NULLABLE_CHAR32;
+}
+
+bool Semantics::isNullable(DataType t)
+{
+    switch (t)
+    {
+    case DataType::NULLABLE_SHORT_INT:
+    case DataType::NULLABLE_USHORT_INT:
+    case DataType::NULLABLE_INT:
+    case DataType::NULLABLE_UINT:
+    case DataType::NULLABLE_LONG_INT:
+    case DataType::NULLABLE_ULONG_INT:
+    case DataType::NULLABLE_EXTRA_INT:
+    case DataType::NULLABLE_UEXTRA_INT:
+    case DataType::NULLABLE_BOOLEAN:
+    case DataType::NULLABLE_STR:
+    case DataType::NULLABLE_FLT:
+    case DataType::NULLABLE_DOUBLE:
+    case DataType::NULLABLE_CHAR:
+    case DataType::NULLABLE_CHAR16:
+    case DataType::NULLABLE_CHAR32:
+        return true;
+    default:
+        return false;
+    }
 }

@@ -61,10 +61,21 @@ private:
     llvm::Value *generatePostfixExpression(Node *node);
     llvm::Value *generateStringLiteral(Node *node);
     llvm::Value *generateCharLiteral(Node *node);
+    llvm::Value *generateChar16Literal(Node *node);
+    llvm::Value *generateChar32Literal(Node *node);
     llvm::Value *generateBooleanLiteral(Node *node);
     llvm::Value *generateFloatLiteral(Node *node);
     llvm::Value *generateDoubleLiteral(Node *node);
+
+    llvm::Value *generateShortLiteral(Node *node);
+    llvm::Value *generateUnsignedShortLiteral(Node *node);
     llvm::Value *generateIntegerLiteral(Node *node);
+    llvm::Value *generateUnsignedIntegerLiteral(Node *node);
+    llvm::Value *generateLongLiteral(Node *node);
+    llvm::Value *generateUnsignedLongLiteral(Node *node);
+    llvm::Value *generateExtraLiteral(Node *node);
+    llvm::Value *generateUnsignedExtraLiteral(Node *node);
+
     llvm::Value *generateNullLiteral(NullLiteral *nullLit, DataType type);
     llvm::Value *generateIdentifierExpression(Node *node);
 
@@ -75,6 +86,11 @@ private:
     void generateStatement(Node *node);
     llvm::Type *getLLVMType(DataType type);
     char decodeCharLiteral(const std::string &literal);
+    uint16_t decodeChar16Literal(const std::string &literal);
+    uint32_t decodeChar32Literal(const std::string &literal);
+    bool isIntegerType(DataType dt);
+    bool isSignedInteger(DataType dt);
+    unsigned getIntegerBitWidth(DataType dt);
 };
 
 #endif

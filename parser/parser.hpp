@@ -231,8 +231,14 @@ private:
     // Double
     std::unique_ptr<Expression> parseDoubleLiteral();
 
-    // Char
+    // 8 bit Char
     std::unique_ptr<Expression> parseCharLiteral();
+
+    // 16 bit Char
+    std::unique_ptr<Expression> parseChar16Literal();
+
+    // 32 bit Char
+    std::unique_ptr<Expression> parseChar32Literal();
 
     // Null
     std::unique_ptr<Expression> parseNullLiteral();
@@ -269,8 +275,12 @@ private:
     // Checker for generics
     bool isGeneric(const std::string &typeName, const std::vector<Token> &genericParams);
 
+    // Checker for basic types
+    bool isBasicType(TokenType type);
+
     // Error logging
-    void logError(const std::string &message);
+    void
+    logError(const std::string &message);
 
     // Getting the error token
     Token getErrorToken();

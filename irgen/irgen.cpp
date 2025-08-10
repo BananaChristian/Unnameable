@@ -127,9 +127,9 @@ void IRGenerator::generateWhileStatement(Node *node)
     function->getBasicBlockList().push_back(bodyBB);
     builder.SetInsertPoint(bodyBB);
     std::cerr << "[IR DEBUG] Generating while body\n";
-    loopBlocksStack.push_back({condBB, endBB}); 
+    loopBlocksStack.push_back({condBB, endBB});
     generateStatement(whileStmt->loop.get());
-    loopBlocksStack.pop_back(); 
+    loopBlocksStack.pop_back();
     std::cerr << "[IR DEBUG] Finished generating while body\n";
 
     if (!builder.GetInsertBlock()->getTerminator())
@@ -263,7 +263,7 @@ void IRGenerator::generateIfStatement(Node *node)
         }
         else
         {
-           std::cerr << "[IR DEBUG] Skipping branch to ifmerge from else due to terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+            std::cerr << "[IR DEBUG] Skipping branch to ifmerge from else due to terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
         }
     }
 
@@ -462,127 +462,197 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 {
     auto infix = dynamic_cast<InfixExpression *>(node);
     if (!infix)
-    {
         throw std::runtime_error("Invalid infix expression");
-    }
+
     llvm::Value *left = generateExpression(infix->left_operand.get());
     llvm::Value *right = generateExpression(infix->right_operand.get());
     if (!left || !right)
-    {
         throw std::runtime_error("Failed to generate IR for infix expression");
-    }
 
     auto it = semantics.metaData.find(node);
     if (it == semantics.metaData.end())
-    {
         throw std::runtime_error("Meta data missing for infix node");
-    }
+
     DataType resultType = it->second.symbolDataType;
-    if (!(resultType == DataType::INTEGER || resultType == DataType::FLOAT || resultType == DataType::DOUBLE || resultType == DataType::BOOLEAN))
-    {
-        throw std::runtime_error("InfixExpression type must be int, float, double, or boolean");
-    }
     DataType leftType = semantics.metaData[infix->left_operand.get()].symbolDataType;
     DataType rightType = semantics.metaData[infix->right_operand.get()].symbolDataType;
 
+    // Helper lambda for integer type promotion
+    auto promoteInt = [&](llvm::Value *val, DataType fromType, DataType toType) -> llvm::Value *
+    {
+        unsigned fromBits = getIntegerBitWidth(fromType);
+        unsigned toBits = getIntegerBitWidth(toType);
+        if (fromBits == 0 || toBits == 0)
+            return val; // Not integer type
+        if (fromBits == toBits)
+            return val; // Same bit width, no promotion needed
+
+        bool fromSigned = isSignedInteger(fromType);
+        if (toBits > fromBits)
+        {
+            if (fromSigned)
+                return builder.CreateSExt(val, llvm::IntegerType::get(context, toBits), "sexttmp");
+            else
+                return builder.CreateZExt(val, llvm::IntegerType::get(context, toBits), "zexttmp");
+        }
+        else
+        {
+            // Truncation if needed (rare, probably invalid here)
+            return builder.CreateTrunc(val, llvm::IntegerType::get(context, toBits), "trunctmp");
+        }
+    };
+
+    // Promote operands to widest integer type among left, right, and result
+    if (isIntegerType(resultType))
+    {
+        unsigned targetBits = getIntegerBitWidth(resultType);
+        left = promoteInt(left, leftType, resultType);
+        right = promoteInt(right, rightType, resultType);
+    }
+
+    // Handle BOOLEAN logical operators (AND, OR)
     if (resultType == DataType::BOOLEAN)
     {
-        // Only cast to i1 for logical operators (AND, OR), not for comparisons
         if (infix->operat.type == TokenType::AND || infix->operat.type == TokenType::OR)
         {
             if (left->getType() != builder.getInt1Ty())
-            {
                 left = builder.CreateICmpNE(left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
-            }
             if (right->getType() != builder.getInt1Ty())
-            {
                 right = builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
-            }
+
+            if (infix->operat.type == TokenType::AND)
+                return builder.CreateAnd(left, right, "andtmp");
+            else
+                return builder.CreateOr(left, right, "ortmp");
         }
 
+        // Comparisons for boolean (should be rare, but...)
         switch (infix->operat.type)
         {
         case TokenType::EQUALS:
-            return leftType == DataType::INTEGER  ? builder.CreateICmpEQ(left, right, "cmptmp")
-                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOEQ(left, right, "fcmptmp")
-                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOEQ(left, right, "fcmptmp")
-                                                  : throw std::runtime_error("EQUALITY not supported for this type");
+            return builder.CreateICmpEQ(left, right, "cmptmp");
         case TokenType::NOT_EQUALS:
-            return leftType == DataType::INTEGER  ? builder.CreateICmpNE(left, right, "cmptmp")
-                   : leftType == DataType::FLOAT  ? builder.CreateFCmpONE(left, right, "fcmptmp")
-                   : leftType == DataType::DOUBLE ? builder.CreateFCmpONE(left, right, "fcmptmp")
-                                                  : throw std::runtime_error("INEQUALITY not supported for this type");
-        case TokenType::LESS_THAN:
-            return leftType == DataType::INTEGER  ? builder.CreateICmpSLT(left, right, "cmptmp")
-                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOLT(left, right, "fcmptmp")
-                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOLT(left, right, "fcmptmp")
-                                                  : throw std::runtime_error("LT not supported for this type");
-        case TokenType::LT_OR_EQ:
-            return leftType == DataType::INTEGER  ? builder.CreateICmpSLE(left, right, "cmptmp")
-                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOLE(left, right, "fcmptmp")
-                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOLE(left, right, "fcmptmp")
-                                                  : throw std::runtime_error("LE not supported for this type");
-        case TokenType::GREATER_THAN:
-            return leftType == DataType::INTEGER  ? builder.CreateICmpSGT(left, right, "cmptmp")
-                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOGT(left, right, "fcmptmp")
-                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOGT(left, right, "fcmptmp")
-                                                  : throw std::runtime_error("GT not supported for this type");
-        case TokenType::GT_OR_EQ:
-            return leftType == DataType::INTEGER  ? builder.CreateICmpSGE(left, right, "cmptmp")
-                   : leftType == DataType::FLOAT  ? builder.CreateFCmpOGE(left, right, "fcmptmp")
-                   : leftType == DataType::DOUBLE ? builder.CreateFCmpOGE(left, right, "fcmptmp")
-                                                  : throw std::runtime_error("GE not supported for this type");
-        case TokenType::AND:
-            return builder.CreateAnd(left, right, "andtmp");
-        case TokenType::OR:
-            return builder.CreateOr(left, right, "ortmp");
+            return builder.CreateICmpNE(left, right, "cmptmp");
         default:
-            throw std::runtime_error("Unsupported infix operator: " + infix->operat.TokenLiteral +
-                                     " at line " + std::to_string(infix->operat.line));
+            throw std::runtime_error("Unsupported boolean infix operator: " + infix->operat.TokenLiteral);
         }
     }
 
+    // Handle floating point conversions
     if (resultType == DataType::FLOAT)
     {
-        if (leftType == DataType::INTEGER)
-        {
+        if (isIntegerType(leftType))
             left = builder.CreateSIToFP(left, llvm::Type::getFloatTy(context), "inttofloat");
-        }
-        if (rightType == DataType::INTEGER)
-        {
+        if (isIntegerType(rightType))
             right = builder.CreateSIToFP(right, llvm::Type::getFloatTy(context), "inttofloat");
-        }
     }
     else if (resultType == DataType::DOUBLE)
     {
-        if (leftType == DataType::INTEGER)
-        {
+        if (isIntegerType(leftType))
             left = builder.CreateSIToFP(left, llvm::Type::getDoubleTy(context), "inttodouble");
-        }
-        if (rightType == DataType::INTEGER)
-        {
+        if (isIntegerType(rightType))
             right = builder.CreateSIToFP(right, llvm::Type::getDoubleTy(context), "inttodouble");
+    }
+
+    // Now generate code based on operator and result type
+
+    // Comparison operators - different for signed/unsigned integers
+    auto isCmp = [&](TokenType t)
+    {
+        return t == TokenType::EQUALS || t == TokenType::NOT_EQUALS ||
+               t == TokenType::LESS_THAN || t == TokenType::LT_OR_EQ ||
+               t == TokenType::GREATER_THAN || t == TokenType::GT_OR_EQ;
+    };
+
+    if (isCmp(infix->operat.type))
+    {
+        if (isIntegerType(resultType))
+        {
+            bool signedInt = isSignedInteger(resultType);
+            switch (infix->operat.type)
+            {
+            case TokenType::EQUALS:
+                return builder.CreateICmpEQ(left, right, "cmptmp");
+            case TokenType::NOT_EQUALS:
+                return builder.CreateICmpNE(left, right, "cmptmp");
+            case TokenType::LESS_THAN:
+                return signedInt ? builder.CreateICmpSLT(left, right, "cmptmp")
+                                 : builder.CreateICmpULT(left, right, "cmptmp");
+            case TokenType::LT_OR_EQ:
+                return signedInt ? builder.CreateICmpSLE(left, right, "cmptmp")
+                                 : builder.CreateICmpULE(left, right, "cmptmp");
+            case TokenType::GREATER_THAN:
+                return signedInt ? builder.CreateICmpSGT(left, right, "cmptmp")
+                                 : builder.CreateICmpUGT(left, right, "cmptmp");
+            case TokenType::GT_OR_EQ:
+                return signedInt ? builder.CreateICmpSGE(left, right, "cmptmp")
+                                 : builder.CreateICmpUGE(left, right, "cmptmp");
+            default:
+                throw std::runtime_error("Unsupported comparison operator");
+            }
+        }
+        else if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+        {
+            switch (infix->operat.type)
+            {
+            case TokenType::EQUALS:
+                return builder.CreateFCmpOEQ(left, right, "fcmptmp");
+            case TokenType::NOT_EQUALS:
+                return builder.CreateFCmpONE(left, right, "fcmptmp");
+            case TokenType::LESS_THAN:
+                return builder.CreateFCmpOLT(left, right, "fcmptmp");
+            case TokenType::LT_OR_EQ:
+                return builder.CreateFCmpOLE(left, right, "fcmptmp");
+            case TokenType::GREATER_THAN:
+                return builder.CreateFCmpOGT(left, right, "fcmptmp");
+            case TokenType::GT_OR_EQ:
+                return builder.CreateFCmpOGE(left, right, "fcmptmp");
+            default:
+                throw std::runtime_error("Unsupported comparison operator");
+            }
+        }
+        else
+        {
+            throw std::runtime_error("Comparison not supported for type: " + semantics.dataTypetoString(resultType));
         }
     }
 
+    // Arithmetic operators
     switch (infix->operat.type)
     {
     case TokenType::PLUS:
-        return resultType == DataType::INTEGER ? builder.CreateAdd(left, right, "addtmp")
-                                               : builder.CreateFAdd(left, right, "faddtmp");
+        if (isIntegerType(resultType))
+            return builder.CreateAdd(left, right, "addtmp");
+        else
+            return builder.CreateFAdd(left, right, "faddtmp");
+
     case TokenType::MINUS:
-        return resultType == DataType::INTEGER ? builder.CreateSub(left, right, "subtmp")
-                                               : builder.CreateFSub(left, right, "fsubtmp");
+        if (isIntegerType(resultType))
+            return builder.CreateSub(left, right, "subtmp");
+        else
+            return builder.CreateFSub(left, right, "fsubtmp");
+
     case TokenType::ASTERISK:
-        return resultType == DataType::INTEGER ? builder.CreateMul(left, right, "multmp")
-                                               : builder.CreateFMul(left, right, "fmultmp");
+        if (isIntegerType(resultType))
+            return builder.CreateMul(left, right, "multmp");
+        else
+            return builder.CreateFMul(left, right, "fmultmp");
+
     case TokenType::DIVIDE:
-        return resultType == DataType::INTEGER ? builder.CreateSDiv(left, right, "divtmp")
-                                               : builder.CreateFDiv(left, right, "fdivtmp");
+        if (isIntegerType(resultType))
+            return isSignedInteger(resultType) ? builder.CreateSDiv(left, right, "divtmp")
+                                               : builder.CreateUDiv(left, right, "divtmp");
+        else
+            return builder.CreateFDiv(left, right, "fdivtmp");
+
     case TokenType::MODULUS:
-        return resultType == DataType::INTEGER ? builder.CreateSRem(left, right, "modtmp")
-                                               : throw std::runtime_error("Modulus not supported for FLOAT or DOUBLE at line " +
-                                                                          std::to_string(infix->operat.line));
+        if (isIntegerType(resultType))
+            return isSignedInteger(resultType) ? builder.CreateSRem(left, right, "modtmp")
+                                               : builder.CreateURem(left, right, "modtmp");
+        else
+            throw std::runtime_error("Modulus not supported for FLOAT or DOUBLE at line " +
+                                     std::to_string(infix->operat.line));
+
     default:
         throw std::runtime_error("Unsupported infix operator: " + infix->operat.TokenLiteral +
                                  " at line " + std::to_string(infix->operat.line));
@@ -594,68 +664,75 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
 {
     auto prefix = dynamic_cast<PrefixExpression *>(node);
     if (!prefix)
-    {
         throw std::runtime_error("Invalid prefix expression");
-    }
+
     llvm::Value *operand = generateExpression(prefix->operand.get());
     if (!operand)
-    {
         throw std::runtime_error("Failed to generate IR for prefix operand");
-    }
+
     auto it = semantics.metaData.find(node);
     if (it == semantics.metaData.end())
-    {
         throw std::runtime_error("Meta data missing for prefix node");
-    }
+
     DataType resultType = it->second.symbolDataType;
+
+    // Helper to check if integer type
+    auto isIntType = [&](DataType dt)
+    {
+        return isIntegerType(dt); // Your helper from before
+    };
+
     switch (prefix->operat.type)
     {
     case TokenType::MINUS:
-        return resultType == DataType::INTEGER
-                   ? builder.CreateNeg(operand, "negtmp")
-                   : builder.CreateFNeg(operand, "fnegtmp");
+        if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+            return builder.CreateFNeg(operand, "fnegtmp");
+        else if (isIntType(resultType))
+            return builder.CreateNeg(operand, "negtmp");
+        else
+            throw std::runtime_error("Unsupported type for unary minus");
 
     case TokenType::BANG:
-        // Expecting a boolean type (i1)
+        // Boolean NOT
         return builder.CreateNot(operand, "nottmp");
 
     case TokenType::PLUS_PLUS:
     case TokenType::MINUS_MINUS:
     {
-        // Only valid on identifiers (e.g., ++x or --x)
         auto ident = dynamic_cast<Identifier *>(prefix->operand.get());
         if (!ident)
-        {
             throw std::runtime_error("Prefix ++/-- must be used on a variable");
-        }
 
         llvm::Value *varPtr = namedValues[ident->identifier.TokenLiteral];
         if (!varPtr)
-        {
             throw std::runtime_error("Undefined variable in ++/--: " + ident->identifier.TokenLiteral);
-        }
 
         llvm::Value *loaded = builder.CreateLoad(varPtr->getType()->getPointerElementType(), varPtr, "loadtmp");
 
-        llvm::Value *updated = nullptr;
-        if (resultType == DataType::INTEGER)
+        llvm::Value *delta = nullptr;
+        if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
         {
-            llvm::Value *delta = llvm::ConstantInt::get(loaded->getType(), 1);
-            updated = prefix->operat.type == TokenType::PLUS_PLUS
-                          ? builder.CreateAdd(loaded, delta, "preinctmp")
-                          : builder.CreateSub(loaded, delta, "predectmp");
+            delta = llvm::ConstantFP::get(loaded->getType(), 1.0);
         }
-        else if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+        else if (isIntType(resultType))
         {
-            llvm::Value *delta = llvm::ConstantFP::get(loaded->getType(), 1.0);
-            updated = prefix->operat.type == TokenType::PLUS_PLUS
-                          ? builder.CreateFAdd(loaded, delta, "preincfptmp")
-                          : builder.CreateFSub(loaded, delta, "predecfptmp");
+            unsigned bits = getIntegerBitWidth(resultType);
+            delta = llvm::ConstantInt::get(llvm::IntegerType::get(context, bits), 1);
         }
         else
         {
             throw std::runtime_error("Unsupported type for ++/--");
         }
+
+        llvm::Value *updated = nullptr;
+        if (prefix->operat.type == TokenType::PLUS_PLUS)
+            updated = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+                          ? builder.CreateFAdd(loaded, delta, "preincfptmp")
+                          : builder.CreateAdd(loaded, delta, "preinctmp");
+        else
+            updated = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+                          ? builder.CreateFSub(loaded, delta, "predecfptmp")
+                          : builder.CreateSub(loaded, delta, "predectmp");
 
         builder.CreateStore(updated, varPtr);
         return updated;
@@ -671,58 +748,59 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
 {
     auto postfix = dynamic_cast<PostfixExpression *>(node);
     if (!postfix)
-    {
         throw std::runtime_error("Invalid postfix expression");
-    }
 
-    // Ensuring the operand is an identifier or a dereferenceable expression
     auto identifier = dynamic_cast<Identifier *>(postfix->operand.get());
     if (!identifier)
-    {
         throw std::runtime_error("Postfix operand must be a variable");
-    }
 
     llvm::Value *varPtr = namedValues[identifier->identifier.TokenLiteral];
     if (!varPtr)
-    {
         throw std::runtime_error("Unknown variable name in postfix expression: " + identifier->identifier.TokenLiteral);
-    }
 
-    // Loading the original value
     llvm::Value *originalValue = builder.CreateLoad(varPtr->getType()->getPointerElementType(), varPtr, "loadtmp");
 
-    // Determine type
     auto it = semantics.metaData.find(node);
     if (it == semantics.metaData.end())
-    {
         throw std::runtime_error("Meta data missing for postfix node");
-    }
+
     DataType resultType = it->second.symbolDataType;
 
-    // Generate increment or decrement
-    llvm::Value *updatedValue = nullptr;
-    if (postfix->operator_token.type == TokenType::PLUS_PLUS)
+    auto isIntType = [&](DataType dt)
+    { return isIntegerType(dt); };
+    llvm::Value *delta = nullptr;
+
+    if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
     {
-        updatedValue = (resultType == DataType::INTEGER)
-                           ? builder.CreateAdd(originalValue, llvm::ConstantInt::get(originalValue->getType(), 1), "inc")
-                           : builder.CreateFAdd(originalValue, llvm::ConstantFP::get(originalValue->getType(), 1.0), "finc");
+        delta = llvm::ConstantFP::get(originalValue->getType(), 1.0);
     }
-    else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
+    else if (isIntType(resultType))
     {
-        updatedValue = (resultType == DataType::INTEGER)
-                           ? builder.CreateSub(originalValue, llvm::ConstantInt::get(originalValue->getType(), 1), "dec")
-                           : builder.CreateFSub(originalValue, llvm::ConstantFP::get(originalValue->getType(), 1.0), "fdec");
+        unsigned bits = getIntegerBitWidth(resultType);
+        delta = llvm::ConstantInt::get(llvm::IntegerType::get(context, bits), 1);
     }
     else
     {
-        throw std::runtime_error("Unsupported postfix operator: " + postfix->operator_token.TokenLiteral +
-                                 " at line " + std::to_string(postfix->operator_token.line));
+        throw std::runtime_error("Unsupported type for ++/--");
     }
 
-    // Store the updated value back to the variable
+    llvm::Value *updatedValue = nullptr;
+
+    if (postfix->operator_token.type == TokenType::PLUS_PLUS)
+        updatedValue = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+                           ? builder.CreateFAdd(originalValue, delta, "finc")
+                           : builder.CreateAdd(originalValue, delta, "inc");
+    else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
+        updatedValue = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+                           ? builder.CreateFSub(originalValue, delta, "fdec")
+                           : builder.CreateSub(originalValue, delta, "dec");
+    else
+        throw std::runtime_error("Unsupported postfix operator: " + postfix->operator_token.TokenLiteral +
+                                 " at line " + std::to_string(postfix->operator_token.line));
+
     builder.CreateStore(updatedValue, varPtr);
 
-    // Return the original value (since it's postfix)
+    // Return original value since postfix
     return originalValue;
 }
 
@@ -772,6 +850,50 @@ llvm::Value *IRGenerator::generateCharLiteral(Node *node)
     return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), static_cast<uint8_t>(c), false);
 }
 
+llvm::Value *IRGenerator::generateChar16Literal(Node *node)
+{
+    auto char16Lit = dynamic_cast<Char16Literal *>(node);
+    if (!char16Lit)
+    {
+        throw std::runtime_error("Invalid char 16 literal");
+    }
+    auto it = semantics.metaData.find(char16Lit);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Char16 literal not found in metadata");
+    }
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::CHAR16 && dt != DataType::NULLABLE_CHAR16)
+    {
+        throw std::runtime_error("Type error: Expected CHAR16 for Char16Literal");
+    }
+    std::string tokenLiteral = char16Lit->char16_token.TokenLiteral;
+    uint16_t c = decodeCharLiteral(tokenLiteral);
+    return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), c, false);
+}
+
+llvm::Value *IRGenerator::generateChar32Literal(Node *node)
+{
+    auto char32Lit = dynamic_cast<Char32Literal *>(node);
+    if (!char32Lit)
+    {
+        throw std::runtime_error("Invalid char 32 literal");
+    }
+    auto it = semantics.metaData.find(char32Lit);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Char16 literal not found in metadata");
+    }
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::CHAR16 && dt != DataType::NULLABLE_CHAR16)
+    {
+        throw std::runtime_error("Type error: Expected CHAR32 for Char16Literal");
+    }
+    std::string tokenLiteral = char32Lit->char32_token.TokenLiteral;
+    uint32_t c = decodeChar32Literal(tokenLiteral);
+    return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), c, false);
+}
+
 llvm::Value *IRGenerator::generateBooleanLiteral(Node *node)
 {
     auto boolLit = dynamic_cast<BooleanLiteral *>(node);
@@ -795,6 +917,42 @@ llvm::Value *IRGenerator::generateBooleanLiteral(Node *node)
     return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), value);
 }
 
+llvm::Value *IRGenerator::generateShortLiteral(Node *node)
+{
+    auto shortLit = dynamic_cast<ShortLiteral *>(node);
+    if (!shortLit)
+        throw std::runtime_error("Invalid short literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("Short literal not found in metadata");
+
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::SHORT_INT && dt != DataType::NULLABLE_SHORT_INT)
+        throw std::runtime_error("Type error: Expected SHORT_INT or NULLABLE_SHORT_INT");
+
+    int16_t value = static_cast<int16_t>(std::stoi(shortLit->short_token.TokenLiteral));
+    return llvm::ConstantInt::get(context, llvm::APInt(16, value, true));
+}
+
+llvm::Value *IRGenerator::generateUnsignedShortLiteral(Node *node)
+{
+    auto ushortLit = dynamic_cast<UnsignedShortLiteral *>(node);
+    if (!ushortLit)
+        throw std::runtime_error("Invalid ushort literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("UShort literal not found in metadata");
+
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::USHORT_INT && dt != DataType::NULLABLE_USHORT_INT)
+        throw std::runtime_error("Type error: Expected USHORT_INT or NULLABLE_USHORT_INT");
+
+    uint16_t value = static_cast<uint16_t>(std::stoul(ushortLit->ushort_token.TokenLiteral));
+    return llvm::ConstantInt::get(context, llvm::APInt(16, value, false));
+}
+
 llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
 {
     auto intLit = dynamic_cast<IntegerLiteral *>(node);
@@ -814,6 +972,97 @@ llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
     }
     int64_t value = std::stoll(intLit->int_token.TokenLiteral);
     return llvm::ConstantInt::get(context, llvm::APInt(32, value, true));
+}
+
+llvm::Value *IRGenerator::generateUnsignedIntegerLiteral(Node *node)
+{
+    auto uintLit = dynamic_cast<UnsignedIntegerLiteral *>(node);
+    if (!uintLit)
+        throw std::runtime_error("Invalid uint literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("UInt literal not found in metadata");
+
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::UINTEGER && dt != DataType::NULLABLE_UINT)
+        throw std::runtime_error("Type error: Expected UINTEGER or NULLABLE_UINT");
+
+    uint32_t value = static_cast<uint32_t>(std::stoul(uintLit->uint_token.TokenLiteral));
+    return llvm::ConstantInt::get(context, llvm::APInt(32, value, false));
+}
+
+llvm::Value *IRGenerator::generateLongLiteral(Node *node)
+{
+    auto longLit = dynamic_cast<LongLiteral *>(node);
+    if (!longLit)
+        throw std::runtime_error("Invalid long literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("Long literal not found in metadata");
+
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::LONG_INT && dt != DataType::NULLABLE_LONG_INT)
+        throw std::runtime_error("Type error: Expected LONG_INT or NULLABLE_LONG_INT");
+
+    int64_t value = std::stoll(longLit->long_token.TokenLiteral);
+    return llvm::ConstantInt::get(context, llvm::APInt(64, value, true));
+}
+
+llvm::Value *IRGenerator::generateUnsignedLongLiteral(Node *node)
+{
+    auto ulongLit = dynamic_cast<UnsignedLongLiteral *>(node);
+    if (!ulongLit)
+        throw std::runtime_error("Invalid ulong literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("ULong literal not found in metadata");
+
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::ULONG_INT && dt != DataType::NULLABLE_ULONG_INT)
+        throw std::runtime_error("Type error: Expected ULONG_INT or NULLABLE_ULONG_INT");
+
+    uint64_t value = std::stoull(ulongLit->ulong_token.TokenLiteral);
+    return llvm::ConstantInt::get(context, llvm::APInt(64, value, false));
+}
+
+llvm::Value *IRGenerator::generateExtraLiteral(Node *node)
+{
+    auto extraLit = dynamic_cast<ExtraLiteral *>(node);
+    if (!extraLit)
+        throw std::runtime_error("Invalid extra (128-bit) literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("Extra literal not found in metadata");
+
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::EXTRA_INT && dt != DataType::NULLABLE_EXTRA_INT)
+        throw std::runtime_error("Type error: Expected EXTRA_INT or NULLABLE_EXTRA_INT");
+
+    // Use APInt constructor with string and base 10 for 128-bit
+    llvm::APInt value(128, extraLit->extra_token.TokenLiteral, 10);
+    return llvm::ConstantInt::get(context, value);
+}
+
+llvm::Value *IRGenerator::generateUnsignedExtraLiteral(Node *node)
+{
+    auto uextraLit = dynamic_cast<UnsignedExtraLiteral *>(node);
+    if (!uextraLit)
+        throw std::runtime_error("Invalid uextra (128-bit unsigned) literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("UExtra literal not found in metadata");
+
+    DataType dt = it->second.symbolDataType;
+    if (dt != DataType::UEXTRA_INT && dt != DataType::NULLABLE_UEXTRA_INT)
+        throw std::runtime_error("Type error: Expected UEXTRA_INT or NULLABLE_UEXTRA_INT");
+
+    llvm::APInt value(128, uextraLit->uextra_token.TokenLiteral, 10);
+    return llvm::ConstantInt::get(context, value);
 }
 
 llvm::Value *IRGenerator::generateFloatLiteral(Node *node)
@@ -867,18 +1116,51 @@ llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType typ
     {
     case DataType::NULLABLE_STR:
         return llvm::ConstantPointerNull::get(llvm::Type::getInt8PtrTy(context));
+
     case DataType::NULLABLE_INT:
-        return llvm::ConstantInt::get(context, llvm::APInt(32, 1 << 31));
+        // Using minimum signed int as null marker (could be your sentinel)
+        return llvm::ConstantInt::get(context, llvm::APInt(32, (uint64_t)INT32_MIN, true));
+
+    case DataType::NULLABLE_SHORT_INT:
+        return llvm::ConstantInt::get(context, llvm::APInt(16, (uint64_t)INT16_MIN, true));
+
+    case DataType::NULLABLE_USHORT_INT:
+        // For unsigned, maybe zero or max value as null?
+        return llvm::ConstantInt::get(context, llvm::APInt(16, 0));
+
+    case DataType::NULLABLE_UINT:
+        return llvm::ConstantInt::get(context, llvm::APInt(32, 0));
+
+    case DataType::NULLABLE_LONG_INT:
+        return llvm::ConstantInt::get(context, llvm::APInt(64, (uint64_t)INT64_MIN, true));
+
+    case DataType::NULLABLE_ULONG_INT:
+        return llvm::ConstantInt::get(context, llvm::APInt(64, 0));
+
+    case DataType::NULLABLE_EXTRA_INT:
+    case DataType::NULLABLE_UEXTRA_INT:
+        return llvm::ConstantInt::get(context, llvm::APInt(128, 0)); // No min/max in 128-bit easy, so zero or sentinel
+
     case DataType::NULLABLE_FLT:
-        return llvm::ConstantFP::get(context, llvm::APFloat::getQNaN(llvm::APFloat::IEEEsingle()));
-    case DataType::NULLABLE_BOOLEAN:
-        return llvm::ConstantInt::get(context, llvm::APInt(1, 2, false));
+        return llvm::ConstantFP::getNaN(llvm::Type::getFloatTy(context));
+
     case DataType::NULLABLE_DOUBLE:
-        return llvm::ConstantFP::get(context, llvm::APFloat::getQNaN(llvm::APFloat::IEEEdouble()));
+        return llvm::ConstantFP::getNaN(llvm::Type::getDoubleTy(context));
+
+    case DataType::NULLABLE_BOOLEAN:
+        return llvm::ConstantInt::get(context, llvm::APInt(1, 0)); // false
+
     case DataType::NULLABLE_CHAR:
         return llvm::ConstantInt::get(context, llvm::APInt(8, 0));
+
+    case DataType::NULLABLE_CHAR16:
+        return llvm::ConstantInt::get(context, llvm::APInt(16, 0));
+
+    case DataType::NULLABLE_CHAR32:
+        return llvm::ConstantInt::get(context, llvm::APInt(32, 0));
+
     default:
-        throw std::runtime_error("Unsupported null type");
+        throw std::runtime_error("Unsupported nullable data type in generateNullLiteral");
     }
 }
 
@@ -910,32 +1192,74 @@ llvm::Type *IRGenerator::getLLVMType(DataType type)
 {
     switch (type)
     {
+    case DataType::SHORT_INT:
+    case DataType::NULLABLE_SHORT_INT:
+        return llvm::Type::getInt16Ty(context);
+
+    case DataType::USHORT_INT:
+    case DataType::NULLABLE_USHORT_INT:
+        return llvm::Type::getInt16Ty(context);
+
     case DataType::INTEGER:
-        return llvm::Type::getInt32Ty(context);
-    case DataType::FLOAT:
-        return llvm::Type::getFloatTy(context);
-    case DataType::DOUBLE:
-        return llvm::Type::getDoubleTy(context);
-    case DataType::BOOLEAN:
-        return llvm::Type::getInt1Ty(context);
-    case DataType::CHAR:
-        return llvm::Type::getInt8Ty(context);
-    case DataType::STRING:
-        return llvm::Type::getInt8PtrTy(context);
-    case DataType::NULLABLE_STR:
-        return llvm::Type::getInt8PtrTy(context);
-    case DataType::NULLABLE_CHAR:
-        return llvm::Type::getInt8Ty(context);
     case DataType::NULLABLE_INT:
         return llvm::Type::getInt32Ty(context);
-    case DataType::NULLABLE_FLT:
-        return llvm::Type::getFloatTy(context);
-    case DataType::NULLABLE_DOUBLE:
-        return llvm::Type::getDoubleTy(context);
+
+    case DataType::UINTEGER:
+    case DataType::NULLABLE_UINT:
+        return llvm::Type::getInt32Ty(context);
+
+    case DataType::LONG_INT:
+    case DataType::NULLABLE_LONG_INT:
+        return llvm::Type::getInt64Ty(context);
+
+    case DataType::ULONG_INT:
+    case DataType::NULLABLE_ULONG_INT:
+        return llvm::Type::getInt64Ty(context);
+
+    case DataType::EXTRA_INT:
+    case DataType::NULLABLE_EXTRA_INT:
+        // LLVM doesn't have built-in 128-bit int, but supports i128 on some targets
+        return llvm::IntegerType::get(context, 128);
+
+    case DataType::UEXTRA_INT:
+    case DataType::NULLABLE_UEXTRA_INT:
+        return llvm::IntegerType::get(context, 128);
+
+    case DataType::BOOLEAN:
     case DataType::NULLABLE_BOOLEAN:
         return llvm::Type::getInt1Ty(context);
+
+    case DataType::CHAR:
+    case DataType::NULLABLE_CHAR:
+        return llvm::Type::getInt8Ty(context);
+
+    case DataType::CHAR16:
+    case DataType::NULLABLE_CHAR16:
+        return llvm::Type::getInt16Ty(context);
+
+    case DataType::CHAR32:
+    case DataType::NULLABLE_CHAR32:
+        return llvm::Type::getInt32Ty(context);
+
+    case DataType::FLOAT:
+    case DataType::NULLABLE_FLT:
+        return llvm::Type::getFloatTy(context);
+
+    case DataType::DOUBLE:
+    case DataType::NULLABLE_DOUBLE:
+        return llvm::Type::getDoubleTy(context);
+
+    case DataType::STRING:
+    case DataType::NULLABLE_STR:
+        // Assuming string is a pointer to i8
+        return llvm::Type::getInt8PtrTy(context);
+
+    case DataType::ERROR:
+    case DataType::VOID:
+    case DataType::GENERIC:
     case DataType::UNKNOWN:
-        throw std::runtime_error("Unknown data type encountered");
+        throw std::runtime_error("Unsupported or unknown data type encountered in getLLVMType");
+
     default:
         return nullptr;
     }
@@ -961,8 +1285,17 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(PostfixExpression)] = &IRGenerator::generatePostfixExpression;
     expressionGeneratorsMap[typeid(StringLiteral)] = &IRGenerator::generateStringLiteral;
     expressionGeneratorsMap[typeid(CharLiteral)] = &IRGenerator::generateCharLiteral;
+    expressionGeneratorsMap[typeid(Char16Literal)] = &IRGenerator::generateChar16Literal;
+    expressionGeneratorsMap[typeid(Char32Literal)] = &IRGenerator::generateChar32Literal;
     expressionGeneratorsMap[typeid(BooleanLiteral)] = &IRGenerator::generateBooleanLiteral;
+    expressionGeneratorsMap[typeid(ShortLiteral)] = &IRGenerator::generateShortLiteral;
+    expressionGeneratorsMap[typeid(UnsignedShortLiteral)] = &IRGenerator::generateUnsignedShortLiteral;
     expressionGeneratorsMap[typeid(IntegerLiteral)] = &IRGenerator::generateIntegerLiteral;
+    expressionGeneratorsMap[typeid(UnsignedIntegerLiteral)] = &IRGenerator::generateUnsignedIntegerLiteral;
+    expressionGeneratorsMap[typeid(LongLiteral)] = &IRGenerator::generateLongLiteral;
+    expressionGeneratorsMap[typeid(UnsignedLongLiteral)] = &IRGenerator::generateUnsignedLongLiteral;
+    expressionGeneratorsMap[typeid(ExtraLiteral)] = &IRGenerator::generateExtraLiteral;
+    expressionGeneratorsMap[typeid(UnsignedExtraLiteral)] = &IRGenerator::generateUnsignedExtraLiteral;
     expressionGeneratorsMap[typeid(FloatLiteral)] = &IRGenerator::generateFloatLiteral;
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
@@ -997,6 +1330,158 @@ char IRGenerator::decodeCharLiteral(const std::string &literal)
         }
     }
     throw std::runtime_error("Invalid char literal: " + literal);
+}
+
+uint16_t IRGenerator::decodeChar16Literal(const std::string &literal)
+{
+    // Example formats: 'A', '\n', '\u1234' (unicode escape)
+
+    if (literal.length() == 3 && literal.front() == '\'' && literal.back() == '\'')
+    {
+        return static_cast<uint16_t>(literal[1]);
+    }
+    else if (literal.length() == 8 && literal.substr(0, 2) == "'\\u" && literal.back() == '\'')
+    {
+        std::string hex = literal.substr(3, 4); // 4 hex digits
+        return static_cast<uint16_t>(std::stoi(hex, nullptr, 16));
+    }
+    else if (literal.length() == 4 && literal.front() == '\'' && literal.back() == '\'' && literal[1] == '\\')
+    {
+        // Simple escapes like '\n'
+        switch (literal[2])
+        {
+        case 'n':
+            return '\n';
+        case 't':
+            return '\t';
+        case '\\':
+            return '\\';
+        case '\'':
+            return '\'';
+        case '\"':
+            return '\"';
+        case 'r':
+            return '\r';
+        case '0':
+            return '\0';
+        default:
+            throw std::runtime_error("Unknown escape sequence in char16 literal: " + literal);
+        }
+    }
+    throw std::runtime_error("Invalid char16 literal: " + literal);
+}
+
+// Decodes UTF-32 char32 literals (returns uint32_t)
+uint32_t IRGenerator::decodeChar32Literal(const std::string &literal)
+{
+    // Example formats: 'A', '\U0001F600' (unicode escape for emoji)
+
+    if (literal.length() == 3 && literal.front() == '\'' && literal.back() == '\'')
+    {
+        return static_cast<uint32_t>(literal[1]);
+    }
+    else if (literal.length() == 12 && literal.substr(0, 2) == "'\\U" && literal.back() == '\'')
+    {
+        std::string hex = literal.substr(3, 8); // 8 hex digits
+        return static_cast<uint32_t>(std::stoul(hex, nullptr, 16));
+    }
+    else if (literal.length() == 4 && literal.front() == '\'' && literal.back() == '\'' && literal[1] == '\\')
+    {
+        // Simple escapes like '\n'
+        switch (literal[2])
+        {
+        case 'n':
+            return '\n';
+        case 't':
+            return '\t';
+        case '\\':
+            return '\\';
+        case '\'':
+            return '\'';
+        case '\"':
+            return '\"';
+        case 'r':
+            return '\r';
+        case '0':
+            return '\0';
+        default:
+            throw std::runtime_error("Unknown escape sequence in char32 literal: " + literal);
+        }
+    }
+    throw std::runtime_error("Invalid char32 literal: " + literal);
+}
+
+bool IRGenerator::isIntegerType(DataType dt)
+{
+    switch (dt)
+    {
+    case DataType::SHORT_INT:
+    case DataType::NULLABLE_SHORT_INT:
+    case DataType::USHORT_INT:
+    case DataType::NULLABLE_USHORT_INT:
+    case DataType::INTEGER:
+    case DataType::NULLABLE_INT:
+    case DataType::UINTEGER:
+    case DataType::NULLABLE_UINT:
+    case DataType::LONG_INT:
+    case DataType::NULLABLE_LONG_INT:
+    case DataType::ULONG_INT:
+    case DataType::NULLABLE_ULONG_INT:
+    case DataType::EXTRA_INT:
+    case DataType::NULLABLE_EXTRA_INT:
+    case DataType::UEXTRA_INT:
+    case DataType::NULLABLE_UEXTRA_INT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool IRGenerator::isSignedInteger(DataType dt)
+{
+    switch (dt)
+    {
+    case DataType::SHORT_INT:
+    case DataType::NULLABLE_SHORT_INT:
+    case DataType::INTEGER:
+    case DataType::NULLABLE_INT:
+    case DataType::LONG_INT:
+    case DataType::NULLABLE_LONG_INT:
+    case DataType::EXTRA_INT:
+    case DataType::NULLABLE_EXTRA_INT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+unsigned IRGenerator::getIntegerBitWidth(DataType dt)
+{
+    switch (dt)
+    {
+    case DataType::SHORT_INT:
+    case DataType::NULLABLE_SHORT_INT:
+    case DataType::USHORT_INT:
+    case DataType::NULLABLE_USHORT_INT:
+        return 16;
+    case DataType::INTEGER:
+    case DataType::NULLABLE_INT:
+    case DataType::UINTEGER:
+    case DataType::NULLABLE_UINT:
+        return 32;
+    case DataType::LONG_INT:
+    case DataType::NULLABLE_LONG_INT:
+    case DataType::ULONG_INT:
+    case DataType::NULLABLE_ULONG_INT:
+        return 64;
+    case DataType::EXTRA_INT:
+    case DataType::NULLABLE_EXTRA_INT:
+    case DataType::UEXTRA_INT:
+    case DataType::NULLABLE_UEXTRA_INT:
+        return 128;
+    default:
+        return 0; // Not an integer type
+    }
 }
 
 void IRGenerator::dumpIR()

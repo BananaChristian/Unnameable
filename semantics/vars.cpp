@@ -41,6 +41,58 @@ void Semantics::walkCharLiteral(Node *node)
         .isConstant = false};
 }
 
+void Semantics::walkChar16Literal(Node *node)
+{
+    auto lit = dynamic_cast<Char16Literal *>(node);
+    if (!lit)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the char16 literal\n";
+    metaData[lit] = {
+        .symbolDataType = DataType::CHAR16,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
+void Semantics::walkChar32Literal(Node *node)
+{
+    auto lit = dynamic_cast<Char32Literal *>(node);
+    if (!lit)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the char32 literal\n";
+    metaData[lit] = {
+        .symbolDataType = DataType::CHAR32,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
+void Semantics::walkShortLiteral(Node *node)
+{
+    auto lit = dynamic_cast<ShortLiteral *>(node);
+    if (!lit)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the short int literal\n";
+    metaData[lit] = {
+        .symbolDataType = DataType::SHORT_INT,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
+void Semantics::walkUnsignedShortLiteral(Node *node)
+{
+    auto lit = dynamic_cast<UnsignedShortLiteral *>(node);
+    if (!lit)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the unsigned short int literal\n";
+    metaData[lit] = {
+        .symbolDataType = DataType::USHORT_INT,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
 void Semantics::walkIntegerLiteral(Node *node)
 {
     auto intLiteral = dynamic_cast<IntegerLiteral *>(node);
@@ -49,6 +101,71 @@ void Semantics::walkIntegerLiteral(Node *node)
     std::cout << "[SEMANTIC LOG]: Analyzing the integer literal \n";
     metaData[intLiteral] = {
         .symbolDataType = DataType::INTEGER,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
+void Semantics::walkUnsignedIntegerLiteral(Node *node)
+{
+    auto intLiteral = dynamic_cast<UnsignedIntegerLiteral *>(node);
+    if (!intLiteral)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the Unsigned integer literal \n";
+    metaData[intLiteral] = {
+        .symbolDataType = DataType::UINTEGER,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
+void Semantics::walkLongLiteral(Node *node)
+{
+    auto lit = dynamic_cast<LongLiteral *>(node);
+    if (!lit)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the long int literal\n";
+    metaData[lit] = {
+        .symbolDataType = DataType::LONG_INT,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
+void Semantics::walkUnsignedLongLiteral(Node *node)
+{
+    auto lit = dynamic_cast<UnsignedLongLiteral *>(node);
+    if (!lit)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the unsigned long int literal\n";
+    metaData[lit] = {
+        .symbolDataType = DataType::ULONG_INT,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
+void Semantics::walkExtraLiteral(Node *node)
+{
+    auto lit = dynamic_cast<ExtraLiteral *>(node);
+    if (!lit)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the extra (128-bit) int literal\n";
+    metaData[lit] = {
+        .symbolDataType = DataType::EXTRA_INT,
+        .isNullable = false,
+        .isMutable = false,
+        .isConstant = false};
+}
+
+void Semantics::walkUnsignedExtraLiteral(Node *node)
+{
+    auto lit = dynamic_cast<UnsignedExtraLiteral *>(node);
+    if (!lit)
+        return;
+    std::cout << "[SEMANTIC LOG]: Analyzing the unsigned extra (128-bit) int literal\n";
+    metaData[lit] = {
+        .symbolDataType = DataType::UEXTRA_INT,
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -185,7 +302,7 @@ void Semantics::walkLetStatement(Node *node)
         declaredType = inferNodeDataType(letStmt);
     }
 
-    //If we dont have a value(A variable declaration)
+    // If we dont have a value(A variable declaration)
     if (!letStmtValue)
     {
         DataType expectedType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);

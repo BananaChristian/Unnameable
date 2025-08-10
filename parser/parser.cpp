@@ -301,12 +301,7 @@ std::unique_ptr<Statement> Parser::parseParamLetStatementWithGenerics(const std:
 
     if (current.type == TokenType::MUT ||
         current.type == TokenType::CONST ||
-        current.type == TokenType::INTEGER_KEYWORD ||
-        current.type == TokenType::FLOAT_KEYWORD ||
-        current.type == TokenType::STRING_KEYWORD ||
-        current.type == TokenType::CHAR_KEYWORD ||
-        current.type == TokenType::BOOL_KEYWORD ||
-        current.type == TokenType::AUTO)
+        isBasicType(current.type))
     {
         return parseLetStatementWithType(true);
     }
@@ -330,6 +325,33 @@ std::unique_ptr<Statement> Parser::parseParamLetStatementWithGenerics(const std:
 
     logError("Unrecognized parameter type or name '" + current.TokenLiteral + "'");
     return nullptr;
+}
+
+// Checker for basic data types
+bool Parser::isBasicType(TokenType type)
+{
+    switch (type)
+    {
+    case TokenType::SHORT_KEYWORD:
+    case TokenType::USHORT_KEYWORD:
+    case TokenType::INTEGER_KEYWORD:
+    case TokenType::UINT_KEYWORD:
+    case TokenType::LONG_KEYWORD:
+    case TokenType::ULONG_KEYWORD:
+    case TokenType::EXTRA_KEYWORD:
+    case TokenType::UEXTRA_KEYWORD:
+    case TokenType::FLOAT_KEYWORD:
+    case TokenType::DOUBLE_KEYWORD:
+    case TokenType::CHAR_KEYWORD:
+    case TokenType::CHAR16_KEYWORD:
+    case TokenType::CHAR32_KEYWORD:
+    case TokenType::STRING_KEYWORD:
+    case TokenType::BOOL_KEYWORD:
+    case TokenType::AUTO:
+        return true;
+    default:
+        return false;
+    }
 }
 
 // Parsing signal statement
@@ -1199,7 +1221,7 @@ std::unique_ptr<Expression> Parser::parseDoubleLiteral()
     return std::make_unique<DoubleLiteral>(double_tok);
 }
 
-// Char literal parse function
+// 8 bit Char literal parse function
 std::unique_ptr<Expression> Parser::parseCharLiteral()
 {
     Token char_tok = currentToken();
@@ -1207,6 +1229,21 @@ std::unique_ptr<Expression> Parser::parseCharLiteral()
     return std::make_unique<CharLiteral>(char_tok);
 }
 
+// 16 bit Char literal parser function
+std::unique_ptr<Expression> Parser::parseChar16Literal()
+{
+    Token char16_token = currentToken();
+    advance();
+    return std::make_unique<Char16Literal>(char16_token);
+}
+
+// 32 bit Char literal parser function
+std::unique_ptr<Expression> Parser::parseChar32Literal()
+{
+    Token char16_token = currentToken();
+    advance();
+    return std::make_unique<Char32Literal>(char16_token);
+}
 // String literal parse function
 std::unique_ptr<Expression> Parser::parseStringLiteral()
 {
@@ -1414,14 +1451,8 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     if (currentToken().type == TokenType::COLON)
     {
         advance(); // Move past the colon signs
-        switch (currentToken().type)
+        if (isBasicType(currentToken().type))
         {
-        case TokenType::INT:
-        case TokenType::FLOAT_KEYWORD:
-        case TokenType::STRING_KEYWORD:
-        case TokenType::BOOL_KEYWORD:
-        case TokenType::VOID:
-        case TokenType::IDENTIFIER:
             return_type = std::make_unique<ReturnTypeExpression>(currentToken());
             advance(); // Consume the data type literal
             if (currentToken().type == TokenType::QUESTION_MARK)
@@ -1429,8 +1460,19 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
                 isNullable = true;
                 advance();
             }
-            break;
-        default:
+        }
+        else if (currentToken().type == TokenType::VOID)
+        {
+            return_type = std::make_unique<ReturnTypeExpression>(currentToken());
+            advance(); // Consume the data type literal
+            if (currentToken().type == TokenType::QUESTION_MARK)
+            {
+                isNullable = true;
+                advance();
+            }
+        }
+        else
+        {
             logError("Unexpected return type '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
@@ -1669,13 +1711,17 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::EXTRA] = &Parser::parseExtraLiteral;
     PrefixParseFunctionsMap[TokenType::UEXTRA] = &Parser::parseUnsignedExtraLiteral;
 
+    PrefixParseFunctionsMap[TokenType::CHAR] = &Parser::parseCharLiteral;
+    PrefixParseFunctionsMap[TokenType::CHAR16] = &Parser::parseChar16Literal;
+    PrefixParseFunctionsMap[TokenType::CHAR32] = &Parser::parseChar32Literal;
+
     PrefixParseFunctionsMap[TokenType::NULLABLE] = &Parser::parseNullLiteral;
     PrefixParseFunctionsMap[TokenType::TRUE] = &Parser::parseBooleanLiteral;
     PrefixParseFunctionsMap[TokenType::FALSE] = &Parser::parseBooleanLiteral;
     PrefixParseFunctionsMap[TokenType::FLOAT] = &Parser::parseFloatLiteral;
     PrefixParseFunctionsMap[TokenType::DOUBLE] = &Parser::parseDoubleLiteral;
-    PrefixParseFunctionsMap[TokenType::CHAR] = &Parser::parseCharLiteral;
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
+
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
     PrefixParseFunctionsMap[TokenType::NEW] = &Parser::parseNewComponentExpression;
     PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseIdentifier;
@@ -1732,11 +1778,14 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::EXTRA_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::UEXTRA_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
 
+    StatementParseFunctionsMap[TokenType::CHAR_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::CHAR16_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::CHAR32_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+
     StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::DOUBLE_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::STRING_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::CHAR_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CONST] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::MUT] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::FUNCTION] = &Parser::parseFunctionStatement;
