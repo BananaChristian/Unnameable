@@ -54,6 +54,7 @@ enum class DataType
     CHAR32, // 32 BIT Char
     NULLABLE_CHAR32,
 
+    ENUM,
     ERROR,
     VOID,
     GENERIC,
@@ -76,6 +77,12 @@ struct SymbolInfo
     // Function flags
     bool isDeclaration = false;
     bool isDefined = false;
+    // enum info
+    std::string enumName;
+    std::vector<std::string> enumContent;
+    int constantValue = 0; // For enum members to store assigned int value
+    std::vector<std::pair<std::string, int>> enumMembers;
+    DataType enumIntType = DataType::INTEGER; // Defaults to a 32 bit integer data type
 };
 
 // Information about the current scope
@@ -129,6 +136,7 @@ private:
 
     // Walking the component functions declaration
     void walkDataStatement(Node *node);
+    void walkEnumClassStatement(Node *node);
 
     // Waling infix, prefix and postfix expressions
     void walkInfixExpression(Node *node);

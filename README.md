@@ -252,6 +252,16 @@ enum class HttpStatus {
 
 auto code = HttpStatus::NotFound;
 
+enum class TokenType: uint{
+    ADDITION,
+    SUBTRACTION,
+}
+
+enum class TokenType: uint{
+    ADDITION=10u,
+    SUBTRACTION=20u,
+}
+
 ```
 
 

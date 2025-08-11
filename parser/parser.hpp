@@ -278,9 +278,11 @@ private:
     // Checker for basic types
     bool isBasicType(TokenType type);
 
+    // Checker for integer types
+    bool isIntegerType(TokenType type);
+
     // Error logging
-    void
-    logError(const std::string &message);
+    void logError(const std::string &message);
 
     // Getting the error token
     Token getErrorToken();

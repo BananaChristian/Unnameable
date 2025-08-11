@@ -129,7 +129,7 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement()
 std::unique_ptr<Statement> Parser::parseEnumClassStatement()
 {
     std::vector<std::unique_ptr<Expression>> enum_block;
-
+    std::optional<Token> int_token;
     Token enum_token = currentToken();
     advance(); // Consume the enum keyword token
     Token class_token = currentToken();
@@ -137,8 +137,25 @@ std::unique_ptr<Statement> Parser::parseEnumClassStatement()
     {
         logError("Expected keyword class after keyword enum but got: " + currentToken().TokenLiteral);
     }
-    advance();                           // Consume the class keyword token
+    advance(); // Consume the class keyword token
+
     auto enum_ident = parseIdentifier(); // Parsing the enum class's name
+
+    // Incase we see the colon token
+    if (currentToken().type == TokenType::COLON)
+    {
+        advance(); // Consume the colon token
+        if (isIntegerType(currentToken().type))
+        {
+            int_token = currentToken();
+            advance(); // Consume the integer data type token
+        }
+        else
+        {
+            logError("Invalid integer type on enum class statement");
+            return nullptr;
+        }
+    }
 
     if (currentToken().type != TokenType::LBRACE)
     {
@@ -167,5 +184,23 @@ std::unique_ptr<Statement> Parser::parseEnumClassStatement()
     }
     advance(); // Consume the } token
 
-    return std::make_unique<EnumClassStatement>(enum_token, class_token, std::move(enum_ident), std::move(enum_block));
+    return std::make_unique<EnumClassStatement>(enum_token, class_token, std::move(enum_ident), int_token, std::move(enum_block));
+}
+
+bool Parser::isIntegerType(TokenType type)
+{
+    switch (type)
+    {
+    case TokenType::SHORT_KEYWORD:
+    case TokenType::USHORT_KEYWORD:
+    case TokenType::INTEGER_KEYWORD:
+    case TokenType::UINT_KEYWORD:
+    case TokenType::LONG_KEYWORD:
+    case TokenType::ULONG_KEYWORD:
+    case TokenType::EXTRA_KEYWORD:
+    case TokenType::UEXTRA_KEYWORD:
+        return true;
+    default:
+        return false;
+    }
 }

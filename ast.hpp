@@ -889,20 +889,31 @@ struct EnumClassStatement : Statement
     Token enum_token;
     Token class_token;
     std::unique_ptr<Expression> enum_identifier;
+    std::optional<Token> int_type;
     std::vector<std::unique_ptr<Expression>> enum_content;
     std::string toString()
     {
         std::string enum_block;
+        std::string int_typestr = "";
+
+        if (int_type.has_value())
+        {
+            int_typestr = " : " + int_type.value().TokenLiteral;
+        }
+
         for (const auto &enum_cont : enum_content)
         {
             enum_block += enum_cont->toString() + ",\n";
         }
-        return "Enum class statement: " + enum_identifier->toString() + " { " + enum_block + " }";
+
+        return "Enum class statement: " + enum_identifier->toString() + int_typestr + " { " + enum_block + " }";
     }
-    EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::vector<std::unique_ptr<Expression>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
-                                                                                                                                                       class_token(class_tok),
-                                                                                                                                                       enum_identifier(std::move(enum_ident)),
-                                                                                                                                                       enum_content(std::move(enum_block)) {};
+
+    EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::optional<Token> intType, std::vector<std::unique_ptr<Expression>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
+                                                                                                                                                                                     class_token(class_tok),
+                                                                                                                                                                                     enum_identifier(std::move(enum_ident)),
+                                                                                                                                                                                     int_type(intType),
+                                                                                                                                                                                     enum_content(std::move(enum_block)) {};
 };
 
 struct ForStatement : Statement

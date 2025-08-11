@@ -96,6 +96,7 @@ void Semantics::registerWalkerFunctions()
 
     // Walker registration for the component system
     walkerFunctionsMap[typeid(DataStatement)] = &Semantics::walkDataStatement;
+    walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
 }
 
 DataType Semantics::inferNodeDataType(Node *node)
