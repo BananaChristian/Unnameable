@@ -252,13 +252,16 @@ void Semantics::walkLetStatement(Node *node)
     auto letStmtValue = letStmt->value.get();
 
     DataType declaredType = DataType::UNKNOWN; // Defaulting to the unknown data type
+
     if (letStmtValue)
     {
         walker(letStmtValue);
         isInitialized = true;
         auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue);
+        // This will be triggered if the value itself is null
         if (nullVal)
         {
+            // Will be triggered if the let statement is not nullable but the literal is null
             if (!isNullable)
             {
                 logSemanticErrors("Cannot assign 'null' to a non-nullable value '" + letStmt->ident_token.TokenLiteral + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
@@ -266,30 +269,7 @@ void Semantics::walkLetStatement(Node *node)
             }
             else
             {
-                switch (letStmt->data_type_token.type)
-                {
-                case TokenType::INTEGER_KEYWORD:
-                    declaredType = DataType::NULLABLE_INT;
-                    break;
-                case TokenType::FLOAT_KEYWORD:
-                    declaredType = DataType::NULLABLE_FLT;
-                    break;
-                case TokenType::DOUBLE_KEYWORD:
-                    declaredType = DataType::NULLABLE_DOUBLE;
-                    break;
-                case TokenType::STRING_KEYWORD:
-                    declaredType = DataType::NULLABLE_STR;
-                    break;
-                case TokenType::CHAR_KEYWORD:
-                    declaredType = DataType::NULLABLE_CHAR;
-                    break;
-                case TokenType::BOOL_KEYWORD:
-                    declaredType = DataType::NULLABLE_BOOLEAN;
-                    break;
-                default:
-                    declaredType = DataType::UNKNOWN;
-                    break;
-                }
+                declaredType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
             }
         }
         else
@@ -313,7 +293,7 @@ void Semantics::walkLetStatement(Node *node)
     if (letStmt->data_type_token.type != TokenType::AUTO)
     {
         DataType expectedType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
-        if (expectedType != declaredType)
+        if (!isTypeCompatible(expectedType, declaredType))
         {
             logSemanticErrors("Type mismatch in 'let' statement. Expected '" + dataTypetoString(expectedType) + "' but got '" + dataTypetoString(declaredType) + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
