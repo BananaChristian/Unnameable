@@ -228,7 +228,7 @@ component Player {
     }
 }
 
-let p = new Player(100);
+auto p = new Player(100);
 p.greet();
 
 ```

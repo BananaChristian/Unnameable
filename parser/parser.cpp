@@ -253,7 +253,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
             fullTypeName += "::" + currentToken().TokenLiteral; // append to full name
             advance();                                          // Consume the identifier
         }
-        data_type_token.TokenLiteral = fullTypeName;
+        data_type_token.TokenLiteral = fullTypeName;//Overriding the token's literal to allow storage of IDENTIFIER::IDENTIFIER
     }
 
     // Check for nullability
