@@ -184,6 +184,10 @@ std::unique_ptr<Statement> Parser::parseEnumClassStatement()
     }
     advance(); // Consume the } token
 
+    if(currentToken().type==TokenType::SEMICOLON){
+        advance();//Consume the semicolon
+    }
+
     return std::make_unique<EnumClassStatement>(enum_token, class_token, std::move(enum_ident), int_token, std::move(enum_block));
 }
 
