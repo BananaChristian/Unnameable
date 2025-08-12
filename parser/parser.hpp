@@ -91,10 +91,16 @@ private:
     // Parsing let statements with generic types
     std::unique_ptr<Statement> parseLetStatementWithGenericType(bool isParam);
 
+    // Parsing let statements with custom types
+    std::unique_ptr<Statement> parseLetStatementWithCustomType(bool isParam = false);
+
+    // Checker to see how to parse let statements those with custom or basic types
+    std::unique_ptr<Statement> parseLetStatementCustomOrBasic();
+
     // Parsing let statements without type
     std::unique_ptr<Statement> parseAssignmentStatement(bool isParam = false);
 
-    // A function to determine whether to parse Let with type or no type
+    // A function to determine whether to parse let statements or assignment statements
     std::unique_ptr<Statement> parseLetStatementDecider();
 
     // A function to determine whether to parse Let with type or no type and generics
@@ -248,9 +254,6 @@ private:
 
     // Tuples
     std::unique_ptr<Expression> parseTupleExpression();
-
-    // Parsing ++ or --
-    std::unique_ptr<Expression> parsePostfixUnary();
 
     // Call expression parse function
     std::unique_ptr<Expression> parseCallExpression(std::unique_ptr<Expression> left);

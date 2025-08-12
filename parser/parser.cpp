@@ -217,7 +217,113 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 
     return std::make_unique<LetStatement>(mutability, dataType_token, isNullable, ident_token, assign_token, move(value));
 }
+// Parsing let statements with custom types
+std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
+{
+    std::cout << "INSIDE CUSTOM TYPE PARSER\n";
+    Mutability mut = Mutability::IMMUTABLE;
+    Token data_type_token;
+    bool isNullable = false;
+    // Checking for mutability
+    if (currentToken().type == TokenType::MUT)
+    {
+        mut = Mutability::MUTABLE;
+        advance();
+    }
+    if (currentToken().type == TokenType::CONST)
+    {
+        mut = Mutability::CONSTANT;
+        advance();
+    }
 
+    // Checking for the indentifier token
+    if (currentToken().type == TokenType::IDENTIFIER)
+    {
+        data_type_token = currentToken();
+        std::string fullTypeName = data_type_token.TokenLiteral;
+        advance(); // Consume the identifier token
+        while (currentToken().type == TokenType::SCOPE_OPERATOR)
+        {
+            advance(); // Consume the scope operator
+            if (currentToken().type != TokenType::IDENTIFIER)
+            {
+                logError("Expected an identifier after  '::'");
+                return nullptr;
+            }
+            fullTypeName += "::" + currentToken().TokenLiteral; // append to full name
+            advance();                                          // Consume the identifier
+        }
+        data_type_token.TokenLiteral = fullTypeName;
+    }
+
+    // Check for nullability
+    if (currentToken().type == TokenType::QUESTION_MARK)
+    {
+        isNullable = true;
+        advance();
+    }
+
+    // Check for the variable name
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected variable name after data type");
+        return nullptr;
+    }
+
+    Token ident_token = currentToken();
+    advance(); // Consume the variable name identifier token
+
+    // Checking if we have a value assigned
+    std::optional<Token> assign_token;
+    std::unique_ptr<Expression> value = nullptr;
+
+    if (currentToken().type == TokenType::ASSIGN)
+    {
+        assign_token = currentToken();
+        std::cout << "[DEBUG] Encountered assignment token" << "\n";
+        advance();
+        value = parseExpression(Precedence::PREC_NONE);
+    }
+    else if (currentToken().type == TokenType::SEMICOLON)
+    {
+        std::cout << "[DEBUG] Encountered semicolon token" << "\n";
+    }
+
+    if (!isParam)
+    {
+        if (currentToken().type == TokenType::SEMICOLON)
+        {
+            advance();
+        }
+        else
+        {
+            logError("Expected a semicolon but got '" + currentToken().TokenLiteral + "'");
+            return nullptr;
+        }
+    }
+    else
+    {
+        // If it's a function parameter, we expect either ')' or ',' next
+        if (currentToken().type != TokenType::COMMA && currentToken().type != TokenType::RPAREN)
+        {
+            logError("Expected ',' or ')' after parameter declaration but got '" + currentToken().TokenLiteral + "'");
+            return nullptr;
+        }
+    }
+
+    if (mut == Mutability::CONSTANT)
+    {
+        if (value == nullptr)
+        {
+            logError("Uninitialized const variable");
+            return nullptr;
+        }
+    }
+
+    return std::make_unique<LetStatement>(mut, data_type_token, isNullable, ident_token, assign_token, std::move(value));
+}
+
+// Parsing let statements with generic types for use inside functions
 std::unique_ptr<Statement> Parser::parseLetStatementWithGenericType(bool isParam)
 {
     Mutability mutability = Mutability::IMMUTABLE;
@@ -273,18 +379,18 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
 {
     Token current = currentToken();
 
-    if (current.type == TokenType::INT ||
-        current.type == TokenType::FLOAT_KEYWORD ||
-        current.type == TokenType::STRING_KEYWORD ||
-        current.type == TokenType::CHAR_KEYWORD ||
-        current.type == TokenType::BOOL_KEYWORD ||
-        current.type == TokenType::AUTO)
+    if (isBasicType(current.type))
     {
         return parseLetStatementWithType(true);
     }
     else if (
         current.type == TokenType::IDENTIFIER)
     {
+        return parseLetStatementWithCustomType(true);
+        if (nextToken().type == TokenType::SCOPE_OPERATOR)
+        {
+            return parseLetStatementWithCustomType(true);
+        }
         if (nextToken().type == TokenType::ASSIGN)
         {
             return parseAssignmentStatement(true);
@@ -315,12 +421,18 @@ std::unique_ptr<Statement> Parser::parseParamLetStatementWithGenerics(const std:
                 return parseLetStatementWithGenericType(true);
             }
         }
+        // Check if we have a scope resolution and and treat as a custom type
+        if (nextToken().type == TokenType::SCOPE_OPERATOR)
+        {
+            return parseLetStatementWithCustomType(true);
+        }
 
         // Otherwise treat as assignment
         if (nextToken().type == TokenType::ASSIGN)
         {
             return parseAssignmentStatement(true);
         }
+        return parseLetStatementWithCustomType(true);
     }
 
     logError("Unrecognized parameter type or name '" + current.TokenLiteral + "'");
@@ -1741,10 +1853,20 @@ void Parser::registerPostfixFns()
     PostfixParseFunctionsMap[TokenType::MINUS_MINUS] = &Parser::parsePostfixExpression;
 }
 
-// Wrapper function for letstatement with type
+// Decider for custom or basic let statements
+std::unique_ptr<Statement> Parser::parseLetStatementCustomOrBasic()
+{
+    if (currentToken().type == TokenType::IDENTIFIER)
+    {
+        return parseLetStatementWithCustomType();
+    }
+    return parseLetStatementWithType();
+}
+
+// Wrapper function for let statement with basic or custom type
 std::unique_ptr<Statement> Parser::parseLetStatementWithTypeWrapper()
 {
-    return parseLetStatementWithType();
+    return parseLetStatementCustomOrBasic();
 }
 
 std::unique_ptr<Statement> Parser::parseErrorStatement()
@@ -1769,6 +1891,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::START] = &Parser::parseStartStatement;
     StatementParseFunctionsMap[TokenType::WAIT] = &Parser::parseWaitStatement;
 
+    // For basic types
     StatementParseFunctionsMap[TokenType::SHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::USHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::INTEGER_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
@@ -1781,6 +1904,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::CHAR_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR16_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR32_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    // For custom types
+    StatementParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseLetStatementWithTypeWrapper;
 
     StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::DOUBLE_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
