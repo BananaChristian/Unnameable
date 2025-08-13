@@ -197,6 +197,12 @@ for (mut int i; i < 10; i++) {
 
 ## Component System (OOP-like structure)
 Unnameable supports components, clean structures for organizing data and behavior, like classes, but lightweight and predictable.
+```
+mut data battery_specs{
+    uint health=100u;
+    uint capacity=5000u;
+}
+```
 
 ```unn
 behavior combat{
