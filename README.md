@@ -197,13 +197,6 @@ for (mut int i; i < 10; i++) {
 
 ## Component System (OOP-like structure)
 Unnameable supports components, clean structures for organizing data and behavior, like classes, but lightweight and predictable.
-```
-mut data battery_specs{
-    uint health=100u;
-    uint capacity=5000u;
-}
-```
-
 ```unn
 behavior combat{
       func kick() :void;
@@ -237,6 +230,21 @@ component Player {
 auto p = new Player(100);
 p.greet();
 
+```
+## Data blocks
+The data blocks are a way to group data that might be related the mutability qualifier means all the data inside the block is mutable but someone can specify the exact data they want to be mutable
+Note: By default the data block is immutable and all the data inside is immutable unless you explicitly say 'mut' on the whole block or the individual data inside
+Data blocks only allow for variable declarations can have values initialized or not
+```
+mut data battery_specs{
+    uint health=100u;
+    uint capacity=5000u;
+}
+
+data phone_specs{
+    mut string name;
+    string color;
+}
 ```
 
 ## Enums
