@@ -92,7 +92,7 @@ std::unique_ptr<Statement> Parser::parseStatement()
         }
 
         std::cout << "[DEBUG] Parsed generic expression statement.\n";
-        return std::make_unique<ExpressionStatement>(current, move(expr));
+        return std::make_unique<ExpressionStatement>(current, std::move(expr));
     }
 
     logError("Unexpected token at start of statement:  ");
@@ -253,7 +253,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
             fullTypeName += "::" + currentToken().TokenLiteral; // append to full name
             advance();                                          // Consume the identifier
         }
-        data_type_token.TokenLiteral = fullTypeName;//Overriding the token's literal to allow storage of IDENTIFIER::IDENTIFIER
+        data_type_token.TokenLiteral = fullTypeName; // Overriding the token's literal to allow storage of IDENTIFIER::IDENTIFIER
     }
 
     // Check for nullability
@@ -369,7 +369,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithGenericType(bool isParam
         value = parseExpression(Precedence::PREC_NONE);
     }
 
-    return std::make_unique<LetStatement>(mutability, typeToken, isNullable, identToken, assign_token, move(value));
+    return std::make_unique<LetStatement>(mutability, typeToken, isNullable, identToken, assign_token, std::move(value));
 }
 
 /*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
@@ -626,7 +626,20 @@ std::unique_ptr<Statement> Parser::parseBehaviorStatement()
 // Parsing data behavior
 std::unique_ptr<Statement> Parser::parseDataStatement()
 {
+    Mutability mutability = Mutability::IMMUTABLE;
     std::vector<std::unique_ptr<Statement>> fields;
+    if (currentToken().type == TokenType::MUT)
+    {
+        mutability = Mutability::MUTABLE;
+        std::cout<<"MUTABILITY IS MUTABLE\n";
+        advance(); // Consuming the mut keyword token
+    }
+    else if (currentToken().type == TokenType::CONST)
+    {
+        mutability = Mutability::CONSTANT;
+         std::cout<<"MUTABILITY IS CONSTANT\n";
+        advance();//Comsume the const keyword
+    }
     Token data_token = currentToken();
     advance(); // Consuming the data keyword token
     if (currentToken().type != TokenType::IDENTIFIER)
@@ -647,11 +660,7 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
         if (auto letStmt = dynamic_cast<LetStatement *>(dataStmt.get()))
         {
             TokenType declaredType = letStmt->data_type_token.type;
-            if (declaredType == TokenType::INT ||
-                declaredType == TokenType::FLOAT_KEYWORD ||
-                declaredType == TokenType::STRING_KEYWORD ||
-                declaredType == TokenType::BOOL_KEYWORD ||
-                declaredType == TokenType::CHAR_KEYWORD)
+            if (isBasicType(declaredType) || declaredType == TokenType::IDENTIFIER)
             {
                 fields.push_back(std::move(dataStmt));
             }
@@ -672,6 +681,7 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
     advance();
 
     return std::make_unique<DataStatement>(
+        mutability,
         data_token,
         std::move(dataBlockName),
         std::move(fields));
@@ -1194,7 +1204,7 @@ std::unique_ptr<Expression> Parser::parseInfixExpression(std::unique_ptr<Express
     Precedence prec = get_precedence(operat.type);
     advance();
     auto right = parseExpression(prec);
-    return std::make_unique<InfixExpression>(move(left), operat, move(right));
+    return std::make_unique<InfixExpression>(std::move(left), operat, std::move(right));
 }
 
 // Prefix parse function definition
@@ -1204,7 +1214,7 @@ std::unique_ptr<Expression> Parser::parsePrefixExpression()
     Precedence operatorPrecedence = get_precedence(operat.type);
     advance();
     auto operand = parseExpression(operatorPrecedence);
-    return std::make_unique<PrefixExpression>(operat, move(operand));
+    return std::make_unique<PrefixExpression>(operat, std::move(operand));
 }
 
 // Postfix expression parser function definition
@@ -1421,7 +1431,7 @@ std::unique_ptr<Expression> Parser::parseCallExpression(std::unique_ptr<Expressi
 
     auto args = parseCallArguments(); // Calling the parse call arguments inorder to parse the arguments
 
-    return std::make_unique<CallExpression>(call_token, move(left), move(args));
+    return std::make_unique<CallExpression>(call_token, std::move(left), std::move(args));
 }
 
 // Parsing tuple expressions
@@ -1647,7 +1657,7 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters(const st
         std::cerr << "Failed to parse first parameter.\n";
         return args;
     }
-    args.push_back(move(firstParam)); // If its parsed we add it to the vector
+    args.push_back(std::move(firstParam)); // If its parsed we add it to the vector
 
     while (currentToken().type == TokenType::COMMA)
     {                                                                 // If we still have commas
@@ -1658,7 +1668,7 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters(const st
             std::cerr << "Failed to parse parameter after comma\n";
             return args;
         }
-        args.push_back(move(arg));
+        args.push_back(std::move(arg));
     }
 
     if (currentToken().type != TokenType::RPAREN)
@@ -1717,7 +1727,7 @@ std::unique_ptr<Expression> Parser::parseBlockExpression()
         auto stmt = parseStatement();
         if (stmt)
         {
-            block->statements.push_back(move(stmt));
+            block->statements.push_back(std::move(stmt));
         }
     }
 
@@ -1866,6 +1876,10 @@ std::unique_ptr<Statement> Parser::parseLetStatementCustomOrBasic()
 // Wrapper function for let statement with basic or custom type
 std::unique_ptr<Statement> Parser::parseLetStatementWithTypeWrapper()
 {
+    if (nextToken().type == TokenType::DATA)
+    {
+        return parseDataStatement();
+    }
     return parseLetStatementCustomOrBasic();
 }
 

@@ -5,6 +5,7 @@
 #include <iostream>
 #include <vector>
 #include <optional>
+#include <utility>
 
 #define CPPREST_FORCE_REBUILD
 
@@ -424,7 +425,7 @@ struct InfixExpression : Expression
     {
         return "Infix Expression: (" + left_operand->toString() + " " + operat.TokenLiteral + " " + right_operand->toString() + ")";
     }
-    InfixExpression(std::unique_ptr<Expression> left, Token op, std::unique_ptr<Expression> right) : Expression(op), left_operand(move(left)), operat(op), right_operand(move(right)) {};
+    InfixExpression(std::unique_ptr<Expression> left, Token op, std::unique_ptr<Expression> right) : Expression(op), left_operand(std::move(left)), operat(op), right_operand(std::move(right)) {};
 };
 
 //-----STATEMENTS----
@@ -494,13 +495,23 @@ struct UseStatement : Statement
 // Data statement struct
 struct DataStatement : Statement
 {
+    Mutability mutability;
     Token data_token;
     std::unique_ptr<Expression> dataBlockName;
     std::vector<std::unique_ptr<Statement>> fields;
 
     std::string toString() override
     {
-        std::string result = "Data statement: " + dataBlockName->toString() + " {\n";
+        std::string mutStr;
+        if (mutability == Mutability::MUTABLE)
+        {
+            mutStr += "mut ";
+        }
+        else if (mutability == Mutability::CONSTANT)
+        {
+            mutStr += "const ";
+        }
+        std::string result = mutStr + " Data statement: " + dataBlockName->toString() + " {\n";
         for (const auto &field : fields)
         {
             result += "  " + field->toString() + "\n";
@@ -509,7 +520,7 @@ struct DataStatement : Statement
         return result;
     }
 
-    DataStatement(Token data, std::unique_ptr<Expression> block_name, std::vector<std::unique_ptr<Statement>> data_fields) : Statement(data), data_token(data), dataBlockName(std::move(block_name)), fields(std::move(data_fields)) {};
+    DataStatement(Mutability mut, Token data, std::unique_ptr<Expression> block_name, std::vector<std::unique_ptr<Statement>> data_fields) : Statement(data), mutability(mut), data_token(data), dataBlockName(std::move(block_name)), fields(std::move(data_fields)) {};
 };
 
 // Behavior statement struct
@@ -677,7 +688,7 @@ struct LetStatement : Statement
                                                                                                                                               ident_token(ident_t),
                                                                                                                                               assign_token(assign_t),
                                                                                                                                               Statement(data_t),
-                                                                                                                                              value(move(val)) {};
+                                                                                                                                              value(std::move(val)) {};
 };
 
 struct AssignmentStatement : Statement
@@ -688,7 +699,7 @@ struct AssignmentStatement : Statement
     {
         return "Assignment statement: (Variable: " + ident_token.TokenLiteral + " Value: " + value->toString() + ")";
     };
-    AssignmentStatement(Token ident, std::unique_ptr<Expression> val) : Statement(ident), ident_token(ident), value(move(val)) {};
+    AssignmentStatement(Token ident, std::unique_ptr<Expression> val) : Statement(ident), ident_token(ident), value(std::move(val)) {};
 };
 
 // Signal statement node
@@ -742,7 +753,7 @@ struct ReturnStatement : Statement
         return "Return Statement: ( Token: " + return_stmt.TokenLiteral + " Value: " +
                (return_value ? return_value->toString() : "void") + "), Error: " + (error_val ? error_val->toString() : "no error return");
     }
-    ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val, std::unique_ptr<Statement> err) : Statement(ret), return_stmt(ret), return_value(move(ret_val)), error_val(std::move(err)) {};
+    ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val, std::unique_ptr<Statement> err) : Statement(ret), return_stmt(ret), return_value(std::move(ret_val)), error_val(std::move(err)) {};
 };
 
 // Elif statement node
@@ -987,7 +998,7 @@ struct WhileStatement : Statement
         return "While : " + condition->toString() + loop->toString();
     }
 
-    WhileStatement(Token while_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(while_k), while_key(while_k), condition(move(condition)), loop(move(l)) {};
+    WhileStatement(Token while_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(while_k), while_key(while_k), condition(std::move(condition)), loop(std::move(l)) {};
 };
 
 // Function Statement
@@ -1085,7 +1096,7 @@ struct BlockStatement : Statement
         out += " }";
         return out;
     }
-    BlockStatement(Token brac, std::vector<std::unique_ptr<Statement>> cont) : Statement(brace), brace(brac), statements(move(cont)) {}
+    BlockStatement(Token brac, std::vector<std::unique_ptr<Statement>> cont) : Statement(brac), brace(brac), statements(std::move(cont)) {}
 };
 
 // BLOCKS

@@ -55,6 +55,8 @@ enum class DataType
     NULLABLE_CHAR32,
 
     ENUM,
+    DATABLOCK,
+
     ERROR,
     VOID,
     GENERIC,
@@ -83,28 +85,19 @@ struct SymbolInfo
     int constantValue = 0; // For enum members to store assigned int value
     std::vector<std::pair<std::string, int>> enumMembers;
     DataType enumIntType = DataType::INTEGER; // Defaults to a 32 bit integer data type
-};
-
-// Information about the current scope
-struct Scope
-{
-    std::unordered_map<std::string, SymbolInfo> symbol;
-    bool isGlobal = false;
-    bool isComponent = false;
-    bool isFunction = false;
-    std::shared_ptr<Scope> parentScope;
+    // DataBlock info
+    std::string dataBlockName;
+    std::vector<std::string> dataBlockMembers;
 };
 
 class Semantics
 {
-
 public:
     Semantics();
     void walker(Node *node);
     using walkerFunctions = void (Semantics::*)(Node *);
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
     std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable;
-    std::unordered_map<std::string, std::vector<SymbolInfo>> sharedDataBlocks;
     std::unordered_map<Node *, SymbolInfo> metaData;
     std::optional<SymbolInfo> currentFunction;
     std::vector<bool> loopContext;

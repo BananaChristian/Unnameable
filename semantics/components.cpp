@@ -259,46 +259,66 @@ void Semantics::walkDataStatement(Node *node)
         return;
 
     std::cout << "[SEMANTIC LOG] Analysing data statement " + dataBlockStmt->toString() + "\n";
-    // Checking is the data blocks name is already take by something else
-    const std::string &dataBlockName = dataBlockStmt->dataBlockName->expression.TokenLiteral;
-
-    // Check if the data block name already exists
-    auto dataBlockSymbolInfo = resolveSymbolInfo(dataBlockName);
-    if (dataBlockSymbolInfo)
+    // Checking if the data block name has been taken
+    // First we get the data block name
+    std::string dataBlockName = dataBlockStmt->dataBlockName->expression.TokenLiteral;
+    auto dataSymbol = resolveSymbolInfo(dataBlockName); // Retrieving the symbol
+    // Now we check if the symbol already exists
+    if (dataSymbol)
     {
-        logSemanticErrors("Cannot reuse name '" + dataBlockName + "' for data block", node->token.line, node->token.column);
+        logSemanticErrors("Data block with name '" + dataBlockName + "' already exists ", dataBlockStmt->statement.line, dataBlockStmt->statement.column);
         return;
     }
+    // Creating the local scope
+    symbolTable.push_back({});
+    // Retreiving the fields
+    bool isBlockMutable = (dataBlockStmt->mutability == Mutability::MUTABLE);
+    bool isBlockConstant = (dataBlockStmt->mutability == Mutability::CONSTANT);
 
-    // Dealing with the information inside the data block first we push a local scope
-    symbolTable.emplace_back(); // Pushing a local scope
-    std::vector<SymbolInfo> fieldSymbols;
-    bool Constant = false;
-    bool Mutable = false;
-    auto &dataBlockFields = dataBlockStmt->fields;
-    for (const auto &field : dataBlockFields)
+    std::vector<std::string> dataBlockFields;
+
+    for (const auto &field : dataBlockStmt->fields)
     {
+        // Ensure only let statements are inside data blocks
         auto letStmt = dynamic_cast<LetStatement *>(field.get());
-        walker(field.get());
-        if (letStmt)
+        if (!letStmt)
         {
-            if (letStmt->mutability == Mutability::MUTABLE)
-            {
-                Mutable = true;
-            }
-            else if (letStmt->mutability == Mutability::CONSTANT)
-            {
-                Constant = false;
-            }
-
-            fieldSymbols.push_back(
-                {.symbolDataType = inferNodeDataType(letStmt),
-                 .isNullable = letStmt->isNullable,
-                 .isMutable = Mutable,
-                 .isConstant = Constant,
-                 .isInitialized = false});
+            logSemanticErrors(
+                "Only let statements are allowed inside data block",
+                field->statement.line,
+                field->statement.column);
+            continue;
         }
+
+        // Apply block-level mutability if set
+        if (isBlockMutable)
+        {
+            letStmt->mutability = Mutability::MUTABLE;
+        }
+
+        else if (isBlockConstant)
+        {
+            letStmt->mutability = Mutability::CONSTANT;
+        }
+
+        // Otherwise, let the let statement enforce its own default (immutable)
+
+        // Walk the let statement normally
+        walker(letStmt);
+        // Add the let statement to the block members
+        dataBlockFields.push_back(letStmt->ident_token.TokenLiteral);
     }
-    sharedDataBlocks[dataBlockName] = std::move(fieldSymbols);
+
+    SymbolInfo dataSymbolInfo = {
+        .symbolDataType = DataType::DATABLOCK,
+        .isMutable = isBlockMutable,
+        .isConstant = isBlockConstant,
+        .dataBlockName = dataBlockName,
+        .dataBlockMembers = dataBlockFields,
+    };
+    metaData[dataBlockStmt] = dataSymbolInfo; // Storing the metadata
+    // Pushing the data block to the global scope
+    symbolTable[0][dataBlockName] = dataSymbolInfo;
+    // Exiting the current local scope
     symbolTable.pop_back();
 }
