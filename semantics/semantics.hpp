@@ -56,6 +56,7 @@ enum class DataType
 
     ENUM,
     DATABLOCK,
+    BEHAVIORBLOCK,
 
     ERROR,
     VOID,
@@ -88,6 +89,9 @@ struct SymbolInfo
     // DataBlock info
     std::string dataBlockName;
     std::vector<std::string> dataBlockMembers;
+    // BehaviorBlockInfo
+    std::string behaviorBlockName;
+    std::vector<std::string> behaviorBlockFuncs;
 };
 
 class Semantics
@@ -129,6 +133,7 @@ private:
 
     // Walking the component functions declaration
     void walkDataStatement(Node *node);
+    void walkBehaviorStatement(Node *node);
     void walkEnumClassStatement(Node *node);
 
     // Waling infix, prefix and postfix expressions

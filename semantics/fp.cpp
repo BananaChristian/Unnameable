@@ -189,18 +189,25 @@ void Semantics::walkFunctionExpression(Node *node)
 
     // Checking for duplicates in global scope
     SymbolInfo *symbol = resolveSymbolInfo(funcName);
-    if (symbol && symbol->isDefined)
+    if (symbol)
     {
-        logSemanticErrors("Function name '" + funcName + "' already used in global scope", funcExpr->func_key.line, funcExpr->func_key.column);
-        return;
-    }
-    if (symbol && symbol->isDeclaration)
-    {
-        if (!areSignaturesCompatible(*symbol, funcExpr))
+        logSemanticErrors("Already used the name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
+        if (symbol->isDefined)
         {
-            logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope", funcExpr->func_key.line, funcExpr->func_key.column);
+            logSemanticErrors("Function '" + funcName + "' was already defined",
+                              funcExpr->func_key.line, funcExpr->func_key.column);
             return;
         }
+        if (symbol->isDeclaration)
+        {
+            if (!areSignaturesCompatible(*symbol, funcExpr))
+            {
+                logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope",
+                                  funcExpr->func_key.line, funcExpr->func_key.column);
+                return;
+            }
+        }
+        return;
     }
 
     // Creating the initial funcInfo with minimal info for recursion
@@ -298,7 +305,7 @@ void Semantics::walkFunctionExpression(Node *node)
     symbolTable[0][funcName] = funcInfo;
     metaData[funcExpr] = funcInfo;
 
-    currentFunction = funcInfo;  // updating currentFunction with final info
+    currentFunction = funcInfo; // updating currentFunction with final info
     std::cout << "[SEMANTIC LOG] Updated currentFunction for '" << funcName << "' with return type: "
               << dataTypetoString(funcInfo.returnType) << "\n";
 
@@ -336,7 +343,6 @@ void Semantics::walkFunctionExpression(Node *node)
     std::cout << "[SEMANTIC LOG] Finished analyzing function '" << funcName << "'\n";
 }
 
-
 void Semantics::walkFunctionDeclarationExpression(Node *node)
 {
     auto funcDeclExpr = dynamic_cast<FunctionDeclarationExpression *>(node);
@@ -362,9 +368,20 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
 
     // Checking if the declaration already exists
     auto symbol = resolveSymbolInfo(funcName);
-    if (symbol && (symbol->isDeclaration || symbol->isDefined))
+    if (symbol)
     {
-        logSemanticErrors("Already used this name '" + funcName + "'", funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
+        logSemanticErrors("Already used the name '" + funcName + "'", funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
+        if (symbol->isDeclaration)
+        {
+            logSemanticErrors("Function '" + funcName + " has already been declared", funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
+            return;
+        }
+
+        if (symbol->isDefined)
+        {
+            logSemanticErrors("Function '" + funcName + "' has already been defined", funcDeclrStmt->statement.line, funcDeclrStmt->statement.column);
+            return;
+        }
         return;
     }
 
@@ -466,7 +483,7 @@ void Semantics::walkFunctionCallExpression(Node *node)
     // Check if function exists
     if (!callSymbolInfo)
     {
-        logSemanticErrors("Function name '" + callName + "' has not been defined or declared anywhere ",
+        logSemanticErrors("Function '" + callName + "' has not been defined or declared anywhere ",
                           funcCall->expression.line, funcCall->expression.column);
         return;
     }
@@ -477,16 +494,7 @@ void Semantics::walkFunctionCallExpression(Node *node)
         logSemanticErrors("Function '" + callName + "' was not declared anywhere",
                           funcCall->expression.line, funcCall->expression.column);
         return;
-    }
-
-    // Check if function is defined
-    /*
-    if (!callSymbolInfo->isDefined)
-    {
-        logSemanticErrors("Function '" + callName + "' was not defined anywhere",
-                          funcCall->expression.line, funcCall->expression.column);
-    }
-    */
+    }  
 
     // Check if call signature matches
     if (!isCallCompatible(*callSymbolInfo, funcCall))

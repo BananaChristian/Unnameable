@@ -96,6 +96,7 @@ void Semantics::registerWalkerFunctions()
 
     // Walker registration for the component system
     walkerFunctionsMap[typeid(DataStatement)] = &Semantics::walkDataStatement;
+    walkerFunctionsMap[typeid(BehaviorStatement)] = &Semantics::walkBehaviorStatement;
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
 }
 

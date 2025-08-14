@@ -17,8 +17,7 @@ void Semantics::walkEnumClassStatement(Node *node)
     // Checking for duplicate enum name
     if (resolveSymbolInfo(enumStmtName))
     {
-        logSemanticErrors("Already used the name '" + enumStmtName + "' for an existing enum class",
-                          enumStmt->statement.line, enumStmt->statement.column);
+        logSemanticErrors("Already used the name '" + enumStmtName + "'", enumStmt->statement.line, enumStmt->statement.column);
         return;
     }
 
@@ -266,7 +265,7 @@ void Semantics::walkDataStatement(Node *node)
     // Now we check if the symbol already exists
     if (dataSymbol)
     {
-        logSemanticErrors("Data block with name '" + dataBlockName + "' already exists ", dataBlockStmt->statement.line, dataBlockStmt->statement.column);
+        logSemanticErrors("Already used the name '" + dataBlockName + "'", dataBlockStmt->statement.line, dataBlockStmt->statement.column);
         return;
     }
     // Creating the local scope
@@ -320,5 +319,54 @@ void Semantics::walkDataStatement(Node *node)
     // Pushing the data block to the global scope
     symbolTable[0][dataBlockName] = dataSymbolInfo;
     // Exiting the current local scope
+    symbolTable.pop_back();
+}
+
+void Semantics::walkBehaviorStatement(Node *node)
+{
+    auto behaviorStmt = dynamic_cast<BehaviorStatement *>(node);
+    if (!behaviorStmt)
+    {
+        return;
+    }
+
+    // Getting the behavior blocks name
+    std::string behaviorName = behaviorStmt->behaviorBlockName->expression.TokenLiteral;
+    // Checking if the name was already used somewhere
+    auto behaviorSym = resolveSymbolInfo(behaviorName);
+    if (behaviorSym)
+    {
+        logSemanticErrors("Already used the name '" + behaviorName + "'", behaviorStmt->behaviorBlockName->expression.line, behaviorStmt->behaviorBlockName->expression.column);
+        return;
+    }
+    // Creating a local scope
+    symbolTable.push_back({});
+    // Dealing with the functions inside the block
+    std::vector<std::string> behaviorFuncs;
+    for (const auto &func : behaviorStmt->functions)
+    {
+        // Enforcing only function statements as these nest the expressions, generics, and declarations
+        auto funcStmt = dynamic_cast<FunctionStatement *>(func.get());
+        if (funcStmt)
+        {
+            walker(funcStmt); // Leaving the rest to the analyzer
+            // Storing the info of the funcs
+            behaviorFuncs.push_back(funcStmt->funcExpr->expression.TokenLiteral);
+        }
+        else
+        {
+            logSemanticErrors("Expected only function statements inside behavior block ", func->statement.line, func->statement.column);
+            return;
+        }
+    }
+
+    SymbolInfo sym = {
+        .symbolDataType = DataType::BEHAVIORBLOCK,
+        .behaviorBlockName = behaviorName,
+        .behaviorBlockFuncs = behaviorFuncs,
+    };
+
+    symbolTable[0][behaviorName] = sym;
+    metaData[behaviorStmt] = sym;
     symbolTable.pop_back();
 }
