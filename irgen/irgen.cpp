@@ -124,7 +124,8 @@ void IRGenerator::generateWhileStatement(Node *node)
     std::cerr << "[IR DEBUG] Creating conditional branch\n";
     builder.CreateCondBr(condVal, bodyBB, endBB);
 
-    function->getBasicBlockList().push_back(bodyBB);
+    // Append bodyBB to function
+    function->insert(function->end(), bodyBB);
     builder.SetInsertPoint(bodyBB);
     std::cerr << "[IR DEBUG] Generating while body\n";
     loopBlocksStack.push_back({condBB, endBB});
@@ -142,7 +143,8 @@ void IRGenerator::generateWhileStatement(Node *node)
         std::cerr << "[IR WARNING] While body block already has terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
     }
 
-    function->getBasicBlockList().push_back(endBB);
+    // Append endBB to function
+    function->insert(function->end(), endBB);
     builder.SetInsertPoint(endBB);
 }
 
@@ -210,7 +212,7 @@ void IRGenerator::generateIfStatement(Node *node)
     // Generating elif branches
     for (size_t i = 0; i < ifStmt->elifClauses.size(); ++i)
     {
-        function->getBasicBlockList().push_back(nextBB);
+        function->insert(function->end(), nextBB);
         builder.SetInsertPoint(nextBB);
         std::cerr << "[IR DEBUG] Generating elif branch " << i << "\n";
 
@@ -252,7 +254,7 @@ void IRGenerator::generateIfStatement(Node *node)
     // Generate else branch if present
     if (ifStmt->else_result.has_value())
     {
-        function->getBasicBlockList().push_back(nextBB);
+        function->insert(function->end(), nextBB);
         builder.SetInsertPoint(nextBB);
         std::cerr << "[IR DEBUG] Generating else branch\n";
         generateStatement(ifStmt->else_result.value().get());
@@ -268,7 +270,7 @@ void IRGenerator::generateIfStatement(Node *node)
     }
 
     // Finalize with merge block
-    function->getBasicBlockList().push_back(mergeBB);
+    function->insert(function->end(), mergeBB);
     builder.SetInsertPoint(mergeBB);
     std::cerr << "[IR DEBUG] Finished generating if statement\n";
 }
@@ -278,7 +280,9 @@ void IRGenerator::generateForStatement(Node *node)
 {
     auto forStmt = dynamic_cast<ForStatement *>(node);
     if (!forStmt)
-        return;
+    {
+        throw std::runtime_error("Invalid for statement");
+    }
 
     llvm::Function *function = builder.GetInsertBlock()->getParent();
 
@@ -333,9 +337,9 @@ void IRGenerator::generateForStatement(Node *node)
 
     std::cerr << "[IR DEBUG] Creating conditional branch\n";
     builder.CreateCondBr(condVal, bodyBB, endBB);
-    function->getBasicBlockList().push_back(bodyBB);
 
-    // Loop body
+    // Append bodyBB to function
+    function->insert(function->end(), bodyBB);
     builder.SetInsertPoint(bodyBB);
     loopBlocksStack.push_back({condBB, endBB});
     std::cerr << "[IR DEBUG] Generating loop body\n";
@@ -354,7 +358,8 @@ void IRGenerator::generateForStatement(Node *node)
         std::cerr << "[IR WARNING] Loop body block already has terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
     }
 
-    function->getBasicBlockList().push_back(stepBB);
+    // Append stepBB to function
+    function->insert(function->end(), stepBB);
     builder.SetInsertPoint(stepBB);
 
     // Loop step
@@ -368,10 +373,11 @@ void IRGenerator::generateForStatement(Node *node)
     std::cerr << "[IR DEBUG] Creating branch to loop.cond\n";
     builder.CreateBr(condBB);
 
-    // Add end block and move builder there
-    function->getBasicBlockList().push_back(endBB);
+    // Append end block and move builder there
+    function->insert(function->end(), endBB);
     builder.SetInsertPoint(endBB);
 }
+
 void IRGenerator::generateBreakStatement(Node *node)
 {
     if (loopBlocksStack.empty())
@@ -679,22 +685,37 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
     // Helper to check if integer type
     auto isIntType = [&](DataType dt)
     {
-        return isIntegerType(dt); // Your helper from before
+        return isIntegerType(dt);
+    };
+
+    // Helper to get LLVM type from DataType
+    auto getLLVMType = [&](DataType dt) -> llvm::Type *
+    {
+        if (dt == DataType::FLOAT)
+            return llvm::Type::getFloatTy(context);
+        if (dt == DataType::DOUBLE)
+            return llvm::Type::getDoubleTy(context);
+        if (isIntType(dt))
+        {
+            unsigned bits = getIntegerBitWidth(dt);
+            return llvm::Type::getIntNTy(context, bits);
+        }
+        return nullptr;
     };
 
     switch (prefix->operat.type)
     {
     case TokenType::MINUS:
         if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
-            return builder.CreateFNeg(operand, "fnegtmp");
+            return builder.CreateFNeg(operand, llvm::Twine("fnegtmp"));
         else if (isIntType(resultType))
-            return builder.CreateNeg(operand, "negtmp");
+            return builder.CreateNeg(operand, llvm::Twine("negtmp"));
         else
             throw std::runtime_error("Unsupported type for unary minus");
 
     case TokenType::BANG:
         // Boolean NOT
-        return builder.CreateNot(operand, "nottmp");
+        return builder.CreateNot(operand, llvm::Twine("nottmp"));
 
     case TokenType::PLUS_PLUS:
     case TokenType::MINUS_MINUS:
@@ -703,21 +724,30 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
         if (!ident)
             throw std::runtime_error("Prefix ++/-- must be used on a variable");
 
-        llvm::Value *varPtr = namedValues[ident->identifier.TokenLiteral];
-        if (!varPtr)
+        auto varIt = namedValues.find(ident->identifier.TokenLiteral);
+        if (varIt == namedValues.end())
             throw std::runtime_error("Undefined variable in ++/--: " + ident->identifier.TokenLiteral);
 
-        llvm::Value *loaded = builder.CreateLoad(varPtr->getType()->getPointerElementType(), varPtr, "loadtmp");
+        llvm::Value *varPtr = varIt->second;
+        if (!varPtr)
+            throw std::runtime_error("Null variable pointer for: " + ident->identifier.TokenLiteral);
+
+        // Get the type from resultType instead of getPointerElementType
+        llvm::Type *varType = getLLVMType(resultType);
+        if (!varType)
+            throw std::runtime_error("Invalid type for variable: " + ident->identifier.TokenLiteral);
+
+        llvm::Value *loaded = builder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
         llvm::Value *delta = nullptr;
         if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
         {
-            delta = llvm::ConstantFP::get(loaded->getType(), 1.0);
+            delta = llvm::ConstantFP::get(varType, 1.0);
         }
         else if (isIntType(resultType))
         {
             unsigned bits = getIntegerBitWidth(resultType);
-            delta = llvm::ConstantInt::get(llvm::IntegerType::get(context, bits), 1);
+            delta = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, bits), 1);
         }
         else
         {
@@ -727,12 +757,12 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
         llvm::Value *updated = nullptr;
         if (prefix->operat.type == TokenType::PLUS_PLUS)
             updated = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
-                          ? builder.CreateFAdd(loaded, delta, "preincfptmp")
-                          : builder.CreateAdd(loaded, delta, "preinctmp");
+                          ? builder.CreateFAdd(loaded, delta, llvm::Twine("preincfptmp"))
+                          : builder.CreateAdd(loaded, delta, llvm::Twine("preinctmp"));
         else
             updated = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
-                          ? builder.CreateFSub(loaded, delta, "predecfptmp")
-                          : builder.CreateSub(loaded, delta, "predectmp");
+                          ? builder.CreateFSub(loaded, delta, llvm::Twine("predecfptmp"))
+                          : builder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
 
         builder.CreateStore(updated, varPtr);
         return updated;
@@ -754,11 +784,13 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
     if (!identifier)
         throw std::runtime_error("Postfix operand must be a variable");
 
-    llvm::Value *varPtr = namedValues[identifier->identifier.TokenLiteral];
-    if (!varPtr)
+    auto varIt = namedValues.find(identifier->identifier.TokenLiteral);
+    if (varIt == namedValues.end())
         throw std::runtime_error("Unknown variable name in postfix expression: " + identifier->identifier.TokenLiteral);
 
-    llvm::Value *originalValue = builder.CreateLoad(varPtr->getType()->getPointerElementType(), varPtr, "loadtmp");
+    llvm::Value *varPtr = varIt->second;
+    if (!varPtr)
+        throw std::runtime_error("Null variable pointer for: " + identifier->identifier.TokenLiteral);
 
     auto it = semantics.metaData.find(node);
     if (it == semantics.metaData.end())
@@ -766,18 +798,41 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
 
     DataType resultType = it->second.symbolDataType;
 
+    // Helper to check if integer type
     auto isIntType = [&](DataType dt)
     { return isIntegerType(dt); };
-    llvm::Value *delta = nullptr;
 
+    // Helper to get LLVM type from DataType
+    auto getLLVMType = [&](DataType dt) -> llvm::Type *
+    {
+        if (dt == DataType::FLOAT)
+            return llvm::Type::getFloatTy(context);
+        if (dt == DataType::DOUBLE)
+            return llvm::Type::getDoubleTy(context);
+        if (isIntType(dt))
+        {
+            unsigned bits = getIntegerBitWidth(dt);
+            return llvm::Type::getIntNTy(context, bits);
+        }
+        return nullptr;
+    };
+
+    // Get the type from resultType for CreateLoad
+    llvm::Type *varType = getLLVMType(resultType);
+    if (!varType)
+        throw std::runtime_error("Invalid type for variable: " + identifier->identifier.TokenLiteral);
+
+    llvm::Value *originalValue = builder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
+
+    llvm::Value *delta = nullptr;
     if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
     {
-        delta = llvm::ConstantFP::get(originalValue->getType(), 1.0);
+        delta = llvm::ConstantFP::get(varType, 1.0);
     }
     else if (isIntType(resultType))
     {
         unsigned bits = getIntegerBitWidth(resultType);
-        delta = llvm::ConstantInt::get(llvm::IntegerType::get(context, bits), 1);
+        delta = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, bits), 1);
     }
     else
     {
@@ -788,12 +843,12 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
 
     if (postfix->operator_token.type == TokenType::PLUS_PLUS)
         updatedValue = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
-                           ? builder.CreateFAdd(originalValue, delta, "finc")
-                           : builder.CreateAdd(originalValue, delta, "inc");
+                           ? builder.CreateFAdd(originalValue, delta, llvm::Twine("finc"))
+                           : builder.CreateAdd(originalValue, delta, llvm::Twine("inc"));
     else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
         updatedValue = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
-                           ? builder.CreateFSub(originalValue, delta, "fdec")
-                           : builder.CreateSub(originalValue, delta, "dec");
+                           ? builder.CreateFSub(originalValue, delta, llvm::Twine("fdec"))
+                           : builder.CreateSub(originalValue, delta, llvm::Twine("dec"));
     else
         throw std::runtime_error("Unsupported postfix operator: " + postfix->operator_token.TokenLiteral +
                                  " at line " + std::to_string(postfix->operator_token.line));
@@ -1115,31 +1170,31 @@ llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType typ
     switch (type)
     {
     case DataType::NULLABLE_STR:
-        return llvm::ConstantPointerNull::get(llvm::Type::getInt8PtrTy(context));
+        return llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
 
     case DataType::NULLABLE_INT:
-        // Using minimum signed int as null marker (could be your sentinel)
-        return llvm::ConstantInt::get(context, llvm::APInt(32, (uint64_t)INT32_MIN, true));
+        // Using minimum signed int as null marker
+        return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, INT32_MIN, true));
 
     case DataType::NULLABLE_SHORT_INT:
-        return llvm::ConstantInt::get(context, llvm::APInt(16, (uint64_t)INT16_MIN, true));
+        return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), llvm::APInt(16, INT16_MIN, true));
 
     case DataType::NULLABLE_USHORT_INT:
-        // For unsigned, maybe zero or max value as null?
-        return llvm::ConstantInt::get(context, llvm::APInt(16, 0));
+        // Using zero as null for unsigned
+        return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), llvm::APInt(16, 0));
 
     case DataType::NULLABLE_UINT:
-        return llvm::ConstantInt::get(context, llvm::APInt(32, 0));
+        return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, 0));
 
     case DataType::NULLABLE_LONG_INT:
-        return llvm::ConstantInt::get(context, llvm::APInt(64, (uint64_t)INT64_MIN, true));
+        return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), llvm::APInt(64, INT64_MIN, true));
 
     case DataType::NULLABLE_ULONG_INT:
-        return llvm::ConstantInt::get(context, llvm::APInt(64, 0));
+        return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), llvm::APInt(64, 0));
 
     case DataType::NULLABLE_EXTRA_INT:
     case DataType::NULLABLE_UEXTRA_INT:
-        return llvm::ConstantInt::get(context, llvm::APInt(128, 0)); // No min/max in 128-bit easy, so zero or sentinel
+        return llvm::ConstantInt::get(llvm::Type::getInt128Ty(context), llvm::APInt(128, 0));
 
     case DataType::NULLABLE_FLT:
         return llvm::ConstantFP::getNaN(llvm::Type::getFloatTy(context));
@@ -1148,16 +1203,16 @@ llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType typ
         return llvm::ConstantFP::getNaN(llvm::Type::getDoubleTy(context));
 
     case DataType::NULLABLE_BOOLEAN:
-        return llvm::ConstantInt::get(context, llvm::APInt(1, 0)); // false
+        return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), llvm::APInt(1, 0));
 
     case DataType::NULLABLE_CHAR:
-        return llvm::ConstantInt::get(context, llvm::APInt(8, 0));
+        return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), llvm::APInt(8, 0));
 
     case DataType::NULLABLE_CHAR16:
-        return llvm::ConstantInt::get(context, llvm::APInt(16, 0));
+        return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), llvm::APInt(16, 0));
 
     case DataType::NULLABLE_CHAR32:
-        return llvm::ConstantInt::get(context, llvm::APInt(32, 0));
+        return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, 0));
 
     default:
         throw std::runtime_error("Unsupported nullable data type in generateNullLiteral");
@@ -1218,12 +1273,11 @@ llvm::Type *IRGenerator::getLLVMType(DataType type)
 
     case DataType::EXTRA_INT:
     case DataType::NULLABLE_EXTRA_INT:
-        // LLVM doesn't have built-in 128-bit int, but supports i128 on some targets
-        return llvm::IntegerType::get(context, 128);
+        return llvm::Type::getInt128Ty(context);
 
     case DataType::UEXTRA_INT:
     case DataType::NULLABLE_UEXTRA_INT:
-        return llvm::IntegerType::get(context, 128);
+        return llvm::Type::getInt128Ty(context);
 
     case DataType::BOOLEAN:
     case DataType::NULLABLE_BOOLEAN:
@@ -1251,8 +1305,7 @@ llvm::Type *IRGenerator::getLLVMType(DataType type)
 
     case DataType::STRING:
     case DataType::NULLABLE_STR:
-        // Assuming string is a pointer to i8
-        return llvm::Type::getInt8PtrTy(context);
+        return llvm::PointerType::get(context, 0);
 
     case DataType::ERROR:
     case DataType::VOID:
