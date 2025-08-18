@@ -9,8 +9,13 @@ void Semantics::walkInfixExpression(Node *node)
 
     auto left = infixExpr->left_operand.get();
     walker(left);
-    auto right = infixExpr->right_operand.get();
-    walker(right);
+
+    if (infixExpr->operat.type != TokenType::FULLSTOP && infixExpr->operat.type != TokenType::SCOPE_OPERATOR)
+    {
+        std::cout << "OPERATOR TYPE: " << TokenTypeToLiteral(infixExpr->operat.type) << "\n";
+        auto right = infixExpr->right_operand.get();
+        walker(right);
+    }
 
     DataType infixType = inferNodeDataType(infixExpr);
     metaData[infixExpr] = {
@@ -84,7 +89,7 @@ void Semantics::walkPostfixExpression(Node *node)
                 logSemanticErrors("Undefined variable in postfix expression '" + ident->expression.TokenLiteral + "'", postfixExpr->expression.line, postfixExpr->expression.column);
                 return;
             }
-            if (symbol->isMutable==false)
+            if (symbol->isMutable == false)
             {
                 logSemanticErrors("Cannot apply '" + postfixExpr->operator_token.TokenLiteral + "' to immutable variable '" + ident->expression.TokenLiteral + "'", postfixExpr->expression.line, postfixExpr->expression.column);
                 return;

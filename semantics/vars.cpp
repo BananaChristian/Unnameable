@@ -213,7 +213,7 @@ void Semantics::walkIdentifierExpression(Node *node)
     auto symbolInfo = resolveSymbolInfo(identName);
     if (!symbolInfo)
     {
-        std::cerr << "[SEMANTIC ERROR] Use of undeclared identifer " << identName << "\n";
+        logSemanticErrors(" Use of undeclared identifer '" + identName + "'", identExpr->expression.line, identExpr->expression.column);
         metaData[identExpr] = {
             .symbolDataType = DataType::UNKNOWN,
             .isNullable = false,

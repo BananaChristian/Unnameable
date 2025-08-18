@@ -1,5 +1,6 @@
 #include "semantics.hpp"
 #include "ast.hpp"
+#include <algorithm>
 
 #define CPPREST_FORCE_REBUILD
 
@@ -97,6 +98,7 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for the component system
     walkerFunctionsMap[typeid(DataStatement)] = &Semantics::walkDataStatement;
     walkerFunctionsMap[typeid(BehaviorStatement)] = &Semantics::walkBehaviorStatement;
+    walkerFunctionsMap[typeid(UseStatement)] = &Semantics::walkUseStatement;
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
 }
 
@@ -281,7 +283,9 @@ DataType Semantics::inferInfixExpressionType(Node *node)
     DataType leftType = inferNodeDataType(infixNode->left_operand.get());
     DataType rightType = inferNodeDataType(infixNode->right_operand.get());
     TokenType operatorType = infixNode->operat.type;
-    return resultOfBinary(operatorType, leftType, rightType);
+    auto leftName = infixNode->left_operand->expression.TokenLiteral;
+    auto rightName = infixNode->right_operand->expression.TokenLiteral;
+    return resultOfBinary(operatorType, leftType, rightType, leftName, rightName);
 }
 
 DataType Semantics::inferPrefixExpressionType(Node *node)
@@ -308,8 +312,87 @@ DataType Semantics::inferPostfixExpressionType(Node *node)
 Identifier *lastLeftIdent = nullptr;
 Identifier *lastRightIdent = nullptr;
 
-DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType)
+DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType, const std::string &leftName, const std::string &rightName)
 {
+    // Here I want full stops to only deal with function like stuff so behaviors and later components(.)
+    if (operatorType == TokenType::FULLSTOP)
+    {
+        auto sym = resolveSymbolInfo(leftName);
+        if (sym->symbolDataType == DataType::BEHAVIORBLOCK) // To be exteneded for components
+        {
+            // Here we check in the custom types table
+            auto typeIt = customTypesTable.find(leftName); // We look using the left name as it is the main type
+            // This is if we dont find the custom parent type
+            if (typeIt == customTypesTable.end())
+            {
+                std::cout << "[SEMANTIC ERROR] Could not find '" + leftName + "'" << "\n";
+                return DataType::UNKNOWN;
+            }
+            // If we find it let us look for the specific type inside the parent type
+            if (!typeIt->second.empty())
+            {
+                bool found = false;
+                for (const auto &child : typeIt->second)
+                {
+                    if (child == rightName)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    std::cout << "[SEMANTIC ERROR] Could not find '" + rightName + "' in '" + leftName + "'" << "\n";
+                    return DataType::UNKNOWN;
+                }
+            }
+            // What if we actually get the values we want
+            // Here I will search for the parent name in the symbol table and return that data type
+
+            return sym->symbolDataType;
+        }
+        std::cout << "Only use '.' for behavior blocks and components access\n";
+        return DataType::UNKNOWN;
+    }
+    // This is for only data blocks and enums(::)
+    // This is for only data blocks and enums (::)
+    if (operatorType == TokenType::SCOPE_OPERATOR)
+    {
+        auto parentSym = resolveSymbolInfo(leftName);
+        if (!parentSym)
+        {
+            std::cout << "[SEMANTIC ERROR] Could not find '" << leftName << "'\n";
+            return DataType::UNKNOWN;
+        }
+
+        if (parentSym->symbolDataType == DataType::ENUM || parentSym->symbolDataType == DataType::DATABLOCK)
+        {
+            // Look for members of the parent in the custom types table
+            auto typeIt = customTypesTable.find(leftName);
+            if (typeIt == customTypesTable.end())
+            {
+                std::cout << "[SEMANTIC ERROR] Could not find members for '" << leftName << "'\n";
+                return DataType::UNKNOWN;
+            }
+
+            const auto &members = typeIt->second;
+            auto found = std::find(members.begin(), members.end(), rightName) != members.end();
+
+            if (!found)
+            {
+                std::cout << "[SEMANTIC ERROR] Could not find '" << rightName
+                          << "' in '" << leftName << "'\n";
+                return DataType::UNKNOWN;
+            }
+
+            // If found, return the parent's datatype (so future semantic checks know the base type)
+            return parentSym->symbolDataType;
+        }
+
+        std::cout << "Only use '::' for data blocks and enum class access\n";
+        return DataType::UNKNOWN;
+    }
+
     // Logical operators: &&, ||
     if (operatorType == TokenType::AND || operatorType == TokenType::OR)
     {

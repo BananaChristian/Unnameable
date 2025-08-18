@@ -555,12 +555,20 @@ std::unique_ptr<Statement> Parser::parseUseStatement()
         logError("Expected either 'data' or 'behavior' keyword but got: " + currentToken().TokenLiteral);
     }
 
-    if (currentToken().type == TokenType::FULLSTOP)
+    if (currentToken().type == TokenType::FULLSTOP || currentToken().type == TokenType::SCOPE_OPERATOR)
     {
         logError("Expected data block name but you are starting with a fullstop");
     }
 
     std::unique_ptr<Expression> expr = parseExpression(Precedence::PREC_NONE);
+
+    // Special check to prevent function calls
+    auto callExpr = dynamic_cast<CallExpression *>(expr.get());
+    if (callExpr)
+    {
+        logError("Unexpected function call");
+        return nullptr;
+    }
 
     if (currentToken().type == TokenType::SEMICOLON)
     {
@@ -574,8 +582,7 @@ std::unique_ptr<Statement> Parser::parseUseStatement()
     return std::make_unique<UseStatement>(
         use_token,
         kind_token,
-        std::move(expr),
-        std::move(functionCallOrData));
+        std::move(expr));
 }
 
 // Parsing behavior statement
@@ -631,14 +638,14 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
     if (currentToken().type == TokenType::MUT)
     {
         mutability = Mutability::MUTABLE;
-        std::cout<<"MUTABILITY IS MUTABLE\n";
+        std::cout << "MUTABILITY IS MUTABLE\n";
         advance(); // Consuming the mut keyword token
     }
     else if (currentToken().type == TokenType::CONST)
     {
         mutability = Mutability::CONSTANT;
-         std::cout<<"MUTABILITY IS CONSTANT\n";
-        advance();//Comsume the const keyword
+        std::cout << "MUTABILITY IS CONSTANT\n";
+        advance(); // Comsume the const keyword
     }
     Token data_token = currentToken();
     advance(); // Consuming the data keyword token
@@ -1516,7 +1523,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     bool isNullable = false;
     std::cout << "[TEST]Function parser is working\n";
     //--------Dealing with work keyword---------------
-    Token func_tok = currentToken(); // The token representing the keyword for functions (work)
+    Token func_tok = currentToken(); // The token representing the keyword for functions (func)
     advance();
 
     std::vector<Token> genericParams;

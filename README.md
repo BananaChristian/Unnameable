@@ -180,6 +180,7 @@ switch (name) {
 ## Loops
 *While loops*
 ```
+int x=5;
 while (x > 5) {
     return x;
 }
@@ -218,9 +219,10 @@ component Player {
     }
 
     use behavior combat;
-    use behavior combat.super();
+    use behavior combat.super;
 
     use data attributes;
+    use data attributes::speed;
 
     func greet(): string {
         return "Hello, I have " + self.health + " HP";

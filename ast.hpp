@@ -472,24 +472,18 @@ struct UseStatement : Statement
 {
     Token use_token;
     Token kind_token; // "data" or "behavior"
-    std::unique_ptr<Expression> blockName;
-
-    std::optional<std::unique_ptr<Expression>> functionCallOrData;
+    std::unique_ptr<Expression> blockNameOrCall;
 
     std::string toString() override
     {
         std::string result = "Use statement: ";
         result += kind_token.TokenLiteral + " ";
-        result += blockName->toString();
-        if (functionCallOrData.has_value())
-        {
-            result += "." + (*functionCallOrData)->toString();
-        }
+        result += blockNameOrCall->toString();
         return result + ";";
     }
 
-    UseStatement(Token useTok, Token kindTok, std::unique_ptr<Expression> name, std::optional<std::unique_ptr<Expression>> call)
-        : Statement(useTok), use_token(useTok), kind_token(kindTok), blockName(std::move(name)), functionCallOrData(std::move(call)) {}
+    UseStatement(Token useTok, Token kindTok, std::unique_ptr<Expression> name)
+        : Statement(useTok), use_token(useTok), kind_token(kindTok), blockNameOrCall(std::move(name)) {}
 };
 
 // Data statement struct

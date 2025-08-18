@@ -247,6 +247,7 @@ void Semantics::walkEnumClassStatement(Node *node)
 
     symbolTable[symbolTable.size() - 2][enumStmtName] = symbol;
     metaData[enumStmt] = symbol;
+    customTypesTable[enumStmtName] = enumInfo.enumContent;
     symbolTable.pop_back();
 }
 
@@ -303,9 +304,10 @@ void Semantics::walkDataStatement(Node *node)
         // Otherwise, let the let statement enforce its own default (immutable)
 
         // Walk the let statement normally
-        walker(letStmt);
+        walkLetStatement(letStmt);
         // Add the let statement to the block members
         dataBlockFields.push_back(letStmt->ident_token.TokenLiteral);
+        std::cout << "DATA NAME STORED IN DATA BLOCK FIELD: " << letStmt->ident_token.TokenLiteral << "\n";
     }
 
     SymbolInfo dataSymbolInfo = {
@@ -318,6 +320,8 @@ void Semantics::walkDataStatement(Node *node)
     metaData[dataBlockStmt] = dataSymbolInfo; // Storing the metadata
     // Pushing the data block to the global scope
     symbolTable[0][dataBlockName] = dataSymbolInfo;
+    // Storing in the custom types table
+    customTypesTable[dataBlockName] = dataBlockFields;
     // Exiting the current local scope
     symbolTable.pop_back();
 }
@@ -351,7 +355,21 @@ void Semantics::walkBehaviorStatement(Node *node)
         {
             walker(funcStmt); // Leaving the rest to the analyzer
             // Storing the info of the funcs
-            behaviorFuncs.push_back(funcStmt->funcExpr->expression.TokenLiteral);
+            auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
+            auto funcDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get());
+            if (funcExpr)
+            {
+                behaviorFuncs.push_back(funcExpr->func_key.TokenLiteral);
+                std::cout << "FUNCTION NAME GETTING STORED IN BEHAVIOR BLOCK FOR FUNC EXPRESSION: " << funcExpr->func_key.TokenLiteral << "\n";
+            }
+            if (funcDeclrExpr)
+            {
+                if (auto funcDeclr = dynamic_cast<FunctionDeclaration *>(funcDeclrExpr->funcDeclrStmt.get()))
+                {
+                    behaviorFuncs.push_back(funcDeclr->function_name->expression.TokenLiteral);
+                    std::cout << "FUNCTION NAME GETTING STORED IN BEHAVIOR BLOCK FOR FUNC DECLARATIONS: " << funcDeclr->function_name->expression.TokenLiteral << "\n";
+                }
+            }
         }
         else
         {
@@ -368,5 +386,16 @@ void Semantics::walkBehaviorStatement(Node *node)
 
     symbolTable[0][behaviorName] = sym;
     metaData[behaviorStmt] = sym;
+    customTypesTable[behaviorName] = behaviorFuncs;
     symbolTable.pop_back();
+}
+
+void Semantics::walkUseStatement(Node *node)
+{
+    auto useStmt = dynamic_cast<UseStatement *>(node);
+    if (!useStmt)
+        return;
+    std::cout << "[SEMANTIC LOG] Analysing use statement " << node->toString() << "\n";
+    // Just walk it
+    walker(useStmt->blockNameOrCall.get());
 }
