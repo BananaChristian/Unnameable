@@ -420,16 +420,16 @@ void IRGenerator::generateAssignmentStatement(Node *node)
     if (!assignStmt)
         return;
 
-    SymbolInfo *symbol = semantics.resolveSymbolInfo(assignStmt->ident_token.TokenLiteral);
+    SymbolInfo *symbol = semantics.resolveSymbolInfo(assignStmt->identifier->expression.TokenLiteral);
     if (!symbol)
     {
-        throw std::runtime_error("Symbol '" + assignStmt->ident_token.TokenLiteral + "' not found");
+        throw std::runtime_error("Symbol '" + assignStmt->identifier->expression.TokenLiteral+ "' not found");
     }
 
-    llvm::Value *ptr = namedValues[assignStmt->ident_token.TokenLiteral];
+    llvm::Value *ptr = namedValues[assignStmt->identifier->expression.TokenLiteral];
     if (!ptr)
     {
-        throw std::runtime_error("No memory allocated for variable: " + assignStmt->ident_token.TokenLiteral);
+        throw std::runtime_error("No memory allocated for variable: " + assignStmt->identifier->expression.TokenLiteral);
     }
 
     llvm::Value *initValue = generateExpression(assignStmt->value.get());

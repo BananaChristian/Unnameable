@@ -99,6 +99,8 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(DataStatement)] = &Semantics::walkDataStatement;
     walkerFunctionsMap[typeid(BehaviorStatement)] = &Semantics::walkBehaviorStatement;
     walkerFunctionsMap[typeid(UseStatement)] = &Semantics::walkUseStatement;
+    walkerFunctionsMap[typeid(ComponentStatement)] = &Semantics::walkComponentStatement;
+    walkerFunctionsMap[typeid(FieldAccessExpression)] = &Semantics::walkFieldAccessExpression;
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
 }
 
@@ -205,13 +207,13 @@ DataType Semantics::inferNodeDataType(Node *node)
 
     if (auto assignStmt = dynamic_cast<AssignmentStatement *>(node))
     {
-        auto assignStmtIdent = assignStmt->ident_token.TokenLiteral;
+        auto assignStmtIdent = assignStmt->identifier->expression.TokenLiteral;
         auto assignSymbol = resolveSymbolInfo(assignStmtIdent);
         auto assignStmtVal = assignStmt->value.get();
         DataType assignStmtValType = inferNodeDataType(assignStmtVal);
         if (!isTypeCompatible(assignSymbol->symbolDataType, assignStmtValType))
         {
-            logSemanticErrors("Type mismatch expected '" + dataTypetoString(assignStmtValType) + "' but got '" + dataTypetoString(assignSymbol->symbolDataType) + "'", assignStmt->ident_token.line, assignStmt->ident_token.column);
+            logSemanticErrors("Type mismatch expected '" + dataTypetoString(assignStmtValType) + "' but got '" + dataTypetoString(assignSymbol->symbolDataType) + "'", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
         }
         else
         {
@@ -279,13 +281,23 @@ DataType Semantics::inferInfixExpressionType(Node *node)
     auto infixNode = dynamic_cast<InfixExpression *>(node);
     if (!infixNode)
         return DataType::UNKNOWN;
-    std::cout << "[SEMANTIC LOG] Infering infix type\n";
+    std::cout << "[SEMANTIC LOG] INFERING INFIX TYPE\n";
     DataType leftType = inferNodeDataType(infixNode->left_operand.get());
-    DataType rightType = inferNodeDataType(infixNode->right_operand.get());
+    DataType rightType;
     TokenType operatorType = infixNode->operat.type;
-    auto leftName = infixNode->left_operand->expression.TokenLiteral;
-    auto rightName = infixNode->right_operand->expression.TokenLiteral;
-    return resultOfBinary(operatorType, leftType, rightType, leftName, rightName);
+    if (operatorType == TokenType::FULLSTOP || operatorType == TokenType::SCOPE_OPERATOR)
+    {
+        std::cout << "SCOPE RESOLVING INFIX\n";
+        std::string parentName = infixNode->left_operand->expression.TokenLiteral;
+        std::string childName = infixNode->right_operand->expression.TokenLiteral;
+        return resultOfScopeOrDot(operatorType, parentName, childName, infixNode);
+    }
+    else
+    {
+        std::cout << "GETTING RIGHT SIDE TYPE\n";
+        rightType = inferNodeDataType(infixNode->right_operand.get());
+    }
+    return resultOfBinary(operatorType, leftType, rightType);
 }
 
 DataType Semantics::inferPrefixExpressionType(Node *node)
@@ -309,90 +321,92 @@ DataType Semantics::inferPostfixExpressionType(Node *node)
     return resultOfUnary(postfixOperator, operandType);
 }
 
-Identifier *lastLeftIdent = nullptr;
-Identifier *lastRightIdent = nullptr;
-
-DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType, const std::string &leftName, const std::string &rightName)
+DataType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infixExpr)
 {
-    // Here I want full stops to only deal with function like stuff so behaviors and later components(.)
+    std::cout << "INSIDE SCOPE RESOLVER FOR INFIX\n";
+    /*This function's role is to deal with . or :: operators
+    We shall have to check where . and :: are being used . is for behavior and components
+    And :: is for data blocks and enum classes*/
+    // Okay so let us handle the first case which is .
     if (operatorType == TokenType::FULLSTOP)
     {
-        auto sym = resolveSymbolInfo(leftName);
-        if (sym->symbolDataType == DataType::BEHAVIORBLOCK) // To be exteneded for components
+        std::cout << "DEALING WITH THE DOT OPERATOR\n";
+        // So here we first of all resolve the parent name to see if it exists in the customTypesTable
+        auto typeIt = customTypesTable.find(parentName);
+        // Checking if the parent name exists
+        if (typeIt == customTypesTable.end())
         {
-            // Here we check in the custom types table
-            auto typeIt = customTypesTable.find(leftName); // We look using the left name as it is the main type
-            // This is if we dont find the custom parent type
-            if (typeIt == customTypesTable.end())
-            {
-                std::cout << "[SEMANTIC ERROR] Could not find '" + leftName + "'" << "\n";
-                return DataType::UNKNOWN;
-            }
-            // If we find it let us look for the specific type inside the parent type
-            if (!typeIt->second.empty())
-            {
-                bool found = false;
-                for (const auto &child : typeIt->second)
-                {
-                    if (child == rightName)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found)
-                {
-                    std::cout << "[SEMANTIC ERROR] Could not find '" + rightName + "' in '" + leftName + "'" << "\n";
-                    return DataType::UNKNOWN;
-                }
-            }
-            // What if we actually get the values we want
-            // Here I will search for the parent name in the symbol table and return that data type
-
-            return sym->symbolDataType;
+            logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            return DataType::UNKNOWN;
         }
-        std::cout << "Only use '.' for behavior blocks and components access\n";
-        return DataType::UNKNOWN;
-    }
-    // This is for only data blocks and enums(::)
-    // This is for only data blocks and enums (::)
-    if (operatorType == TokenType::SCOPE_OPERATOR)
-    {
-        auto parentSym = resolveSymbolInfo(leftName);
-        if (!parentSym)
+        // Adding the check to only use full stop for datablock members only
+        if (typeIt->second.kind == DataType::DATABLOCK || typeIt->second.kind == DataType::ENUM)
         {
-            std::cout << "[SEMANTIC ERROR] Could not find '" << leftName << "'\n";
+            logSemanticErrors("Only use . to access members of behavior blocks and components", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            return DataType::UNKNOWN;
+        }
+        // If we have the parent name let us look into the child members but we need to ensure the members arent empty
+        auto members = typeIt->second.members;
+        if (members.empty())
+        {
+            logSemanticErrors("Type '" + parentName + "' has no members", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
             return DataType::UNKNOWN;
         }
 
-        if (parentSym->symbolDataType == DataType::ENUM || parentSym->symbolDataType == DataType::DATABLOCK)
+        // If it has members let us return the data type of that particular member we encounter
+        auto memberIt = members.find(childName);
+        // If we dont find the specified member
+        if (memberIt == members.end())
         {
-            // Look for members of the parent in the custom types table
-            auto typeIt = customTypesTable.find(leftName);
-            if (typeIt == customTypesTable.end())
-            {
-                std::cout << "[SEMANTIC ERROR] Could not find members for '" << leftName << "'\n";
-                return DataType::UNKNOWN;
-            }
-
-            const auto &members = typeIt->second;
-            auto found = std::find(members.begin(), members.end(), rightName) != members.end();
-
-            if (!found)
-            {
-                std::cout << "[SEMANTIC ERROR] Could not find '" << rightName
-                          << "' in '" << leftName << "'\n";
-                return DataType::UNKNOWN;
-            }
-
-            // If found, return the parent's datatype (so future semantic checks know the base type)
-            return parentSym->symbolDataType;
+            logSemanticErrors("Type '" + parentName + "' does not have member '" + childName + "'", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            return DataType::UNKNOWN;
         }
-
-        std::cout << "Only use '::' for data blocks and enum class access\n";
-        return DataType::UNKNOWN;
+        // If we have that member we have to return its data Type
+        return memberIt->second.type;
     }
 
+    if (operatorType == TokenType::SCOPE_OPERATOR)
+    {
+        std::cout << "DEALING WITH THE SCOPE OPERATOR\n";
+        // So here we first of all resolve the parent name to see if it exists in the customTypesTable
+        auto typeIt = customTypesTable.find(parentName);
+        // Checking if the parent name exists
+        if (typeIt == customTypesTable.end())
+        {
+            logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            return DataType::UNKNOWN;
+        }
+        // Adding the check to only use full stop for datablock members only
+        if (typeIt->second.kind == DataType::BEHAVIORBLOCK || typeIt->second.kind == DataType::COMPONENT)
+        {
+            logSemanticErrors("Only use :: to access members of data blocks and enum class members", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            return DataType::UNKNOWN;
+        }
+        // If we have the parent name let us look into the child members but we need to ensure the members arent empty
+        auto members = typeIt->second.members;
+        if (members.empty())
+        {
+            logSemanticErrors("Type '" + parentName + "' has no members", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
+            return DataType::UNKNOWN;
+        }
+
+        // If it has members let us return the data type of that particular member we encounter
+        auto memberIt = members.find(childName);
+        // If we dont find the specified member
+        if (memberIt == members.end())
+        {
+            logSemanticErrors("Type '" + parentName + "' does not have member '" + childName + "'", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            return DataType::UNKNOWN;
+        }
+        // If we have that member we have to return its data Type
+        return memberIt->second.type;
+    }
+
+    return DataType::UNKNOWN;
+}
+
+DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType)
+{
     // Logical operators: &&, ||
     if (operatorType == TokenType::AND || operatorType == TokenType::OR)
     {
@@ -632,6 +646,12 @@ std::string Semantics::dataTypetoString(DataType type)
         return "error";
     case DataType::GENERIC:
         return "generic";
+    case DataType::BEHAVIORBLOCK:
+        return "behavior";
+    case DataType::DATABLOCK:
+        return "data";
+    case DataType::COMPONENT:
+        return "component";
     default:
         return "unknown";
     }

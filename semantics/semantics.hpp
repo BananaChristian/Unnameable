@@ -57,11 +57,36 @@ enum class DataType
     ENUM,
     DATABLOCK,
     BEHAVIORBLOCK,
+    COMPONENT,
 
     ERROR,
     VOID,
     GENERIC,
     UNKNOWN
+};
+
+struct MemberInfo
+{
+    std::string memberName;
+    DataType type;
+    bool isNullable = false;
+    bool isMutable = false;
+    bool isConstant = false;
+    bool isInitialised = false;
+};
+
+struct CustomTypeInfo
+{
+    std::string typeName;
+    DataType kind;
+    std::unordered_map<std::string, MemberInfo> members;
+};
+
+struct ScopeInfo
+{
+    DataType kind;
+    std::string typeName;
+    bool hasInitConstructor = false;
 };
 
 // Information about the symbol(variable or object, whatever)
@@ -86,12 +111,8 @@ struct SymbolInfo
     int constantValue = 0; // For enum members to store assigned int value
     std::vector<std::pair<std::string, int>> enumMembers;
     DataType enumIntType = DataType::INTEGER; // Defaults to a 32 bit integer data type
-    // DataBlock info
-    std::string dataBlockName;
-    std::vector<std::string> dataBlockMembers;
-    // BehaviorBlockInfo
-    std::string behaviorBlockName;
-    std::vector<std::string> behaviorBlockFuncs;
+
+    std::unordered_map<std::string, MemberInfo> members;
 };
 
 class Semantics
@@ -102,13 +123,13 @@ public:
     using walkerFunctions = void (Semantics::*)(Node *);
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
     std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable;
-    std::unordered_map<std::string, std::vector<std::string>> customTypesTable;
+    std::unordered_map<std::string, CustomTypeInfo> customTypesTable;
     std::unordered_map<Node *, SymbolInfo> metaData;
     std::optional<SymbolInfo> currentFunction;
     std::vector<bool> loopContext;
+    std::vector<ScopeInfo> currentTypeStack;
 
     SymbolInfo *resolveSymbolInfo(const std::string &name);
-
     std::string dataTypetoString(DataType type);
 
 private:
@@ -136,6 +157,9 @@ private:
     void walkDataStatement(Node *node);
     void walkBehaviorStatement(Node *node);
     void walkUseStatement(Node *node);
+    void walkComponentStatement(Node *node);
+    void walkInitConstructor(Node *node);
+    void walkFieldAccessExpression(Node *node);
     void walkEnumClassStatement(Node *node);
 
     // Waling infix, prefix and postfix expressions
@@ -188,9 +212,10 @@ private:
     DataType inferInfixExpressionType(Node *node);
     DataType inferPrefixExpressionType(Node *node);
     DataType inferPostfixExpressionType(Node *node);
-    DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType, const std::string &leftName, const std::string &rightName);
+    DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType);
     DataType resultOfUnary(TokenType operatorType, DataType oprendType);
     DataType tokenTypeToDataType(TokenType type, bool isNullable);
+    DataType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
     bool isTypeCompatible(DataType expected, DataType actual);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);

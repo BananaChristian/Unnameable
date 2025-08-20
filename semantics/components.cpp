@@ -245,84 +245,116 @@ void Semantics::walkEnumClassStatement(Node *node)
         .enumIntType = enumInfo.enumIntType,
     };
 
+    CustomTypeInfo typeInfo = {
+        .typeName = enumInfo.enumName,
+        .kind = DataType::ENUM,
+        .members = {}};
+
     symbolTable[symbolTable.size() - 2][enumStmtName] = symbol;
     metaData[enumStmt] = symbol;
-    customTypesTable[enumStmtName] = enumInfo.enumContent;
     symbolTable.pop_back();
 }
 
 void Semantics::walkDataStatement(Node *node)
 {
     auto dataBlockStmt = dynamic_cast<DataStatement *>(node);
-
     if (!dataBlockStmt)
         return;
 
-    std::cout << "[SEMANTIC LOG] Analysing data statement " + dataBlockStmt->toString() + "\n";
-    // Checking if the data block name has been taken
-    // First we get the data block name
+    std::cout << "[SEMANTIC LOG] Analyzing data statement: "
+              << dataBlockStmt->toString() << "\n";
+
+    // 1. Get block name
     std::string dataBlockName = dataBlockStmt->dataBlockName->expression.TokenLiteral;
-    auto dataSymbol = resolveSymbolInfo(dataBlockName); // Retrieving the symbol
-    // Now we check if the symbol already exists
-    if (dataSymbol)
+
+    // 2. Ensure name not already used
+    if (resolveSymbolInfo(dataBlockName))
     {
-        logSemanticErrors("Already used the name '" + dataBlockName + "'", dataBlockStmt->statement.line, dataBlockStmt->statement.column);
+        logSemanticErrors(
+            "Already used the name '" + dataBlockName + "'",
+            dataBlockStmt->statement.line,
+            dataBlockStmt->statement.column);
         return;
     }
-    // Creating the local scope
-    symbolTable.push_back({});
-    // Retreiving the fields
+
+    // 3. Setup mutability
     bool isBlockMutable = (dataBlockStmt->mutability == Mutability::MUTABLE);
     bool isBlockConstant = (dataBlockStmt->mutability == Mutability::CONSTANT);
 
-    std::vector<std::string> dataBlockFields;
+    // 4. Create new local scope for analysis
+    symbolTable.push_back({});
 
+    std::unordered_map<std::string, MemberInfo> dataBlockMembers;
+
+    // 5. Analyze each field
     for (const auto &field : dataBlockStmt->fields)
     {
-        // Ensure only let statements are inside data blocks
         auto letStmt = dynamic_cast<LetStatement *>(field.get());
         if (!letStmt)
         {
             logSemanticErrors(
-                "Only let statements are allowed inside data block",
+                "Only let statements are allowed inside a data block",
                 field->statement.line,
                 field->statement.column);
+            continue; // skip bad field but keep going
+        }
+
+        // Apply block mutability if set
+        if (isBlockMutable)
+            letStmt->mutability = Mutability::MUTABLE;
+        else if (isBlockConstant)
+            letStmt->mutability = Mutability::CONSTANT;
+
+        // Walk the let statement to register it in the scope
+        walkLetStatement(letStmt);
+
+        // Now retrieve its symbol
+        SymbolInfo *letSymbol = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
+        if (!letSymbol)
+        {
+            logSemanticErrors(
+                "Let statement '" + letStmt->ident_token.TokenLiteral +
+                    "' was not analyzed properly",
+                letStmt->statement.line,
+                letStmt->statement.column);
             continue;
         }
 
-        // Apply block-level mutability if set
-        if (isBlockMutable)
-        {
-            letStmt->mutability = Mutability::MUTABLE;
-        }
+        // Build member info
+        MemberInfo memberInfo = {
+            .memberName = letStmt->ident_token.TokenLiteral,
+            .type = letSymbol->symbolDataType,
+            .isMutable = letSymbol->isMutable,
+            .isConstant = letSymbol->isConstant,
+            .isInitialised = letSymbol->isInitialized};
 
-        else if (isBlockConstant)
-        {
-            letStmt->mutability = Mutability::CONSTANT;
-        }
+        // Insert into members map
+        dataBlockMembers[letStmt->ident_token.TokenLiteral] = memberInfo;
 
-        // Otherwise, let the let statement enforce its own default (immutable)
-
-        // Walk the let statement normally
-        walkLetStatement(letStmt);
-        // Add the let statement to the block members
-        dataBlockFields.push_back(letStmt->ident_token.TokenLiteral);
-        std::cout << "DATA NAME STORED IN DATA BLOCK FIELD: " << letStmt->ident_token.TokenLiteral << "\n";
+        std::cout << "[SEMANTIC LOG] Added field '"
+                  << letStmt->ident_token.TokenLiteral
+                  << "' to data block '" << dataBlockName << "'\n";
     }
 
+    // 6. Build symbol info for the whole block
     SymbolInfo dataSymbolInfo = {
         .symbolDataType = DataType::DATABLOCK,
         .isMutable = isBlockMutable,
         .isConstant = isBlockConstant,
-        .dataBlockName = dataBlockName,
-        .dataBlockMembers = dataBlockFields,
-    };
-    metaData[dataBlockStmt] = dataSymbolInfo; // Storing the metadata
-    // Pushing the data block to the global scope
+        .members = dataBlockMembers};
+
+    // 7. Build custom type info
+    CustomTypeInfo typeInfo = {
+        .typeName = dataBlockName,
+        .kind = DataType::DATABLOCK,
+        .members = dataBlockMembers};
+
+    // 8. Store results
+    metaData[dataBlockStmt] = dataSymbolInfo;
     symbolTable[0][dataBlockName] = dataSymbolInfo;
-    // Storing in the custom types table
-    customTypesTable[dataBlockName] = dataBlockFields;
-    // Exiting the current local scope
+    customTypesTable[dataBlockName] = typeInfo;
+
+    // 9. Pop local scope
     symbolTable.pop_back();
 }
 
@@ -330,63 +362,123 @@ void Semantics::walkBehaviorStatement(Node *node)
 {
     auto behaviorStmt = dynamic_cast<BehaviorStatement *>(node);
     if (!behaviorStmt)
+        return;
+
+    std::cout << "[SEMANTIC LOG] Analyzing behavior statement: "
+              << behaviorStmt->toString() << "\n";
+
+    // 1. Get behavior block name
+    std::string behaviorName = behaviorStmt->behaviorBlockName->expression.TokenLiteral;
+
+    // 2. Ensure name not already used
+    if (resolveSymbolInfo(behaviorName))
     {
+        logSemanticErrors(
+            "Already used the name '" + behaviorName + "'",
+            behaviorStmt->behaviorBlockName->expression.line,
+            behaviorStmt->behaviorBlockName->expression.column);
         return;
     }
 
-    // Getting the behavior blocks name
-    std::string behaviorName = behaviorStmt->behaviorBlockName->expression.TokenLiteral;
-    // Checking if the name was already used somewhere
-    auto behaviorSym = resolveSymbolInfo(behaviorName);
-    if (behaviorSym)
-    {
-        logSemanticErrors("Already used the name '" + behaviorName + "'", behaviorStmt->behaviorBlockName->expression.line, behaviorStmt->behaviorBlockName->expression.column);
-        return;
-    }
-    // Creating a local scope
+    // 3. Push a new scope for analysis
     symbolTable.push_back({});
-    // Dealing with the functions inside the block
-    std::vector<std::string> behaviorFuncs;
+
+    std::unordered_map<std::string, MemberInfo> behaviorMembers;
+
+    // 4. Analyze each function inside the behavior
     for (const auto &func : behaviorStmt->functions)
     {
-        // Enforcing only function statements as these nest the expressions, generics, and declarations
         auto funcStmt = dynamic_cast<FunctionStatement *>(func.get());
-        if (funcStmt)
+        if (!funcStmt)
         {
-            walker(funcStmt); // Leaving the rest to the analyzer
-            // Storing the info of the funcs
-            auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
-            auto funcDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get());
-            if (funcExpr)
-            {
-                behaviorFuncs.push_back(funcExpr->func_key.TokenLiteral);
-                std::cout << "FUNCTION NAME GETTING STORED IN BEHAVIOR BLOCK FOR FUNC EXPRESSION: " << funcExpr->func_key.TokenLiteral << "\n";
-            }
-            if (funcDeclrExpr)
-            {
-                if (auto funcDeclr = dynamic_cast<FunctionDeclaration *>(funcDeclrExpr->funcDeclrStmt.get()))
-                {
-                    behaviorFuncs.push_back(funcDeclr->function_name->expression.TokenLiteral);
-                    std::cout << "FUNCTION NAME GETTING STORED IN BEHAVIOR BLOCK FOR FUNC DECLARATIONS: " << funcDeclr->function_name->expression.TokenLiteral << "\n";
-                }
-            }
+            logSemanticErrors(
+                "Only function statements are allowed inside a behavior block",
+                func->statement.line,
+                func->statement.column);
+            continue; // keep checking the rest
         }
-        else
+
+        // Let the walker handle function analysis
+        walker(funcStmt);
+
+        MemberInfo funcInfo;
+
+        // Case A: function expression
+        if (auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get()))
         {
-            logSemanticErrors("Expected only function statements inside behavior block ", func->statement.line, func->statement.column);
-            return;
+            SymbolInfo *exprSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
+            if (!exprSym)
+            {
+                logSemanticErrors(
+                    "Function expression '" + funcExpr->func_key.TokenLiteral + "' was not analyzed properly",
+                    funcExpr->expression.line,
+                    funcExpr->expression.column);
+                continue;
+            }
+
+            funcInfo = {
+                .memberName = funcExpr->func_key.TokenLiteral,
+                .type = exprSym->symbolDataType};
+
+            behaviorMembers[funcExpr->func_key.TokenLiteral] = funcInfo;
+
+            std::cout << "[SEMANTIC LOG] Added function expression '"
+                      << funcExpr->func_key.TokenLiteral
+                      << "' to behavior '" << behaviorName << "'\n";
+        }
+
+        // Case B: function declaration
+        else if (auto funcDeclExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get()))
+        {
+            auto funcDecl = dynamic_cast<FunctionDeclaration *>(funcDeclExpr->funcDeclrStmt.get());
+            if (!funcDecl)
+            {
+                logSemanticErrors(
+                    "Invalid function declaration inside behavior block",
+                    funcDeclExpr->expression.line,
+                    funcDeclExpr->expression.column);
+                continue;
+            }
+
+            SymbolInfo *declSym = resolveSymbolInfo(funcDecl->function_name->expression.TokenLiteral);
+            if (!declSym)
+            {
+                logSemanticErrors(
+                    "Function declaration '" + funcDecl->function_name->expression.TokenLiteral + "' was not analyzed properly",
+                    funcDecl->statement.line,
+                    funcDecl->statement.column);
+                continue;
+            }
+
+            funcInfo = {
+                .memberName = funcDecl->function_name->expression.TokenLiteral,
+                .type = declSym->symbolDataType};
+
+            behaviorMembers[funcDecl->function_name->expression.TokenLiteral] = funcInfo;
+
+            std::cout << "[SEMANTIC LOG] Added function declaration '"
+                      << funcDecl->function_name->expression.TokenLiteral
+                      << "' to behavior '" << behaviorName << "'\n";
         }
     }
 
+    // 5. Build symbol info
     SymbolInfo sym = {
         .symbolDataType = DataType::BEHAVIORBLOCK,
-        .behaviorBlockName = behaviorName,
-        .behaviorBlockFuncs = behaviorFuncs,
-    };
+        .members = behaviorMembers};
 
+    // 6. Build custom type info
+    CustomTypeInfo typeInfo = {
+        .typeName = behaviorName,
+        .kind = DataType::BEHAVIORBLOCK,
+        .members = behaviorMembers};
+
+    // 7. Store results
     symbolTable[0][behaviorName] = sym;
     metaData[behaviorStmt] = sym;
-    customTypesTable[behaviorName] = behaviorFuncs;
+    customTypesTable[behaviorName] = typeInfo;
+
+    // 8. Pop scope
     symbolTable.pop_back();
 }
 
@@ -395,7 +487,416 @@ void Semantics::walkUseStatement(Node *node)
     auto useStmt = dynamic_cast<UseStatement *>(node);
     if (!useStmt)
         return;
-    std::cout << "[SEMANTIC LOG] Analysing use statement " << node->toString() << "\n";
-    // Just walk it
-    walker(useStmt->blockNameOrCall.get());
+
+    std::cout << "[SEMANTIC LOG] Analyzing use statement " << node->toString() << "\n";
+
+    // We'll produce a SymbolInfo to stash on this node via metaData.
+    // That SymbolInfo will carry the imported members (all or selected).
+    SymbolInfo resultSym{};
+    resultSym.isNullable = false;
+    resultSym.isMutable = false;
+    resultSym.isConstant = false;
+    resultSym.isInitialized = false;
+
+    // 1) Determine "kind" requested by the 'use' keyword (data/behavior)
+    //    Your parser sets a 'kind_token' on UseStatement; we rely on it.
+    TokenType requestedKind = useStmt->kind_token.type;
+
+    // 2) Inspect the expression after 'use ...'
+    //    Cases:
+    //      A) Identifier           -> full import of that block
+    //      B) InfixExpression '.'  -> behavior.member (selective import)
+    //      C) InfixExpression '::' -> data.member     (selective import)
+    auto expr = useStmt->blockNameOrCall.get();
+
+    // Helper lambdas (local to this function, no external deps)
+    auto findType = [&](const std::string &name) -> CustomTypeInfo *
+    {
+        auto it = customTypesTable.find(name);
+        if (it == customTypesTable.end())
+            return nullptr;
+        return &it->second;
+    };
+
+    auto rejectKind = [&](const std::string &name, DataType kind, const char *where, int line, int col)
+    {
+        std::string got = dataTypetoString(kind);
+        std::string want = (requestedKind == TokenType::DATA) ? "DATABLOCK" : "BEHAVIORBLOCK";
+        logSemanticErrors("Cannot use '" + name + "' here: expected " + want + " but got " + got, line, col);
+    };
+
+    // Case A: simple identifier
+    if (auto ident = dynamic_cast<Identifier *>(expr))
+    {
+        std::string targetName = ident->identifier.TokenLiteral;
+        CustomTypeInfo *target = findType(targetName);
+        if (!target)
+        {
+            logSemanticErrors("Unknown block '" + targetName + "' in use statement",
+                              ident->expression.line, ident->expression.column);
+            return;
+        }
+
+        if (requestedKind == TokenType::DATA)
+        {
+            if (target->kind != DataType::DATABLOCK)
+            {
+                rejectKind(targetName, target->kind, "use data", ident->expression.line, ident->expression.column);
+                return;
+            }
+            resultSym.symbolDataType = DataType::DATABLOCK;
+            resultSym.members = target->members; // full import of all data members
+        }
+        else if (requestedKind == TokenType::BEHAVIOR)
+        {
+            if (target->kind != DataType::BEHAVIORBLOCK)
+            {
+                rejectKind(targetName, target->kind, "use behavior", ident->expression.line, ident->expression.column);
+                return;
+            }
+            resultSym.symbolDataType = DataType::BEHAVIORBLOCK;
+            resultSym.members = target->members; // full import of all behavior members
+        }
+        else
+        {
+            logSemanticErrors("Expected either 'data' or 'behavior' after 'use'",
+                              useStmt->statement.line, useStmt->statement.column);
+            return;
+        }
+
+        // Stash the resolved import on this node
+        metaData[useStmt] = resultSym;
+        std::cout << "[SEMANTIC LOG] use "
+                  << ((requestedKind == TokenType::DATA) ? "data " : "behavior ")
+                  << targetName << " imported " << resultSym.members.size() << " member(s)\n";
+        return;
+    }
+
+    // Case B/C: dotted or scope-qualified selection
+    if (auto infix = dynamic_cast<InfixExpression *>(expr))
+    {
+        TokenType op = infix->operat.type;
+
+        // We only accept:
+        //   - behavior . member
+        //   - data     :: member
+        bool expectBehaviorDot = (requestedKind == TokenType::BEHAVIOR && op == TokenType::FULLSTOP);
+        bool expectDataScope = (requestedKind == TokenType::DATA && op == TokenType::SCOPE_OPERATOR);
+
+        if (!expectBehaviorDot && !expectDataScope)
+        {
+            std::string opStr = (op == TokenType::FULLSTOP) ? "." : (op == TokenType::SCOPE_OPERATOR) ? "::"
+                                                                                                      : "<op>";
+            logSemanticErrors("Invalid operator '" + opStr + "' for this 'use' context",
+                              infix->operat.line, infix->operat.column);
+            return;
+        }
+
+        // Extract parent and child names (we assume both sides are identifiers)
+        auto leftId = dynamic_cast<Identifier *>(infix->left_operand.get());
+        auto rightId = dynamic_cast<Identifier *>(infix->right_operand.get());
+        if (!leftId || !rightId)
+        {
+            logSemanticErrors("Invalid qualified name in use statement",
+                              useStmt->statement.line, useStmt->statement.column);
+            return;
+        }
+
+        std::string parentName = leftId->identifier.TokenLiteral;
+        std::string childName = rightId->identifier.TokenLiteral;
+
+        // Resolve parent type
+        CustomTypeInfo *parent = findType(parentName);
+        if (!parent)
+        {
+            logSemanticErrors("Unknown block '" + parentName + "' in use statement",
+                              leftId->expression.line, leftId->expression.column);
+            return;
+        }
+
+        // Validate kind per operator/context
+        if (expectBehaviorDot)
+        {
+            if (parent->kind != DataType::BEHAVIORBLOCK)
+            {
+                rejectKind(parentName, parent->kind, "use behavior <name>.<member>",
+                           leftId->expression.line, leftId->expression.column);
+                return;
+            }
+            resultSym.symbolDataType = DataType::BEHAVIORBLOCK;
+        }
+        else // expectDataScope
+        {
+            if (parent->kind != DataType::DATABLOCK)
+            {
+                rejectKind(parentName, parent->kind, "use data <name>::<member>",
+                           leftId->expression.line, leftId->expression.column);
+                return;
+            }
+            resultSym.symbolDataType = DataType::DATABLOCK;
+        }
+
+        // Select a single member
+        auto memIt = parent->members.find(childName);
+        if (memIt == parent->members.end())
+        {
+            logSemanticErrors("Type '" + parentName + "' has no member '" + childName + "'",
+                              rightId->expression.line, rightId->expression.column);
+            return;
+        }
+
+        // Keep only the chosen member
+        resultSym.members.clear();
+        resultSym.members.emplace(childName, memIt->second);
+
+        // Attach to metaData for the component walker to merge later
+        metaData[useStmt] = resultSym;
+
+        std::cout << "[SEMANTIC LOG] use "
+                  << ((requestedKind == TokenType::DATA) ? "data " : "behavior ")
+                  << parentName
+                  << ((op == TokenType::FULLSTOP) ? "." : "::")
+                  << childName << " imported 1 member\n";
+        return;
+    }
+
+    // If we get here, we got a shape we don't support (e.g., call expression)
+    logSemanticErrors("Invalid use target", useStmt->statement.line, useStmt->statement.column);
+}
+
+void Semantics::walkInitConstructor(Node *node)
+{
+    auto initStmt = dynamic_cast<InitStatement *>(node);
+    if (!initStmt)
+        return;
+
+    std::cout << "[SEMANTIC LOG] Analyzing init constructor\n";
+
+    // --- Rule 1: Must be inside a component
+
+    if (currentTypeStack.empty() || currentTypeStack.back().kind != DataType::COMPONENT)
+    {
+        std::cout << "TYPE STACK IS EMPTY\n";
+        logSemanticErrors("`init` constructor must be declared inside a component",
+                          initStmt->statement.line, initStmt->statement.column);
+        return;
+    }
+
+    auto &currentComponent = currentTypeStack.back();
+
+    // --- Rule 2: Only one init constructor per component
+    if (currentComponent.hasInitConstructor)
+    {
+        logSemanticErrors("Component '" + currentComponent.typeName +
+                              "' already has an init constructor",
+                          initStmt->token.line, initStmt->token.column);
+        return;
+    }
+    currentComponent.hasInitConstructor = true;
+
+    // --- Rule 3: init constructor is always void-returning
+    SymbolInfo initInfo;
+    initInfo.symbolDataType = DataType::VOID;
+    initInfo.returnType = DataType::VOID;
+    initInfo.isDefined = true;
+
+    // --- Rule 4: Process constructor parameters
+    for (const auto &arg : initStmt->constructor_args)
+    {
+        walkFunctionParameterLetStatement(arg.get());
+    }
+
+    // --- Rule 5: Walk the constructor body
+    if (initStmt->block)
+    {
+        walkBlockStatement(initStmt->block.get());
+    }
+
+    // --- Rule 6: Attach metadata
+    metaData[node] = initInfo;
+
+    std::cout << "[SEMANTIC LOG] Init constructor added to component '"
+              << currentComponent.typeName << "'\n";
+}
+
+void Semantics::walkFieldAccessExpression(Node *node)
+{
+    auto fieldExpr = dynamic_cast<FieldAccessExpression *>(node);
+    if (!fieldExpr)
+        return;
+
+    std::cout << "[SEMANTIC LOG] Analysing field access expression: "
+              << fieldExpr->toString() << "\n";
+
+    // Walk base (e.g., "self")
+    walker(fieldExpr->base.get());
+
+    // Base must be `self`
+    auto baseIdent = dynamic_cast<Identifier *>(fieldExpr->base.get());
+    if (!baseIdent || baseIdent->identifier.TokenLiteral != "self")
+    {
+        logSemanticErrors("Field access base must be 'self' (for now)",
+                          fieldExpr->expression.line, fieldExpr->expression.column);
+        return;
+    }
+
+    // Must be inside a component
+    if (currentTypeStack.empty() || currentTypeStack.back().kind != DataType::COMPONENT)
+    {
+        logSemanticErrors("'self' cannot be used outside a component",
+                          fieldExpr->expression.line, fieldExpr->expression.column);
+        return;
+    }
+
+    const std::string &componentName = currentTypeStack.back().typeName;
+    auto ctIt = customTypesTable.find(componentName);
+    if (ctIt == customTypesTable.end())
+    {
+        // Shouldn’t happen if walkComponentStatement registered it
+        logSemanticErrors("Internal error: unknown component '" + componentName + "'",
+                          fieldExpr->expression.line, fieldExpr->expression.column);
+        return;
+    }
+
+    const std::string fieldName = fieldExpr->field.TokenLiteral;
+    const auto &members = ctIt->second.members;
+    auto memIt = members.find(fieldName);
+    if (memIt == members.end())
+    {
+        logSemanticErrors("'" + fieldName + "' does not exist in component '" + componentName + "'",
+                          fieldExpr->expression.line, fieldExpr->expression.column);
+        return;
+    }
+
+    const MemberInfo &m = memIt->second;
+
+    // Attach type info for this field access
+    metaData[fieldExpr] = {
+        .symbolDataType = m.type,
+        .isNullable = m.isNullable,
+        .isMutable = m.isMutable,
+        .isConstant = m.isConstant,
+        .isInitialized = m.isInitialised};
+
+    std::cout << "[SEMANTIC LOG] Field access 'self." << fieldName
+              << "' resolved in component '" << componentName << "'\n";
+}
+
+void Semantics::walkComponentStatement(Node *node)
+{
+    auto componentStmt = dynamic_cast<ComponentStatement *>(node);
+    if (!componentStmt)
+        return;
+
+    auto componentName = componentStmt->component_name->expression.TokenLiteral;
+    std::cout << "[SEMANTIC LOG] Analyzing component '" << componentName << "'\n";
+
+    // Check if this component name already exists
+    if (resolveSymbolInfo(componentName))
+    {
+        logSemanticErrors(
+            "Component name '" + componentName + "' is already defined",
+            componentStmt->statement.line,
+            componentStmt->statement.column);
+        return;
+    }
+
+    std::unordered_map<std::string, MemberInfo> members;
+
+    // Enter a new component scope
+    symbolTable.push_back({});
+    currentTypeStack.push_back({
+        .kind = DataType::COMPONENT,
+        .typeName = componentName,
+        .hasInitConstructor = false,
+    });
+
+    // Walk private data members
+    for (const auto &data : componentStmt->privateData)
+    {
+        walker(data.get());
+        auto dataSym = resolveSymbolInfo(data->statement.TokenLiteral);
+        if (!dataSym)
+        {
+            logSemanticErrors(
+                "Failed to resolve private data '" + data->statement.TokenLiteral + "'",
+                data->statement.line,
+                data->statement.column);
+            continue;
+        }
+
+        members[data->statement.TokenLiteral] = {
+            .memberName = data->statement.TokenLiteral,
+            .type = dataSym->symbolDataType,
+            .isNullable = dataSym->isNullable,
+            .isMutable = dataSym->isMutable,
+            .isConstant = dataSym->isConstant,
+            .isInitialised = dataSym->isInitialized};
+    }
+
+    // Walk private methods
+    for (const auto &method : componentStmt->privateMethods)
+    {
+        auto funcStmt = dynamic_cast<FunctionStatement *>(method.get());
+        if (!funcStmt)
+            continue;
+
+        auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
+        auto funcDeclrExpr = dynamic_cast<FunctionDeclaration *>(funcStmt->funcExpr.get());
+
+        if (funcExpr)
+        {
+            walker(funcExpr);
+            auto metSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
+            if (metSym)
+            {
+                members[funcExpr->func_key.TokenLiteral] = {
+                    .memberName = funcExpr->func_key.TokenLiteral,
+                    .type = metSym->symbolDataType,
+                    .isNullable = metSym->isNullable,
+                    .isMutable = metSym->isMutable};
+            }
+        }
+        else if (funcDeclrExpr) // ✅ fixed: should be `if (funcDeclrExpr)` not `if (!funcDeclrExpr)`
+        {
+            walker(funcDeclrExpr);
+            auto metSym = resolveSymbolInfo(funcDeclrExpr->function_name->expression.TokenLiteral);
+            if (metSym)
+            {
+                members[funcDeclrExpr->function_name->expression.TokenLiteral] = {
+                    .memberName = funcDeclrExpr->function_name->expression.TokenLiteral,
+                    .type = metSym->symbolDataType,
+                    .isNullable = metSym->isNullable,
+                    .isMutable = metSym->isMutable};
+            }
+        }
+    }
+
+    // Walk data/behavior imports
+    for (const auto &usedData : componentStmt->usedDataBlocks)
+        walkUseStatement(usedData.get());
+
+    for (const auto &usedBehavior : componentStmt->usedBehaviorBlocks)
+        walkUseStatement(usedBehavior.get());
+
+    // Walk init constructor (if any)
+    if (componentStmt->initConstructor.has_value())
+        walkInitConstructor(componentStmt->initConstructor.value().get());
+
+    // Register component as a symbol
+    SymbolInfo componentSymbol = {
+        .symbolDataType = DataType::COMPONENT,
+    };
+
+    CustomTypeInfo typeInfo = {
+        .typeName = componentName,
+        .kind = DataType::COMPONENT,
+        .members = members};
+
+    metaData[componentStmt] = componentSymbol;
+    customTypesTable[componentName] = typeInfo;
+
+    // Exit component scope
+    currentTypeStack.pop_back();
+    symbolTable.pop_back();
 }

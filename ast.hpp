@@ -687,13 +687,13 @@ struct LetStatement : Statement
 
 struct AssignmentStatement : Statement
 {
-    Token ident_token;
+    std::unique_ptr<Expression> identifier;
     std::unique_ptr<Expression> value;
     std::string toString() override
     {
-        return "Assignment statement: (Variable: " + ident_token.TokenLiteral + " Value: " + value->toString() + ")";
+        return "Assignment statement: (Variable: " + identifier->toString() + " Value: " + value->toString() + ")";
     };
-    AssignmentStatement(Token ident, std::unique_ptr<Expression> val) : Statement(ident), ident_token(ident), value(std::move(val)) {};
+    AssignmentStatement(std::unique_ptr<Expression> ident, std::unique_ptr<Expression> val) : Statement(ident->token), identifier(std::move(ident)), value(std::move(val)) {};
 };
 
 // Signal statement node

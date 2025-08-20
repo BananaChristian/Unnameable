@@ -10,12 +10,8 @@ void Semantics::walkInfixExpression(Node *node)
     auto left = infixExpr->left_operand.get();
     walker(left);
 
-    if (infixExpr->operat.type != TokenType::FULLSTOP && infixExpr->operat.type != TokenType::SCOPE_OPERATOR)
-    {
-        std::cout << "OPERATOR TYPE: " << TokenTypeToLiteral(infixExpr->operat.type) << "\n";
-        auto right = infixExpr->right_operand.get();
-        walker(right);
-    }
+    auto right = infixExpr->right_operand.get();
+    walker(right);
 
     DataType infixType = inferNodeDataType(infixExpr);
     metaData[infixExpr] = {

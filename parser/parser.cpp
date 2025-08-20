@@ -61,11 +61,13 @@ std::unique_ptr<Statement> Parser::parseStatement()
         return nullptr;
     }
 
-    if (current.type == TokenType::IDENTIFIER)
+    if (current.type == TokenType::IDENTIFIER || current.type == TokenType::SELF)
     {
         Token peek_token = nextToken();
-        if (peek_token.type == TokenType::ASSIGN)
+        if (peek_token.type == TokenType::ASSIGN || peek_token.type == TokenType::FULLSTOP)
         {
+            // If it's self.something, parseIdentifier will consume "self.field"
+            // and then parseAssignmentStatement will handle '='
             return parseAssignmentStatement();
         }
     }
@@ -103,9 +105,7 @@ std::unique_ptr<Statement> Parser::parseStatement()
 // Parsing let statements with types
 std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 {
-    Token ident_token = currentToken();
-    std::cout << "[DEBUG] Identifier token: " + ident_token.TokenLiteral << "\n";
-    advance();
+    auto identifier = parseIdentifier();
 
     if (currentToken().type != TokenType::ASSIGN)
     {
@@ -125,7 +125,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
         logError("Expected a semi colon but got: " + currentToken().TokenLiteral);
     }
 
-    return std::make_unique<AssignmentStatement>(ident_token, move(value));
+    return std::make_unique<AssignmentStatement>(std::move(identifier), std::move(value));
 }
 
 // Parsing let statements that have data types
@@ -723,6 +723,12 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
     {
         std::unique_ptr<Statement> stmt = nullptr;
 
+        if (isIntegerType(currentToken().type))
+        {
+            stmt = parseLetStatementWithType(false);
+            privateData.push_back(std::move(stmt));
+        }
+
         switch (currentToken().type)
         {
         case TokenType::USE:
@@ -742,11 +748,12 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
                 advance(); // skip the unexpected token
             }
             break;
-        case TokenType::INT:
         case TokenType::STRING_KEYWORD:
         case TokenType::FLOAT_KEYWORD:
         case TokenType::BOOL_KEYWORD:
         case TokenType::CHAR_KEYWORD:
+        case TokenType::CHAR16_KEYWORD:
+        case TokenType::CHAR32_KEYWORD:
             stmt = parseLetStatementWithType(false);
             privateData.push_back(std::move(stmt));
             break;
@@ -1824,7 +1831,6 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::OR] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::EQUALS] = &Parser::parseInfixExpression;
-    InfixParseFunctionsMap[TokenType::ASSIGN] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseCallExpression;
 }
 

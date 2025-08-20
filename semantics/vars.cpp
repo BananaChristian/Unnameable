@@ -416,60 +416,110 @@ void Semantics::walkAssignStatement(Node *node)
     if (!assignStmt)
         return;
 
-    std::string assignName = assignStmt->ident_token.TokenLiteral;
-    std::cout << "[SEMANTIC LOG]: Analyzing assignment to '" << assignName << "'\n";
+    SymbolInfo *symbol = nullptr;
+    std::string assignName;
 
-    SymbolInfo *symbol = resolveSymbolInfo(assignName);
-    if (!symbol)
+    // Case 1: self.field = ...
+    if (auto fieldAccess = dynamic_cast<FieldAccessExpression *>(assignStmt->identifier.get()))
     {
-        std::cerr << "[SEMANTIC ERROR]: Variable '" << assignName << "' is not declared\n";
+        auto baseIdent = dynamic_cast<Identifier *>(fieldAccess->base.get());
+        if (!baseIdent || baseIdent->identifier.TokenLiteral != "self")
+        {
+            logSemanticErrors("Left-hand side of assignment must be 'self.<field>' or an identifier",
+                              assignStmt->identifier->expression.line,
+                              assignStmt->identifier->expression.column);
+            return;
+        }
+
+        // Ensure we’re actually in a component scope
+        if (currentTypeStack.empty() || currentTypeStack.back().kind != DataType::COMPONENT)
+        {
+            logSemanticErrors("'self' cannot be used outside a component",
+                              assignStmt->identifier->expression.line,
+                              assignStmt->identifier->expression.column);
+            return;
+        }
+
+        assignName = fieldAccess->field.TokenLiteral;
+        symbol = resolveSymbolInfo(assignName); // normal lookup inside the component’s scope
+
+        if (!symbol)
+        {
+            logSemanticErrors("Field '" + assignName + "' does not exist in this component",
+                              assignStmt->identifier->expression.line,
+                              assignStmt->identifier->expression.column);
+            return;
+        }
+
+        std::cout << "[SEMANTIC LOG]: Analyzing assignment to field 'self."
+                  << assignName << "'\n";
+    }
+    // Case 2: plain identifier assignment
+    else if (auto ident = dynamic_cast<Identifier *>(assignStmt->identifier.get()))
+    {
+        assignName = ident->identifier.TokenLiteral;
+        symbol = resolveSymbolInfo(assignName);
+
+        if (!symbol)
+        {
+            std::cerr << "[SEMANTIC ERROR]: Variable '" << assignName << "' is not declared\n";
+            return;
+        }
+
+        std::cout << "[SEMANTIC LOG]: Analyzing assignment to variable '" << assignName << "'\n";
+    }
+    else
+    {
+        std::cerr << "[SEMANTIC ERROR]: Invalid assignment target\n";
         return;
     }
 
-    // Null safety check — allow assigning null only if symbol is nullable
+    // ---- Type & mutability checks ----
     if (assignStmt->value && assignStmt->value->token.type == TokenType::NULLABLE)
     {
         if (!symbol->isNullable)
         {
-            logSemanticErrors("Cannot assign null to non-nullable variable '" + assignName + "'", assignStmt->ident_token.line, assignStmt->ident_token.column);
+            logSemanticErrors("Cannot assign null to non-nullable variable '" + assignName + "'",
+                              assignStmt->identifier->expression.line,
+                              assignStmt->identifier->expression.column);
             return;
         }
     }
     else
     {
-        // If not null, check type compatibility explicitly
         DataType valueType = inferNodeDataType(assignStmt->value.get());
         if (!isTypeCompatible(symbol->symbolDataType, valueType))
         {
-            logSemanticErrors("Type mismatch expected '" + dataTypetoString(symbol->symbolDataType) + "' but got '" + dataTypetoString(valueType) + "'", assignStmt->ident_token.line, assignStmt->ident_token.column);
+            logSemanticErrors("Type mismatch: expected '" +
+                                  dataTypetoString(symbol->symbolDataType) + "' but got '" +
+                                  dataTypetoString(valueType) + "'",
+                              assignStmt->identifier->expression.line,
+                              assignStmt->identifier->expression.column);
             return;
         }
     }
 
-    // Constant check
     if (symbol->isConstant)
     {
         std::cerr << "[SEMANTIC ERROR]: Cannot reassign to constant variable '" << assignName << "'\n";
         return;
     }
 
-    // Immutability check
     if (!symbol->isMutable && symbol->isInitialized)
     {
         std::cerr << "[SEMANTIC ERROR]: Cannot reassign to immutable variable '" << assignName << "'\n";
         return;
     }
 
-    // Passed all checks — mark as initialized now
+    // Mark as initialized
     symbol->isInitialized = true;
 
-    // Run walker on value
+    // Walk the value expression
     if (assignStmt->value)
         walker(assignStmt->value.get());
 
-    // Infer type (mostly for metadata/debug)
+    // Store metadata for later stages
     DataType valueType = inferNodeDataType(assignStmt);
-
     metaData[assignStmt] = {
         .symbolDataType = valueType,
         .isNullable = symbol->isNullable,
@@ -477,3 +527,4 @@ void Semantics::walkAssignStatement(Node *node)
         .isConstant = symbol->isConstant,
         .isInitialized = true};
 }
+
