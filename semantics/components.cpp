@@ -336,25 +336,25 @@ void Semantics::walkDataStatement(Node *node)
                   << "' to data block '" << dataBlockName << "'\n";
     }
 
-    // 6. Build symbol info for the whole block
+    // Build symbol info for the whole block
     SymbolInfo dataSymbolInfo = {
         .symbolDataType = DataType::DATABLOCK,
         .isMutable = isBlockMutable,
         .isConstant = isBlockConstant,
         .members = dataBlockMembers};
 
-    // 7. Build custom type info
+    // Build custom type info
     CustomTypeInfo typeInfo = {
         .typeName = dataBlockName,
         .kind = DataType::DATABLOCK,
         .members = dataBlockMembers};
 
-    // 8. Store results
+    // Store results
     metaData[dataBlockStmt] = dataSymbolInfo;
     symbolTable[0][dataBlockName] = dataSymbolInfo;
     customTypesTable[dataBlockName] = typeInfo;
 
-    // 9. Pop local scope
+    // Pop local scope
     symbolTable.pop_back();
 }
 
@@ -367,10 +367,10 @@ void Semantics::walkBehaviorStatement(Node *node)
     std::cout << "[SEMANTIC LOG] Analyzing behavior statement: "
               << behaviorStmt->toString() << "\n";
 
-    // 1. Get behavior block name
+    // Get behavior block name
     std::string behaviorName = behaviorStmt->behaviorBlockName->expression.TokenLiteral;
 
-    // 2. Ensure name not already used
+    // Ensure name not already used
     if (resolveSymbolInfo(behaviorName))
     {
         logSemanticErrors(
@@ -380,12 +380,12 @@ void Semantics::walkBehaviorStatement(Node *node)
         return;
     }
 
-    // 3. Push a new scope for analysis
+    // Push a new scope for analysis
     symbolTable.push_back({});
 
     std::unordered_map<std::string, MemberInfo> behaviorMembers;
 
-    // 4. Analyze each function inside the behavior
+    // Analyze each function inside the behavior
     for (const auto &func : behaviorStmt->functions)
     {
         auto funcStmt = dynamic_cast<FunctionStatement *>(func.get());
@@ -462,23 +462,23 @@ void Semantics::walkBehaviorStatement(Node *node)
         }
     }
 
-    // 5. Build symbol info
+    // Build symbol info
     SymbolInfo sym = {
         .symbolDataType = DataType::BEHAVIORBLOCK,
         .members = behaviorMembers};
 
-    // 6. Build custom type info
+    // Build custom type info
     CustomTypeInfo typeInfo = {
         .typeName = behaviorName,
         .kind = DataType::BEHAVIORBLOCK,
         .members = behaviorMembers};
 
-    // 7. Store results
+    // Store results
     symbolTable[0][behaviorName] = sym;
     metaData[behaviorStmt] = sym;
     customTypesTable[behaviorName] = typeInfo;
 
-    // 8. Pop scope
+    // Pop scope
     symbolTable.pop_back();
 }
 
@@ -499,7 +499,6 @@ void Semantics::walkUseStatement(Node *node)
     resultSym.isInitialized = false;
 
     // 1) Determine "kind" requested by the 'use' keyword (data/behavior)
-    //    Your parser sets a 'kind_token' on UseStatement; we rely on it.
     TokenType requestedKind = useStmt->kind_token.type;
 
     // 2) Inspect the expression after 'use ...'
@@ -507,9 +506,10 @@ void Semantics::walkUseStatement(Node *node)
     //      A) Identifier           -> full import of that block
     //      B) InfixExpression '.'  -> behavior.member (selective import)
     //      C) InfixExpression '::' -> data.member     (selective import)
-    auto expr = useStmt->blockNameOrCall.get();
+    auto expr = useStmt->blockNameOrCall.get(); // The node we want to import from
 
-    // Helper lambdas (local to this function, no external deps)
+    // Helper lambdas
+    // This helps to get search for the type we are importing from in the customTypesTable
     auto findType = [&](const std::string &name) -> CustomTypeInfo *
     {
         auto it = customTypesTable.find(name);
@@ -528,15 +528,15 @@ void Semantics::walkUseStatement(Node *node)
     // Case A: simple identifier
     if (auto ident = dynamic_cast<Identifier *>(expr))
     {
-        std::string targetName = ident->identifier.TokenLiteral;
-        CustomTypeInfo *target = findType(targetName);
+        std::string targetName = ident->identifier.TokenLiteral; // The name we want to import from
+        CustomTypeInfo *target = findType(targetName);           // Calling our lambda to search for that name in the customTypesTable
         if (!target)
         {
             logSemanticErrors("Unknown block '" + targetName + "' in use statement",
                               ident->expression.line, ident->expression.column);
             return;
         }
-
+        // If we imported from a data block
         if (requestedKind == TokenType::DATA)
         {
             if (target->kind != DataType::DATABLOCK)
@@ -547,6 +547,7 @@ void Semantics::walkUseStatement(Node *node)
             resultSym.symbolDataType = DataType::DATABLOCK;
             resultSym.members = target->members; // full import of all data members
         }
+        // If we imported from a behavior block
         else if (requestedKind == TokenType::BEHAVIOR)
         {
             if (target->kind != DataType::BEHAVIORBLOCK)
@@ -572,14 +573,12 @@ void Semantics::walkUseStatement(Node *node)
         return;
     }
 
-    // Case B/C: dotted or scope-qualified selection
+    // Dotted or scope-qualified selection(Importing specifics from the blocks)
     if (auto infix = dynamic_cast<InfixExpression *>(expr))
     {
         TokenType op = infix->operat.type;
 
-        // We only accept:
-        //   - behavior . member
-        //   - data     :: member
+        // We only accept . for behavior blocks and :: for data blocks
         bool expectBehaviorDot = (requestedKind == TokenType::BEHAVIOR && op == TokenType::FULLSTOP);
         bool expectDataScope = (requestedKind == TokenType::DATA && op == TokenType::SCOPE_OPERATOR);
 
@@ -592,7 +591,7 @@ void Semantics::walkUseStatement(Node *node)
             return;
         }
 
-        // Extract parent and child names (we assume both sides are identifiers)
+        // Extract parent and child names (both are identifiers)
         auto leftId = dynamic_cast<Identifier *>(infix->left_operand.get());
         auto rightId = dynamic_cast<Identifier *>(infix->right_operand.get());
         if (!leftId || !rightId)
@@ -606,7 +605,7 @@ void Semantics::walkUseStatement(Node *node)
         std::string childName = rightId->identifier.TokenLiteral;
 
         // Resolve parent type
-        CustomTypeInfo *parent = findType(parentName);
+        CustomTypeInfo *parent = findType(parentName); // Check if the parent exists in the custom types
         if (!parent)
         {
             logSemanticErrors("Unknown block '" + parentName + "' in use statement",
@@ -652,6 +651,22 @@ void Semantics::walkUseStatement(Node *node)
         // Attach to metaData for the component walker to merge later
         metaData[useStmt] = resultSym;
 
+        // I think here I will insert the imported  data directly into the caller component's members
+        auto componentMembers = currentTypeStack.back().members;
+
+        componentMembers = resultSym.members;
+        if (componentMembers.empty())
+        {
+            std::cout << "NOTHING WAS INSERTED INTO COMPONENT MEMBERS\n";
+        }
+        else
+        {
+            // Here let us investigate if the currentType stack actually has a component
+            DataType &currentType = currentTypeStack.back().kind;
+            std::cout << "COMPONENT IS OF TYPE  " << dataTypetoString(currentType) << "\n";
+            std::cout << "COMPONENT MEMBERS ARE NOT EMPTY\n";
+        }
+
         std::cout << "[SEMANTIC LOG] use "
                   << ((requestedKind == TokenType::DATA) ? "data " : "behavior ")
                   << parentName
@@ -672,7 +687,7 @@ void Semantics::walkInitConstructor(Node *node)
 
     std::cout << "[SEMANTIC LOG] Analyzing init constructor\n";
 
-    // --- Rule 1: Must be inside a component
+    // Must be inside a component
 
     if (currentTypeStack.empty() || currentTypeStack.back().kind != DataType::COMPONENT)
     {
@@ -684,7 +699,7 @@ void Semantics::walkInitConstructor(Node *node)
 
     auto &currentComponent = currentTypeStack.back();
 
-    // --- Rule 2: Only one init constructor per component
+    // Only one init constructor per component
     if (currentComponent.hasInitConstructor)
     {
         logSemanticErrors("Component '" + currentComponent.typeName +
@@ -694,25 +709,25 @@ void Semantics::walkInitConstructor(Node *node)
     }
     currentComponent.hasInitConstructor = true;
 
-    // --- Rule 3: init constructor is always void-returning
+    // init constructor is always void-returning
     SymbolInfo initInfo;
     initInfo.symbolDataType = DataType::VOID;
     initInfo.returnType = DataType::VOID;
     initInfo.isDefined = true;
 
-    // --- Rule 4: Process constructor parameters
+    // Process constructor parameters
     for (const auto &arg : initStmt->constructor_args)
     {
         walkFunctionParameterLetStatement(arg.get());
     }
 
-    // --- Rule 5: Walk the constructor body
+    // Walk the constructor body
     if (initStmt->block)
     {
         walkBlockStatement(initStmt->block.get());
     }
 
-    // --- Rule 6: Attach metadata
+    // Attach metadata
     metaData[node] = initInfo;
 
     std::cout << "[SEMANTIC LOG] Init constructor added to component '"
@@ -805,33 +820,120 @@ void Semantics::walkComponentStatement(Node *node)
 
     // Enter a new component scope
     symbolTable.push_back({});
-    currentTypeStack.push_back({
-        .kind = DataType::COMPONENT,
-        .typeName = componentName,
-        .hasInitConstructor = false,
-    });
+    currentTypeStack.push_back({.kind = DataType::COMPONENT,
+                                .typeName = componentName,
+                                .hasInitConstructor = false,
+                                .members = members});
+
+    // Walk data/behavior imports
+    for (const auto &usedData : componentStmt->usedDataBlocks)
+    {
+        if (!usedData)
+        {
+            std::cout << "INVALID USED DATA NODE\n";
+            return;
+        }
+
+        auto useStmt = dynamic_cast<UseStatement *>(usedData.get());
+        if (!useStmt)
+        {
+            std::cout << "INVALID SHIT\n";
+            continue;
+        }
+
+        auto infixExpr = dynamic_cast<InfixExpression *>(useStmt->blockNameOrCall.get());
+        if (!infixExpr)
+        {
+            std::cout << "Unexpected use expression, not infix\n";
+            continue;
+        }
+
+        auto leftIdent = dynamic_cast<Identifier *>(infixExpr->left_operand.get());
+        if (!leftIdent)
+        {
+            std::cout << "Left side of infix is not identifier\n";
+            continue;
+        }
+
+        auto dataName = leftIdent->expression.TokenLiteral;
+
+        std::cout << "IMPORTED DATA NAME: " << dataName << "\n";
+        auto importedTypeIt = customTypesTable.find(dataName);
+        if (importedTypeIt != customTypesTable.end())
+        {
+            auto &importedMembers = importedTypeIt->second.members;
+
+            auto &currentScope = symbolTable.back();
+            for (auto &[name, info] : importedMembers)
+            {
+                // Add to component members blueprint
+                members[name] = info;
+
+                // Also add to local symbol table so assignments resolve
+                currentScope[name] = SymbolInfo{
+                    .symbolDataType = info.type,
+                    .isNullable = info.isNullable,
+                    .isMutable = info.isMutable,
+                    .isConstant = info.isConstant,
+                    .isInitialized = info.isInitialised};
+            }
+        }
+    }
+
+    for (const auto &usedBehavior : componentStmt->usedBehaviorBlocks)
+        walkUseStatement(usedBehavior.get());
+
+    // Walk init constructor (if any)
+    if (componentStmt->initConstructor.has_value())
+        walkInitConstructor(componentStmt->initConstructor.value().get());
 
     // Walk private data members
     for (const auto &data : componentStmt->privateData)
     {
-        walker(data.get());
-        auto dataSym = resolveSymbolInfo(data->statement.TokenLiteral);
-        if (!dataSym)
+        auto letStmt = dynamic_cast<LetStatement *>(data.get());
+        auto assignStmt = dynamic_cast<AssignmentStatement *>(data.get());
+        if (letStmt)
         {
-            logSemanticErrors(
-                "Failed to resolve private data '" + data->statement.TokenLiteral + "'",
-                data->statement.line,
-                data->statement.column);
-            continue;
-        }
+            walker(letStmt);
+            auto letSym = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
+            if (!letSym)
+            {
+                logSemanticErrors(
+                    "Failed to resolve private data '" + letStmt->ident_token.TokenLiteral + "'",
+                    letStmt->ident_token.line,
+                    letStmt->ident_token.column);
+                continue;
+            }
 
-        members[data->statement.TokenLiteral] = {
-            .memberName = data->statement.TokenLiteral,
-            .type = dataSym->symbolDataType,
-            .isNullable = dataSym->isNullable,
-            .isMutable = dataSym->isMutable,
-            .isConstant = dataSym->isConstant,
-            .isInitialised = dataSym->isInitialized};
+            members[letStmt->ident_token.TokenLiteral] = {
+                .memberName = letStmt->ident_token.TokenLiteral,
+                .type = letSym->symbolDataType,
+                .isNullable = letSym->isNullable,
+                .isMutable = letSym->isMutable,
+                .isConstant = letSym->isConstant,
+                .isInitialised = letSym->isInitialized};
+        }
+        if (assignStmt)
+        {
+            walker(assignStmt);
+            auto assignSym = resolveSymbolInfo(assignStmt->identifier->expression.TokenLiteral);
+            if (!assignSym)
+            {
+                logSemanticErrors(
+                    "Failed to resolve private data '" + assignStmt->identifier->expression.TokenLiteral + "'",
+                    assignStmt->identifier->expression.line,
+                    assignStmt->identifier->expression.column);
+                continue;
+            }
+
+            members[assignStmt->identifier->expression.TokenLiteral] = {
+                .memberName = assignStmt->identifier->expression.TokenLiteral,
+                .type = assignSym->symbolDataType,
+                .isNullable = assignSym->isNullable,
+                .isMutable = assignSym->isMutable,
+                .isConstant = assignSym->isConstant,
+                .isInitialised = assignSym->isInitialized};
+        }
     }
 
     // Walk private methods
@@ -857,7 +959,7 @@ void Semantics::walkComponentStatement(Node *node)
                     .isMutable = metSym->isMutable};
             }
         }
-        else if (funcDeclrExpr) // ✅ fixed: should be `if (funcDeclrExpr)` not `if (!funcDeclrExpr)`
+        else if (funcDeclrExpr)
         {
             walker(funcDeclrExpr);
             auto metSym = resolveSymbolInfo(funcDeclrExpr->function_name->expression.TokenLiteral);
@@ -872,17 +974,6 @@ void Semantics::walkComponentStatement(Node *node)
         }
     }
 
-    // Walk data/behavior imports
-    for (const auto &usedData : componentStmt->usedDataBlocks)
-        walkUseStatement(usedData.get());
-
-    for (const auto &usedBehavior : componentStmt->usedBehaviorBlocks)
-        walkUseStatement(usedBehavior.get());
-
-    // Walk init constructor (if any)
-    if (componentStmt->initConstructor.has_value())
-        walkInitConstructor(componentStmt->initConstructor.value().get());
-
     // Register component as a symbol
     SymbolInfo componentSymbol = {
         .symbolDataType = DataType::COMPONENT,
@@ -895,6 +986,12 @@ void Semantics::walkComponentStatement(Node *node)
 
     metaData[componentStmt] = componentSymbol;
     customTypesTable[componentName] = typeInfo;
+
+    // I want to investigate what is inside the local scope
+    if (members.empty())
+    {
+        std::cout << "COMPONENT MEMBERS ARE EMPTY AT RUNTIME\n";
+    }
 
     // Exit component scope
     currentTypeStack.pop_back();

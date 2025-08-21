@@ -87,6 +87,7 @@ struct ScopeInfo
     DataType kind;
     std::string typeName;
     bool hasInitConstructor = false;
+    std::unordered_map<std::string, MemberInfo> members;
 };
 
 // Information about the symbol(variable or object, whatever)
