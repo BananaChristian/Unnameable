@@ -73,12 +73,16 @@ struct MemberInfo
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialised = false;
+    //Info for enum members
+    int constantValue=0;
 };
 
 struct CustomTypeInfo
 {
     std::string typeName;
     DataType kind;
+    //Special for enum class
+    DataType underLyingType=DataType::INTEGER; //Defaulting to 32 bit integer
     std::unordered_map<std::string, MemberInfo> members;
 };
 
@@ -106,12 +110,6 @@ struct SymbolInfo
     // Function flags
     bool isDeclaration = false;
     bool isDefined = false;
-    // enum info
-    std::string enumName;
-    std::vector<std::string> enumContent;
-    int constantValue = 0; // For enum members to store assigned int value
-    std::vector<std::pair<std::string, int>> enumMembers;
-    DataType enumIntType = DataType::INTEGER; // Defaults to a 32 bit integer data type
 
     std::unordered_map<std::string, MemberInfo> members;
 };

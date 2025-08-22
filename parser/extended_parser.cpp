@@ -128,7 +128,7 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement()
 // Parsing enum class statement
 std::unique_ptr<Statement> Parser::parseEnumClassStatement()
 {
-    std::vector<std::unique_ptr<Expression>> enum_block;
+    std::vector<std::unique_ptr<Statement>> enum_block;
     std::optional<Token> int_token;
     Token enum_token = currentToken();
     advance(); // Consume the enum keyword token
@@ -165,7 +165,7 @@ std::unique_ptr<Statement> Parser::parseEnumClassStatement()
 
     while (currentToken().type != TokenType::RBRACE)
     {
-        auto enumClassStmt = parseExpression(Precedence::PREC_NONE);
+        auto enumClassStmt = parseStatement();
         enum_block.push_back(std::move(enumClassStmt));
         if (currentToken().type == TokenType::COMMA)
         {

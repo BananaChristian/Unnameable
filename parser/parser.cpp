@@ -1166,7 +1166,8 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
 
     if (PrefixParseFnIt == PrefixParseFunctionsMap.end()) // Checking if the iterator has reached the end of the map
     {
-        std::cerr << "[ERROR] No prefix parse function for token: " << currentToken().TokenLiteral << "\n";
+        //std::cerr << "[ERROR] No prefix parse function for token: " << currentToken().TokenLiteral << "\n";
+        logError("No prefix parse function for token '"+currentToken().TokenLiteral+"'");
         return nullptr;
     }
 

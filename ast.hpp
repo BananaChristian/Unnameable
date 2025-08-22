@@ -895,7 +895,7 @@ struct EnumClassStatement : Statement
     Token class_token;
     std::unique_ptr<Expression> enum_identifier;
     std::optional<Token> int_type;
-    std::vector<std::unique_ptr<Expression>> enum_content;
+    std::vector<std::unique_ptr<Statement>> enum_content;
     std::string toString()
     {
         std::string enum_block;
@@ -914,7 +914,7 @@ struct EnumClassStatement : Statement
         return "Enum class statement: " + enum_identifier->toString() + int_typestr + " { " + enum_block + " }";
     }
 
-    EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::optional<Token> intType, std::vector<std::unique_ptr<Expression>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
+    EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::optional<Token> intType, std::vector<std::unique_ptr<Statement>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
                                                                                                                                                                                      class_token(class_tok),
                                                                                                                                                                                      enum_identifier(std::move(enum_ident)),
                                                                                                                                                                                      int_type(intType),
