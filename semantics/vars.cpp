@@ -9,7 +9,7 @@ void Semantics::walkBooleanLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the boolean literal \n";
     metaData[boolLiteral] = {
-        .symbolDataType = DataType::BOOLEAN,
+        .type = ResolvedType{DataType::BOOLEAN, "bool"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -22,7 +22,7 @@ void Semantics::walkStringLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the string literal \n";
     metaData[strLiteral] = {
-        .symbolDataType = DataType::STRING,
+        .type = ResolvedType{DataType::STRING, "string"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -35,7 +35,7 @@ void Semantics::walkCharLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the char literal \n";
     metaData[charLiteral] = {
-        .symbolDataType = DataType::CHAR,
+        .type = ResolvedType{DataType::CHAR, "char"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -48,7 +48,7 @@ void Semantics::walkChar16Literal(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the char16 literal\n";
     metaData[lit] = {
-        .symbolDataType = DataType::CHAR16,
+        .type = ResolvedType{DataType::CHAR16, "char16"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -61,7 +61,7 @@ void Semantics::walkChar32Literal(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the char32 literal\n";
     metaData[lit] = {
-        .symbolDataType = DataType::CHAR32,
+        .type = ResolvedType{DataType::CHAR16, "char16"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -74,7 +74,7 @@ void Semantics::walkShortLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the short int literal\n";
     metaData[lit] = {
-        .symbolDataType = DataType::SHORT_INT,
+        .type = ResolvedType{DataType::SHORT_INT, "short"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -87,7 +87,7 @@ void Semantics::walkUnsignedShortLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the unsigned short int literal\n";
     metaData[lit] = {
-        .symbolDataType = DataType::USHORT_INT,
+        .type = ResolvedType{DataType::USHORT_INT, "ushort"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -100,7 +100,7 @@ void Semantics::walkIntegerLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the integer literal \n";
     metaData[intLiteral] = {
-        .symbolDataType = DataType::INTEGER,
+        .type = ResolvedType{DataType::INTEGER, "int"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -113,7 +113,7 @@ void Semantics::walkUnsignedIntegerLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the Unsigned integer literal \n";
     metaData[intLiteral] = {
-        .symbolDataType = DataType::UINTEGER,
+        .type = ResolvedType{DataType::UINTEGER, "uint"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -126,7 +126,7 @@ void Semantics::walkLongLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the long int literal\n";
     metaData[lit] = {
-        .symbolDataType = DataType::LONG_INT,
+        .type = ResolvedType{DataType::LONG_INT, "long"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -139,7 +139,7 @@ void Semantics::walkUnsignedLongLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the unsigned long int literal\n";
     metaData[lit] = {
-        .symbolDataType = DataType::ULONG_INT,
+        .type = ResolvedType{DataType::ULONG_INT, "ulong"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -152,7 +152,7 @@ void Semantics::walkExtraLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the extra (128-bit) int literal\n";
     metaData[lit] = {
-        .symbolDataType = DataType::EXTRA_INT,
+        .type = ResolvedType{DataType::EXTRA_INT, "extra"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -165,7 +165,7 @@ void Semantics::walkUnsignedExtraLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analyzing the unsigned extra (128-bit) int literal\n";
     metaData[lit] = {
-        .symbolDataType = DataType::UEXTRA_INT,
+        .type = {DataType::UEXTRA_INT, "uextra"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -179,7 +179,7 @@ void Semantics::walkFloatLiteral(Node *node)
 
     std::cout << "[SEMANTIC LOG]: Analyzing the float literal \n";
     metaData[fltLiteral] = {
-        .symbolDataType = DataType::FLOAT,
+        .type = ResolvedType{DataType::FLOAT, "float"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -192,7 +192,7 @@ void Semantics::walkDoubleLiteral(Node *node)
         return;
     std::cout << "[SEMANTIC LOG] Analyzing the double literal \n";
     metaData[dbLiteral] = {
-        .symbolDataType = DataType::DOUBLE,
+        .type = ResolvedType{DataType::DOUBLE, "double"},
         .isNullable = false,
         .isMutable = false,
         .isConstant = false};
@@ -215,16 +215,16 @@ void Semantics::walkIdentifierExpression(Node *node)
     {
         logSemanticErrors(" Use of undeclared identifer '" + identName + "'", identExpr->expression.line, identExpr->expression.column);
         metaData[identExpr] = {
-            .symbolDataType = DataType::UNKNOWN,
+            .type = ResolvedType{DataType::UNKNOWN, "unknown"},
             .isNullable = false,
             .isMutable = false,
             .isConstant = false,
             .isInitialized = false};
         return;
     }
-    auto identExprType = symbolInfo->symbolDataType;
+    auto identExprType = symbolInfo->type;
     metaData[identExpr] = {
-        .symbolDataType = identExprType,
+        .type = identExprType,
         .isNullable = symbolInfo->isNullable,
         .isMutable = symbolInfo->isMutable,
         .isConstant = symbolInfo->isConstant,
@@ -240,7 +240,7 @@ void Semantics::walkLetStatement(Node *node)
     std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
 
     auto existing = metaData.find(node);
-    if (existing != metaData.end() && existing->second.symbolDataType == DataType::GENERIC)
+    if (existing != metaData.end() && existing->second.type.kind == DataType::GENERIC)
     {
         std::cout << "[SEMANTIC LOG]: Skipping already analyzed generic parameter: " << letStmt->ident_token.TokenLiteral << "\n";
         return;
@@ -251,7 +251,7 @@ void Semantics::walkLetStatement(Node *node)
 
     auto letStmtValue = letStmt->value.get();
 
-    DataType declaredType = DataType::UNKNOWN; // Defaulting to the unknown data type
+    ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Defaulting to the unknown data type
 
     if (letStmtValue)
     {
@@ -265,11 +265,11 @@ void Semantics::walkLetStatement(Node *node)
             if (!isNullable)
             {
                 logSemanticErrors("Cannot assign 'null' to a non-nullable value '" + letStmt->ident_token.TokenLiteral + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
-                declaredType = DataType::UNKNOWN;
+                declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
             }
             else
             {
-                declaredType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
+                declaredType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
             }
         }
         else
@@ -285,22 +285,22 @@ void Semantics::walkLetStatement(Node *node)
     // If we dont have a value(A variable declaration)
     if (!letStmtValue)
     {
-        DataType expectedType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
-        declaredType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
+        ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
+        declaredType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
     }
 
     //  Check for type mismatch if type is explicitly declared (not inferred via auto)
     if (letStmt->data_type_token.type != TokenType::AUTO)
     {
-        DataType expectedType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
+        ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
         if (!isTypeCompatible(expectedType, declaredType))
         {
-            logSemanticErrors("Type mismatch in 'let' statement. Expected '" + dataTypetoString(expectedType) + "' but got '" + dataTypetoString(declaredType) + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            logSemanticErrors("Type mismatch in 'let' statement. Expected '" + expectedType.resolvedName + "' but got '" + declaredType.resolvedName + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
         }
     }
 
-    std::cout << "LET STATEMENT DATA TYPE: " << dataTypetoString(declaredType) << "\n";
+    std::cout << "LET STATEMENT DATA TYPE: " << declaredType.resolvedName << "\n";
 
     // Checking for mutability and constance
     bool isMutable = false;
@@ -316,7 +316,7 @@ void Semantics::walkLetStatement(Node *node)
 
     // Creating metadata about the let statement node
     SymbolInfo symbol = {
-        .symbolDataType = declaredType,
+        .type = declaredType,
         .isNullable = isNullable,
         .isMutable = isMutable,
         .isConstant = isConstant,
@@ -357,7 +357,7 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
         isConstant = true;
     }
 
-    DataType declaredType = DataType::UNKNOWN;
+    ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
     std::string genericName;
 
     if (letStmt->data_type_token.type == TokenType::IDENTIFIER)
@@ -379,12 +379,12 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
             logSemanticErrors("Undefined generic type '" + genericName + "' in function parameter", node->token.line, node->token.column);
             return;
         }
-        declaredType = DataType::GENERIC;
+        declaredType = ResolvedType{DataType::GENERIC, "generic"};
     }
     else
     {
-        declaredType = tokenTypeToDataType(letStmt->data_type_token.type, isNullable);
-        if (declaredType == DataType::UNKNOWN)
+        declaredType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
+        if (declaredType.kind == DataType::UNKNOWN)
         {
             logSemanticErrors("Invalid parameter type: " + letStmt->data_type_token.TokenLiteral,
                               letStmt->data_type_token.line, letStmt->data_type_token.column);
@@ -392,10 +392,10 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
         }
     }
 
-    std::cout << "FUNCTION PARAMETER DATA TYPE: " << dataTypetoString(declaredType) << "\n";
+    std::cout << "FUNCTION PARAMETER DATA TYPE: " << declaredType.resolvedName << "\n";
 
     SymbolInfo symbol = {
-        .symbolDataType = declaredType,
+        .type = declaredType,
         .genericName = genericName,
         .isNullable = isNullable,
         .isMutable = isMutable,
@@ -406,7 +406,7 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
     metaData[letStmt] = symbol;
     symbolTable.back()[letStmt->ident_token.TokenLiteral] = symbol;
     std::cout << "[SEMANTIC LOG] Parameter '" << letStmt->ident_token.TokenLiteral
-              << "' stored with type: " << dataTypetoString(declaredType)
+              << "' stored with type: " << declaredType.resolvedName
               << ", mutable: " << (isMutable ? "true" : "false") << "\n";
 }
 
@@ -432,7 +432,7 @@ void Semantics::walkAssignStatement(Node *node)
         }
 
         // Ensure we’re actually in a component scope
-        if (currentTypeStack.empty() || currentTypeStack.back().kind != DataType::COMPONENT)
+        if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
         {
             logSemanticErrors("'self' cannot be used outside a component",
                               assignStmt->identifier->expression.line,
@@ -487,12 +487,12 @@ void Semantics::walkAssignStatement(Node *node)
     }
     else
     {
-        DataType valueType = inferNodeDataType(assignStmt->value.get());
-        if (!isTypeCompatible(symbol->symbolDataType, valueType))
+        ResolvedType valueType = inferNodeDataType(assignStmt->value.get());
+        if (!isTypeCompatible(symbol->type, valueType))
         {
             logSemanticErrors("Type mismatch: expected '" +
-                                  dataTypetoString(symbol->symbolDataType) + "' but got '" +
-                                  dataTypetoString(valueType) + "'",
+                                  symbol->type.resolvedName + "' but got '" +
+                                  valueType.resolvedName + "'",
                               assignStmt->identifier->expression.line,
                               assignStmt->identifier->expression.column);
             return;
@@ -519,12 +519,11 @@ void Semantics::walkAssignStatement(Node *node)
         walker(assignStmt->value.get());
 
     // Store metadata for later stages
-    DataType valueType = inferNodeDataType(assignStmt);
+    ResolvedType valueType = inferNodeDataType(assignStmt);
     metaData[assignStmt] = {
-        .symbolDataType = valueType,
+        .type = valueType,
         .isNullable = symbol->isNullable,
         .isMutable = symbol->isMutable,
         .isConstant = symbol->isConstant,
         .isInitialized = true};
 }
-

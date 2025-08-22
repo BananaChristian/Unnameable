@@ -1,6 +1,7 @@
 #include "semantics.hpp"
 #include "ast.hpp"
 #include <algorithm>
+#include <unordered_set>
 
 #define CPPREST_FORCE_REBUILD
 
@@ -104,105 +105,60 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
 }
 
-DataType Semantics::inferNodeDataType(Node *node)
+ResolvedType Semantics::inferNodeDataType(Node *node)
 {
     if (!node)
-        return DataType::UNKNOWN;
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
 
     if (auto shortLit = dynamic_cast<ShortLiteral *>(node))
-        return DataType::SHORT_INT;
+        return ResolvedType{DataType::SHORT_INT, "short"};
     if (auto ushortLit = dynamic_cast<UnsignedShortLiteral *>(node))
-        return DataType::USHORT_INT;
+        return ResolvedType{DataType::USHORT_INT, "ushort"};
 
     if (auto longLit = dynamic_cast<LongLiteral *>(node))
-        return DataType::LONG_INT;
+        return ResolvedType{DataType::LONG_INT, "long"};
     if (auto ulongLit = dynamic_cast<UnsignedLongLiteral *>(node))
-        return DataType::ULONG_INT;
+        return ResolvedType{DataType::ULONG_INT, "ulong"};
 
     if (auto extraLit = dynamic_cast<ExtraLiteral *>(node))
-        return DataType::EXTRA_INT;
+        return ResolvedType{DataType::EXTRA_INT, "extra"};
     if (auto uextraLit = dynamic_cast<UnsignedExtraLiteral *>(node))
-        return DataType::UEXTRA_INT;
+        return ResolvedType{DataType::UEXTRA_INT, "uextra"};
 
     if (auto inLit = dynamic_cast<IntegerLiteral *>(node))
-        return DataType::INTEGER;
+        return ResolvedType{DataType::INTEGER, "int"};
 
     if (auto uintLit = dynamic_cast<UnsignedIntegerLiteral *>(node))
-        return DataType::UINTEGER;
+        return ResolvedType{DataType::UINTEGER, "uint"};
 
     if (auto fltLit = dynamic_cast<FloatLiteral *>(node))
-        return DataType::FLOAT;
+        return ResolvedType{DataType::FLOAT, "float"};
 
     if (auto dbLit = dynamic_cast<DoubleLiteral *>(node))
-        return DataType::DOUBLE;
+        return ResolvedType{DataType::DOUBLE, "double"};
 
     if (auto strLit = dynamic_cast<StringLiteral *>(node))
-        return DataType::STRING;
+        return ResolvedType{DataType::STRING, "string"};
 
     if (auto chrLit = dynamic_cast<CharLiteral *>(node))
-        return DataType::CHAR;
+        return ResolvedType{DataType::CHAR, "char"};
 
     if (auto char16Lit = dynamic_cast<Char16Literal *>(node))
-        return DataType::CHAR16;
+        return ResolvedType{DataType::CHAR16, "char16"};
     if (auto char32Lit = dynamic_cast<Char32Literal *>(node))
-        return DataType::CHAR32;
+        return ResolvedType{DataType::CHAR32, "char32"};
 
     if (auto boolLit = dynamic_cast<BooleanLiteral *>(node))
-        return DataType::BOOLEAN;
+        return ResolvedType{DataType::BOOLEAN, "bool"};
 
     if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
-        return DataType::ERROR;
+        return ResolvedType{DataType::ERROR, "error"};
 
     // Dealing with the let statement node type
     if (auto letStmt = dynamic_cast<LetStatement *>(node))
     {
         auto letStmtDataToken = letStmt->data_type_token;
-        switch (letStmtDataToken.type)
-        {
-        case TokenType::SHORT_KEYWORD:
-            return DataType::SHORT_INT;
-        case TokenType::USHORT_KEYWORD:
-            return DataType::USHORT_INT;
-        case TokenType::INTEGER_KEYWORD:
-            return DataType::INTEGER;
-        case TokenType::UINT_KEYWORD:
-            return DataType::UINTEGER;
-        case TokenType::LONG_KEYWORD:
-            return DataType::LONG_INT;
-        case TokenType::ULONG_KEYWORD:
-            return DataType::ULONG_INT;
-        case TokenType::EXTRA_KEYWORD:
-            return DataType::EXTRA_INT;
-        case TokenType::UEXTRA_KEYWORD:
-            return DataType::UEXTRA_INT;
-        case TokenType::FLOAT_KEYWORD:
-            return DataType::FLOAT;
-        case TokenType::DOUBLE_KEYWORD:
-            return DataType::DOUBLE;
-        case TokenType::STRING_KEYWORD:
-            return DataType::STRING;
-        case TokenType::CHAR_KEYWORD:
-            return DataType::CHAR;
-        case TokenType::CHAR16_KEYWORD:
-            return DataType::CHAR16;
-        case TokenType::CHAR32_KEYWORD:
-            return DataType::CHAR32;
-        case TokenType::BOOL_KEYWORD:
-            return DataType::BOOLEAN;
-        case TokenType::AUTO:
-        {
-            auto letStmtValue = letStmt->value.get();
-            if (!letStmtValue)
-            {
-                logSemanticErrors("Cannot infer without a value", letStmt->data_type_token.line, letStmt->data_type_token.column);
-                return DataType::UNKNOWN;
-            }
-            return inferNodeDataType(letStmtValue);
-        }
-        default:
-            logSemanticErrors("Unknown data type in let statement", letStmtDataToken.line, letStmtDataToken.column);
-            return DataType::UNKNOWN;
-        }
+        return resolvedDataType(letStmtDataToken, letStmt);
     }
 
     if (auto assignStmt = dynamic_cast<AssignmentStatement *>(node))
@@ -210,14 +166,14 @@ DataType Semantics::inferNodeDataType(Node *node)
         auto assignStmtIdent = assignStmt->identifier->expression.TokenLiteral;
         auto assignSymbol = resolveSymbolInfo(assignStmtIdent);
         auto assignStmtVal = assignStmt->value.get();
-        DataType assignStmtValType = inferNodeDataType(assignStmtVal);
-        if (!isTypeCompatible(assignSymbol->symbolDataType, assignStmtValType))
+        ResolvedType assignStmtValType = inferNodeDataType(assignStmtVal);
+        if (!isTypeCompatible(assignSymbol->type, assignStmtValType))
         {
-            logSemanticErrors("Type mismatch expected '" + dataTypetoString(assignStmtValType) + "' but got '" + dataTypetoString(assignSymbol->symbolDataType) + "'", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
+            logSemanticErrors("Type mismatch expected '" + assignStmtValType.resolvedName + "' but got '" + assignSymbol->type.resolvedName + "'", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
         }
         else
         {
-            return assignSymbol->symbolDataType;
+            return assignSymbol->type;
         }
     }
 
@@ -244,19 +200,19 @@ DataType Semantics::inferNodeDataType(Node *node)
         auto symbol = resolveSymbolInfo(name);
         if (symbol)
         {
-            std::cout << "IDENTIFIER DATA TYPE: " << dataTypetoString(symbol->symbolDataType) << "\n";
-            return symbol->symbolDataType;
+            std::cout << "IDENTIFIER DATA TYPE: " << symbol->type.resolvedName << "\n";
+            return symbol->type;
         }
         else
         {
             logSemanticErrors("Undefined variable '" + name + "'", ident->expression.line, ident->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
     }
 
     if (auto retTypeExpr = dynamic_cast<ReturnTypeExpression *>(node))
     {
-        return tokenTypeToDataType(retTypeExpr->expression.type, false);
+        return tokenTypeToResolvedType(retTypeExpr->expression.type, false);
     }
 
     if (auto callExpr = dynamic_cast<CallExpression *>(node))
@@ -264,26 +220,27 @@ DataType Semantics::inferNodeDataType(Node *node)
         auto symbol = resolveSymbolInfo(callExpr->function_identifier->expression.TokenLiteral);
         if (symbol)
         {
-            return symbol->symbolDataType;
+            return symbol->type;
         }
         else
         {
             logSemanticErrors("Undefined function name '" + callExpr->function_identifier->expression.TokenLiteral + "'", callExpr->function_identifier->expression.line, callExpr->function_identifier->expression.column);
-            return DataType::UNKNOWN;
+            return {DataType::UNKNOWN, "unknown"};
         }
     }
 
-    return DataType::UNKNOWN;
+    return {DataType::UNKNOWN, "unknown"};
 }
 
-DataType Semantics::inferInfixExpressionType(Node *node)
+ResolvedType Semantics::inferInfixExpressionType(Node *node)
 {
     auto infixNode = dynamic_cast<InfixExpression *>(node);
     if (!infixNode)
-        return DataType::UNKNOWN;
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
+
     std::cout << "[SEMANTIC LOG] INFERING INFIX TYPE\n";
-    DataType leftType = inferNodeDataType(infixNode->left_operand.get());
-    DataType rightType;
+    ResolvedType leftType = inferNodeDataType(infixNode->left_operand.get());
+    ResolvedType rightType;
     TokenType operatorType = infixNode->operat.type;
     if (operatorType == TokenType::FULLSTOP || operatorType == TokenType::SCOPE_OPERATOR)
     {
@@ -300,28 +257,27 @@ DataType Semantics::inferInfixExpressionType(Node *node)
     return resultOfBinary(operatorType, leftType, rightType);
 }
 
-DataType Semantics::inferPrefixExpressionType(Node *node)
+ResolvedType Semantics::inferPrefixExpressionType(Node *node)
 {
     auto prefixNode = dynamic_cast<PrefixExpression *>(node);
     if (!prefixNode)
-        return DataType::UNKNOWN;
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
     std::cout << "[SEMANTIC LOG] Infering prefix type\n";
     auto prefixOperator = prefixNode->operat.type;
-    DataType operandType = inferNodeDataType(prefixNode->operand.get());
+    ResolvedType operandType = inferNodeDataType(prefixNode->operand.get());
     return resultOfUnary(prefixOperator, operandType);
 }
 
-DataType Semantics::inferPostfixExpressionType(Node *node)
+ResolvedType Semantics::inferPostfixExpressionType(Node *node)
 {
     auto postfixNode = dynamic_cast<PostfixExpression *>(node);
     if (!postfixNode)
-        return DataType::UNKNOWN;
-    DataType operandType = inferNodeDataType(postfixNode->operand.get());
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
+    ResolvedType operandType = inferNodeDataType(postfixNode->operand.get());
     auto postfixOperator = postfixNode->operator_token.type;
     return resultOfUnary(postfixOperator, operandType);
 }
-
-DataType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infixExpr)
+ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infixExpr)
 {
     std::cout << "INSIDE SCOPE RESOLVER FOR INFIX\n";
     /*This function's role is to deal with . or :: operators
@@ -337,20 +293,20 @@ DataType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::string
         if (typeIt == customTypesTable.end())
         {
             logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
         // Adding the check to only use full stop for datablock members only
-        if (typeIt->second.kind == DataType::DATABLOCK || typeIt->second.kind == DataType::ENUM)
+        if (typeIt->second.type.kind == DataType::DATABLOCK || typeIt->second.type.kind == DataType::ENUM)
         {
             logSemanticErrors("Only use . to access members of behavior blocks and components", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
         // If we have the parent name let us look into the child members but we need to ensure the members arent empty
         auto members = typeIt->second.members;
         if (members.empty())
         {
             logSemanticErrors("Type '" + parentName + "' has no members", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
 
         // If it has members let us return the data type of that particular member we encounter
@@ -359,7 +315,7 @@ DataType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::string
         if (memberIt == members.end())
         {
             logSemanticErrors("Type '" + parentName + "' does not have member '" + childName + "'", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
         // If we have that member we have to return its data Type
         return memberIt->second.type;
@@ -374,20 +330,20 @@ DataType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::string
         if (typeIt == customTypesTable.end())
         {
             logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
         // Adding the check to only use full stop for datablock members only
-        if (typeIt->second.kind == DataType::BEHAVIORBLOCK || typeIt->second.kind == DataType::COMPONENT)
+        if (typeIt->second.type.kind == DataType::BEHAVIORBLOCK || typeIt->second.type.kind == DataType::COMPONENT)
         {
             logSemanticErrors("Only use :: to access members of data blocks and enum class members", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
         // If we have the parent name let us look into the child members but we need to ensure the members arent empty
         auto members = typeIt->second.members;
         if (members.empty())
         {
             logSemanticErrors("Type '" + parentName + "' has no members", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
 
         // If it has members let us return the data type of that particular member we encounter
@@ -396,30 +352,30 @@ DataType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::string
         if (memberIt == members.end())
         {
             logSemanticErrors("Type '" + parentName + "' does not have member '" + childName + "'", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
         // If we have that member we have to return its data Type
         return memberIt->second.type;
     }
 
-    return DataType::UNKNOWN;
+    return ResolvedType{DataType::UNKNOWN, "unknown"};
 }
 
-DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType)
+ResolvedType Semantics::resultOfBinary(TokenType operatorType, ResolvedType leftType, ResolvedType rightType)
 {
     // Logical operators: &&, ||
     if (operatorType == TokenType::AND || operatorType == TokenType::OR)
     {
         if (isBoolean(leftType) && isBoolean(rightType))
-            return DataType::BOOLEAN;
+            return ResolvedType{DataType::BOOLEAN, "boolean"};
         else
-            return DataType::UNKNOWN;
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
     if (operatorType == TokenType::ASSIGN)
     {
         std::cerr << "Cannot use '=' in binary operations; only for assignments\n";
-        return DataType::UNKNOWN;
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
     // Comparison operators
@@ -432,17 +388,17 @@ DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, Da
 
     if (isComparison)
     {
-        if (leftType == rightType)
-            return DataType::BOOLEAN;
+        if (leftType.kind == rightType.kind)
+            return ResolvedType{DataType::BOOLEAN, "boolean"};
 
-        std::cerr << "[SEMANTIC ERROR] Cannot compare " << dataTypetoString(leftType) << " and " << dataTypetoString(rightType) << "\n";
-        return DataType::UNKNOWN;
+        std::cerr << "[SEMANTIC ERROR] Cannot compare " << leftType.resolvedName << " and " << rightType.resolvedName << "\n";
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
     // String concatenation
     if (operatorType == TokenType::PLUS && isString(leftType) && isString(rightType))
     {
-        return DataType::STRING;
+        return ResolvedType{DataType::STRING, "string"};
     }
 
     // Arithmetic operators: +, -, %, /, *
@@ -457,44 +413,44 @@ DataType Semantics::resultOfBinary(TokenType operatorType, DataType leftType, Da
         // Promote mixed int/float combinations
         if ((isInteger(leftType) && isFloat(rightType)) || (isFloat(leftType) && isInteger(rightType)))
         {
-            return DataType::FLOAT;
+            return ResolvedType{DataType::FLOAT, "float"};
         }
         // Promote int/double or float/double to double
-        if ((isInteger(leftType) && rightType == DataType::DOUBLE) || (leftType == DataType::DOUBLE && isInteger(rightType)))
+        if ((isInteger(leftType) && rightType.kind == DataType::DOUBLE) || (leftType.kind == DataType::DOUBLE && isInteger(rightType)))
         {
-            return DataType::DOUBLE;
+            return ResolvedType{DataType::DOUBLE, "double"};
         }
-        if ((leftType == DataType::FLOAT && rightType == DataType::DOUBLE) ||
-            (leftType == DataType::DOUBLE && rightType == DataType::FLOAT))
+        if ((leftType.kind == DataType::FLOAT && rightType.kind == DataType::DOUBLE) ||
+            (leftType.kind == DataType::DOUBLE && rightType.kind == DataType::FLOAT))
         {
-            return DataType::DOUBLE;
+            return ResolvedType{DataType::DOUBLE, "double"};
         }
 
-        if (leftType == rightType)
+        if (leftType.kind == rightType.kind)
         {
             return leftType;
         }
 
-        std::cerr << "[SEMANTIC ERROR] Type mismatch: " << dataTypetoString(leftType) << " does not match " << dataTypetoString(rightType) << "\n";
-        return DataType::UNKNOWN;
+        std::cerr << "[SEMANTIC ERROR] Type mismatch: " << leftType.resolvedName << " does not match " << rightType.resolvedName << "\n";
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
     std::cerr << "[SEMANTIC ERROR] Unknown binary operator: " << TokenTypeToLiteral(operatorType) << " with types "
-              << dataTypetoString(leftType) << " and " << dataTypetoString(rightType) << "\n";
-    return DataType::UNKNOWN;
+              << leftType.resolvedName << " and " << rightType.resolvedName << "\n";
+    return ResolvedType{DataType::UNKNOWN, "unknown"};
 }
 
-DataType Semantics::resultOfUnary(TokenType operatorType, DataType operandType)
+ResolvedType Semantics::resultOfUnary(TokenType operatorType, const ResolvedType &operandType)
 {
     switch (operatorType)
     {
     case TokenType::BANG:
         if (!isBoolean(operandType))
         {
-            std::cerr << "[SEMANTIC ERROR] Cannot apply '!' to type " << dataTypetoString(operandType) << "\n";
-            return DataType::UNKNOWN;
+            std::cerr << "[SEMANTIC ERROR] Cannot apply '!' to type " << operandType.resolvedName << "\n";
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
-        return DataType::BOOLEAN;
+        return ResolvedType{DataType::BOOLEAN, "bool"};
 
     case TokenType::MINUS:
     case TokenType::PLUS:
@@ -502,11 +458,11 @@ DataType Semantics::resultOfUnary(TokenType operatorType, DataType operandType)
     case TokenType::MINUS_MINUS:
         if (isInteger(operandType) || isFloat(operandType))
             return operandType;
-        std::cerr << "[SEMANTIC ERROR] Cannot apply " << TokenTypeToLiteral(operatorType) << " to " << dataTypetoString(operandType) << "\n";
-        return DataType::UNKNOWN;
+        std::cerr << "[SEMANTIC ERROR] Cannot apply " << TokenTypeToLiteral(operatorType) << " to " << operandType.resolvedName << "\n";
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
 
     default:
-        return DataType::UNKNOWN;
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 }
 
@@ -530,158 +486,78 @@ SymbolInfo *Semantics::resolveSymbolInfo(const std::string &name)
     return nullptr;
 }
 
-DataType Semantics::tokenTypeToDataType(TokenType type, bool isNullable)
+ResolvedType Semantics::tokenTypeToResolvedType(TokenType type, bool isNullable)
 {
     switch (type)
     {
     case TokenType::SHORT_KEYWORD:
-        return isNullable ? DataType::NULLABLE_SHORT_INT : DataType::SHORT_INT;
+        return {isNullable ? DataType::NULLABLE_SHORT_INT : DataType::SHORT_INT, "short"};
     case TokenType::USHORT_KEYWORD:
-        return isNullable ? DataType::NULLABLE_USHORT_INT : DataType::USHORT_INT;
+        return {isNullable ? DataType::NULLABLE_USHORT_INT : DataType::USHORT_INT, "ushort"};
     case TokenType::INTEGER_KEYWORD:
-        return isNullable ? DataType::NULLABLE_INT : DataType::INTEGER;
+        return {isNullable ? DataType::NULLABLE_INT : DataType::INTEGER, "int"};
     case TokenType::UINT_KEYWORD:
-        return isNullable ? DataType::NULLABLE_UINT : DataType::UINTEGER;
+        return {isNullable ? DataType::NULLABLE_UINT : DataType::UINTEGER, "uint"};
     case TokenType::LONG_KEYWORD:
-        return isNullable ? DataType::NULLABLE_LONG_INT : DataType::LONG_INT;
+        return {isNullable ? DataType::NULLABLE_LONG_INT : DataType::LONG_INT, "long"};
     case TokenType::ULONG_KEYWORD:
-        return isNullable ? DataType::NULLABLE_ULONG_INT : DataType::ULONG_INT;
+        return {isNullable ? DataType::NULLABLE_ULONG_INT : DataType::ULONG_INT, "ulong"};
     case TokenType::EXTRA_KEYWORD:
-        return isNullable ? DataType::NULLABLE_EXTRA_INT : DataType::EXTRA_INT;
+        return {isNullable ? DataType::NULLABLE_EXTRA_INT : DataType::EXTRA_INT, "extra"};
     case TokenType::UEXTRA_KEYWORD:
-        return isNullable ? DataType::NULLABLE_UEXTRA_INT : DataType::UEXTRA_INT;
+        return {isNullable ? DataType::NULLABLE_UEXTRA_INT : DataType::UEXTRA_INT, "uextra"};
 
     case TokenType::FLOAT_KEYWORD:
-        return isNullable ? DataType::NULLABLE_FLT : DataType::FLOAT;
+        return {isNullable ? DataType::NULLABLE_FLT : DataType::FLOAT, "float"};
     case TokenType::DOUBLE_KEYWORD:
-        return isNullable ? DataType::NULLABLE_DOUBLE : DataType::DOUBLE;
+        return {isNullable ? DataType::NULLABLE_DOUBLE : DataType::DOUBLE, "double"};
     case TokenType::STRING_KEYWORD:
-        return isNullable ? DataType::NULLABLE_STR : DataType::STRING;
+        return {isNullable ? DataType::NULLABLE_STR : DataType::STRING, "string"};
 
     case TokenType::CHAR_KEYWORD:
-        return isNullable ? DataType::NULLABLE_CHAR : DataType::CHAR;
+        return {isNullable ? DataType::NULLABLE_CHAR : DataType::CHAR, "char"};
     case TokenType::CHAR16_KEYWORD:
-        return isNullable ? DataType::NULLABLE_CHAR16 : DataType::CHAR16;
+        return {isNullable ? DataType::NULLABLE_CHAR16 : DataType::CHAR16, "char16"};
     case TokenType::CHAR32_KEYWORD:
-        return isNullable ? DataType::NULLABLE_CHAR32 : DataType::CHAR32;
+        return {isNullable ? DataType::NULLABLE_CHAR32 : DataType::CHAR32, "char32"};
 
     case TokenType::BOOL_KEYWORD:
-        return isNullable ? DataType::NULLABLE_BOOLEAN : DataType::BOOLEAN;
+        return {isNullable ? DataType::NULLABLE_BOOLEAN : DataType::BOOLEAN, "bool"};
     case TokenType::VOID:
-        return DataType::VOID;
+        return {DataType::VOID, "void"};
     case TokenType::IDENTIFIER:
-        return DataType::GENERIC;
+        
+        return {DataType::GENERIC, "generic"};
     default:
-        return DataType::UNKNOWN;
+        return {DataType::UNKNOWN, "unknown"};
     }
 }
 
-std::string Semantics::dataTypetoString(DataType type)
+bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual)
 {
-    switch (type)
-    {
-    case DataType::SHORT_INT:
-        return "short";
-    case DataType::USHORT_INT:
-        return "ushort";
-    case DataType::INTEGER:
-        return "int";
-    case DataType::UINTEGER:
-        return "uint";
-    case DataType::LONG_INT:
-        return "long";
-    case DataType::ULONG_INT:
-        return "ulong";
-    case DataType::EXTRA_INT:
-        return "extra";
-    case DataType::UEXTRA_INT:
-        return "uextra";
-    case DataType::BOOLEAN:
-        return "bool";
-    case DataType::STRING:
-        return "string";
-    case DataType::FLOAT:
-        return "float";
-    case DataType::DOUBLE:
-        return "double";
-    case DataType::CHAR:
-        return "char";
-    case DataType::CHAR16:
-        return "char16";
-    case DataType::CHAR32:
-        return "char32";
-    case DataType::NULLABLE_STR:
-        return "string?";
-    case DataType::NULLABLE_SHORT_INT:
-        return "short?";
-    case DataType::NULLABLE_USHORT_INT:
-        return "ushort?";
-    case DataType::NULLABLE_INT:
-        return "int?";
-    case DataType::NULLABLE_UINT:
-        return "uint?";
-    case DataType::NULLABLE_LONG_INT:
-        return "long?";
-    case DataType::NULLABLE_ULONG_INT:
-        return "ulong?";
-    case DataType::NULLABLE_EXTRA_INT:
-        return "extra?";
-    case DataType::NULLABLE_UEXTRA_INT:
-        return "uextra?";
-    case DataType::NULLABLE_FLT:
-        return "float?";
-    case DataType::NULLABLE_CHAR:
-        return "char?";
-    case DataType::NULLABLE_CHAR16:
-        return "char16?";
-    case DataType::NULLABLE_CHAR32:
-        return "char32";
-    case DataType::NULLABLE_DOUBLE:
-        return "double?";
-    case DataType::NULLABLE_BOOLEAN:
-        return "bool?";
-    case DataType::VOID:
-        return "void";
-    case DataType::ERROR:
-        return "error";
-    case DataType::GENERIC:
-        return "generic";
-    case DataType::BEHAVIORBLOCK:
-        return "behavior";
-    case DataType::DATABLOCK:
-        return "data";
-    case DataType::COMPONENT:
-        return "component";
-    default:
-        return "unknown";
-    }
-}
-
-bool Semantics::isTypeCompatible(DataType expected, DataType actual)
-{
-    if (actual == DataType::ERROR)
+    if (actual.kind == DataType::ERROR)
     {
         return true;
     }
-    if (expected == actual)
+    if (expected.kind == actual.kind)
         return true;
-    if (expected == DataType::VOID && actual == DataType::UNKNOWN)
+    if (expected.kind == DataType::VOID && actual.kind == DataType::UNKNOWN)
     {
         return true;
     }
-    if ((expected == DataType::NULLABLE_SHORT_INT && actual == DataType::SHORT_INT) ||
-        (expected == DataType::NULLABLE_USHORT_INT && actual == DataType::USHORT_INT) ||
-        (expected == DataType::NULLABLE_INT && actual == DataType::INTEGER) ||
-        (expected == DataType::NULLABLE_UINT && actual == DataType::UINTEGER) ||
-        (expected == DataType::NULLABLE_LONG_INT && actual == DataType::LONG_INT) ||
-        (expected == DataType::NULLABLE_ULONG_INT && actual == DataType::ULONG_INT) ||
-        (expected == DataType::NULLABLE_EXTRA_INT && actual == DataType::EXTRA_INT) ||
-        (expected == DataType::NULLABLE_UEXTRA_INT && actual == DataType::UEXTRA_INT) ||
-        (expected == DataType::NULLABLE_FLT && actual == DataType::FLOAT) ||
-        (expected == DataType::NULLABLE_DOUBLE && actual == DataType::DOUBLE) ||
-        (expected == DataType::NULLABLE_STR && actual == DataType::STRING) ||
-        (expected == DataType::NULLABLE_CHAR && actual == DataType::CHAR) ||
-        (expected == DataType::NULLABLE_BOOLEAN && actual == DataType::BOOLEAN))
+    if ((expected.kind == DataType::NULLABLE_SHORT_INT && actual.kind == DataType::SHORT_INT) ||
+        (expected.kind == DataType::NULLABLE_USHORT_INT && actual.kind == DataType::USHORT_INT) ||
+        (expected.kind == DataType::NULLABLE_INT && actual.kind == DataType::INTEGER) ||
+        (expected.kind == DataType::NULLABLE_UINT && actual.kind == DataType::UINTEGER) ||
+        (expected.kind == DataType::NULLABLE_LONG_INT && actual.kind == DataType::LONG_INT) ||
+        (expected.kind == DataType::NULLABLE_ULONG_INT && actual.kind == DataType::ULONG_INT) ||
+        (expected.kind == DataType::NULLABLE_EXTRA_INT && actual.kind == DataType::EXTRA_INT) ||
+        (expected.kind == DataType::NULLABLE_UEXTRA_INT && actual.kind == DataType::UEXTRA_INT) ||
+        (expected.kind == DataType::NULLABLE_FLT && actual.kind == DataType::FLOAT) ||
+        (expected.kind == DataType::NULLABLE_DOUBLE && actual.kind == DataType::DOUBLE) ||
+        (expected.kind == DataType::NULLABLE_STR && actual.kind == DataType::STRING) ||
+        (expected.kind == DataType::NULLABLE_CHAR && actual.kind == DataType::CHAR) ||
+        (expected.kind == DataType::NULLABLE_BOOLEAN && actual.kind == DataType::BOOLEAN))
     {
         return true;
     }
@@ -690,7 +566,7 @@ bool Semantics::isTypeCompatible(DataType expected, DataType actual)
 
 bool Semantics::hasReturnPath(Node *node)
 {
-    if (currentFunction && currentFunction->returnType == DataType::VOID)
+    if (currentFunction && currentFunction->returnType.kind == DataType::VOID)
     {
         return true; // Void functions don't need returns
     }
@@ -778,8 +654,8 @@ bool Semantics::hasReturnPath(Node *node)
         }
         if (blockExpr->finalexpr.has_value())
         {
-            DataType exprType = inferNodeDataType(blockExpr->finalexpr.value().get());
-            return exprType == DataType::ERROR ||
+            ResolvedType exprType = inferNodeDataType(blockExpr->finalexpr.value().get());
+            return exprType.kind == DataType::ERROR ||
                    isTypeCompatible(currentFunction->returnType, exprType) ||
                    (dynamic_cast<NullLiteral *>(blockExpr->finalexpr.value().get()) &&
                     currentFunction->isNullable);
@@ -815,7 +691,7 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
         auto letStmt = dynamic_cast<LetStatement *>(funcExpr->call[i].get());
         if (!letStmt)
             return false;
-        DataType paramType = tokenTypeToDataType(letStmt->data_type_token.type, letStmt->isNullable);
+        ResolvedType paramType = tokenTypeToResolvedType(letStmt->data_type_token.type, letStmt->isNullable);
         std::string paramGenericName = letStmt->data_type_token.type == TokenType::IDENTIFIER ? letStmt->data_type_token.TokenLiteral : "";
         // Find declaration's parameter metadata
         bool declParamNullable = false;
@@ -824,7 +700,7 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
             if (auto declLetStmt = dynamic_cast<LetStatement *>(pair.first))
             {
                 if (declLetStmt->ident_token.TokenLiteral == letStmt->ident_token.TokenLiteral &&
-                    pair.second.symbolDataType == declInfo.paramTypes[i].first &&
+                    pair.second.type.kind == declInfo.paramTypes[i].first.kind &&
                     pair.second.genericName == declInfo.paramTypes[i].second)
                 {
                     declParamNullable = pair.second.isNullable;
@@ -832,7 +708,7 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
                 }
             }
         }
-        if (paramType != declInfo.paramTypes[i].first ||
+        if (paramType.kind != declInfo.paramTypes[i].first.kind ||
             paramGenericName != declInfo.paramTypes[i].second ||
             letStmt->isNullable != declParamNullable)
         {
@@ -844,16 +720,16 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
     auto retType = dynamic_cast<ReturnTypeExpression *>(funcExpr->return_type.get());
     if (!retType)
         return false;
-    DataType returnType = tokenTypeToDataType(retType->expression.type, funcExpr->isNullable);
+    ResolvedType returnType = tokenTypeToResolvedType(retType->expression.type, funcExpr->isNullable);
     std::string returnGenericName = retType->expression.type == TokenType::IDENTIFIER ? retType->expression.TokenLiteral : "";
-    return returnType == declInfo.returnType &&
+    return returnType.kind == declInfo.returnType.kind &&
            returnGenericName == declInfo.returnGenericName &&
            funcExpr->isNullable == declInfo.isNullable;
 }
 
 bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr)
 {
-    // Check parameter count
+    // 1. Check parameter count
     if (funcInfo.paramTypes.size() != callExpr->parameters.size())
     {
         logSemanticErrors("Call has " + std::to_string(callExpr->parameters.size()) +
@@ -862,31 +738,26 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
         return false;
     }
 
-    // Infer types for arguments and compare with expected types
-    std::unordered_map<std::string, DataType> genericBindings; // Track generic type bindings
+    // 2. Track bindings for generic parameters
+    std::unordered_map<std::string, ResolvedType> genericBindings;
 
     for (size_t i = 0; i < callExpr->parameters.size(); ++i)
     {
         auto &param = callExpr->parameters[i];
-        const auto &expectedType = funcInfo.paramTypes[i];
-        DataType argType = DataType::UNKNOWN;
+        const auto &expectedType = funcInfo.paramTypes[i]; // pair<ResolvedType, string>
+        ResolvedType argType{DataType::UNKNOWN, "unknown"};
 
-        // Handle null literal based on expected type
+        // --- Null literal handling ---
         if (auto nullLit = dynamic_cast<NullLiteral *>(param.get()))
         {
-            if (expectedType.first == DataType::NULLABLE_INT ||
-                expectedType.first == DataType::NULLABLE_STR ||
-                expectedType.first == DataType::NULLABLE_BOOLEAN ||
-                expectedType.first == DataType::NULLABLE_FLT ||
-                expectedType.first == DataType::NULLABLE_DOUBLE ||
-                expectedType.first == DataType::NULLABLE_CHAR)
+            if (isNullable(expectedType.first))
             {
-                argType = expectedType.first; // Assign nullable type (e.g., NULLABLE_INT for int?)
+                argType = expectedType.first; // promote null → nullable type
             }
             else
             {
-                logSemanticErrors("Cannot pass null to non-nullable parameter at position " + std::to_string(i + 1) +
-                                      ": expected " + dataTypetoString(expectedType.first),
+                logSemanticErrors("Cannot pass null to non-nullable parameter " +
+                                      std::to_string(i + 1) + ": expected " + expectedType.first.resolvedName,
                                   param->expression.line, param->expression.column);
                 return false;
             }
@@ -894,55 +765,49 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
         else
         {
             argType = inferNodeDataType(param.get());
-            if (argType == DataType::UNKNOWN)
+            if (argType.kind == DataType::UNKNOWN)
             {
-                logSemanticErrors("Could not infer type for argument at position " + std::to_string(i + 1),
+                logSemanticErrors("Could not infer type for argument " + std::to_string(i + 1),
                                   param->expression.line, param->expression.column);
                 return false;
             }
         }
 
-        // Handle generic parameters
-        if (expectedType.first == DataType::GENERIC)
+        // --- Generic parameters ---
+        if (expectedType.first.kind == DataType::GENERIC)
         {
-            if (genericBindings.find(expectedType.second) == genericBindings.end())
+            const std::string &genName = expectedType.second;
+
+            if (genericBindings.find(genName) == genericBindings.end())
             {
-                genericBindings[expectedType.second] = argType;
+                // First use → bind generic
+                genericBindings[genName] = argType;
             }
-            else if (!isTypeCompatible(genericBindings[expectedType.second], argType))
+            else if (!isTypeCompatible(genericBindings[genName], argType))
             {
-                logSemanticErrors("Inconsistent generic type '" + expectedType.second +
-                                      "' in function call: expected " + dataTypetoString(genericBindings[expectedType.second]) +
-                                      ", got " + dataTypetoString(argType),
+                logSemanticErrors("Inconsistent generic '" + genName +
+                                      "': expected " + genericBindings[genName].resolvedName +
+                                      ", got " + argType.resolvedName,
                                   param->expression.line, param->expression.column);
                 return false;
             }
         }
         else if (!isTypeCompatible(expectedType.first, argType))
         {
-            logSemanticErrors("Argument type mismatch at position " + std::to_string(i + 1) +
-                                  ": expected " + dataTypetoString(expectedType.first) +
-                                  ", got " + dataTypetoString(argType),
+            logSemanticErrors("Argument " + std::to_string(i + 1) + " type mismatch: expected " +
+                                  expectedType.first.resolvedName + ", got " + argType.resolvedName,
                               param->expression.line, param->expression.column);
             return false;
         }
     }
 
-    // Validate generic return type
-    if (funcInfo.returnType == DataType::GENERIC)
+    // 3. Validate generic return type
+    if (funcInfo.returnType.kind == DataType::GENERIC)
     {
         auto it = genericBindings.find(funcInfo.returnGenericName);
         if (it == genericBindings.end())
         {
             logSemanticErrors("Could not infer generic return type '" + funcInfo.returnGenericName + "'",
-                              callExpr->expression.line, callExpr->expression.column);
-            return false;
-        }
-        // Ensure inferred return type is compatible
-        if (!isTypeCompatible(funcInfo.returnType, it->second))
-        {
-            logSemanticErrors("Inferred generic return type '" + dataTypetoString(it->second) +
-                                  "' does not match expected type",
                               callExpr->expression.line, callExpr->expression.column);
             return false;
         }
@@ -956,52 +821,57 @@ void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int
     std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << "\n";
 }
 
-bool Semantics::isInteger(DataType t)
+bool Semantics::isInteger(const ResolvedType &t)
 {
-    return t == DataType::SHORT_INT || t == DataType::USHORT_INT ||
-           t == DataType::INTEGER || t == DataType::UINTEGER ||
-           t == DataType::LONG_INT || t == DataType::ULONG_INT ||
-           t == DataType::EXTRA_INT || t == DataType::UEXTRA_INT;
+    static const std::unordered_set<DataType> intTypes = {
+        DataType::SHORT_INT, DataType::USHORT_INT, DataType::INTEGER, DataType::UINTEGER,
+        DataType::LONG_INT, DataType::ULONG_INT, DataType::EXTRA_INT, DataType::UEXTRA_INT};
+    return intTypes.count(t.kind) > 0;
 }
 
-bool Semantics::isNullableInteger(DataType t)
+bool Semantics::isNullableInteger(const ResolvedType &t)
 {
-    return t == DataType::NULLABLE_SHORT_INT || t == DataType::NULLABLE_USHORT_INT ||
-           t == DataType::NULLABLE_INT || t == DataType::NULLABLE_UINT ||
-           t == DataType::NULLABLE_LONG_INT || t == DataType::NULLABLE_ULONG_INT ||
-           t == DataType::NULLABLE_EXTRA_INT || t == DataType::NULLABLE_UEXTRA_INT;
+    static const std::unordered_set<DataType> nullableInts = {
+        DataType::NULLABLE_SHORT_INT, DataType::NULLABLE_USHORT_INT,
+        DataType::NULLABLE_INT, DataType::NULLABLE_UINT,
+        DataType::NULLABLE_LONG_INT, DataType::NULLABLE_ULONG_INT,
+        DataType::NULLABLE_EXTRA_INT, DataType::NULLABLE_UEXTRA_INT};
+    return nullableInts.count(t.kind) > 0;
 }
 
-bool Semantics::isFloat(DataType t)
+bool Semantics::isFloat(const ResolvedType &t)
 {
-    return t == DataType::FLOAT || t == DataType::DOUBLE;
+    return t.kind == DataType::FLOAT || t.kind == DataType::DOUBLE;
 }
 
-bool Semantics::isNullableFloat(DataType t)
+bool Semantics::isNullableFloat(const ResolvedType &t)
 {
-    return t == DataType::NULLABLE_FLT || t == DataType::NULLABLE_DOUBLE;
+    return t.kind == DataType::NULLABLE_FLT || t.kind == DataType::NULLABLE_DOUBLE;
 }
 
-bool Semantics::isBoolean(DataType t)
+bool Semantics::isBoolean(const ResolvedType &t)
 {
-    return t == DataType::BOOLEAN || t == DataType::NULLABLE_BOOLEAN;
+    return t.kind == DataType::BOOLEAN ||
+           t.kind == DataType::NULLABLE_BOOLEAN;
 }
 
-bool Semantics::isString(DataType t)
+bool Semantics::isString(const ResolvedType &t)
 {
-    return t == DataType::STRING || t == DataType::NULLABLE_STR;
+    return t.kind == DataType::STRING || t.kind == DataType::NULLABLE_STR;
 }
 
-bool Semantics::isChar(DataType t)
+bool Semantics::isChar(const ResolvedType &t)
 {
-    return t == DataType::CHAR || t == DataType::NULLABLE_CHAR ||
-           t == DataType::CHAR16 || t == DataType::NULLABLE_CHAR16 ||
-           t == DataType::CHAR32 || t == DataType::NULLABLE_CHAR32;
+    static const std::unordered_set<DataType> charTypes = {
+        DataType::CHAR, DataType::NULLABLE_CHAR,
+        DataType::CHAR16, DataType::NULLABLE_CHAR16,
+        DataType::CHAR32, DataType::NULLABLE_CHAR32};
+    return charTypes.count(t.kind) > 0;
 }
 
-bool Semantics::isNullable(DataType t)
+bool Semantics::isNullable(const ResolvedType &t)
 {
-    switch (t)
+    switch (t.kind)
     {
     case DataType::NULLABLE_SHORT_INT:
     case DataType::NULLABLE_USHORT_INT:
@@ -1022,4 +892,128 @@ bool Semantics::isNullable(DataType t)
     default:
         return false;
     }
+}
+
+ResolvedType Semantics::resolvedDataType(Token token, Node *node)
+{
+    std::cout << "INSIDE TYPE RESOLVER\n";
+    TokenType type = token.type;
+
+    switch (type)
+    {
+    case TokenType::SHORT_KEYWORD:
+        return ResolvedType{DataType::SHORT_INT, "short"};
+
+    case TokenType::USHORT_KEYWORD:
+        return ResolvedType{DataType::USHORT_INT, "ushort"};
+
+    case TokenType::INTEGER_KEYWORD:
+        return ResolvedType{DataType::INTEGER, "int"};
+
+    case TokenType::UINT_KEYWORD:
+        return ResolvedType{DataType::UINTEGER, "uint"};
+
+    case TokenType::LONG_KEYWORD:
+        return ResolvedType{DataType::LONG_INT, "long"};
+
+    case TokenType::ULONG_KEYWORD:
+        return ResolvedType{DataType::ULONG_INT, "ulong"};
+
+    case TokenType::EXTRA_KEYWORD:
+        return ResolvedType{DataType::EXTRA_INT, "extra"};
+
+    case TokenType::UEXTRA_KEYWORD:
+        return ResolvedType{DataType::UEXTRA_INT, "uextra"};
+
+    case TokenType::FLOAT_KEYWORD:
+        return ResolvedType{DataType::FLOAT, "float"};
+
+    case TokenType::DOUBLE_KEYWORD:
+        return ResolvedType{DataType::DOUBLE, "double"};
+
+    case TokenType::STRING_KEYWORD:
+        return ResolvedType{DataType::STRING, "string"};
+
+    case TokenType::CHAR_KEYWORD:
+        return ResolvedType{DataType::CHAR, "char"};
+
+    case TokenType::CHAR16_KEYWORD:
+        return ResolvedType{DataType::CHAR16, "char16"};
+
+    case TokenType::CHAR32_KEYWORD:
+        return ResolvedType{DataType::CHAR32, "char32"};
+
+    case TokenType::BOOL_KEYWORD:
+        return ResolvedType{DataType::BOOLEAN, "bool"};
+
+    case TokenType::AUTO:
+    {
+        auto letStmt = dynamic_cast<LetStatement *>(node);
+        auto letStmtValue = letStmt->value.get();
+        if (!letStmtValue)
+        {
+            logSemanticErrors("Cannot infer without a value", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+        auto inferred = inferNodeDataType(letStmtValue);
+        return ResolvedType{inferred.kind, inferred.resolvedName};
+    }
+
+    // Dealing with custom types now
+    case TokenType::IDENTIFIER:
+    {
+        std::cout << "INSIDE CUSTOM TYPE RESOLVER\n";
+        // Extract the identifier as this how the parser is logging the correct types
+        // Case 1 is for let statements
+        auto letStmt = dynamic_cast<LetStatement *>(node);
+        // Extract the custom data type
+        auto letStmtType = letStmt->data_type_token.TokenLiteral;
+
+        // Split the token literal storing the type name
+        auto [parentName, childName] = splitScopedName(letStmtType);
+        // Let us seacrh for the name of the identifier in the customTypesTable
+        // Case a -- A bare bones name
+        auto parentIt = customTypesTable.find(parentName);
+        if (parentIt == customTypesTable.end())
+        {
+            logSemanticErrors("Type '" + parentName + "' is unknown", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+
+        // Case b -- having members now this is tricky since the parser stored the whole thing as one name
+        if (!childName.empty())
+        {
+            auto &members = parentIt->second.members;
+            auto memberIt = members.find(childName);
+            if (memberIt == members.end())
+            {
+                logSemanticErrors("Type '" + childName + "' does not exist in '" + parentName + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+            auto memberType = memberIt->second.type;
+
+            return ResolvedType{memberType.kind, memberIt->second.memberName};
+        }
+
+        // If we have no members we return the parent
+        return ResolvedType{parentIt->second.type.kind, parentIt->second.typeName};
+    }
+
+    default:
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
+    }
+}
+
+std::pair<std::string, std::string> Semantics::splitScopedName(const std::string &fullName)
+{
+    std::cout << "Splitting name\n";
+    size_t pos = fullName.find("::");
+    if (pos == std::string::npos)
+    {
+        // no scope operator just a plain type
+        return {fullName, ""};
+    }
+    std::string parent = fullName.substr(0, pos);
+    std::string child = fullName.substr(pos + 2); // skip ::
+    return {parent, child};
 }

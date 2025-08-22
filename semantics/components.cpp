@@ -4,14 +4,16 @@
 void Semantics::walkEnumClassStatement(Node *node)
 {
     auto enumStmt = dynamic_cast<EnumClassStatement *>(node);
-    if (!enumStmt) return;
+    if (!enumStmt)
+        return;
 
     std::cout << "[SEMANTIC LOG] Analysing enum class statement\n";
 
     std::string enumStmtName = enumStmt->enum_identifier->expression.TokenLiteral;
 
     // Check duplicate type name
-    if (resolveSymbolInfo(enumStmtName)) {
+    if (resolveSymbolInfo(enumStmtName))
+    {
         logSemanticErrors("Already used the name '" + enumStmtName + "'",
                           enumStmt->statement.line, enumStmt->statement.column);
         return;
@@ -19,22 +21,44 @@ void Semantics::walkEnumClassStatement(Node *node)
 
     CustomTypeInfo enumInfo;
     enumInfo.typeName = enumStmtName;
-    enumInfo.kind = DataType::ENUM;
+    enumInfo.type = ResolvedType{DataType::ENUM, enumStmtName};
 
     // Set underlying type (default = int)
-    if (enumStmt->int_type.has_value()) {
-        switch (enumStmt->int_type.value().type) {
-        case TokenType::SHORT_KEYWORD:  enumInfo.underLyingType = DataType::SHORT_INT; break;
-        case TokenType::USHORT_KEYWORD: enumInfo.underLyingType = DataType::USHORT_INT; break;
-        case TokenType::INTEGER_KEYWORD: enumInfo.underLyingType = DataType::INTEGER; break;
-        case TokenType::UINT_KEYWORD:   enumInfo.underLyingType = DataType::UINTEGER; break;
-        case TokenType::LONG_KEYWORD:   enumInfo.underLyingType = DataType::LONG_INT; break;
-        case TokenType::ULONG_KEYWORD:  enumInfo.underLyingType = DataType::ULONG_INT; break;
-        case TokenType::EXTRA_KEYWORD:  enumInfo.underLyingType = DataType::EXTRA_INT; break;
-        case TokenType::UEXTRA_KEYWORD: enumInfo.underLyingType = DataType::UEXTRA_INT; break;
-        default: enumInfo.underLyingType = DataType::INTEGER; break;
+    if (enumStmt->int_type.has_value())
+    {
+        switch (enumStmt->int_type.value().type)
+        {
+        case TokenType::SHORT_KEYWORD:
+            enumInfo.underLyingType = DataType::SHORT_INT;
+            break;
+        case TokenType::USHORT_KEYWORD:
+            enumInfo.underLyingType = DataType::USHORT_INT;
+            break;
+        case TokenType::INTEGER_KEYWORD:
+            enumInfo.underLyingType = DataType::INTEGER;
+            break;
+        case TokenType::UINT_KEYWORD:
+            enumInfo.underLyingType = DataType::UINTEGER;
+            break;
+        case TokenType::LONG_KEYWORD:
+            enumInfo.underLyingType = DataType::LONG_INT;
+            break;
+        case TokenType::ULONG_KEYWORD:
+            enumInfo.underLyingType = DataType::ULONG_INT;
+            break;
+        case TokenType::EXTRA_KEYWORD:
+            enumInfo.underLyingType = DataType::EXTRA_INT;
+            break;
+        case TokenType::UEXTRA_KEYWORD:
+            enumInfo.underLyingType = DataType::UEXTRA_INT;
+            break;
+        default:
+            enumInfo.underLyingType = DataType::INTEGER;
+            break;
         }
-    } else {
+    }
+    else
+    {
         enumInfo.underLyingType = DataType::INTEGER;
     }
 
@@ -42,39 +66,54 @@ void Semantics::walkEnumClassStatement(Node *node)
     symbolTable.push_back({});
     int currentValue = 0;
 
-    for (const auto &content : enumStmt->enum_content) {
+    for (const auto &content : enumStmt->enum_content)
+    {
         std::string memberName;
         int memberValue = 0;
 
-        if (auto assignStmt = dynamic_cast<AssignmentStatement *>(content.get())) {
-            if (auto leftIdent = dynamic_cast<Identifier *>(assignStmt->identifier.get())) {
+        if (auto assignStmt = dynamic_cast<AssignmentStatement *>(content.get()))
+        {
+            if (auto leftIdent = dynamic_cast<Identifier *>(assignStmt->identifier.get()))
+            {
                 memberName = leftIdent->expression.TokenLiteral;
-            } else {
+            }
+            else
+            {
                 logSemanticErrors("Invalid enum member syntax (left side must be identifier)",
                                   content->statement.line, content->statement.column);
                 symbolTable.pop_back();
                 return;
             }
 
-            if (auto rightVal = dynamic_cast<IntegerLiteral *>(assignStmt->value.get())) {
-                try {
+            if (auto rightVal = dynamic_cast<IntegerLiteral *>(assignStmt->value.get()))
+            {
+                try
+                {
                     memberValue = std::stoi(rightVal->expression.TokenLiteral);
-                } catch (...) {
+                }
+                catch (...)
+                {
                     logSemanticErrors("Invalid numeric value '" + rightVal->expression.TokenLiteral + "'",
                                       content->statement.line, content->statement.column);
                     symbolTable.pop_back();
                     return;
                 }
-            } else {
+            }
+            else
+            {
                 logSemanticErrors("Enum member value must be an integer literal",
                                   content->statement.line, content->statement.column);
                 symbolTable.pop_back();
                 return;
             }
-        } else if (auto identExpr = dynamic_cast<Identifier *>(content.get())) {
+        }
+        else if (auto identExpr = dynamic_cast<Identifier *>(content.get()))
+        {
             memberName = identExpr->expression.TokenLiteral;
             memberValue = currentValue;
-        } else {
+        }
+        else
+        {
             logSemanticErrors("Invalid enum member expression",
                               content->statement.line, content->statement.column);
             symbolTable.pop_back();
@@ -82,7 +121,8 @@ void Semantics::walkEnumClassStatement(Node *node)
         }
 
         // Duplicate check
-        if (enumInfo.members.count(memberName)) {
+        if (enumInfo.members.count(memberName))
+        {
             logSemanticErrors("Cannot reuse existing enum member '" + memberName + "'",
                               content->statement.line, content->statement.column);
             symbolTable.pop_back();
@@ -91,9 +131,9 @@ void Semantics::walkEnumClassStatement(Node *node)
 
         // Store in members
         MemberInfo info;
-        info.memberName   = memberName;
-        info.type         = enumInfo.underLyingType;
-        info.isConstant   = true;
+        info.memberName = memberName;
+        info.type.kind = enumInfo.underLyingType;
+        info.isConstant = true;
         info.isInitialised = true;
         info.constantValue = memberValue;
 
@@ -101,7 +141,7 @@ void Semantics::walkEnumClassStatement(Node *node)
 
         // Add to current scope
         symbolTable.back()[memberName] = SymbolInfo{
-            .symbolDataType = enumInfo.underLyingType,
+            .type = enumInfo.underLyingType,
             .isConstant = true,
             .isInitialized = true,
         };
@@ -110,7 +150,7 @@ void Semantics::walkEnumClassStatement(Node *node)
     }
 
     // Add enum symbol
-    SymbolInfo symbol = { .symbolDataType = DataType::ENUM };
+    SymbolInfo symbol = {.type = ResolvedType{DataType::ENUM, enumStmtName}};
     symbolTable[symbolTable.size() - 2][enumStmtName] = symbol;
     metaData[enumStmt] = symbol;
 
@@ -120,7 +160,6 @@ void Semantics::walkEnumClassStatement(Node *node)
     // Pop temp scope
     symbolTable.pop_back();
 }
-
 
 void Semantics::walkDataStatement(Node *node)
 {
@@ -190,7 +229,7 @@ void Semantics::walkDataStatement(Node *node)
         // Build member info
         MemberInfo memberInfo = {
             .memberName = letStmt->ident_token.TokenLiteral,
-            .type = letSymbol->symbolDataType,
+            .type = letSymbol->type,
             .isMutable = letSymbol->isMutable,
             .isConstant = letSymbol->isConstant,
             .isInitialised = letSymbol->isInitialized};
@@ -205,15 +244,15 @@ void Semantics::walkDataStatement(Node *node)
 
     // Build symbol info for the whole block
     SymbolInfo dataSymbolInfo = {
-        .symbolDataType = DataType::DATABLOCK,
+        .type = ResolvedType{DataType::DATABLOCK, dataBlockName},
         .isMutable = isBlockMutable,
         .isConstant = isBlockConstant,
         .members = dataBlockMembers};
 
-    // Build custom type info
+    // Build customtype info
     CustomTypeInfo typeInfo = {
         .typeName = dataBlockName,
-        .kind = DataType::DATABLOCK,
+        .type = ResolvedType{DataType::DATABLOCK, dataBlockName},
         .members = dataBlockMembers};
 
     // Store results
@@ -285,7 +324,7 @@ void Semantics::walkBehaviorStatement(Node *node)
 
             funcInfo = {
                 .memberName = funcExpr->func_key.TokenLiteral,
-                .type = exprSym->symbolDataType};
+                .type = exprSym->type};
 
             behaviorMembers[funcExpr->func_key.TokenLiteral] = funcInfo;
 
@@ -319,7 +358,7 @@ void Semantics::walkBehaviorStatement(Node *node)
 
             funcInfo = {
                 .memberName = funcDecl->function_name->expression.TokenLiteral,
-                .type = declSym->symbolDataType};
+                .type = declSym->type};
 
             behaviorMembers[funcDecl->function_name->expression.TokenLiteral] = funcInfo;
 
@@ -331,13 +370,13 @@ void Semantics::walkBehaviorStatement(Node *node)
 
     // Build symbol info
     SymbolInfo sym = {
-        .symbolDataType = DataType::BEHAVIORBLOCK,
+        .type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName},
         .members = behaviorMembers};
 
     // Build custom type info
     CustomTypeInfo typeInfo = {
         .typeName = behaviorName,
-        .kind = DataType::BEHAVIORBLOCK,
+        .type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName},
         .members = behaviorMembers};
 
     // Store results
@@ -385,9 +424,9 @@ void Semantics::walkUseStatement(Node *node)
         return &it->second;
     };
 
-    auto rejectKind = [&](const std::string &name, DataType kind, const char *where, int line, int col)
+    auto rejectKind = [&](const std::string &name, ResolvedType kind, const char *where, int line, int col)
     {
-        std::string got = dataTypetoString(kind);
+        std::string got = kind.resolvedName;
         std::string want = (requestedKind == TokenType::DATA) ? "DATABLOCK" : "BEHAVIORBLOCK";
         logSemanticErrors("Cannot use '" + name + "' here: expected " + want + " but got " + got, line, col);
     };
@@ -406,23 +445,23 @@ void Semantics::walkUseStatement(Node *node)
         // If we imported from a data block
         if (requestedKind == TokenType::DATA)
         {
-            if (target->kind != DataType::DATABLOCK)
+            if (target->type.kind != DataType::DATABLOCK)
             {
-                rejectKind(targetName, target->kind, "use data", ident->expression.line, ident->expression.column);
+                rejectKind(targetName, target->type, "use data", ident->expression.line, ident->expression.column);
                 return;
             }
-            resultSym.symbolDataType = DataType::DATABLOCK;
+            resultSym.type.kind = DataType::DATABLOCK;
             resultSym.members = target->members; // full import of all data members
         }
         // If we imported from a behavior block
         else if (requestedKind == TokenType::BEHAVIOR)
         {
-            if (target->kind != DataType::BEHAVIORBLOCK)
+            if (target->type.kind != DataType::BEHAVIORBLOCK)
             {
-                rejectKind(targetName, target->kind, "use behavior", ident->expression.line, ident->expression.column);
+                rejectKind(targetName, target->type, "use behavior", ident->expression.line, ident->expression.column);
                 return;
             }
-            resultSym.symbolDataType = DataType::BEHAVIORBLOCK;
+            resultSym.type.kind = DataType::BEHAVIORBLOCK;
             resultSym.members = target->members; // full import of all behavior members
         }
         else
@@ -483,23 +522,23 @@ void Semantics::walkUseStatement(Node *node)
         // Validate kind per operator/context
         if (expectBehaviorDot)
         {
-            if (parent->kind != DataType::BEHAVIORBLOCK)
+            if (parent->type.kind != DataType::BEHAVIORBLOCK)
             {
-                rejectKind(parentName, parent->kind, "use behavior <name>.<member>",
+                rejectKind(parentName, parent->type, "use behavior <name>.<member>",
                            leftId->expression.line, leftId->expression.column);
                 return;
             }
-            resultSym.symbolDataType = DataType::BEHAVIORBLOCK;
+            resultSym.type.kind = DataType::BEHAVIORBLOCK;
         }
         else // expectDataScope
         {
-            if (parent->kind != DataType::DATABLOCK)
+            if (parent->type.kind != DataType::DATABLOCK)
             {
-                rejectKind(parentName, parent->kind, "use data <name>::<member>",
+                rejectKind(parentName, parent->type, "use data <name>::<member>",
                            leftId->expression.line, leftId->expression.column);
                 return;
             }
-            resultSym.symbolDataType = DataType::DATABLOCK;
+            resultSym.type.kind = DataType::DATABLOCK;
         }
 
         // Select a single member
@@ -529,8 +568,8 @@ void Semantics::walkUseStatement(Node *node)
         else
         {
             // Here let us investigate if the currentType stack actually has a component
-            DataType &currentType = currentTypeStack.back().kind;
-            std::cout << "COMPONENT IS OF TYPE  " << dataTypetoString(currentType) << "\n";
+            ResolvedType &currentType = currentTypeStack.back().type;
+            std::cout << "COMPONENT IS OF TYPE  " << currentType.resolvedName << "\n";
             std::cout << "COMPONENT MEMBERS ARE NOT EMPTY\n";
         }
 
@@ -556,7 +595,7 @@ void Semantics::walkInitConstructor(Node *node)
 
     // Must be inside a component
 
-    if (currentTypeStack.empty() || currentTypeStack.back().kind != DataType::COMPONENT)
+    if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
     {
         std::cout << "TYPE STACK IS EMPTY\n";
         logSemanticErrors("`init` constructor must be declared inside a component",
@@ -578,8 +617,8 @@ void Semantics::walkInitConstructor(Node *node)
 
     // init constructor is always void-returning
     SymbolInfo initInfo;
-    initInfo.symbolDataType = DataType::VOID;
-    initInfo.returnType = DataType::VOID;
+    initInfo.type = ResolvedType{DataType::VOID, "void"};
+    initInfo.returnType = ResolvedType{DataType::VOID, "void"};
     initInfo.isDefined = true;
 
     // Process constructor parameters
@@ -623,7 +662,7 @@ void Semantics::walkFieldAccessExpression(Node *node)
     }
 
     // Must be inside a component
-    if (currentTypeStack.empty() || currentTypeStack.back().kind != DataType::COMPONENT)
+    if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
     {
         logSemanticErrors("'self' cannot be used outside a component",
                           fieldExpr->expression.line, fieldExpr->expression.column);
@@ -654,7 +693,7 @@ void Semantics::walkFieldAccessExpression(Node *node)
 
     // Attach type info for this field access
     metaData[fieldExpr] = {
-        .symbolDataType = m.type,
+        .type = m.type,
         .isNullable = m.isNullable,
         .isMutable = m.isMutable,
         .isConstant = m.isConstant,
@@ -687,7 +726,7 @@ void Semantics::walkComponentStatement(Node *node)
 
     // Enter a new component scope
     symbolTable.push_back({});
-    currentTypeStack.push_back({.kind = DataType::COMPONENT,
+    currentTypeStack.push_back({.type = ResolvedType{DataType::COMPONENT, componentName},
                                 .typeName = componentName,
                                 .hasInitConstructor = false,
                                 .members = members});
@@ -738,7 +777,7 @@ void Semantics::walkComponentStatement(Node *node)
 
                 // Also add to local symbol table so assignments resolve
                 currentScope[name] = SymbolInfo{
-                    .symbolDataType = info.type,
+                    .type = info.type,
                     .isNullable = info.isNullable,
                     .isMutable = info.isMutable,
                     .isConstant = info.isConstant,
@@ -774,7 +813,7 @@ void Semantics::walkComponentStatement(Node *node)
 
             members[letStmt->ident_token.TokenLiteral] = {
                 .memberName = letStmt->ident_token.TokenLiteral,
-                .type = letSym->symbolDataType,
+                .type = letSym->type,
                 .isNullable = letSym->isNullable,
                 .isMutable = letSym->isMutable,
                 .isConstant = letSym->isConstant,
@@ -795,7 +834,7 @@ void Semantics::walkComponentStatement(Node *node)
 
             members[assignStmt->identifier->expression.TokenLiteral] = {
                 .memberName = assignStmt->identifier->expression.TokenLiteral,
-                .type = assignSym->symbolDataType,
+                .type = assignSym->type,
                 .isNullable = assignSym->isNullable,
                 .isMutable = assignSym->isMutable,
                 .isConstant = assignSym->isConstant,
@@ -821,7 +860,7 @@ void Semantics::walkComponentStatement(Node *node)
             {
                 members[funcExpr->func_key.TokenLiteral] = {
                     .memberName = funcExpr->func_key.TokenLiteral,
-                    .type = metSym->symbolDataType,
+                    .type = metSym->type,
                     .isNullable = metSym->isNullable,
                     .isMutable = metSym->isMutable};
             }
@@ -834,7 +873,7 @@ void Semantics::walkComponentStatement(Node *node)
             {
                 members[funcDeclrExpr->function_name->expression.TokenLiteral] = {
                     .memberName = funcDeclrExpr->function_name->expression.TokenLiteral,
-                    .type = metSym->symbolDataType,
+                    .type = metSym->type,
                     .isNullable = metSym->isNullable,
                     .isMutable = metSym->isMutable};
             }
@@ -843,12 +882,12 @@ void Semantics::walkComponentStatement(Node *node)
 
     // Register component as a symbol
     SymbolInfo componentSymbol = {
-        .symbolDataType = DataType::COMPONENT,
-    };
+        .type = DataType::COMPONENT,
+        .members = members};
 
     CustomTypeInfo typeInfo = {
         .typeName = componentName,
-        .kind = DataType::COMPONENT,
+        .type = ResolvedType{DataType::COMPONENT, componentName},
         .members = members};
 
     metaData[componentStmt] = componentSymbol;

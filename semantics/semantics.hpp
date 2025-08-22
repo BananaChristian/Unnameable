@@ -65,30 +65,36 @@ enum class DataType
     UNKNOWN
 };
 
+struct ResolvedType
+{
+    DataType kind; // For the custom inbuilt types
+    std::string resolvedName;
+};
+
 struct MemberInfo
 {
     std::string memberName;
-    DataType type;
+    ResolvedType type;
     bool isNullable = false;
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialised = false;
-    //Info for enum members
-    int constantValue=0;
+    // Info for enum members
+    int constantValue = 0;
 };
 
 struct CustomTypeInfo
 {
     std::string typeName;
-    DataType kind;
-    //Special for enum class
-    DataType underLyingType=DataType::INTEGER; //Defaulting to 32 bit integer
+    ResolvedType type;
+    // Special for enum class
+    DataType underLyingType = DataType::INTEGER; // Defaulting to 32 bit integer
     std::unordered_map<std::string, MemberInfo> members;
 };
 
 struct ScopeInfo
 {
-    DataType kind;
+    ResolvedType type;
     std::string typeName;
     bool hasInitConstructor = false;
     std::unordered_map<std::string, MemberInfo> members;
@@ -97,14 +103,14 @@ struct ScopeInfo
 // Information about the symbol(variable or object, whatever)
 struct SymbolInfo
 {
-    DataType symbolDataType;
+    ResolvedType type;
     std::string genericName;
     bool isNullable = false;
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialized = false;
-    std::vector<std::pair<DataType, std::string>> paramTypes;
-    DataType returnType;
+    std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+    ResolvedType returnType;
     std::string returnGenericName;
     std::vector<std::string> genericParams;
     // Function flags
@@ -129,7 +135,7 @@ public:
     std::vector<ScopeInfo> currentTypeStack;
 
     SymbolInfo *resolveSymbolInfo(const std::string &name);
-    std::string dataTypetoString(DataType type);
+    ResolvedType resolvedDataType(Token token, Node *node);
 
 private:
     // Walking the data type literals
@@ -207,27 +213,28 @@ private:
 
     // HELPER FUNCTIONS
     void registerWalkerFunctions();
-    DataType inferNodeDataType(Node *node);
-    DataType inferInfixExpressionType(Node *node);
-    DataType inferPrefixExpressionType(Node *node);
-    DataType inferPostfixExpressionType(Node *node);
-    DataType resultOfBinary(TokenType operatorType, DataType leftType, DataType rightType);
-    DataType resultOfUnary(TokenType operatorType, DataType oprendType);
-    DataType tokenTypeToDataType(TokenType type, bool isNullable);
-    DataType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
-    bool isTypeCompatible(DataType expected, DataType actual);
+    ResolvedType inferNodeDataType(Node *node);
+    ResolvedType inferInfixExpressionType(Node *node);
+    ResolvedType inferPrefixExpressionType(Node *node);
+    ResolvedType inferPostfixExpressionType(Node *node);
+    ResolvedType resultOfBinary(TokenType operatorType, ResolvedType leftType, ResolvedType rightType);
+    ResolvedType resultOfUnary(TokenType operatorType, const ResolvedType &oprendType);
+    ResolvedType tokenTypeToResolvedType(TokenType type, bool isNullable);
+    ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
+    bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool hasReturnPath(Node *node);
-    bool isInteger(DataType t);
-    bool isNullableInteger(DataType t);
-    bool isFloat(DataType t);
-    bool isNullableFloat(DataType t);
-    bool isBoolean(DataType t);
-    bool isString(DataType t);
-    bool isChar(DataType t);
-    bool isNullable(DataType t);
+    bool isInteger(const ResolvedType &t);
+    bool isNullableInteger(const ResolvedType &t);
+    bool isFloat(const ResolvedType &t);
+    bool isNullableFloat(const ResolvedType &t);
+    bool isBoolean(const ResolvedType &t);
+    bool isString(const ResolvedType &t);
+    bool isChar(const ResolvedType &t);
+    bool isNullable(const ResolvedType &t);
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
+    std::pair<std::string, std::string> splitScopedName(const std::string &fullName);
 };
 
 #endif

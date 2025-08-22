@@ -65,7 +65,7 @@ void IRGenerator::generateLetStatement(Node *node)
         throw std::runtime_error("Symbol not found: " + letStmt->ident_token.TokenLiteral);
     }
 
-    llvm::Type *varType = getLLVMType(symbol->symbolDataType);
+    llvm::Type *varType = getLLVMType(symbol->type.kind);
     if (!varType)
     {
         throw std::runtime_error("Invalid type for variable: " + letStmt->ident_token.TokenLiteral);
@@ -77,7 +77,7 @@ void IRGenerator::generateLetStatement(Node *node)
         llvm::Value *initValue = nullptr;
         if (auto nullLit = dynamic_cast<NullLiteral *>(letStmt->value.get()))
         {
-            initValue = generateNullLiteral(nullLit, symbol->symbolDataType);
+            initValue = generateNullLiteral(nullLit, symbol->type.kind);
         }
         else
         {
@@ -315,7 +315,7 @@ void IRGenerator::generateForStatement(Node *node)
 
     // Verify condition type in metadata
     auto it = semantics.metaData.find(forStmt->condition.get());
-    if (it == semantics.metaData.end() || it->second.symbolDataType != DataType::BOOLEAN)
+    if (it == semantics.metaData.end() || it->second.type.kind != DataType::BOOLEAN)
     {
         std::cerr << "[IR ERROR] For loop condition must evaluate to boolean.\n";
         return;
@@ -423,7 +423,7 @@ void IRGenerator::generateAssignmentStatement(Node *node)
     SymbolInfo *symbol = semantics.resolveSymbolInfo(assignStmt->identifier->expression.TokenLiteral);
     if (!symbol)
     {
-        throw std::runtime_error("Symbol '" + assignStmt->identifier->expression.TokenLiteral+ "' not found");
+        throw std::runtime_error("Symbol '" + assignStmt->identifier->expression.TokenLiteral + "' not found");
     }
 
     llvm::Value *ptr = namedValues[assignStmt->identifier->expression.TokenLiteral];
@@ -479,9 +479,9 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Meta data missing for infix node");
 
-    DataType resultType = it->second.symbolDataType;
-    DataType leftType = semantics.metaData[infix->left_operand.get()].symbolDataType;
-    DataType rightType = semantics.metaData[infix->right_operand.get()].symbolDataType;
+    ResolvedType resultType = it->second.type;
+    DataType leftType = semantics.metaData[infix->left_operand.get()].type.kind;
+    DataType rightType = semantics.metaData[infix->right_operand.get()].type.kind;
 
     // Helper lambda for integer type promotion
     auto promoteInt = [&](llvm::Value *val, DataType fromType, DataType toType) -> llvm::Value *
@@ -509,15 +509,15 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     };
 
     // Promote operands to widest integer type among left, right, and result
-    if (isIntegerType(resultType))
+    if (isIntegerType(resultType.kind))
     {
-        unsigned targetBits = getIntegerBitWidth(resultType);
-        left = promoteInt(left, leftType, resultType);
-        right = promoteInt(right, rightType, resultType);
+        unsigned targetBits = getIntegerBitWidth(resultType.kind);
+        left = promoteInt(left, leftType, resultType.kind);
+        right = promoteInt(right, rightType, resultType.kind);
     }
 
     // Handle BOOLEAN logical operators (AND, OR)
-    if (resultType == DataType::BOOLEAN)
+    if (resultType.kind == DataType::BOOLEAN)
     {
         if (infix->operat.type == TokenType::AND || infix->operat.type == TokenType::OR)
         {
@@ -545,14 +545,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     }
 
     // Handle floating point conversions
-    if (resultType == DataType::FLOAT)
+    if (resultType.kind == DataType::FLOAT)
     {
         if (isIntegerType(leftType))
             left = builder.CreateSIToFP(left, llvm::Type::getFloatTy(context), "inttofloat");
         if (isIntegerType(rightType))
             right = builder.CreateSIToFP(right, llvm::Type::getFloatTy(context), "inttofloat");
     }
-    else if (resultType == DataType::DOUBLE)
+    else if (resultType.kind == DataType::DOUBLE)
     {
         if (isIntegerType(leftType))
             left = builder.CreateSIToFP(left, llvm::Type::getDoubleTy(context), "inttodouble");
@@ -561,7 +561,6 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     }
 
     // Now generate code based on operator and result type
-
     // Comparison operators - different for signed/unsigned integers
     auto isCmp = [&](TokenType t)
     {
@@ -572,9 +571,9 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 
     if (isCmp(infix->operat.type))
     {
-        if (isIntegerType(resultType))
+        if (isIntegerType(resultType.kind))
         {
-            bool signedInt = isSignedInteger(resultType);
+            bool signedInt = isSignedInteger(resultType.kind);
             switch (infix->operat.type)
             {
             case TokenType::EQUALS:
@@ -597,7 +596,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
                 throw std::runtime_error("Unsupported comparison operator");
             }
         }
-        else if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+        else if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
         {
             switch (infix->operat.type)
             {
@@ -619,7 +618,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         }
         else
         {
-            throw std::runtime_error("Comparison not supported for type: " + semantics.dataTypetoString(resultType));
+            throw std::runtime_error("Comparison not supported for type '" + resultType.resolvedName + "'");
         }
     }
 
@@ -627,34 +626,34 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     switch (infix->operat.type)
     {
     case TokenType::PLUS:
-        if (isIntegerType(resultType))
+        if (isIntegerType(resultType.kind))
             return builder.CreateAdd(left, right, "addtmp");
         else
             return builder.CreateFAdd(left, right, "faddtmp");
 
     case TokenType::MINUS:
-        if (isIntegerType(resultType))
+        if (isIntegerType(resultType.kind))
             return builder.CreateSub(left, right, "subtmp");
         else
             return builder.CreateFSub(left, right, "fsubtmp");
 
     case TokenType::ASTERISK:
-        if (isIntegerType(resultType))
+        if (isIntegerType(resultType.kind))
             return builder.CreateMul(left, right, "multmp");
         else
             return builder.CreateFMul(left, right, "fmultmp");
 
     case TokenType::DIVIDE:
-        if (isIntegerType(resultType))
-            return isSignedInteger(resultType) ? builder.CreateSDiv(left, right, "divtmp")
-                                               : builder.CreateUDiv(left, right, "divtmp");
+        if (isIntegerType(resultType.kind))
+            return isSignedInteger(resultType.kind) ? builder.CreateSDiv(left, right, "divtmp")
+                                                    : builder.CreateUDiv(left, right, "divtmp");
         else
             return builder.CreateFDiv(left, right, "fdivtmp");
 
     case TokenType::MODULUS:
-        if (isIntegerType(resultType))
-            return isSignedInteger(resultType) ? builder.CreateSRem(left, right, "modtmp")
-                                               : builder.CreateURem(left, right, "modtmp");
+        if (isIntegerType(resultType.kind))
+            return isSignedInteger(resultType.kind) ? builder.CreateSRem(left, right, "modtmp")
+                                                    : builder.CreateURem(left, right, "modtmp");
         else
             throw std::runtime_error("Modulus not supported for FLOAT or DOUBLE at line " +
                                      std::to_string(infix->operat.line));
@@ -680,7 +679,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Meta data missing for prefix node");
 
-    DataType resultType = it->second.symbolDataType;
+    ResolvedType resultType = it->second.type;
 
     // Helper to check if integer type
     auto isIntType = [&](DataType dt)
@@ -706,9 +705,9 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
     switch (prefix->operat.type)
     {
     case TokenType::MINUS:
-        if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+        if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
             return builder.CreateFNeg(operand, llvm::Twine("fnegtmp"));
-        else if (isIntType(resultType))
+        else if (isIntType(resultType.kind))
             return builder.CreateNeg(operand, llvm::Twine("negtmp"));
         else
             throw std::runtime_error("Unsupported type for unary minus");
@@ -733,20 +732,20 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
             throw std::runtime_error("Null variable pointer for: " + ident->identifier.TokenLiteral);
 
         // Get the type from resultType instead of getPointerElementType
-        llvm::Type *varType = getLLVMType(resultType);
+        llvm::Type *varType = getLLVMType(resultType.kind);
         if (!varType)
             throw std::runtime_error("Invalid type for variable: " + ident->identifier.TokenLiteral);
 
         llvm::Value *loaded = builder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
         llvm::Value *delta = nullptr;
-        if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+        if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
         {
             delta = llvm::ConstantFP::get(varType, 1.0);
         }
-        else if (isIntType(resultType))
+        else if (isIntType(resultType.kind))
         {
-            unsigned bits = getIntegerBitWidth(resultType);
+            unsigned bits = getIntegerBitWidth(resultType.kind);
             delta = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, bits), 1);
         }
         else
@@ -756,11 +755,11 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
 
         llvm::Value *updated = nullptr;
         if (prefix->operat.type == TokenType::PLUS_PLUS)
-            updated = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+            updated = (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
                           ? builder.CreateFAdd(loaded, delta, llvm::Twine("preincfptmp"))
                           : builder.CreateAdd(loaded, delta, llvm::Twine("preinctmp"));
         else
-            updated = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+            updated = (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
                           ? builder.CreateFSub(loaded, delta, llvm::Twine("predecfptmp"))
                           : builder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
 
@@ -796,7 +795,7 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Meta data missing for postfix node");
 
-    DataType resultType = it->second.symbolDataType;
+    ResolvedType resultType = it->second.type;
 
     // Helper to check if integer type
     auto isIntType = [&](DataType dt)
@@ -818,20 +817,20 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
     };
 
     // Get the type from resultType for CreateLoad
-    llvm::Type *varType = getLLVMType(resultType);
+    llvm::Type *varType = getLLVMType(resultType.kind);
     if (!varType)
         throw std::runtime_error("Invalid type for variable: " + identifier->identifier.TokenLiteral);
 
     llvm::Value *originalValue = builder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
     llvm::Value *delta = nullptr;
-    if (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+    if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
     {
         delta = llvm::ConstantFP::get(varType, 1.0);
     }
-    else if (isIntType(resultType))
+    else if (isIntType(resultType.kind))
     {
-        unsigned bits = getIntegerBitWidth(resultType);
+        unsigned bits = getIntegerBitWidth(resultType.kind);
         delta = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, bits), 1);
     }
     else
@@ -842,11 +841,11 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
     llvm::Value *updatedValue = nullptr;
 
     if (postfix->operator_token.type == TokenType::PLUS_PLUS)
-        updatedValue = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+        updatedValue = (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
                            ? builder.CreateFAdd(originalValue, delta, llvm::Twine("finc"))
                            : builder.CreateAdd(originalValue, delta, llvm::Twine("inc"));
     else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
-        updatedValue = (resultType == DataType::FLOAT || resultType == DataType::DOUBLE)
+        updatedValue = (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
                            ? builder.CreateFSub(originalValue, delta, llvm::Twine("fdec"))
                            : builder.CreateSub(originalValue, delta, llvm::Twine("dec"));
     else
@@ -872,7 +871,8 @@ llvm::Value *IRGenerator::generateStringLiteral(Node *node)
     {
         throw std::runtime_error("String literal not found in metadata");
     }
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
+
     if (dt != DataType::STRING && dt != DataType::NULLABLE_STR)
     {
         throw std::runtime_error("Type error: Expected STRING or NULLABLE_STR for StringLiteral ");
@@ -894,7 +894,7 @@ llvm::Value *IRGenerator::generateCharLiteral(Node *node)
     {
         throw std::runtime_error("Char literal not found in metadata");
     }
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::CHAR && dt != DataType::NULLABLE_CHAR)
     {
         throw std::runtime_error("Type error: Expected CHAR for CharLiteral");
@@ -917,7 +917,7 @@ llvm::Value *IRGenerator::generateChar16Literal(Node *node)
     {
         throw std::runtime_error("Char16 literal not found in metadata");
     }
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::CHAR16 && dt != DataType::NULLABLE_CHAR16)
     {
         throw std::runtime_error("Type error: Expected CHAR16 for Char16Literal");
@@ -939,7 +939,7 @@ llvm::Value *IRGenerator::generateChar32Literal(Node *node)
     {
         throw std::runtime_error("Char16 literal not found in metadata");
     }
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::CHAR16 && dt != DataType::NULLABLE_CHAR16)
     {
         throw std::runtime_error("Type error: Expected CHAR32 for Char16Literal");
@@ -961,7 +961,7 @@ llvm::Value *IRGenerator::generateBooleanLiteral(Node *node)
     {
         throw std::runtime_error("Boolean literal not found in metadata");
     }
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::BOOLEAN && dt != DataType::NULLABLE_BOOLEAN)
     {
         throw std::runtime_error("Type error: Expected BOOLEAN for BooleanLiteral");
@@ -982,7 +982,7 @@ llvm::Value *IRGenerator::generateShortLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Short literal not found in metadata");
 
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::SHORT_INT && dt != DataType::NULLABLE_SHORT_INT)
         throw std::runtime_error("Type error: Expected SHORT_INT or NULLABLE_SHORT_INT");
 
@@ -1000,7 +1000,7 @@ llvm::Value *IRGenerator::generateUnsignedShortLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("UShort literal not found in metadata");
 
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::USHORT_INT && dt != DataType::NULLABLE_USHORT_INT)
         throw std::runtime_error("Type error: Expected USHORT_INT or NULLABLE_USHORT_INT");
 
@@ -1020,7 +1020,7 @@ llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
     {
         throw std::runtime_error("Integer literal not found in metadata");
     }
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::INTEGER && dt != DataType::NULLABLE_INT)
     {
         throw std::runtime_error("Type error: Expected INTEGER or NULLABLE_INT for IntegerLiteral");
@@ -1039,7 +1039,7 @@ llvm::Value *IRGenerator::generateUnsignedIntegerLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("UInt literal not found in metadata");
 
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::UINTEGER && dt != DataType::NULLABLE_UINT)
         throw std::runtime_error("Type error: Expected UINTEGER or NULLABLE_UINT");
 
@@ -1057,7 +1057,7 @@ llvm::Value *IRGenerator::generateLongLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Long literal not found in metadata");
 
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::LONG_INT && dt != DataType::NULLABLE_LONG_INT)
         throw std::runtime_error("Type error: Expected LONG_INT or NULLABLE_LONG_INT");
 
@@ -1075,7 +1075,7 @@ llvm::Value *IRGenerator::generateUnsignedLongLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("ULong literal not found in metadata");
 
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::ULONG_INT && dt != DataType::NULLABLE_ULONG_INT)
         throw std::runtime_error("Type error: Expected ULONG_INT or NULLABLE_ULONG_INT");
 
@@ -1093,7 +1093,7 @@ llvm::Value *IRGenerator::generateExtraLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Extra literal not found in metadata");
 
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::EXTRA_INT && dt != DataType::NULLABLE_EXTRA_INT)
         throw std::runtime_error("Type error: Expected EXTRA_INT or NULLABLE_EXTRA_INT");
 
@@ -1112,7 +1112,7 @@ llvm::Value *IRGenerator::generateUnsignedExtraLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("UExtra literal not found in metadata");
 
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::UEXTRA_INT && dt != DataType::NULLABLE_UEXTRA_INT)
         throw std::runtime_error("Type error: Expected UEXTRA_INT or NULLABLE_UEXTRA_INT");
 
@@ -1132,7 +1132,7 @@ llvm::Value *IRGenerator::generateFloatLiteral(Node *node)
     {
         throw std::runtime_error("Float literal not found in metadata");
     }
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::FLOAT && dt != DataType::NULLABLE_FLT)
     {
         throw std::runtime_error("Type error: Expected Float or NULLABLE_FLT for FloatLiteral ");
@@ -1153,7 +1153,7 @@ llvm::Value *IRGenerator::generateDoubleLiteral(Node *node)
     {
         throw std::runtime_error("Double literal not found in metadata");
     }
-    DataType dt = it->second.symbolDataType;
+    DataType dt = it->second.type.kind;
     if (dt != DataType::DOUBLE && dt != DataType::NULLABLE_DOUBLE)
     {
         throw std::runtime_error("Type error: Expected DOUBLE for DoubleLiteral");
@@ -1165,8 +1165,6 @@ llvm::Value *IRGenerator::generateDoubleLiteral(Node *node)
 
 llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType type)
 {
-    std::cout << "Submitted data type: " << semantics.dataTypetoString(type) << "\n";
-
     switch (type)
     {
     case DataType::NULLABLE_STR:
@@ -1239,7 +1237,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
         throw std::runtime_error("Variable '" + identExpr->identifier.TokenLiteral + "' has no storage (missing alloca?)");
     }
     llvm::Value *variablePtr = it->second;
-    return builder.CreateLoad(getLLVMType(symbol->symbolDataType), variablePtr, identExpr->identifier.TokenLiteral);
+    return builder.CreateLoad(getLLVMType(symbol->type.kind), variablePtr, identExpr->identifier.TokenLiteral);
 }
 
 // HELPER FUNCTIONS

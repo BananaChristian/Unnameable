@@ -13,9 +13,9 @@ void Semantics::walkInfixExpression(Node *node)
     auto right = infixExpr->right_operand.get();
     walker(right);
 
-    DataType infixType = inferNodeDataType(infixExpr);
+    ResolvedType infixType = inferNodeDataType(infixExpr);
     metaData[infixExpr] = {
-        .symbolDataType = infixType,
+        .type = infixType,
         .isNullable = false,
         .isMutable = false,
         .isConstant = false,
@@ -29,7 +29,7 @@ void Semantics::walkPrefixExpression(Node *node)
         return;
     std::cout << "[SEMANTIC LOG] Analyzing prefix expression " + prefixExpr->toString() + "\n";
     auto prefixExprOperand = prefixExpr->operand.get();
-    DataType prefixType = inferNodeDataType(prefixExpr);
+    ResolvedType prefixType = inferNodeDataType(prefixExpr);
     if (prefixExpr->operat.type == TokenType::PLUS_PLUS || prefixExpr->operat.type == TokenType::MINUS_MINUS)
     {
         if (auto ident = dynamic_cast<Identifier *>(prefixExprOperand))
@@ -60,7 +60,7 @@ void Semantics::walkPrefixExpression(Node *node)
     walker(prefixExprOperand);
 
     metaData[prefixExpr] = {
-        .symbolDataType = prefixType,
+        .type = prefixType,
         .isNullable = false,
         .isMutable = false,
         .isConstant = false,
@@ -73,7 +73,7 @@ void Semantics::walkPostfixExpression(Node *node)
     if (!postfixExpr)
         return;
     std::cout << "[SEMANTIC LOG] Analyzing postfix expression " + postfixExpr->toString() + "\n";
-    DataType postfixType = inferNodeDataType(postfixExpr);
+    ResolvedType postfixType = inferNodeDataType(postfixExpr);
     auto postfixOperand = postfixExpr->operand.get();
     if (postfixExpr->operator_token.type == TokenType::PLUS_PLUS || postfixExpr->operator_token.type == TokenType::MINUS_MINUS)
     {
@@ -105,7 +105,7 @@ void Semantics::walkPostfixExpression(Node *node)
     walker(postfixOperand);
 
     metaData[postfixExpr] = {
-        .symbolDataType = postfixType,
+        .type = postfixType,
         .isNullable = false,
         .isMutable = false,
         .isInitialized = false};
@@ -132,14 +132,14 @@ void Semantics::walkErrorExpression(Node *node)
     auto errMessage = errExpr->err_message.get();
 
     walker(errMessage);
-    DataType msgType = inferNodeDataType(errMessage);
+    ResolvedType msgType = inferNodeDataType(errMessage);
 
-    if (msgType == DataType::UNKNOWN)
+    if (msgType.kind == DataType::UNKNOWN)
     {
-        logSemanticErrors("Invalid error message type '" + dataTypetoString(msgType) + "'", errExpr->error_token.line, errExpr->error_token.column);
+        logSemanticErrors("Invalid error message type '" + msgType.resolvedName + "'", errExpr->error_token.line, errExpr->error_token.column);
     }
     metaData[errExpr] = {
-        .symbolDataType = errType,
+        .type = errType,
         .isNullable = false,
         .isMutable = false,
         .isConstant = false,

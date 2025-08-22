@@ -20,10 +20,10 @@ void Semantics::walkWhileStatement(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analysing while statement: " << whileStmt->toString() << "\n";
     auto whileCondition = whileStmt->condition.get();
-    DataType whileCondType = inferNodeDataType(whileCondition);
-    if (whileCondType != DataType::BOOLEAN)
+    ResolvedType whileCondType = inferNodeDataType(whileCondition);
+    if (whileCondType.kind != DataType::BOOLEAN)
     {
-        std::cerr << "[SEMANTIC ERROR] Expected boolean type but got: " + dataTypetoString(whileCondType) + "\n";
+        std::cerr << "[SEMANTIC ERROR] Expected boolean type but got '" + whileCondType.resolvedName + "'\n";
     }
     walker(whileCondition);
 
@@ -40,10 +40,10 @@ void Semantics::walkElifStatement(Node *node)
         return;
     std::cout << "[SEMANTIC LOG] Analysing elif statement: " << elifStmt->toString() << "\n";
     auto elifCondition = elifStmt->elif_condition.get();
-    DataType elifConditionType = inferNodeDataType(elifCondition);
-    if (elifConditionType != DataType::BOOLEAN)
+    ResolvedType elifConditionType = inferNodeDataType(elifCondition);
+    if (elifConditionType.kind != DataType::BOOLEAN)
     {
-        logSemanticErrors("Expected boolean type but got" + dataTypetoString(elifConditionType), elifStmt->elif_token.line, elifStmt->elif_token.column);
+        logSemanticErrors("Expected boolean type but got" + elifConditionType.resolvedName, elifStmt->elif_token.line, elifStmt->elif_token.column);
         return;
     }
     walker(elifCondition);
@@ -60,10 +60,10 @@ void Semantics::walkIfStatement(Node *node)
         return;
     std::cout << "[SEMANTIC LOG]: Analysing if statement: " << ifStmt->toString() << "\n";
     auto ifStmtCondition = ifStmt->condition.get();
-    DataType ifStmtType = inferNodeDataType(ifStmtCondition);
-    if (ifStmtType != DataType::BOOLEAN)
+    ResolvedType ifStmtType = inferNodeDataType(ifStmtCondition);
+    if (ifStmtType.kind != DataType::BOOLEAN)
     {
-        logSemanticErrors("Expected boolean type but got: " + dataTypetoString(ifStmtType), node->token.line, node->token.column);
+        logSemanticErrors("Expected boolean type but got '" + ifStmtType.resolvedName + "'", node->token.line, node->token.column);
         return;
     }
     walker(ifStmtCondition);
@@ -128,14 +128,14 @@ void Semantics::walkSwitchStatement(Node *node)
     walker(switchExpr);
 
     // Dealing with the case clauses
-    auto caseType = DataType::UNKNOWN;
+    ResolvedType caseType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
     loopContext.push_back(false);
     auto &caseClause = switchStmt->case_clauses;
     for (auto &caseSt : caseClause)
     {
         caseType = inferNodeDataType(caseSt.get());
-        if (caseType != switchType)
+        if (caseType.kind != switchType.kind)
         {
             logSemanticErrors("Type mismatch in switch case ", node->token.line, node->token.column);
         }
@@ -151,7 +151,7 @@ void Semantics::walkSwitchStatement(Node *node)
     }
 
     metaData[switchStmt] = {
-        .symbolDataType = switchType,
+        .type = switchType,
         .isNullable = isNullable,
         .isMutable = isMutable,
         .isConstant = isConstant,
