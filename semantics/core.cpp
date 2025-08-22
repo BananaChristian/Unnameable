@@ -212,7 +212,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
 
     if (auto retTypeExpr = dynamic_cast<ReturnTypeExpression *>(node))
     {
-        return tokenTypeToResolvedType(retTypeExpr->expression.type, false);
+        return tokenTypeToResolvedType(retTypeExpr->expression, false);
     }
 
     if (auto callExpr = dynamic_cast<CallExpression *>(node))
@@ -486,8 +486,9 @@ SymbolInfo *Semantics::resolveSymbolInfo(const std::string &name)
     return nullptr;
 }
 
-ResolvedType Semantics::tokenTypeToResolvedType(TokenType type, bool isNullable)
+ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
 {
+    TokenType type = token.type;
     switch (type)
     {
     case TokenType::SHORT_KEYWORD:
@@ -526,8 +527,39 @@ ResolvedType Semantics::tokenTypeToResolvedType(TokenType type, bool isNullable)
     case TokenType::VOID:
         return {DataType::VOID, "void"};
     case TokenType::IDENTIFIER:
-        
+    {
+        auto [parentName, childName] = splitScopedName(token.TokenLiteral);
+        auto parentIt = customTypesTable.find(parentName);
+        if (parentIt != customTypesTable.end())
+        {
+            std::cout << "Found parent name '" << parentName << "'\n";
+
+            // Case: Scoped member type (Parent.Child)
+            if (!childName.empty())
+            {
+                std::cout << "Child name is '" << childName << "'\n";
+                auto &members = parentIt->second.members;
+                auto memberIt = members.find(childName);
+                if (memberIt == members.end())
+                {
+                    logSemanticErrors("Type '" + childName + "' does not exist in '" + parentName + "'",
+                                      token.line, token.column);
+                    return ResolvedType{DataType::UNKNOWN, "unknown"};
+                }
+
+                auto memberType = memberIt->second.type;
+                return ResolvedType{memberType.kind, memberType.resolvedName};
+            }
+
+            // Case: Just the parent type
+            auto parentType = parentIt->second.type;
+            return ResolvedType{parentType.kind, parentType.resolvedName};
+        }
+
+        std::cout << "Failed to deal with custom type, resorting to generic.\n";
         return {DataType::GENERIC, "generic"};
+    }
+
     default:
         return {DataType::UNKNOWN, "unknown"};
     }
@@ -691,7 +723,7 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
         auto letStmt = dynamic_cast<LetStatement *>(funcExpr->call[i].get());
         if (!letStmt)
             return false;
-        ResolvedType paramType = tokenTypeToResolvedType(letStmt->data_type_token.type, letStmt->isNullable);
+        ResolvedType paramType = tokenTypeToResolvedType(letStmt->data_type_token, letStmt->isNullable);
         std::string paramGenericName = letStmt->data_type_token.type == TokenType::IDENTIFIER ? letStmt->data_type_token.TokenLiteral : "";
         // Find declaration's parameter metadata
         bool declParamNullable = false;
@@ -720,7 +752,7 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
     auto retType = dynamic_cast<ReturnTypeExpression *>(funcExpr->return_type.get());
     if (!retType)
         return false;
-    ResolvedType returnType = tokenTypeToResolvedType(retType->expression.type, funcExpr->isNullable);
+    ResolvedType returnType = tokenTypeToResolvedType(retType->expression, funcExpr->isNullable);
     std::string returnGenericName = retType->expression.type == TokenType::IDENTIFIER ? retType->expression.TokenLiteral : "";
     return returnType.kind == declInfo.returnType.kind &&
            returnGenericName == declInfo.returnGenericName &&
@@ -1015,5 +1047,6 @@ std::pair<std::string, std::string> Semantics::splitScopedName(const std::string
     }
     std::string parent = fullName.substr(0, pos);
     std::string child = fullName.substr(pos + 2); // skip ::
+    std::cout << "Name has been split into '" + parent + "' and '" + child + "'\n";
     return {parent, child};
 }

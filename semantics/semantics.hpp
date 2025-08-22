@@ -219,7 +219,7 @@ private:
     ResolvedType inferPostfixExpressionType(Node *node);
     ResolvedType resultOfBinary(TokenType operatorType, ResolvedType leftType, ResolvedType rightType);
     ResolvedType resultOfUnary(TokenType operatorType, const ResolvedType &oprendType);
-    ResolvedType tokenTypeToResolvedType(TokenType type, bool isNullable);
+    ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
     ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);

@@ -272,7 +272,7 @@ void Semantics::walkFunctionExpression(Node *node)
         return;
     }
 
-    ResolvedType returnType = tokenTypeToResolvedType(retType->expression.type, funcExpr->isNullable);
+    ResolvedType returnType = tokenTypeToResolvedType(retType->expression, funcExpr->isNullable);
     std::string returnGenericName;
     if (retType->expression.type == TokenType::IDENTIFIER)
     {
@@ -427,7 +427,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
         return;
     }
 
-    ResolvedType returnType = tokenTypeToResolvedType(retType->expression.type, funcDeclrStmt->isNullable);
+    ResolvedType returnType = tokenTypeToResolvedType(retType->expression, funcDeclrStmt->isNullable);
     std::string returnGenericName;
 
     if (retType->expression.type == TokenType::IDENTIFIER)

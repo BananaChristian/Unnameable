@@ -269,7 +269,7 @@ void Semantics::walkLetStatement(Node *node)
             }
             else
             {
-                declaredType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
+                declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
             }
         }
         else
@@ -285,14 +285,14 @@ void Semantics::walkLetStatement(Node *node)
     // If we dont have a value(A variable declaration)
     if (!letStmtValue)
     {
-        ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
-        declaredType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
+        ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
+        declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
     }
 
     //  Check for type mismatch if type is explicitly declared (not inferred via auto)
     if (letStmt->data_type_token.type != TokenType::AUTO)
     {
-        ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
+        ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
         if (!isTypeCompatible(expectedType, declaredType))
         {
             logSemanticErrors("Type mismatch in 'let' statement. Expected '" + expectedType.resolvedName + "' but got '" + declaredType.resolvedName + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
@@ -383,7 +383,7 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
     }
     else
     {
-        declaredType = tokenTypeToResolvedType(letStmt->data_type_token.type, isNullable);
+        declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
         if (declaredType.kind == DataType::UNKNOWN)
         {
             logSemanticErrors("Invalid parameter type: " + letStmt->data_type_token.TokenLiteral,
