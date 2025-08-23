@@ -65,7 +65,7 @@ void Semantics::walkEnumClassStatement(Node *node)
     // Push temporary scope
     symbolTable.push_back({});
     std::unordered_map<std::string, MemberInfo> members;
-    std::int64_t currentValue = 0; // Use int64_t; see note for 128-bit
+    std::int64_t currentValue = 0; // Use int64_t;
 
     for (const auto &enumMember : enumStmt->enum_content)
     {
@@ -261,7 +261,7 @@ void Semantics::walkEnumClassStatement(Node *node)
             .type = underLyingType,
             .isConstant = true,
             .isInitialised = true,
-            .constantValue = static_cast<int>(memberValue) // Update to std::int64_t in MemberInfo
+            .constantValue = static_cast<int>(memberValue) 
         };
         members[memberName] = info;
 
