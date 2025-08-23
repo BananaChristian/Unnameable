@@ -1,6 +1,5 @@
 #include "semantics.hpp"
 #include <algorithm>
-#include <cstdint>
 #include <limits>
 
 void Semantics::walkEnumClassStatement(Node *node)
@@ -20,6 +19,282 @@ void Semantics::walkEnumClassStatement(Node *node)
                           enumStmt->statement.line, enumStmt->statement.column);
         return;
     }
+
+    // Set underlying type (default = int)
+    ResolvedType underLyingType{DataType::INTEGER, "int"};
+    if (enumStmt->int_type.has_value())
+    {
+        switch (enumStmt->int_type.value().type)
+        {
+        case TokenType::SHORT_KEYWORD:
+            underLyingType = ResolvedType{DataType::SHORT_INT, "short"};
+            break;
+        case TokenType::USHORT_KEYWORD:
+            underLyingType = ResolvedType{DataType::USHORT_INT, "ushort"};
+            break;
+        case TokenType::INTEGER_KEYWORD:
+            underLyingType = ResolvedType{DataType::INTEGER, "int"};
+            break;
+        case TokenType::UINT_KEYWORD:
+            underLyingType = ResolvedType{DataType::UINTEGER, "uint"};
+            break;
+        case TokenType::LONG_KEYWORD:
+            underLyingType = ResolvedType{DataType::LONG_INT, "long"};
+            break;
+        case TokenType::ULONG_KEYWORD:
+            underLyingType = ResolvedType{DataType::ULONG_INT, "ulong"};
+            break;
+        case TokenType::EXTRA_KEYWORD:
+            underLyingType = ResolvedType{DataType::EXTRA_INT, "extra"};
+            break;
+        case TokenType::UEXTRA_KEYWORD:
+            underLyingType = ResolvedType{DataType::UEXTRA_INT, "uextra"};
+            break;
+        default:
+            underLyingType = ResolvedType{DataType::INTEGER, "int"};
+            break;
+        }
+    }
+
+    // Determine if underlying type is unsigned
+    bool underlyingIsUnsigned = (underLyingType.kind == DataType::USHORT_INT ||
+                                 underLyingType.kind == DataType::UINTEGER ||
+                                 underLyingType.kind == DataType::ULONG_INT ||
+                                 underLyingType.kind == DataType::UEXTRA_INT);
+
+    // Push temporary scope
+    symbolTable.push_back({});
+    std::unordered_map<std::string, MemberInfo> members;
+    std::int64_t currentValue = 0; // Use int64_t; see note for 128-bit
+
+    for (const auto &enumMember : enumStmt->enum_content)
+    {
+        if (!enumMember)
+        {
+            logSemanticErrors("Invalid enum member", enumStmt->statement.line, enumStmt->statement.column);
+            symbolTable.pop_back();
+            return;
+        }
+
+        std::cout << "[SEMANTIC LOG] Analysing enum member node\n";
+        std::string memberName = enumMember->enumMember;
+
+        // Check for duplicate member name
+        if (members.count(memberName) || resolveSymbolInfo(memberName))
+        {
+            logSemanticErrors("Enum member name '" + memberName + "' already exists",
+                              enumMember->token.line, enumMember->token.column);
+            symbolTable.pop_back();
+            return;
+        }
+
+        std::int64_t memberValue = 0;
+        if (enumMember->value)
+        {
+            // Check all literal types
+            Expression *literal = nullptr;
+            TokenType literalType = TokenType::ILLEGAL; // Default invalid type
+            std::string literalStr;
+
+            if (auto shortLit = dynamic_cast<ShortLiteral *>(enumMember->value.get()))
+            {
+                literal = shortLit;
+                literalType = TokenType::SHORT;
+                literalStr = shortLit->expression.TokenLiteral;
+            }
+            else if (auto ushortLit = dynamic_cast<UnsignedShortLiteral *>(enumMember->value.get()))
+            {
+                literal = ushortLit;
+                literalType = TokenType::USHORT;
+                literalStr = ushortLit->expression.TokenLiteral;
+            }
+            else if (auto intLit = dynamic_cast<IntegerLiteral *>(enumMember->value.get()))
+            {
+                literal = intLit;
+                literalType = TokenType::INT;
+                literalStr = intLit->expression.TokenLiteral;
+            }
+            else if (auto uintLit = dynamic_cast<UnsignedIntegerLiteral *>(enumMember->value.get()))
+            {
+                literal = uintLit;
+                literalType = TokenType::UINT;
+                literalStr = uintLit->expression.TokenLiteral;
+            }
+            else if (auto longLit = dynamic_cast<LongLiteral *>(enumMember->value.get()))
+            {
+                literal = longLit;
+                literalType = TokenType::LONG;
+                literalStr = longLit->expression.TokenLiteral;
+            }
+            else if (auto ulongLit = dynamic_cast<UnsignedLongLiteral *>(enumMember->value.get()))
+            {
+                literal = ulongLit;
+                literalType = TokenType::ULONG;
+                literalStr = ulongLit->expression.TokenLiteral;
+            }
+            else if (auto extraLit = dynamic_cast<ExtraLiteral *>(enumMember->value.get()))
+            {
+                literal = extraLit;
+                literalType = TokenType::EXTRA;
+                literalStr = extraLit->expression.TokenLiteral;
+            }
+            else if (auto uextraLit = dynamic_cast<UnsignedExtraLiteral *>(enumMember->value.get()))
+            {
+                literal = uextraLit;
+                literalType = TokenType::UEXTRA;
+                literalStr = uextraLit->expression.TokenLiteral;
+            }
+            else
+            {
+                logSemanticErrors("Enum member value must be a short, ushort, int, uint, long, ulong, extra, or uextra literal",
+                                  enumMember->token.line, enumMember->token.column);
+                symbolTable.pop_back();
+                return;
+            }
+
+            // Map literal type to DataType
+            bool isUnsignedLiteral;
+            switch (literalType)
+            {
+            case TokenType::SHORT:
+                isUnsignedLiteral = false;
+                break;
+            case TokenType::USHORT:
+                isUnsignedLiteral = true;
+                break;
+            case TokenType::INT:
+                isUnsignedLiteral = false;
+                break;
+            case TokenType::UINT:
+                isUnsignedLiteral = true;
+                break;
+            case TokenType::LONG:
+                isUnsignedLiteral = false;
+                break;
+            case TokenType::ULONG:
+                isUnsignedLiteral = true;
+                break;
+            case TokenType::EXTRA:
+                isUnsignedLiteral = false;
+                break;
+            case TokenType::UEXTRA:
+                isUnsignedLiteral = true;
+                break;
+            default:
+                logSemanticErrors("Invalid literal type for enum member",
+                                  enumMember->token.line, enumMember->token.column);
+                symbolTable.pop_back();
+                return;
+            }
+
+            // Validate signedness
+            if (isUnsignedLiteral && !underlyingIsUnsigned)
+            {
+                logSemanticErrors("Unsigned literal '" + literalStr + "' incompatible with signed underlying type",
+                                  enumMember->token.line, enumMember->token.column);
+                symbolTable.pop_back();
+                return;
+            }
+            if (!isUnsignedLiteral && underlyingIsUnsigned)
+            {
+                logSemanticErrors("Signed literal '" + literalStr + "' incompatible with unsigned underlying type",
+                                  enumMember->token.line, enumMember->token.column);
+                symbolTable.pop_back();
+                return;
+            }
+
+            // Parse and validate range
+            try
+            {
+                if (isUnsignedLiteral)
+                {
+                    std::uint64_t parsedValue = std::stoull(literalStr);
+                    memberValue = static_cast<std::int64_t>(parsedValue);
+                    if (underLyingType.kind == DataType::USHORT_INT && parsedValue > std::numeric_limits<std::uint16_t>::max())
+                        throw std::out_of_range("Value out of range for ushort (16-bit)");
+                    if (underLyingType.kind == DataType::UINTEGER && parsedValue > std::numeric_limits<std::uint32_t>::max())
+                        throw std::out_of_range("Value out of range for uint (32-bit)");
+                    // No range check for ULONG_INT, UEXTRA_INT
+                }
+                else
+                {
+                    memberValue = std::stoll(literalStr);
+                    if (underLyingType.kind == DataType::SHORT_INT &&
+                        (memberValue < std::numeric_limits<std::int16_t>::min() || memberValue > std::numeric_limits<std::int16_t>::max()))
+                        throw std::out_of_range("Value out of range for short (16-bit)");
+                    if (underLyingType.kind == DataType::INTEGER &&
+                        (memberValue < std::numeric_limits<std::int32_t>::min() || memberValue > std::numeric_limits<std::int32_t>::max()))
+                        throw std::out_of_range("Value out of range for int (32-bit)");
+                    // No range check for LONG_INT, EXTRA_INT
+                }
+            }
+            catch (const std::invalid_argument &)
+            {
+                logSemanticErrors("Invalid integer literal '" + literalStr + "'",
+                                  enumMember->token.line, enumMember->token.column);
+                symbolTable.pop_back();
+                return;
+            }
+            catch (const std::out_of_range &e)
+            {
+                logSemanticErrors("Value '" + literalStr + "' out of range for underlying type: " + std::string(e.what()),
+                                  enumMember->token.line, enumMember->token.column);
+                symbolTable.pop_back();
+                return;
+            }
+        }
+        else
+        {
+            memberValue = currentValue;
+            if (underlyingIsUnsigned && memberValue < 0)
+            {
+                logSemanticErrors("Negative auto-incremented value '" + std::to_string(memberValue) + "' invalid for unsigned underlying type",
+                                  enumMember->token.line, enumMember->token.column);
+                symbolTable.pop_back();
+                return;
+            }
+        }
+
+        // Store member info
+        MemberInfo info{
+            .memberName = memberName,
+            .type = underLyingType,
+            .isConstant = true,
+            .isInitialised = true,
+            .constantValue = static_cast<int>(memberValue) // Update to std::int64_t in MemberInfo
+        };
+        members[memberName] = info;
+
+        // Add member to local scope
+        symbolTable.back()[memberName] = SymbolInfo{
+            .type = underLyingType,
+            .isConstant = true,
+            .isInitialized = true,
+        };
+
+        currentValue = memberValue + 1;
+    }
+
+    // Store enum type info
+    CustomTypeInfo typeInfo{
+        .typeName = enumStmtName,
+        .type = ResolvedType{DataType::ENUM, enumStmtName},
+        .underLyingType = underLyingType.kind,
+        .members = members};
+    customTypesTable[enumStmtName] = typeInfo;
+
+    // Add enum type to parent scope
+    symbolTable[symbolTable.size() - 2][enumStmtName] = SymbolInfo{
+        .type = ResolvedType{DataType::ENUM, enumStmtName},
+        .isConstant = false,
+        .isInitialized = true};
+    metaData[enumStmt] = SymbolInfo{
+        .type = ResolvedType{DataType::ENUM, enumStmtName},
+        .isConstant = false,
+        .isInitialized = true};
+
+    // Pop temporary scope
+    symbolTable.pop_back();
 }
 
 void Semantics::walkDataStatement(Node *node)

@@ -5,6 +5,7 @@
 #include "ast.hpp"
 #include <string>
 #include <typeindex>
+#include <cstdint>
 
 // Type system tracker
 enum class DataType
@@ -80,7 +81,7 @@ struct MemberInfo
     bool isConstant = false;
     bool isInitialised = false;
     // Info for enum members
-    int constantValue = 0;
+    std::int64_t constantValue = 0;
 };
 
 struct CustomTypeInfo
