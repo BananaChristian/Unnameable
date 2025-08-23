@@ -115,6 +115,9 @@ private:
     // Parsing switch statement
     std::unique_ptr<Statement> parseSwitchStatement();
 
+    // Parsing enum member Node
+    std::unique_ptr<EnumMember> parseEnumMember();
+
     // Parsing enum class statement
     std::unique_ptr<Statement> parseEnumClassStatement();
 
@@ -283,6 +286,9 @@ private:
 
     // Checker for integer types
     bool isIntegerType(TokenType type);
+
+    // Checker for integer literals
+    bool isIntegerLiteralType(TokenType type);
 
     // Error logging
     void logError(const std::string &message);

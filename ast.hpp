@@ -888,6 +888,24 @@ struct SwitchStatement : Statement
         : Statement(token), switch_token(token), switch_expr(std::move(expr)), case_clauses(std::move(cases)), default_token(default_tok), default_statements(std::move(default_stmts)) {}
 };
 
+struct EnumMember : Node
+{
+    std::string enumMember;
+    std::unique_ptr<Expression> value;
+
+    std::string toString() override
+    {
+        std::string val;
+        if (value)
+        {
+            val += "= " + value->toString();
+        }
+        return "Enum Member: " + enumMember + val;
+    }
+
+    EnumMember(std::string member, std::unique_ptr<Expression> val) : enumMember(member), value(std::move(val)) {};
+};
+
 // Enum class struct
 struct EnumClassStatement : Statement
 {
@@ -895,7 +913,7 @@ struct EnumClassStatement : Statement
     Token class_token;
     std::unique_ptr<Expression> enum_identifier;
     std::optional<Token> int_type;
-    std::vector<std::unique_ptr<Statement>> enum_content;
+    std::vector<std::unique_ptr<EnumMember>> enum_content;
     std::string toString()
     {
         std::string enum_block;
@@ -914,7 +932,7 @@ struct EnumClassStatement : Statement
         return "Enum class statement: " + enum_identifier->toString() + int_typestr + " { " + enum_block + " }";
     }
 
-    EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::optional<Token> intType, std::vector<std::unique_ptr<Statement>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
+    EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::optional<Token> intType, std::vector<std::unique_ptr<EnumMember>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
                                                                                                                                                                                      class_token(class_tok),
                                                                                                                                                                                      enum_identifier(std::move(enum_ident)),
                                                                                                                                                                                      int_type(intType),

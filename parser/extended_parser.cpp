@@ -124,68 +124,135 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement()
         default_token,
         std::move(default_body));
 }
+// Parsing enum member node
+std::unique_ptr<EnumMember> Parser::parseEnumMember()
+{
+    // Check if the current token is an identifier
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Enum member must start with an identifier, got: " + TokenTypeToLiteral(currentToken().type));
+        return nullptr; // Return nullptr but don't advance to allow recovery in caller
+    }
 
-// Parsing enum class statement
+    std::string name = currentToken().TokenLiteral;
+    advance(); // Consume the identifier
+    std::unique_ptr<Expression> value = nullptr;
+
+    // Handle optional value assignment
+    if (currentToken().type == TokenType::ASSIGN)
+    {
+        advance(); // Consume the assignment token
+        if (!isIntegerLiteralType(currentToken().type))
+        {
+            logError("Enum member value must be an integer, got: " + TokenTypeToLiteral(currentToken().type));
+            return nullptr; // Return nullptr without advancing
+        }
+        // Parse the expression for the integer value
+        value = parseExpression(Precedence::PREC_NONE);
+        if (!value)
+        {
+            logError("Failed to parse enum member value");
+            return nullptr;
+        }
+        // No need for manual advance here; parseExpression should handle token consumption
+    }
+
+    return std::make_unique<EnumMember>(name, std::move(value));
+}
+
 std::unique_ptr<Statement> Parser::parseEnumClassStatement()
 {
-    std::vector<std::unique_ptr<Statement>> enum_block;
+    std::vector<std::unique_ptr<EnumMember>> enum_block;
     std::optional<Token> int_token;
     Token enum_token = currentToken();
     advance(); // Consume the enum keyword token
+
+    // Check for class keyword
     Token class_token = currentToken();
     if (class_token.type != TokenType::CLASS)
     {
-        logError("Expected keyword class after keyword enum but got: " + currentToken().TokenLiteral);
+        logError("Expected keyword 'class' after 'enum', got: " + currentToken().TokenLiteral);
+        return nullptr;
     }
     advance(); // Consume the class keyword token
 
-    auto enum_ident = parseIdentifier(); // Parsing the enum class's name
+    // Parse the enum class's name
+    auto enum_ident = parseIdentifier();
+    if (!enum_ident)
+    {
+        logError("Expected identifier for enum class name, got: " + currentToken().TokenLiteral);
+        return nullptr;
+    }
 
-    // Incase we see the colon token
+    // Handle optional underlying type
     if (currentToken().type == TokenType::COLON)
     {
         advance(); // Consume the colon token
-        if (isIntegerType(currentToken().type))
+        if (!isIntegerType(currentToken().type))
         {
-            int_token = currentToken();
-            advance(); // Consume the integer data type token
-        }
-        else
-        {
-            logError("Invalid integer type on enum class statement");
+            logError("Expected integer type after colon in enum class, got: " + TokenTypeToLiteral(currentToken().type));
             return nullptr;
         }
+        int_token = currentToken();
+        advance(); // Consume the integer type token
     }
 
+    // Check for opening brace
     if (currentToken().type != TokenType::LBRACE)
     {
-        logError("Expected { but got: " + currentToken().TokenLiteral);
+        logError("Expected '{' for enum class body, got: " + currentToken().TokenLiteral);
+        return nullptr;
     }
     advance(); // Consume the { token
 
-    while (currentToken().type != TokenType::RBRACE)
+    // Parse enum members
+    while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
     {
-        auto enumClassStmt = parseStatement();
-        enum_block.push_back(std::move(enumClassStmt));
+        auto enumClassMember = parseEnumMember();
+        if (!enumClassMember)
+        {
+            // Skip to the next comma, closing brace, or end to recover
+            while (currentToken().type != TokenType::COMMA &&
+                   currentToken().type != TokenType::RBRACE &&
+                   currentToken().type != TokenType::END)
+            {
+                advance();
+            }
+        }
+        else
+        {
+            enum_block.push_back(std::move(enumClassMember));
+        }
+
+        // Handle comma or unexpected tokens
         if (currentToken().type == TokenType::COMMA)
         {
-            advance();
+            advance(); // Consume the comma
         }
-        if (currentToken().type == TokenType::SEMICOLON)
+        else if (currentToken().type == TokenType::SEMICOLON)
         {
-            logError("Please do not use semi colons inside enum class use :");
-            advance();
+            logError("Semicolons are not allowed inside enum class; use commas to separate members");
+            advance(); // Consume the semicolon to continue parsing
+        }
+        else if (currentToken().type != TokenType::RBRACE)
+        {
+            logError("Expected ',' or '}' after enum member, got: " + currentToken().TokenLiteral);
+            // Don't advance here; let the loop check the next token
         }
     }
 
+    // Check for closing brace
     if (currentToken().type != TokenType::RBRACE)
     {
-        logError("Expected } but got: " + currentToken().TokenLiteral);
+        logError("Expected '}' to close enum class, got: " + currentToken().TokenLiteral);
+        return nullptr;
     }
     advance(); // Consume the } token
 
-    if(currentToken().type==TokenType::SEMICOLON){
-        advance();//Consume the semicolon
+    // Handle optional semicolon
+    if (currentToken().type == TokenType::SEMICOLON)
+    {
+        advance(); // Consume the semicolon
     }
 
     return std::make_unique<EnumClassStatement>(enum_token, class_token, std::move(enum_ident), int_token, std::move(enum_block));
@@ -203,6 +270,24 @@ bool Parser::isIntegerType(TokenType type)
     case TokenType::ULONG_KEYWORD:
     case TokenType::EXTRA_KEYWORD:
     case TokenType::UEXTRA_KEYWORD:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool Parser::isIntegerLiteralType(TokenType type)
+{
+    switch (type)
+    {
+    case TokenType::SHORT:
+    case TokenType::USHORT:
+    case TokenType::INT:
+    case TokenType::UINT:
+    case TokenType::LONG:
+    case TokenType::ULONG:
+    case TokenType::EXTRA:
+    case TokenType::UEXTRA:
         return true;
     default:
         return false;
