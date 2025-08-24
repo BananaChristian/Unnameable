@@ -1626,7 +1626,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     if (currentToken().type == TokenType::COLON)
     {
         advance(); // Move past the colon signs
-        if (isBasicType(currentToken().type))
+        if (isBasicType(currentToken().type)||currentToken().type==TokenType::IDENTIFIER)
         {
             return_type = std::make_unique<ReturnTypeExpression>(currentToken());
             advance(); // Consume the data type literal
