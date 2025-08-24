@@ -1,0 +1,200 @@
+void Semantics::walkComponentStatement(Node *node)
+{
+    auto componentStmt = dynamic_cast<ComponentStatement *>(node);
+    if (!componentStmt)
+        return;
+
+    auto componentName = componentStmt->component_name->expression.TokenLiteral;
+    std::cout << "[SEMANTIC LOG] Analyzing component '" << componentName << "'\n";
+
+    // Check if this component name already exists
+    if (resolveSymbolInfo(componentName))
+    {
+        logSemanticErrors(
+            "Component name '" + componentName + "' is already defined",
+            componentStmt->statement.line,
+            componentStmt->statement.column);
+        return;
+    }
+
+    std::unordered_map<std::string, MemberInfo> members;
+
+    // Enter a new component scope
+    symbolTable.push_back({});
+    currentTypeStack.push_back({.type = ResolvedType{DataType::COMPONENT, componentName},
+                                .typeName = componentName,
+                                .hasInitConstructor = false,
+                                .members = members});
+
+    // Walk data/behavior imports
+    for (const auto &usedData : componentStmt->usedDataBlocks)
+    {
+        if (!usedData)
+        {
+            std::cout << "INVALID USED DATA NODE\n";
+            return;
+        }
+
+        auto useStmt = dynamic_cast<UseStatement *>(usedData.get());
+        if (!useStmt)
+        {
+            std::cout << "INVALID SHIT\n";
+            continue;
+        }
+
+        auto infixExpr = dynamic_cast<InfixExpression *>(useStmt->blockNameOrCall.get());
+        if (!infixExpr)
+        {
+            std::cout << "Unexpected use expression, not infix\n";
+            continue;
+        }
+
+        auto leftIdent = dynamic_cast<Identifier *>(infixExpr->left_operand.get());
+        if (!leftIdent)
+        {
+            std::cout << "Left side of infix is not identifier\n";
+            continue;
+        }
+
+        auto dataName = leftIdent->expression.TokenLiteral;
+
+        std::cout << "IMPORTED DATA NAME: " << dataName << "\n";
+        auto importedTypeIt = customTypesTable.find(dataName);
+        if (importedTypeIt != customTypesTable.end())
+        {
+            auto &importedMembers = importedTypeIt->second.members;
+
+            auto &currentScope = symbolTable.back();
+            for (auto &[name, info] : importedMembers)
+            {
+                // Add to component members blueprint
+                members[name] = info;
+
+                // Also add to local symbol table so assignments resolve
+                currentScope[name] = SymbolInfo{
+                    .type = info.type,
+                    .isNullable = info.isNullable,
+                    .isMutable = info.isMutable,
+                    .isConstant = info.isConstant,
+                    .isInitialized = info.isInitialised};
+            }
+        }
+    }
+
+    for (const auto &usedBehavior : componentStmt->usedBehaviorBlocks)
+        walkUseStatement(usedBehavior.get());
+
+    // Walk init constructor (if any)
+    if (componentStmt->initConstructor.has_value())
+        walkInitConstructor(componentStmt->initConstructor.value().get());
+
+    // Walk private data members
+    for (const auto &data : componentStmt->privateData)
+    {
+        auto letStmt = dynamic_cast<LetStatement *>(data.get());
+        auto assignStmt = dynamic_cast<AssignmentStatement *>(data.get());
+        if (letStmt)
+        {
+            walker(letStmt);
+            auto letSym = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
+            if (!letSym)
+            {
+                logSemanticErrors(
+                    "Failed to resolve private data '" + letStmt->ident_token.TokenLiteral + "'",
+                    letStmt->ident_token.line,
+                    letStmt->ident_token.column);
+                continue;
+            }
+
+            members[letStmt->ident_token.TokenLiteral] = {
+                .memberName = letStmt->ident_token.TokenLiteral,
+                .type = letSym->type,
+                .isNullable = letSym->isNullable,
+                .isMutable = letSym->isMutable,
+                .isConstant = letSym->isConstant,
+                .isInitialised = letSym->isInitialized};
+        }
+        if (assignStmt)
+        {
+            walker(assignStmt);
+            auto assignSym = resolveSymbolInfo(assignStmt->identifier->expression.TokenLiteral);
+            if (!assignSym)
+            {
+                logSemanticErrors(
+                    "Failed to resolve private data '" + assignStmt->identifier->expression.TokenLiteral + "'",
+                    assignStmt->identifier->expression.line,
+                    assignStmt->identifier->expression.column);
+                continue;
+            }
+
+            members[assignStmt->identifier->expression.TokenLiteral] = {
+                .memberName = assignStmt->identifier->expression.TokenLiteral,
+                .type = assignSym->type,
+                .isNullable = assignSym->isNullable,
+                .isMutable = assignSym->isMutable,
+                .isConstant = assignSym->isConstant,
+                .isInitialised = assignSym->isInitialized};
+        }
+    }
+
+    // Walk private methods
+    for (const auto &method : componentStmt->privateMethods)
+    {
+        auto funcStmt = dynamic_cast<FunctionStatement *>(method.get());
+        if (!funcStmt)
+            continue;
+
+        auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
+        auto funcDeclrExpr = dynamic_cast<FunctionDeclaration *>(funcStmt->funcExpr.get());
+
+        if (funcExpr)
+        {
+            walker(funcExpr);
+            auto metSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
+            if (metSym)
+            {
+                members[funcExpr->func_key.TokenLiteral] = {
+                    .memberName = funcExpr->func_key.TokenLiteral,
+                    .type = metSym->type,
+                    .isNullable = metSym->isNullable,
+                    .isMutable = metSym->isMutable};
+            }
+        }
+        else if (funcDeclrExpr)
+        {
+            walker(funcDeclrExpr);
+            auto metSym = resolveSymbolInfo(funcDeclrExpr->function_name->expression.TokenLiteral);
+            if (metSym)
+            {
+                members[funcDeclrExpr->function_name->expression.TokenLiteral] = {
+                    .memberName = funcDeclrExpr->function_name->expression.TokenLiteral,
+                    .type = metSym->type,
+                    .isNullable = metSym->isNullable,
+                    .isMutable = metSym->isMutable};
+            }
+        }
+    }
+
+    // Register component as a symbol
+    SymbolInfo componentSymbol = {
+        .type = DataType::COMPONENT,
+        .members = members};
+
+    CustomTypeInfo typeInfo = {
+        .typeName = componentName,
+        .type = ResolvedType{DataType::COMPONENT, componentName},
+        .members = members};
+
+    metaData[componentStmt] = componentSymbol;
+    customTypesTable[componentName] = typeInfo;
+
+    // I want to investigate what is inside the local scope
+    if (members.empty())
+    {
+        std::cout << "COMPONENT MEMBERS ARE EMPTY AT RUNTIME\n";
+    }
+
+    // Exit component scope
+    currentTypeStack.pop_back();
+    symbolTable.pop_back();
+}

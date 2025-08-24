@@ -261,8 +261,7 @@ void Semantics::walkEnumClassStatement(Node *node)
             .type = underLyingType,
             .isConstant = true,
             .isInitialised = true,
-            .constantValue = static_cast<int>(memberValue) 
-        };
+            .constantValue = static_cast<int>(memberValue)};
         members[memberName] = info;
 
         // Add member to local scope
@@ -882,42 +881,66 @@ void Semantics::walkComponentStatement(Node *node)
             std::cout << "INVALID SHIT\n";
             continue;
         }
-
-        auto infixExpr = dynamic_cast<InfixExpression *>(useStmt->blockNameOrCall.get());
-        if (!infixExpr)
+        // Mass import case
+        auto ident = dynamic_cast<Identifier *>(useStmt->blockNameOrCall.get());
+        if (ident)
         {
-            std::cout << "Unexpected use expression, not infix\n";
-            continue;
-        }
+            auto identName = ident->expression.TokenLiteral;
+            std::cout << "IMPORTING DATA FROM: " << identName << "\n";
 
-        auto leftIdent = dynamic_cast<Identifier *>(infixExpr->left_operand.get());
-        if (!leftIdent)
-        {
-            std::cout << "Left side of infix is not identifier\n";
-            continue;
-        }
-
-        auto dataName = leftIdent->expression.TokenLiteral;
-
-        std::cout << "IMPORTED DATA NAME: " << dataName << "\n";
-        auto importedTypeIt = customTypesTable.find(dataName);
-        if (importedTypeIt != customTypesTable.end())
-        {
-            auto &importedMembers = importedTypeIt->second.members;
-
+            auto typeIt = customTypesTable.find(identName);
+            if (typeIt == customTypesTable.end())
+            {
+                logSemanticErrors("Data block with name '" + identName + "' does not exist", ident->expression.line, ident->expression.column);
+                return;
+            }
+            auto &importedMembers = typeIt->second.members;
             auto &currentScope = symbolTable.back();
             for (auto &[name, info] : importedMembers)
             {
-                // Add to component members blueprint
                 members[name] = info;
-
-                // Also add to local symbol table so assignments resolve
                 currentScope[name] = SymbolInfo{
                     .type = info.type,
                     .isNullable = info.isNullable,
                     .isMutable = info.isMutable,
                     .isConstant = info.isConstant,
                     .isInitialized = info.isInitialised};
+            }
+        }
+
+        // Specific import case
+        auto infixExpr = dynamic_cast<InfixExpression *>(useStmt->blockNameOrCall.get());
+        if (infixExpr)
+        {
+            auto leftIdent = dynamic_cast<Identifier *>(infixExpr->left_operand.get());
+            if (!leftIdent)
+            {
+                std::cout << "Left side of infix is not identifier\n";
+                continue;
+            }
+
+            auto dataName = leftIdent->expression.TokenLiteral;
+
+            std::cout << "IMPORTED DATA NAME: " << dataName << "\n";
+            auto importedTypeIt = customTypesTable.find(dataName);
+            if (importedTypeIt != customTypesTable.end())
+            {
+                auto &importedMembers = importedTypeIt->second.members;
+
+                auto &currentScope = symbolTable.back();
+                for (auto &[name, info] : importedMembers)
+                {
+                    // Add to component members blueprint
+                    members[name] = info;
+
+                    // Also add to local symbol table so assignments resolve
+                    currentScope[name] = SymbolInfo{
+                        .type = info.type,
+                        .isNullable = info.isNullable,
+                        .isMutable = info.isMutable,
+                        .isConstant = info.isConstant,
+                        .isInitialized = info.isInitialised};
+                }
             }
         }
     }
