@@ -247,6 +247,8 @@ data phone_specs{
     mut string name;
     string color;
 }
+
+phone_specs::health=90u; #This will be allowed since all the members of the data block are mutable
 ```
 
 ## Enums
