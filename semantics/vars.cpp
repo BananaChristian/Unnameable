@@ -358,31 +358,59 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
     }
 
     ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
-    std::string genericName;
+    std::string typeName;
 
     if (letStmt->data_type_token.type == TokenType::IDENTIFIER)
     {
-        if (!currentFunction)
+        typeName = letStmt->data_type_token.TokenLiteral;
+
+        // First: check if it's a generic (only valid in function scope)
+        if (currentFunction &&
+            std::find(currentFunction->genericParams.begin(),
+                      currentFunction->genericParams.end(),
+                      typeName) != currentFunction->genericParams.end())
         {
-            logSemanticErrors("Generic type '" + letStmt->data_type_token.TokenLiteral + "' used outside function scope", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            if (letStmt->value)
+            {
+                logSemanticErrors("Cannot explicitly assign a value to a generic; consider using 'auto'",
+                                  letStmt->data_type_token.line, letStmt->data_type_token.column);
+                return;
+            }
+
+            declaredType = ResolvedType{DataType::GENERIC, typeName};
             return;
         }
-        if (letStmt->value)
+
+        // Second: check if it's a custom type
+        auto [parentName, childName] = splitScopedName(typeName);
+        auto parentIt = customTypesTable.find(parentName);
+        std::cout << "[DEBUG] customTypesTable contains:\n";
+        for (auto &p : customTypesTable)
         {
-            logSemanticErrors("Cannot explicitly assign a value to a generic consider using 'auto' ", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            std::cout << "   " << p.first << "\n";
+        }
+
+        if (parentIt != customTypesTable.end())
+        {
+            if (!childName.empty())
+            {
+                auto members = parentIt->second.members;
+                auto memberIt = members.find(childName);
+                declaredType = memberIt->second.type;
+            }
+            declaredType = parentIt->second.type;
+        }
+        else
+        {
+            // Neither generic nor custom
+            logSemanticErrors("Undefined type '" + typeName + "'",
+                              letStmt->data_type_token.line, letStmt->data_type_token.column);
             return;
         }
-        genericName = letStmt->data_type_token.TokenLiteral;
-        if (std::find(currentFunction->genericParams.begin(), currentFunction->genericParams.end(),
-                      genericName) == currentFunction->genericParams.end())
-        {
-            logSemanticErrors("Undefined generic type '" + genericName + "' in function parameter", node->token.line, node->token.column);
-            return;
-        }
-        declaredType = ResolvedType{DataType::GENERIC, "generic"};
     }
     else
     {
+        // Normal built-in type (int, float, etc.)
         declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
         if (declaredType.kind == DataType::UNKNOWN)
         {
@@ -396,7 +424,7 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
 
     SymbolInfo symbol = {
         .type = declaredType,
-        .genericName = genericName,
+        .genericName = typeName,
         .isNullable = isNullable,
         .isMutable = isMutable,
         .isConstant = isConstant,

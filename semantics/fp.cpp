@@ -276,20 +276,31 @@ void Semantics::walkFunctionExpression(Node *node)
     std::string returnGenericName;
     if (retType->expression.type == TokenType::IDENTIFIER)
     {
-        returnType = ResolvedType{DataType::GENERIC, returnGenericName};
         returnGenericName = retType->expression.TokenLiteral;
+
+        // Case 1: it's a declared generic
         if (std::find(funcInfo.genericParams.begin(), funcInfo.genericParams.end(),
-                      returnGenericName) == funcInfo.genericParams.end())
+                      returnGenericName) != funcInfo.genericParams.end())
         {
-            logSemanticErrors("Undefined generic type in return: " + returnGenericName, retType->expression.line, retType->expression.column);
-            symbolTable.pop_back();
-            return;
+            returnType.kind = DataType::GENERIC;
+        }
+        // Case 2: it's a custom type
+        else
+        {
+            auto it = customTypesTable.find(returnGenericName);
+            if (it == customTypesTable.end())
+            {
+                logSemanticErrors("Type '" + returnGenericName + "' does not exist",
+                                  retType->expression.line, retType->expression.column);
+                return;
+            }
+            returnType = it->second.type;
         }
     }
     else if (returnType.kind == DataType::UNKNOWN)
     {
-        logSemanticErrors("Invalid return type: " + retType->expression.TokenLiteral, retType->expression.line, retType->expression.column);
-        symbolTable.pop_back();
+        logSemanticErrors("Invalid return type '" + retType->expression.TokenLiteral + "'",
+                          retType->expression.line, retType->expression.column);
         return;
     }
 
@@ -432,18 +443,31 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
 
     if (retType->expression.type == TokenType::IDENTIFIER)
     {
-        returnType.kind = DataType::GENERIC;
         returnGenericName = retType->expression.TokenLiteral;
+
+        // Case 1: it's a declared generic
         if (std::find(funcInfo.genericParams.begin(), funcInfo.genericParams.end(),
-                      returnGenericName) == funcInfo.genericParams.end())
+                      returnGenericName) != funcInfo.genericParams.end())
         {
-            logSemanticErrors("Undefined generic type in return '" + returnGenericName + "'", retType->expression.line, retType->expression.column);
-            return;
+            returnType.kind = DataType::GENERIC;
+        }
+        // Case 2: it's a custom type
+        else
+        {
+            auto it = customTypesTable.find(returnGenericName);
+            if (it == customTypesTable.end())
+            {
+                logSemanticErrors("Type '" + returnGenericName + "' does not exist",
+                                  retType->expression.line, retType->expression.column);
+                return;
+            }
+            returnType = it->second.type;
         }
     }
     else if (returnType.kind == DataType::UNKNOWN)
     {
-        logSemanticErrors("Invalid return type '" + retType->expression.TokenLiteral + "'", retType->expression.line, retType->expression.column);
+        logSemanticErrors("Invalid return type '" + retType->expression.TokenLiteral + "'",
+                          retType->expression.line, retType->expression.column);
         return;
     }
 
