@@ -12,6 +12,8 @@ semantics.cpp
 
 language_design.md
 
+compile_commands.json
+
 test.unn
 
 TODO
