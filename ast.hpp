@@ -696,6 +696,18 @@ struct AssignmentStatement : Statement
     AssignmentStatement(std::unique_ptr<Expression> ident, std::unique_ptr<Expression> val) : Statement(ident->token), identifier(std::move(ident)), value(std::move(val)) {};
 };
 
+struct FieldAssignment : Statement
+{
+    Token assignment_token;
+    std::unique_ptr<Expression> value;
+    std::string toString() override
+    {
+        return "Field Assignment: (Variable: " + assignment_token.TokenLiteral + " Value: " + value->toString() + ")";
+    }
+
+    FieldAssignment(Token ident, std::unique_ptr<Expression> val) : Statement(ident), assignment_token(ident), value(std::move(val)) {};
+};
+
 // Signal statement node
 struct SignalStatement : Statement
 {

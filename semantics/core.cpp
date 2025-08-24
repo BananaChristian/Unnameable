@@ -58,6 +58,7 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for let statement and assignment statements
     walkerFunctionsMap[typeid(LetStatement)] = &Semantics::walkLetStatement;
     walkerFunctionsMap[typeid(AssignmentStatement)] = &Semantics::walkAssignStatement;
+    walkerFunctionsMap[typeid(FieldAssignment)] = &Semantics::walkFieldAssignmentStatement;
     walkerFunctionsMap[typeid(EachStatement)] = &Semantics::walkEachStatement;
 
     // Walker registration for control flow

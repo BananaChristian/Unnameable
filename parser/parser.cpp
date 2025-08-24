@@ -64,10 +64,11 @@ std::unique_ptr<Statement> Parser::parseStatement()
     if (current.type == TokenType::IDENTIFIER || current.type == TokenType::SELF)
     {
         Token peek_token = nextToken();
-        if (peek_token.type == TokenType::ASSIGN || peek_token.type == TokenType::FULLSTOP)
+
+        if (peek_token.type == TokenType::ASSIGN ||
+            peek_token.type == TokenType::FULLSTOP ||
+            peek_token.type == TokenType::SCOPE_OPERATOR)
         {
-            // If it's self.something, parseIdentifier will consume "self.field"
-            // and then parseAssignmentStatement will handle '='
             return parseAssignmentStatement();
         }
     }
@@ -102,10 +103,42 @@ std::unique_ptr<Statement> Parser::parseStatement()
     return nullptr;
 }
 
-// Parsing let statements with types
+// Parsing assignment statements
 std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 {
-    auto identifier = parseIdentifier();
+    std::unique_ptr<Expression> identifier;
+    Token ident_token;
+    bool isQualified = false;
+    if (currentToken().type == TokenType::IDENTIFIER)
+    {
+        ident_token = currentToken();
+        std::string fullIdentName = ident_token.TokenLiteral;
+
+        // Only build the identifier node if it's not qualified
+        if (nextToken().type != TokenType::SCOPE_OPERATOR)
+        {
+            // parseIdentifier() will consume the IDENTIFIER token itself
+            identifier = parseIdentifier();
+        }
+        else
+        {
+            // handle qualified identifier
+            advance(); // consume the first ident
+            while (currentToken().type == TokenType::SCOPE_OPERATOR)
+            {
+                isQualified = true;
+                advance(); // consume '::'
+                if (currentToken().type != TokenType::IDENTIFIER)
+                {
+                    logError("Expected an identifier after '::'");
+                    return nullptr;
+                }
+                fullIdentName += "::" + currentToken().TokenLiteral;
+                advance(); // consume ident
+            }
+            ident_token.TokenLiteral = fullIdentName;
+        }
+    }
 
     if (currentToken().type != TokenType::ASSIGN)
     {
@@ -115,6 +148,11 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     advance();
 
     std::unique_ptr<Expression> value = parseExpression(Precedence::PREC_NONE);
+
+    if (isQualified)
+    {
+        return std::make_unique<FieldAssignment>(ident_token, std::move(value));
+    }
 
     if (!isParam && currentToken().type == TokenType::SEMICOLON)
     {
@@ -128,7 +166,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     return std::make_unique<AssignmentStatement>(std::move(identifier), std::move(value));
 }
 
-// Parsing let statements that have data types
+// Parsing let statements
 std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 {
     Mutability mutability = Mutability::IMMUTABLE;
@@ -1166,8 +1204,8 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
 
     if (PrefixParseFnIt == PrefixParseFunctionsMap.end()) // Checking if the iterator has reached the end of the map
     {
-        //std::cerr << "[ERROR] No prefix parse function for token: " << currentToken().TokenLiteral << "\n";
-        logError("No prefix parse function for token '"+currentToken().TokenLiteral+"'");
+        // std::cerr << "[ERROR] No prefix parse function for token: " << currentToken().TokenLiteral << "\n";
+        logError("No prefix parse function for token '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
 

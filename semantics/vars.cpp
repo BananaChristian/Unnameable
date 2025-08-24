@@ -419,7 +419,7 @@ void Semantics::walkAssignStatement(Node *node)
     SymbolInfo *symbol = nullptr;
     std::string assignName;
 
-    // Case 1: self.field = ...
+    // Dealing with self.field
     if (auto fieldAccess = dynamic_cast<FieldAccessExpression *>(assignStmt->identifier.get()))
     {
         auto baseIdent = dynamic_cast<Identifier *>(fieldAccess->base.get());
@@ -454,7 +454,7 @@ void Semantics::walkAssignStatement(Node *node)
         std::cout << "[SEMANTIC LOG]: Analyzing assignment to field 'self."
                   << assignName << "'\n";
     }
-    // Case 2: plain identifier assignment
+    // Plain identifier assignment handling
     else if (auto ident = dynamic_cast<Identifier *>(assignStmt->identifier.get()))
     {
         assignName = ident->identifier.TokenLiteral;
@@ -526,4 +526,72 @@ void Semantics::walkAssignStatement(Node *node)
         .isMutable = symbol->isMutable,
         .isConstant = symbol->isConstant,
         .isInitialized = true};
+}
+
+void Semantics::walkFieldAssignmentStatement(Node *node)
+{
+    auto fieldAssignStmt = dynamic_cast<FieldAssignment *>(node);
+    if (!fieldAssignStmt)
+        return;
+
+    // Let us get the name of the field assignment it is something like ident::ident
+    auto fieldName = fieldAssignStmt->assignment_token.TokenLiteral;
+
+    auto line = fieldAssignStmt->statement.line;
+    auto column = fieldAssignStmt->statement.column;
+
+    // This is a special case so we are gonna have to resolve the names from the customTypes table
+    auto [parentName, childName] = splitScopedName(fieldName); // Splitting the name
+    auto parentIt = customTypesTable.find(parentName);
+    if (parentIt == customTypesTable.end())
+    {
+        logSemanticErrors("Type '" + parentName + "' does not exist", line, column);
+        return;
+    }
+    auto members = parentIt->second.members;
+    auto memberIt = members.find(childName);
+    if (memberIt == members.end())
+    {
+        logSemanticErrors("Variable '" + childName + "' does not exist in '" + parentName + "'", line, column);
+        return;
+    }
+
+    // Getting the info I need for metaData construction and some checks
+    ResolvedType type = memberIt->second.type;
+    bool isNullable = memberIt->second.isNullable;
+    bool isMutable = memberIt->second.isMutable;
+    bool isConstant = memberIt->second.isConstant;
+    bool isInitialized = memberIt->second.isInitialised;
+
+    // Mutability and constant checks
+    if (isConstant)
+    {
+        logSemanticErrors("Cannot reassign to constant variable '" + fieldName + "'", line, column);
+        return;
+    }
+
+    if (!isMutable && isInitialized)
+    {
+        logSemanticErrors("Cannot reassign to immutable variable '" + fieldName + "'", line, column);
+        return;
+    }
+
+    // We have to force initialisation since this is an assignment
+    isInitialized = true;
+
+    // Analysing the value if it exists
+    if (fieldAssignStmt->value)
+    {
+        walker(fieldAssignStmt->value.get());
+    }
+
+    SymbolInfo info = {
+        .type = type,
+        .isNullable = isNullable,
+        .isMutable = isMutable,
+        .isConstant = isConstant,
+        .isInitialized = isInitialized};
+
+    // Meta data construction
+    metaData[fieldAssignStmt] = info;
 }

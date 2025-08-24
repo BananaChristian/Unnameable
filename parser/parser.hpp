@@ -85,7 +85,7 @@ private:
     // General statement parsing function
     std::unique_ptr<Statement> parseStatement();
 
-    // Parsing let statements with type
+    // Parsing let statements with basic type
     std::unique_ptr<Statement> parseLetStatementWithType(bool isParam = false);
 
     // Parsing let statements with generic types
@@ -97,7 +97,7 @@ private:
     // Checker to see how to parse let statements those with custom or basic types
     std::unique_ptr<Statement> parseLetStatementCustomOrBasic();
 
-    // Parsing let statements without type
+    // Parsing assignment statements
     std::unique_ptr<Statement> parseAssignmentStatement(bool isParam = false);
 
     // A function to determine whether to parse let statements or assignment statements

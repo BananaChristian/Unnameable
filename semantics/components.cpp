@@ -306,10 +306,10 @@ void Semantics::walkDataStatement(Node *node)
     std::cout << "[SEMANTIC LOG] Analyzing data statement: "
               << dataBlockStmt->toString() << "\n";
 
-    // 1. Get block name
+    // Get block name
     std::string dataBlockName = dataBlockStmt->dataBlockName->expression.TokenLiteral;
 
-    // 2. Ensure name not already used
+    // Ensure name not already used
     if (resolveSymbolInfo(dataBlockName))
     {
         logSemanticErrors(
@@ -319,16 +319,16 @@ void Semantics::walkDataStatement(Node *node)
         return;
     }
 
-    // 3. Setup mutability
+    // Setup mutability
     bool isBlockMutable = (dataBlockStmt->mutability == Mutability::MUTABLE);
     bool isBlockConstant = (dataBlockStmt->mutability == Mutability::CONSTANT);
 
-    // 4. Create new local scope for analysis
+    // Create new local scope for analysis
     symbolTable.push_back({});
 
     std::unordered_map<std::string, MemberInfo> dataBlockMembers;
 
-    // 5. Analyze each field
+    // Analyze each field
     for (const auto &field : dataBlockStmt->fields)
     {
         auto letStmt = dynamic_cast<LetStatement *>(field.get());

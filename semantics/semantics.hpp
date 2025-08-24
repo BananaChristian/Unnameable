@@ -183,6 +183,7 @@ private:
     void walkLetStatement(Node *node);
     void walkFunctionParameterLetStatement(Node *node);
     void walkAssignStatement(Node *node);
+    void walkFieldAssignmentStatement(Node *node);
 
     // Walking the loop disruption statements
     void walkBreakStatement(Node *node);
