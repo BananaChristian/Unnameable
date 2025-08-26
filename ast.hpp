@@ -86,7 +86,7 @@ struct NewComponentExpression : Expression
         {
             args_str += arg->toString() + ", ";
         }
-        return "NewExpressionComponent: new " + component_name.TokenLiteral + "(" + args_str + ")";
+        return "NewComponentExpression: new " + component_name.TokenLiteral + "(" + args_str + ")";
     }
 
     NewComponentExpression(Token newTok, Token compName, std::vector<std::unique_ptr<Expression>> args)

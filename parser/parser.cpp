@@ -61,15 +61,56 @@ std::unique_ptr<Statement> Parser::parseStatement()
         return nullptr;
     }
 
-    if (current.type == TokenType::IDENTIFIER || current.type == TokenType::SELF)
+    // Case like self.health
+    if (current.type == TokenType::SELF)
     {
-        Token peek_token = nextToken();
-
-        if (peek_token.type == TokenType::ASSIGN ||
-            peek_token.type == TokenType::FULLSTOP ||
-            peek_token.type == TokenType::SCOPE_OPERATOR)
+        Token peek1 = peekToken(1);
+        std::cout << "FIRST PEEK " << TokenTypeToLiteral(peek1.type) << "\n";
+        Token peek3 = peekToken(3);
+        std::cout << "THIRD PEEK " << TokenTypeToLiteral(peek3.type) << "\n";
+        if (peek3.type == TokenType::ASSIGN)
         {
+            std::cout << "THIRD PEEK TRIGGERED " << TokenTypeToLiteral(peek3.type) << "\n";
             return parseAssignmentStatement();
+        }
+    }
+
+    if (current.type == TokenType::IDENTIFIER)
+    {
+        Token peek1 = peekToken(1);
+        std::cout << "IDENTIFIER FIRST PEEK: " << TokenTypeToLiteral(peek1.type) << "\n";
+
+        // --- Assignment case (x = ...)
+        if (peek1.type == TokenType::ASSIGN)
+        {
+            std::cout << "IDENTIFIER ASSIGNMENT DETECTED\n";
+            return parseAssignmentStatement();
+        }
+
+        // --- Qualified assignment (x.y = ...)
+        if ((peek1.type == TokenType::SCOPE_OPERATOR || peek1.type == TokenType::FULLSTOP))
+        {
+            Token peek2 = peekToken(2);
+            Token peek3 = peekToken(3);
+
+            if (peek3.type == TokenType::ASSIGN)
+            {
+                std::cout << "IDENTIFIER QUALIFIED ASSIGNMENT DETECTED\n";
+                return parseAssignmentStatement();
+            }
+
+            if (peek3.type == TokenType::IDENTIFIER)
+            {
+                std::cout << "IDENTIFIER 3RD PEEK TRIGGERED FIELD CUSTOM TYPE LET\n";
+                return parseLetStatementWithTypeWrapper();
+            }
+        }
+
+        // --- Type declarations (x y)
+        if (peek1.type == TokenType::IDENTIFIER)
+        {
+            std::cout << "IDENTIFIER TYPE DECL DETECTED\n";
+            return parseLetStatementWithTypeWrapper();
         }
     }
 
@@ -106,64 +147,80 @@ std::unique_ptr<Statement> Parser::parseStatement()
 // Parsing assignment statements
 std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 {
-    std::unique_ptr<Expression> identifier;
-    Token ident_token;
+    std::cout << "NOW INSIDE ASSIGNEMENT STATEMENT PARSER\n";
+    std::unique_ptr<Expression> lhs;
+    std::unique_ptr<Expression> value = nullptr;
+    Token identToken = currentToken();
     bool isQualified = false;
-    if (currentToken().type == TokenType::IDENTIFIER)
-    {
-        ident_token = currentToken();
-        std::string fullIdentName = ident_token.TokenLiteral;
 
-        // Only build the identifier node if it's not qualified
-        if (nextToken().type != TokenType::SCOPE_OPERATOR)
+    // Case 1: self.field = ...
+    if (identToken.type == TokenType::SELF)
+    {
+        std::cout << "SELF CASE TRIGGERED\n";
+        lhs = parseIdentifier(); // builds FieldAccessExpression
+    }
+    // Case 2 & 3: normal identifier (possibly qualified)
+    else if (identToken.type == TokenType::IDENTIFIER)
+    {
+        std::cout << "NORMAL CASE TRIGGERED\n";
+        lhs = parseIdentifier(); // builds normal identifier
+
+        // Handle qualified identifier (x::y or x.y)
+        if (currentToken().type == TokenType::SCOPE_OPERATOR || currentToken().type == TokenType::FULLSTOP)
         {
-            // parseIdentifier() will consume the IDENTIFIER token itself
-            identifier = parseIdentifier();
-        }
-        else
-        {
-            // handle qualified identifier
-            advance(); // consume the first ident
-            while (currentToken().type == TokenType::SCOPE_OPERATOR)
+            std::cout << "SPECIAL IDENTIFIER CASE TRIGGERED\n";
+            std::string fieldName = identToken.TokenLiteral;
+            std::string operatorLiteral =
+                (currentToken().type == TokenType::SCOPE_OPERATOR) ? "::" : ".";
+            fieldName += operatorLiteral;
+
+            advance(); // consume scope or dot operator
+
+            if (currentToken().type != TokenType::IDENTIFIER)
             {
-                isQualified = true;
-                advance(); // consume '::'
-                if (currentToken().type != TokenType::IDENTIFIER)
-                {
-                    logError("Expected an identifier after '::'");
-                    return nullptr;
-                }
-                fullIdentName += "::" + currentToken().TokenLiteral;
-                advance(); // consume ident
+                logError("Expected an identifier after '" + operatorLiteral + "' but got '" + currentToken().TokenLiteral + "'");
+                return nullptr;
             }
-            ident_token.TokenLiteral = fullIdentName;
+
+            fieldName += currentToken().TokenLiteral;
+            identToken.TokenLiteral = fieldName;
+            isQualified = true;
+
+            advance(); // consume second identifier
         }
     }
 
+    // Expect '=' before parsing the value
     if (currentToken().type != TokenType::ASSIGN)
     {
-        logError("Expected = after identifier but got: " + currentToken().TokenLiteral);
+        logError("Expected '=' after identifier in assignment");
         return nullptr;
     }
-    advance();
+    advance(); // consume '='
 
-    std::unique_ptr<Expression> value = parseExpression(Precedence::PREC_NONE);
+    // Parse right-hand side expression
+    value = parseExpression(Precedence::PREC_NONE);
 
+    // Handle qualified case
     if (isQualified)
     {
-        return std::make_unique<FieldAssignment>(ident_token, std::move(value));
+        return std::make_unique<FieldAssignment>(identToken, std::move(value));
     }
 
+    // Consume optional semicolon
     if (!isParam && currentToken().type == TokenType::SEMICOLON)
     {
         advance();
     }
-    else
+    else if (!isParam)
     {
-        logError("Expected a semi colon but got: " + currentToken().TokenLiteral);
+        logError("Expected ';' after assignment");
     }
 
-    return std::make_unique<AssignmentStatement>(std::move(identifier), std::move(value));
+    if (!lhs)
+        return nullptr;
+
+    return std::make_unique<AssignmentStatement>(std::move(lhs), std::move(value));
 }
 
 // Parsing let statements
@@ -1626,7 +1683,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     if (currentToken().type == TokenType::COLON)
     {
         advance(); // Move past the colon signs
-        if (isBasicType(currentToken().type)||currentToken().type==TokenType::IDENTIFIER)
+        if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
         {
             return_type = std::make_unique<ReturnTypeExpression>(currentToken());
             advance(); // Consume the data type literal
@@ -2010,6 +2067,16 @@ Token Parser::nextToken()
 {
     Token next = tokenInput[nextPos];
     return next;
+}
+
+Token Parser::peekToken(int peek)
+{
+    int steps = currentPos + peek;
+    if (steps >= tokenInput.size())
+    {
+        return Token{"", TokenType::END, 0, 0}; // EOF token
+    }
+    return tokenInput[steps];
 }
 
 // Error logging

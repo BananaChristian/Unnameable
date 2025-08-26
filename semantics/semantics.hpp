@@ -135,6 +135,8 @@ public:
     std::vector<bool> loopContext;
     std::vector<ScopeInfo> currentTypeStack;
 
+    std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
+
     SymbolInfo *resolveSymbolInfo(const std::string &name);
     ResolvedType resolvedDataType(Token token, Node *node);
 
@@ -164,6 +166,7 @@ private:
     void walkBehaviorStatement(Node *node);
     void walkUseStatement(Node *node);
     void walkComponentStatement(Node *node);
+    void walkNewComponentExpression(Node *node);
     void walkInitConstructor(Node *node);
     void walkFieldAccessExpression(Node *node);
     void walkEnumClassStatement(Node *node);

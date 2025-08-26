@@ -102,6 +102,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(BehaviorStatement)] = &Semantics::walkBehaviorStatement;
     walkerFunctionsMap[typeid(UseStatement)] = &Semantics::walkUseStatement;
     walkerFunctionsMap[typeid(ComponentStatement)] = &Semantics::walkComponentStatement;
+    walkerFunctionsMap[typeid(NewComponentExpression)] = &Semantics::walkNewComponentExpression;
     walkerFunctionsMap[typeid(FieldAccessExpression)] = &Semantics::walkFieldAccessExpression;
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
 }
@@ -176,6 +177,20 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         {
             return assignSymbol->type;
         }
+    }
+
+    if (auto newExpr = dynamic_cast<NewComponentExpression *>(node))
+    {
+        auto componentName = newExpr->component_name.TokenLiteral;
+        int line = newExpr->expression.line;
+        int column = newExpr->expression.column;
+        auto componentIt = customTypesTable.find(componentName);
+        if (componentIt == customTypesTable.end())
+        {
+            logSemanticErrors("Component '" + componentName + "' does not exist", line, column);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+        return componentIt->second.type;
     }
 
     if (auto infixExpr = dynamic_cast<InfixExpression *>(node))

@@ -271,6 +271,7 @@ private:
     //  Peeking functions
     Token currentToken();
     Token nextToken();
+    Token peekToken(int peek);
 
     // Wrapper functions
     std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();

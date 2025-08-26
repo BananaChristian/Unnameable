@@ -13,6 +13,8 @@ semantics.cpp
 language_design.md
 
 compile_commands.json
+test_allocator
+alloc_test.cpp
 
 test.unn
 

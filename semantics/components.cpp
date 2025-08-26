@@ -756,11 +756,16 @@ void Semantics::walkInitConstructor(Node *node)
     initInfo.returnType = ResolvedType{DataType::VOID, "void"};
     initInfo.isDefined = true;
 
+    auto currentComponentName = currentComponent.typeName;
+    std::vector<ResolvedType> initArgs;
     // Process constructor parameters
     for (const auto &arg : initStmt->constructor_args)
     {
         walkFunctionParameterLetStatement(arg.get());
+        // Storing the init args
+        initArgs.push_back(inferNodeDataType(arg.get()));
     }
+    componentInitArgs[currentComponentName] = initArgs;
 
     // Walk the constructor body
     if (initStmt->block)
@@ -1061,4 +1066,68 @@ void Semantics::walkComponentStatement(Node *node)
     // Exit component scope
     currentTypeStack.pop_back();
     symbolTable.pop_back();
+}
+
+void Semantics::walkNewComponentExpression(Node *node)
+{
+    auto newExpr = dynamic_cast<NewComponentExpression *>(node);
+    if (!newExpr)
+        return;
+    auto line = newExpr->expression.line;
+    auto column = newExpr->expression.column;
+    // Getting the component name we shall search in the component types table and not the scope
+    auto componentName = newExpr->component_name.TokenLiteral;
+    auto componentIt = customTypesTable.find(componentName);
+    if (componentIt == customTypesTable.end())
+    {
+        logSemanticErrors("Component '" + componentName + "' does not exist", line, column);
+        return;
+    }
+
+    // If the name exists we check the args and see if they match the same arguments in the init constructor of that component
+    for (const auto &arg : newExpr->arguments)
+    {
+        // Getting the type of the argument
+        ResolvedType argType = inferNodeDataType(arg.get());
+        auto it = componentInitArgs.find(componentName);
+        if (it != componentInitArgs.end())
+        {
+            const auto &expectedArgs = it->second;
+            const auto &givenArgs = newExpr->arguments;
+
+            // Checking the argument count
+            if (expectedArgs.size() != givenArgs.size())
+            {
+                logSemanticErrors("Constructor for component '" + componentName +
+                                      "' expects " + std::to_string(expectedArgs.size()) +
+                                      " arguments but got " + std::to_string(givenArgs.size()),
+                                  line, column);
+                return;
+            }
+
+            // Checking the type check pairwise
+            for (size_t i = 0; i < givenArgs.size(); ++i)
+            {
+                ResolvedType argType = inferNodeDataType(givenArgs[i].get());
+                ResolvedType expectedType = expectedArgs[i];
+
+                if (argType.kind != expectedType.kind)
+                {
+                    {
+                        logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
+                                              " of constructor for component '" + componentName +
+                                              "'. Expected '" + expectedType.resolvedName +
+                                              "' but got '" + argType.resolvedName + "'",
+                                          line, column);
+                    }
+                }
+            }
+        }
+    }
+
+    // Storing meta data
+    metaData[newExpr] = {
+        .type=componentIt->second.type,
+    };
+    
 }
