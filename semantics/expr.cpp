@@ -14,12 +14,13 @@ void Semantics::walkInfixExpression(Node *node)
     walker(right);
 
     ResolvedType infixType = inferNodeDataType(infixExpr);
-    metaData[infixExpr] = {
-        .type = infixType,
-        .isNullable = false,
-        .isMutable = false,
-        .isConstant = false,
-        .isInitialized = false};
+    auto info = std::make_shared<SymbolInfo>();
+    info->type = infixType;
+    info->isNullable = false;
+    info->isConstant = false;
+    info->isInitialized = false;
+
+    metaData[infixExpr] = info;
 }
 
 void Semantics::walkPrefixExpression(Node *node)
@@ -58,13 +59,13 @@ void Semantics::walkPrefixExpression(Node *node)
         }
     }
     walker(prefixExprOperand);
+    auto info = std::make_shared<SymbolInfo>();
+    info->type = prefixType;
+    info->isNullable = false;
+    info->isConstant = false;
+    info->isInitialized = false;
 
-    metaData[prefixExpr] = {
-        .type = prefixType,
-        .isNullable = false,
-        .isMutable = false,
-        .isConstant = false,
-        .isInitialized = false};
+    metaData[prefixExpr] = info;
 }
 
 void Semantics::walkPostfixExpression(Node *node)
@@ -103,12 +104,13 @@ void Semantics::walkPostfixExpression(Node *node)
         }
     }
     walker(postfixOperand);
+    auto info = std::make_shared<SymbolInfo>();
+    info->type = postfixType;
+    info->isNullable = false;
+    info->isMutable = false;
+    info->isInitialized = false;
 
-    metaData[postfixExpr] = {
-        .type = postfixType,
-        .isNullable = false,
-        .isMutable = false,
-        .isInitialized = false};
+    metaData[postfixExpr] = info;
 }
 
 void Semantics::walkExpressionStatement(Node *node)
@@ -138,12 +140,14 @@ void Semantics::walkErrorExpression(Node *node)
     {
         logSemanticErrors("Invalid error message type '" + msgType.resolvedName + "'", errExpr->error_token.line, errExpr->error_token.column);
     }
-    metaData[errExpr] = {
-        .type = errType,
-        .isNullable = false,
-        .isMutable = false,
-        .isConstant = false,
-        .isInitialized = false};
+    auto info = std::make_shared<SymbolInfo>();
+
+    info->type = errType;
+    info->isNullable = false;
+    info->isMutable = false;
+    info->isConstant = false;
+    info->isInitialized = false;
+    metaData[errExpr] = info;
 }
 
 void Semantics::walkErrorStatement(Node *node)

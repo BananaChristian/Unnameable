@@ -41,8 +41,9 @@ private:
     llvm::LLVMContext context;
     llvm::IRBuilder<> builder;
     std::unique_ptr<llvm::Module> module;
-    std::map<std::string, llvm::Value *> namedValues;
     Semantics &semantics;
+    void storeLLVMValue(const std::string &name, llvm::Value *value);
+
 
     // GENERATOR FUNCTIONS FOR STATEMENTS
     void generateLetStatement(Node *node);
@@ -53,7 +54,9 @@ private:
     void generateIfStatement(Node *node);
     void generateBreakStatement(Node *node);
     void generateContinueStatement(Node *node);
+    void generateReturnStatement(Node *node);
     void generateBlockStatement(Node *node);
+    void generateFunctionStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);
@@ -79,6 +82,9 @@ private:
     llvm::Value *generateNullLiteral(NullLiteral *nullLit, DataType type);
     llvm::Value *generateIdentifierExpression(Node *node);
 
+    llvm::Value *generateBlockExpression(Node *node);
+    llvm::Value *generateFunctionExpression(Node *node);
+
     // HELPER FUNCTIONS
     void registerGeneratorFunctions();
     void registerExpressionGeneratorFunctions();
@@ -90,6 +96,8 @@ private:
     uint32_t decodeChar32Literal(const std::string &literal);
     bool isIntegerType(DataType dt);
     bool isSignedInteger(DataType dt);
+    bool inFunction();
+    bool currentBlockIsTerminated();
     unsigned getIntegerBitWidth(DataType dt);
 };
 

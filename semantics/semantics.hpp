@@ -6,6 +6,7 @@
 #include <string>
 #include <typeindex>
 #include <cstdint>
+#include <llvm/IR/Value.h>
 
 // Type system tracker
 enum class DataType
@@ -119,6 +120,7 @@ struct SymbolInfo
     bool isDefined = false;
 
     std::unordered_map<std::string, MemberInfo> members;
+    llvm::Value *llvmValue = nullptr;
 };
 
 class Semantics
@@ -128,17 +130,20 @@ public:
     void walker(Node *node);
     using walkerFunctions = void (Semantics::*)(Node *);
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
-    std::vector<std::unordered_map<std::string, SymbolInfo>> symbolTable;
+    std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>> symbolTable;
     std::unordered_map<std::string, CustomTypeInfo> customTypesTable;
-    std::unordered_map<Node *, SymbolInfo> metaData;
-    std::optional<SymbolInfo> currentFunction;
+    std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
+    std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
     std::vector<bool> loopContext;
     std::vector<ScopeInfo> currentTypeStack;
 
     std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
 
-    SymbolInfo *resolveSymbolInfo(const std::string &name);
+    // Public helpers
+    std::shared_ptr<SymbolInfo> resolveSymbolInfo(const std::string &name);
     ResolvedType resolvedDataType(Token token, Node *node);
+    bool hasReturnPath(Node *node);
+    ResolvedType inferNodeDataType(Node *node);
 
 private:
     // Walking the data type literals
@@ -218,7 +223,6 @@ private:
 
     // HELPER FUNCTIONS
     void registerWalkerFunctions();
-    ResolvedType inferNodeDataType(Node *node);
     ResolvedType inferInfixExpressionType(Node *node);
     ResolvedType inferPrefixExpressionType(Node *node);
     ResolvedType inferPostfixExpressionType(Node *node);
@@ -229,7 +233,6 @@ private:
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
-    bool hasReturnPath(Node *node);
     bool isInteger(const ResolvedType &t);
     bool isNullableInteger(const ResolvedType &t);
     bool isFloat(const ResolvedType &t);

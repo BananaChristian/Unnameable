@@ -41,6 +41,10 @@ llvm::Value *IRGenerator::generateExpression(Node *node)
 // GENERATOR FUNCTIONS
 void IRGenerator::generateStatement(Node *node)
 {
+    if (currentBlockIsTerminated())
+    {
+        return;
+    }
     auto generatorIt = generatorFunctionsMap.find(typeid(*node));
     if (generatorIt == generatorFunctionsMap.end())
     {
@@ -53,41 +57,48 @@ void IRGenerator::generateStatement(Node *node)
 // Let statement IR generator function
 void IRGenerator::generateLetStatement(Node *node)
 {
+    std::cout << "IR GEN FOR let statements" << node->toString() << "\n";
     auto letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
     {
         throw std::runtime_error("Invalid let Statement node");
     }
 
-    SymbolInfo *symbol = semantics.resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
-    if (!symbol)
+    const std::string &letName = letStmt->ident_token.TokenLiteral;
+    auto letIt = semantics.metaData.find(letStmt);
+    if (letIt == semantics.metaData.end())
     {
-        throw std::runtime_error("Symbol not found: " + letStmt->ident_token.TokenLiteral);
+        throw std::runtime_error("No let statement for variable '" + letName + "'");
     }
+    auto letType = letIt->second->type.kind;
 
-    llvm::Type *varType = getLLVMType(symbol->type.kind);
+    llvm::Type *varType = getLLVMType(letType);
     if (!varType)
     {
-        throw std::runtime_error("Invalid type for variable: " + letStmt->ident_token.TokenLiteral);
+        throw std::runtime_error("Invalid type for variable: " + letName);
     }
-    llvm::AllocaInst *alloca = builder.CreateAlloca(varType, nullptr, letStmt->ident_token.TokenLiteral);
-    namedValues[letStmt->ident_token.TokenLiteral] = alloca;
-    if (letStmt->value)
+
+    if (inFunction())
     {
-        llvm::Value *initValue = nullptr;
-        if (auto nullLit = dynamic_cast<NullLiteral *>(letStmt->value.get()))
+        // allocate in function entry (recommended)
+        llvm::Function *fn = builder.GetInsertBlock()->getParent();
+        llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
+        auto *alloca = entryBuilder.CreateAlloca(varType, nullptr, letName);
+        letIt->second->llvmValue = alloca;
+
+        if (letStmt->value)
         {
-            initValue = generateNullLiteral(nullLit, symbol->type.kind);
+            llvm::Value *init = generateExpression(letStmt->value.get());
+            builder.CreateStore(init, alloca);
         }
-        else
-        {
-            initValue = generateExpression(letStmt->value.get());
-        }
-        if (!initValue)
-        {
-            throw std::runtime_error("Failed to generate IR for initializer of: " + letStmt->ident_token.TokenLiteral);
-        }
-        builder.CreateStore(initValue, alloca);
+    }
+    else
+    {
+        llvm::Constant *initConst = llvm::Constant::getNullValue(varType);
+        auto *gv = new llvm::GlobalVariable(
+            *module, varType, false,
+            llvm::GlobalValue::ExternalLinkage, initConst, letName);
+        letIt->second->llvmValue = gv;
     }
 }
 
@@ -315,7 +326,7 @@ void IRGenerator::generateForStatement(Node *node)
 
     // Verify condition type in metadata
     auto it = semantics.metaData.find(forStmt->condition.get());
-    if (it == semantics.metaData.end() || it->second.type.kind != DataType::BOOLEAN)
+    if (it == semantics.metaData.end() || it->second->type.kind != DataType::BOOLEAN)
     {
         std::cerr << "[IR ERROR] For loop condition must evaluate to boolean.\n";
         return;
@@ -420,16 +431,16 @@ void IRGenerator::generateAssignmentStatement(Node *node)
     if (!assignStmt)
         return;
 
-    SymbolInfo *symbol = semantics.resolveSymbolInfo(assignStmt->identifier->expression.TokenLiteral);
-    if (!symbol)
+    const std::string &name = assignStmt->identifier->expression.TokenLiteral;
+    auto assignIt = semantics.metaData.find(assignStmt);
+    if (assignIt == semantics.metaData.end())
     {
-        throw std::runtime_error("Symbol '" + assignStmt->identifier->expression.TokenLiteral + "' not found");
+        throw std::runtime_error("Could not find variable '" + name + "'");
     }
-
-    llvm::Value *ptr = namedValues[assignStmt->identifier->expression.TokenLiteral];
+    llvm::Value *ptr = assignIt->second->llvmValue;
     if (!ptr)
     {
-        throw std::runtime_error("No memory allocated for variable: " + assignStmt->identifier->expression.TokenLiteral);
+        throw std::runtime_error("No memory allocated for variable '" + name + "'");
     }
 
     llvm::Value *initValue = generateExpression(assignStmt->value.get());
@@ -462,6 +473,55 @@ void IRGenerator::generateBlockStatement(Node *node)
     }
 }
 
+void IRGenerator::generateFunctionStatement(Node *node)
+{
+    auto fnStmt = dynamic_cast<FunctionStatement *>(node);
+    if (!fnStmt)
+        return;
+    // Extract the function expression from the statement
+    auto fnExpr = fnStmt->funcExpr.get();
+    // For now lemme handle raw function expressions
+    llvm::Value *ret = generateFunctionExpression(fnExpr);
+}
+
+void IRGenerator::generateReturnStatement(Node *node)
+{
+    auto retStmt = dynamic_cast<ReturnStatement *>(node);
+    if (!retStmt)
+        return;
+
+    llvm::Value *retVal = nullptr;
+
+    // Generating IR for the return value if it exists
+    if (retStmt->return_value)
+    {
+        retVal = generateExpression(retStmt->return_value.get());
+    }
+
+    llvm::Function *currentFunction = builder.GetInsertBlock()->getParent();
+    if (retVal)
+    {
+        // Ensure the return type matches
+        if (retVal->getType() != currentFunction->getReturnType())
+        {
+            llvm::errs() << "Return type mismatch\n";
+        }
+        builder.CreateRet(retVal);
+    }
+    else
+    {
+        // For void functions
+        if (currentFunction->getReturnType()->isVoidTy())
+            builder.CreateRetVoid();
+        else
+            llvm::errs() << "Return statement missing value for non-void function\n";
+    }
+
+    llvm::BasicBlock *unreachableBB = llvm::BasicBlock::Create(
+        context, "unreachable", currentFunction);
+    builder.SetInsertPoint(unreachableBB);
+}
+
 // EXPRESSION GENERATOR
 //  Expression generator functions
 llvm::Value *IRGenerator::generateInfixExpression(Node *node)
@@ -479,9 +539,9 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Meta data missing for infix node");
 
-    ResolvedType resultType = it->second.type;
-    DataType leftType = semantics.metaData[infix->left_operand.get()].type.kind;
-    DataType rightType = semantics.metaData[infix->right_operand.get()].type.kind;
+    ResolvedType resultType = it->second->type;
+    DataType leftType = semantics.metaData[infix->left_operand.get()]->type.kind;
+    DataType rightType = semantics.metaData[infix->right_operand.get()]->type.kind;
 
     // Helper lambda for integer type promotion
     auto promoteInt = [&](llvm::Value *val, DataType fromType, DataType toType) -> llvm::Value *
@@ -675,11 +735,14 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
     if (!operand)
         throw std::runtime_error("Failed to generate IR for prefix operand");
 
-    auto it = semantics.metaData.find(node);
-    if (it == semantics.metaData.end())
-        throw std::runtime_error("Meta data missing for prefix node");
+    const std::string &name = prefix->operand->expression.TokenLiteral;
+    auto prefixIt = semantics.metaData.find(prefix);
+    if (prefixIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Unknown variable '" + name + "' in prefix");
+    }
 
-    ResolvedType resultType = it->second.type;
+    ResolvedType resultType = prefixIt->second->type;
 
     // Helper to check if integer type
     auto isIntType = [&](DataType dt)
@@ -723,11 +786,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
         if (!ident)
             throw std::runtime_error("Prefix ++/-- must be used on a variable");
 
-        auto varIt = namedValues.find(ident->identifier.TokenLiteral);
-        if (varIt == namedValues.end())
-            throw std::runtime_error("Undefined variable in ++/--: " + ident->identifier.TokenLiteral);
-
-        llvm::Value *varPtr = varIt->second;
+        llvm::Value *varPtr = prefixIt->second->llvmValue;
         if (!varPtr)
             throw std::runtime_error("Null variable pointer for: " + ident->identifier.TokenLiteral);
 
@@ -782,20 +841,19 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
     auto identifier = dynamic_cast<Identifier *>(postfix->operand.get());
     if (!identifier)
         throw std::runtime_error("Postfix operand must be a variable");
-
-    auto varIt = namedValues.find(identifier->identifier.TokenLiteral);
-    if (varIt == namedValues.end())
-        throw std::runtime_error("Unknown variable name in postfix expression: " + identifier->identifier.TokenLiteral);
-
-    llvm::Value *varPtr = varIt->second;
+    auto identName = identifier->identifier.TokenLiteral;
+    auto identIt = semantics.metaData.find(identifier);
+    llvm::Value *varPtr = identIt->second->llvmValue;
     if (!varPtr)
         throw std::runtime_error("Null variable pointer for: " + identifier->identifier.TokenLiteral);
 
-    auto it = semantics.metaData.find(node);
-    if (it == semantics.metaData.end())
-        throw std::runtime_error("Meta data missing for postfix node");
+    auto postfixIt = semantics.metaData.find(postfix);
+    if (postfixIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Variable '" + identName + "' does not exist");
+    }
 
-    ResolvedType resultType = it->second.type;
+    ResolvedType resultType = postfixIt->second->type;
 
     // Helper to check if integer type
     auto isIntType = [&](DataType dt)
@@ -871,7 +929,7 @@ llvm::Value *IRGenerator::generateStringLiteral(Node *node)
     {
         throw std::runtime_error("String literal not found in metadata");
     }
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
 
     if (dt != DataType::STRING && dt != DataType::NULLABLE_STR)
     {
@@ -894,7 +952,7 @@ llvm::Value *IRGenerator::generateCharLiteral(Node *node)
     {
         throw std::runtime_error("Char literal not found in metadata");
     }
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::CHAR && dt != DataType::NULLABLE_CHAR)
     {
         throw std::runtime_error("Type error: Expected CHAR for CharLiteral");
@@ -917,7 +975,7 @@ llvm::Value *IRGenerator::generateChar16Literal(Node *node)
     {
         throw std::runtime_error("Char16 literal not found in metadata");
     }
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::CHAR16 && dt != DataType::NULLABLE_CHAR16)
     {
         throw std::runtime_error("Type error: Expected CHAR16 for Char16Literal");
@@ -939,7 +997,7 @@ llvm::Value *IRGenerator::generateChar32Literal(Node *node)
     {
         throw std::runtime_error("Char16 literal not found in metadata");
     }
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::CHAR16 && dt != DataType::NULLABLE_CHAR16)
     {
         throw std::runtime_error("Type error: Expected CHAR32 for Char16Literal");
@@ -961,7 +1019,7 @@ llvm::Value *IRGenerator::generateBooleanLiteral(Node *node)
     {
         throw std::runtime_error("Boolean literal not found in metadata");
     }
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::BOOLEAN && dt != DataType::NULLABLE_BOOLEAN)
     {
         throw std::runtime_error("Type error: Expected BOOLEAN for BooleanLiteral");
@@ -982,7 +1040,7 @@ llvm::Value *IRGenerator::generateShortLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Short literal not found in metadata");
 
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::SHORT_INT && dt != DataType::NULLABLE_SHORT_INT)
         throw std::runtime_error("Type error: Expected SHORT_INT or NULLABLE_SHORT_INT");
 
@@ -1000,7 +1058,7 @@ llvm::Value *IRGenerator::generateUnsignedShortLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("UShort literal not found in metadata");
 
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::USHORT_INT && dt != DataType::NULLABLE_USHORT_INT)
         throw std::runtime_error("Type error: Expected USHORT_INT or NULLABLE_USHORT_INT");
 
@@ -1020,7 +1078,7 @@ llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
     {
         throw std::runtime_error("Integer literal not found in metadata");
     }
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::INTEGER && dt != DataType::NULLABLE_INT)
     {
         throw std::runtime_error("Type error: Expected INTEGER or NULLABLE_INT for IntegerLiteral");
@@ -1039,7 +1097,7 @@ llvm::Value *IRGenerator::generateUnsignedIntegerLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("UInt literal not found in metadata");
 
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::UINTEGER && dt != DataType::NULLABLE_UINT)
         throw std::runtime_error("Type error: Expected UINTEGER or NULLABLE_UINT");
 
@@ -1057,7 +1115,7 @@ llvm::Value *IRGenerator::generateLongLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Long literal not found in metadata");
 
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::LONG_INT && dt != DataType::NULLABLE_LONG_INT)
         throw std::runtime_error("Type error: Expected LONG_INT or NULLABLE_LONG_INT");
 
@@ -1075,7 +1133,7 @@ llvm::Value *IRGenerator::generateUnsignedLongLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("ULong literal not found in metadata");
 
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::ULONG_INT && dt != DataType::NULLABLE_ULONG_INT)
         throw std::runtime_error("Type error: Expected ULONG_INT or NULLABLE_ULONG_INT");
 
@@ -1093,7 +1151,7 @@ llvm::Value *IRGenerator::generateExtraLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("Extra literal not found in metadata");
 
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::EXTRA_INT && dt != DataType::NULLABLE_EXTRA_INT)
         throw std::runtime_error("Type error: Expected EXTRA_INT or NULLABLE_EXTRA_INT");
 
@@ -1112,7 +1170,7 @@ llvm::Value *IRGenerator::generateUnsignedExtraLiteral(Node *node)
     if (it == semantics.metaData.end())
         throw std::runtime_error("UExtra literal not found in metadata");
 
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::UEXTRA_INT && dt != DataType::NULLABLE_UEXTRA_INT)
         throw std::runtime_error("Type error: Expected UEXTRA_INT or NULLABLE_UEXTRA_INT");
 
@@ -1132,7 +1190,7 @@ llvm::Value *IRGenerator::generateFloatLiteral(Node *node)
     {
         throw std::runtime_error("Float literal not found in metadata");
     }
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::FLOAT && dt != DataType::NULLABLE_FLT)
     {
         throw std::runtime_error("Type error: Expected Float or NULLABLE_FLT for FloatLiteral ");
@@ -1153,7 +1211,7 @@ llvm::Value *IRGenerator::generateDoubleLiteral(Node *node)
     {
         throw std::runtime_error("Double literal not found in metadata");
     }
-    DataType dt = it->second.type.kind;
+    DataType dt = it->second->type.kind;
     if (dt != DataType::DOUBLE && dt != DataType::NULLABLE_DOUBLE)
     {
         throw std::runtime_error("Type error: Expected DOUBLE for DoubleLiteral");
@@ -1225,19 +1283,129 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     {
         throw std::runtime_error("Invalid identifier expression");
     }
-    SymbolInfo *symbol = semantics.resolveSymbolInfo(identExpr->identifier.TokenLiteral); // Looking if the identifier name already exists
-    if (!symbol)
+
+    const std::string &identName = identExpr->identifier.TokenLiteral;
+    auto identIt = semantics.metaData.find(identExpr);
+    if (identIt == semantics.metaData.end())
     {
-        throw std::runtime_error("Use of undeclared variable name '" + identExpr->identifier.TokenLiteral + "'");
+        throw std::runtime_error("Unidentified identifier '" + identName + "'");
     }
+    llvm::Type *ty = getLLVMType(identIt->second->type.kind);
     // Checking if the identifier has a value
-    auto it = namedValues.find(identExpr->identifier.TokenLiteral);
-    if (it == namedValues.end())
+    llvm::Value *variablePtr = identIt->second->llvmValue;
+
+    return builder.CreateLoad(getLLVMType(identIt->second->type.kind), variablePtr, identExpr->identifier.TokenLiteral);
+}
+
+llvm::Value *IRGenerator::generateBlockExpression(Node *node)
+{
+    auto blockExpr = dynamic_cast<BlockExpression *>(node);
+    if (!blockExpr)
+        throw std::runtime_error("Invalid block expression");
+
+    llvm::Function *currentFunction = builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *afterBB = nullptr;
+
+    for (const auto &stmts : blockExpr->statements)
     {
-        throw std::runtime_error("Variable '" + identExpr->identifier.TokenLiteral + "' has no storage (missing alloca?)");
+        if (currentBlockIsTerminated())
+        {
+            std::cout << "SKIPPING statement - block terminated\n";
+            break;
+        }
+        std::cout << "GENERATING statement...\n";
+        generateStatement(stmts.get());
     }
-    llvm::Value *variablePtr = it->second;
-    return builder.CreateLoad(getLLVMType(symbol->type.kind), variablePtr, identExpr->identifier.TokenLiteral);
+
+    if (semantics.hasReturnPath(blockExpr))
+    {
+        std::cout << "HAS RETURN PATH\n";
+        if (blockExpr->finalexpr.has_value())
+        {
+            std::cout << "GENERATING final expression...\n";
+            llvm::Value *retVal = generateExpression(blockExpr->finalexpr.value().get());
+
+            // Only generate return if current block isn't already terminated
+            if (!builder.GetInsertBlock()->getTerminator())
+            {
+                builder.CreateRet(retVal);
+
+                // Create continuation block for any potential fall-through
+                afterBB = llvm::BasicBlock::Create(context, "after_return", currentFunction);
+                builder.SetInsertPoint(afterBB);
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+// Generator function for function expression
+llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
+{
+    auto fnExpr = dynamic_cast<FunctionExpression *>(node);
+    if (!fnExpr)
+        throw std::runtime_error("Invalid function expression");
+
+    std::cout << "=== FUNCTION EXPRESSION START ===\n";
+
+    // Getting the function signature
+    auto fnName = fnExpr->func_key.TokenLiteral;
+
+    // Building the function type
+    std::vector<llvm::Type *> llvmParamTypes;
+
+    for (auto &p : fnExpr->call)
+    {
+        // Getting the data type to push it into getLLVMType
+        auto it = semantics.metaData.find(p.get());
+        if (it == semantics.metaData.end())
+        {
+            throw std::runtime_error("Missing parameter meta data");
+        }
+        llvmParamTypes.push_back(getLLVMType(it->second->type.kind));
+    }
+
+    // Getting the function return type
+    auto fnRetType = fnExpr->return_type.get();
+
+    auto retType = semantics.inferNodeDataType(fnRetType);
+    llvm::FunctionType *funcType = llvm::FunctionType::get(getLLVMType(retType.kind), llvmParamTypes, false);
+
+    // Creating the function in module
+    llvm::Function *fn = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, fnName, module.get());
+
+    // Creating the entry block
+    llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
+    builder.SetInsertPoint(entry);
+
+    // Binding parameters to namedValues
+    auto argIter = fn->arg_begin();
+    for (auto &p : fnExpr->call)
+    {
+        // Getting the statement data type
+        auto pIt = semantics.metaData.find(p.get());
+        if (pIt == semantics.metaData.end())
+        {
+            throw std::runtime_error("Failed to find paremeter meta data");
+        }
+        llvm::AllocaInst *alloca = builder.CreateAlloca(getLLVMType(pIt->second->type.kind), nullptr, p->statement.TokenLiteral);
+        builder.CreateStore(&(*argIter), alloca);
+        auto paramSymbol = semantics.resolveSymbolInfo(p->statement.TokenLiteral);
+        if (paramSymbol)
+        {
+            paramSymbol->llvmValue = alloca;
+        }
+        argIter++;
+    }
+
+    // This will handle whatever is inside the block including the return value
+    std::cout << "CALLING generateExpression on block...\n";
+    generateExpression(fnExpr->block.get());
+    std::cout << "RETURNED from generateExpression\n";
+
+    std::cout << "=== FUNCTION EXPRESSION END ===\n";
+    return fn;
 }
 
 // HELPER FUNCTIONS
@@ -1327,6 +1495,8 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(BreakStatement)] = &IRGenerator::generateBreakStatement;
     generatorFunctionsMap[typeid(ContinueStatement)] = &IRGenerator::generateContinueStatement;
     generatorFunctionsMap[typeid(BlockStatement)] = &IRGenerator::generateBlockStatement;
+    generatorFunctionsMap[typeid(FunctionStatement)] = &IRGenerator::generateFunctionStatement;
+    generatorFunctionsMap[typeid(ReturnStatement)] = &IRGenerator::generateReturnStatement;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions()
@@ -1350,6 +1520,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(FloatLiteral)] = &IRGenerator::generateFloatLiteral;
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
+    expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
 }
 
 char IRGenerator::decodeCharLiteral(const std::string &literal)
@@ -1535,7 +1706,27 @@ unsigned IRGenerator::getIntegerBitWidth(DataType dt)
     }
 }
 
+bool IRGenerator::inFunction()
+{
+    return builder.GetInsertBlock() != nullptr;
+}
+
 void IRGenerator::dumpIR()
 {
     module->print(llvm::outs(), nullptr);
+}
+
+bool IRGenerator::currentBlockIsTerminated()
+{
+    llvm::BasicBlock *bb = builder.GetInsertBlock();
+    return bb && bb->getTerminator();
+}
+
+void IRGenerator::storeLLVMValue(const std::string &name, llvm::Value *value)
+{
+
+    if (auto symbol = semantics.resolveSymbolInfo(name))
+    {
+        symbol->llvmValue = value;
+    }
 }

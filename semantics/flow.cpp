@@ -120,7 +120,7 @@ void Semantics::walkSwitchStatement(Node *node)
     auto switchExpr = switchStmt->switch_expr.get();
     auto switchType = inferNodeDataType(switchExpr);
     auto switchExprName = switchStmt->switch_expr->expression.TokenLiteral;
-    SymbolInfo *symbolInfo = resolveSymbolInfo(switchExprName);
+    auto symbolInfo = resolveSymbolInfo(switchExprName);
     bool isConstant = symbolInfo->isConstant;
     bool isMutable = symbolInfo->isMutable;
     bool isNullable = symbolInfo->isNullable;
@@ -150,12 +150,14 @@ void Semantics::walkSwitchStatement(Node *node)
         walker(content.get());
     }
 
-    metaData[switchStmt] = {
-        .type = switchType,
-        .isNullable = isNullable,
-        .isMutable = isMutable,
-        .isConstant = isConstant,
-        .isInitialized = isInitialized};
+    auto info = std::make_shared<SymbolInfo>();
+    info->type = switchType;
+    info->isNullable = isNullable;
+    info->isMutable = isMutable;
+    info->isConstant = isConstant;
+    info->isInitialized = isInitialized;
+
+    metaData[switchStmt] = info;
 }
 
 void Semantics::walkForStatement(Node *node)

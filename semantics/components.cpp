@@ -65,7 +65,8 @@ void Semantics::walkEnumClassStatement(Node *node)
     // Push temporary scope
     symbolTable.push_back({});
     std::unordered_map<std::string, MemberInfo> members;
-    std::int64_t currentValue = 0; // Use int64_t;
+    std::int64_t currentValue = 0;
+    auto enumInfo = std::make_shared<SymbolInfo>();
 
     for (const auto &enumMember : enumStmt->enum_content)
     {
@@ -265,11 +266,10 @@ void Semantics::walkEnumClassStatement(Node *node)
         members[memberName] = info;
 
         // Add member to local scope
-        symbolTable.back()[memberName] = SymbolInfo{
-            .type = underLyingType,
-            .isConstant = true,
-            .isInitialized = true,
-        };
+        enumInfo->type = underLyingType;
+        enumInfo->isConstant = true;
+        enumInfo->isInitialized = true;
+        symbolTable.back()[memberName] = enumInfo;
 
         currentValue = memberValue + 1;
     }
@@ -283,14 +283,13 @@ void Semantics::walkEnumClassStatement(Node *node)
     customTypesTable[enumStmtName] = typeInfo;
 
     // Add enum type to parent scope
-    symbolTable[symbolTable.size() - 2][enumStmtName] = SymbolInfo{
-        .type = ResolvedType{DataType::ENUM, enumStmtName},
-        .isConstant = false,
-        .isInitialized = true};
-    metaData[enumStmt] = SymbolInfo{
-        .type = ResolvedType{DataType::ENUM, enumStmtName},
-        .isConstant = false,
-        .isInitialized = true};
+    auto generalInfo = std::make_shared<SymbolInfo>();
+    generalInfo->type = ResolvedType{DataType::ENUM, enumStmtName};
+    generalInfo->isConstant = false;
+    generalInfo->isInitialized = true;
+    symbolTable[symbolTable.size() - 2][enumStmtName] = generalInfo;
+
+    metaData[enumStmt] = generalInfo;
 
     // Pop temporary scope
     symbolTable.pop_back();
@@ -350,7 +349,7 @@ void Semantics::walkDataStatement(Node *node)
         walkLetStatement(letStmt);
 
         // Now retrieve its symbol
-        SymbolInfo *letSymbol = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
+        auto letSymbol = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
         if (!letSymbol)
         {
             logSemanticErrors(
@@ -378,11 +377,11 @@ void Semantics::walkDataStatement(Node *node)
     }
 
     // Build symbol info for the whole block
-    SymbolInfo dataSymbolInfo = {
-        .type = ResolvedType{DataType::DATABLOCK, dataBlockName},
-        .isMutable = isBlockMutable,
-        .isConstant = isBlockConstant,
-        .members = dataBlockMembers};
+    auto dataSymbolInfo = std::make_shared<SymbolInfo>();
+    dataSymbolInfo->type = ResolvedType{DataType::DATABLOCK, dataBlockName};
+    dataSymbolInfo->isMutable = isBlockMutable;
+    dataSymbolInfo->isConstant = isBlockConstant;
+    dataSymbolInfo->members = dataBlockMembers;
 
     // Build customtype info
     CustomTypeInfo typeInfo = {
@@ -447,7 +446,7 @@ void Semantics::walkBehaviorStatement(Node *node)
         // Case A: function expression
         if (auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get()))
         {
-            SymbolInfo *exprSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
+            auto exprSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
             if (!exprSym)
             {
                 logSemanticErrors(
@@ -481,7 +480,7 @@ void Semantics::walkBehaviorStatement(Node *node)
                 continue;
             }
 
-            SymbolInfo *declSym = resolveSymbolInfo(funcDecl->function_name->expression.TokenLiteral);
+            auto declSym = resolveSymbolInfo(funcDecl->function_name->expression.TokenLiteral);
             if (!declSym)
             {
                 logSemanticErrors(
@@ -504,9 +503,9 @@ void Semantics::walkBehaviorStatement(Node *node)
     }
 
     // Build symbol info
-    SymbolInfo sym = {
-        .type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName},
-        .members = behaviorMembers};
+    auto sym = std::make_shared<SymbolInfo>();
+    sym->type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName};
+    sym->members = behaviorMembers;
 
     // Build custom type info
     CustomTypeInfo typeInfo = {
@@ -533,11 +532,11 @@ void Semantics::walkUseStatement(Node *node)
 
     // We'll produce a SymbolInfo to stash on this node via metaData.
     // That SymbolInfo will carry the imported members (all or selected).
-    SymbolInfo resultSym{};
-    resultSym.isNullable = false;
-    resultSym.isMutable = false;
-    resultSym.isConstant = false;
-    resultSym.isInitialized = false;
+    std::shared_ptr<SymbolInfo> resultSym = nullptr;
+    resultSym->isNullable = false;
+    resultSym->isMutable = false;
+    resultSym->isConstant = false;
+    resultSym->isInitialized = false;
 
     // 1) Determine "kind" requested by the 'use' keyword (data/behavior)
     TokenType requestedKind = useStmt->kind_token.type;
@@ -585,8 +584,8 @@ void Semantics::walkUseStatement(Node *node)
                 rejectKind(targetName, target->type, "use data", ident->expression.line, ident->expression.column);
                 return;
             }
-            resultSym.type.kind = DataType::DATABLOCK;
-            resultSym.members = target->members; // full import of all data members
+            resultSym->type.kind = DataType::DATABLOCK;
+            resultSym->members = target->members; // full import of all data members
         }
         // If we imported from a behavior block
         else if (requestedKind == TokenType::BEHAVIOR)
@@ -596,8 +595,8 @@ void Semantics::walkUseStatement(Node *node)
                 rejectKind(targetName, target->type, "use behavior", ident->expression.line, ident->expression.column);
                 return;
             }
-            resultSym.type.kind = DataType::BEHAVIORBLOCK;
-            resultSym.members = target->members; // full import of all behavior members
+            resultSym->type.kind = DataType::BEHAVIORBLOCK;
+            resultSym->members = target->members; // full import of all behavior members
         }
         else
         {
@@ -610,7 +609,7 @@ void Semantics::walkUseStatement(Node *node)
         metaData[useStmt] = resultSym;
         std::cout << "[SEMANTIC LOG] use "
                   << ((requestedKind == TokenType::DATA) ? "data " : "behavior ")
-                  << targetName << " imported " << resultSym.members.size() << " member(s)\n";
+                  << targetName << " imported " << resultSym->members.size() << " member(s)\n";
         return;
     }
 
@@ -663,7 +662,7 @@ void Semantics::walkUseStatement(Node *node)
                            leftId->expression.line, leftId->expression.column);
                 return;
             }
-            resultSym.type.kind = DataType::BEHAVIORBLOCK;
+            resultSym->type.kind = DataType::BEHAVIORBLOCK;
         }
         else // expectDataScope
         {
@@ -673,7 +672,7 @@ void Semantics::walkUseStatement(Node *node)
                            leftId->expression.line, leftId->expression.column);
                 return;
             }
-            resultSym.type.kind = DataType::DATABLOCK;
+            resultSym->type.kind = DataType::DATABLOCK;
         }
 
         // Select a single member
@@ -686,8 +685,8 @@ void Semantics::walkUseStatement(Node *node)
         }
 
         // Keep only the chosen member
-        resultSym.members.clear();
-        resultSym.members.emplace(childName, memIt->second);
+        resultSym->members.clear();
+        resultSym->members.emplace(childName, memIt->second);
 
         // Attach to metaData for the component walker to merge later
         metaData[useStmt] = resultSym;
@@ -695,7 +694,7 @@ void Semantics::walkUseStatement(Node *node)
         // I think here I will insert the imported  data directly into the caller component's members
         auto componentMembers = currentTypeStack.back().members;
 
-        componentMembers = resultSym.members;
+        componentMembers = resultSym->members;
         if (componentMembers.empty())
         {
             std::cout << "NOTHING WAS INSERTED INTO COMPONENT MEMBERS\n";
@@ -751,10 +750,10 @@ void Semantics::walkInitConstructor(Node *node)
     currentComponent.hasInitConstructor = true;
 
     // init constructor is always void-returning
-    SymbolInfo initInfo;
-    initInfo.type = ResolvedType{DataType::VOID, "void"};
-    initInfo.returnType = ResolvedType{DataType::VOID, "void"};
-    initInfo.isDefined = true;
+    auto initInfo = std::make_shared<SymbolInfo>();
+    initInfo->type = ResolvedType{DataType::VOID, "void"};
+    initInfo->returnType = ResolvedType{DataType::VOID, "void"};
+    initInfo->isDefined = true;
 
     auto currentComponentName = currentComponent.typeName;
     std::vector<ResolvedType> initArgs;
@@ -832,12 +831,14 @@ void Semantics::walkFieldAccessExpression(Node *node)
     const MemberInfo &m = memIt->second;
 
     // Attach type info for this field access
-    metaData[fieldExpr] = {
-        .type = m.type,
-        .isNullable = m.isNullable,
-        .isMutable = m.isMutable,
-        .isConstant = m.isConstant,
-        .isInitialized = m.isInitialised};
+    auto info = std::make_shared<SymbolInfo>();
+    info->type = m.type;
+    info->isNullable = m.isNullable;
+    info->isMutable = m.isMutable;
+    info->isConstant = m.isConstant;
+    info->isInitialized = m.isInitialised;
+
+    metaData[fieldExpr] = info;
 
     std::cout << "[SEMANTIC LOG] Field access 'self." << fieldName
               << "' resolved in component '" << componentName << "'\n";
@@ -904,12 +905,13 @@ void Semantics::walkComponentStatement(Node *node)
             for (auto &[name, info] : importedMembers)
             {
                 members[name] = info;
-                currentScope[name] = SymbolInfo{
-                    .type = info.type,
-                    .isNullable = info.isNullable,
-                    .isMutable = info.isMutable,
-                    .isConstant = info.isConstant,
-                    .isInitialized = info.isInitialised};
+                auto memSym = std::make_shared<SymbolInfo>();
+                memSym->type = info.type;
+                memSym->isNullable = info.isNullable;
+                memSym->isMutable = info.isMutable;
+                memSym->isConstant = info.isConstant;
+                memSym->isInitialized = info.isInitialised;
+                currentScope[name] = memSym;
             }
         }
 
@@ -939,12 +941,14 @@ void Semantics::walkComponentStatement(Node *node)
                     members[name] = info;
 
                     // Also add to local symbol table so assignments resolve
-                    currentScope[name] = SymbolInfo{
-                        .type = info.type,
-                        .isNullable = info.isNullable,
-                        .isMutable = info.isMutable,
-                        .isConstant = info.isConstant,
-                        .isInitialized = info.isInitialised};
+                    auto memInfo = std::make_shared<SymbolInfo>();
+                    memInfo->type = info.type;
+                    memInfo->isNullable = info.isNullable;
+                    memInfo->isMutable = info.isMutable;
+                    memInfo->isConstant = info.isConstant;
+                    memInfo->isInitialized = info.isInitialised;
+
+                    currentScope[name] = memInfo;
                 }
             }
         }
@@ -1045,9 +1049,9 @@ void Semantics::walkComponentStatement(Node *node)
     }
 
     // Register component as a symbol
-    SymbolInfo componentSymbol = {
-        .type = DataType::COMPONENT,
-        .members = members};
+    auto componentSymbol = std::make_shared<SymbolInfo>();
+    componentSymbol->type = ResolvedType{DataType::COMPONENT, componentName};
+    componentSymbol->members = members;
 
     CustomTypeInfo typeInfo = {
         .typeName = componentName,
@@ -1126,8 +1130,7 @@ void Semantics::walkNewComponentExpression(Node *node)
     }
 
     // Storing meta data
-    metaData[newExpr] = {
-        .type=componentIt->second.type,
-    };
-    
+    auto info = std::make_shared<SymbolInfo>();
+    info->type = componentIt->second.type;
+    metaData[newExpr] = info;
 }

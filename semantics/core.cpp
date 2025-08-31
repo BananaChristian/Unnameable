@@ -482,8 +482,10 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType, const ResolvedType
     }
 }
 
-SymbolInfo *Semantics::resolveSymbolInfo(const std::string &name)
+std::shared_ptr<SymbolInfo> Semantics::resolveSymbolInfo(const std::string &name)
 {
+    std::cout << "RESOLVE SYMBOL: '" << name << "'\n";
+    std::cout << "SCOPE STACK SIZE: " << symbolTable.size() << "\n";
     for (int i = symbolTable.size() - 1; i >= 0; --i)
     {
         auto &scope = symbolTable[i];
@@ -495,7 +497,7 @@ SymbolInfo *Semantics::resolveSymbolInfo(const std::string &name)
         if (scope.find(name) != scope.end())
         {
             std::cout << "[SEMANTIC LOG] Found match for '" << name << "'\n";
-            return &scope[name];
+            return scope[name];
         }
     }
     std::cout << "[SEMANTIC LOG] No match for '" << name << "'\n";
@@ -614,7 +616,7 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedTyp
 
 bool Semantics::hasReturnPath(Node *node)
 {
-    if (currentFunction && currentFunction->returnType.kind == DataType::VOID)
+    if (currentFunction && currentFunction.value()->returnType.kind == DataType::VOID)
     {
         return true; // Void functions don't need returns
     }
@@ -626,7 +628,7 @@ bool Semantics::hasReturnPath(Node *node)
             if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get()))
             {
                 if (retStmt->error_val || retStmt->return_value ||
-                    (currentFunction->isNullable && !retStmt->return_value))
+                    (currentFunction.value()->isNullable && !retStmt->return_value))
                 {
                     return true; // Error, value, or null return
                 }
@@ -668,7 +670,7 @@ bool Semantics::hasReturnPath(Node *node)
             if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get()))
             {
                 if (retStmt->error_val || retStmt->return_value ||
-                    (currentFunction->isNullable && !retStmt->return_value))
+                    (currentFunction.value()->isNullable && !retStmt->return_value))
                 {
                     return true; // Error, value, or null return
                 }
@@ -704,9 +706,9 @@ bool Semantics::hasReturnPath(Node *node)
         {
             ResolvedType exprType = inferNodeDataType(blockExpr->finalexpr.value().get());
             return exprType.kind == DataType::ERROR ||
-                   isTypeCompatible(currentFunction->returnType, exprType) ||
+                   isTypeCompatible(currentFunction.value()->returnType, exprType) ||
                    (dynamic_cast<NullLiteral *>(blockExpr->finalexpr.value().get()) &&
-                    currentFunction->isNullable);
+                    currentFunction.value()->isNullable);
         }
         return false;
     }
@@ -748,10 +750,10 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
             if (auto declLetStmt = dynamic_cast<LetStatement *>(pair.first))
             {
                 if (declLetStmt->ident_token.TokenLiteral == letStmt->ident_token.TokenLiteral &&
-                    pair.second.type.kind == declInfo.paramTypes[i].first.kind &&
-                    pair.second.genericName == declInfo.paramTypes[i].second)
+                    pair.second->type.kind == declInfo.paramTypes[i].first.kind &&
+                    pair.second->genericName == declInfo.paramTypes[i].second)
                 {
-                    declParamNullable = pair.second.isNullable;
+                    declParamNullable = pair.second->isNullable;
                     break;
                 }
             }
