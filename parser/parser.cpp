@@ -112,6 +112,24 @@ std::unique_ptr<Statement> Parser::parseStatement()
             std::cout << "IDENTIFIER TYPE DECL DETECTED\n";
             return parseLetStatementWithTypeWrapper();
         }
+
+        // Fall back to parsing expressions
+        auto expr = parseExpression(Precedence::PREC_NONE);
+        if (expr)
+        {
+            if (currentToken().type == TokenType::SEMICOLON)
+            {
+                advance();
+            }
+            else
+            {
+                logError("Expected ';' after expression statement");
+                return nullptr;
+            }
+
+            std::cout << "[DEBUG] Parsed generic expression statement.\n";
+            return std::make_unique<ExpressionStatement>(current, std::move(expr));
+        }
     }
 
     auto stmtFnIt = StatementParseFunctionsMap.find(current.type);

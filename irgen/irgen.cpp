@@ -786,7 +786,13 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
         if (!ident)
             throw std::runtime_error("Prefix ++/-- must be used on a variable");
 
-        llvm::Value *varPtr = prefixIt->second->llvmValue;
+        const std::string &name = ident->expression.TokenLiteral;
+        auto identIt = semantics.metaData.find(ident);
+        if (identIt == semantics.metaData.end())
+        {
+            throw std::runtime_error("Udefined variable '" + name + "'");
+        }
+        llvm::Value *varPtr = identIt->second->llvmValue;
         if (!varPtr)
             throw std::runtime_error("Null variable pointer for: " + ident->identifier.TokenLiteral);
 
@@ -1297,46 +1303,35 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     return builder.CreateLoad(getLLVMType(identIt->second->type.kind), variablePtr, identExpr->identifier.TokenLiteral);
 }
 
+
 llvm::Value *IRGenerator::generateBlockExpression(Node *node)
 {
     auto blockExpr = dynamic_cast<BlockExpression *>(node);
     if (!blockExpr)
         throw std::runtime_error("Invalid block expression");
 
-    llvm::Function *currentFunction = builder.GetInsertBlock()->getParent();
-    llvm::BasicBlock *afterBB = nullptr;
-
     for (const auto &stmts : blockExpr->statements)
     {
-        if (currentBlockIsTerminated())
+        // Check if the current block is already terminated by a return or branch
+        if (builder.GetInsertBlock()->getTerminator())
         {
             std::cout << "SKIPPING statement - block terminated\n";
             break;
         }
+
         std::cout << "GENERATING statement...\n";
         generateStatement(stmts.get());
     }
 
-    if (semantics.hasReturnPath(blockExpr))
+    // Now, handle the final expression if no return statement was found in the loop
+    if (!builder.GetInsertBlock()->getTerminator() && blockExpr->finalexpr.has_value())
     {
-        std::cout << "HAS RETURN PATH\n";
-        if (blockExpr->finalexpr.has_value())
-        {
-            std::cout << "GENERATING final expression...\n";
-            llvm::Value *retVal = generateExpression(blockExpr->finalexpr.value().get());
-
-            // Only generate return if current block isn't already terminated
-            if (!builder.GetInsertBlock()->getTerminator())
-            {
-                builder.CreateRet(retVal);
-
-                // Create continuation block for any potential fall-through
-                afterBB = llvm::BasicBlock::Create(context, "after_return", currentFunction);
-                builder.SetInsertPoint(afterBB);
-            }
-        }
+        std::cout << "GENERATING final expression...\n";
+        llvm::Value *retVal = generateExpression(blockExpr->finalexpr.value().get());
+        builder.CreateRet(retVal);
     }
 
+    // A block expression should not return an llvm::Value directly.
     return nullptr;
 }
 

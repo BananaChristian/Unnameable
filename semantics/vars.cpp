@@ -284,6 +284,7 @@ void Semantics::walkLetStatement(Node *node)
 
     if (letStmtValue)
     {
+        declaredType=inferNodeDataType(letStmtValue);
         walker(letStmtValue);
         isInitialized = true;
         auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue);
@@ -300,10 +301,6 @@ void Semantics::walkLetStatement(Node *node)
             {
                 declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
             }
-        }
-        else
-        {
-            declaredType = inferNodeDataType(letStmtValue);
         }
     }
     else

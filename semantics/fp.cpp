@@ -88,6 +88,11 @@ void Semantics::walkReturnStatement(Node *node)
         return;
     }
 
+    if (retStmt->return_value)
+    {
+        walker(retStmt->return_value.get());
+    }
+
     ResolvedType valueType = ResolvedType{DataType::UNKNOWN, "unknown"};
     std::string genericName;
     bool isValueNullable = false;
@@ -161,7 +166,7 @@ void Semantics::walkReturnStatement(Node *node)
                           node->token.line, node->token.column);
         return;
     }
-    auto info = std::shared_ptr<SymbolInfo>();
+    auto info = std::make_shared<SymbolInfo>();
     info->type = valueType;
     info->genericName = genericName;
     info->isNullable = isValueNullable;
@@ -535,7 +540,7 @@ void Semantics::walkFunctionCallExpression(Node *node)
     }
 
     // Store metaData for the call
-    auto callSymbol=std::make_shared<SymbolInfo>();
+    auto callSymbol = std::make_shared<SymbolInfo>();
     callSymbol->type = callSymbolInfo->returnType;
     callSymbol->isNullable = callSymbolInfo->isNullable;
 
@@ -584,11 +589,11 @@ void Semantics::walkFunctionCallExpression(Node *node)
         {
             callSymbol->type = it->second;
             callSymbol->isNullable = (callSymbolInfo->returnType.kind == DataType::NULLABLE_INT ||
-                                     callSymbolInfo->returnType.kind == DataType::NULLABLE_STR ||
-                                     callSymbolInfo->returnType.kind == DataType::NULLABLE_BOOLEAN ||
-                                     callSymbolInfo->returnType.kind == DataType::NULLABLE_FLT ||
-                                     callSymbolInfo->returnType.kind == DataType::NULLABLE_DOUBLE ||
-                                     callSymbolInfo->returnType.kind == DataType::NULLABLE_CHAR);
+                                      callSymbolInfo->returnType.kind == DataType::NULLABLE_STR ||
+                                      callSymbolInfo->returnType.kind == DataType::NULLABLE_BOOLEAN ||
+                                      callSymbolInfo->returnType.kind == DataType::NULLABLE_FLT ||
+                                      callSymbolInfo->returnType.kind == DataType::NULLABLE_DOUBLE ||
+                                      callSymbolInfo->returnType.kind == DataType::NULLABLE_CHAR);
         }
         else
         {
