@@ -179,8 +179,6 @@ void Semantics::walkFunctionStatement(Node *node)
     auto funcStmt = dynamic_cast<FunctionStatement *>(node);
     if (!funcStmt)
         return;
-
-    std::cout << "[SEMANTIC LOG] Analyzing function statement " << funcStmt->toString();
     // Unwrapping whatever is stored in the function statement and walking it
     walker(funcStmt->funcExpr.get());
     auto it = metaData.find(funcStmt->funcExpr.get());
@@ -196,7 +194,6 @@ void Semantics::walkFunctionExpression(Node *node)
         logSemanticErrors("Invalid function expression", node->token.line, node->token.column);
         return;
     }
-    std::cout << "[SEMANTIC LOG] Analyzing function expression: " << funcExpr->toString() << "\n";
 
     std::string funcName = funcExpr->func_key.TokenLiteral;
 
@@ -248,10 +245,8 @@ void Semantics::walkFunctionExpression(Node *node)
     std::cout << "[SEMANTIC LOG] Set currentFunction for '" << funcName << "' with return type: "
               << funcInfo->returnType.resolvedName << "\n";
 
-    std::cout << "BEFORE PUSH: symbolTable.size() = " << symbolTable.size() << std::endl;
     // Pushing new scope for function parameters and body
     symbolTable.push_back({});
-    std::cout << "AFTER PUSH: symbolTable.size() = " << symbolTable.size() << std::endl;
 
     // Walking parameters and storing their info
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
@@ -355,10 +350,8 @@ void Semantics::walkFunctionExpression(Node *node)
         return;
     }
 
-    std::cout << "BEFORE POP: symbolTable.size() = " << symbolTable.size() << std::endl;
     // Pop function scope
     symbolTable.pop_back();
-    std::cout << "AFTER POP: symbolTable.size() = " << symbolTable.size() << std::endl;
 
     // If there was an outer function context, restore it    // Assuming you track this elsewhere or null it here    // Assuming you track this elsewhere or null it here
     currentFunction = std::nullopt;

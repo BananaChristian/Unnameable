@@ -484,8 +484,6 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType, const ResolvedType
 
 std::shared_ptr<SymbolInfo> Semantics::resolveSymbolInfo(const std::string &name)
 {
-    std::cout << "RESOLVE SYMBOL: '" << name << "'\n";
-    std::cout << "SCOPE STACK SIZE: " << symbolTable.size() << "\n";
     for (int i = symbolTable.size() - 1; i >= 0; --i)
     {
         auto &scope = symbolTable[i];

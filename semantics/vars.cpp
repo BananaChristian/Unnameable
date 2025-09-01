@@ -284,7 +284,7 @@ void Semantics::walkLetStatement(Node *node)
 
     if (letStmtValue)
     {
-        declaredType=inferNodeDataType(letStmtValue);
+        declaredType = inferNodeDataType(letStmtValue);
         walker(letStmtValue);
         isInitialized = true;
         auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue);
@@ -455,15 +455,6 @@ void Semantics::walkFunctionParameterLetStatement(Node *node)
     info->isNullable = isNullable;
     info->isMutable = isMutable;
     info->isInitialized = true; // WATCHING OUT FOR THIS
-
-    SymbolInfo symbol = {
-        .type = declaredType,
-        .genericName = typeName,
-        .isNullable = isNullable,
-        .isMutable = isMutable,
-        .isConstant = isConstant,
-        .isInitialized = true // Parameters are not initialized
-    };
 
     metaData[letStmt] = info;
     symbolTable.back()[letStmt->ident_token.TokenLiteral] = info;

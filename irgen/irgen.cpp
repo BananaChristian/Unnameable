@@ -23,6 +23,8 @@ void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program)
         generateStatement(node.get());
     }
 
+    builder.SetInsertPoint(entry);
+
     builder.CreateRet(llvm::ConstantInt::get(context, llvm::APInt(32, 0)));
 }
 
@@ -41,10 +43,6 @@ llvm::Value *IRGenerator::generateExpression(Node *node)
 // GENERATOR FUNCTIONS
 void IRGenerator::generateStatement(Node *node)
 {
-    if (currentBlockIsTerminated())
-    {
-        return;
-    }
     auto generatorIt = generatorFunctionsMap.find(typeid(*node));
     if (generatorIt == generatorFunctionsMap.end())
     {
@@ -481,7 +479,7 @@ void IRGenerator::generateFunctionStatement(Node *node)
     // Extract the function expression from the statement
     auto fnExpr = fnStmt->funcExpr.get();
     // For now lemme handle raw function expressions
-    llvm::Value *ret = generateFunctionExpression(fnExpr);
+    generateFunctionExpression(fnExpr);
 }
 
 void IRGenerator::generateReturnStatement(Node *node)
@@ -516,10 +514,6 @@ void IRGenerator::generateReturnStatement(Node *node)
         else
             llvm::errs() << "Return statement missing value for non-void function\n";
     }
-
-    llvm::BasicBlock *unreachableBB = llvm::BasicBlock::Create(
-        context, "unreachable", currentFunction);
-    builder.SetInsertPoint(unreachableBB);
 }
 
 // EXPRESSION GENERATOR
@@ -1303,7 +1297,6 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     return builder.CreateLoad(getLLVMType(identIt->second->type.kind), variablePtr, identExpr->identifier.TokenLiteral);
 }
 
-
 llvm::Value *IRGenerator::generateBlockExpression(Node *node)
 {
     auto blockExpr = dynamic_cast<BlockExpression *>(node);
@@ -1318,17 +1311,7 @@ llvm::Value *IRGenerator::generateBlockExpression(Node *node)
             std::cout << "SKIPPING statement - block terminated\n";
             break;
         }
-
-        std::cout << "GENERATING statement...\n";
         generateStatement(stmts.get());
-    }
-
-    // Now, handle the final expression if no return statement was found in the loop
-    if (!builder.GetInsertBlock()->getTerminator() && blockExpr->finalexpr.has_value())
-    {
-        std::cout << "GENERATING final expression...\n";
-        llvm::Value *retVal = generateExpression(blockExpr->finalexpr.value().get());
-        builder.CreateRet(retVal);
     }
 
     // A block expression should not return an llvm::Value directly.
@@ -1341,8 +1324,6 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
     auto fnExpr = dynamic_cast<FunctionExpression *>(node);
     if (!fnExpr)
         throw std::runtime_error("Invalid function expression");
-
-    std::cout << "=== FUNCTION EXPRESSION START ===\n";
 
     // Getting the function signature
     auto fnName = fnExpr->func_key.TokenLiteral;
@@ -1386,20 +1367,14 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
         }
         llvm::AllocaInst *alloca = builder.CreateAlloca(getLLVMType(pIt->second->type.kind), nullptr, p->statement.TokenLiteral);
         builder.CreateStore(&(*argIter), alloca);
-        auto paramSymbol = semantics.resolveSymbolInfo(p->statement.TokenLiteral);
-        if (paramSymbol)
-        {
-            paramSymbol->llvmValue = alloca;
-        }
+        pIt->second->llvmValue = alloca;
+
         argIter++;
     }
 
     // This will handle whatever is inside the block including the return value
-    std::cout << "CALLING generateExpression on block...\n";
     generateExpression(fnExpr->block.get());
-    std::cout << "RETURNED from generateExpression\n";
 
-    std::cout << "=== FUNCTION EXPRESSION END ===\n";
     return fn;
 }
 
