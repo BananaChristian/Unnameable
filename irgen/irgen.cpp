@@ -1443,8 +1443,10 @@ llvm::Type *IRGenerator::getLLVMType(DataType type)
     case DataType::NULLABLE_STR:
         return llvm::PointerType::get(context, 0);
 
-    case DataType::ERROR:
     case DataType::VOID:
+        return llvm::Type::getVoidTy(context);
+
+    case DataType::ERROR:
     case DataType::GENERIC:
     case DataType::UNKNOWN:
         throw std::runtime_error("Unsupported or unknown data type encountered in getLLVMType");
