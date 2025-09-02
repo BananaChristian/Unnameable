@@ -476,10 +476,15 @@ void IRGenerator::generateFunctionStatement(Node *node)
     auto fnStmt = dynamic_cast<FunctionStatement *>(node);
     if (!fnStmt)
         return;
+
+    llvm::BasicBlock *oldInsertPoint = builder.GetInsertBlock();
     // Extract the function expression from the statement
     auto fnExpr = fnStmt->funcExpr.get();
     // For now lemme handle raw function expressions
     generateFunctionExpression(fnExpr);
+
+    if (oldInsertPoint)
+        builder.SetInsertPoint(oldInsertPoint);
 }
 
 void IRGenerator::generateReturnStatement(Node *node)
@@ -1374,8 +1379,48 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
 
     // This will handle whatever is inside the block including the return value
     generateExpression(fnExpr->block.get());
-
     return fn;
+}
+
+llvm::Value *IRGenerator::generateCallExpression(Node *node)
+{
+    auto callExpr = dynamic_cast<CallExpression *>(node);
+    if (!callExpr)
+    {
+        throw std::runtime_error("Invalid call expression");
+    }
+
+    // Getting the function name
+    const std::string &fnName = callExpr->function_identifier->expression.TokenLiteral;
+    // Getting the function I want to call
+    llvm::Function *calledFunc = module->getFunction(fnName);
+
+    if (!calledFunc)
+    {
+        throw std::runtime_error("Unknown function '" + fnName + "'referenced");
+    }
+
+    // Generate IR for each argument
+    std::vector<llvm::Value *> argsV;
+    for (const auto &arg : callExpr->parameters)
+    {
+        llvm::Value *argVal = generateExpression(arg.get());
+        if (!argVal)
+        {
+            throw std::runtime_error("Argument codegen failed");
+        }
+        argsV.push_back(argVal);
+    }
+
+    // Emitting the function call itself
+    llvm::Value *call = builder.CreateCall(calledFunc, argsV, "calltmp");
+
+    // Check if the function return type is void
+    if (calledFunc->getReturnType()->isVoidTy())
+    {
+        return nullptr;
+    }
+    return call;
 }
 
 // HELPER FUNCTIONS
@@ -1493,6 +1538,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
+    expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
 }
 
 char IRGenerator::decodeCharLiteral(const std::string &literal)
@@ -1692,13 +1738,4 @@ bool IRGenerator::currentBlockIsTerminated()
 {
     llvm::BasicBlock *bb = builder.GetInsertBlock();
     return bb && bb->getTerminator();
-}
-
-void IRGenerator::storeLLVMValue(const std::string &name, llvm::Value *value)
-{
-
-    if (auto symbol = semantics.resolveSymbolInfo(name))
-    {
-        symbol->llvmValue = value;
-    }
 }

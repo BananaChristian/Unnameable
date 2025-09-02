@@ -42,8 +42,6 @@ private:
     llvm::IRBuilder<> builder;
     std::unique_ptr<llvm::Module> module;
     Semantics &semantics;
-    void storeLLVMValue(const std::string &name, llvm::Value *value);
-
 
     // GENERATOR FUNCTIONS FOR STATEMENTS
     void generateLetStatement(Node *node);
@@ -84,6 +82,7 @@ private:
 
     llvm::Value *generateBlockExpression(Node *node);
     llvm::Value *generateFunctionExpression(Node *node);
+    llvm::Value *generateCallExpression(Node *node);
 
     // HELPER FUNCTIONS
     void registerGeneratorFunctions();

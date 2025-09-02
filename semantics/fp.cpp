@@ -532,6 +532,12 @@ void Semantics::walkFunctionCallExpression(Node *node)
         return;
     }
 
+    // Calling the walker on the arguments
+    for (const auto &arg : funcCall->parameters)
+    {
+        walker(arg.get());
+    }
+
     // Store metaData for the call
     auto callSymbol = std::make_shared<SymbolInfo>();
     callSymbol->type = callSymbolInfo->returnType;
