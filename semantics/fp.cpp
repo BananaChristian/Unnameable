@@ -199,25 +199,21 @@ void Semantics::walkFunctionExpression(Node *node)
 
     // Checking for duplicates in global scope
     auto symbol = resolveSymbolInfo(funcName);
-    if (symbol)
+
+    if (symbol && symbol->isDefined)
     {
         logSemanticErrors("Already used the name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
-        if (symbol->isDefined)
+        return;
+    }
+
+    if (symbol->isDeclaration)
+    {
+        if (!areSignaturesCompatible(*symbol, funcExpr))
         {
-            logSemanticErrors("Function '" + funcName + "' was already defined",
+            logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope",
                               funcExpr->func_key.line, funcExpr->func_key.column);
             return;
         }
-        if (symbol->isDeclaration)
-        {
-            if (!areSignaturesCompatible(*symbol, funcExpr))
-            {
-                logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope",
-                                  funcExpr->func_key.line, funcExpr->func_key.column);
-                return;
-            }
-        }
-        return;
     }
 
     // Creating the initial funcInfo with minimal info for recursion

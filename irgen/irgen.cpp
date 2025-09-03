@@ -478,13 +478,68 @@ void IRGenerator::generateFunctionStatement(Node *node)
         return;
 
     llvm::BasicBlock *oldInsertPoint = builder.GetInsertBlock();
-    // Extract the function expression from the statement
+
+    // Checking what the function statement is holding could be a function expression or a function declaration expression
     auto fnExpr = fnStmt->funcExpr.get();
-    // For now lemme handle raw function expressions
-    generateFunctionExpression(fnExpr);
+    // Case where it is a full function expression
+    if (auto expr = dynamic_cast<FunctionExpression *>(fnExpr))
+    {
+        generateFunctionExpression(expr);
+    }
+    // Case where it is a function declaration expression(this is the special case)
+    if (auto declrExpr = dynamic_cast<FunctionDeclarationExpression *>(fnExpr))
+    {
+        /*This is actually supposed to behave like a statement dispatcher
+        That is because it doesnt actually produce a value it is a wrapper and doesnt evaluate to anything
+        But with the  way I built the AST for my function declaration I have to do it like this kinda shady though
+        But it will work*/
+        generateFunctionDeclarationExpression(declrExpr);
+    }
 
     if (oldInsertPoint)
         builder.SetInsertPoint(oldInsertPoint);
+}
+
+void IRGenerator::generateFunctionDeclarationExpression(Node *node)
+{
+    auto declrExpr = dynamic_cast<FunctionDeclarationExpression *>(node);
+    if (!declrExpr)
+        return;
+
+    // This is also just a wrapper for the function declaration expression so let me just call the statement generator
+    auto fnDeclr = declrExpr->funcDeclrStmt.get();
+    // Call the statement generator for the function declaration statement
+    generateFunctionDeclaration(fnDeclr);
+}
+
+void IRGenerator::generateFunctionDeclaration(Node *node)
+{
+    auto fnDeclr = dynamic_cast<FunctionDeclaration *>(node);
+    if (!fnDeclr)
+        return;
+    // Getting the function name
+    const std::string &fnName = fnDeclr->function_name->expression.TokenLiteral;
+
+    // Registering the function and its type
+    auto declrIt = semantics.metaData.find(fnDeclr);
+    if (declrIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Missing declaration meta data");
+    }
+    std::vector<llvm::Type *> paramTypes;
+    for (const auto &param : fnDeclr->parameters)
+    {
+        auto it = semantics.metaData.find(param.get());
+        if (it == semantics.metaData.end())
+        {
+            throw std::runtime_error("Missing function declaration parameter meta data");
+        }
+        paramTypes.push_back(getLLVMType(it->second->type.kind));
+    }
+    auto retType = declrIt->second->returnType.kind;
+    llvm::FunctionType *fnType = llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
+
+    llvm::Function *declaredFunc = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module.get());
 }
 
 void IRGenerator::generateReturnStatement(Node *node)
@@ -1353,8 +1408,21 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
     auto retType = semantics.inferNodeDataType(fnRetType);
     llvm::FunctionType *funcType = llvm::FunctionType::get(getLLVMType(retType.kind), llvmParamTypes, false);
 
-    // Creating the function in module
-    llvm::Function *fn = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, fnName, module.get());
+    // Look up if the function declaration exists
+    llvm::Function *fn = module->getFunction(fnName);
+    // If the function declaration exists
+    if (!fn)
+    {
+        fn = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, fnName, module.get());
+    }
+    else
+    {
+        // If the function was declared checking if the return types match
+        if (fn->getFunctionType() != funcType)
+        {
+            throw std::runtime_error("Function redefinition for '" + fnName + "with different signature ");
+        }
+    }
 
     // Creating the entry block
     llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
@@ -1501,6 +1569,7 @@ llvm::Type *IRGenerator::getLLVMType(DataType type)
     }
 }
 
+// Registering generator functions for statements
 void IRGenerator::registerGeneratorFunctions()
 {
     generatorFunctionsMap[typeid(LetStatement)] = &IRGenerator::generateLetStatement;
@@ -1514,6 +1583,9 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(BlockStatement)] = &IRGenerator::generateBlockStatement;
     generatorFunctionsMap[typeid(FunctionStatement)] = &IRGenerator::generateFunctionStatement;
     generatorFunctionsMap[typeid(ReturnStatement)] = &IRGenerator::generateReturnStatement;
+    generatorFunctionsMap[typeid(FunctionDeclaration)] = &IRGenerator::generateFunctionDeclaration;
+    // Special case
+    generatorFunctionsMap[typeid(FunctionDeclarationExpression)] = &IRGenerator::generateFunctionDeclarationExpression;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions()

@@ -55,6 +55,9 @@ private:
     void generateReturnStatement(Node *node);
     void generateBlockStatement(Node *node);
     void generateFunctionStatement(Node *node);
+    void generateFunctionDeclaration(Node *node);
+    // Special case because this is wrapped in the function statement but actaully doesnt evaluate to anything;
+    void generateFunctionDeclarationExpression(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);
