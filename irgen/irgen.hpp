@@ -33,6 +33,8 @@ public:
     void generate(const std::vector<std::unique_ptr<Node>> &program);
     void dumpIR();
 
+    llvm::Module &getLLVMModule();
+
     std::unordered_map<std::type_index, generatorFunctions> generatorFunctionsMap;
     std::unordered_map<std::type_index, expressionGenerators> expressionGeneratorsMap;
     std::vector<LoopBlocks> loopBlocksStack;

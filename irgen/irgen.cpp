@@ -1811,3 +1811,8 @@ bool IRGenerator::currentBlockIsTerminated()
     llvm::BasicBlock *bb = builder.GetInsertBlock();
     return bb && bb->getTerminator();
 }
+
+llvm::Module &IRGenerator::getLLVMModule()
+{
+    return *module;
+}
