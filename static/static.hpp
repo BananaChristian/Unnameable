@@ -28,8 +28,8 @@ private:
     void analyzeFunctionDeclarationExpression(Node *node);
     void analyzeDataStatement(Node *node);
     void analyzeBehaviorStatement(Node *node);
+    void analyzeUseStatement(Node *node);
     void analyzeComponentStatement(Node *node);
     // Helpers
     void registerAnalyzerFunctions();
-    size_t computeTotal();
 };

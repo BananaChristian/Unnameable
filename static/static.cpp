@@ -25,6 +25,12 @@ void Static::registerAnalyzerFunctions()
     analyzerFuncsMap[typeid(Identifier)] = &Static::analyzeIdentifier;
     analyzerFuncsMap[typeid(AssignmentStatement)] = &Static::analyzeAssignmentStatement;
     analyzerFuncsMap[typeid(LetStatement)] = &Static::analyzeLetStatement;
+    analyzerFuncsMap[typeid(FunctionStatement)] = &Static::analyzeFunctionStatement;
+    analyzerFuncsMap[typeid(FunctionExpression)] = &Static::analyzeFunctionExpression;
+    analyzerFuncsMap[typeid(FunctionDeclarationExpression)] = &Static::analyzeFunctionDeclarationExpression;
+    analyzerFuncsMap[typeid(DataStatement)] = &Static::analyzeDataStatement;
+    analyzerFuncsMap[typeid(BehaviorStatement)] = &Static::analyzeBehaviorStatement;
+    analyzerFuncsMap[typeid(UseStatement)] = &Static::analyzeUseStatement;
 }
 
 // Identifier expression analyzer
@@ -162,6 +168,19 @@ void Static::analyzeFunctionDeclarationExpression(Node *node)
     auto funcDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(node);
     if (!funcDeclrExpr)
         return;
+
+    // This is just a nester for the function declaration statement
+    auto funcDeclr = dynamic_cast<FunctionDeclaration *>(funcDeclrExpr->funcDeclrStmt.get());
+    if (funcDeclr)
+    {
+        const std::string &fnName = funcDeclr->function_name->expression.TokenLiteral;
+        llvm::Function *func = irgen.getLLVMModule().getFunction(fnName);
+        llvm::Type *ptrType = func->getType();
+
+        const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
+        uint64_t size = DL.getTypeAllocSize(ptrType);
+        total_size += size;
+    }
 }
 
 void Static::analyzeBehaviorStatement(Node *node)
@@ -169,4 +188,82 @@ void Static::analyzeBehaviorStatement(Node *node)
     auto behaviorStmt = dynamic_cast<BehaviorStatement *>(node);
     if (!behaviorStmt)
         return;
+
+    // This is basically a functions wrapper so we call the generator to handle that
+    for (const auto &method : behaviorStmt->functions)
+    {
+        analyze(method.get());
+    }
+}
+
+void Static::analyzeUseStatement(Node *node)
+{
+    auto useStmt = dynamic_cast<UseStatement *>(node);
+
+    if (!useStmt)
+        return;
+
+    // Getting the type of block we are importing from
+    Token kind_token = useStmt->kind_token;
+    // Getting the block name expression
+    auto blockNameExpr = useStmt->blockNameOrCall.get();
+    const std::string &blockName = blockNameExpr->expression.TokenLiteral;
+    auto [parentName, childName] = semantics.splitScopedName(blockName);
+
+    const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
+
+    // Case 1: Data statement
+    if (kind_token.type == TokenType::DATA)
+    {
+        // Getting the data block name
+        auto it = semantics.metaData.find(blockNameExpr);
+        if (it == semantics.metaData.end())
+        {
+            std::cout << "Data block with name '" + blockName + "' not found \n";
+            return;
+        }
+
+        // Case a:Mass import
+        if (childName.empty())
+        {
+            auto sym = it->second;
+            auto &members = sym->members;
+            for (const auto &[memberName, memInfo] : members)
+            {
+                // Getting the data type of the member
+                auto type = memInfo.type.kind;
+                // Getting the corresponding llvm type
+                llvm::Type *memType = irgen.getLLVMType(type);
+
+                uint64_t size = DL.getTypeAllocSize(memType);
+                total_size += size;
+            }
+        }
+        else
+        {
+            // Case b: Singular import(Fall back if we have the child name and parent name)
+            auto parentIt = semantics.customTypesTable.find(parentName);
+            if (parentIt == semantics.customTypesTable.end())
+            {
+                std::cout << "Could not find '" + parentName + "'\n";
+                return;
+            }
+            auto members = parentIt->second.members;
+            auto memberIt = members.find(childName);
+            if (memberIt == members.end())
+            {
+                std::cout << "Could not find '" + childName + "'\n";
+                return;
+            }
+
+            auto memberType = memberIt->second.type.kind;
+
+            llvm::Type *llvmMemType = irgen.getLLVMType(memberType);
+
+            uint64_t size = DL.getTypeAllocSize(llvmMemType);
+            total_size += size;
+        }
+    }
+
+    // Case 2: Behavior statement
 }
