@@ -34,6 +34,7 @@ public:
     void dumpIR();
 
     llvm::Module &getLLVMModule();
+    llvm::Type *getLLVMType(DataType type);
 
     std::unordered_map<std::type_index, generatorFunctions> generatorFunctionsMap;
     std::unordered_map<std::type_index, expressionGenerators> expressionGeneratorsMap;
@@ -94,7 +95,6 @@ private:
     void registerExpressionGeneratorFunctions();
     llvm::Value *generateExpression(Node *node);
     void generateStatement(Node *node);
-    llvm::Type *getLLVMType(DataType type);
     char decodeCharLiteral(const std::string &literal);
     uint16_t decodeChar16Literal(const std::string &literal);
     uint32_t decodeChar32Literal(const std::string &literal);

@@ -144,6 +144,7 @@ public:
     ResolvedType resolvedDataType(Token token, Node *node);
     bool hasReturnPath(Node *node);
     ResolvedType inferNodeDataType(Node *node);
+    std::pair<std::string, std::string> splitScopedName(const std::string &fullName);
 
 private:
     // Walking the data type literals
@@ -242,7 +243,6 @@ private:
     bool isChar(const ResolvedType &t);
     bool isNullable(const ResolvedType &t);
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
-    std::pair<std::string, std::string> splitScopedName(const std::string &fullName);
 };
 
 #endif
