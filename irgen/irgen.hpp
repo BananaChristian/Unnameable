@@ -61,6 +61,8 @@ private:
     void generateFunctionDeclaration(Node *node);
     // Special case because this is wrapped in the function statement but actaully doesnt evaluate to anything;
     void generateFunctionDeclarationExpression(Node *node);
+    // Component system
+    void generateDataStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);

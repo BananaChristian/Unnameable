@@ -1,8 +1,8 @@
 #pragma once
 #include <cstddef>
 #include "ast.hpp"
-#include "semantics.hpp"
-#include "irgen.hpp"
+#include "semantics/semantics.hpp"
+#include "irgen/irgen.hpp"
 #include <typeindex>
 
 class Static
@@ -17,6 +17,8 @@ public:
     std::vector<Node> allocationStack();
     // Main analyzer function
     void analyze(Node *node);
+
+    void dumpTotal();
 
 private:
     // Analyzer functions

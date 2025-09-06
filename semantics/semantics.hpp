@@ -121,6 +121,7 @@ struct SymbolInfo
 
     std::unordered_map<std::string, MemberInfo> members;
     llvm::Value *llvmValue = nullptr;
+    llvm::Type *llvmType = nullptr;
 };
 
 class Semantics

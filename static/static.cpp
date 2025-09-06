@@ -9,7 +9,7 @@ Static::Static(Semantics &sem, IRGenerator &ir) : semantics(sem), irgen(ir)
 
 void Static::analyze(Node *node)
 {
-    auto it = analyzerFuncsMap.find(typeid(node));
+    auto it = analyzerFuncsMap.find(typeid(*node));
     if (it == analyzerFuncsMap.end())
     {
         std::cout << "[STATIC ERROR] Failed to find static analyzer for " << node->toString() << "\n";
@@ -120,11 +120,16 @@ void Static::analyzeDataStatement(Node *node)
     if (!dataStmt)
         return;
 
-    // Since this is more of a container just recursively call the analyzer
-    for (const auto &member : dataStmt->fields)
+    auto dataIt = semantics.metaData.find(dataStmt);
+    if (dataIt == semantics.metaData.end())
     {
-        analyze(member.get()); // This will tabulate the total of all the members
+        std::cout << "Missing data block metaData\n";
+        return;
     }
+
+    auto structTy = dataIt->second->llvmType;
+    const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
+    uint64_t size = DL.getTypeAllocSize(structTy);
 }
 
 void Static::analyzeFunctionStatement(Node *node)
@@ -154,13 +159,17 @@ void Static::analyzeFunctionExpression(Node *node)
     const std::string &fnName = funcExpr->func_key.TokenLiteral;
     llvm::Function *func = irgen.getLLVMModule().getFunction(fnName);
 
-    if (func)
+    llvm::Type *ptrType = func->getType()->getPointerTo();
+
+    if (!func)
     {
-        llvm::Type *ptrType = func->getType();
-        const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
-        uint64_t size = DL.getTypeAllocSize(ptrType);
-        total_size += size;
+        std::cout << "LLVM could not resolve function '" + fnName + "'\n";
+        return;
     }
+
+    const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
+    uint64_t size = DL.getTypeAllocSize(ptrType);
+    total_size += size;
 }
 
 void Static::analyzeFunctionDeclarationExpression(Node *node)
@@ -175,7 +184,7 @@ void Static::analyzeFunctionDeclarationExpression(Node *node)
     {
         const std::string &fnName = funcDeclr->function_name->expression.TokenLiteral;
         llvm::Function *func = irgen.getLLVMModule().getFunction(fnName);
-        llvm::Type *ptrType = func->getType();
+        llvm::Type *ptrType = func->getType()->getPointerTo();
 
         const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
         uint64_t size = DL.getTypeAllocSize(ptrType);
@@ -266,4 +275,68 @@ void Static::analyzeUseStatement(Node *node)
     }
 
     // Case 2: Behavior statement
+    if (kind_token.type == TokenType::BEHAVIOR)
+    {
+        auto it = semantics.metaData.find(blockNameExpr);
+        if (it == semantics.metaData.end())
+        {
+            std::cout << "Behavior block with name not found '" + blockName + "'\n";
+            return;
+        }
+        // Case a:Mass import
+        if (childName.empty())
+        {
+            auto &funcMembers = it->second->members;
+
+            for (const auto &[funcName, funcInfo] : funcMembers)
+            {
+                llvm::Function *func = irgen.getLLVMModule().getFunction(funcName);
+
+                if (!func)
+                {
+                    std::cout << "LLVM could not resolve function '" + childName + "'\n";
+                    return;
+                }
+
+                llvm::Type *ptrType = func->getType()->getPointerTo();
+
+                uint64_t size = DL.getTypeAllocSize(ptrType);
+                total_size += size;
+            }
+        }
+        else
+        {
+            auto parentIt = semantics.customTypesTable.find(parentName);
+            if (parentIt == semantics.customTypesTable.end())
+            {
+                std::cout << "Behavior block '" + parentName + "' not found\n";
+                return;
+            }
+            auto &members = parentIt->second.members;
+            auto memberIt = members.find(childName);
+            if (memberIt == members.end())
+            {
+                std::cout << "Behavior member'" + childName + "' not found\n";
+                return;
+            }
+            // Getting the function
+            llvm::Function *func = irgen.getLLVMModule().getFunction(childName);
+
+            if (!func)
+            {
+                std::cout << "LLVM could not resolve function '" + childName + "'\n";
+                return;
+            }
+
+            llvm::Type *ptrType = func->getType()->getPointerTo();
+
+            uint64_t size = DL.getTypeAllocSize(ptrType);
+            total_size += size;
+        }
+    }
+}
+
+void Static::dumpTotal()
+{
+    std::cout << "Total size: " << static_cast<unsigned long long>(total_size) << "\n";
 }
