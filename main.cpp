@@ -8,6 +8,7 @@
 #include "token/token.hpp"
 #include "parser/parser.hpp"
 #include "semantics/semantics.hpp"
+#include "static/static.hpp"
 #include "irgen/irgen.hpp"
 
 std::string readFileToString(const std::string &filepath)
@@ -72,6 +73,13 @@ int main(int argc, char **argv)
         IRGenerator irgen(semantics);
         irgen.generate(nodes); // <--- pass vector of nodes
         irgen.dumpIR();        // Print the IR
+        std::cout << "\n----STATIC analysis----\n";
+        Static statics(semantics, irgen);
+        for (const auto &node : nodes)
+        {
+            statics.analyze(node.get());
+        }
+        statics.dumpTotal();
     }
     catch (const std::exception &e)
     {
