@@ -130,6 +130,7 @@ void Static::analyzeDataStatement(Node *node)
     auto structTy = dataIt->second->llvmType;
     const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
     uint64_t size = DL.getTypeAllocSize(structTy);
+    total_size += size;
 }
 
 void Static::analyzeFunctionStatement(Node *node)
