@@ -203,28 +203,10 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: ARRAY";
     case TokenType::MUT:
         return "Token Type: MUT";
-    case TokenType::UNIQUE:
-        return "Token Type: UNIQUE";
-    case TokenType::MAKE:
-        return "Token Type: MAKE";
-    case TokenType::UNSAFE:
-        return "Token Type: UNSAFE";
-    case TokenType::ALLOCATE:
-        return "Token Type: ALLOCATE";
-    case TokenType::GC:
-        return "Token Type: GC";
-    case TokenType::DROP:
-        return "Token Type: DROP";
-    case TokenType::ELEVATE:
-        return "Token Type: ELEVATE";
     case TokenType::MODULUS:
         return "Token Type: MODULUS";
-    case TokenType::WRITE:
-        return "Token Type: WRITE";
-    case TokenType::POINTER:
-        return "Token Type: POINTER";
-    case TokenType::READ:
-        return "Token Type: READ";
+    case TokenType::HEAP:
+        return "Token Type: HEAP";
     case TokenType::BANG:
         return "Token Type: BANG";
     case TokenType::FULLSTOP:

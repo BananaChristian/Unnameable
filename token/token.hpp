@@ -61,6 +61,7 @@ enum class TokenType
     ENUM,
     CLASS,
 
+    HEAP,      // Heap keyword that allows a user to manually tell the compiler to allocate on the heap
     COMPONENT, // component key word for classes
     SELF,      // self keyword for a component instance
     DATA,      // data keyword token for class
@@ -127,17 +128,6 @@ enum class TokenType
     ARRAY,
 
     NULLABLE,
-
-    UNIQUE,
-    MAKE,
-    UNSAFE,
-    ALLOCATE,
-    GC,
-    DROP,
-    ELEVATE,
-    WRITE,
-    POINTER,
-    READ,
 
     ILLEGAL,
     END,
