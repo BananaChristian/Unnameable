@@ -63,6 +63,7 @@ private:
     void generateFunctionDeclarationExpression(Node *node);
     // Component system
     void generateDataStatement(Node *node);
+    void generateBehaviorStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);

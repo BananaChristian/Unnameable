@@ -458,7 +458,8 @@ void Semantics::walkBehaviorStatement(Node *node)
 
             funcInfo = {
                 .memberName = funcExpr->func_key.TokenLiteral,
-                .type = exprSym->type};
+                .type = exprSym->type,
+                .node = funcStmt};
 
             behaviorMembers[funcExpr->func_key.TokenLiteral] = funcInfo;
 
@@ -492,7 +493,8 @@ void Semantics::walkBehaviorStatement(Node *node)
 
             funcInfo = {
                 .memberName = funcDecl->function_name->expression.TokenLiteral,
-                .type = declSym->type};
+                .type = declSym->type,
+                .node = funcStmt};
 
             behaviorMembers[funcDecl->function_name->expression.TokenLiteral] = funcInfo;
 

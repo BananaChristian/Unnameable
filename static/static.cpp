@@ -199,11 +199,17 @@ void Static::analyzeBehaviorStatement(Node *node)
     if (!behaviorStmt)
         return;
 
-    // This is basically a functions wrapper so we call the generator to handle that
-    for (const auto &method : behaviorStmt->functions)
+    auto behaviorIt = semantics.metaData.find(behaviorStmt);
+    if (behaviorIt == semantics.metaData.end())
     {
-        analyze(method.get());
+        std::cout << "Missing behavior block metaData";
+        return;
     }
+
+    auto structTy = behaviorIt->second->llvmType;
+    const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
+    uint64_t size = DL.getTypeAllocSize(structTy);
+    total_size += size;
 }
 
 void Static::analyzeUseStatement(Node *node)

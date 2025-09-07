@@ -73,20 +73,7 @@ class Lexer
         {"const", TokenType::CONST},
         {"mut", TokenType::MUT},
 
-        {"unique", TokenType::UNIQUE},
-        {"make", TokenType::MAKE},
-        {"signal", TokenType::SIGNAL},
-        {"start", TokenType::START},
-        {"error", TokenType::ERROR},
-        {"wait", TokenType::WAIT},
-        {"unsafe", TokenType::UNSAFE},
-        {"alloc", TokenType::ALLOCATE},
-        {"gc", TokenType::GC},
-        {"free", TokenType::DROP},
-        {"elevate", TokenType::ELEVATE},
-        {"write", TokenType::WRITE},
-        {"pointer", TokenType::POINTER},
-        {"read", TokenType::READ},
+        {"heap", TokenType::HEAP},
     };
 
 public:

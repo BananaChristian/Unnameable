@@ -1588,6 +1588,7 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(FunctionDeclarationExpression)] = &IRGenerator::generateFunctionDeclarationExpression;
     // Component system
     generatorFunctionsMap[typeid(DataStatement)] = &IRGenerator::generateDataStatement;
+    generatorFunctionsMap[typeid(BehaviorStatement)] = &IRGenerator::generateBehaviorStatement;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions()

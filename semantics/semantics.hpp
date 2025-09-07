@@ -83,6 +83,8 @@ struct MemberInfo
     bool isInitialised = false;
     // Info for enum members
     std::int64_t constantValue = 0;
+
+    Node *node=nullptr;
 };
 
 struct CustomTypeInfo
