@@ -31,6 +31,7 @@ void Static::registerAnalyzerFunctions()
     analyzerFuncsMap[typeid(DataStatement)] = &Static::analyzeDataStatement;
     analyzerFuncsMap[typeid(BehaviorStatement)] = &Static::analyzeBehaviorStatement;
     analyzerFuncsMap[typeid(UseStatement)] = &Static::analyzeUseStatement;
+    analyzerFuncsMap[typeid(ComponentStatement)] = &Static::analyzeComponentStatement;
 }
 
 // Identifier expression analyzer
@@ -343,7 +344,26 @@ void Static::analyzeUseStatement(Node *node)
     }
 }
 
+void Static::analyzeComponentStatement(Node *node)
+{
+    auto componentStmt = dynamic_cast<ComponentStatement *>(node);
+    if (!componentStmt)
+        return;
+
+    auto it = semantics.metaData.find(componentStmt);
+    if (it == semantics.metaData.end())
+    {
+        std::cout << "Missing component metaData";
+        return;
+    }
+
+    auto structTy = it->second->llvmType;
+    const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
+    uint64_t size = DL.getTypeAllocSize(structTy);
+    total_size += size;
+}
+
 void Static::dumpTotal()
 {
-    std::cout << "Total size: " << static_cast<unsigned long long>(total_size) << "\n";
+    std::cout << "Total size: " << static_cast<unsigned long long>(total_size) << " bytes \n";
 }

@@ -182,8 +182,6 @@ void Semantics::walkFunctionStatement(Node *node)
     // Unwrapping whatever is stored in the function statement and walking it
     walker(funcStmt->funcExpr.get());
     auto it = metaData.find(funcStmt->funcExpr.get());
-    if (it != metaData.end())
-        metaData[funcStmt] = it->second;
 }
 
 void Semantics::walkFunctionExpression(Node *node)
@@ -200,19 +198,23 @@ void Semantics::walkFunctionExpression(Node *node)
     // Checking for duplicates in global scope
     auto symbol = resolveSymbolInfo(funcName);
 
-    if (symbol && symbol->isDefined)
+    // Only accessing symbol if it exists
+    if (symbol)
     {
-        logSemanticErrors("Already used the name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
-        return;
-    }
-
-    if (symbol->isDeclaration)
-    {
-        if (!areSignaturesCompatible(*symbol, funcExpr))
+        if (symbol->isDefined)
         {
-            logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope",
-                              funcExpr->func_key.line, funcExpr->func_key.column);
+            logSemanticErrors("Already used the name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
             return;
+        }
+
+        if (symbol->isDeclaration)
+        {
+            if (!areSignaturesCompatible(*symbol, funcExpr))
+            {
+                logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope",
+                                  funcExpr->func_key.line, funcExpr->func_key.column);
+                return;
+            }
         }
     }
 

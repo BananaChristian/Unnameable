@@ -532,26 +532,27 @@ void Semantics::walkUseStatement(Node *node)
 
     std::cout << "[SEMANTIC LOG] Analyzing use statement " << node->toString() << "\n";
 
-    // We'll produce a SymbolInfo to stash on this node via metaData.
-    // That SymbolInfo will carry the imported members (all or selected).
-    std::shared_ptr<SymbolInfo> resultSym = nullptr;
+    auto resultSym = std::make_shared<SymbolInfo>();
+    // Initializing safe defaults
     resultSym->isNullable = false;
     resultSym->isMutable = false;
     resultSym->isConstant = false;
     resultSym->isInitialized = false;
+    resultSym->members.clear();
+    resultSym->type = ResolvedType{DataType::UNKNOWN, ""};
 
-    // 1) Determine "kind" requested by the 'use' keyword (data/behavior)
+    // Determining requested kind (data/behavior)
     TokenType requestedKind = useStmt->kind_token.type;
 
-    // 2) Inspect the expression after 'use ...'
-    //    Cases:
-    //      A) Identifier           -> full import of that block
-    //      B) InfixExpression '.'  -> behavior.member (selective import)
-    //      C) InfixExpression '::' -> data.member     (selective import)
-    auto expr = useStmt->blockNameOrCall.get(); // The node we want to import from
+    // Expression after 'use'
+    Node *expr = useStmt->blockNameOrCall.get();
+    if (!expr)
+    {
+        logSemanticErrors("Empty target for use", useStmt->statement.line, useStmt->statement.column);
+        return;
+    }
 
-    // Helper lambdas
-    // This helps to get search for the type we are importing from in the customTypesTable
+    // helper to find custom type by name in customTypesTable
     auto findType = [&](const std::string &name) -> CustomTypeInfo *
     {
         auto it = customTypesTable.find(name);
@@ -560,45 +561,39 @@ void Semantics::walkUseStatement(Node *node)
         return &it->second;
     };
 
-    auto rejectKind = [&](const std::string &name, ResolvedType kind, const char *where, int line, int col)
-    {
-        std::string got = kind.resolvedName;
-        std::string want = (requestedKind == TokenType::DATA) ? "DATABLOCK" : "BEHAVIORBLOCK";
-        logSemanticErrors("Cannot use '" + name + "' here: expected " + want + " but got " + got, line, col);
-    };
-
-    // Case A: simple identifier
+    // ---------- Case A: simple identifier -> full import ----------
     if (auto ident = dynamic_cast<Identifier *>(expr))
     {
-        std::string targetName = ident->identifier.TokenLiteral; // The name we want to import from
-        CustomTypeInfo *target = findType(targetName);           // Calling our lambda to search for that name in the customTypesTable
+        std::string targetName = ident->expression.TokenLiteral;
+        CustomTypeInfo *target = findType(targetName);
         if (!target)
         {
             logSemanticErrors("Unknown block '" + targetName + "' in use statement",
                               ident->expression.line, ident->expression.column);
             return;
         }
-        // If we imported from a data block
+
         if (requestedKind == TokenType::DATA)
         {
             if (target->type.kind != DataType::DATABLOCK)
             {
-                rejectKind(targetName, target->type, "use data", ident->expression.line, ident->expression.column);
+                logSemanticErrors("Cannot use '" + targetName + "' here: expected DATABLOCK",
+                                  ident->expression.line, ident->expression.column);
                 return;
             }
             resultSym->type.kind = DataType::DATABLOCK;
-            resultSym->members = target->members; // full import of all data members
+            resultSym->members = target->members; // copying members
         }
-        // If we imported from a behavior block
         else if (requestedKind == TokenType::BEHAVIOR)
         {
             if (target->type.kind != DataType::BEHAVIORBLOCK)
             {
-                rejectKind(targetName, target->type, "use behavior", ident->expression.line, ident->expression.column);
+                logSemanticErrors("Cannot use '" + targetName + "' here: expected BEHAVIORBLOCK",
+                                  ident->expression.line, ident->expression.column);
                 return;
             }
             resultSym->type.kind = DataType::BEHAVIORBLOCK;
-            resultSym->members = target->members; // full import of all behavior members
+            resultSym->members = target->members;
         }
         else
         {
@@ -607,20 +602,40 @@ void Semantics::walkUseStatement(Node *node)
             return;
         }
 
-        // Stash the resolved import on this node
+        // Attaching result to useStmt node
         metaData[useStmt] = resultSym;
-        std::cout << "[SEMANTIC LOG] use "
-                  << ((requestedKind == TokenType::DATA) ? "data " : "behavior ")
+        std::cout << "[SEMANTIC LOG] use " << ((requestedKind == TokenType::DATA) ? "data " : "behavior ")
                   << targetName << " imported " << resultSym->members.size() << " member(s)\n";
+
+        // Merging into current component scope if a component is active
+        if (!currentTypeStack.empty())
+        {
+            // merging into the member map
+            auto &currentMembers = currentTypeStack.back().members;
+            for (auto &kv : resultSym->members)
+            {
+                currentMembers[kv.first] = kv.second;
+                auto memSym = std::make_shared<SymbolInfo>();
+                memSym->type = kv.second.type;
+                memSym->isNullable = kv.second.isNullable;
+                memSym->isMutable = kv.second.isMutable;
+                memSym->isConstant = kv.second.isConstant;
+                memSym->isInitialized = kv.second.isInitialised;
+                symbolTable.back()[kv.first] = memSym;
+            }
+        }
+        else
+        {
+            std::cout << "[SEMANTIC LOG] No currentTypeStack to merge 'use' members into\n";
+        }
+
         return;
     }
 
-    // Dotted or scope-qualified selection(Importing specifics from the blocks)
+    // ---------- Case B: qualified import (infix) ----------
     if (auto infix = dynamic_cast<InfixExpression *>(expr))
     {
         TokenType op = infix->operat.type;
-
-        // We only accept . for behavior blocks and :: for data blocks
         bool expectBehaviorDot = (requestedKind == TokenType::BEHAVIOR && op == TokenType::FULLSTOP);
         bool expectDataScope = (requestedKind == TokenType::DATA && op == TokenType::SCOPE_OPERATOR);
 
@@ -633,7 +648,6 @@ void Semantics::walkUseStatement(Node *node)
             return;
         }
 
-        // Extract parent and child names (both are identifiers)
         auto leftId = dynamic_cast<Identifier *>(infix->left_operand.get());
         auto rightId = dynamic_cast<Identifier *>(infix->right_operand.get());
         if (!leftId || !rightId)
@@ -643,11 +657,10 @@ void Semantics::walkUseStatement(Node *node)
             return;
         }
 
-        std::string parentName = leftId->identifier.TokenLiteral;
-        std::string childName = rightId->identifier.TokenLiteral;
+        std::string parentName = leftId->expression.TokenLiteral;
+        std::string childName = rightId->expression.TokenLiteral;
 
-        // Resolve parent type
-        CustomTypeInfo *parent = findType(parentName); // Check if the parent exists in the custom types
+        CustomTypeInfo *parent = findType(parentName);
         if (!parent)
         {
             logSemanticErrors("Unknown block '" + parentName + "' in use statement",
@@ -655,29 +668,27 @@ void Semantics::walkUseStatement(Node *node)
             return;
         }
 
-        // Validate kind per operator/context
         if (expectBehaviorDot)
         {
             if (parent->type.kind != DataType::BEHAVIORBLOCK)
             {
-                rejectKind(parentName, parent->type, "use behavior <name>.<member>",
-                           leftId->expression.line, leftId->expression.column);
+                logSemanticErrors("Cannot use behavior '" + parentName + "': not a behavior block",
+                                  leftId->expression.line, leftId->expression.column);
                 return;
             }
             resultSym->type.kind = DataType::BEHAVIORBLOCK;
         }
-        else // expectDataScope
+        else
         {
             if (parent->type.kind != DataType::DATABLOCK)
             {
-                rejectKind(parentName, parent->type, "use data <name>::<member>",
-                           leftId->expression.line, leftId->expression.column);
+                logSemanticErrors("Cannot use data '" + parentName + "': not a data block",
+                                  leftId->expression.line, leftId->expression.column);
                 return;
             }
             resultSym->type.kind = DataType::DATABLOCK;
         }
 
-        // Select a single member
         auto memIt = parent->members.find(childName);
         if (memIt == parent->members.end())
         {
@@ -686,27 +697,28 @@ void Semantics::walkUseStatement(Node *node)
             return;
         }
 
-        // Keep only the chosen member
+        // keep only the selected member
         resultSym->members.clear();
         resultSym->members.emplace(childName, memIt->second);
-
-        // Attach to metaData for the component walker to merge later
         metaData[useStmt] = resultSym;
 
-        // I think here I will insert the imported  data directly into the caller component's members
-        auto componentMembers = currentTypeStack.back().members;
-
-        componentMembers = resultSym->members;
-        if (componentMembers.empty())
+        // merge into the active component type if present
+        if (!currentTypeStack.empty())
         {
-            std::cout << "NOTHING WAS INSERTED INTO COMPONENT MEMBERS\n";
+            auto &currentMembers = currentTypeStack.back().members;
+            currentMembers[childName] = memIt->second;
+
+            auto memSym = std::make_shared<SymbolInfo>();
+            memSym->type = memIt->second.type;
+            memSym->isNullable = memIt->second.isNullable;
+            memSym->isMutable = memIt->second.isMutable;
+            memSym->isConstant = memIt->second.isConstant;
+            memSym->isInitialized = memIt->second.isInitialised;
+            symbolTable.back()[childName] = memSym;
         }
         else
         {
-            // Here let us investigate if the currentType stack actually has a component
-            ResolvedType &currentType = currentTypeStack.back().type;
-            std::cout << "COMPONENT IS OF TYPE  " << currentType.resolvedName << "\n";
-            std::cout << "COMPONENT MEMBERS ARE NOT EMPTY\n";
+            std::cout << "[SEMANTIC LOG] No currentTypeStack to merge single-use member into\n";
         }
 
         std::cout << "[SEMANTIC LOG] use "
@@ -717,7 +729,7 @@ void Semantics::walkUseStatement(Node *node)
         return;
     }
 
-    // If we get here, we got a shape we don't support (e.g., call expression)
+    // Unsupported shape
     logSemanticErrors("Invalid use target", useStmt->statement.line, useStmt->statement.column);
 }
 
@@ -855,15 +867,15 @@ void Semantics::walkComponentStatement(Node *node)
     auto componentName = componentStmt->component_name->expression.TokenLiteral;
     std::cout << "[SEMANTIC LOG] Analyzing component '" << componentName << "'\n";
 
-    // Check if this component name already exists
-    if (resolveSymbolInfo(componentName))
+    if (symbolTable[0].find(componentName) != symbolTable[0].end())
     {
-        logSemanticErrors(
-            "Component name '" + componentName + "' is already defined",
-            componentStmt->statement.line,
-            componentStmt->statement.column);
+        logSemanticErrors("Component '" + componentName + "' already exists", componentStmt->statement.line, componentStmt->statement.column);
         return;
     }
+
+    auto componentSymbol = std::make_shared<SymbolInfo>();
+    componentSymbol->type = ResolvedType{DataType::COMPONENT, componentName};
+    symbolTable[0][componentName] = componentSymbol;
 
     std::unordered_map<std::string, MemberInfo> members;
 
@@ -1020,39 +1032,48 @@ void Semantics::walkComponentStatement(Node *node)
             continue;
 
         auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
-        auto funcDeclrExpr = dynamic_cast<FunctionDeclaration *>(funcStmt->funcExpr.get());
+        auto funcDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get());
 
         if (funcExpr)
         {
             walker(funcExpr);
             auto metSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
+            std::cout << "TRYING TO INSERT: " << funcExpr->func_key.TokenLiteral << "\n";
             if (metSym)
             {
+                std::cout << "INSERTING COMPONENT FUNCTION EXPRESSION\n";
                 members[funcExpr->func_key.TokenLiteral] = {
                     .memberName = funcExpr->func_key.TokenLiteral,
                     .type = metSym->type,
                     .isNullable = metSym->isNullable,
-                    .isMutable = metSym->isMutable};
+                    .isMutable = metSym->isMutable,
+                    .node = funcStmt};
             }
         }
         else if (funcDeclrExpr)
         {
-            walker(funcDeclrExpr);
-            auto metSym = resolveSymbolInfo(funcDeclrExpr->function_name->expression.TokenLiteral);
+            auto funcDeclr = dynamic_cast<FunctionDeclaration *>(funcDeclrExpr->funcDeclrStmt.get());
+            if (!funcDeclr)
+            {
+                std::cout << "[SEMANTIC LOG]: Function declaration statement is null\n";
+                return;
+            }
+            walker(funcDeclr);
+            auto metSym = resolveSymbolInfo(funcDeclr->function_name->expression.TokenLiteral);
             if (metSym)
             {
-                members[funcDeclrExpr->function_name->expression.TokenLiteral] = {
-                    .memberName = funcDeclrExpr->function_name->expression.TokenLiteral,
+                std::cout << "INSERTING COMPONENT FUNCTION DECLARATION EXPRESSION\n";
+                members[funcDeclr->function_name->expression.TokenLiteral] = {
+                    .memberName = funcDeclr->function_name->expression.TokenLiteral,
                     .type = metSym->type,
                     .isNullable = metSym->isNullable,
-                    .isMutable = metSym->isMutable};
+                    .isMutable = metSym->isMutable,
+                    .node = funcStmt};
             }
         }
     }
 
     // Register component as a symbol
-    auto componentSymbol = std::make_shared<SymbolInfo>();
-    componentSymbol->type = ResolvedType{DataType::COMPONENT, componentName};
     componentSymbol->members = members;
 
     CustomTypeInfo typeInfo = {

@@ -71,3 +71,60 @@ void IRGenerator::generateBehaviorStatement(Node *node)
     llvm::StructType *structTy = llvm::StructType::create(context, memberTypes, name);
     it->second->llvmType = structTy;
 }
+
+void IRGenerator::generateInitFunction(Node *node)
+{
+    auto initStmt = dynamic_cast<InitStatement *>(node);
+    if (!initStmt)
+        return;
+}
+
+void IRGenerator::generateComponentStatement(Node *node)
+{
+    auto compStmt = dynamic_cast<ComponentStatement *>(node);
+    if (!compStmt)
+        return;
+
+    std::cout << "Generating IR for component statement" << node->toString() << "\n";
+    auto it = semantics.metaData.find(compStmt);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Missing component metaData");
+    }
+    auto sym = it->second;
+    const std::string compName = sym->type.resolvedName;
+
+    std::vector<llvm::Type *> memberTypes;
+    for (const auto &[memberName, info] : it->second->members)
+    {
+        std::cout << "Dealing with memberTypes\n";
+        llvm::Type *memberType;
+        if (info.node)
+        {
+            if (auto funcStmt = dynamic_cast<FunctionStatement *>(info.node))
+            {
+                llvm::Function *func = module->getFunction(memberName);
+                if (!func)
+                {
+                    generateFunctionStatement(funcStmt);
+                    func = module->getFunction(memberName);
+                    if (!func)
+                    {
+                        throw std::runtime_error("Failed to generate function: " + memberName);
+                    }
+                }
+                memberType = func->getType()->getPointerTo();
+                memberTypes.push_back(memberType);
+            }
+        }
+        else
+        {
+            memberType = getLLVMType(info.type.kind);
+            memberTypes.push_back(memberType);
+        }
+    }
+
+    llvm::StructType *structTy = llvm::StructType::create(context, memberTypes, compName);
+
+    it->second->llvmType = structTy;
+}
