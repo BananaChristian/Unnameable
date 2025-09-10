@@ -175,7 +175,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     if (identToken.type == TokenType::SELF)
     {
         std::cout << "SELF CASE TRIGGERED\n";
-        lhs = parseIdentifier(); // builds FieldAccessExpression
+        lhs = parseSelfExpression(); // builds FieldAccessExpression
     }
     // Case 2 & 3: normal identifier (possibly qualified)
     else if (identToken.type == TokenType::IDENTIFIER)
@@ -862,6 +862,8 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
             }
             break;
         case TokenType::STRING_KEYWORD:
+        case TokenType::MUT:
+        case TokenType::CONST:
         case TokenType::FLOAT_KEYWORD:
         case TokenType::BOOL_KEYWORD:
         case TokenType::CHAR_KEYWORD:
@@ -871,6 +873,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
             privateData.push_back(std::move(stmt));
             break;
         case TokenType::IDENTIFIER:
+        case TokenType::SELF:
             stmt = parseAssignmentStatement(false);
             privateData.push_back(std::move(stmt));
             break;
@@ -1236,31 +1239,6 @@ std::unique_ptr<Statement> Parser::parseIfStatement()
 // Parsing identifiers
 std::unique_ptr<Expression> Parser::parseIdentifier()
 {
-    if (currentToken().type == TokenType::SELF)
-    {
-        Token self_token = currentToken();
-        advance();
-
-        if (currentToken().type != TokenType::FULLSTOP)
-        {
-            logError("Exprected a . after self but got: " + currentToken().TokenLiteral);
-            return nullptr;
-        }
-
-        advance();
-
-        if (currentToken().type != TokenType::IDENTIFIER)
-        {
-            logError("Expected an identifer after . but got" + currentToken().TokenLiteral);
-            return nullptr;
-        }
-        Token field_token = currentToken();
-        advance();
-
-        return std::make_unique<FieldAccessExpression>(
-            std::make_unique<Identifier>(self_token),
-            field_token);
-    }
     auto ident = std::make_unique<Identifier>(currentToken());
     if (!ident)
     {
@@ -1268,6 +1246,32 @@ std::unique_ptr<Expression> Parser::parseIdentifier()
     }
     advance();
     return ident;
+}
+
+std::unique_ptr<Expression> Parser::parseSelfExpression()
+{
+    Token self_token = currentToken();
+    advance();
+
+    if (currentToken().type != TokenType::FULLSTOP)
+    {
+        logError("Exprected a . after self but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+
+    advance();
+
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected an identifer after . but got" + currentToken().TokenLiteral);
+        return nullptr;
+    }
+
+    // Call the identifier parser here
+    auto fieldExpr = parseIdentifier();
+
+    return std::make_unique<SelfExpression>(
+        self_token, std::move(fieldExpr));
 }
 
 //-----------PARSING EXPRESSIONS----------
@@ -1973,7 +1977,7 @@ void Parser::registerPrefixFns()
 
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
     PrefixParseFunctionsMap[TokenType::NEW] = &Parser::parseNewComponentExpression;
-    PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseIdentifier;
+    PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedOrTupleExpression;

@@ -237,10 +237,6 @@ void Semantics::walkIdentifierExpression(Node *node)
         return;
     std::cout << "[SEMANTIC LOG] Analyzing identifier node: " << identExpr->toString() << "\n";
     auto identName = identExpr->identifier.TokenLiteral;
-    if (identName == "self")
-    {
-        return;
-    }
     auto symbolInfo = resolveSymbolInfo(identName);
 
     if (!symbolInfo)
@@ -473,44 +469,62 @@ void Semantics::walkAssignStatement(Node *node)
     std::string assignName;
 
     // Dealing with self.field
-    if (auto fieldAccess = dynamic_cast<FieldAccessExpression *>(assignStmt->identifier.get()))
+    if (auto *selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
     {
-        auto baseIdent = dynamic_cast<Identifier *>(fieldAccess->base.get());
-        if (!baseIdent || baseIdent->identifier.TokenLiteral != "self")
-        {
-            logSemanticErrors("Left-hand side of assignment must be 'self.<field>' or an identifier",
-                              assignStmt->identifier->expression.line,
-                              assignStmt->identifier->expression.column);
-            return;
-        }
-
-        // Ensure we’re actually in a component scope
+        std::cout << "INSIDE SPECIAL SELF ASSIGNMENT\n";
+        // Must be inside a component
         if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
         {
             logSemanticErrors("'self' cannot be used outside a component",
-                              assignStmt->identifier->expression.line,
-                              assignStmt->identifier->expression.column);
+                              selfExpr->expression.line,
+                              selfExpr->expression.column);
             return;
         }
 
-        assignName = fieldAccess->field.TokenLiteral;
-        symbol = resolveSymbolInfo(assignName); // normal lookup inside the component’s scope
+        assignName = selfExpr->field->expression.TokenLiteral;
+        std::cout << "NAME BEING RECEIVED : " << assignName << "\n";
 
-        if (!symbol)
+        // Look up the current component's metadata
+        auto &compScope = currentTypeStack.back();
+        auto compMetaIt = metaData.find(compScope.node);
+        if (compMetaIt == metaData.end())
         {
-            logSemanticErrors("Field '" + assignName + "' does not exist in this component",
-                              assignStmt->identifier->expression.line,
-                              assignStmt->identifier->expression.column);
+            logSemanticErrors("Component metadata not found",
+                              selfExpr->expression.line,
+                              selfExpr->expression.column);
             return;
         }
 
-        std::cout << "[SEMANTIC LOG]: Analyzing assignment to field 'self."
-                  << assignName << "'\n";
+        auto compMeta = compMetaIt->second;
+
+        // Lookup the field inside the component
+        auto memIt = compMeta->members.find(assignName);
+        if (memIt == compMeta->members.end())
+        {
+            logSemanticErrors("Field '" + assignName + "' not found in component",
+                              selfExpr->expression.line,
+                              selfExpr->expression.column);
+            return;
+        }
+
+        const MemberInfo &fieldInfo = memIt->second;
+
+        // Wrap field info into a SymbolInfo for semantic tracking
+        symbol = std::make_shared<SymbolInfo>();
+        symbol->type = fieldInfo.type;
+        symbol->isNullable = fieldInfo.isNullable;
+        symbol->isMutable = fieldInfo.isMutable;
+        symbol->isConstant = fieldInfo.isConstant;
+        symbol->isInitialized = fieldInfo.isInitialised;
+        symbol->memberIndex = fieldInfo.memberIndex;
+
+        std::cout << "[SEMANTIC LOG]: Analyzing assignment to field 'self." << assignName << "'\n";
     }
     // Plain identifier assignment handling
     else if (auto ident = dynamic_cast<Identifier *>(assignStmt->identifier.get()))
     {
         assignName = ident->identifier.TokenLiteral;
+        std::cout << "NORMAL ASSIGN NAME: " << assignName << "\n";
         symbol = resolveSymbolInfo(assignName);
 
         if (!symbol)

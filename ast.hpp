@@ -59,18 +59,18 @@ struct Identifier : Expression
     Identifier(Token ident) : Expression(ident), identifier(ident) {};
 };
 
-struct FieldAccessExpression : Expression
+struct SelfExpression : Expression
 {
-    std::unique_ptr<Expression> base; // e.g. self
-    Token field;
+    Token self_token;                  // e.g. self
+    std::unique_ptr<Expression> field; // e.g. x
 
     std::string toString() override
     {
-        return "Field Access Expression: " + base->toString() + "." + field.TokenLiteral;
+        return "Self Expression: " + self_token.TokenLiteral + "." + field->toString();
     }
 
-    FieldAccessExpression(std::unique_ptr<Expression> baseExpr, Token fieldToken)
-        : Expression(fieldToken), base(std::move(baseExpr)), field(fieldToken) {};
+    SelfExpression(Token self, std::unique_ptr<Expression> fieldExpr)
+        : Expression(self), self_token(self), field(std::move(fieldExpr)) {};
 };
 
 struct NewComponentExpression : Expression

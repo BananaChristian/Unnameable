@@ -103,7 +103,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(UseStatement)] = &Semantics::walkUseStatement;
     walkerFunctionsMap[typeid(ComponentStatement)] = &Semantics::walkComponentStatement;
     walkerFunctionsMap[typeid(NewComponentExpression)] = &Semantics::walkNewComponentExpression;
-    walkerFunctionsMap[typeid(FieldAccessExpression)] = &Semantics::walkFieldAccessExpression;
+    walkerFunctionsMap[typeid(SelfExpression)] = &Semantics::walkSelfExpression;
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
 }
 
@@ -156,6 +156,12 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
         return ResolvedType{DataType::ERROR, "error"};
 
+    if (auto selfExpr = dynamic_cast<SelfExpression *>(node))
+    {
+        auto fieldExpr = dynamic_cast<Identifier *>(selfExpr->field.get());
+        return inferNodeDataType(fieldExpr);
+    }
+
     // Dealing with the let statement node type
     if (auto letStmt = dynamic_cast<LetStatement *>(node))
     {
@@ -165,8 +171,22 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
 
     if (auto assignStmt = dynamic_cast<AssignmentStatement *>(node))
     {
-        auto assignStmtIdent = assignStmt->identifier->expression.TokenLiteral;
-        auto assignSymbol = resolveSymbolInfo(assignStmtIdent);
+        std::string nameToResolve;
+
+        if (auto selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
+        {
+            auto fieldIdent = dynamic_cast<Identifier *>(selfExpr->field.get());
+            if (!fieldIdent)
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+
+            nameToResolve = fieldIdent->identifier.TokenLiteral; // <-- real field name
+        }
+        else
+        {
+            nameToResolve = assignStmt->identifier->expression.TokenLiteral;
+        }
+        std::cout << "NAME BEING USED TO RESOLVE INSIDE INFERER: " << nameToResolve << "\n";
+        auto assignSymbol = resolveSymbolInfo(nameToResolve);
         auto assignStmtVal = assignStmt->value.get();
         ResolvedType assignStmtValType = inferNodeDataType(assignStmtVal);
         if (!isTypeCompatible(assignSymbol->type, assignStmtValType))
@@ -211,6 +231,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     if (auto ident = dynamic_cast<Identifier *>(node))
     {
         std::string name = ident->identifier.TokenLiteral;
+        std::cout << "NAME BEING USED IN IDENTIFIER INFERER: " << name << "\n";
 
         // Look up the variable in current scope(s)
         auto symbol = resolveSymbolInfo(name);

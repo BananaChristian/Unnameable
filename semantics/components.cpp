@@ -793,33 +793,27 @@ void Semantics::walkInitConstructor(Node *node)
               << currentComponent.typeName << "'\n";
 }
 
-void Semantics::walkFieldAccessExpression(Node *node)
+void Semantics::walkSelfExpression(Node *node)
 {
-    auto fieldExpr = dynamic_cast<FieldAccessExpression *>(node);
-    if (!fieldExpr)
+    auto selfExpr = dynamic_cast<SelfExpression *>(node);
+    if (!selfExpr)
         return;
 
     std::cout << "[SEMANTIC LOG] Analysing field access expression: "
-              << fieldExpr->toString() << "\n";
-
-    // Walk base (e.g., "self")
-    walker(fieldExpr->base.get());
-
-    // Base must be `self`
-    auto baseIdent = dynamic_cast<Identifier *>(fieldExpr->base.get());
-    if (!baseIdent || baseIdent->identifier.TokenLiteral != "self")
-    {
-        logSemanticErrors("Field access base must be 'self' (for now)",
-                          fieldExpr->expression.line, fieldExpr->expression.column);
-        return;
-    }
+              << selfExpr->toString() << "\n";
 
     // Must be inside a component
     if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
     {
         logSemanticErrors("'self' cannot be used outside a component",
-                          fieldExpr->expression.line, fieldExpr->expression.column);
+                          selfExpr->expression.line, selfExpr->expression.column);
         return;
+    }
+
+    // Must be inside the init constructor if the component has one
+    if (!currentTypeStack.back().hasInitConstructor)
+    {
+        logSemanticErrors("Cannot use 'self' outside an init constructor", selfExpr->expression.line, selfExpr->expression.column);
     }
 
     const std::string &componentName = currentTypeStack.back().typeName;
@@ -828,17 +822,21 @@ void Semantics::walkFieldAccessExpression(Node *node)
     {
         // Shouldn’t happen if walkComponentStatement registered it
         logSemanticErrors("Internal error: unknown component '" + componentName + "'",
-                          fieldExpr->expression.line, fieldExpr->expression.column);
+                          selfExpr->expression.line, selfExpr->expression.column);
         return;
     }
 
-    const std::string fieldName = fieldExpr->field.TokenLiteral;
+    // Calling the walker on the actual field expression
+    walker(selfExpr->field.get());
+
+    const std::string fieldName = selfExpr->field->expression.TokenLiteral;
+    std::cout << "NAME BEING GOTTEN FROM SELF EXPRESSION: " << fieldName << "\n";
     const auto &members = ctIt->second.members;
     auto memIt = members.find(fieldName);
     if (memIt == members.end())
     {
         logSemanticErrors("'" + fieldName + "' does not exist in component '" + componentName + "'",
-                          fieldExpr->expression.line, fieldExpr->expression.column);
+                          selfExpr->expression.line, selfExpr->expression.column);
         return;
     }
 
@@ -851,8 +849,9 @@ void Semantics::walkFieldAccessExpression(Node *node)
     info->isMutable = m.isMutable;
     info->isConstant = m.isConstant;
     info->isInitialized = m.isInitialised;
+    info->memberIndex = m.memberIndex;
 
-    metaData[fieldExpr] = info;
+    metaData[selfExpr] = info;
 
     std::cout << "[SEMANTIC LOG] Field access 'self." << fieldName
               << "' resolved in component '" << componentName << "'\n";
@@ -877,14 +876,18 @@ void Semantics::walkComponentStatement(Node *node)
     componentSymbol->type = ResolvedType{DataType::COMPONENT, componentName};
     symbolTable[0][componentName] = componentSymbol;
 
+    metaData[componentStmt] = componentSymbol;
+
     std::unordered_map<std::string, MemberInfo> members;
+    int currentMemberIndex = 0;
 
     // Enter a new component scope
     symbolTable.push_back({});
     currentTypeStack.push_back({.type = ResolvedType{DataType::COMPONENT, componentName},
                                 .typeName = componentName,
                                 .hasInitConstructor = false,
-                                .members = members});
+                                .members = members,
+                                .node = componentStmt});
 
     // Walk data/behavior imports
     for (const auto &usedData : componentStmt->usedDataBlocks)
@@ -901,6 +904,7 @@ void Semantics::walkComponentStatement(Node *node)
             std::cout << "INVALID SHIT\n";
             continue;
         }
+
         // Mass import case
         auto ident = dynamic_cast<Identifier *>(useStmt->blockNameOrCall.get());
         if (ident)
@@ -918,13 +922,17 @@ void Semantics::walkComponentStatement(Node *node)
             auto &currentScope = symbolTable.back();
             for (auto &[name, info] : importedMembers)
             {
-                members[name] = info;
+                MemberInfo memberCopy = info;
+                memberCopy.memberIndex = currentMemberIndex++;
+                members[name] = memberCopy;
+
                 auto memSym = std::make_shared<SymbolInfo>();
                 memSym->type = info.type;
                 memSym->isNullable = info.isNullable;
                 memSym->isMutable = info.isMutable;
                 memSym->isConstant = info.isConstant;
                 memSym->isInitialized = info.isInitialised;
+                memSym->memberIndex = memberCopy.memberIndex;
                 currentScope[name] = memSym;
             }
         }
@@ -952,6 +960,9 @@ void Semantics::walkComponentStatement(Node *node)
                 for (auto &[name, info] : importedMembers)
                 {
                     // Add to component members blueprint
+                    MemberInfo memberCopy = info;
+                    memberCopy.memberIndex = currentMemberIndex++;
+                    members[name] = memberCopy;
                     members[name] = info;
 
                     // Also add to local symbol table so assignments resolve
@@ -961,7 +972,7 @@ void Semantics::walkComponentStatement(Node *node)
                     memInfo->isMutable = info.isMutable;
                     memInfo->isConstant = info.isConstant;
                     memInfo->isInitialized = info.isInitialised;
-
+                    memInfo->memberIndex = memberCopy.memberIndex;
                     currentScope[name] = memInfo;
                 }
             }
@@ -971,60 +982,57 @@ void Semantics::walkComponentStatement(Node *node)
     for (const auto &usedBehavior : componentStmt->usedBehaviorBlocks)
         walkUseStatement(usedBehavior.get());
 
-    // Walk init constructor (if any)
-    if (componentStmt->initConstructor.has_value())
-        walkInitConstructor(componentStmt->initConstructor.value().get());
-
-    // Walk private data members
+    // --- REORDERED: WALK PRIVATE DATA MEMBERS FIRST ---
     for (const auto &data : componentStmt->privateData)
     {
         auto letStmt = dynamic_cast<LetStatement *>(data.get());
         auto assignStmt = dynamic_cast<AssignmentStatement *>(data.get());
+
         if (letStmt)
         {
             walker(letStmt);
             auto letSym = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
             if (!letSym)
             {
-                logSemanticErrors(
-                    "Failed to resolve private data '" + letStmt->ident_token.TokenLiteral + "'",
-                    letStmt->ident_token.line,
-                    letStmt->ident_token.column);
+                logSemanticErrors("Failed to resolve private data '" + letStmt->ident_token.TokenLiteral + "'",
+                                  letStmt->ident_token.line, letStmt->ident_token.column);
                 continue;
             }
-
-            members[letStmt->ident_token.TokenLiteral] = {
+            MemberInfo memberInfo = {
                 .memberName = letStmt->ident_token.TokenLiteral,
                 .type = letSym->type,
                 .isNullable = letSym->isNullable,
                 .isMutable = letSym->isMutable,
                 .isConstant = letSym->isConstant,
-                .isInitialised = letSym->isInitialized};
+                .isInitialised = letSym->isInitialized,
+                .memberIndex = currentMemberIndex++};
+            members[letStmt->ident_token.TokenLiteral] = memberInfo;
+            letSym->memberIndex = memberInfo.memberIndex;
         }
+
         if (assignStmt)
         {
             walker(assignStmt);
             auto assignSym = resolveSymbolInfo(assignStmt->identifier->expression.TokenLiteral);
             if (!assignSym)
             {
-                logSemanticErrors(
-                    "Failed to resolve private data '" + assignStmt->identifier->expression.TokenLiteral + "'",
-                    assignStmt->identifier->expression.line,
-                    assignStmt->identifier->expression.column);
+                logSemanticErrors("Failed to resolve private data '" + assignStmt->identifier->expression.TokenLiteral + "'",
+                                  assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
                 continue;
             }
-
-            members[assignStmt->identifier->expression.TokenLiteral] = {
+            MemberInfo memberInfo = {
                 .memberName = assignStmt->identifier->expression.TokenLiteral,
                 .type = assignSym->type,
                 .isNullable = assignSym->isNullable,
                 .isMutable = assignSym->isMutable,
                 .isConstant = assignSym->isConstant,
-                .isInitialised = assignSym->isInitialized};
+                .isInitialised = assignSym->isInitialized,
+                .memberIndex = currentMemberIndex++};
+            members[assignStmt->identifier->expression.TokenLiteral] = memberInfo;
+            assignSym->memberIndex = memberInfo.memberIndex;
         }
     }
 
-    // Walk private methods
     for (const auto &method : componentStmt->privateMethods)
     {
         auto funcStmt = dynamic_cast<FunctionStatement *>(method.get());
@@ -1081,10 +1089,11 @@ void Semantics::walkComponentStatement(Node *node)
         .type = ResolvedType{DataType::COMPONENT, componentName},
         .members = members};
 
-    metaData[componentStmt] = componentSymbol;
     customTypesTable[componentName] = typeInfo;
+    
+    if (componentStmt->initConstructor.has_value())
+        walkInitConstructor(componentStmt->initConstructor.value().get());
 
-    // I want to investigate what is inside the local scope
     if (members.empty())
     {
         std::cout << "COMPONENT MEMBERS ARE EMPTY AT RUNTIME\n";

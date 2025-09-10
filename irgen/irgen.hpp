@@ -38,6 +38,9 @@ public:
 
     std::unordered_map<std::type_index, generatorFunctions> generatorFunctionsMap;
     std::unordered_map<std::type_index, expressionGenerators> expressionGeneratorsMap;
+    std::unordered_map<std::string, llvm::StructType *> componentTypes;
+    ComponentStatement *currentComponent = nullptr;
+    llvm::Value *currentComponentInstance;
     std::vector<LoopBlocks> loopBlocksStack;
 
 private:
@@ -64,7 +67,7 @@ private:
     // Component system
     void generateDataStatement(Node *node);
     void generateBehaviorStatement(Node *node);
-    void generateInitFunction(Node *node);
+    void generateInitFunction(Node *node, ComponentStatement *component);
     void generateComponentStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
@@ -94,6 +97,8 @@ private:
     llvm::Value *generateBlockExpression(Node *node);
     llvm::Value *generateFunctionExpression(Node *node);
     llvm::Value *generateCallExpression(Node *node);
+
+    llvm::Value *generateSelfExpression(Node *node);
 
     // HELPER FUNCTIONS
     void registerGeneratorFunctions();

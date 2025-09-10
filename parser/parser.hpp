@@ -197,6 +197,9 @@ private:
     // Parsing identifiers
     std::unique_ptr<Expression> parseIdentifier();
 
+    // Parsing self expression
+    std::unique_ptr<Expression> parseSelfExpression();
+
     // Parsing for expression
     std::unique_ptr<Expression> parseFunctionExpression();
 

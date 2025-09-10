@@ -84,7 +84,8 @@ struct MemberInfo
     // Info for enum members
     std::int64_t constantValue = 0;
 
-    Node *node=nullptr;
+    Node *node = nullptr;
+    int memberIndex = -1;
 };
 
 struct CustomTypeInfo
@@ -102,6 +103,7 @@ struct ScopeInfo
     std::string typeName;
     bool hasInitConstructor = false;
     std::unordered_map<std::string, MemberInfo> members;
+    Node *node = nullptr;
 };
 
 // Information about the symbol(variable or object, whatever)
@@ -124,6 +126,7 @@ struct SymbolInfo
     std::unordered_map<std::string, MemberInfo> members;
     llvm::Value *llvmValue = nullptr;
     llvm::Type *llvmType = nullptr;
+    int memberIndex = -1;
 };
 
 class Semantics
@@ -177,7 +180,7 @@ private:
     void walkComponentStatement(Node *node);
     void walkNewComponentExpression(Node *node);
     void walkInitConstructor(Node *node);
-    void walkFieldAccessExpression(Node *node);
+    void walkSelfExpression(Node *node);
     void walkEnumClassStatement(Node *node);
 
     // Waling infix, prefix and postfix expressions

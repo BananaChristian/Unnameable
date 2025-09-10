@@ -423,31 +423,41 @@ void IRGenerator::generateExpressionStatement(Node *node)
 }
 
 // Assignment statement IR generator function
+// Assignment statement IR generator function
 void IRGenerator::generateAssignmentStatement(Node *node)
 {
-    auto assignStmt = dynamic_cast<AssignmentStatement *>(node);
+    auto *assignStmt = dynamic_cast<AssignmentStatement *>(node);
     if (!assignStmt)
         return;
 
-    const std::string &name = assignStmt->identifier->expression.TokenLiteral;
-    auto assignIt = semantics.metaData.find(assignStmt);
-    if (assignIt == semantics.metaData.end())
-    {
-        throw std::runtime_error("Could not find variable '" + name + "'");
-    }
-    llvm::Value *ptr = assignIt->second->llvmValue;
-    if (!ptr)
-    {
-        throw std::runtime_error("No memory allocated for variable '" + name + "'");
-    }
-
+    llvm::Value *targetPtr = nullptr;
     llvm::Value *initValue = generateExpression(assignStmt->value.get());
     if (!initValue)
+        throw std::runtime_error("Failed to generate IR for assignment value");
+
+    // Check if it's a SelfExpression (self.field)
+    if (auto *selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
     {
-        throw std::runtime_error("Failed to generate IR for assign statement");
+        // Generate pointer to the field in the struct
+        targetPtr = generateSelfExpression(selfExpr);
+        if (!targetPtr)
+            throw std::runtime_error("Failed to get pointer for self field");
+    }
+    else
+    {
+        // Regular variable assignment
+        const std::string &varName = assignStmt->identifier->expression.TokenLiteral;
+        auto it = semantics.resolveSymbolInfo(varName);
+        if (!it)
+            throw std::runtime_error("Could not find variable '" + varName + "'");
+
+        targetPtr = it->llvmValue;
+        if (!targetPtr)
+            throw std::runtime_error("No memory allocated for variable '" + varName + "'");
     }
 
-    builder.CreateStore(initValue, ptr);
+    // Store the value
+    builder.CreateStore(initValue, targetPtr);
 }
 
 void IRGenerator::generateBlockStatement(Node *node)
@@ -1357,6 +1367,56 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     return builder.CreateLoad(getLLVMType(identIt->second->type.kind), variablePtr, identExpr->identifier.TokenLiteral);
 }
 
+llvm::Value *IRGenerator::generateSelfExpression(Node *node)
+{
+    auto selfExpr = dynamic_cast<SelfExpression *>(node);
+    if (!selfExpr)
+    {
+        throw std::runtime_error("Invalid self expression");
+    }
+
+    const std::string &compName = currentComponent->component_name->expression.TokenLiteral;
+
+    auto compIt = componentTypes.find(compName);
+    if (compIt == componentTypes.end())
+    {
+        throw std::runtime_error("Component with name '" + compName + "' not found");
+    }
+
+    auto compTy = compIt->second;
+
+    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(compTy);
+
+    const std::string &fieldName = selfExpr->field->expression.TokenLiteral;
+
+    auto compMeta = semantics.metaData.find(currentComponent);
+    if (compMeta == semantics.metaData.end())
+    {
+        throw std::runtime_error("Missing component metaData for '" + compName + "'");
+    }
+
+    auto memIt = compMeta->second->members.find(fieldName);
+    if (memIt == compMeta->second->members.end())
+    {
+        throw std::runtime_error("Field '" + fieldName + "' not found in component");
+    }
+
+    unsigned index = 0;
+    for (const auto &[name, info] : compMeta->second->members)
+    {
+        if (name == fieldName)
+            break;
+        ++index;
+    }
+
+    llvm::Value *componentInstance = compMeta->second->llvmValue;
+
+    llvm::Value *fieldPtr = builder.CreateStructGEP(
+        structTy, componentInstance, index, fieldName + "_ptr");
+
+    return fieldPtr;
+}
+
 llvm::Value *IRGenerator::generateBlockExpression(Node *node)
 {
     auto blockExpr = dynamic_cast<BlockExpression *>(node);
@@ -1589,7 +1649,6 @@ void IRGenerator::registerGeneratorFunctions()
     // Component system
     generatorFunctionsMap[typeid(DataStatement)] = &IRGenerator::generateDataStatement;
     generatorFunctionsMap[typeid(BehaviorStatement)] = &IRGenerator::generateBehaviorStatement;
-    generatorFunctionsMap[typeid(InitStatement)] = &IRGenerator::generateInitFunction;
     generatorFunctionsMap[typeid(ComponentStatement)] = &IRGenerator::generateComponentStatement;
 }
 
@@ -1616,6 +1675,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
+    expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
 }
 
 char IRGenerator::decodeCharLiteral(const std::string &literal)
