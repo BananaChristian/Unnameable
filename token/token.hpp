@@ -69,6 +69,10 @@ enum class TokenType
     USE,       // use keyword that allows use of external data and behavior blocks
     INIT,      // constructor keyword
 
+    GENERIC, // Generic block keyword
+    INSTANTIATE,
+    AS,
+
     START,  // start
     WAIT,   // wait
     SIGNAL, // signal

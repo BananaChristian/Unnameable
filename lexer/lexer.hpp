@@ -29,6 +29,10 @@ class Lexer
         {"use", TokenType::USE},
         {"init", TokenType::INIT},
 
+        {"generic", TokenType::GENERIC},
+        {"instatiate", TokenType::INSTANTIATE},
+        {"as", TokenType::AS},
+
         {"if", TokenType::IF},
         {"else", TokenType::ELSE},
         {"elif", TokenType::ELSE_IF},
@@ -72,6 +76,8 @@ class Lexer
 
         {"const", TokenType::CONST},
         {"mut", TokenType::MUT},
+
+        {"arr", TokenType::ARRAY},
 
         {"heap", TokenType::HEAP},
     };

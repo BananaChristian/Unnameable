@@ -102,6 +102,14 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: START";
     case TokenType::WAIT:
         return "Token Type: WAIT";
+
+    case TokenType::GENERIC:
+        return "Token Type: GENERIC";
+    case TokenType::INSTANTIATE:
+        return "Token Type: INSTANTIATE";
+    case TokenType::AS:
+        return "Token Type: AS";
+        
     case TokenType::SIGNAL:
         return "Tokenn Type: SIGNAL";
     case TokenType::ERROR:
