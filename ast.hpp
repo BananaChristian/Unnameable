@@ -1123,6 +1123,28 @@ struct BlockStatement : Statement
     BlockStatement(Token brac, std::vector<std::unique_ptr<Statement>> cont) : Statement(brac), brace(brac), statements(std::move(cont)) {}
 };
 
+// GENERICS
+// Generic statement node
+struct GenericStatement : Statement
+{
+    Token generic_token;
+    std::unique_ptr<Expression> block_name;
+    std::vector<Token> type_parameters;
+    std::unique_ptr<Statement> block;
+
+    std::string toString() override
+    {
+        std::string parameters;
+        for (const auto &param : type_parameters)
+        {
+            parameters+=param.TokenLiteral+",";
+        }
+        return "Generic Statement: " + block_name->toString() + "("+parameters+")" + block->toString();
+    }
+
+    GenericStatement(Token generic, std::unique_ptr<Expression> name, std::vector<Token> types, std::unique_ptr<Statement> content) : Statement(generic), generic_token(generic), block_name(std::move(name)), type_parameters(types), block(std::move(content)) {};
+};
+
 // BLOCKS
 //  Block expression
 struct BlockExpression : Expression

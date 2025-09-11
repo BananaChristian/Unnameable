@@ -172,6 +172,9 @@ private:
     // Parsing data statements
     std::unique_ptr<Statement> parseDataStatement();
 
+    //Parsing generic statements
+    std::unique_ptr<Statement> parseGenericStatement();
+
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
     std::unique_ptr<Expression> parseExpression(Precedence precedence);

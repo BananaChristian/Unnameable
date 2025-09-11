@@ -258,6 +258,62 @@ std::unique_ptr<Statement> Parser::parseEnumClassStatement()
     return std::make_unique<EnumClassStatement>(enum_token, class_token, std::move(enum_ident), int_token, std::move(enum_block));
 }
 
+std::unique_ptr<Statement> Parser::parseGenericStatement()
+{
+    Token generic_token = currentToken();
+    advance(); // Consume the keyword generic
+
+    // Getting the generic name
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected 'identifier' but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+
+    auto genericIdent = parseIdentifier();
+
+    // Dealing with the type parameters
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        logError("Expected '(' but got " + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+
+    std::vector<Token> types;
+    while (currentToken().type != TokenType::RPAREN && currentToken().type != TokenType::END)
+    {
+        advance();
+        if (currentToken().type == TokenType::IDENTIFIER)
+        {
+            types.push_back(currentToken());
+        }
+        else if (currentToken().type != TokenType::COMMA)
+        {
+            logError("Unexpected token in generic parameters: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
+        advance();
+    }
+
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        logError("Expected ')' to close argument list");
+        return nullptr;
+    }
+    advance();
+
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        logError("[ERROR] Expected '{' to start init block but got: " + currentToken().TokenLiteral);
+        return nullptr;
+    }
+
+    auto block = parseBlockStatement();
+    advance();
+
+    return std::make_unique<GenericStatement>(generic_token, std::move(genericIdent), types, std::move(block));
+}
+
 bool Parser::isIntegerType(TokenType type)
 {
     switch (type)
