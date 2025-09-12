@@ -117,26 +117,43 @@ generic MathOps(T){
     }
 }
 
-instantiate MathOps(int) as IntOps; 
+instantiate MathOps(int) as IntOps;
+
 ##Here the user is explicity telling the compiler the types he wants the compiler to generate 
-Hence the function generated will look something like this
+Hence the functions generated will look something like this
+
 func IntOps_add(int a,int b): int{
     return a+b;
-} 
+}
+
+func IntOps_subtract(int a,int b): int{
+    return a-b;
+}
 ##
 
 instantiate MathOps(float) as FloatOps;
-##Same story here the generated function will be 
+
+##Same story here the generated functions will be
+
 func FloatOps_add(float a, float b): float{
     return a+b;
+}
+
+func FloatOps_subtract(float a, float b): float{
+    return a-b;
 }
 ##
 
 #Multigeneric example
-generic MathOps(T,A){
-    func add(T a,A b): A{
+
+generic MathOps(T,M){
+    func add(T a,M b): M{
         return a+b;
     };
+
+    func subtract(T a,M b): M{
+        return a-b;
+    }
 }
 
 instantiate MathOps(int, float) as TestOps;
@@ -144,6 +161,10 @@ instantiate MathOps(int, float) as TestOps;
 ##Here the function generated will be
 func TestOps_add(int a,float b): float{
     return a+b;
+}
+
+func TestOps_subtract(int a ,float b): float{
+    return a-b;
 }
 ##
 ```
@@ -344,7 +365,6 @@ const auto w = 3;  # Immutable variable with inferred type int
 - Even more unicode support for identifiers
 
 ## Future additions
-- High order functions
 - Pattern matching to switch statements
 - Function parameters as first-class expressions
 
