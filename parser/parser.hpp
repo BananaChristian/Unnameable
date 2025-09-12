@@ -166,11 +166,14 @@ private:
     // Parsing data statements
     std::unique_ptr<Statement> parseDataStatement();
 
-    //Parsing generic statements
+    // Parsing generic statements
     std::unique_ptr<Statement> parseGenericStatement();
 
-    //Parsing instantiate statement
+    // Parsing instantiate statement
     std::unique_ptr<Statement> parseInstantiateStatement();
+
+    // Parsing array statements
+    std::unique_ptr<Statement> parseArrayStatement();
 
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
@@ -257,6 +260,9 @@ private:
 
     // String
     std::unique_ptr<Expression> parseStringLiteral();
+
+    // Array literal
+    std::unique_ptr<Expression> parseArrayLiteral();
 
     // Tuples
     std::unique_ptr<Expression> parseTupleExpression();

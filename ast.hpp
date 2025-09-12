@@ -327,7 +327,7 @@ struct FunctionExpression : Expression
                " Function block: " + block_str;
     }
 
-    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, bool isNull, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn),call(std::move(c)), return_type(std::move(return_t)), isNullable(isNull), block(std::move(bl)) {};
+    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, bool isNull, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), isNullable(isNull), block(std::move(bl)) {};
 };
 
 // Return type expression
@@ -1052,11 +1052,11 @@ struct FunctionDeclaration : Statement
     }
 
     FunctionDeclaration(Token func, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type, bool isNull) : Statement(func),
-                                                                                                                                                                                                              func_keyword_token(func),
-                                                                                                                                                                                                              function_name(std::move(identifier)),
-                                                                                                                                                                                                              parameters(std::move(params)),
-                                                                                                                                                                                                              return_type(std::move(ret_type)),
-                                                                                                                                                                                                              isNullable(isNull) {};
+                                                                                                                                                                                 func_keyword_token(func),
+                                                                                                                                                                                 function_name(std::move(identifier)),
+                                                                                                                                                                                 parameters(std::move(params)),
+                                                                                                                                                                                 return_type(std::move(ret_type)),
+                                                                                                                                                                                 isNullable(isNull) {};
 };
 
 // Function Declaration expression
@@ -1141,11 +1141,71 @@ struct GenericCall : Expression
         std::string arg;
         for (const auto &param : args)
         {
-            arg += param.TokenLiteral+",";
+            arg += param.TokenLiteral + ",";
         };
         return "Generic Call:" + ident->toString() + "(" + arg + ")";
     };
     GenericCall(std::unique_ptr<Expression> name, std::vector<Token> types) : Expression(name->token), ident(std::move(name)), args(types) {};
+};
+
+// Array Literal
+struct ArrayLiteral : Expression
+{
+    Token arr_token;
+    std::vector<std::unique_ptr<Expression>> array;
+
+    std::string toString() override
+    {
+        std::string items;
+        for (const auto &item : array)
+        {
+            items += item->toString() + ",";
+        }
+        if (!items.empty())
+            items.pop_back(); // remove last comma
+        return "ArrayLiteral: [" + items + "]";
+    }
+
+    ArrayLiteral(Token arr_tok, std::vector<std::unique_ptr<Expression>> arr)
+        : Expression(arr_tok), arr_token(arr_tok), array(std::move(arr)) {};
+};
+
+// Array statement
+struct ArrayStatement : Statement
+{
+    Token arr_token;
+    std::vector<std::unique_ptr<Expression>> length;
+    Token arr_type;
+    std::unique_ptr<Expression> identifier;
+    std::unique_ptr<Expression> items; // optional initializer
+
+    std::string toString() override
+    {
+        std::string lengths;
+        for (const auto &len : length)
+        {
+            lengths += "[" + len->toString() + "]";
+        }
+
+        return "Array Statement: " +
+               arr_token.TokenLiteral +" "+
+               lengths + " Data Type: "+
+               arr_type.TokenLiteral +" "+
+               (identifier ? identifier->toString() : "<unnamed>") +" "+
+               (items ? items->toString() : "");
+    }
+
+    ArrayStatement(Token arr,
+                   std::vector<std::unique_ptr<Expression>> len,
+                   Token type,
+                   std::unique_ptr<Expression> name,
+                   std::unique_ptr<Expression> contents)
+        : Statement(arr),
+          arr_token(arr),
+          length(std::move(len)),
+          arr_type(type),
+          identifier(std::move(name)),
+          items(std::move(contents)) {}
 };
 
 // BLOCKS

@@ -464,7 +464,6 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
     return nullptr;
 }
 
-
 // Checker for basic data types
 bool Parser::isBasicType(TokenType type)
 {
@@ -1564,7 +1563,6 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     Token func_tok = currentToken(); // The token representing the keyword for functions (func)
     advance();
 
-
     //----------Dealing with function name------------
     auto identExpr = parseIdentifier();
     auto identNode = dynamic_cast<Identifier *>(identExpr.get());
@@ -1661,7 +1659,7 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters()
         return args; // Return an empty vector of arguments
     }
 
-    auto firstParam =parseLetStatementDecider(); // Parsing the fisrt parameter i.e 1
+    auto firstParam = parseLetStatementDecider(); // Parsing the fisrt parameter i.e 1
 
     if (!firstParam)
     { // Checking if it failed to parse the 1st parameter
@@ -1671,8 +1669,8 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters()
     args.push_back(std::move(firstParam)); // If its parsed we add it to the vector
 
     while (currentToken().type == TokenType::COMMA)
-    {                                                                 // If we still have commas
-        advance();                                                    // Advance from the comma to the second parameter
+    {                                          // If we still have commas
+        advance();                             // Advance from the comma to the second parameter
         auto arg = parseLetStatementDecider(); // Parse the second parameter
         if (!arg)
         { // It it fails to parse the second parameter
@@ -1950,6 +1948,8 @@ void Parser::registerStatementParseFns()
 
     StatementParseFunctionsMap[TokenType::GENERIC] = &Parser::parseGenericStatement;
     StatementParseFunctionsMap[TokenType::INSTANTIATE] = &Parser::parseInstantiateStatement;
+
+    StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatement;
 }
 
 // Precedence getting function

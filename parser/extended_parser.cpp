@@ -332,7 +332,7 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement()
         logError("Expected '(' but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
-    
+
     std::vector<Token> types;
     while (currentToken().type != TokenType::RPAREN && currentToken().type != TokenType::END)
     {
@@ -373,6 +373,124 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement()
     advance();
 
     return std::make_unique<InstantiateStatement>(instantiate, std::move(generic_call), as, alias);
+}
+
+// ================= Parser =================
+
+std::unique_ptr<Expression> Parser::parseArrayLiteral()
+{
+    Token arr_tok = currentToken();
+    advance(); // consume '['
+
+    std::vector<std::unique_ptr<Expression>> array;
+
+    while (currentToken().type != TokenType::RBRACKET &&
+           currentToken().type != TokenType::END)
+    {
+        // Parse element
+        auto expr = parseExpression(Precedence::PREC_NONE);
+        array.push_back(std::move(expr));
+
+        if (currentToken().type == TokenType::COMMA)
+        {
+            advance(); // consume ',' and continue
+        }
+        else if (currentToken().type != TokenType::RBRACKET)
+        {
+            logError("Unexpected token in array literal: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
+    }
+
+    if (currentToken().type != TokenType::RBRACKET)
+    {
+        logError("Expected ']' to close array literal");
+        return nullptr;
+    }
+    advance(); // consume ']'
+
+    return std::make_unique<ArrayLiteral>(arr_tok, std::move(array));
+}
+
+std::unique_ptr<Statement> Parser::parseArrayStatement()
+{
+    Token arr_token = currentToken();
+    advance(); // consume "array" keyword or whatever introduces it
+
+    std::vector<std::unique_ptr<Expression>> lengths;
+
+    while (currentToken().type == TokenType::LBRACKET &&
+           currentToken().type != TokenType::END)
+    {
+        advance(); // consume '['
+
+        if (currentToken().type == TokenType::UINT ||
+            currentToken().type == TokenType::ULONG)
+        {
+            auto len_no = parseExpression(Precedence::PREC_NONE);
+            lengths.push_back(std::move(len_no));
+        }
+        else if (currentToken().type != TokenType::RBRACKET)
+        {
+            logError("Unexpected token in array length: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
+
+        if (currentToken().type != TokenType::RBRACKET)
+        {
+            logError("Expected ']' after array length");
+            return nullptr;
+        }
+        advance(); // consume ']'
+    }
+
+    // Expect type
+    if (!isBasicType(currentToken().type) &&
+        currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected array type but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    Token arr_type = currentToken();
+    advance();
+
+    // Expect identifier
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected array name but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    auto ident = parseIdentifier();
+
+    std::unique_ptr<Expression> list = nullptr;
+
+    // No initializer
+    if (currentToken().type == TokenType::SEMICOLON)
+    {
+        advance(); // consume ';'
+        return std::make_unique<ArrayStatement>(
+            arr_token, std::move(lengths), arr_type, std::move(ident), std::move(list));
+    }
+
+    // With initializer
+    if (currentToken().type != TokenType::ASSIGN)
+    {
+        logError("Expected '=' but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // consume '='
+
+    list = parseArrayLiteral();
+
+    if (currentToken().type != TokenType::SEMICOLON)
+    {
+        logError("Expected ';' after array initializer");
+        return nullptr;
+    }
+    advance(); // consume ';'
+
+    return std::make_unique<ArrayStatement>(
+        arr_token, std::move(lengths), arr_type, std::move(ident), std::move(list));
 }
 
 bool Parser::isIntegerType(TokenType type)
