@@ -183,7 +183,7 @@ arr int test_array=[1,2,3];
 arr [2u][2u] uint test;
 
 #Case 2: With initialization
-arr uint another_array=[1,[1,2]];
+arr uint another_array=[1u,[1u,2u]];
 
 
 ```
