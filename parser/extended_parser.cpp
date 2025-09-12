@@ -304,7 +304,7 @@ std::unique_ptr<Statement> Parser::parseGenericStatement()
 
     if (currentToken().type != TokenType::LBRACE)
     {
-        logError("[ERROR] Expected '{' to start init block but got: " + currentToken().TokenLiteral);
+        logError("Expected '{' to start init block but got: " + currentToken().TokenLiteral);
         return nullptr;
     }
 
@@ -312,6 +312,67 @@ std::unique_ptr<Statement> Parser::parseGenericStatement()
     advance();
 
     return std::make_unique<GenericStatement>(generic_token, std::move(genericIdent), types, std::move(block));
+}
+
+std::unique_ptr<Statement> Parser::parseInstantiateStatement()
+{
+    Token instantiate = currentToken();
+    advance();
+
+    // Dealing with the generic call
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected 'identifier' for  generic call but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+
+    auto ident = parseIdentifier();
+    if (currentToken().type != TokenType::LPAREN)
+    {
+        logError("Expected '(' but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    
+    std::vector<Token> types;
+    while (currentToken().type != TokenType::RPAREN && currentToken().type != TokenType::END)
+    {
+        advance();
+        if (isBasicType(currentToken().type))
+        {
+            types.push_back(currentToken());
+        }
+        else if (currentToken().type != TokenType::COMMA)
+        {
+            logError("Unexpected token in generic call parameters: " + currentToken().TokenLiteral);
+        }
+        advance();
+    }
+
+    if (currentToken().type != TokenType::RPAREN)
+    {
+        logError("Expected ')' to close argument list");
+        return nullptr;
+    }
+    auto generic_call = std::make_unique<GenericCall>(std::move(ident), types);
+
+    advance();
+
+    if (currentToken().type != TokenType::AS)
+    {
+        logError("Expected 'as' but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    Token as = currentToken();
+    advance();
+
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected 'identifier' but got '" + currentToken().TokenLiteral + "'");
+    }
+    Token alias = currentToken();
+    advance();
+
+    return std::make_unique<InstantiateStatement>(instantiate, std::move(generic_call), as, alias);
 }
 
 bool Parser::isIntegerType(TokenType type)

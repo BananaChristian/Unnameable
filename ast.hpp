@@ -1137,12 +1137,46 @@ struct GenericStatement : Statement
         std::string parameters;
         for (const auto &param : type_parameters)
         {
-            parameters+=param.TokenLiteral+",";
+            parameters += param.TokenLiteral + ",";
         }
-        return "Generic Statement: " + block_name->toString() + "("+parameters+")" + block->toString();
+        return "Generic Statement: " + block_name->toString() + "(" + parameters + ")" + block->toString();
     }
 
     GenericStatement(Token generic, std::unique_ptr<Expression> name, std::vector<Token> types, std::unique_ptr<Statement> content) : Statement(generic), generic_token(generic), block_name(std::move(name)), type_parameters(types), block(std::move(content)) {};
+};
+
+// Instatiate statement
+struct InstantiateStatement : Statement
+{
+    Token instantiate_token;
+    std::unique_ptr<Expression> generic_call;
+    Token as_token;
+    Token alias;
+
+    std::string toString() override
+    {
+        return "Instantiate statement: " + generic_call->toString() + " as " + alias.TokenLiteral;
+    }
+
+    InstantiateStatement(Token inst, std::unique_ptr<Expression> call, Token as, Token name) : Statement(inst), instantiate_token(inst), generic_call(std::move(call)), as_token(as), alias(name) {};
+};
+
+// Generic call expression
+struct GenericCall : Expression
+{
+    std::unique_ptr<Expression> ident;
+    std::vector<Token> args;
+
+    std::string toString() override
+    {
+        std::string arg;
+        for (const auto &param : args)
+        {
+            arg += param.TokenLiteral+",";
+        };
+        return "Generic Call:" + ident->toString() + "(" + arg + ")";
+    };
+    GenericCall(std::unique_ptr<Expression> name, std::vector<Token> types) : Expression(name->token), ident(std::move(name)), args(types) {};
 };
 
 // BLOCKS

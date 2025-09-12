@@ -30,7 +30,7 @@ class Lexer
         {"init", TokenType::INIT},
 
         {"generic", TokenType::GENERIC},
-        {"instatiate", TokenType::INSTANTIATE},
+        {"instantiate", TokenType::INSTANTIATE},
         {"as", TokenType::AS},
 
         {"if", TokenType::IF},

@@ -2069,7 +2069,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::SWITCH] = &Parser::parseSwitchStatement;
     StatementParseFunctionsMap[TokenType::ENUM] = &Parser::parseEnumClassStatement;
 
-    StatementParseFunctionsMap[TokenType::GENERIC]=&Parser::parseGenericStatement;
+    StatementParseFunctionsMap[TokenType::GENERIC] = &Parser::parseGenericStatement;
+    StatementParseFunctionsMap[TokenType::INSTANTIATE] = &Parser::parseInstantiateStatement;
 }
 
 // Precedence getting function
