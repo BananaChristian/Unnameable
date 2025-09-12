@@ -102,14 +102,50 @@ func greet(string name): string {
 ```
 
 ## Generic and multigenerics
+Unnameable uses a system of generics called Explicitly Instantiated Generics(EIG) where the user defines what they want inside a generic block which takes arguments of the types. Then an instantiate statement allows the user to tell the compiler what sort of types they would like to create generics for.
+The alias on the instantiate statement is to uphold the langauge's rules of no overloading
+This means when the compiler generates the generic functions after the user instantiates so for examole the add for int will not be the same as the one for float the compiler will automatically add the aliases to the name generating something like IntOps_add and FloatOps_add as seen below. 
+This system also supports multigenerics as shown below
 ```
-func <T>greet(T name): T{
-    return T;
-};
+generic MathOps(T){
+    func add(T a, T b): T{
+        return a+b;
+    };
 
-func <T,M> info(T name, M age): T{
-    return T;
+    func subtract(T a, T b){
+        return a-b;
+    }
 }
+
+instantiate MathOps(int) as IntOps; 
+##Here the user is explicity telling the compiler the types he wants the compiler to generate 
+Hence the function generated will look something like this
+func IntOps_add(int a,int b): int{
+    return a+b;
+} 
+##
+
+instantiate MathOps(float) as FloatOps;
+##Same story here the generated function will be 
+func FloatOps_add(float a, float b): float{
+    return a+b;
+}
+##
+
+#Multigeneric example
+generic MathOps(T,A){
+    func add(T a,A b): A{
+        return a+b;
+    };
+}
+
+instantiate MathOps(int, float) as TestOps;
+
+##Here the function generated will be
+func TestOps_add(int a,float b): float{
+    return a+b;
+}
+##
 ```
 
 ## Error handling
