@@ -168,6 +168,25 @@ func TestOps_subtract(int a ,float b): float{
 }
 ##
 ```
+## Arrays
+Unnameable supports single dimensional and multidimensional arrays, The user must explicity list the length of the array if they dont provide initialize but if they  initialize the array the compiler will just count the items inside
+```
+#Single dimensional arrays
+#Case 1: No initialization
+arr [2u] int my_array;
+
+#Case 2: With initialization
+arr int test_array=[1,2,3];
+
+#Multidimensional arrays
+#Case 1: No initialization
+arr [2u][2u] uint test;
+
+#Case 2: With initialization
+arr uint another_array=[1,[1,2]];
+
+
+```
 
 ## Error handling
 ```unn
