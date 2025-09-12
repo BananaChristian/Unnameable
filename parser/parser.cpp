@@ -436,55 +436,6 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
     return std::make_unique<LetStatement>(mut, data_type_token, isNullable, ident_token, assign_token, std::move(value));
 }
 
-// Parsing let statements with generic types for use inside functions
-std::unique_ptr<Statement> Parser::parseLetStatementWithGenericType(bool isParam)
-{
-    Mutability mutability = Mutability::IMMUTABLE;
-    if (currentToken().type == TokenType::MUT)
-    {
-        mutability = Mutability::MUTABLE;
-        advance();
-    }
-
-    if (currentToken().type == TokenType::CONST)
-    {
-        logError("Do not use constant on a generic type ");
-        return nullptr;
-    }
-
-    Token typeToken = currentToken(); // Like 'T'
-    advance();
-
-    // Optional: support nullable?
-    bool isNullable = false;
-    if (currentToken().type == TokenType::QUESTION_MARK)
-    {
-        isNullable = true;
-        advance();
-    }
-
-    if (currentToken().type != TokenType::IDENTIFIER)
-    {
-        logError("Expected identifier after generic type in let parameter");
-        return nullptr;
-    }
-
-    Token identToken = currentToken();
-    advance();
-
-    std::optional<Token> assign_token;
-    std::unique_ptr<Expression> value = nullptr;
-    if (currentToken().type == TokenType::ASSIGN)
-    {
-        assign_token = currentToken();
-        std::cout << "[DEBUG] Encountered assignment token" << "\n";
-        advance();
-        value = parseExpression(Precedence::PREC_NONE);
-    }
-
-    return std::make_unique<LetStatement>(mutability, typeToken, isNullable, identToken, assign_token, std::move(value));
-}
-
 /*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
 But I have no choice  but to make it also decide how to parse a function if it was a parameter now I will fix the name in the future but for now let me just continue
 */
@@ -513,44 +464,6 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
     return nullptr;
 }
 
-std::unique_ptr<Statement> Parser::parseParamLetStatementWithGenerics(const std::vector<Token> &genericParams)
-{
-
-    Token current = currentToken();
-
-    if (current.type == TokenType::MUT ||
-        current.type == TokenType::CONST ||
-        isBasicType(current.type))
-    {
-        return parseLetStatementWithType(true);
-    }
-    else if (current.type == TokenType::IDENTIFIER)
-    {
-        // Check if identifier is a generic param like T, K, etc.
-        for (const auto &g : genericParams)
-        {
-            if (g.TokenLiteral == current.TokenLiteral)
-            {
-                return parseLetStatementWithGenericType(true);
-            }
-        }
-        // Check if we have a scope resolution and and treat as a custom type
-        if (nextToken().type == TokenType::SCOPE_OPERATOR)
-        {
-            return parseLetStatementWithCustomType(true);
-        }
-
-        // Otherwise treat as assignment
-        if (nextToken().type == TokenType::ASSIGN)
-        {
-            return parseAssignmentStatement(true);
-        }
-        return parseLetStatementWithCustomType(true);
-    }
-
-    logError("Unrecognized parameter type or name '" + current.TokenLiteral + "'");
-    return nullptr;
-}
 
 // Checker for basic data types
 bool Parser::isBasicType(TokenType type)
@@ -1647,43 +1560,10 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
 {
     bool isNullable = false;
     std::cout << "[TEST]Function parser is working\n";
-    //--------Dealing with work keyword---------------
+    //--------Dealing with func keyword---------------
     Token func_tok = currentToken(); // The token representing the keyword for functions (func)
     advance();
 
-    std::vector<Token> genericParams;
-
-    if (currentToken().type == TokenType::LESS_THAN) // '<'
-    {
-        advance(); // consume '<'
-
-        while (true)
-        {
-            if (currentToken().type != TokenType::IDENTIFIER)
-            {
-                logError("Expected generic type identifier in generic parameter list but got '" + currentToken().TokenLiteral + "'");
-                return nullptr;
-            }
-            genericParams.push_back(currentToken());
-            advance();
-
-            if (currentToken().type == TokenType::COMMA)
-            {
-                advance(); // consume ','
-                continue;
-            }
-            else if (currentToken().type == TokenType::GREATER_THAN) // '>'
-            {
-                advance(); // consume '>'
-                break;
-            }
-            else
-            {
-                logError("Expected ',' or '>' in generic parameter list but got '" + currentToken().TokenLiteral + "'");
-                return nullptr;
-            }
-        }
-    }
 
     //----------Dealing with function name------------
     auto identExpr = parseIdentifier();
@@ -1691,14 +1571,14 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
 
     if (!identNode)
     {
-        logError("Expected identifier for function name after 'work'");
+        logError("Expected identifier for function name after 'func'");
         return nullptr;
     }
 
     Token identToken = identNode->identifier;
 
     //---Dealing with the call itself
-    auto call = parseFunctionParameters(genericParams); // We might get some arguments or not so we call the parse call expression
+    auto call = parseFunctionParameters(); // We might get some arguments or not so we call the parse call expression
 
     std::unique_ptr<Expression> return_type = nullptr;
     //--Checking for colons
@@ -1738,7 +1618,6 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         advance(); // consume the semicolon
         auto decl = std::make_unique<FunctionDeclaration>(
             func_tok,
-            genericParams,
             std::move(identExpr),
             std::move(call),
             std::move(return_type),
@@ -1753,11 +1632,11 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         return nullptr;
     }
 
-    return std::make_unique<FunctionExpression>(identToken, genericParams, std::move(call), std::move(return_type), isNullable, std::move(block));
+    return std::make_unique<FunctionExpression>(identToken, std::move(call), std::move(return_type), isNullable, std::move(block));
 }
 
 // Parsing function paramemters
-std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters(const std::vector<Token> &genericParams)
+std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters()
 {
     std::vector<std::unique_ptr<Statement>> args; // Declaring the empty vector
 
@@ -1782,7 +1661,7 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters(const st
         return args; // Return an empty vector of arguments
     }
 
-    auto firstParam = parseParamLetStatementWithGenerics(genericParams); // Parsing the fisrt parameter i.e 1
+    auto firstParam =parseLetStatementDecider(); // Parsing the fisrt parameter i.e 1
 
     if (!firstParam)
     { // Checking if it failed to parse the 1st parameter
@@ -1794,7 +1673,7 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters(const st
     while (currentToken().type == TokenType::COMMA)
     {                                                                 // If we still have commas
         advance();                                                    // Advance from the comma to the second parameter
-        auto arg = parseParamLetStatementWithGenerics(genericParams); // Parse the second parameter
+        auto arg = parseLetStatementDecider(); // Parse the second parameter
         if (!arg)
         { // It it fails to parse the second parameter
             std::cerr << "Failed to parse parameter after comma\n";

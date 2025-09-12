@@ -117,8 +117,6 @@ struct SymbolInfo
     bool isInitialized = false;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
     ResolvedType returnType;
-    std::string returnGenericName;
-    std::vector<std::string> genericParams;
     // Function flags
     bool isDeclaration = false;
     bool isDefined = false;
@@ -196,7 +194,6 @@ private:
 
     // Walking the let statements and assignment statements
     void walkLetStatement(Node *node);
-    void walkFunctionParameterLetStatement(Node *node);
     void walkAssignStatement(Node *node);
     void walkFieldAssignmentStatement(Node *node);
 

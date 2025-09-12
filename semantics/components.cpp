@@ -774,7 +774,7 @@ void Semantics::walkInitConstructor(Node *node)
     // Process constructor parameters
     for (const auto &arg : initStmt->constructor_args)
     {
-        walkFunctionParameterLetStatement(arg.get());
+        walkLetStatement(arg.get());
         // Storing the init args
         initArgs.push_back(inferNodeDataType(arg.get()));
     }

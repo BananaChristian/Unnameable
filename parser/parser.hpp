@@ -88,9 +88,6 @@ private:
     // Parsing let statements with basic type
     std::unique_ptr<Statement> parseLetStatementWithType(bool isParam = false);
 
-    // Parsing let statements with generic types
-    std::unique_ptr<Statement> parseLetStatementWithGenericType(bool isParam);
-
     // Parsing let statements with custom types
     std::unique_ptr<Statement> parseLetStatementWithCustomType(bool isParam = false);
 
@@ -102,9 +99,6 @@ private:
 
     // A function to determine whether to parse let statements or assignment statements
     std::unique_ptr<Statement> parseLetStatementDecider();
-
-    // A function to determine whether to parse Let with type or no type and generics
-    std::unique_ptr<Statement> parseParamLetStatementWithGenerics(const std::vector<Token> &genericParams);
 
     // Parsing if statement
     std::unique_ptr<Statement> parseIfStatement();
@@ -274,7 +268,7 @@ private:
     std::vector<std::unique_ptr<Expression>> parseCallArguments();
 
     // Parsing function parameters
-    std::vector<std::unique_ptr<Statement>> parseFunctionParameters(const std::vector<Token> &genericParams);
+    std::vector<std::unique_ptr<Statement>> parseFunctionParameters();
 
     // HELPER FUNCTIONS
     //  Peeking functions

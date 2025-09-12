@@ -294,7 +294,6 @@ struct CallExpression : Expression
 struct FunctionExpression : Expression
 {
     Token func_key;
-    std::vector<Token> generic_parameters;
     std::vector<std::unique_ptr<Statement>> call;
     std::unique_ptr<Expression> return_type;
     bool isNullable = false;
@@ -319,30 +318,16 @@ struct FunctionExpression : Expression
             nullStr += "?";
         }
 
-        std::string genStr = "";
-        if (!generic_parameters.empty())
-        {
-            genStr += "<";
-            for (size_t i = 0; i < generic_parameters.size(); ++i)
-            {
-                genStr += generic_parameters[i].TokenLiteral;
-                if (i < generic_parameters.size() - 1)
-                    genStr += ",";
-            }
-            genStr += ">";
-        }
-
         std::string ret_str = return_type ? return_type->toString() : "<no type>";
         std::string block_str = block ? block->toString() : "<no block>";
 
         return "FunctionExpression: " + func_key.TokenLiteral + " " +
-               "Function generics: " + genStr +
                "Function parameters: " + cl +
                " Return type: " + ret_str + nullStr +
                " Function block: " + block_str;
     }
 
-    FunctionExpression(Token fn, std::vector<Token> generics, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, bool isNull, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), generic_parameters(generics), call(std::move(c)), return_type(std::move(return_t)), isNullable(isNull), block(std::move(bl)) {};
+    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, bool isNull, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn),call(std::move(c)), return_type(std::move(return_t)), isNullable(isNull), block(std::move(bl)) {};
 };
 
 // Return type expression
@@ -1041,8 +1026,7 @@ struct FunctionStatement : Statement
 struct FunctionDeclaration : Statement
 {
 
-    Token work_keyword_token;
-    std::vector<Token> genericParams;
+    Token func_keyword_token;
     std::unique_ptr<Expression> function_name;
     std::vector<std::unique_ptr<Statement>> parameters;
     std::unique_ptr<Expression> return_type;
@@ -1061,29 +1045,14 @@ struct FunctionDeclaration : Statement
             nullStr += "?";
         }
 
-        std::string genStr = "";
-        if (!genericParams.empty())
-        {
-            genStr += "<";
-            for (size_t i = 0; i < genericParams.size(); ++i)
-            {
-                genStr += genericParams[i].TokenLiteral;
-                if (i < genericParams.size() - 1)
-                    genStr += ",";
-            }
-            genStr += ">";
-        }
-
-        return "Function Declaration Statement: " + work_keyword_token.TokenLiteral + " " +
-               genStr +
+        return "Function Declaration Statement: " + func_keyword_token.TokenLiteral + " " +
                (function_name ? function_name->toString() : "[null_name]") + " " +
                arguments + " " +
                (return_type ? return_type->toString() : "[no_return]") + nullStr;
     }
 
-    FunctionDeclaration(Token work, std::vector<Token> generics, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type, bool isNull) : Statement(work),
-                                                                                                                                                                                                              work_keyword_token(work),
-                                                                                                                                                                                                              genericParams(generics),
+    FunctionDeclaration(Token func, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type, bool isNull) : Statement(func),
+                                                                                                                                                                                                              func_keyword_token(func),
                                                                                                                                                                                                               function_name(std::move(identifier)),
                                                                                                                                                                                                               parameters(std::move(params)),
                                                                                                                                                                                                               return_type(std::move(ret_type)),
@@ -1093,13 +1062,13 @@ struct FunctionDeclaration : Statement
 // Function Declaration expression
 struct FunctionDeclarationExpression : Expression
 {
-    Token work_token;
+    Token func_token;
     std::unique_ptr<Statement> funcDeclrStmt;
     std::string toString() override
     {
         return "Function Declaration Expression: " + funcDeclrStmt->toString();
     }
-    FunctionDeclarationExpression(Token work, std::unique_ptr<Statement> declaration) : Expression(work), funcDeclrStmt(std::move(declaration)) {};
+    FunctionDeclarationExpression(Token func, std::unique_ptr<Statement> declaration) : Expression(func), funcDeclrStmt(std::move(declaration)) {};
 };
 
 // Block statement

@@ -737,20 +737,7 @@ bool Semantics::hasReturnPath(Node *node)
 
 bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr)
 {
-    // Check generics
-    if (declInfo.genericParams.size() != funcExpr->generic_parameters.size())
-    {
-        return false;
-    }
-    for (size_t i = 0; i < declInfo.genericParams.size(); ++i)
-    {
-        if (declInfo.genericParams[i] != funcExpr->generic_parameters[i].TokenLiteral)
-        {
-            return false;
-        }
-    }
 
-    // Check parameters
     if (declInfo.paramTypes.size() != funcExpr->call.size())
     {
         return false;
@@ -792,7 +779,6 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
     ResolvedType returnType = tokenTypeToResolvedType(retType->expression, funcExpr->isNullable);
     std::string returnGenericName = retType->expression.type == TokenType::IDENTIFIER ? retType->expression.TokenLiteral : "";
     return returnType.kind == declInfo.returnType.kind &&
-           returnGenericName == declInfo.returnGenericName &&
            funcExpr->isNullable == declInfo.isNullable;
 }
 
@@ -806,9 +792,6 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
                           callExpr->expression.line, callExpr->expression.column);
         return false;
     }
-
-    // 2. Track bindings for generic parameters
-    std::unordered_map<std::string, ResolvedType> genericBindings;
 
     for (size_t i = 0; i < callExpr->parameters.size(); ++i)
     {
@@ -840,45 +823,6 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
                                   param->expression.line, param->expression.column);
                 return false;
             }
-        }
-
-        // --- Generic parameters ---
-        if (expectedType.first.kind == DataType::GENERIC)
-        {
-            const std::string &genName = expectedType.second;
-
-            if (genericBindings.find(genName) == genericBindings.end())
-            {
-                // First use → bind generic
-                genericBindings[genName] = argType;
-            }
-            else if (!isTypeCompatible(genericBindings[genName], argType))
-            {
-                logSemanticErrors("Inconsistent generic '" + genName +
-                                      "': expected " + genericBindings[genName].resolvedName +
-                                      ", got " + argType.resolvedName,
-                                  param->expression.line, param->expression.column);
-                return false;
-            }
-        }
-        else if (!isTypeCompatible(expectedType.first, argType))
-        {
-            logSemanticErrors("Argument " + std::to_string(i + 1) + " type mismatch: expected " +
-                                  expectedType.first.resolvedName + ", got " + argType.resolvedName,
-                              param->expression.line, param->expression.column);
-            return false;
-        }
-    }
-
-    // 3. Validate generic return type
-    if (funcInfo.returnType.kind == DataType::GENERIC)
-    {
-        auto it = genericBindings.find(funcInfo.returnGenericName);
-        if (it == genericBindings.end())
-        {
-            logSemanticErrors("Could not infer generic return type '" + funcInfo.returnGenericName + "'",
-                              callExpr->expression.line, callExpr->expression.column);
-            return false;
         }
     }
 
