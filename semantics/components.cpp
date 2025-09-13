@@ -1189,11 +1189,22 @@ void Semantics::walkArrayStatement(Node *node)
     Shape arrShape{0, {}};
     Shape inferredShape{0, {}};
 
-    // If array is initialized walk its items and infer shape
+    // Getting the array statement type
+    auto arrType = tokenTypeToResolvedType(arrStmt->arr_type, arrStmt->isNullable);
+
+    // If array is initialized walk its items and infer shape also carry out a type check
     if (arrStmt->items != nullptr)
     {
         walker(arrStmt->items.get());
         inferredShape = getArrayShape(arrStmt->items.get());
+        // Compare the literal type to the statement type
+        // Getting the array literal type
+        auto litType = inferNodeDataType(arrStmt->items.get());
+        if (!isTypeCompatible(arrType, litType))
+        {
+            logSemanticErrors("Declared array type '" + arrType.resolvedName + "' does not match initialized type '" + litType.resolvedName + "'", arrStmt->statement.line, arrStmt->statement.column);
+            return;
+        }
     }
 
     // If user declared explicit lengths convert them to arrShape
@@ -1257,8 +1268,7 @@ void Semantics::walkArrayStatement(Node *node)
     auto arrInfo = std::make_shared<SymbolInfo>();
 
     arrInfo->arrShape = arrShape;
-    arrInfo->type = resolvedDataType(arrStmt->arr_type, arrStmt);
-
+    arrInfo->type = arrType;
 
     metaData[arrStmt] = arrInfo;
 }

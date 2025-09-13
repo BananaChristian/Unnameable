@@ -157,6 +157,26 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     if (auto boolLit = dynamic_cast<BooleanLiteral *>(node))
         return ResolvedType{DataType::BOOLEAN, "bool"};
 
+    if (auto arrLit = dynamic_cast<ArrayLiteral *>(node))
+    {
+        std::vector<ResolvedType> memberTypes;
+        ResolvedType arrLitType;
+        for (const auto &item : arrLit->array)
+        {
+            auto memberType = inferNodeDataType(item.get());
+            memberTypes.push_back(memberType);
+        }
+        for (size_t i = 0; i < memberTypes.size(); i++)
+        {
+            if (memberTypes[0].kind != memberTypes[i].kind)
+            {
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+            arrLitType = memberTypes[0];
+        }
+        return arrLitType;
+    }
+
     if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
         return ResolvedType{DataType::ERROR, "error"};
 

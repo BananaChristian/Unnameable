@@ -413,7 +413,38 @@ std::unique_ptr<Expression> Parser::parseArrayLiteral()
 std::unique_ptr<Statement> Parser::parseArrayStatement()
 {
     Token arr_token = currentToken();
-    advance(); 
+    advance();
+
+    if (currentToken().type != TokenType::LESS_THAN)
+    {
+        logError("Expected < but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // Consume < token
+
+    // Expect type
+    if (!isBasicType(currentToken().type) &&
+        currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected array type but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    Token arr_type = currentToken();
+    advance(); // Consume the data type token
+
+    bool isNullable = false;
+    if (currentToken().type == TokenType::QUESTION_MARK)
+    {
+        isNullable = true;
+    }
+    advance();
+
+    if (currentToken().type != TokenType::GREATER_THAN)
+    {
+        logError("Expected > but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // Consume > token
 
     std::vector<std::unique_ptr<Expression>> lengths;
 
@@ -430,7 +461,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement()
         }
         else if (currentToken().type != TokenType::RBRACKET)
         {
-            logError("Unexpected token in array length '" + currentToken().TokenLiteral+"' please only use unsigned int(32) or unsigned long(64)");
+            logError("Unexpected token in array length '" + currentToken().TokenLiteral + "' please only use unsigned int(32) or unsigned long(64)");
             return nullptr;
         }
 
@@ -441,16 +472,6 @@ std::unique_ptr<Statement> Parser::parseArrayStatement()
         }
         advance(); // consume ']'
     }
-
-    // Expect type
-    if (!isBasicType(currentToken().type) &&
-        currentToken().type != TokenType::IDENTIFIER)
-    {
-        logError("Expected array type but got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
-    }
-    Token arr_type = currentToken();
-    advance();
 
     // Expect identifier
     if (currentToken().type != TokenType::IDENTIFIER)
@@ -467,7 +488,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement()
     {
         advance(); // consume ';'
         return std::make_unique<ArrayStatement>(
-            arr_token, std::move(lengths), arr_type, std::move(ident), std::move(list));
+            arr_token, arr_type, isNullable, std::move(lengths), std::move(ident), std::move(list));
     }
 
     // With initializer
@@ -488,7 +509,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement()
     advance(); // consume ';'
 
     return std::make_unique<ArrayStatement>(
-        arr_token, std::move(lengths), arr_type, std::move(ident), std::move(list));
+        arr_token, arr_type, isNullable, std::move(lengths), std::move(ident), std::move(list));
 }
 
 bool Parser::isIntegerType(TokenType type)

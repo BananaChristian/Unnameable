@@ -249,12 +249,12 @@ void Semantics::walkArrayLiteral(Node *node)
     }
 
     // Defaulting the overall type to unknown
-    ResolvedType arrType = ResolvedType{DataType::UNKNOWN, "arr"};
+    ResolvedType arrType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
     // Checking if all the member types match
     for (size_t i = 0; i < itemTypes.size(); i++)
     {
-        // Just comparing all the member types to that of the first member
+        // Just comparing all the member types to each other
         if (itemTypes[0].kind != itemTypes[i].kind)
         {
             logSemanticErrors("Array member types do not match array members must be of the same types", line, col);

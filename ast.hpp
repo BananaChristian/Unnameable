@@ -1174,8 +1174,9 @@ struct ArrayLiteral : Expression
 struct ArrayStatement : Statement
 {
     Token arr_token;
-    std::vector<std::unique_ptr<Expression>> length;
     Token arr_type;
+    bool isNullable;
+    std::vector<std::unique_ptr<Expression>> length;
     std::unique_ptr<Expression> identifier;
     std::unique_ptr<Expression> items; // optional initializer
 
@@ -1188,22 +1189,24 @@ struct ArrayStatement : Statement
         }
 
         return "Array Statement: " +
-               arr_token.TokenLiteral +" "+
-               lengths + " Data Type: "+
-               arr_type.TokenLiteral +" "+
-               (identifier ? identifier->toString() : "<unnamed>") +" "+
+               arr_token.TokenLiteral + " <" +
+               arr_type.TokenLiteral + (isNullable ? "?" : "") + "> " +
+               lengths + " Data Type: " +
+               (identifier ? identifier->toString() : "<unnamed>") + " " +
                (items ? items->toString() : "");
     }
 
     ArrayStatement(Token arr,
-                   std::vector<std::unique_ptr<Expression>> len,
                    Token type,
+                   bool isNull,
+                   std::vector<std::unique_ptr<Expression>> len,
                    std::unique_ptr<Expression> name,
                    std::unique_ptr<Expression> contents)
         : Statement(arr),
           arr_token(arr),
-          length(std::move(len)),
           arr_type(type),
+          isNullable(isNull),
+          length(std::move(len)),
           identifier(std::move(name)),
           items(std::move(contents)) {}
 };
