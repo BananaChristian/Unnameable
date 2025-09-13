@@ -55,6 +55,10 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::walkBooleanLiteral;
     walkerFunctionsMap[typeid(Identifier)] = &Semantics::walkIdentifierExpression;
 
+    // Walker registration for array walker
+    walkerFunctionsMap[typeid(ArrayStatement)] = &Semantics::walkArrayStatement;
+    walkerFunctionsMap[typeid(ArrayLiteral)] = &Semantics::walkArrayLiteral;
+
     // Walker registration for let statement and assignment statements
     walkerFunctionsMap[typeid(LetStatement)] = &Semantics::walkLetStatement;
     walkerFunctionsMap[typeid(AssignmentStatement)] = &Semantics::walkAssignStatement;
@@ -827,6 +831,44 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
     }
 
     return true;
+}
+
+Shape Semantics::getArrayShape(Node *node)
+{
+    auto arrLit = dynamic_cast<ArrayLiteral *>(node);
+    // The node we check the shape for must be an arrayLiteral
+    if (!arrLit)
+    {
+        return Shape{0, {}};
+    }
+
+    // If the array literal is empty then we have an empty shape
+    size_t arrLength = arrLit->array.size();
+
+    if (arrLength == 0)
+    {
+        return Shape{1, {0}};
+    }
+
+    // Getting the first child shape
+    Shape firstShape = getArrayShape(arrLit->array[0].get());
+
+    // Getting the child shapes
+    for (const auto &item : arrLit->array)
+    {
+        Shape s = getArrayShape(item.get());
+        if (s != firstShape)
+        {
+            logSemanticErrors("Jagged arrays are not allowed, mismatched shapes", arrLit->expression.line, arrLit->expression.column);
+        }
+    }
+
+    Shape finalShape;
+    finalShape.dimensions = firstShape.dimensions + 1;
+    finalShape.lengths = {arrLength};
+
+    finalShape.lengths.insert(finalShape.lengths.end(), firstShape.lengths.begin(), firstShape.lengths.end());
+    return finalShape;
 }
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)

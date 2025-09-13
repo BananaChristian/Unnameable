@@ -1090,7 +1090,7 @@ void Semantics::walkComponentStatement(Node *node)
         .members = members};
 
     customTypesTable[componentName] = typeInfo;
-    
+
     if (componentStmt->initConstructor.has_value())
         walkInitConstructor(componentStmt->initConstructor.value().get());
 
@@ -1165,4 +1165,100 @@ void Semantics::walkNewComponentExpression(Node *node)
     auto info = std::make_shared<SymbolInfo>();
     info->type = componentIt->second.type;
     metaData[newExpr] = info;
+}
+
+void Semantics::walkArrayStatement(Node *node)
+{
+    auto arrStmt = dynamic_cast<ArrayStatement *>(node);
+    if (!arrStmt)
+        return;
+
+    // Getting the array name
+    std::string arrayName = arrStmt->identifier->expression.TokenLiteral;
+    auto arrNameLine = arrStmt->identifier->expression.line;
+    auto arrNameCol = arrStmt->identifier->expression.column;
+
+    auto existingSym = resolveSymbolInfo(arrayName);
+    if (existingSym)
+    {
+        logSemanticErrors("Array name '" + arrayName + "' already exists",
+                          arrNameLine, arrNameCol);
+        return;
+    }
+
+    Shape arrShape{0, {}};
+    Shape inferredShape{0, {}};
+
+    // If array is initialized walk its items and infer shape
+    if (arrStmt->items != nullptr)
+    {
+        walker(arrStmt->items.get());
+        inferredShape = getArrayShape(arrStmt->items.get());
+    }
+
+    // If user declared explicit lengths convert them to arrShape
+    if (!arrStmt->length.empty())
+    {
+        for (const auto &arrLen : arrStmt->length)
+        {
+            arrShape.dimensions += 1;
+
+            if (auto uintLit = dynamic_cast<UnsignedIntegerLiteral *>(arrLen.get()))
+            {
+                unsigned long val = std::stoul(uintLit->expression.TokenLiteral);
+                arrShape.lengths.push_back(static_cast<uint32_t>(val));
+            }
+            else if (auto ulongLit = dynamic_cast<UnsignedLongLiteral *>(arrLen.get()))
+            {
+                unsigned long long val = std::stoull(ulongLit->expression.TokenLiteral);
+                arrShape.lengths.push_back(static_cast<uint64_t>(val));
+            }
+            else
+            {
+                logSemanticErrors("Expected length to be 32 or 64 bit unsigned integer",
+                                  arrLen->expression.line, arrLen->expression.column);
+                return;
+            }
+        }
+    }
+
+    // If both declared and initializer exist then they must match
+    if (!arrStmt->length.empty() && arrStmt->items != nullptr)
+    {
+        if (arrShape.dimensions != inferredShape.dimensions)
+        {
+            logSemanticErrors(
+                "Declared dimensions (" + std::to_string(arrShape.dimensions) +
+                    ") do not match initializer dimensions (" + std::to_string(inferredShape.dimensions) + ")",
+                arrStmt->arr_token.line, arrStmt->arr_token.column);
+            return;
+        }
+
+        for (size_t i = 0; i < arrShape.lengths.size(); i++)
+        {
+            if (arrShape.lengths[i] != inferredShape.lengths[i])
+            {
+                logSemanticErrors(
+                    "Declared length [" + std::to_string(arrShape.lengths[i]) +
+                        "] does not match initializer length [" + std::to_string(inferredShape.lengths[i]) +
+                        "] at dimension " + std::to_string(i),
+                    arrStmt->arr_token.line, arrStmt->arr_token.column);
+                return;
+            }
+        }
+    }
+
+    // If only initialized use the  inferred shape
+    if (arrStmt->length.empty() && arrStmt->items != nullptr)
+    {
+        arrShape = inferredShape;
+    }
+
+    auto arrInfo = std::make_shared<SymbolInfo>();
+
+    arrInfo->arrShape = arrShape;
+    arrInfo->type = resolvedDataType(arrStmt->arr_type, arrStmt);
+
+
+    metaData[arrStmt] = arrInfo;
 }

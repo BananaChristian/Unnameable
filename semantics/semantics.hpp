@@ -106,6 +106,22 @@ struct ScopeInfo
     Node *node = nullptr;
 };
 
+// Shape struct for arrays
+struct Shape
+{
+    int dimensions;              // How many dimensions are in the array
+    std::vector<size_t> lengths; // The length of each dimension
+    bool operator==(const Shape &other) const
+    {
+        return dimensions == other.dimensions && lengths == other.lengths;
+    }
+
+    bool operator!=(const Shape &other) const
+    {
+        return !(*this == other);
+    }
+};
+
 // Information about the symbol(variable or object, whatever)
 struct SymbolInfo
 {
@@ -120,6 +136,9 @@ struct SymbolInfo
     // Function flags
     bool isDeclaration = false;
     bool isDefined = false;
+
+    // Array flags
+    Shape arrShape;
 
     std::unordered_map<std::string, MemberInfo> members;
     llvm::Value *llvmValue = nullptr;
@@ -225,6 +244,10 @@ private:
     void walkBlockStatement(Node *node);
     void walkBlockExpression(Node *node);
 
+    // Walking arrays
+    void walkArrayLiteral(Node *node);
+    void walkArrayStatement(Node *node);
+
     // HELPER FUNCTIONS
     void registerWalkerFunctions();
     ResolvedType inferInfixExpressionType(Node *node);
@@ -235,6 +258,7 @@ private:
     ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
     ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
+    Shape getArrayShape(Node *node);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool isInteger(const ResolvedType &t);

@@ -229,6 +229,53 @@ void Semantics::walkDoubleLiteral(Node *node)
     metaData[dbLiteral] = info;
 }
 
+// Walking the array literal
+void Semantics::walkArrayLiteral(Node *node)
+{
+    auto arrLit = dynamic_cast<ArrayLiteral *>(node);
+    if (!arrLit)
+        return;
+
+    auto line = arrLit->expression.line;
+    auto col = arrLit->expression.column;
+
+    // Recursively getting the data type of the contents inside the array and also calling the walkers
+    std::vector<ResolvedType> itemTypes;
+    for (const auto &item : arrLit->array)
+    {
+        walker(item.get()); // Calling their walkers
+        auto itemType = inferNodeDataType(item.get());
+        itemTypes.push_back(itemType);
+    }
+
+    // Defaulting the overall type to unknown
+    ResolvedType arrType = ResolvedType{DataType::UNKNOWN, "arr"};
+
+    // Checking if all the member types match
+    for (size_t i = 0; i < itemTypes.size(); i++)
+    {
+        // Just comparing all the member types to that of the first member
+        if (itemTypes[0].kind != itemTypes[i].kind)
+        {
+            logSemanticErrors("Array member types do not match array members must be of the same types", line, col);
+            return;
+        }
+        // If the types of all members match then array literal types is just that
+        arrType = itemTypes[0];
+    }
+
+    // Storing metaData about the array
+    auto arrInfo = std::make_shared<SymbolInfo>();
+
+    arrInfo->type = arrType;
+    arrInfo->isNullable = false;
+    arrInfo->isMutable = false;
+    arrInfo->isConstant = false;
+    arrInfo->arrShape = getArrayShape(arrLit);
+
+    metaData[arrLit] = arrInfo;
+}
+
 // Walking the identifier expression
 void Semantics::walkIdentifierExpression(Node *node)
 {

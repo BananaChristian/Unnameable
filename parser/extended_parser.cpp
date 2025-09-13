@@ -375,8 +375,6 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement()
     return std::make_unique<InstantiateStatement>(instantiate, std::move(generic_call), as, alias);
 }
 
-// ================= Parser =================
-
 std::unique_ptr<Expression> Parser::parseArrayLiteral()
 {
     Token arr_tok = currentToken();
@@ -415,7 +413,7 @@ std::unique_ptr<Expression> Parser::parseArrayLiteral()
 std::unique_ptr<Statement> Parser::parseArrayStatement()
 {
     Token arr_token = currentToken();
-    advance(); // consume "array" keyword or whatever introduces it
+    advance(); 
 
     std::vector<std::unique_ptr<Expression>> lengths;
 
@@ -432,7 +430,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement()
         }
         else if (currentToken().type != TokenType::RBRACKET)
         {
-            logError("Unexpected token in array length: " + currentToken().TokenLiteral);
+            logError("Unexpected token in array length '" + currentToken().TokenLiteral+"' please only use unsigned int(32) or unsigned long(64)");
             return nullptr;
         }
 
