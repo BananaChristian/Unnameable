@@ -1421,9 +1421,7 @@ std::unique_ptr<Expression> Parser::parseStringLiteral()
 // Grouped expression parse function
 std::unique_ptr<Expression> Parser::parseGroupedExpression()
 {
-    Token firstToken = currentToken();
-    advance();
-
+    advance();//Consume the ( token
     auto expr = parseExpression(Precedence::PREC_NONE);
     if (!expr)
     {
@@ -1433,31 +1431,12 @@ std::unique_ptr<Expression> Parser::parseGroupedExpression()
 
     if (currentToken().type != TokenType::RPAREN)
     {
-        logError("Expected ')' to close grouped expression ");
+        logError("Expected ')' to close grouped expression");
         return nullptr;
     }
 
-    advance();
+    advance(); // consume ')'
     return expr;
-}
-
-std::unique_ptr<Expression> Parser::parseGroupedOrTupleExpression()
-{
-    std::cout << "PARSING GROUPED OR TUPLE EXPRESSIONS\n";
-    Token lparen = currentToken();
-    if (lparen.type != TokenType::LPAREN)
-    {
-        logError("Expected '(' but got: " + lparen.TokenLiteral);
-        return nullptr;
-    }
-    advance();
-
-    if (nextToken().type == TokenType::COMMA)
-    {
-        return parseTupleExpression();
-    }
-
-    return parseGroupedExpression();
 }
 
 std::unique_ptr<Expression> Parser::parseCallExpression(std::unique_ptr<Expression> left)
@@ -1476,40 +1455,6 @@ std::unique_ptr<Expression> Parser::parseCallExpression(std::unique_ptr<Expressi
     auto args = parseCallArguments(); // Calling the parse call arguments inorder to parse the arguments
 
     return std::make_unique<CallExpression>(call_token, std::move(left), std::move(args));
-}
-
-// Parsing tuple expressions
-std::unique_ptr<Expression> Parser::parseTupleExpression()
-{
-    Token firstToken = currentToken();
-    std::vector<std::unique_ptr<Expression>> elements;
-    while (true)
-    {
-        auto expr = parseExpression(Precedence::PREC_NONE);
-        if (!expr)
-        {
-            logError("Invalid expression in tuple");
-            return nullptr;
-        }
-        elements.push_back(std::move(expr));
-
-        if (currentToken().type == TokenType::COMMA)
-        {
-            advance();
-        }
-        else if (currentToken().type == TokenType::RPAREN)
-        {
-            advance();
-            break;
-        }
-        else
-        {
-            logError("Expected ',' or ')' in tuple but got: " + currentToken().TokenLiteral);
-            return nullptr;
-        }
-    }
-
-    return std::make_unique<TupleExpression>(firstToken, std::move(elements));
 }
 
 // Parsing function call arguments
@@ -1858,10 +1803,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
-    PrefixParseFunctionsMap[TokenType::PLUS] = &Parser::parsePrefixExpression;
-    PrefixParseFunctionsMap[TokenType::COALESCE] = &Parser::parsePrefixExpression;
-    PrefixParseFunctionsMap[TokenType::ASTERISK] = &Parser::parsePrefixExpression;
-    PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedOrTupleExpression;
+    PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;
     PrefixParseFunctionsMap[TokenType::LBRACKET] = &Parser::parseArrayLiteral;
     PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
     PrefixParseFunctionsMap[TokenType::PLUS_PLUS] = &Parser::parsePrefixExpression;

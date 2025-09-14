@@ -265,9 +265,6 @@ private:
     // Array literal
     std::unique_ptr<Expression> parseArrayLiteral();
 
-    // Tuples
-    std::unique_ptr<Expression> parseTupleExpression();
-
     // Call expression parse function
     std::unique_ptr<Expression> parseCallExpression(std::unique_ptr<Expression> left);
 
@@ -285,9 +282,6 @@ private:
 
     // Wrapper functions
     std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
-
-    // Function to select how to parse grouped expression
-    std::unique_ptr<Expression> parseGroupedOrTupleExpression();
 
     // Checker for generics
     bool isGeneric(const std::string &typeName, const std::vector<Token> &genericParams);
