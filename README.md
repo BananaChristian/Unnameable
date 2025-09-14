@@ -81,12 +81,37 @@ auto y = 42;  # Type inferred as int
 
 ## Null Safety
 By default all the variables, function return types are not nullable but with the ? on a data type this acknowledges that the variable or data type are nullable.
-This means the compiler will force you to explicitly deal with these but It wont allow null to be passed into variables or returned from a function
+This means the compiler will force you to explicitly deal with these via coalescing or using if statements but It wont allow null to be passed into variables or get used anywhere
 ```
 string? name= null;
 func greet(string? name): string?{
     return "Hello" + name;
 }
+
+int? x=null;
+int y=x;#This throws an error because x has a null value
+
+##Correct code
+int? x=8;
+int y=x;#This will run since x now has a value
+##
+
+int? a;
+a=null;
+a+1;#This will error out since u cannot use null in operations
+
+#Usage of uninitialized variables is not allowed in the langauge
+int? c;
+c+1;//BOOM error
+#OR
+int test;
+int y=test;#Error since 'test' is noy initialized
+
+#Coalescing 
+int? x=null;
+x??1+1;
+
+#NOTE: Coalescing only works if the the variable is nullable
 
 #Function declarations
 func greet(string? name): string?;

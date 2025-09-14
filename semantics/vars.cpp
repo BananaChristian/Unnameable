@@ -229,6 +229,19 @@ void Semantics::walkDoubleLiteral(Node *node)
     metaData[dbLiteral] = info;
 }
 
+// Walking the null literal
+void Semantics::walkNullLiteral(Node *node)
+{
+    auto nullLit = dynamic_cast<NullLiteral *>(node);
+    if (!nullLit)
+        return;
+    std::cout << "[SEMANTIC LOG] Analyzing null literal\n";
+
+    auto symbol = std::make_shared<SymbolInfo>();
+    symbol->type = ResolvedType{DataType::UNKNOWN, "null"}; // Unknown data type for now
+    metaData[nullLit] = symbol;
+}
+
 // Walking the array literal
 void Semantics::walkArrayLiteral(Node *node)
 {
@@ -309,17 +322,13 @@ void Semantics::walkLetStatement(Node *node)
     auto letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
         return;
+
     std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
 
-    auto existing = metaData.find(node);
-    if (existing != metaData.end() && existing->second->type.kind == DataType::GENERIC)
-    {
-        std::cout << "[SEMANTIC LOG]: Skipping already analyzed generic parameter: " << letStmt->ident_token.TokenLiteral << "\n";
-        return;
-    }
-
     bool isNullable = letStmt->isNullable;
+    bool isDefinitelyNull = false;
     bool isInitialized = false;
+    bool hasError = false;
 
     auto letStmtValue = letStmt->value.get();
 
@@ -330,20 +339,45 @@ void Semantics::walkLetStatement(Node *node)
         declaredType = inferNodeDataType(letStmtValue);
         walker(letStmtValue);
         isInitialized = true;
+
         auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue);
+        auto ident = dynamic_cast<Identifier *>(letStmtValue);
+        // Check to prevent assignment of null identifiers
+        if (ident)
+        {
+            auto identName = ident->identifier.TokenLiteral;
+            auto identSym = resolveSymbolInfo(identName);
+            if (!identSym)
+            {
+                logSemanticErrors("Cannot assign non existant identifier '" + identName + "' to let statement '", ident->expression.line, ident->expression.column);
+                hasError = true;
+            }
+
+            if (!identSym->isInitialized)
+            {
+                logSemanticErrors("Cannot assign non initialized identifier '" + identName + "' to let statement '", ident->expression.line, ident->expression.column);
+                hasError = true;
+            }
+        }
+
         // This will be triggered if the value itself is null
         if (nullVal)
         {
-            // Will be triggered if the let statement is not nullable but the literal is null
+            isDefinitelyNull = true;
             if (!isNullable)
             {
-                logSemanticErrors("Cannot assign 'null' to a non-nullable value '" + letStmt->ident_token.TokenLiteral + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
+                logSemanticErrors("Cannot assign 'null' to non-nullable variable '" + letStmt->ident_token.TokenLiteral + "'",
+                                  letStmt->data_type_token.line, letStmt->data_type_token.column);
+                hasError = true;
                 declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
             }
             else
             {
-                declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
+                // Null literal adopts LHS type context
+                declaredType = tokenTypeToResolvedType(letStmt->data_type_token, /*isNullable=*/true);
+                declaredType.resolvedName = "null";
             }
+            isInitialized = true; // consider it initialized to null
         }
     }
     else
@@ -365,7 +399,38 @@ void Semantics::walkLetStatement(Node *node)
         if (!isTypeCompatible(expectedType, declaredType))
         {
             logSemanticErrors("Type mismatch in 'let' statement. Expected '" + expectedType.resolvedName + "' but got '" + declaredType.resolvedName + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            hasError = true;
             return;
+        }
+        // --- Prevent assigning a nullable value to a non-nullable variable ---
+        if (!isNullable) // LHS is non-nullable
+        {
+            bool rhsDefinitelyNull = false;
+
+            if (letStmtValue)
+            {
+                if (auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue))
+                {
+                    rhsDefinitelyNull = true; // literal null
+                }
+                else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
+                {
+                    auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
+                    if (identSym && identSym->isDefinitelyNull)
+                    {
+                        rhsDefinitelyNull = true; // identifier that is definitely null
+                    }
+                }
+            }
+
+            if (rhsDefinitelyNull)
+            {
+                logSemanticErrors(
+                    "Cannot assign a nullable (possibly null) value to non-nullable variable '" + letStmt->ident_token.TokenLiteral + "'",
+                    letStmt->data_type_token.line, letStmt->data_type_token.column);
+                hasError = true;
+                declaredType = ResolvedType{DataType::UNKNOWN, "unknown"}; // mark LHS type invalid
+            }
         }
     }
 
@@ -391,6 +456,8 @@ void Semantics::walkLetStatement(Node *node)
     letInfo->isMutable = isMutable;
     letInfo->isConstant = isConstant;
     letInfo->isInitialized = isInitialized;
+    letInfo->isDefinitelyNull = isDefinitelyNull;
+    letInfo->hasError = hasError;
 
     metaData[letStmt] = letInfo;
 
@@ -406,24 +473,22 @@ void Semantics::walkAssignStatement(Node *node)
 
     std::shared_ptr<SymbolInfo> symbol = nullptr;
     std::string assignName;
+    bool hasError = false;
 
-    // Dealing with self.field
+    // --- Handle self.field assignments ---
     if (auto *selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
     {
-        std::cout << "INSIDE SPECIAL SELF ASSIGNMENT\n";
-        // Must be inside a component
         if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
         {
             logSemanticErrors("'self' cannot be used outside a component",
                               selfExpr->expression.line,
                               selfExpr->expression.column);
+            hasError = true;
             return;
         }
 
         assignName = selfExpr->field->expression.TokenLiteral;
-        std::cout << "NAME BEING RECEIVED : " << assignName << "\n";
 
-        // Look up the current component's metadata
         auto &compScope = currentTypeStack.back();
         auto compMetaIt = metaData.find(compScope.node);
         if (compMetaIt == metaData.end())
@@ -431,18 +496,18 @@ void Semantics::walkAssignStatement(Node *node)
             logSemanticErrors("Component metadata not found",
                               selfExpr->expression.line,
                               selfExpr->expression.column);
+            hasError = true;
             return;
         }
 
         auto compMeta = compMetaIt->second;
-
-        // Lookup the field inside the component
         auto memIt = compMeta->members.find(assignName);
         if (memIt == compMeta->members.end())
         {
             logSemanticErrors("Field '" + assignName + "' not found in component",
                               selfExpr->expression.line,
                               selfExpr->expression.column);
+            hasError = true;
             return;
         }
 
@@ -456,77 +521,154 @@ void Semantics::walkAssignStatement(Node *node)
         symbol->isConstant = fieldInfo.isConstant;
         symbol->isInitialized = fieldInfo.isInitialised;
         symbol->memberIndex = fieldInfo.memberIndex;
-
-        std::cout << "[SEMANTIC LOG]: Analyzing assignment to field 'self." << assignName << "'\n";
+        symbol->hasError = hasError;
     }
-    // Plain identifier assignment handling
+    // --- Handle plain identifier assignments ---
     else if (auto ident = dynamic_cast<Identifier *>(assignStmt->identifier.get()))
     {
         assignName = ident->identifier.TokenLiteral;
-        std::cout << "NORMAL ASSIGN NAME: " << assignName << "\n";
         symbol = resolveSymbolInfo(assignName);
 
         if (!symbol)
         {
-            std::cerr << "[SEMANTIC ERROR]: Variable '" << assignName << "' is not declared\n";
+            logSemanticErrors("Variable '" + assignName + "' is not declared",
+                              ident->identifier.line,
+                              ident->identifier.column);
+            hasError = true;
             return;
         }
-
-        std::cout << "[SEMANTIC LOG]: Analyzing assignment to variable '" << assignName << "'\n";
     }
     else
     {
-        std::cerr << "[SEMANTIC ERROR]: Invalid assignment target\n";
+        logSemanticErrors("Invalid assignment target",
+                          assignStmt->identifier->expression.line,
+                          assignStmt->identifier->expression.column);
+        hasError = true;
         return;
     }
 
-    // ---- Type & mutability checks ----
-    if (assignStmt->value && assignStmt->value->token.type == TokenType::NULLABLE)
+    // --- Handle RHS null literal ---
+    bool rhsIsNull = false;
+    bool isDefinitelyNull = false;
+    if (assignStmt->value)
     {
-        if (!symbol->isNullable)
+        auto ident = dynamic_cast<Identifier *>(assignStmt->value.get());
+        // Check to prevent assignment of null identifiers
+        if (ident)
         {
-            logSemanticErrors("Cannot assign null to non-nullable variable '" + assignName + "'",
-                              assignStmt->identifier->expression.line,
-                              assignStmt->identifier->expression.column);
-            return;
+            auto identName = ident->identifier.TokenLiteral;
+            auto identSym = resolveSymbolInfo(identName);
+            if (!identSym)
+            {
+                logSemanticErrors("Cannot assign non existant identifier '" + identName + "' to variable '" + assignName + "'", ident->expression.line, ident->expression.column);
+                hasError = true;
+            }
+
+            if (!identSym->isInitialized)
+            {
+                logSemanticErrors("Cannot assign non initialized identifier '" + identName + "' to variable '" + assignName + "'", ident->expression.line, ident->expression.column);
+                hasError = true;
+            }
         }
-    }
-    else
-    {
-        ResolvedType valueType = inferNodeDataType(assignStmt->value.get());
-        if (!isTypeCompatible(symbol->type, valueType))
+        if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get()))
         {
-            logSemanticErrors("Type mismatch: expected '" +
-                                  symbol->type.resolvedName + "' but got '" +
-                                  valueType.resolvedName + "'",
-                              assignStmt->identifier->expression.line,
-                              assignStmt->identifier->expression.column);
+            rhsIsNull = true;
+            isDefinitelyNull = true;
+
+            if (!symbol->isNullable)
+            {
+                logSemanticErrors("Cannot assign 'null' to non-nullable variable '" + assignName + "'",
+                                  assignStmt->identifier->expression.line,
+                                  assignStmt->identifier->expression.column);
+                hasError = true;
+                return;
+            }
+
+            // Null adopts LHS type
+            symbol->type = symbol->type;
+            symbol->isInitialized = true;
+            symbol->hasError = hasError;
+            symbol->isDefinitelyNull = isDefinitelyNull;
+            metaData[assignStmt] = symbol;
+
+            // Nothing else to check
             return;
         }
     }
 
+    // --- Infer RHS type if not null ---
+    ResolvedType rhsType = inferNodeDataType(assignStmt->value.get());
+
+    if (!isTypeCompatible(symbol->type, rhsType))
+    {
+        logSemanticErrors("Type mismatch: expected '" +
+                              symbol->type.resolvedName + "' but got '" +
+                              rhsType.resolvedName + "'",
+                          assignStmt->identifier->expression.line,
+                          assignStmt->identifier->expression.column);
+        hasError = true;
+        return;
+    }
+
+    // --- Mutability / const checks ---
     if (symbol->isConstant)
     {
-        std::cerr << "[SEMANTIC ERROR]: Cannot reassign to constant variable '" << assignName << "'\n";
+        logSemanticErrors("Cannot reassign to constant variable '" + assignName + "'",
+                          assignStmt->identifier->expression.line,
+                          assignStmt->identifier->expression.column);
+        hasError = true;
         return;
     }
 
     if (!symbol->isMutable && symbol->isInitialized)
     {
-        std::cerr << "[SEMANTIC ERROR]: Cannot reassign to immutable variable '" << assignName << "'\n";
+        logSemanticErrors("Cannot reassign to immutable variable '" + assignName + "'",
+                          assignStmt->identifier->expression.line,
+                          assignStmt->identifier->expression.column);
+        hasError = true;
         return;
     }
 
-    // Mark as initialized
-    symbol->isInitialized = true;
+    // --- Prevent assigning a nullable value to a non-nullable variable ---
+    if (!symbol->isNullable) // LHS is non-nullable
+    {
+        bool rhsDefinitelyNull = false;
 
-    // Walk the value expression
+        if (assignStmt->value)
+        {
+            if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get()))
+            {
+                rhsDefinitelyNull = true; // literal null
+            }
+            else if (auto ident = dynamic_cast<Identifier *>(assignStmt->value.get()))
+            {
+                auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
+                if (identSym && identSym->isDefinitelyNull)
+                {
+                    rhsDefinitelyNull = true; // identifier that is definitely null
+                }
+            }
+        }
+
+        if (rhsDefinitelyNull)
+        {
+            logSemanticErrors("Cannot assign a null value to to a non-nullable variable '" + assignName + "'",
+                              assignStmt->identifier->expression.line,
+                              assignStmt->identifier->expression.column);
+            hasError = true;
+        }
+    }
+
+    // --- Mark variable initialized ---
+    symbol->isInitialized = true;
+    symbol->isDefinitelyNull = isDefinitelyNull;
+    symbol->hasError = hasError;
+
+    // --- Walk the RHS expression ---
     if (assignStmt->value)
         walker(assignStmt->value.get());
 
-    // Store metadata for later stages
-    ResolvedType valueType = inferNodeDataType(assignStmt);
-
+    // --- Store metadata for later stages ---
     metaData[assignStmt] = symbol;
 }
 
@@ -541,6 +683,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
 
     auto line = fieldAssignStmt->statement.line;
     auto column = fieldAssignStmt->statement.column;
+    bool hasError = false;
 
     // This is a special case so we are gonna have to resolve the names from the customTypes table
     auto [parentName, childName] = splitScopedName(fieldName); // Splitting the name
@@ -548,6 +691,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     if (parentIt == customTypesTable.end())
     {
         logSemanticErrors("Type '" + parentName + "' does not exist", line, column);
+        hasError = true;
         return;
     }
     auto members = parentIt->second.members;
@@ -555,6 +699,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     if (memberIt == members.end())
     {
         logSemanticErrors("Variable '" + childName + "' does not exist in '" + parentName + "'", line, column);
+        hasError = true;
         return;
     }
 
@@ -569,12 +714,14 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     if (isConstant)
     {
         logSemanticErrors("Cannot reassign to constant variable '" + fieldName + "'", line, column);
+        hasError = true;
         return;
     }
 
     if (!isMutable && isInitialized)
     {
         logSemanticErrors("Cannot reassign to immutable variable '" + fieldName + "'", line, column);
+        hasError = true;
         return;
     }
 
@@ -591,6 +738,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     info->isNullable = isNullable;
     info->isConstant = isConstant;
     info->isInitialized = isInitialized;
+    info->hasError = hasError;
 
     // Meta data construction
     metaData[fieldAssignStmt] = info;

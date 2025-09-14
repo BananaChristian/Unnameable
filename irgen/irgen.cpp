@@ -68,6 +68,10 @@ void IRGenerator::generateLetStatement(Node *node)
     {
         throw std::runtime_error("No let statement for variable '" + letName + "'");
     }
+    if (letIt->second->hasError)
+    {
+        return;
+    }
     auto letType = letIt->second->type.kind;
 
     llvm::Type *varType = getLLVMType(letType);
@@ -450,6 +454,8 @@ void IRGenerator::generateAssignmentStatement(Node *node)
         auto it = semantics.resolveSymbolInfo(varName);
         if (!it)
             throw std::runtime_error("Could not find variable '" + varName + "'");
+        if (it->hasError)
+            return;
 
         targetPtr = it->llvmValue;
         if (!targetPtr)
@@ -1165,7 +1171,7 @@ llvm::Value *IRGenerator::generateUnsignedIntegerLiteral(Node *node)
 
     auto it = semantics.metaData.find(node);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("UInt literal not found in metadata");
+        throw std::runtime_error("Uint literal not found in metadata");
 
     DataType dt = it->second->type.kind;
     if (dt != DataType::UINTEGER && dt != DataType::NULLABLE_UINT)
@@ -1359,6 +1365,10 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     if (identIt == semantics.metaData.end())
     {
         throw std::runtime_error("Unidentified identifier '" + identName + "'");
+    }
+    if (identIt->second->hasError)
+    {
+        return nullptr;
     }
     llvm::Type *ty = getLLVMType(identIt->second->type.kind);
     // Checking if the identifier has a value

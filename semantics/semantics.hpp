@@ -128,6 +128,7 @@ struct SymbolInfo
     ResolvedType type;
     std::string genericName;
     bool isNullable = false;
+    bool isDefinitelyNull = false;
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialized = false;
@@ -144,6 +145,9 @@ struct SymbolInfo
     llvm::Value *llvmValue = nullptr;
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
+
+    // Error flag
+    bool hasError = false;
 };
 
 class Semantics
@@ -189,6 +193,8 @@ private:
 
     void walkDoubleLiteral(Node *node);
     void walkFloatLiteral(Node *node);
+
+    void walkNullLiteral(Node *node);
 
     // Walking the component functions declaration
     void walkDataStatement(Node *node);
