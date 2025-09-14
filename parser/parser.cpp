@@ -1827,6 +1827,7 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::EQUALS] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseCallExpression;
+    InfixParseFunctionsMap[TokenType::COALESCE] = &Parser::parseInfixExpression;
 }
 
 // Registering prefix functions for a particular token type
@@ -1858,7 +1859,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedOrTupleExpression;
-    PrefixParseFunctionsMap[TokenType::LBRACKET]=&Parser::parseArrayLiteral;
+    PrefixParseFunctionsMap[TokenType::LBRACKET] = &Parser::parseArrayLiteral;
     PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
     PrefixParseFunctionsMap[TokenType::PLUS_PLUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS_MINUS] = &Parser::parsePrefixExpression;

@@ -44,7 +44,8 @@ enum class TokenType
     COMMA,          //,
     BANG,           //"!"
     SCOPE_OPERATOR, //"::"
-    QUESTION_MARK,
+    QUESTION_MARK,  //"?"
+    COALESCE,       //"??"
 
     IDENTIFIER,
     STRING_KEYWORD,
@@ -131,7 +132,7 @@ enum class TokenType
     DOUBLE,
     ARRAY,
 
-    NULLABLE,
+    NULLABLE, //"null"
 
     ILLEGAL,
     END,

@@ -580,8 +580,17 @@ Token Lexer::tokenize()
     case U'?':
     {
         CAPTURE_POS;
-        advance();
-        return Token{"?", TokenType::QUESTION_MARK, tokenLine, tokenColumn};
+        if (peekChar() == U'?')
+        {
+            advance();
+            advance();
+            return Token{"??", TokenType::COALESCE, tokenLine, tokenColumn};
+        }
+        else
+        {
+            advance();
+            return Token{"?", TokenType::QUESTION_MARK, tokenLine, tokenColumn};
+        }
     }
     case U'.':
     {

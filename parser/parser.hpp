@@ -43,6 +43,7 @@ class Parser
         {TokenType::LPAREN, Precedence::PREC_CALL},
         {TokenType::SCOPE_OPERATOR, Precedence::PREC_CALL},
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
+        {TokenType::COALESCE, Precedence::PREC_COALESCE},
     };
 
     Token lastToken;

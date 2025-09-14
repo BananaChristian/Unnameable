@@ -82,8 +82,6 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: CLASS";
     case TokenType::CONST:
         return "Token Type: CONST";
-    case TokenType::CAST:
-        return "Token Type: CAST";
     case TokenType::COMPONENT:
         return "Token Type: COMPONENT";
     case TokenType::SELF:
@@ -109,7 +107,7 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: INSTANTIATE";
     case TokenType::AS:
         return "Token Type: AS";
-        
+
     case TokenType::SIGNAL:
         return "Tokenn Type: SIGNAL";
     case TokenType::ERROR:
@@ -197,6 +195,9 @@ string TokenTypeToLiteral(TokenType type)
 
     case TokenType::QUESTION_MARK:
         return "Token Type: QUESTION MARK";
+    case TokenType::COALESCE:
+        return "TokenType::COALESCE";
+        
     case TokenType::BOOL_KEYWORD:
         return "Token Type: BOOL_KEYWORD";
     case TokenType::DOUBLE_KEYWORD:

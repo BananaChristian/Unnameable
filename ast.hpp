@@ -1240,6 +1240,7 @@ enum class Precedence
 {
     PREC_NONE = 0,
     PREC_ASSIGNMENT, // =
+    PREC_COALESCE,   //"??"
     PREC_OR,         // ||
     PREC_AND,        // &&
     PREC_EQUALITY,   // == !=
