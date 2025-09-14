@@ -102,10 +102,10 @@ a+1;#This will error out since u cannot use null in operations
 
 #Usage of uninitialized variables is not allowed in the langauge
 int? c;
-c+1;//BOOM error
+c+1; #BOOM error
 #OR
 int test;
-int y=test;#Error since 'test' is noy initialized
+int y=test;#Error since 'test' is not initialized
 
 #Coalescing 
 int? x=null;
