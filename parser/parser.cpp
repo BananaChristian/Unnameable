@@ -1858,6 +1858,9 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
+    PrefixParseFunctionsMap[TokenType::PLUS] = &Parser::parsePrefixExpression;
+    PrefixParseFunctionsMap[TokenType::COALESCE] = &Parser::parsePrefixExpression;
+    PrefixParseFunctionsMap[TokenType::ASTERISK] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedOrTupleExpression;
     PrefixParseFunctionsMap[TokenType::LBRACKET] = &Parser::parseArrayLiteral;
     PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
