@@ -73,6 +73,7 @@ enum class TokenType
     GENERIC, // Generic block keyword
     INSTANTIATE,
     AS,
+    ALIAS,
 
     START,  // start
     WAIT,   // wait
