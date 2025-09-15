@@ -213,9 +213,15 @@ arr[arr[uint]] [2u][2u] test;
 
 #Case 2: With initialization
 arr [arr[uint]] another_array=[[4u,6u],[1u,2u]];
-
-
 ```
+
+## Name aliasing
+Some type names can get really complex really fast for this reason name aliasing has been to avoid such messy syntax
+```
+alias Matrix3 = arr[arr[arr[uint]]];
+Matrix3 matrix=[[1,2],[5,6],[7,8]];
+```
+
 
 ## Error handling
 ```unn
@@ -406,11 +412,7 @@ Type inference with auto works together with *mut* and *const* for example
 ```
 mut auto z = 5;    # Mutable variable with inferred type int
 const auto w = 3;  # Immutable variable with inferred type int
-
 ```
-
-## Future Lexer additions
-- Even more unicode support for identifiers
 
 ## Future additions
 - Pattern matching to switch statements
