@@ -16,7 +16,6 @@ class Lexer
         {"auto", TokenType::AUTO},
         {"func", TokenType::FUNCTION},
         {"return", TokenType::RETURN},
-        {"cast", TokenType::CAST},
 
         {"enum", TokenType::ENUM},
         {"class", TokenType::CLASS},
@@ -32,6 +31,7 @@ class Lexer
         {"generic", TokenType::GENERIC},
         {"instantiate", TokenType::INSTANTIATE},
         {"as", TokenType::AS},
+        {"alias", TokenType::ALIAS},
 
         {"if", TokenType::IF},
         {"else", TokenType::ELSE},
@@ -76,8 +76,6 @@ class Lexer
 
         {"const", TokenType::CONST},
         {"mut", TokenType::MUT},
-
-        {"arr", TokenType::ARRAY},
 
         {"heap", TokenType::HEAP},
     };
