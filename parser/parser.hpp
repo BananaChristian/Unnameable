@@ -174,7 +174,10 @@ private:
     std::unique_ptr<Statement> parseInstantiateStatement();
 
     // Parsing array statements
-    std::unique_ptr<Statement> parseArrayStatement();
+    std::unique_ptr<Statement> parseArrayStatement(bool isParam=false);
+
+    // Parsing Array Statememt
+    std::unique_ptr<Statement> parseAliasStatement();
 
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
@@ -206,6 +209,18 @@ private:
 
     // Parsing for expression
     std::unique_ptr<Expression> parseFunctionExpression();
+
+    // Parsing for basic return type
+    std::unique_ptr<Expression> parseBasicReturnType();
+
+    // Parsing for array return type
+    std::unique_ptr<Expression> parseArrayReturnType();
+
+    // Parsing for nested array return type
+    std::unique_ptr<Expression> parseNestedArrayReturnType();
+
+    // Parsing the return type expression
+    std::unique_ptr<Expression> parseReturnTypeExpression();
 
     // Parsing block expressions
     std::unique_ptr<Expression> parseBlockExpression();
@@ -264,6 +279,9 @@ private:
 
     // Array literal
     std::unique_ptr<Expression> parseArrayLiteral();
+
+    // Array type parse function
+    std::unique_ptr<Expression> parseArrayType();
 
     // Call expression parse function
     std::unique_ptr<Expression> parseCallExpression(std::unique_ptr<Expression> left);

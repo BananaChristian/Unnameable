@@ -443,9 +443,13 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
 {
     Token current = currentToken();
 
-    if (isBasicType(current.type))
+    if (isBasicType(current.type) || current.type == TokenType::AUTO)
     {
         return parseLetStatementWithType(true);
+    }
+    else if (current.type == TokenType::ARRAY)
+    {
+        return parseArrayStatement(true);
     }
     else if (
         current.type == TokenType::IDENTIFIER)
@@ -484,7 +488,6 @@ bool Parser::isBasicType(TokenType type)
     case TokenType::CHAR32_KEYWORD:
     case TokenType::STRING_KEYWORD:
     case TokenType::BOOL_KEYWORD:
-    case TokenType::AUTO:
         return true;
     default:
         return false;
@@ -692,7 +695,7 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
         if (auto letStmt = dynamic_cast<LetStatement *>(dataStmt.get()))
         {
             TokenType declaredType = letStmt->data_type_token.type;
-            if (isBasicType(declaredType) || declaredType == TokenType::IDENTIFIER)
+            if (isBasicType(declaredType) || declaredType == TokenType::IDENTIFIER || declaredType == TokenType::AUTO)
             {
                 fields.push_back(std::move(dataStmt));
             }
@@ -1421,7 +1424,7 @@ std::unique_ptr<Expression> Parser::parseStringLiteral()
 // Grouped expression parse function
 std::unique_ptr<Expression> Parser::parseGroupedExpression()
 {
-    advance();//Consume the ( token
+    advance(); // Consume the ( token
     auto expr = parseExpression(Precedence::PREC_NONE);
     if (!expr)
     {
@@ -1499,10 +1502,131 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments()
     return args;
 }
 
+// Parsing basic return type
+std::unique_ptr<Expression> Parser::parseBasicReturnType()
+{
+    Token data_token;
+    bool isNullable = false;
+
+    data_token = currentToken();
+    advance();
+    if (currentToken().type == TokenType::QUESTION_MARK)
+    {
+        isNullable = true;
+        advance(); // Consume the ? if it exists
+    }
+    return std::make_unique<BasicReturnType>(data_token, isNullable);
+}
+
+// Parsing array return type
+std::unique_ptr<Expression> Parser::parseArrayReturnType()
+{
+    Token arr_token = currentToken();
+    advance(); // Consume 'arr'
+
+    if (currentToken().type != TokenType::LBRACKET)
+    {
+        logError("Expected '[' but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // Consume '['
+
+    std::unique_ptr<Expression> innerExpr;
+
+    // Check if inner type is another array (recursive) or basic type
+    if (currentToken().type == TokenType::ARRAY)
+    {
+        innerExpr = parseArrayReturnType(); // recursion!
+    }
+    else if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
+    {
+        innerExpr = parseBasicReturnType();
+    }
+    else
+    {
+        logError("Expected basic type or array as inner type, got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+
+    // Nullable for the array itself
+    bool isNullable = false;
+    if (currentToken().type == TokenType::QUESTION_MARK)
+    {
+        isNullable = true;
+        advance(); // Consume '?'
+    }
+
+    if (currentToken().type != TokenType::RBRACKET)
+    {
+        logError("Expected ']' but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // Consume ']'
+
+    return std::make_unique<ArrayReturnType>(arr_token, std::move(innerExpr), isNullable);
+}
+
+// Parsing nested array return type expression
+std::unique_ptr<Expression> Parser::parseNestedArrayReturnType()
+{
+    Token arr_token = currentToken();
+    advance(); // Consume the arr token
+    if (currentToken().type != TokenType::LBRACKET)
+    {
+        logError("Expected [ but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // Consume [ token
+
+    auto expr = parseArrayReturnType();
+
+    if (currentToken().type != TokenType::RBRACKET)
+    {
+        logError("Expected ] but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // Consume > token
+
+    bool isNullable = false;
+    if (currentToken().type == TokenType::QUESTION_MARK)
+    {
+        isNullable = true;
+        advance(); // Consume the ? token
+    }
+
+    return std::make_unique<NestedArrayReturnType>(arr_token, std::move(expr), isNullable);
+}
+
+// Parsing the return type expression
+std::unique_ptr<Expression> Parser::parseReturnTypeExpression()
+{
+    std::unique_ptr<Expression> expr = nullptr;
+    if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER || currentToken().type == TokenType::VOID)
+    {
+        expr = parseBasicReturnType();
+    }
+    else if (currentToken().type == TokenType::ARRAY)
+    {
+        if (peekToken(2).type == TokenType::ARRAY)
+        {
+            expr = parseNestedArrayReturnType();
+        }
+        else
+        {
+            expr = parseArrayReturnType();
+        }
+    }
+    else
+    {
+        logError("Expected basic or array return type ");
+    }
+
+    return std::make_unique<ReturnTypeExpression>(std::move(expr));
+}
+
 // Parsing function expression
 std::unique_ptr<Expression> Parser::parseFunctionExpression()
 {
-    bool isNullable = false;
     std::cout << "[TEST]Function parser is working\n";
     //--------Dealing with func keyword---------------
     Token func_tok = currentToken(); // The token representing the keyword for functions (func)
@@ -1514,7 +1638,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
 
     if (!identNode)
     {
-        logError("Expected identifier for function name after 'func'");
+        logError("Expected identifier for function name after 'func' but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
 
@@ -1528,26 +1652,12 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     if (currentToken().type == TokenType::COLON)
     {
         advance(); // Move past the colon signs
-        if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
+        if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER ||
+            currentToken().type == TokenType::VOID || currentToken().type == TokenType::ARRAY)
         {
-            return_type = std::make_unique<ReturnTypeExpression>(currentToken());
-            advance(); // Consume the data type literal
-            if (currentToken().type == TokenType::QUESTION_MARK)
-            {
-                isNullable = true;
-                advance();
-            }
+            return_type = parseReturnTypeExpression();
         }
-        else if (currentToken().type == TokenType::VOID)
-        {
-            return_type = std::make_unique<ReturnTypeExpression>(currentToken());
-            advance(); // Consume the data type literal
-            if (currentToken().type == TokenType::QUESTION_MARK)
-            {
-                isNullable = true;
-                advance();
-            }
-        }
+
         else
         {
             logError("Unexpected return type '" + currentToken().TokenLiteral + "'");
@@ -1563,8 +1673,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
             func_tok,
             std::move(identExpr),
             std::move(call),
-            std::move(return_type),
-            isNullable);
+            std::move(return_type));
         return std::make_unique<FunctionDeclarationExpression>(func_tok, std::move(decl));
     }
 
@@ -1575,7 +1684,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         return nullptr;
     }
 
-    return std::make_unique<FunctionExpression>(identToken, std::move(call), std::move(return_type), isNullable, std::move(block));
+    return std::make_unique<FunctionExpression>(identToken, std::move(call), std::move(return_type), std::move(block));
 }
 
 // Parsing function paramemters
@@ -1859,6 +1968,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::SIGNAL] = &Parser::parseSignalStatement;
     StatementParseFunctionsMap[TokenType::START] = &Parser::parseStartStatement;
     StatementParseFunctionsMap[TokenType::WAIT] = &Parser::parseWaitStatement;
+    StatementParseFunctionsMap[TokenType::ALIAS] = &Parser::parseAliasStatement;
 
     // For basic types
     StatementParseFunctionsMap[TokenType::SHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
@@ -1896,7 +2006,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::GENERIC] = &Parser::parseGenericStatement;
     StatementParseFunctionsMap[TokenType::INSTANTIATE] = &Parser::parseInstantiateStatement;
 
-    StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatement;
+    StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseLetStatementDecider;
 }
 
 // Precedence getting function
