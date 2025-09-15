@@ -216,10 +216,11 @@ arr [arr[uint]] another_array=[[4u,6u],[1u,2u]];
 ```
 
 ## Name aliasing
-Some type names can get really complex really fast for this reason name aliasing has been to avoid such messy syntax
+Some type names can get really complex really fast for this reason name aliasing has been added to avoid such messy syntax
 ```
 alias Matrix3 = arr[arr[arr[uint]]];
-Matrix3 matrix=[[1,2],[5,6],[7,8]];
+
+Matrix3 matrix=[[1u,2u],[5u,6u],[7u,8u]];
 ```
 
 
