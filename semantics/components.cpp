@@ -1271,4 +1271,5 @@ void Semantics::walkArrayStatement(Node *node)
     arrInfo->type = arrType;
 
     metaData[arrStmt] = arrInfo;
+    symbolTable.back()[arrayName]=arrInfo;//Pushing the array into the current scope
 }
