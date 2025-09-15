@@ -296,7 +296,6 @@ struct FunctionExpression : Expression
     Token func_key;
     std::vector<std::unique_ptr<Statement>> call;
     std::unique_ptr<Expression> return_type;
-    bool isNullable = false;
     std::unique_ptr<Expression> block;
 
     std::string toString() override
@@ -312,33 +311,68 @@ struct FunctionExpression : Expression
         }
         cl += ")";
 
-        std::string nullStr = "";
-        if (isNullable)
-        {
-            nullStr += "?";
-        }
-
         std::string ret_str = return_type ? return_type->toString() : "<no type>";
         std::string block_str = block ? block->toString() : "<no block>";
 
         return "FunctionExpression: " + func_key.TokenLiteral + " " +
                "Function parameters: " + cl +
-               " Return type: " + ret_str + nullStr +
+               " Return type: " + ret_str +
                " Function block: " + block_str;
     }
 
-    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, bool isNull, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), isNullable(isNull), block(std::move(bl)) {};
+    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
+};
+
+struct ArrayReturnType : Expression
+{
+    Token arr_token;                       // 'arr' keyword
+    std::unique_ptr<Expression> innerType; // Could be BasicReturnType or another ArrayReturnType
+    bool isNullable;                       // Toggle if we see ?
+
+    std::string toString() override
+    {
+        return "Array Return: " + arr_token.TokenLiteral + "[" + innerType->toString() + "]" + (isNullable ? "?" : "");
+    }
+
+    ArrayReturnType(Token arr, std::unique_ptr<Expression> inner, bool isNull)
+        : Expression(arr), arr_token(arr), innerType(std::move(inner)), isNullable(isNull) {}
+};
+
+struct NestedArrayReturnType : Expression
+{
+    Token arrToken;                        // 'arr'
+    std::unique_ptr<Expression> innerType; // could be BasicReturnType or ArrayReturnType
+    bool isNullable;
+
+    std::string toString() override
+    {
+        return "Array of: " + innerType->toString() + (isNullable ? "?" : "");
+    }
+
+    NestedArrayReturnType(Token tok, std::unique_ptr<Expression> inner, bool nullable)
+        : Expression(tok), arrToken(tok), innerType(std::move(inner)), isNullable(nullable) {}
+};
+
+struct BasicReturnType : Expression
+{
+    Token data_token;        // Basic token like int
+    bool isNullable = false; // If we see ? we toggle
+    std::string toString() override
+    {
+        return "Basic Return: " + data_token.TokenLiteral + (isNullable ? "?" : "");
+    }
+    BasicReturnType(Token data, bool isNull) : Expression(data), data_token(data), isNullable(isNull) {};
 };
 
 // Return type expression
 struct ReturnTypeExpression : Expression
 {
-    Token typeToken;
+    std::unique_ptr<Expression> returnExpr;
     std::string toString() override
     {
-        return "Type expression: " + typeToken.TokenLiteral;
+        return "Type expression: " + returnExpr->toString();
     }
-    ReturnTypeExpression(Token type) : Expression(type), typeToken(type) {};
+    ReturnTypeExpression(std::unique_ptr<Expression> retExpr) : Expression(retExpr->expression), returnExpr(std::move(retExpr)) {};
 };
 
 // Error expression
@@ -1019,24 +1053,18 @@ struct FunctionDeclaration : Statement
         {
             arguments += param->toString();
         }
-        std::string nullStr = "";
-        if (isNullable)
-        {
-            nullStr += "?";
-        }
 
         return "Function Declaration Statement: " + func_keyword_token.TokenLiteral + " " +
                (function_name ? function_name->toString() : "[null_name]") + " " +
                arguments + " " +
-               (return_type ? return_type->toString() : "[no_return]") + nullStr;
+               (return_type ? return_type->toString() : "[no_return]");
     }
 
-    FunctionDeclaration(Token func, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type, bool isNull) : Statement(func),
-                                                                                                                                                                                 func_keyword_token(func),
-                                                                                                                                                                                 function_name(std::move(identifier)),
-                                                                                                                                                                                 parameters(std::move(params)),
-                                                                                                                                                                                 return_type(std::move(ret_type)),
-                                                                                                                                                                                 isNullable(isNull) {};
+    FunctionDeclaration(Token func, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type) : Statement(func),
+                                                                                                                                                                    func_keyword_token(func),
+                                                                                                                                                                    function_name(std::move(identifier)),
+                                                                                                                                                                    parameters(std::move(params)),
+                                                                                                                                                                    return_type(std::move(ret_type)) {};
 };
 
 // Function Declaration expression
@@ -1153,42 +1181,53 @@ struct ArrayLiteral : Expression
 // Array statement
 struct ArrayStatement : Statement
 {
-    Token arr_token;
-    Token arr_type;
-    bool isNullable;
-    std::vector<std::unique_ptr<Expression>> length;
+    Token arr_token;                                 // 'arr' keyword
+    std::unique_ptr<Expression> arrType;             // Can be BasicReturnType or ArrayReturnType
+    std::vector<std::unique_ptr<Expression>> length; // Dimensions
     std::unique_ptr<Expression> identifier;
     std::unique_ptr<Expression> items; // optional initializer
 
     std::string toString() override
     {
-        std::string lengths;
+        std::string lengthsStr;
         for (const auto &len : length)
         {
-            lengths += "[" + len->toString() + "]";
+            lengthsStr += "[" + len->toString() + "]";
         }
 
         return "Array Statement: " +
-               arr_token.TokenLiteral + " <" +
-               arr_type.TokenLiteral + (isNullable ? "?" : "") + "> " +
-               lengths + " Data Type: " +
+               (arrType ? arrType->toString() : "<unknown>") +
+               lengthsStr + " Name: " +
                (identifier ? identifier->toString() : "<unnamed>") + " " +
                (items ? items->toString() : "");
     }
 
     ArrayStatement(Token arr,
-                   Token type,
-                   bool isNull,
+                   std::unique_ptr<Expression> typeNode,
                    std::vector<std::unique_ptr<Expression>> len,
                    std::unique_ptr<Expression> name,
                    std::unique_ptr<Expression> contents)
         : Statement(arr),
           arr_token(arr),
-          arr_type(type),
-          isNullable(isNull),
+          arrType(std::move(typeNode)),
           length(std::move(len)),
           identifier(std::move(name)),
           items(std::move(contents)) {}
+};
+
+// Alias statement
+struct AliasStatement : Statement
+{
+    Token alias_token;
+    std::unique_ptr<Expression> aliasName;
+    std::unique_ptr<Expression> aliasType;
+
+    std::string toString() override
+    {
+        return "Alias statement: " + alias_token.TokenLiteral + " " + aliasName->toString() + " = " + aliasType->toString();
+    }
+
+    AliasStatement(Token alias, std::unique_ptr<Expression> name, std::unique_ptr<Expression> type) : Statement(alias), aliasName(std::move(name)), aliasType(std::move(type)) {}
 };
 
 // BLOCKS
@@ -1204,13 +1243,13 @@ struct BlockExpression : Expression
         std::string out = "BlockExpression: { \n";
         for (auto &stmt : statements)
         {
-            out += stmt->toString() + "} \n";
+            out += stmt->toString() + "\n";
         }
         if (finalexpr.has_value() && finalexpr.value())
         {
             out += "Final Expression: " + finalexpr.value()->toString();
         }
-        return out;
+        return out + "}";
     };
 
     BlockExpression(Token lbrace) : Expression(lbrace) {};
