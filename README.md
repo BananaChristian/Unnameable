@@ -124,6 +124,10 @@ func greet(string name): string {
     return "Hello" + name;
 }
 
+func test(arr[int] my_array): arr[int]{
+    return [1,3];
+}
+
 ```
 
 ## Generic and multigenerics
@@ -198,17 +202,17 @@ Unnameable supports single dimensional and multidimensional arrays, The user mus
 ```
 #Single dimensional arrays
 #Case 1: No initialization
-arr <int> [2u] my_array;
+arr[int] [2u] my_array;
 
 #Case 2: With initialization
-arr <int?> test_array=[1,2,3];
+arr [int?] test_array=[1,2,3];
 
 #Multidimensional arrays
 #Case 1: No initialization
-arr <uint>[2u][2u] test;
+arr[arr[uint]] [2u][2u] test;
 
 #Case 2: With initialization
-arr <uint> another_array=[[4u,6u],[1u,2u]];
+arr [arr[uint]] another_array=[[4u,6u],[1u,2u]];
 
 
 ```
