@@ -159,3 +159,19 @@ void Semantics::walkErrorStatement(Node *node)
     auto errExpr = errStmt->errorExpr.get();
     walker(errExpr);
 }
+
+void Semantics::walkBasicType(Node *node)
+{
+    auto basicType = dynamic_cast<BasicType *>(node);
+    if (!basicType)
+        return;
+    std::cout << "[SEMANTIC LOG] Analysing the basic type expression" << basicType->toString() << "\n";
+}
+
+void Semantics::walkArrayType(Node *node)
+{
+    auto arrayType = dynamic_cast<ArrayType *>(node);
+    if (!arrayType)
+        return;
+    std::cout << "[SEMANTIC LOG] Analysing the array type expression" << arrayType->toString() << "\n";
+}

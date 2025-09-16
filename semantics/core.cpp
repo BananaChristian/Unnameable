@@ -84,6 +84,10 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(CallExpression)] = &Semantics::walkFunctionCallExpression;
     walkerFunctionsMap[typeid(ReturnStatement)] = &Semantics::walkReturnStatement;
 
+    // Walker registration for type expressions
+    walkerFunctionsMap[typeid(BasicType)] = &Semantics::walkBasicType;
+    walkerFunctionsMap[typeid(ArrayType)] = &Semantics::walkArrayType;
+
     // Walker registration for return and error statements
     walkerFunctionsMap[typeid(ErrorStatement)] = &Semantics::walkErrorStatement;
     walkerFunctionsMap[typeid(ErrorExpression)] = &Semantics::walkErrorExpression;
@@ -162,21 +166,27 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     if (auto arrLit = dynamic_cast<ArrayLiteral *>(node))
     {
         std::vector<ResolvedType> memberTypes;
-        ResolvedType arrLitType;
-        for (const auto &item : arrLit->array)
+        for (const auto &member : arrLit->array)
         {
-            auto memberType = inferNodeDataType(item.get());
+            auto memberType = inferNodeDataType(member.get());
             memberTypes.push_back(memberType);
         }
-        for (size_t i = 0; i < memberTypes.size(); i++)
+
+        // Comparing the full type, including nested arrays
+        ResolvedType litType = memberTypes[0];
+        for (size_t i = 1; i < memberTypes.size(); i++)
         {
-            if (memberTypes[0].kind != memberTypes[i].kind)
+            if (!isTypeCompatible(litType, memberTypes[i]))
             {
+                logSemanticErrors(
+                    "Type mismatch of array member at index '" + std::to_string(i) + "'",
+                    arrLit->expression.line, arrLit->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
             }
-            arrLitType = memberTypes[0];
         }
-        return arrLitType;
+
+        // Return a resolved type for the array literal, preserving nesting
+        return ResolvedType{DataType::ARRAY, "arr[" + litType.resolvedName + "]"};
     }
 
     if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
@@ -278,9 +288,22 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         }
     }
 
-    if (auto retTypeExpr = dynamic_cast<ReturnTypeExpression *>(node))
+    if (auto basicType = dynamic_cast<BasicType *>(node))
+        return tokenTypeToResolvedType(basicType->data_token, basicType->isNullable);
+
+    if (auto arrRetType = dynamic_cast<ArrayType *>(node))
     {
-        return tokenTypeToResolvedType(retTypeExpr->expression, false);
+        // Resolve the inner type first
+        ResolvedType inner = inferNodeDataType(arrRetType->innerType.get());
+
+        // Construct the array type itself
+        return ResolvedType{DataType::ARRAY, "arr[" + inner.resolvedName + "]"};
+    }
+
+    if (auto retTypeExpr = dynamic_cast<ReturnType *>(node))
+    {
+        // Just recursively call the inferer for whatever is being nested in here(Basic Type or whatever)
+        return inferNodeDataType(retTypeExpr->returnExpr.get());
     }
 
     if (auto callExpr = dynamic_cast<CallExpression *>(node))
@@ -892,13 +915,12 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
     }
 
     // Check return type
-    auto retType = dynamic_cast<ReturnTypeExpression *>(funcExpr->return_type.get());
+    auto retType = dynamic_cast<ReturnType *>(funcExpr->return_type.get());
     if (!retType)
         return false;
-    ResolvedType returnType = tokenTypeToResolvedType(retType->expression, funcExpr->isNullable);
+    ResolvedType returnType = inferNodeDataType(retType->returnExpr.get());
     std::string returnGenericName = retType->expression.type == TokenType::IDENTIFIER ? retType->expression.TokenLiteral : "";
-    return returnType.kind == declInfo.returnType.kind &&
-           funcExpr->isNullable == declInfo.isNullable;
+    return returnType.kind == declInfo.returnType.kind;
 }
 
 bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr)
@@ -1115,6 +1137,9 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
 
     case TokenType::BOOL_KEYWORD:
         return ResolvedType{DataType::BOOLEAN, "bool"};
+
+    case TokenType::ARRAY:
+        return ResolvedType{DataType::ARRAY, "arr"};
 
     case TokenType::AUTO:
     {

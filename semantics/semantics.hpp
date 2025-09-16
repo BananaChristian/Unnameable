@@ -60,6 +60,7 @@ enum class DataType
     DATABLOCK,
     BEHAVIORBLOCK,
     COMPONENT,
+    ARRAY,
 
     ERROR,
     VOID,
@@ -122,6 +123,12 @@ struct Shape
     }
 };
 
+struct ArrayMeta
+{
+    ResolvedType underLyingType;
+    Shape arrShape;
+};
+
 // Information about the symbol(variable or object, whatever)
 struct SymbolInfo
 {
@@ -139,7 +146,7 @@ struct SymbolInfo
     bool isDefined = false;
 
     // Array flags
-    Shape arrShape;
+    ArrayMeta arrayMeta;
 
     std::unordered_map<std::string, MemberInfo> members;
     llvm::Value *llvmValue = nullptr;
@@ -245,6 +252,11 @@ private:
     void walkFunctionDeclarationExpression(Node *node);
     void walkFunctionCallExpression(Node *node);
     void walkReturnStatement(Node *node);
+
+    // Walking type expressions
+    void walkReturnType(Node *node);
+    void walkBasicType(Node *node);
+    void walkArrayType(Node *node);
 
     // Walking blocks
     void walkBlockStatement(Node *node);

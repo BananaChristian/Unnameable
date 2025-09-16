@@ -184,6 +184,8 @@ void Semantics::walkFunctionExpression(Node *node)
     }
 
     std::string funcName = funcExpr->func_key.TokenLiteral;
+    //Semantic error flag
+    bool hasError=false;
 
     // Checking for duplicates in global scope
     auto symbol = resolveSymbolInfo(funcName);
@@ -194,6 +196,7 @@ void Semantics::walkFunctionExpression(Node *node)
         if (symbol->isDefined)
         {
             logSemanticErrors("Already used the name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
+            hasError=true;
             return;
         }
 
@@ -203,6 +206,7 @@ void Semantics::walkFunctionExpression(Node *node)
             {
                 logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope",
                                   funcExpr->func_key.line, funcExpr->func_key.column);
+                hasError=true;
                 return;
             }
         }
@@ -210,7 +214,7 @@ void Semantics::walkFunctionExpression(Node *node)
 
     // Creating the initial funcInfo with minimal info for recursion
     auto funcInfo = std::make_shared<SymbolInfo>();
-    funcInfo->isNullable = funcExpr->isNullable;
+    funcInfo->hasError=hasError;
     funcInfo->isDeclaration = true; // Mark as declared early for recursion
     funcInfo->isDefined = false;
     funcInfo->returnType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Initially unknown return type
@@ -232,6 +236,7 @@ void Semantics::walkFunctionExpression(Node *node)
         if (!letStmt)
         {
             logSemanticErrors("Invalid parameter: expected let statement", param.get()->statement.line, param.get()->statement.column);
+            hasError=true;
             return;
         }
         walkLetStatement(param.get());
@@ -239,6 +244,7 @@ void Semantics::walkFunctionExpression(Node *node)
         if (paramInfo == metaData.end())
         {
             logSemanticErrors("Parameter '" + letStmt->ident_token.TokenLiteral + "' not analyzed", param.get()->statement.line, param.get()->statement.column);
+            hasError=true;
             return;
         }
         symbolTable.back()[letStmt->ident_token.TokenLiteral] = paramInfo->second;
@@ -248,15 +254,28 @@ void Semantics::walkFunctionExpression(Node *node)
     }
 
     // Processing return type expression
-    auto retType = dynamic_cast<ReturnTypeExpression *>(funcExpr->return_type.get());
+    auto retType = dynamic_cast<ReturnType *>(funcExpr->return_type.get());
     if (!retType)
     {
         logSemanticErrors("Unexpected function return type", funcExpr->return_type.get()->expression.line, funcExpr->return_type.get()->expression.column);
+        hasError=true;
         return;
     }
 
-    ResolvedType returnType = tokenTypeToResolvedType(retType->expression, funcExpr->isNullable);
-    std::string customTypeName = retType->expression.TokenLiteral;
+    // Getting the nullability from the return type
+    bool isNullable = false;
+    auto basicRet = dynamic_cast<BasicType *>(retType->returnExpr.get());
+    auto arrayRet = dynamic_cast<ArrayType *>(retType->returnExpr.get());
+    if (basicRet)
+    {
+        isNullable = basicRet->isNullable;
+    }
+    else if (arrayRet)
+    {
+        isNullable = arrayRet->isNullable;
+    }
+    ResolvedType returnType = inferNodeDataType(funcExpr->return_type.get());
+    std::string customTypeName = retType->returnExpr->expression.TokenLiteral;
     if (retType->expression.type == TokenType::IDENTIFIER)
     {
 
@@ -265,6 +284,7 @@ void Semantics::walkFunctionExpression(Node *node)
         {
             logSemanticErrors("Type '" + customTypeName + "' does not exist",
                               retType->expression.line, retType->expression.column);
+            hasError=true;
             return;
         }
         returnType = it->second.type;
@@ -273,10 +293,13 @@ void Semantics::walkFunctionExpression(Node *node)
     {
         logSemanticErrors("Invalid return type '" + retType->expression.TokenLiteral + "'",
                           retType->expression.line, retType->expression.column);
+        hasError=true;
         return;
     }
 
     // Updating funcInfo with full signature info
+    funcInfo->hasError=hasError;
+    funcInfo->isNullable = isNullable;
     funcInfo->type = returnType;
     funcInfo->returnType = returnType;
     funcInfo->paramTypes = paramTypes;
@@ -295,6 +318,7 @@ void Semantics::walkFunctionExpression(Node *node)
     if (!block)
     {
         logSemanticErrors("Invalid function body", funcExpr->block.get()->expression.line, funcExpr->block->expression.column);
+        hasError=true;
         return;
     }
     std::cout << "[SEMANTIC LOG] Processing function block for '" << funcName << "'\n";
@@ -310,11 +334,15 @@ void Semantics::walkFunctionExpression(Node *node)
     if (returnType.kind != DataType::VOID && !hasReturnPath(block))
     {
         logSemanticErrors("Non-void function '" + funcName + "' must have a return value or error", funcExpr->expression.line, funcExpr->expression.column);
+        hasError=true;
         return;
     }
 
     // Pop function scope
     symbolTable.pop_back();
+
+    //Updating incase some error fall through
+    funcInfo->hasError=hasError;
 
     // If there was an outer function context, restore it    // Assuming you track this elsewhere or null it here    // Assuming you track this elsewhere or null it here
     currentFunction = std::nullopt;
@@ -387,14 +415,24 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     }
 
     // Processing the return type
-    auto retType = dynamic_cast<ReturnTypeExpression *>(funcDeclrStmt->return_type.get());
+    auto retType = dynamic_cast<ReturnType *>(funcDeclrStmt->return_type.get());
     if (!retType)
     {
         logSemanticErrors("Unexpected function return type", funcDeclrStmt->return_type.get()->expression.line, funcDeclrStmt->return_type.get()->expression.column);
         return;
     }
 
-    ResolvedType returnType = tokenTypeToResolvedType(retType->expression, funcDeclrStmt->isNullable);
+    ResolvedType returnType = inferNodeDataType(retType->returnExpr.get());
+    // Getting nullabitlity from the retType
+    bool isNullable = false;
+    if (auto basicType = dynamic_cast<BasicType *>(retType->returnExpr.get()))
+    {
+        isNullable = basicType->isNullable;
+    }
+    else if (auto arrType = dynamic_cast<ArrayType *>(retType->returnExpr.get()))
+    {
+        isNullable = arrType->isNullable;
+    }
     std::string customTypeName = retType->expression.TokenLiteral;
 
     if (retType->expression.type == TokenType::IDENTIFIER)
@@ -415,6 +453,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
         return;
     }
 
+    funcInfo->isNullable = isNullable;
     funcInfo->type = returnType;
     funcInfo->returnType = returnType;
     funcInfo->paramTypes = paramTypes;

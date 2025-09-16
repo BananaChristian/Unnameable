@@ -249,15 +249,24 @@ void Semantics::walkArrayLiteral(Node *node)
     if (!arrLit)
         return;
 
+    // Positional info for error logging
     auto line = arrLit->expression.line;
     auto col = arrLit->expression.column;
 
     // Recursively getting the data type of the contents inside the array and also calling the walkers
     std::vector<ResolvedType> itemTypes;
+
+    ArrayMeta arrMeta; // This is where the array meta is stored
     for (const auto &item : arrLit->array)
     {
         walker(item.get()); // Calling their walkers
         auto itemType = inferNodeDataType(item.get());
+        if (itemType.kind == DataType::ARRAY)
+        {
+            arrMeta = {
+                .underLyingType = itemType,
+                .arrShape = getArrayShape(item.get())};
+        }
         itemTypes.push_back(itemType);
     }
 
@@ -284,7 +293,7 @@ void Semantics::walkArrayLiteral(Node *node)
     arrInfo->isNullable = false;
     arrInfo->isMutable = false;
     arrInfo->isConstant = false;
-    arrInfo->arrShape = getArrayShape(arrLit);
+    arrInfo->arrayMeta = arrMeta;
 
     metaData[arrLit] = arrInfo;
 }

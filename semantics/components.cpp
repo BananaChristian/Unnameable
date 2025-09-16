@@ -1173,11 +1173,12 @@ void Semantics::walkArrayStatement(Node *node)
     if (!arrStmt)
         return;
 
-    // Getting the array name
+    // Array name
     std::string arrayName = arrStmt->identifier->expression.TokenLiteral;
     auto arrNameLine = arrStmt->identifier->expression.line;
     auto arrNameCol = arrStmt->identifier->expression.column;
 
+    // Prevent redefinition
     auto existingSym = resolveSymbolInfo(arrayName);
     if (existingSym)
     {
@@ -1186,28 +1187,55 @@ void Semantics::walkArrayStatement(Node *node)
         return;
     }
 
+    ArrayMeta arrMeta;
     Shape arrShape{0, {}};
     Shape inferredShape{0, {}};
 
-    // Getting the array statement type
-    auto arrType = tokenTypeToResolvedType(arrStmt->arr_type, arrStmt->isNullable);
+    // Declared type (could be ARRAY or primitive)
+    auto typeExpr = arrStmt->arrType.get();
+    ResolvedType arrType = inferNodeDataType(typeExpr);
 
-    // If array is initialized walk its items and infer shape also carry out a type check
-    if (arrStmt->items != nullptr)
+    // Must have either dimensions or initializer
+    if (arrStmt->length.empty() && arrStmt->items == nullptr)
     {
-        walker(arrStmt->items.get());
-        inferredShape = getArrayShape(arrStmt->items.get());
-        // Compare the literal type to the statement type
-        // Getting the array literal type
-        auto litType = inferNodeDataType(arrStmt->items.get());
-        if (!isTypeCompatible(arrType, litType))
-        {
-            logSemanticErrors("Declared array type '" + arrType.resolvedName + "' does not match initialized type '" + litType.resolvedName + "'", arrStmt->statement.line, arrStmt->statement.column);
-            return;
-        }
+        logSemanticErrors("Uninitialized array '" + arrayName + "' is missing dimensions and length declarations",
+                          arrStmt->statement.line, arrStmt->statement.column);
+        return;
     }
 
-    // If user declared explicit lengths convert them to arrShape
+    // Helper to recursively infer the type of a literal (handles nested arrays)
+    std::function<ResolvedType(Node *)> getLiteralType = [&](Node *n) -> ResolvedType
+    {
+        if (auto arrLit = dynamic_cast<ArrayLiteral *>(n))
+        {
+            if (arrLit->array.empty())
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+
+            // Recursively infer element type
+            ResolvedType elemType = getLiteralType(arrLit->array[0].get());
+
+            for (size_t i = 1; i < arrLit->array.size(); i++)
+            {
+                ResolvedType t = getLiteralType(arrLit->array[i].get());
+                if (!isTypeCompatible(elemType, t))
+                {
+                    logSemanticErrors(
+                        "Type mismatch in array literal at index " + std::to_string(i),
+                        arrLit->expression.line, arrLit->expression.column);
+                    return ResolvedType{DataType::UNKNOWN, "unknown"};
+                }
+            }
+
+            return ResolvedType{DataType::ARRAY, "arr[" + elemType.resolvedName + "]"};
+        }
+
+        // Base case: primitive
+        return inferNodeDataType(n);
+    };
+
+    bool isInitialized = false;
+
+    // Handle explicit lengths → arrShape
     if (!arrStmt->length.empty())
     {
         for (const auto &arrLen : arrStmt->length)
@@ -1231,45 +1259,70 @@ void Semantics::walkArrayStatement(Node *node)
                 return;
             }
         }
+        arrMeta = {.underLyingType = arrType, .arrShape = arrShape};
     }
 
-    // If both declared and initializer exist then they must match
-    if (!arrStmt->length.empty() && arrStmt->items != nullptr)
+    // If array has initializer
+    if (arrStmt->items != nullptr)
     {
-        if (arrShape.dimensions != inferredShape.dimensions)
+        walker(arrStmt->items.get());
+        isInitialized = true;
+        inferredShape = getArrayShape(arrStmt->items.get());
+
+        // Type of the initializer (handles nested arrays)
+        ResolvedType litType = getLiteralType(arrStmt->items.get());
+
+        // Element type of declared array
+        ResolvedType declaredElemType = arrType.kind == DataType::ARRAY ? arrType : arrType;
+
+        if (!isTypeCompatible(declaredElemType, litType))
         {
             logSemanticErrors(
-                "Declared dimensions (" + std::to_string(arrShape.dimensions) +
-                    ") do not match initializer dimensions (" + std::to_string(inferredShape.dimensions) + ")",
-                arrStmt->arr_token.line, arrStmt->arr_token.column);
+                "Declared array element type '" + declaredElemType.resolvedName +
+                    "' does not match initializer element type '" + litType.resolvedName + "'",
+                arrStmt->statement.line, arrStmt->statement.column);
             return;
         }
 
-        for (size_t i = 0; i < arrShape.lengths.size(); i++)
+        // If declared dimensions exist, compare shapes
+        if (!arrStmt->length.empty())
         {
-            if (arrShape.lengths[i] != inferredShape.lengths[i])
+            if (arrShape.dimensions != inferredShape.dimensions)
             {
                 logSemanticErrors(
-                    "Declared length [" + std::to_string(arrShape.lengths[i]) +
-                        "] does not match initializer length [" + std::to_string(inferredShape.lengths[i]) +
-                        "] at dimension " + std::to_string(i),
+                    "Declared dimensions (" + std::to_string(arrShape.dimensions) +
+                        ") do not match initializer dimensions (" + std::to_string(inferredShape.dimensions) + ")",
                     arrStmt->arr_token.line, arrStmt->arr_token.column);
                 return;
             }
+
+            for (size_t i = 0; i < arrShape.lengths.size(); i++)
+            {
+                if (arrShape.lengths[i] != inferredShape.lengths[i])
+                {
+                    logSemanticErrors(
+                        "Declared length [" + std::to_string(arrShape.lengths[i]) +
+                            "] does not match initializer length [" + std::to_string(inferredShape.lengths[i]) +
+                            "] at dimension " + std::to_string(i),
+                        arrStmt->arr_token.line, arrStmt->arr_token.column);
+                    return;
+                }
+            }
         }
+
+        // Use inferred shape if no explicit lengths
+        if (arrStmt->length.empty())
+            arrShape = inferredShape;
+
+        arrMeta = {.underLyingType = declaredElemType, .arrShape = arrShape};
     }
 
-    // If only initialized use the  inferred shape
-    if (arrStmt->length.empty() && arrStmt->items != nullptr)
-    {
-        arrShape = inferredShape;
-    }
-
+    // Register in symbol table
     auto arrInfo = std::make_shared<SymbolInfo>();
-
-    arrInfo->arrShape = arrShape;
+    arrInfo->arrayMeta = arrMeta;
+    arrInfo->isInitialized = isInitialized;
     arrInfo->type = arrType;
 
     metaData[arrStmt] = arrInfo;
-    symbolTable.back()[arrayName]=arrInfo;//Pushing the array into the current scope
+    symbolTable.back()[arrayName] = arrInfo;
 }
