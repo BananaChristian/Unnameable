@@ -211,16 +211,10 @@ private:
     std::unique_ptr<Expression> parseFunctionExpression();
 
     // Parsing for basic return type
-    std::unique_ptr<Expression> parseBasicReturnType();
-
-    // Parsing for array return type
-    std::unique_ptr<Expression> parseArrayReturnType();
-
-    // Parsing for nested array return type
-    std::unique_ptr<Expression> parseNestedArrayReturnType();
+    std::unique_ptr<Expression> parseBasicType();
 
     // Parsing the return type expression
-    std::unique_ptr<Expression> parseReturnTypeExpression();
+    std::unique_ptr<Expression> parseReturnType();
 
     // Parsing block expressions
     std::unique_ptr<Expression> parseBlockExpression();

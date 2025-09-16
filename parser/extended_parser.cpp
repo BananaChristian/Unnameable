@@ -436,7 +436,7 @@ std::unique_ptr<Expression> Parser::parseArrayType()
         else if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
         {
             // Basic type or custom type
-            innerType = parseBasicReturnType();
+            innerType = parseBasicType();
         }
         else
         {
@@ -462,12 +462,12 @@ std::unique_ptr<Expression> Parser::parseArrayType()
         advance(); // consume ']'
 
         // Return a node representing this array type
-        return std::make_unique<ArrayReturnType>(arr_token, std::move(innerType), isNullable);
+        return std::make_unique<ArrayType>(arr_token, std::move(innerType), isNullable);
     }
     else if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
     {
         // Simple basic type
-        return parseBasicReturnType();
+        return parseBasicType();
     }
 
     logError("Expected array type or basic type but got '" + currentToken().TokenLiteral + "'");
@@ -576,7 +576,7 @@ std::unique_ptr<Statement> Parser::parseAliasStatement()
     }
     advance(); // Consume '='
 
-    auto type = parseReturnTypeExpression();
+    auto type = parseReturnType();
     if (currentToken().type != TokenType::SEMICOLON)
     {
         logError("Expected ';' after alias statement but got '" + currentToken().TokenLiteral + "'");

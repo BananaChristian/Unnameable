@@ -1503,7 +1503,7 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments()
 }
 
 // Parsing basic return type
-std::unique_ptr<Expression> Parser::parseBasicReturnType()
+std::unique_ptr<Expression> Parser::parseBasicType()
 {
     Token data_token;
     bool isNullable = false;
@@ -1515,113 +1515,28 @@ std::unique_ptr<Expression> Parser::parseBasicReturnType()
         isNullable = true;
         advance(); // Consume the ? if it exists
     }
-    return std::make_unique<BasicReturnType>(data_token, isNullable);
-}
-
-// Parsing array return type
-std::unique_ptr<Expression> Parser::parseArrayReturnType()
-{
-    Token arr_token = currentToken();
-    advance(); // Consume 'arr'
-
-    if (currentToken().type != TokenType::LBRACKET)
-    {
-        logError("Expected '[' but got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
-    }
-    advance(); // Consume '['
-
-    std::unique_ptr<Expression> innerExpr;
-
-    // Check if inner type is another array (recursive) or basic type
-    if (currentToken().type == TokenType::ARRAY)
-    {
-        innerExpr = parseArrayReturnType(); // recursion!
-    }
-    else if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
-    {
-        innerExpr = parseBasicReturnType();
-    }
-    else
-    {
-        logError("Expected basic type or array as inner type, got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
-    }
-
-    // Nullable for the array itself
-    bool isNullable = false;
-    if (currentToken().type == TokenType::QUESTION_MARK)
-    {
-        isNullable = true;
-        advance(); // Consume '?'
-    }
-
-    if (currentToken().type != TokenType::RBRACKET)
-    {
-        logError("Expected ']' but got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
-    }
-    advance(); // Consume ']'
-
-    return std::make_unique<ArrayReturnType>(arr_token, std::move(innerExpr), isNullable);
-}
-
-// Parsing nested array return type expression
-std::unique_ptr<Expression> Parser::parseNestedArrayReturnType()
-{
-    Token arr_token = currentToken();
-    advance(); // Consume the arr token
-    if (currentToken().type != TokenType::LBRACKET)
-    {
-        logError("Expected [ but got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
-    }
-    advance(); // Consume [ token
-
-    auto expr = parseArrayReturnType();
-
-    if (currentToken().type != TokenType::RBRACKET)
-    {
-        logError("Expected ] but got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
-    }
-    advance(); // Consume > token
-
-    bool isNullable = false;
-    if (currentToken().type == TokenType::QUESTION_MARK)
-    {
-        isNullable = true;
-        advance(); // Consume the ? token
-    }
-
-    return std::make_unique<NestedArrayReturnType>(arr_token, std::move(expr), isNullable);
+    return std::make_unique<BasicType>(data_token, isNullable);
 }
 
 // Parsing the return type expression
-std::unique_ptr<Expression> Parser::parseReturnTypeExpression()
+std::unique_ptr<Expression> Parser::parseReturnType()
 {
     std::unique_ptr<Expression> expr = nullptr;
     if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER || currentToken().type == TokenType::VOID)
     {
-        expr = parseBasicReturnType();
+        expr = parseBasicType();
     }
     else if (currentToken().type == TokenType::ARRAY)
     {
-        if (peekToken(2).type == TokenType::ARRAY)
-        {
-            expr = parseNestedArrayReturnType();
-        }
-        else
-        {
-            expr = parseArrayReturnType();
-        }
+
+        expr = parseArrayType();
     }
     else
     {
         logError("Expected basic or array return type ");
     }
 
-    return std::make_unique<ReturnTypeExpression>(std::move(expr));
+    return std::make_unique<ReturnType>(std::move(expr));
 }
 
 // Parsing function expression
@@ -1655,7 +1570,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER ||
             currentToken().type == TokenType::VOID || currentToken().type == TokenType::ARRAY)
         {
-            return_type = parseReturnTypeExpression();
+            return_type = parseReturnType();
         }
 
         else
