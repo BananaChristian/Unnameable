@@ -323,7 +323,7 @@ struct FunctionExpression : Expression
     FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
-struct ArrayReturnType : Expression
+struct ArrayType : Expression
 {
     Token arr_token;                       // 'arr' keyword
     std::unique_ptr<Expression> innerType; // Could be BasicReturnType or another ArrayReturnType
@@ -331,48 +331,33 @@ struct ArrayReturnType : Expression
 
     std::string toString() override
     {
-        return "Array Return: " + arr_token.TokenLiteral + "[" + innerType->toString() + "]" + (isNullable ? "?" : "");
+        return "Array Type: " + arr_token.TokenLiteral + "[" + innerType->toString() + "]" + (isNullable ? "?" : "");
     }
 
-    ArrayReturnType(Token arr, std::unique_ptr<Expression> inner, bool isNull)
+    ArrayType(Token arr, std::unique_ptr<Expression> inner, bool isNull)
         : Expression(arr), arr_token(arr), innerType(std::move(inner)), isNullable(isNull) {}
 };
 
-struct NestedArrayReturnType : Expression
-{
-    Token arrToken;                        // 'arr'
-    std::unique_ptr<Expression> innerType; // could be BasicReturnType or ArrayReturnType
-    bool isNullable;
-
-    std::string toString() override
-    {
-        return "Array of: " + innerType->toString() + (isNullable ? "?" : "");
-    }
-
-    NestedArrayReturnType(Token tok, std::unique_ptr<Expression> inner, bool nullable)
-        : Expression(tok), arrToken(tok), innerType(std::move(inner)), isNullable(nullable) {}
-};
-
-struct BasicReturnType : Expression
+struct BasicType : Expression
 {
     Token data_token;        // Basic token like int
     bool isNullable = false; // If we see ? we toggle
     std::string toString() override
     {
-        return "Basic Return: " + data_token.TokenLiteral + (isNullable ? "?" : "");
+        return "Basic Type: " + data_token.TokenLiteral + (isNullable ? "?" : "");
     }
-    BasicReturnType(Token data, bool isNull) : Expression(data), data_token(data), isNullable(isNull) {};
+    BasicType(Token data, bool isNull) : Expression(data), data_token(data), isNullable(isNull) {};
 };
 
 // Return type expression
-struct ReturnTypeExpression : Expression
+struct ReturnType : Expression
 {
     std::unique_ptr<Expression> returnExpr;
     std::string toString() override
     {
-        return "Type expression: " + returnExpr->toString();
+        return "Return Type: " + returnExpr->toString();
     }
-    ReturnTypeExpression(std::unique_ptr<Expression> retExpr) : Expression(retExpr->expression), returnExpr(std::move(retExpr)) {};
+    ReturnType(std::unique_ptr<Expression> retExpr) : Expression(retExpr->expression), returnExpr(std::move(retExpr)) {};
 };
 
 // Error expression
@@ -1184,7 +1169,7 @@ struct ArrayStatement : Statement
     Token arr_token;                                 // 'arr' keyword
     std::unique_ptr<Expression> arrType;             // Can be BasicReturnType or ArrayReturnType
     std::vector<std::unique_ptr<Expression>> length; // Dimensions
-    std::unique_ptr<Expression> identifier;
+    std::unique_ptr<Expression> identifier;//Array name
     std::unique_ptr<Expression> items; // optional initializer
 
     std::string toString() override
