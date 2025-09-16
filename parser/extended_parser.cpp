@@ -523,7 +523,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
     if (currentToken().type == TokenType::ASSIGN)
     {
         advance(); // consume '='
-        items = parseArrayLiteral();
+        items = parseExpression(Precedence::PREC_NONE);
 
         if (!items)
             return nullptr; // error inside parseArrayLiteral
@@ -552,6 +552,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
             advance(); // consume ';'
         }
     }
+    advance();
 
     // Construct the ArrayStatement node
     return std::make_unique<ArrayStatement>(
