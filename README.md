@@ -76,6 +76,10 @@ double pi=3.14d;
 
 auto y = 42;  # Type inferred as int
 
+char test='A';
+
+char16 test=u'A';
+
 
 ```
 
@@ -202,25 +206,11 @@ Unnameable supports single dimensional and multidimensional arrays, The user mus
 ```
 #Single dimensional arrays
 #Case 1: No initialization
-arr[int] [2u] my_array;
+arr[int] [2] my_array;
 
 #Case 2: With initialization
 arr [int?] test_array=[1,2,3];
 
-#Multidimensional arrays
-#Case 1: No initialization
-arr[arr[uint]] [2u][2u] test;
-
-#Case 2: With initialization
-arr [arr[uint]] another_array=[[4u,6u],[1u,2u]];
-```
-
-## Name aliasing
-Some type names can get really complex really fast for this reason name aliasing has been added to avoid such messy syntax
-```
-alias Matrix3 = arr[arr[arr[uint]]];
-
-Matrix3 matrix=[[1u,2u],[5u,6u],[7u,8u]];
 ```
 
 
