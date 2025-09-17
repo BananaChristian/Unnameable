@@ -176,6 +176,9 @@ private:
     // Parsing array statements
     std::unique_ptr<Statement> parseArrayStatement(bool isParam=false);
 
+    //Array statement wrapper
+    std::unique_ptr<Statement> parseArrayStatementWrapper();
+
     // Parsing Array Statememt
     std::unique_ptr<Statement> parseAliasStatement();
 

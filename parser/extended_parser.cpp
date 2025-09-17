@@ -418,30 +418,23 @@ std::unique_ptr<Expression> Parser::parseArrayType()
         Token arr_token = currentToken();
         advance(); // consume 'arr'
 
-        // Expect '<'
+        // Expect '['
         if (currentToken().type != TokenType::LBRACKET)
         {
             logError("Expected '[' after 'arr' keyword but got '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
-        advance(); // consume '<'
+        advance(); // consume '['
 
-        // Recursively parse inner type
+        // Parse **only a basic type or identifier** as inner type
         std::unique_ptr<Expression> innerType;
-        if (currentToken().type == TokenType::ARRAY)
+        if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
         {
-            // Nested array
-            innerType = parseArrayType();
-        }
-        else if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
-        {
-            // Basic type or custom type
             innerType = parseBasicType();
         }
         else
         {
-            logError("Expected basic type, identifier, or array as inner type in array declaration but got '" +
-                     currentToken().TokenLiteral + "'");
+            logError("Arrays can only contain a basic type or custom type, got '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
 
@@ -461,7 +454,7 @@ std::unique_ptr<Expression> Parser::parseArrayType()
         }
         advance(); // consume ']'
 
-        // Return a node representing this array type
+        // Return a node representing this array type (flat, no nesting)
         return std::make_unique<ArrayType>(arr_token, std::move(innerType), isNullable);
     }
     else if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
@@ -478,22 +471,24 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
 {
     Token arr_token = currentToken();
 
-    // Parse the array type (can be nested)
-    auto arrTypeNode = parseArrayType(); // recursive parser for arrays or basic types
+    // Parse the array type (arr[...] with basic or custom type inside)
+    auto arrTypeNode = parseArrayType();
     if (!arrTypeNode)
-        return nullptr; // error already logged inside parseArrayType()
+        return nullptr;
 
-    // Parse optional array dimensions [size]
-    std::vector<std::unique_ptr<Expression>> lengths;
-    while (currentToken().type == TokenType::LBRACKET)
+    // Optional single dimension [size]
+    std::unique_ptr<Expression> lengthExpr = nullptr;
+    if (currentToken().type == TokenType::LBRACKET)
     {
         advance(); // consume '['
 
-        if (currentToken().type == TokenType::UINT ||
-            currentToken().type == TokenType::ULONG)
+        if (isIntegerLiteralType(currentToken().type))
         {
-            auto lenExpr = parseExpression(Precedence::PREC_NONE);
-            lengths.push_back(std::move(lenExpr));
+            lengthExpr = parseExpression(Precedence::PREC_NONE);
+        }
+        else if (currentToken().type == TokenType::IDENTIFIER)
+        {
+            lengthExpr = parseIdentifier();
         }
         else if (currentToken().type != TokenType::RBRACKET)
         {
@@ -510,13 +505,13 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
         advance(); // consume ']'
     }
 
-    // Parse the identifier (array name)
+    // Expect identifier
     if (currentToken().type != TokenType::IDENTIFIER)
     {
         logError("Expected array name but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
-    auto ident = parseIdentifier();
+    auto ident = parseIdentifier(); // this consumes the IDENTIFIER
 
     // Optional initializer
     std::unique_ptr<Expression> items = nullptr;
@@ -524,43 +519,44 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
     {
         advance(); // consume '='
         items = parseExpression(Precedence::PREC_NONE);
-
         if (!items)
-            return nullptr; // error inside parseArrayLiteral
+            return nullptr;
+    }
 
-        // Only require ';' if this is a normal array statement
-        if (!isParam)
+    // Final semicolon (only for non-parameter mode)
+    if (!isParam)
+    {
+        if (currentToken().type == TokenType::SEMICOLON)
         {
-            if (currentToken().type != TokenType::SEMICOLON)
-            {
-                logError("Expected ';' after array initializer");
-                return nullptr;
-            }
-            advance(); // consume ';'
+            advance();
+        }
+        else
+        {
+            logError("Expected a semicolon but got: " + currentToken().TokenLiteral);
+            return nullptr;
         }
     }
     else
     {
-        // No '=' present
-        if (!isParam)
+        // If it's a function parameter, we expect either ')' or ',' next
+        if (currentToken().type != TokenType::COMMA && currentToken().type != TokenType::RPAREN)
         {
-            if (currentToken().type != TokenType::SEMICOLON)
-            {
-                logError("Expected ';' after array declaration");
-                return nullptr;
-            }
-            advance(); // consume ';'
+            logError("Expected ',' or ')' after parameter declaration but got: " + currentToken().TokenLiteral);
+            return nullptr;
         }
     }
-    advance();
-
-    // Construct the ArrayStatement node
+    // Done – always leaves parser positioned AFTER the statement
     return std::make_unique<ArrayStatement>(
         arr_token,
         std::move(arrTypeNode),
-        std::move(lengths),
+        std::move(lengthExpr),
         std::move(ident),
         std::move(items));
+}
+
+std::unique_ptr<Statement> Parser::parseArrayStatementWrapper()
+{
+    return parseArrayStatement();
 }
 
 std::unique_ptr<Statement> Parser::parseAliasStatement()

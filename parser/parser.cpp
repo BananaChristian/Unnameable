@@ -451,19 +451,22 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
     {
         return parseArrayStatement(true);
     }
-    else if (
-        current.type == TokenType::IDENTIFIER)
+    else if (current.type == TokenType::IDENTIFIER)
     {
-        return parseLetStatementWithCustomType(true);
         if (nextToken().type == TokenType::SCOPE_OPERATOR)
         {
             return parseLetStatementWithCustomType(true);
         }
-        if (nextToken().type == TokenType::ASSIGN)
+        else if (nextToken().type == TokenType::ASSIGN)
         {
             return parseAssignmentStatement(true);
         }
+        else
+        {
+            return parseLetStatementWithCustomType(true);
+        }
     }
+
     std::cerr << "[ERROR]: Failed to decide how to parse parameter variable. Token: " << current.TokenLiteral << "\n";
     return nullptr;
 }
@@ -1772,6 +1775,7 @@ void Parser::advance()
     {
         lastToken = currentToken();
         currentPos = nextPos;
+        std::cout << "Current token :" << currentToken().TokenLiteral << "\n";
         nextPos++;
     }
 }
@@ -1921,7 +1925,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::GENERIC] = &Parser::parseGenericStatement;
     StatementParseFunctionsMap[TokenType::INSTANTIATE] = &Parser::parseInstantiateStatement;
 
-    StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseLetStatementDecider;
+    StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatementWrapper;
 }
 
 // Precedence getting function
