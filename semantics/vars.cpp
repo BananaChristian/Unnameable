@@ -253,22 +253,27 @@ void Semantics::walkArrayLiteral(Node *node)
     auto line = arrLit->expression.line;
     auto col = arrLit->expression.column;
 
+    bool hasError = false;
+
     // Recursively getting the data type of the contents inside the array and also calling the walkers
     std::vector<ResolvedType> itemTypes;
 
     ArrayMeta arrMeta; // This is where the array meta is stored
     for (const auto &item : arrLit->array)
     {
+        if (auto memArr = dynamic_cast<ArrayLiteral *>(item.get()))
+        {
+            logSemanticErrors("Arrays not allowed inside arrays only use flat arrays", line, col);
+            hasError = true;
+            return;
+        }
         walker(item.get()); // Calling their walkers
         auto itemType = inferNodeDataType(item.get());
-        if (itemType.kind == DataType::ARRAY)
-        {
-            arrMeta = {
-                .underLyingType = itemType,
-                .arrShape = getArrayShape(item.get())};
-        }
+        arrMeta.underLyingType = itemType;
         itemTypes.push_back(itemType);
     }
+
+    arrMeta.arrLen = arrLit->array.size();
 
     // Defaulting the overall type to unknown
     ResolvedType arrType = ResolvedType{DataType::UNKNOWN, "unknown"};

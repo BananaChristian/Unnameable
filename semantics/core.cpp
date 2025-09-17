@@ -169,24 +169,29 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         for (const auto &member : arrLit->array)
         {
             auto memberType = inferNodeDataType(member.get());
+            if (auto arr = dynamic_cast<ArrayLiteral *>(member.get()))
+            {
+                logSemanticErrors("Usage of nested arrays is prohibited only flat arrays are allowed", member->expression.line, member->expression.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
             memberTypes.push_back(memberType);
         }
 
-        // Comparing the full type, including nested arrays
-        ResolvedType litType = memberTypes[0];
-        for (size_t i = 1; i < memberTypes.size(); i++)
+        // Ensure all members are compatible
+        ResolvedType elementType = memberTypes[0];
+        for (size_t i = 1; i < memberTypes.size(); ++i)
         {
-            if (!isTypeCompatible(litType, memberTypes[i]))
+            if (!isTypeCompatible(elementType, memberTypes[i]))
             {
                 logSemanticErrors(
-                    "Type mismatch of array member at index '" + std::to_string(i) + "'",
+                    "Type mismatch of array member at index " + std::to_string(i),
                     arrLit->expression.line, arrLit->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
             }
         }
 
-        // Return a resolved type for the array literal, preserving nesting
-        return ResolvedType{DataType::ARRAY, "arr[" + litType.resolvedName + "]"};
+        // Return flat array type: arr[elementType]
+        return ResolvedType{DataType::ARRAY, "arr[" + elementType.resolvedName + "]"};
     }
 
     if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
@@ -731,6 +736,30 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedTyp
 {
     if (actual.kind == DataType::ERROR)
         return true;
+    // Special one way case for ARRAY
+    if (expected.kind == DataType::ARRAY && actual.kind == DataType::ARRAY)
+    {
+        std::cout << "Comparing: '" << expected.resolvedName << "' vs '" << actual.resolvedName << "'\n";
+
+        // Checking if the resolved names match
+        if (expected.resolvedName != actual.resolvedName)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    // Special mirror case for ARRAY
+    if (actual.kind == DataType::ARRAY && expected.kind == DataType::ARRAY)
+    {
+        std::cout << "Comparing: '" << expected.resolvedName << "' vs '" << actual.resolvedName << "'\n";
+        // Checking if the resolved names match
+        if (actual.resolvedName != expected.resolvedName)
+        {
+            return false;
+        }
+        return true;
+    }
     if (expected.kind == actual.kind)
         return true;
     if (expected.kind == DataType::VOID && actual.kind == DataType::UNKNOWN)
@@ -970,42 +999,22 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
     return true;
 }
 
-Shape Semantics::getArrayShape(Node *node)
+ArrayMeta Semantics::getArrayMeta(Node *node)
 {
     auto arrLit = dynamic_cast<ArrayLiteral *>(node);
-    // The node we check the shape for must be an arrayLiteral
     if (!arrLit)
     {
-        return Shape{0, {}};
+        return ArrayMeta{ResolvedType{DataType::UNKNOWN, "unknown"}, 0};
     }
 
-    // If the array literal is empty then we have an empty shape
-    size_t arrLength = arrLit->array.size();
-
-    if (arrLength == 0)
+    ResolvedType underLyingType;
+    int arrLen = arrLit->array.size();
+    for (const auto &member : arrLit->array)
     {
-        return Shape{1, {0}};
+        underLyingType = inferNodeDataType(member.get());
     }
 
-    // Getting the first child shape
-    Shape firstShape = getArrayShape(arrLit->array[0].get());
-
-    // Getting the child shapes
-    for (const auto &item : arrLit->array)
-    {
-        Shape s = getArrayShape(item.get());
-        if (s != firstShape)
-        {
-            logSemanticErrors("Jagged arrays are not allowed, mismatched shapes", arrLit->expression.line, arrLit->expression.column);
-        }
-    }
-
-    Shape finalShape;
-    finalShape.dimensions = firstShape.dimensions + 1;
-    finalShape.lengths = {arrLength};
-
-    finalShape.lengths.insert(finalShape.lengths.end(), firstShape.lengths.begin(), firstShape.lengths.end());
-    return finalShape;
+    return ArrayMeta{underLyingType, arrLen};
 }
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)

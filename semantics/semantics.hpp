@@ -1,12 +1,12 @@
-#define CPPREST_FORCE_REBUILD
-#ifndef SEMANTICS_HPP
-#define SEMANTICS_HPP
+#pragma once
 
 #include "ast.hpp"
 #include <string>
 #include <typeindex>
 #include <cstdint>
 #include <llvm/IR/Value.h>
+
+#define CPPREST_FORCE_REBUILD
 
 // Type system tracker
 enum class DataType
@@ -107,26 +107,10 @@ struct ScopeInfo
     Node *node = nullptr;
 };
 
-// Shape struct for arrays
-struct Shape
-{
-    int dimensions;              // How many dimensions are in the array
-    std::vector<size_t> lengths; // The length of each dimension
-    bool operator==(const Shape &other) const
-    {
-        return dimensions == other.dimensions && lengths == other.lengths;
-    }
-
-    bool operator!=(const Shape &other) const
-    {
-        return !(*this == other);
-    }
-};
-
 struct ArrayMeta
 {
     ResolvedType underLyingType;
-    Shape arrShape;
+    int arrLen;
 };
 
 // Information about the symbol(variable or object, whatever)
@@ -276,7 +260,8 @@ private:
     ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
     ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
-    Shape getArrayShape(Node *node);
+    bool isArrayCompatible(const ResolvedType &expected, const ResolvedType &actual, const ArrayMeta &expectedMeta, const ArrayMeta &actualMeta);
+    ArrayMeta getArrayMeta(Node *node);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool isInteger(const ResolvedType &t);
@@ -289,5 +274,3 @@ private:
     bool isNullable(const ResolvedType &t);
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
 };
-
-#endif
