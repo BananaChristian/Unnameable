@@ -430,7 +430,7 @@ Token Lexer::readChar()
 
     // Step 1: Check for prefix
     char32_t prefix = 0;
-    if (currentChar() == U'u' || currentChar() == U'U' || currentChar() == U'L')
+    if (currentChar() == U'u' || currentChar() == U'U')
     {
         prefix = currentChar();
         advance();
