@@ -1455,6 +1455,17 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
     if (!fnExpr)
         throw std::runtime_error("Invalid function expression");
 
+    // If node has an error we wont generate IR
+    auto funcIt = semantics.metaData.find(fnExpr);
+    if (funcIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Function expression does not exist");
+    }
+    if (funcIt->second->hasError)
+    {
+        return nullptr; // If it has an error we just stop IR generation
+    }
+
     // Getting the function signature
     auto fnName = fnExpr->func_key.TokenLiteral;
 
@@ -1526,6 +1537,16 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
     if (!callExpr)
     {
         throw std::runtime_error("Invalid call expression");
+    }
+
+    auto callIt = semantics.metaData.find(callExpr);
+    if (callIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Call expression does not exist");
+    }
+    if (callIt->second->hasError)
+    {
+        return nullptr; // If it has an error we just stop IR generation
     }
 
     // Getting the function name
