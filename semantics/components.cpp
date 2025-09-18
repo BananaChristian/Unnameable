@@ -1173,6 +1173,17 @@ void Semantics::walkArrayStatement(Node *node)
     if (!arrStmt)
         return;
 
+    // Checking mutability
+    bool isMutable = false;
+    bool isConstant = false;
+    if (arrStmt->mutability == Mutability::MUTABLE)
+    {
+        isMutable = true;
+    }
+    else if (arrStmt->mutability == Mutability::CONSTANT)
+    {
+        isConstant = true;
+    }
     const auto &arrayName = arrStmt->identifier->expression.TokenLiteral;
     int arrNameLine = arrStmt->identifier->expression.line;
     int arrNameCol = arrStmt->identifier->expression.column;
@@ -1189,6 +1200,14 @@ void Semantics::walkArrayStatement(Node *node)
     int64_t lengthValue = 0;
 
     ResolvedType baseType = inferNodeDataType(arrStmt->arrType.get());
+
+    if (isConstant && !arrStmt->items)
+    {
+        logSemanticErrors("Constant array '" + arrayName + "' must be initialized",
+                          arrStmt->statement.line, arrStmt->statement.column);
+        hasError = true;
+        return;
+    }
 
     if (!arrStmt->length && !arrStmt->items)
     {
@@ -1287,6 +1306,8 @@ void Semantics::walkArrayStatement(Node *node)
     arrMeta.underLyingType = baseType;
 
     auto arrInfo = std::make_shared<SymbolInfo>();
+    arrInfo->isMutable = isMutable;
+    arrInfo->isConstant = isConstant;
     arrInfo->arrayMeta = arrMeta;
     arrInfo->hasError = hasError;
     arrInfo->isInitialized = isInitialized;

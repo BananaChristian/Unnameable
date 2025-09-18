@@ -608,6 +608,27 @@ void Semantics::walkAssignStatement(Node *node)
             // Nothing else to check
             return;
         }
+        else if (auto arrLit = dynamic_cast<ArrayLiteral *>(assignStmt->value.get()))
+        {
+            // Getting the length of the array literal
+            auto arrLitMeta = getArrayMeta(arrLit);
+            // Getting the arrayMeta for the symbol
+            auto arrSymbol = resolveSymbolInfo(assignName);
+            if (!arrSymbol)
+            {
+                logSemanticErrors("Could not find variable '" + assignName + "'", assignStmt->identifier->expression.line,
+                                  assignStmt->identifier->expression.column);
+                hasError = true;
+            }
+
+            auto assignMeta = arrSymbol->arrayMeta;
+            // Comapring the lengths
+            if (arrLitMeta.arrLen != assignMeta.arrLen)
+            {
+                logSemanticErrors("Array variable '" + assignName + "' length [" + std::to_string(assignMeta.arrLen) + "] does not match array literal length [" + std::to_string(arrLitMeta.arrLen) + "]", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
+                hasError = true;
+            }
+        }
     }
 
     // --- Infer RHS type if not null ---
