@@ -275,21 +275,7 @@ void Semantics::walkArrayLiteral(Node *node)
 
     arrMeta.arrLen = arrLit->array.size();
 
-    // Defaulting the overall type to unknown
-    ResolvedType arrType = ResolvedType{DataType::UNKNOWN, "unknown"};
-
-    // Checking if all the member types match
-    for (size_t i = 0; i < itemTypes.size(); i++)
-    {
-        // Just comparing all the member types to each other
-        if (itemTypes[0].kind != itemTypes[i].kind)
-        {
-            logSemanticErrors("Array member types do not match array members must be of the same types", line, col);
-            return;
-        }
-        // If the types of all members match then array literal types is just that
-        arrType = itemTypes[0];
-    }
+    ResolvedType arrType = inferNodeDataType(arrLit);
 
     // Storing metaData about the array
     auto arrInfo = std::make_shared<SymbolInfo>();

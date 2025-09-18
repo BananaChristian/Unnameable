@@ -56,6 +56,8 @@ enum class DataType
     CHAR32, // 32 BIT Char
     NULLABLE_CHAR32,
 
+    NULLABLE_ARR,//Special marker datatype for array member inference with nulls
+
     ENUM,
     DATABLOCK,
     BEHAVIORBLOCK,

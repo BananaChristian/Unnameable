@@ -166,6 +166,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     if (auto arrLit = dynamic_cast<ArrayLiteral *>(node))
     {
         std::vector<ResolvedType> memberTypes;
+        bool hasNull = false;
         for (const auto &member : arrLit->array)
         {
             auto memberType = inferNodeDataType(member.get());
@@ -173,6 +174,12 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
             {
                 logSemanticErrors("Usage of nested arrays is prohibited only flat arrays are allowed", member->expression.line, member->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+            if (dynamic_cast<NullLiteral *>(member.get()))
+            {
+                hasNull = true;
+                memberType = ResolvedType{DataType::NULLABLE_ARR, "null"}; // Temporary marker for the null member in the array
+                continue;
             }
             memberTypes.push_back(memberType);
         }
@@ -188,6 +195,12 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
                     arrLit->expression.line, arrLit->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
             }
+        }
+
+        if (hasNull)
+        {
+            if (elementType.resolvedName.back() != '?')
+                elementType.resolvedName += "?";
         }
 
         // Return flat array type: arr[elementType]
@@ -734,25 +747,48 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
 
 bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual)
 {
+    // Special case for null array members(Telling it to just return true for the guy)
+    if (actual.kind == DataType::NULLABLE_ARR || expected.kind == DataType::NULLABLE_ARR)
+        return true;
+
+    // Special case for error type as it is compatible anywhere
     if (actual.kind == DataType::ERROR)
         return true;
+
     // Special one way case for ARRAY
     if (expected.kind == DataType::ARRAY && actual.kind == DataType::ARRAY)
     {
-        std::cout << "Comparing: '" << expected.resolvedName << "' vs '" << actual.resolvedName << "'\n";
-
-        // Checking if the resolved names match
-        if (expected.resolvedName != actual.resolvedName)
+        auto extractElemType = [](const std::string &s) -> std::string
         {
-            return false;
-        }
-        return true;
+            // "arr[int]" -> "int", "arr[int?]" -> "int?"
+            auto start = s.find('[');
+            auto end = s.find(']');
+            if (start == std::string::npos || end == std::string::npos || end <= start)
+                return "";
+            return s.substr(start + 1, end - start - 1);
+        };
+
+        std::string eElem = extractElemType(expected.resolvedName);
+        std::string aElem = extractElemType(actual.resolvedName);
+
+        // If one is nullable and the other isn’t, consider compatible
+        if (eElem.back() == '?' && aElem.back() != '?')
+            aElem += '?';
+        else if (aElem.back() == '?' && eElem.back() != '?')
+            eElem += '?';
+
+        return eElem == aElem;
     }
 
     // Special mirror case for ARRAY
     if (actual.kind == DataType::ARRAY && expected.kind == DataType::ARRAY)
     {
         std::cout << "Comparing: '" << expected.resolvedName << "' vs '" << actual.resolvedName << "'\n";
+
+        if (actual.resolvedName.back() - 1 == '?' && expected.resolvedName.back() - 1 != '?')
+        {
+            return true;
+        }
         // Checking if the resolved names match
         if (actual.resolvedName != expected.resolvedName)
         {

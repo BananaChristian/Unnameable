@@ -1280,6 +1280,7 @@ void Semantics::walkArrayStatement(Node *node)
                 hasError = true;
                 return;
             }
+            arrMeta.arrLen = getArrayMeta(arrLit).arrLen;
         }
         else
         {
