@@ -1166,33 +1166,42 @@ struct ArrayLiteral : Expression
 // Array statement
 struct ArrayStatement : Statement
 {
-    Token arr_token;                                 // 'arr' keyword
-    std::unique_ptr<Expression> arrType;             // Can be BasicReturnType or ArrayReturnType
-    std::vector<std::unique_ptr<Expression>> length; // Dimensions
-    std::unique_ptr<Expression> identifier;//Array name
-    std::unique_ptr<Expression> items; // optional initializer
+    Mutability mutability;
+    Token arr_token;                        // 'arr' keyword
+    std::unique_ptr<Expression> arrType;    // BasicReturnType only
+    std::unique_ptr<Expression> length;     // Optional single dimension
+    std::unique_ptr<Expression> identifier; // Array name
+    std::unique_ptr<Expression> items;      // Optional initializer
 
     std::string toString() override
     {
-        std::string lengthsStr;
-        for (const auto &len : length)
+        std::string lengthStr = length ? "[" + length->toString() + "]" : "";
+        std::string mutStr = "";
+        if (mutability == Mutability::MUTABLE)
         {
-            lengthsStr += "[" + len->toString() + "]";
+            mutStr += "mut ";
         }
-
+        else if (mutability == Mutability::CONSTANT)
+        {
+            mutStr = "const ";
+        }
         return "Array Statement: " +
+               mutStr +
                (arrType ? arrType->toString() : "<unknown>") +
-               lengthsStr + " Name: " +
+               lengthStr + " Name: " +
                (identifier ? identifier->toString() : "<unnamed>") + " " +
                (items ? items->toString() : "");
     }
 
-    ArrayStatement(Token arr,
-                   std::unique_ptr<Expression> typeNode,
-                   std::vector<std::unique_ptr<Expression>> len,
-                   std::unique_ptr<Expression> name,
-                   std::unique_ptr<Expression> contents)
+    ArrayStatement(
+        Mutability mut,
+        Token arr,
+        std::unique_ptr<Expression> typeNode,
+        std::unique_ptr<Expression> len,
+        std::unique_ptr<Expression> name,
+        std::unique_ptr<Expression> contents)
         : Statement(arr),
+          mutability(mut),
           arr_token(arr),
           arrType(std::move(typeNode)),
           length(std::move(len)),
