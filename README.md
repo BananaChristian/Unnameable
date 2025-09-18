@@ -211,6 +211,9 @@ arr[int] [2] my_array;
 #Case 2: With initialization
 arr [int?] test_array=[1,2,3];
 
+#Accesing array members
+test_array[0]=7;
+
 ```
 
 
