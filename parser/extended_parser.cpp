@@ -572,6 +572,37 @@ std::unique_ptr<Statement> Parser::parseArrayStatementWrapper()
     return parseArrayStatement();
 }
 
+std::unique_ptr<Expression> Parser::parseArraySubscript()
+{
+    auto ident = parseIdentifier();
+
+    if (currentToken().type != TokenType::LBRACKET)
+    {
+        logError("Expected [ but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // Consume [
+    std::unique_ptr<Expression> index;
+    if (currentToken().type == TokenType::IDENTIFIER)
+    {
+        index = parseIdentifierOrArraySubscript();
+    }
+    else
+    {
+        index = parseExpression(Precedence::PREC_NONE);
+    }
+
+    if (currentToken().type != TokenType::RBRACKET)
+    {
+        logError("Expected ] but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+
+    advance(); // Consume the ]
+
+    return std::make_unique<ArraySubscript>(std::move(ident), std::move(index));
+}
+
 std::unique_ptr<Statement> Parser::parseAliasStatement()
 {
     Token alias = currentToken();

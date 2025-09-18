@@ -80,6 +80,12 @@ std::unique_ptr<Statement> Parser::parseStatement()
         Token peek1 = peekToken(1);
         std::cout << "IDENTIFIER FIRST PEEK: " << TokenTypeToLiteral(peek1.type) << "\n";
 
+        //--Array case(x[0]=... or x[y[0]]=...)
+        if (peek1.type == TokenType::LBRACKET)
+        {
+            return parseAssignmentStatement();
+        }
+
         // --- Assignment case (x = ...)
         if (peek1.type == TokenType::ASSIGN)
         {
@@ -123,7 +129,7 @@ std::unique_ptr<Statement> Parser::parseStatement()
             }
             else
             {
-                logError("Expected ';' after expression statement");
+                logError("Expected ';' after expression statement but got '" + currentToken().TokenLiteral + "'");
                 return nullptr;
             }
 
@@ -149,7 +155,7 @@ std::unique_ptr<Statement> Parser::parseStatement()
         }
         else
         {
-            logError("Expected ';' after expression statement");
+            logError("Expected ';' after expression statement but got '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
 
@@ -157,7 +163,7 @@ std::unique_ptr<Statement> Parser::parseStatement()
         return std::make_unique<ExpressionStatement>(current, std::move(expr));
     }
 
-    logError("Unexpected token at start of statement:  ");
+    logError("Unexpected token at start of statement '" + currentToken().TokenLiteral + "'");
     advance();
     return nullptr;
 }
@@ -181,7 +187,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     else if (identToken.type == TokenType::IDENTIFIER)
     {
         std::cout << "NORMAL CASE TRIGGERED\n";
-        lhs = parseIdentifier(); // builds normal identifier
+        lhs = parseIdentifierOrArraySubscript(); // builds normal identifier
 
         // Handle qualified identifier (x::y or x.y)
         if (currentToken().type == TokenType::SCOPE_OPERATOR || currentToken().type == TokenType::FULLSTOP)
@@ -211,7 +217,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     // Expect '=' before parsing the value
     if (currentToken().type != TokenType::ASSIGN)
     {
-        logError("Expected '=' after identifier in assignment");
+        logError("Expected '=' after identifier in assignment but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
     advance(); // consume '='
@@ -1166,6 +1172,15 @@ std::unique_ptr<Expression> Parser::parseIdentifier()
     return ident;
 }
 
+std::unique_ptr<Expression> Parser::parseIdentifierOrArraySubscript()
+{
+    if (nextToken().type == TokenType::LBRACKET)
+    {
+        return parseArraySubscript();
+    }
+    return parseIdentifier();
+}
+
 std::unique_ptr<Expression> Parser::parseSelfExpression()
 {
     Token self_token = currentToken();
@@ -1826,7 +1841,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::DOUBLE] = &Parser::parseDoubleLiteral;
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
 
-    PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifier;
+    PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifierOrArraySubscript;
     PrefixParseFunctionsMap[TokenType::NEW] = &Parser::parseNewComponentExpression;
     PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;

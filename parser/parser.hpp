@@ -174,9 +174,9 @@ private:
     std::unique_ptr<Statement> parseInstantiateStatement();
 
     // Parsing array statements
-    std::unique_ptr<Statement> parseArrayStatement(bool isParam=false);
+    std::unique_ptr<Statement> parseArrayStatement(bool isParam = false);
 
-    //Array statement wrapper
+    // Array statement wrapper
     std::unique_ptr<Statement> parseArrayStatementWrapper();
 
     // Parsing Array Statememt
@@ -206,6 +206,12 @@ private:
 
     // Parsing identifiers
     std::unique_ptr<Expression> parseIdentifier();
+
+    // Parsing array subscript expression
+    std::unique_ptr<Expression> parseArraySubscript();
+
+    // Decider for identifier or array subscript
+    std::unique_ptr<Expression> parseIdentifierOrArraySubscript();
 
     // Parsing self expression
     std::unique_ptr<Expression> parseSelfExpression();
