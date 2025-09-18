@@ -469,6 +469,18 @@ std::unique_ptr<Expression> Parser::parseArrayType()
 
 std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
 {
+    Mutability mutability = Mutability::IMMUTABLE;
+    if (currentToken().type == TokenType::MUT)
+    {
+        mutability = Mutability::MUTABLE;
+        advance(); // Consume the 'mut'
+    }
+    else if (currentToken().type == TokenType::CONST)
+    {
+        mutability = Mutability::CONSTANT;
+        advance(); // Consume the const
+    }
+
     Token arr_token = currentToken();
 
     // Parse the array type (arr[...] with basic or custom type inside)
@@ -547,6 +559,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
     }
     // Done – always leaves parser positioned AFTER the statement
     return std::make_unique<ArrayStatement>(
+        mutability,
         arr_token,
         std::move(arrTypeNode),
         std::move(lengthExpr),

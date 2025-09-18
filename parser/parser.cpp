@@ -1863,6 +1863,10 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithTypeWrapper()
     {
         return parseDataStatement();
     }
+    else if (nextToken().type == TokenType::ARRAY)
+    {
+        return parseArrayStatementWrapper();
+    }
     return parseLetStatementCustomOrBasic();
 }
 
