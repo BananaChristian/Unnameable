@@ -1209,6 +1209,20 @@ struct ArrayStatement : Statement
           items(std::move(contents)) {}
 };
 
+// Array Subscript expression
+struct ArraySubscript : Expression
+{
+    std::unique_ptr<Expression> identifier;
+    std::unique_ptr<Expression> index_expr;
+
+    std::string toString() override
+    {
+        return "Array Subscript Expression: " + identifier->toString() + "[" + index_expr->toString() + "]";
+    }
+
+    ArraySubscript(std::unique_ptr<Expression> ident, std::unique_ptr<Expression> id) : Expression(ident->expression), identifier(std::move(ident)), index_expr(std::move(id)) {};
+};
+
 // Alias statement
 struct AliasStatement : Statement
 {
