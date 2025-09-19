@@ -18,7 +18,8 @@ SRC = main.cpp \
       semantics/fp.cpp\
       static/static.cpp\
       irgen/irgen.cpp\
-      irgen/componentIR.cpp
+      irgen/componentIR.cpp\
+      allocator/allocator.cpp\
 
 $(OUT): $(SRC)
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(SRC) -o $(OUT) $(LLVM_LDFLAGS)

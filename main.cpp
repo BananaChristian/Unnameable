@@ -10,6 +10,7 @@
 #include "semantics/semantics.hpp"
 #include "static/static.hpp"
 #include "irgen/irgen.hpp"
+#include "allocator/allocator.hpp"
 
 std::string readFileToString(const std::string &filepath)
 {
@@ -80,6 +81,13 @@ int main(int argc, char **argv)
             statics.analyze(node.get());
         }
         statics.dumpTotal();
+        std::cout << "\n-----Allocator-----\n";
+        Allocator alloc(statics.total_size);
+        //Tests
+        alloc.sage_alloc(2);
+        alloc.sage_alloc(2);
+        alloc.sage_alloc(4);
+        alloc.sage_free(2);
     }
     catch (const std::exception &e)
     {

@@ -1,65 +1,130 @@
 #include "allocator.hpp"
+#include <iostream>
+#include <cstdint>   // for uintptr_t
+#include <sys/mman.h> // mmap, munmap
+#include <unistd.h>   // getpagesize
 
 Allocator::Allocator(size_t total_heap_size)
 {
-    // Requesting for memory from the OS
-    os_heap = malloc(total_heap_size);
+    size_t pagesize = getpagesize();
+    // round heap size up to page size (required by mmap)
+    os_heap_size = ((total_heap_size + pagesize - 1) / pagesize) * pagesize;
 
-    // Getting the actual size of what the OS gave us and storing it in our heap_size variable
-    os_heap_size = total_heap_size;
+    os_heap = mmap(nullptr, os_heap_size, PROT_READ | PROT_WRITE,
+                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-    // Initialise the stack heap pointers
-    // These two all start at the base pointer given to us by the OS
+    if (os_heap == MAP_FAILED)
+    {
+        perror("mmap failed");
+        os_heap = nullptr;
+        os_heap_size = 0;
+        return;
+    }
+
     general_stack_heap.baseptr = os_heap;
     general_stack_heap.frameptr = os_heap;
-
-    // This is the pointer to the end of the heap
     general_stack_heap.limit = (char *)os_heap + os_heap_size;
+
+    std::cout << "Heap granted (mmap): " << os_heap_size
+              << " bytes, starting at: " << os_heap
+              << ", ending at: " << general_stack_heap.limit << "\n";
 }
 
-// STACK HEAP METHODS
 void *Allocator::sage_alloc(size_t component_size)
 {
-    // Let us check if the frame pointer has not exceeded the limit pointer
     if ((char *)general_stack_heap.frameptr + component_size > (char *)general_stack_heap.limit)
     {
+        std::cout << "sage_alloc -> Hit allocated memory limit\n";
         return nullptr;
     }
-    // Getting the current location of the frame ptr
-    void *object_address = general_stack_heap.frameptr;
 
-    // Advancing the frame pointer to the new location
+    void *object_address = general_stack_heap.frameptr;
     general_stack_heap.frameptr = (char *)general_stack_heap.frameptr + component_size;
+
+    std::cout << "sage_alloc -> Allocated " << component_size << " bytes at "
+              << object_address << ", new frameptr: " << general_stack_heap.frameptr << "\n";
 
     return object_address;
 }
 
-void Allocator::bulk_free(size_t component_size)
+void Allocator::sage_free(size_t component_size)
 {
-    // Here we shall move the frame pointer backwards by the size of the component being freed
-    if ((char *)general_stack_heap.frameptr - component_size < (char *)general_stack_heap.baseptr)
+    // Step 1: compute the new logical frame pointer
+    char *new_frame = (char *)general_stack_heap.frameptr - component_size;
+    if (new_frame < (char *)general_stack_heap.baseptr)
     {
+        std::cout << "sage_free -> Underflow, cannot free "
+                  << component_size << " bytes\n";
         return;
     }
-    general_stack_heap.frameptr = (char *)general_stack_heap.frameptr - component_size;
+
+    size_t pagesize = getpagesize();
+    uintptr_t old_frame_addr = (uintptr_t)general_stack_heap.frameptr;
+    uintptr_t new_frame_addr = (uintptr_t)new_frame;
+
+    // Step 2: round addresses to page boundaries
+    // align old frame down to nearest page
+    uintptr_t old_aligned = old_frame_addr & ~(pagesize - 1);
+    // align new frame up to nearest page
+    uintptr_t new_aligned = (new_frame_addr + pagesize - 1) & ~(pagesize - 1);
+
+    // Step 3: compute how many *full* pages can be unmapped
+    if (new_aligned < old_aligned)
+    {
+        size_t to_unmap = old_aligned - new_aligned;
+
+        void *unmap_start = (void *)new_aligned;
+        if (munmap(unmap_start, to_unmap) != 0)
+        {
+            perror("munmap failed in sage_free");
+        }
+        else
+        {
+            std::cout << "sage_free -> Unmapped " << to_unmap
+                      << " bytes starting at " << unmap_start << "\n";
+        }
+    }
+
+    // Step 4: always update logical frame pointer
+    general_stack_heap.frameptr = new_frame;
+
+    std::cout << "sage_free -> Freed " << component_size
+              << " bytes, new frameptr: " << general_stack_heap.frameptr << "\n";
 }
 
-// RAW HEAP METHODS
-// The raw heap shall request for its own memory when the user promotes an object to it
 void *Allocator::heap_alloc(size_t object_size)
 {
-    // Request for memory from the OS using malloc and return the pointer
-    void *heap_ptr = malloc(object_size);
+    void *heap_ptr = mmap(nullptr, object_size, PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (heap_ptr == MAP_FAILED)
+    {
+        perror("heap_alloc mmap failed");
+        return nullptr;
+    }
+    std::cout << "heap_alloc -> Allocated " << object_size
+              << " bytes at " << heap_ptr << "\n";
     return heap_ptr;
 }
 
-void Allocator::heap_free(void *ptr)
+void Allocator::heap_free(void *ptr, size_t object_size)
 {
-    // Just calling free
-    free(ptr);
+    if (munmap(ptr, object_size) != 0)
+    {
+        perror("heap_free munmap failed");
+    }
+    else
+    {
+        std::cout << "heap_free -> Freed " << object_size
+                  << " bytes at " << ptr << "\n";
+    }
 }
 
 Allocator::~Allocator()
 {
-    free(os_heap);
+    if (os_heap)
+    {
+        munmap(os_heap, os_heap_size);
+        std::cout << "Destroying Allocator -> Unmapped entire heap at "
+                  << os_heap << " (" << os_heap_size << " bytes)\n";
+    }
 }
