@@ -494,18 +494,14 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
     {
         advance(); // consume '['
 
-        if (isIntegerLiteralType(currentToken().type))
-        {
-            lengthExpr = parseExpression(Precedence::PREC_NONE);
-        }
-        else if (currentToken().type == TokenType::IDENTIFIER)
+        lengthExpr = parseExpression(Precedence::PREC_NONE);
+        if (currentToken().type == TokenType::IDENTIFIER)
         {
             lengthExpr = parseIdentifier();
         }
         else if (currentToken().type != TokenType::RBRACKET)
         {
-            logError("Unexpected token in array length '" + currentToken().TokenLiteral +
-                     "'. Only unsigned int(32) or unsigned long(64) allowed.");
+            logError("Unexpected token in array length '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
 
@@ -583,14 +579,8 @@ std::unique_ptr<Expression> Parser::parseArraySubscript()
     }
     advance(); // Consume [
     std::unique_ptr<Expression> index;
-    if (currentToken().type == TokenType::IDENTIFIER)
-    {
-        index = parseIdentifierOrArraySubscript();
-    }
-    else
-    {
-        index = parseExpression(Precedence::PREC_NONE);
-    }
+
+    index = parseExpression(Precedence::PREC_NONE);
 
     if (currentToken().type != TokenType::RBRACKET)
     {

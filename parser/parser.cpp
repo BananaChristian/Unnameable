@@ -55,22 +55,44 @@ std::unique_ptr<Statement> Parser::parseStatement()
 {
     Token current = currentToken();
     std::cout << "[DEBUG] parseStatement starting with token: " << current.TokenLiteral << "\n";
+
+    // Skip empty semicolons
     if (current.type == TokenType::SEMICOLON)
     {
         advance();
         return nullptr;
     }
 
-    // Case like self.health
+    // Helper to peek after full subscript (x[0], x[y[1]], etc.)
+    auto peekAfterSubscript = [this](int startOffset = 1) -> Token
+    {
+        int depth = 0;
+        int offset = startOffset;
+        while (true)
+        {
+            Token t = peekToken(offset);
+            if (t.type == TokenType::LBRACKET)
+                depth++;
+            else if (t.type == TokenType::RBRACKET)
+            {
+                depth--;
+                if (depth == 0)
+                    return peekToken(offset + 1); // token after closing bracket
+            }
+            else if (t.type == TokenType::END)
+                break;
+            offset++;
+        }
+        return Token{"", TokenType::END};
+    };
+
+    // Handle self.* assignments
     if (current.type == TokenType::SELF)
     {
         Token peek1 = peekToken(1);
-        std::cout << "FIRST PEEK " << TokenTypeToLiteral(peek1.type) << "\n";
         Token peek3 = peekToken(3);
-        std::cout << "THIRD PEEK " << TokenTypeToLiteral(peek3.type) << "\n";
         if (peek3.type == TokenType::ASSIGN)
         {
-            std::cout << "THIRD PEEK TRIGGERED " << TokenTypeToLiteral(peek3.type) << "\n";
             return parseAssignmentStatement();
         }
     }
@@ -78,92 +100,72 @@ std::unique_ptr<Statement> Parser::parseStatement()
     if (current.type == TokenType::IDENTIFIER)
     {
         Token peek1 = peekToken(1);
-        std::cout << "IDENTIFIER FIRST PEEK: " << TokenTypeToLiteral(peek1.type) << "\n";
 
-        //--Array case(x[0]=... or x[y[0]]=...)
+        // Array subscript case
         if (peek1.type == TokenType::LBRACKET)
         {
-            return parseAssignmentStatement();
-        }
-
-        // --- Assignment case (x = ...)
-        if (peek1.type == TokenType::ASSIGN)
-        {
-            std::cout << "IDENTIFIER ASSIGNMENT DETECTED\n";
-            return parseAssignmentStatement();
-        }
-
-        // --- Qualified assignment (x.y = ...)
-        if ((peek1.type == TokenType::SCOPE_OPERATOR || peek1.type == TokenType::FULLSTOP))
-        {
-            Token peek2 = peekToken(2);
-            Token peek3 = peekToken(3);
-
-            if (peek3.type == TokenType::ASSIGN)
+            if (peekAfterSubscript().type == TokenType::ASSIGN)
             {
-                std::cout << "IDENTIFIER QUALIFIED ASSIGNMENT DETECTED\n";
+                std::cout << "SUBSCRIPT ASSIGNMENT DETECTED\n";
                 return parseAssignmentStatement();
             }
-
-            if (peek3.type == TokenType::IDENTIFIER)
-            {
-                std::cout << "IDENTIFIER 3RD PEEK TRIGGERED FIELD CUSTOM TYPE LET\n";
-                return parseLetStatementWithTypeWrapper();
-            }
         }
 
-        // --- Type declarations (x y)
+        // Simple assignment (x = ...)
+        if (peek1.type == TokenType::ASSIGN)
+        {
+            return parseAssignmentStatement();
+        }
+
+        // Qualified assignment (x.y = ..., test::field = ...)
+        if (peek1.type == TokenType::FULLSTOP || peek1.type == TokenType::SCOPE_OPERATOR)
+        {
+            Token peek3 = peekToken(3);
+            if (peek3.type == TokenType::ASSIGN)
+                return parseAssignmentStatement();
+            if (peek3.type == TokenType::IDENTIFIER)
+                return parseLetStatementWithTypeWrapper();
+        }
+
+        // Type declarations (x y)
         if (peek1.type == TokenType::IDENTIFIER)
         {
-            std::cout << "IDENTIFIER TYPE DECL DETECTED\n";
             return parseLetStatementWithTypeWrapper();
         }
 
-        // Fall back to parsing expressions
+        // Fall back to generic expression statement
         auto expr = parseExpression(Precedence::PREC_NONE);
         if (expr)
         {
             if (currentToken().type == TokenType::SEMICOLON)
-            {
                 advance();
-            }
             else
-            {
                 logError("Expected ';' after expression statement but got '" + currentToken().TokenLiteral + "'");
-                return nullptr;
-            }
 
-            std::cout << "[DEBUG] Parsed generic expression statement.\n";
             return std::make_unique<ExpressionStatement>(current, std::move(expr));
         }
     }
 
+    // Other statement types from map
     auto stmtFnIt = StatementParseFunctionsMap.find(current.type);
-
     if (stmtFnIt != StatementParseFunctionsMap.end())
     {
-        auto stmt = (this->*stmtFnIt->second)();
-        return stmt;
+        return (this->*stmtFnIt->second)();
     }
 
+    // Fallback expression statement
     auto expr = parseExpression(Precedence::PREC_NONE);
     if (expr)
     {
         if (currentToken().type == TokenType::SEMICOLON)
-        {
             advance();
-        }
         else
-        {
             logError("Expected ';' after expression statement but got '" + currentToken().TokenLiteral + "'");
-            return nullptr;
-        }
 
-        std::cout << "[DEBUG] Parsed generic expression statement.\n";
         return std::make_unique<ExpressionStatement>(current, std::move(expr));
     }
 
-    logError("Unexpected token at start of statement '" + currentToken().TokenLiteral + "'");
+    logError("Unexpected token at start of statement '" + current.TokenLiteral + "'");
     advance();
     return nullptr;
 }
