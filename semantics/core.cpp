@@ -60,6 +60,7 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for array walker
     walkerFunctionsMap[typeid(ArrayStatement)] = &Semantics::walkArrayStatement;
     walkerFunctionsMap[typeid(ArrayLiteral)] = &Semantics::walkArrayLiteral;
+    walkerFunctionsMap[typeid(ArraySubscript)] = &Semantics::walkArraySubscriptExpression;
 
     // Walker registration for let statement and assignment statements
     walkerFunctionsMap[typeid(LetStatement)] = &Semantics::walkLetStatement;
@@ -1242,6 +1243,99 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
     default:
         return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
+}
+
+int64_t Semantics::getIntExprVal(Node *node)
+{
+    auto intLit = dynamic_cast<IntegerLiteral *>(node);
+    auto identExpr = dynamic_cast<Identifier *>(node);
+    int64_t len;
+    if (intLit)
+    {
+        // Getting the underlying value and converting it to int64
+        auto val = intLit->expression.TokenLiteral;
+        len = std::stoll(val);
+    }
+    else if (identExpr)
+    {
+        // Resolve the symbolInfo(To get info about contance)
+        auto line = identExpr->expression.line;
+        auto col = identExpr->expression.column;
+        auto name = identExpr->identifier.TokenLiteral;
+        auto identSym = resolveSymbolInfo(name);
+        if (!identSym)
+        {
+            logSemanticErrors("Use of undeclared variable '" + name + "'", line, col);
+        }
+
+        if (identSym->type.kind != DataType::INTEGER)
+        {
+            logSemanticErrors("Cannot use variable '" + name + "' inside array length as it is not of integer type", line, col);
+        }
+
+        if (!identSym->isConstant)
+        {
+            logSemanticErrors("Cannot use non constant variable '" + name + "' in array length", line, col);
+            return 0;
+        }
+
+        len = identSym->constIntVal;
+    }
+    else
+    {
+        Expression *expr = dynamic_cast<Expression *>(node);
+        logSemanticErrors("Invalid expression used in array length", expr->expression.line, expr->expression.column);
+    }
+
+    return len;
+}
+
+int64_t Semantics::SubscriptIndexVerifier(Node *indexNode, int64_t arrLen)
+{
+    // Possible cases inside the index
+    auto intLit = dynamic_cast<IntegerLiteral *>(indexNode);
+    auto identExpr = dynamic_cast<Identifier *>(indexNode);
+    auto infix = dynamic_cast<InfixExpression *>(indexNode);
+    auto arrSub = dynamic_cast<ArraySubscript *>(indexNode);
+
+    int64_t index;
+    if (intLit)
+    {
+        index = std::stoll(intLit->int_token.TokenLiteral);
+        if (index > arrLen)
+        {
+            logSemanticErrors("index position provided is out of bounds", intLit->expression.line, intLit->expression.column);
+            return false;
+        }
+        return index;
+    }
+    else if (identExpr)
+    {
+        const std::string &name = identExpr->identifier.TokenLiteral;
+        auto identSym = resolveSymbolInfo(name);
+        if (!identSym)
+        {
+            logSemanticErrors("Undeclared identifier '" + name + "' used", identExpr->expression.line, identExpr->expression.column);
+            return false;
+        }
+
+        if (!identSym->isConstant)
+        {
+            logSemanticErrors("Use of a non constant variable'" + name + "'to access index", identExpr->expression.line, identExpr->expression.column);
+            return false;
+        }
+
+        index = identSym->constIntVal;
+        if (index > arrLen)
+        {
+            logSemanticErrors("index position provided is out of bounds", intLit->expression.line, intLit->expression.column);
+            return false;
+        }
+        return index;
+    }
+    //TODO: Add infix handling (I will use the positions returned to return the value the subscript holds), I am gonna stop coding on this project for now as I feel so exhausted hopefully I will return
+
+    return index;
 }
 
 std::pair<std::string, std::string> Semantics::splitScopedName(const std::string &fullName)

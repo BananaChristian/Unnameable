@@ -289,6 +289,44 @@ void Semantics::walkArrayLiteral(Node *node)
     metaData[arrLit] = arrInfo;
 }
 
+// Walking array subscript expression
+void Semantics::walkArraySubscriptExpression(Node *node)
+{
+    auto arrExpr = dynamic_cast<ArraySubscript *>(node);
+    if (!arrExpr)
+        return;
+
+    // Semantic error flag
+    bool hasError = false;
+
+    // Getting the variable name
+    auto arrName = arrExpr->identifier->expression.TokenLiteral;
+    auto line = arrExpr->expression.line;
+    auto col = arrExpr->expression.column;
+
+    // Checking if the variable exists
+    auto arrSym = resolveSymbolInfo(arrName);
+    if (!arrSym)
+    {
+        logSemanticErrors("Variable '" + arrName + "' does not exist", line, col);
+        auto arrError = std::make_shared<SymbolInfo>();
+        arrError->type = ResolvedType{DataType::UNKNOWN, "unknown"};
+        arrError->hasError = true;
+    }
+
+    // If the symbol exists we get for the arrayMeta
+    auto arrMeta = arrSym->arrayMeta;
+    // We compare the length from the array meta to the index being used (To avoid out of bounds usage)
+    auto arrLength = arrMeta.arrLen;
+    // Get the index being used
+    auto index = arrExpr->index_expr.get();
+
+    // TODO: Will use the position returned from index verifier to fill in this position, will do this if I return to coding on this project(Really exhausted so I am gonna stop here till I return)
+    auto pos = SubscriptIndexVerifier(index, arrLength);
+
+    metaData[arrExpr] = arrSym;
+}
+
 // Walking the identifier expression
 void Semantics::walkIdentifierExpression(Node *node)
 {
@@ -332,7 +370,58 @@ void Semantics::walkLetStatement(Node *node)
 
     auto letStmtValue = letStmt->value.get();
 
+    ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
     ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Defaulting to the unknown data type
+
+    // Checking for mutability and constance
+    bool isMutable = false;
+    bool isConstant = false;
+    if (letStmt->mutability == Mutability::MUTABLE)
+    {
+        isMutable = true;
+    }
+    else if (letStmt->mutability == Mutability::CONSTANT)
+    {
+        isConstant = true;
+    }
+
+    if (!isConstant && !letStmtValue)
+    {
+        logSemanticErrors("Need to assign a value to a constant variable '" + letStmt->ident_token.TokenLiteral + "'", letStmt->ident_token.line, letStmt->ident_token.column);
+        hasError = true;
+    }
+
+    // Special check for constant values;
+    int64_t constInt;
+    if (isConstant && letStmtValue)
+    {
+        auto intLit = dynamic_cast<IntegerLiteral *>(letStmtValue);
+        auto ident = dynamic_cast<Identifier *>(letStmtValue);
+        if (intLit)
+        {
+            constInt = std::stoll(intLit->int_token.TokenLiteral);
+        }
+        else if (ident)
+        {
+            const std::string &name = ident->identifier.TokenLiteral;
+            auto idLine = ident->expression.line;
+            auto idCol = ident->expression.column;
+            auto identSym = resolveSymbolInfo(name);
+            if (!identSym)
+            {
+                logSemanticErrors("Use of undeclared variable '" + name + "' in let statement", idLine, idCol);
+                hasError = true;
+            }
+
+            if (!identSym->isConstant)
+            {
+                logSemanticErrors("Cannot use non constant variable '" + name + "'in constant let statement", idLine, idCol);
+                hasError = true;
+            }
+
+            constInt = identSym->constIntVal;
+        }
+    }
 
     if (letStmtValue)
     {
@@ -388,7 +477,6 @@ void Semantics::walkLetStatement(Node *node)
     // If we dont have a value(A variable declaration)
     if (!letStmtValue)
     {
-        ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
         declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
     }
 
@@ -436,24 +524,13 @@ void Semantics::walkLetStatement(Node *node)
 
     std::cout << "LET STATEMENT DATA TYPE: " << declaredType.resolvedName << "\n";
 
-    // Checking for mutability and constance
-    bool isMutable = false;
-    bool isConstant = false;
-    if (letStmt->mutability == Mutability::MUTABLE)
-    {
-        isMutable = true;
-    }
-    else if (letStmt->mutability == Mutability::CONSTANT)
-    {
-        isConstant = true;
-    }
-
     // Creating metadata about the let statement node
     auto letInfo = std::make_shared<SymbolInfo>();
 
     letInfo->type = declaredType;
     letInfo->isNullable = isNullable;
     letInfo->isMutable = isMutable;
+    letInfo->constIntVal = constInt;
     letInfo->isConstant = isConstant;
     letInfo->isInitialized = isInitialized;
     letInfo->isDefinitelyNull = isDefinitelyNull;

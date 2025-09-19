@@ -1220,37 +1220,7 @@ void Semantics::walkArrayStatement(Node *node)
     // Handle explicit length
     if (arrStmt->length)
     {
-        if (auto intLit = dynamic_cast<IntegerLiteral *>(arrStmt->length.get()))
-            lengthValue = std::stoll(intLit->expression.TokenLiteral);
-        else if (auto longLit = dynamic_cast<LongLiteral *>(arrStmt->length.get()))
-            lengthValue = std::stoll(longLit->expression.TokenLiteral);
-        else if (auto ident = dynamic_cast<Identifier *>(arrStmt->length.get()))
-        {
-            auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
-            if (!identSym)
-            {
-                logSemanticErrors("Unidentified identifier '" + ident->identifier.TokenLiteral +
-                                      "' used in array length declaration",
-                                  ident->expression.line, ident->expression.column);
-                hasError = true;
-                return;
-            }
-            if (identSym->type.kind != DataType::INTEGER)
-            {
-                logSemanticErrors("Identifier '" + ident->identifier.TokenLiteral +
-                                      "' used in array length declaration is not an integer",
-                                  ident->expression.line, ident->expression.column);
-                hasError = true;
-                return;
-            }
-        }
-        else
-        {
-            logSemanticErrors("Array length must be a constant integer literal",
-                              arrStmt->length->expression.line, arrStmt->length->expression.column);
-            return;
-        }
-
+        lengthValue = getIntExprVal(arrStmt->length.get());
         if (lengthValue < 0)
         {
             logSemanticErrors("Array length cannot be negative",

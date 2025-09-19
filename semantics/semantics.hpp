@@ -56,7 +56,7 @@ enum class DataType
     CHAR32, // 32 BIT Char
     NULLABLE_CHAR32,
 
-    NULLABLE_ARR,//Special marker datatype for array member inference with nulls
+    NULLABLE_ARR, // Special marker datatype for array member inference with nulls
 
     ENUM,
     DATABLOCK,
@@ -125,6 +125,7 @@ struct SymbolInfo
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialized = false;
+    int64_t constIntVal;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
     ResolvedType returnType;
     // Function flags
@@ -251,6 +252,7 @@ private:
     // Walking arrays
     void walkArrayLiteral(Node *node);
     void walkArrayStatement(Node *node);
+    void walkArraySubscriptExpression(Node *node);
 
     // HELPER FUNCTIONS
     void registerWalkerFunctions();
@@ -262,8 +264,9 @@ private:
     ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
     ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
-    bool isArrayCompatible(const ResolvedType &expected, const ResolvedType &actual, const ArrayMeta &expectedMeta, const ArrayMeta &actualMeta);
+    int64_t SubscriptIndexVerifier(Node *indexNode, int64_t arrLen);
     ArrayMeta getArrayMeta(Node *node);
+    int64_t getIntExprVal(Node *node);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool isInteger(const ResolvedType &t);
