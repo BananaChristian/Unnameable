@@ -451,88 +451,87 @@ ResolvedType Semantics::inferPostfixExpressionType(Node *node)
     auto postfixOperator = postfixNode->operator_token.type;
     return resultOfUnary(postfixOperator, operandType);
 }
+
 ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infixExpr)
 {
     std::cout << "INSIDE SCOPE RESOLVER FOR INFIX\n";
-    /*This function's role is to deal with . or :: operators
-    We shall have to check where . and :: are being used . is for behavior and components
-    And :: is for data blocks and enum classes*/
-    // Okay so let us handle the first case which is .
-    if (operatorType == TokenType::FULLSTOP)
+
+    if (operatorType != TokenType::FULLSTOP && operatorType != TokenType::SCOPE_OPERATOR)
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
+
+    // First, check if parentName is a **variable in current scope**
+    auto varSymbol = resolveSymbolInfo(parentName);
+    if (varSymbol)
     {
-        std::cout << "DEALING WITH THE DOT OPERATOR\n";
-        // So here we first of all resolve the parent name to see if it exists in the customTypesTable
-        auto typeIt = customTypesTable.find(parentName);
-        // Checking if the parent name exists
-        if (typeIt == customTypesTable.end())
+        auto varType = varSymbol->type;
+
+        if (operatorType == TokenType::FULLSTOP)
         {
-            logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            if (varType.kind != DataType::COMPONENT && varType.kind != DataType::BEHAVIORBLOCK)
+            {
+                logSemanticErrors("Dot operator applied to non-component variable", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            // Look up the type definition in customTypesTable
+            auto typeIt = customTypesTable.find(varType.resolvedName);
+            if (typeIt == customTypesTable.end())
+            {
+                logSemanticErrors("Component type '" + varType.resolvedName + "' not found", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            // Look for childName in members
+            auto memberIt = typeIt->second.members.find(childName);
+            if (memberIt == typeIt->second.members.end())
+            {
+                logSemanticErrors("Component '" + varType.resolvedName + "' has no member '" + childName + "'", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            return memberIt->second.type;
+        }
+        else if (operatorType == TokenType::SCOPE_OPERATOR)
+        {
+            logSemanticErrors("Scope operator (::) cannot be used on a variable instance", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
-        // Adding the check to only use full stop for datablock members only
+    }
+
+    // If parentName is not a variable, treat it as a **type lookup**
+    auto typeIt = customTypesTable.find(parentName);
+    if (typeIt == customTypesTable.end())
+    {
+        logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
+    }
+
+    if (operatorType == TokenType::FULLSTOP)
+    {
         if (typeIt->second.type.kind == DataType::DATABLOCK || typeIt->second.type.kind == DataType::ENUM)
         {
             logSemanticErrors("Only use . to access members of behavior blocks and components", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
-        // If we have the parent name let us look into the child members but we need to ensure the members arent empty
-        auto members = typeIt->second.members;
-        if (members.empty())
-        {
-            logSemanticErrors("Type '" + parentName + "' has no members", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
-        }
-
-        // If it has members let us return the data type of that particular member we encounter
-        auto memberIt = members.find(childName);
-        // If we dont find the specified member
-        if (memberIt == members.end())
-        {
-            logSemanticErrors("Type '" + parentName + "' does not have member '" + childName + "'", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
-        }
-        // If we have that member we have to return its data Type
-        return memberIt->second.type;
     }
-
-    if (operatorType == TokenType::SCOPE_OPERATOR)
+    else if (operatorType == TokenType::SCOPE_OPERATOR)
     {
-        std::cout << "DEALING WITH THE SCOPE OPERATOR\n";
-        // So here we first of all resolve the parent name to see if it exists in the customTypesTable
-        auto typeIt = customTypesTable.find(parentName);
-        // Checking if the parent name exists
-        if (typeIt == customTypesTable.end())
+        if (typeIt->second.type.kind == DataType::COMPONENT || typeIt->second.type.kind == DataType::BEHAVIORBLOCK)
         {
-            logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            logSemanticErrors("Only use :: to access members of data blocks and enums", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
-        // Adding the check to only use full stop for datablock members only
-        if (typeIt->second.type.kind == DataType::BEHAVIORBLOCK || typeIt->second.type.kind == DataType::COMPONENT)
-        {
-            logSemanticErrors("Only use :: to access members of data blocks and enum class members", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
-        }
-        // If we have the parent name let us look into the child members but we need to ensure the members arent empty
-        auto members = typeIt->second.members;
-        if (members.empty())
-        {
-            logSemanticErrors("Type '" + parentName + "' has no members", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
-        }
-
-        // If it has members let us return the data type of that particular member we encounter
-        auto memberIt = members.find(childName);
-        // If we dont find the specified member
-        if (memberIt == members.end())
-        {
-            logSemanticErrors("Type '" + parentName + "' does not have member '" + childName + "'", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
-        }
-        // If we have that member we have to return its data Type
-        return memberIt->second.type;
     }
 
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    // Look for the member in the type
+    auto memberIt = typeIt->second.members.find(childName);
+    if (memberIt == typeIt->second.members.end())
+    {
+        logSemanticErrors("Type '" + parentName + "' does not have member '" + childName + "'", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
+    }
+
+    return memberIt->second.type;
 }
 
 ResolvedType Semantics::resultOfBinary(TokenType operatorType, ResolvedType leftType, ResolvedType rightType)
@@ -1333,7 +1332,7 @@ int64_t Semantics::SubscriptIndexVerifier(Node *indexNode, int64_t arrLen)
         }
         return index;
     }
-    //TODO: Add infix handling (I will use the positions returned to return the value the subscript holds), I am gonna stop coding on this project for now as I feel so exhausted hopefully I will return
+    // TODO: Add infix handling (I will use the positions returned to return the value the subscript holds), I am gonna stop coding on this project for now as I feel so exhausted hopefully I will return
 
     return index;
 }
@@ -1342,13 +1341,17 @@ std::pair<std::string, std::string> Semantics::splitScopedName(const std::string
 {
     std::cout << "Splitting name\n";
     size_t pos = fullName.find("::");
+
+    if (pos == std::string::npos)
+        pos = fullName.find('.');
+
     if (pos == std::string::npos)
     {
         // no scope operator just a plain type
         return {fullName, ""};
     }
     std::string parent = fullName.substr(0, pos);
-    std::string child = fullName.substr(pos + 2); // skip ::
+    std::string child = fullName.substr(pos + (fullName[pos] == ':' ? 2 : 1));//Skipping :: if not .
     std::cout << "Name has been split into '" + parent + "' and '" + child + "'\n";
     return {parent, child};
 }

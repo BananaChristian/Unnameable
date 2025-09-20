@@ -130,6 +130,7 @@ void Static::analyzeDataStatement(Node *node)
     auto structTy = dataIt->second->llvmType;
     const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
     uint64_t size = DL.getTypeAllocSize(structTy);
+    dataIt->second->componentSize = size;
     total_size += size;
 }
 
@@ -209,6 +210,7 @@ void Static::analyzeBehaviorStatement(Node *node)
     auto structTy = behaviorIt->second->llvmType;
     const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
     uint64_t size = DL.getTypeAllocSize(structTy);
+    behaviorIt->second->componentSize = size;
     total_size += size;
 }
 
@@ -228,6 +230,7 @@ void Static::analyzeComponentStatement(Node *node)
     auto structTy = it->second->llvmType;
     const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
     uint64_t size = DL.getTypeAllocSize(structTy);
+    it->second->componentSize = size;
     total_size += size;
 }
 

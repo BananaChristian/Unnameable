@@ -22,7 +22,7 @@ void IRGenerator::generateDataStatement(Node *node)
 
     for (const auto &member : it->second->members)
     {
-        auto &typeKind = member.second.type.kind;
+        auto &typeKind = member.second.type;
         llvm::Type *type = getLLVMType(typeKind);
         memberTypes.push_back(type);
         memberNames.push_back(member.first);
@@ -30,6 +30,7 @@ void IRGenerator::generateDataStatement(Node *node)
 
     llvm::StructType *structTy = llvm::StructType::create(context, memberTypes, blockName);
     it->second->llvmType = structTy;
+    llvmCustomTypes[blockName] = structTy;
 }
 
 void IRGenerator::generateBehaviorStatement(Node *node)
@@ -94,7 +95,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
 
     for (auto &arg : initStmt->constructor_args)
     {
-        llvmParamTypes.push_back(getLLVMType(semantics.inferNodeDataType(arg.get()).kind));
+        llvmParamTypes.push_back(getLLVMType(semantics.inferNodeDataType(arg.get())));
     }
 
     auto funcType = llvm::FunctionType::get(llvm::Type::getVoidTy(context), llvmParamTypes, false);
@@ -120,7 +121,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
         throw std::runtime_error("Missing component metaData in init generation for: " + componentName);
     }
 
-    // Save previous value to restore later 
+    // Save previous value to restore later
     llvm::Value *prevInstance = metaIt->second->llvmValue;
     metaIt->second->llvmValue = selfArg;
     std::cout << "[IR INIT] meta->llvmValue set to selfArg for component: " << componentName << "\n";
@@ -172,9 +173,10 @@ void IRGenerator::generateComponentStatement(Node *node)
     // Creating an empty struct type and store immediately
     llvm::StructType *structTy = llvm::StructType::create(context, compName);
     componentTypes[compName] = structTy;
+    llvmCustomTypes[compName] = structTy; // Custom type registration for LLVM
     it->second->llvmType = structTy;
 
-    //Collecting member types
+    // Collecting member types
     std::vector<llvm::Type *> memberTypes;
     for (const auto &[memberName, info] : it->second->members)
     {
@@ -200,7 +202,7 @@ void IRGenerator::generateComponentStatement(Node *node)
         }
         else
         {
-            memberType = getLLVMType(info.type.kind);
+            memberType = getLLVMType(info.type);
         }
 
         if (!memberType)
@@ -209,10 +211,10 @@ void IRGenerator::generateComponentStatement(Node *node)
         memberTypes.push_back(memberType);
     }
 
-    //Setting the body of the struct
+    // Setting the body of the struct
     structTy->setBody(memberTypes);
 
-    //Generate init AFTER type is registered
+    // Generate init AFTER type is registered
     if (compStmt->initConstructor.has_value())
     {
         generateInitFunction(compStmt->initConstructor.value().get(), compStmt);

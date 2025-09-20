@@ -351,6 +351,11 @@ void Semantics::walkIdentifierExpression(Node *node)
         return;
     }
 
+    if (symbolInfo->type.kind == DataType::COMPONENT)
+    {
+        symbolInfo->lastUseNode = identExpr;
+    }
+
     metaData[identExpr] = symbolInfo;
 }
 
@@ -385,7 +390,7 @@ void Semantics::walkLetStatement(Node *node)
         isConstant = true;
     }
 
-    if (!isConstant && !letStmtValue)
+    if (isConstant && !letStmtValue)
     {
         logSemanticErrors("Need to assign a value to a constant variable '" + letStmt->ident_token.TokenLiteral + "'", letStmt->ident_token.line, letStmt->ident_token.column);
         hasError = true;
@@ -776,46 +781,61 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     if (!fieldAssignStmt)
         return;
 
-    // Let us get the name of the field assignment it is something like ident::ident
     auto fieldName = fieldAssignStmt->assignment_token.TokenLiteral;
-
     auto line = fieldAssignStmt->statement.line;
     auto column = fieldAssignStmt->statement.column;
     bool hasError = false;
 
-    // This is a special case so we are gonna have to resolve the names from the customTypes table
-    auto [parentName, childName] = splitScopedName(fieldName); // Splitting the name
-    auto parentIt = customTypesTable.find(parentName);
-    if (parentIt == customTypesTable.end())
+    // Split into "parent.child"
+    auto [parentName, childName] = splitScopedName(fieldName);
+    std::cout << "PARENT NAME:" << parentName << "\n";
+    std::cout << "CHILD NAME:" << childName << "\n";
+
+    // Resolve the parent symbol (must be a variable in scope)
+    auto parentSymbol = resolveSymbolInfo(parentName);
+    if (!parentSymbol)
     {
-        logSemanticErrors("Type '" + parentName + "' does not exist", line, column);
-        hasError = true;
-        return;
-    }
-    auto members = parentIt->second.members;
-    auto memberIt = members.find(childName);
-    if (memberIt == members.end())
-    {
-        logSemanticErrors("Variable '" + childName + "' does not exist in '" + parentName + "'", line, column);
+        logSemanticErrors("Variable '" + parentName + "' does not exist", line, column);
         hasError = true;
         return;
     }
 
-    // Getting the info I need for metaData construction and some checks
+    // Get the parent's type
+    std::string parentType = parentSymbol->type.resolvedName;
+
+    // Look up that type in the custom types table
+    auto parentIt = customTypesTable.find(parentType);
+    if (parentIt == customTypesTable.end())
+    {
+        logSemanticErrors("Type '" + parentType + "' does not exist", line, column);
+        hasError = true;
+        return;
+    }
+
+    // Check if the childName exists in that type’s members
+    auto members = parentIt->second.members;
+    auto memberIt = members.find(childName);
+    if (memberIt == members.end())
+    {
+        logSemanticErrors("Variable '" + childName + "' does not exist in type '" + parentType + "'", line, column);
+        hasError = true;
+        return;
+    }
+
+    // Grab field properties
     ResolvedType type = memberIt->second.type;
     bool isNullable = memberIt->second.isNullable;
     bool isMutable = memberIt->second.isMutable;
     bool isConstant = memberIt->second.isConstant;
     bool isInitialized = memberIt->second.isInitialised;
 
-    // Mutability and constant checks
+    // Constant/immutability checks
     if (isConstant)
     {
         logSemanticErrors("Cannot reassign to constant variable '" + fieldName + "'", line, column);
         hasError = true;
         return;
     }
-
     if (!isMutable && isInitialized)
     {
         logSemanticErrors("Cannot reassign to immutable variable '" + fieldName + "'", line, column);
@@ -823,14 +843,16 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
         return;
     }
 
-    // We have to force initialisation since this is an assignment
+    // Mark initialized (since this is assignment)
     isInitialized = true;
 
-    // Analysing the value if it exists
+    // Analyse the value if present
     if (fieldAssignStmt->value)
     {
         walker(fieldAssignStmt->value.get());
     }
+
+    // Build metadata for this assignment node
     auto info = std::make_shared<SymbolInfo>();
     info->type = type;
     info->isNullable = isNullable;
@@ -838,6 +860,5 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     info->isInitialized = isInitialized;
     info->hasError = hasError;
 
-    // Meta data construction
     metaData[fieldAssignStmt] = info;
 }

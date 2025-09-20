@@ -1164,6 +1164,8 @@ void Semantics::walkNewComponentExpression(Node *node)
     // Storing meta data
     auto info = std::make_shared<SymbolInfo>();
     info->type = componentIt->second.type;
+    info->lastUseNode = newExpr;
+
     metaData[newExpr] = info;
 }
 

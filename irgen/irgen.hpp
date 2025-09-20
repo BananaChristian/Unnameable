@@ -34,11 +34,13 @@ public:
     void dumpIR();
 
     llvm::Module &getLLVMModule();
-    llvm::Type *getLLVMType(DataType type);
+    llvm::Type *getLLVMType(ResolvedType type);
 
     std::unordered_map<std::type_index, generatorFunctions> generatorFunctionsMap;
     std::unordered_map<std::type_index, expressionGenerators> expressionGeneratorsMap;
     std::unordered_map<std::string, llvm::StructType *> componentTypes;
+    std::unordered_map<std::string, llvm::StructType *> llvmCustomTypes;
+
     ComponentStatement *currentComponent = nullptr;
     llvm::Value *currentComponentInstance;
     std::vector<LoopBlocks> loopBlocksStack;
@@ -53,6 +55,7 @@ private:
     void generateLetStatement(Node *node);
     void generateExpressionStatement(Node *node);
     void generateAssignmentStatement(Node *node);
+    void generateFieldAssignmentStatement(Node *node);
     void generateWhileStatement(Node *node);
     void generateForStatement(Node *node);
     void generateIfStatement(Node *node);

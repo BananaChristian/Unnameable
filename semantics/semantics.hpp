@@ -140,8 +140,18 @@ struct SymbolInfo
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
 
+    size_t componentSize;
+    Node *lastUseNode = nullptr;
+
     // Error flag
     bool hasError = false;
+};
+
+struct HeapAllocationInfo
+{
+    std::shared_ptr<SymbolInfo> symbol; // Pointer to the symbol allocated
+    Node *allocNode;
+    size_t componentSize; // Size of the object
 };
 
 class Semantics
@@ -159,6 +169,7 @@ public:
     std::vector<ScopeInfo> currentTypeStack;
 
     std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
+    std::vector<HeapAllocationInfo> heapAllocLIFO;
 
     // Public helpers
     std::shared_ptr<SymbolInfo> resolveSymbolInfo(const std::string &name);
@@ -241,7 +252,6 @@ private:
     void walkReturnStatement(Node *node);
 
     // Walking type expressions
-    void walkReturnType(Node *node);
     void walkBasicType(Node *node);
     void walkArrayType(Node *node);
 

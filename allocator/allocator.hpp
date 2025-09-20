@@ -15,6 +15,7 @@ class Allocator
 private:
     void *os_heap = nullptr; // This is a pointer to the heap given to us by the OS
     size_t os_heap_size = 0; // The actual size of the os_heap
+    size_t pagesize; //Storing the actual page size 
 
     StackHeap general_stack_heap;
 

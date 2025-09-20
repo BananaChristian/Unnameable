@@ -72,7 +72,7 @@ void IRGenerator::generateLetStatement(Node *node)
     {
         return;
     }
-    auto letType = letIt->second->type.kind;
+    auto letType = letIt->second->type;
 
     llvm::Type *varType = getLLVMType(letType);
     if (!varType)
@@ -427,7 +427,6 @@ void IRGenerator::generateExpressionStatement(Node *node)
 }
 
 // Assignment statement IR generator function
-// Assignment statement IR generator function
 void IRGenerator::generateAssignmentStatement(Node *node)
 {
     auto *assignStmt = dynamic_cast<AssignmentStatement *>(node);
@@ -464,6 +463,54 @@ void IRGenerator::generateAssignmentStatement(Node *node)
 
     // Store the value
     builder.CreateStore(initValue, targetPtr);
+}
+
+void IRGenerator::generateFieldAssignmentStatement(Node *node)
+{
+    auto *fieldStmt = dynamic_cast<FieldAssignment *>(node);
+    if (!fieldStmt)
+        return;
+
+    // Generate RHS value
+    llvm::Value *initValue = generateExpression(fieldStmt->value.get());
+    if (!initValue)
+        throw std::runtime_error("Failed to generate IR for field assignment value");
+
+    // Parse "Parent.field"
+    const std::string &name = fieldStmt->assignment_token.TokenLiteral;
+    auto [parentName, childName] = semantics.splitScopedName(name);
+
+    // Lookup parent type
+    auto parentIt = semantics.customTypesTable.find(parentName);
+    if (parentIt == semantics.customTypesTable.end())
+        throw std::runtime_error("Type '" + parentName + "' does not exist");
+
+    auto &members = parentIt->second.members;
+    auto childIt = members.find(childName);
+    if (childIt == members.end())
+        throw std::runtime_error("'" + childName + "' is not a member of '" + parentName + "'");
+
+    // The struct type (already generated in LLVM from earlier)
+    llvm::StructType *structTy = llvmCustomTypes[parentName];
+    if (!structTy)
+        throw std::runtime_error("LLVM StructType for '" + parentName + "' not found");
+
+    // The instance variable of the parent (e.g. "Player p")
+    // You need a pointer to the instance. For now, assume semantic analysis put it in symbol table.
+    auto parentVarInfo = semantics.resolveSymbolInfo(parentName);
+    if (!parentVarInfo || !parentVarInfo->llvmValue)
+        throw std::runtime_error("No instance found for '" + parentName + "'");
+
+    llvm::Value *parentPtr = parentVarInfo->llvmValue;
+
+    // Get index of child field
+    unsigned fieldIndex = childIt->second.memberIndex;
+
+    // Compute pointer to field: gep parentPtr, 0, fieldIndex
+    llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, parentPtr, fieldIndex, childName);
+
+    // Store RHS into field
+    builder.CreateStore(initValue, fieldPtr);
 }
 
 void IRGenerator::generateBlockStatement(Node *node)
@@ -550,9 +597,9 @@ void IRGenerator::generateFunctionDeclaration(Node *node)
         {
             throw std::runtime_error("Missing function declaration parameter meta data");
         }
-        paramTypes.push_back(getLLVMType(it->second->type.kind));
+        paramTypes.push_back(getLLVMType(it->second->type));
     }
-    auto retType = declrIt->second->returnType.kind;
+    auto retType = declrIt->second->returnType;
     llvm::FunctionType *fnType = llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
 
     llvm::Function *declaredFunc = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module.get());
@@ -1152,7 +1199,7 @@ llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
     auto it = semantics.metaData.find(node);
     if (it == semantics.metaData.end())
     {
-        throw std::runtime_error("Integer literal not found in metadata");
+        throw std::runtime_error("Integer literal not found in metadata at line:" + std::to_string(intLit->expression.line) + " and column: " + std::to_string(intLit->expression.column));
     }
     DataType dt = it->second->type.kind;
     if (dt != DataType::INTEGER && dt != DataType::NULLABLE_INT)
@@ -1370,11 +1417,11 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     {
         return nullptr;
     }
-    llvm::Type *ty = getLLVMType(identIt->second->type.kind);
+    llvm::Type *ty = getLLVMType(identIt->second->type);
     // Checking if the identifier has a value
     llvm::Value *variablePtr = identIt->second->llvmValue;
 
-    return builder.CreateLoad(getLLVMType(identIt->second->type.kind), variablePtr, identExpr->identifier.TokenLiteral);
+    return builder.CreateLoad(getLLVMType(identIt->second->type), variablePtr, identExpr->identifier.TokenLiteral);
 }
 
 llvm::Value *IRGenerator::generateSelfExpression(Node *node)
@@ -1480,14 +1527,14 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
         {
             throw std::runtime_error("Missing parameter meta data");
         }
-        llvmParamTypes.push_back(getLLVMType(it->second->type.kind));
+        llvmParamTypes.push_back(getLLVMType(it->second->type));
     }
 
     // Getting the function return type
     auto fnRetType = fnExpr->return_type.get();
 
     auto retType = semantics.inferNodeDataType(fnRetType);
-    llvm::FunctionType *funcType = llvm::FunctionType::get(getLLVMType(retType.kind), llvmParamTypes, false);
+    llvm::FunctionType *funcType = llvm::FunctionType::get(getLLVMType(retType), llvmParamTypes, false);
 
     // Look up if the function declaration exists
     llvm::Function *fn = module->getFunction(fnName);
@@ -1501,7 +1548,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
         // If the function was declared checking if the return types match
         if (fn->getFunctionType() != funcType)
         {
-            throw std::runtime_error("Function redefinition for '" + fnName + "with different signature ");
+            throw std::runtime_error("Function redefinition for '" + fnName + "' with different signature ");
         }
     }
 
@@ -1519,7 +1566,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
         {
             throw std::runtime_error("Failed to find paremeter meta data");
         }
-        llvm::AllocaInst *alloca = builder.CreateAlloca(getLLVMType(pIt->second->type.kind), nullptr, p->statement.TokenLiteral);
+        llvm::AllocaInst *alloca = builder.CreateAlloca(getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
         builder.CreateStore(&(*argIter), alloca);
         pIt->second->llvmValue = alloca;
 
@@ -1583,9 +1630,9 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
 }
 
 // HELPER FUNCTIONS
-llvm::Type *IRGenerator::getLLVMType(DataType type)
+llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
 {
-    switch (type)
+    switch (type.kind)
     {
     case DataType::SHORT_INT:
     case DataType::NULLABLE_SHORT_INT:
@@ -1650,6 +1697,20 @@ llvm::Type *IRGenerator::getLLVMType(DataType type)
     case DataType::VOID:
         return llvm::Type::getVoidTy(context);
 
+    case DataType::DATABLOCK:
+    case DataType::COMPONENT:
+    {
+        if (type.resolvedName.empty())
+            throw std::runtime_error("Custom type requested but resolvedName is empty");
+
+        auto it = llvmCustomTypes.find(type.resolvedName);
+        if (it != llvmCustomTypes.end())
+            return it->second;
+
+        // Error if the type hasn’t been registered yet
+        throw std::runtime_error("LLVM IR requested for unknown custom type '" + type.resolvedName + "'");
+    }
+
     case DataType::ERROR:
     case DataType::GENERIC:
     case DataType::UNKNOWN:
@@ -1666,6 +1727,7 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(LetStatement)] = &IRGenerator::generateLetStatement;
     generatorFunctionsMap[typeid(ExpressionStatement)] = &IRGenerator::generateExpressionStatement;
     generatorFunctionsMap[typeid(AssignmentStatement)] = &IRGenerator::generateAssignmentStatement;
+    generatorFunctionsMap[typeid(FieldAssignment)] = &IRGenerator::generateFieldAssignmentStatement;
     generatorFunctionsMap[typeid(WhileStatement)] = &IRGenerator::generateWhileStatement;
     generatorFunctionsMap[typeid(ForStatement)] = &IRGenerator::generateForStatement;
     generatorFunctionsMap[typeid(ifStatement)] = &IRGenerator::generateIfStatement;

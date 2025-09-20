@@ -5,15 +5,96 @@ void Semantics::walkInfixExpression(Node *node)
     auto infixExpr = dynamic_cast<InfixExpression *>(node);
     if (!infixExpr)
         return;
-    std::cout << "[SEMANTIC LOG] Analyzing infix expression " + infixExpr->toString() + "\n";
 
+    std::cout << "[SEMANTIC LOG] Analyzing infix expression: " << infixExpr->toString() << "\n";
+
+    // Resolve left-hand side
     auto left = infixExpr->left_operand.get();
     walker(left);
 
+    // Special-case: dot (.) operator
+    if (infixExpr->operat.type == TokenType::FULLSTOP)
+    {
+        auto lhsType = metaData[left]->type;
+
+        auto rhsIdent = dynamic_cast<Identifier *>(infixExpr->right_operand.get());
+        if (!rhsIdent)
+        {
+            logSemanticErrors("Right-hand side of '.' must be an identifier",
+                              infixExpr->right_operand->expression.line,
+                              infixExpr->right_operand->expression.column);
+            return;
+        }
+
+        // Resolve member in component or behavior
+        auto resolved = resultOfScopeOrDot(TokenType::FULLSTOP,
+                                           lhsType.resolvedName,
+                                           rhsIdent->identifier.TokenLiteral,
+                                           infixExpr);
+                                           
+        // Store metadata for RHS identifier
+        auto rhsInfo = std::make_shared<SymbolInfo>();
+        rhsInfo->type = resolved;
+        rhsInfo->isNullable = false;
+        rhsInfo->isConstant = false;
+        rhsInfo->isInitialized = true;
+        metaData[rhsIdent] = rhsInfo;
+
+        // Store metadata for full infix expression
+        auto infixInfo = std::make_shared<SymbolInfo>();
+        infixInfo->type = resolved;
+        infixInfo->isNullable = false;
+        infixInfo->isConstant = false;
+        infixInfo->isInitialized = true;
+        metaData[infixExpr] = infixInfo;
+
+        return; // done handling dot
+    }
+
+    // Special-case: scope (::) operator
+    if (infixExpr->operat.type == TokenType::SCOPE_OPERATOR)
+    {
+        auto lhsType = metaData[left]->type;
+
+        auto rhsIdent = dynamic_cast<Identifier *>(infixExpr->right_operand.get());
+        if (!rhsIdent)
+        {
+            logSemanticErrors("Right-hand side of '::' must be an identifier",
+                              infixExpr->right_operand->expression.line,
+                              infixExpr->right_operand->expression.column);
+            return;
+        }
+
+        // Resolve member in type / datablock / enum
+        auto resolved = resultOfScopeOrDot(TokenType::SCOPE_OPERATOR,
+                                           lhsType.resolvedName,
+                                           rhsIdent->identifier.TokenLiteral,
+                                           infixExpr);
+
+        auto rhsInfo = std::make_shared<SymbolInfo>();
+        rhsInfo->type = resolved;
+        rhsInfo->isNullable = false;
+        rhsInfo->isConstant = false;
+        rhsInfo->isInitialized = true;
+        metaData[rhsIdent] = rhsInfo;
+
+        auto infixInfo = std::make_shared<SymbolInfo>();
+        infixInfo->type = resolved;
+        infixInfo->isNullable = false;
+        infixInfo->isConstant = false;
+        infixInfo->isInitialized = true;
+        metaData[infixExpr] = infixInfo;
+
+        return; // done handling scope operator
+    }
+
+    // Generic infix handling (+, -, *, /, etc.)
     auto right = infixExpr->right_operand.get();
     walker(right);
 
+    // Infer type for normal infix
     ResolvedType infixType = inferNodeDataType(infixExpr);
+
     auto info = std::make_shared<SymbolInfo>();
     info->type = infixType;
     info->isNullable = false;

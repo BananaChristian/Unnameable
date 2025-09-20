@@ -1,12 +1,12 @@
 #include "allocator.hpp"
 #include <iostream>
-#include <cstdint>   // for uintptr_t
+#include <cstdint>    // for uintptr_t
 #include <sys/mman.h> // mmap, munmap
 #include <unistd.h>   // getpagesize
 
 Allocator::Allocator(size_t total_heap_size)
 {
-    size_t pagesize = getpagesize();
+    pagesize = getpagesize();
     // round heap size up to page size (required by mmap)
     os_heap_size = ((total_heap_size + pagesize - 1) / pagesize) * pagesize;
 
@@ -58,7 +58,6 @@ void Allocator::sage_free(size_t component_size)
         return;
     }
 
-    size_t pagesize = getpagesize();
     uintptr_t old_frame_addr = (uintptr_t)general_stack_heap.frameptr;
     uintptr_t new_frame_addr = (uintptr_t)new_frame;
 
