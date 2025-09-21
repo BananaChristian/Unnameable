@@ -24,13 +24,18 @@ std::vector<std::unique_ptr<Node>> Parser::parseProgram()
 
     while (currentPos < tokenInput.size())
     {
+        // Skip standalone semicolons between statements
+        if (currentToken().type == TokenType::SEMICOLON)
+        {
+            advance();
+            continue;
+        }
+
         std::cout << "Parsing token: " << currentToken().TokenLiteral << "\n";
         Token current = currentToken();
 
         if (current.type == TokenType::END)
-        {
             break;
-        }
 
         std::unique_ptr<Node> node = parseStatement();
 
@@ -40,6 +45,7 @@ std::vector<std::unique_ptr<Node>> Parser::parseProgram()
         }
         else
         {
+            // only advance on null to avoid infinite loop
             advance();
         }
     }
@@ -56,36 +62,6 @@ std::unique_ptr<Statement> Parser::parseStatement()
     Token current = currentToken();
     std::cout << "[DEBUG] parseStatement starting with token: " << current.TokenLiteral << "\n";
 
-    // Skip empty semicolons
-    if (current.type == TokenType::SEMICOLON)
-    {
-        advance();
-        return nullptr;
-    }
-
-    // Helper to peek after full subscript (x[0], x[y[1]], etc.)
-    auto peekAfterSubscript = [this](int startOffset = 1) -> Token
-    {
-        int depth = 0;
-        int offset = startOffset;
-        while (true)
-        {
-            Token t = peekToken(offset);
-            if (t.type == TokenType::LBRACKET)
-                depth++;
-            else if (t.type == TokenType::RBRACKET)
-            {
-                depth--;
-                if (depth == 0)
-                    return peekToken(offset + 1); // token after closing bracket
-            }
-            else if (t.type == TokenType::END)
-                break;
-            offset++;
-        }
-        return Token{"", TokenType::END};
-    };
-
     // Handle self.* assignments
     if (current.type == TokenType::SELF)
     {
@@ -94,55 +70,6 @@ std::unique_ptr<Statement> Parser::parseStatement()
         if (peek3.type == TokenType::ASSIGN)
         {
             return parseAssignmentStatement();
-        }
-    }
-
-    if (current.type == TokenType::IDENTIFIER)
-    {
-        Token peek1 = peekToken(1);
-
-        // Array subscript case
-        if (peek1.type == TokenType::LBRACKET)
-        {
-            if (peekAfterSubscript().type == TokenType::ASSIGN)
-            {
-                std::cout << "SUBSCRIPT ASSIGNMENT DETECTED\n";
-                return parseAssignmentStatement();
-            }
-        }
-
-        // Simple assignment (x = ...)
-        if (peek1.type == TokenType::ASSIGN)
-        {
-            return parseAssignmentStatement();
-        }
-
-        // Qualified assignment (x.y = ..., test::field = ...)
-        if (peek1.type == TokenType::FULLSTOP || peek1.type == TokenType::SCOPE_OPERATOR)
-        {
-            Token peek3 = peekToken(3);
-            if (peek3.type == TokenType::ASSIGN)
-                return parseAssignmentStatement();
-            if (peek3.type == TokenType::IDENTIFIER)
-                return parseLetStatementWithTypeWrapper();
-        }
-
-        // Type declarations (x y)
-        if (peek1.type == TokenType::IDENTIFIER)
-        {
-            return parseLetStatementWithTypeWrapper();
-        }
-
-        // Fall back to generic expression statement
-        auto expr = parseExpression(Precedence::PREC_NONE);
-        if (expr)
-        {
-            if (currentToken().type == TokenType::SEMICOLON)
-                advance();
-            else
-                logError("Expected ';' after expression statement but got '" + currentToken().TokenLiteral + "'");
-
-            return std::make_unique<ExpressionStatement>(current, std::move(expr));
         }
     }
 
@@ -307,13 +234,9 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 
     if (!isParam)
     {
-        if (currentToken().type == TokenType::SEMICOLON)
+        if (currentToken().type != TokenType::SEMICOLON)
         {
-            advance();
-        }
-        else
-        {
-            logError("Expected a semicolon but got: " + currentToken().TokenLiteral);
+            logError("Expected a semicolon but got '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
     }
@@ -753,13 +676,18 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
     auto component_name = parseIdentifier();
     if (currentToken().type != TokenType::LBRACE)
     {
-        logError("Expected { but got: " + currentToken().TokenLiteral);
+        logError("Expected { but got '" + currentToken().TokenLiteral + "'");
     }
     advance(); // Consuming the LPAREN
     // Now here we are inside the block so we have to parse the stuff inside
 
-    while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
+    while (true)
     {
+        if (currentToken().type == TokenType::RBRACE ||
+            currentToken().type == TokenType::END)
+        {
+            break; // stop parsing component body
+        }
         std::unique_ptr<Statement> stmt = nullptr;
 
         if (isIntegerType(currentToken().type))
@@ -783,7 +711,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
             }
             else
             {
-                logError("Expected 'use data' or 'use behavior', got: " + nextToken().TokenLiteral);
+                logError("Expected 'use data' or 'use behavior', got '" + nextToken().TokenLiteral + "'");
                 advance(); // skip the unexpected token
             }
             break;
@@ -817,6 +745,10 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
             stmt = parseInitConstructorStatement();
             initConstructor = std::move(stmt);
             break;
+        case TokenType::SEMICOLON:
+            advance();
+            break;
+
         default:
             logError("Unknown statement inside component block: " + currentToken().TokenLiteral);
             advance();
@@ -825,9 +757,9 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
     }
     if (currentToken().type != TokenType::RBRACE)
     {
-        logError("Expected } to close component block");
+        logError("Expected } to close component block but got '" + currentToken().TokenLiteral + "'");
     }
-    advance(); // Consume the RPAREN
+    advance(); // Consume the RBRACE
 
     return std::make_unique<ComponentStatement>(
         component_token,
@@ -1454,7 +1386,7 @@ std::unique_ptr<Expression> Parser::parseGroupedExpression()
 
     if (currentToken().type != TokenType::RPAREN)
     {
-        logError("Expected ')' to close grouped expression");
+        logError("Expected ')' to close grouped expression but got " + currentToken().TokenLiteral + "'");
         return nullptr;
     }
 
@@ -1486,7 +1418,7 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments()
     std::vector<std::unique_ptr<Expression>> args;
     if (currentToken().type == TokenType::RPAREN)
     {
-        advance();
+        advance(); // Consume the ) token
         return args;
     }
 
@@ -1887,6 +1819,84 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithTypeWrapper()
     return parseLetStatementCustomOrBasic();
 }
 
+// Identifer overloader parser
+std::unique_ptr<Statement> Parser::parseIdentifierStatement()
+{
+    Token current = currentToken();
+    std::cout << "IDENTIFIER TOKEN INSIDE IDENTIFIER STATEMENT PARSER: " << current.TokenLiteral << "\n";
+    // Helper to peek after full subscript (x[0], x[y[1]], etc.)
+    auto peekAfterSubscript = [this](int startOffset = 1) -> Token
+    {
+        int depth = 0;
+        int offset = startOffset;
+        while (true)
+        {
+            Token t = peekToken(offset);
+            if (t.type == TokenType::LBRACKET)
+                depth++;
+            else if (t.type == TokenType::RBRACKET)
+            {
+                depth--;
+                if (depth == 0)
+                    return peekToken(offset + 1); // token after closing bracket
+            }
+            else if (t.type == TokenType::END)
+                break;
+            offset++;
+        }
+        return Token{"", TokenType::END};
+    };
+
+    Token peek1 = peekToken(1);
+
+    // Array subscript case
+    if (peek1.type == TokenType::LBRACKET)
+    {
+        if (peekAfterSubscript().type == TokenType::ASSIGN)
+        {
+            std::cout << "SUBSCRIPT ASSIGNMENT DETECTED\n";
+            return parseAssignmentStatement();
+        }
+    }
+
+    // Simple assignment (x = ...)
+    if (peek1.type == TokenType::ASSIGN)
+    {
+        return parseAssignmentStatement();
+    }
+
+    // Qualified assignment (x.y = ..., test::field = ...)
+    if (peek1.type == TokenType::FULLSTOP || peek1.type == TokenType::SCOPE_OPERATOR)
+    {
+        Token peek3 = peekToken(3);
+        if (peek3.type == TokenType::ASSIGN)
+            return parseAssignmentStatement();
+        if (peek3.type == TokenType::IDENTIFIER)
+            return parseLetStatementWithTypeWrapper();
+    }
+
+    // Type declarations (x y)
+    if (peek1.type == TokenType::IDENTIFIER)
+    {
+        return parseLetStatementWithTypeWrapper();
+    }
+
+    // Fall back to generic expression statement
+    auto expr = parseExpression(Precedence::PREC_NONE);
+    if (expr)
+    {
+        if (currentToken().type == TokenType::SEMICOLON)
+            advance();
+        else
+            logError("Expected ';' after expression statement but got '" + currentToken().TokenLiteral + "'");
+
+        return std::make_unique<ExpressionStatement>(current, std::move(expr));
+    }
+
+    logError("Invalid identifier statement");
+    return nullptr;
+}
+
 std::unique_ptr<Statement> Parser::parseErrorStatement()
 {
     Token err_token = currentToken();
@@ -1897,7 +1907,6 @@ std::unique_ptr<Statement> Parser::parseErrorStatement()
 // Registering the statement parsing functions
 void Parser::registerStatementParseFns()
 {
-    StatementParseFunctionsMap[TokenType::ASSIGN] = &Parser::parseLetStatementDecider;
     StatementParseFunctionsMap[TokenType::RETURN] = &Parser::parseReturnStatement;
     StatementParseFunctionsMap[TokenType::IF] = &Parser::parseIfStatement;
     StatementParseFunctionsMap[TokenType::WHILE] = &Parser::parseWhileStatement;
@@ -1924,7 +1933,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::CHAR16_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR32_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     // For custom types
-    StatementParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifierStatement;
 
     StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::DOUBLE_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
