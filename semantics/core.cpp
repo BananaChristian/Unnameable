@@ -414,7 +414,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node)
         }
         if (!symbol->isInitialized)
         {
-            logSemanticErrors("Cannot use an uninitialized variable in operations",
+            logSemanticErrors("Cannot use an uninitialized variable '" + ident->identifier.TokenLiteral + "' in operations",
                               ident->expression.line, ident->expression.column);
             symbol->hasError = true;
             return {DataType::UNKNOWN, "unknown"};
@@ -1351,7 +1351,7 @@ std::pair<std::string, std::string> Semantics::splitScopedName(const std::string
         return {fullName, ""};
     }
     std::string parent = fullName.substr(0, pos);
-    std::string child = fullName.substr(pos + (fullName[pos] == ':' ? 2 : 1));//Skipping :: if not .
+    std::string child = fullName.substr(pos + (fullName[pos] == ':' ? 2 : 1)); // Skipping :: if not .
     std::cout << "Name has been split into '" + parent + "' and '" + child + "'\n";
     return {parent, child};
 }
