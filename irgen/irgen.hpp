@@ -43,6 +43,7 @@ public:
 
     ComponentStatement *currentComponent = nullptr;
     llvm::Value *currentComponentInstance;
+    llvm::Function *currentFunction = nullptr;
     std::vector<LoopBlocks> loopBlocksStack;
 
 private:
@@ -72,6 +73,7 @@ private:
     void generateBehaviorStatement(Node *node);
     void generateInitFunction(Node *node, ComponentStatement *component);
     void generateComponentStatement(Node *node);
+    void generateComponentFunctionStatement(Node *node, const std::string &compName);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);

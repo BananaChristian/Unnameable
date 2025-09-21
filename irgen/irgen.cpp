@@ -471,46 +471,42 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
     if (!fieldStmt)
         return;
 
-    // Generate RHS value
-    llvm::Value *initValue = generateExpression(fieldStmt->value.get());
-    if (!initValue)
-        throw std::runtime_error("Failed to generate IR for field assignment value");
+    llvm::Value *rhs = generateExpression(fieldStmt->value.get());
+    if (!rhs)
+        throw std::runtime_error("Failed to generate RHS IR");
 
-    // Parse "Parent.field"
-    const std::string &name = fieldStmt->assignment_token.TokenLiteral;
-    auto [parentName, childName] = semantics.splitScopedName(name);
+    auto [parentVarName, childName] = semantics.splitScopedName(fieldStmt->assignment_token.TokenLiteral);
 
-    // Lookup parent type
-    auto parentIt = semantics.customTypesTable.find(parentName);
+    // Resolve parent pointer
+    llvm::Value *parentPtr = nullptr;
+    auto parentVarInfo = semantics.resolveSymbolInfo(parentVarName);
+
+    if (parentVarInfo && parentVarInfo->llvmValue)
+        parentPtr = parentVarInfo->llvmValue; // AllocaInst* or Argument*
+    else if (currentFunction)
+        parentPtr = &*(currentFunction->arg_begin()); // hidden 'this'
+    else
+        throw std::runtime_error("Cannot resolve parent for field assignment");
+
+    // Ensure parent type exists
+    auto parentTypeName = parentVarInfo->type.resolvedName;
+    auto parentIt = semantics.customTypesTable.find(parentTypeName);
     if (parentIt == semantics.customTypesTable.end())
-        throw std::runtime_error("Type '" + parentName + "' does not exist");
+        throw std::runtime_error("Type '" + parentTypeName + "' does not exist");
 
     auto &members = parentIt->second.members;
     auto childIt = members.find(childName);
     if (childIt == members.end())
-        throw std::runtime_error("'" + childName + "' is not a member of '" + parentName + "'");
+        throw std::runtime_error("'" + childName + "' is not a member of '" + parentTypeName + "'");
 
-    // The struct type (already generated in LLVM from earlier)
-    llvm::StructType *structTy = llvmCustomTypes[parentName];
-    if (!structTy)
-        throw std::runtime_error("LLVM StructType for '" + parentName + "' not found");
-
-    // The instance variable of the parent (e.g. "Player p")
-    // You need a pointer to the instance. For now, assume semantic analysis put it in symbol table.
-    auto parentVarInfo = semantics.resolveSymbolInfo(parentName);
-    if (!parentVarInfo || !parentVarInfo->llvmValue)
-        throw std::runtime_error("No instance found for '" + parentName + "'");
-
-    llvm::Value *parentPtr = parentVarInfo->llvmValue;
-
-    // Get index of child field
+    llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
     unsigned fieldIndex = childIt->second.memberIndex;
 
-    // Compute pointer to field: gep parentPtr, 0, fieldIndex
+    // Create proper GEP to member
     llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, parentPtr, fieldIndex, childName);
 
-    // Store RHS into field
-    builder.CreateStore(initValue, fieldPtr);
+    // Store RHS value
+    builder.CreateStore(rhs, fieldPtr);
 }
 
 void IRGenerator::generateBlockStatement(Node *node)
@@ -587,7 +583,7 @@ void IRGenerator::generateFunctionDeclaration(Node *node)
     auto declrIt = semantics.metaData.find(fnDeclr);
     if (declrIt == semantics.metaData.end())
     {
-        throw std::runtime_error("Missing declaration meta data");
+        throw std::runtime_error("Missing function declaration meta data");
     }
     std::vector<llvm::Type *> paramTypes;
     for (const auto &param : fnDeclr->parameters)
