@@ -79,13 +79,15 @@ struct ResolvedType
 struct MemberInfo
 {
     std::string memberName;
-    ResolvedType type;
+    ResolvedType type;//Type of the member
     bool isNullable = false;
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialised = false;
+
     // Info for enum members
     std::int64_t constantValue = 0;
+    ResolvedType parentType; //Parent type for enum members
 
     Node *node = nullptr;
     int memberIndex = -1;

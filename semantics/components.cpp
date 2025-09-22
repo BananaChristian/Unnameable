@@ -262,7 +262,8 @@ void Semantics::walkEnumClassStatement(Node *node)
             .type = underLyingType,
             .isConstant = true,
             .isInitialised = true,
-            .constantValue = static_cast<int>(memberValue)};
+            .constantValue = static_cast<int>(memberValue),
+            .parentType = ResolvedType{DataType::ENUM, enumStmtName}};
         members[memberName] = info;
 
         // Add member to local scope

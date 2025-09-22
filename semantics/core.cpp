@@ -493,8 +493,33 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
         }
         else if (operatorType == TokenType::SCOPE_OPERATOR)
         {
-            logSemanticErrors("Scope operator (::) cannot be used on a variable instance", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
+            if (varType.kind != DataType::ENUM && varType.kind != DataType::DATABLOCK)
+            {
+                logSemanticErrors("Scope operator(::) applied to none enum or data block variable", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            // Look for the definition in the custom types table
+            auto typeIt = customTypesTable.find(varType.resolvedName);
+            if (typeIt == customTypesTable.end())
+            {
+                logSemanticErrors("Type '" + varType.resolvedName + "' not found", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            // Look for the childName in members
+            auto memIt = typeIt->second.members.find(childName);
+            if (memIt == typeIt->second.members.end())
+            {
+                logSemanticErrors("Type '" + varType.resolvedName + "' does not have a member '" + childName + "'", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            if (varType.kind == DataType::ENUM)
+            {
+                return memIt->second.parentType;
+            }
+            return memIt->second.type;
         }
     }
 
