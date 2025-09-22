@@ -55,51 +55,45 @@ void IRGenerator::generateStatement(Node *node)
 // Let statement IR generator function
 void IRGenerator::generateLetStatement(Node *node)
 {
-    std::cout << "IR GEN FOR let statements" << node->toString() << "\n";
     auto letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
-    {
-        throw std::runtime_error("Invalid let Statement node");
-    }
+        throw std::runtime_error("Invalid let statement");
 
-    const std::string &letName = letStmt->ident_token.TokenLiteral;
+    const auto &letName = letStmt->ident_token.TokenLiteral;
     auto letIt = semantics.metaData.find(letStmt);
     if (letIt == semantics.metaData.end())
-    {
-        throw std::runtime_error("No let statement for variable '" + letName + "'");
-    }
-    if (letIt->second->hasError)
-    {
-        return;
-    }
+        throw std::runtime_error("No let metadata");
+
     auto letType = letIt->second->type;
 
-    llvm::Type *varType = getLLVMType(letType);
-    if (!varType)
-    {
-        throw std::runtime_error("Invalid type for variable: " + letName);
-    }
+    llvm::Type *varType = getLLVMType(letType); // will be int32/i16/etc for enums
+    llvm::Value *initVal = nullptr;
+
+    if (letStmt->value)
+        initVal = generateExpression(letStmt->value.get());
+    else
+        initVal = llvm::Constant::getNullValue(varType);
 
     if (inFunction())
     {
-        // allocate in function entry (recommended)
         llvm::Function *fn = builder.GetInsertBlock()->getParent();
         llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
         auto *alloca = entryBuilder.CreateAlloca(varType, nullptr, letName);
+        builder.CreateStore(initVal, alloca);
         letIt->second->llvmValue = alloca;
-
-        if (letStmt->value)
-        {
-            llvm::Value *init = generateExpression(letStmt->value.get());
-            builder.CreateStore(init, alloca);
-        }
     }
     else
     {
         llvm::Constant *initConst = llvm::Constant::getNullValue(varType);
+
         auto *gv = new llvm::GlobalVariable(
-            *module, varType, false,
-            llvm::GlobalValue::ExternalLinkage, initConst, letName);
+            *module,
+            varType,
+            false,
+            llvm::GlobalValue::ExternalLinkage,
+            initConst,
+            letName);
+
         letIt->second->llvmValue = gv;
     }
 }
@@ -797,13 +791,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 
     if (infix->operat.type == TokenType::FULLSTOP)
     {
+        std::cout<<"TRIGGERED FULLSTOP INFIX HANDLER\n";
         // Left should be the object (Player p)
         // Right should be the member identifier (health)
         llvm::Value *objectVal = generateExpression(infix->left_operand.get()); // e.g., 'p'
 
         auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
         if (!memberIdent)
-            throw std::runtime_error("Right-hand side of '.' must be a field identifier");
+            throw std::runtime_error("Right-hand side of '.' or '::' must be a field identifier");
 
         std::string memberName = memberIdent->expression.TokenLiteral;
 
@@ -836,6 +831,33 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
             memberName + "_ptr");
 
         return builder.CreateLoad(getLLVMType(memberType), ptr, memberName + "_val");
+    }
+
+    if (infix->operat.type == TokenType::SCOPE_OPERATOR)
+    {
+        std::cout<<"TRIGGERED SCOPE OPERATOR INFIX HANDLER\n";
+        auto leftTypeIt = semantics.metaData.find(infix->left_operand.get());
+        if (leftTypeIt == semantics.metaData.end())
+            throw std::runtime_error("Missing type info for LHS of ::");
+
+        ResolvedType leftType = leftTypeIt->second->type;
+
+        // If LHS is enum, return the constant of RHS directly
+        if (leftType.kind == DataType::ENUM)
+        {
+            auto enumInfo = semantics.customTypesTable[leftType.resolvedName];
+            auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
+            if (!memberIdent)
+                throw std::runtime_error("RHS of :: must be identifier");
+            std::string memberName = memberIdent->expression.TokenLiteral;
+
+            auto memberIt = enumInfo.members.find(memberName);
+            if (memberIt == enumInfo.members.end())
+                throw std::runtime_error("Enum member not found: " + memberName);
+
+            return llvm::ConstantInt::get(getLLVMType({enumInfo.underLyingType, ""}),
+                                          memberIt->second.constantValue);
+        }
     }
 
     // Arithmetic operators
@@ -1750,6 +1772,13 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
         throw std::runtime_error("LLVM IR requested for unknown custom type '" + type.resolvedName + "'");
     }
 
+    case DataType::ENUM:
+    {
+        // Use underlying type for enums
+        auto enumInfo = semantics.customTypesTable[type.resolvedName];
+        return getLLVMType({enumInfo.underLyingType, ""});
+    }
+
     case DataType::ERROR:
     case DataType::GENERIC:
     case DataType::UNKNOWN:
@@ -1782,6 +1811,7 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(DataStatement)] = &IRGenerator::generateDataStatement;
     generatorFunctionsMap[typeid(BehaviorStatement)] = &IRGenerator::generateBehaviorStatement;
     generatorFunctionsMap[typeid(ComponentStatement)] = &IRGenerator::generateComponentStatement;
+    generatorFunctionsMap[typeid(EnumClassStatement)] = &IRGenerator::generateEnumClassStatement;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions()

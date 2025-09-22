@@ -169,7 +169,6 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
         if (exprIt == semantics.metaData.end() || exprIt->second->hasError)
             throw std::runtime_error("Component function has semantic errors");
 
-
         funcName = expr->func_key.TokenLiteral;
 
         llvm::Type *thisPtrType = llvmCustomTypes[compName]->getPointerTo();
@@ -325,4 +324,33 @@ void IRGenerator::generateComponentStatement(Node *node)
     }
 
     currentComponent = nullptr;
+}
+
+void IRGenerator::generateEnumClassStatement(Node *node)
+{
+    auto enumStmt = dynamic_cast<EnumClassStatement *>(node);
+    if (!enumStmt)
+        return;
+
+    // Getting the enum statement name
+    const std::string &enumName = enumStmt->enum_identifier->expression.TokenLiteral;
+
+    // Retrieve the info from metaData
+    auto enumIt = semantics.metaData.find(enumStmt);
+    if (enumIt == semantics.metaData.end())
+        throw std::runtime_error("No existing metaData for enum class statement");
+
+    // Getting the enum symbolInfo
+    auto enumInfo = enumIt->second;
+    auto enumTypeInfo = semantics.customTypesTable[enumInfo->type.resolvedName];
+
+    // Creating a struct for book keeping
+    llvm::StructType *enumStruct = llvm::StructType::create(context, enumInfo->type.resolvedName);
+    llvmCustomTypes[enumInfo->type.resolvedName] = enumStruct;
+
+    std::cout << "[IRGEN LOG] Declared enum class " << enumInfo->type.resolvedName << " with members:\n";
+    for (auto &[memberName, member] : enumTypeInfo.members)
+    {
+        //llvm::ConstantInt will be generated  when a member is actually used in an expression
+    }
 }

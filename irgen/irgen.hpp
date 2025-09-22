@@ -75,6 +75,9 @@ private:
     void generateComponentStatement(Node *node);
     void generateComponentFunctionStatement(Node *node, const std::string &compName);
 
+    // Enum class system
+    void generateEnumClassStatement(Node *node);
+
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);
     llvm::Value *generatePrefixExpression(Node *node);
