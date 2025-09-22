@@ -795,6 +795,49 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         }
     }
 
+    if (infix->operat.type == TokenType::FULLSTOP)
+    {
+        // Left should be the object (Player p)
+        // Right should be the member identifier (health)
+        llvm::Value *objectVal = generateExpression(infix->left_operand.get()); // e.g., 'p'
+
+        auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
+        if (!memberIdent)
+            throw std::runtime_error("Right-hand side of '.' must be a field identifier");
+
+        std::string memberName = memberIdent->expression.TokenLiteral;
+
+        // Get type info for 'object'
+        auto objectTypeIt = semantics.metaData.find(infix->left_operand.get());
+        if (objectTypeIt == semantics.metaData.end())
+            throw std::runtime_error("Type info missing for object in member access");
+
+        ResolvedType objectType = objectTypeIt->second->type;
+
+        // Find member index
+        auto parentIt = semantics.customTypesTable.find(objectType.resolvedName);
+        if (parentIt == semantics.customTypesTable.end())
+            throw std::runtime_error("Type '" + objectType.resolvedName + "' doesn't exist");
+
+        auto memberIt = parentIt->second.members.find(memberName);
+        if (memberIt == parentIt->second.members.end())
+            throw std::runtime_error("Member '" + memberName + "' not found in type '" + objectType.resolvedName + "'");
+
+        llvm::StructType *structTy = llvmCustomTypes[objectType.resolvedName];
+        unsigned memberIndex = memberIt->second.memberIndex;
+
+        auto memberType = memberIt->second.type;
+
+        // Compute pointer to member: CreateStructGEP requires the value pointer first, then the index
+        llvm::Value *ptr = builder.CreateStructGEP(
+            structTy,    // LLVM struct type
+            objectVal,   // Pointer to the struct
+            memberIndex, // Field index
+            memberName + "_ptr");
+
+        return builder.CreateLoad(getLLVMType(memberType), ptr, memberName + "_val");
+    }
+
     // Arithmetic operators
     switch (infix->operat.type)
     {
