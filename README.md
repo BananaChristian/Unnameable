@@ -365,7 +365,7 @@ enum class Animal {
     DOG,
 }
 
-auto pet = Animal::CAT;
+Animal pet = Animal::CAT;
 
 enum class HttpStatus {
     OK = 200,
