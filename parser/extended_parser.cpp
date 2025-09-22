@@ -617,6 +617,46 @@ std::unique_ptr<Statement> Parser::parseAliasStatement()
     return std::make_unique<AliasStatement>(alias, std::move(aliasName), std::move(type));
 }
 
+std::unique_ptr<Statement> Parser::parseFieldAssignment()
+{
+    std::unique_ptr<Expression> value = nullptr;
+    Token current = currentToken();
+    advance(); // Consume for example x
+    if (currentToken().type == TokenType::SCOPE_OPERATOR || currentToken().type == TokenType::FULLSTOP)
+    {
+        std::cout << "SPECIAL IDENTIFIER CASE TRIGGERED\n";
+        std::string fieldName = current.TokenLiteral;
+        std::string operatorLiteral =
+            (currentToken().type == TokenType::SCOPE_OPERATOR) ? "::" : ".";
+        fieldName += operatorLiteral;
+
+        advance(); // consume scope or dot operator
+
+        if (currentToken().type != TokenType::IDENTIFIER)
+        {
+            logError("Expected an identifier after '" + operatorLiteral + "' but got '" + currentToken().TokenLiteral + "'");
+            return nullptr;
+        }
+
+        fieldName += currentToken().TokenLiteral;
+        current.TokenLiteral = fieldName;
+
+        advance(); // consume second identifier
+    }
+
+    if (currentToken().type != TokenType::ASSIGN)
+    {
+        logError("Expected '=' after identifier in assignment but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    advance(); // consume '='
+
+    // Parse right-hand side expression
+    value = parseExpression(Precedence::PREC_NONE);
+
+    return std::make_unique<FieldAssignment>(current, std::move(value));
+}
+
 bool Parser::isIntegerType(TokenType type)
 {
     switch (type)

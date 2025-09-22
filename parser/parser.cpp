@@ -106,41 +106,11 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     Token identToken = currentToken();
     bool isQualified = false;
 
-    // Case 1: self.field = ...
+    // self.field = ...
     if (identToken.type == TokenType::SELF)
     {
         std::cout << "SELF CASE TRIGGERED\n";
         lhs = parseSelfExpression(); // builds FieldAccessExpression
-    }
-    // Case 2 & 3: normal identifier (possibly qualified)
-    else if (identToken.type == TokenType::IDENTIFIER)
-    {
-        std::cout << "NORMAL CASE TRIGGERED\n";
-        lhs = parseIdentifierOrArraySubscript(); // builds normal identifier
-
-        // Handle qualified identifier (x::y or x.y)
-        if (currentToken().type == TokenType::SCOPE_OPERATOR || currentToken().type == TokenType::FULLSTOP)
-        {
-            std::cout << "SPECIAL IDENTIFIER CASE TRIGGERED\n";
-            std::string fieldName = identToken.TokenLiteral;
-            std::string operatorLiteral =
-                (currentToken().type == TokenType::SCOPE_OPERATOR) ? "::" : ".";
-            fieldName += operatorLiteral;
-
-            advance(); // consume scope or dot operator
-
-            if (currentToken().type != TokenType::IDENTIFIER)
-            {
-                logError("Expected an identifier after '" + operatorLiteral + "' but got '" + currentToken().TokenLiteral + "'");
-                return nullptr;
-            }
-
-            fieldName += currentToken().TokenLiteral;
-            identToken.TokenLiteral = fieldName;
-            isQualified = true;
-
-            advance(); // consume second identifier
-        }
     }
 
     // Expect '=' before parsing the value
@@ -153,12 +123,6 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 
     // Parse right-hand side expression
     value = parseExpression(Precedence::PREC_NONE);
-
-    // Handle qualified case
-    if (isQualified)
-    {
-        return std::make_unique<FieldAssignment>(identToken, std::move(value));
-    }
 
     // Consume optional semicolon
     if (!isParam && currentToken().type == TokenType::SEMICOLON)
@@ -1913,9 +1877,7 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
     {
         Token peek3 = peekToken(3);
         if (peek3.type == TokenType::ASSIGN)
-            return parseAssignmentStatement();
-        if (peek3.type == TokenType::IDENTIFIER)
-            return parseLetStatementWithTypeWrapper();
+            return parseFieldAssignment();
     }
 
     // Type declarations (x y)

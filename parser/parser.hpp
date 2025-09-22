@@ -103,6 +103,8 @@ private:
 
     std::unique_ptr<Statement> parseHeapStatement();
 
+    std::unique_ptr<Statement> parseFieldAssignment();
+
     // Identifer starting statements function
     std::unique_ptr<Statement> parseIdentifierStatement();
 
