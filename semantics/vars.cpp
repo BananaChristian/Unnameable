@@ -368,183 +368,183 @@ void Semantics::walkLetStatement(Node *node)
 
     std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
 
+    // --- Initial flags ---
     bool isNullable = letStmt->isNullable;
+    bool isHeap = letStmt->isHeap;
     bool isDefinitelyNull = false;
     bool isInitialized = false;
     bool hasError = false;
 
     auto letStmtValue = letStmt->value.get();
 
+    // --- Resolve type from token ---
     ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
-    ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Defaulting to the unknown data type
+    ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
-    // Checking for mutability and constance
-    bool isMutable = false;
-    bool isConstant = false;
-    if (letStmt->mutability == Mutability::MUTABLE)
-    {
-        isMutable = true;
-    }
-    else if (letStmt->mutability == Mutability::CONSTANT)
-    {
-        isConstant = true;
-    }
+    // --- Mutability & constants ---
+    bool isMutable = (letStmt->mutability == Mutability::MUTABLE);
+    bool isConstant = (letStmt->mutability == Mutability::CONSTANT);
 
     if (isConstant && !letStmtValue)
     {
-        logSemanticErrors("Need to assign a value to a constant variable '" + letStmt->ident_token.TokenLiteral + "'", letStmt->ident_token.line, letStmt->ident_token.column);
+        logSemanticErrors(
+            "Need to assign a value to a constant variable '" + letStmt->ident_token.TokenLiteral + "'",
+            letStmt->ident_token.line, letStmt->ident_token.column);
         hasError = true;
     }
 
-    // Special check for constant values;
-    int64_t constInt;
+    // --- Resolve constant value if present ---
+    int64_t constInt = 0;
     if (isConstant && letStmtValue)
     {
-        auto intLit = dynamic_cast<IntegerLiteral *>(letStmtValue);
-        auto ident = dynamic_cast<Identifier *>(letStmtValue);
-        if (intLit)
+        if (auto intLit = dynamic_cast<IntegerLiteral *>(letStmtValue))
         {
             constInt = std::stoll(intLit->int_token.TokenLiteral);
         }
-        else if (ident)
+        else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
         {
-            const std::string &name = ident->identifier.TokenLiteral;
-            auto idLine = ident->expression.line;
-            auto idCol = ident->expression.column;
-            auto identSym = resolveSymbolInfo(name);
+            auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
             if (!identSym)
             {
-                logSemanticErrors("Use of undeclared variable '" + name + "' in let statement", idLine, idCol);
+                logSemanticErrors(
+                    "Use of undeclared variable '" + ident->identifier.TokenLiteral + "' in constant let statement",
+                    ident->expression.line, ident->expression.column);
                 hasError = true;
             }
-
-            if (!identSym->isConstant)
+            else if (!identSym->isConstant)
             {
-                logSemanticErrors("Cannot use non constant variable '" + name + "'in constant let statement", idLine, idCol);
+                logSemanticErrors(
+                    "Cannot use non-constant variable '" + ident->identifier.TokenLiteral + "' in constant let statement",
+                    ident->expression.line, ident->expression.column);
                 hasError = true;
             }
-
-            constInt = identSym->constIntVal;
+            else
+            {
+                constInt = identSym->constIntVal;
+            }
         }
     }
 
+    // --- Walk value & infer type ---
     if (letStmtValue)
     {
         declaredType = inferNodeDataType(letStmtValue);
         walker(letStmtValue);
         isInitialized = true;
 
-        auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue);
-        auto ident = dynamic_cast<Identifier *>(letStmtValue);
-        // Check to prevent assignment of null identifiers
-        if (ident)
-        {
-            auto identName = ident->identifier.TokenLiteral;
-            auto identSym = resolveSymbolInfo(identName);
-            if (!identSym)
-            {
-                logSemanticErrors("Cannot assign non existant identifier '" + identName + "' to let statement '", ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-
-            if (!identSym->isInitialized)
-            {
-                logSemanticErrors("Cannot assign non initialized identifier '" + identName + "' to let statement '", ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-        }
-
-        // This will be triggered if the value itself is null
-        if (nullVal)
+        if (auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue))
         {
             isDefinitelyNull = true;
             if (!isNullable)
             {
-                logSemanticErrors("Cannot assign 'null' to non-nullable variable '" + letStmt->ident_token.TokenLiteral + "'",
-                                  letStmt->data_type_token.line, letStmt->data_type_token.column);
+                logSemanticErrors(
+                    "Cannot assign 'null' to non-nullable variable '" + letStmt->ident_token.TokenLiteral + "'",
+                    letStmt->data_type_token.line, letStmt->data_type_token.column);
                 hasError = true;
                 declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
             }
             else
             {
-                // Null literal adopts LHS type context
-                declaredType = tokenTypeToResolvedType(letStmt->data_type_token, /*isNullable=*/true);
+                declaredType = tokenTypeToResolvedType(letStmt->data_type_token, true);
                 declaredType.resolvedName = "null";
             }
-            isInitialized = true; // consider it initialized to null
+        }
+        else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
+        {
+            auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
+            if (!identSym)
+            {
+                logSemanticErrors(
+                    "Cannot assign non-existent identifier '" + ident->identifier.TokenLiteral + "'",
+                    ident->expression.line, ident->expression.column);
+                hasError = true;
+            }
+            else if (!identSym->isInitialized)
+            {
+                logSemanticErrors(
+                    "Cannot assign non-initialized identifier '" + ident->identifier.TokenLiteral + "'",
+                    ident->expression.line, ident->expression.column);
+                hasError = true;
+            }
         }
     }
     else
     {
-        declaredType = inferNodeDataType(letStmt);
-    }
-
-    // If we dont have a value(A variable declaration)
-    if (!letStmtValue)
-    {
         declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
     }
 
-    //  Check for type mismatch if type is explicitly declared (not inferred via auto)
+    // --- Type mismatch checks ---
     if (letStmt->data_type_token.type != TokenType::AUTO)
     {
-        ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
         if (!isTypeCompatible(expectedType, declaredType))
         {
-            logSemanticErrors("Type mismatch in 'let' statement. Expected '" + expectedType.resolvedName + "' but got '" + declaredType.resolvedName + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            logSemanticErrors(
+                "Type mismatch in 'let' statement. Expected '" + expectedType.resolvedName + "' but got '" +
+                    declaredType.resolvedName + "'",
+                letStmt->data_type_token.line, letStmt->data_type_token.column);
             hasError = true;
-            return;
         }
-        // --- Prevent assigning a nullable value to a non-nullable variable ---
-        if (!isNullable) // LHS is non-nullable
+
+        if (!isNullable && isDefinitelyNull)
         {
-            bool rhsDefinitelyNull = false;
-
-            if (letStmtValue)
-            {
-                if (auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue))
-                {
-                    rhsDefinitelyNull = true; // literal null
-                }
-                else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
-                {
-                    auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
-                    if (identSym && identSym->isDefinitelyNull)
-                    {
-                        rhsDefinitelyNull = true; // identifier that is definitely null
-                    }
-                }
-            }
-
-            if (rhsDefinitelyNull)
-            {
-                logSemanticErrors(
-                    "Cannot assign a nullable (possibly null) value to non-nullable variable '" + letStmt->ident_token.TokenLiteral + "'",
-                    letStmt->data_type_token.line, letStmt->data_type_token.column);
-                hasError = true;
-                declaredType = ResolvedType{DataType::UNKNOWN, "unknown"}; // mark LHS type invalid
-            }
+            logSemanticErrors(
+                "Cannot assign a nullable (possibly null) value to non-nullable variable '" +
+                    letStmt->ident_token.TokenLiteral + "'",
+                letStmt->data_type_token.line, letStmt->data_type_token.column);
+            hasError = true;
+            declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
         }
     }
 
-    std::cout << "LET STATEMENT DATA TYPE: " << declaredType.resolvedName << "\n";
+    // --- Constant + nullable/heap checks ---
+    if (isConstant && (isNullable || isDefinitelyNull))
+    {
+        logSemanticErrors("Cannot use null on a constant variable '" + letStmt->ident_token.TokenLiteral + "'",
+                          letStmt->ident_token.line, letStmt->ident_token.column);
+        hasError = true;
+    }
 
-    // Creating metadata about the let statement node
+    if (isHeap)
+    {
+        if (!isInitialized)
+        {
+            logSemanticErrors("Cannot promote uninitialized variable '" + letStmt->ident_token.TokenLiteral + "' to the heap",
+                              letStmt->ident_token.line, letStmt->ident_token.column);
+            hasError = true;
+        }
+
+        if (isNullable || isDefinitelyNull)
+        {
+            logSemanticErrors("Cannot promote nullable variable '" + letStmt->ident_token.TokenLiteral + "' to the heap",
+                              letStmt->ident_token.line, letStmt->ident_token.column);
+            hasError = true;
+        }
+
+        if (letStmt->data_type_token.type == TokenType::AUTO)
+        {
+            logSemanticErrors(
+                "Cannot promote auto variable '" + letStmt->ident_token.TokenLiteral + "' to the heap, please explicitly use its type",
+                letStmt->ident_token.line, letStmt->ident_token.column);
+            hasError = true;
+        }
+    }
+
+    // --- Metadata & symbol registration ---
     auto letInfo = std::make_shared<SymbolInfo>();
-
     letInfo->type = declaredType;
     letInfo->isNullable = isNullable;
     letInfo->isMutable = isMutable;
-    letInfo->constIntVal = constInt;
     letInfo->isConstant = isConstant;
+    letInfo->constIntVal = constInt;
     letInfo->isInitialized = isInitialized;
     letInfo->isDefinitelyNull = isDefinitelyNull;
+    letInfo->lastUseNode = isHeap ? letStmt : nullptr;
     letInfo->hasError = hasError;
 
     metaData[letStmt] = letInfo;
-
-    // Pushing the let statement to current scope
     symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
+
+    std::cout << "LET STATEMENT DATA TYPE: " << declaredType.resolvedName << "\n";
 }
 
 void Semantics::walkAssignStatement(Node *node)
