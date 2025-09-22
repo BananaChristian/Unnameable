@@ -625,6 +625,7 @@ struct ErrorStatement : Statement
 // Let statement node
 struct LetStatement : Statement
 {
+    bool isHeap;
     Mutability mutability;
     Token data_type_token;
     bool isNullable = false;
@@ -635,6 +636,11 @@ struct LetStatement : Statement
     {
         std::string mut_str = "";
         std::string nullStr = "";
+        std::string heapStr = "";
+        if (isHeap)
+        {
+            heapStr = "heap ";
+        }
         if (isNullable)
         {
             nullStr += "?";
@@ -644,8 +650,7 @@ struct LetStatement : Statement
         else if (mutability == Mutability::CONSTANT)
             mut_str = "constant ";
 
-        std::string result = "Let Statement: (" + mut_str + "Data Type: " + data_type_token.TokenLiteral + nullStr +
-                             " Variable name: " + ident_token.TokenLiteral;
+        std::string result = "Let Statement: (" + heapStr + mut_str + "Data Type: " + data_type_token.TokenLiteral + nullStr + " Variable name: " + ident_token.TokenLiteral;
 
         if (value)
         {
@@ -660,13 +665,14 @@ struct LetStatement : Statement
         return result;
     }
 
-    LetStatement(Mutability muta, Token data_t, bool isNull, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : mutability(muta),
-                                                                                                                                              data_type_token(data_t),
-                                                                                                                                              isNullable(isNull),
-                                                                                                                                              ident_token(ident_t),
-                                                                                                                                              assign_token(assign_t),
-                                                                                                                                              Statement(data_t),
-                                                                                                                                              value(std::move(val)) {};
+    LetStatement(bool heap, Mutability muta, Token data_t, bool isNull, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : isHeap(heap),
+                                                                                                                                                         mutability(muta),
+                                                                                                                                                         data_type_token(data_t),
+                                                                                                                                                         isNullable(isNull),
+                                                                                                                                                         ident_token(ident_t),
+                                                                                                                                                         assign_token(assign_t),
+                                                                                                                                                         Statement(data_t),
+                                                                                                                                                         value(std::move(val)) {};
 };
 
 struct AssignmentStatement : Statement
