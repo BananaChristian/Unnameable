@@ -407,6 +407,23 @@ Type inference with auto works together with *mut* and *const* for example
 mut auto z = 5;    # Mutable variable with inferred type int
 const auto w = 3;  # Immutable variable with inferred type int
 ```
+## Heap allocations
+Since Unnameable is using a custom memory model(SAGE) components and data blocks by default shall be heap allocated but a user might want some to manually promote some features to the heap themselves 
+They can do this using the `heap` keyword which is a heap promoter it will tell the compiler to treat that variable as a full blown component and place it on the heap
+Although it is only allowed on let statements and has some special rules applying to it
+```
+#Normal use of the heap promoter
+heap int x=10;
+heap mut int y=67;
+heap const int z=78;
+
+heap int x; #This will not be allowed as the compiler will ask for an initialization(If its important to be placed on the heap atleast initialize it)
+
+heap int? x=null; #This will be rejected by the compiler as we dont want to account for nulls in SAGE
+heap int? x; #Same story not allowed 
+
+
+```
 
 ## Future additions
 - Pattern matching to switch statements
