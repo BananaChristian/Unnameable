@@ -179,6 +179,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 // Parsing let statements
 std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
 {
+    bool isHeap = false;
     Mutability mutability = Mutability::IMMUTABLE;
     bool isNullable = false;
     Token mutability_token = currentToken();
@@ -259,7 +260,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
         }
     }
 
-    return std::make_unique<LetStatement>(mutability, dataType_token, isNullable, ident_token, assign_token, move(value));
+    return std::make_unique<LetStatement>(isHeap, mutability, dataType_token, isNullable, ident_token, assign_token, move(value));
 }
 // Parsing let statements with custom types
 std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
@@ -268,6 +269,8 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
     Mutability mut = Mutability::IMMUTABLE;
     Token data_type_token;
     bool isNullable = false;
+    bool isHeap = false;
+
     // Checking for mutability
     if (currentToken().type == TokenType::MUT)
     {
@@ -364,7 +367,42 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
         }
     }
 
-    return std::make_unique<LetStatement>(mut, data_type_token, isNullable, ident_token, assign_token, std::move(value));
+    return std::make_unique<LetStatement>(isHeap, mut, data_type_token, isNullable, ident_token, assign_token, std::move(value));
+}
+
+std::unique_ptr<Statement> Parser::parseHeapStatement()
+{
+    advance(); // consume 'heap'
+
+    // Disallow: heap data ...
+    if (currentToken().type == TokenType::DATA)
+    {
+        logError("Cannot use 'heap' before a data block");
+        return nullptr;
+    }
+
+    // Disallow: heap array ...
+    if (currentToken().type == TokenType::ARRAY)
+    {
+        logError("Cannot use 'heap' before an array declaration");
+        return nullptr;
+    }
+
+    auto stmt = parseLetStatementCustomOrBasic();
+    if (!stmt)
+        return nullptr;
+
+    if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get()))
+    {
+        letStmt->isHeap = true;
+    }
+    else
+    {
+        logError("'heap' can only be applied to let-statements");
+        return nullptr;
+    }
+
+    return stmt;
 }
 
 /*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
@@ -625,6 +663,11 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
 
     while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
     {
+        if (currentToken().type == TokenType::SEMICOLON)
+        {
+            advance();
+            continue;
+        }
         auto dataStmt = parseStatement();
         if (auto letStmt = dynamic_cast<LetStatement *>(dataStmt.get()))
         {
@@ -645,7 +688,7 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
     }
     if (currentToken().type != TokenType::RBRACE)
     {
-        logError("Expected } to close data block");
+        logError("Expected } to close data block but got '" + currentToken().TokenLiteral + "'");
     }
     advance();
 
@@ -1956,6 +1999,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::INSTANTIATE] = &Parser::parseInstantiateStatement;
 
     StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatementWrapper;
+    StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
 }
 
 // Precedence getting function

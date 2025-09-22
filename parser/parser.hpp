@@ -101,6 +101,8 @@ private:
     // A function to determine whether to parse let statements or assignment statements
     std::unique_ptr<Statement> parseLetStatementDecider();
 
+    std::unique_ptr<Statement> parseHeapStatement();
+
     // Identifer starting statements function
     std::unique_ptr<Statement> parseIdentifierStatement();
 
