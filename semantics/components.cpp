@@ -943,38 +943,33 @@ void Semantics::walkComponentStatement(Node *node)
         if (infixExpr)
         {
             auto leftIdent = dynamic_cast<Identifier *>(infixExpr->left_operand.get());
-            if (!leftIdent)
-            {
-                std::cout << "Left side of infix is not identifier\n";
-                continue;
-            }
+            auto rightIdent = dynamic_cast<Identifier *>(infixExpr->right_operand.get());
+            if (!leftIdent || !rightIdent)
+                return;
 
             auto dataName = leftIdent->expression.TokenLiteral;
+            auto memberName = rightIdent->expression.TokenLiteral;
 
-            std::cout << "IMPORTED DATA NAME: " << dataName << "\n";
             auto importedTypeIt = customTypesTable.find(dataName);
             if (importedTypeIt != customTypesTable.end())
             {
                 auto &importedMembers = importedTypeIt->second.members;
-
-                auto &currentScope = symbolTable.back();
-                for (auto &[name, info] : importedMembers)
+                auto memIt = importedMembers.find(memberName);
+                if (memIt != importedMembers.end())
                 {
-                    // Add to component members blueprint
-                    MemberInfo memberCopy = info;
+                    // Copy only the requested member
+                    MemberInfo memberCopy = memIt->second;
                     memberCopy.memberIndex = currentMemberIndex++;
-                    members[name] = memberCopy;
-                    members[name] = info;
+                    members[memberName] = memberCopy;
 
-                    // Also add to local symbol table so assignments resolve
-                    auto memInfo = std::make_shared<SymbolInfo>();
-                    memInfo->type = info.type;
-                    memInfo->isNullable = info.isNullable;
-                    memInfo->isMutable = info.isMutable;
-                    memInfo->isConstant = info.isConstant;
-                    memInfo->isInitialized = info.isInitialised;
-                    memInfo->memberIndex = memberCopy.memberIndex;
-                    currentScope[name] = memInfo;
+                    auto memSym = std::make_shared<SymbolInfo>();
+                    memSym->type = memIt->second.type;
+                    memSym->isNullable = memIt->second.isNullable;
+                    memSym->isMutable = memIt->second.isMutable;
+                    memSym->isConstant = memIt->second.isConstant;
+                    memSym->isInitialized = memIt->second.isInitialised;
+                    memSym->memberIndex = memberCopy.memberIndex;
+                    symbolTable.back()[memberName] = memSym;
                 }
             }
         }
