@@ -1869,6 +1869,7 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
     // Simple assignment (x = ...)
     if (peek1.type == TokenType::ASSIGN)
     {
+        advance();
         return parseAssignmentStatement();
     }
 
