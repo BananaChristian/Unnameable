@@ -474,13 +474,38 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
     // Resolve parent pointer
     llvm::Value *parentPtr = nullptr;
     auto parentVarInfo = semantics.resolveSymbolInfo(parentVarName);
+    if (!parentVarInfo)
+    {
+        throw std::runtime_error("Unidentified variable '" + parentVarName + "'");
+    }
+
+    if (!parentVarInfo->llvmValue)
+    {
+        throw std::runtime_error("No value assigned to '" + parentVarName + "'");
+    }
 
     if (parentVarInfo && parentVarInfo->llvmValue)
         parentPtr = parentVarInfo->llvmValue; // AllocaInst* or Argument*
+
     else if (currentFunction)
         parentPtr = &*(currentFunction->arg_begin()); // hidden 'this'
     else
-        throw std::runtime_error("Cannot resolve parent for field assignment");
+    {
+        // Fallback to global singleton for standalone data block
+        auto globalIt = llvmGlobalDataBlocks.find(parentVarName);
+        if (globalIt != llvmGlobalDataBlocks.end())
+        {
+            parentPtr = globalIt->second;
+        }
+        else if (currentFunction)
+        {
+            parentPtr = &*(currentFunction->arg_begin()); // hidden 'this'
+        }
+        else
+        {
+            throw std::runtime_error("Cannot resolve parent for field assignment: " + parentVarName);
+        }
+    }
 
     // Ensure parent type exists
     auto parentTypeName = parentVarInfo->type.resolvedName;

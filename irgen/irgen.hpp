@@ -40,6 +40,7 @@ public:
     std::unordered_map<std::type_index, expressionGenerators> expressionGeneratorsMap;
     std::unordered_map<std::string, llvm::StructType *> componentTypes;
     std::unordered_map<std::string, llvm::StructType *> llvmCustomTypes;
+    std::unordered_map<std::string, llvm::Value *> llvmGlobalDataBlocks;
 
     ComponentStatement *currentComponent = nullptr;
     llvm::Value *currentComponentInstance;
@@ -112,6 +113,7 @@ private:
     void registerGeneratorFunctions();
     void registerExpressionGeneratorFunctions();
     llvm::Value *generateExpression(Node *node);
+    llvm::Value *getOrCreateGlobalDataBlock(DataStatement *dataStmt);
     void generateStatement(Node *node);
     char decodeCharLiteral(const std::string &literal);
     uint16_t decodeChar16Literal(const std::string &literal);

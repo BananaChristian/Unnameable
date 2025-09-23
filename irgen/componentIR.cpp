@@ -1,5 +1,29 @@
 #include "irgen.hpp"
 
+llvm::Value *IRGenerator::getOrCreateGlobalDataBlock(DataStatement *dataStmt)
+{
+    auto it = semantics.metaData.find(dataStmt);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("Missing data block metaData");
+
+    // Already created
+    if (it->second->llvmValue)
+        return it->second->llvmValue;
+
+    auto structTy = llvmCustomTypes[it->second->type.resolvedName];
+    // Create a global alloca (or global variable if truly global)
+    llvm::GlobalVariable *gv = new llvm::GlobalVariable(
+        *module,
+        structTy,
+        false, // isConstant
+        llvm::GlobalValue::ExternalLinkage,
+        llvm::Constant::getNullValue(structTy),
+        it->second->type.resolvedName);
+
+    it->second->llvmValue = gv;
+    return gv;
+}
+
 void IRGenerator::generateDataStatement(Node *node)
 {
     auto dataStmt = dynamic_cast<DataStatement *>(node);
@@ -31,6 +55,13 @@ void IRGenerator::generateDataStatement(Node *node)
     llvm::StructType *structTy = llvm::StructType::create(context, memberTypes, blockName);
     it->second->llvmType = structTy;
     llvmCustomTypes[blockName] = structTy;
+
+    if (llvmGlobalDataBlocks.find(blockName) == llvmGlobalDataBlocks.end())
+    {
+        llvm::AllocaInst *globalAlloc = builder.CreateAlloca(structTy, nullptr, blockName + "_global");
+        llvmGlobalDataBlocks[blockName] = globalAlloc;
+        it->second->llvmValue = globalAlloc; // so resolveSymbolInfo still works
+    }
 }
 
 void IRGenerator::generateBehaviorStatement(Node *node)
