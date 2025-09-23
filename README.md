@@ -353,7 +353,7 @@ data phone_specs{
     string color;
 }
 
-phone_specs::health=90u; #This will be allowed since all the members of the data block are mutable
+phone_specs::name="Samsung"; #This will be allowed since all the members of the data block are mutable
 ```
 
 ## Enums
