@@ -377,6 +377,12 @@ void Semantics::walkDataStatement(Node *node)
                   << "' to data block '" << dataBlockName << "'\n";
     }
 
+    int currentMemberIndex = 0;
+    for (auto &kv : dataBlockMembers)
+    {
+        kv.second.memberIndex = currentMemberIndex++;
+    }
+
     // Build symbol info for the whole block
     auto dataSymbolInfo = std::make_shared<SymbolInfo>();
     dataSymbolInfo->type = ResolvedType{DataType::DATABLOCK, dataBlockName};
@@ -384,11 +390,26 @@ void Semantics::walkDataStatement(Node *node)
     dataSymbolInfo->isConstant = isBlockConstant;
     dataSymbolInfo->members = dataBlockMembers;
 
+    for (auto &kv : dataSymbolInfo->members)
+    {
+        auto it = dataBlockMembers.find(kv.first);
+        if (it != dataBlockMembers.end())
+            kv.second.memberIndex = it->second.memberIndex;
+    }
+
     // Build customtype info
     CustomTypeInfo typeInfo = {
         .typeName = dataBlockName,
         .type = ResolvedType{DataType::DATABLOCK, dataBlockName},
         .members = dataBlockMembers};
+
+    // Propagate indices to customTypesTable
+    for (auto &kv : typeInfo.members)
+    {
+        auto it = dataBlockMembers.find(kv.first);
+        if (it != dataBlockMembers.end())
+            kv.second.memberIndex = it->second.memberIndex;
+    }
 
     // Store results
     metaData[dataBlockStmt] = dataSymbolInfo;
