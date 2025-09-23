@@ -110,20 +110,21 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     llvm::Value *selfArg = &*argIt++;
     selfArg->setName("self");
 
-    std::cout << "[IR INIT] selfArg: " << selfArg << " (type: ";
-    selfArg->getType()->print(llvm::outs());
-    std::cout << ")\n";
+    // Create a stack slot for self to make it consistent with normal functions
+    llvm::Value *selfAlloca = builder.CreateAlloca(structTy->getPointerTo(), nullptr, "self.addr");
+    builder.CreateStore(selfArg, selfAlloca);
 
-    // Store the component instance pointer into the semantic meta so generateSelfExpression can find it
+    // When looking up self in generateSelfExpression, load from here
+    llvm::Value *selfPtr = builder.CreateLoad(structTy->getPointerTo(), selfAlloca, "self.ptr");
+
+    // Save into metaData
     auto metaIt = semantics.metaData.find(component);
     if (metaIt == semantics.metaData.end())
-    {
         throw std::runtime_error("Missing component metaData in init generation for: " + componentName);
-    }
 
-    // Save previous value to restore later
     llvm::Value *prevInstance = metaIt->second->llvmValue;
-    metaIt->second->llvmValue = selfArg;
+    metaIt->second->llvmValue = selfPtr;
+
     std::cout << "[IR INIT] meta->llvmValue set to selfArg for component: " << componentName << "\n";
 
     // A transient IRGenerator field if you use one
@@ -135,7 +136,14 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     for (auto &arg : initStmt->constructor_args)
     {
         llvm::Value *argVal = &*argIt++;
-        constructorArgs.push_back(argVal);
+        auto argAlloca = builder.CreateAlloca(argVal->getType(), nullptr, "ctor.arg");
+        builder.CreateStore(argVal, argAlloca);
+        auto metaIt = semantics.metaData.find(arg.get());
+        if (metaIt == semantics.metaData.end())
+        {
+            throw std::runtime_error("Init arg metaData does not exist");
+        }
+        metaIt->second->llvmValue = argAlloca;
     }
 
     // Generate the init body — inside this call, generateSelfExpression will find meta->llvmValue/selfArg
@@ -351,6 +359,6 @@ void IRGenerator::generateEnumClassStatement(Node *node)
     std::cout << "[IRGEN LOG] Declared enum class " << enumInfo->type.resolvedName << " with members:\n";
     for (auto &[memberName, member] : enumTypeInfo.members)
     {
-        //llvm::ConstantInt will be generated  when a member is actually used in an expression
+        // llvm::ConstantInt will be generated  when a member is actually used in an expression
     }
 }

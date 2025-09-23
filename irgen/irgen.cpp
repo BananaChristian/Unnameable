@@ -791,7 +791,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 
     if (infix->operat.type == TokenType::FULLSTOP)
     {
-        std::cout<<"TRIGGERED FULLSTOP INFIX HANDLER\n";
+        std::cout << "TRIGGERED FULLSTOP INFIX HANDLER\n";
         // Left should be the object (Player p)
         // Right should be the member identifier (health)
         llvm::Value *objectVal = generateExpression(infix->left_operand.get()); // e.g., 'p'
@@ -835,7 +835,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 
     if (infix->operat.type == TokenType::SCOPE_OPERATOR)
     {
-        std::cout<<"TRIGGERED SCOPE OPERATOR INFIX HANDLER\n";
+        std::cout << "TRIGGERED SCOPE OPERATOR INFIX HANDLER\n";
         auto leftTypeIt = semantics.metaData.find(infix->left_operand.get());
         if (leftTypeIt == semantics.metaData.end())
             throw std::runtime_error("Missing type info for LHS of ::");
@@ -1481,6 +1481,14 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     llvm::Type *ty = getLLVMType(identIt->second->type);
     // Checking if the identifier has a value
     llvm::Value *variablePtr = identIt->second->llvmValue;
+    if (!variablePtr)
+    {
+        std::string msg = "Internal error: llvmValue is null for identifier '" + identName + "'";
+        llvm::errs() << "[ERROR] " << msg << "identNode=" << identExpr << "\n";
+        throw std::runtime_error(msg);
+    }
+    if (!variablePtr->getType()->isPointerTy())
+        return variablePtr;
 
     return builder.CreateLoad(getLLVMType(identIt->second->type), variablePtr, identExpr->identifier.TokenLiteral);
 }
