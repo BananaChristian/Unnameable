@@ -99,6 +99,15 @@ void Static::analyzeLetStatement(Node *node)
         return;
     }
 
+    uint64_t size = 0;
+
+    if (!letStmt->isHeap)
+    {
+        std::cout << "Bro is not heap allocated so not calculating \n";
+        size = 0;
+        return;
+    }
+
     // Retrieve the llvm value from the meta data
     auto letVal = letIt->second->llvmValue;
 
@@ -108,7 +117,7 @@ void Static::analyzeLetStatement(Node *node)
     // Get the corresponding size LLVM would assign to it
     const llvm::DataLayout &DL = irgen.getLLVMModule().getDataLayout();
 
-    uint64_t size = DL.getTypeAllocSize(letType);
+    size = DL.getTypeAllocSize(letType);
 
     total_size += size;
 }
