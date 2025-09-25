@@ -41,6 +41,7 @@ public:
     std::unordered_map<std::string, llvm::StructType *> componentTypes;
     std::unordered_map<std::string, llvm::StructType *> llvmCustomTypes;
     std::unordered_map<std::string, llvm::Value *> llvmGlobalDataBlocks;
+    std::unordered_map<std::string, unsigned> llvmStructIndices;
 
     ComponentStatement *currentComponent = nullptr;
     llvm::Value *currentComponentInstance;

@@ -46,7 +46,7 @@ void IRGenerator::generateDataStatement(Node *node)
 
     for (const auto &member : it->second->members)
     {
-        auto &typeKind = member.second.type;
+        auto &typeKind = member.second->type;
         llvm::Type *type = getLLVMType(typeKind);
         memberTypes.push_back(type);
         memberNames.push_back(member.first);
@@ -60,7 +60,7 @@ void IRGenerator::generateDataStatement(Node *node)
     {
         llvm::AllocaInst *globalAlloc = builder.CreateAlloca(structTy, nullptr, blockName + "_global");
         llvmGlobalDataBlocks[blockName] = globalAlloc;
-        it->second->llvmValue = globalAlloc; // so resolveSymbolInfo still works
+        it->second->llvmValue = globalAlloc;
     }
 }
 
@@ -81,7 +81,7 @@ void IRGenerator::generateBehaviorStatement(Node *node)
     // Generating IR for each of the member function expressions or declarations
     for (const auto &[funcName, funcInfo] : it->second->members)
     {
-        generateFunctionStatement(funcInfo.node);
+        generateFunctionStatement(funcInfo->node);
     }
 
     std::vector<llvm::Type *> memberTypes;
@@ -205,9 +205,14 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
     if (auto expr = dynamic_cast<FunctionExpression *>(fnExpr))
     {
         auto exprIt = semantics.metaData.find(expr);
-        if (exprIt == semantics.metaData.end() || exprIt->second->hasError)
-            throw std::runtime_error("Component function has semantic errors");
+        if (exprIt == semantics.metaData.end())
+            throw std::runtime_error("Component function metaData not found");
 
+        if (exprIt->second->hasError)
+        {
+            std::cout << "FUNCTION NODE WITH ERROR:" << expr->toString() << "\n";
+            throw std::runtime_error("Component function has semantic errors");
+        }
         funcName = expr->func_key.TokenLiteral;
 
         llvm::Type *thisPtrType = llvmCustomTypes[compName]->getPointerTo();
@@ -320,15 +325,17 @@ void IRGenerator::generateComponentStatement(Node *node)
 
     // Collect only non-function members for struct
     std::vector<llvm::Type *> memberTypes;
+    std::unordered_map<std::string, unsigned> llvmMemberIndices;
+    unsigned idx = 0;
     for (const auto &[memberName, info] : it->second->members)
     {
         std::cout << "Dealing with memberTypes\n";
         llvm::Type *memberType = nullptr;
 
-        if (info.node && dynamic_cast<FunctionStatement *>(info.node))
+        if (info->node && dynamic_cast<FunctionStatement *>(info->node))
         {
             // Generate method IR separately
-            auto funcStmt = static_cast<FunctionStatement *>(info.node);
+            auto funcStmt = static_cast<FunctionStatement *>(info->node);
 
             // Inject '%this' pointer if function belongs to component
             if (currentComponent)
@@ -346,11 +353,12 @@ void IRGenerator::generateComponentStatement(Node *node)
         }
 
         // Regular data member
-        memberType = getLLVMType(info.type);
+        memberType = getLLVMType(info->type);
         if (!memberType)
             throw std::runtime_error("Null member type for '" + memberName + "'");
 
         memberTypes.push_back(memberType);
+        llvmMemberIndices[memberName] = idx++; 
     }
 
     // Finalize struct body

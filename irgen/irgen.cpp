@@ -32,11 +32,24 @@ void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program)
 //  Main Expression generator helper function
 llvm::Value *IRGenerator::generateExpression(Node *node)
 {
+    if (!node)
+    {
+        std::cout << "[GENEXPR] NULL node!\n";
+        return nullptr;
+    }
+    std::type_index dynType(typeid(*node));
+    std::cout << "[GENEXPR] entry node ptr=" << node
+              << " dynType=" << dynType.name()
+              << " toString=\"" << node->toString() << "\"\n";
+
     auto exprIt = expressionGeneratorsMap.find(typeid(*node));
     if (exprIt == expressionGeneratorsMap.end())
     {
+        std::cout << "[GENEXPR] NO GENERATOR FOR type=" << dynType.name()
+                  << " nodeptr=" << node << " str=" << node->toString() << "\n";
         throw std::runtime_error("Could not find expression type IR generator: " + node->toString());
     }
+    std::cout << "[GENEXPR] calling generator for type=" << dynType.name() << " node=" << node << "\n";
     return (this->*exprIt->second)(node);
 }
 
@@ -59,43 +72,116 @@ void IRGenerator::generateLetStatement(Node *node)
     if (!letStmt)
         throw std::runtime_error("Invalid let statement");
 
-    const auto &letName = letStmt->ident_token.TokenLiteral;
+    const std::string &letName = letStmt->ident_token.TokenLiteral;
+    std::cout << "[DEBUG] Generating let statement for variable '" << letName << "'\n";
+
     auto letIt = semantics.metaData.find(letStmt);
     if (letIt == semantics.metaData.end())
-        throw std::runtime_error("No let metadata");
+        throw std::runtime_error("No let metadata for '" + letName + "'");
 
-    auto letType = letIt->second->type;
+    auto sym = letIt->second;
+    std::cout << "[DEBUG] Symbol type: " << sym->type.resolvedName << "\n";
 
-    llvm::Type *varType = getLLVMType(letType); // will be int32/i16/etc for enums
-    llvm::Value *initVal = nullptr;
+    llvm::Function *fn = builder.GetInsertBlock()->getParent();
+    llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
 
-    if (letStmt->value)
-        initVal = generateExpression(letStmt->value.get());
-    else
-        initVal = llvm::Constant::getNullValue(varType);
-
-    if (inFunction())
+    // === Component type ===
+    auto compIt = componentTypes.find(sym->type.resolvedName);
+    if (compIt != componentTypes.end())
     {
-        llvm::Function *fn = builder.GetInsertBlock()->getParent();
-        llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
-        auto *alloca = entryBuilder.CreateAlloca(varType, nullptr, letName);
-        builder.CreateStore(initVal, alloca);
-        letIt->second->llvmValue = alloca;
+        llvm::StructType *structTy = compIt->second;
+        std::cout << "[DEBUG] Allocating component '" << letName << "' as struct type '"
+                  << sym->type.resolvedName << "'\n";
+
+        // Allocate the struct itself
+        llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(structTy, nullptr, letName);
+        sym->llvmValue = alloca;
+        sym->llvmType = structTy;
+        std::cout << "[DEBUG] Struct allocated at llvmValue = " << alloca << "\n";
+
+        // Walk all members: declared + imported
+        auto compMetaIt = semantics.customTypesTable.find(sym->type.resolvedName);
+        if (compMetaIt != semantics.customTypesTable.end())
+        {
+            int index = 0;
+            for (auto &[memberName, info] : compMetaIt->second.members)
+            {
+                // Skip functions
+                if (info->node && dynamic_cast<FunctionStatement *>(info->node))
+                {
+                    std::cout << "[DEBUG] Skipping function member '" << memberName << "'\n";
+                    index++;
+                    continue;
+                }
+
+                // Create GEP relative to struct allocation
+                llvm::Value *memberPtr = builder.CreateStructGEP(structTy, alloca, index, memberName);
+                if (!memberPtr)
+                    throw std::runtime_error("Failed to allocate llvmValue for member '" + memberName + "'");
+
+                // Assign both llvmValue and llvmType in customTypesTable
+                info->llvmValue = memberPtr;
+                info->llvmType = getLLVMType(info->type);
+                std::cout << "[DEBUG] Member '" << memberName << "' assigned llvmValue = "
+                          << memberPtr << " and llvmType = " << info->llvmType
+                          << " at struct index " << index << "\n";
+
+                if (!info->node)
+                {
+                    throw std::runtime_error("Node not registered for '" + memberName + "'");
+                }
+
+                // === Propagate to the metadata node itself ===
+                if (info->node)
+                {
+                    auto metaIt = semantics.metaData.find(info->node);
+                    if (metaIt != semantics.metaData.end())
+                    {
+                        metaIt->second->llvmValue = memberPtr;
+                        if (!metaIt->second->llvmValue)
+                            throw std::runtime_error("No llvm value given to this guy look here");
+                        metaIt->second->llvmType = getLLVMType(info->type);
+                        if (!metaIt->second->llvmType)
+                        {
+                            throw std::runtime_error("No llvm type given to this guy as it failed or some shit");
+                        }
+                        std::cout << "[DEBUG] Propagated llvmValue :" << metaIt->second->llvmValue << " to member node '"
+                                  << memberName << "' at " << info->node << "\n";
+                    }
+                }
+
+                index++;
+            }
+        }
+
+        std::cout << "[DEBUG] Component '" << letName << "' fully allocated with all members.\n";
+        return;
     }
-    else
+
+    // === Non-component scalar/array/etc ===
+    llvm::Type *varType = getLLVMType(sym->type);
+    if (!varType)
     {
-        llvm::Constant *initConst = llvm::Constant::getNullValue(varType);
-
-        auto *gv = new llvm::GlobalVariable(
-            *module,
-            varType,
-            false,
-            llvm::GlobalValue::ExternalLinkage,
-            initConst,
-            letName);
-
-        letIt->second->llvmValue = gv;
+        throw std::runtime_error("Failed to get LLVM type equivalent for  '" + sym->type.resolvedName + "'");
     }
+    llvm::Value *initVal = letStmt->value ? generateExpression(letStmt->value.get())
+                                          : llvm::Constant::getNullValue(varType);
+
+    if (!initVal)
+    {
+        throw std::runtime_error("No init value");
+    }
+
+    llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(varType, nullptr, letName);
+    if (!alloca)
+    {
+        throw std::runtime_error("Failed to create alloca");
+    }
+    builder.CreateStore(initVal, alloca);
+    sym->llvmValue = alloca;
+    sym->llvmType = varType;
+    std::cout << "[DEBUG] Scalar variable '" << letName << "' allocated at llvmValue = "
+              << alloca << " with type = " << varType << "\n";
 }
 
 // While statement IR generator function
@@ -519,7 +605,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
         throw std::runtime_error("'" + childName + "' is not a member of '" + parentTypeName + "'");
 
     llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
-    unsigned fieldIndex = childIt->second.memberIndex;
+    unsigned fieldIndex = childIt->second->memberIndex;
 
     // Create proper GEP to member
     llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, parentPtr, fieldIndex, childName);
@@ -661,6 +747,49 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     auto infix = dynamic_cast<InfixExpression *>(node);
     if (!infix)
         throw std::runtime_error("Invalid infix expression");
+
+    if (infix->operat.type == TokenType::FULLSTOP)
+    {
+        std::cout << "TRIGGERED INFIX FULLSTOP GUY\n";
+        // Generate the left-hand object (e.g., 'p')
+        llvm::Value *objectVal = generateExpression(infix->left_operand.get());
+
+        auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
+        if (!memberIdent)
+            throw std::runtime_error("Right-hand side of '.' must be a field identifier");
+
+        std::string memberName = memberIdent->expression.TokenLiteral;
+
+        // Lookup left-hand symbol
+        auto leftMetaIt = semantics.metaData.find(infix->left_operand.get());
+        if (leftMetaIt == semantics.metaData.end())
+            throw std::runtime_error("Left-hand object metadata missing");
+
+        std::string parentTypeName = leftMetaIt->second->type.resolvedName;
+
+        auto parentIt = semantics.customTypesTable.find(parentTypeName);
+        if (parentIt == semantics.customTypesTable.end())
+            throw std::runtime_error("Type '" + parentTypeName + "' doesn't exist");
+
+        auto memberIt = parentIt->second.members.find(memberName);
+        if (memberIt == parentIt->second.members.end())
+            throw std::runtime_error("Member '" + memberName + "' not found in type '" + parentTypeName + "'");
+
+        auto &index = llvmStructIndices[parentTypeName];
+        unsigned memberIndex = index;
+        llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
+
+        // Compute pointer to the member dynamically
+        llvm::Value *memberPtr = builder.CreateStructGEP(structTy, objectVal, memberIndex, memberName);
+        if (!memberPtr)
+            throw std::runtime_error("No llvm value for '" + memberName + "'");
+
+        // Load the value
+        llvm::Type *memberType = getLLVMType(memberIt->second->type);
+        if (!memberType)
+            throw std::runtime_error("Member Type wasnt retrieved");
+        return builder.CreateLoad(memberType, memberPtr, memberName + "_val");
+    }
 
     llvm::Value *left = generateExpression(infix->left_operand.get());
     llvm::Value *right = generateExpression(infix->right_operand.get());
@@ -811,77 +940,6 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         else
         {
             throw std::runtime_error("Comparison not supported for type '" + resultType.resolvedName + "'");
-        }
-    }
-
-    if (infix->operat.type == TokenType::FULLSTOP)
-    {
-        std::cout << "TRIGGERED FULLSTOP INFIX HANDLER\n";
-        // Left should be the object (Player p)
-        // Right should be the member identifier (health)
-        llvm::Value *objectVal = generateExpression(infix->left_operand.get()); // e.g., 'p'
-
-        auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
-        if (!memberIdent)
-            throw std::runtime_error("Right-hand side of '.' or '::' must be a field identifier");
-
-        std::string memberName = memberIdent->expression.TokenLiteral;
-
-        // Get type info for 'object'
-        auto objectTypeIt = semantics.metaData.find(infix->left_operand.get());
-        if (objectTypeIt == semantics.metaData.end())
-            throw std::runtime_error("Type info missing for object in member access");
-
-        ResolvedType objectType = objectTypeIt->second->type;
-
-        // Find member index
-        auto parentIt = semantics.customTypesTable.find(objectType.resolvedName);
-        if (parentIt == semantics.customTypesTable.end())
-            throw std::runtime_error("Type '" + objectType.resolvedName + "' doesn't exist");
-
-        auto memberIt = parentIt->second.members.find(memberName);
-        if (memberIt == parentIt->second.members.end())
-            throw std::runtime_error("Member '" + memberName + "' not found in type '" + objectType.resolvedName + "'");
-
-        llvm::StructType *structTy = llvmCustomTypes[objectType.resolvedName];
-        unsigned memberIndex = memberIt->second.memberIndex;
-
-        auto memberType = memberIt->second.type;
-
-        // Compute pointer to member: CreateStructGEP requires the value pointer first, then the index
-        llvm::Value *ptr = builder.CreateStructGEP(
-            structTy,    // LLVM struct type
-            objectVal,   // Pointer to the struct
-            memberIndex, // Field index
-            memberName + "_ptr");
-
-        return builder.CreateLoad(getLLVMType(memberType), ptr, memberName + "_val");
-    }
-
-    if (infix->operat.type == TokenType::SCOPE_OPERATOR)
-    {
-        std::cout << "TRIGGERED SCOPE OPERATOR INFIX HANDLER\n";
-        auto leftTypeIt = semantics.metaData.find(infix->left_operand.get());
-        if (leftTypeIt == semantics.metaData.end())
-            throw std::runtime_error("Missing type info for LHS of ::");
-
-        ResolvedType leftType = leftTypeIt->second->type;
-
-        // If LHS is enum, return the constant of RHS directly
-        if (leftType.kind == DataType::ENUM)
-        {
-            auto enumInfo = semantics.customTypesTable[leftType.resolvedName];
-            auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
-            if (!memberIdent)
-                throw std::runtime_error("RHS of :: must be identifier");
-            std::string memberName = memberIdent->expression.TokenLiteral;
-
-            auto memberIt = enumInfo.members.find(memberName);
-            if (memberIt == enumInfo.members.end())
-                throw std::runtime_error("Enum member not found: " + memberName);
-
-            return llvm::ConstantInt::get(getLLVMType({enumInfo.underLyingType, ""}),
-                                          memberIt->second.constantValue);
         }
     }
 
@@ -1487,35 +1545,58 @@ llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType typ
 // Generator function for identifier expression
 llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
 {
+    std::cout << "INSIDE IDENTIFIER GEN\n";
     auto identExpr = dynamic_cast<Identifier *>(node);
     if (!identExpr)
-    {
         throw std::runtime_error("Invalid identifier expression");
-    }
 
     const std::string &identName = identExpr->identifier.TokenLiteral;
-    auto identIt = semantics.metaData.find(identExpr);
-    if (identIt == semantics.metaData.end())
-    {
+
+    // Lookup symbol in metaData
+    auto metaIt = semantics.metaData.find(identExpr);
+    if (metaIt == semantics.metaData.end())
         throw std::runtime_error("Unidentified identifier '" + identName + "'");
-    }
-    if (identIt->second->hasError)
+
+    auto sym = metaIt->second;
+    if (sym->hasError)
     {
-        return nullptr;
+        throw std::runtime_error("Semantic error detected ");
     }
-    llvm::Type *ty = getLLVMType(identIt->second->type);
-    // Checking if the identifier has a value
-    llvm::Value *variablePtr = identIt->second->llvmValue;
+
+    llvm::Value *variablePtr = sym->llvmValue;
+    if (!variablePtr)
+        throw std::runtime_error("No llvm value was assigned for '" + identName + "'");
+
+    // Check if this symbol is a struct/component instance
+    auto compIt = componentTypes.find(sym->type.resolvedName);
+    if (compIt != componentTypes.end())
+    {
+        if (!variablePtr)
+        {
+            std::cerr << "[ERROR] Component instance '" << identName
+                      << "' has null llvmValue!" << std::endl;
+            throw std::runtime_error("Component llvmValue null");
+        }
+
+        // Always return pointer to the struct instance
+        return variablePtr;
+    }
+
+    // Scalar case: pointer -> load
+    if (variablePtr->getType()->isPointerTy())
+    {
+        if (!sym->llvmType)
+            throw std::runtime_error("llvmType null for scalar '" + identName + "'");
+        return builder.CreateLoad(sym->llvmType, variablePtr, identName + "_val");
+    }
+
     if (!variablePtr)
     {
-        std::string msg = "Internal error: llvmValue is null for identifier '" + identName + "'";
-        llvm::errs() << "[ERROR] " << msg << "identNode=" << identExpr << "\n";
-        throw std::runtime_error(msg);
+        throw std::runtime_error("Variable ptr is null ");
     }
-    if (!variablePtr->getType()->isPointerTy())
-        return variablePtr;
 
-    return builder.CreateLoad(getLLVMType(identIt->second->type), variablePtr, identExpr->identifier.TokenLiteral);
+    std::cout << "ENDED IDENTIFIER GEN\n";
+    return variablePtr;
 }
 
 llvm::Value *IRGenerator::generateSelfExpression(Node *node)
