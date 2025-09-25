@@ -489,7 +489,7 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
             }
 
-            return memberIt->second.type;
+            return memberIt->second->type;
         }
         else if (operatorType == TokenType::SCOPE_OPERATOR)
         {
@@ -517,9 +517,9 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
 
             if (varType.kind == DataType::ENUM)
             {
-                return memIt->second.parentType;
+                return memIt->second->parentType;
             }
-            return memIt->second.type;
+            return memIt->second->type;
         }
     }
 
@@ -556,7 +556,7 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
         return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
-    return memberIt->second.type;
+    return memberIt->second->type;
 }
 
 ResolvedType Semantics::resultOfBinary(TokenType operatorType, ResolvedType leftType, ResolvedType rightType)
@@ -754,7 +754,7 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
                                       token.line, token.column);
                     return {DataType::UNKNOWN, "unknown"};
                 }
-                auto memberType = memberIt->second.type;
+                auto memberType = memberIt->second->type;
                 return memberType; // If you want nullable custom types too, you can apply same + "?" logic here
             }
 
@@ -1255,9 +1255,9 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
                 logSemanticErrors("Type '" + childName + "' does not exist in '" + parentName + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
             }
-            auto memberType = memberIt->second.type;
+            auto memberType = memberIt->second->type;
 
-            return ResolvedType{memberType.kind, memberIt->second.memberName};
+            return ResolvedType{memberType.kind, memberIt->second->memberName};
         }
 
         // If we have no members we return the parent

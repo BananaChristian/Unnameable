@@ -90,6 +90,8 @@ struct MemberInfo
     ResolvedType parentType; //Parent type for enum members
 
     Node *node = nullptr;
+    llvm::Value* llvmValue = nullptr;
+    llvm::Type * llvmType=nullptr;
     int memberIndex = -1;
 };
 
@@ -99,7 +101,7 @@ struct CustomTypeInfo
     ResolvedType type;
     // Special for enum class
     DataType underLyingType = DataType::INTEGER; // Defaulting to 32 bit integer
-    std::unordered_map<std::string, MemberInfo> members;
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
 };
 
 struct ScopeInfo
@@ -107,7 +109,7 @@ struct ScopeInfo
     ResolvedType type;
     std::string typeName;
     bool hasInitConstructor = false;
-    std::unordered_map<std::string, MemberInfo> members;
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
     Node *node = nullptr;
 };
 
@@ -137,13 +139,14 @@ struct SymbolInfo
     // Array flags
     ArrayMeta arrayMeta;
 
-    std::unordered_map<std::string, MemberInfo> members;
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
     llvm::Value *llvmValue = nullptr;
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
 
     size_t componentSize;
     Node *lastUseNode = nullptr;
+    
 
     // Error flag
     bool hasError = false;

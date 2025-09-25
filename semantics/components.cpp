@@ -64,7 +64,7 @@ void Semantics::walkEnumClassStatement(Node *node)
 
     // Push temporary scope
     symbolTable.push_back({});
-    std::unordered_map<std::string, MemberInfo> members;
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
     std::int64_t currentValue = 0;
     auto enumInfo = std::make_shared<SymbolInfo>();
 
@@ -257,13 +257,15 @@ void Semantics::walkEnumClassStatement(Node *node)
         }
 
         // Store member info
-        MemberInfo info{
-            .memberName = memberName,
-            .type = underLyingType,
-            .isConstant = true,
-            .isInitialised = true,
-            .constantValue = static_cast<int>(memberValue),
-            .parentType = ResolvedType{DataType::ENUM, enumStmtName}};
+        // Store member info as shared_ptr
+        auto info = std::make_shared<MemberInfo>();
+        info->memberName = memberName;
+        info->type = underLyingType;
+        info->isConstant = true;
+        info->isInitialised = true;
+        info->node = enumMember.get();
+        info->constantValue = static_cast<int>(memberValue);
+        info->parentType = ResolvedType{DataType::ENUM, enumStmtName};
         members[memberName] = info;
 
         // Add member to local scope
@@ -325,7 +327,7 @@ void Semantics::walkDataStatement(Node *node)
     // Create new local scope for analysis
     symbolTable.push_back({});
 
-    std::unordered_map<std::string, MemberInfo> dataBlockMembers;
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> dataBlockMembers;
 
     // Analyze each field
     for (const auto &field : dataBlockStmt->fields)
@@ -362,15 +364,16 @@ void Semantics::walkDataStatement(Node *node)
         }
 
         // Build member info
-        MemberInfo memberInfo = {
-            .memberName = letStmt->ident_token.TokenLiteral,
-            .type = letSymbol->type,
-            .isMutable = letSymbol->isMutable,
-            .isConstant = letSymbol->isConstant,
-            .isInitialised = letSymbol->isInitialized};
+        auto memInfo = std::make_shared<MemberInfo>();
+        memInfo->memberName = letStmt->ident_token.TokenLiteral;
+        memInfo->type = letSymbol->type;
+        memInfo->isMutable = letSymbol->isMutable;
+        memInfo->isConstant = letSymbol->isConstant;
+        memInfo->isInitialised = letSymbol->isInitialized;
+        memInfo->node = field.get();
 
         // Insert into members map
-        dataBlockMembers[letStmt->ident_token.TokenLiteral] = memberInfo;
+        dataBlockMembers[letStmt->ident_token.TokenLiteral] = memInfo;
 
         std::cout << "[SEMANTIC LOG] Added field '"
                   << letStmt->ident_token.TokenLiteral
@@ -380,7 +383,7 @@ void Semantics::walkDataStatement(Node *node)
     int currentMemberIndex = 0;
     for (auto &kv : dataBlockMembers)
     {
-        kv.second.memberIndex = currentMemberIndex++;
+        kv.second->memberIndex = currentMemberIndex++;
     }
 
     // Build symbol info for the whole block
@@ -394,7 +397,7 @@ void Semantics::walkDataStatement(Node *node)
     {
         auto it = dataBlockMembers.find(kv.first);
         if (it != dataBlockMembers.end())
-            kv.second.memberIndex = it->second.memberIndex;
+            kv.second->memberIndex = it->second->memberIndex;
     }
 
     // Build customtype info
@@ -408,7 +411,7 @@ void Semantics::walkDataStatement(Node *node)
     {
         auto it = dataBlockMembers.find(kv.first);
         if (it != dataBlockMembers.end())
-            kv.second.memberIndex = it->second.memberIndex;
+            kv.second->memberIndex = it->second->memberIndex;
     }
 
     // Store results
@@ -445,7 +448,7 @@ void Semantics::walkBehaviorStatement(Node *node)
     // Push a new scope for analysis
     symbolTable.push_back({});
 
-    std::unordered_map<std::string, MemberInfo> behaviorMembers;
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> behaviorMembers;
 
     // Analyze each function inside the behavior
     for (const auto &func : behaviorStmt->functions)
@@ -463,7 +466,7 @@ void Semantics::walkBehaviorStatement(Node *node)
         // Let the walker handle function analysis
         walker(funcStmt);
 
-        MemberInfo funcInfo;
+        std::shared_ptr<MemberInfo> funcInfo;
 
         // Case A: function expression
         if (auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get()))
@@ -478,10 +481,9 @@ void Semantics::walkBehaviorStatement(Node *node)
                 continue;
             }
 
-            funcInfo = {
-                .memberName = funcExpr->func_key.TokenLiteral,
-                .type = exprSym->type,
-                .node = funcStmt};
+            funcInfo->memberName = funcExpr->func_key.TokenLiteral;
+            funcInfo->type = exprSym->type;
+            funcInfo->node = funcStmt;
 
             behaviorMembers[funcExpr->func_key.TokenLiteral] = funcInfo;
 
@@ -513,10 +515,9 @@ void Semantics::walkBehaviorStatement(Node *node)
                 continue;
             }
 
-            funcInfo = {
-                .memberName = funcDecl->function_name->expression.TokenLiteral,
-                .type = declSym->type,
-                .node = funcStmt};
+            funcInfo->memberName = funcDecl->function_name->expression.TokenLiteral;
+            funcInfo->type = declSym->type;
+            funcInfo->node = funcStmt;
 
             behaviorMembers[funcDecl->function_name->expression.TokenLiteral] = funcInfo;
 
@@ -636,13 +637,16 @@ void Semantics::walkUseStatement(Node *node)
             auto &currentMembers = currentTypeStack.back().members;
             for (auto &kv : resultSym->members)
             {
+                walker(kv.second->node);
                 currentMembers[kv.first] = kv.second;
                 auto memSym = std::make_shared<SymbolInfo>();
-                memSym->type = kv.second.type;
-                memSym->isNullable = kv.second.isNullable;
-                memSym->isMutable = kv.second.isMutable;
-                memSym->isConstant = kv.second.isConstant;
-                memSym->isInitialized = kv.second.isInitialised;
+                memSym->type = kv.second->type;
+                memSym->isNullable = kv.second->isNullable;
+                memSym->isMutable = kv.second->isMutable;
+                memSym->isConstant = kv.second->isConstant;
+                memSym->isInitialized = kv.second->isInitialised;
+                if (kv.second->node) // ensure node exists
+                    metaData[kv.second->node] = memSym;
                 symbolTable.back()[kv.first] = memSym;
             }
         }
@@ -731,11 +735,11 @@ void Semantics::walkUseStatement(Node *node)
             currentMembers[childName] = memIt->second;
 
             auto memSym = std::make_shared<SymbolInfo>();
-            memSym->type = memIt->second.type;
-            memSym->isNullable = memIt->second.isNullable;
-            memSym->isMutable = memIt->second.isMutable;
-            memSym->isConstant = memIt->second.isConstant;
-            memSym->isInitialized = memIt->second.isInitialised;
+            memSym->type = memIt->second->type;
+            memSym->isNullable = memIt->second->isNullable;
+            memSym->isMutable = memIt->second->isMutable;
+            memSym->isConstant = memIt->second->isConstant;
+            memSym->isInitialized = memIt->second->isInitialised;
             symbolTable.back()[childName] = memSym;
         }
         else
@@ -862,16 +866,16 @@ void Semantics::walkSelfExpression(Node *node)
         return;
     }
 
-    const MemberInfo &m = memIt->second;
+    std::shared_ptr<MemberInfo> m = memIt->second;
 
     // Attach type info for this field access
     auto info = std::make_shared<SymbolInfo>();
-    info->type = m.type;
-    info->isNullable = m.isNullable;
-    info->isMutable = m.isMutable;
-    info->isConstant = m.isConstant;
-    info->isInitialized = m.isInitialised;
-    info->memberIndex = m.memberIndex;
+    info->type = m->type;
+    info->isNullable = m->isNullable;
+    info->isMutable = m->isMutable;
+    info->isConstant = m->isConstant;
+    info->isInitialized = m->isInitialised;
+    info->memberIndex = m->memberIndex;
 
     metaData[selfExpr] = info;
 
@@ -900,7 +904,7 @@ void Semantics::walkComponentStatement(Node *node)
 
     metaData[componentStmt] = componentSymbol;
 
-    std::unordered_map<std::string, MemberInfo> members;
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
     int currentMemberIndex = 0;
 
     // Enter a new component scope
@@ -944,18 +948,38 @@ void Semantics::walkComponentStatement(Node *node)
             auto &currentScope = symbolTable.back();
             for (auto &[name, info] : importedMembers)
             {
-                MemberInfo memberCopy = info;
-                memberCopy.memberIndex = currentMemberIndex++;
+                auto memberCopy = std::make_shared<MemberInfo>();
+                memberCopy->memberName = info->memberName;
+                memberCopy->type = info->type;
+                memberCopy->isNullable = info->isNullable;
+                memberCopy->isMutable = info->isMutable;
+                memberCopy->isConstant = info->isConstant;
+                memberCopy->isInitialised = info->isInitialised;
+
+                memberCopy->node = info->node;
+                memberCopy->memberIndex = currentMemberIndex++;
                 members[name] = memberCopy;
 
                 auto memSym = std::make_shared<SymbolInfo>();
-                memSym->type = info.type;
-                memSym->isNullable = info.isNullable;
-                memSym->isMutable = info.isMutable;
-                memSym->isConstant = info.isConstant;
-                memSym->isInitialized = info.isInitialised;
-                memSym->memberIndex = memberCopy.memberIndex;
+                memSym->type = info->type;
+                memSym->isNullable = info->isNullable;
+                memSym->isMutable = info->isMutable;
+                memSym->isConstant = info->isConstant;
+                memSym->isInitialized = info->isInitialised;
+                memSym->memberIndex = memberCopy->memberIndex;
                 currentScope[name] = memSym;
+
+                if (memberCopy->node)
+                {
+                    metaData[memberCopy->node] = memSym;
+                    std::cout << "[SEMANTIC LOG] mapped member node " << memberCopy->node
+                              << " -> symbol for '" << name << "'\n";
+                }
+                else
+                {
+                    // If the node wasnt populated
+                    std::cout << "[SEMANTIC WARN] imported member '" << name << "' has no node\n";
+                }
             }
         }
 
@@ -979,17 +1003,17 @@ void Semantics::walkComponentStatement(Node *node)
                 if (memIt != importedMembers.end())
                 {
                     // Copy only the requested member
-                    MemberInfo memberCopy = memIt->second;
-                    memberCopy.memberIndex = currentMemberIndex++;
+                    std::shared_ptr<MemberInfo> memberCopy = memIt->second;
+                    memberCopy->memberIndex = currentMemberIndex++;
                     members[memberName] = memberCopy;
 
                     auto memSym = std::make_shared<SymbolInfo>();
-                    memSym->type = memIt->second.type;
-                    memSym->isNullable = memIt->second.isNullable;
-                    memSym->isMutable = memIt->second.isMutable;
-                    memSym->isConstant = memIt->second.isConstant;
-                    memSym->isInitialized = memIt->second.isInitialised;
-                    memSym->memberIndex = memberCopy.memberIndex;
+                    memSym->type = memIt->second->type;
+                    memSym->isNullable = memIt->second->isNullable;
+                    memSym->isMutable = memIt->second->isMutable;
+                    memSym->isConstant = memIt->second->isConstant;
+                    memSym->isInitialized = memIt->second->isInitialised;
+                    memSym->memberIndex = memberCopy->memberIndex;
                     symbolTable.back()[memberName] = memSym;
                 }
             }
@@ -1015,16 +1039,20 @@ void Semantics::walkComponentStatement(Node *node)
                                   letStmt->ident_token.line, letStmt->ident_token.column);
                 continue;
             }
-            MemberInfo memberInfo = {
-                .memberName = letStmt->ident_token.TokenLiteral,
-                .type = letSym->type,
-                .isNullable = letSym->isNullable,
-                .isMutable = letSym->isMutable,
-                .isConstant = letSym->isConstant,
-                .isInitialised = letSym->isInitialized,
-                .memberIndex = currentMemberIndex++};
-            members[letStmt->ident_token.TokenLiteral] = memberInfo;
-            letSym->memberIndex = memberInfo.memberIndex;
+            auto memInfo = std::make_shared<MemberInfo>();
+            memInfo->memberName = letStmt->ident_token.TokenLiteral;
+            memInfo->type = letSym->type;
+            memInfo->isNullable = letSym->isNullable;
+            memInfo->isMutable = letSym->isMutable;
+            memInfo->isConstant = letSym->isConstant;
+            memInfo->isInitialised = letSym->isInitialized;
+            memInfo->node = letStmt;
+            memInfo->memberIndex = currentMemberIndex++;
+
+            members[letStmt->ident_token.TokenLiteral] = memInfo;
+            letSym->memberIndex = memInfo->memberIndex;
+
+            metaData[letStmt] = letSym;
         }
 
         if (assignStmt)
@@ -1037,16 +1065,19 @@ void Semantics::walkComponentStatement(Node *node)
                                   assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
                 continue;
             }
-            MemberInfo memberInfo = {
-                .memberName = assignStmt->identifier->expression.TokenLiteral,
-                .type = assignSym->type,
-                .isNullable = assignSym->isNullable,
-                .isMutable = assignSym->isMutable,
-                .isConstant = assignSym->isConstant,
-                .isInitialised = assignSym->isInitialized,
-                .memberIndex = currentMemberIndex++};
+            auto memberInfo = std::make_shared<MemberInfo>();
+            memberInfo->memberName = assignStmt->identifier->expression.TokenLiteral;
+            memberInfo->type = assignSym->type;
+            memberInfo->isNullable = assignSym->isNullable;
+            memberInfo->isMutable = assignSym->isMutable;
+            memberInfo->isConstant = assignSym->isConstant;
+            memberInfo->isInitialised = assignSym->isInitialized;
+            memberInfo->node = assignStmt;
+            memberInfo->memberIndex = currentMemberIndex++;
             members[assignStmt->identifier->expression.TokenLiteral] = memberInfo;
-            assignSym->memberIndex = memberInfo.memberIndex;
+            assignSym->memberIndex = memberInfo->memberIndex;
+
+            metaData[assignStmt] = assignSym;
         }
     }
 
@@ -1067,12 +1098,13 @@ void Semantics::walkComponentStatement(Node *node)
             if (metSym)
             {
                 std::cout << "INSERTING COMPONENT FUNCTION EXPRESSION\n";
-                members[funcExpr->func_key.TokenLiteral] = {
-                    .memberName = funcExpr->func_key.TokenLiteral,
-                    .type = metSym->type,
-                    .isNullable = metSym->isNullable,
-                    .isMutable = metSym->isMutable,
-                    .node = funcStmt};
+                auto memInfo = std::make_shared<MemberInfo>();
+                memInfo->memberName = funcExpr->func_key.TokenLiteral;
+                memInfo->type = metSym->type;
+                memInfo->isNullable = metSym->isNullable;
+                memInfo->isMutable = metSym->isMutable;
+                memInfo->node = funcExpr;
+                members[funcExpr->func_key.TokenLiteral] = memInfo;
             }
         }
         else if (funcDeclrExpr)
@@ -1088,12 +1120,14 @@ void Semantics::walkComponentStatement(Node *node)
             if (metSym)
             {
                 std::cout << "INSERTING COMPONENT FUNCTION DECLARATION EXPRESSION\n";
-                members[funcDeclr->function_name->expression.TokenLiteral] = {
-                    .memberName = funcDeclr->function_name->expression.TokenLiteral,
-                    .type = metSym->type,
-                    .isNullable = metSym->isNullable,
-                    .isMutable = metSym->isMutable,
-                    .node = funcStmt};
+                auto memInfo = std::make_shared<MemberInfo>();
+                memInfo->memberName = funcDeclr->function_name->expression.TokenLiteral;
+                memInfo->type = metSym->type;
+                memInfo->isNullable = metSym->isNullable;
+                memInfo->isMutable = metSym->isMutable;
+                memInfo->node = funcStmt;
+
+                members[funcDeclr->function_name->expression.TokenLiteral] = memInfo;
             }
         }
     }

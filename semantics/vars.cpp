@@ -593,16 +593,16 @@ void Semantics::walkAssignStatement(Node *node)
             return;
         }
 
-        const MemberInfo &fieldInfo = memIt->second;
+        std::shared_ptr <MemberInfo>fieldInfo = memIt->second;
 
         // Wrap field info into a SymbolInfo for semantic tracking
         symbol = std::make_shared<SymbolInfo>();
-        symbol->type = fieldInfo.type;
-        symbol->isNullable = fieldInfo.isNullable;
-        symbol->isMutable = fieldInfo.isMutable;
-        symbol->isConstant = fieldInfo.isConstant;
-        symbol->isInitialized = fieldInfo.isInitialised;
-        symbol->memberIndex = fieldInfo.memberIndex;
+        symbol->type = fieldInfo->type;
+        symbol->isNullable = fieldInfo->isNullable;
+        symbol->isMutable = fieldInfo->isMutable;
+        symbol->isConstant = fieldInfo->isConstant;
+        symbol->isInitialized = fieldInfo->isInitialised;
+        symbol->memberIndex = fieldInfo->memberIndex;
         symbol->hasError = hasError;
     }
     // --- Handle plain identifier assignments ---
@@ -823,11 +823,11 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     }
 
     // Grab field properties
-    ResolvedType type = memberIt->second.type;
-    bool isNullable = memberIt->second.isNullable;
-    bool isMutable = memberIt->second.isMutable;
-    bool isConstant = memberIt->second.isConstant;
-    bool isInitialized = memberIt->second.isInitialised;
+    ResolvedType type = memberIt->second->type;
+    bool isNullable = memberIt->second->isNullable;
+    bool isMutable = memberIt->second->isMutable;
+    bool isConstant = memberIt->second->isConstant;
+    bool isInitialized = memberIt->second->isInitialised;
 
     // Constant/immutability checks
     if (isConstant)
