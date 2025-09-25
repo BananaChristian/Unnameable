@@ -11,6 +11,8 @@
 #include "static/static.hpp"
 #include "irgen/irgen.hpp"
 #include "allocator/allocator.hpp"
+#include "prestatic/prestatic.hpp"
+#include <llvm/IR/LLVMContext.h>
 
 std::string readFileToString(const std::string &filepath)
 {
@@ -70,10 +72,18 @@ int main(int argc, char **argv)
         {
             semantics.walker(node.get());
         }
+        std::cout << "\n----Prestatic analysis------\n";
+        llvm::LLVMContext llvmContext;
+        Prestatic prestatic(semantics, llvmContext);
+        for (const auto &node : nodes)
+        {
+            prestatic.calculatorDriver(node.get());
+        }
         std::cout << "\n--- LLVM IR Generation ---\n";
         IRGenerator irgen(semantics);
         irgen.generate(nodes); // <--- pass vector of nodes
         irgen.dumpIR();        // Print the IR
+
         std::cout << "\n----STATIC analysis----\n";
         Static statics(semantics, irgen);
         for (const auto &node : nodes)
@@ -83,11 +93,6 @@ int main(int argc, char **argv)
         statics.dumpTotal();
         std::cout << "\n-----Allocator-----\n";
         Allocator alloc(statics.total_size);
-        //Tests
-        alloc.sage_alloc(2);
-        alloc.sage_alloc(2);
-        alloc.sage_alloc(4);
-        alloc.sage_free(2);
     }
     catch (const std::exception &e)
     {

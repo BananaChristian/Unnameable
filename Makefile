@@ -20,6 +20,7 @@ SRC = main.cpp \
       irgen/irgen.cpp\
       irgen/componentIR.cpp\
       allocator/allocator.cpp\
+      prestatic/prestatic.cpp
 
 $(OUT): $(SRC)
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(SRC) -o $(OUT) $(LLVM_LDFLAGS)

@@ -1,5 +1,6 @@
 #include "irgen.hpp"
 #include "ast.hpp"
+#include "allocator/allocator.hpp"
 
 #include <iostream>
 #define CPPREST_FORCE_REBUILD
@@ -155,6 +156,48 @@ void IRGenerator::generateLetStatement(Node *node)
         }
 
         std::cout << "[DEBUG] Component '" << letName << "' fully allocated with all members.\n";
+        return;
+    }
+
+    // If the let statement is heap allocated
+    if (letStmt->isHeap)
+    {
+        uint64_t size = sym->componentSize;
+        // Declare external sage_alloc and sage_free functions
+
+        llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
+
+        llvm::FunctionCallee sageAllocFunction = module->getOrInsertFunction(
+            "sage_alloc",
+            i8PtrTy,
+            llvm::Type::getInt64Ty(context));
+
+        llvm::FunctionCallee sageFreeFunction = module->getOrInsertFunction(
+            "sage_free", llvm::Type::getVoidTy(context),
+            llvm::Type::getInt64Ty(context));
+
+        // Allocate in SAGE
+        llvm::Value *heapPtr = builder.CreateCall(
+            sageAllocFunction,
+            {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)},
+            letName + "_ptr");
+
+        sym->llvmValue = heapPtr;
+        sym->llvmType = getLLVMType(sym->type);
+
+        llvm::Value *initVal = generateExpression(letStmt->value.get());
+        builder.CreateStore(initVal, heapPtr);
+
+        Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
+        if (letStmt == lastUse)
+        {
+            builder.CreateCall(
+                sageFreeFunction,
+                {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)});
+        }
+
+        std::cout << "[DEBUG] Heap variable '" << letName << "' allocated in SAGE, last-use at "
+                  << lastUse << "\n";
         return;
     }
 
