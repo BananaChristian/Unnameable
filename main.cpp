@@ -8,10 +8,8 @@
 #include "token/token.hpp"
 #include "parser/parser.hpp"
 #include "semantics/semantics.hpp"
-#include "static/static.hpp"
 #include "irgen/irgen.hpp"
-#include "allocator/allocator.hpp"
-#include "prestatic/prestatic.hpp"
+#include "layout/layout.hpp"
 #include <llvm/IR/LLVMContext.h>
 
 std::string readFileToString(const std::string &filepath)
@@ -30,7 +28,7 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        std::cerr << "Usage: iron <source-file.unn>\n";
+        std::cerr << "Usage: unnc <source-file.unn>\n";
         return 1;
     }
 
@@ -72,27 +70,30 @@ int main(int argc, char **argv)
         {
             semantics.walker(node.get());
         }
-        std::cout << "\n----Prestatic analysis------\n";
+        std::cout << "\n----Layout analysis------\n";
         llvm::LLVMContext llvmContext;
-        Prestatic prestatic(semantics, llvmContext);
+        Layout layout(semantics, llvmContext);
         for (const auto &node : nodes)
         {
-            prestatic.calculatorDriver(node.get());
+            layout.calculatorDriver(node.get());
         }
         std::cout << "\n--- LLVM IR Generation ---\n";
-        IRGenerator irgen(semantics);
+        IRGenerator irgen(semantics, layout.totalHeapSize);
         irgen.generate(nodes); // <--- pass vector of nodes
         irgen.dumpIR();        // Print the IR
 
-        std::cout << "\n----STATIC analysis----\n";
-        Static statics(semantics, irgen);
-        for (const auto &node : nodes)
+        //----Object File Emission----//
+        const std::string objFile = "test.o";
+        std::cout << "\n--- Generating object file: " << objFile << " ---\n";
+        if (irgen.emitObjectFile(objFile))
         {
-            statics.analyze(node.get());
+            std::cout << "[SUCCESS] Object file generated: " << objFile << "\n";
         }
-        statics.dumpTotal();
-        std::cout << "\n-----Allocator-----\n";
-        Allocator alloc(statics.total_size);
+        else
+        {
+            std::cerr << "[ERROR] Failed to generate object file.\n";
+            return 1;
+        }
     }
     catch (const std::exception &e)
     {
