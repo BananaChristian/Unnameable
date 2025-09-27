@@ -351,7 +351,7 @@ void Semantics::walkIdentifierExpression(Node *node)
         return;
     }
 
-    if (symbolInfo->type.kind == DataType::COMPONENT)
+    if (symbolInfo->isHeap)
     {
         symbolInfo->lastUseNode = identExpr;
     }
@@ -538,6 +538,7 @@ void Semantics::walkLetStatement(Node *node)
     letInfo->constIntVal = constInt;
     letInfo->isInitialized = isInitialized;
     letInfo->isDefinitelyNull = isDefinitelyNull;
+    letInfo->isHeap = isHeap;
     letInfo->lastUseNode = isHeap ? letStmt : nullptr;
     letInfo->hasError = hasError;
 
@@ -593,7 +594,7 @@ void Semantics::walkAssignStatement(Node *node)
             return;
         }
 
-        std::shared_ptr <MemberInfo>fieldInfo = memIt->second;
+        std::shared_ptr<MemberInfo> fieldInfo = memIt->second;
 
         // Wrap field info into a SymbolInfo for semantic tracking
         symbol = std::make_shared<SymbolInfo>();
@@ -760,6 +761,12 @@ void Semantics::walkAssignStatement(Node *node)
                               assignStmt->identifier->expression.column);
             hasError = true;
         }
+    }
+
+    // Heap updates
+    if (symbol->isHeap)
+    {
+        symbol->lastUseNode = assignStmt;
     }
 
     // --- Mark variable initialized ---

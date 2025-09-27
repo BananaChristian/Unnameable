@@ -144,6 +144,7 @@ struct SymbolInfo
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
 
+    bool isHeap=false;
     size_t componentSize;
     Node *lastUseNode = nullptr;
     
