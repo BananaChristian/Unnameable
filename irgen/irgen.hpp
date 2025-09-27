@@ -26,7 +26,7 @@ struct LoopBlocks
 class IRGenerator
 {
 public:
-    IRGenerator(Semantics &semantics);
+    IRGenerator(Semantics &semantics,size_t totalHeapSize);
 
     using generatorFunctions = void (IRGenerator::*)(Node *node);
     using expressionGenerators = llvm::Value *(IRGenerator::*)(Node * node);
@@ -49,11 +49,14 @@ public:
     llvm::Function *currentFunction = nullptr;
     std::vector<LoopBlocks> loopBlocksStack;
 
+    bool emitObjectFile(const std::string &outPath);
+
 private:
     llvm::LLVMContext context;
     llvm::IRBuilder<> builder;
     std::unique_ptr<llvm::Module> module;
     Semantics &semantics;
+    size_t totalHeapSize;
 
     // GENERATOR FUNCTIONS FOR STATEMENTS
     void generateLetStatement(Node *node);

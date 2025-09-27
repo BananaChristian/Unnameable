@@ -1,31 +1,102 @@
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/FileSystem.h>
+
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/CodeGen/TargetPassConfig.h> 
+
 #include "irgen.hpp"
 #include "ast.hpp"
 #include "allocator/allocator.hpp"
 
 #include <iostream>
 #define CPPREST_FORCE_REBUILD
-IRGenerator::IRGenerator(Semantics &semantics)
-    : semantics(semantics), context(), builder(context), module(std::make_unique<llvm::Module>("unnameable", context))
+IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
+    : semantics(semantics), totalHeapSize(totalHeap), context(), builder(context), module(std::make_unique<llvm::Module>("unnameable", context))
 {
     registerGeneratorFunctions();
     registerExpressionGeneratorFunctions();
+
+    // Declare external allocator functions so IR can call them
+    llvm::FunctionType *initType = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(context),    // returns void
+        {llvm::Type::getInt64Ty(context)}, // takes size_t (64-bit int)
+        false);
+
+    llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
+
+    llvm::FunctionType *allocType = llvm::FunctionType::get(
+        i8PtrTy,                           // returns void*
+        {llvm::Type::getInt64Ty(context)}, // takes size_t
+        false);
+
+    llvm::FunctionType *freeType = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(context),    // returns void
+        {llvm::Type::getInt64Ty(context)}, // takes size_t
+        false);
+
+    llvm::FunctionType *destroyType = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(context), {}, false); // void()
+
+    // Add them to the module
+    module->getOrInsertFunction("sage_init", initType);
+    module->getOrInsertFunction("sage_alloc", allocType);
+    module->getOrInsertFunction("sage_free", freeType);
+    module->getOrInsertFunction("sage_destroy", destroyType);
 }
 
 // MAIN GENERATOR FUNCTION
 void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program)
 {
-    llvm::FunctionType *funcType = llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false);
-    llvm::Function *mainFunc = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, "main", module.get());
+    llvm::FunctionType *funcType = llvm::FunctionType::get(
+        llvm::Type::getInt32Ty(context), false);
+
+    llvm::Function *mainFunc = llvm::Function::Create(
+        funcType, llvm::Function::ExternalLinkage, "main", module.get());
+
     llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", mainFunc);
     builder.SetInsertPoint(entry);
 
+    // --- Call sage_init upfront ---
+    llvm::Function *initFunc = module->getFunction("sage_init");
+    if (!initFunc)
+    {
+        llvm::FunctionType *initType = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(context),
+            {llvm::Type::getInt64Ty(context)}, false);
+
+        initFunc = llvm::Function::Create(
+            initType, llvm::Function::ExternalLinkage, "sage_init", module.get());
+    }
+
+    // Example heap size, later this comes from analyzer
+    builder.CreateCall(initFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), totalHeapSize)});
+
+    // --- Generate program body ---
     for (const auto &node : program)
     {
         generateStatement(node.get());
     }
 
-    builder.SetInsertPoint(entry);
+    // --- Call sage_destroy before returning ---
+    llvm::Function *destroyFunc = module->getFunction("sage_destroy");
+    if (!destroyFunc)
+    {
+        llvm::FunctionType *destroyType = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(context), {}, false);
 
+        destroyFunc = llvm::Function::Create(
+            destroyType, llvm::Function::ExternalLinkage, "sage_destroy", module.get());
+    }
+
+    builder.CreateCall(destroyFunc, {});
+
+    // --- Return 0 ---
     builder.CreateRet(llvm::ConstantInt::get(context, llvm::APInt(32, 0)));
 }
 
@@ -38,19 +109,13 @@ llvm::Value *IRGenerator::generateExpression(Node *node)
         std::cout << "[GENEXPR] NULL node!\n";
         return nullptr;
     }
-    std::type_index dynType(typeid(*node));
-    std::cout << "[GENEXPR] entry node ptr=" << node
-              << " dynType=" << dynType.name()
-              << " toString=\"" << node->toString() << "\"\n";
 
     auto exprIt = expressionGeneratorsMap.find(typeid(*node));
     if (exprIt == expressionGeneratorsMap.end())
     {
-        std::cout << "[GENEXPR] NO GENERATOR FOR type=" << dynType.name()
-                  << " nodeptr=" << node << " str=" << node->toString() << "\n";
         throw std::runtime_error("Could not find expression type IR generator: " + node->toString());
     }
-    std::cout << "[GENEXPR] calling generator for type=" << dynType.name() << " node=" << node << "\n";
+
     return (this->*exprIt->second)(node);
 }
 
@@ -1625,6 +1690,42 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
         return variablePtr;
     }
 
+    if (sym->isHeap)
+    {
+        // variablePtr should be a pointer to the element type (we stored typed pointer in let)
+        llvm::Type *elemTy = sym->llvmType;
+        if (!elemTy)
+            throw std::runtime_error("llvmType null for heap scalar '" + identName + "'");
+
+        // Ensure pointer type matches expected: if not, bitcast to elemTy*
+        llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
+        if (variablePtr->getType() != expectedPtrTy)
+        {
+            variablePtr = builder.CreateBitCast(variablePtr, expectedPtrTy, identName + "_ptr_typed");
+        }
+
+        // Load the value first (so we can return it)
+        llvm::Value *loadedVal = builder.CreateLoad(elemTy, variablePtr, identName + "_val");
+
+        // If this identifier is the last use, emit sage_free(size) AFTER loading
+        if (sym->lastUseNode == identExpr)
+        {
+            // get or insert sage_free: void sage_free(i64)
+            llvm::FunctionCallee sageFreeFunction = module->getOrInsertFunction(
+                "sage_free",
+                llvm::Type::getVoidTy(context),
+                llvm::Type::getInt64Ty(context));
+
+            // emit call with the known component size
+            builder.CreateCall(sageFreeFunction,
+                               {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)});
+        }
+
+        std::cout << "[DEBUG] Returning heap scalar '" << identName << "' (lastUse="
+                  << (sym->lastUseNode == identExpr ? "yes" : "no") << ")\n";
+        return loadedVal;
+    }
+
     // Scalar case: pointer -> load
     if (variablePtr->getType()->isPointerTy())
     {
@@ -2199,4 +2300,67 @@ bool IRGenerator::currentBlockIsTerminated()
 llvm::Module &IRGenerator::getLLVMModule()
 {
     return *module;
+}
+
+
+bool IRGenerator::emitObjectFile(const std::string &filename) {
+    //Initialization
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
+
+    //Target Setup
+    const std::string targetTripleStr = "x86_64-pc-linux-gnu"; 
+    
+    module->setTargetTriple(targetTripleStr);
+
+    std::string error;
+    auto target = llvm::TargetRegistry::lookupTarget(targetTripleStr, error);
+    if (!target) {
+        llvm::errs() << "Failed to find target: " << error << "\n";
+        return false;
+    }
+
+    llvm::TargetOptions opt;
+    
+    std::optional<llvm::Reloc::Model> RM = llvm::Reloc::PIC_; 
+    
+    auto targetMachine = target->createTargetMachine(
+        targetTripleStr, 
+        "generic", // CPU name
+        "",        // Features string
+        opt, 
+        RM
+    );
+
+    if (!targetMachine) {
+        llvm::errs() << "Failed to create TargetMachine\n";
+        return false;
+    }
+
+    module->setDataLayout(targetMachine->createDataLayout());
+
+    std::error_code EC;
+    
+    const auto FileType = llvm::CodeGenFileType::ObjectFile; 
+    
+    llvm::raw_fd_ostream dest(filename, EC, llvm::sys::fs::OF_None);
+    if (EC) {
+        llvm::errs() << "Could not open file: " << EC.message() << "\n";
+        return false;
+    }
+
+    llvm::legacy::PassManager pass; 
+    
+    if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
+        llvm::errs() << "TargetMachine can't emit object file\n";
+        return false;
+    }
+
+    pass.run(*module);
+    dest.flush();
+
+    return true;
 }
