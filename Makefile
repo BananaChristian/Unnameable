@@ -16,11 +16,10 @@ SRC = main.cpp \
       semantics/expr.cpp \
       semantics/vars.cpp \
       semantics/fp.cpp\
-      static/static.cpp\
       irgen/irgen.cpp\
       irgen/componentIR.cpp\
       allocator/allocator.cpp\
-      prestatic/prestatic.cpp
+      layout/layout.cpp
 
 $(OUT): $(SRC)
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(SRC) -o $(OUT) $(LLVM_LDFLAGS)
