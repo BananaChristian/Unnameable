@@ -15,13 +15,16 @@ class Allocator
 private:
     void *os_heap = nullptr; // This is a pointer to the heap given to us by the OS
     size_t os_heap_size = 0; // The actual size of the os_heap
-    size_t pagesize; //Storing the actual page size 
+    size_t pagesize;         // Storing the actual page size
 
     StackHeap general_stack_heap;
 
 public:
     Allocator(size_t total_heap_size); // Constructor for the allocator with a total size argument where we shall request memory
     ~Allocator();                      // Destructor for the allocator
+
+    static Allocator *global_allocator; // Global allocator (singleton)
+    
     // STACK HEAP METHODS
     void sage_free(size_t component_size);   // This method will pop a stack frame from the stack heap
     void *sage_alloc(size_t component_size); // This will add a stack frame to the stack heap

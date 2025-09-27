@@ -4,10 +4,57 @@
 #include <sys/mman.h> // mmap, munmap
 #include <unistd.h>   // getpagesize
 
+Allocator *Allocator::global_allocator = nullptr;
+
+extern "C"
+{
+
+    void sage_init(size_t total_size)
+    {
+        if (Allocator::global_allocator)
+        {
+            delete Allocator::global_allocator;
+        }
+        Allocator::global_allocator = new Allocator(total_size);
+        std::cout << "[SAGE] Initialized global allocator with " << total_size << " bytes\n";
+    }
+
+    void *sage_alloc(size_t size)
+    {
+        if (!Allocator::global_allocator)
+        {
+            std::cerr << "[SAGE] ERROR: Allocator not initialized!\n";
+            return nullptr;
+        }
+        return Allocator::global_allocator->sage_alloc(size);
+    }
+
+    void sage_free(size_t size)
+    {
+        if (!Allocator::global_allocator)
+        {
+            std::cerr << "[SAGE] ERROR: Allocator not initialized!\n";
+            return;
+        }
+        Allocator::global_allocator->sage_free(size);
+    }
+
+    void sage_destroy()
+    {
+        if (Allocator::global_allocator)
+        {
+            delete Allocator::global_allocator;
+            Allocator::global_allocator = nullptr;
+            std::cout << "[SAGE] Destroyed global allocator\n";
+        }
+    }
+
+} // extern "C"
+
 Allocator::Allocator(size_t total_heap_size)
 {
     pagesize = getpagesize();
-    // round heap size up to page size (required by mmap)
+    // round heap size up to page size
     os_heap_size = ((total_heap_size + pagesize - 1) / pagesize) * pagesize;
 
     os_heap = mmap(nullptr, os_heap_size, PROT_READ | PROT_WRITE,
@@ -32,16 +79,17 @@ Allocator::Allocator(size_t total_heap_size)
 
 void *Allocator::sage_alloc(size_t component_size)
 {
-    if ((char *)general_stack_heap.frameptr + component_size > (char *)general_stack_heap.limit)
+    size_t aligned_size = (component_size + 7) & ~7; // round up to 8 bytes
+    if ((char *)general_stack_heap.frameptr + aligned_size > (char *)general_stack_heap.limit)
     {
         std::cout << "sage_alloc -> Hit allocated memory limit\n";
         return nullptr;
     }
 
     void *object_address = general_stack_heap.frameptr;
-    general_stack_heap.frameptr = (char *)general_stack_heap.frameptr + component_size;
+    general_stack_heap.frameptr = (char *)general_stack_heap.frameptr + aligned_size;
 
-    std::cout << "sage_alloc -> Allocated " << component_size << " bytes at "
+    std::cout << "sage_alloc -> Allocated " << aligned_size << " bytes at "
               << object_address << ", new frameptr: " << general_stack_heap.frameptr << "\n";
 
     return object_address;
@@ -125,5 +173,7 @@ Allocator::~Allocator()
         munmap(os_heap, os_heap_size);
         std::cout << "Destroying Allocator -> Unmapped entire heap at "
                   << os_heap << " (" << os_heap_size << " bytes)\n";
+        os_heap = nullptr;
+        os_heap_size = 0;
     }
 }
