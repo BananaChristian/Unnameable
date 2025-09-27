@@ -6,17 +6,10 @@ unnc
 *.log
 *.out
 
-semantic_analyzer
-component_semantics.cpp
-semantics.cpp
-
-language_design.md
-
 compile_commands.json
-test_allocator
-alloc_test.cpp
+
+static
 
 test.unn
 
 TODO
-LOGS
