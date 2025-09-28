@@ -8,7 +8,7 @@
 #include <llvm/Support/FileSystem.h>
 
 #include <llvm/ADT/STLExtras.h>
-#include <llvm/CodeGen/TargetPassConfig.h> 
+#include <llvm/CodeGen/TargetPassConfig.h>
 
 #include "irgen.hpp"
 #include "ast.hpp"
@@ -1846,6 +1846,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
         {
             throw std::runtime_error("Missing parameter meta data");
         }
+        it->second->llvmType = getLLVMType(it->second->type);
         llvmParamTypes.push_back(getLLVMType(it->second->type));
     }
 
@@ -2302,40 +2303,41 @@ llvm::Module &IRGenerator::getLLVMModule()
     return *module;
 }
 
-
-bool IRGenerator::emitObjectFile(const std::string &filename) {
-    //Initialization
+bool IRGenerator::emitObjectFile(const std::string &filename)
+{
+    // Initialization
     llvm::InitializeAllTargetInfos();
     llvm::InitializeAllTargets();
     llvm::InitializeAllTargetMCs();
     llvm::InitializeAllAsmParsers();
     llvm::InitializeAllAsmPrinters();
 
-    //Target Setup
-    const std::string targetTripleStr = "x86_64-pc-linux-gnu"; 
-    
+    // Target Setup
+    const std::string targetTripleStr = "x86_64-pc-linux-gnu";
+
     module->setTargetTriple(targetTripleStr);
 
     std::string error;
     auto target = llvm::TargetRegistry::lookupTarget(targetTripleStr, error);
-    if (!target) {
+    if (!target)
+    {
         llvm::errs() << "Failed to find target: " << error << "\n";
         return false;
     }
 
     llvm::TargetOptions opt;
-    
-    std::optional<llvm::Reloc::Model> RM = llvm::Reloc::PIC_; 
-    
+
+    std::optional<llvm::Reloc::Model> RM = llvm::Reloc::PIC_;
+
     auto targetMachine = target->createTargetMachine(
-        targetTripleStr, 
+        targetTripleStr,
         "generic", // CPU name
         "",        // Features string
-        opt, 
-        RM
-    );
+        opt,
+        RM);
 
-    if (!targetMachine) {
+    if (!targetMachine)
+    {
         llvm::errs() << "Failed to create TargetMachine\n";
         return false;
     }
@@ -2343,18 +2345,20 @@ bool IRGenerator::emitObjectFile(const std::string &filename) {
     module->setDataLayout(targetMachine->createDataLayout());
 
     std::error_code EC;
-    
-    const auto FileType = llvm::CodeGenFileType::ObjectFile; 
-    
+
+    const auto FileType = llvm::CodeGenFileType::ObjectFile;
+
     llvm::raw_fd_ostream dest(filename, EC, llvm::sys::fs::OF_None);
-    if (EC) {
+    if (EC)
+    {
         llvm::errs() << "Could not open file: " << EC.message() << "\n";
         return false;
     }
 
-    llvm::legacy::PassManager pass; 
-    
-    if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
+    llvm::legacy::PassManager pass;
+
+    if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType))
+    {
         llvm::errs() << "TargetMachine can't emit object file\n";
         return false;
     }
