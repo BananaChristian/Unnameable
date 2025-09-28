@@ -94,6 +94,19 @@ int main(int argc, char **argv)
             std::cerr << "[ERROR] Failed to generate object file.\n";
             return 1;
         }
+
+        std::string exeFile = "program";
+        std::string linkCmd = "g++ -o " + exeFile + " " + objFile + " sage.o";
+        int ret = std::system(linkCmd.c_str());
+        if (ret != 0)
+        {
+            std::cerr << "[ERROR] Linking failed with ld!\n";
+            return 1;
+        }
+        else
+        {
+            std::cout << "[SUCCESS] Executable generated: " << exeFile << "\n";
+        }
     }
     catch (const std::exception &e)
     {
