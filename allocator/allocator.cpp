@@ -79,7 +79,7 @@ Allocator::Allocator(size_t total_heap_size)
 
 void *Allocator::sage_alloc(size_t component_size)
 {
-    size_t aligned_size = (component_size + 7) & ~7; // round up to 8 bytes
+    size_t aligned_size = component_size; // round up to 8 bytes
     if ((char *)general_stack_heap.frameptr + aligned_size > (char *)general_stack_heap.limit)
     {
         std::cout << "sage_alloc -> Hit allocated memory limit\n";
