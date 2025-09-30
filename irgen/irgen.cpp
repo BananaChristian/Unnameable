@@ -479,105 +479,83 @@ void IRGenerator::generateIfStatement(Node *node)
 // IR code gen for a for loop
 void IRGenerator::generateForStatement(Node *node)
 {
+    std::cout << "Generating IR for : " << node->toString();
     auto forStmt = dynamic_cast<ForStatement *>(node);
-    if (!forStmt)
-    {
-        throw std::runtime_error("Invalid for statement");
-    }
+    if (!forStmt) throw std::runtime_error("Invalid for statement");
 
     llvm::Function *function = builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *origBB = builder.GetInsertBlock();
 
-    // Handle initializer
-    if (forStmt->initializer)
-    {
+    // initializer
+    if (forStmt->initializer) {
         std::cerr << "[IR DEBUG] Generating initializer\n";
         generateStatement(forStmt->initializer.get());
     }
 
-    // Create all necessary blocks
+    // create blocks attached to function
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(context, "loop.cond", function);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "loop.body");
-    llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(context, "loop.step");
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "loop.end");
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "loop.body", function);
+    llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(context, "loop.step", function);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(context, "loop.end",  function);
 
-    // Jump to condition
-    std::cerr << "[IR DEBUG] Creating branch to loop.cond\n";
+    // branch to condition
     builder.CreateBr(condBB);
 
-    // Condition block
+    // condition
     builder.SetInsertPoint(condBB);
     std::cerr << "[IR DEBUG] Generating condition\n";
     llvm::Value *condVal = generateExpression(forStmt->condition.get());
-    if (!condVal)
-    {
-        std::cerr << "[IR ERROR] For loop has invalid condition.\n";
-        return;
-    }
+    if (!condVal) { std::cerr << "[IR ERROR] For loop has invalid condition\n"; builder.SetInsertPoint(origBB); return; }
 
-    // Verify condition type in metadata
     auto it = semantics.metaData.find(forStmt->condition.get());
-    if (it == semantics.metaData.end() || it->second->type.kind != DataType::BOOLEAN)
-    {
+    if (it == semantics.metaData.end() || it->second->type.kind != DataType::BOOLEAN) {
         std::cerr << "[IR ERROR] For loop condition must evaluate to boolean.\n";
+        builder.SetInsertPoint(origBB);
         return;
     }
 
-    // Promote i32 -> i1 if necessary
-    if (!condVal->getType()->isIntegerTy(1))
-    {
+    // promote if needed
+    if (!condVal->getType()->isIntegerTy(1)) {
         if (condVal->getType()->isIntegerTy(32))
-        {
             condVal = builder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "loopcond.bool");
-        }
-        else
-        {
-            std::cerr << "[IR ERROR] For loop condition must be boolean or i32\n";
-            return;
-        }
+        else { std::cerr << "[IR ERROR] For loop condition must be boolean or i32\n"; builder.SetInsertPoint(origBB); return; }
     }
 
-    std::cerr << "[IR DEBUG] Creating conditional branch\n";
     builder.CreateCondBr(condVal, bodyBB, endBB);
 
-    // Append bodyBB to function
-    function->insert(function->end(), bodyBB);
+    // body
     builder.SetInsertPoint(bodyBB);
-    loopBlocksStack.push_back({condBB, endBB});
+    loopBlocksStack.push_back({ condBB, stepBB, endBB }); // <-- includes stepBB now
     std::cerr << "[IR DEBUG] Generating loop body\n";
     generateStatement(forStmt->body.get());
     std::cerr << "[IR DEBUG] Finished generating loop body\n";
     loopBlocksStack.pop_back();
 
-    // Ensure branch to step if no terminator
-    if (!builder.GetInsertBlock()->getTerminator())
-    {
+    if (!builder.GetInsertBlock()->getTerminator()) {
         std::cerr << "[IR DEBUG] Adding branch to loop.step\n";
         builder.CreateBr(stepBB);
-    }
-    else
-    {
+    } else {
         std::cerr << "[IR WARNING] Loop body block already has terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
     }
 
-    // Append stepBB to function
-    function->insert(function->end(), stepBB);
+    // step
     builder.SetInsertPoint(stepBB);
-
-    // Loop step
-    if (forStmt->step)
-    {
+    if (forStmt->step) {
         std::cerr << "[IR DEBUG] Generating loop step\n";
-        generateExpression(forStmt->step.get());
+        llvm::Value *stepVal = generateExpression(forStmt->step.get());
+        if (!stepVal) {
+            std::cerr << "[IR ERROR] loop step generation returned nullptr!\n";
+            builder.CreateBr(condBB); // keep IR consistent
+            builder.SetInsertPoint(origBB);
+            return;
+        }
     }
-
-    // Jump back to condition
-    std::cerr << "[IR DEBUG] Creating branch to loop.cond\n";
     builder.CreateBr(condBB);
 
-    // Append end block and move builder there
-    function->insert(function->end(), endBB);
+    // after
     builder.SetInsertPoint(endBB);
 }
+
 
 void IRGenerator::generateBreakStatement(Node *node)
 {
@@ -946,31 +924,17 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     }
 
     // Handle BOOLEAN logical operators (AND, OR)
-    if (resultType.kind == DataType::BOOLEAN)
+    if (infix->operat.type == TokenType::AND || infix->operat.type == TokenType::OR)
     {
-        if (infix->operat.type == TokenType::AND || infix->operat.type == TokenType::OR)
-        {
-            if (left->getType() != builder.getInt1Ty())
-                left = builder.CreateICmpNE(left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
-            if (right->getType() != builder.getInt1Ty())
-                right = builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
+        if (left->getType() != builder.getInt1Ty())
+            left = builder.CreateICmpNE(left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
+        if (right->getType() != builder.getInt1Ty())
+            right = builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
 
-            if (infix->operat.type == TokenType::AND)
-                return builder.CreateAnd(left, right, "andtmp");
-            else
-                return builder.CreateOr(left, right, "ortmp");
-        }
-
-        // Comparisons for boolean (should be rare, but...)
-        switch (infix->operat.type)
-        {
-        case TokenType::EQUALS:
-            return builder.CreateICmpEQ(left, right, "cmptmp");
-        case TokenType::NOT_EQUALS:
-            return builder.CreateICmpNE(left, right, "cmptmp");
-        default:
-            throw std::runtime_error("Unsupported boolean infix operator: " + infix->operat.TokenLiteral);
-        }
+        if (infix->operat.type == TokenType::AND)
+            return builder.CreateAnd(left, right, "andtmp");
+        else
+            return builder.CreateOr(left, right, "ortmp");
     }
 
     // Handle floating point conversions
@@ -991,16 +955,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 
     // Now generate code based on operator and result type
     // Comparison operators - different for signed/unsigned integers
-    auto isCmp = [&](TokenType t)
+    if (infix->operat.type == TokenType::EQUALS ||
+        infix->operat.type == TokenType::NOT_EQUALS ||
+        infix->operat.type == TokenType::LESS_THAN ||
+        infix->operat.type == TokenType::LT_OR_EQ ||
+        infix->operat.type == TokenType::GREATER_THAN ||
+        infix->operat.type == TokenType::GT_OR_EQ)
     {
-        return t == TokenType::EQUALS || t == TokenType::NOT_EQUALS ||
-               t == TokenType::LESS_THAN || t == TokenType::LT_OR_EQ ||
-               t == TokenType::GREATER_THAN || t == TokenType::GT_OR_EQ;
-    };
-
-    if (isCmp(infix->operat.type))
-    {
-        if (isIntegerType(resultType.kind))
+        if (isIntegerType(leftType) && isIntegerType(rightType))
         {
             bool signedInt = isSignedInteger(resultType.kind);
             switch (infix->operat.type)
@@ -1022,7 +984,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
                 return signedInt ? builder.CreateICmpSGE(left, right, "cmptmp")
                                  : builder.CreateICmpUGE(left, right, "cmptmp");
             default:
-                throw std::runtime_error("Unsupported comparison operator");
+                throw std::runtime_error("Unsupported int comparison operator");
             }
         }
         else if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
@@ -1042,7 +1004,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
             case TokenType::GT_OR_EQ:
                 return builder.CreateFCmpOGE(left, right, "fcmptmp");
             default:
-                throw std::runtime_error("Unsupported comparison operator");
+                throw std::runtime_error("Unsupported float comparison operator");
             }
         }
         else
@@ -1050,7 +1012,6 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
             throw std::runtime_error("Comparison not supported for type '" + resultType.resolvedName + "'");
         }
     }
-
     // Arithmetic operators
     switch (infix->operat.type)
     {

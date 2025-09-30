@@ -20,6 +20,7 @@ class Node;
 struct LoopBlocks
 {
     llvm::BasicBlock *condBB;
+    llvm::BasicBlock *stepBB; 
     llvm::BasicBlock *afterBB;
 };
 
