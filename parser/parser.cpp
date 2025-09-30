@@ -101,16 +101,25 @@ std::unique_ptr<Statement> Parser::parseStatement()
 std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 {
     std::cout << "NOW INSIDE ASSIGNEMENT STATEMENT PARSER\n";
-    std::unique_ptr<Expression> lhs;
     std::unique_ptr<Expression> value = nullptr;
     Token identToken = currentToken();
     bool isQualified = false;
 
     // self.field = ...
+    std::unique_ptr<Expression> lhs;
+
     if (identToken.type == TokenType::SELF)
     {
-        std::cout << "SELF CASE TRIGGERED\n";
-        lhs = parseSelfExpression(); // builds FieldAccessExpression
+        lhs = parseSelfExpression();
+    }
+    else if (identToken.type == TokenType::IDENTIFIER)
+    {
+        lhs = parseIdentifier(); // consume identifier
+    }
+    else
+    {
+        logError("Invalid left-hand side in assignment: '" + identToken.TokenLiteral + "'");
+        return nullptr;
     }
 
     // Expect '=' before parsing the value
@@ -131,11 +140,15 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     }
     else if (!isParam)
     {
-        logError("Expected ';' after assignment");
+        logError("Expected ';' after assignment but got '" + currentToken().TokenLiteral + "'");
     }
 
     if (!lhs)
         return nullptr;
+
+    std::cout << "[LEAVING ASSIGNMENT] Current token: "
+              << currentToken().TokenLiteral
+              << " (" << (int)currentToken().type << ")\n";
 
     return std::make_unique<AssignmentStatement>(std::move(lhs), std::move(value));
 }
@@ -208,7 +221,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
     else
     {
         // If it's a function parameter, we expect either ')' or ',' next
-        if (currentToken().type != TokenType::COMMA && currentToken().type != TokenType::RPAREN)
+        if (currentToken().type != TokenType::COMMA && currentToken().type != TokenType::RPAREN && currentToken().type != TokenType::BITWISE_OR)
         {
             logError("Expected ',' or ')' after parameter declaration but got: " + currentToken().TokenLiteral);
             return nullptr;
@@ -894,48 +907,62 @@ std::unique_ptr<Statement> Parser::parseReturnStatement()
 // Parse for loops
 std::unique_ptr<Statement> Parser::parseForStatement()
 {
-    Token for_k = currentToken();
-    advance(); // Consume 'for'
+    Token forToken = currentToken();
+    advance(); // consume 'for'
+
     if (currentToken().type != TokenType::LPAREN)
     {
-        logError("Expected '(' after 'for' ");
+        logError("Expected '(' after 'for'");
         return nullptr;
     }
-    advance(); // Consume the '('
+    advance(); // consume '('
 
-    auto initializer = parseLetStatementWithType(); // like `mut int i;`
+    // Parse initializer (e.g., mut int i = 0)
+    auto initializer = parseLetStatementWithType(true);
 
+    if (currentToken().type != TokenType::BITWISE_OR)
+    {
+        logError("Expected '|' after initializer in for loop");
+        return nullptr;
+    }
+    advance(); // consume first '|'
+
+    // Parse condition
     auto condition = parseExpression(Precedence::PREC_NONE);
 
-    if (currentToken().type != TokenType::SEMICOLON)
+    if (currentToken().type != TokenType::BITWISE_OR)
     {
-        logError("Expected ';' after condition");
+        logError("Expected '|' after condition in for loop");
         return nullptr;
     }
-    advance(); // skip ';'
+    advance(); // consume second '|'
 
+    // Parse step expression (must be prefix/postfix)
     auto step = parseExpression(Precedence::PREC_NONE);
-    if (!(dynamic_cast<PrefixExpression *>(step.get()) || dynamic_cast<PostfixExpression *>(step.get())))
+    if (!(dynamic_cast<PrefixExpression *>(step.get()) ||
+          dynamic_cast<PostfixExpression *>(step.get())))
     {
         logError("Step expression must be a prefix or postfix increment/decrement (e.g., ++i, i++)");
         return nullptr;
     }
+
     if (currentToken().type != TokenType::RPAREN)
     {
-        logError("Expected ')' after step");
+        logError("Expected ')' after step expression");
         return nullptr;
     }
-    advance(); // skip ')'
+    advance(); // consume ')'
 
     if (currentToken().type != TokenType::LBRACE)
     {
-        logError("Expected '{' ");
+        logError("Expected '{' to start for loop block");
         return nullptr;
     }
-    auto block = parseBlockStatement(); // Parsing the block
+
+    auto block = parseBlockStatement();
 
     return std::make_unique<ForStatement>(
-        for_k,
+        forToken,
         std::move(initializer),
         std::move(condition),
         std::move(step),
@@ -1107,7 +1134,7 @@ std::unique_ptr<Expression> Parser::parseIdentifier()
     auto ident = std::make_unique<Identifier>(currentToken());
     if (!ident)
     {
-        logError("Failed to parse identifier: ");
+        logError("Failed to parse identifier '" + currentToken().TokenLiteral + "'");
     }
     advance();
     return ident;
@@ -1167,6 +1194,13 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
 
     while (true)
     {
+        if (currentToken().type == TokenType::SEMICOLON ||
+            currentToken().type == TokenType::RBRACE ||
+            currentToken().type == TokenType::RPAREN ||
+            currentToken().type == TokenType::COMMA)
+        {
+            break;
+        }
         Precedence currentPrecedence = get_precedence(currentToken().type);
 
         // If current token is a postfix operator (e.g., ++, --)
@@ -1648,7 +1682,7 @@ std::unique_ptr<Expression> Parser::parseBlockExpression()
     Token lbrace = currentToken();
     if (lbrace.type != TokenType::LBRACE)
     {
-        logError("Expected { after data type");
+        logError("Expected { after data type but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
     advance();
@@ -1673,7 +1707,7 @@ std::unique_ptr<Expression> Parser::parseBlockExpression()
 
     if (currentToken().type != TokenType::RBRACE)
     {
-        logError("Expected } ");
+        logError("Expected } but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
 
@@ -1687,7 +1721,7 @@ std::unique_ptr<Statement> Parser::parseBlockStatement()
     Token lbrace = currentToken();
     if (lbrace.type != TokenType::LBRACE)
     {
-        logError("[ERROR] Expected '{' to start block but got:" + lbrace.TokenLiteral);
+        logError("[ERROR] Expected '{' to start block but got '" + lbrace.TokenLiteral + "'");
         return nullptr;
     }
     advance();
@@ -1695,6 +1729,11 @@ std::unique_ptr<Statement> Parser::parseBlockStatement()
 
     while (currentToken().type != TokenType::RBRACE && currentToken().type != TokenType::END)
     {
+        if (currentToken().type == TokenType::SEMICOLON)
+        {
+            advance(); // skip empty statement
+            continue;
+        }
         auto stmt = parseStatement();
         if (stmt != nullptr)
         {
@@ -1709,7 +1748,7 @@ std::unique_ptr<Statement> Parser::parseBlockStatement()
 
     if (currentToken().type != TokenType::RBRACE)
     {
-        logError("Expected } to close block");
+        logError("Expected } to close block but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
 
@@ -1869,7 +1908,6 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
     // Simple assignment (x = ...)
     if (peek1.type == TokenType::ASSIGN)
     {
-        advance();
         return parseAssignmentStatement();
     }
 
