@@ -481,13 +481,15 @@ void IRGenerator::generateForStatement(Node *node)
 {
     std::cout << "Generating IR for : " << node->toString();
     auto forStmt = dynamic_cast<ForStatement *>(node);
-    if (!forStmt) throw std::runtime_error("Invalid for statement");
+    if (!forStmt)
+        throw std::runtime_error("Invalid for statement");
 
     llvm::Function *function = builder.GetInsertBlock()->getParent();
     llvm::BasicBlock *origBB = builder.GetInsertBlock();
 
     // initializer
-    if (forStmt->initializer) {
+    if (forStmt->initializer)
+    {
         std::cerr << "[IR DEBUG] Generating initializer\n";
         generateStatement(forStmt->initializer.get());
     }
@@ -496,7 +498,7 @@ void IRGenerator::generateForStatement(Node *node)
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(context, "loop.cond", function);
     llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "loop.body", function);
     llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(context, "loop.step", function);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(context, "loop.end",  function);
+    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "loop.end", function);
 
     // branch to condition
     builder.CreateBr(condBB);
@@ -505,45 +507,62 @@ void IRGenerator::generateForStatement(Node *node)
     builder.SetInsertPoint(condBB);
     std::cerr << "[IR DEBUG] Generating condition\n";
     llvm::Value *condVal = generateExpression(forStmt->condition.get());
-    if (!condVal) { std::cerr << "[IR ERROR] For loop has invalid condition\n"; builder.SetInsertPoint(origBB); return; }
+    if (!condVal)
+    {
+        std::cerr << "[IR ERROR] For loop has invalid condition\n";
+        builder.SetInsertPoint(origBB);
+        return;
+    }
 
     auto it = semantics.metaData.find(forStmt->condition.get());
-    if (it == semantics.metaData.end() || it->second->type.kind != DataType::BOOLEAN) {
+    if (it == semantics.metaData.end() || it->second->type.kind != DataType::BOOLEAN)
+    {
         std::cerr << "[IR ERROR] For loop condition must evaluate to boolean.\n";
         builder.SetInsertPoint(origBB);
         return;
     }
 
     // promote if needed
-    if (!condVal->getType()->isIntegerTy(1)) {
+    if (!condVal->getType()->isIntegerTy(1))
+    {
         if (condVal->getType()->isIntegerTy(32))
             condVal = builder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "loopcond.bool");
-        else { std::cerr << "[IR ERROR] For loop condition must be boolean or i32\n"; builder.SetInsertPoint(origBB); return; }
+        else
+        {
+            std::cerr << "[IR ERROR] For loop condition must be boolean or i32\n";
+            builder.SetInsertPoint(origBB);
+            return;
+        }
     }
 
     builder.CreateCondBr(condVal, bodyBB, endBB);
 
     // body
     builder.SetInsertPoint(bodyBB);
-    loopBlocksStack.push_back({ condBB, stepBB, endBB }); // <-- includes stepBB now
+    loopBlocksStack.push_back({condBB, stepBB, endBB}); // <-- includes stepBB now
     std::cerr << "[IR DEBUG] Generating loop body\n";
     generateStatement(forStmt->body.get());
     std::cerr << "[IR DEBUG] Finished generating loop body\n";
     loopBlocksStack.pop_back();
 
-    if (!builder.GetInsertBlock()->getTerminator()) {
+    if (!builder.GetInsertBlock()->getTerminator())
+    {
         std::cerr << "[IR DEBUG] Adding branch to loop.step\n";
         builder.CreateBr(stepBB);
-    } else {
+    }
+    else
+    {
         std::cerr << "[IR WARNING] Loop body block already has terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
     }
 
     // step
     builder.SetInsertPoint(stepBB);
-    if (forStmt->step) {
+    if (forStmt->step)
+    {
         std::cerr << "[IR DEBUG] Generating loop step\n";
         llvm::Value *stepVal = generateExpression(forStmt->step.get());
-        if (!stepVal) {
+        if (!stepVal)
+        {
             std::cerr << "[IR ERROR] loop step generation returned nullptr!\n";
             builder.CreateBr(condBB); // keep IR consistent
             builder.SetInsertPoint(origBB);
@@ -555,7 +574,6 @@ void IRGenerator::generateForStatement(Node *node)
     // after
     builder.SetInsertPoint(endBB);
 }
-
 
 void IRGenerator::generateBreakStatement(Node *node)
 {
@@ -616,13 +634,36 @@ void IRGenerator::generateAssignmentStatement(Node *node)
     {
         // Regular variable assignment
         const std::string &varName = assignStmt->identifier->expression.TokenLiteral;
-        auto it = semantics.resolveSymbolInfo(varName);
-        if (!it)
+        auto metaIt = semantics.metaData.find(assignStmt);
+        if (metaIt == semantics.metaData.end())
+            throw std::runtime_error("Could not find variable '" + varName + "' metaData");
+
+        auto assignSym=metaIt->second;
+
+        if (!assignSym)
             throw std::runtime_error("Could not find variable '" + varName + "'");
-        if (it->hasError)
+
+        if (assignSym->hasError)
             return;
 
-        targetPtr = it->llvmValue;
+        if (assignSym->isHeap)
+        {
+            uint64_t size = assignSym->componentSize;
+
+            llvm::FunctionCallee sageFreeFunction = module->getOrInsertFunction(
+                "sage_free", llvm::Type::getVoidTy(context),
+                llvm::Type::getInt64Ty(context));
+
+            Node *lastUse = assignSym->lastUseNode ? assignSym->lastUseNode : assignStmt;
+            if (assignStmt == lastUse)
+            {
+                builder.CreateCall(
+                    sageFreeFunction,
+                    {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)});
+            }
+        }
+
+        targetPtr = assignSym->llvmValue;
         if (!targetPtr)
             throw std::runtime_error("No memory allocated for variable '" + varName + "'");
     }
