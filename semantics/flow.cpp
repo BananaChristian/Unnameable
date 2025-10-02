@@ -5,10 +5,80 @@ void Semantics::walkBlockStatement(Node *node)
     auto blockStmt = dynamic_cast<BlockStatement *>(node);
     if (!blockStmt)
         return;
+
     std::cout << "[SEMANTIC LOG]: Analysing block statement: " << blockStmt->toString() << "\n";
+
     auto &stmts = blockStmt->statements;
+    // keep track of all heap-raised vars declared in this block
+    std::vector<std::string> localHeapVars;
+
     for (const auto &stmt : stmts)
     {
+        std::string name;
+        if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get()))
+        {
+            if (letStmt->isHeap)
+            {
+                // remember this var as heap declared locally
+                localHeapVars.push_back(letStmt->ident_token.TokenLiteral);
+            }
+        }
+
+        if (auto assignStmt = dynamic_cast<AssignmentStatement *>(stmt.get()))
+        {
+            name = assignStmt->identifier->expression.TokenLiteral;
+            int line = assignStmt->identifier->expression.line;
+            int col = assignStmt->identifier->expression.column;
+            auto assignSym = resolveSymbolInfo(name);
+            if (!assignSym)
+            {
+                logSemanticErrors("Undeclared variable '" + name + "'", line, col);
+                return;
+            }
+            // only error if it's heap and not declared in this block
+            if (assignSym->isHeap &&
+                std::find(localHeapVars.begin(), localHeapVars.end(), name) == localHeapVars.end())
+            {
+                logSemanticErrors("Cannot use a variable '" + name + "' that you heap raised externally inside a loop or branch", line, col);
+                return;
+            }
+        }
+
+        if (auto exprStmt = dynamic_cast<ExpressionStatement *>(stmt.get()))
+        {
+            if (auto infix = dynamic_cast<InfixExpression *>(exprStmt->expression.get()))
+            {
+                std::cout << "Triggered Infix\n";
+                auto checkIdent = [&](Identifier *ident)
+                {
+                    std::string n = ident->identifier.TokenLiteral;
+                    int line = ident->expression.line;
+                    int col = ident->expression.column;
+                    auto sym = resolveSymbolInfo(n);
+                    if (!sym)
+                    {
+                        logSemanticErrors("Use of undeclared variable '" + n + "'", line, col);
+                        return false;
+                    }
+                    if (sym->isHeap &&
+                        std::find(localHeapVars.begin(), localHeapVars.end(), n) == localHeapVars.end())
+                    {
+                        logSemanticErrors("Cannot use a variable '" + n + "' that you heap raised externally inside a loop", line, col);
+                        return false;
+                    }
+                    return true;
+                };
+
+                if (auto leftIdent = dynamic_cast<Identifier *>(infix->left_operand.get()))
+                    if (!checkIdent(leftIdent))
+                        return;
+
+                if (auto rightIdent = dynamic_cast<Identifier *>(infix->right_operand.get()))
+                    if (!checkIdent(rightIdent))
+                        return;
+            }
+        }
+
         walker(stmt.get());
     }
 }
@@ -28,8 +98,10 @@ void Semantics::walkWhileStatement(Node *node)
     walker(whileCondition);
 
     loopContext.push_back(true);
+    symbolTable.push_back({});
     auto whileLoop = whileStmt->loop.get();
     walker(whileLoop);
+    symbolTable.pop_back();
     loopContext.pop_back();
 }
 
@@ -50,7 +122,9 @@ void Semantics::walkElifStatement(Node *node)
 
     // Handling the elif results
     auto elifResults = elifStmt->elif_result.get();
+    symbolTable.push_back({});
     walker(elifResults);
+    symbolTable.pop_back();
 }
 
 void Semantics::walkIfStatement(Node *node)
@@ -70,7 +144,9 @@ void Semantics::walkIfStatement(Node *node)
 
     // Dealing with the if result
     auto ifResult = ifStmt->if_result.get();
+    symbolTable.push_back({});
     walker(ifResult);
+    symbolTable.pop_back();
 
     // Dealing with the elif clauses
     auto &elifClauses = ifStmt->elifClauses;
@@ -87,7 +163,9 @@ void Semantics::walkIfStatement(Node *node)
     if (ifStmt->else_result.has_value())
     {
         auto elseStmt = ifStmt->else_result.value().get();
+        symbolTable.push_back({});
         walker(elseStmt);
+        symbolTable.pop_back();
     }
 }
 
@@ -178,8 +256,10 @@ void Semantics::walkForStatement(Node *node)
     walker(step);
     // Handling the block
     loopContext.push_back(true);
+    symbolTable.push_back({});
     auto block = forStmt->body.get();
     walker(block);
+    symbolTable.pop_back();
     loopContext.pop_back();
 }
 
