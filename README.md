@@ -285,9 +285,11 @@ switch (name) {
 ## Loops
 *While loops*
 ```
-int x=5;
+int x=0;
 while (x > 5) {
-    return x;
+    int y=10;
+    y+2;
+    x=x+1;
 }
 
 ```
