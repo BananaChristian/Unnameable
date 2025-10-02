@@ -24,6 +24,11 @@ public:
 private:
     // Component calculators
     void calculateLetStatementSize(Node *node);
+    void calculateWhileStatementSize(Node *node);
+    void calculateForStatementSize(Node *node);
+    void calculateIfStatementSize(Node *node);
+    void calculateElifStatementSize(Node *node);
+    void calculateBlockStatementMembersSize(Node *node);
     // HELPERS
     void registerComponentCalculatorFns();
     void logPrestaticError(const std::string &message, int line, int col);

@@ -32,6 +32,11 @@ void Layout::calculatorDriver(Node *node)
 void Layout::registerComponentCalculatorFns()
 {
     calculatorFnsMap[typeid(LetStatement)] = &Layout::calculateLetStatementSize;
+    calculatorFnsMap[typeid(WhileStatement)] = &Layout::calculateWhileStatementSize;
+    calculatorFnsMap[typeid(ForStatement)] = &Layout::calculateForStatementSize;
+    calculatorFnsMap[typeid(ifStatement)] = &Layout::calculateIfStatementSize;
+    calculatorFnsMap[typeid(elifStatement)]=&Layout::calculateElifStatementSize;
+    calculatorFnsMap[typeid(BlockStatement)] = &Layout::calculateBlockStatementMembersSize;
 }
 
 // Independent calculators
@@ -81,6 +86,67 @@ void Layout::calculateLetStatementSize(Node *node)
     letSym->componentSize = compSize;
 
     totalHeapSize += compSize;
+}
+
+void Layout::calculateBlockStatementMembersSize(Node *node)
+{
+    auto blockStmt = dynamic_cast<BlockStatement *>(node);
+    if (!blockStmt)
+        return;
+
+    for (const auto &stmt : blockStmt->statements)
+    {
+        calculatorDriver(stmt.get());
+    }
+}
+
+void Layout::calculateForStatementSize(Node *node)
+{
+    auto forStmt = dynamic_cast<ForStatement *>(node);
+    if (!forStmt)
+        return;
+
+    calculatorDriver(forStmt->body.get());
+}
+
+void Layout::calculateWhileStatementSize(Node *node)
+{
+    auto whileStmt = dynamic_cast<WhileStatement *>(node);
+    if (!whileStmt)
+        return;
+
+    auto content = whileStmt->loop.get();
+
+    calculatorDriver(content);
+}
+
+void Layout::calculateIfStatementSize(Node *node)
+{
+    auto ifStmt = dynamic_cast<ifStatement *>(node);
+    if (!ifStmt)
+        return;
+
+    calculatorDriver(ifStmt->if_result.get());
+    if (!ifStmt->elifClauses.empty())
+    {
+        for (const auto &elif : ifStmt->elifClauses)
+        {
+            calculatorDriver(elif.get());
+        }
+    }
+    if (ifStmt->else_result.has_value())
+    {
+        calculatorDriver(ifStmt->else_result.value().get());
+    }
+}
+
+void Layout::calculateElifStatementSize(Node *node)
+{
+    auto elifStmt = dynamic_cast<elifStatement *>(node);
+    if (!elifStmt)
+        return;
+
+    calculatorDriver(elifStmt->elif_result.get());
 }
 
 void Layout::logPrestaticError(const std::string &message, int line, int col)
