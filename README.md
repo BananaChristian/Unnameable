@@ -6,21 +6,21 @@ It exists to make low-level development **clear**, **accessible**, and **fun** f
 
 > **Fast and powerful, yet simple and predictable.**
 
-No matter what you’re building an OS, a game engine, or your first kernel you shouldn't need a PhD or wrestle with books just to understand memory management.
-
-Unnameable is here to bring the joy back to low-level programming.
+Unnameable's goal is to bring the joy back to low-level programming.
 
 ---
 
-This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, semantic analyzer and LLVM IR codegen.
+This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, semantic analyzer, layout calculator,sentinel layer and LLVM IR codegen.
 
 ---
 
 ## Features
 
-- Custom Lexer and Tokenizer *(in progress)*
-- Custom Parser *(in progress)*
-- Semantic Analyzer *(active development)*
+- Lexer *(in progress)*
+- Parser *(in progress)*
+- Semantic Analyzer *(in progress)*
+- Layout Calculator *(active development)*
+- Sentinel layer *(active development)*
 - LLVM IR Codegen *(active development)*
 
 ---
@@ -409,10 +409,33 @@ Type inference with auto works together with *mut* and *const* for example
 mut auto z = 5;    # Mutable variable with inferred type int
 const auto w = 3;  # Immutable variable with inferred type int
 ```
-## Heap allocations
+
+## SAGE memory model
+Unnameable uses a memory model called Stack Aligned Garbage Elimination(SAGE). 
+SAGE is a deterministic memory model designed for maximum speed and predictability. The responsibility for memory correctness entirely depends on the compiler and is enforced by layers like `sentinel` and the `layout layer` 
+
+Core philosophy
+- Single contigous heap: All heap-raised objects live in a single, preallocated memory block
+- Stack like allocation: Objects are allocated and freed in strict Last-in-First-Out(LIFO) order,mimicking a stack inside a heap
+- Deterministic memory layout: Memory is fully calculated at compile-time, This ensures exact object placement and zero surprises at runtime
+- No runtime overhead: After allocation, SAGE simply executes, no hidden checks, garbage collection, or automatic reference comunting
+
+How it works
+- Allocation: The compiler calculates the total memory of all heap raised objects, and then it requests for the memory at once from the OS it the creates the SAGE heap which has a 3 pointer i.e. base pointer, frame pointer and end pointer the base pointer points to the address of the memory the compiler received it is used to check underflows, the frame pointer is the one we move around when we allocate objects it points to the address next free part in the SAGE heap, the end pointer points to the address at the end of memory we were given it is used to check for overflows and also we slide it back with the frame pointer when we free memory this is to avoid memory hogging, then heap raised are are allocated sequentially on the SAGE heap.
+
+- Deallocation: Objects are freed in LIFO order according to their last use, automatically tracked by the compiler, the programmers job is to ensure this order holds 
+
+- Safety enforcement: The `Sentinel layer` checks that objects are used and freed in the correct order, blocking illegal operations at runtime all this is checked at compile time
+
+Key features(This is all in theory as I havent yet done robust testing)
+- Extreme perfomance: The contigous memory layout and stack like access maximize cache effeciency
+- Predictability: No hidden memory spikes or pauses, allocation and freeing are deterministic
+- Compile-time safety: *Sentinel* prevents out-of-order freeing without runtime checks
+
+## Heap raising
 Since Unnameable is using a custom memory model(SAGE) components and data blocks by default shall be heap allocated but a user might want some to manually promote some features to the heap themselves 
 They can do this using the `heap` keyword which is a heap promoter it will tell the compiler to treat that variable as a full blown component and place it on the heap
-Although it is only allowed on let statements and has some special rules applying to it
+Although it is only allowed on let statements and has some special rules applying to it as seen below
 ```
 #Normal use of the heap promoter
 heap int x=10;
@@ -424,6 +447,17 @@ heap int x; #This will not be allowed as the compiler will ask for an initializa
 heap int? x=null; #This will be rejected by the compiler as we dont want to account for nulls in SAGE
 heap int? x; #Same story not allowed 
 
+#Freeing order of heap raised values
+##The compiler will block the code below as it violates LIFO(Last In First Out) rules 
+z was the last to be declared and so should be freed first and not y
+The error message looks like this
+
+[SENTINEL ERROR] Non LIFO free detected, Tried to free 'y' which is not on top of the SAGE stack on line: 4, column: 1##
+heap mut int y=10; 
+heap mut short z=11;
+
+y=y+1;
+z=z+1s;
 
 ```
 
