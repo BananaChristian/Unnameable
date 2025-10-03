@@ -146,18 +146,12 @@ struct SymbolInfo
 
     bool isHeap=false;
     size_t componentSize;
+    int alloc_id=0; //This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
     
 
     // Error flag
     bool hasError = false;
-};
-
-struct HeapAllocationInfo
-{
-    std::shared_ptr<SymbolInfo> symbol; // Pointer to the symbol allocated
-    Node *allocNode;
-    size_t componentSize; // Size of the object
 };
 
 class Semantics
@@ -175,7 +169,6 @@ public:
     std::vector<ScopeInfo> currentTypeStack;
 
     std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
-    std::vector<HeapAllocationInfo> heapAllocLIFO;
 
     // Public helpers
     std::shared_ptr<SymbolInfo> resolveSymbolInfo(const std::string &name);
