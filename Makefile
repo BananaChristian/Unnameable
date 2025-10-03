@@ -19,7 +19,8 @@ SRC = main.cpp \
       irgen/irgen.cpp\
       irgen/componentIR.cpp\
       allocator/allocator.cpp\
-      layout/layout.cpp
+      layout/layout.cpp\
+      sentinel/sentinel.cpp
 
 $(OUT): $(SRC)
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(SRC) -o $(OUT) $(LLVM_LDFLAGS)
