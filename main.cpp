@@ -10,6 +10,7 @@
 #include "semantics/semantics.hpp"
 #include "irgen/irgen.hpp"
 #include "layout/layout.hpp"
+#include "sentinel/sentinel.hpp"
 #include <llvm/IR/LLVMContext.h>
 
 std::string readFileToString(const std::string &filepath)
@@ -76,6 +77,12 @@ int main(int argc, char **argv)
         for (const auto &node : nodes)
         {
             layout.calculatorDriver(node.get());
+        }
+        std::cout << "\n----Sentinel analysis------\n";
+        Sentinel sentinel(semantics);
+        for (const auto &node : nodes)
+        {
+            sentinel.sentinelDriver(node.get());
         }
         std::cout << "\n--- LLVM IR Generation ---\n";
         IRGenerator irgen(semantics, layout.totalHeapSize);
