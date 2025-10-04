@@ -620,6 +620,7 @@ void Semantics::walkAssignStatement(Node *node)
             hasError = true;
             return;
         }
+        walker(ident);
     }
     else
     {
@@ -652,6 +653,7 @@ void Semantics::walkAssignStatement(Node *node)
                 logSemanticErrors("Cannot assign non initialized identifier '" + identName + "' to variable '" + assignName + "'", ident->expression.line, ident->expression.column);
                 hasError = true;
             }
+            walker(ident);
         }
         if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get()))
         {
@@ -761,12 +763,6 @@ void Semantics::walkAssignStatement(Node *node)
                               assignStmt->identifier->expression.column);
             hasError = true;
         }
-    }
-
-    // Heap updates
-    if (symbol->isHeap)
-    {
-        symbol->lastUseNode = assignStmt;
     }
 
     // --- Mark variable initialized ---
