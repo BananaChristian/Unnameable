@@ -35,8 +35,11 @@ void Layout::registerComponentCalculatorFns()
     calculatorFnsMap[typeid(WhileStatement)] = &Layout::calculateWhileStatementSize;
     calculatorFnsMap[typeid(ForStatement)] = &Layout::calculateForStatementSize;
     calculatorFnsMap[typeid(ifStatement)] = &Layout::calculateIfStatementSize;
-    calculatorFnsMap[typeid(elifStatement)]=&Layout::calculateElifStatementSize;
+    calculatorFnsMap[typeid(elifStatement)] = &Layout::calculateElifStatementSize;
     calculatorFnsMap[typeid(BlockStatement)] = &Layout::calculateBlockStatementMembersSize;
+    calculatorFnsMap[typeid(FunctionStatement)] = &Layout::calculateFunctionStatement;
+    calculatorFnsMap[typeid(FunctionExpression)] = &Layout::calculateFunctionExpression;
+    calculatorFnsMap[typeid(BlockExpression)] = &Layout::calculateBlockExpression;
 }
 
 // Independent calculators
@@ -147,6 +150,44 @@ void Layout::calculateElifStatementSize(Node *node)
         return;
 
     calculatorDriver(elifStmt->elif_result.get());
+}
+
+void Layout::calculateFunctionStatement(Node *node)
+{
+    auto funcStmt = dynamic_cast<FunctionStatement *>(node);
+    if (!funcStmt)
+        return;
+
+    calculatorDriver(funcStmt->funcExpr.get());
+}
+
+void Layout::calculateFunctionExpression(Node *node)
+{
+    auto funcExpr = dynamic_cast<FunctionExpression *>(node);
+    if (!funcExpr)
+        return;
+
+    calculatorDriver(funcExpr->block.get());
+}
+
+void Layout::calculateBlockExpression(Node *node)
+{
+    auto blockExpr = dynamic_cast<BlockExpression *>(node);
+    if (!blockExpr)
+        return;
+
+    if (!blockExpr->statements.empty())
+    {
+        for (const auto &stmt : blockExpr->statements)
+        {
+            calculatorDriver(stmt.get());
+        }
+    }
+
+    if (blockExpr->finalexpr.has_value())
+    {
+        calculatorDriver(blockExpr->finalexpr.value().get());
+    }
 }
 
 void Layout::logPrestaticError(const std::string &message, int line, int col)

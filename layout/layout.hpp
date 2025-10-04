@@ -29,6 +29,9 @@ private:
     void calculateIfStatementSize(Node *node);
     void calculateElifStatementSize(Node *node);
     void calculateBlockStatementMembersSize(Node *node);
+    void calculateFunctionStatement(Node *node);
+    void calculateFunctionExpression(Node *node);
+    void calculateBlockExpression(Node *node);
     // HELPERS
     void registerComponentCalculatorFns();
     void logPrestaticError(const std::string &message, int line, int col);
