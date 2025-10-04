@@ -28,6 +28,12 @@ private:
     void checkElifStatement(Node *node);
     void checkWhileStatement(Node *node);
     void checkForStatement(Node *node);
+    void checkFunctionStatement(Node *node);
+    void checkFunctionExpression(Node *node);
+    void checkBlockExpression(Node *node);
+    void checkCallExpression(Node *node);
+    void checkExpressionStatement(Node *node);
+    void checkInfixExpression(Node *node);
     void registerSentinelFns();
     void logError(const std::string &message, int line, int col);
 };

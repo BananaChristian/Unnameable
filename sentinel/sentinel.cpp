@@ -10,6 +10,7 @@ void Sentinel::sentinelDriver(Node *node)
     auto sentinelIt = sentinelFnsMap.find(typeid(*node));
     if (sentinelIt == sentinelFnsMap.end())
     {
+        std::cout << "Sentinel skipping node: " << node->toString() << "\n";
         return;
     }
 
@@ -26,6 +27,34 @@ void Sentinel::registerSentinelFns()
     sentinelFnsMap[typeid(elifStatement)] = &Sentinel::checkElifStatement;
     sentinelFnsMap[typeid(WhileStatement)] = &Sentinel::checkWhileStatement;
     sentinelFnsMap[typeid(ForStatement)] = &Sentinel::checkForStatement;
+    sentinelFnsMap[typeid(FunctionStatement)] = &Sentinel::checkFunctionStatement;
+    sentinelFnsMap[typeid(FunctionExpression)] = &Sentinel::checkFunctionExpression;
+    sentinelFnsMap[typeid(BlockExpression)] = &Sentinel::checkBlockExpression;
+    sentinelFnsMap[typeid(CallExpression)] = &Sentinel::checkCallExpression;
+    sentinelFnsMap[typeid(ExpressionStatement)] = &Sentinel::checkExpressionStatement;
+    sentinelFnsMap[typeid(InfixExpression)] = &Sentinel::checkInfixExpression;
+}
+
+void Sentinel::checkExpressionStatement(Node *node)
+{
+    auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
+    if (!exprStmt)
+        return;
+
+    sentinelDriver(exprStmt->expression.get());
+}
+
+void Sentinel::checkInfixExpression(Node *node)
+{
+    auto infixExpr = dynamic_cast<InfixExpression *>(node);
+    if (!infixExpr)
+        return;
+
+    auto left = infixExpr->left_operand.get();
+    auto right = infixExpr->right_operand.get();
+
+    sentinelDriver(left);
+    sentinelDriver(right);
 }
 
 void Sentinel::checkIdentifier(Node *node)
@@ -41,7 +70,7 @@ void Sentinel::checkIdentifier(Node *node)
     auto metaIt = semantics.metaData.find(ident);
     if (metaIt == semantics.metaData.end())
     {
-        logError("Could not find identifier metaData", line, col);
+        logError("Could not find identifier '" + name + "' metaData", line, col);
         return;
     }
 
@@ -118,40 +147,11 @@ void Sentinel::checkAssignmentStatement(Node *node)
     if (!assignStmt)
         return;
 
-    auto line = assignStmt->identifier->expression.line;
-    auto col = assignStmt->identifier->expression.column;
-    const std::string &name = assignStmt->identifier->expression.TokenLiteral;
+    auto ident = assignStmt->identifier.get();
+    auto value = assignStmt->value.get();
 
-    auto metaIt = semantics.metaData.find(assignStmt);
-    if (metaIt == semantics.metaData.end())
-    {
-        logError("Could not find assignment statement metaData", line, col);
-        return;
-    }
-
-    // Getting the assignment symbol
-    auto assignSym = metaIt->second;
-
-    if (!assignSym)
-    {
-        logError("Undeclared variable '" + name + "' ", line, col);
-        assignSym->hasError = true;
-        return;
-    }
-
-    if (!assignSym->isHeap)
-        return;
-
-    if (assignSym->lastUseNode = assignStmt)
-    {
-        if (sentinelStack.back()->alloc_id != assignSym->alloc_id)
-        {
-            logError("Non LIFO free detected, Tried to free '" + name + "' which is not on top of the SAGE stack", line, col);
-            assignSym->hasError = true;
-            return;
-        }
-        sentinelStack.pop_back();
-    }
+    sentinelDriver(ident);
+    sentinelDriver(value);
 }
 
 void Sentinel::checkBlockStatement(Node *node)
@@ -213,6 +213,56 @@ void Sentinel::checkForStatement(Node *node)
         return;
 
     sentinelDriver(forStmt->body.get());
+}
+
+void Sentinel::checkFunctionStatement(Node *node)
+{
+    auto funcStmt = dynamic_cast<FunctionStatement *>(node);
+    if (!funcStmt)
+        return;
+
+    sentinelDriver(funcStmt->funcExpr.get());
+}
+
+void Sentinel::checkFunctionExpression(Node *node)
+{
+    auto funcExpr = dynamic_cast<FunctionExpression *>(node);
+    if (!funcExpr)
+        return;
+
+    sentinelDriver(funcExpr->block.get());
+}
+
+void Sentinel::checkBlockExpression(Node *node)
+{
+    auto blockExpr = dynamic_cast<BlockExpression *>(node);
+    if (!blockExpr)
+        return;
+
+    if (!blockExpr->statements.empty())
+    {
+        for (const auto &stmt : blockExpr->statements)
+        {
+            sentinelDriver(stmt.get());
+        }
+    }
+
+    if (blockExpr->finalexpr.has_value())
+    {
+        sentinelDriver(blockExpr->finalexpr.value().get());
+    }
+}
+
+void Sentinel::checkCallExpression(Node *node)
+{
+    auto callExpr = dynamic_cast<CallExpression *>(node);
+    if (!callExpr)
+        return;
+
+    for (const auto &arg : callExpr->parameters)
+    {
+        sentinelDriver(arg.get());
+    }
 }
 
 void Sentinel::logError(const std::string &message, int line, int col)
