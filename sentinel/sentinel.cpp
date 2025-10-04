@@ -33,6 +33,8 @@ void Sentinel::registerSentinelFns()
     sentinelFnsMap[typeid(CallExpression)] = &Sentinel::checkCallExpression;
     sentinelFnsMap[typeid(ExpressionStatement)] = &Sentinel::checkExpressionStatement;
     sentinelFnsMap[typeid(InfixExpression)] = &Sentinel::checkInfixExpression;
+    sentinelFnsMap[typeid(PrefixExpression)] = &Sentinel::checkPrefixExpression;
+    sentinelFnsMap[typeid(PostfixExpression)] = &Sentinel::checkPostfixExpression;
 }
 
 void Sentinel::checkExpressionStatement(Node *node)
@@ -55,6 +57,24 @@ void Sentinel::checkInfixExpression(Node *node)
 
     sentinelDriver(left);
     sentinelDriver(right);
+}
+
+void Sentinel::checkPrefixExpression(Node *node)
+{
+    auto prefixExpr = dynamic_cast<PrefixExpression *>(node);
+    if (!prefixExpr)
+        return;
+
+    sentinelDriver(prefixExpr->operand.get());
+}
+
+void Sentinel::checkPostfixExpression(Node *node)
+{
+    auto postfixExpr = dynamic_cast<PostfixExpression *>(node);
+    if (!postfixExpr)
+        return;
+
+    sentinelDriver(postfixExpr->operand.get());
 }
 
 void Sentinel::checkIdentifier(Node *node)

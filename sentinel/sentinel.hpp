@@ -34,6 +34,8 @@ private:
     void checkCallExpression(Node *node);
     void checkExpressionStatement(Node *node);
     void checkInfixExpression(Node *node);
+    void checkPrefixExpression(Node *node);
+    void checkPostfixExpression(Node *node);
     void registerSentinelFns();
     void logError(const std::string &message, int line, int col);
 };
