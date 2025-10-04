@@ -646,23 +646,6 @@ void IRGenerator::generateAssignmentStatement(Node *node)
         if (assignSym->hasError)
             return;
 
-        if (assignSym->isHeap)
-        {
-            uint64_t size = assignSym->componentSize;
-
-            llvm::FunctionCallee sageFreeFunction = module->getOrInsertFunction(
-                "sage_free", llvm::Type::getVoidTy(context),
-                llvm::Type::getInt64Ty(context));
-
-            Node *lastUse = assignSym->lastUseNode ? assignSym->lastUseNode : assignStmt;
-            if (assignStmt == lastUse)
-            {
-                builder.CreateCall(
-                    sageFreeFunction,
-                    {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)});
-            }
-        }
-
         targetPtr = assignSym->llvmValue;
         if (!targetPtr)
             throw std::runtime_error("No memory allocated for variable '" + varName + "'");
