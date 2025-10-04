@@ -422,7 +422,7 @@ struct ExpressionStatement : Statement
     {
         if (expression)
         {
-            return expression->toString() + ";";
+            return "Expression statement: " + expression->toString() + ";";
         }
         return ";";
     }
