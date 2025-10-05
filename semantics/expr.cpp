@@ -31,7 +31,7 @@ void Semantics::walkInfixExpression(Node *node)
                                            lhsType.resolvedName,
                                            rhsIdent->identifier.TokenLiteral,
                                            infixExpr);
-                                           
+
         // Store metadata for RHS identifier
         auto rhsInfo = std::make_shared<SymbolInfo>();
         rhsInfo->type = resolved;
