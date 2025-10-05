@@ -630,29 +630,35 @@ void IRGenerator::generateAssignmentStatement(Node *node)
         if (!targetPtr)
             throw std::runtime_error("Failed to get pointer for self field");
     }
-    else
-    {
-        // Regular variable assignment
-        const std::string &varName = assignStmt->identifier->expression.TokenLiteral;
-        auto metaIt = semantics.metaData.find(assignStmt);
-        if (metaIt == semantics.metaData.end())
-            throw std::runtime_error("Could not find variable '" + varName + "' metaData");
 
-        auto assignSym=metaIt->second;
+    // Regular variable assignment
+    const std::string &varName = assignStmt->identifier->expression.TokenLiteral;
+    auto metaIt = semantics.metaData.find(assignStmt);
+    if (metaIt == semantics.metaData.end())
+        throw std::runtime_error("Could not find variable '" + varName + "' metaData");
 
-        if (!assignSym)
-            throw std::runtime_error("Could not find variable '" + varName + "'");
+    auto assignSym = metaIt->second;
 
-        if (assignSym->hasError)
-            return;
+    if (!assignSym)
+        throw std::runtime_error("Could not find variable '" + varName + "'");
 
-        targetPtr = assignSym->llvmValue;
-        if (!targetPtr)
-            throw std::runtime_error("No memory allocated for variable '" + varName + "'");
-    }
+    if (assignSym->hasError)
+        return;
+
+    AddressAndPendingFree addrAndPendingFree = generateIdentifierAddress(assignStmt->identifier.get());
+    targetPtr = addrAndPendingFree.address;
+    llvm::CallInst *pendingFree = addrAndPendingFree.pendingFree;
+
+    if (!targetPtr)
+        throw std::runtime_error("No memory allocated for variable '" + varName + "'");
 
     // Store the value
     builder.CreateStore(initValue, targetPtr);
+
+    if (pendingFree)
+    {
+        builder.Insert(pendingFree);
+    }
 }
 
 void IRGenerator::generateFieldAssignmentStatement(Node *node)
@@ -1085,7 +1091,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
     if (!prefix)
         throw std::runtime_error("Invalid prefix expression");
 
-    llvm::Value *operand = generateExpression(prefix->operand.get());
+    llvm::Value *operand = generateIdentifierAddress(prefix->operand.get()).address;
     if (!operand)
         throw std::runtime_error("Failed to generate IR for prefix operand");
 
@@ -1146,7 +1152,10 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
         {
             throw std::runtime_error("Udefined variable '" + name + "'");
         }
-        llvm::Value *varPtr = identIt->second->llvmValue;
+        AddressAndPendingFree addrAndFree = generateIdentifierAddress(ident);
+        llvm::Value *varPtr = addrAndFree.address;
+        llvm::CallInst *pendingFree = addrAndFree.pendingFree;
+
         if (!varPtr)
             throw std::runtime_error("Null variable pointer for: " + ident->identifier.TokenLiteral);
 
@@ -1183,6 +1192,11 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
                           : builder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
 
         builder.CreateStore(updated, varPtr);
+
+        if (pendingFree)
+        {
+            builder.Insert(pendingFree);
+        }
         return updated;
     }
 
@@ -1203,7 +1217,11 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
         throw std::runtime_error("Postfix operand must be a variable");
     auto identName = identifier->identifier.TokenLiteral;
     auto identIt = semantics.metaData.find(identifier);
-    llvm::Value *varPtr = identIt->second->llvmValue;
+
+    AddressAndPendingFree addrAndFree = generateIdentifierAddress(identifier);
+    llvm::Value *varPtr = addrAndFree.address;
+    llvm::CallInst *pendingFree = addrAndFree.pendingFree; // may be nullptr
+
     if (!varPtr)
         throw std::runtime_error("Null variable pointer for: " + identifier->identifier.TokenLiteral);
 
@@ -1212,6 +1230,15 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
     {
         throw std::runtime_error("Variable '" + identName + "' does not exist");
     }
+
+    std::cerr << "[IR-DEBUG] ident lastUse = "
+              << (identIt->second->lastUseNode ? typeid(*identIt->second->lastUseNode).name() : "NULL")
+              << ", postfix lastUse = "
+              << (postfixIt != semantics.metaData.end() && postfixIt->second->lastUseNode ? typeid(*postfixIt->second->lastUseNode).name() : "NULL")
+              << "\n";
+
+    if (postfixIt->second->hasError)
+        return nullptr;
 
     ResolvedType resultType = postfixIt->second->type;
 
@@ -1271,6 +1298,12 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
                                  " at line " + std::to_string(postfix->operator_token.line));
 
     builder.CreateStore(updatedValue, varPtr);
+
+    if (pendingFree)
+    {
+        // Insert the prepared free at the current insertion point
+        builder.Insert(pendingFree); // inserts at current position (after store)
+    }
 
     // Return original value since postfix
     return originalValue;
@@ -1656,7 +1689,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
         throw std::runtime_error("Semantic error detected ");
     }
 
-    llvm::Value *variablePtr = sym->llvmValue;
+    llvm::Value *variablePtr = generateIdentifierAddress(identExpr).address;
     if (!variablePtr)
         throw std::runtime_error("No llvm value was assigned for '" + identName + "'");
 
@@ -1726,6 +1759,84 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
 
     std::cout << "ENDED IDENTIFIER GEN\n";
     return variablePtr;
+}
+
+AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
+{
+    AddressAndPendingFree out{nullptr, nullptr};
+
+    auto identExpr = dynamic_cast<Identifier *>(node);
+    if (!identExpr)
+        throw std::runtime_error("Invalid identifier expression");
+
+    const std::string &identName = identExpr->identifier.TokenLiteral;
+    auto metaIt = semantics.metaData.find(identExpr);
+    if (metaIt == semantics.metaData.end())
+        throw std::runtime_error("Unidentified identifier '" + identName + "'");
+
+    auto sym = metaIt->second;
+    if (sym->hasError)
+        throw std::runtime_error("Semantic error detected ");
+
+    llvm::Value *variablePtr = sym->llvmValue;
+    if (!variablePtr)
+        throw std::runtime_error("No llvm value for '" + identName + "'");
+
+    // Component instance -> pointer to struct
+    auto compIt = componentTypes.find(sym->type.resolvedName);
+    if (compIt != componentTypes.end())
+    {
+        out.address = variablePtr;
+    }
+    else
+    {
+        // scalar/heap -> ensure typed pointer
+        if (sym->isHeap)
+        {
+            llvm::Type *elemTy = sym->llvmType;
+            if (!elemTy)
+                throw std::runtime_error("llvmType null for heap scalar '" + identName + "'");
+            llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
+            if (variablePtr->getType() != expectedPtrTy)
+            {
+                variablePtr = builder.CreateBitCast(variablePtr, expectedPtrTy, identName + "_ptr_typed");
+            }
+            out.address = variablePtr;
+        }
+        else
+        {
+            if (variablePtr->getType()->isPointerTy())
+            {
+                out.address = variablePtr;
+            }
+            else
+            {
+                throw std::runtime_error("Identifier '" + identName + "' does not have pointer-like llvmValue");
+            }
+        }
+    }
+
+    // If this identifier is the last use, prepare (but do NOT insert) the sage_free call.
+    // We'll create a CallInst but not insert into any block; the caller will insert it at the right spot.
+    if (sym->isHeap && sym->lastUseNode == identExpr)
+    {
+        llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
+            "sage_free",
+            llvm::Type::getVoidTy(context),
+            llvm::Type::getInt64Ty(context));
+
+        // Prepare size constant
+        llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
+
+        // Create call instruction WITHOUT inserting it into a block.
+        // Use CallInst::Create and do not provide InsertBefore (nullptr) — this yields an instruction that is not attached.
+        llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn, {sizeArg});
+        callInst->setCallingConv(llvm::CallingConv::C);
+        // Do NOT insert yet.
+        out.pendingFree = callInst;
+    }
+
+    return out;
 }
 
 llvm::Value *IRGenerator::generateSelfExpression(Node *node)

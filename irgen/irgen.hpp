@@ -20,14 +20,19 @@ class Node;
 struct LoopBlocks
 {
     llvm::BasicBlock *condBB;
-    llvm::BasicBlock *stepBB; 
+    llvm::BasicBlock *stepBB;
     llvm::BasicBlock *afterBB;
+};
+
+struct AddressAndPendingFree{
+    llvm::Value* address;
+    llvm::CallInst* pendingFree;
 };
 
 class IRGenerator
 {
 public:
-    IRGenerator(Semantics &semantics,size_t totalHeapSize);
+    IRGenerator(Semantics &semantics, size_t totalHeapSize);
 
     using generatorFunctions = void (IRGenerator::*)(Node *node);
     using expressionGenerators = llvm::Value *(IRGenerator::*)(Node * node);
@@ -119,6 +124,7 @@ private:
     void registerGeneratorFunctions();
     void registerExpressionGeneratorFunctions();
     llvm::Value *generateExpression(Node *node);
+    AddressAndPendingFree generateIdentifierAddress(Node *node);
     llvm::Value *getOrCreateGlobalDataBlock(DataStatement *dataStmt);
     void generateStatement(Node *node);
     char decodeCharLiteral(const std::string &literal);
