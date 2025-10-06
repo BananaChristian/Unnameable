@@ -657,6 +657,93 @@ std::unique_ptr<Statement> Parser::parseFieldAssignment()
     return std::make_unique<FieldAssignment>(current, std::move(value));
 }
 
+std::unique_ptr<Statement> Parser::parseReferenceStatement(bool isParam)
+{
+    Mutability mut = Mutability::IMMUTABLE;
+    std::unique_ptr<Expression> type;
+
+    Token ref_token = currentToken();
+    advance(); // Consume 'ref'
+
+    // Check mutability
+    if (currentToken().type == TokenType::MUT)
+    {
+        mut = Mutability::MUTABLE;
+        advance();
+    }
+    else if (currentToken().type == TokenType::CONST)
+    {
+        mut = Mutability::CONSTANT;
+        advance();
+    }
+
+    if (currentToken().type == TokenType::AUTO)
+    {
+        logError("Do not use 'auto' if u want to infer the type just dont include the type");
+        advance(); // Consume auto
+    }
+
+    // Parse optional type
+    // Only treat as type if followed by another identifier (like "int x")
+    if (isBasicType(currentToken().type) ||
+        (currentToken().type != TokenType::IDENTIFIER && nextToken().type == TokenType::IDENTIFIER))
+    {
+        type = parseReturnType();
+    }
+
+    // Parse identifier (the referer)
+    if (currentToken().type != TokenType::IDENTIFIER)
+    {
+        logError("Expected reference name but got '" + currentToken().TokenLiteral + "'");
+        return nullptr;
+    }
+    std::unique_ptr<Expression> ident = parseIdentifier();
+
+    // Optional initializer
+    std::unique_ptr<Expression> value = nullptr;
+    if (currentToken().type == TokenType::ARROW)
+    {
+        advance(); // Consume =>
+        value = parseExpression(Precedence::PREC_NONE);
+        if (!value)
+            return nullptr;
+    }
+
+    // Final semicolon (only for non-parameter mode)
+    if (!isParam)
+    {
+        if (currentToken().type == TokenType::SEMICOLON)
+        {
+            advance();
+        }
+        else
+        {
+            logError("Expected a semicolon but got: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
+    }
+    else
+    {
+        // If it's a function parameter, we expect either ')' or ',' next
+        if (currentToken().type != TokenType::COMMA && currentToken().type != TokenType::RPAREN)
+        {
+            logError("Expected ',' or ')' after parameter declaration but got: " + currentToken().TokenLiteral);
+            return nullptr;
+        }
+    }
+    return std::make_unique<ReferenceStatement>(
+        ref_token,
+        mut,
+        std::move(type),
+        std::move(ident),
+        std::move(value));
+}
+
+std::unique_ptr<Statement> Parser::parseReferenceStatementWrapper()
+{
+    return parseReferenceStatement();
+}
+
 bool Parser::isIntegerType(TokenType type)
 {
     switch (type)

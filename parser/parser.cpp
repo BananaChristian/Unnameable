@@ -397,6 +397,10 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
     {
         return parseArrayStatement(true);
     }
+    else if (current.type == TokenType::REF)
+    {
+        return parseReferenceStatement(true);
+    }
     else if (current.type == TokenType::IDENTIFIER)
     {
         if (nextToken().type == TokenType::SCOPE_OPERATOR)
@@ -2001,6 +2005,7 @@ void Parser::registerStatementParseFns()
 
     StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatementWrapper;
     StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
+    StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatementWrapper;
 }
 
 // Precedence getting function

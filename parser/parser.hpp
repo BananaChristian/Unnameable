@@ -105,6 +105,10 @@ private:
 
     std::unique_ptr<Statement> parseFieldAssignment();
 
+    std::unique_ptr<Statement> parseReferenceStatement(bool isParam=false);
+
+    std::unique_ptr<Statement> parseReferenceStatementWrapper();
+
     // Identifer starting statements function
     std::unique_ptr<Statement> parseIdentifierStatement();
 
