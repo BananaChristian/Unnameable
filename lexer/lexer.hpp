@@ -76,6 +76,8 @@ class Lexer
 
         {"const", TokenType::CONST},
         {"mut", TokenType::MUT},
+        {"ref", TokenType::REF},
+        {"ptr", TokenType::PTR},
 
         {"heap", TokenType::HEAP},
     };
