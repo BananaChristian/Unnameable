@@ -14,6 +14,8 @@ enum class TokenType
     DIVIDE,      ///
     MODULUS,     //"%"
 
+    ARROW,        //=>
+
     // Logical Operators
     EQUALS,       //==
     NOT_EQUALS,   //"!="
@@ -23,7 +25,6 @@ enum class TokenType
     LESS_THAN,    //<
     GT_OR_EQ,     //>=
     LT_OR_EQ,     //<=
-    ARROW,        //=>
     SHIFT_RIGHT,  //>>
     SHIFT_LEFT,   //<<
     BITWISE_AND,  //&
@@ -80,8 +81,10 @@ enum class TokenType
     SIGNAL, // signal
     ERROR,  // error
     NEW,    // new keyword for a new instance of a component
-    CONST,
-    MUT,
+    CONST,//constant keyword
+    MUT, //mutable keyword
+    REF, //reference keyword
+    PTR, //Pointer keyword
 
     // Control flow
     IF,

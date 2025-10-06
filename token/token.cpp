@@ -213,6 +213,10 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: ARRAY";
     case TokenType::MUT:
         return "Token Type: MUT";
+    case TokenType::REF:
+        return "Token Type: REF";
+    case TokenType::PTR:
+        return "Token Type: PTR";
     case TokenType::MODULUS:
         return "Token Type: MODULUS";
     case TokenType::HEAP:
