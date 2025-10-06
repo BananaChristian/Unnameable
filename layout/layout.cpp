@@ -40,6 +40,7 @@ void Layout::registerComponentCalculatorFns()
     calculatorFnsMap[typeid(FunctionStatement)] = &Layout::calculateFunctionStatement;
     calculatorFnsMap[typeid(FunctionExpression)] = &Layout::calculateFunctionExpression;
     calculatorFnsMap[typeid(BlockExpression)] = &Layout::calculateBlockExpression;
+    calculatorFnsMap[typeid(DataStatement)] = &Layout::calculateDataStatement;
 }
 
 // Independent calculators
@@ -187,6 +188,18 @@ void Layout::calculateBlockExpression(Node *node)
     if (blockExpr->finalexpr.has_value())
     {
         calculatorDriver(blockExpr->finalexpr.value().get());
+    }
+}
+
+void Layout::calculateDataStatement(Node *node)
+{
+    auto dataStmt = dynamic_cast<DataStatement *>(node);
+    if (!dataStmt)
+        return;
+
+    for (const auto &stmt : dataStmt->fields)
+    {
+        calculatorDriver(stmt.get());
     }
 }
 
