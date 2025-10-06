@@ -192,6 +192,47 @@ void IRGenerator::generateLetStatement(Node *node)
                           << memberPtr << " and llvmType = " << info->llvmType
                           << " at struct index " << index << "\n";
 
+                // --- Initialize member slot at function entry ---
+                // If this is a heap member, initialize the slot to null (so runtime sees "not allocated yet").
+                // Otherwise, zero-initialize simple scalar/pointer fields.
+                try
+                {
+                    llvm::Type *mTy = info->llvmType;
+                    if (!mTy)
+                    {
+                        throw std::runtime_error("Failed to get llvmType while initializing member '" + memberName + "'");
+                    }
+
+                    if (info->isHeap)
+                    {
+                        // Slot type in the struct is a pointer to element (elem*), so store a null of elem*.
+                        llvm::PointerType *elemPtrTy = mTy->getPointerTo(); // mTy is element type (i32), slot is elem*
+                        llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
+                        entryBuilder.CreateStore(nullPtr, memberPtr);
+                        std::cout << "[DEBUG] Initialized heap member slot '" << memberName << "' to null at entry\n";
+                    }
+                    else
+                    {
+                        // For non-heap fields, zero-init simple types (integers, floats, pointers).
+                        if (mTy->isPointerTy() || mTy->isIntegerTy() || mTy->isFloatingPointTy())
+                        {
+                            llvm::Constant *zeroVal = llvm::Constant::getNullValue(mTy);
+                            entryBuilder.CreateStore(zeroVal, memberPtr);
+                            std::cout << "[DEBUG] Zero-initialized member '" << memberName << "' at entry\n";
+                        }
+                        else
+                        {
+                            // For complex types, skip automatic init or handle as you prefer.
+                            std::cout << "[DEBUG] Skipping zero-init for complex member type for '" << memberName << "'\n";
+                        }
+                    }
+                }
+                catch (const std::exception &ex)
+                {
+                    // Defensive: don't crash codegen in the middle; print debug and continue
+                    std::cerr << "[WARN] Initialization failed for member '" << memberName << "': " << ex.what() << "\n";
+                }
+
                 if (!info->node)
                 {
                     throw std::runtime_error("Node not registered for '" + memberName + "'");
@@ -667,49 +708,20 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
     if (!fieldStmt)
         return;
 
+    // Generate RHS (value to store)
     llvm::Value *rhs = generateExpression(fieldStmt->value.get());
     if (!rhs)
         throw std::runtime_error("Failed to generate RHS IR");
 
+    // Split scoped name -> "Person::age" -> parent = "Person", child = "age"
     auto [parentVarName, childName] = semantics.splitScopedName(fieldStmt->assignment_token.TokenLiteral);
 
-    // Resolve parent pointer
-    llvm::Value *parentPtr = nullptr;
+    // Resolve parent symbol info (the instance)
     auto parentVarInfo = semantics.resolveSymbolInfo(parentVarName);
-    if (!parentVarInfo)
-    {
-        throw std::runtime_error("Unidentified variable '" + parentVarName + "'");
-    }
+    if (!parentVarInfo || !parentVarInfo->llvmValue)
+        throw std::runtime_error("Unresolved parent instance: " + parentVarName);
 
-    if (!parentVarInfo->llvmValue)
-    {
-        throw std::runtime_error("No value assigned to '" + parentVarName + "'");
-    }
-
-    if (parentVarInfo && parentVarInfo->llvmValue)
-        parentPtr = parentVarInfo->llvmValue; // AllocaInst* or Argument*
-
-    else if (currentFunction)
-        parentPtr = &*(currentFunction->arg_begin()); // hidden 'this'
-    else
-    {
-        // Fallback to global singleton for standalone data block
-        auto globalIt = llvmGlobalDataBlocks.find(parentVarName);
-        if (globalIt != llvmGlobalDataBlocks.end())
-        {
-            parentPtr = globalIt->second;
-        }
-        else if (currentFunction)
-        {
-            parentPtr = &*(currentFunction->arg_begin()); // hidden 'this'
-        }
-        else
-        {
-            throw std::runtime_error("Cannot resolve parent for field assignment: " + parentVarName);
-        }
-    }
-
-    // Ensure parent type exists
+    // Resolve parent type and member info
     auto parentTypeName = parentVarInfo->type.resolvedName;
     auto parentIt = semantics.customTypesTable.find(parentTypeName);
     if (parentIt == semantics.customTypesTable.end())
@@ -720,14 +732,83 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
     if (childIt == members.end())
         throw std::runtime_error("'" + childName + "' is not a member of '" + parentTypeName + "'");
 
+    // Member metadata and types
+    auto memberInfo = childIt->second; // whatever structure you use for member metadata
     llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
-    unsigned fieldIndex = childIt->second->memberIndex;
+    unsigned fieldIndex = memberInfo->memberIndex;
 
-    // Create proper GEP to member
-    llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, parentPtr, fieldIndex, childName);
+    // GEP to the member slot inside this instance (slot type for heap-member is "elem*",
+    // so the GEP yields a pointer-to-slot whose type is elem**)
+    llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, parentVarInfo->llvmValue, fieldIndex, childName);
+    if (!fieldPtr)
+        throw std::runtime_error("Failed to compute GEP for member '" + childName + "'");
 
-    // Store RHS value
-    builder.CreateStore(rhs, fieldPtr);
+    if (memberInfo->isHeap)
+    {
+        // Element LLVM type (e.g., i32 for int)
+        llvm::Type *elemTy = getLLVMType(memberInfo->type);
+        if (!elemTy)
+            throw std::runtime_error("Failed to get LLVM element type for member '" + childName + "'");
+
+        // ptr-to-elem type (elem*)
+        llvm::PointerType *elemPtrTy = elemTy->getPointerTo();
+
+        // Load current heap pointer from the slot: heapPtr = load(elem*, fieldPtr)
+        llvm::Value *heapPtr = builder.CreateLoad(elemPtrTy, fieldPtr, childName + "_heap_load");
+
+        // If heapPtr == null -> allocate; otherwise reuse existing pointer.
+        llvm::Value *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
+        llvm::Value *isNull = builder.CreateICmpEQ(heapPtr, nullPtr, childName + "_is_null");
+
+        llvm::Function *parentFn = builder.GetInsertBlock()->getParent();
+        llvm::BasicBlock *allocBB = llvm::BasicBlock::Create(context, childName + "_alloc", parentFn);
+        llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, childName + "_cont", parentFn);
+
+        // Cond branch on null
+        builder.CreateCondBr(isNull, allocBB, contBB);
+
+        // --- allocBB: call sage_alloc(size), bitcast to elemPtrTy, store into slot, branch to contBB
+        builder.SetInsertPoint(allocBB);
+
+        llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
+        llvm::FunctionCallee sageAllocFn = module->getOrInsertFunction("sage_alloc", i8PtrTy, llvm::Type::getInt64Ty(context));
+
+        // compute size (use componentSize from semantics if present or DataLayout)
+        uint64_t size = module->getDataLayout().getTypeAllocSize(elemTy);
+
+        llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size);
+
+        llvm::Value *rawAlloc = builder.CreateCall(sageAllocFn, {sizeArg}, childName + "_alloc_i8ptr");
+        // bitcast i8* -> elem*
+        llvm::Value *newHeapPtr = builder.CreateBitCast(rawAlloc, elemPtrTy, childName + "_alloc_ptr");
+
+        // store pointer into the struct slot
+        builder.CreateStore(newHeapPtr, fieldPtr);
+        // branch to continuation
+        builder.CreateBr(contBB);
+
+        // --- contBB: reload heapPtr from slot (now definitely non-null)
+        builder.SetInsertPoint(contBB);
+        llvm::Value *heapPtr2 = builder.CreateLoad(elemPtrTy, fieldPtr, childName + "_heap");
+        // use heapPtr2 for storing rhs
+        builder.CreateStore(rhs, heapPtr2);
+
+        // After the store, if this member's symbol marks this fieldStmt as last use, free it
+        // (memberInfo->lastUseNode should exist from semantics)
+        if (memberInfo->isHeap && (memberInfo->lastUseNode == fieldStmt || memberInfo->lastUseNode == /* possibly other node pointer */ memberInfo->node))
+        {
+            llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
+                "sage_free", llvm::Type::getVoidTy(context), llvm::Type::getInt64Ty(context));
+            builder.CreateCall(sageFreeFn, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)});
+        }
+
+        // continue building after contBB (builder is already positioned at contBB end)
+    }
+    else
+    {
+        // Non-heap: store RHS directly into the field slot
+        builder.CreateStore(rhs, fieldPtr);
+    }
 }
 
 void IRGenerator::generateBlockStatement(Node *node)

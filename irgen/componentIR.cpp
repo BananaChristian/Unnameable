@@ -47,8 +47,17 @@ void IRGenerator::generateDataStatement(Node *node)
     for (const auto &member : it->second->members)
     {
         auto &typeKind = member.second->type;
-        llvm::Type *type = getLLVMType(typeKind);
-        memberTypes.push_back(type);
+        if (member.second->isHeap)
+        {
+            // Instead of raw type, store as a pointer
+            llvm::Type *heapPtrTy = getLLVMType(typeKind)->getPointerTo();
+            memberTypes.push_back(heapPtrTy);
+        }
+        else
+        {
+            llvm::Type *type = getLLVMType(typeKind);
+            memberTypes.push_back(type);
+        }
         memberNames.push_back(member.first);
     }
 
@@ -61,6 +70,44 @@ void IRGenerator::generateDataStatement(Node *node)
         llvm::AllocaInst *globalAlloc = builder.CreateAlloca(structTy, nullptr, blockName + "_global");
         llvmGlobalDataBlocks[blockName] = globalAlloc;
         it->second->llvmValue = globalAlloc;
+
+        int idx = 0;
+        for (auto &[memberName, info] : it->second->members)
+        {
+            // skip functions
+            if (info->node && dynamic_cast<FunctionStatement *>(info->node))
+            {
+                idx++;
+                continue;
+            }
+
+            llvm::Value *memberPtr = builder.CreateStructGEP(structTy, globalAlloc, idx, memberName);
+            if (!memberPtr)
+                throw std::runtime_error("Failed to compute member GEP for init: " + memberName);
+
+            llvm::Type *elemTy = getLLVMType(info->type);
+            if (!elemTy)
+                throw std::runtime_error("Failed to get element type for init: " + memberName);
+
+            if (info->isHeap)
+            {
+                llvm::PointerType *elemPtrTy = elemTy->getPointerTo();
+                llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
+                builder.CreateStore(nullPtr, memberPtr);
+            }
+            else
+            {
+                if (elemTy->isPointerTy() || elemTy->isIntegerTy() || elemTy->isFloatingPointTy())
+                {
+                    builder.CreateStore(llvm::Constant::getNullValue(elemTy), memberPtr);
+                }
+            }
+
+            info->llvmValue = memberPtr;
+            info->llvmType = elemTy;
+
+            idx++;
+        }
     }
 }
 
@@ -358,7 +405,7 @@ void IRGenerator::generateComponentStatement(Node *node)
             throw std::runtime_error("Null member type for '" + memberName + "'");
 
         memberTypes.push_back(memberType);
-        llvmMemberIndices[memberName] = idx++; 
+        llvmMemberIndices[memberName] = idx++;
     }
 
     // Finalize struct body
