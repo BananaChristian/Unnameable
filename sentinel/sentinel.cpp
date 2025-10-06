@@ -35,6 +35,8 @@ void Sentinel::registerSentinelFns()
     sentinelFnsMap[typeid(InfixExpression)] = &Sentinel::checkInfixExpression;
     sentinelFnsMap[typeid(PrefixExpression)] = &Sentinel::checkPrefixExpression;
     sentinelFnsMap[typeid(PostfixExpression)] = &Sentinel::checkPostfixExpression;
+    sentinelFnsMap[typeid(DataStatement)] = &Sentinel::checkDataStatement;
+    sentinelFnsMap[typeid(FieldAssignment)] = &Sentinel::checkFieldAssignment;
 }
 
 void Sentinel::checkExpressionStatement(Node *node)
@@ -283,6 +285,50 @@ void Sentinel::checkCallExpression(Node *node)
     {
         sentinelDriver(arg.get());
     }
+}
+
+void Sentinel::checkDataStatement(Node *node)
+{
+    auto dataStmt = dynamic_cast<DataStatement *>(node);
+    if (!dataStmt)
+        return;
+
+    for (const auto &stmt : dataStmt->fields)
+    {
+        sentinelDriver(stmt.get());
+    }
+}
+
+void Sentinel::checkFieldAssignment(Node *node)
+{
+    auto fieldStmt = dynamic_cast<FieldAssignment *>(node);
+    if (!fieldStmt)
+        return;
+
+    int line = fieldStmt->statement.line;
+    int column = fieldStmt->statement.column;
+
+    // Dealing with field assignment name
+    auto [parentName, childName] = semantics.splitScopedName(fieldStmt->assignment_token.TokenLiteral);
+
+    // Check inside the parent
+    auto parentIt = semantics.customTypesTable.find(parentName);
+    if (parentIt == semantics.customTypesTable.end())
+    {
+        logError("Unknown type '" + parentName + "'", line, column);
+        return;
+    }
+
+    auto members = parentIt->second.members;
+    auto childIt = members.find(childName);
+    if (childIt == members.end())
+    {
+        logError("'" + childName + "' does not exist under type '" + parentName + "'", line, column);
+        return;
+    }
+
+    sentinelDriver(childIt->second->node);
+    sentinelDriver(fieldStmt->value.get());
 }
 
 void Sentinel::logError(const std::string &message, int line, int col)
