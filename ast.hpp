@@ -622,6 +622,50 @@ struct ErrorStatement : Statement
     ErrorStatement(Token err, std::unique_ptr<Expression> errExpr) : Statement(err), errorExpr(std::move(errExpr)) {};
 };
 
+// Reference Statament node
+struct ReferenceStatement : Statement
+{
+    Token ref_token;
+    Mutability mutability;
+    std::unique_ptr<Expression> type;
+    std::unique_ptr<Expression> referer;
+    std::unique_ptr<Expression> referee;
+
+    std::string toString() override
+    {
+        std::string mutStr = "";
+        if (mutability == Mutability::MUTABLE)
+        {
+            mutStr += "mut ";
+        }
+        else if (mutability == Mutability::CONSTANT)
+        {
+            mutStr += "const ";
+        }
+
+        std::string typeStr = "";
+        if (type)
+        {
+            typeStr += type->toString();
+        }
+
+        std::string valueStr = "";
+        if (referee)
+        {
+            valueStr += " => " + referee->toString();
+        }
+
+        return "Reference Statement: " + ref_token.TokenLiteral + " " + mutStr + typeStr + " " + referer->toString()+ valueStr;
+    };
+
+    ReferenceStatement(
+        Token ref,
+        Mutability mut,
+        std::unique_ptr<Expression> data_type,
+        std::unique_ptr<Expression> identifier,
+        std::unique_ptr<Expression> value) : Statement(ref), mutability(mut), type(std::move(data_type)), referer(std::move(identifier)), referee(std::move(value)) {};
+};
+
 // Let statement node
 struct LetStatement : Statement
 {
