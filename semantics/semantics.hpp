@@ -79,7 +79,7 @@ struct ResolvedType
 struct MemberInfo
 {
     std::string memberName;
-    ResolvedType type;//Type of the member
+    ResolvedType type; // Type of the member
     bool isNullable = false;
     bool isMutable = false;
     bool isConstant = false;
@@ -87,12 +87,14 @@ struct MemberInfo
 
     // Info for enum members
     std::int64_t constantValue = 0;
-    ResolvedType parentType; //Parent type for enum members
+    ResolvedType parentType; // Parent type for enum members
 
     Node *node = nullptr;
-    llvm::Value* llvmValue = nullptr;
-    llvm::Type * llvmType=nullptr;
+    llvm::Value *llvmValue = nullptr;
+    llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
+    bool isHeap = false;
+    Node *lastUseNode = nullptr;
 };
 
 struct CustomTypeInfo
@@ -144,11 +146,10 @@ struct SymbolInfo
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
 
-    bool isHeap=false;
+    bool isHeap = false;
     size_t componentSize;
-    int alloc_id=0; //This is a field for the sentinel layer
+    int alloc_id = 0; // This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
-    
 
     // Error flag
     bool hasError = false;

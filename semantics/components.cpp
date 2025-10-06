@@ -370,6 +370,7 @@ void Semantics::walkDataStatement(Node *node)
         memInfo->isMutable = letSymbol->isMutable;
         memInfo->isConstant = letSymbol->isConstant;
         memInfo->isInitialised = letSymbol->isInitialized;
+        memInfo->isHeap = letSymbol->isHeap;
         memInfo->node = field.get();
 
         // Insert into members map

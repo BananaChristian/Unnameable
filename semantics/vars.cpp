@@ -855,6 +855,11 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
         walker(fieldAssignStmt->value.get());
     }
 
+    if (memberIt->second->isHeap)
+    {
+        memberIt->second->lastUseNode = fieldAssignStmt;
+    }
+
     // Build metadata for this assignment node
     auto info = std::make_shared<SymbolInfo>();
     info->type = type;
