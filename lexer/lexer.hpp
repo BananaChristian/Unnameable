@@ -78,6 +78,7 @@ class Lexer
         {"mut", TokenType::MUT},
         {"ref", TokenType::REF},
         {"ptr", TokenType::PTR},
+        {"deref", TokenType::DEREF},
 
         {"heap", TokenType::HEAP},
     };
