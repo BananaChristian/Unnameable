@@ -340,14 +340,6 @@ void Semantics::walkIdentifierExpression(Node *node)
     if (!symbolInfo)
     {
         logSemanticErrors(" Use of undeclared identifer '" + identName + "'", identExpr->expression.line, identExpr->expression.column);
-        auto errorInfo = std::make_shared<SymbolInfo>();
-        errorInfo->type = ResolvedType{DataType::UNKNOWN, "unknown"};
-        errorInfo->isNullable = false;
-        errorInfo->isMutable = false;
-        errorInfo->isConstant = false;
-        errorInfo->isInitialized = false;
-
-        metaData[identExpr] = errorInfo;
         return;
     }
 
@@ -357,6 +349,30 @@ void Semantics::walkIdentifierExpression(Node *node)
     }
 
     metaData[identExpr] = symbolInfo;
+}
+
+//Walking address expression
+void Semantics::walkAddressExpression(Node *node){
+    auto addrExpr=dynamic_cast<AddressExpression*>(node);
+    if(!addrExpr) return;
+
+    auto addrName=addrExpr->identifier->expression.TokenLiteral;
+    auto line=addrExpr->identifier->expression.line;
+    auto col=addrExpr->identifier->expression.column;
+
+    auto symbolInfo=resolveSymbolInfo(addrName);
+    bool hasError=false;
+
+    if(!symbolInfo){
+        logSemanticErrors("Use of undeclared identifier '"+addrName+"'",line,col);
+        return;
+    }
+
+    if(symbolInfo->isHeap){
+        symbolInfo->lastUseNode=addrExpr;
+    }
+
+    metaData[addrExpr]=symbolInfo;
 }
 
 // Walking let statement
@@ -765,6 +781,16 @@ void Semantics::walkAssignStatement(Node *node)
         }
     }
 
+    //Special check if the symbol is a reference
+    if(symbol->isRef){
+        if(auto ident=dynamic_cast<AddressExpression*>(assignStmt->value.get())){
+            logSemanticErrors("Cannot reassign an address to a reference '" + assignName + "'",
+                              assignStmt->identifier->expression.line,
+                              assignStmt->identifier->expression.column);
+            hasError=true;
+        }
+    }
+
     // --- Mark variable initialized ---
     symbol->isInitialized = true;
     symbol->isDefinitelyNull = isDefinitelyNull;
@@ -869,4 +895,118 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     info->hasError = hasError;
 
     metaData[fieldAssignStmt] = info;
+}
+
+void Semantics::walkReferenceStatement(Node *node)
+{
+    auto refStmt = dynamic_cast<ReferenceStatement *>(node);
+    if (!refStmt)
+        return;
+
+    std::cout << "[SEMANTIC LOG]: Analysing reference statement\n";
+
+    auto refName = refStmt->referer->expression.TokenLiteral;
+    auto line = refStmt->statement.line;
+    auto column = refStmt->statement.column;
+    ResolvedType refType = ResolvedType{DataType::UNKNOWN, "unknown"};
+    bool hasError = false;
+
+    // Check if the reference variable name already exists
+    auto existingSym = resolveSymbolInfo(refName);
+    if (existingSym)
+    {
+        logSemanticErrors("Reference name '" + refName + "' already in use", line, column);
+        hasError = true;
+    }
+
+    // Check if the reference is pointing to something
+    if (!refStmt->referee)
+    {
+        logSemanticErrors("Reference'" + refName + "' must reference something", line, column);
+        hasError = true;
+    }
+
+    // Checking the type of the referee
+    auto refereeIdent = dynamic_cast<AddressExpression *>(refStmt->referee.get());
+    if (!refereeIdent)
+    {
+        logSemanticErrors("Invalid reference usage '" + refName + "' must only point to an address expression", line, column);
+        hasError = true;
+        return;
+    }
+    auto refereeName=refereeIdent->identifier->expression.TokenLiteral;
+    auto refereeSymbol = resolveSymbolInfo(refereeName);
+    if (!refereeSymbol)
+    {
+        logSemanticErrors("Reference '" + refName + "'is referencing an undeclared variable '" + refereeName + "'", line, column);
+        hasError = true;
+        return;
+    }
+
+    ResolvedType refereeType = refereeSymbol->type;
+    // If the reference statement has no type we just infer the type
+    if (!refStmt->type)
+    {
+        refType = refereeType;
+    }
+    else if (refStmt->type)
+    {
+        auto refTypeNode = dynamic_cast<ReturnType *>(refStmt->type.get());
+        refType = inferNodeDataType(refTypeNode); // Update the data type with the type that was declared
+
+        if (isNullable(refType))
+        {
+            logSemanticErrors("Cannot have a nullable reference '" + refName + "'", line, column);
+            hasError = true;
+        }
+
+        // Compare the two types
+        if (refType.kind != refereeType.kind)
+        {
+            logSemanticErrors("Type mismatch reference '" + refName + "' of type '" + refType.resolvedName + "' does not match variable '" + refereeName + "' being refered with type '" + refereeType.resolvedName + "'", line, column);
+            hasError = true;
+        }
+    }
+
+    // Checking if we are refering to a heap raised variable
+    if (!refereeSymbol->isHeap)
+    {
+        logSemanticErrors("Cannot create a reference '" + refName + "' to a non heap raised variable '" + refereeName + "'", line, column);
+        hasError = true;
+    }
+
+    // Checking the mutability
+    bool isMutable = false;
+    bool isConstant = false;
+    if (refStmt->mutability == Mutability::MUTABLE)
+        isMutable = true;
+
+    if (refStmt->mutability == Mutability::CONSTANT)
+        isConstant = true;
+
+    // Check if the symbol is also mutable
+    if (!refereeSymbol->isMutable && isMutable)
+    {
+        logSemanticErrors("Cannot create a mutable reference '" + refName + "' to an immutable variable '" + refereeName + "'", line, column);
+        hasError = true;
+    }
+
+    if (refereeSymbol->isNullable)
+    {
+        logSemanticErrors("Cannot create a reference to a nullable variable '" + refereeName + "'", line, column);
+        hasError = true;
+    }
+
+    auto refInfo = std::make_shared<SymbolInfo>();
+    refInfo->type = refType;
+    refInfo->isInitialized = true;
+    refInfo->isMutable = isMutable;
+    refInfo->isConstant = isConstant;
+    refInfo->isHeap = true;
+    refInfo->lastUseNode = refStmt;
+    refInfo->hasError = hasError;
+    refInfo->isRef=true;
+
+    metaData[refStmt] = refInfo;
+    symbolTable.back()[refName] = refInfo;
 }

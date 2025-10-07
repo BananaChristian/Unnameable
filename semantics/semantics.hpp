@@ -94,6 +94,7 @@ struct MemberInfo
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
     bool isHeap = false;
+    bool isRef=false; //Reference flag
     Node *lastUseNode = nullptr;
 };
 
@@ -147,6 +148,7 @@ struct SymbolInfo
     int memberIndex = -1;
 
     bool isHeap = false;
+    bool isRef=false; //Reference flag
     size_t componentSize;
     int alloc_id = 0; // This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
@@ -218,6 +220,7 @@ private:
 
     // Waling identifier expression
     void walkIdentifierExpression(Node *node);
+    void walkAddressExpression(Node *node);
 
     // Walking expression statement
     void walkExpressionStatement(Node *node);
@@ -226,6 +229,9 @@ private:
     void walkLetStatement(Node *node);
     void walkAssignStatement(Node *node);
     void walkFieldAssignmentStatement(Node *node);
+
+    //Walking reference statement
+    void walkReferenceStatement(Node *node);
 
     // Walking the loop disruption statements
     void walkBreakStatement(Node *node);

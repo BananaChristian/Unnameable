@@ -54,6 +54,7 @@ void Semantics::registerWalkerFunctions()
 
     walkerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::walkBooleanLiteral;
     walkerFunctionsMap[typeid(Identifier)] = &Semantics::walkIdentifierExpression;
+    walkerFunctionsMap[typeid(AddressExpression)]=&Semantics::walkAddressExpression;
 
     walkerFunctionsMap[typeid(NullLiteral)] = &Semantics::walkNullLiteral;
 
@@ -67,6 +68,9 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(AssignmentStatement)] = &Semantics::walkAssignStatement;
     walkerFunctionsMap[typeid(FieldAssignment)] = &Semantics::walkFieldAssignmentStatement;
     walkerFunctionsMap[typeid(EachStatement)] = &Semantics::walkEachStatement;
+
+    // Walker registration for reference statement
+    walkerFunctionsMap[typeid(ReferenceStatement)] = &Semantics::walkReferenceStatement;
 
     // Walker registration for control flow
     walkerFunctionsMap[typeid(ifStatement)] = &Semantics::walkIfStatement;
