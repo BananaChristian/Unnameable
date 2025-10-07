@@ -1155,6 +1155,17 @@ std::unique_ptr<Expression> Parser::parseAddressExpression()
     return std::make_unique<AddressExpression>(addr_token, std::move(ident));
 }
 
+// Parsing dereference expression
+std::unique_ptr<Expression> Parser::parseDereferenceExpression()
+{
+    Token deref_token = currentToken();
+    advance(); // Consume deref token
+
+    auto ident = parseIdentifier();
+
+    return std::make_unique<DereferenceExpression>(deref_token, std::move(ident));
+}
+
 std::unique_ptr<Expression> Parser::parseIdentifierOrArraySubscript()
 {
     if (nextToken().type == TokenType::LBRACKET)
@@ -1837,7 +1848,8 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
 
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifierOrArraySubscript;
-    PrefixParseFunctionsMap[TokenType::BITWISE_AND]=&Parser::parseAddressExpression;
+    PrefixParseFunctionsMap[TokenType::BITWISE_AND] = &Parser::parseAddressExpression;
+    PrefixParseFunctionsMap[TokenType::DEREF] = &Parser::parseDereferenceExpression;
     PrefixParseFunctionsMap[TokenType::NEW] = &Parser::parseNewComponentExpression;
     PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
@@ -2018,6 +2030,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatementWrapper;
     StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
     StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatementWrapper;
+    StatementParseFunctionsMap[TokenType::PTR] = &Parser::parsePointerStatementWrapper;
 }
 
 // Precedence getting function

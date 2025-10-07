@@ -105,9 +105,13 @@ private:
 
     std::unique_ptr<Statement> parseFieldAssignment();
 
-    std::unique_ptr<Statement> parseReferenceStatement(bool isParam=false);
+    std::unique_ptr<Statement> parseReferenceStatement(bool isParam = false);
 
     std::unique_ptr<Statement> parseReferenceStatementWrapper();
+
+    std::unique_ptr<Statement> parsePointerStatement(bool isParam=false);
+
+    std::unique_ptr<Statement> parsePointerStatementWrapper();
 
     // Identifer starting statements function
     std::unique_ptr<Statement> parseIdentifierStatement();
@@ -218,8 +222,11 @@ private:
     // Parsing identifier expression
     std::unique_ptr<Expression> parseIdentifier();
 
-    //Parsing address expression
+    // Parsing address expression
     std::unique_ptr<Expression> parseAddressExpression();
+
+    // Parsing dereference expression
+    std::unique_ptr<Expression> parseDereferenceExpression();
 
     // Parsing array subscript expression
     std::unique_ptr<Expression> parseArraySubscript();
