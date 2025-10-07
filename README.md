@@ -461,9 +461,57 @@ z=z+1s;
 
 ```
 
-## Future additions
-- Pattern matching to switch statements
-- Function parameters as first-class expressions
+## References in Unnameable
+Unnameable provides a safe and explicit way of refering to existing symbols without copying their values 
+They act as symbolic aliases
+They have a syntax of `ref <type> <name> => &<target> `
+- ref :introduces a reference variable
+- &<target> : specifies the address of the variable being referenced
+- The type after ref must match the target type unless type inference is used(You can infer by just not adding the type)
+```
+heap int a=10;
+ref int b => &a;
+```
+Here b refers to a. Any modification through b directly affects a
+
+*Type inference*
+If you omit the type, the compiler infers it from the target 
+```
+ref b=> &a; #Infered as int 
+```
+
+*Mutability rules*
+By default refrences are immutable but the user must specify if they want it to be mutable, a mutable reference cannot reference an immutable target 
+```
+heap mut int a = 6;
+ref mut int b => &a;
+
+heap int x=7;
+ref mut int y=> &x; #Error: Since a mutable reference cannot be made to an immutable target
+
+```
+
+*Heap rule*
+References must be made to heap raised values this way the compiler can guarantee that ur not making a reference to a non existant variable. So basically if u want to use references heap raise them
+```
+int a=9;
+ref int b => &a; #Error since u can't reference a non-heap raised variable
+```
+
+*Usage of reference variables*
+Reference variables must reference one target, you cannot reassign the target to which they point 
+```
+heap mut int x=19;
+ref mut int y=> &x;
+
+heap mut int z=23;
+y = &z; #Error since u cannot change the variable reference y is already pointing to
+
+#This is not to be confused with this
+y=z; #Here I am simply using the value of z to change x since y is referencing x
+#It is essentially the same thing as saying 
+y=23; #This is allowed and very okay
+``` 
 
 ## Requirements
 - C++17 or later
