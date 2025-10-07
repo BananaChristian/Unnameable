@@ -59,7 +59,7 @@ struct Identifier : Expression
     Identifier(Token ident) : Expression(ident), identifier(ident) {};
 };
 
-
+// Address expression node
 struct AddressExpression : Expression
 {
     Token and_token;
@@ -69,7 +69,21 @@ struct AddressExpression : Expression
     {
         return "Address Expression: " + and_token.TokenLiteral + identifier->toString();
     }
-    AddressExpression(Token and_t, std::unique_ptr<Expression> ident) : Expression(and_t),and_token(and_t) ,identifier(std::move(ident)) {};
+    AddressExpression(Token and_t, std::unique_ptr<Expression> ident) : Expression(and_t), and_token(and_t), identifier(std::move(ident)) {};
+};
+
+// Dereference expression node
+struct DereferenceExpression : Expression
+{
+    Token deref_token;
+    std::unique_ptr<Expression> identifier;
+
+    std::string toString() override
+    {
+        return "Dereference Expression: " + deref_token.TokenLiteral + " " + identifier->toString();
+    }
+
+    DereferenceExpression(Token deref, std::unique_ptr<Expression> ident) : Expression(deref), deref_token(deref), identifier(std::move(ident)) {}
 };
 
 struct SelfExpression : Expression
@@ -677,6 +691,49 @@ struct ReferenceStatement : Statement
         std::unique_ptr<Expression> data_type,
         std::unique_ptr<Expression> identifier,
         std::unique_ptr<Expression> value) : Statement(ref), mutability(mut), type(std::move(data_type)), referer(std::move(identifier)), referee(std::move(value)) {};
+};
+
+// Pointer statement node
+struct PointerStatement : Statement
+{
+    Token ptr_token;
+    Mutability mutability;
+    std::unique_ptr<Expression> type;
+    std::unique_ptr<Expression> name;
+    std::unique_ptr<Expression> value;
+
+    std::string toString() override
+    {
+        std::string mutStr = "";
+        if (mutability == Mutability::MUTABLE)
+        {
+            mutStr += "mut ";
+        }
+        else if (mutability == Mutability::CONSTANT)
+        {
+            mutStr += "const ";
+        }
+
+        std::string typeStr = "";
+        if (type)
+        {
+            typeStr += type->toString();
+        }
+
+        std::string valueStr = "";
+        if (value)
+        {
+            valueStr += " => " + value->toString();
+        }
+        return "Pointer Statement: " + ptr_token.TokenLiteral + " " + mutStr + typeStr + " " + name->toString() + valueStr;
+    };
+
+    PointerStatement(
+        Token ptr,
+        Mutability mut,
+        std::unique_ptr<Expression> data_type,
+        std::unique_ptr<Expression> identifier,
+        std::unique_ptr<Expression> val) : Statement(ptr), ptr_token(ptr), mutability(mut), type(std::move(data_type)), name(std::move(identifier)), value(std::move(val)) {};
 };
 
 // Let statement node
