@@ -85,6 +85,7 @@ enum class TokenType
     MUT, //mutable keyword
     REF, //reference keyword
     PTR, //Pointer keyword
+    DEREF, //Dereference keyword
 
     // Control flow
     IF,

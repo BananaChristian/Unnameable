@@ -217,6 +217,8 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: REF";
     case TokenType::PTR:
         return "Token Type: PTR";
+    case TokenType::DEREF:
+        return "Token Type: DEREF";
     case TokenType::MODULUS:
         return "Token Type: MODULUS";
     case TokenType::HEAP:
