@@ -59,6 +59,19 @@ struct Identifier : Expression
     Identifier(Token ident) : Expression(ident), identifier(ident) {};
 };
 
+
+struct AddressExpression : Expression
+{
+    Token and_token;
+    std::unique_ptr<Expression> identifier;
+
+    std::string toString() override
+    {
+        return "Address Expression: " + and_token.TokenLiteral + identifier->toString();
+    }
+    AddressExpression(Token and_t, std::unique_ptr<Expression> ident) : Expression(and_t),and_token(and_t) ,identifier(std::move(ident)) {};
+};
+
 struct SelfExpression : Expression
 {
     Token self_token;                  // e.g. self
@@ -655,7 +668,7 @@ struct ReferenceStatement : Statement
             valueStr += " => " + referee->toString();
         }
 
-        return "Reference Statement: " + ref_token.TokenLiteral + " " + mutStr + typeStr + " " + referer->toString()+ valueStr;
+        return "Reference Statement: " + ref_token.TokenLiteral + " " + mutStr + typeStr + " " + referer->toString() + valueStr;
     };
 
     ReferenceStatement(
