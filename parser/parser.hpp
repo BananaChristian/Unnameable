@@ -215,8 +215,11 @@ private:
     // New component expression parse function declaration
     std::unique_ptr<Expression> parseNewComponentExpression();
 
-    // Parsing identifiers
+    // Parsing identifier expression
     std::unique_ptr<Expression> parseIdentifier();
+
+    //Parsing address expression
+    std::unique_ptr<Expression> parseAddressExpression();
 
     // Parsing array subscript expression
     std::unique_ptr<Expression> parseArraySubscript();

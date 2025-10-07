@@ -1144,6 +1144,17 @@ std::unique_ptr<Expression> Parser::parseIdentifier()
     return ident;
 }
 
+// Parsing address expression
+std::unique_ptr<Expression> Parser::parseAddressExpression()
+{
+    Token addr_token = currentToken();
+    advance(); // Consume & token
+
+    auto ident = parseIdentifier();
+
+    return std::make_unique<AddressExpression>(addr_token, std::move(ident));
+}
+
 std::unique_ptr<Expression> Parser::parseIdentifierOrArraySubscript()
 {
     if (nextToken().type == TokenType::LBRACKET)
@@ -1826,6 +1837,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
 
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifierOrArraySubscript;
+    PrefixParseFunctionsMap[TokenType::BITWISE_AND]=&Parser::parseAddressExpression;
     PrefixParseFunctionsMap[TokenType::NEW] = &Parser::parseNewComponentExpression;
     PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
