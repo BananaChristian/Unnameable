@@ -351,28 +351,67 @@ void Semantics::walkIdentifierExpression(Node *node)
     metaData[identExpr] = symbolInfo;
 }
 
-//Walking address expression
-void Semantics::walkAddressExpression(Node *node){
-    auto addrExpr=dynamic_cast<AddressExpression*>(node);
-    if(!addrExpr) return;
+// Walking address expression
+void Semantics::walkAddressExpression(Node *node)
+{
+    auto addrExpr = dynamic_cast<AddressExpression *>(node);
+    if (!addrExpr)
+        return;
 
-    auto addrName=addrExpr->identifier->expression.TokenLiteral;
-    auto line=addrExpr->identifier->expression.line;
-    auto col=addrExpr->identifier->expression.column;
+    auto addrName = addrExpr->identifier->expression.TokenLiteral;
+    auto line = addrExpr->identifier->expression.line;
+    auto col = addrExpr->identifier->expression.column;
 
-    auto symbolInfo=resolveSymbolInfo(addrName);
-    bool hasError=false;
+    auto symbolInfo = resolveSymbolInfo(addrName);
+    bool hasError = false;
 
-    if(!symbolInfo){
-        logSemanticErrors("Use of undeclared identifier '"+addrName+"'",line,col);
+    if (!symbolInfo)
+    {
+        logSemanticErrors("Use of undeclared identifier '" + addrName + "'", line, col);
         return;
     }
 
-    if(symbolInfo->isHeap){
-        symbolInfo->lastUseNode=addrExpr;
+    if (symbolInfo->isHeap)
+        symbolInfo->lastUseNode = addrExpr;
+
+    auto addrInfo = std::make_shared<SymbolInfo>();
+    addrInfo = symbolInfo;
+    addrInfo->isPointer = true;
+    addrInfo->type = inferNodeDataType(addrExpr);
+
+    metaData[addrExpr] = symbolInfo;
+}
+
+void Semantics::walkDereferenceExpression(Node *node)
+{
+    auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
+    if (!derefExpr)
+        return;
+
+    auto derefName = derefExpr->identifier->expression.TokenLiteral;
+    auto line = derefExpr->identifier->expression.line;
+    auto col = derefExpr->identifier->expression.column;
+
+    auto derefSym = resolveSymbolInfo(derefName);
+    if (!derefSym)
+    {
+        logSemanticErrors("Use of undeclared identifier '" + derefName + "'", line, col);
+        return;
     }
 
-    metaData[addrExpr]=symbolInfo;
+    if (derefSym->isHeap)
+        derefSym->lastUseNode = derefExpr;
+
+    auto derefType=inferNodeDataType(derefExpr);
+
+    auto derefInfo = std::make_shared<SymbolInfo>();
+    derefInfo = derefSym;
+    derefInfo->isPointer = false; // This is a derefence hence it is not a pointer it is an actual value
+    derefInfo->type=derefType;
+
+    std::cout<<"DEREF TYPE: "<<derefType.resolvedName<<"\n";
+
+    metaData[derefExpr] = derefInfo;
 }
 
 // Walking let statement
@@ -638,6 +677,21 @@ void Semantics::walkAssignStatement(Node *node)
         }
         walker(ident);
     }
+    else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(assignStmt->identifier.get()))
+    {
+        assignName = derefExpr->identifier->expression.TokenLiteral;
+        symbol = resolveSymbolInfo(assignName);
+
+        if (!symbol)
+        {
+            logSemanticErrors("Variable '" + assignName + "' is not declared",
+                              ident->identifier.line,
+                              ident->identifier.column);
+            hasError = true;
+            return;
+        }
+        walker(derefExpr);
+    }
     else
     {
         logSemanticErrors("Invalid assignment target",
@@ -729,7 +783,6 @@ void Semantics::walkAssignStatement(Node *node)
                           assignStmt->identifier->expression.line,
                           assignStmt->identifier->expression.column);
         hasError = true;
-        return;
     }
 
     // --- Mutability / const checks ---
@@ -739,7 +792,6 @@ void Semantics::walkAssignStatement(Node *node)
                           assignStmt->identifier->expression.line,
                           assignStmt->identifier->expression.column);
         hasError = true;
-        return;
     }
 
     if (!symbol->isMutable && symbol->isInitialized)
@@ -748,7 +800,6 @@ void Semantics::walkAssignStatement(Node *node)
                           assignStmt->identifier->expression.line,
                           assignStmt->identifier->expression.column);
         hasError = true;
-        return;
     }
 
     // --- Prevent assigning a nullable value to a non-nullable variable ---
@@ -781,13 +832,27 @@ void Semantics::walkAssignStatement(Node *node)
         }
     }
 
-    //Special check if the symbol is a reference
-    if(symbol->isRef){
-        if(auto ident=dynamic_cast<AddressExpression*>(assignStmt->value.get())){
+    // Special check if the symbol is a reference
+    if (symbol->isRef)
+    {
+        if (auto ident = dynamic_cast<AddressExpression *>(assignStmt->value.get()))
+        {
             logSemanticErrors("Cannot reassign an address to a reference '" + assignName + "'",
                               assignStmt->identifier->expression.line,
                               assignStmt->identifier->expression.column);
-            hasError=true;
+            hasError = true;
+        }
+    }
+
+    // If the symbol is a pointer
+    if (symbol->isPointer)
+    {
+        auto addr = dynamic_cast<AddressExpression *>(assignStmt->value.get());
+        if (!addr)
+        {
+            logSemanticErrors("Must only reassign address to pointer '" + assignName + "'", assignStmt->identifier->expression.line,
+                              assignStmt->identifier->expression.column);
+            hasError = true;
         }
     }
 
@@ -934,7 +999,7 @@ void Semantics::walkReferenceStatement(Node *node)
         hasError = true;
         return;
     }
-    auto refereeName=refereeIdent->identifier->expression.TokenLiteral;
+    auto refereeName = refereeIdent->identifier->expression.TokenLiteral;
     auto refereeSymbol = resolveSymbolInfo(refereeName);
     if (!refereeSymbol)
     {
@@ -1005,8 +1070,85 @@ void Semantics::walkReferenceStatement(Node *node)
     refInfo->isHeap = true;
     refInfo->lastUseNode = refStmt;
     refInfo->hasError = hasError;
-    refInfo->isRef=true;
+    refInfo->isRef = true;
 
     metaData[refStmt] = refInfo;
     symbolTable.back()[refName] = refInfo;
+}
+
+void Semantics::walkPointerStatement(Node *node)
+{
+    auto ptrStmt = dynamic_cast<PointerStatement *>(node);
+
+    if (!ptrStmt)
+        return;
+
+    auto ptrName = ptrStmt->name->expression.TokenLiteral;
+    auto line = ptrStmt->name->expression.line;
+    auto col = ptrStmt->name->expression.column;
+    bool hasError = false;
+    bool isMutable = false;
+    bool isConstant = false;
+    ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
+
+    // Dealing with what is being pointed to
+    auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get());
+    if (!ptrValue)
+    {
+        logSemanticErrors("Must initialize the pointer '" + ptrName + "' with an address like(&<target>)", line, col);
+        hasError = true;
+        return;
+    }
+
+    auto varName = ptrValue->identifier->expression.TokenLiteral;
+    auto ptSymbol = resolveSymbolInfo(varName);
+    if (!ptSymbol)
+    {
+        logSemanticErrors("Pointer '" + ptrName + "'is pointing to an undeclared variable '" + varName + "'", line, col);
+        hasError = true;
+        return;
+    }
+
+    // Getting the type being pointed to
+    auto ptType = inferNodeDataType(ptrValue);
+
+    // What if the user didnt include the type (We infer for them)
+    if (!ptrStmt->type)
+        ptrType = ptType;
+    else // If the user actually included a type we verify it
+    {
+        ptrType = inferNodeDataType(ptrStmt);
+        // Check if the types are compatible
+        // I am comparing with the resolved name since it is sure to either be type_ptr comparing with datatypes purely can allow bugs in the type system
+        if (ptrType.resolvedName != ptType.resolvedName)
+        {
+            logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" + ptrType.resolvedName + "' does not match '" + varName + "' of type '" + ptType.resolvedName + "'", line, col);
+            hasError = true;
+        }
+    }
+
+    /*
+    Checking for mutability (It should be noted that by default the mutability is... well immutable
+    That means if the user didnt add it we are dealing with an immutable pointer
+    */
+
+    if (ptrStmt->mutability == Mutability::MUTABLE)
+        isMutable = true;
+    else if (ptrStmt->mutability == Mutability::CONSTANT)
+        isMutable = false;
+
+    std::cout << "POINTER TYPE: " << ptrType.resolvedName << "\n";
+
+    auto ptrInfo = std::make_shared<SymbolInfo>();
+    ptrInfo->isHeap = ptSymbol->isHeap;
+    ptrInfo->lastUseNode = ptrStmt;
+    ptrInfo->type = ptrType;
+    ptrInfo->hasError = hasError;
+    ptrInfo->isPointer = true;
+    ptrInfo->isMutable = isMutable;
+    ptrInfo->isConstant = isConstant;
+    ptrInfo->isInitialized = true;
+
+    metaData[ptrStmt] = ptrInfo;
+    symbolTable.back()[ptrName] = ptrInfo;
 }

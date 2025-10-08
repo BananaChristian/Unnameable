@@ -54,7 +54,8 @@ void Semantics::registerWalkerFunctions()
 
     walkerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::walkBooleanLiteral;
     walkerFunctionsMap[typeid(Identifier)] = &Semantics::walkIdentifierExpression;
-    walkerFunctionsMap[typeid(AddressExpression)]=&Semantics::walkAddressExpression;
+    walkerFunctionsMap[typeid(AddressExpression)] = &Semantics::walkAddressExpression;
+    walkerFunctionsMap[typeid(DereferenceExpression)] = &Semantics::walkDereferenceExpression;
 
     walkerFunctionsMap[typeid(NullLiteral)] = &Semantics::walkNullLiteral;
 
@@ -69,8 +70,9 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(FieldAssignment)] = &Semantics::walkFieldAssignmentStatement;
     walkerFunctionsMap[typeid(EachStatement)] = &Semantics::walkEachStatement;
 
-    // Walker registration for reference statement
+    // Walker registration for reference statement and pointer statement
     walkerFunctionsMap[typeid(ReferenceStatement)] = &Semantics::walkReferenceStatement;
+    walkerFunctionsMap[typeid(PointerStatement)] = &Semantics::walkPointerStatement;
 
     // Walker registration for control flow
     walkerFunctionsMap[typeid(ifStatement)] = &Semantics::walkIfStatement;
@@ -311,6 +313,30 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         }
     }
 
+    if (auto derefExpr = dynamic_cast<DereferenceExpression *>(node))
+    {
+        std::string name = derefExpr->identifier->expression.TokenLiteral;
+        auto derefSym = resolveSymbolInfo(name);
+
+        if (!derefSym)
+        {
+            logSemanticErrors("Undefined variable '" + name + "'", derefExpr->identifier->expression.line, derefExpr->identifier->expression.column);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+        // Get the ptr_type
+        auto ptrType = derefSym->type;
+        // Toggle the isPointer boolean
+        ptrType.isPointer = false;
+        return isPointerType(ptrType);
+    }
+
+    if (auto addrExpr = dynamic_cast<AddressExpression *>(node))
+    {
+        auto identType = inferNodeDataType(addrExpr->identifier.get());
+        identType.isPointer = true;
+        return isPointerType(identType);
+    }
+
     if (auto basicType = dynamic_cast<BasicType *>(node))
         return tokenTypeToResolvedType(basicType->data_token, basicType->isNullable);
 
@@ -341,6 +367,14 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
             logSemanticErrors("Undefined function name '" + callExpr->function_identifier->expression.TokenLiteral + "'", callExpr->function_identifier->expression.line, callExpr->function_identifier->expression.column);
             return {DataType::UNKNOWN, "unknown"};
         }
+    }
+
+    if (auto ptrStmt = dynamic_cast<PointerStatement *>(node))
+    {
+        ResolvedType ptrType = inferNodeDataType(ptrStmt->type.get());
+        // Update the is pointer flag to true
+        ptrType.isPointer = true;
+        return isPointerType(ptrType);
     }
 
     return {DataType::UNKNOWN, "unknown"};
@@ -776,6 +810,13 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
 
 bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual)
 {
+    // --- Strict pointer compatibility check ---
+    if (expected.isPointer != actual.isPointer)
+        return false;
+
+    if (expected.resolvedName == actual.resolvedName && expected.kind == actual.kind)
+        return true;
+
     // Special case for null array members(Telling it to just return true for the guy)
     if (actual.kind == DataType::NULLABLE_ARR || expected.kind == DataType::NULLABLE_ARR)
         return true;
@@ -1364,6 +1405,35 @@ int64_t Semantics::SubscriptIndexVerifier(Node *indexNode, int64_t arrLen)
     // TODO: Add infix handling (I will use the positions returned to return the value the subscript holds), I am gonna stop coding on this project for now as I feel so exhausted hopefully I will return
 
     return index;
+}
+
+ResolvedType Semantics::isPointerType(ResolvedType t)
+{
+    // Inline lambda to check if a string ends with a suffix
+    auto endsWith = [](const std::string &str, const std::string &suffix) -> bool
+    {
+        if (str.length() < suffix.length())
+            return false;
+        return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
+    };
+
+    auto ptrType = [&](DataType baseType, bool isPtr, std::string baseName)
+    {
+        if (isPtr)
+        {
+            if (!endsWith(baseName, "_ptr"))
+                baseName += "_ptr";
+        }
+        else
+        {
+            if (endsWith(baseName, "_ptr"))
+                baseName = baseName.substr(0, baseName.size() - 4);
+        }
+
+        return ResolvedType{baseType, baseName, isPtr};
+    };
+
+    return ptrType(t.kind, t.isPointer, t.resolvedName);
 }
 
 std::pair<std::string, std::string> Semantics::splitScopedName(const std::string &fullName)

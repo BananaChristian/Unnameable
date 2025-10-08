@@ -74,6 +74,7 @@ struct ResolvedType
 {
     DataType kind; // For the custom inbuilt types
     std::string resolvedName;
+    bool isPointer=false;
 };
 
 struct MemberInfo
@@ -95,6 +96,7 @@ struct MemberInfo
     int memberIndex = -1;
     bool isHeap = false;
     bool isRef=false; //Reference flag
+    bool isPointer=false; //Pointer flag
     Node *lastUseNode = nullptr;
 };
 
@@ -149,6 +151,8 @@ struct SymbolInfo
 
     bool isHeap = false;
     bool isRef=false; //Reference flag
+    bool isPointer=false;//Pointer flag
+
     size_t componentSize;
     int alloc_id = 0; // This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
@@ -221,6 +225,7 @@ private:
     // Waling identifier expression
     void walkIdentifierExpression(Node *node);
     void walkAddressExpression(Node *node);
+    void walkDereferenceExpression(Node *node);
 
     // Walking expression statement
     void walkExpressionStatement(Node *node);
@@ -230,8 +235,9 @@ private:
     void walkAssignStatement(Node *node);
     void walkFieldAssignmentStatement(Node *node);
 
-    //Walking reference statement
+    //Walking reference and pointer statement
     void walkReferenceStatement(Node *node);
+    void walkPointerStatement(Node *node);
 
     // Walking the loop disruption statements
     void walkBreakStatement(Node *node);
@@ -279,6 +285,7 @@ private:
     ResolvedType resultOfUnary(TokenType operatorType, const ResolvedType &oprendType);
     ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
     ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
+    ResolvedType isPointerType(ResolvedType t);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     int64_t SubscriptIndexVerifier(Node *indexNode, int64_t arrLen);
     ArrayMeta getArrayMeta(Node *node);
