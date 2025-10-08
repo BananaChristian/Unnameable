@@ -402,8 +402,8 @@ void Semantics::walkDereferenceExpression(Node *node)
     if (derefSym->isHeap)
         derefSym->lastUseNode = derefExpr;
 
-    auto derefInfo = std::make_shared<SymbolInfo>();
-    derefInfo = derefSym->targetSymbol;
+    auto derefInfo = std::make_shared<SymbolInfo>(*derefSym->targetSymbol);
+    derefInfo->isPointer=false;//Just a sanity measure
 
     std::cout << "DEREF TYPE: " << derefSym->targetSymbol->type.resolvedName << "\n";
 
