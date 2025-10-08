@@ -402,14 +402,10 @@ void Semantics::walkDereferenceExpression(Node *node)
     if (derefSym->isHeap)
         derefSym->lastUseNode = derefExpr;
 
-    auto derefType=inferNodeDataType(derefExpr);
-
     auto derefInfo = std::make_shared<SymbolInfo>();
-    derefInfo = derefSym;
-    derefInfo->isPointer = false; // This is a derefence hence it is not a pointer it is an actual value
-    derefInfo->type=derefType;
+    derefInfo = derefSym->targetSymbol;
 
-    std::cout<<"DEREF TYPE: "<<derefType.resolvedName<<"\n";
+    std::cout << "DEREF TYPE: " << derefSym->targetSymbol->type.resolvedName << "\n";
 
     metaData[derefExpr] = derefInfo;
 }
@@ -677,21 +673,34 @@ void Semantics::walkAssignStatement(Node *node)
         }
         walker(ident);
     }
+    //---Handle dereference identifiers
     else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(assignStmt->identifier.get()))
     {
+        walker(derefExpr);
         assignName = derefExpr->identifier->expression.TokenLiteral;
-        symbol = resolveSymbolInfo(assignName);
-
-        if (!symbol)
+        auto derefMeta = metaData.find(derefExpr);
+        if (derefMeta == metaData.end())
         {
-            logSemanticErrors("Variable '" + assignName + "' is not declared",
-                              ident->identifier.line,
-                              ident->identifier.column);
+            logSemanticErrors("Failed to resolve dereference metadata for '" + assignName + "'",
+                              derefExpr->expression.line,
+                              derefExpr->expression.column);
             hasError = true;
             return;
         }
-        walker(derefExpr);
+
+        // THIS is the actual pointee’s symbol info (the target of x)
+        symbol = derefMeta->second;
+
+        // Optional sanity check
+        if (symbol->isPointer)
+        {
+            logSemanticErrors("Dereference did not unwrap pointer correctly for '" + assignName + "'",
+                              derefExpr->expression.line,
+                              derefExpr->expression.column);
+            hasError = true;
+        }
     }
+
     else
     {
         logSemanticErrors("Invalid assignment target",
@@ -1145,6 +1154,7 @@ void Semantics::walkPointerStatement(Node *node)
     ptrInfo->type = ptrType;
     ptrInfo->hasError = hasError;
     ptrInfo->isPointer = true;
+    ptrInfo->targetSymbol = ptSymbol;
     ptrInfo->isMutable = isMutable;
     ptrInfo->isConstant = isConstant;
     ptrInfo->isInitialized = true;
