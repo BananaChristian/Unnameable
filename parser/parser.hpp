@@ -98,6 +98,8 @@ private:
     // Parsing assignment statements
     std::unique_ptr<Statement> parseAssignmentStatement(bool isParam = false);
 
+    std::unique_ptr<Statement> parseDereferenceAssignment();
+
     // A function to determine whether to parse let statements or assignment statements
     std::unique_ptr<Statement> parseLetStatementDecider();
 

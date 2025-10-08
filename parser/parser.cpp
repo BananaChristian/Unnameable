@@ -112,6 +112,10 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
     {
         lhs = parseSelfExpression();
     }
+    else if (identToken.type == TokenType::DEREF)
+    {
+        lhs = parseDereferenceExpression();
+    }
     else if (identToken.type == TokenType::IDENTIFIER)
     {
         lhs = parseIdentifier(); // consume identifier
@@ -151,6 +155,11 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
               << " (" << (int)currentToken().type << ")\n";
 
     return std::make_unique<AssignmentStatement>(std::move(lhs), std::move(value));
+}
+
+std::unique_ptr<Statement> Parser::parseDereferenceAssignment()
+{
+    return parseAssignmentStatement();
 }
 
 // Parsing let statements
@@ -400,6 +409,14 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
     else if (current.type == TokenType::REF)
     {
         return parseReferenceStatement(true);
+    }
+    else if (current.type == TokenType::PTR)
+    {
+        return parsePointerStatement(true);
+    }
+    else if (current.type == TokenType::DEREF)
+    {
+        return parseAssignmentStatement(true);
     }
     else if (current.type == TokenType::IDENTIFIER)
     {
@@ -2031,6 +2048,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
     StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatementWrapper;
     StatementParseFunctionsMap[TokenType::PTR] = &Parser::parsePointerStatementWrapper;
+    StatementParseFunctionsMap[TokenType::DEREF] = &Parser::parseDereferenceAssignment;
 }
 
 // Precedence getting function
