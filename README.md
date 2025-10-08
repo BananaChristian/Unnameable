@@ -474,13 +474,13 @@ ref int b => &a;
 ```
 Here b refers to a. Any modification through b directly affects a
 
-*Type inference*
+*Type inference*: 
 If you omit the type, the compiler infers it from the target 
 ```
 ref b=> &a; #Infered as int 
 ```
 
-*Mutability rules*
+*Mutability rules*: 
 By default refrences are immutable but the user must specify if they want it to be mutable, a mutable reference cannot reference an immutable target 
 ```
 heap mut int a = 6;
@@ -491,7 +491,7 @@ ref mut int y=> &x; #Error: Since a mutable reference cannot be made to an immut
 
 ```
 
-*Heap rule*
+*Heap rule*: 
 References must be made to heap raised values this way the compiler can guarantee that ur not making a reference to a non existant variable. So basically if u want to use references heap raise them
 ```
 int a=9;
@@ -512,6 +512,68 @@ y=z; #Here I am simply using the value of z to change x since y is referencing x
 #It is essentially the same thing as saying 
 y=23; #This is allowed and very okay
 ``` 
+
+## Pointers in Unnameable
+Pointers in Unnameable are low level constructs that store memory addresses. 
+They allow direct access and manipulation of values in memory, with no hidden behaviors or implicit conversations
+They have a syntax of `ptr <type> <name> = &<target>`
+- ptr :introduces a pointer variable
+- <type>: This is the type of the pointer if the user for example write int it is converted to an int_ptr(The type can be infered)
+- &<target>: This is address of the variable that you want to store
+```
+int x=10;
+ptr int p => &x; #pointer 'p' stores the address of x
+```
+
+The type can be infered for the user if you simply just dont add the type
+But if u add the type then you must ensure it matches the address type
+What I am trying to say is pointer types are very strict there is no casting between pointer types and non pointer types 
+```
+ptr p=> &x; #pointer 'p' will be infered to a int_ptr
+uint y=18u;
+ptr int z => &y; #Error since you told the compiler 'z' is an int_ptr and now you are giving it a uint_ptr
+```
+
+Inorder to use pointers in Unnameable you must always initialize the pointer with an address this is to atleast tell the compiler that you're pointer is not null atleast in the beginning(Some safety is better than none)
+```
+ptr int p; #Error since you must always initialize the pointer
+```
+Unlike references where u can only refer to a heap raise variable for safety, Pointers do not have this rule as it would be very limiting, inherently they are not that safe because of a lack of this rule since the heap system(SAGE, and Sentinel) cannot track ur pointer for you unless it is pointing to a heap raised address then in that case you are safe 
+Quick note you cannot directly heap raise a pointer it inherits its heapiness from the address it stores 
+```
+heap int x=10;
+ptr p => &x; #This is a heap raised pointer since x is heap raised it is safe 
+
+##
+int x =10;
+ptr p => &x; #This is a stack pointer it is not safe the user must be careful when using this as they could dereference it and yet x doesnt exist
+##
+```
+
+You cannot reassign to an immutable pointer by the way if you want to do that you must specify that the pointer is mutable
+```
+ptr mut p=> &x;
+p=&y; #This reassignment is allowed since pointer 'p' is mutable
+```
+
+Note: I will add more safety nets on them as I go along but for now that is it 
+
+## Dereferencing pointers in Unnameable
+Okay so to dereference a pointer in Unnameable I decided the syntax to be `deref <pointer_name>` I decided to use that because I hate the asterisk confusion
+Anyways dereferencing is the usual it is a way to access the contents of the address the pointer is storing 
+```
+int x= 10;
+ptr p => &x;
+deref p= 16; # I am dereferencing 'p' so I can manipulate the value of x 
+```
+A dereference has the same mutability and heap rules  as the target
+```
+mut int x=7;
+ptr int p => &x;
+deref p=10; #This is allowed since x is mutable
+```
+
+
 
 ## Requirements
 - C++17 or later
