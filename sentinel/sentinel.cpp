@@ -106,7 +106,7 @@ void Sentinel::checkIdentifier(Node *node)
     if (!identSym->isHeap)
         return;
 
-    if (identSym->lastUseNode == ident)
+    if ((identSym->lastUseNode == ident)&&(identSym->refCount==0))
     {
         if (sentinelStack.back()->alloc_id != identSym->alloc_id)
         {
