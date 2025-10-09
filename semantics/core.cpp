@@ -1454,3 +1454,25 @@ std::pair<std::string, std::string> Semantics::splitScopedName(const std::string
     std::cout << "Name has been split into '" + parent + "' and '" + child + "'\n";
     return {parent, child};
 }
+
+void Semantics::popScope()
+{
+    auto &scope = symbolTable.back();
+    for (auto &[name, sym] : scope)
+    {
+        // If the symbol we come across is a reference and it is referencing validly
+        if (sym->isRef && sym->refereeSymbol)
+        {
+            std::cout << "Initial refCount: " << sym->refereeSymbol->refCount << "\n";
+            if (sym->refereeSymbol->refCount > 0)
+            {
+                sym->refereeSymbol->refCount -= 1;
+                std::cout << "[SEMANTIC LOG]: Ref '" << name
+                          << "' released -> target '"
+                          << "' refCount now " << sym->refereeSymbol->refCount << "\n";
+            }
+        }
+    }
+    std::cout << "[SCOPE EXITED]\n";
+    symbolTable.pop_back();
+}

@@ -403,7 +403,7 @@ void Semantics::walkDereferenceExpression(Node *node)
         derefSym->lastUseNode = derefExpr;
 
     auto derefInfo = std::make_shared<SymbolInfo>(*derefSym->targetSymbol);
-    derefInfo->isPointer=false;//Just a sanity measure
+    derefInfo->isPointer = false; // Just a sanity measure
 
     std::cout << "DEREF TYPE: " << derefSym->targetSymbol->type.resolvedName << "\n";
 
@@ -1071,13 +1071,17 @@ void Semantics::walkReferenceStatement(Node *node)
         hasError = true;
     }
 
+    // Updating the reference count of the symbol being referenced
+    refereeSymbol->refCount += 1;
+    std::cout << "[DEBUG] Incremented refCount for target -> "
+              << refereeSymbol->refCount << "\n";
+
     auto refInfo = std::make_shared<SymbolInfo>();
     refInfo->type = refType;
     refInfo->isInitialized = true;
     refInfo->isMutable = isMutable;
     refInfo->isConstant = isConstant;
-    refInfo->isHeap = true;
-    refInfo->lastUseNode = refStmt;
+    refInfo->refereeSymbol = refereeSymbol;
     refInfo->hasError = hasError;
     refInfo->isRef = true;
 

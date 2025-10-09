@@ -153,10 +153,12 @@ struct SymbolInfo
     bool isRef=false; //Reference flag
     bool isPointer=false;//Pointer flag
     std::shared_ptr<SymbolInfo> targetSymbol;//For the deref system
+    std::shared_ptr<SymbolInfo> refereeSymbol; //Symbol being refered to 
 
     size_t componentSize;
     int alloc_id = 0; // This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
+    int refCount=0;
 
     // Error flag
     bool hasError = false;
@@ -301,5 +303,6 @@ private:
     bool isString(const ResolvedType &t);
     bool isChar(const ResolvedType &t);
     bool isNullable(const ResolvedType &t);
+    void popScope();
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
 };

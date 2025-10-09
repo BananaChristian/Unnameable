@@ -421,7 +421,7 @@ void Semantics::walkDataStatement(Node *node)
     customTypesTable[dataBlockName] = typeInfo;
 
     // Pop local scope
-    symbolTable.pop_back();
+    popScope();
 }
 
 void Semantics::walkBehaviorStatement(Node *node)
@@ -545,7 +545,7 @@ void Semantics::walkBehaviorStatement(Node *node)
     customTypesTable[behaviorName] = typeInfo;
 
     // Pop scope
-    symbolTable.pop_back();
+    popScope();
 }
 
 void Semantics::walkUseStatement(Node *node)
@@ -1153,7 +1153,7 @@ void Semantics::walkComponentStatement(Node *node)
 
     // Exit component scope
     currentTypeStack.pop_back();
-    symbolTable.pop_back();
+    popScope();
 }
 
 void Semantics::walkNewComponentExpression(Node *node)

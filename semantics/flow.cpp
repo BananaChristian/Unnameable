@@ -101,7 +101,7 @@ void Semantics::walkWhileStatement(Node *node)
     symbolTable.push_back({});
     auto whileLoop = whileStmt->loop.get();
     walker(whileLoop);
-    symbolTable.pop_back();
+    popScope();
     loopContext.pop_back();
 }
 
@@ -124,7 +124,7 @@ void Semantics::walkElifStatement(Node *node)
     auto elifResults = elifStmt->elif_result.get();
     symbolTable.push_back({});
     walker(elifResults);
-    symbolTable.pop_back();
+    popScope();
 }
 
 void Semantics::walkIfStatement(Node *node)
@@ -146,7 +146,7 @@ void Semantics::walkIfStatement(Node *node)
     auto ifResult = ifStmt->if_result.get();
     symbolTable.push_back({});
     walker(ifResult);
-    symbolTable.pop_back();
+    popScope();
 
     // Dealing with the elif clauses
     auto &elifClauses = ifStmt->elifClauses;
@@ -165,7 +165,7 @@ void Semantics::walkIfStatement(Node *node)
         auto elseStmt = ifStmt->else_result.value().get();
         symbolTable.push_back({});
         walker(elseStmt);
-        symbolTable.pop_back();
+        popScope();
     }
 }
 
@@ -259,7 +259,7 @@ void Semantics::walkForStatement(Node *node)
     symbolTable.push_back({});
     auto block = forStmt->body.get();
     walker(block);
-    symbolTable.pop_back();
+    popScope();
     loopContext.pop_back();
 }
 

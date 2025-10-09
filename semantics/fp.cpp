@@ -336,7 +336,7 @@ void Semantics::walkFunctionExpression(Node *node)
     }
 
     // Pop function scope
-    symbolTable.pop_back();
+    popScope();
 
     // Updating incase some error fall through
     funcInfo->hasError = hasError;
