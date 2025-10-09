@@ -512,6 +512,11 @@ y=z; #Here I am simply using the value of z to change x since y is referencing x
 #It is essentially the same thing as saying 
 y=23; #This is allowed and very okay
 ``` 
+*Quick note* :You cannot heap raise a reference itself this basically means a reference remains as a call stack variable 
+
+*Quick note* : References affect the lifetime of heap raised value the compiler will not free an object whose reference count isn't zero doesnt matter where u last used it the compiler will not free that object until all the references are popped off the call stack
+
+
 
 ## Pointers in Unnameable
 Pointers in Unnameable are low level constructs that store memory addresses. 
