@@ -1807,7 +1807,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
         llvm::Value *loadedVal = builder.CreateLoad(elemTy, variablePtr, identName + "_val");
 
         // If this identifier is the last use, emit sage_free(size) AFTER loading
-        if (sym->lastUseNode == identExpr)
+        if ((sym->lastUseNode == identExpr) && (sym->refCount == 0))
         {
             // get or insert sage_free: void sage_free(i64)
             llvm::FunctionCallee sageFreeFunction = module->getOrInsertFunction(
@@ -1899,22 +1899,25 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
 
     // If this identifier is the last use, prepare (but do NOT insert) the sage_free call.
     // We'll create a CallInst but not insert into any block; the caller will insert it at the right spot.
-    if (sym->isHeap && sym->lastUseNode == identExpr)
+    if (sym->isHeap)
     {
-        llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-            "sage_free",
-            llvm::Type::getVoidTy(context),
-            llvm::Type::getInt64Ty(context));
+        if ((sym->lastUseNode == identExpr) && (sym->refCount == 0))
+        {
+            llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
+                "sage_free",
+                llvm::Type::getVoidTy(context),
+                llvm::Type::getInt64Ty(context));
 
-        // Prepare size constant
-        llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
+            // Prepare size constant
+            llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
 
-        // Create call instruction WITHOUT inserting it into a block.
-        // Use CallInst::Create and do not provide InsertBefore (nullptr) — this yields an instruction that is not attached.
-        llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn, {sizeArg});
-        callInst->setCallingConv(llvm::CallingConv::C);
-        // Do NOT insert yet.
-        out.pendingFree = callInst;
+            // Create call instruction WITHOUT inserting it into a block.
+            // Use CallInst::Create and do not provide InsertBefore (nullptr) — this yields an instruction that is not attached.
+            llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn, {sizeArg});
+            callInst->setCallingConv(llvm::CallingConv::C);
+            // Do NOT insert yet.
+            out.pendingFree = callInst;
+        }
     }
 
     return out;
