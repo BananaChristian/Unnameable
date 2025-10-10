@@ -362,6 +362,7 @@ void Semantics::walkAddressExpression(Node *node)
     auto line = addrExpr->identifier->expression.line;
     auto col = addrExpr->identifier->expression.column;
 
+    walker(addrExpr->identifier.get());
     auto symbolInfo = resolveSymbolInfo(addrName);
     bool hasError = false;
 
@@ -374,12 +375,11 @@ void Semantics::walkAddressExpression(Node *node)
     if (symbolInfo->isHeap)
         symbolInfo->lastUseNode = addrExpr;
 
-    auto addrInfo = std::make_shared<SymbolInfo>();
-    addrInfo = symbolInfo;
+    auto addrInfo = std::make_shared<SymbolInfo>(*symbolInfo);
     addrInfo->isPointer = true;
     addrInfo->type = inferNodeDataType(addrExpr);
 
-    metaData[addrExpr] = symbolInfo;
+    metaData[addrExpr] = addrInfo;
 }
 
 void Semantics::walkDereferenceExpression(Node *node)
@@ -1112,6 +1112,8 @@ void Semantics::walkPointerStatement(Node *node)
         hasError = true;
         return;
     }
+    // Walking the address expression
+    walker(ptrValue);
 
     auto varName = ptrValue->identifier->expression.TokenLiteral;
     auto ptSymbol = resolveSymbolInfo(varName);
