@@ -68,6 +68,7 @@ private:
     // GENERATOR FUNCTIONS FOR STATEMENTS
     void generateLetStatement(Node *node);
     void generateReferenceStatement(Node *node);
+    void generatePointerStatement(Node *node);
     void generateExpressionStatement(Node *node);
     void generateAssignmentStatement(Node *node);
     void generateFieldAssignmentStatement(Node *node);

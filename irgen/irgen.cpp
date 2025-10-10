@@ -148,6 +148,9 @@ void IRGenerator::generateLetStatement(Node *node)
     auto sym = letIt->second;
     std::cout << "[DEBUG] Symbol type: " << sym->type.resolvedName << "\n";
 
+    if(sym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
     llvm::Function *fn = builder.GetInsertBlock()->getParent();
     llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
 
@@ -295,7 +298,7 @@ void IRGenerator::generateLetStatement(Node *node)
         builder.CreateStore(initVal, heapPtr);
 
         Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-        if ((letStmt == lastUse)&&(sym->refCount==0))
+        if ((letStmt == lastUse) && (sym->refCount == 0))
         {
             builder.CreateCall(
                 sageFreeFunction,
@@ -353,11 +356,62 @@ void IRGenerator::generateReferenceStatement(Node *node)
     if (!targetSym)
         throw std::runtime_error("Reference '" + refName + "' has no target symbol");
 
+    if (targetSym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
     if (!targetSym->llvmValue)
         throw std::runtime_error("Reference '" + refName + "' target has no llvmValue");
 
     // Since references are just an alias system per se I will just give the reference the same llvm value as its target
     refSym->llvmValue = targetSym->llvmValue;
+}
+
+// Pointer statement IR generator function
+void IRGenerator::generatePointerStatement(Node *node)
+{
+    auto ptrStmt = dynamic_cast<PointerStatement *>(node);
+    if (!ptrStmt)
+        throw std::runtime_error("Invalid pointer statement");
+
+    auto ptrName = ptrStmt->name->expression.TokenLiteral;
+
+    // Getting the pointer metaData
+    auto metaIt = semantics.metaData.find(ptrStmt);
+    if (metaIt == semantics.metaData.end())
+        throw std::runtime_error("Missing pointer statement metaData for '" + ptrName + "'");
+
+    auto ptrSym = metaIt->second;
+    if (!ptrSym)
+        throw std::runtime_error("Undefined pointer '" + ptrName + "'");
+
+    if (ptrSym->hasError)
+        throw std::runtime_error("Semantic error detected ");
+
+    std::cout << "[IR DEBUG] Pointer type: " << ptrSym->type.resolvedName << "\n";
+
+    llvm::Function *fn = builder.GetInsertBlock()->getParent();
+    llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
+
+    // Getting the pointer llvm type
+    llvm::Type *ptrType = getLLVMType(ptrSym->type);
+    llvm::Type *ptrStorageType = ptrType->getPointerTo();
+
+    if (!ptrType)
+        throw std::runtime_error("Failed to get LLVM Type for '" + ptrName + "'");
+
+    llvm::Value *initVal = ptrStmt->value ? generateExpression(ptrStmt->value.get())
+                                          : llvm::Constant::getNullValue(ptrType);
+
+    if (!initVal)
+        throw std::runtime_error("No init value");
+
+    llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(ptrStorageType, nullptr, ptrName);
+    if (!alloca)
+        throw std::runtime_error("Failed to create alloca");
+
+    builder.CreateStore(initVal, alloca);
+    ptrSym->llvmValue = alloca;
+    ptrSym->llvmType = ptrType;
 }
 
 // While statement IR generator function
@@ -1873,21 +1927,25 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node)
 {
     auto addrExpr = dynamic_cast<AddressExpression *>(node);
     if (!addrExpr)
-        throw std::runtime_error("Invalid expression expression");
+        throw std::runtime_error("Invalid address expression");
+
+    std::cout << "Inside the address expression generator\n";
 
     const std::string &name = addrExpr->identifier->expression.TokenLiteral;
 
     auto metaIt = semantics.metaData.find(addrExpr);
     if (metaIt == semantics.metaData.end())
-        throw std::runtime_error("Unidentified identifier '" + name + "'");
+        throw std::runtime_error("Unidentified address identifier '" + name + "'");
 
     auto sym = metaIt->second;
 
     if (sym->hasError)
         throw std::runtime_error("Semantic error detected");
 
-    llvm::Value *variablePtr = sym->llvmValue;
-    return variablePtr;
+    llvm::Value *ptr = generateIdentifierAddress(addrExpr->identifier.get()).address;
+    if (!ptr)
+        throw std::runtime_error("No llvm value was assigned");
+    return ptr;
 }
 
 AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
@@ -2180,70 +2238,120 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
 // HELPER FUNCTIONS
 llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
 {
+    llvm::Type *baseType = nullptr;
+
     switch (type.kind)
     {
     case DataType::SHORT_INT:
     case DataType::NULLABLE_SHORT_INT:
-        return llvm::Type::getInt16Ty(context);
+    {
+        baseType = llvm::Type::getInt16Ty(context);
+        break;
+    }
 
     case DataType::USHORT_INT:
     case DataType::NULLABLE_USHORT_INT:
-        return llvm::Type::getInt16Ty(context);
+    {
+        baseType = llvm::Type::getInt16Ty(context);
+        break;
+    }
 
     case DataType::INTEGER:
     case DataType::NULLABLE_INT:
-        return llvm::Type::getInt32Ty(context);
+    {
+        baseType = llvm::Type::getInt32Ty(context);
+        break;
+    }
 
     case DataType::UINTEGER:
     case DataType::NULLABLE_UINT:
-        return llvm::Type::getInt32Ty(context);
+    {
+        baseType = llvm::Type::getInt32Ty(context);
+        break;
+    }
 
     case DataType::LONG_INT:
     case DataType::NULLABLE_LONG_INT:
-        return llvm::Type::getInt64Ty(context);
+    {
+        baseType = llvm::Type::getInt64Ty(context);
+        break;
+    }
 
     case DataType::ULONG_INT:
     case DataType::NULLABLE_ULONG_INT:
-        return llvm::Type::getInt64Ty(context);
+    {
+        baseType = llvm::Type::getInt64Ty(context);
+        break;
+    }
 
     case DataType::EXTRA_INT:
     case DataType::NULLABLE_EXTRA_INT:
-        return llvm::Type::getInt128Ty(context);
+    {
+        baseType = llvm::Type::getInt128Ty(context);
+        break;
+    }
 
     case DataType::UEXTRA_INT:
     case DataType::NULLABLE_UEXTRA_INT:
-        return llvm::Type::getInt128Ty(context);
+    {
+        baseType = llvm::Type::getInt128Ty(context);
+        break;
+    }
 
     case DataType::BOOLEAN:
     case DataType::NULLABLE_BOOLEAN:
-        return llvm::Type::getInt1Ty(context);
+    {
+        baseType = llvm::Type::getInt1Ty(context);
+        break;
+    }
 
     case DataType::CHAR:
     case DataType::NULLABLE_CHAR:
-        return llvm::Type::getInt8Ty(context);
+    {
+        baseType = llvm::Type::getInt8Ty(context);
+        break;
+    }
 
     case DataType::CHAR16:
     case DataType::NULLABLE_CHAR16:
-        return llvm::Type::getInt16Ty(context);
+    {
+        baseType = llvm::Type::getInt16Ty(context);
+        break;
+    }
 
     case DataType::CHAR32:
     case DataType::NULLABLE_CHAR32:
-        return llvm::Type::getInt32Ty(context);
+    {
+        baseType = llvm::Type::getInt32Ty(context);
+        break;
+    }
 
     case DataType::FLOAT:
     case DataType::NULLABLE_FLT:
-        return llvm::Type::getFloatTy(context);
+    {
+        baseType = llvm::Type::getFloatTy(context);
+        break;
+    }
 
     case DataType::DOUBLE:
     case DataType::NULLABLE_DOUBLE:
-        return llvm::Type::getDoubleTy(context);
+    {
+        baseType = llvm::Type::getDoubleTy(context);
+        break;
+    }
 
     case DataType::STRING:
     case DataType::NULLABLE_STR:
-        return llvm::PointerType::get(context, 0);
+    {
+        baseType = llvm::PointerType::get(context, 0);
+        break;
+    }
 
     case DataType::VOID:
-        return llvm::Type::getVoidTy(context);
+    {
+        baseType = llvm::Type::getVoidTy(context);
+        break;
+    }
 
     case DataType::DATABLOCK:
     case DataType::COMPONENT:
@@ -2253,27 +2361,30 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
 
         auto it = llvmCustomTypes.find(type.resolvedName);
         if (it != llvmCustomTypes.end())
-            return it->second;
-
-        // Error if the type hasn’t been registered yet
-        throw std::runtime_error("LLVM IR requested for unknown custom type '" + type.resolvedName + "'");
+            baseType = it->second;
+        else
+            throw std::runtime_error("LLVM IR requested for unknown custom type '" + type.resolvedName + "'");
+        break;
     }
 
     case DataType::ENUM:
     {
-        // Use underlying type for enums
         auto enumInfo = semantics.customTypesTable[type.resolvedName];
-        return getLLVMType({enumInfo.underLyingType, ""});
+        baseType = getLLVMType({enumInfo.underLyingType, ""});
+        break;
     }
 
     case DataType::ERROR:
     case DataType::GENERIC:
     case DataType::UNKNOWN:
         throw std::runtime_error("Unsupported or unknown data type encountered in getLLVMType");
-
-    default:
-        return nullptr;
     }
+
+    // Wrap in a pointer if isPointer is true
+    if (type.isPointer)
+        return llvm::PointerType::get(baseType, 0);
+
+    return baseType;
 }
 
 // Registering generator functions for statements
@@ -2281,6 +2392,7 @@ void IRGenerator::registerGeneratorFunctions()
 {
     generatorFunctionsMap[typeid(LetStatement)] = &IRGenerator::generateLetStatement;
     generatorFunctionsMap[typeid(ReferenceStatement)] = &IRGenerator::generateReferenceStatement;
+    generatorFunctionsMap[typeid(PointerStatement)] = &IRGenerator::generatePointerStatement;
     generatorFunctionsMap[typeid(ExpressionStatement)] = &IRGenerator::generateExpressionStatement;
     generatorFunctionsMap[typeid(AssignmentStatement)] = &IRGenerator::generateAssignmentStatement;
     generatorFunctionsMap[typeid(FieldAssignment)] = &IRGenerator::generateFieldAssignmentStatement;
