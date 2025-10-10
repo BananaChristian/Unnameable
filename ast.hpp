@@ -376,6 +376,18 @@ struct BasicType : Expression
     BasicType(Token data, bool isNull) : Expression(data), data_token(data), isNullable(isNull) {};
 };
 
+struct PointerType : Expression
+{
+    Token ptr_token;
+    std::unique_ptr<Expression> underlyingType;
+
+    std::string toString() override
+    {
+        return "Pointer Type: " + underlyingType->toString() + "_ptr";
+    }
+    PointerType(Token ptr, std::unique_ptr<Expression> type) : Expression(ptr), ptr_token(ptr), underlyingType(std::move(type)) {};
+};
+
 // Return type expression
 struct ReturnType : Expression
 {
