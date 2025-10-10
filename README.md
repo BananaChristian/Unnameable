@@ -123,6 +123,7 @@ func greet(string? name): string?;
 ```
 
 ##  Functions
+Functions in unnameable are written using the func keyword,the function name and the optional parameters and the return type
 ```unn
 func greet(string name): string {
     return "Hello" + name;
@@ -132,6 +133,14 @@ func test(arr[int] my_array): arr[int]{
     return [1,3];
 }
 
+```
+The return type must correspond to what is being returned
+Functions can also return pointers for the concrete types but void pointers arent support
+```unn
+func test(int x=0):ptr int{
+    ptr int y=> &x;
+    return y;
+}
 ```
 
 ## Generic and multigenerics
