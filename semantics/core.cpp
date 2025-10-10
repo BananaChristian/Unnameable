@@ -349,6 +349,18 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         return ResolvedType{DataType::ARRAY, "arr[" + inner.resolvedName + "]"};
     }
 
+    if (auto ptrType = dynamic_cast<PointerType *>(node))
+    {
+        ResolvedType inner = inferNodeDataType(ptrType->underlyingType.get());
+        if (inner.kind == DataType::VOID)
+        {
+            logSemanticErrors("Cannot have a void pointer return type", ptrType->expression.line, ptrType->expression.column);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+        inner.isPointer = true;
+        return isPointerType(inner);
+    }
+
     if (auto retTypeExpr = dynamic_cast<ReturnType *>(node))
     {
         // Just recursively call the inferer for whatever is being nested in here(Basic Type or whatever)

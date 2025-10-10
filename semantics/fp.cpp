@@ -266,6 +266,7 @@ void Semantics::walkFunctionExpression(Node *node)
     bool isNullable = false;
     auto basicRet = dynamic_cast<BasicType *>(retType->returnExpr.get());
     auto arrayRet = dynamic_cast<ArrayType *>(retType->returnExpr.get());
+    auto ptrRet = dynamic_cast<PointerType *>(retType->returnExpr.get());
     if (basicRet)
     {
         isNullable = basicRet->isNullable;
@@ -273,6 +274,19 @@ void Semantics::walkFunctionExpression(Node *node)
     else if (arrayRet)
     {
         isNullable = arrayRet->isNullable;
+    }
+    else if (ptrRet)
+    {
+        auto basicRetPtr = dynamic_cast<BasicType *>(ptrRet->underlyingType.get());
+        auto arrayRetPtr = dynamic_cast<ArrayType *>(ptrRet->underlyingType.get());
+        if (basicRetPtr)
+        {
+            isNullable = basicRetPtr->isNullable;
+        }
+        else if (arrayRetPtr)
+        {
+            isNullable = arrayRetPtr->isNullable;
+        }
     }
     ResolvedType returnType = inferNodeDataType(funcExpr->return_type.get());
     std::string customTypeName = retType->returnExpr->expression.TokenLiteral;
@@ -431,6 +445,19 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     else if (auto arrType = dynamic_cast<ArrayType *>(retType->returnExpr.get()))
     {
         isNullable = arrType->isNullable;
+    }
+    else if (auto ptrRet = dynamic_cast<PointerType *>(retType->returnExpr.get()))
+    {
+        auto basicRetPtr = dynamic_cast<BasicType *>(ptrRet->underlyingType.get());
+        auto arrayRetPtr = dynamic_cast<ArrayType *>(ptrRet->underlyingType.get());
+        if (basicRetPtr)
+        {
+            isNullable = basicRetPtr->isNullable;
+        }
+        else if (arrayRetPtr)
+        {
+            isNullable = arrayRetPtr->isNullable;
+        }
     }
     std::string customTypeName = retType->expression.TokenLiteral;
 
