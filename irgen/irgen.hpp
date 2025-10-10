@@ -24,9 +24,10 @@ struct LoopBlocks
     llvm::BasicBlock *afterBB;
 };
 
-struct AddressAndPendingFree{
-    llvm::Value* address;
-    llvm::CallInst* pendingFree;
+struct AddressAndPendingFree
+{
+    llvm::Value *address;
+    llvm::CallInst *pendingFree;
 };
 
 class IRGenerator
@@ -66,6 +67,7 @@ private:
 
     // GENERATOR FUNCTIONS FOR STATEMENTS
     void generateLetStatement(Node *node);
+    void generateReferenceStatement(Node *node);
     void generateExpressionStatement(Node *node);
     void generateAssignmentStatement(Node *node);
     void generateFieldAssignmentStatement(Node *node);
@@ -113,6 +115,7 @@ private:
 
     llvm::Value *generateNullLiteral(NullLiteral *nullLit, DataType type);
     llvm::Value *generateIdentifierExpression(Node *node);
+    llvm::Value *generateAddressExpression(Node *node);
 
     llvm::Value *generateBlockExpression(Node *node);
     llvm::Value *generateFunctionExpression(Node *node);

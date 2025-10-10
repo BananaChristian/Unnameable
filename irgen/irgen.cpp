@@ -295,7 +295,7 @@ void IRGenerator::generateLetStatement(Node *node)
         builder.CreateStore(initVal, heapPtr);
 
         Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-        if (letStmt == lastUse)
+        if ((letStmt == lastUse)&&(sym->refCount==0))
         {
             builder.CreateCall(
                 sageFreeFunction,
@@ -331,6 +331,33 @@ void IRGenerator::generateLetStatement(Node *node)
     sym->llvmType = varType;
     std::cout << "[DEBUG] Scalar variable '" << letName << "' allocated at llvmValue = "
               << alloca << " with type = " << varType << "\n";
+}
+
+// Reference statement IR generator
+void IRGenerator::generateReferenceStatement(Node *node)
+{
+    auto refStmt = dynamic_cast<ReferenceStatement *>(node);
+    if (!refStmt)
+        throw std::runtime_error("Invalid reference statement");
+
+    auto refName = refStmt->referer->expression.TokenLiteral;
+
+    auto metaIt = semantics.metaData.find(refStmt);
+    if (metaIt == semantics.metaData.end())
+        throw std::runtime_error("Failed to find reference statement metaData for '" + refName + "'");
+
+    auto refSym = metaIt->second;
+    // Getting the target symbol
+    auto targetSym = refSym->refereeSymbol;
+
+    if (!targetSym)
+        throw std::runtime_error("Reference '" + refName + "' has no target symbol");
+
+    if (!targetSym->llvmValue)
+        throw std::runtime_error("Reference '" + refName + "' target has no llvmValue");
+
+    // Since references are just an alias system per se I will just give the reference the same llvm value as its target
+    refSym->llvmValue = targetSym->llvmValue;
 }
 
 // While statement IR generator function
@@ -1842,6 +1869,27 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     return variablePtr;
 }
 
+llvm::Value *IRGenerator::generateAddressExpression(Node *node)
+{
+    auto addrExpr = dynamic_cast<AddressExpression *>(node);
+    if (!addrExpr)
+        throw std::runtime_error("Invalid expression expression");
+
+    const std::string &name = addrExpr->identifier->expression.TokenLiteral;
+
+    auto metaIt = semantics.metaData.find(addrExpr);
+    if (metaIt == semantics.metaData.end())
+        throw std::runtime_error("Unidentified identifier '" + name + "'");
+
+    auto sym = metaIt->second;
+
+    if (sym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
+    llvm::Value *variablePtr = sym->llvmValue;
+    return variablePtr;
+}
+
 AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
 {
     AddressAndPendingFree out{nullptr, nullptr};
@@ -2232,6 +2280,7 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
 void IRGenerator::registerGeneratorFunctions()
 {
     generatorFunctionsMap[typeid(LetStatement)] = &IRGenerator::generateLetStatement;
+    generatorFunctionsMap[typeid(ReferenceStatement)] = &IRGenerator::generateReferenceStatement;
     generatorFunctionsMap[typeid(ExpressionStatement)] = &IRGenerator::generateExpressionStatement;
     generatorFunctionsMap[typeid(AssignmentStatement)] = &IRGenerator::generateAssignmentStatement;
     generatorFunctionsMap[typeid(FieldAssignment)] = &IRGenerator::generateFieldAssignmentStatement;
@@ -2274,6 +2323,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(FloatLiteral)] = &IRGenerator::generateFloatLiteral;
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
+    expressionGeneratorsMap[typeid(AddressExpression)] = &IRGenerator::generateAddressExpression;
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
     expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
