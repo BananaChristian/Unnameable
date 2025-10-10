@@ -245,6 +245,9 @@ private:
     // Parsing for basic return type
     std::unique_ptr<Expression> parseBasicType();
 
+    //Parsing for pointer return type
+    std::unique_ptr<Expression> parsePointerType();
+
     // Parsing the return type expression
     std::unique_ptr<Expression> parseReturnType();
 

@@ -1554,6 +1554,29 @@ std::unique_ptr<Expression> Parser::parseBasicType()
     return std::make_unique<BasicType>(data_token, isNullable);
 }
 
+// Parsing pointer return type
+std::unique_ptr<Expression> Parser::parsePointerType()
+{
+    Token ptr_token = currentToken();
+    advance(); // Consume the ptr token
+    std::unique_ptr<Expression> type;
+    if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER || currentToken().type == TokenType::VOID)
+    {
+        type = parseBasicType();
+    }
+    else if (currentToken().type == TokenType::ARRAY)
+    {
+
+        type = parseArrayType();
+    }
+    else
+    {
+        logError("Expected basic or array return type ");
+    }
+
+    return std::make_unique<PointerType>(ptr_token, std::move(type));
+}
+
 // Parsing the return type expression
 std::unique_ptr<Expression> Parser::parseReturnType()
 {
@@ -1566,6 +1589,10 @@ std::unique_ptr<Expression> Parser::parseReturnType()
     {
 
         expr = parseArrayType();
+    }
+    else if (currentToken().type == TokenType::PTR)
+    {
+        expr = parsePointerType();
     }
     else
     {
@@ -1604,7 +1631,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     {
         advance(); // Move past the colon signs
         if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER ||
-            currentToken().type == TokenType::VOID || currentToken().type == TokenType::ARRAY)
+            currentToken().type == TokenType::VOID || currentToken().type == TokenType::ARRAY||currentToken().type==TokenType::PTR)
         {
             return_type = parseReturnType();
         }
