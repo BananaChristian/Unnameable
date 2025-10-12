@@ -147,6 +147,7 @@ struct SymbolInfo
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
     llvm::Value *llvmValue = nullptr;
     llvm::Type *llvmType = nullptr;
+    ResolvedType derefPtrType;
     int memberIndex = -1;
 
     bool isHeap = false;

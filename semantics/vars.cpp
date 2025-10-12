@@ -392,6 +392,8 @@ void Semantics::walkDereferenceExpression(Node *node)
     auto line = derefExpr->identifier->expression.line;
     auto col = derefExpr->identifier->expression.column;
 
+    walker(derefExpr->identifier.get());
+
     auto derefSym = resolveSymbolInfo(derefName);
     if (!derefSym)
     {
@@ -404,8 +406,11 @@ void Semantics::walkDereferenceExpression(Node *node)
 
     auto derefInfo = std::make_shared<SymbolInfo>(*derefSym->targetSymbol);
     derefInfo->isPointer = false; // Just a sanity measure
+    derefInfo->derefPtrType = derefSym->type;
 
+    std::cout << "DEREF PTR TYPE: " << derefSym->type.resolvedName << "\n";
     std::cout << "DEREF TYPE: " << derefSym->targetSymbol->type.resolvedName << "\n";
+
 
     metaData[derefExpr] = derefInfo;
 }
