@@ -159,7 +159,21 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 
 std::unique_ptr<Statement> Parser::parseDereferenceAssignment()
 {
-    return parseAssignmentStatement();
+    if (peekToken(2).type == TokenType::EQUALS)
+        return parseAssignmentStatement();
+
+    // Fall back to the expression guy
+    auto expr = parseExpression(Precedence::PREC_NONE);
+    if (expr)
+    {
+        if (currentToken().type == TokenType::SEMICOLON)
+            advance();
+        else
+            logError("Expected ';' after expression statement but got '" + currentToken().TokenLiteral + "'");
+
+        return std::make_unique<ExpressionStatement>(currentToken(), std::move(expr));
+    }
+    return nullptr;
 }
 
 // Parsing let statements
@@ -1631,7 +1645,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     {
         advance(); // Move past the colon signs
         if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER ||
-            currentToken().type == TokenType::VOID || currentToken().type == TokenType::ARRAY||currentToken().type==TokenType::PTR)
+            currentToken().type == TokenType::VOID || currentToken().type == TokenType::ARRAY || currentToken().type == TokenType::PTR)
         {
             return_type = parseReturnType();
         }
