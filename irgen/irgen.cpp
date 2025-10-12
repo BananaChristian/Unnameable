@@ -148,7 +148,7 @@ void IRGenerator::generateLetStatement(Node *node)
     auto sym = letIt->second;
     std::cout << "[DEBUG] Symbol type: " << sym->type.resolvedName << "\n";
 
-    if(sym->hasError)
+    if (sym->hasError)
         throw std::runtime_error("Semantic error detected");
 
     llvm::Function *fn = builder.GetInsertBlock()->getParent();
@@ -412,6 +412,8 @@ void IRGenerator::generatePointerStatement(Node *node)
     builder.CreateStore(initVal, alloca);
     ptrSym->llvmValue = alloca;
     ptrSym->llvmType = ptrType;
+
+    std::cout << "Exited pointer statement generator\n";
 }
 
 // While statement IR generator function
@@ -753,34 +755,46 @@ void IRGenerator::generateAssignmentStatement(Node *node)
             throw std::runtime_error("Failed to get pointer for self field");
     }
 
-    // Regular variable assignment
-    const std::string &varName = assignStmt->identifier->expression.TokenLiteral;
-    auto metaIt = semantics.metaData.find(assignStmt);
-    if (metaIt == semantics.metaData.end())
-        throw std::runtime_error("Could not find variable '" + varName + "' metaData");
-
-    auto assignSym = metaIt->second;
-
-    if (!assignSym)
-        throw std::runtime_error("Could not find variable '" + varName + "'");
-
-    if (assignSym->hasError)
-        return;
-
-    AddressAndPendingFree addrAndPendingFree = generateIdentifierAddress(assignStmt->identifier.get());
-    targetPtr = addrAndPendingFree.address;
-    llvm::CallInst *pendingFree = addrAndPendingFree.pendingFree;
-
-    if (!targetPtr)
-        throw std::runtime_error("No memory allocated for variable '" + varName + "'");
-
-    // Store the value
-    builder.CreateStore(initValue, targetPtr);
-
-    if (pendingFree)
+    // Checking if it is a dereference expression
+    else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(assignStmt->identifier.get()))
     {
-        builder.Insert(pendingFree);
+        std::cout << "Inside Assignment statement deref branch\n";
+        targetPtr = generateDereferenceExpression(derefExpr);
+        if (!targetPtr)
+            throw std::runtime_error("Failed to get pointer for the dereference expression");
     }
+    else
+
+    { // Regular variable assignment
+        const std::string &varName = assignStmt->identifier->expression.TokenLiteral;
+        auto metaIt = semantics.metaData.find(assignStmt);
+        if (metaIt == semantics.metaData.end())
+            throw std::runtime_error("Could not find variable '" + varName + "' metaData");
+
+        auto assignSym = metaIt->second;
+
+        if (!assignSym)
+            throw std::runtime_error("Could not find variable '" + varName + "'");
+
+        if (assignSym->hasError)
+            throw std::runtime_error("Semantic error detected");
+
+        AddressAndPendingFree addrAndPendingFree = generateIdentifierAddress(assignStmt->identifier.get());
+        targetPtr = addrAndPendingFree.address;
+        llvm::CallInst *pendingFree = addrAndPendingFree.pendingFree;
+
+        if (!targetPtr)
+            throw std::runtime_error("No memory allocated for variable '" + varName + "'");
+
+        // Store the value
+        builder.CreateStore(initValue, targetPtr);
+
+        if (pendingFree)
+        {
+            builder.Insert(pendingFree);
+        }
+    }
+    std::cout << "Exited assignment generator\n";
 }
 
 void IRGenerator::generateFieldAssignmentStatement(Node *node)
@@ -1945,7 +1959,68 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node)
     llvm::Value *ptr = generateIdentifierAddress(addrExpr->identifier.get()).address;
     if (!ptr)
         throw std::runtime_error("No llvm value was assigned");
+
+    std::cout << "Exited address expression generator\n";
+    sym->llvmValue = ptr;
+    sym->llvmType = getLLVMType(sym->type);
     return ptr;
+}
+
+llvm::Value *IRGenerator::generateDereferenceExpression(Node *node)
+{
+    auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
+    if (!derefExpr)
+        throw std::runtime_error("Invalid dereference expression");
+
+    const std::string &name = derefExpr->identifier->expression.TokenLiteral;
+
+    auto metaIt = semantics.metaData.find(derefExpr);
+    if (metaIt == semantics.metaData.end())
+        throw std::runtime_error("Unidentified inditifier '" + name + "' in dereference expression");
+
+    auto derefSym = metaIt->second;
+    if (!derefSym)
+        throw std::runtime_error("Unidentified dereference identifier '" + name + "'");
+
+    // Check if there are any semantic errors
+    if (derefSym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
+    // Get the llvm value of the identifier(the address of the pointer) it was stored here by the generate pointer statement
+    auto derefIdent = dynamic_cast<Identifier *>(derefExpr->identifier.get());
+    if (!derefIdent)
+        throw std::runtime_error("There is an issue here check the node maybe NODE TYPE IS: '" + derefIdent->toString() + "'");
+
+    std::cout << "DEREF IDENTIFIER NODE IS: " << derefIdent->toString() << "\n";
+    AddressAndPendingFree addrAndFree = generateIdentifierAddress(derefIdent);
+    auto pointerAddress = addrAndFree.address;
+    if (!pointerAddress)
+        throw std::runtime_error("Pointer address does not exist");
+
+    // Getting the type of the pointer
+    auto pointerType = getLLVMType(derefSym->derefPtrType);
+    if (!pointerType)
+        throw std::runtime_error("Pointer type doesnt exist");
+
+    if (!pointerType->isPointerTy())
+        throw std::runtime_error("Cannot dereference non-pointer type");
+
+    // Loading the actual address stored in the pointer address(Address of the pointee)
+    auto loadedPointer = builder.CreateLoad(pointerType, pointerAddress, name + "_addr");
+    if (!loadedPointer)
+        throw std::runtime_error("Loaded pointer not created");
+
+    // Loading the actual value stored at the address of the pointee
+    auto elementType = getLLVMType(derefSym->type);
+    if (!elementType)
+        throw std::runtime_error("Failed to generate llvm type for pointee type '" + derefSym->type.resolvedName + "'");
+
+    auto finalValue = builder.CreateLoad(elementType, loadedPointer, name + "_val");
+    if (!finalValue)
+        throw std::runtime_error("Failed to generate dereference value");
+
+    std::cout << "Exited dereference expression generator\n";
+    return finalValue;
 }
 
 AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
@@ -1954,7 +2029,10 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
 
     auto identExpr = dynamic_cast<Identifier *>(node);
     if (!identExpr)
+    {
+        std::cout << "Got node " << node->toString() << "\n";
         throw std::runtime_error("Invalid identifier expression");
+    }
 
     const std::string &identName = identExpr->identifier.TokenLiteral;
     auto metaIt = semantics.metaData.find(identExpr);
@@ -2436,6 +2514,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
     expressionGeneratorsMap[typeid(AddressExpression)] = &IRGenerator::generateAddressExpression;
+    expressionGeneratorsMap[typeid(DereferenceExpression)] = &IRGenerator::generateDereferenceExpression;
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
     expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
