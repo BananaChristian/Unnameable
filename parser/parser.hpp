@@ -13,6 +13,14 @@ struct ParseError
     int column;
 };
 
+struct FileUnit
+{
+    std::string fileName;
+    std::vector<std::unique_ptr<Node>> nodes;
+    std::vector<std::string> imports;
+    bool isEntryFile;
+};
+
 class Parser
 {
     std::vector<Token> tokenInput;
@@ -67,6 +75,9 @@ public:
 
     // Function to get the precedence depending on the token type
     Precedence get_precedence(TokenType type);
+
+    //Generator for the file unit
+    std::shared_ptr<FileUnit> generateFileUnit();
 
     using prefixParseFns = std::unique_ptr<Expression> (Parser::*)();
     using infixParseFns = std::unique_ptr<Expression> (Parser::*)(std::unique_ptr<Expression>);
@@ -353,4 +364,5 @@ private:
 
     // Getting the error token
     Token getErrorToken();
+
 };

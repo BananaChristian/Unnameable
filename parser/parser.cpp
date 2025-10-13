@@ -2049,7 +2049,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::WAIT] = &Parser::parseWaitStatement;
     StatementParseFunctionsMap[TokenType::ALIAS] = &Parser::parseAliasStatement;
     StatementParseFunctionsMap[TokenType::QUALIFY] = &Parser::parseQualifyStatement;
-    StatementParseFunctionsMap[TokenType::IMPORT]=&Parser::parseImportStatement;
+    StatementParseFunctionsMap[TokenType::IMPORT] = &Parser::parseImportStatement;
 
     // For basic types
     StatementParseFunctionsMap[TokenType::SHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
@@ -2166,4 +2166,26 @@ Token Parser::getErrorToken()
         return lastToken;
     }
     return tokenInput[currentPos - 1];
+}
+
+std::shared_ptr<FileUnit> Parser::generateFileUnit()
+{
+    // Populate the fields final field
+    std::vector<std::unique_ptr<Node>> nodes = parseProgram();
+    auto fileUnit = std::make_shared<FileUnit>();
+    fileUnit->nodes = std::move(nodes);
+
+    // Scan AST for imports and entry qualifier
+    for (auto &node : fileUnit->nodes)
+    {
+        if (auto *importStmt = dynamic_cast<ImportStatement *>(node.get()))
+        {
+            fileUnit->imports.push_back(importStmt->stringExpr->expression.TokenLiteral);
+        }
+        else if (auto *qualifyStmt = dynamic_cast<QualifyStatement *>(node.get()))
+        {
+            fileUnit->isEntryFile = true;
+        }
+    }
+    return fileUnit;
 }
