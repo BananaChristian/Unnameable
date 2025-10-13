@@ -1,6 +1,6 @@
 # Unnameable Compiler
 
-**Unnameable** is a statically typed, ahead-of-time compiled modern programming language written in C++. It is designed to be fast, minimal, and expressive.
+**Unnameable** is a statically typed, ahead-of-time compiled modern programming language . It is designed to be fast, minimal, and expressive.
 
 It exists to make low-level development **clear**, **accessible**, and **fun** for everyone especially for beginners and builders working on modest machines.
 
@@ -9,6 +9,7 @@ It exists to make low-level development **clear**, **accessible**, and **fun** f
 Unnameable's goal is to bring the joy back to low-level programming.
 
 ---
+This is the base compiler for the Unnameable Programming langauge written in C++ for now many features will not added till bootstrap but I want to make this base compiler as powerful as possible to make the bootstrap extremely easy without alot of rewriting
 
 This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, semantic analyzer, layout calculator,sentinel layer and LLVM IR codegen.
 
