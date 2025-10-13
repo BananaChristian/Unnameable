@@ -81,6 +81,10 @@ class Lexer
         {"deref", TokenType::DEREF},
 
         {"heap", TokenType::HEAP},
+
+        {"import", TokenType::IMPORT},
+        {"qualify", TokenType::QUALIFY},
+        {"main", TokenType::MAIN},
     };
 
 public:
