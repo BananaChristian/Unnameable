@@ -1370,6 +1370,33 @@ struct AliasStatement : Statement
     AliasStatement(Token alias, std::unique_ptr<Expression> name, std::unique_ptr<Expression> type) : Statement(alias), aliasName(std::move(name)), aliasType(std::move(type)) {}
 };
 
+// Qualify statement
+struct QualifyStatement : Statement
+{
+    Token qualify_key;
+    Token main_key;
+    std::string toString() override
+    {
+        return "Qualify Statement: " + qualify_key.TokenLiteral + " " + main_key.TokenLiteral;
+    }
+
+    QualifyStatement(Token qualify, Token main) : Statement(qualify), qualify_key(qualify), main_key(main) {};
+};
+
+// Import statement
+struct ImportStatement : Statement
+{
+    Token import_key;
+    std::unique_ptr<Expression> stringExpr;
+
+    std::string toString() override
+    {
+        return "Import Statement: " + import_key.TokenLiteral +" "+ stringExpr->toString();
+    }
+
+    ImportStatement(Token import, std::unique_ptr<Expression> string) : Statement(import), import_key(import), stringExpr(std::move(string)) {};
+};
+
 // BLOCKS
 //  Block expression
 struct BlockExpression : Expression
