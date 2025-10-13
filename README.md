@@ -235,6 +235,18 @@ func greet(string name): string {
 
 ```
 
+## Multi file support
+You can use more the one file in unnameable and use the import keyword the compiler flattens it all into one compilation unit although right now it is kinda not proper because the compiler is strict on the symbols
+If you wrote a global variable or a function name in the another file and you are importing it be careful on the variable and function names as the compiler sees them as one
+Below is an example of the import syntax
+```
+import "test"  #The compiler will append the .unn file extension
+#You can also just add the extension manually
+##
+import "test.unn"
+##
+```
+
 ## Multilingual identifier support
 Unnameable supports identifiers in:
 - Latin (English, French, German, etc.)
