@@ -118,7 +118,6 @@ std::shared_ptr<FileUnit> loadFileRecursive(
     Parser parser(lexer.token_list);
     auto fileUnit = parser.generateFileUnit();
     fileUnit->fileName = canon_str;
-    cu.files.push_back(fileUnit);
 
     // For each import string in this file, resolve path and recurse
     for (const auto &imp : fileUnit->imports)
@@ -149,6 +148,7 @@ std::shared_ptr<FileUnit> loadFileRecursive(
         // Recurse
         loadFileRecursive(resolved, cu, visited, stack);
     }
+    cu.files.push_back(fileUnit);
 
     // Mark this file as fully visited (parsed)
     visited.insert(canon_str);
