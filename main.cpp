@@ -15,7 +15,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <filesystem>
 namespace fs = std::filesystem;
-
+std::string fileName;
 struct CompilationUnit
 {
     std::vector<std::shared_ptr<FileUnit>> files;
@@ -118,6 +118,7 @@ std::shared_ptr<FileUnit> loadFileRecursive(
     Parser parser(lexer.token_list);
     auto fileUnit = parser.generateFileUnit();
     fileUnit->fileName = canon_str;
+    fileName=canon_str;
 
     // For each import string in this file, resolve path and recurse
     for (const auto &imp : fileUnit->imports)
@@ -193,7 +194,7 @@ int main(int argc, char **argv)
         }
 
         std::cout << "\n--- Semantic Analysis ---\n";
-        Semantics semantics;
+        Semantics semantics(fileName);
         for (const auto &node : cu.mergedNodes)
         {
             semantics.walker(node.get());
