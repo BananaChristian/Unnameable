@@ -2048,6 +2048,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::START] = &Parser::parseStartStatement;
     StatementParseFunctionsMap[TokenType::WAIT] = &Parser::parseWaitStatement;
     StatementParseFunctionsMap[TokenType::ALIAS] = &Parser::parseAliasStatement;
+    StatementParseFunctionsMap[TokenType::QUALIFY] = &Parser::parseQualifyStatement;
+    StatementParseFunctionsMap[TokenType::IMPORT]=&Parser::parseImportStatement;
 
     // For basic types
     StatementParseFunctionsMap[TokenType::SHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;

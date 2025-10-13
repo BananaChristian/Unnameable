@@ -821,6 +821,25 @@ std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam)
         std::move(value));
 }
 
+std::unique_ptr<Statement> Parser::parseQualifyStatement()
+{
+    Token qualify_token = currentToken();
+    advance(); // Consume the qualify token
+    Token main_token = currentToken();
+    advance(); // Consume the main token and move on
+
+    return std::make_unique<QualifyStatement>(qualify_token, main_token);
+}
+
+std::unique_ptr<Statement> Parser::parseImportStatement()
+{
+    Token import_token = currentToken();
+    advance(); // Consume the import token
+    auto imported = parseStringLiteral();
+
+    return std::make_unique<ImportStatement>(import_token, std::move(imported));
+}
+
 std::unique_ptr<Statement> Parser::parsePointerStatementWrapper()
 {
     return parsePointerStatement();

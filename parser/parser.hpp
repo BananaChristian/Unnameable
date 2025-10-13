@@ -199,6 +199,12 @@ private:
     // Parsing Array Statememt
     std::unique_ptr<Statement> parseAliasStatement();
 
+    //Parsing the qualify statement
+    std::unique_ptr<Statement> parseQualifyStatement();
+
+    //Parsing the import statement
+    std::unique_ptr<Statement> parseImportStatement();
+
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
     std::unique_ptr<Expression> parseExpression(Precedence precedence);
