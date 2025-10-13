@@ -74,7 +74,7 @@ struct ResolvedType
 {
     DataType kind; // For the custom inbuilt types
     std::string resolvedName;
-    bool isPointer=false;
+    bool isPointer = false;
 };
 
 struct MemberInfo
@@ -95,8 +95,8 @@ struct MemberInfo
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
     bool isHeap = false;
-    bool isRef=false; //Reference flag
-    bool isPointer=false; //Pointer flag
+    bool isRef = false;     // Reference flag
+    bool isPointer = false; // Pointer flag
     Node *lastUseNode = nullptr;
 };
 
@@ -151,15 +151,15 @@ struct SymbolInfo
     int memberIndex = -1;
 
     bool isHeap = false;
-    bool isRef=false; //Reference flag
-    bool isPointer=false;//Pointer flag
-    std::shared_ptr<SymbolInfo> targetSymbol;//For the deref system
-    std::shared_ptr<SymbolInfo> refereeSymbol; //Symbol being refered to 
+    bool isRef = false;                        // Reference flag
+    bool isPointer = false;                    // Pointer flag
+    std::shared_ptr<SymbolInfo> targetSymbol;  // For the deref system
+    std::shared_ptr<SymbolInfo> refereeSymbol; // Symbol being refered to
 
     size_t componentSize;
     int alloc_id = 0; // This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
-    int refCount=0;
+    int refCount = 0;
 
     // Error flag
     bool hasError = false;
@@ -168,7 +168,7 @@ struct SymbolInfo
 class Semantics
 {
 public:
-    Semantics();
+    Semantics(std::string &fileName);
     void walker(Node *node);
     using walkerFunctions = void (Semantics::*)(Node *);
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
@@ -187,6 +187,7 @@ public:
     bool hasReturnPath(Node *node);
     ResolvedType inferNodeDataType(Node *node);
     std::pair<std::string, std::string> splitScopedName(const std::string &fullName);
+    std::string fileName;
 
 private:
     // Walking the data type literals
@@ -239,7 +240,7 @@ private:
     void walkAssignStatement(Node *node);
     void walkFieldAssignmentStatement(Node *node);
 
-    //Walking reference and pointer statement
+    // Walking reference and pointer statement
     void walkReferenceStatement(Node *node);
     void walkPointerStatement(Node *node);
 

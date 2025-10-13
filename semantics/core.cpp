@@ -5,7 +5,7 @@
 
 #define CPPREST_FORCE_REBUILD
 
-Semantics::Semantics()
+Semantics::Semantics(std::string &fileName):fileName(fileName)
 {
     symbolTable.push_back({});
     registerWalkerFunctions();
@@ -1137,7 +1137,7 @@ ArrayMeta Semantics::getArrayMeta(Node *node)
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
 {
-    std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << "\n";
+    std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << " in file: "<< fileName <<"\n";
 }
 
 bool Semantics::isInteger(const ResolvedType &t)
