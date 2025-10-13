@@ -87,6 +87,10 @@ enum class TokenType
     PTR, //Pointer keyword
     DEREF, //Dereference keyword
 
+    IMPORT, //Import keyword
+    QUALIFY, //Qualify keyword
+    MAIN, //Main keyword
+
     // Control flow
     IF,
     ELSE,

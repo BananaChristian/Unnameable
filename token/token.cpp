@@ -221,6 +221,12 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: DEREF";
     case TokenType::MODULUS:
         return "Token Type: MODULUS";
+    case TokenType::IMPORT:
+        return "Token Type: IMPORT";
+    case TokenType::QUALIFY:
+        return "Token Type: QUALIFY";
+    case TokenType::MAIN:
+        return "Token Type: MAIN";
     case TokenType::HEAP:
         return "Token Type: HEAP";
     case TokenType::BANG:
