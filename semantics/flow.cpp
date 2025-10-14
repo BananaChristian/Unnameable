@@ -26,9 +26,16 @@ void Semantics::walkBlockStatement(Node *node)
 
         if (auto assignStmt = dynamic_cast<AssignmentStatement *>(stmt.get()))
         {
+            std::cout<<"Triggered self heap check\n";
             name = assignStmt->identifier->expression.TokenLiteral;
             int line = assignStmt->identifier->expression.line;
             int col = assignStmt->identifier->expression.column;
+            //Incase it is a self expression just call the walker for now
+            if(auto selfExpr=dynamic_cast<SelfExpression*>(assignStmt->identifier.get())){
+                
+            }else{
+
+            
             auto assignSym = resolveSymbolInfo(name);
             if (!assignSym)
             {
@@ -41,7 +48,7 @@ void Semantics::walkBlockStatement(Node *node)
             {
                 logSemanticErrors("Cannot use a variable '" + name + "' that you heap raised externally inside a loop or branch", line, col);
                 return;
-            }
+            }}
         }
 
         if (auto exprStmt = dynamic_cast<ExpressionStatement *>(stmt.get()))

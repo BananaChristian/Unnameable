@@ -336,7 +336,7 @@ void Semantics::walkDataStatement(Node *node)
         if (!letStmt)
         {
             logSemanticErrors(
-                "Only let statements are allowed inside a data block",
+                "Invalid statement inside a data block",
                 field->statement.line,
                 field->statement.column);
             continue; // skip bad field but keep going
@@ -349,7 +349,7 @@ void Semantics::walkDataStatement(Node *node)
             letStmt->mutability = Mutability::CONSTANT;
 
         // Walk the let statement to register it in the scope
-        walkLetStatement(letStmt);
+        walker(field.get());
 
         // Now retrieve its symbol
         auto letSymbol = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
@@ -799,9 +799,10 @@ void Semantics::walkInitConstructor(Node *node)
     auto currentComponentName = currentComponent.typeName;
     std::vector<ResolvedType> initArgs;
     // Process constructor parameters
+    symbolTable.push_back({});
     for (const auto &arg : initStmt->constructor_args)
     {
-        walkLetStatement(arg.get());
+        walker(arg.get());
         // Storing the init args
         initArgs.push_back(inferNodeDataType(arg.get()));
     }
@@ -812,6 +813,7 @@ void Semantics::walkInitConstructor(Node *node)
     {
         walkBlockStatement(initStmt->block.get());
     }
+    popScope();
 
     // Attach metadata
     metaData[node] = initInfo;

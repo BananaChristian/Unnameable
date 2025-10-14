@@ -411,7 +411,6 @@ void Semantics::walkDereferenceExpression(Node *node)
     std::cout << "DEREF PTR TYPE: " << derefSym->type.resolvedName << "\n";
     std::cout << "DEREF TYPE: " << derefSym->targetSymbol->type.resolvedName << "\n";
 
-
     metaData[derefExpr] = derefInfo;
 }
 
@@ -617,6 +616,7 @@ void Semantics::walkAssignStatement(Node *node)
     // --- Handle self.field assignments ---
     if (auto *selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
     {
+        std::cout << "SELF assignment has been triggered\n";
         if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
         {
             logSemanticErrors("'self' cannot be used outside a component",
