@@ -1177,6 +1177,7 @@ void Semantics::walkNewComponentExpression(Node *node)
     // If the name exists we check the args and see if they match the same arguments in the init constructor of that component
     for (const auto &arg : newExpr->arguments)
     {
+        walker(arg.get());
         // Getting the type of the argument
         ResolvedType argType = inferNodeDataType(arg.get());
         auto it = componentInitArgs.find(componentName);
