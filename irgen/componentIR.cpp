@@ -453,3 +453,43 @@ void IRGenerator::generateEnumClassStatement(Node *node)
         // llvm::ConstantInt will be generated  when a member is actually used in an expression
     }
 }
+
+llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
+{
+    auto newExpr = dynamic_cast<NewComponentExpression *>(node);
+    if (!newExpr)
+        throw std::runtime_error("Invalid new component expression ");
+
+    auto compName = newExpr->component_name.TokenLiteral;
+    auto line = newExpr->expression.line;
+    auto col = newExpr->expression.column;
+
+    auto exprMetaIt = semantics.metaData.find(newExpr);
+    if (exprMetaIt == semantics.metaData.end())
+        throw std::runtime_error("Undefined component '" + compName + "'");
+
+    // Look up the struct type for this component
+    auto compTypeIt = componentTypes.find(compName);
+    if (compTypeIt == componentTypes.end())
+        throw std::runtime_error("Component '" + compName + "' does not exist");
+
+    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(compTypeIt->second);
+
+    // Allocate on the stack
+    llvm::Value *instance = builder.CreateAlloca(structTy, nullptr, compName + "_instance");
+
+    // Call the init function if it exists
+    llvm::Function *initFn = module->getFunction(compName + "_init");
+    if (initFn)
+    {
+        std::vector<llvm::Value *> initArgs;
+        initArgs.push_back(instance); // self ptr
+
+        for (auto &arg : newExpr->arguments)
+            initArgs.push_back(generateExpression(arg.get()));
+
+        builder.CreateCall(initFn, initArgs);
+    }
+
+    return instance;
+}

@@ -124,6 +124,7 @@ private:
     llvm::Value *generateCallExpression(Node *node);
 
     llvm::Value *generateSelfExpression(Node *node);
+    llvm::Value *generateNewComponentExpression(Node *node);
 
     // HELPER FUNCTIONS
     void registerGeneratorFunctions();

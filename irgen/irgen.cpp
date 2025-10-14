@@ -162,11 +162,46 @@ void IRGenerator::generateLetStatement(Node *node)
         std::cout << "[DEBUG] Allocating component '" << letName << "' as struct type '"
                   << sym->type.resolvedName << "'\n";
 
-        // Allocate the struct itself
-        llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(structTy, nullptr, letName);
-        sym->llvmValue = alloca;
+        // --- If initializer is a 'new Component(...)'----
+        llvm::Value *instance = nullptr;
+        bool usedNewExpr = false;
+        if (letStmt->value)
+        {
+            if (auto newExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get()))
+            {
+                usedNewExpr = true;
+                instance = generateNewComponentExpression(newExpr);
+                if (!instance)
+                    throw std::runtime_error("generateNewComponentExpression returned null for '" + letName + "'");
+
+                // Ensure pointer-to-struct type
+                llvm::Type *expectedPtrTy = structTy->getPointerTo();
+                if (instance->getType() != expectedPtrTy)
+                {
+                    if (instance->getType()->isPointerTy())
+                    {
+                        instance = builder.CreateBitCast(instance, expectedPtrTy, letName + "_instance_cast");
+                    }
+                    else
+                    {
+                        throw std::runtime_error("New expression produced non-pointer value for component '" + letName + "'");
+                    }
+                }
+                std::cout << "[DEBUG] New expression created component instance at " << instance << "\n";
+            }
+        }
+
+        // Fallback: allocate the struct itself in entry block if not a 'new' expression
+        if (!instance)
+        {
+            llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(structTy, nullptr, letName);
+            instance = alloca;
+            std::cout << "[DEBUG] Struct allocated at llvmValue = " << instance << "\n";
+        }
+
+        sym->llvmValue = instance;
         sym->llvmType = structTy;
-        std::cout << "[DEBUG] Struct allocated at llvmValue = " << alloca << "\n";
+        std::cout << "[DEBUG] Struct allocated at llvmValue = " << instance << "\n";
 
         // Walk all members: declared + imported
         auto compMetaIt = semantics.customTypesTable.find(sym->type.resolvedName);
@@ -184,7 +219,7 @@ void IRGenerator::generateLetStatement(Node *node)
                 }
 
                 // Create GEP relative to struct allocation
-                llvm::Value *memberPtr = builder.CreateStructGEP(structTy, alloca, index, memberName);
+                llvm::Value *memberPtr = builder.CreateStructGEP(structTy, instance, index, memberName);
                 if (!memberPtr)
                     throw std::runtime_error("Failed to allocate llvmValue for member '" + memberName + "'");
 
@@ -205,29 +240,35 @@ void IRGenerator::generateLetStatement(Node *node)
                     {
                         throw std::runtime_error("Failed to get llvmType while initializing member '" + memberName + "'");
                     }
-
-                    if (info->isHeap)
+                    if (!usedNewExpr)
                     {
-                        // Slot type in the struct is a pointer to element (elem*), so store a null of elem*.
-                        llvm::PointerType *elemPtrTy = mTy->getPointerTo(); // mTy is element type (i32), slot is elem*
-                        llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
-                        entryBuilder.CreateStore(nullPtr, memberPtr);
-                        std::cout << "[DEBUG] Initialized heap member slot '" << memberName << "' to null at entry\n";
-                    }
-                    else
-                    {
-                        // For non-heap fields, zero-init simple types (integers, floats, pointers).
-                        if (mTy->isPointerTy() || mTy->isIntegerTy() || mTy->isFloatingPointTy())
+                        if (info->isHeap)
                         {
-                            llvm::Constant *zeroVal = llvm::Constant::getNullValue(mTy);
-                            entryBuilder.CreateStore(zeroVal, memberPtr);
-                            std::cout << "[DEBUG] Zero-initialized member '" << memberName << "' at entry\n";
+                            // Slot type in the struct is a pointer to element (elem*), so store a null of elem*.
+                            llvm::PointerType *elemPtrTy = mTy->getPointerTo(); // mTy is element type (i32), slot is elem*
+                            llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
+                            builder.CreateStore(nullPtr, memberPtr);
+                            std::cout << "[DEBUG] Initialized heap member slot '" << memberName << "' to null at entry\n";
                         }
                         else
                         {
-                            // For complex types, skip automatic init or handle as you prefer.
-                            std::cout << "[DEBUG] Skipping zero-init for complex member type for '" << memberName << "'\n";
+                            // For non-heap fields, zero-init simple types (integers, floats, pointers).
+                            if (mTy->isPointerTy() || mTy->isIntegerTy() || mTy->isFloatingPointTy())
+                            {
+                                llvm::Constant *zeroVal = llvm::Constant::getNullValue(mTy);
+                                builder.CreateStore(zeroVal, memberPtr);
+                                std::cout << "[DEBUG] Zero-initialized member '" << memberName << "' at entry\n";
+                            }
+                            else
+                            {
+                                // For complex types, skip automatic init or handle as you prefer.
+                                std::cout << "[DEBUG] Skipping zero-init for complex member type for '" << memberName << "'\n";
+                            }
                         }
+                    }
+                    else
+                    {
+                        std::cout << "[DEBUG] Skipping default init for member '" << memberName << "' because instance came from new()\n";
                     }
                 }
                 catch (const std::exception &ex)
@@ -316,6 +357,7 @@ void IRGenerator::generateLetStatement(Node *node)
     {
         throw std::runtime_error("Failed to get LLVM type equivalent for  '" + sym->type.resolvedName + "'");
     }
+
     llvm::Value *initVal = letStmt->value ? generateExpression(letStmt->value.get())
                                           : llvm::Constant::getNullValue(varType);
 
@@ -2564,6 +2606,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
     expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
+    expressionGeneratorsMap[typeid(NewComponentExpression)] = &IRGenerator::generateNewComponentExpression;
 }
 
 char IRGenerator::decodeCharLiteral(const std::string &literal)
