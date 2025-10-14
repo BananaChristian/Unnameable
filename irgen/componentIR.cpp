@@ -157,6 +157,8 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     if (!initStmt || !component)
         return;
 
+    llvm::BasicBlock *oldInsertPoint = builder.GetInsertBlock();
+
     const std::string componentName = component->component_name->expression.TokenLiteral;
 
     auto ctIt = componentTypes.find(componentName);
@@ -196,12 +198,12 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     llvm::Value *selfPtr = builder.CreateLoad(structTy->getPointerTo(), selfAlloca, "self.ptr");
 
     // Save into metaData
-    auto metaIt = semantics.metaData.find(component);
-    if (metaIt == semantics.metaData.end())
+    auto compIt = semantics.metaData.find(component);
+    if (compIt == semantics.metaData.end())
         throw std::runtime_error("Missing component metaData in init generation for: " + componentName);
 
-    llvm::Value *prevInstance = metaIt->second->llvmValue;
-    metaIt->second->llvmValue = selfPtr;
+    llvm::Value *prevInstance = compIt->second->llvmValue;
+    compIt->second->llvmValue = selfPtr;
 
     std::cout << "[IR INIT] meta->llvmValue set to selfArg for component: " << componentName << "\n";
 
@@ -233,9 +235,12 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     builder.CreateRetVoid();
 
     // Clean up and restoring
-    metaIt->second->llvmValue = prevInstance;
+    compIt->second->llvmValue = prevInstance;
     currentComponentInstance = nullptr;
     currentComponent = nullptr;
+
+    if (oldInsertPoint)
+        builder.SetInsertPoint(oldInsertPoint);
 
     std::cout << "[IR INIT] Finished init generation for: " << componentName << "\n";
 }

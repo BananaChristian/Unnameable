@@ -786,14 +786,13 @@ void IRGenerator::generateAssignmentStatement(Node *node)
         if (!targetPtr)
             throw std::runtime_error("No memory allocated for variable '" + varName + "'");
 
-        // Store the value
-        builder.CreateStore(initValue, targetPtr);
-
         if (pendingFree)
         {
             builder.Insert(pendingFree);
         }
     }
+    // Store the value
+    builder.CreateStore(initValue, targetPtr);
     std::cout << "Exited assignment generator\n";
 }
 
@@ -1920,12 +1919,13 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
         return loadedVal;
     }
 
+    auto identType = getLLVMType(sym->type);
     // Scalar case: pointer -> load
     if (variablePtr->getType()->isPointerTy())
     {
-        if (!sym->llvmType)
+        if (!identType)
             throw std::runtime_error("llvmType null for scalar '" + identName + "'");
-        return builder.CreateLoad(sym->llvmType, variablePtr, identName + "_val");
+        return builder.CreateLoad(identType, variablePtr, identName + "_val");
     }
 
     if (!variablePtr)
@@ -2117,42 +2117,88 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
 
     const std::string &compName = currentComponent->component_name->expression.TokenLiteral;
 
-    auto compIt = componentTypes.find(compName);
-    if (compIt == componentTypes.end())
+    auto ctIt = componentTypes.find(compName);
+    if (ctIt == componentTypes.end())
     {
         throw std::runtime_error("Component with name '" + compName + "' not found");
     }
 
-    auto compTy = compIt->second;
-
+    llvm::Type *compTy = ctIt->second;
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(compTy);
+    if (!structTy)
+    {
+        throw std::runtime_error("Component llvm type is not a struct for: " + compName);
+    }
 
     const std::string &fieldName = selfExpr->field->expression.TokenLiteral;
 
-    auto compMeta = semantics.metaData.find(currentComponent);
-    if (compMeta == semantics.metaData.end())
+    // Component metadata (semantic)
+    auto compMetaIt = semantics.metaData.find(currentComponent);
+    if (compMetaIt == semantics.metaData.end())
     {
         throw std::runtime_error("Missing component metaData for '" + compName + "'");
     }
+    auto compMeta = compMetaIt->second;
 
-    auto memIt = compMeta->second->members.find(fieldName);
-    if (memIt == compMeta->second->members.end())
+    // find member info by name
+    auto memIt = compMeta->members.find(fieldName);
+    if (memIt == compMeta->members.end())
     {
-        throw std::runtime_error("Field '" + fieldName + "' not found in component");
+        throw std::runtime_error("Field '" + fieldName + "' not found in component '" + compName + "'");
     }
 
-    unsigned index = 0;
-    for (const auto &[name, info] : compMeta->second->members)
+    // --- IMPORTANT: use the stored member index (set during semantic walk) ---
+    int memberIndex = -1;
+    if (memIt->second->memberIndex >= 0)
     {
-        if (name == fieldName)
-            break;
-        ++index;
+        memberIndex = memIt->second->memberIndex;
+    }
+    else
+    {
+        // Fallback: compute index only if absolutely necessary (and log!)
+        std::cerr << "[IR WARN] Member '" << fieldName << "' has no memberIndex; falling back to map iteration (unstable)\n";
+        unsigned idx = 0;
+        for (const auto &p : compMeta->members)
+        {
+            if (p.first == fieldName)
+                break;
+            ++idx;
+        }
+        memberIndex = static_cast<int>(idx);
     }
 
-    llvm::Value *componentInstance = compMeta->second->llvmValue;
+    // The component instance (should be a pointer to the struct: %Player*)
+    llvm::Value *componentInstance = compMeta->llvmValue;
+    if (!componentInstance)
+    {
+        throw std::runtime_error("Component instance llvmValue is null for '" + compName + "' when accessing '" + fieldName + "'");
+    }
 
-    llvm::Value *fieldPtr = builder.CreateStructGEP(
-        structTy, componentInstance, index, fieldName + "_ptr");
+    // Ensure the pointer is of type "structTy*". If not, try to bitcast it.
+    llvm::Type *expectedPtrTy = structTy->getPointerTo();
+    if (componentInstance->getType() != expectedPtrTy)
+    {
+        if (componentInstance->getType()->isPointerTy())
+        {
+            // bitcast to expected pointer type
+            componentInstance = builder.CreateBitCast(componentInstance, expectedPtrTy, (fieldName + "_instance_cast").c_str());
+        }
+        else
+        {
+            throw std::runtime_error("Component instance is not a pointer type for '" + compName + "'");
+        }
+    }
+
+    // Now get the pointer to the field
+    llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, componentInstance, (unsigned)memberIndex, fieldName + "_ptr");
+    if (!fieldPtr)
+    {
+        throw std::runtime_error("CreateStructGEP failed for field '" + fieldName + "' index " + std::to_string(memberIndex));
+    }
+
+    // Debug log
+    std::cout << "[IR DEBUG] Generated field pointer for " << compName << "." << fieldName
+              << " (index=" << memberIndex << ", ptr=" << fieldPtr << ")\n";
 
     return fieldPtr;
 }
