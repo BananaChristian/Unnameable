@@ -894,6 +894,7 @@ void Semantics::walkComponentStatement(Node *node)
 
     auto componentName = componentStmt->component_name->expression.TokenLiteral;
     std::cout << "[SEMANTIC LOG] Analyzing component '" << componentName << "'\n";
+    bool hasError = false;
 
     if (symbolTable[0].find(componentName) != symbolTable[0].end())
     {
@@ -945,6 +946,7 @@ void Semantics::walkComponentStatement(Node *node)
             if (typeIt == customTypesTable.end())
             {
                 logSemanticErrors("Data block with name '" + identName + "' does not exist", ident->expression.line, ident->expression.column);
+                hasError = true;
                 return;
             }
             auto &importedMembers = typeIt->second.members;
@@ -1040,6 +1042,7 @@ void Semantics::walkComponentStatement(Node *node)
             {
                 logSemanticErrors("Failed to resolve private data '" + letStmt->ident_token.TokenLiteral + "'",
                                   letStmt->ident_token.line, letStmt->ident_token.column);
+                hasError = true;
                 continue;
             }
             auto memInfo = std::make_shared<MemberInfo>();
@@ -1066,6 +1069,7 @@ void Semantics::walkComponentStatement(Node *node)
             {
                 logSemanticErrors("Failed to resolve private data '" + assignStmt->identifier->expression.TokenLiteral + "'",
                                   assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
+                hasError = true;
                 continue;
             }
             auto memberInfo = std::make_shared<MemberInfo>();
@@ -1219,7 +1223,6 @@ void Semantics::walkNewComponentExpression(Node *node)
     // Storing meta data
     auto info = std::make_shared<SymbolInfo>();
     info->type = componentIt->second.type;
-    info->lastUseNode = newExpr;
 
     metaData[newExpr] = info;
 }
