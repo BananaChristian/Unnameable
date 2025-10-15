@@ -41,6 +41,7 @@ void Layout::registerComponentCalculatorFns()
     calculatorFnsMap[typeid(FunctionExpression)] = &Layout::calculateFunctionExpression;
     calculatorFnsMap[typeid(BlockExpression)] = &Layout::calculateBlockExpression;
     calculatorFnsMap[typeid(DataStatement)] = &Layout::calculateDataStatement;
+    calculatorFnsMap[typeid(ComponentStatement)] = &Layout::calculateComponentStatement;
 }
 
 // Independent calculators
@@ -203,88 +204,217 @@ void Layout::calculateDataStatement(Node *node)
     }
 }
 
+void Layout::calculateComponentStatement(Node *node)
+{
+    auto compStmt = dynamic_cast<ComponentStatement *>(node);
+    if (!compStmt)
+        return;
+
+    auto compName = compStmt->component_name->expression.TokenLiteral;
+    auto line = compStmt->component_name->expression.line;
+    auto col = compStmt->component_name->expression.column;
+
+    auto compMeta = semantics.metaData.find(compStmt);
+    if (compMeta == semantics.metaData.end())
+    {
+        logPrestaticError("Could not find component '" + compName + "' metaData", line, col);
+        return;
+    }
+
+    auto compSym = compMeta->second;
+    if (!compSym)
+    {
+        logPrestaticError("Unidentified type '" + compName + "'", line, col);
+        return;
+    }
+
+    // Creating a component sketch
+    std::vector<llvm::Type *> fieldTypes;
+
+    for (const auto &[key, value] : compSym->members)
+    {
+        // Each member has a ResolvedType, get its LLVM type
+        llvm::Type *fieldType = getLLVMType(value->type);
+        fieldTypes.push_back(fieldType);
+    }
+
+    // Creating an empty struct type for data field types
+    llvm::StructType *structTy = llvm::StructType::create(context, compName);
+    structTy->setBody(fieldTypes, /*isPacked*/ false);
+    
+    typeMap[compName] = structTy;
+
+    // Calculating the imported fields
+    for (const auto &[key, value] : compSym->members)
+    {
+        calculatorDriver(value->node);
+    }
+
+    // Calculating for the private fields
+    for (const auto &data : compStmt->privateData)
+    {
+        calculatorDriver(data.get());
+    }
+
+    // Calculating for the private methods
+    for (const auto &method : compStmt->privateMethods)
+    {
+        calculatorDriver(method.get());
+    }
+}
+
 void Layout::logPrestaticError(const std::string &message, int line, int col)
 {
-    std::cerr << "[PRESTATIC ERROR] " << message << " on line :" << line << "and column: " << col << "\n";
+    std::cerr << "[LAYOUT ERROR] " << message << " on line :" << line << "and column: " << col << "\n";
 }
 
 llvm::Type *Layout::getLLVMType(ResolvedType type)
 {
+    llvm::Type *baseType = nullptr;
+
     switch (type.kind)
     {
     case DataType::SHORT_INT:
     case DataType::NULLABLE_SHORT_INT:
-        return llvm::Type::getInt16Ty(context);
+    {
+        baseType = llvm::Type::getInt16Ty(context);
+        break;
+    }
 
     case DataType::USHORT_INT:
     case DataType::NULLABLE_USHORT_INT:
-        return llvm::Type::getInt16Ty(context);
+    {
+        baseType = llvm::Type::getInt16Ty(context);
+        break;
+    }
 
     case DataType::INTEGER:
     case DataType::NULLABLE_INT:
-        return llvm::Type::getInt32Ty(context);
+    {
+        baseType = llvm::Type::getInt32Ty(context);
+        break;
+    }
 
     case DataType::UINTEGER:
     case DataType::NULLABLE_UINT:
-        return llvm::Type::getInt32Ty(context);
+    {
+        baseType = llvm::Type::getInt32Ty(context);
+        break;
+    }
 
     case DataType::LONG_INT:
     case DataType::NULLABLE_LONG_INT:
-        return llvm::Type::getInt64Ty(context);
+    {
+        baseType = llvm::Type::getInt64Ty(context);
+        break;
+    }
 
     case DataType::ULONG_INT:
     case DataType::NULLABLE_ULONG_INT:
-        return llvm::Type::getInt64Ty(context);
+    {
+        baseType = llvm::Type::getInt64Ty(context);
+        break;
+    }
 
     case DataType::EXTRA_INT:
     case DataType::NULLABLE_EXTRA_INT:
-        return llvm::Type::getInt128Ty(context);
+    {
+        baseType = llvm::Type::getInt128Ty(context);
+        break;
+    }
 
     case DataType::UEXTRA_INT:
     case DataType::NULLABLE_UEXTRA_INT:
-        return llvm::Type::getInt128Ty(context);
+    {
+        baseType = llvm::Type::getInt128Ty(context);
+        break;
+    }
 
     case DataType::BOOLEAN:
     case DataType::NULLABLE_BOOLEAN:
-        return llvm::Type::getInt1Ty(context);
+    {
+        baseType = llvm::Type::getInt1Ty(context);
+        break;
+    }
 
     case DataType::CHAR:
     case DataType::NULLABLE_CHAR:
-        return llvm::Type::getInt8Ty(context);
+    {
+        baseType = llvm::Type::getInt8Ty(context);
+        break;
+    }
 
     case DataType::CHAR16:
     case DataType::NULLABLE_CHAR16:
-        return llvm::Type::getInt16Ty(context);
+    {
+        baseType = llvm::Type::getInt16Ty(context);
+        break;
+    }
 
     case DataType::CHAR32:
     case DataType::NULLABLE_CHAR32:
-        return llvm::Type::getInt32Ty(context);
+    {
+        baseType = llvm::Type::getInt32Ty(context);
+        break;
+    }
 
     case DataType::FLOAT:
     case DataType::NULLABLE_FLT:
-        return llvm::Type::getFloatTy(context);
+    {
+        baseType = llvm::Type::getFloatTy(context);
+        break;
+    }
 
     case DataType::DOUBLE:
     case DataType::NULLABLE_DOUBLE:
-        return llvm::Type::getDoubleTy(context);
+    {
+        baseType = llvm::Type::getDoubleTy(context);
+        break;
+    }
 
     case DataType::STRING:
     case DataType::NULLABLE_STR:
-        return llvm::PointerType::get(context, 0);
+    {
+        baseType = llvm::PointerType::get(context, 0);
+        break;
+    }
 
     case DataType::VOID:
-        return llvm::Type::getVoidTy(context);
+    {
+        baseType = llvm::Type::getVoidTy(context);
+        break;
+    }
 
     case DataType::DATABLOCK:
     case DataType::COMPONENT:
+    {
+        if (type.resolvedName.empty())
+            throw std::runtime_error("Custom type requested but resolvedName is empty");
+
+        auto it = typeMap.find(type.resolvedName);
+        if (it != typeMap.end())
+            baseType = it->second;
+        else
+            throw std::runtime_error("Layout requested for unknown custom type '" + type.resolvedName + "'");
+        break;
+    }
+
     case DataType::ENUM:
+    {
+        auto enumInfo = semantics.customTypesTable[type.resolvedName];
+        baseType = getLLVMType({enumInfo.underLyingType, ""});
+        break;
+    }
 
     case DataType::ERROR:
     case DataType::GENERIC:
     case DataType::UNKNOWN:
         throw std::runtime_error("Unsupported or unknown data type encountered in getLLVMType");
-
-    default:
-        return nullptr;
     }
+
+    // Wrap in a pointer if isPointer is true
+    if (type.isPointer)
+        return llvm::PointerType::get(baseType, 0);
+
+    return baseType;
 }

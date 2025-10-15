@@ -16,6 +16,8 @@ public:
     using calculateSizeFns = void (Layout::*)(Node *node);
     std::unordered_map<std::type_index, calculateSizeFns> calculatorFnsMap;
 
+    std::unordered_map<std::string, llvm::StructType *> typeMap;
+
     uint64_t totalHeapSize = 0;
 
     // Calculator driver
@@ -33,6 +35,7 @@ private:
     void calculateFunctionExpression(Node *node);
     void calculateBlockExpression(Node *node);
     void calculateDataStatement(Node *node);
+    void calculateComponentStatement(Node *node);
     // HELPERS
     void registerComponentCalculatorFns();
     void logPrestaticError(const std::string &message, int line, int col);
