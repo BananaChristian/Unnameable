@@ -458,38 +458,43 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
 {
     auto newExpr = dynamic_cast<NewComponentExpression *>(node);
     if (!newExpr)
-        throw std::runtime_error("Invalid new component expression ");
+        throw std::runtime_error("Invalid new component expression");
 
-    auto compName = newExpr->component_name.TokenLiteral;
-    auto line = newExpr->expression.line;
-    auto col = newExpr->expression.column;
+    const std::string &compName = newExpr->component_name.TokenLiteral;
 
+    // Look up metadata for semantic tracking
     auto exprMetaIt = semantics.metaData.find(newExpr);
     if (exprMetaIt == semantics.metaData.end())
         throw std::runtime_error("Undefined component '" + compName + "'");
 
-    // Look up the struct type for this component
+    // Find LLVM struct type
     auto compTypeIt = componentTypes.find(compName);
     if (compTypeIt == componentTypes.end())
         throw std::runtime_error("Component '" + compName + "' does not exist");
 
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(compTypeIt->second);
+    if (!structTy)
+        throw std::runtime_error("Component type '" + compName + "' is not a struct");
 
-    // Allocate on the stack
-    llvm::Value *instance = builder.CreateAlloca(structTy, nullptr, compName + "_instance");
+    llvm::Value *instancePtr = llvm::UndefValue::get(structTy);
 
-    // Call the init function if it exists
-    llvm::Function *initFn = module->getFunction(compName + "_init");
-    if (initFn)
+    // Call the component’s init function if it exists
+    if (llvm::Function *initFn = module->getFunction(compName + "_init"))
     {
         std::vector<llvm::Value *> initArgs;
-        initArgs.push_back(instance); // self ptr
+        initArgs.push_back(instancePtr); // pass self pointer
 
         for (auto &arg : newExpr->arguments)
-            initArgs.push_back(generateExpression(arg.get()));
+        {
+            llvm::Value *val = generateExpression(arg.get());
+            if (!val)
+                throw std::runtime_error("Failed to generate argument for new " + compName);
+            initArgs.push_back(val);
+        }
 
         builder.CreateCall(initFn, initArgs);
     }
 
-    return instance;
+    // Return the instance pointer
+    return instancePtr;
 }

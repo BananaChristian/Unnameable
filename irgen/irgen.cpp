@@ -141,163 +141,100 @@ void IRGenerator::generateLetStatement(Node *node)
     const std::string &letName = letStmt->ident_token.TokenLiteral;
     std::cout << "[DEBUG] Generating let statement for variable '" << letName << "'\n";
 
-    auto letIt = semantics.metaData.find(letStmt);
-    if (letIt == semantics.metaData.end())
+    auto metaIt = semantics.metaData.find(letStmt);
+    if (metaIt == semantics.metaData.end())
         throw std::runtime_error("No let metadata for '" + letName + "'");
 
-    auto sym = letIt->second;
-    std::cout << "[DEBUG] Symbol type: " << sym->type.resolvedName << "\n";
-
+    auto sym = metaIt->second;
     if (sym->hasError)
-        throw std::runtime_error("Semantic error detected");
+        throw std::runtime_error("Semantic error detected for '" + letName + "'");
 
     llvm::Function *fn = builder.GetInsertBlock()->getParent();
     llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
 
-    // === Component type ===
+    llvm::Value *storage = nullptr; // centralized storage pointer/value
+
+    // === COMPONENT TYPE ===
     auto compIt = componentTypes.find(sym->type.resolvedName);
     if (compIt != componentTypes.end())
     {
         llvm::StructType *structTy = compIt->second;
-        std::cout << "[DEBUG] Allocating component '" << letName << "' as struct type '"
-                  << sym->type.resolvedName << "'\n";
-
-        // --- If initializer is a 'new Component(...)'----
-        llvm::Value *instance = nullptr;
+        llvm::Value *constructedVal = nullptr;
         bool usedNewExpr = false;
+
         if (letStmt->value)
         {
             if (auto newExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get()))
             {
                 usedNewExpr = true;
-                instance = generateNewComponentExpression(newExpr);
-                if (!instance)
+                constructedVal = generateNewComponentExpression(newExpr);
+                if (!constructedVal)
                     throw std::runtime_error("generateNewComponentExpression returned null for '" + letName + "'");
-
-                // Ensure pointer-to-struct type
-                llvm::Type *expectedPtrTy = structTy->getPointerTo();
-                if (instance->getType() != expectedPtrTy)
-                {
-                    if (instance->getType()->isPointerTy())
-                    {
-                        instance = builder.CreateBitCast(instance, expectedPtrTy, letName + "_instance_cast");
-                    }
-                    else
-                    {
-                        throw std::runtime_error("New expression produced non-pointer value for component '" + letName + "'");
-                    }
-                }
-                std::cout << "[DEBUG] New expression created component instance at " << instance << "\n";
             }
         }
 
-        // Fallback: allocate the struct itself in entry block if not a 'new' expression
-        if (!instance)
+        if (!constructedVal)
+            constructedVal = llvm::UndefValue::get(structTy); // fallback for uninitialized
+
+        // === CENTRALIZED ALLOCATION ===
+        if (letStmt->isHeap)
         {
-            llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(structTy, nullptr, letName);
-            instance = alloca;
-            std::cout << "[DEBUG] Struct allocated at llvmValue = " << instance << "\n";
+            llvm::FunctionCallee sageAlloc = module->getOrInsertFunction(
+                "sage_alloc",
+                llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0),
+                llvm::Type::getInt64Ty(context));
+            llvm::Value *rawPtr = builder.CreateCall(
+                sageAlloc,
+                {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)},
+                letName + "_sage_rawptr");
+            storage = builder.CreateBitCast(rawPtr, structTy->getPointerTo(), letName + "_heap_ptr");
+        }
+        else
+        {
+            storage = entryBuilder.CreateAlloca(structTy, nullptr, letName);
         }
 
-        sym->llvmValue = instance;
+        sym->llvmValue = storage;
         sym->llvmType = structTy;
-        std::cout << "[DEBUG] Struct allocated at llvmValue = " << instance << "\n";
 
-        // Walk all members: declared + imported
+        builder.CreateStore(constructedVal, storage);
+        std::cout << "[DEBUG] Stored constructed value for '" << letName << "' into centralized storage " << storage << "\n";
+
+        // === ASSIGN MEMBERS ===
         auto compMetaIt = semantics.customTypesTable.find(sym->type.resolvedName);
         if (compMetaIt != semantics.customTypesTable.end())
         {
             int index = 0;
             for (auto &[memberName, info] : compMetaIt->second.members)
             {
-                // Skip functions
                 if (info->node && dynamic_cast<FunctionStatement *>(info->node))
                 {
-                    std::cout << "[DEBUG] Skipping function member '" << memberName << "'\n";
                     index++;
                     continue;
                 }
 
-                // Create GEP relative to struct allocation
-                llvm::Value *memberPtr = builder.CreateStructGEP(structTy, instance, index, memberName);
-                if (!memberPtr)
-                    throw std::runtime_error("Failed to allocate llvmValue for member '" + memberName + "'");
-
-                // Assign both llvmValue and llvmType in customTypesTable
+                llvm::Value *memberPtr = builder.CreateStructGEP(structTy, storage, index, memberName);
                 info->llvmValue = memberPtr;
                 info->llvmType = getLLVMType(info->type);
-                std::cout << "[DEBUG] Member '" << memberName << "' assigned llvmValue = "
-                          << memberPtr << " and llvmType = " << info->llvmType
-                          << " at struct index " << index << "\n";
 
-                // --- Initialize member slot at function entry ---
-                // If this is a heap member, initialize the slot to null (so runtime sees "not allocated yet").
-                // Otherwise, zero-initialize simple scalar/pointer fields.
-                try
+                // initialize member only if not from new
+                if (!usedNewExpr)
                 {
                     llvm::Type *mTy = info->llvmType;
-                    if (!mTy)
-                    {
-                        throw std::runtime_error("Failed to get llvmType while initializing member '" + memberName + "'");
-                    }
-                    if (!usedNewExpr)
-                    {
-                        if (info->isHeap)
-                        {
-                            // Slot type in the struct is a pointer to element (elem*), so store a null of elem*.
-                            llvm::PointerType *elemPtrTy = mTy->getPointerTo(); // mTy is element type (i32), slot is elem*
-                            llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
-                            builder.CreateStore(nullPtr, memberPtr);
-                            std::cout << "[DEBUG] Initialized heap member slot '" << memberName << "' to null at entry\n";
-                        }
-                        else
-                        {
-                            // For non-heap fields, zero-init simple types (integers, floats, pointers).
-                            if (mTy->isPointerTy() || mTy->isIntegerTy() || mTy->isFloatingPointTy())
-                            {
-                                llvm::Constant *zeroVal = llvm::Constant::getNullValue(mTy);
-                                builder.CreateStore(zeroVal, memberPtr);
-                                std::cout << "[DEBUG] Zero-initialized member '" << memberName << "' at entry\n";
-                            }
-                            else
-                            {
-                                // For complex types, skip automatic init or handle as you prefer.
-                                std::cout << "[DEBUG] Skipping zero-init for complex member type for '" << memberName << "'\n";
-                            }
-                        }
-                    }
-                    else
-                    {
-                        std::cout << "[DEBUG] Skipping default init for member '" << memberName << "' because instance came from new()\n";
-                    }
-                }
-                catch (const std::exception &ex)
-                {
-                    // Defensive: don't crash codegen in the middle; print debug and continue
-                    std::cerr << "[WARN] Initialization failed for member '" << memberName << "': " << ex.what() << "\n";
+                    if (info->isHeap)
+                        builder.CreateStore(llvm::ConstantPointerNull::get(mTy->getPointerTo()), memberPtr);
+                    else if (mTy->isIntegerTy() || mTy->isFloatingPointTy() || mTy->isPointerTy())
+                        builder.CreateStore(llvm::Constant::getNullValue(mTy), memberPtr);
                 }
 
-                if (!info->node)
-                {
-                    throw std::runtime_error("Node not registered for '" + memberName + "'");
-                }
-
-                // === Propagate to the metadata node itself ===
+                // propagate to metadata
                 if (info->node)
                 {
-                    auto metaIt = semantics.metaData.find(info->node);
-                    if (metaIt != semantics.metaData.end())
+                    auto metaIt2 = semantics.metaData.find(info->node);
+                    if (metaIt2 != semantics.metaData.end())
                     {
-                        metaIt->second->llvmValue = memberPtr;
-                        if (!metaIt->second->llvmValue)
-                            throw std::runtime_error("No llvm value given to this guy look here");
-                        metaIt->second->llvmType = getLLVMType(info->type);
-                        if (!metaIt->second->llvmType)
-                        {
-                            throw std::runtime_error("No llvm type given to this guy as it failed or some shit");
-                        }
-                        std::cout << "[DEBUG] Propagated llvmValue :" << metaIt->second->llvmValue << " to member node '"
-                                  << memberName << "' at " << info->node << "\n";
+                        metaIt2->second->llvmValue = memberPtr;
+                        metaIt2->second->llvmType = info->llvmType;
                     }
                 }
 
@@ -305,77 +242,74 @@ void IRGenerator::generateLetStatement(Node *node)
             }
         }
 
-        std::cout << "[DEBUG] Component '" << letName << "' fully allocated with all members.\n";
+        // === IMMEDIATE HEAP FREE IF DEAD ===
+        if (letStmt->isHeap)
+        {
+            Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
+            if (letStmt == lastUse && sym->refCount == 0)
+            {
+                llvm::FunctionCallee sageFree = module->getOrInsertFunction(
+                    "sage_free", llvm::Type::getVoidTy(context),
+                    llvm::Type::getInt64Ty(context));
+                builder.CreateCall(
+                    sageFree,
+                    {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)});
+                std::cout << "[DEBUG] Immediately freed heap component '" << letName << "' (never used)\n";
+            }
+        }
+
+        std::cout << "[DEBUG] Component '" << letName << "' fully processed.\n";
         return;
     }
 
-    // If the let statement is heap allocated
+    // === NON-COMPONENT HEAP ===
     if (letStmt->isHeap)
     {
         uint64_t size = sym->componentSize;
-        // Declare external sage_alloc and sage_free functions
-
-        llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
-
-        llvm::FunctionCallee sageAllocFunction = module->getOrInsertFunction(
+        llvm::FunctionCallee sageAlloc = module->getOrInsertFunction(
             "sage_alloc",
-            i8PtrTy,
+            llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0),
             llvm::Type::getInt64Ty(context));
-
-        llvm::FunctionCallee sageFreeFunction = module->getOrInsertFunction(
-            "sage_free", llvm::Type::getVoidTy(context),
-            llvm::Type::getInt64Ty(context));
-
-        // Allocate in SAGE
-        llvm::Value *heapPtr = builder.CreateCall(
-            sageAllocFunction,
+        llvm::Value *raw = builder.CreateCall(
+            sageAlloc,
             {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)},
-            letName + "_ptr");
+            letName + "_rawptr");
 
-        sym->llvmValue = heapPtr;
-        sym->llvmType = getLLVMType(sym->type);
+        llvm::Type *valType = getLLVMType(sym->type);
+        storage = builder.CreateBitCast(raw, valType->getPointerTo(), letName + "_heap_ptr");
 
-        llvm::Value *initVal = generateExpression(letStmt->value.get());
-        builder.CreateStore(initVal, heapPtr);
+        sym->llvmValue = storage;
+        sym->llvmType = valType;
+
+        llvm::Value *initVal = letStmt->value ? generateExpression(letStmt->value.get())
+                                              : llvm::Constant::getNullValue(valType);
+        builder.CreateStore(initVal, storage);
 
         Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-        if ((letStmt == lastUse) && (sym->refCount == 0))
+        if (letStmt == lastUse && sym->refCount == 0)
         {
+            llvm::FunctionCallee sageFree = module->getOrInsertFunction(
+                "sage_free", llvm::Type::getVoidTy(context),
+                llvm::Type::getInt64Ty(context));
             builder.CreateCall(
-                sageFreeFunction,
+                sageFree,
                 {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)});
         }
-
-        std::cout << "[DEBUG] Heap variable '" << letName << "' allocated in SAGE, last-use at "
-                  << lastUse << "\n";
         return;
     }
 
-    // === Non-component scalar/array/etc ===
+    // === NON-HEAP SCALAR ===
     llvm::Type *varType = getLLVMType(sym->type);
-    if (!varType)
-    {
-        throw std::runtime_error("Failed to get LLVM type equivalent for  '" + sym->type.resolvedName + "'");
-    }
-
+    storage = entryBuilder.CreateAlloca(varType, nullptr, letName);
     llvm::Value *initVal = letStmt->value ? generateExpression(letStmt->value.get())
                                           : llvm::Constant::getNullValue(varType);
+    builder.CreateStore(initVal, storage);
 
-    if (!initVal)
-    {
-        throw std::runtime_error("No init value");
-    }
-
-    llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(varType, nullptr, letName);
-    if (!alloca)
-    {
-        throw std::runtime_error("Failed to create alloca");
-    }
-    builder.CreateStore(initVal, alloca);
-    sym->llvmValue = alloca;
+    sym->llvmValue = storage;
     sym->llvmType = varType;
+
     std::cout << "[DEBUG] Scalar variable '" << letName << "' allocated at llvmValue = "
-              << alloca << " with type = " << varType << "\n";
+              << storage << "\n";
 }
 
 // Reference statement IR generator
