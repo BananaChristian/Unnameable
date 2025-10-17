@@ -1391,10 +1391,24 @@ struct MergeStatement : Statement
 
     std::string toString() override
     {
-        return "Merge Statement: " + merge_key.TokenLiteral +" "+ stringExpr->toString();
+        return "Merge Statement: " + merge_key.TokenLiteral + " " + stringExpr->toString();
     }
 
     MergeStatement(Token merge, std::unique_ptr<Expression> string) : Statement(merge), merge_key(merge), stringExpr(std::move(string)) {};
+};
+
+// Shout statement
+struct ShoutStatement : Statement
+{
+    Token shout_key;
+    std::unique_ptr<Expression> expr;
+
+    std::string toString() override
+    {
+        return "Shout Statement: " + shout_key.TokenLiteral + "! " + expr->toString();
+    }
+
+    ShoutStatement(Token shout, std::unique_ptr<Expression> expression) : Statement(shout), shout_key(shout), expr(std::move(expression)) {};
 };
 
 // BLOCKS
