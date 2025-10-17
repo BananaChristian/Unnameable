@@ -126,6 +126,9 @@ private:
 
     std::unique_ptr<Statement> parsePointerStatementWrapper();
 
+    //Shout statement parser
+    std::unique_ptr<Statement> parseShoutStatement();
+
     // Identifer starting statements function
     std::unique_ptr<Statement> parseIdentifierStatement();
 

@@ -850,6 +850,21 @@ std::unique_ptr<Statement> Parser::parseReferenceStatementWrapper()
     return parseReferenceStatement();
 }
 
+std::unique_ptr<Statement> Parser::parseShoutStatement()
+{
+    Token shout = currentToken();
+    advance(); // Consume the shout token
+    if (currentToken().type != TokenType::BANG)
+    {
+        logError("Expected '!' but got '" + currentToken().TokenLiteral + "'");
+        advance(); // Consume whatever is there
+    }
+    advance(); // Consume the ! token
+    auto expr = parseExpression(Precedence::PREC_NONE);
+
+    return std::make_unique<ShoutStatement>(shout, std::move(expr));
+}
+
 bool Parser::isIntegerType(TokenType type)
 {
     switch (type)
