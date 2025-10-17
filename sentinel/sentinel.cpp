@@ -37,6 +37,7 @@ void Sentinel::registerSentinelFns()
     sentinelFnsMap[typeid(PostfixExpression)] = &Sentinel::checkPostfixExpression;
     sentinelFnsMap[typeid(DataStatement)] = &Sentinel::checkDataStatement;
     sentinelFnsMap[typeid(FieldAssignment)] = &Sentinel::checkFieldAssignment;
+    sentinelFnsMap[typeid(ComponentStatement)] = &Sentinel::checkComponentStatement;
 }
 
 void Sentinel::checkExpressionStatement(Node *node)
@@ -106,7 +107,7 @@ void Sentinel::checkIdentifier(Node *node)
     if (!identSym->isHeap)
         return;
 
-    if ((identSym->lastUseNode == ident)&&(identSym->refCount==0))
+    if ((identSym->lastUseNode == ident) && (identSym->refCount == 0))
     {
         if (sentinelStack.back()->alloc_id != identSym->alloc_id)
         {
@@ -311,11 +312,39 @@ void Sentinel::checkFieldAssignment(Node *node)
     // Dealing with field assignment name
     auto [parentName, childName] = semantics.splitScopedName(fieldStmt->assignment_token.TokenLiteral);
 
+    // Get the symbol
+    auto fieldIt = semantics.metaData.find(fieldStmt);
+    if (fieldIt == semantics.metaData.end())
+    {
+        logError("Field assignment metaData not found for '" + parentName + "'", line, column);
+        return;
+    }
+
+    auto fieldSym = fieldIt->second;
+    if (!fieldSym)
+    {
+        logError("Unidentified variable '" + parentName + "'", line, column);
+        return;
+    }
+
+    // Get the base symbol
+    auto baseSym = fieldSym->baseSymbol;
+    if (!baseSym)
+    {
+
+        logError("Unidentified variable '" + parentName + "'", line, column);
+        return;
+    }
+
+    //Get the parent type from the baseSymbol
+    auto parentTypeName = baseSym->type.resolvedName;
+    std::cout << "PARENT TYPE NAME: " << parentTypeName << "\n";
+
     // Check inside the parent
-    auto parentIt = semantics.customTypesTable.find(parentName);
+    auto parentIt = semantics.customTypesTable.find(parentTypeName);
     if (parentIt == semantics.customTypesTable.end())
     {
-        logError("Unknown type '" + parentName + "'", line, column);
+        logError("Unknown type '" + parentTypeName + "'", line, column);
         return;
     }
 
@@ -323,12 +352,59 @@ void Sentinel::checkFieldAssignment(Node *node)
     auto childIt = members.find(childName);
     if (childIt == members.end())
     {
-        logError("'" + childName + "' does not exist under type '" + parentName + "'", line, column);
+        logError("'" + childName + "' does not exist under type '" + parentTypeName + "'", line, column);
         return;
     }
 
     sentinelDriver(childIt->second->node);
     sentinelDriver(fieldStmt->value.get());
+}
+
+void Sentinel::checkComponentStatement(Node *node)
+{
+    auto compStmt = dynamic_cast<ComponentStatement *>(node);
+    if (!compStmt)
+        return;
+
+    std::cout << "RUNNING Sentinel Analysis on component\n";
+
+    auto compName = compStmt->component_name->expression.TokenLiteral;
+    auto line = compStmt->component_name->expression.line;
+    auto col = compStmt->component_name->expression.column;
+
+    // Extract the members
+    auto compMeta = semantics.metaData.find(compStmt);
+    if (compMeta == semantics.metaData.end())
+    {
+        logError("Could not find '" + compName + "' metaData", line, col);
+        return;
+    }
+
+    auto compSym = compMeta->second;
+    if (!compSym)
+    {
+        logError("Unidentified variable '" + compName + "' ", line, col);
+        return;
+    }
+
+    // Get the imported data and tell sentinel to analyze it
+    for (const auto &[key, value] : compSym->members)
+    {
+        // Extract the member's node from the memberInfo and call sentinel driver
+        sentinelDriver(value->node);
+    }
+
+    // Call the sentinel driver on the private members(Data)
+    for (const auto &data : compStmt->privateData)
+    {
+        sentinelDriver(data.get());
+    }
+
+    // Call the sentinel driver on the private members(methods)
+    for (const auto &method : compStmt->privateMethods)
+    {
+        sentinelDriver(method.get());
+    }
 }
 
 void Sentinel::logError(const std::string &message, int line, int col)
