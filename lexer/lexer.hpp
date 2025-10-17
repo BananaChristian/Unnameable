@@ -83,6 +83,7 @@ class Lexer
         {"heap", TokenType::HEAP},
 
         {"scope", TokenType::SCOPE},
+        {"shout", TokenType::SHOUT},
 
         {"module", TokenType::MODULE},
         {"merge", TokenType::MERGE},
