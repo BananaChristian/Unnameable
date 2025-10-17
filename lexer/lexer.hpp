@@ -82,7 +82,11 @@ class Lexer
 
         {"heap", TokenType::HEAP},
 
-        {"import", TokenType::IMPORT},
+        {"scope", TokenType::SCOPE},
+
+        {"module", TokenType::MODULE},
+        {"merge", TokenType::MERGE},
+        {"link", TokenType::LINK},
         {"qualify", TokenType::QUALIFY},
         {"main", TokenType::MAIN},
     };
