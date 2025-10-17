@@ -1383,18 +1383,18 @@ struct QualifyStatement : Statement
     QualifyStatement(Token qualify, Token main) : Statement(qualify), qualify_key(qualify), main_key(main) {};
 };
 
-// Import statement
-struct ImportStatement : Statement
+// Merge statement
+struct MergeStatement : Statement
 {
-    Token import_key;
+    Token merge_key;
     std::unique_ptr<Expression> stringExpr;
 
     std::string toString() override
     {
-        return "Import Statement: " + import_key.TokenLiteral +" "+ stringExpr->toString();
+        return "Merge Statement: " + merge_key.TokenLiteral +" "+ stringExpr->toString();
     }
 
-    ImportStatement(Token import, std::unique_ptr<Expression> string) : Statement(import), import_key(import), stringExpr(std::move(string)) {};
+    MergeStatement(Token merge, std::unique_ptr<Expression> string) : Statement(merge), merge_key(merge), stringExpr(std::move(string)) {};
 };
 
 // BLOCKS
