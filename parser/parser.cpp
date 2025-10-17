@@ -2049,7 +2049,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::WAIT] = &Parser::parseWaitStatement;
     StatementParseFunctionsMap[TokenType::ALIAS] = &Parser::parseAliasStatement;
     StatementParseFunctionsMap[TokenType::QUALIFY] = &Parser::parseQualifyStatement;
-    StatementParseFunctionsMap[TokenType::IMPORT] = &Parser::parseImportStatement;
+    StatementParseFunctionsMap[TokenType::MERGE] = &Parser::parseMergeStatement;
 
     // For basic types
     StatementParseFunctionsMap[TokenType::SHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
@@ -2178,9 +2178,9 @@ std::shared_ptr<FileUnit> Parser::generateFileUnit()
     // Scan AST for imports and entry qualifier
     for (auto &node : fileUnit->nodes)
     {
-        if (auto *importStmt = dynamic_cast<ImportStatement *>(node.get()))
+        if (auto *mergeStmt = dynamic_cast<MergeStatement *>(node.get()))
         {
-            fileUnit->imports.push_back(importStmt->stringExpr->expression.TokenLiteral);
+            fileUnit->mergers.push_back(mergeStmt->stringExpr->expression.TokenLiteral);
         }
         else if (auto *qualifyStmt = dynamic_cast<QualifyStatement *>(node.get()))
         {

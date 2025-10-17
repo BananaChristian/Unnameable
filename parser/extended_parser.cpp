@@ -831,13 +831,13 @@ std::unique_ptr<Statement> Parser::parseQualifyStatement()
     return std::make_unique<QualifyStatement>(qualify_token, main_token);
 }
 
-std::unique_ptr<Statement> Parser::parseImportStatement()
+std::unique_ptr<Statement> Parser::parseMergeStatement()
 {
-    Token import_token = currentToken();
-    advance(); // Consume the import token
-    auto imported = parseStringLiteral();
+    Token merge_token = currentToken();
+    advance(); // Consume the merge token
+    auto merged = parseStringLiteral();
 
-    return std::make_unique<ImportStatement>(import_token, std::move(imported));
+    return std::make_unique<MergeStatement>(merge_token, std::move(merged));
 }
 
 std::unique_ptr<Statement> Parser::parsePointerStatementWrapper()

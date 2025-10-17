@@ -17,7 +17,7 @@ struct FileUnit
 {
     std::string fileName;
     std::vector<std::unique_ptr<Node>> nodes;
-    std::vector<std::string> imports;
+    std::vector<std::string> mergers;
     bool isEntryFile;
 };
 
@@ -213,8 +213,8 @@ private:
     //Parsing the qualify statement
     std::unique_ptr<Statement> parseQualifyStatement();
 
-    //Parsing the import statement
-    std::unique_ptr<Statement> parseImportStatement();
+    //Parsing the merge statement
+    std::unique_ptr<Statement> parseMergeStatement();
 
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
