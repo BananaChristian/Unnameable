@@ -6,6 +6,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/FileSystem.h>
+#include "llvm/TargetParser/Host.h"
 
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/CodeGen/TargetPassConfig.h>
@@ -16,6 +17,7 @@
 
 #include <iostream>
 #define CPPREST_FORCE_REBUILD
+
 IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     : semantics(semantics), totalHeapSize(totalHeap), context(), builder(context), module(std::make_unique<llvm::Module>("unnameable", context))
 {
@@ -787,12 +789,26 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
     auto [parentVarName, childName] = semantics.splitScopedName(fieldStmt->assignment_token.TokenLiteral);
 
     // Resolve parent symbol info (the instance)
-    auto parentVarInfo = semantics.resolveSymbolInfo(parentVarName);
-    if (!parentVarInfo || !parentVarInfo->llvmValue)
+    auto parentMetaIt = semantics.metaData.find(fieldStmt);
+    if (parentMetaIt == semantics.metaData.end())
+        throw std::runtime_error("Field assignment is lacking metaData");
+
+    auto parentVarInfo = parentMetaIt->second;
+    if (!parentVarInfo)
+        throw std::runtime_error("Unidentified variable '" + parentVarName + "'");
+
+    // Getting the base symbol
+    auto baseSym = parentVarInfo->baseSymbol;
+    if (!baseSym)
+        throw std::runtime_error("Unidentified variable '" + parentVarName + "'");
+
+    std::cout << "Parent type name: " << baseSym->type.resolvedName << "\n";
+
+    if (!baseSym->llvmValue)
         throw std::runtime_error("Unresolved parent instance: " + parentVarName);
 
     // Resolve parent type and member info
-    auto parentTypeName = parentVarInfo->type.resolvedName;
+    auto parentTypeName = baseSym->type.resolvedName;
     auto parentIt = semantics.customTypesTable.find(parentTypeName);
     if (parentIt == semantics.customTypesTable.end())
         throw std::runtime_error("Type '" + parentTypeName + "' does not exist");
@@ -809,7 +825,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
 
     // GEP to the member slot inside this instance (slot type for heap-member is "elem*",
     // so the GEP yields a pointer-to-slot whose type is elem**)
-    llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, parentVarInfo->llvmValue, fieldIndex, childName);
+    llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, baseSym->llvmValue, fieldIndex, childName);
     if (!fieldPtr)
         throw std::runtime_error("Failed to compute GEP for member '" + childName + "'");
 
@@ -864,7 +880,6 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
         builder.CreateStore(rhs, heapPtr2);
 
         // After the store, if this member's symbol marks this fieldStmt as last use, free it
-        // (memberInfo->lastUseNode should exist from semantics)
         if (memberInfo->isHeap && (memberInfo->lastUseNode == fieldStmt || memberInfo->lastUseNode == /* possibly other node pointer */ memberInfo->node))
         {
             llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
@@ -900,6 +915,35 @@ void IRGenerator::generateBlockStatement(Node *node)
             break;
         }
     }
+}
+
+void IRGenerator::generateShoutStatement(Node *node)
+{
+    auto shoutStmt = dynamic_cast<ShoutStatement *>(node);
+
+    if (!shoutStmt)
+        throw std::runtime_error("Invalid shout statement node");
+
+    // Getting the semantic type of the val
+    auto it = semantics.metaData.find(shoutStmt->expr.get());
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("Missing metaData for shout expression");
+
+    // Getting the symbol
+    auto exprSym = it->second;
+    if (!exprSym)
+        throw std::runtime_error("No symbol info found ");
+
+    // Getting the type
+    ResolvedType type = exprSym->type;
+
+    // Call the expression generation n the expression
+    auto val = generateExpression(shoutStmt->expr.get());
+    if (!val)
+        throw std::runtime_error("No llvm value was generated for expression in shout");
+
+    // Call the shoutRuntime this is the one who actually prints
+    shoutRuntime(val, type);
 }
 
 void IRGenerator::generateFunctionStatement(Node *node)
@@ -1055,6 +1099,88 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         llvm::Type *memberType = getLLVMType(memberIt->second->type);
         if (!memberType)
             throw std::runtime_error("Member Type wasnt retrieved");
+        return builder.CreateLoad(memberType, memberPtr, memberName + "_val");
+    }
+
+    if (infix->operat.type == TokenType::SCOPE_OPERATOR)
+    {
+        std::cout << "TRIGGERED SCOPE OPERATOR GUY\n";
+
+        // Get left-hand object pointer from metadata (guaranteed pointer)
+        auto leftMetaIt = semantics.metaData.find(infix->left_operand.get());
+        if (leftMetaIt == semantics.metaData.end())
+            throw std::runtime_error("Left-hand object metadata missing");
+
+        llvm::Value *objectVal = leftMetaIt->second->llvmValue; // pointer to struct!
+        if (!objectVal)
+            throw std::runtime_error("Left-hand object llvmValue not set");
+
+        // Get right-hand identifier (member)
+        auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
+        if (!memberIdent)
+            throw std::runtime_error("Right-hand side of '::' must be a field identifier");
+
+        std::string memberName = memberIdent->expression.TokenLiteral;
+
+        // Resolve member index and type
+        auto parentTypeName = leftMetaIt->second->type.resolvedName;
+        auto parentIt = semantics.customTypesTable.find(parentTypeName);
+        if (parentIt == semantics.customTypesTable.end())
+            throw std::runtime_error("Type '" + parentTypeName + "' doesn't exist");
+
+        auto memberIt = parentIt->second.members.find(memberName);
+        if (memberIt == parentIt->second.members.end())
+            throw std::runtime_error("Member '" + memberName + "' not found in type '" + parentTypeName + "'");
+
+        unsigned memberIndex = memberIt->second->memberIndex;
+        llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
+
+        // Compute pointer to the member
+        llvm::Value *memberPtr = builder.CreateStructGEP(structTy, objectVal, memberIndex, memberName);
+        if (!memberPtr)
+            throw std::runtime_error("No llvm value for '" + memberName + "'");
+
+        llvm::Type *memberType = getLLVMType(memberIt->second->type);
+        if (!memberType)
+            throw std::runtime_error("Member Type wasn't retrieved");
+
+        // Check if the member is a heap field
+        if (memberIt->second->isHeap)
+        {
+            // ptr-to-element type
+            llvm::PointerType *elemPtrTy = memberType->getPointerTo();
+
+            // Load current heap pointer from the struct slot
+            llvm::Value *heapPtr = builder.CreateLoad(elemPtrTy, memberPtr, memberName + "_heap_load");
+
+            // If null, allocate
+            llvm::Value *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
+            llvm::Value *isNull = builder.CreateICmpEQ(heapPtr, nullPtr, memberName + "_is_null");
+
+            llvm::Function *parentFn = builder.GetInsertBlock()->getParent();
+            llvm::BasicBlock *allocBB = llvm::BasicBlock::Create(context, memberName + "_alloc", parentFn);
+            llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, memberName + "_cont", parentFn);
+
+            builder.CreateCondBr(isNull, allocBB, contBB);
+
+            // --- allocBB
+            builder.SetInsertPoint(allocBB);
+            llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
+            llvm::FunctionCallee sageAllocFn = module->getOrInsertFunction("sage_alloc", i8PtrTy, llvm::Type::getInt64Ty(context));
+            uint64_t size = module->getDataLayout().getTypeAllocSize(memberType);
+            llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size);
+            llvm::Value *rawAlloc = builder.CreateCall(sageAllocFn, {sizeArg}, memberName + "_alloc_i8ptr");
+            llvm::Value *newHeapPtr = builder.CreateBitCast(rawAlloc, elemPtrTy, memberName + "_alloc_ptr");
+            builder.CreateStore(newHeapPtr, memberPtr);
+            builder.CreateBr(contBB);
+
+            // --- contBB
+            builder.SetInsertPoint(contBB);
+            llvm::Value *heapPtr2 = builder.CreateLoad(elemPtrTy, memberPtr, memberName + "_heap");
+            return heapPtr2; // return pointer to heap memory
+        }
+
+        // Non-heap: just load the value
         return builder.CreateLoad(memberType, memberPtr, memberName + "_val");
     }
 
@@ -2258,6 +2384,12 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
         }
     }
 
+    currentFunction = fn; // Updating the currentFunction pointer
+    if (!currentFunction)
+    {
+        std::cerr << "Current function pointer updated \n";
+    }
+
     // Creating the entry block
     llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
     builder.SetInsertPoint(entry);
@@ -2281,6 +2413,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
 
     // This will handle whatever is inside the block including the return value
     generateExpression(fnExpr->block.get());
+    currentFunction = nullptr; // Set it back to a null pointer
     return fn;
 }
 
@@ -2512,6 +2645,8 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(BehaviorStatement)] = &IRGenerator::generateBehaviorStatement;
     generatorFunctionsMap[typeid(ComponentStatement)] = &IRGenerator::generateComponentStatement;
     generatorFunctionsMap[typeid(EnumClassStatement)] = &IRGenerator::generateEnumClassStatement;
+
+    generatorFunctionsMap[typeid(ShoutStatement)] = &IRGenerator::generateShoutStatement;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions()
@@ -2731,6 +2866,162 @@ bool IRGenerator::inFunction()
     return builder.GetInsertBlock() != nullptr;
 }
 
+char *IRGenerator::unnitoa(int val, char *buf)
+{
+    char *p = buf;
+    if (val < 0)
+    {
+        *p++ = '-';
+        val = -val;
+    }
+
+    // Remember start of digits
+    char *start = p;
+
+    // Convert digits
+    do
+    {
+        *p++ = '0' + (val % 10);
+        val /= 10;
+    } while (val);
+
+    // Null terminate
+    *p = '\0';
+
+    // Reverse digits in place
+    char *end = p - 1;
+    while (start < end)
+    {
+        char tmp = *start;
+        *start++ = *end;
+        *end-- = tmp;
+    }
+
+    return buf;
+}
+
+void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
+{
+    if (!val)
+        throw std::runtime_error("shout! called with null value");
+
+    auto &ctx = module->getContext();
+    auto i32Ty = llvm::IntegerType::getInt32Ty(ctx);
+    auto i8Ty = llvm::IntegerType::getInt8Ty(ctx);
+    auto i8PtrTy = llvm::PointerType::get(i8Ty, 0);
+    auto i64Ty = llvm::IntegerType::getInt64Ty(ctx);
+
+    auto printString = [&](llvm::Value *strVal)
+    {
+        if (!strVal)
+            throw std::runtime_error("printString received null llvm::Value");
+
+        // Ensure 'write' exists
+        llvm::Function *writeFn = module->getFunction("write");
+        if (!writeFn)
+        {
+            auto writeType = llvm::FunctionType::get(i64Ty, {i32Ty, i8PtrTy, i64Ty}, false);
+            writeFn = llvm::Function::Create(writeType, llvm::Function::ExternalLinkage, "write", module.get());
+        }
+
+        // Ensure 'strlen' exists
+        llvm::Function *strlenFn = module->getFunction("strlen");
+        if (!strlenFn)
+        {
+            auto strlenType = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+            strlenFn = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", module.get());
+        }
+
+        auto fd = llvm::ConstantInt::get(i32Ty, 1); // stdout
+
+        // print main string
+        auto len = builder.CreateCall(strlenFn, {strVal});
+        builder.CreateCall(writeFn, {fd, strVal, len});
+
+        // print newline
+        llvm::Value *newline = builder.CreateGlobalStringPtr("\n");
+        auto newLen = builder.CreateCall(strlenFn, {newline});
+        builder.CreateCall(writeFn, {fd, newline, newLen});
+    };
+
+    auto printInt = [&](llvm::Value *intVal)
+    {
+        llvm::Function *unnitoaFn = module->getFunction("unnitoa");
+        if (!unnitoaFn)
+        {
+            llvm::Type *i32Ty = llvm::Type::getInt32Ty(module->getContext());
+            llvm::Type *i8Ty = llvm::Type::getInt8Ty(module->getContext());
+            llvm::PointerType *i8PtrTy = llvm::PointerType::get(i8Ty, 0);
+
+            llvm::FunctionType *unnitoaTy =
+                llvm::FunctionType::get(i8PtrTy, {i32Ty, i8PtrTy}, false);
+
+            // Note: InternalLinkage means “this function exists here”, not external
+            unnitoaFn = llvm::Function::Create(
+                unnitoaTy,
+                llvm::GlobalValue::ExternalLinkage, // not external to another module, just callable
+                "unnitoa",
+                *module);
+        }
+
+        char buf[20];
+
+        if (auto constInt = llvm::dyn_cast<llvm::ConstantInt>(intVal))
+        {
+            // Compile-time constant
+            unnitoa(static_cast<int>(constInt->getSExtValue()), buf);
+            llvm::Value *strVal = builder.CreateGlobalStringPtr(buf);
+            printString(strVal);
+        }
+        else if (intVal->getType()->isPointerTy())
+        {
+            std::cout << "Branched to pinter print";
+            // Stack/heap integer pointer
+            llvm::Type *loadedTy = llvm::cast<llvm::PointerType>(intVal->getType());
+            llvm::Value *runtimeInt = builder.CreateLoad(loadedTy, intVal, "runtime_int");
+
+            // Allocate buffer
+            llvm::Type *i8Ty = llvm::Type::getInt8Ty(module->getContext());
+            llvm::Value *bufAlloca = builder.CreateAlloca(llvm::ArrayType::get(i8Ty, 20), nullptr, "int_buf");
+            llvm::Value *bufPtr = builder.CreatePointerCast(bufAlloca, llvm::PointerType::get(i8Ty, 0));
+            // Call in-code helper directly
+
+            builder.CreateCall(unnitoaFn, {runtimeInt, bufPtr});
+            printString(bufPtr);
+        }
+        else if (intVal->getType()->isIntegerTy(32))
+        {
+            std::cout << "Branching to SSA print\n";
+            // Immediate runtime i32 value (not a pointer)
+            llvm::Type *i8Ty = llvm::Type::getInt8Ty(module->getContext());
+            llvm::Value *bufAlloca = builder.CreateAlloca(llvm::ArrayType::get(i8Ty, 20), nullptr, "int_buf");
+            llvm::Value *bufPtr = builder.CreatePointerCast(bufAlloca, llvm::PointerType::get(i8Ty, 0));
+
+            // Pass the integer value directly
+            builder.CreateCall(unnitoaFn, {intVal, bufPtr});
+            printString(bufPtr);
+        }
+
+        else
+        {
+            throw std::runtime_error("Unsupported integer value in shout!");
+        }
+    };
+
+    if (type.kind == DataType::INTEGER)
+    {
+        printInt(val);
+    }
+    else if (type.kind == DataType::STRING)
+    {
+        printString(val);
+    }
+    else
+    {
+        throw std::runtime_error("shout! only supports int and string for now");
+    }
+}
+
 void IRGenerator::dumpIR()
 {
     module->print(llvm::outs(), nullptr);
@@ -2757,7 +3048,7 @@ bool IRGenerator::emitObjectFile(const std::string &filename)
     llvm::InitializeAllAsmPrinters();
 
     // Target Setup
-    const std::string targetTripleStr = "x86_64-pc-linux-gnu";
+    std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
 
     module->setTargetTriple(targetTripleStr);
 

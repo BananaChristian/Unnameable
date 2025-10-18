@@ -552,3 +552,14 @@ void Semantics::walkFunctionCallExpression(Node *node)
     std::cout << "[SEMANTIC LOG] Stored metaData for call to '" << callName
               << "' with return type: " << callSymbol->type.resolvedName << "\n";
 }
+
+void Semantics::walkShoutStatement(Node *node)
+{
+    auto shoutStmt = dynamic_cast<ShoutStatement *>(node);
+
+    if (!shoutStmt)
+        return;
+
+    // Just call the walker on whatever is there
+    walker(shoutStmt->expr.get());
+}

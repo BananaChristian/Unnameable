@@ -53,7 +53,7 @@ public:
 
     ComponentStatement *currentComponent = nullptr;
     llvm::Value *currentComponentInstance;
-    llvm::Function *currentFunction = nullptr;
+    llvm::Function *currentFunction;
     std::vector<LoopBlocks> loopBlocksStack;
 
     bool emitObjectFile(const std::string &outPath);
@@ -92,6 +92,8 @@ private:
 
     // Enum class system
     void generateEnumClassStatement(Node *node);
+
+    void generateShoutStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);
@@ -133,6 +135,8 @@ private:
     AddressAndPendingFree generateIdentifierAddress(Node *node);
     llvm::Value *getOrCreateGlobalDataBlock(DataStatement *dataStmt);
     void generateStatement(Node *node);
+    void shoutRuntime(llvm::Value *val, ResolvedType type);
+    char *unnitoa(int val, char *buf);
     char decodeCharLiteral(const std::string &literal);
     uint16_t decodeChar16Literal(const std::string &literal);
     uint32_t decodeChar32Literal(const std::string &literal);

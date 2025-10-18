@@ -910,6 +910,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
 
     // Get the parent's type
     std::string parentType = parentSymbol->type.resolvedName;
+    std::cout << "SEMANTIC LOG: Parent type: " << parentType << "\n";
 
     // Look up that type in the custom types table
     auto parentIt = customTypesTable.find(parentType);
@@ -935,6 +936,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     bool isNullable = memberIt->second->isNullable;
     bool isMutable = memberIt->second->isMutable;
     bool isConstant = memberIt->second->isConstant;
+    bool isHeap = memberIt->second->isHeap;
     bool isInitialized = memberIt->second->isInitialised;
 
     // Constant/immutability checks
@@ -965,9 +967,20 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
         memberIt->second->lastUseNode = fieldAssignStmt;
     }
 
+    // Symbol info for the field
+    auto fieldInfo = std::make_shared<SymbolInfo>();
+    fieldInfo->type = type;
+    fieldInfo->isNullable = isNullable;
+    fieldInfo->isConstant = isConstant;
+    fieldInfo->isInitialized = isInitialized;
+    fieldInfo->hasError = hasError;
+    fieldInfo->isHeap = isHeap;
+
     // Build metadata for this assignment node
     auto info = std::make_shared<SymbolInfo>();
-    info->type = type;
+    info->type = type;//The whole node still evaluates to the member type
+    info->baseSymbol = parentSymbol;
+    info->fieldSymbol = fieldInfo;
     info->isNullable = isNullable;
     info->isConstant = isConstant;
     info->isInitialized = isInitialized;

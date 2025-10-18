@@ -5,7 +5,7 @@
 
 #define CPPREST_FORCE_REBUILD
 
-Semantics::Semantics(std::string &fileName):fileName(fileName)
+Semantics::Semantics(std::string &fileName) : fileName(fileName)
 {
     symbolTable.push_back({});
     registerWalkerFunctions();
@@ -122,6 +122,9 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(NewComponentExpression)] = &Semantics::walkNewComponentExpression;
     walkerFunctionsMap[typeid(SelfExpression)] = &Semantics::walkSelfExpression;
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
+
+    // Walker registration for the shout system
+    walkerFunctionsMap[typeid(ShoutStatement)] = &Semantics::walkShoutStatement;
 }
 
 ResolvedType Semantics::inferNodeDataType(Node *node)
@@ -1137,7 +1140,7 @@ ArrayMeta Semantics::getArrayMeta(Node *node)
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
 {
-    std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << " in file: "<< fileName <<"\n";
+    std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << " in file: " << fileName << "\n";
 }
 
 bool Semantics::isInteger(const ResolvedType &t)

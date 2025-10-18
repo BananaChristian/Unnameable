@@ -156,6 +156,9 @@ struct SymbolInfo
     std::shared_ptr<SymbolInfo> targetSymbol;  // For the deref system
     std::shared_ptr<SymbolInfo> refereeSymbol; // Symbol being refered to
 
+    std::shared_ptr<SymbolInfo> baseSymbol;  // The owner (e.g., p in p.health)
+    std::shared_ptr<SymbolInfo> fieldSymbol; // The actual member accessed (health)
+
     size_t componentSize;
     int alloc_id = 0; // This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
@@ -280,6 +283,9 @@ private:
     void walkArrayLiteral(Node *node);
     void walkArrayStatement(Node *node);
     void walkArraySubscriptExpression(Node *node);
+
+    // Walking the shout statement
+    void walkShoutStatement(Node *node);
 
     // HELPER FUNCTIONS
     void registerWalkerFunctions();

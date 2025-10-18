@@ -35,79 +35,62 @@ void IRGenerator::generateDataStatement(Node *node)
 
     auto it = semantics.metaData.find(dataStmt);
     if (it == semantics.metaData.end())
-    {
         throw std::runtime_error("Missing data block metaData");
-    }
 
     auto blockName = it->second->type.resolvedName;
 
+    // --- Build LLVM struct type ---
     std::vector<llvm::Type *> memberTypes;
-    std::vector<std::string> memberNames;
-
-    for (const auto &member : it->second->members)
+    for (auto &[memberName, info] : it->second->members)
     {
-        auto &typeKind = member.second->type;
-        if (member.second->isHeap)
-        {
-            // Instead of raw type, store as a pointer
-            llvm::Type *heapPtrTy = getLLVMType(typeKind)->getPointerTo();
-            memberTypes.push_back(heapPtrTy);
-        }
-        else
-        {
-            llvm::Type *type = getLLVMType(typeKind);
-            memberTypes.push_back(type);
-        }
-        memberNames.push_back(member.first);
+        llvm::Type *ty = info->isHeap ? getLLVMType(info->type)->getPointerTo() : getLLVMType(info->type);
+        memberTypes.push_back(ty);
     }
 
     llvm::StructType *structTy = llvm::StructType::create(context, memberTypes, blockName);
     it->second->llvmType = structTy;
     llvmCustomTypes[blockName] = structTy;
 
-    if (llvmGlobalDataBlocks.find(blockName) == llvmGlobalDataBlocks.end())
+    llvm::Value *instanceVal = nullptr;
+
+    instanceVal = getOrCreateGlobalDataBlock(dataStmt);
+
+    llvmGlobalDataBlocks[blockName] = instanceVal;
+    it->second->llvmValue = instanceVal;
+
+    // --- Initialize members ---
+    int idx = 0;
+    for (auto &[memberName, info] : it->second->members)
     {
-        llvm::AllocaInst *globalAlloc = builder.CreateAlloca(structTy, nullptr, blockName + "_global");
-        llvmGlobalDataBlocks[blockName] = globalAlloc;
-        it->second->llvmValue = globalAlloc;
-
-        int idx = 0;
-        for (auto &[memberName, info] : it->second->members)
+        if (info->node && dynamic_cast<FunctionStatement *>(info->node))
         {
-            // skip functions
-            if (info->node && dynamic_cast<FunctionStatement *>(info->node))
-            {
-                idx++;
-                continue;
-            }
-
-            llvm::Value *memberPtr = builder.CreateStructGEP(structTy, globalAlloc, idx, memberName);
-            if (!memberPtr)
-                throw std::runtime_error("Failed to compute member GEP for init: " + memberName);
-
-            llvm::Type *elemTy = getLLVMType(info->type);
-            if (!elemTy)
-                throw std::runtime_error("Failed to get element type for init: " + memberName);
-
-            if (info->isHeap)
-            {
-                llvm::PointerType *elemPtrTy = elemTy->getPointerTo();
-                llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
-                builder.CreateStore(nullPtr, memberPtr);
-            }
-            else
-            {
-                if (elemTy->isPointerTy() || elemTy->isIntegerTy() || elemTy->isFloatingPointTy())
-                {
-                    builder.CreateStore(llvm::Constant::getNullValue(elemTy), memberPtr);
-                }
-            }
-
-            info->llvmValue = memberPtr;
-            info->llvmType = elemTy;
-
             idx++;
+            continue;
         }
+
+        llvm::Value *memberPtr = builder.CreateStructGEP(structTy, instanceVal, idx, memberName);
+        if (!memberPtr)
+            throw std::runtime_error("Failed to compute member GEP for init: " + memberName);
+
+        llvm::Type *elemTy = getLLVMType(info->type);
+        if (!elemTy)
+            throw std::runtime_error("Failed to get element type for init: " + memberName);
+
+        if (info->isHeap)
+        {
+            llvm::PointerType *elemPtrTy = elemTy->getPointerTo();
+            llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
+            builder.CreateStore(nullPtr, memberPtr);
+        }
+        else
+        {
+            builder.CreateStore(llvm::Constant::getNullValue(elemTy), memberPtr);
+        }
+
+        info->llvmValue = memberPtr;
+        info->llvmType = elemTy;
+
+        idx++;
     }
 }
 
@@ -466,6 +449,9 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
     auto exprMetaIt = semantics.metaData.find(newExpr);
     if (exprMetaIt == semantics.metaData.end())
         throw std::runtime_error("Undefined component '" + compName + "'");
+
+    if (exprMetaIt->second->hasError)
+        throw std::runtime_error("Semantic Error detected");
 
     // Find LLVM struct type
     auto compTypeIt = componentTypes.find(compName);

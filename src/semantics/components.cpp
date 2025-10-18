@@ -1169,6 +1169,7 @@ void Semantics::walkNewComponentExpression(Node *node)
         return;
     auto line = newExpr->expression.line;
     auto column = newExpr->expression.column;
+    bool hasError=false;
     // Getting the component name we shall search in the component types table and not the scope
     auto componentName = newExpr->component_name.TokenLiteral;
     auto componentIt = customTypesTable.find(componentName);
@@ -1197,7 +1198,7 @@ void Semantics::walkNewComponentExpression(Node *node)
                                       "' expects " + std::to_string(expectedArgs.size()) +
                                       " arguments but got " + std::to_string(givenArgs.size()),
                                   line, column);
-                return;
+                hasError=true;
             }
 
             // Checking the type check pairwise
@@ -1214,15 +1215,20 @@ void Semantics::walkNewComponentExpression(Node *node)
                                               "'. Expected '" + expectedType.resolvedName +
                                               "' but got '" + argType.resolvedName + "'",
                                           line, column);
+                        hasError=true;
                     }
                 }
             }
+        }else{
+            logSemanticErrors("No init constructor was provided for '"+componentName  +"' so the addition of arguments is unneccesary",line,column);
+            hasError=true;
         }
     }
 
     // Storing meta data
     auto info = std::make_shared<SymbolInfo>();
     info->type = componentIt->second.type;
+    info->hasError=hasError;
 
     metaData[newExpr] = info;
 }

@@ -1,15 +1,31 @@
-.o
-.vscode
-unnc
+# Compiled binaries
+/bin/
+/*.exe
+/*.out
 
-*~
-*.log
-*.out
+# Object files
+*.o
+*.obj
 
+# Runtime object folder
+/runtime/*.o
+
+# Build system
 compile_commands.json
+CMakeFiles/
+CMakeCache.txt
 
-static/
+# IDEs
+.vscode/
+.idea/
+*.code-workspace
 
-test.unn
+# Mac/Linux system files
+.DS_Store
+*.swp
+*~
+
+# Logs
+*.log
 
 TODO
