@@ -120,11 +120,6 @@ void Semantics::walkElifStatement(Node *node)
     std::cout << "[SEMANTIC LOG] Analysing elif statement: " << elifStmt->toString() << "\n";
     auto elifCondition = elifStmt->elif_condition.get();
     ResolvedType elifConditionType = inferNodeDataType(elifCondition);
-    if (elifConditionType.kind != DataType::BOOLEAN)
-    {
-        logSemanticErrors("Expected boolean type but got" + elifConditionType.resolvedName, elifStmt->elif_token.line, elifStmt->elif_token.column);
-        return;
-    }
     walker(elifCondition);
 
     // Handling the elif results
@@ -142,11 +137,7 @@ void Semantics::walkIfStatement(Node *node)
     std::cout << "[SEMANTIC LOG]: Analysing if statement: " << ifStmt->toString() << "\n";
     auto ifStmtCondition = ifStmt->condition.get();
     ResolvedType ifStmtType = inferNodeDataType(ifStmtCondition);
-    if (ifStmtType.kind != DataType::BOOLEAN)
-    {
-        logSemanticErrors("Expected boolean type but got '" + ifStmtType.resolvedName + "'", node->token.line, node->token.column);
-        return;
-    }
+
     walker(ifStmtCondition);
 
     // Dealing with the if result

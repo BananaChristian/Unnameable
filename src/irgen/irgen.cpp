@@ -303,6 +303,7 @@ void IRGenerator::generateLetStatement(Node *node)
     // === NON-HEAP SCALAR ===
     llvm::Type *varType = getLLVMType(sym->type);
     storage = entryBuilder.CreateAlloca(varType, nullptr, letName);
+    std::cout << "Routing letstatement value\n";
     llvm::Value *initVal = letStmt->value ? generateExpression(letStmt->value.get())
                                           : llvm::Constant::getNullValue(varType);
     builder.CreateStore(initVal, storage);
@@ -1364,11 +1365,22 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 // Prefix expression generator function
 llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
 {
+    std::cout << "Inside prefix generator\n";
     auto prefix = dynamic_cast<PrefixExpression *>(node);
     if (!prefix)
         throw std::runtime_error("Invalid prefix expression");
 
-    llvm::Value *operand = generateIdentifierAddress(prefix->operand.get()).address;
+    llvm::Value *operand;
+
+    //If the operand is an identifier
+    if (auto identOperand = dynamic_cast<Identifier *>(prefix->operand.get()))
+    {
+        operand = generateIdentifierAddress(prefix->operand.get()).address;
+    }
+
+    //If the operand is a normal literal
+    operand=generateExpression(prefix->operand.get());
+
     if (!operand)
         throw std::runtime_error("Failed to generate IR for prefix operand");
 
@@ -1951,7 +1963,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
     std::cout << "INSIDE IDENTIFIER GEN\n";
     auto identExpr = dynamic_cast<Identifier *>(node);
     if (!identExpr)
-        throw std::runtime_error("Invalid identifier expression");
+        throw std::runtime_error("Invalid identifier expression :" + node->toString());
 
     const std::string &identName = identExpr->identifier.TokenLiteral;
 
@@ -2133,7 +2145,7 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
     if (!identExpr)
     {
         std::cout << "Got node " << node->toString() << "\n";
-        throw std::runtime_error("Invalid identifier expression");
+        throw std::runtime_error("Invalid identifier expression: " + node->toString());
     }
 
     const std::string &identName = identExpr->identifier.TokenLiteral;
