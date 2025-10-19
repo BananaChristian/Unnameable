@@ -20,7 +20,7 @@ extern "C"
     {
         if (!Allocator::global_allocator)
         {
-            std::cerr << "[SAGE] ERROR: Allocator not initialized!\n";
+            std::cerr << "[SAGE ERROR]: Allocator not initialized!\n";
             return nullptr;
         }
         return Allocator::global_allocator->sage_alloc(size);
@@ -30,7 +30,7 @@ extern "C"
     {
         if (!Allocator::global_allocator)
         {
-            std::cerr << "[SAGE] ERROR: Allocator not initialized!\n";
+            std::cerr << "[SAGE ERROR]: Allocator not initialized!\n";
             return;
         }
         Allocator::global_allocator->sage_free(size);
@@ -77,7 +77,7 @@ Allocator::Allocator(size_t total_heap_size)
 
 void *Allocator::sage_alloc(size_t component_size)
 {
-    size_t aligned_size = (component_size + 7) & ~7; // align to 8 bytes
+    size_t aligned_size = component_size ; // Removed alignment
     if ((char *)general_stack_heap.frameptr + aligned_size > (char *)general_stack_heap.limit)
     {
         std::cout << "sage_alloc -> Hit allocated memory limit\n";
@@ -213,7 +213,7 @@ Allocator::Allocator(size_t total_heap_size)
 
 void *Allocator::sage_alloc(size_t component_size)
 {
-    size_t aligned_size = (component_size + 7) & ~7; // align to 8 bytes
+    size_t aligned_size =component_size; // Have removed aligning for now
     if ((char *)general_stack_heap.frameptr + aligned_size > (char *)general_stack_heap.limit)
     {
         std::cout << "sage_alloc -> Hit allocated memory limit\n";

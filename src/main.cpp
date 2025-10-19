@@ -266,7 +266,7 @@ int main(int argc, char **argv)
         if (logOutput)
             irgen.dumpIR();
 
-        // === Emit Object ===
+        // Emit Object
         fs::path objPath = fs::absolute(objFile);
         std::cout << COLOR_YELLOW << "\nGenerating object file: " << objPath.string() << COLOR_RESET << "\n";
         if (!irgen.emitObjectFile(objPath.string()))
@@ -281,7 +281,7 @@ int main(int argc, char **argv)
             return 0;
         }
 
-        // === Link Executable ===
+        // Link Executable
         fs::path exePath = fs::absolute(exeFile);
         fs::path root = getCompilerRoot();
         fs::path sagePath = root / "runtime" / "sage.o";

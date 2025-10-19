@@ -234,8 +234,7 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: SHOUT";
     case TokenType::QUALIFY:
         return "Token Type: QUALIFY";
-    case TokenType::MAIN:
-        return "Token Type: MAIN";
+        
     case TokenType::HEAP:
         return "Token Type: HEAP";
     case TokenType::BANG:

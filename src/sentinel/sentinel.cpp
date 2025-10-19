@@ -1,5 +1,8 @@
 #include "sentinel.hpp"
 
+#define COLOR_RESET "\033[0m"
+#define COLOR_RED "\033[31m"
+
 Sentinel::Sentinel(Semantics &semantics) : semantics(semantics)
 {
     registerSentinelFns();
@@ -336,7 +339,7 @@ void Sentinel::checkFieldAssignment(Node *node)
         return;
     }
 
-    //Get the parent type from the baseSymbol
+    // Get the parent type from the baseSymbol
     auto parentTypeName = baseSym->type.resolvedName;
     std::cout << "PARENT TYPE NAME: " << parentTypeName << "\n";
 
@@ -409,5 +412,5 @@ void Sentinel::checkComponentStatement(Node *node)
 
 void Sentinel::logError(const std::string &message, int line, int col)
 {
-    std::cerr << "[SENTINEL ERROR] " << message << " on line: " << line << ", column: " << col << "\n";
+    std::cerr << COLOR_RED << "[SENTINEL ERROR] " << COLOR_RESET << message << " on line: " << line << ", column: " << col << "\n";
 }

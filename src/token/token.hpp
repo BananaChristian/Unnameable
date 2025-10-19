@@ -91,7 +91,6 @@ enum class TokenType
     MERGE, //Merge keyword
     LINK,//Link keyword
     QUALIFY, //Qualify keyword
-    MAIN, //Main keyword
 
     SCOPE,//Scope keyword
 

@@ -88,9 +88,7 @@ class Lexer
         {"module", TokenType::MODULE},
         {"merge", TokenType::MERGE},
         {"link", TokenType::LINK},
-        {"qualify", TokenType::QUALIFY},
-        {"main", TokenType::MAIN},
-    };
+        {"qualify", TokenType::QUALIFY}};
 
 public:
     Lexer(const std::string &sourceCode);
