@@ -68,7 +68,7 @@ void IRGenerator::generateDataStatement(Node *node)
             continue;
         }
 
-        llvm::Value *memberPtr = builder.CreateStructGEP(structTy, instanceVal, idx, memberName);
+        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, instanceVal, idx, memberName);
         if (!memberPtr)
             throw std::runtime_error("Failed to compute member GEP for init: " + memberName);
 
@@ -80,11 +80,11 @@ void IRGenerator::generateDataStatement(Node *node)
         {
             llvm::PointerType *elemPtrTy = elemTy->getPointerTo();
             llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
-            builder.CreateStore(nullPtr, memberPtr);
+            funcBuilder.CreateStore(nullPtr, memberPtr);
         }
         else
         {
-            builder.CreateStore(llvm::Constant::getNullValue(elemTy), memberPtr);
+            funcBuilder.CreateStore(llvm::Constant::getNullValue(elemTy), memberPtr);
         }
 
         info->llvmValue = memberPtr;
@@ -140,7 +140,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     if (!initStmt || !component)
         return;
 
-    llvm::BasicBlock *oldInsertPoint = builder.GetInsertBlock();
+    llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
 
     const std::string componentName = component->component_name->expression.TokenLiteral;
 
@@ -166,7 +166,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
                                            componentName + "_init", module.get());
 
     auto entryBlock = llvm::BasicBlock::Create(context, "entry", initFunc);
-    builder.SetInsertPoint(entryBlock);
+    funcBuilder.SetInsertPoint(entryBlock);
 
     // Map args: first arg is 'self'
     auto argIt = initFunc->arg_begin();
@@ -174,11 +174,11 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     selfArg->setName("self");
 
     // Create a stack slot for self to make it consistent with normal functions
-    llvm::Value *selfAlloca = builder.CreateAlloca(structTy->getPointerTo(), nullptr, "self.addr");
-    builder.CreateStore(selfArg, selfAlloca);
+    llvm::Value *selfAlloca = funcBuilder.CreateAlloca(structTy->getPointerTo(), nullptr, "self.addr");
+    funcBuilder.CreateStore(selfArg, selfAlloca);
 
     // When looking up self in generateSelfExpression, load from here
-    llvm::Value *selfPtr = builder.CreateLoad(structTy->getPointerTo(), selfAlloca, "self.ptr");
+    llvm::Value *selfPtr = funcBuilder.CreateLoad(structTy->getPointerTo(), selfAlloca, "self.ptr");
 
     // Save into metaData
     auto compIt = semantics.metaData.find(component);
@@ -199,8 +199,8 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     for (auto &arg : initStmt->constructor_args)
     {
         llvm::Value *argVal = &*argIt++;
-        auto argAlloca = builder.CreateAlloca(argVal->getType(), nullptr, "ctor.arg");
-        builder.CreateStore(argVal, argAlloca);
+        auto argAlloca = funcBuilder.CreateAlloca(argVal->getType(), nullptr, "ctor.arg");
+        funcBuilder.CreateStore(argVal, argAlloca);
         auto metaIt = semantics.metaData.find(arg.get());
         if (metaIt == semantics.metaData.end())
         {
@@ -215,7 +215,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
         generateBlockStatement(initStmt->block.get());
     }
 
-    builder.CreateRetVoid();
+    funcBuilder.CreateRetVoid();
 
     // Clean up and restoring
     compIt->second->llvmValue = prevInstance;
@@ -223,7 +223,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     currentComponent = nullptr;
 
     if (oldInsertPoint)
-        builder.SetInsertPoint(oldInsertPoint);
+        funcBuilder.SetInsertPoint(oldInsertPoint);
 
     std::cout << "[IR INIT] Finished init generation for: " << componentName << "\n";
 }
@@ -234,7 +234,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
     if (!fnStmt)
         return;
 
-    llvm::BasicBlock *oldInsertPoint = builder.GetInsertBlock();
+    llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
     auto fnExpr = fnStmt->funcExpr.get();
     std::string funcName;
     if (auto expr = dynamic_cast<FunctionExpression *>(fnExpr))
@@ -272,7 +272,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
 
         currentFunction = fn;
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
-        builder.SetInsertPoint(entry);
+        funcBuilder.SetInsertPoint(entry);
 
         // Map 'this' pointer correctly (no &!)
         llvm::Argument &thisArg = *fn->arg_begin();
@@ -287,8 +287,8 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
             if (pIt == semantics.metaData.end())
                 throw std::runtime_error("Missing parameter metadata");
 
-            llvm::AllocaInst *alloca = builder.CreateAlloca(getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
-            builder.CreateStore(&(*argIter), alloca); // argument value stored to local alloca
+            llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
+            funcBuilder.CreateStore(&(*argIter), alloca); // argument value stored to local alloca
             pIt->second->llvmValue = alloca;
 
             ++argIter;
@@ -334,7 +334,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
     }
 
     if (oldInsertPoint)
-        builder.SetInsertPoint(oldInsertPoint);
+        funcBuilder.SetInsertPoint(oldInsertPoint);
 }
 
 void IRGenerator::generateComponentStatement(Node *node)
@@ -478,7 +478,7 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
             initArgs.push_back(val);
         }
 
-        builder.CreateCall(initFn, initArgs);
+        funcBuilder.CreateCall(initFn, initArgs);
     }
 
     // Return the instance pointer

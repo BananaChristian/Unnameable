@@ -19,7 +19,7 @@
 #define CPPREST_FORCE_REBUILD
 
 IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
-    : semantics(semantics), totalHeapSize(totalHeap), context(), builder(context), module(std::make_unique<llvm::Module>("unnameable", context))
+    : semantics(semantics), totalHeapSize(totalHeap), context(), globalBuilder(context), funcBuilder(context), module(std::make_unique<llvm::Module>("unnameable", context))
 {
     registerGeneratorFunctions();
     registerExpressionGeneratorFunctions();
@@ -50,56 +50,39 @@ IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     module->getOrInsertFunction("sage_alloc", allocType);
     module->getOrInsertFunction("sage_free", freeType);
     module->getOrInsertFunction("sage_destroy", destroyType);
+
+    llvm::Function *globalInitFn = llvm::Function::Create(
+        llvm::FunctionType::get(llvm::Type::getVoidTy(context), false),
+        llvm::GlobalValue::InternalLinkage,
+        "sage_global_init",
+        module.get());
+
+    heapInitFnEntry = llvm::BasicBlock::Create(context, "entry", globalInitFn);
 }
 
 // MAIN GENERATOR FUNCTION
 void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program)
 {
-    llvm::FunctionType *funcType = llvm::FunctionType::get(
-        llvm::Type::getInt32Ty(context), false);
-
-    llvm::Function *mainFunc = llvm::Function::Create(
-        funcType, llvm::Function::ExternalLinkage, "main", module.get());
-
-    llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", mainFunc);
-    builder.SetInsertPoint(entry);
-
-    // --- Call sage_init upfront ---
-    llvm::Function *initFunc = module->getFunction("sage_init");
-    if (!initFunc)
-    {
-        llvm::FunctionType *initType = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(context),
-            {llvm::Type::getInt64Ty(context)}, false);
-
-        initFunc = llvm::Function::Create(
-            initType, llvm::Function::ExternalLinkage, "sage_init", module.get());
-    }
-
-    // Example heap size, later this comes from analyzer
-    builder.CreateCall(initFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), totalHeapSize)});
-
-    // --- Generate program body ---
+    // Generate program body
     for (const auto &node : program)
     {
         generateStatement(node.get());
     }
 
-    // --- Call sage_destroy before returning ---
-    llvm::Function *destroyFunc = module->getFunction("sage_destroy");
-    if (!destroyFunc)
-    {
-        llvm::FunctionType *destroyType = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(context), {}, false);
+    // Finish off global heap init if it exists
+    funcBuilder.SetInsertPoint(heapInitFnEntry);
+    funcBuilder.CreateRetVoid();
 
-        destroyFunc = llvm::Function::Create(
-            destroyType, llvm::Function::ExternalLinkage, "sage_destroy", module.get());
-    }
+    // Look for the main function
+    llvm::Function *mainFn = module->getFunction("main");
+    if (!mainFn)
+        throw std::runtime_error("User must define main");
 
-    builder.CreateCall(destroyFunc, {});
+    llvm::BasicBlock &entryBlock = mainFn->getEntryBlock();
+    llvm::IRBuilder<> tmpBuilder(&entryBlock, entryBlock.begin());
 
-    // --- Return 0 ---
-    builder.CreateRet(llvm::ConstantInt::get(context, llvm::APInt(32, 0)));
+    llvm::Function *globalHeapFn = module->getFunction("sage_global_init");
+    tmpBuilder.CreateCall(globalHeapFn);
 }
 
 // MAIN GENERATOR FUNCTION FOR EXPRESSION
@@ -136,6 +119,7 @@ void IRGenerator::generateStatement(Node *node)
 // Let statement IR generator function
 void IRGenerator::generateLetStatement(Node *node)
 {
+    // === VALIDATION AND EXTRACTION ===
     auto letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
         throw std::runtime_error("Invalid let statement");
@@ -151,168 +135,301 @@ void IRGenerator::generateLetStatement(Node *node)
     if (sym->hasError)
         throw std::runtime_error("Semantic error detected for '" + letName + "'");
 
-    llvm::Function *fn = builder.GetInsertBlock()->getParent();
-    llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
+    llvm::BasicBlock *insertBlock = funcBuilder.GetInsertBlock();
+    std::cout << "[DEBUG] Builder InsertBlock is: " << (insertBlock ? insertBlock->getName().str() : "NULL") << "\n";
 
-    llvm::Value *storage = nullptr; // centralized storage pointer/value
-
-    // === COMPONENT TYPE ===
-    auto compIt = componentTypes.find(sym->type.resolvedName);
-    if (compIt != componentTypes.end())
+    // === GLOBAL SCOPE HANDLING (No insert block) ===
+    if (!funcBuilder.GetInsertBlock())
     {
-        llvm::StructType *structTy = compIt->second;
-        llvm::Value *constructedVal = nullptr;
-        bool usedNewExpr = false;
-
-        if (letStmt->value)
+        std::cout << "No insert block detected\n";
+        bool isHeap = letStmt->isHeap;
+        if (isHeap)
         {
-            if (auto newExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get()))
-            {
-                usedNewExpr = true;
-                constructedVal = generateNewComponentExpression(newExpr);
-                if (!constructedVal)
-                    throw std::runtime_error("generateNewComponentExpression returned null for '" + letName + "'");
-            }
-        }
-
-        if (!constructedVal)
-            constructedVal = llvm::UndefValue::get(structTy); // fallback for uninitialized
-
-        // === CENTRALIZED ALLOCATION ===
-        if (letStmt->isHeap)
-        {
-            llvm::FunctionCallee sageAlloc = module->getOrInsertFunction(
-                "sage_alloc",
-                llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0),
-                llvm::Type::getInt64Ty(context));
-            llvm::Value *rawPtr = builder.CreateCall(
-                sageAlloc,
-                {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)},
-                letName + "_sage_rawptr");
-            storage = builder.CreateBitCast(rawPtr, structTy->getPointerTo(), letName + "_heap_ptr");
+            generateGlobalHeapLet(letStmt, sym, letName);
         }
         else
         {
-            storage = entryBuilder.CreateAlloca(structTy, nullptr, letName);
+            generateGlobalScalarLet(sym, letName);
         }
-
-        sym->llvmValue = storage;
-        sym->llvmType = structTy;
-
-        builder.CreateStore(constructedVal, storage);
-        std::cout << "[DEBUG] Stored constructed value for '" << letName << "' into centralized storage " << storage << "\n";
-
-        // === ASSIGN MEMBERS ===
-        auto compMetaIt = semantics.customTypesTable.find(sym->type.resolvedName);
-        if (compMetaIt != semantics.customTypesTable.end())
-        {
-            int index = 0;
-            for (auto &[memberName, info] : compMetaIt->second.members)
-            {
-                if (info->node && dynamic_cast<FunctionStatement *>(info->node))
-                {
-                    index++;
-                    continue;
-                }
-
-                llvm::Value *memberPtr = builder.CreateStructGEP(structTy, storage, index, memberName);
-                info->llvmValue = memberPtr;
-                info->llvmType = getLLVMType(info->type);
-
-                // initialize member only if not from new
-                if (!usedNewExpr)
-                {
-                    llvm::Type *mTy = info->llvmType;
-                    if (info->isHeap)
-                        builder.CreateStore(llvm::ConstantPointerNull::get(mTy->getPointerTo()), memberPtr);
-                    else if (mTy->isIntegerTy() || mTy->isFloatingPointTy() || mTy->isPointerTy())
-                        builder.CreateStore(llvm::Constant::getNullValue(mTy), memberPtr);
-                }
-
-                // propagate to metadata
-                if (info->node)
-                {
-                    auto metaIt2 = semantics.metaData.find(info->node);
-                    if (metaIt2 != semantics.metaData.end())
-                    {
-                        metaIt2->second->llvmValue = memberPtr;
-                        metaIt2->second->llvmType = info->llvmType;
-                    }
-                }
-
-                index++;
-            }
-        }
-
-        // === IMMEDIATE HEAP FREE IF DEAD ===
-        if (letStmt->isHeap)
-        {
-            Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-            if (letStmt == lastUse && sym->refCount == 0)
-            {
-                llvm::FunctionCallee sageFree = module->getOrInsertFunction(
-                    "sage_free", llvm::Type::getVoidTy(context),
-                    llvm::Type::getInt64Ty(context));
-                builder.CreateCall(
-                    sageFree,
-                    {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)});
-                std::cout << "[DEBUG] Immediately freed heap component '" << letName << "' (never used)\n";
-            }
-        }
-
-        std::cout << "[DEBUG] Component '" << letName << "' fully processed.\n";
         return;
     }
 
-    // === NON-COMPONENT HEAP ===
+    // === LOCAL SCOPE HANDLING (Has insert block) ===
+    llvm::Value *storage = nullptr; // Centralized storage for the variable
+
+    // Determine if this is a component type
+    auto compIt = componentTypes.find(sym->type.resolvedName);
+    bool isComponent = (compIt != componentTypes.end());
+    llvm::StructType *structTy = isComponent ? compIt->second : nullptr;
+
+    // Generate initial value (shared logic for components and scalars)
+    llvm::Value *initVal = nullptr;
+    if (isComponent)
+    {
+        initVal = generateComponentInit(letStmt, structTy);
+    }
+    else
+    {
+        initVal = letStmt->value ? generateExpression(letStmt->value.get())
+                                 : llvm::Constant::getNullValue(getLLVMType(sym->type));
+    }
+
+    // Allocate storage (heap or stack, with shared heap alloc logic)
     if (letStmt->isHeap)
     {
-        uint64_t size = sym->componentSize;
-        llvm::FunctionCallee sageAlloc = module->getOrInsertFunction(
-            "sage_alloc",
-            llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0),
-            llvm::Type::getInt64Ty(context));
-        llvm::Value *raw = builder.CreateCall(
-            sageAlloc,
-            {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)},
-            letName + "_rawptr");
+        storage = allocateHeapStorage(sym, letName, structTy);
+        // For heap-allocated locals, ensure sage_init is called before allocation
+        if (!isSageInitCalled)
+        {
+            std::cout << "Branching to call sage_init\n";
+            generateSageInitCall();
+            isSageInitCalled = true; // Mark as called to avoid repetition
+        }
+    }
+    else
+    {
+        llvm::Type *varType = getLLVMType(sym->type);
+        storage = funcBuilder.CreateAlloca(varType ? varType : structTy, nullptr, letName);
+    }
 
-        llvm::Type *valType = getLLVMType(sym->type);
-        storage = builder.CreateBitCast(raw, valType->getPointerTo(), letName + "_heap_ptr");
+    if (!storage)
+        throw std::runtime_error("No storage allocated for let statement '" + letName + "'");
 
-        sym->llvmValue = storage;
-        sym->llvmType = valType;
+    // Update symbol metadata with storage details
+    sym->llvmValue = storage;
+    sym->llvmType = structTy ? structTy : getLLVMType(sym->type);
 
-        llvm::Value *initVal = letStmt->value ? generateExpression(letStmt->value.get())
-                                              : llvm::Constant::getNullValue(valType);
-        builder.CreateStore(initVal, storage);
+    // Store the initial value
+    funcBuilder.CreateStore(initVal, storage);
+    std::cout << "[DEBUG] Stored initial value for '" << letName << "' into storage " << storage << "\n";
 
+    // === COMPONENT-SPECIFIC MEMBER INITIALIZATION ===
+    if (isComponent)
+    {
+        initializeComponentMembers(letStmt, sym, letName, storage, structTy);
+    }
+
+    // === HEAP CLEANUP FOR DEAD LOCALS ===
+    if (letStmt->isHeap)
+    {
         Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
         if (letStmt == lastUse && sym->refCount == 0)
         {
-            llvm::FunctionCallee sageFree = module->getOrInsertFunction(
-                "sage_free", llvm::Type::getVoidTy(context),
-                llvm::Type::getInt64Ty(context));
-            builder.CreateCall(
-                sageFree,
-                {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)});
+            freeHeapStorage(sym->componentSize, letName);
+            std::cout << "[DEBUG] Immediately freed dead heap variable '" << letName << "'\n";
         }
-        return;
     }
 
-    // === NON-HEAP SCALAR ===
+    std::cout << "[DEBUG] Local let statement '" << letName << "' fully processed.\n";
+}
+
+void IRGenerator::generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName)
+{
+    std::cout << "Let statement was heap raised\n";
+
+    // If sage_init hasnt been called
+    if (!isSageInitCalled)
+        generateSageInitCall();
+
+    // Create a global raw pointer slot initialized to null
+    llvm::Type *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
+    llvm::GlobalVariable *globalPtr = new llvm::GlobalVariable(
+        *module,
+        i8PtrTy,
+        false, // Not constant
+        llvm::GlobalValue::InternalLinkage,
+        llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0)),
+        letName + "_rawptr");
+
+    // Validate and register the global pointer
+    if (!llvm::dyn_cast<llvm::GlobalVariable>(globalPtr))
+    {
+        std::cerr << "FATAL BUG: sym->llvmValue overwritten after GlobalVariable creation for '" << letName << "'.\n";
+        // throw std::runtime_error("Symbol table corruption.");  // Uncomment to halt on error
+    }
+    else
+    {
+        std::cout << "[DEBUG] Global heap symbol '" << letName << "' registered as GlobalVariable.\n";
+    }
+    sym->llvmValue = globalPtr;
+
+    // Build allocation and initialization in the heap-init function (one-time setup)
+    llvm::IRBuilder<> heapBuilder(heapInitFnEntry);
+
+    // Allocate raw memory via sage_alloc
+    llvm::FunctionCallee sageAllocFn = module->getOrInsertFunction(
+        "sage_alloc",
+        i8PtrTy,
+        llvm::Type::getInt64Ty(context));
+    llvm::Value *allocSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
+    llvm::Value *tmpPtr = heapBuilder.CreateCall(sageAllocFn, {allocSize}, letName + "_alloc");
+
+    // Store the raw pointer in the global slot
+    heapBuilder.CreateStore(tmpPtr, globalPtr);
+
+    // Cast to typed pointer and store initial value
+    llvm::Type *elemTy = getLLVMType(sym->type);
+    sym->llvmType = elemTy;
+    llvm::Value *typedPtr = heapBuilder.CreateBitCast(tmpPtr, elemTy->getPointerTo(), letName + "_typed");
+    llvm::Value *initVal = generateExpression(letStmt->value.get());
+    heapBuilder.CreateStore(initVal, typedPtr);
+
+    if (letStmt->isHeap)
+    {
+        if ((sym->lastUseNode == letStmt) && (sym->refCount == 0))
+        {
+            llvm::FunctionCallee sageFree = module->getOrInsertFunction(
+                "sage_free",
+                llvm::Type::getVoidTy(context),
+                llvm::Type::getInt64Ty(context));
+
+            heapBuilder.CreateCall(
+                sageFree,
+                {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)},
+                letName + "_sage_free");
+        }
+    }
+}
+
+void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &letName)
+{
     llvm::Type *varType = getLLVMType(sym->type);
-    storage = entryBuilder.CreateAlloca(varType, nullptr, letName);
-    std::cout << "Routing letstatement value\n";
-    llvm::Value *initVal = letStmt->value ? generateExpression(letStmt->value.get())
-                                          : llvm::Constant::getNullValue(varType);
-    builder.CreateStore(initVal, storage);
-
-    sym->llvmValue = storage;
+    llvm::Constant *init = llvm::Constant::getNullValue(varType);
+    auto *g = new llvm::GlobalVariable(
+        *module,
+        varType,
+        false,
+        llvm::GlobalValue::ExternalLinkage,
+        init,
+        letName);
+    sym->llvmValue = g;
     sym->llvmType = varType;
+    std::cout << "[DEBUG] Created global scalar '" << letName << "' as GlobalVariable\n";
+}
 
-    std::cout << "[DEBUG] Scalar variable '" << letName << "' allocated at llvmValue = "
-              << storage << "\n";
+llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt, llvm::StructType *structTy)
+{
+    llvm::Value *constructedVal = nullptr;
+    bool usedNewExpr = false;
+
+    if (letStmt->value)
+    {
+        if (auto newExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get()))
+        {
+            usedNewExpr = true;
+            constructedVal = generateNewComponentExpression(newExpr);
+            if (!constructedVal)
+                throw std::runtime_error("generateNewComponentExpression returned null");
+        }
+    }
+
+    if (!constructedVal)
+        constructedVal = llvm::UndefValue::get(structTy); // Fallback for uninitialized components
+
+    // Store usedNewExpr flag for member init skipping
+    // (In full code, this could be a local var; here assuming passed via letStmt or sym for simplicity)
+    // Note: Original uses local 'usedNewExpr'; propagate as needed in caller.
+
+    std::cout << "Component Let statement processed with " << (usedNewExpr ? "new expr" : "undef init") << "\n";
+    return constructedVal;
+}
+
+llvm::Value *IRGenerator::allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy)
+{
+    std::cout << "Let statement was heap raised\n";
+    // If sage_init hasnt been called
+    if (!isSageInitCalled)
+        generateSageInitCall();
+
+    uint64_t allocSize = sym->componentSize;
+    llvm::Type *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
+    llvm::FunctionCallee sageAlloc = module->getOrInsertFunction(
+        "sage_alloc",
+        i8PtrTy,
+        llvm::Type::getInt64Ty(context));
+
+    llvm::Value *rawPtr = funcBuilder.CreateCall(
+        sageAlloc,
+        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), allocSize)},
+        letName + "_sage_rawptr");
+
+    llvm::Type *targetPtrTy = structTy ? structTy->getPointerTo() : getLLVMType(sym->type)->getPointerTo();
+    return funcBuilder.CreateBitCast(rawPtr, targetPtrTy, letName + "_heap_ptr");
+}
+
+void IRGenerator::initializeComponentMembers(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName,
+                                             llvm::Value *storage, llvm::StructType *structTy)
+{
+    // Retrieve component metadata for members
+    auto compMetaIt = semantics.customTypesTable.find(sym->type.resolvedName);
+    if (compMetaIt == semantics.customTypesTable.end())
+        return; // No members to initialize
+
+    // Skip member init if initialized via 'new' expression
+    bool usedNewExpr = false; // Recompute or pass from generateComponentInit
+    if (letStmt->value)
+    {
+        usedNewExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get()) != nullptr;
+    }
+
+    int index = 0;
+    for (auto &[memberName, info] : compMetaIt->second.members)
+    {
+        // Skip function members (no storage needed)
+        if (info->node && dynamic_cast<FunctionStatement *>(info->node))
+        {
+            index++;
+            continue;
+        }
+
+        // Create member pointer via GEP
+        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, storage, index, memberName);
+        info->llvmValue = memberPtr;
+        info->llvmType = getLLVMType(info->type);
+
+        // Initialize member only if not from 'new' expr
+        if (!usedNewExpr)
+        {
+            llvm::Type *mTy = info->llvmType;
+            if (info->isHeap)
+            {
+                funcBuilder.CreateStore(llvm::ConstantPointerNull::get(mTy->getPointerTo()), memberPtr);
+            }
+            else if (mTy->isIntegerTy() || mTy->isFloatingPointTy() || mTy->isPointerTy())
+            {
+                funcBuilder.CreateStore(llvm::Constant::getNullValue(mTy), memberPtr);
+            }
+            // Other types default to undef or handled elsewhere
+        }
+
+        // Propagate to node metadata if available
+        if (info->node)
+        {
+            auto metaIt2 = semantics.metaData.find(info->node);
+            if (metaIt2 != semantics.metaData.end())
+            {
+                metaIt2->second->llvmValue = memberPtr;
+                metaIt2->second->llvmType = info->llvmType;
+            }
+        }
+
+        index++;
+    }
+
+    std::cout << "[DEBUG] Component members for '" << letName << "' initialized.\n";
+}
+
+void IRGenerator::freeHeapStorage(uint64_t size, const std::string &letName)
+{
+    llvm::FunctionCallee sageFree = module->getOrInsertFunction(
+        "sage_free",
+        llvm::Type::getVoidTy(context),
+        llvm::Type::getInt64Ty(context));
+
+    funcBuilder.CreateCall(
+        sageFree,
+        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)},
+        letName + "_sage_free");
 }
 
 // Reference statement IR generator
@@ -368,7 +485,7 @@ void IRGenerator::generatePointerStatement(Node *node)
 
     std::cout << "[IR DEBUG] Pointer type: " << ptrSym->type.resolvedName << "\n";
 
-    llvm::Function *fn = builder.GetInsertBlock()->getParent();
+    llvm::Function *fn = funcBuilder.GetInsertBlock()->getParent();
     llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
 
     // Getting the pointer llvm type
@@ -388,7 +505,7 @@ void IRGenerator::generatePointerStatement(Node *node)
     if (!alloca)
         throw std::runtime_error("Failed to create alloca");
 
-    builder.CreateStore(initVal, alloca);
+    funcBuilder.CreateStore(initVal, alloca);
     ptrSym->llvmValue = alloca;
     ptrSym->llvmType = ptrType;
 
@@ -404,15 +521,15 @@ void IRGenerator::generateWhileStatement(Node *node)
         throw std::runtime_error("Invalid while statement");
     }
 
-    llvm::Function *function = builder.GetInsertBlock()->getParent();
+    llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(context, "while.cond", function);
     llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "while.body");
     llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "while.end");
 
     std::cerr << "[IR DEBUG] Creating branch to while.cond\n";
-    builder.CreateBr(condBB);
+    funcBuilder.CreateBr(condBB);
 
-    builder.SetInsertPoint(condBB);
+    funcBuilder.SetInsertPoint(condBB);
     std::cerr << "[IR DEBUG] Generating while condition\n";
     llvm::Value *condVal = generateExpression(whileStmt->condition.get());
     if (!condVal)
@@ -422,34 +539,34 @@ void IRGenerator::generateWhileStatement(Node *node)
 
     if (!condVal->getType()->isIntegerTy(1))
     {
-        condVal = builder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "whilecond.bool");
+        condVal = funcBuilder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "whilecond.bool");
     }
 
     std::cerr << "[IR DEBUG] Creating conditional branch\n";
-    builder.CreateCondBr(condVal, bodyBB, endBB);
+    funcBuilder.CreateCondBr(condVal, bodyBB, endBB);
 
     // Append bodyBB to function
     function->insert(function->end(), bodyBB);
-    builder.SetInsertPoint(bodyBB);
+    funcBuilder.SetInsertPoint(bodyBB);
     std::cerr << "[IR DEBUG] Generating while body\n";
     loopBlocksStack.push_back({condBB, endBB});
     generateStatement(whileStmt->loop.get());
     loopBlocksStack.pop_back();
     std::cerr << "[IR DEBUG] Finished generating while body\n";
 
-    if (!builder.GetInsertBlock()->getTerminator())
+    if (!funcBuilder.GetInsertBlock()->getTerminator())
     {
         std::cerr << "[IR DEBUG] Adding branch to while.cond\n";
-        builder.CreateBr(condBB);
+        funcBuilder.CreateBr(condBB);
     }
     else
     {
-        std::cerr << "[IR WARNING] While body block already has terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+        std::cerr << "[IR WARNING] While body block already has terminator: " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
     }
 
     // Append endBB to function
     function->insert(function->end(), endBB);
-    builder.SetInsertPoint(endBB);
+    funcBuilder.SetInsertPoint(endBB);
 }
 
 // IR code gen for an if statement
@@ -472,11 +589,11 @@ void IRGenerator::generateIfStatement(Node *node)
 
     if (!condVal->getType()->isIntegerTy(1))
     {
-        condVal = builder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "ifcond.bool");
+        condVal = funcBuilder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "ifcond.bool");
     }
 
     // Create basic blocks
-    llvm::Function *function = builder.GetInsertBlock()->getParent();
+    llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
     llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(context, "then", function);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(context, "ifmerge");
 
@@ -497,27 +614,27 @@ void IRGenerator::generateIfStatement(Node *node)
 
     // Conditional branch for if
     std::cerr << "[IR DEBUG] Creating conditional branch for if\n";
-    builder.CreateCondBr(condVal, thenBB, nextBB);
+    funcBuilder.CreateCondBr(condVal, thenBB, nextBB);
 
     // Generate then branch
-    builder.SetInsertPoint(thenBB);
+    funcBuilder.SetInsertPoint(thenBB);
     std::cerr << "[IR DEBUG] Generating then branch\n";
     generateStatement(ifStmt->if_result.get());
-    if (!builder.GetInsertBlock()->getTerminator())
+    if (!funcBuilder.GetInsertBlock()->getTerminator())
     {
         std::cerr << "[IR DEBUG] Adding branch to ifmerge from then\n";
-        builder.CreateBr(mergeBB);
+        funcBuilder.CreateBr(mergeBB);
     }
     else
     {
-        std::cerr << "[IR DEBUG] Skipping branch to ifmerge from then due to terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+        std::cerr << "[IR DEBUG] Skipping branch to ifmerge from then due to terminator: " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
     }
 
     // Generating elif branches
     for (size_t i = 0; i < ifStmt->elifClauses.size(); ++i)
     {
         function->insert(function->end(), nextBB);
-        builder.SetInsertPoint(nextBB);
+        funcBuilder.SetInsertPoint(nextBB);
         std::cerr << "[IR DEBUG] Generating elif branch " << i << "\n";
 
         const auto &elifStmt = ifStmt->elifClauses[i];
@@ -529,7 +646,7 @@ void IRGenerator::generateIfStatement(Node *node)
         }
         if (!elifCondVal->getType()->isIntegerTy(1))
         {
-            elifCondVal = builder.CreateICmpNE(elifCondVal, llvm::ConstantInt::get(elifCondVal->getType(), 0), "elifcond.bool");
+            elifCondVal = funcBuilder.CreateICmpNE(elifCondVal, llvm::ConstantInt::get(elifCondVal->getType(), 0), "elifcond.bool");
         }
 
         llvm::BasicBlock *elifBodyBB = llvm::BasicBlock::Create(context, "elif.body" + std::to_string(i), function);
@@ -537,19 +654,19 @@ void IRGenerator::generateIfStatement(Node *node)
                                                                             : (ifStmt->else_result.has_value() ? llvm::BasicBlock::Create(context, "else") : mergeBB);
 
         std::cerr << "[IR DEBUG] Creating conditional branch for elif " << i << "\n";
-        builder.CreateCondBr(elifCondVal, elifBodyBB, nextElifBB);
+        funcBuilder.CreateCondBr(elifCondVal, elifBodyBB, nextElifBB);
 
-        builder.SetInsertPoint(elifBodyBB);
+        funcBuilder.SetInsertPoint(elifBodyBB);
         std::cerr << "[IR DEBUG] Generating elif body " << i << "\n";
         generateStatement(elif->elif_result.get());
-        if (!builder.GetInsertBlock()->getTerminator())
+        if (!funcBuilder.GetInsertBlock()->getTerminator())
         {
             std::cerr << "[IR DEBUG] Adding branch to ifmerge from elif " << i << "\n";
-            builder.CreateBr(mergeBB);
+            funcBuilder.CreateBr(mergeBB);
         }
         else
         {
-            std::cerr << "[IR DEBUG] Skipping branch " << i << " to ifmerge from elif due to terminator " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+            std::cerr << "[IR DEBUG] Skipping branch " << i << " to ifmerge from elif due to terminator " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
         }
 
         nextBB = nextElifBB;
@@ -559,23 +676,23 @@ void IRGenerator::generateIfStatement(Node *node)
     if (ifStmt->else_result.has_value())
     {
         function->insert(function->end(), nextBB);
-        builder.SetInsertPoint(nextBB);
+        funcBuilder.SetInsertPoint(nextBB);
         std::cerr << "[IR DEBUG] Generating else branch\n";
         generateStatement(ifStmt->else_result.value().get());
-        if (!builder.GetInsertBlock()->getTerminator())
+        if (!funcBuilder.GetInsertBlock()->getTerminator())
         {
             std::cerr << "[IR DEBUG] Adding branch to ifmerge from else\n";
-            builder.CreateBr(mergeBB);
+            funcBuilder.CreateBr(mergeBB);
         }
         else
         {
-            std::cerr << "[IR DEBUG] Skipping branch to ifmerge from else due to terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+            std::cerr << "[IR DEBUG] Skipping branch to ifmerge from else due to terminator: " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
         }
     }
 
     // Finalize with merge block
     function->insert(function->end(), mergeBB);
-    builder.SetInsertPoint(mergeBB);
+    funcBuilder.SetInsertPoint(mergeBB);
     std::cerr << "[IR DEBUG] Finished generating if statement\n";
 }
 
@@ -587,8 +704,8 @@ void IRGenerator::generateForStatement(Node *node)
     if (!forStmt)
         throw std::runtime_error("Invalid for statement");
 
-    llvm::Function *function = builder.GetInsertBlock()->getParent();
-    llvm::BasicBlock *origBB = builder.GetInsertBlock();
+    llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *origBB = funcBuilder.GetInsertBlock();
 
     // initializer
     if (forStmt->initializer)
@@ -604,16 +721,16 @@ void IRGenerator::generateForStatement(Node *node)
     llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "loop.end", function);
 
     // branch to condition
-    builder.CreateBr(condBB);
+    funcBuilder.CreateBr(condBB);
 
     // condition
-    builder.SetInsertPoint(condBB);
+    funcBuilder.SetInsertPoint(condBB);
     std::cerr << "[IR DEBUG] Generating condition\n";
     llvm::Value *condVal = generateExpression(forStmt->condition.get());
     if (!condVal)
     {
         std::cerr << "[IR ERROR] For loop has invalid condition\n";
-        builder.SetInsertPoint(origBB);
+        funcBuilder.SetInsertPoint(origBB);
         return;
     }
 
@@ -621,7 +738,7 @@ void IRGenerator::generateForStatement(Node *node)
     if (it == semantics.metaData.end() || it->second->type.kind != DataType::BOOLEAN)
     {
         std::cerr << "[IR ERROR] For loop condition must evaluate to boolean.\n";
-        builder.SetInsertPoint(origBB);
+        funcBuilder.SetInsertPoint(origBB);
         return;
     }
 
@@ -629,37 +746,37 @@ void IRGenerator::generateForStatement(Node *node)
     if (!condVal->getType()->isIntegerTy(1))
     {
         if (condVal->getType()->isIntegerTy(32))
-            condVal = builder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "loopcond.bool");
+            condVal = funcBuilder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "loopcond.bool");
         else
         {
             std::cerr << "[IR ERROR] For loop condition must be boolean or i32\n";
-            builder.SetInsertPoint(origBB);
+            funcBuilder.SetInsertPoint(origBB);
             return;
         }
     }
 
-    builder.CreateCondBr(condVal, bodyBB, endBB);
+    funcBuilder.CreateCondBr(condVal, bodyBB, endBB);
 
     // body
-    builder.SetInsertPoint(bodyBB);
+    funcBuilder.SetInsertPoint(bodyBB);
     loopBlocksStack.push_back({condBB, stepBB, endBB}); // <-- includes stepBB now
     std::cerr << "[IR DEBUG] Generating loop body\n";
     generateStatement(forStmt->body.get());
     std::cerr << "[IR DEBUG] Finished generating loop body\n";
     loopBlocksStack.pop_back();
 
-    if (!builder.GetInsertBlock()->getTerminator())
+    if (!funcBuilder.GetInsertBlock()->getTerminator())
     {
         std::cerr << "[IR DEBUG] Adding branch to loop.step\n";
-        builder.CreateBr(stepBB);
+        funcBuilder.CreateBr(stepBB);
     }
     else
     {
-        std::cerr << "[IR WARNING] Loop body block already has terminator: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+        std::cerr << "[IR WARNING] Loop body block already has terminator: " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
     }
 
     // step
-    builder.SetInsertPoint(stepBB);
+    funcBuilder.SetInsertPoint(stepBB);
     if (forStmt->step)
     {
         std::cerr << "[IR DEBUG] Generating loop step\n";
@@ -667,15 +784,15 @@ void IRGenerator::generateForStatement(Node *node)
         if (!stepVal)
         {
             std::cerr << "[IR ERROR] loop step generation returned nullptr!\n";
-            builder.CreateBr(condBB); // keep IR consistent
-            builder.SetInsertPoint(origBB);
+            funcBuilder.CreateBr(condBB); // keep IR consistent
+            funcBuilder.SetInsertPoint(origBB);
             return;
         }
     }
-    builder.CreateBr(condBB);
+    funcBuilder.CreateBr(condBB);
 
     // after
-    builder.SetInsertPoint(endBB);
+    funcBuilder.SetInsertPoint(endBB);
 }
 
 void IRGenerator::generateBreakStatement(Node *node)
@@ -687,7 +804,7 @@ void IRGenerator::generateBreakStatement(Node *node)
 
     llvm::BasicBlock *afterBB = loopBlocksStack.back().afterBB;
     std::cerr << "[IR DEBUG] Generating break to " << afterBB->getName().str() << "\n";
-    builder.CreateBr(afterBB);
+    funcBuilder.CreateBr(afterBB);
 }
 
 void IRGenerator::generateContinueStatement(Node *node)
@@ -699,7 +816,7 @@ void IRGenerator::generateContinueStatement(Node *node)
 
     llvm::BasicBlock *condBB = loopBlocksStack.back().condBB;
     std::cerr << "[IR DEBUG] Generating continue to " << condBB->getName().str() << "\n";
-    builder.CreateBr(condBB);
+    funcBuilder.CreateBr(condBB);
 }
 
 // Expression statement IR generator function
@@ -767,11 +884,11 @@ void IRGenerator::generateAssignmentStatement(Node *node)
 
         if (pendingFree)
         {
-            builder.Insert(pendingFree);
+            funcBuilder.Insert(pendingFree);
         }
     }
     // Store the value
-    builder.CreateStore(initValue, targetPtr);
+    funcBuilder.CreateStore(initValue, targetPtr);
     std::cout << "Exited assignment generator\n";
 }
 
@@ -826,7 +943,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
 
     // GEP to the member slot inside this instance (slot type for heap-member is "elem*",
     // so the GEP yields a pointer-to-slot whose type is elem**)
-    llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, baseSym->llvmValue, fieldIndex, childName);
+    llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(structTy, baseSym->llvmValue, fieldIndex, childName);
     if (!fieldPtr)
         throw std::runtime_error("Failed to compute GEP for member '" + childName + "'");
 
@@ -841,21 +958,21 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
         llvm::PointerType *elemPtrTy = elemTy->getPointerTo();
 
         // Load current heap pointer from the slot: heapPtr = load(elem*, fieldPtr)
-        llvm::Value *heapPtr = builder.CreateLoad(elemPtrTy, fieldPtr, childName + "_heap_load");
+        llvm::Value *heapPtr = funcBuilder.CreateLoad(elemPtrTy, fieldPtr, childName + "_heap_load");
 
         // If heapPtr == null -> allocate; otherwise reuse existing pointer.
         llvm::Value *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
-        llvm::Value *isNull = builder.CreateICmpEQ(heapPtr, nullPtr, childName + "_is_null");
+        llvm::Value *isNull = funcBuilder.CreateICmpEQ(heapPtr, nullPtr, childName + "_is_null");
 
-        llvm::Function *parentFn = builder.GetInsertBlock()->getParent();
+        llvm::Function *parentFn = funcBuilder.GetInsertBlock()->getParent();
         llvm::BasicBlock *allocBB = llvm::BasicBlock::Create(context, childName + "_alloc", parentFn);
         llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, childName + "_cont", parentFn);
 
         // Cond branch on null
-        builder.CreateCondBr(isNull, allocBB, contBB);
+        funcBuilder.CreateCondBr(isNull, allocBB, contBB);
 
         // --- allocBB: call sage_alloc(size), bitcast to elemPtrTy, store into slot, branch to contBB
-        builder.SetInsertPoint(allocBB);
+        funcBuilder.SetInsertPoint(allocBB);
 
         llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
         llvm::FunctionCallee sageAllocFn = module->getOrInsertFunction("sage_alloc", i8PtrTy, llvm::Type::getInt64Ty(context));
@@ -865,27 +982,27 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
 
         llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size);
 
-        llvm::Value *rawAlloc = builder.CreateCall(sageAllocFn, {sizeArg}, childName + "_alloc_i8ptr");
+        llvm::Value *rawAlloc = funcBuilder.CreateCall(sageAllocFn, {sizeArg}, childName + "_alloc_i8ptr");
         // bitcast i8* -> elem*
-        llvm::Value *newHeapPtr = builder.CreateBitCast(rawAlloc, elemPtrTy, childName + "_alloc_ptr");
+        llvm::Value *newHeapPtr = funcBuilder.CreateBitCast(rawAlloc, elemPtrTy, childName + "_alloc_ptr");
 
         // store pointer into the struct slot
-        builder.CreateStore(newHeapPtr, fieldPtr);
+        funcBuilder.CreateStore(newHeapPtr, fieldPtr);
         // branch to continuation
-        builder.CreateBr(contBB);
+        funcBuilder.CreateBr(contBB);
 
         // --- contBB: reload heapPtr from slot (now definitely non-null)
-        builder.SetInsertPoint(contBB);
-        llvm::Value *heapPtr2 = builder.CreateLoad(elemPtrTy, fieldPtr, childName + "_heap");
+        funcBuilder.SetInsertPoint(contBB);
+        llvm::Value *heapPtr2 = funcBuilder.CreateLoad(elemPtrTy, fieldPtr, childName + "_heap");
         // use heapPtr2 for storing rhs
-        builder.CreateStore(rhs, heapPtr2);
+        funcBuilder.CreateStore(rhs, heapPtr2);
 
         // After the store, if this member's symbol marks this fieldStmt as last use, free it
         if (memberInfo->isHeap && (memberInfo->lastUseNode == fieldStmt || memberInfo->lastUseNode == /* possibly other node pointer */ memberInfo->node))
         {
             llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
                 "sage_free", llvm::Type::getVoidTy(context), llvm::Type::getInt64Ty(context));
-            builder.CreateCall(sageFreeFn, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)});
+            funcBuilder.CreateCall(sageFreeFn, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)});
         }
 
         // continue building after contBB (builder is already positioned at contBB end)
@@ -893,7 +1010,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
     else
     {
         // Non-heap: store RHS directly into the field slot
-        builder.CreateStore(rhs, fieldPtr);
+        funcBuilder.CreateStore(rhs, fieldPtr);
     }
 }
 
@@ -910,9 +1027,9 @@ void IRGenerator::generateBlockStatement(Node *node)
     {
         std::cerr << "[IR DEBUG] Processing block statement child of type: " << typeid(*stmt).name() << " - " << stmt->toString() << "\n";
         generateStatement(stmt.get());
-        if (builder.GetInsertBlock()->getTerminator())
+        if (funcBuilder.GetInsertBlock()->getTerminator())
         {
-            std::cerr << "[IR DEBUG] Terminator found in block statement child: " << builder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
+            std::cerr << "[IR DEBUG] Terminator found in block statement child: " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
             break;
         }
     }
@@ -953,7 +1070,7 @@ void IRGenerator::generateFunctionStatement(Node *node)
     if (!fnStmt)
         return;
 
-    llvm::BasicBlock *oldInsertPoint = builder.GetInsertBlock();
+    llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
 
     // Checking what the function statement is holding could be a function expression or a function declaration expression
     auto fnExpr = fnStmt->funcExpr.get();
@@ -973,7 +1090,7 @@ void IRGenerator::generateFunctionStatement(Node *node)
     }
 
     if (oldInsertPoint)
-        builder.SetInsertPoint(oldInsertPoint);
+        funcBuilder.SetInsertPoint(oldInsertPoint);
 }
 
 void IRGenerator::generateFunctionDeclarationExpression(Node *node)
@@ -1032,7 +1149,7 @@ void IRGenerator::generateReturnStatement(Node *node)
         retVal = generateExpression(retStmt->return_value.get());
     }
 
-    llvm::Function *currentFunction = builder.GetInsertBlock()->getParent();
+    llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
     if (retVal)
     {
         // Ensure the return type matches
@@ -1040,13 +1157,13 @@ void IRGenerator::generateReturnStatement(Node *node)
         {
             llvm::errs() << "Return type mismatch\n";
         }
-        builder.CreateRet(retVal);
+        funcBuilder.CreateRet(retVal);
     }
     else
     {
         // For void functions
         if (currentFunction->getReturnType()->isVoidTy())
-            builder.CreateRetVoid();
+            funcBuilder.CreateRetVoid();
         else
             llvm::errs() << "Return statement missing value for non-void function\n";
     }
@@ -1092,7 +1209,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
 
         // Compute pointer to the member dynamically
-        llvm::Value *memberPtr = builder.CreateStructGEP(structTy, objectVal, memberIndex, memberName);
+        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, objectVal, memberIndex, memberName);
         if (!memberPtr)
             throw std::runtime_error("No llvm value for '" + memberName + "'");
 
@@ -1100,7 +1217,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         llvm::Type *memberType = getLLVMType(memberIt->second->type);
         if (!memberType)
             throw std::runtime_error("Member Type wasnt retrieved");
-        return builder.CreateLoad(memberType, memberPtr, memberName + "_val");
+        return funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
     }
 
     if (infix->operat.type == TokenType::SCOPE_OPERATOR)
@@ -1137,7 +1254,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
 
         // Compute pointer to the member
-        llvm::Value *memberPtr = builder.CreateStructGEP(structTy, objectVal, memberIndex, memberName);
+        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, objectVal, memberIndex, memberName);
         if (!memberPtr)
             throw std::runtime_error("No llvm value for '" + memberName + "'");
 
@@ -1152,37 +1269,37 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
             llvm::PointerType *elemPtrTy = memberType->getPointerTo();
 
             // Load current heap pointer from the struct slot
-            llvm::Value *heapPtr = builder.CreateLoad(elemPtrTy, memberPtr, memberName + "_heap_load");
+            llvm::Value *heapPtr = funcBuilder.CreateLoad(elemPtrTy, memberPtr, memberName + "_heap_load");
 
             // If null, allocate
             llvm::Value *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
-            llvm::Value *isNull = builder.CreateICmpEQ(heapPtr, nullPtr, memberName + "_is_null");
+            llvm::Value *isNull = funcBuilder.CreateICmpEQ(heapPtr, nullPtr, memberName + "_is_null");
 
-            llvm::Function *parentFn = builder.GetInsertBlock()->getParent();
+            llvm::Function *parentFn = funcBuilder.GetInsertBlock()->getParent();
             llvm::BasicBlock *allocBB = llvm::BasicBlock::Create(context, memberName + "_alloc", parentFn);
             llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, memberName + "_cont", parentFn);
 
-            builder.CreateCondBr(isNull, allocBB, contBB);
+            funcBuilder.CreateCondBr(isNull, allocBB, contBB);
 
             // --- allocBB
-            builder.SetInsertPoint(allocBB);
+            funcBuilder.SetInsertPoint(allocBB);
             llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
             llvm::FunctionCallee sageAllocFn = module->getOrInsertFunction("sage_alloc", i8PtrTy, llvm::Type::getInt64Ty(context));
             uint64_t size = module->getDataLayout().getTypeAllocSize(memberType);
             llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size);
-            llvm::Value *rawAlloc = builder.CreateCall(sageAllocFn, {sizeArg}, memberName + "_alloc_i8ptr");
-            llvm::Value *newHeapPtr = builder.CreateBitCast(rawAlloc, elemPtrTy, memberName + "_alloc_ptr");
-            builder.CreateStore(newHeapPtr, memberPtr);
-            builder.CreateBr(contBB);
+            llvm::Value *rawAlloc = funcBuilder.CreateCall(sageAllocFn, {sizeArg}, memberName + "_alloc_i8ptr");
+            llvm::Value *newHeapPtr = funcBuilder.CreateBitCast(rawAlloc, elemPtrTy, memberName + "_alloc_ptr");
+            funcBuilder.CreateStore(newHeapPtr, memberPtr);
+            funcBuilder.CreateBr(contBB);
 
             // --- contBB
-            builder.SetInsertPoint(contBB);
-            llvm::Value *heapPtr2 = builder.CreateLoad(elemPtrTy, memberPtr, memberName + "_heap");
+            funcBuilder.SetInsertPoint(contBB);
+            llvm::Value *heapPtr2 = funcBuilder.CreateLoad(elemPtrTy, memberPtr, memberName + "_heap");
             return heapPtr2; // return pointer to heap memory
         }
 
         // Non-heap: just load the value
-        return builder.CreateLoad(memberType, memberPtr, memberName + "_val");
+        return funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
     }
 
     llvm::Value *left = generateExpression(infix->left_operand.get());
@@ -1212,14 +1329,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         if (toBits > fromBits)
         {
             if (fromSigned)
-                return builder.CreateSExt(val, llvm::IntegerType::get(context, toBits), "sexttmp");
+                return funcBuilder.CreateSExt(val, llvm::IntegerType::get(context, toBits), "sexttmp");
             else
-                return builder.CreateZExt(val, llvm::IntegerType::get(context, toBits), "zexttmp");
+                return funcBuilder.CreateZExt(val, llvm::IntegerType::get(context, toBits), "zexttmp");
         }
         else
         {
             // Truncation if needed (rare, probably invalid here)
-            return builder.CreateTrunc(val, llvm::IntegerType::get(context, toBits), "trunctmp");
+            return funcBuilder.CreateTrunc(val, llvm::IntegerType::get(context, toBits), "trunctmp");
         }
     };
 
@@ -1234,31 +1351,31 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     // Handle BOOLEAN logical operators (AND, OR)
     if (infix->operat.type == TokenType::AND || infix->operat.type == TokenType::OR)
     {
-        if (left->getType() != builder.getInt1Ty())
-            left = builder.CreateICmpNE(left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
-        if (right->getType() != builder.getInt1Ty())
-            right = builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
+        if (left->getType() != funcBuilder.getInt1Ty())
+            left = funcBuilder.CreateICmpNE(left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
+        if (right->getType() != funcBuilder.getInt1Ty())
+            right = funcBuilder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
 
         if (infix->operat.type == TokenType::AND)
-            return builder.CreateAnd(left, right, "andtmp");
+            return funcBuilder.CreateAnd(left, right, "andtmp");
         else
-            return builder.CreateOr(left, right, "ortmp");
+            return funcBuilder.CreateOr(left, right, "ortmp");
     }
 
     // Handle floating point conversions
     if (resultType.kind == DataType::FLOAT)
     {
         if (isIntegerType(leftType))
-            left = builder.CreateSIToFP(left, llvm::Type::getFloatTy(context), "inttofloat");
+            left = funcBuilder.CreateSIToFP(left, llvm::Type::getFloatTy(context), "inttofloat");
         if (isIntegerType(rightType))
-            right = builder.CreateSIToFP(right, llvm::Type::getFloatTy(context), "inttofloat");
+            right = funcBuilder.CreateSIToFP(right, llvm::Type::getFloatTy(context), "inttofloat");
     }
     else if (resultType.kind == DataType::DOUBLE)
     {
         if (isIntegerType(leftType))
-            left = builder.CreateSIToFP(left, llvm::Type::getDoubleTy(context), "inttodouble");
+            left = funcBuilder.CreateSIToFP(left, llvm::Type::getDoubleTy(context), "inttodouble");
         if (isIntegerType(rightType))
-            right = builder.CreateSIToFP(right, llvm::Type::getDoubleTy(context), "inttodouble");
+            right = funcBuilder.CreateSIToFP(right, llvm::Type::getDoubleTy(context), "inttodouble");
     }
 
     // Now generate code based on operator and result type
@@ -1276,21 +1393,21 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
             switch (infix->operat.type)
             {
             case TokenType::EQUALS:
-                return builder.CreateICmpEQ(left, right, "cmptmp");
+                return funcBuilder.CreateICmpEQ(left, right, "cmptmp");
             case TokenType::NOT_EQUALS:
-                return builder.CreateICmpNE(left, right, "cmptmp");
+                return funcBuilder.CreateICmpNE(left, right, "cmptmp");
             case TokenType::LESS_THAN:
-                return signedInt ? builder.CreateICmpSLT(left, right, "cmptmp")
-                                 : builder.CreateICmpULT(left, right, "cmptmp");
+                return signedInt ? funcBuilder.CreateICmpSLT(left, right, "cmptmp")
+                                 : funcBuilder.CreateICmpULT(left, right, "cmptmp");
             case TokenType::LT_OR_EQ:
-                return signedInt ? builder.CreateICmpSLE(left, right, "cmptmp")
-                                 : builder.CreateICmpULE(left, right, "cmptmp");
+                return signedInt ? funcBuilder.CreateICmpSLE(left, right, "cmptmp")
+                                 : funcBuilder.CreateICmpULE(left, right, "cmptmp");
             case TokenType::GREATER_THAN:
-                return signedInt ? builder.CreateICmpSGT(left, right, "cmptmp")
-                                 : builder.CreateICmpUGT(left, right, "cmptmp");
+                return signedInt ? funcBuilder.CreateICmpSGT(left, right, "cmptmp")
+                                 : funcBuilder.CreateICmpUGT(left, right, "cmptmp");
             case TokenType::GT_OR_EQ:
-                return signedInt ? builder.CreateICmpSGE(left, right, "cmptmp")
-                                 : builder.CreateICmpUGE(left, right, "cmptmp");
+                return signedInt ? funcBuilder.CreateICmpSGE(left, right, "cmptmp")
+                                 : funcBuilder.CreateICmpUGE(left, right, "cmptmp");
             default:
                 throw std::runtime_error("Unsupported int comparison operator");
             }
@@ -1300,17 +1417,17 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
             switch (infix->operat.type)
             {
             case TokenType::EQUALS:
-                return builder.CreateFCmpOEQ(left, right, "fcmptmp");
+                return funcBuilder.CreateFCmpOEQ(left, right, "fcmptmp");
             case TokenType::NOT_EQUALS:
-                return builder.CreateFCmpONE(left, right, "fcmptmp");
+                return funcBuilder.CreateFCmpONE(left, right, "fcmptmp");
             case TokenType::LESS_THAN:
-                return builder.CreateFCmpOLT(left, right, "fcmptmp");
+                return funcBuilder.CreateFCmpOLT(left, right, "fcmptmp");
             case TokenType::LT_OR_EQ:
-                return builder.CreateFCmpOLE(left, right, "fcmptmp");
+                return funcBuilder.CreateFCmpOLE(left, right, "fcmptmp");
             case TokenType::GREATER_THAN:
-                return builder.CreateFCmpOGT(left, right, "fcmptmp");
+                return funcBuilder.CreateFCmpOGT(left, right, "fcmptmp");
             case TokenType::GT_OR_EQ:
-                return builder.CreateFCmpOGE(left, right, "fcmptmp");
+                return funcBuilder.CreateFCmpOGE(left, right, "fcmptmp");
             default:
                 throw std::runtime_error("Unsupported float comparison operator");
             }
@@ -1325,33 +1442,33 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     {
     case TokenType::PLUS:
         if (isIntegerType(resultType.kind))
-            return builder.CreateAdd(left, right, "addtmp");
+            return funcBuilder.CreateAdd(left, right, "addtmp");
         else
-            return builder.CreateFAdd(left, right, "faddtmp");
+            return funcBuilder.CreateFAdd(left, right, "faddtmp");
 
     case TokenType::MINUS:
         if (isIntegerType(resultType.kind))
-            return builder.CreateSub(left, right, "subtmp");
+            return funcBuilder.CreateSub(left, right, "subtmp");
         else
-            return builder.CreateFSub(left, right, "fsubtmp");
+            return funcBuilder.CreateFSub(left, right, "fsubtmp");
 
     case TokenType::ASTERISK:
         if (isIntegerType(resultType.kind))
-            return builder.CreateMul(left, right, "multmp");
+            return funcBuilder.CreateMul(left, right, "multmp");
         else
-            return builder.CreateFMul(left, right, "fmultmp");
+            return funcBuilder.CreateFMul(left, right, "fmultmp");
 
     case TokenType::DIVIDE:
         if (isIntegerType(resultType.kind))
-            return isSignedInteger(resultType.kind) ? builder.CreateSDiv(left, right, "divtmp")
-                                                    : builder.CreateUDiv(left, right, "divtmp");
+            return isSignedInteger(resultType.kind) ? funcBuilder.CreateSDiv(left, right, "divtmp")
+                                                    : funcBuilder.CreateUDiv(left, right, "divtmp");
         else
-            return builder.CreateFDiv(left, right, "fdivtmp");
+            return funcBuilder.CreateFDiv(left, right, "fdivtmp");
 
     case TokenType::MODULUS:
         if (isIntegerType(resultType.kind))
-            return isSignedInteger(resultType.kind) ? builder.CreateSRem(left, right, "modtmp")
-                                                    : builder.CreateURem(left, right, "modtmp");
+            return isSignedInteger(resultType.kind) ? funcBuilder.CreateSRem(left, right, "modtmp")
+                                                    : funcBuilder.CreateURem(left, right, "modtmp");
         else
             throw std::runtime_error("Modulus not supported for FLOAT or DOUBLE at line " +
                                      std::to_string(infix->operat.line));
@@ -1372,14 +1489,14 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
 
     llvm::Value *operand;
 
-    //If the operand is an identifier
+    // If the operand is an identifier
     if (auto identOperand = dynamic_cast<Identifier *>(prefix->operand.get()))
     {
         operand = generateIdentifierAddress(prefix->operand.get()).address;
     }
 
-    //If the operand is a normal literal
-    operand=generateExpression(prefix->operand.get());
+    // If the operand is a normal literal
+    operand = generateExpression(prefix->operand.get());
 
     if (!operand)
         throw std::runtime_error("Failed to generate IR for prefix operand");
@@ -1418,15 +1535,15 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
     {
     case TokenType::MINUS:
         if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
-            return builder.CreateFNeg(operand, llvm::Twine("fnegtmp"));
+            return funcBuilder.CreateFNeg(operand, llvm::Twine("fnegtmp"));
         else if (isIntType(resultType.kind))
-            return builder.CreateNeg(operand, llvm::Twine("negtmp"));
+            return funcBuilder.CreateNeg(operand, llvm::Twine("negtmp"));
         else
             throw std::runtime_error("Unsupported type for unary minus");
 
     case TokenType::BANG:
         // Boolean NOT
-        return builder.CreateNot(operand, llvm::Twine("nottmp"));
+        return funcBuilder.CreateNot(operand, llvm::Twine("nottmp"));
 
     case TokenType::PLUS_PLUS:
     case TokenType::MINUS_MINUS:
@@ -1453,7 +1570,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
         if (!varType)
             throw std::runtime_error("Invalid type for variable: " + ident->identifier.TokenLiteral);
 
-        llvm::Value *loaded = builder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
+        llvm::Value *loaded = funcBuilder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
         llvm::Value *delta = nullptr;
         if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
@@ -1473,18 +1590,18 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
         llvm::Value *updated = nullptr;
         if (prefix->operat.type == TokenType::PLUS_PLUS)
             updated = (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
-                          ? builder.CreateFAdd(loaded, delta, llvm::Twine("preincfptmp"))
-                          : builder.CreateAdd(loaded, delta, llvm::Twine("preinctmp"));
+                          ? funcBuilder.CreateFAdd(loaded, delta, llvm::Twine("preincfptmp"))
+                          : funcBuilder.CreateAdd(loaded, delta, llvm::Twine("preinctmp"));
         else
             updated = (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
-                          ? builder.CreateFSub(loaded, delta, llvm::Twine("predecfptmp"))
-                          : builder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
+                          ? funcBuilder.CreateFSub(loaded, delta, llvm::Twine("predecfptmp"))
+                          : funcBuilder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
 
-        builder.CreateStore(updated, varPtr);
+        funcBuilder.CreateStore(updated, varPtr);
 
         if (pendingFree)
         {
-            builder.Insert(pendingFree);
+            funcBuilder.Insert(pendingFree);
         }
         return updated;
     }
@@ -1555,7 +1672,7 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
     if (!varType)
         throw std::runtime_error("Invalid type for variable: " + identifier->identifier.TokenLiteral);
 
-    llvm::Value *originalValue = builder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
+    llvm::Value *originalValue = funcBuilder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
     llvm::Value *delta = nullptr;
     if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
@@ -1576,22 +1693,22 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node)
 
     if (postfix->operator_token.type == TokenType::PLUS_PLUS)
         updatedValue = (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
-                           ? builder.CreateFAdd(originalValue, delta, llvm::Twine("finc"))
-                           : builder.CreateAdd(originalValue, delta, llvm::Twine("inc"));
+                           ? funcBuilder.CreateFAdd(originalValue, delta, llvm::Twine("finc"))
+                           : funcBuilder.CreateAdd(originalValue, delta, llvm::Twine("inc"));
     else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
         updatedValue = (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)
-                           ? builder.CreateFSub(originalValue, delta, llvm::Twine("fdec"))
-                           : builder.CreateSub(originalValue, delta, llvm::Twine("dec"));
+                           ? funcBuilder.CreateFSub(originalValue, delta, llvm::Twine("fdec"))
+                           : funcBuilder.CreateSub(originalValue, delta, llvm::Twine("dec"));
     else
         throw std::runtime_error("Unsupported postfix operator: " + postfix->operator_token.TokenLiteral +
                                  " at line " + std::to_string(postfix->operator_token.line));
 
-    builder.CreateStore(updatedValue, varPtr);
+    funcBuilder.CreateStore(updatedValue, varPtr);
 
     if (pendingFree)
     {
         // Insert the prepared free at the current insertion point
-        builder.Insert(pendingFree); // inserts at current position (after store)
+        funcBuilder.Insert(pendingFree); // inserts at current position (after store)
     }
 
     // Return original value since postfix
@@ -1618,7 +1735,7 @@ llvm::Value *IRGenerator::generateStringLiteral(Node *node)
         throw std::runtime_error("Type error: Expected STRING or NULLABLE_STR for StringLiteral ");
     }
     std::string raw = strLit->string_token.TokenLiteral;
-    llvm::Value *strConst = builder.CreateGlobalStringPtr(raw);
+    llvm::Value *strConst = funcBuilder.CreateGlobalStringPtr(raw);
     return strConst;
 }
 
@@ -1967,65 +2084,51 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
 
     const std::string &identName = identExpr->identifier.TokenLiteral;
 
-    // Lookup symbol in metaData
+    // Lookup symbol
     auto metaIt = semantics.metaData.find(identExpr);
     if (metaIt == semantics.metaData.end())
         throw std::runtime_error("Unidentified identifier '" + identName + "'");
 
     auto sym = metaIt->second;
     if (sym->hasError)
-    {
         throw std::runtime_error("Semantic error detected ");
-    }
 
-    llvm::Value *variablePtr = generateIdentifierAddress(identExpr).address;
-    if (!variablePtr)
-        throw std::runtime_error("No llvm value was assigned for '" + identName + "'");
+    // Get address and possible pending free
+    AddressAndPendingFree addrInfo = generateIdentifierAddress(identExpr);
+    llvm::Value *variableAddr = addrInfo.address;
+    if (!variableAddr)
+        throw std::runtime_error("No llvm address for '" + identName + "'");
 
-    // Check if this symbol is a struct/component instance
+    // If we have a pending free, insert it AFTER we load (we'll insert it here)
+    llvm::CallInst *pendingFree = addrInfo.pendingFree;
+
+    // Component instance -> return pointer to the struct instance (address is already correct)
     auto compIt = componentTypes.find(sym->type.resolvedName);
     if (compIt != componentTypes.end())
     {
-        if (!variablePtr)
-        {
-            std::cerr << "[ERROR] Component instance '" << identName
-                      << "' has null llvmValue!" << std::endl;
-            throw std::runtime_error("Component llvmValue null");
-        }
-
-        // Always return pointer to the struct instance
-        return variablePtr;
+        return variableAddr;
     }
 
+    // Heap scalar: variableAddr is a T* (runtime pointer). Load T from it.
     if (sym->isHeap)
     {
-        // variablePtr should be a pointer to the element type (we stored typed pointer in let)
         llvm::Type *elemTy = sym->llvmType;
         if (!elemTy)
             throw std::runtime_error("llvmType null for heap scalar '" + identName + "'");
 
-        // Ensure pointer type matches expected: if not, bitcast to elemTy*
+        // variableAddr should be T* (address of object). If not, bitcast it.
         llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
-        if (variablePtr->getType() != expectedPtrTy)
+        if (variableAddr->getType() != expectedPtrTy)
+            variableAddr = funcBuilder.CreateBitCast(variableAddr, expectedPtrTy, identName + "_ptr_typed");
+
+        // Load the value
+        llvm::Value *loadedVal = funcBuilder.CreateLoad(elemTy, variableAddr, identName + "_val");
+
+        // If we prepared a pending free, insert it NOW (after load)
+        if (pendingFree)
         {
-            variablePtr = builder.CreateBitCast(variablePtr, expectedPtrTy, identName + "_ptr_typed");
-        }
-
-        // Load the value first (so we can return it)
-        llvm::Value *loadedVal = builder.CreateLoad(elemTy, variablePtr, identName + "_val");
-
-        // If this identifier is the last use, emit sage_free(size) AFTER loading
-        if ((sym->lastUseNode == identExpr) && (sym->refCount == 0))
-        {
-            // get or insert sage_free: void sage_free(i64)
-            llvm::FunctionCallee sageFreeFunction = module->getOrInsertFunction(
-                "sage_free",
-                llvm::Type::getVoidTy(context),
-                llvm::Type::getInt64Ty(context));
-
-            // emit call with the known component size
-            builder.CreateCall(sageFreeFunction,
-                               {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)});
+            // Insert the call instruction into current block before next instruction
+            funcBuilder.Insert(pendingFree);
         }
 
         std::cout << "[DEBUG] Returning heap scalar '" << identName << "' (lastUse="
@@ -2033,22 +2136,16 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
         return loadedVal;
     }
 
-    auto identType = getLLVMType(sym->type);
-    // Scalar case: pointer -> load
-    if (variablePtr->getType()->isPointerTy())
-    {
-        if (!identType)
-            throw std::runtime_error("llvmType null for scalar '" + identName + "'");
-        return builder.CreateLoad(identType, variablePtr, identName + "_val");
-    }
+    // Non-heap scalar: variableAddr is a pointer to T, just load
+    llvm::Type *identType = getLLVMType(sym->type);
+    if (!identType)
+        throw std::runtime_error("llvmType null for scalar '" + identName + "'");
 
-    if (!variablePtr)
-    {
-        throw std::runtime_error("Variable ptr is null ");
-    }
+    // variableAddr should already be a pointer; load from it
+    llvm::Value *val = funcBuilder.CreateLoad(identType, variableAddr, identName + "_val");
 
     std::cout << "ENDED IDENTIFIER GEN\n";
-    return variablePtr;
+    return val;
 }
 
 llvm::Value *IRGenerator::generateAddressExpression(Node *node)
@@ -2120,7 +2217,7 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node)
         throw std::runtime_error("Cannot dereference non-pointer type");
 
     // Loading the actual address stored in the pointer address(Address of the pointee)
-    auto loadedPointer = builder.CreateLoad(pointerType, pointerAddress, name + "_addr");
+    auto loadedPointer = funcBuilder.CreateLoad(pointerType, pointerAddress, name + "_addr");
     if (!loadedPointer)
         throw std::runtime_error("Loaded pointer not created");
 
@@ -2129,7 +2226,7 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node)
     if (!elementType)
         throw std::runtime_error("Failed to generate llvm type for pointee type '" + derefSym->type.resolvedName + "'");
 
-    auto finalValue = builder.CreateLoad(elementType, loadedPointer, name + "_val");
+    auto finalValue = funcBuilder.CreateLoad(elementType, loadedPointer, name + "_val");
     if (!finalValue)
         throw std::runtime_error("Failed to generate dereference value");
 
@@ -2143,10 +2240,7 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
 
     auto identExpr = dynamic_cast<Identifier *>(node);
     if (!identExpr)
-    {
-        std::cout << "Got node " << node->toString() << "\n";
         throw std::runtime_error("Invalid identifier expression: " + node->toString());
-    }
 
     const std::string &identName = identExpr->identifier.TokenLiteral;
     auto metaIt = semantics.metaData.find(identExpr);
@@ -2161,31 +2255,45 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
     if (!variablePtr)
         throw std::runtime_error("No llvm value for '" + identName + "'");
 
-    // Component instance -> pointer to struct
+    // Component instance -> pointer to struct (unchanged)
     auto compIt = componentTypes.find(sym->type.resolvedName);
     if (compIt != componentTypes.end())
     {
-        out.address = variablePtr;
+        out.address = variablePtr; // already a pointer to struct instance
     }
     else
     {
         // scalar/heap -> ensure typed pointer
         if (sym->isHeap)
         {
+            std::cout << "The identifier is heap raised\n";
             llvm::Type *elemTy = sym->llvmType;
             if (!elemTy)
                 throw std::runtime_error("llvmType null for heap scalar '" + identName + "'");
-            llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
-            if (variablePtr->getType() != expectedPtrTy)
+
+            // If sym->llvmValue is a GlobalVariable (the module slot that stores T*), we must load the runtime pointer from it.
+            if (auto *gv = llvm::dyn_cast<llvm::GlobalVariable>(variablePtr))
             {
-                variablePtr = builder.CreateBitCast(variablePtr, expectedPtrTy, identName + "_ptr_typed");
+                std::cout << "Inside global heap var path PATH1 \n";
+                llvm::PointerType *ptrType = llvm::PointerType::get(funcBuilder.getContext(), 0); // Generic ptr type
+                llvm::Value *runtimePtr = funcBuilder.CreateLoad(ptrType, gv, identName + "_runtime_ptr");
+                out.address = runtimePtr; // address usable for subsequent loads/stores
             }
-            out.address = variablePtr;
+            else
+            {
+                std::cout << "Inside global heap var path PATH2c \n";
+                // variablePtr might already be a direct pointer (e.g., alloca or bitcast), ensure type matches
+                llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
+                if (variablePtr->getType() != expectedPtrTy)
+                    variablePtr = funcBuilder.CreateBitCast(variablePtr, expectedPtrTy, identName + "_ptr_typed");
+                out.address = variablePtr;
+            }
         }
         else
         {
             if (variablePtr->getType()->isPointerTy())
             {
+                std::cout << "Taken raw_ptr path\n";
                 out.address = variablePtr;
             }
             else
@@ -2195,8 +2303,7 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
         }
     }
 
-    // If this identifier is the last use, prepare (but do NOT insert) the sage_free call.
-    // We'll create a CallInst but not insert into any block; the caller will insert it at the right spot.
+    // Prepare pending free call (create CallInst but don't insert)
     if (sym->isHeap)
     {
         if ((sym->lastUseNode == identExpr) && (sym->refCount == 0))
@@ -2206,14 +2313,11 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
                 llvm::Type::getVoidTy(context),
                 llvm::Type::getInt64Ty(context));
 
-            // Prepare size constant
             llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
 
-            // Create call instruction WITHOUT inserting it into a block.
-            // Use CallInst::Create and do not provide InsertBefore (nullptr) — this yields an instruction that is not attached.
             llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn, {sizeArg});
             callInst->setCallingConv(llvm::CallingConv::C);
-            // Do NOT insert yet.
+            // Not inserted yet — caller will insert before/after as needed
             out.pendingFree = callInst;
         }
     }
@@ -2295,7 +2399,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
         if (componentInstance->getType()->isPointerTy())
         {
             // bitcast to expected pointer type
-            componentInstance = builder.CreateBitCast(componentInstance, expectedPtrTy, (fieldName + "_instance_cast").c_str());
+            componentInstance = funcBuilder.CreateBitCast(componentInstance, expectedPtrTy, (fieldName + "_instance_cast").c_str());
         }
         else
         {
@@ -2304,7 +2408,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
     }
 
     // Now get the pointer to the field
-    llvm::Value *fieldPtr = builder.CreateStructGEP(structTy, componentInstance, (unsigned)memberIndex, fieldName + "_ptr");
+    llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(structTy, componentInstance, (unsigned)memberIndex, fieldName + "_ptr");
     if (!fieldPtr)
     {
         throw std::runtime_error("CreateStructGEP failed for field '" + fieldName + "' index " + std::to_string(memberIndex));
@@ -2326,7 +2430,7 @@ llvm::Value *IRGenerator::generateBlockExpression(Node *node)
     for (const auto &stmts : blockExpr->statements)
     {
         // Check if the current block is already terminated by a return or branch
-        if (builder.GetInsertBlock()->getTerminator())
+        if (funcBuilder.GetInsertBlock()->getTerminator())
         {
             std::cout << "SKIPPING statement - block terminated\n";
             break;
@@ -2404,7 +2508,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
 
     // Creating the entry block
     llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
-    builder.SetInsertPoint(entry);
+    funcBuilder.SetInsertPoint(entry);
 
     // Binding parameters to namedValues
     auto argIter = fn->arg_begin();
@@ -2416,8 +2520,8 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
         {
             throw std::runtime_error("Failed to find paremeter meta data");
         }
-        llvm::AllocaInst *alloca = builder.CreateAlloca(getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
-        builder.CreateStore(&(*argIter), alloca);
+        llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
+        funcBuilder.CreateStore(&(*argIter), alloca);
         pIt->second->llvmValue = alloca;
 
         argIter++;
@@ -2470,7 +2574,7 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
     }
 
     // Emitting the function call itself
-    llvm::Value *call = builder.CreateCall(calledFunc, argsV, "calltmp");
+    llvm::Value *call = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
 
     // Check if the function return type is void
     if (calledFunc->getReturnType()->isVoidTy())
@@ -2875,7 +2979,7 @@ unsigned IRGenerator::getIntegerBitWidth(DataType dt)
 
 bool IRGenerator::inFunction()
 {
-    return builder.GetInsertBlock() != nullptr;
+    return funcBuilder.GetInsertBlock() != nullptr;
 }
 
 char *IRGenerator::unnitoa(int val, char *buf)
@@ -2947,13 +3051,13 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
         auto fd = llvm::ConstantInt::get(i32Ty, 1); // stdout
 
         // print main string
-        auto len = builder.CreateCall(strlenFn, {strVal});
-        builder.CreateCall(writeFn, {fd, strVal, len});
+        auto len = funcBuilder.CreateCall(strlenFn, {strVal});
+        funcBuilder.CreateCall(writeFn, {fd, strVal, len});
 
         // print newline
-        llvm::Value *newline = builder.CreateGlobalStringPtr("\n");
-        auto newLen = builder.CreateCall(strlenFn, {newline});
-        builder.CreateCall(writeFn, {fd, newline, newLen});
+        llvm::Value *newline = funcBuilder.CreateGlobalStringPtr("\n");
+        auto newLen = funcBuilder.CreateCall(strlenFn, {newline});
+        funcBuilder.CreateCall(writeFn, {fd, newline, newLen});
     };
 
     auto printInt = [&](llvm::Value *intVal)
@@ -2982,7 +3086,7 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
         {
             // Compile-time constant
             unnitoa(static_cast<int>(constInt->getSExtValue()), buf);
-            llvm::Value *strVal = builder.CreateGlobalStringPtr(buf);
+            llvm::Value *strVal = funcBuilder.CreateGlobalStringPtr(buf);
             printString(strVal);
         }
         else if (intVal->getType()->isPointerTy())
@@ -2990,15 +3094,15 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
             std::cout << "Branched to pinter print";
             // Stack/heap integer pointer
             llvm::Type *loadedTy = llvm::cast<llvm::PointerType>(intVal->getType());
-            llvm::Value *runtimeInt = builder.CreateLoad(loadedTy, intVal, "runtime_int");
+            llvm::Value *runtimeInt = funcBuilder.CreateLoad(loadedTy, intVal, "runtime_int");
 
             // Allocate buffer
             llvm::Type *i8Ty = llvm::Type::getInt8Ty(module->getContext());
-            llvm::Value *bufAlloca = builder.CreateAlloca(llvm::ArrayType::get(i8Ty, 20), nullptr, "int_buf");
-            llvm::Value *bufPtr = builder.CreatePointerCast(bufAlloca, llvm::PointerType::get(i8Ty, 0));
+            llvm::Value *bufAlloca = funcBuilder.CreateAlloca(llvm::ArrayType::get(i8Ty, 20), nullptr, "int_buf");
+            llvm::Value *bufPtr = funcBuilder.CreatePointerCast(bufAlloca, llvm::PointerType::get(i8Ty, 0));
             // Call in-code helper directly
 
-            builder.CreateCall(unnitoaFn, {runtimeInt, bufPtr});
+            funcBuilder.CreateCall(unnitoaFn, {runtimeInt, bufPtr});
             printString(bufPtr);
         }
         else if (intVal->getType()->isIntegerTy(32))
@@ -3006,11 +3110,11 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
             std::cout << "Branching to SSA print\n";
             // Immediate runtime i32 value (not a pointer)
             llvm::Type *i8Ty = llvm::Type::getInt8Ty(module->getContext());
-            llvm::Value *bufAlloca = builder.CreateAlloca(llvm::ArrayType::get(i8Ty, 20), nullptr, "int_buf");
-            llvm::Value *bufPtr = builder.CreatePointerCast(bufAlloca, llvm::PointerType::get(i8Ty, 0));
+            llvm::Value *bufAlloca = funcBuilder.CreateAlloca(llvm::ArrayType::get(i8Ty, 20), nullptr, "int_buf");
+            llvm::Value *bufPtr = funcBuilder.CreatePointerCast(bufAlloca, llvm::PointerType::get(i8Ty, 0));
 
             // Pass the integer value directly
-            builder.CreateCall(unnitoaFn, {intVal, bufPtr});
+            funcBuilder.CreateCall(unnitoaFn, {intVal, bufPtr});
             printString(bufPtr);
         }
 
@@ -3041,13 +3145,58 @@ void IRGenerator::dumpIR()
 
 bool IRGenerator::currentBlockIsTerminated()
 {
-    llvm::BasicBlock *bb = builder.GetInsertBlock();
+    llvm::BasicBlock *bb = funcBuilder.GetInsertBlock();
     return bb && bb->getTerminator();
 }
 
 llvm::Module &IRGenerator::getLLVMModule()
 {
     return *module;
+}
+
+void IRGenerator::generateSageInitCall()
+{
+    // Safety check just in case
+    if (isSageInitCalled)
+        return;
+
+    llvm::FunctionType *funcType = llvm::FunctionType::get(
+        llvm::Type::getInt32Ty(context), false);
+
+    // --- Call sage_init upfront ---
+    llvm::Function *initFunc = module->getFunction("sage_init");
+    if (!initFunc)
+    {
+        llvm::FunctionType *initType = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(context),
+            {llvm::Type::getInt64Ty(context)}, false);
+
+        initFunc = llvm::Function::Create(
+            initType, llvm::Function::ExternalLinkage, "sage_init", module.get());
+    }
+
+    llvm::IRBuilder<> initBuilder(heapInitFnEntry, heapInitFnEntry->begin());
+
+    initBuilder.CreateCall(initFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), totalHeapSize)});
+    std::cout << "Calling sage init \n";
+    isSageInitCalled = true; // Toggle this to true to mark that sage init was called
+}
+
+void IRGenerator::generateSageDestroyCall()
+{
+    llvm::Function *destroyFunc = module->getFunction("sage_destroy");
+    if (!destroyFunc)
+    {
+        llvm::FunctionType *destroyType = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(context), {}, false);
+
+        destroyFunc = llvm::Function::Create(
+            destroyType, llvm::Function::ExternalLinkage, "sage_destroy", module.get());
+    }
+
+    funcBuilder.CreateCall(destroyFunc, {});
+    std::cout << "Calling sage destroy\n";
+    isSageDestroyCalled = true; // Toggle this to true to mark that sage destroy was called
 }
 
 bool IRGenerator::emitObjectFile(const std::string &filename)
