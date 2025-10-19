@@ -287,6 +287,9 @@ private:
     // Walking the shout statement
     void walkShoutStatement(Node *node);
 
+    // Walking Qualify statement
+    void walkQualifyStatement(Node *node);
+
     // HELPER FUNCTIONS
     void registerWalkerFunctions();
     ResolvedType inferInfixExpressionType(Node *node);

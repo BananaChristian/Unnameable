@@ -5,6 +5,9 @@
 
 #define CPPREST_FORCE_REBUILD
 
+#define COLOR_RESET "\033[0m"
+#define COLOR_RED "\033[31m"
+
 Semantics::Semantics(std::string &fileName) : fileName(fileName)
 {
     symbolTable.push_back({});
@@ -125,6 +128,9 @@ void Semantics::registerWalkerFunctions()
 
     // Walker registration for the shout system
     walkerFunctionsMap[typeid(ShoutStatement)] = &Semantics::walkShoutStatement;
+
+    // Wlaker registration for the qualify statement
+    walkerFunctionsMap[typeid(QualifyStatement)] = &Semantics::walkQualifyStatement;
 }
 
 ResolvedType Semantics::inferNodeDataType(Node *node)
@@ -1140,7 +1146,7 @@ ArrayMeta Semantics::getArrayMeta(Node *node)
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
 {
-    std::cerr << "[SEMANTIC ERROR] " << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << " in file: " << fileName << "\n";
+    std::cerr << COLOR_RED << "[SEMANTIC ERROR] " << COLOR_RESET << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << " in file: " << fileName << "\n";
 }
 
 bool Semantics::isInteger(const ResolvedType &t)

@@ -553,6 +553,26 @@ void Semantics::walkFunctionCallExpression(Node *node)
               << "' with return type: " << callSymbol->type.resolvedName << "\n";
 }
 
+void Semantics::walkQualifyStatement(Node *node)
+{
+    auto qualifyStmt = dynamic_cast<QualifyStatement *>(node);
+    if (!qualifyStmt)
+        return;
+
+    auto qualifyName = qualifyStmt->expr->expression.TokenLiteral;
+    auto line = qualifyStmt->expr->expression.line;
+    auto col = qualifyStmt->expr->expression.column;
+
+    // Checking if the name main has been used anywhere
+    // Looking through the symbolTable
+    auto mainSym = resolveSymbolInfo(qualifyName);
+    if (mainSym)
+    {
+        logSemanticErrors("Already used '" + qualifyName + "'", line, col);
+        return;
+    }
+}
+
 void Semantics::walkShoutStatement(Node *node)
 {
     auto shoutStmt = dynamic_cast<ShoutStatement *>(node);
