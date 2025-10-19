@@ -1374,13 +1374,13 @@ struct AliasStatement : Statement
 struct QualifyStatement : Statement
 {
     Token qualify_key;
-    Token main_key;
+    std::unique_ptr<Expression> expr;
     std::string toString() override
     {
-        return "Qualify Statement: " + qualify_key.TokenLiteral + " " + main_key.TokenLiteral;
+        return "Qualify Statement: " + qualify_key.TokenLiteral + " " + expr->toString();
     }
 
-    QualifyStatement(Token qualify, Token main) : Statement(qualify), qualify_key(qualify), main_key(main) {};
+    QualifyStatement(Token qualify, std::unique_ptr<Expression> main) : Statement(qualify), qualify_key(qualify), expr(std::move(main)) {};
 };
 
 // Merge statement
