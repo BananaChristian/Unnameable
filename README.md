@@ -518,14 +518,14 @@ ref mut int y -> &x; #Error: Since a mutable reference cannot be made to an immu
 References must be made to heap raised values this way the compiler can guarantee that ur not making a reference to a non existant variable. So basically if u want to use references heap raise them
 ```
 int a=9;
-ref int b => &a; #Error since u can't reference a non-heap raised variable
+ref int b -> &a; #Error since u can't reference a non-heap raised variable
 ```
 
 *Usage of reference variables*
 Reference variables must reference one target, you cannot reassign the target to which they point 
 ```
 heap mut int x=19;
-ref mut int y=> &x;
+ref mut int y-> &x;
 
 heap mut int z=23;
 y = &z; #Error since u cannot change the variable reference y is already pointing to
@@ -559,7 +559,7 @@ What I am trying to say is pointer types are very strict there is no casting bet
 ```
 ptr p=> &x; #pointer 'p' will be infered to a int_ptr
 uint y=18u;
-ptr int z => &y; #Error since you told the compiler 'z' is an int_ptr and now you are giving it a uint_ptr
+ptr int z -> &y; #Error since you told the compiler 'z' is an int_ptr and now you are giving it a uint_ptr
 ```
 
 Inorder to use pointers in Unnameable you must always initialize the pointer with an address this is to atleast tell the compiler that you're pointer is not null atleast in the beginning(Some safety is better than none)
@@ -570,17 +570,17 @@ Unlike references where u can only refer to a heap raise variable for safety, Po
 Quick note you cannot directly heap raise a pointer it inherits its heapiness from the address it stores 
 ```
 heap int x=10;
-ptr p => &x; #This is a heap raised pointer since x is heap raised it is safe 
+ptr p -> &x; #This is a heap raised pointer since x is heap raised it is safe 
 
 ##
 int x =10;
-ptr p => &x; #This is a stack pointer it is not safe the user must be careful when using this as they could dereference it and yet x doesnt exist
+ptr p -> &x; #This is a stack pointer it is not safe the user must be careful when using this as they could dereference it and yet x doesnt exist
 ##
 ```
 
 You cannot reassign to an immutable pointer by the way if you want to do that you must specify that the pointer is mutable
 ```
-ptr mut p=> &x;
+ptr mut p -> &x;
 p=&y; #This reassignment is allowed since pointer 'p' is mutable
 ```
 
@@ -591,13 +591,13 @@ Okay so to dereference a pointer in Unnameable I decided the syntax to be `deref
 Anyways dereferencing is the usual it is a way to access the contents of the address the pointer is storing 
 ```
 int x= 10;
-ptr p => &x;
+ptr p -> &x;
 deref p= 16; # I am dereferencing 'p' so I can manipulate the value of x 
 ```
 A dereference has the same mutability and heap rules  as the target
 ```
 mut int x=7;
-ptr int p => &x;
+ptr int p -> &x;
 deref p=10; #This is allowed since x is mutable
 ```
 
@@ -606,6 +606,7 @@ deref p=10; #This is allowed since x is mutable
 ## Requirements
 - C++17 or later
 - g++ or clang
+- LLVM 18
 - Make(optional for building)
 
 ## Philosophy
