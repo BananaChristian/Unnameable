@@ -550,12 +550,6 @@ Token Lexer::tokenize()
             advance();
             return Token{"==", TokenType::EQUALS, tokenLine, tokenColumn};
         }
-        else if (peekChar() == U'>')
-        {
-            advance();
-            advance();
-            return Token{"=>", TokenType::ARROW, tokenLine, tokenColumn};
-        }
         else
         {
             advance();
@@ -621,6 +615,12 @@ Token Lexer::tokenize()
             advance();
             advance();
             return Token{"--", TokenType::MINUS_MINUS, tokenLine, tokenColumn};
+        }
+        else if (peekChar() == U'>')
+        {
+            advance();
+            advance();
+            return Token{"->", TokenType::ARROW, tokenLine, tokenColumn};
         }
         else
         {
