@@ -14,7 +14,8 @@ enum class TokenType
     DIVIDE,      ///
     MODULUS,     //"%"
 
-    ARROW,        //=>
+    ARROW,        //->
+
 
     // Logical Operators
     EQUALS,       //==
