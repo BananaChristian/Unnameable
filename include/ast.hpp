@@ -691,7 +691,7 @@ struct ReferenceStatement : Statement
         std::string valueStr = "";
         if (referee)
         {
-            valueStr += " => " + referee->toString();
+            valueStr += " -> " + referee->toString();
         }
 
         return "Reference Statement: " + ref_token.TokenLiteral + " " + mutStr + typeStr + " " + referer->toString() + valueStr;
@@ -735,7 +735,7 @@ struct PointerStatement : Statement
         std::string valueStr = "";
         if (value)
         {
-            valueStr += " => " + value->toString();
+            valueStr += " -> " + value->toString();
         }
         return "Pointer Statement: " + ptr_token.TokenLiteral + " " + mutStr + typeStr + " " + name->toString() + valueStr;
     };
