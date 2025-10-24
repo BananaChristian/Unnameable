@@ -138,7 +138,7 @@ void IRGenerator::generateLetStatement(Node *node)
     llvm::BasicBlock *insertBlock = funcBuilder.GetInsertBlock();
     std::cout << "[DEBUG] Builder InsertBlock is: " << (insertBlock ? insertBlock->getName().str() : "NULL") << "\n";
 
-    // === GLOBAL SCOPE HANDLING (No insert block) ===
+    // === GLOBAL SCOPE HANDLING (No function insert block) ===
     if (!funcBuilder.GetInsertBlock())
     {
         std::cout << "No insert block detected\n";
@@ -149,7 +149,8 @@ void IRGenerator::generateLetStatement(Node *node)
         }
         else
         {
-            generateGlobalScalarLet(sym, letName);
+            auto val = dynamic_cast<Expression *>(letStmt->value.get());
+            generateGlobalScalarLet(sym, letName, val);
         }
         return;
     }
@@ -291,14 +292,61 @@ void IRGenerator::generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<S
     }
 }
 
-void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &letName)
+void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &letName, Expression *value)
 {
     llvm::Type *varType = getLLVMType(sym->type);
-    llvm::Constant *init = llvm::Constant::getNullValue(varType);
+    auto generateConstantLiteral = [&](ResolvedType type) -> llvm::Constant *
+    {
+        llvm::Value *val = generateExpression(value);
+        if (!val)
+            throw std::runtime_error("Null value returned from expression during global scalar init");
+
+        switch (type.kind)
+        {
+        case DataType::INTEGER:
+        {
+            if (auto constInt = llvm::dyn_cast<llvm::ConstantInt>(val))
+            {
+                return llvm::ConstantInt::get(varType, constInt->getValue());
+            }
+            else
+            {
+                throw std::runtime_error("Expected ConstantInt for INTEGER literal");
+            }
+        }
+
+        case DataType::STRING:
+        {
+            if (auto constStr = llvm::dyn_cast<llvm::Constant>(val))
+            {
+                return constStr;
+            }
+            else
+            {
+                throw std::runtime_error("Expected  for STRING literal");
+            }
+        }
+
+        default:
+            throw std::runtime_error("Unsupported literal type in global scalar initialization");
+        }
+    };
+
+    llvm::Constant *init = nullptr;
+    if (sym->isInitialized)
+    {
+        init = generateConstantLiteral(sym->type);
+    }
+    else
+    {
+        init = llvm::Constant::getNullValue(varType);
+    }
+
+    bool isConst = sym->isConstant;
     auto *g = new llvm::GlobalVariable(
         *module,
         varType,
-        false,
+        isConst,
         llvm::GlobalValue::ExternalLinkage,
         init,
         letName);
@@ -837,6 +885,9 @@ void IRGenerator::generateAssignmentStatement(Node *node)
     if (!assignStmt)
         return;
 
+    if (!funcBuilder.GetInsertBlock())
+        throw std::runtime_error("Executable statements are not allowed at global scope");
+
     llvm::Value *targetPtr = nullptr;
     llvm::Value *initValue = generateExpression(assignStmt->value.get());
     if (!initValue)
@@ -1042,6 +1093,9 @@ void IRGenerator::generateShoutStatement(Node *node)
     if (!shoutStmt)
         throw std::runtime_error("Invalid shout statement node");
 
+    if (!funcBuilder.GetInsertBlock())
+        throw std::runtime_error("Expected shout to be inside a function");
+
     // Getting the semantic type of the val
     auto it = semantics.metaData.find(shoutStmt->expr.get());
     if (it == semantics.metaData.end())
@@ -1177,8 +1231,22 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     if (!infix)
         throw std::runtime_error("Invalid infix expression");
 
+    auto rhsIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
+    auto lhsIdent = dynamic_cast<Identifier *>(infix->left_operand.get());
+
+    if (!funcBuilder.GetInsertBlock() && (lhsIdent || rhsIdent))
+    {
+        throw std::runtime_error(
+            "Executable statements are not allowed at global scope: '" +
+            infix->operat.TokenLiteral + "' at line " +
+            std::to_string(infix->operat.line));
+    }
+
     if (infix->operat.type == TokenType::FULLSTOP)
     {
+        if (!funcBuilder.GetInsertBlock())
+            throw std::runtime_error("Executable statements are not allowed at global scope");
+
         std::cout << "TRIGGERED INFIX FULLSTOP GUY\n";
         // Generate the left-hand object (e.g., 'p')
         llvm::Value *objectVal = generateExpression(infix->left_operand.get());
@@ -1223,6 +1291,8 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     if (infix->operat.type == TokenType::SCOPE_OPERATOR)
     {
         std::cout << "TRIGGERED SCOPE OPERATOR GUY\n";
+        if (!funcBuilder.GetInsertBlock())
+            throw std::runtime_error("Executable statements are not allowed at global scope");
 
         // Get left-hand object pointer from metadata (guaranteed pointer)
         auto leftMetaIt = semantics.metaData.find(infix->left_operand.get());
@@ -1304,6 +1374,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 
     llvm::Value *left = generateExpression(infix->left_operand.get());
     llvm::Value *right = generateExpression(infix->right_operand.get());
+
     if (!left || !right)
         throw std::runtime_error("Failed to generate IR for infix expression");
 
@@ -1441,37 +1512,49 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     switch (infix->operat.type)
     {
     case TokenType::PLUS:
+    {
+
         if (isIntegerType(resultType.kind))
             return funcBuilder.CreateAdd(left, right, "addtmp");
         else
             return funcBuilder.CreateFAdd(left, right, "faddtmp");
+    }
 
     case TokenType::MINUS:
+    {
         if (isIntegerType(resultType.kind))
             return funcBuilder.CreateSub(left, right, "subtmp");
         else
             return funcBuilder.CreateFSub(left, right, "fsubtmp");
+    }
 
     case TokenType::ASTERISK:
+    {
         if (isIntegerType(resultType.kind))
             return funcBuilder.CreateMul(left, right, "multmp");
         else
             return funcBuilder.CreateFMul(left, right, "fmultmp");
+    }
 
     case TokenType::DIVIDE:
+    {
         if (isIntegerType(resultType.kind))
             return isSignedInteger(resultType.kind) ? funcBuilder.CreateSDiv(left, right, "divtmp")
                                                     : funcBuilder.CreateUDiv(left, right, "divtmp");
         else
             return funcBuilder.CreateFDiv(left, right, "fdivtmp");
+    }
 
     case TokenType::MODULUS:
+    {
+
         if (isIntegerType(resultType.kind))
             return isSignedInteger(resultType.kind) ? funcBuilder.CreateSRem(left, right, "modtmp")
                                                     : funcBuilder.CreateURem(left, right, "modtmp");
         else
             throw std::runtime_error("Modulus not supported for FLOAT or DOUBLE at line " +
                                      std::to_string(infix->operat.line));
+    }
 
     default:
         throw std::runtime_error("Unsupported infix operator: " + infix->operat.TokenLiteral +
@@ -1735,8 +1818,25 @@ llvm::Value *IRGenerator::generateStringLiteral(Node *node)
         throw std::runtime_error("Type error: Expected STRING or NULLABLE_STR for StringLiteral ");
     }
     std::string raw = strLit->string_token.TokenLiteral;
-    llvm::Value *strConst = funcBuilder.CreateGlobalStringPtr(raw);
-    return strConst;
+    llvm::Constant *strConst = llvm::ConstantDataArray::getString(context, raw, true);
+
+    auto *globalStr = new llvm::GlobalVariable(
+        *module,
+        strConst->getType(),
+        true,
+        llvm::GlobalValue::PrivateLinkage,
+        strConst,
+        ".str");
+
+    // Pointer to first element
+    llvm::Constant *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+    llvm::Constant *indices[] = {zero, zero};
+    llvm::Constant *strPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
+        strConst->getType(),
+        globalStr,
+        indices);
+
+    return strPtr;
 }
 
 llvm::Value *IRGenerator::generateCharLiteral(Node *node)
@@ -2529,6 +2629,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
 
     // This will handle whatever is inside the block including the return value
     generateExpression(fnExpr->block.get());
+    funcBuilder.ClearInsertionPoint();
     currentFunction = nullptr; // Set it back to a null pointer
     return fn;
 }
@@ -2540,6 +2641,9 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
     {
         throw std::runtime_error("Invalid call expression");
     }
+
+    if (!funcBuilder.GetInsertBlock())
+        throw std::runtime_error("Function calls are not allowed at global scope");
 
     auto callIt = semantics.metaData.find(callExpr);
     if (callIt == semantics.metaData.end())

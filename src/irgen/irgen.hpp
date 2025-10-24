@@ -64,13 +64,13 @@ public:
 
 private:
     llvm::LLVMContext context;
-    llvm::IRBuilder<> globalBuilder;//THis is the global builder
-    llvm::IRBuilder<> funcBuilder;//This is the builder for functions
+    llvm::IRBuilder<> globalBuilder; // THis is the global builder
+    llvm::IRBuilder<> funcBuilder;   // This is the builder for functions
     std::unique_ptr<llvm::Module> module;
     Semantics &semantics;
     size_t totalHeapSize;
 
-    llvm::BasicBlock *heapInitFnEntry=nullptr;
+    llvm::BasicBlock *heapInitFnEntry = nullptr;
 
     // GENERATOR FUNCTIONS FOR STATEMENTS
     void generateLetStatement(Node *node);
@@ -155,12 +155,12 @@ private:
     unsigned getIntegerBitWidth(DataType dt);
 
     void generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName);
-    void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &letName);
+    void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &letName, Expression *value);
     llvm::Value *generateComponentInit(LetStatement *letStmt, llvm::StructType *structTy);
     // Helper for allocating heap storage (shared logic for components and scalars)
     llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy);
     // Helper for initializing component members
-    void initializeComponentMembers(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName,llvm::Value *storage, llvm::StructType *structTy);
+    void initializeComponentMembers(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::Value *storage, llvm::StructType *structTy);
     void freeHeapStorage(uint64_t size, const std::string &letName);
 };
 
