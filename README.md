@@ -493,24 +493,24 @@ They have a syntax of `ref <type> <name> => &<target> `
 - The type after ref must match the target type unless type inference is used(You can infer by just not adding the type)
 ```
 heap int a=10;
-ref int b => &a;
+ref int b -> &a;
 ```
 Here b refers to a. Any modification through b directly affects a
 
 *Type inference*: 
 If you omit the type, the compiler infers it from the target 
 ```
-ref b=> &a; #Infered as int 
+ref b -> &a; #Infered as int 
 ```
 
 *Mutability rules*: 
 By default refrences are immutable but the user must specify if they want it to be mutable, a mutable reference cannot reference an immutable target 
 ```
 heap mut int a = 6;
-ref mut int b => &a;
+ref mut int b -> &a;
 
 heap int x=7;
-ref mut int y=> &x; #Error: Since a mutable reference cannot be made to an immutable target
+ref mut int y -> &x; #Error: Since a mutable reference cannot be made to an immutable target
 
 ```
 
