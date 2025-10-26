@@ -368,17 +368,25 @@ The data blocks are a way to group data that might be related the mutability qua
 Note: By default the data block is immutable and all the data inside is immutable unless you explicitly say 'mut' on the whole block or the individual data inside
 Data blocks only allow for variable declarations can have values initialized or not
 ```
-mut data battery_specs{
-    uint health=100u;
-    uint capacity=5000u;
+data PhoneSpecs {
+    mut string name;       # Field 0 (Mutable)
+    string color = "Blue"; # Field 1 (Immutable)
 }
 
-data phone_specs{
-    mut string name;
-    string color;
+func main(): int {
+    # 1. Instantiation
+    PhoneSpecs p1 = PhoneSpecs { name= "Initial", color= "Red" }; 
+    
+    # 2. Mutating the 'mut' field
+    p1.name = "Samsung"; 
+    
+    # 3. Accessing all fields
+    shout! p1.name;
+    shout! p1.color;
+    
+    return 0;
 }
 
-phone_specs::name="Samsung"; #This will be allowed since all the members of the data block are mutable
 ```
 
 ## Enums
