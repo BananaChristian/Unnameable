@@ -711,6 +711,59 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
         std::move(fields));
 }
 
+// Parsing instance expression
+std::unique_ptr<Expression> Parser::parseInstanceExpression(std::unique_ptr<Expression> left)
+{
+    std::cout << "INSIDE INSTANCE PARSE\n";
+
+    std::vector<std::unique_ptr<Statement>> args;
+
+    if (currentToken().type != TokenType::LBRACE)
+    {
+        logError("Expected '{' but got '" + currentToken().TokenLiteral + "'");
+        advance();
+        return nullptr;
+    }
+
+    advance(); // consume '{'
+
+    //Check if immediately closed
+    if (currentToken().type == TokenType::RBRACE)
+    {
+        advance(); // consume '}'
+        return std::make_unique<InstanceExpression>(std::move(left), std::move(args));
+    }
+
+    // Parse the first argument
+    std::unique_ptr<Statement> firstArg = parseAssignmentStatement(true);
+    if (firstArg)
+        args.push_back(std::move(firstArg));
+
+    while (currentToken().type == TokenType::COMMA)
+    {
+        advance(); // consume ','
+        std::unique_ptr<Statement> arg = parseAssignmentStatement(true);
+        if (!arg)
+        {
+            logError("Failed to parse field argument after comma.");
+            return nullptr;
+        }
+        args.push_back(std::move(arg));
+    }
+
+    if (currentToken().type == TokenType::RBRACE)
+    {
+        advance(); // consume '}'
+    }
+    else
+    {
+        logError("Expected '}' after instance arguments");
+        return nullptr;
+    }
+
+    return std::make_unique<InstanceExpression>(std::move(left), std::move(args));
+}
+
 // Parsing component statements
 std::unique_ptr<Statement> Parser::parseComponentStatement()
 {
@@ -1879,6 +1932,7 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::EQUALS] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseCallExpression;
+    InfixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseInstanceExpression;
     InfixParseFunctionsMap[TokenType::COALESCE] = &Parser::parseInfixExpression;
 }
 

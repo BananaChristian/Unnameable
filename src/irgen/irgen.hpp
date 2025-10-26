@@ -134,13 +134,13 @@ private:
 
     llvm::Value *generateSelfExpression(Node *node);
     llvm::Value *generateNewComponentExpression(Node *node);
+    llvm::Value *generateInstanceExpression(Node *node);
 
     // HELPER FUNCTIONS
     void registerGeneratorFunctions();
     void registerExpressionGeneratorFunctions();
     llvm::Value *generateExpression(Node *node);
     AddressAndPendingFree generateIdentifierAddress(Node *node);
-    llvm::Value *getOrCreateGlobalDataBlock(DataStatement *dataStmt);
     void generateStatement(Node *node);
     void shoutRuntime(llvm::Value *val, ResolvedType type);
     char *unnitoa(int val, char *buf);

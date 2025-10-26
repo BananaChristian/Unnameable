@@ -424,6 +424,61 @@ void Semantics::walkDataStatement(Node *node)
     popScope();
 }
 
+void Semantics::walkInstanceExpression(Node *node)
+{
+    auto instExpr = dynamic_cast<InstanceExpression *>(node);
+    if (!instExpr)
+        return;
+
+    auto instName = instExpr->blockIdent->expression.TokenLiteral;
+    auto line = instExpr->blockIdent->expression.line;
+    auto col = instExpr->blockIdent->expression.column;
+    bool hasError = false;
+
+    auto instSym = resolveSymbolInfo(instName);
+
+    if (!instSym)
+    {
+        logSemanticErrors("Undefined identifier '" + instName + "'", line, col);
+        hasError = true;
+    }
+
+    if (instSym->type.kind != DataType::DATABLOCK)
+    {
+        logSemanticErrors("'" + instName + "' is not a data block", line, col);
+        hasError = true;
+    }
+
+    // Dealing with arguments if they exist
+    if (!instExpr->fields.empty())
+    {
+        auto members = instSym->members;
+        for (const auto &field : instExpr->fields)
+        {
+            auto fieldNode = dynamic_cast<AssignmentStatement *>(field.get());
+            auto fieldName = fieldNode->identifier->expression.TokenLiteral;
+            // Check if the member exists in the parent type
+            auto it = members.find(fieldName);
+            if (it == members.end())
+            {
+                logSemanticErrors("Field '" + fieldName + "' does not exist in '" + instName + "'", line, col);
+                hasError = true;
+            }
+
+            walker(fieldNode->value.get());
+        }
+    }
+
+    ResolvedType instType = instSym->type;
+    std::cout << "Instance type: " << instType.resolvedName << "\n";
+
+    auto instInfo = std::make_shared<SymbolInfo>();
+    instInfo->type = instType;
+    instInfo->hasError = hasError;
+
+    metaData[instExpr] = instInfo;
+}
+
 void Semantics::walkBehaviorStatement(Node *node)
 {
     auto behaviorStmt = dynamic_cast<BehaviorStatement *>(node);
@@ -1169,7 +1224,7 @@ void Semantics::walkNewComponentExpression(Node *node)
         return;
     auto line = newExpr->expression.line;
     auto column = newExpr->expression.column;
-    bool hasError=false;
+    bool hasError = false;
     // Getting the component name we shall search in the component types table and not the scope
     auto componentName = newExpr->component_name.TokenLiteral;
     auto componentIt = customTypesTable.find(componentName);
@@ -1198,7 +1253,7 @@ void Semantics::walkNewComponentExpression(Node *node)
                                       "' expects " + std::to_string(expectedArgs.size()) +
                                       " arguments but got " + std::to_string(givenArgs.size()),
                                   line, column);
-                hasError=true;
+                hasError = true;
             }
 
             // Checking the type check pairwise
@@ -1215,20 +1270,22 @@ void Semantics::walkNewComponentExpression(Node *node)
                                               "'. Expected '" + expectedType.resolvedName +
                                               "' but got '" + argType.resolvedName + "'",
                                           line, column);
-                        hasError=true;
+                        hasError = true;
                     }
                 }
             }
-        }else{
-            logSemanticErrors("No init constructor was provided for '"+componentName  +"' so the addition of arguments is unneccesary",line,column);
-            hasError=true;
+        }
+        else
+        {
+            logSemanticErrors("No init constructor was provided for '" + componentName + "' so the addition of arguments is unneccesary", line, column);
+            hasError = true;
         }
     }
 
     // Storing meta data
     auto info = std::make_shared<SymbolInfo>();
     info->type = componentIt->second.type;
-    info->hasError=hasError;
+    info->hasError = hasError;
 
     metaData[newExpr] = info;
 }

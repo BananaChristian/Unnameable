@@ -1244,47 +1244,51 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
 
     if (infix->operat.type == TokenType::FULLSTOP)
     {
+        // sanity check: member access only inside a function
         if (!funcBuilder.GetInsertBlock())
-            throw std::runtime_error("Executable statements are not allowed at global scope");
+            throw std::runtime_error("Member access not allowed at global scope");
 
-        std::cout << "TRIGGERED INFIX FULLSTOP GUY\n";
-        // Generate the left-hand object (e.g., 'p')
-        llvm::Value *objectVal = generateExpression(infix->left_operand.get());
+        llvm::Value *lhsVal = generateExpression(infix->left_operand.get());
+        auto rhsIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
+        if (!rhsIdent)
+            throw std::runtime_error("Right side of '.' must be an identifier");
 
-        auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
-        if (!memberIdent)
-            throw std::runtime_error("Right-hand side of '.' must be a field identifier");
+        std::string memberName = rhsIdent->expression.TokenLiteral;
 
-        std::string memberName = memberIdent->expression.TokenLiteral;
+        // get metadata for the left operand
+        auto lhsMeta = semantics.metaData[infix->left_operand.get()];
+        if (!lhsMeta)
+            throw std::runtime_error("Missing metadata for struct expression");
 
-        // Lookup left-hand symbol
-        auto leftMetaIt = semantics.metaData.find(infix->left_operand.get());
-        if (leftMetaIt == semantics.metaData.end())
-            throw std::runtime_error("Left-hand object metadata missing");
+        std::string parentTypeName = lhsMeta->type.resolvedName;
 
-        std::string parentTypeName = leftMetaIt->second->type.resolvedName;
+        // get struct definition
+        auto parentTypeIt = semantics.customTypesTable.find(parentTypeName);
+        if (parentTypeIt == semantics.customTypesTable.end())
+            throw std::runtime_error("Unknown struct type '" + parentTypeName + "'");
 
-        auto parentIt = semantics.customTypesTable.find(parentTypeName);
-        if (parentIt == semantics.customTypesTable.end())
-            throw std::runtime_error("Type '" + parentTypeName + "' doesn't exist");
+        auto &parentInfo = parentTypeIt->second;
+        auto memberIt = parentInfo.members.find(memberName);
+        if (memberIt == parentInfo.members.end())
+            throw std::runtime_error("No member '" + memberName + "' in type '" + parentTypeName + "'");
 
-        auto memberIt = parentIt->second.members.find(memberName);
-        if (memberIt == parentIt->second.members.end())
-            throw std::runtime_error("Member '" + memberName + "' not found in type '" + parentTypeName + "'");
-
-        auto &index = llvmStructIndices[parentTypeName];
-        unsigned memberIndex = index;
+        // get member index + type
+        unsigned memberIndex = memberIt->second->memberIndex;
         llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
-
-        // Compute pointer to the member dynamically
-        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, objectVal, memberIndex, memberName);
-        if (!memberPtr)
-            throw std::runtime_error("No llvm value for '" + memberName + "'");
-
-        // Load the value
         llvm::Type *memberType = getLLVMType(memberIt->second->type);
-        if (!memberType)
-            throw std::runtime_error("Member Type wasnt retrieved");
+
+        // if lhs is struct by value, we need a pointer to use GEP
+        llvm::Value *lhsPtr = lhsVal;
+        if (!lhsVal->getType()->isPointerTy())
+        {
+            llvm::Value *allocaTmp = funcBuilder.CreateAlloca(lhsVal->getType(), nullptr, parentTypeName + "_tmp");
+            funcBuilder.CreateStore(lhsVal, allocaTmp);
+            lhsPtr = allocaTmp;
+        }
+
+        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, lhsPtr, memberIndex, memberName);
+
+        // now return by-value load, not a pointer
         return funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
     }
 
@@ -2896,6 +2900,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
     expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
     expressionGeneratorsMap[typeid(NewComponentExpression)] = &IRGenerator::generateNewComponentExpression;
+    expressionGeneratorsMap[typeid(InstanceExpression)] = &IRGenerator::generateInstanceExpression;
 }
 
 char IRGenerator::decodeCharLiteral(const std::string &literal)

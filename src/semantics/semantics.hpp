@@ -224,6 +224,7 @@ private:
     void walkInitConstructor(Node *node);
     void walkSelfExpression(Node *node);
     void walkEnumClassStatement(Node *node);
+    void walkInstanceExpression(Node *node);
 
     // Waling infix, prefix and postfix expressions
     void walkInfixExpression(Node *node);

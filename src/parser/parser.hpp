@@ -52,6 +52,7 @@ class Parser
         {TokenType::SCOPE_OPERATOR, Precedence::PREC_CALL},
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
         {TokenType::COALESCE, Precedence::PREC_COALESCE},
+        {TokenType::LBRACE,Precedence::PREC_CALL},
     };
 
     Token lastToken;
@@ -76,7 +77,7 @@ public:
     // Function to get the precedence depending on the token type
     Precedence get_precedence(TokenType type);
 
-    //Generator for the file unit
+    // Generator for the file unit
     std::shared_ptr<FileUnit> generateFileUnit();
 
     using prefixParseFns = std::unique_ptr<Expression> (Parser::*)();
@@ -122,11 +123,11 @@ private:
 
     std::unique_ptr<Statement> parseReferenceStatementWrapper();
 
-    std::unique_ptr<Statement> parsePointerStatement(bool isParam=false);
+    std::unique_ptr<Statement> parsePointerStatement(bool isParam = false);
 
     std::unique_ptr<Statement> parsePointerStatementWrapper();
 
-    //Shout statement parser
+    // Shout statement parser
     std::unique_ptr<Statement> parseShoutStatement();
 
     // Identifer starting statements function
@@ -213,10 +214,10 @@ private:
     // Parsing Array Statememt
     std::unique_ptr<Statement> parseAliasStatement();
 
-    //Parsing the qualify statement
+    // Parsing the qualify statement
     std::unique_ptr<Statement> parseQualifyStatement();
 
-    //Parsing the merge statement
+    // Parsing the merge statement
     std::unique_ptr<Statement> parseMergeStatement();
 
     //--------------PARSING EXPRESSIONS--------------------
@@ -240,6 +241,9 @@ private:
 
     // New component expression parse function declaration
     std::unique_ptr<Expression> parseNewComponentExpression();
+
+    // Instance expression parse function
+    std::unique_ptr<Expression> parseInstanceExpression(std::unique_ptr<Expression> left);
 
     // Parsing identifier expression
     std::unique_ptr<Expression> parseIdentifier();
@@ -265,7 +269,7 @@ private:
     // Parsing for basic return type
     std::unique_ptr<Expression> parseBasicType();
 
-    //Parsing for pointer return type
+    // Parsing for pointer return type
     std::unique_ptr<Expression> parsePointerType();
 
     // Parsing the return type expression
@@ -367,5 +371,4 @@ private:
 
     // Getting the error token
     Token getErrorToken();
-
 };

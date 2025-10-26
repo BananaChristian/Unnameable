@@ -125,6 +125,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(NewComponentExpression)] = &Semantics::walkNewComponentExpression;
     walkerFunctionsMap[typeid(SelfExpression)] = &Semantics::walkSelfExpression;
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
+    walkerFunctionsMap[typeid(InstanceExpression)] = &Semantics::walkInstanceExpression;
 
     // Walker registration for the shout system
     walkerFunctionsMap[typeid(ShoutStatement)] = &Semantics::walkShoutStatement;
@@ -230,6 +231,21 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     {
         auto fieldExpr = dynamic_cast<Identifier *>(selfExpr->field.get());
         return inferNodeDataType(fieldExpr);
+    }
+
+    if (auto instExpr = dynamic_cast<InstanceExpression *>(node))
+    {
+        auto instName = instExpr->blockIdent->expression.TokenLiteral;
+        auto line = instExpr->blockIdent->expression.line;
+        auto col = instExpr->blockIdent->expression.column;
+        auto sym = resolveSymbolInfo(instName);
+        if (!sym)
+        {
+            logSemanticErrors("Failed to infer type for unidentified identifier '" + instName + "'", line, col);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+
+        return sym->type;
     }
 
     // Dealing with the let statement node type
@@ -526,7 +542,7 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
 
         if (operatorType == TokenType::FULLSTOP)
         {
-            if (varType.kind != DataType::COMPONENT && varType.kind != DataType::BEHAVIORBLOCK)
+            if (varType.kind == DataType::ENUM)
             {
                 logSemanticErrors("Dot operator applied to non-component variable", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -552,9 +568,9 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
         }
         else if (operatorType == TokenType::SCOPE_OPERATOR)
         {
-            if (varType.kind != DataType::ENUM && varType.kind != DataType::DATABLOCK)
+            if (varType.kind != DataType::ENUM)
             {
-                logSemanticErrors("Scope operator(::) applied to none enum or data block variable", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+                logSemanticErrors("Scope operator(::) applied to none enum  variable", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
             }
 

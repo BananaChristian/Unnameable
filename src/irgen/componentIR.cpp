@@ -1,97 +1,113 @@
 #include "irgen.hpp"
 
-llvm::Value *IRGenerator::getOrCreateGlobalDataBlock(DataStatement *dataStmt)
-{
-    auto it = semantics.metaData.find(dataStmt);
-    if (it == semantics.metaData.end())
-        throw std::runtime_error("Missing data block metaData");
-
-    // Already created
-    if (it->second->llvmValue)
-        return it->second->llvmValue;
-
-    auto structTy = llvmCustomTypes[it->second->type.resolvedName];
-    // Create a global alloca (or global variable if truly global)
-    llvm::GlobalVariable *gv = new llvm::GlobalVariable(
-        *module,
-        structTy,
-        false, // isConstant
-        llvm::GlobalValue::ExternalLinkage,
-        llvm::Constant::getNullValue(structTy),
-        it->second->type.resolvedName);
-
-    it->second->llvmValue = gv;
-    return gv;
-}
-
 void IRGenerator::generateDataStatement(Node *node)
 {
     auto dataStmt = dynamic_cast<DataStatement *>(node);
     if (!dataStmt)
-    {
-        std::cout << "Failed on the data statement\n";
         return;
-    }
 
     auto it = semantics.metaData.find(dataStmt);
     if (it == semantics.metaData.end())
         throw std::runtime_error("Missing data block metaData");
 
-    auto blockName = it->second->type.resolvedName;
+    auto &meta = *it->second;
+    std::string blockName = meta.type.resolvedName;
 
-    // --- Build LLVM struct type ---
+    // --- Build LLVM struct type  ---
     std::vector<llvm::Type *> memberTypes;
-    for (auto &[memberName, info] : it->second->members)
+    for (auto &pair : meta.members)
     {
+        std::shared_ptr<MemberInfo> info = pair.second;
         llvm::Type *ty = info->isHeap ? getLLVMType(info->type)->getPointerTo() : getLLVMType(info->type);
+        if (!ty)
+            throw std::runtime_error("Unknown member type for " + pair.first);
         memberTypes.push_back(ty);
     }
 
     llvm::StructType *structTy = llvm::StructType::create(context, memberTypes, blockName);
-    it->second->llvmType = structTy;
+    meta.llvmType = structTy;
     llvmCustomTypes[blockName] = structTy;
 
-    llvm::Value *instanceVal = nullptr;
+    // Global type placeholder (zeroinit)
+    llvm::Constant *initStruct = llvm::Constant::getNullValue(structTy);
+    llvm::GlobalVariable *gv = new llvm::GlobalVariable(
+        *module,
+        structTy,
+        false,
+        llvm::GlobalValue::ExternalLinkage,
+        initStruct,
+        blockName);
+    llvmGlobalDataBlocks[blockName] = gv;
+    meta.llvmValue = gv;
+}
 
-    instanceVal = getOrCreateGlobalDataBlock(dataStmt);
+llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
+{
+    auto instExpr = dynamic_cast<InstanceExpression *>(node);
+    if (!instExpr)
+        return nullptr;
 
-    llvmGlobalDataBlocks[blockName] = instanceVal;
-    it->second->llvmValue = instanceVal;
+    std::string instName = instExpr->blockIdent->expression.TokenLiteral;
+    llvm::StructType *structTy = llvmCustomTypes[instName];
+    if (!structTy)
+        throw std::runtime_error("Unknown struct type: " + instName);
 
-    // --- Initialize members ---
-    int idx = 0;
-    for (auto &[memberName, info] : it->second->members)
+    if (!funcBuilder.GetInsertBlock())
+        throw std::runtime_error("Cannot create an instance for '" + instName + "' in the global scope");
+
+    // 1) single stack slot to build the struct in
+    llvm::Value *instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, instName + "_inst");
+
+    // 2) default-initialize each member directly into instancePtr (use source member order!)
+    auto typeInfoIt = semantics.customTypesTable.find(instName);
+    if (typeInfoIt == semantics.customTypesTable.end())
+        throw std::runtime_error("Missing custom type info for " + instName);
+    auto &typeInfo = typeInfoIt->second;
+
+    for (auto &kv : typeInfo.members)
     {
-        if (info->node && dynamic_cast<FunctionStatement *>(info->node))
-        {
-            idx++;
-            continue;
-        }
+        const std::string &memberName = kv.first;
+        auto &info = kv.second;
+        unsigned idx = info->memberIndex; // must be set during semantic phase
 
-        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, instanceVal, idx, memberName);
-        if (!memberPtr)
-            throw std::runtime_error("Failed to compute member GEP for init: " + memberName);
-
-        llvm::Type *elemTy = getLLVMType(info->type);
-        if (!elemTy)
-            throw std::runtime_error("Failed to get element type for init: " + memberName);
-
+        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, instancePtr, idx, memberName);
         if (info->isHeap)
         {
-            llvm::PointerType *elemPtrTy = elemTy->getPointerTo();
-            llvm::Constant *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
-            funcBuilder.CreateStore(nullPtr, memberPtr);
+            llvm::PointerType *pTy = getLLVMType(info->type)->getPointerTo();
+            funcBuilder.CreateStore(llvm::ConstantPointerNull::get(pTy), memberPtr);
         }
         else
         {
+            llvm::Type *elemTy = getLLVMType(info->type);
             funcBuilder.CreateStore(llvm::Constant::getNullValue(elemTy), memberPtr);
         }
-
-        info->llvmValue = memberPtr;
-        info->llvmType = elemTy;
-
-        idx++;
     }
+
+    // 3) apply explicit initializers from instance expression
+    for (auto &fieldStmt : instExpr->fields)
+    {
+        auto assign = dynamic_cast<AssignmentStatement *>(fieldStmt.get());
+        if (!assign)
+            continue;
+        std::string fieldName = assign->identifier->expression.TokenLiteral;
+        auto memIt = typeInfo.members.find(fieldName);
+        if (memIt == typeInfo.members.end())
+            throw std::runtime_error("No such field in " + instName + ": " + fieldName);
+        unsigned idx = memIt->second->memberIndex;
+        llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(structTy, instancePtr, idx, fieldName);
+
+        // IMPORTANT: generate *value* for RHS. It must produce a type matching element type.
+        llvm::Value *rhsVal = generateExpression(assign->value.get());
+        if (!rhsVal)
+            throw std::runtime_error("Failed to generate RHS for field " + fieldName);
+
+        // If needed, bitcast or convert (ensure rhsVal type == element type)
+        funcBuilder.CreateStore(rhsVal, fieldPtr);
+    }
+
+    // 4) load struct value and return (value semantics)
+    llvm::Value *loaded = funcBuilder.CreateLoad(structTy, instancePtr, instName + "_val");
+    return loaded;
 }
 
 void IRGenerator::generateBehaviorStatement(Node *node)
