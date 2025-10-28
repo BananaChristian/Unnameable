@@ -349,18 +349,21 @@ component Player {
     }
 
     use behavior combat;
-    use behavior combat.super;
+    use behavior combat@super;
 
     use data attributes;
-    use data attributes::speed;
+    use data attributes@speed;
 
     func greet(): string {
         return "Hello, I have " + self.health + " HP";
     }
 }
 
-auto p = new Player(100);
-p.greet();
+func main: int{
+    auto p = new Player(100);
+    shout! p.speed;
+    return 0;
+}
 
 ```
 ## Data blocks
