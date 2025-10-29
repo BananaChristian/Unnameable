@@ -50,9 +50,10 @@ class Parser
         {TokenType::FULLSTOP, Precedence::PREC_CALL},
         {TokenType::LPAREN, Precedence::PREC_CALL},
         {TokenType::SCOPE_OPERATOR, Precedence::PREC_CALL},
+        {TokenType::AT, Precedence::PREC_CALL},
         {TokenType::IDENTIFIER, Precedence::PREC_PRIMARY},
         {TokenType::COALESCE, Precedence::PREC_COALESCE},
-        {TokenType::LBRACE,Precedence::PREC_CALL},
+        {TokenType::LBRACE, Precedence::PREC_CALL},
     };
 
     Token lastToken;

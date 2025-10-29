@@ -727,7 +727,7 @@ std::unique_ptr<Expression> Parser::parseInstanceExpression(std::unique_ptr<Expr
 
     advance(); // consume '{'
 
-    //Check if immediately closed
+    // Check if immediately closed
     if (currentToken().type == TokenType::RBRACE)
     {
         advance(); // consume '}'
@@ -1929,6 +1929,7 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::SCOPE_OPERATOR] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::OR] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::AT] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::EQUALS] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseCallExpression;
