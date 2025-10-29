@@ -546,10 +546,10 @@ void Semantics::walkFunctionCallExpression(Node *node)
         hasError = true;
     }
 
-    // Checking if the function is declared
-    if (!callSymbolInfo->isDeclaration)
+    // Checking if the function is defined
+    if (!callSymbolInfo->isDefined)
     {
-        logSemanticErrors("Function '" + callName + "' was not declared anywhere",
+        logSemanticErrors("Function '" + callName + "' was not defined anywhere",
                           funcCall->expression.line, funcCall->expression.column);
         hasError = true;
     }

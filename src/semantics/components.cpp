@@ -568,6 +568,7 @@ void Semantics::walkBehaviorStatement(Node *node)
             funcInfo->type = declSym->type;
             funcInfo->paramTypes = declSym->paramTypes;
             funcInfo->returnType = declSym->returnType;
+            funcInfo->isDeclared = true;
             funcInfo->node = funcStmt;
 
             behaviorMembers[funcDecl->function_name->expression.TokenLiteral] = funcInfo;
@@ -914,6 +915,8 @@ void Semantics::walkComponentStatement(Node *node)
                 memberCopy->isMutable = info->isMutable;
                 memberCopy->isConstant = info->isConstant;
                 memberCopy->isInitialised = info->isInitialised;
+                memberCopy->paramTypes = info->paramTypes;
+                memberCopy->isDefined = true;
 
                 memberCopy->node = info->node;
                 memberCopy->memberIndex = currentMemberIndex++;
@@ -926,6 +929,8 @@ void Semantics::walkComponentStatement(Node *node)
                 memSym->isConstant = info->isConstant;
                 memSym->isInitialized = info->isInitialised;
                 memSym->memberIndex = memberCopy->memberIndex;
+                memSym->paramTypes = info->paramTypes;
+                memSym->isDefined = true;
                 currentScope[name] = memSym;
 
                 if (memberCopy->node)
@@ -982,6 +987,8 @@ void Semantics::walkComponentStatement(Node *node)
                     memSym->isConstant = memIt->second->isConstant;
                     memSym->isInitialized = memIt->second->isInitialised;
                     memSym->memberIndex = memberCopy->memberIndex;
+                    memSym->paramTypes = memberCopy->paramTypes;
+                    memSym->isDefined = true;
                     symbolTable.back()[memberName] = memSym;
                 }
             }
@@ -1033,14 +1040,11 @@ void Semantics::walkComponentStatement(Node *node)
             continue;
 
         auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
-        std::string funcName;
-        funcName = funcExpr ? funcExpr->func_key.TokenLiteral : "unknown";
-        auto funcDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get());
-        auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(funcDeclrExpr->funcDeclrStmt.get());
-        funcName = funcDeclrStmt ? funcDeclrStmt->function_name->expression.TokenLiteral : "unknown";
+        std::string funcName = "unknown";
 
         if (funcExpr)
         {
+            funcName = funcExpr->func_key.TokenLiteral;
             // Assume funcExpr is the current component method being processed
             auto &currentMembers = currentTypeStack.back().members;
 
@@ -1073,12 +1077,23 @@ void Semantics::walkComponentStatement(Node *node)
                 memInfo->type = metSym->type;
                 memInfo->isNullable = metSym->isNullable;
                 memInfo->isMutable = metSym->isMutable;
+                memInfo->isDefined = true;
+                memInfo->paramTypes = metSym->paramTypes;
                 memInfo->node = funcExpr;
-                members[funcExpr->func_key.TokenLiteral] = memInfo;
+                members[funcName] = memInfo;
             }
         }
-        else if (funcDeclrExpr)
+        else
         {
+            auto funcDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get());
+            if (funcDeclrExpr && funcDeclrExpr->funcDeclrStmt)
+            {
+                auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(funcDeclrExpr->funcDeclrStmt.get());
+                if (funcDeclrStmt)
+                {
+                    funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
+                }
+            }
             logSemanticErrors("Cannot use function declarations inside a component '" + componentName + "'", funcDeclrExpr->expression.line, funcDeclrExpr->expression.column);
             hasError = true;
         }
@@ -1221,6 +1236,87 @@ void Semantics::walkNewComponentExpression(Node *node)
     info->hasError = hasError;
 
     metaData[newExpr] = info;
+}
+
+void Semantics::walkMethodCallExpression(Node *node)
+{
+    auto metCall = dynamic_cast<MethodCallExpression *>(node);
+    if (!metCall)
+    {
+        std::cout << "Invalid method call expression node";
+        return;
+    }
+
+    std::cout << "Analysing method call expression\n";
+    bool hasError = false;
+    // Get the instance name
+    auto instanceName = metCall->instance->expression.TokenLiteral;
+    auto line = metCall->instance->expression.line;
+    auto col = metCall->instance->expression.column;
+    // Check the symbol table for the instance name
+    auto instanceSym = resolveSymbolInfo(instanceName);
+    if (!instanceSym)
+    {
+        logSemanticErrors("Unidentified instance name '" + instanceName + "'", line, col);
+        return;
+    }
+
+    // Get the type
+    auto type = instanceSym->type;
+    auto typeIt = customTypesTable.find(type.resolvedName);
+    if (typeIt == customTypesTable.end())
+    {
+        logSemanticErrors("Unknown type '" + type.resolvedName + "'", line, col);
+        hasError = true;
+        return;
+    }
+
+    // If the symbol actually exists we retrieve the members and check if the function we are calling is among them
+    auto members = typeIt->second.members;
+    // Retrieve the function name itself
+    auto funcCall = dynamic_cast<CallExpression *>(metCall->call.get());
+    auto funcName = funcCall->function_identifier->expression.TokenLiteral;
+    auto funcLine = funcCall->function_identifier->expression.line;
+    auto funcCol = funcCall->function_identifier->expression.column;
+
+    // Check if the function is in the members
+    auto memIt = members.find(funcName);
+    if (memIt == members.end())
+    {
+        logSemanticErrors("'" + funcName + "' does not exist in instance '" + instanceName + "'", funcLine, funcCol);
+        return;
+    }
+
+    auto memInfo = memIt->second;
+
+    // If the member exists carry out some checks
+    // Definition check
+    if (!memInfo->isDefined)
+    {
+        logSemanticErrors("'" + funcName + "' was not defined anywhere", funcLine, funcCol);
+        hasError = true;
+    }
+
+    // Compatibility check
+    if (!isMethodCallCompatible(*memInfo, funcCall))
+    {
+        logSemanticErrors("Function call '" + funcName + "' has incompatible arguments", funcLine, funcCol);
+        hasError = true;
+    }
+
+    // Walking the arguments
+    for (const auto &arg : funcCall->parameters)
+    {
+        walker(arg.get());
+    }
+
+    // Store the metaData
+    auto metCallSym = std::make_shared<SymbolInfo>();
+    metCallSym->hasError = hasError;
+    metCallSym->type = memInfo->returnType;
+    metCallSym->isNullable = memInfo->isNullable;
+
+    metaData[metCall] = metCallSym;
 }
 
 void Semantics::walkArrayStatement(Node *node)

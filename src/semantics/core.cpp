@@ -125,6 +125,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(SelfExpression)] = &Semantics::walkSelfExpression;
     walkerFunctionsMap[typeid(EnumClassStatement)] = &Semantics::walkEnumClassStatement;
     walkerFunctionsMap[typeid(InstanceExpression)] = &Semantics::walkInstanceExpression;
+    walkerFunctionsMap[typeid(MethodCallExpression)] = &Semantics::walkMethodCallExpression;
 
     // Walker registration for the shout system
     walkerFunctionsMap[typeid(ShoutStatement)] = &Semantics::walkShoutStatement;
@@ -403,6 +404,37 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
             logSemanticErrors("Undefined function name '" + callExpr->function_identifier->expression.TokenLiteral + "'", callExpr->function_identifier->expression.line, callExpr->function_identifier->expression.column);
             return {DataType::UNKNOWN, "unknown"};
         }
+    }
+
+    if (auto metCall = dynamic_cast<MethodCallExpression *>(node))
+    {
+        auto instanceName = metCall->instance->expression.TokenLiteral;
+        auto line = metCall->instance->expression.line;
+        auto col = metCall->instance->expression.column;
+
+        auto instanceSym = resolveSymbolInfo(instanceName);
+
+        if (!instanceSym)
+        {
+            logSemanticErrors("Undefined instance name '" + instanceName + "' ", line, col);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+
+        auto call = dynamic_cast<CallExpression *>(metCall->call.get());
+        auto callName = call->function_identifier->expression.TokenLiteral;
+        auto callLine = call->function_identifier->expression.line;
+        auto callCol = call->function_identifier->expression.column;
+
+        auto members = instanceSym->members;
+        auto it = members.find(callName);
+        if (it == members.end())
+        {
+            logSemanticErrors("'" + callName + "' doesnt exist in instance '" + instanceName + "'", line, col);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+
+        auto memInfo = it->second;
+        return memInfo->type;
     }
 
     if (auto ptrStmt = dynamic_cast<PointerStatement *>(node))
@@ -1137,8 +1169,78 @@ bool Semantics::signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberI
     return returnType.kind == declMember->returnType.kind;
 }
 
+bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpression *callExpr)
+{
+    bool allGood = false;
+
+    if (memFuncInfo.paramTypes.size() != callExpr->parameters.size())
+    {
+        logSemanticErrors("Call has " + std::to_string(callExpr->parameters.size()) +
+                              " arguments, but function expects " + std::to_string(memFuncInfo.paramTypes.size()),
+                          callExpr->expression.line, callExpr->expression.column);
+        return false;
+    }
+
+    for (size_t i = 0; i < callExpr->parameters.size(); ++i)
+    {
+        auto &param = callExpr->parameters[i];
+        const auto &expectedType = memFuncInfo.paramTypes[i]; // pair<ResolvedType, string>
+        ResolvedType argType = inferNodeDataType(param.get());
+
+        if (argType.kind == DataType::UNKNOWN)
+        {
+            logSemanticErrors("Could not infer type for argument " + std::to_string(i + 1),
+                              param->expression.line, param->expression.column);
+            allGood = false;
+            continue;
+        }
+
+        // --- Nullability rule ---
+        if (auto nullLit = dynamic_cast<NullLiteral *>(param.get()))
+        {
+            if (isNullable(expectedType.first))
+            {
+                argType = expectedType.first; // promote null → nullable type
+            }
+            else
+            {
+                logSemanticErrors("Cannot pass null to non-nullable parameter " +
+                                      std::to_string(i + 1) + ": expected " + expectedType.first.resolvedName,
+                                  param->expression.line, param->expression.column);
+                allGood = false;
+                continue;
+            }
+        }
+
+        // --- Type strictness ---
+        if (argType.kind != expectedType.first.kind)
+        {
+            logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
+                                  ": expected " + expectedType.first.resolvedName +
+                                  ", got " + argType.resolvedName,
+                              param->expression.line, param->expression.column);
+            allGood = false;
+            continue;
+        }
+
+        // --- Incase of Generics  ---
+        if (argType.resolvedName != expectedType.first.resolvedName)
+        {
+            logSemanticErrors(
+                "Argument type mismatch: expected '" + expectedType.first.resolvedName +
+                    "' but got '" + argType.resolvedName + "'",
+                param->expression.line, param->expression.column);
+            allGood = false;
+            continue;
+        }
+    }
+
+    return allGood;
+}
+
 bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr)
 {
+    bool allGood = true;
     // 1. Check parameter count
     if (funcInfo.paramTypes.size() != callExpr->parameters.size())
     {
@@ -1152,9 +1254,17 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
     {
         auto &param = callExpr->parameters[i];
         const auto &expectedType = funcInfo.paramTypes[i]; // pair<ResolvedType, string>
-        ResolvedType argType{DataType::UNKNOWN, "unknown"};
+        ResolvedType argType = inferNodeDataType(param.get());
 
-        // --- Null literal handling ---
+        if (argType.kind == DataType::UNKNOWN)
+        {
+            logSemanticErrors("Could not infer type for argument " + std::to_string(i + 1),
+                              param->expression.line, param->expression.column);
+            allGood = false;
+            continue;
+        }
+
+        // --- Nullability rule ---
         if (auto nullLit = dynamic_cast<NullLiteral *>(param.get()))
         {
             if (isNullable(expectedType.first))
@@ -1166,22 +1276,34 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
                 logSemanticErrors("Cannot pass null to non-nullable parameter " +
                                       std::to_string(i + 1) + ": expected " + expectedType.first.resolvedName,
                                   param->expression.line, param->expression.column);
-                return false;
+                allGood = false;
+                continue;
             }
         }
-        else
+
+        // --- Type strictness ---
+        if (argType.kind != expectedType.first.kind)
         {
-            argType = inferNodeDataType(param.get());
-            if (argType.kind == DataType::UNKNOWN)
-            {
-                logSemanticErrors("Could not infer type for argument " + std::to_string(i + 1),
-                                  param->expression.line, param->expression.column);
-                return false;
-            }
+            logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
+                                  ": expected " + expectedType.first.resolvedName +
+                                  ", got " + argType.resolvedName,
+                              param->expression.line, param->expression.column);
+            allGood = false;
+            continue;
+        }
+
+        // --- Incase of Generics  ---
+        if (argType.resolvedName != expectedType.first.resolvedName)
+        {
+            logSemanticErrors(
+                "Argument type mismatch: expected '" + expectedType.first.resolvedName +
+                    "' but got '" + argType.resolvedName + "'",
+                param->expression.line, param->expression.column);
+            allGood = false;
+            continue;
         }
     }
-
-    return true;
+    return allGood;
 }
 
 ArrayMeta Semantics::getArrayMeta(Node *node)

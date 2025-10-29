@@ -87,6 +87,9 @@ struct MemberInfo
     bool isMutable = false;
     bool isConstant = false;
     bool isInitialised = false;
+    // Function flags
+    bool isDeclared = false;
+    bool isDefined = false;
 
     // Info for enum members
     std::int64_t constantValue = 0;
@@ -230,6 +233,7 @@ private:
     void walkSelfExpression(Node *node);
     void walkEnumClassStatement(Node *node);
     void walkInstanceExpression(Node *node);
+    void walkMethodCallExpression(Node *node);
 
     // Waling infix, prefix and postfix expressions
     void walkInfixExpression(Node *node);
@@ -313,6 +317,7 @@ private:
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberInfo> &declMember, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
+    bool isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpression *callExpr);
     bool isInteger(const ResolvedType &t);
     bool isNullableInteger(const ResolvedType &t);
     bool isFloat(const ResolvedType &t);
