@@ -2655,9 +2655,7 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
         throw std::runtime_error("Call expression does not exist");
     }
     if (callIt->second->hasError)
-    {
-        return nullptr; // If it has an error we just stop IR generation
-    }
+        throw std::runtime_error("Semantic error detected in call expression");
 
     // Getting the function name
     const std::string &fnName = callExpr->function_identifier->expression.TokenLiteral;
