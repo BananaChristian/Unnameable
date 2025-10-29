@@ -92,7 +92,6 @@ private:
     void generateFunctionDeclarationExpression(Node *node);
     // Component system
     void generateDataStatement(Node *node);
-    void generateBehaviorStatement(Node *node);
     void generateInitFunction(Node *node, ComponentStatement *component);
     void generateComponentStatement(Node *node);
     void generateComponentFunctionStatement(Node *node, const std::string &compName);
