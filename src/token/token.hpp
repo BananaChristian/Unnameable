@@ -15,6 +15,7 @@ enum class TokenType
     MODULUS,     //"%"
 
     ARROW,        //->
+    AT, //@
 
 
     // Logical Operators

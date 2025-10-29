@@ -74,6 +74,8 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: FUNCTION";
     case TokenType::AUTO:
         return "Token Type: AUTO";
+    case TokenType::AT:
+        return "TokenType: AT";
     case TokenType::RETURN:
         return "Token Type: RETURN";
     case TokenType::ENUM:
@@ -234,7 +236,7 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: SHOUT";
     case TokenType::QUALIFY:
         return "Token Type: QUALIFY";
-        
+
     case TokenType::HEAP:
         return "Token Type: HEAP";
     case TokenType::BANG:
