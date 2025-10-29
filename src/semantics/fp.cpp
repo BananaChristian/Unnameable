@@ -192,6 +192,15 @@ void Semantics::walkFunctionExpression(Node *node)
 
     std::string funcName = funcExpr->func_key.TokenLiteral;
 
+    if (insideFunction)
+    {
+        logSemanticErrors("Nested function definitions are prohibited",
+                          funcExpr->expression.line, funcExpr->expression.column);
+        return;
+    }
+
+    insideFunction = true;
+
     // Checking for duplicates in global scope
     auto symbol = resolveSymbolInfo(funcName);
 
@@ -200,7 +209,8 @@ void Semantics::walkFunctionExpression(Node *node)
     {
         if (symbol->isDefined)
         {
-            logSemanticErrors("Already used the name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
+            logSemanticErrors("Reused name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
+            insideFunction = false;
             return;
         }
 
@@ -222,8 +232,8 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo->isDefined = false;
     funcInfo->returnType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Initially unknown return type
 
-    // Inserting function symbol early for recursion
-    symbolTable[0][funcName] = funcInfo;
+    // Inserting function symbol into current scope early for recursion
+    symbolTable.back()[funcName] = funcInfo;
     currentFunction = funcInfo;
     std::cout << "[SEMANTIC LOG] Set currentFunction for '" << funcName << "' with return type: "
               << funcInfo->returnType.resolvedName << "\n";
@@ -319,7 +329,16 @@ void Semantics::walkFunctionExpression(Node *node)
 
     // Updating the symbol table with final function info
     funcInfo->isDefined = true;
-    symbolTable[0][funcName] = funcInfo;
+    if (!insideBehavior && !insideComponent)
+    {
+        std::cout << "Regsitering in global scope\n";
+        symbolTable[0][funcName] = funcInfo;
+    }
+    else
+    {
+        std::cout << "Regsitering in parent scope\n";
+        symbolTable.back()[funcName] = funcInfo;
+    }
     metaData[funcExpr] = funcInfo;
 
     currentFunction = funcInfo; // updating currentFunction with final info
@@ -355,7 +374,8 @@ void Semantics::walkFunctionExpression(Node *node)
     // Updating incase some error fall through
     funcInfo->hasError = hasError;
 
-    // If there was an outer function context, restore it    // Assuming you track this elsewhere or null it here    // Assuming you track this elsewhere or null it here
+    // If there was an outer function context, restore it
+    insideFunction = false;
     currentFunction = std::nullopt;
     std::cout << "[SEMANTIC LOG] Finished analyzing function '" << funcName << "'\n";
 }
@@ -383,6 +403,12 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
 
     // Getting the function name
     std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
+
+    if (insideFunction)
+    {
+        logSemanticErrors("Nested function declarations are prohibited", funcDeclrStmt->function_name->expression.line, funcDeclrStmt->function_name->expression.column);
+        return;
+    }
 
     // Checking if the declaration already exists
     auto symbol = resolveSymbolInfo(funcName);
@@ -487,8 +513,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
 
     currentFunction = funcInfo;
 
-    // Store in global scope
-    symbolTable[0][funcName] = funcInfo;
+    // Store in current scope
+    symbolTable.back()[funcName] = funcInfo;
     metaData[funcDeclrStmt] = funcInfo;
 
     std::cout << "[SEMANTIC LOG] Stored function declaration for '" << funcName << "' with return type: "

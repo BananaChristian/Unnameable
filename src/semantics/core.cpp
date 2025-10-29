@@ -598,27 +598,19 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
         }
     }
 
-    // If parentName is not a variable, treat it as a **type lookup**
+    // If parentName is not a variable, treat it as a **type lookup** (this case will only work for use statements and enums)
     auto typeIt = customTypesTable.find(parentName);
     if (typeIt == customTypesTable.end())
     {
         logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
         return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
-
-    if (operatorType == TokenType::FULLSTOP)
+    
+    if (operatorType == TokenType::SCOPE_OPERATOR)
     {
-        if (typeIt->second.type.kind == DataType::DATABLOCK || typeIt->second.type.kind == DataType::ENUM)
+        if (!(typeIt->second.type.kind == DataType::ENUM))
         {
-            logSemanticErrors("Only use . to access members of behavior blocks and components", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
-        }
-    }
-    else if (operatorType == TokenType::SCOPE_OPERATOR)
-    {
-        if (typeIt->second.type.kind == DataType::COMPONENT || typeIt->second.type.kind == DataType::BEHAVIORBLOCK)
-        {
-            logSemanticErrors("Only use :: to access members of data blocks and enums", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            logSemanticErrors("Only use :: to access members of enums", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
     }

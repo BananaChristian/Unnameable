@@ -193,6 +193,10 @@ public:
     std::string fileName;
 
 private:
+    bool insideFunction=false;
+    bool insideBehavior=false;
+    bool insideComponent=false;
+    
     // Walking the data type literals
     void walkShortLiteral(Node *node);
     void walkUnsignedShortLiteral(Node *node);

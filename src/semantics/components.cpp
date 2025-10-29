@@ -491,6 +491,8 @@ void Semantics::walkBehaviorStatement(Node *node)
     // Get behavior block name
     std::string behaviorName = behaviorStmt->behaviorBlockName->expression.TokenLiteral;
 
+    insideBehavior = true;
+
     // Ensure name not already used
     if (resolveSymbolInfo(behaviorName))
     {
@@ -522,7 +524,7 @@ void Semantics::walkBehaviorStatement(Node *node)
         // Let the walker handle function analysis
         walker(funcStmt);
 
-        std::shared_ptr<MemberInfo> funcInfo;
+        auto funcInfo = std::make_shared<MemberInfo>();
 
         // Case A: function expression
         if (auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get()))
@@ -599,6 +601,7 @@ void Semantics::walkBehaviorStatement(Node *node)
     metaData[behaviorStmt] = sym;
     customTypesTable[behaviorName] = typeInfo;
 
+    insideBehavior = false;
     // Pop scope
     popScope();
 }
@@ -717,15 +720,13 @@ void Semantics::walkUseStatement(Node *node)
     // ---------- Case B: qualified import (infix) ----------
     if (auto infix = dynamic_cast<InfixExpression *>(expr))
     {
+        std::cout << "Triggered qualified import\n";
         TokenType op = infix->operat.type;
-        bool expectBehaviorDot = (requestedKind == TokenType::BEHAVIOR && op == TokenType::FULLSTOP);
-        bool expectDataScope = (requestedKind == TokenType::DATA && op == TokenType::SCOPE_OPERATOR);
 
-        if (!expectBehaviorDot && !expectDataScope)
+        if (op != TokenType::AT)
         {
-            std::string opStr = (op == TokenType::FULLSTOP) ? "." : (op == TokenType::SCOPE_OPERATOR) ? "::"
-                                                                                                      : "<op>";
-            logSemanticErrors("Invalid operator '" + opStr + "' for this 'use' context",
+            std::cout << "Triggered USE STMT OPERATOR CHECKER\n";
+            logSemanticErrors("Invalid operator '" + infix->operat.TokenLiteral + "' for this 'use' context",
                               infix->operat.line, infix->operat.column);
             return;
         }
@@ -750,26 +751,13 @@ void Semantics::walkUseStatement(Node *node)
             return;
         }
 
-        if (expectBehaviorDot)
+        if (parent->type.kind != DataType::BEHAVIORBLOCK || parent->type.kind != DataType::DATABLOCK)
         {
-            if (parent->type.kind != DataType::BEHAVIORBLOCK)
-            {
-                logSemanticErrors("Cannot use behavior '" + parentName + "': not a behavior block",
-                                  leftId->expression.line, leftId->expression.column);
-                return;
-            }
-            resultSym->type.kind = DataType::BEHAVIORBLOCK;
+            logSemanticErrors("Cannot use behavior '" + parentName + "': not a behavior block",
+                              leftId->expression.line, leftId->expression.column);
+            return;
         }
-        else
-        {
-            if (parent->type.kind != DataType::DATABLOCK)
-            {
-                logSemanticErrors("Cannot use data '" + parentName + "': not a data block",
-                                  leftId->expression.line, leftId->expression.column);
-                return;
-            }
-            resultSym->type.kind = DataType::DATABLOCK;
-        }
+        resultSym->type.kind = parent->type.kind;
 
         auto memIt = parent->members.find(childName);
         if (memIt == parent->members.end())
@@ -950,6 +938,7 @@ void Semantics::walkComponentStatement(Node *node)
     auto componentName = componentStmt->component_name->expression.TokenLiteral;
     std::cout << "[SEMANTIC LOG] Analyzing component '" << componentName << "'\n";
     bool hasError = false;
+    insideComponent = true;
 
     if (symbolTable[0].find(componentName) != symbolTable[0].end())
     {
@@ -979,14 +968,14 @@ void Semantics::walkComponentStatement(Node *node)
     {
         if (!usedData)
         {
-            std::cout << "INVALID USED DATA NODE\n";
+            std::cout << "Invalid used data node\n";
             return;
         }
 
         auto useStmt = dynamic_cast<UseStatement *>(usedData.get());
         if (!useStmt)
         {
-            std::cout << "INVALID SHIT\n";
+            std::cout << "Invalid use statement \n";
             continue;
         }
 
@@ -1052,6 +1041,15 @@ void Semantics::walkComponentStatement(Node *node)
             if (!leftIdent || !rightIdent)
                 return;
 
+            TokenType op = infixExpr->operat.type;
+
+            if (op != TokenType::AT)
+            {
+                logSemanticErrors("Invalid operator '" + infixExpr->operat.TokenLiteral + "' for explicit use statement import",
+                                  infixExpr->operat.line, infixExpr->operat.column);
+                hasError = true;
+            }
+
             auto dataName = leftIdent->expression.TokenLiteral;
             auto memberName = rightIdent->expression.TokenLiteral;
 
@@ -1083,7 +1081,6 @@ void Semantics::walkComponentStatement(Node *node)
     for (const auto &usedBehavior : componentStmt->usedBehaviorBlocks)
         walkUseStatement(usedBehavior.get());
 
-    // --- REORDERED: WALK PRIVATE DATA MEMBERS FIRST ---
     for (const auto &data : componentStmt->privateData)
     {
         auto letStmt = dynamic_cast<LetStatement *>(data.get());
@@ -1116,30 +1113,10 @@ void Semantics::walkComponentStatement(Node *node)
             metaData[letStmt] = letSym;
         }
 
-        if (assignStmt)
+        else
         {
-            walker(assignStmt);
-            auto assignSym = resolveSymbolInfo(assignStmt->identifier->expression.TokenLiteral);
-            if (!assignSym)
-            {
-                logSemanticErrors("Failed to resolve private data '" + assignStmt->identifier->expression.TokenLiteral + "'",
-                                  assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
-                hasError = true;
-                continue;
-            }
-            auto memberInfo = std::make_shared<MemberInfo>();
-            memberInfo->memberName = assignStmt->identifier->expression.TokenLiteral;
-            memberInfo->type = assignSym->type;
-            memberInfo->isNullable = assignSym->isNullable;
-            memberInfo->isMutable = assignSym->isMutable;
-            memberInfo->isConstant = assignSym->isConstant;
-            memberInfo->isInitialised = assignSym->isInitialized;
-            memberInfo->node = assignStmt;
-            memberInfo->memberIndex = currentMemberIndex++;
-            members[assignStmt->identifier->expression.TokenLiteral] = memberInfo;
-            assignSym->memberIndex = memberInfo->memberIndex;
-
-            metaData[assignStmt] = assignSym;
+            logSemanticErrors("Executable statement found in component '" + componentName + "' definition scope", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
+            hasError = true;
         }
     }
 
@@ -1214,6 +1191,7 @@ void Semantics::walkComponentStatement(Node *node)
 
     // Exit component scope
     currentTypeStack.pop_back();
+    insideComponent = false;
     popScope();
 }
 
@@ -1222,11 +1200,15 @@ void Semantics::walkNewComponentExpression(Node *node)
     auto newExpr = dynamic_cast<NewComponentExpression *>(node);
     if (!newExpr)
         return;
+
     auto line = newExpr->expression.line;
     auto column = newExpr->expression.column;
     bool hasError = false;
-    // Getting the component name we shall search in the component types table and not the scope
+
+    // Get component name
     auto componentName = newExpr->component_name.TokenLiteral;
+
+    // Look up component type
     auto componentIt = customTypesTable.find(componentName);
     if (componentIt == customTypesTable.end())
     {
@@ -1234,55 +1216,93 @@ void Semantics::walkNewComponentExpression(Node *node)
         return;
     }
 
-    // If the name exists we check the args and see if they match the same arguments in the init constructor of that component
-    for (const auto &arg : newExpr->arguments)
+    // Look up init constructor info
+    auto it = componentInitArgs.find(componentName);
+    bool hasInitConstructor = (it != componentInitArgs.end());
+    const auto &givenArgs = newExpr->arguments;
+
+    // Case 1: Component has NO init constructor
+    if (!hasInitConstructor)
     {
-        walker(arg.get());
-        // Getting the type of the argument
-        ResolvedType argType = inferNodeDataType(arg.get());
-        auto it = componentInitArgs.find(componentName);
-        if (it != componentInitArgs.end())
+        if (!givenArgs.empty())
         {
-            const auto &expectedArgs = it->second;
-            const auto &givenArgs = newExpr->arguments;
-
-            // Checking the argument count
-            if (expectedArgs.size() != givenArgs.size())
-            {
-                logSemanticErrors("Constructor for component '" + componentName +
-                                      "' expects " + std::to_string(expectedArgs.size()) +
-                                      " arguments but got " + std::to_string(givenArgs.size()),
-                                  line, column);
-                hasError = true;
-            }
-
-            // Checking the type check pairwise
-            for (size_t i = 0; i < givenArgs.size(); ++i)
-            {
-                ResolvedType argType = inferNodeDataType(givenArgs[i].get());
-                ResolvedType expectedType = expectedArgs[i];
-
-                if (argType.kind != expectedType.kind)
-                {
-                    {
-                        logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
-                                              " of constructor for component '" + componentName +
-                                              "'. Expected '" + expectedType.resolvedName +
-                                              "' but got '" + argType.resolvedName + "'",
-                                          line, column);
-                        hasError = true;
-                    }
-                }
-            }
+            logSemanticErrors("Component '" + componentName +
+                                  "' has no init constructor, arguments not allowed.",
+                              line, column);
+            hasError = true;
         }
-        else
+        // store metadata and exit early
+        auto info = std::make_shared<SymbolInfo>();
+        info->type = componentIt->second.type;
+        info->hasError = hasError;
+        metaData[newExpr] = info;
+        return;
+    }
+
+    const auto &expectedArgs = it->second;
+
+    // Case 2: Init constructor exists but is EMPTY
+    if (expectedArgs.empty())
+    {
+        if (!givenArgs.empty())
         {
-            logSemanticErrors("No init constructor was provided for '" + componentName + "' so the addition of arguments is unneccesary", line, column);
+            logSemanticErrors("Init constructor for '" + componentName +
+                                  "' takes no arguments.",
+                              line, column);
+            hasError = true;
+        }
+        auto info = std::make_shared<SymbolInfo>();
+        info->type = componentIt->second.type;
+        info->hasError = hasError;
+        metaData[newExpr] = info;
+        return;
+    }
+
+    // Case 3: Init constructor expects arguments but user provided NONE
+    if (givenArgs.empty())
+    {
+        logSemanticErrors("Constructor for component '" + componentName +
+                              "' expects " + std::to_string(expectedArgs.size()) +
+                              " arguments but got none.",
+                          line, column);
+        hasError = true;
+
+        auto info = std::make_shared<SymbolInfo>();
+        info->type = componentIt->second.type;
+        info->hasError = hasError;
+        metaData[newExpr] = info;
+        return;
+    }
+
+    // Case 4: Argument count mismatch
+    if (expectedArgs.size() != givenArgs.size())
+    {
+        logSemanticErrors("Constructor for component '" + componentName +
+                              "' expects " + std::to_string(expectedArgs.size()) +
+                              " arguments but got " + std::to_string(givenArgs.size()) + ".",
+                          line, column);
+        hasError = true;
+    }
+
+    // Case 5: Type checks (pairwise, safe even if sizes differ)
+    for (size_t i = 0; i < std::min(expectedArgs.size(), givenArgs.size()); ++i)
+    {
+        walker(givenArgs[i].get());
+        ResolvedType argType = inferNodeDataType(givenArgs[i].get());
+        ResolvedType expectedType = expectedArgs[i];
+
+        if (argType.kind != expectedType.kind)
+        {
+            logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
+                                  " of constructor for '" + componentName +
+                                  "'. Expected '" + expectedType.resolvedName +
+                                  "' but got '" + argType.resolvedName + "'.",
+                              line, column);
             hasError = true;
         }
     }
 
-    // Storing meta data
+    // === Store metadata ===
     auto info = std::make_shared<SymbolInfo>();
     info->type = componentIt->second.type;
     info->hasError = hasError;
