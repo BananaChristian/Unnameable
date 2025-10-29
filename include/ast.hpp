@@ -317,23 +317,38 @@ struct CallExpression : Expression
     CallExpression(Token tok, std::unique_ptr<Expression> fn_ident, std::vector<std::unique_ptr<Expression>> params) : Expression(tok), function_identifier(std::move(fn_ident)), parameters(std::move(params)) {};
 };
 
+// Method call expression
+struct MethodCallExpression : Expression
+{
+    std::unique_ptr<Expression> instance;
+    std::unique_ptr<Expression> call;
+
+    std::string toString() override
+    {
+        return "Method Call Expression: " + instance->toString() + " " + call->toString();
+    }
+
+    MethodCallExpression(std::unique_ptr<Expression> inst, std::unique_ptr<Expression> callExpr)
+        : Expression(inst->expression), instance(std::move(inst)), call(std::move(callExpr)) {}
+};
+
 // Instance expression
 struct InstanceExpression : Expression
 {
     std::unique_ptr<Expression> blockIdent;
-    std::vector <std::unique_ptr<Statement>> fields;
+    std::vector<std::unique_ptr<Statement>> fields;
 
     std::string toString() override
     {
         std::string args;
-        for(const auto &field:fields){
-            args+=field->toString();
+        for (const auto &field : fields)
+        {
+            args += field->toString();
         }
-        return "Instance expression: "+ blockIdent->toString()+ " {"+args+"}";
+        return "Instance expression: " + blockIdent->toString() + " {" + args + "}";
     }
 
-    InstanceExpression(std::unique_ptr<Expression> ident, std::vector<std::unique_ptr<Statement>> param): Expression(ident->expression),blockIdent(std::move(ident)), fields(std::move(param)){};
-
+    InstanceExpression(std::unique_ptr<Expression> ident, std::vector<std::unique_ptr<Statement>> param) : Expression(ident->expression), blockIdent(std::move(ident)), fields(std::move(param)) {};
 };
 
 // Function expression struct node
