@@ -81,6 +81,8 @@ struct MemberInfo
 {
     std::string memberName;
     ResolvedType type; // Type of the member
+    std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+    ResolvedType returnType;
     bool isNullable = false;
     bool isMutable = false;
     bool isConstant = false;
@@ -193,10 +195,10 @@ public:
     std::string fileName;
 
 private:
-    bool insideFunction=false;
-    bool insideBehavior=false;
-    bool insideComponent=false;
-    
+    bool insideFunction = false;
+    bool insideBehavior = false;
+    bool insideComponent = false;
+
     // Walking the data type literals
     void walkShortLiteral(Node *node);
     void walkUnsignedShortLiteral(Node *node);
@@ -222,7 +224,6 @@ private:
     // Walking the component functions declaration
     void walkDataStatement(Node *node);
     void walkBehaviorStatement(Node *node);
-    void walkUseStatement(Node *node);
     void walkComponentStatement(Node *node);
     void walkNewComponentExpression(Node *node);
     void walkInitConstructor(Node *node);
@@ -310,6 +311,7 @@ private:
     ArrayMeta getArrayMeta(Node *node);
     int64_t getIntExprVal(Node *node);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
+    bool signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberInfo> &declMember, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool isInteger(const ResolvedType &t);
     bool isNullableInteger(const ResolvedType &t);

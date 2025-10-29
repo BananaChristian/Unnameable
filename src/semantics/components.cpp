@@ -491,6 +491,7 @@ void Semantics::walkBehaviorStatement(Node *node)
     // Get behavior block name
     std::string behaviorName = behaviorStmt->behaviorBlockName->expression.TokenLiteral;
 
+    bool hasError = false;
     insideBehavior = true;
 
     // Ensure name not already used
@@ -521,37 +522,27 @@ void Semantics::walkBehaviorStatement(Node *node)
             continue; // keep checking the rest
         }
 
-        // Let the walker handle function analysis
-        walker(funcStmt);
-
-        auto funcInfo = std::make_shared<MemberInfo>();
-
-        // Case A: function expression
+        // If we get a function expression this isnt allowed inside behavior blocks
         if (auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get()))
         {
             auto exprSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
             if (!exprSym)
             {
                 logSemanticErrors(
-                    "Function expression '" + funcExpr->func_key.TokenLiteral + "' was not analyzed properly",
+                    "Function definition '" + funcExpr->func_key.TokenLiteral + "' prohibited in behavior blocks",
                     funcExpr->expression.line,
                     funcExpr->expression.column);
-                continue;
+                hasError = true;
             }
-
-            funcInfo->memberName = funcExpr->func_key.TokenLiteral;
-            funcInfo->type = exprSym->type;
-            funcInfo->node = funcStmt;
-
-            behaviorMembers[funcExpr->func_key.TokenLiteral] = funcInfo;
-
-            std::cout << "[SEMANTIC LOG] Added function expression '"
-                      << funcExpr->func_key.TokenLiteral
-                      << "' to behavior '" << behaviorName << "'\n";
         }
 
-        // Case B: function declaration
-        else if (auto funcDeclExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get()))
+        // Let the walker handle function analysis
+        auto funcDeclExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get());
+        walker(funcDeclExpr);
+
+        auto funcInfo = std::make_shared<MemberInfo>();
+
+        if (funcDeclExpr)
         {
             auto funcDecl = dynamic_cast<FunctionDeclaration *>(funcDeclExpr->funcDeclrStmt.get());
             if (!funcDecl)
@@ -575,6 +566,8 @@ void Semantics::walkBehaviorStatement(Node *node)
 
             funcInfo->memberName = funcDecl->function_name->expression.TokenLiteral;
             funcInfo->type = declSym->type;
+            funcInfo->paramTypes = declSym->paramTypes;
+            funcInfo->returnType = declSym->returnType;
             funcInfo->node = funcStmt;
 
             behaviorMembers[funcDecl->function_name->expression.TokenLiteral] = funcInfo;
@@ -597,210 +590,13 @@ void Semantics::walkBehaviorStatement(Node *node)
         .members = behaviorMembers};
 
     // Store results
-    symbolTable[0][behaviorName] = sym;
+    symbolTable[0][behaviorName] = sym; // All behavior blocks are hoisted to global scope
     metaData[behaviorStmt] = sym;
     customTypesTable[behaviorName] = typeInfo;
 
     insideBehavior = false;
     // Pop scope
     popScope();
-}
-
-void Semantics::walkUseStatement(Node *node)
-{
-    auto useStmt = dynamic_cast<UseStatement *>(node);
-    if (!useStmt)
-        return;
-
-    std::cout << "[SEMANTIC LOG] Analyzing use statement " << node->toString() << "\n";
-
-    auto resultSym = std::make_shared<SymbolInfo>();
-    // Initializing safe defaults
-    resultSym->isNullable = false;
-    resultSym->isMutable = false;
-    resultSym->isConstant = false;
-    resultSym->isInitialized = false;
-    resultSym->members.clear();
-    resultSym->type = ResolvedType{DataType::UNKNOWN, ""};
-
-    // Determining requested kind (data/behavior)
-    TokenType requestedKind = useStmt->kind_token.type;
-
-    // Expression after 'use'
-    Node *expr = useStmt->blockNameOrCall.get();
-    if (!expr)
-    {
-        logSemanticErrors("Empty target for use", useStmt->statement.line, useStmt->statement.column);
-        return;
-    }
-
-    // helper to find custom type by name in customTypesTable
-    auto findType = [&](const std::string &name) -> CustomTypeInfo *
-    {
-        auto it = customTypesTable.find(name);
-        if (it == customTypesTable.end())
-            return nullptr;
-        return &it->second;
-    };
-
-    // ---------- Case A: simple identifier -> full import ----------
-    if (auto ident = dynamic_cast<Identifier *>(expr))
-    {
-        std::string targetName = ident->expression.TokenLiteral;
-        CustomTypeInfo *target = findType(targetName);
-        if (!target)
-        {
-            logSemanticErrors("Unknown block '" + targetName + "' in use statement",
-                              ident->expression.line, ident->expression.column);
-            return;
-        }
-
-        if (requestedKind == TokenType::DATA)
-        {
-            if (target->type.kind != DataType::DATABLOCK)
-            {
-                logSemanticErrors("Cannot use '" + targetName + "' here: expected DATABLOCK",
-                                  ident->expression.line, ident->expression.column);
-                return;
-            }
-            resultSym->type.kind = DataType::DATABLOCK;
-            resultSym->members = target->members; // copying members
-        }
-        else if (requestedKind == TokenType::BEHAVIOR)
-        {
-            if (target->type.kind != DataType::BEHAVIORBLOCK)
-            {
-                logSemanticErrors("Cannot use '" + targetName + "' here: expected BEHAVIORBLOCK",
-                                  ident->expression.line, ident->expression.column);
-                return;
-            }
-            resultSym->type.kind = DataType::BEHAVIORBLOCK;
-            resultSym->members = target->members;
-        }
-        else
-        {
-            logSemanticErrors("Expected either 'data' or 'behavior' after 'use'",
-                              useStmt->statement.line, useStmt->statement.column);
-            return;
-        }
-
-        // Attaching result to useStmt node
-        metaData[useStmt] = resultSym;
-        std::cout << "[SEMANTIC LOG] use " << ((requestedKind == TokenType::DATA) ? "data " : "behavior ")
-                  << targetName << " imported " << resultSym->members.size() << " member(s)\n";
-
-        // Merging into current component scope if a component is active
-        if (!currentTypeStack.empty())
-        {
-            // merging into the member map
-            auto &currentMembers = currentTypeStack.back().members;
-            for (auto &kv : resultSym->members)
-            {
-                walker(kv.second->node);
-                currentMembers[kv.first] = kv.second;
-                auto memSym = std::make_shared<SymbolInfo>();
-                memSym->type = kv.second->type;
-                memSym->isNullable = kv.second->isNullable;
-                memSym->isMutable = kv.second->isMutable;
-                memSym->isConstant = kv.second->isConstant;
-                memSym->isInitialized = kv.second->isInitialised;
-                if (kv.second->node) // ensure node exists
-                    metaData[kv.second->node] = memSym;
-                symbolTable.back()[kv.first] = memSym;
-            }
-        }
-        else
-        {
-            std::cout << "[SEMANTIC LOG] No currentTypeStack to merge 'use' members into\n";
-        }
-
-        return;
-    }
-
-    // ---------- Case B: qualified import (infix) ----------
-    if (auto infix = dynamic_cast<InfixExpression *>(expr))
-    {
-        std::cout << "Triggered qualified import\n";
-        TokenType op = infix->operat.type;
-
-        if (op != TokenType::AT)
-        {
-            std::cout << "Triggered USE STMT OPERATOR CHECKER\n";
-            logSemanticErrors("Invalid operator '" + infix->operat.TokenLiteral + "' for this 'use' context",
-                              infix->operat.line, infix->operat.column);
-            return;
-        }
-
-        auto leftId = dynamic_cast<Identifier *>(infix->left_operand.get());
-        auto rightId = dynamic_cast<Identifier *>(infix->right_operand.get());
-        if (!leftId || !rightId)
-        {
-            logSemanticErrors("Invalid qualified name in use statement",
-                              useStmt->statement.line, useStmt->statement.column);
-            return;
-        }
-
-        std::string parentName = leftId->expression.TokenLiteral;
-        std::string childName = rightId->expression.TokenLiteral;
-
-        CustomTypeInfo *parent = findType(parentName);
-        if (!parent)
-        {
-            logSemanticErrors("Unknown block '" + parentName + "' in use statement",
-                              leftId->expression.line, leftId->expression.column);
-            return;
-        }
-
-        if (parent->type.kind != DataType::BEHAVIORBLOCK || parent->type.kind != DataType::DATABLOCK)
-        {
-            logSemanticErrors("Cannot use behavior '" + parentName + "': not a behavior block",
-                              leftId->expression.line, leftId->expression.column);
-            return;
-        }
-        resultSym->type.kind = parent->type.kind;
-
-        auto memIt = parent->members.find(childName);
-        if (memIt == parent->members.end())
-        {
-            logSemanticErrors("Type '" + parentName + "' has no member '" + childName + "'",
-                              rightId->expression.line, rightId->expression.column);
-            return;
-        }
-
-        // keep only the selected member
-        resultSym->members.clear();
-        resultSym->members.emplace(childName, memIt->second);
-        metaData[useStmt] = resultSym;
-
-        // merge into the active component type if present
-        if (!currentTypeStack.empty())
-        {
-            auto &currentMembers = currentTypeStack.back().members;
-            currentMembers[childName] = memIt->second;
-
-            auto memSym = std::make_shared<SymbolInfo>();
-            memSym->type = memIt->second->type;
-            memSym->isNullable = memIt->second->isNullable;
-            memSym->isMutable = memIt->second->isMutable;
-            memSym->isConstant = memIt->second->isConstant;
-            memSym->isInitialized = memIt->second->isInitialised;
-            symbolTable.back()[childName] = memSym;
-        }
-        else
-        {
-            std::cout << "[SEMANTIC LOG] No currentTypeStack to merge single-use member into\n";
-        }
-
-        std::cout << "[SEMANTIC LOG] use "
-                  << ((requestedKind == TokenType::DATA) ? "data " : "behavior ")
-                  << parentName
-                  << ((op == TokenType::FULLSTOP) ? "." : "::")
-                  << childName << " imported 1 member\n";
-        return;
-    }
-
-    // Unsupported shape
-    logSemanticErrors("Invalid use target", useStmt->statement.line, useStmt->statement.column);
 }
 
 void Semantics::walkInitConstructor(Node *node)
@@ -1079,12 +875,122 @@ void Semantics::walkComponentStatement(Node *node)
     }
 
     for (const auto &usedBehavior : componentStmt->usedBehaviorBlocks)
-        walkUseStatement(usedBehavior.get());
+    {
+        if (!usedBehavior)
+        {
+            std::cout << "Invalid used behavior node\n";
+            return;
+        }
+
+        auto useStmt = dynamic_cast<UseStatement *>(usedBehavior.get());
+        if (!useStmt)
+        {
+            std::cout << "Invalid use statement\n";
+            continue;
+        }
+
+        // Mass import case
+        auto ident = dynamic_cast<Identifier *>(useStmt->blockNameOrCall.get());
+        if (ident)
+        {
+            auto identName = ident->expression.TokenLiteral;
+            std::cout << "IMPORTING DATA FROM: " << identName << "\n";
+
+            auto typeIt = customTypesTable.find(identName);
+            if (typeIt == customTypesTable.end())
+            {
+                logSemanticErrors("Method block with name '" + identName + "' does not exist", ident->expression.line, ident->expression.column);
+                hasError = true;
+                return;
+            }
+            auto &importedMembers = typeIt->second.members;
+            auto &currentScope = symbolTable.back();
+            for (auto &[name, info] : importedMembers)
+            {
+                auto memberCopy = std::make_shared<MemberInfo>();
+                memberCopy->memberName = info->memberName;
+                memberCopy->type = info->type;
+                memberCopy->isNullable = info->isNullable;
+                memberCopy->isMutable = info->isMutable;
+                memberCopy->isConstant = info->isConstant;
+                memberCopy->isInitialised = info->isInitialised;
+
+                memberCopy->node = info->node;
+                memberCopy->memberIndex = currentMemberIndex++;
+                members[name] = memberCopy;
+
+                auto memSym = std::make_shared<SymbolInfo>();
+                memSym->type = info->type;
+                memSym->isNullable = info->isNullable;
+                memSym->isMutable = info->isMutable;
+                memSym->isConstant = info->isConstant;
+                memSym->isInitialized = info->isInitialised;
+                memSym->memberIndex = memberCopy->memberIndex;
+                currentScope[name] = memSym;
+
+                if (memberCopy->node)
+                {
+                    metaData[memberCopy->node] = memSym;
+                    std::cout << "[SEMANTIC LOG] mapped member node " << memberCopy->node
+                              << " -> symbol for '" << name << "'\n";
+                }
+                else
+                {
+                    // If the node wasnt populated
+                    std::cout << "[SEMANTIC WARN] imported member '" << name << "' has no node\n";
+                }
+            }
+        }
+
+        // Specific import case
+        auto infixExpr = dynamic_cast<InfixExpression *>(useStmt->blockNameOrCall.get());
+        if (infixExpr)
+        {
+            auto leftIdent = dynamic_cast<Identifier *>(infixExpr->left_operand.get());
+            auto rightIdent = dynamic_cast<Identifier *>(infixExpr->right_operand.get());
+            if (!leftIdent || !rightIdent)
+                return;
+
+            TokenType op = infixExpr->operat.type;
+
+            if (op != TokenType::AT)
+            {
+                logSemanticErrors("Invalid operator '" + infixExpr->operat.TokenLiteral + "' for explicit use statement import",
+                                  infixExpr->operat.line, infixExpr->operat.column);
+                hasError = true;
+            }
+
+            auto methodName = leftIdent->expression.TokenLiteral;
+            auto memberName = rightIdent->expression.TokenLiteral;
+
+            auto importedTypeIt = customTypesTable.find(methodName);
+            if (importedTypeIt != customTypesTable.end())
+            {
+                auto &importedMembers = importedTypeIt->second.members;
+                auto memIt = importedMembers.find(memberName);
+                if (memIt != importedMembers.end())
+                {
+                    // Copy only the requested member
+                    std::shared_ptr<MemberInfo> memberCopy = memIt->second;
+                    memberCopy->memberIndex = currentMemberIndex++;
+                    members[memberName] = memberCopy;
+
+                    auto memSym = std::make_shared<SymbolInfo>();
+                    memSym->type = memIt->second->type;
+                    memSym->isNullable = memIt->second->isNullable;
+                    memSym->isMutable = memIt->second->isMutable;
+                    memSym->isConstant = memIt->second->isConstant;
+                    memSym->isInitialized = memIt->second->isInitialised;
+                    memSym->memberIndex = memberCopy->memberIndex;
+                    symbolTable.back()[memberName] = memSym;
+                }
+            }
+        }
+    }
 
     for (const auto &data : componentStmt->privateData)
     {
         auto letStmt = dynamic_cast<LetStatement *>(data.get());
-        auto assignStmt = dynamic_cast<AssignmentStatement *>(data.get());
 
         if (letStmt)
         {
@@ -1115,7 +1021,7 @@ void Semantics::walkComponentStatement(Node *node)
 
         else
         {
-            logSemanticErrors("Executable statement found in component '" + componentName + "' definition scope", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
+            logSemanticErrors("Executable statement found in component '" + componentName + "' definition scope", data->statement.line, data->statement.column);
             hasError = true;
         }
     }
@@ -1127,10 +1033,35 @@ void Semantics::walkComponentStatement(Node *node)
             continue;
 
         auto funcExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
+        std::string funcName;
+        funcName = funcExpr ? funcExpr->func_key.TokenLiteral : "unknown";
         auto funcDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get());
+        auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(funcDeclrExpr->funcDeclrStmt.get());
+        funcName = funcDeclrStmt ? funcDeclrStmt->function_name->expression.TokenLiteral : "unknown";
 
         if (funcExpr)
         {
+            // Assume funcExpr is the current component method being processed
+            auto &currentMembers = currentTypeStack.back().members;
+
+            // Check if this method exists in the imported behavior
+            auto behaviorIt = currentMembers.find(funcName);
+            if (behaviorIt != currentMembers.end())
+            {
+                auto &behaviorMethod = behaviorIt->second;
+
+                // Compare signatures directly
+                bool matches = signaturesMatchBehaviorDeclaration(behaviorMethod, funcExpr);
+                if (!matches)
+                {
+                    logSemanticErrors(
+                        "Component function '" + funcExpr->func_key.TokenLiteral +
+                            "' does not match imported behavior declaration",
+                        funcExpr->func_key.line, funcExpr->func_key.column);
+                    continue; // skip registration, it's private and mismatched
+                }
+            }
+
             walker(funcExpr);
             auto metSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
             std::cout << "TRYING TO INSERT: " << funcExpr->func_key.TokenLiteral << "\n";
@@ -1148,26 +1079,8 @@ void Semantics::walkComponentStatement(Node *node)
         }
         else if (funcDeclrExpr)
         {
-            auto funcDeclr = dynamic_cast<FunctionDeclaration *>(funcDeclrExpr->funcDeclrStmt.get());
-            if (!funcDeclr)
-            {
-                std::cout << "[SEMANTIC LOG]: Function declaration statement is null\n";
-                return;
-            }
-            walker(funcDeclr);
-            auto metSym = resolveSymbolInfo(funcDeclr->function_name->expression.TokenLiteral);
-            if (metSym)
-            {
-                std::cout << "INSERTING COMPONENT FUNCTION DECLARATION EXPRESSION\n";
-                auto memInfo = std::make_shared<MemberInfo>();
-                memInfo->memberName = funcDeclr->function_name->expression.TokenLiteral;
-                memInfo->type = metSym->type;
-                memInfo->isNullable = metSym->isNullable;
-                memInfo->isMutable = metSym->isMutable;
-                memInfo->node = funcStmt;
-
-                members[funcDeclr->function_name->expression.TokenLiteral] = memInfo;
-            }
+            logSemanticErrors("Cannot use function declarations inside a component '" + componentName + "'", funcDeclrExpr->expression.line, funcDeclrExpr->expression.column);
+            hasError = true;
         }
     }
 

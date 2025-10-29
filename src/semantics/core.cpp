@@ -120,7 +120,6 @@ void Semantics::registerWalkerFunctions()
     // Walker registration for the component system
     walkerFunctionsMap[typeid(DataStatement)] = &Semantics::walkDataStatement;
     walkerFunctionsMap[typeid(BehaviorStatement)] = &Semantics::walkBehaviorStatement;
-    walkerFunctionsMap[typeid(UseStatement)] = &Semantics::walkUseStatement;
     walkerFunctionsMap[typeid(ComponentStatement)] = &Semantics::walkComponentStatement;
     walkerFunctionsMap[typeid(NewComponentExpression)] = &Semantics::walkNewComponentExpression;
     walkerFunctionsMap[typeid(SelfExpression)] = &Semantics::walkSelfExpression;
@@ -605,7 +604,7 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
         logSemanticErrors("Parent name '" + parentName + "' does not exist", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
         return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
-    
+
     if (operatorType == TokenType::SCOPE_OPERATOR)
     {
         if (!(typeIt->second.type.kind == DataType::ENUM))
@@ -1085,6 +1084,57 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
     ResolvedType returnType = inferNodeDataType(retType->returnExpr.get());
     std::string returnGenericName = retType->expression.type == TokenType::IDENTIFIER ? retType->expression.TokenLiteral : "";
     return returnType.kind == declInfo.returnType.kind;
+}
+
+bool Semantics::signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberInfo> &declMember, FunctionExpression *funcExpr)
+{
+    if (!declMember)
+        return false;
+
+    if (!funcExpr)
+        return false;
+
+    const auto &declParams = declMember->paramTypes;
+    if (declParams.size() != funcExpr->call.size())
+        return false;
+
+    for (size_t i = 0; i < declMember->paramTypes.size(); ++i)
+    {
+        auto letStmt = dynamic_cast<LetStatement *>(funcExpr->call[i].get());
+        if (!letStmt)
+            return false;
+        ResolvedType paramType = tokenTypeToResolvedType(letStmt->data_type_token, letStmt->isNullable);
+        std::string paramGenericName = letStmt->data_type_token.type == TokenType::IDENTIFIER ? letStmt->data_type_token.TokenLiteral : "";
+        // Find declaration's parameter metadata
+        bool declParamNullable = false;
+        for (const auto &pair : metaData)
+        {
+            if (auto declLetStmt = dynamic_cast<LetStatement *>(pair.first))
+            {
+                if (declLetStmt->ident_token.TokenLiteral == letStmt->ident_token.TokenLiteral &&
+                    pair.second->type.kind == declMember->paramTypes[i].first.kind &&
+                    pair.second->genericName == declMember->paramTypes[i].second)
+                {
+                    declParamNullable = pair.second->isNullable;
+                    break;
+                }
+            }
+        }
+        if (paramType.kind != declMember->paramTypes[i].first.kind ||
+            paramGenericName != declMember->paramTypes[i].second ||
+            letStmt->isNullable != declParamNullable)
+        {
+            return false;
+        }
+    }
+
+    // Check return type
+    auto retType = dynamic_cast<ReturnType *>(funcExpr->return_type.get());
+    if (!retType)
+        return false;
+    ResolvedType returnType = inferNodeDataType(retType->returnExpr.get());
+    std::string returnGenericName = retType->expression.type == TokenType::IDENTIFIER ? retType->expression.TokenLiteral : "";
+    return returnType.kind == declMember->returnType.kind;
 }
 
 bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr)
