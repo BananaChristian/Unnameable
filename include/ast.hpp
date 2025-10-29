@@ -325,7 +325,7 @@ struct MethodCallExpression : Expression
 
     std::string toString() override
     {
-        return "Method Call Expression: " + instance->toString() + " " + call->toString();
+        return "Method Call Expression: " + instance->toString() + "." + call->toString();
     }
 
     MethodCallExpression(std::unique_ptr<Expression> inst, std::unique_ptr<Expression> callExpr)
