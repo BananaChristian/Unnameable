@@ -246,6 +246,9 @@ private:
     // Instance expression parse function
     std::unique_ptr<Expression> parseInstanceExpression(std::unique_ptr<Expression> left);
 
+    // Method access call expression parse function
+    std::unique_ptr<Expression> parseMethodCallExpression(std::unique_ptr<Expression> left);
+
     // Parsing identifier expression
     std::unique_ptr<Expression> parseIdentifier();
 
@@ -339,6 +342,8 @@ private:
 
     // Call expression parse function
     std::unique_ptr<Expression> parseCallExpression(std::unique_ptr<Expression> left);
+
+    std::unique_ptr<Expression> parseInfixOrMethodCallExpression(std::unique_ptr<Expression> left);
 
     // Parsing call arguments
     std::vector<std::unique_ptr<Expression>> parseCallArguments();

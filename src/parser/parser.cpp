@@ -1545,6 +1545,19 @@ std::unique_ptr<Expression> Parser::parseGroupedExpression()
     return expr;
 }
 
+std::unique_ptr<Expression> Parser::parseMethodCallExpression(std::unique_ptr<Expression> left)
+{
+    advance(); // consume FULLSTOP
+
+    std::unique_ptr<Expression> funcIdent = parseIdentifier();
+    if (!funcIdent)
+        return nullptr;
+
+    auto callExpr = parseCallExpression(std::move(funcIdent));
+
+    return std::make_unique<MethodCallExpression>(std::move(left), std::move(callExpr));
+}
+
 std::unique_ptr<Expression> Parser::parseCallExpression(std::unique_ptr<Expression> left)
 {
     std::cout << "[DEBUG] Entered parseCallExpression for: " << left->toString() << "\n";
@@ -1603,6 +1616,21 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments()
     }
 
     return args;
+}
+
+std::unique_ptr<Expression> Parser::parseInfixOrMethodCallExpression(std::unique_ptr<Expression> left)
+{
+    // Peek ahead by 2
+    if (peekToken(2).type == TokenType::LPAREN)
+    {
+        // Method call: p1.test(...)
+        return parseMethodCallExpression(std::move(left));
+    }
+    else
+    {
+        // Regular member access: p1.health
+        return parseInfixExpression(std::move(left));
+    }
 }
 
 // Parsing basic return type
@@ -1925,7 +1953,7 @@ void Parser::registerInfixFns()
     InfixParseFunctionsMap[TokenType::LESS_THAN] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::GT_OR_EQ] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::LT_OR_EQ] = &Parser::parseInfixExpression;
-    InfixParseFunctionsMap[TokenType::FULLSTOP] = &Parser::parseInfixExpression;
+    InfixParseFunctionsMap[TokenType::FULLSTOP] = &Parser::parseInfixOrMethodCallExpression;
     InfixParseFunctionsMap[TokenType::SCOPE_OPERATOR] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;
     InfixParseFunctionsMap[TokenType::OR] = &Parser::parseInfixExpression;
