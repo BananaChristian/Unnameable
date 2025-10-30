@@ -142,7 +142,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     // Self pointer setup
     auto argIt = initFunc->arg_begin();
     llvm::Value *selfPtr = &*argIt++;
-    selfPtr->setName("self");
+    selfPtr->setName(componentName+".self");
 
     // Register self in metadata
     auto compIt = semantics.metaData.find(component);
@@ -234,7 +234,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
 
         // Map %this (first argument)
         llvm::Argument &thisArg = *fn->arg_begin();
-        thisArg.setName("self");
+        thisArg.setName(compName+".self");
         exprIt->second->llvmValue = &thisArg;
 
         // Map user parameters
