@@ -188,15 +188,14 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
 
 void IRGenerator::generateComponentFunctionStatement(Node *node, const std::string &compName)
 {
-    auto *fnStmt = dynamic_cast<FunctionStatement *>(node);
-    if (!fnStmt)
+    auto *fnExpr = dynamic_cast<FunctionExpression *>(node);
+    if (!fnExpr)
         return;
 
     llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
-    auto *fnExpr = fnStmt->funcExpr.get();
     std::string funcName;
 
-    // FunctionExpression: definition with body 
+    // FunctionExpression: definition with body
     if (auto *expr = dynamic_cast<FunctionExpression *>(fnExpr))
     {
         auto exprIt = semantics.metaData.find(expr);
@@ -219,7 +218,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
             paramTypes.push_back(getLLVMType(it->second->type));
         }
 
-        // Return type 
+        // Return type
         ResolvedType retType = semantics.inferNodeDataType(expr->return_type.get());
         llvm::FunctionType *fnType =
             llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
@@ -235,9 +234,10 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
 
         // Map %this (first argument)
         llvm::Argument &thisArg = *fn->arg_begin();
+        thisArg.setName("self");
         exprIt->second->llvmValue = &thisArg;
 
-        // Map user parameters 
+        // Map user parameters
         auto argIter = std::next(fn->arg_begin()); // skip %this
         for (auto &p : expr->call)
         {
@@ -254,7 +254,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
             ++argIter;
         }
 
-        //Generate function body 
+        // Generate function body
         generateExpression(expr->block.get());
     }
 
@@ -299,10 +299,10 @@ void IRGenerator::generateComponentStatement(Node *node)
         if (!info->node)
             continue;
 
-        if (auto *funcStmt = dynamic_cast<FunctionStatement *>(info->node))
+        if (auto *funcExpr = dynamic_cast<FunctionExpression *>(info->node))
         {
             // Inject `%this` param if function belongs to component
-            generateComponentFunctionStatement(funcStmt, compName);
+            generateComponentFunctionStatement(funcExpr, compName);
             continue;
         }
 
@@ -318,7 +318,7 @@ void IRGenerator::generateComponentStatement(Node *node)
     // Finalize struct definition
     structTy->setBody(memberTypes);
 
-    // INIT HANDLING 
+    // INIT HANDLING
     if (compStmt->initConstructor)
         generateInitFunction(compStmt->initConstructor.value().get(), compStmt);
 
@@ -383,7 +383,7 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
     // Zero initialize (optional safety)
     funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
 
-    // Check for init 
+    // Check for init
     if (llvm::Function *initFn = module->getFunction(compName + "_init"))
     {
         std::vector<llvm::Value *> initArgs;
@@ -403,4 +403,3 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
     // Return the pointer
     return instancePtr;
 }
-
