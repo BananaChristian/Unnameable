@@ -119,12 +119,12 @@ void IRGenerator::generateStatement(Node *node)
 // Let statement IR generator function
 void IRGenerator::generateLetStatement(Node *node)
 {
-    // === VALIDATION AND EXTRACTION ===
-    auto letStmt = dynamic_cast<LetStatement *>(node);
+    //VALIDATION AND EXTRACTION
+    auto *letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
         throw std::runtime_error("Invalid let statement");
 
-    const std::string &letName = letStmt->ident_token.TokenLiteral;
+    const std::string letName = letStmt->ident_token.TokenLiteral;
     std::cout << "[DEBUG] Generating let statement for variable '" << letName << "'\n";
 
     auto metaIt = semantics.metaData.find(letStmt);
@@ -135,82 +135,109 @@ void IRGenerator::generateLetStatement(Node *node)
     if (sym->hasError)
         throw std::runtime_error("Semantic error detected for '" + letName + "'");
 
-    llvm::BasicBlock *insertBlock = funcBuilder.GetInsertBlock();
-    std::cout << "[DEBUG] Builder InsertBlock is: " << (insertBlock ? insertBlock->getName().str() : "NULL") << "\n";
-
-    // === GLOBAL SCOPE HANDLING (No function insert block) ===
+    // If there's no current insert block, handle global
     if (!funcBuilder.GetInsertBlock())
     {
-        std::cout << "No insert block detected\n";
-        bool isHeap = letStmt->isHeap;
-        if (isHeap)
+        std::cout << "[DEBUG] No insert block (global scope) for let '" << letName << "'\n";
+        if (letStmt->isHeap)
         {
             generateGlobalHeapLet(letStmt, sym, letName);
         }
         else
         {
-            auto val = dynamic_cast<Expression *>(letStmt->value.get());
-            generateGlobalScalarLet(sym, letName, val);
+            auto valExpr = dynamic_cast<Expression *>(letStmt->value.get());
+            generateGlobalScalarLet(sym, letName, valExpr);
         }
         return;
     }
 
-    // === LOCAL SCOPE HANDLING (Has insert block) ===
-    llvm::Value *storage = nullptr; // Centralized storage for the variable
+    //LOCAL SCOPE 
+    llvm::Value *storage = nullptr;
+    llvm::StructType *structTy = nullptr;
+    bool isComponent = false;
 
-    // Determine if this is a component type
+    // Detect component type
     auto compIt = componentTypes.find(sym->type.resolvedName);
-    bool isComponent = (compIt != componentTypes.end());
-    llvm::StructType *structTy = isComponent ? compIt->second : nullptr;
+    if (compIt != componentTypes.end())
+    {
+        isComponent = true;
+        structTy = llvm::dyn_cast<llvm::StructType>(compIt->second);
+    }
 
-    // Generate initial value (shared logic for components and scalars)
+    // For non-components: compute init value (scalar or other)
     llvm::Value *initVal = nullptr;
+    if (!isComponent)
+    {
+        if (letStmt->value)
+            initVal = generateExpression(letStmt->value.get());
+        else
+            initVal = llvm::Constant::getNullValue(getLLVMType(sym->type));
+    }
+
+    // If component, try to detect `new` expression and obtain the constructed pointer
+    bool usedNewExpr = false;
+    llvm::Value *constructedPtr = nullptr;
     if (isComponent)
     {
-        initVal = generateComponentInit(letStmt, structTy);
-    }
-    else
-    {
-        initVal = letStmt->value ? generateExpression(letStmt->value.get())
-                                 : llvm::Constant::getNullValue(getLLVMType(sym->type));
+        constructedPtr = generateComponentInit(letStmt, structTy, usedNewExpr);
+        // constructedPtr is non-null only when letStmt->value was a NewComponentExpression and generator returned pointer-to-struct
     }
 
-    // Allocate storage (heap or stack, with shared heap alloc logic)
+    // Allocate storage
     if (letStmt->isHeap)
     {
+        // keep existing heap path (you said to ignore heap raises in earlier messages, but preserving logic)
         storage = allocateHeapStorage(sym, letName, structTy);
-        // For heap-allocated locals, ensure sage_init is called before allocation
         if (!isSageInitCalled)
         {
-            std::cout << "Branching to call sage_init\n";
             generateSageInitCall();
-            isSageInitCalled = true; // Mark as called to avoid repetition
+            isSageInitCalled = true;
         }
     }
     else
     {
-        llvm::Type *varType = getLLVMType(sym->type);
-        storage = funcBuilder.CreateAlloca(varType ? varType : structTy, nullptr, letName);
+        if (isComponent)
+        {
+            if (constructedPtr)
+            {
+                // Reuse the constructed alloca as the storage for this variable — avoid double alloca or pointer-in-pointer
+                storage = constructedPtr;
+            }
+            else
+            {
+                // Allocate a fresh struct slot on the stack and zero-init it (predictable defaults)
+                storage = funcBuilder.CreateAlloca(structTy, nullptr, letName);
+                funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), storage);
+            }
+        }
+        else
+        {
+            // scalar / normal type
+            llvm::Type *varTy = getLLVMType(sym->type);
+            storage = funcBuilder.CreateAlloca(varTy, nullptr, letName);
+            // store initial value if we have one
+            if (initVal)
+                funcBuilder.CreateStore(initVal, storage);
+            else
+                funcBuilder.CreateStore(llvm::Constant::getNullValue(varTy), storage);
+        }
     }
 
     if (!storage)
-        throw std::runtime_error("No storage allocated for let statement '" + letName + "'");
+        throw std::runtime_error("No storage allocated for let '" + letName + "'");
 
-    // Update symbol metadata with storage details
+    // Update symbol metadata with storage and type
     sym->llvmValue = storage;
-    sym->llvmType = structTy ? structTy : getLLVMType(sym->type);
+    sym->llvmType = (isComponent && structTy) ? structTy : getLLVMType(sym->type);
 
-    // Store the initial value
-    funcBuilder.CreateStore(initVal, storage);
-    std::cout << "[DEBUG] Stored initial value for '" << letName << "' into storage " << storage << "\n";
 
-    // === COMPONENT-SPECIFIC MEMBER INITIALIZATION ===
+    // COMPONENT-SPECIFIC MEMBER INITIALIZATION 
     if (isComponent)
     {
-        initializeComponentMembers(letStmt, sym, letName, storage, structTy);
+        initializeComponentMembers(letStmt, sym, letName, storage, structTy, usedNewExpr);
     }
 
-    // === HEAP CLEANUP FOR DEAD LOCALS ===
+    // HEAP CLEANUP FOR DEAD LOCALS 
     if (letStmt->isHeap)
     {
         Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
@@ -221,7 +248,7 @@ void IRGenerator::generateLetStatement(Node *node)
         }
     }
 
-    std::cout << "[DEBUG] Local let statement '" << letName << "' fully processed.\n";
+    std::cout << "[DEBUG] Local let statement '" << letName << "' fully processed. storage=" << storage << "\n";
 }
 
 void IRGenerator::generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName)
@@ -355,31 +382,27 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const
     std::cout << "[DEBUG] Created global scalar '" << letName << "' as GlobalVariable\n";
 }
 
-llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt, llvm::StructType *structTy)
+llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt, llvm::StructType *structTy, bool &usedNewExpr)
 {
-    llvm::Value *constructedVal = nullptr;
-    bool usedNewExpr = false;
+    usedNewExpr = false;
+    if (!letStmt)
+        return nullptr;
 
     if (letStmt->value)
     {
-        if (auto newExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get()))
+        if (auto *newExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get()))
         {
             usedNewExpr = true;
-            constructedVal = generateNewComponentExpression(newExpr);
-            if (!constructedVal)
-                throw std::runtime_error("generateNewComponentExpression returned null");
+            llvm::Value *constructedPtr = generateNewComponentExpression(newExpr);
+            if (!constructedPtr)
+                throw std::runtime_error("generateNewComponentExpression returned null for component init");
+            // We expect generateNewComponentExpression to return a pointer to the freshly-allocated struct (alloca)
+            return constructedPtr;
         }
     }
 
-    if (!constructedVal)
-        constructedVal = llvm::UndefValue::get(structTy); // Fallback for uninitialized components
-
-    // Store usedNewExpr flag for member init skipping
-    // (In full code, this could be a local var; here assuming passed via letStmt or sym for simplicity)
-    // Note: Original uses local 'usedNewExpr'; propagate as needed in caller.
-
-    std::cout << "Component Let statement processed with " << (usedNewExpr ? "new expr" : "undef init") << "\n";
-    return constructedVal;
+    // No new expression: nothing constructed for us; caller will allocate stack slot and zero-init / store default.
+    return nullptr;
 }
 
 llvm::Value *IRGenerator::allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy)
@@ -405,66 +428,87 @@ llvm::Value *IRGenerator::allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, c
     return funcBuilder.CreateBitCast(rawPtr, targetPtrTy, letName + "_heap_ptr");
 }
 
-void IRGenerator::initializeComponentMembers(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName,
-                                             llvm::Value *storage, llvm::StructType *structTy)
+void IRGenerator::initializeComponentMembers(LetStatement *letStmt,
+                                             std::shared_ptr<SymbolInfo> sym,
+                                             const std::string &letName,
+                                             llvm::Value *storagePtr,
+                                             llvm::StructType *structTy,
+                                             bool usedNewExpr)
 {
-    // Retrieve component metadata for members
+    if (!storagePtr)
+        throw std::runtime_error("initializeComponentMembers called with null storage for " + letName);
+
+    // Retrieve component metadata for members (names + memberIndex should be precomputed by semantics)
     auto compMetaIt = semantics.customTypesTable.find(sym->type.resolvedName);
     if (compMetaIt == semantics.customTypesTable.end())
-        return; // No members to initialize
+        return; // nothing to initialize
 
-    // Skip member init if initialized via 'new' expression
-    bool usedNewExpr = false; // Recompute or pass from generateComponentInit
-    if (letStmt->value)
+    // We assume storagePtr is of type `structTy*` (bitcast if needed)
+    llvm::Type *expectedPtrTy = structTy->getPointerTo();
+    if (storagePtr->getType() != expectedPtrTy)
     {
-        usedNewExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get()) != nullptr;
+        if (storagePtr->getType()->isPointerTy())
+            storagePtr = funcBuilder.CreateBitCast(storagePtr, expectedPtrTy, (letName + ".cast").c_str());
+        else
+            throw std::runtime_error("Storage pointer is not pointer-typed for component '" + letName + "'");
     }
 
-    int index = 0;
-    for (auto &[memberName, info] : compMetaIt->second.members)
+    // Walk members by their semantic order (memberIndex must be assigned)
+    for (const auto &pair : compMetaIt->second.members)
     {
-        // Skip function members (no storage needed)
-        if (info->node && dynamic_cast<FunctionStatement *>(info->node))
-        {
-            index++;
+        const std::string &memberName = pair.first;
+        const auto &info = pair.second;
+
+        // skip functions
+        if (info->node && dynamic_cast<FunctionExpression *>(info->node))
             continue;
+
+        int memberIndex = info->memberIndex;
+        if (memberIndex < 0)
+        {
+            throw std::runtime_error("Missing memberIndex for member '" + memberName + "' in component '" + sym->type.resolvedName + "'");
         }
 
-        // Create member pointer via GEP
-        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, storage, index, memberName);
+        std::cout << "[INIT] Making GEP for member " << memberName << " at index " << memberIndex << "\n";
+        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, storagePtr, static_cast<unsigned>(memberIndex), memberName + ".ptr");
         info->llvmValue = memberPtr;
         info->llvmType = getLLVMType(info->type);
 
-        // Initialize member only if not from 'new' expr
         if (!usedNewExpr)
         {
+            // Default-initialize the member according to its llvm type
             llvm::Type *mTy = info->llvmType;
-            if (info->isHeap)
+            if (!mTy)
             {
-                funcBuilder.CreateStore(llvm::ConstantPointerNull::get(mTy->getPointerTo()), memberPtr);
+                // If the type is a nested component, mTy may be null here; attempt to get it
+                mTy = getLLVMType(info->type);
+                info->llvmType = mTy;
             }
-            else if (mTy->isIntegerTy() || mTy->isFloatingPointTy() || mTy->isPointerTy())
+
+            if (auto ptrTy = llvm::dyn_cast<llvm::PointerType>(mTy))
+            {
+                funcBuilder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), memberPtr);
+            }
+            else
             {
                 funcBuilder.CreateStore(llvm::Constant::getNullValue(mTy), memberPtr);
             }
-            // Other types default to undef or handled elsewhere
         }
 
-        // Propagate to node metadata if available
+        // If the member has an AST node, make sure we propagate the pointer into semantic metaData so subsequent lookups work
         if (info->node)
         {
-            auto metaIt2 = semantics.metaData.find(info->node);
-            if (metaIt2 != semantics.metaData.end())
+            auto mdIt = semantics.metaData.find(info->node);
+            if (mdIt != semantics.metaData.end())
             {
-                metaIt2->second->llvmValue = memberPtr;
-                metaIt2->second->llvmType = info->llvmType;
+                mdIt->second->llvmValue = memberPtr;
+                mdIt->second->llvmType = info->llvmType;
             }
         }
-
-        index++;
     }
 
-    std::cout << "[DEBUG] Component members for '" << letName << "' initialized.\n";
+    std::cout << "[DEBUG] Component members for '" << letName << "' initialized "
+              << (usedNewExpr ? "(skipped per-new-init)" : "(default initialized)") << "\n";
 }
 
 void IRGenerator::freeHeapStorage(uint64_t size, const std::string &letName)
@@ -2491,6 +2535,8 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
 
     // The component instance (should be a pointer to the struct: %Player*)
     llvm::Value *componentInstance = compMeta->llvmValue;
+    // llvm::Value *componentInstance = currentFunctionSelf;
+
     if (!componentInstance)
     {
         throw std::runtime_error("Component instance llvmValue is null for '" + compName + "' when accessing '" + fieldName + "'");

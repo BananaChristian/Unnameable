@@ -112,12 +112,11 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
 
 void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component)
 {
-    auto initStmt = dynamic_cast<InitStatement *>(node);
+    auto *initStmt = dynamic_cast<InitStatement *>(node);
     if (!initStmt || !component)
         return;
 
     llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
-
     const std::string componentName = component->component_name->expression.TokenLiteral;
 
     auto ctIt = componentTypes.find(componentName);
@@ -126,122 +125,106 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
 
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(ctIt->second);
     if (!structTy)
-        throw std::runtime_error("Component llvm type is not a StructType for: " + componentName);
+        throw std::runtime_error("LLVM type is not a struct for: " + componentName);
 
-    // Building parameter types: first param is 'self' pointer (pointer to struct)
-    std::vector<llvm::Type *> llvmParamTypes;
-    llvmParamTypes.push_back(structTy->getPointerTo()); // self
-
+    // Build parameter types
+    std::vector<llvm::Type *> llvmParamTypes = {structTy->getPointerTo()}; // self
     for (auto &arg : initStmt->constructor_args)
-    {
         llvmParamTypes.push_back(getLLVMType(semantics.inferNodeDataType(arg.get())));
-    }
 
-    auto funcType = llvm::FunctionType::get(llvm::Type::getVoidTy(context), llvmParamTypes, false);
-    auto initFunc = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
-                                           componentName + "_init", module.get());
+    auto *funcType = llvm::FunctionType::get(llvm::Type::getVoidTy(context), llvmParamTypes, false);
+    auto *initFunc = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
+                                            componentName + "_init", module.get());
 
-    auto entryBlock = llvm::BasicBlock::Create(context, "entry", initFunc);
+    auto *entryBlock = llvm::BasicBlock::Create(context, "entry", initFunc);
     funcBuilder.SetInsertPoint(entryBlock);
 
-    // Map args: first arg is 'self'
+    // Self pointer setup
     auto argIt = initFunc->arg_begin();
-    llvm::Value *selfArg = &*argIt++;
-    selfArg->setName("self");
+    llvm::Value *selfPtr = &*argIt++;
+    selfPtr->setName("self");
 
-    // Create a stack slot for self to make it consistent with normal functions
-    llvm::Value *selfAlloca = funcBuilder.CreateAlloca(structTy->getPointerTo(), nullptr, "self.addr");
-    funcBuilder.CreateStore(selfArg, selfAlloca);
-
-    // When looking up self in generateSelfExpression, load from here
-    llvm::Value *selfPtr = funcBuilder.CreateLoad(structTy->getPointerTo(), selfAlloca, "self.ptr");
-
-    // Save into metaData
+    // Register self in metadata
     auto compIt = semantics.metaData.find(component);
     if (compIt == semantics.metaData.end())
-        throw std::runtime_error("Missing component metaData in init generation for: " + componentName);
+        throw std::runtime_error("Missing component metaData for: " + componentName);
 
     llvm::Value *prevInstance = compIt->second->llvmValue;
     compIt->second->llvmValue = selfPtr;
 
-    std::cout << "[IR INIT] meta->llvmValue set to selfArg for component: " << componentName << "\n";
-
-    // A transient IRGenerator field if you use one
-    currentComponentInstance = selfArg;
     currentComponent = component;
+    currentComponentInstance = selfPtr;
 
-    // Map remaining constructor args into local variables if you need them
-    std::vector<llvm::Value *> constructorArgs;
+    // Store constructor args
     for (auto &arg : initStmt->constructor_args)
     {
         llvm::Value *argVal = &*argIt++;
-        auto argAlloca = funcBuilder.CreateAlloca(argVal->getType(), nullptr, "ctor.arg");
-        funcBuilder.CreateStore(argVal, argAlloca);
+        auto argName = arg->statement.TokenLiteral;
+        llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(argVal->getType(), nullptr, argName);
+        funcBuilder.CreateStore(argVal, alloca);
+
         auto metaIt = semantics.metaData.find(arg.get());
         if (metaIt == semantics.metaData.end())
-        {
-            throw std::runtime_error("Init arg metaData does not exist");
-        }
-        metaIt->second->llvmValue = argAlloca;
+            throw std::runtime_error("Missing metaData for ctor argument: " + argName);
+
+        metaIt->second->llvmValue = alloca;
     }
 
-    // Generate the init body — inside this call, generateSelfExpression will find meta->llvmValue/selfArg
+    // Generate body
     if (initStmt->block)
-    {
         generateBlockStatement(initStmt->block.get());
-    }
 
     funcBuilder.CreateRetVoid();
 
-    // Clean up and restoring
+    // Cleanup
     compIt->second->llvmValue = prevInstance;
     currentComponentInstance = nullptr;
     currentComponent = nullptr;
-
     if (oldInsertPoint)
         funcBuilder.SetInsertPoint(oldInsertPoint);
 
-    std::cout << "[IR INIT] Finished init generation for: " << componentName << "\n";
+    std::cout << "[IR INIT] Finished generating " << componentName << "_init\n";
 }
 
 void IRGenerator::generateComponentFunctionStatement(Node *node, const std::string &compName)
 {
-    auto fnStmt = dynamic_cast<FunctionStatement *>(node);
+    auto *fnStmt = dynamic_cast<FunctionStatement *>(node);
     if (!fnStmt)
         return;
 
     llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
-    auto fnExpr = fnStmt->funcExpr.get();
+    auto *fnExpr = fnStmt->funcExpr.get();
     std::string funcName;
-    if (auto expr = dynamic_cast<FunctionExpression *>(fnExpr))
+
+    // FunctionExpression: definition with body 
+    if (auto *expr = dynamic_cast<FunctionExpression *>(fnExpr))
     {
         auto exprIt = semantics.metaData.find(expr);
         if (exprIt == semantics.metaData.end())
-            throw std::runtime_error("Component function metaData not found");
-
+            throw std::runtime_error("Missing metadata for component function");
         if (exprIt->second->hasError)
-        {
-            std::cout << "FUNCTION NODE WITH ERROR:" << expr->toString() << "\n";
-            throw std::runtime_error("Component function has semantic errors");
-        }
-        funcName = expr->func_key.TokenLiteral;
+            throw std::runtime_error("Semantic error in function: " + expr->func_key.TokenLiteral);
 
+        funcName = compName + "_" + expr->func_key.TokenLiteral;
+
+        // Collect parameter types (first is %this)
         llvm::Type *thisPtrType = llvmCustomTypes[compName]->getPointerTo();
-        std::vector<llvm::Type *> paramTypes;
-        paramTypes.push_back(thisPtrType); // hidden 'this' pointer
+        std::vector<llvm::Type *> paramTypes = {thisPtrType};
 
         for (auto &p : expr->call)
         {
             auto it = semantics.metaData.find(p.get());
             if (it == semantics.metaData.end())
-                throw std::runtime_error("Missing parameter metadata");
-
+                throw std::runtime_error("Missing parameter metadata for: " + p->statement.TokenLiteral);
             paramTypes.push_back(getLLVMType(it->second->type));
         }
 
-        auto fnRetType = semantics.inferNodeDataType(expr->return_type.get());
-        llvm::FunctionType *fnType = llvm::FunctionType::get(getLLVMType(fnRetType), paramTypes, false);
+        // Return type 
+        ResolvedType retType = semantics.inferNodeDataType(expr->return_type.get());
+        llvm::FunctionType *fnType =
+            llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
 
+        // Create or fetch function
         llvm::Function *fn = module->getFunction(funcName);
         if (!fn)
             fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, funcName, module.get());
@@ -250,63 +233,35 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
         funcBuilder.SetInsertPoint(entry);
 
-        // Map 'this' pointer correctly (no &!)
+        // Map %this (first argument)
         llvm::Argument &thisArg = *fn->arg_begin();
         exprIt->second->llvmValue = &thisArg;
 
-        // Map user arguments
-        auto argIter = fn->arg_begin(); // points to %this
-        ++argIter;
+        // Map user parameters 
+        auto argIter = std::next(fn->arg_begin()); // skip %this
         for (auto &p : expr->call)
         {
-            auto pIt = semantics.metaData.find(p.get());
+            auto paramNode = p.get();
+            auto pIt = semantics.metaData.find(paramNode);
             if (pIt == semantics.metaData.end())
-                throw std::runtime_error("Missing parameter metadata");
+                throw std::runtime_error("Missing parameter metaData");
 
-            llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
-            funcBuilder.CreateStore(&(*argIter), alloca); // argument value stored to local alloca
+            llvm::Type *paramTy = getLLVMType(pIt->second->type);
+            llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(paramTy, nullptr, p->statement.TokenLiteral);
+            funcBuilder.CreateStore(&(*argIter), alloca);
             pIt->second->llvmValue = alloca;
 
             ++argIter;
         }
 
-        // Generate function body
+        //Generate function body 
         generateExpression(expr->block.get());
     }
-    else if (auto declrExpr = dynamic_cast<FunctionDeclarationExpression *>(fnExpr))
+
+    // FunctionDeclarationExpression: declaration only error out incase somehow the semantics allowed them through
+    else if (auto *declExpr = dynamic_cast<FunctionDeclarationExpression *>(fnExpr))
     {
-        auto declrStmt = declrExpr->funcDeclrStmt.get();
-        auto fnDecl = dynamic_cast<FunctionDeclaration *>(declrStmt);
-        if (!fnDecl)
-            return;
-
-        // Getting the function name
-        funcName = fnDecl->function_name->expression.TokenLiteral;
-
-        llvm::Type *thisPtrType = llvmCustomTypes[compName]->getPointerTo();
-        std::vector<llvm::Type *> paramTypes;
-        paramTypes.push_back(thisPtrType); // 'this' pointer is added to to the parameters
-
-        auto declrIt = semantics.metaData.find(fnDecl);
-        if (declrIt == semantics.metaData.end())
-        {
-            throw std::runtime_error("Missing component function declaration meta data");
-        }
-
-        for (const auto &param : fnDecl->parameters)
-        {
-            auto it = semantics.metaData.find(param.get());
-            if (it == semantics.metaData.end())
-            {
-                throw std::runtime_error("Missing function declaration parameter meta data");
-            }
-            paramTypes.push_back(getLLVMType(it->second->type));
-        }
-
-        auto retType = declrIt->second->returnType;
-        llvm::FunctionType *fnType = llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
-
-        llvm::Function *declaredFunc = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, funcName, module.get());
+        throw std::runtime_error("Function declarations are prohibited inside components");
     }
 
     if (oldInsertPoint)
@@ -315,71 +270,57 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
 
 void IRGenerator::generateComponentStatement(Node *node)
 {
-    auto compStmt = dynamic_cast<ComponentStatement *>(node);
+    auto *compStmt = dynamic_cast<ComponentStatement *>(node);
     if (!compStmt)
         return;
 
-    std::cout << "Generating IR for component statement" << node->toString() << "\n";
+    std::cout << "Generating IR for component: " << compStmt->component_name->expression.TokenLiteral << "\n";
+
     auto it = semantics.metaData.find(compStmt);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("Missing component metaData");
+        throw std::runtime_error("Missing component metaData for " + compStmt->component_name->expression.TokenLiteral);
 
     auto sym = it->second;
     const std::string compName = compStmt->component_name->expression.TokenLiteral;
     currentComponent = compStmt;
 
-    // Create empty struct type for data fields only
+    // STRUCT CREATION
     llvm::StructType *structTy = llvm::StructType::create(context, compName);
     componentTypes[compName] = structTy;
-    llvmCustomTypes[compName] = structTy; // Register type in LLVM custom type map
-    it->second->llvmType = structTy;
+    llvmCustomTypes[compName] = structTy;
+    sym->llvmType = structTy;
 
-    // Collect only non-function members for struct
     std::vector<llvm::Type *> memberTypes;
-    std::unordered_map<std::string, unsigned> llvmMemberIndices;
-    unsigned idx = 0;
-    for (const auto &[memberName, info] : it->second->members)
+    std::unordered_map<std::string, unsigned> memberIndexMap;
+
+    unsigned index = 0;
+    for (const auto &[memberName, info] : sym->members)
     {
-        std::cout << "Dealing with memberTypes\n";
-        llvm::Type *memberType = nullptr;
+        if (!info->node)
+            continue;
 
-        if (info->node && dynamic_cast<FunctionStatement *>(info->node))
+        if (auto *funcStmt = dynamic_cast<FunctionStatement *>(info->node))
         {
-            // Generate method IR separately
-            auto funcStmt = static_cast<FunctionStatement *>(info->node);
-
-            // Inject '%this' pointer if function belongs to component
-            if (currentComponent)
-            {
-                llvm::Function *func = module->getFunction(compName + "_" + memberName);
-                if (!func)
-                {
-                    generateComponentFunctionStatement(funcStmt, compName); // pass compName so %this is first param
-                    func = module->getFunction(memberName);
-                    if (!func)
-                        throw std::runtime_error("Failed to generate method: " + memberName);
-                }
-            }
-            continue; // skip adding to struct body
+            // Inject `%this` param if function belongs to component
+            generateComponentFunctionStatement(funcStmt, compName);
+            continue;
         }
 
-        // Regular data member
-        memberType = getLLVMType(info->type);
-        if (!memberType)
-            throw std::runtime_error("Null member type for '" + memberName + "'");
+        // Handle normal data member
+        llvm::Type *memberTy = getLLVMType(info->type);
+        if (!memberTy)
+            throw std::runtime_error("Unknown LLVM type for member '" + memberName + "' in component " + compName);
 
-        memberTypes.push_back(memberType);
-        llvmMemberIndices[memberName] = idx++;
+        memberTypes.push_back(memberTy);
+        memberIndexMap[memberName] = index++;
     }
 
-    // Finalize struct body
+    // Finalize struct definition
     structTy->setBody(memberTypes);
 
-    // Generate init constructor if it exists
-    if (compStmt->initConstructor.has_value())
-    {
+    // INIT HANDLING 
+    if (compStmt->initConstructor)
         generateInitFunction(compStmt->initConstructor.value().get(), compStmt);
-    }
 
     currentComponent = nullptr;
 }
@@ -421,15 +362,13 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
 
     const std::string &compName = newExpr->component_name.TokenLiteral;
 
-    // Look up metadata for semantic tracking
     auto exprMetaIt = semantics.metaData.find(newExpr);
     if (exprMetaIt == semantics.metaData.end())
         throw std::runtime_error("Undefined component '" + compName + "'");
-
     if (exprMetaIt->second->hasError)
         throw std::runtime_error("Semantic Error detected");
 
-    // Find LLVM struct type
+    // Retrieve component struct type
     auto compTypeIt = componentTypes.find(compName);
     if (compTypeIt == componentTypes.end())
         throw std::runtime_error("Component '" + compName + "' does not exist");
@@ -438,13 +377,17 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
     if (!structTy)
         throw std::runtime_error("Component type '" + compName + "' is not a struct");
 
-    llvm::Value *instancePtr = llvm::UndefValue::get(structTy);
+    // Allocate on stack (for now)
+    llvm::Value *instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, compName + ".inst");
 
-    // Call the component’s init function if it exists
+    // Zero initialize (optional safety)
+    funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
+
+    // Check for init 
     if (llvm::Function *initFn = module->getFunction(compName + "_init"))
     {
         std::vector<llvm::Value *> initArgs;
-        initArgs.push_back(instancePtr); // pass self pointer
+        initArgs.push_back(instancePtr); // self pointer
 
         for (auto &arg : newExpr->arguments)
         {
@@ -457,6 +400,7 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
         funcBuilder.CreateCall(initFn, initArgs);
     }
 
-    // Return the instance pointer
+    // Return the pointer
     return instancePtr;
 }
+
