@@ -127,7 +127,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     if (!structTy)
         throw std::runtime_error("LLVM type is not a struct for: " + componentName);
 
-    // --- FUNCTION SETUP ---
+    // FUNCTION SETUP 
     std::vector<llvm::Type *> llvmParamTypes = {structTy->getPointerTo()}; // self
     for (auto &arg : initStmt->constructor_args)
         llvmParamTypes.push_back(getLLVMType(semantics.inferNodeDataType(arg.get())));
@@ -137,15 +137,14 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
                                             componentName + "_init", module.get());
     currentFunction = initFunc;
 
-    std::cout << "[IR DEBUG] Starting generation for: " << initFunc->getName().str() << "\n"; // DEBUG
+    std::cout << "[IR DEBUG] Starting generation for: " << initFunc->getName().str() << "\n"; 
 
     auto *entryBlock = llvm::BasicBlock::Create(context, "entry", initFunc);
     funcBuilder.SetInsertPoint(entryBlock);
 
-    // --- SELF POINTER DEMOTION (The Critical Fix) ---
     auto argIt = initFunc->arg_begin();
     llvm::Argument *selfArg = &*argIt++;
-    selfArg->setName(componentName + ".self_arg"); // Rename arg to avoid conflict
+    selfArg->setName(componentName + ".self_arg"); 
 
     llvm::Type *selfPtrType = structTy->getPointerTo();
     llvm::AllocaInst *selfAlloca = funcBuilder.CreateAlloca(selfPtrType, nullptr, componentName + ".self_ptr_addr");
@@ -158,7 +157,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
 
     std::cout << "[IR DEBUG] Self Demotion: Arg: " << selfArg << " Stored to Alloca: " << selfAlloca << "\n"; // DEBUG
 
-    // --- METADATA REGISTRATION ---
+    // METADATA REGISTRATION
     auto compIt = semantics.metaData.find(component);
     if (compIt == semantics.metaData.end())
         throw std::runtime_error("Missing component metaData for: " + componentName);
@@ -171,7 +170,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     currentComponentInstance = selfAlloca; // Use selfAlloca
     currentFunctionSelfMap[currentFunction] = selfAlloca;
 
-    // --- CONSTRUCTOR ARGUMENTS (Store to Alloca) ---
+    // CONSTRUCTOR ARGUMENTS (Store to Alloca) 
     for (auto &arg : initStmt->constructor_args)
     {
         llvm::Value *argVal = &*argIt++;
@@ -193,11 +192,10 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
         std::cout << "[IR DEBUG] Stored Ctor Arg: " << argName << " to Alloca: " << alloca << "\n"; // DEBUG
     }
 
-    // --- BODY GENERATION ---
+    // Body Gen
     if (initStmt->block)
         generateBlockStatement(initStmt->block.get());
 
-    // --- FINAL CHECKS ---
     if (!funcBuilder.GetInsertBlock()->getTerminator()) // GUARD
         funcBuilder.CreateRetVoid();
     else if (funcBuilder.GetInsertBlock()->getTerminator() != nullptr && funcBuilder.GetInsertBlock()->getTerminator()->getOpcode() != llvm::Instruction::Ret)
@@ -223,7 +221,6 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
     llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
     std::string funcName;
 
-    // FunctionExpression: definition with body
     if (auto *expr = dynamic_cast<FunctionExpression *>(fnExpr))
     {
         auto exprIt = semantics.metaData.find(expr);

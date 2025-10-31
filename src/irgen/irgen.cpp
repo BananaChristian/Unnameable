@@ -1065,7 +1065,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
         // Cond branch on null
         funcBuilder.CreateCondBr(isNull, allocBB, contBB);
 
-        // --- allocBB: call sage_alloc(size), bitcast to elemPtrTy, store into slot, branch to contBB
+        //  allocBB: call sage_alloc(size), bitcast to elemPtrTy, store into slot, branch to contBB
         funcBuilder.SetInsertPoint(allocBB);
 
         llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
@@ -2497,7 +2497,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
 
     const std::string &fieldName = selfExpr->field->expression.TokenLiteral;
 
-    // Component metadata (semantic)
+    // Component metadata
     auto compMetaIt = semantics.metaData.find(currentComponent);
     if (compMetaIt == semantics.metaData.end())
     {
@@ -2512,7 +2512,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
         throw std::runtime_error("Field '" + fieldName + "' not found in component '" + compName + "'");
     }
 
-    // --- IMPORTANT: use the stored member index (set during semantic walk) ---
+    // IMPORTANT: use the stored member index (set during semantic walk) 
     int memberIndex = -1;
     if (memIt->second->memberIndex >= 0)
     {
@@ -2520,7 +2520,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
     }
     else
     {
-        // Fallback: compute index only if absolutely necessary (and log!)
+        // Compute index only if absolutely necessary 
         std::cerr << "[IR WARN] Member '" << fieldName << "' has no memberIndex; falling back to map iteration (unstable)\n";
         unsigned idx = 0;
         for (const auto &p : compMeta->members)
@@ -2568,7 +2568,6 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
         throw std::runtime_error("CreateStructGEP failed for field '" + fieldName + "' index " + std::to_string(memberIndex));
     }
 
-    // Debug log
     std::cout << "[IR DEBUG] Generated field pointer for " << compName << "." << fieldName
               << " (index=" << memberIndex << ", ptr=" << fieldPtr << ")\n";
 
