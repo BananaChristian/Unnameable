@@ -230,10 +230,21 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo->hasError = hasError;
     funcInfo->isDeclaration = true; // Mark as declared early for recursion
     funcInfo->isDefined = false;
+    funcInfo->isFunction = true;                                       // It is a function after all
     funcInfo->returnType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Initially unknown return type
 
     // Inserting function symbol into current scope early for recursion
-    symbolTable.back()[funcName] = funcInfo;
+    if (!insideBehavior && !insideComponent) // If we arent inside a behavior or component we place in the global scope
+    {
+        std::cout << "INSERTING FUNCTION INTO GLOBAL SCOPE\n";
+        symbolTable[0][funcName] = funcInfo;
+    }
+    else // If we are in a behavior or component insert in that scope
+    {
+        std::cout << "INSERTING FUNCTION INTO LOCAL SCOPE\n";
+        symbolTable.back()[funcName] = funcInfo;
+    }
+
     currentFunction = funcInfo;
     std::cout << "[SEMANTIC LOG] Set currentFunction for '" << funcName << "' with return type: "
               << funcInfo->returnType.resolvedName << "\n";
@@ -311,7 +322,7 @@ void Semantics::walkFunctionExpression(Node *node)
 
             return;
         }
-        returnType = it->second.type;
+        returnType = it->second->type;
     }
     else if (returnType.kind == DataType::UNKNOWN)
     {
@@ -329,16 +340,19 @@ void Semantics::walkFunctionExpression(Node *node)
 
     // Updating the symbol table with final function info
     funcInfo->isDefined = true;
-    if (!insideBehavior && !insideComponent)
+
+    std::cout << "Regsitering in parent scope\n";
+    if (!insideBehavior && !insideComponent) // If we arent inside a behavior or component we place in the global scope
     {
-        std::cout << "Regsitering in global scope\n";
+        std::cout << "2ND INSERTING FUNCTION INTO GLOBAL SCOPE WITH UPDATED INFO\n";
         symbolTable[0][funcName] = funcInfo;
     }
-    else
+    else // If we are in a behavior or component insert in that scope
     {
-        std::cout << "Regsitering in parent scope\n";
+        std::cout << "2ND INSERTING FUNCTION INTO LOCAL SCOPE WITH UPDATED INFO\n";
         symbolTable.back()[funcName] = funcInfo;
     }
+
     metaData[funcExpr] = funcInfo;
 
     currentFunction = funcInfo; // updating currentFunction with final info
@@ -496,7 +510,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
                               retType->expression.line, retType->expression.column);
             hasError = true;
         }
-        returnType = it->second.type;
+        returnType = it->second->type;
     }
     else if (returnType.kind == DataType::UNKNOWN)
     {
@@ -546,6 +560,17 @@ void Semantics::walkFunctionCallExpression(Node *node)
         hasError = true;
     }
 
+    // Checking if the symbol retrieved is actually a function
+    if (!callSymbolInfo->isFunction)
+    {
+        logSemanticErrors(
+            "Error: Identifier '" + callName + "' shadows a function and refers to a variable, not a function.",
+            funcCall->expression.line,
+            funcCall->expression.column);
+        // halt processing, as the arguments/definition checks would be meaningless.
+        return;
+    }
+
     // Checking if the function is defined
     if (!callSymbolInfo->isDefined)
     {
@@ -576,7 +601,7 @@ void Semantics::walkFunctionCallExpression(Node *node)
 
     metaData[funcCall] = callSymbol;
     std::cout << "[SEMANTIC LOG] Stored metaData for call to '" << callName
-              << "' with return type: " << callSymbol->type.resolvedName << "\n";
+              << "' with return type: " << callSymbolInfo->type.resolvedName << "\n";
 }
 
 void Semantics::walkQualifyStatement(Node *node)

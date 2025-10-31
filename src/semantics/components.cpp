@@ -278,11 +278,12 @@ void Semantics::walkEnumClassStatement(Node *node)
     }
 
     // Store enum type info
-    CustomTypeInfo typeInfo{
-        .typeName = enumStmtName,
-        .type = ResolvedType{DataType::ENUM, enumStmtName},
-        .underLyingType = underLyingType.kind,
-        .members = members};
+    auto typeInfo = std::make_shared<CustomTypeInfo>();
+
+    typeInfo->typeName = enumStmtName;
+    typeInfo->type = ResolvedType{DataType::ENUM, enumStmtName};
+    typeInfo->underLyingType = underLyingType.kind;
+    typeInfo->members = members;
     customTypesTable[enumStmtName] = typeInfo;
 
     // Add enum type to parent scope
@@ -393,6 +394,7 @@ void Semantics::walkDataStatement(Node *node)
     dataSymbolInfo->isMutable = isBlockMutable;
     dataSymbolInfo->isConstant = isBlockConstant;
     dataSymbolInfo->members = dataBlockMembers;
+    dataSymbolInfo->isDataBlock = true;
 
     for (auto &kv : dataSymbolInfo->members)
     {
@@ -402,13 +404,14 @@ void Semantics::walkDataStatement(Node *node)
     }
 
     // Build customtype info
-    CustomTypeInfo typeInfo = {
-        .typeName = dataBlockName,
-        .type = ResolvedType{DataType::DATABLOCK, dataBlockName},
-        .members = dataBlockMembers};
+    auto typeInfo = std::make_shared<CustomTypeInfo>();
+
+    typeInfo->typeName = dataBlockName;
+    typeInfo->type = ResolvedType{DataType::DATABLOCK, dataBlockName},
+    typeInfo->members = dataBlockMembers;
 
     // Propagate indices to customTypesTable
-    for (auto &kv : typeInfo.members)
+    for (auto &kv : typeInfo->members)
     {
         auto it = dataBlockMembers.find(kv.first);
         if (it != dataBlockMembers.end())
@@ -582,13 +585,15 @@ void Semantics::walkBehaviorStatement(Node *node)
     // Build symbol info
     auto sym = std::make_shared<SymbolInfo>();
     sym->type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName};
+    sym->isBehavior = true;
     sym->members = behaviorMembers;
 
     // Build custom type info
-    CustomTypeInfo typeInfo = {
-        .typeName = behaviorName,
-        .type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName},
-        .members = behaviorMembers};
+    auto typeInfo = std::make_shared<CustomTypeInfo>();
+
+    typeInfo->typeName = behaviorName;
+    typeInfo->type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName};
+    typeInfo->members = behaviorMembers;
 
     // Store results
     symbolTable[0][behaviorName] = sym; // All behavior blocks are hoisted to global scope
@@ -679,11 +684,7 @@ void Semantics::walkSelfExpression(Node *node)
         return;
     }
 
-    // Must be inside the init constructor if the component has one
-    if (!currentTypeStack.back().hasInitConstructor)
-    {
-        logSemanticErrors("Cannot use 'self' outside an init constructor", selfExpr->expression.line, selfExpr->expression.column);
-    }
+    // The self must be inside a method or
 
     const std::string &componentName = currentTypeStack.back().typeName;
     auto ctIt = customTypesTable.find(componentName);
@@ -700,7 +701,7 @@ void Semantics::walkSelfExpression(Node *node)
 
     const std::string fieldName = selfExpr->field->expression.TokenLiteral;
     std::cout << "NAME BEING GOTTEN FROM SELF EXPRESSION: " << fieldName << "\n";
-    const auto &members = ctIt->second.members;
+    const auto &members = ctIt->second->members;
     auto memIt = members.find(fieldName);
     if (memIt == members.end())
     {
@@ -744,8 +745,13 @@ void Semantics::walkComponentStatement(Node *node)
     }
 
     auto componentSymbol = std::make_shared<SymbolInfo>();
+    componentSymbol->isComponent = true;
+    auto componentTypeInfo = std::make_shared<CustomTypeInfo>();
+
     componentSymbol->type = ResolvedType{DataType::COMPONENT, componentName};
     symbolTable[0][componentName] = componentSymbol;
+
+    customTypesTable[componentName] = componentTypeInfo;
 
     metaData[componentStmt] = componentSymbol;
 
@@ -790,7 +796,7 @@ void Semantics::walkComponentStatement(Node *node)
                 hasError = true;
                 return;
             }
-            auto &importedMembers = typeIt->second.members;
+            auto &importedMembers = typeIt->second->members;
             auto &currentScope = symbolTable.back();
             for (auto &[name, info] : importedMembers)
             {
@@ -826,6 +832,8 @@ void Semantics::walkComponentStatement(Node *node)
                     // If the node wasnt populated
                     std::cout << "[SEMANTIC WARN] imported member '" << name << "' has no node\n";
                 }
+
+                componentTypeInfo->members = members;
             }
         }
 
@@ -853,7 +861,7 @@ void Semantics::walkComponentStatement(Node *node)
             auto importedTypeIt = customTypesTable.find(dataName);
             if (importedTypeIt != customTypesTable.end())
             {
-                auto &importedMembers = importedTypeIt->second.members;
+                auto &importedMembers = importedTypeIt->second->members;
                 auto memIt = importedMembers.find(memberName);
                 if (memIt != importedMembers.end())
                 {
@@ -870,6 +878,8 @@ void Semantics::walkComponentStatement(Node *node)
                     memSym->isInitialized = memIt->second->isInitialised;
                     memSym->memberIndex = memberCopy->memberIndex;
                     symbolTable.back()[memberName] = memSym;
+
+                    componentTypeInfo->members = members;
                 }
             }
         }
@@ -904,7 +914,7 @@ void Semantics::walkComponentStatement(Node *node)
                 hasError = true;
                 return;
             }
-            auto &importedMembers = typeIt->second.members;
+            auto &importedMembers = typeIt->second->members;
             auto &currentScope = symbolTable.back();
             for (auto &[name, info] : importedMembers)
             {
@@ -932,6 +942,8 @@ void Semantics::walkComponentStatement(Node *node)
                 memSym->paramTypes = info->paramTypes;
                 memSym->isDefined = true;
                 currentScope[name] = memSym;
+
+                componentTypeInfo->members = members; // Update the typeInfo member storage
 
                 if (memberCopy->node)
                 {
@@ -971,7 +983,7 @@ void Semantics::walkComponentStatement(Node *node)
             auto importedTypeIt = customTypesTable.find(methodName);
             if (importedTypeIt != customTypesTable.end())
             {
-                auto &importedMembers = importedTypeIt->second.members;
+                auto &importedMembers = importedTypeIt->second->members;
                 auto memIt = importedMembers.find(memberName);
                 if (memIt != importedMembers.end())
                 {
@@ -990,6 +1002,7 @@ void Semantics::walkComponentStatement(Node *node)
                     memSym->paramTypes = memberCopy->paramTypes;
                     memSym->isDefined = true;
                     symbolTable.back()[memberName] = memSym;
+                    componentTypeInfo->members = members; // Update the typeInfo members
                 }
             }
         }
@@ -1024,6 +1037,7 @@ void Semantics::walkComponentStatement(Node *node)
             letSym->memberIndex = memInfo->memberIndex;
 
             metaData[letStmt] = letSym;
+            componentTypeInfo->members = members;
         }
 
         else
@@ -1082,6 +1096,7 @@ void Semantics::walkComponentStatement(Node *node)
                 memInfo->node = funcExpr;
                 members[funcName] = memInfo;
             }
+            componentTypeInfo->members = members; // Update the custom type table members
         }
         else
         {
@@ -1101,13 +1116,11 @@ void Semantics::walkComponentStatement(Node *node)
 
     // Register component as a symbol
     componentSymbol->members = members;
+    componentTypeInfo->members = members;
+    componentTypeInfo->typeName = componentName;
+    componentTypeInfo->type = ResolvedType{DataType::COMPONENT, componentName};
 
-    CustomTypeInfo typeInfo = {
-        .typeName = componentName,
-        .type = ResolvedType{DataType::COMPONENT, componentName},
-        .members = members};
-
-    customTypesTable[componentName] = typeInfo;
+    customTypesTable[componentName] = componentTypeInfo;
 
     if (componentStmt->initConstructor.has_value())
         walkInitConstructor(componentStmt->initConstructor.value().get());
@@ -1161,7 +1174,7 @@ void Semantics::walkNewComponentExpression(Node *node)
         }
         // store metadata and exit early
         auto info = std::make_shared<SymbolInfo>();
-        info->type = componentIt->second.type;
+        info->type = componentIt->second->type;
         info->hasError = hasError;
         metaData[newExpr] = info;
         return;
@@ -1180,7 +1193,7 @@ void Semantics::walkNewComponentExpression(Node *node)
             hasError = true;
         }
         auto info = std::make_shared<SymbolInfo>();
-        info->type = componentIt->second.type;
+        info->type = componentIt->second->type;
         info->hasError = hasError;
         metaData[newExpr] = info;
         return;
@@ -1196,7 +1209,7 @@ void Semantics::walkNewComponentExpression(Node *node)
         hasError = true;
 
         auto info = std::make_shared<SymbolInfo>();
-        info->type = componentIt->second.type;
+        info->type = componentIt->second->type;
         info->hasError = hasError;
         metaData[newExpr] = info;
         return;
@@ -1230,11 +1243,21 @@ void Semantics::walkNewComponentExpression(Node *node)
         }
     }
 
+    // Special case (I am going to store the component symbol info so that I can retrieve it later I need it in IRGEN)
+    // Get the component symbol info and store it in the instance symbol table
+
+    auto componentSym = resolveSymbolInfo(componentName); // I will use the scope resolver as all components are always in globals scope
+    if (!componentSym)                                    // Chances of this happening are low but who knows
+    {
+        logSemanticErrors("Component '" + componentName + "' doesnt not exist '", line, column);
+        hasError = true;
+    }
+
     // === Store metadata ===
     auto info = std::make_shared<SymbolInfo>();
-    info->type = componentIt->second.type;
+    info->type = componentIt->second->type;
     info->hasError = hasError;
-
+    info->componentSymbol = componentSym;
     metaData[newExpr] = info;
 }
 
@@ -1261,6 +1284,8 @@ void Semantics::walkMethodCallExpression(Node *node)
         return;
     }
 
+    walker(metCall->instance.get()); // Walk the instance as I need its metaData in the IR
+
     // Get the type
     auto type = instanceSym->type;
     auto typeIt = customTypesTable.find(type.resolvedName);
@@ -1272,7 +1297,7 @@ void Semantics::walkMethodCallExpression(Node *node)
     }
 
     // If the symbol actually exists we retrieve the members and check if the function we are calling is among them
-    auto members = typeIt->second.members;
+    auto members = typeIt->second->members;
     // Retrieve the function name itself
     auto funcCall = dynamic_cast<CallExpression *>(metCall->call.get());
     auto funcName = funcCall->function_identifier->expression.TokenLiteral;
@@ -1283,7 +1308,7 @@ void Semantics::walkMethodCallExpression(Node *node)
     auto memIt = members.find(funcName);
     if (memIt == members.end())
     {
-        logSemanticErrors("'" + funcName + "' does not exist in instance '" + instanceName + "'", funcLine, funcCol);
+        logSemanticErrors("'Function " + funcName + "' does not exist in type '" + type.resolvedName + "'", funcLine, funcCol);
         return;
     }
 

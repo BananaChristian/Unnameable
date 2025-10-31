@@ -156,10 +156,17 @@ struct SymbolInfo
     int memberIndex = -1;
 
     bool isHeap = false;
-    bool isRef = false;                        // Reference flag
-    bool isPointer = false;                    // Pointer flag
+    bool isRef = false;     // Reference flag
+    bool isPointer = false; // Pointer flag
+
+    bool isFunction = false;
+    bool isBehavior = false;
+    bool isComponent = false;
+    bool isDataBlock = false;
     std::shared_ptr<SymbolInfo> targetSymbol;  // For the deref system
     std::shared_ptr<SymbolInfo> refereeSymbol; // Symbol being refered to
+
+    std::shared_ptr<SymbolInfo> componentSymbol; // Symbol of the component being instantiaited
 
     std::shared_ptr<SymbolInfo> baseSymbol;  // The owner (e.g., p in p.health)
     std::shared_ptr<SymbolInfo> fieldSymbol; // The actual member accessed (health)
@@ -181,7 +188,7 @@ public:
     using walkerFunctions = void (Semantics::*)(Node *);
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
     std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>> symbolTable;
-    std::unordered_map<std::string, CustomTypeInfo> customTypesTable;
+    std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> customTypesTable;
     std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
     std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
     std::vector<bool> loopContext;
@@ -191,6 +198,7 @@ public:
 
     // Public helpers
     std::shared_ptr<SymbolInfo> resolveSymbolInfo(const std::string &name);
+    std::shared_ptr<SymbolInfo> lookUpInCurrentScope(const std::string &name);
     ResolvedType resolvedDataType(Token token, Node *node);
     bool hasReturnPath(Node *node);
     ResolvedType inferNodeDataType(Node *node);

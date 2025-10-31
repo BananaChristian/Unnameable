@@ -430,6 +430,47 @@ void Semantics::walkLetStatement(Node *node)
     bool isInitialized = false;
     bool hasError = false;
 
+    // Checking if the name is being reused
+    auto letName = letStmt->ident_token.TokenLiteral;
+
+    auto existingSym = resolveSymbolInfo(letName);
+    auto localSym = lookUpInCurrentScope(letName);
+
+    if (localSym)
+    {
+        logSemanticErrors("Local variable with name '" + letName + "' already exists ", letStmt->ident_token.line, letStmt->ident_token.column);
+        hasError = true;
+        return;
+    }
+
+    if (existingSym)
+    {
+        if (existingSym->isFunction)
+        {
+            logSemanticErrors("Local variable '" + letName + "' shadows existing global function", letStmt->ident_token.line, letStmt->ident_token.column);
+            hasError = true;
+            return;
+        }
+        else if (existingSym->isComponent)
+        {
+            logSemanticErrors("Local variable '" + letName + "' shadows existing component", letStmt->ident_token.line, letStmt->ident_token.column);
+            hasError = true;
+            return;
+        }
+        else if (existingSym->isBehavior)
+        {
+            logSemanticErrors("Local variable '" + letName + "' shadows existing  behavior block", letStmt->ident_token.line, letStmt->ident_token.column);
+            hasError = true;
+            return;
+        }
+        else if (existingSym->isDataBlock)
+        {
+            logSemanticErrors("Local variable '" + letName + "' shadows existing data block", letStmt->ident_token.line, letStmt->ident_token.column);
+            hasError = true;
+            return;
+        }
+    }
+
     auto letStmtValue = letStmt->value.get();
 
     // --- Resolve type from token ---
@@ -922,7 +963,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
     }
 
     // Check if the childName exists in that type’s members
-    auto members = parentIt->second.members;
+    auto members = parentIt->second->members;
     auto memberIt = members.find(childName);
     if (memberIt == members.end())
     {
@@ -978,7 +1019,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node)
 
     // Build metadata for this assignment node
     auto info = std::make_shared<SymbolInfo>();
-    info->type = type;//The whole node still evaluates to the member type
+    info->type = type; // The whole node still evaluates to the member type
     info->baseSymbol = parentSymbol;
     info->fieldSymbol = fieldInfo;
     info->isNullable = isNullable;

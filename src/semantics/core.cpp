@@ -296,7 +296,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
             logSemanticErrors("Component '" + componentName + "' does not exist", line, column);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
-        return componentIt->second.type;
+        return componentIt->second->type;
     }
 
     if (auto infixExpr = dynamic_cast<InfixExpression *>(node))
@@ -425,11 +425,22 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         auto callLine = call->function_identifier->expression.line;
         auto callCol = call->function_identifier->expression.column;
 
-        auto members = instanceSym->members;
+        // Search using custom types table to get the members
+        // Get the type
+        auto type = instanceSym->type;
+        // Check the customTypes table
+        auto typeIt = customTypesTable.find(type.resolvedName);
+        if (typeIt == customTypesTable.end())
+        {
+            logSemanticErrors("Unknown type '" + type.resolvedName + "'", line, col);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
+
+        auto members = typeIt->second->members;
         auto it = members.find(callName);
         if (it == members.end())
         {
-            logSemanticErrors("'" + callName + "' doesnt exist in instance '" + instanceName + "'", line, col);
+            logSemanticErrors("Function '" + callName + "' doesnt exist in type '" + type.resolvedName + "'", line, col);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
 
@@ -588,8 +599,8 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
             }
 
             // Look for childName in members
-            auto memberIt = typeIt->second.members.find(childName);
-            if (memberIt == typeIt->second.members.end())
+            auto memberIt = typeIt->second->members.find(childName);
+            if (memberIt == typeIt->second->members.end())
             {
                 logSemanticErrors("Component '" + varType.resolvedName + "' has no member '" + childName + "'", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -614,8 +625,8 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
             }
 
             // Look for the childName in members
-            auto memIt = typeIt->second.members.find(childName);
-            if (memIt == typeIt->second.members.end())
+            auto memIt = typeIt->second->members.find(childName);
+            if (memIt == typeIt->second->members.end())
             {
                 logSemanticErrors("Type '" + varType.resolvedName + "' does not have a member '" + childName + "'", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -639,7 +650,7 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
 
     if (operatorType == TokenType::SCOPE_OPERATOR)
     {
-        if (!(typeIt->second.type.kind == DataType::ENUM))
+        if (!(typeIt->second->type.kind == DataType::ENUM))
         {
             logSemanticErrors("Only use :: to access members of enums", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -647,8 +658,8 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
     }
 
     // Look for the member in the type
-    auto memberIt = typeIt->second.members.find(childName);
-    if (memberIt == typeIt->second.members.end())
+    auto memberIt = typeIt->second->members.find(childName);
+    if (memberIt == typeIt->second->members.end())
     {
         logSemanticErrors("Type '" + parentName + "' does not have member '" + childName + "'", infixExpr->right_operand->expression.line, infixExpr->right_operand->expression.column);
         return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -787,6 +798,30 @@ std::shared_ptr<SymbolInfo> Semantics::resolveSymbolInfo(const std::string &name
     return nullptr;
 }
 
+std::shared_ptr<SymbolInfo> Semantics::lookUpInCurrentScope(const std::string &name)
+{
+    if (symbolTable.empty())
+    {
+        std::cout << "[SEMANTIC LOG] ERROR: Attempted current scope lookup on empty symbol table.\n";
+        return nullptr;
+    }
+
+    // Access the current scope which is the latest scope in the symbol table
+    auto &currentScope = symbolTable.back();
+
+    std::cout << "[SEMANTIC LOG] Searching for '" << name << "' in CURRENT scope level "
+              << symbolTable.size() - 1 << " only.\n";
+
+    if (currentScope.find(name) != currentScope.end())
+    {
+        std::cout << "[SEMANTIC LOG] Found match for '" << name << "' in current scope.\n";
+        return currentScope.at(name); // Use .at() or [] for retrieval
+    }
+
+    std::cout << "[SEMANTIC LOG] No match for '" << name << "' in current scope.\n";
+    return nullptr;
+}
+
 ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
 {
     auto makeType = [&](DataType nonNull, DataType nullable, const std::string &baseName)
@@ -844,7 +879,7 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
         {
             if (!childName.empty())
             {
-                auto &members = parentIt->second.members;
+                auto &members = parentIt->second->members;
                 auto memberIt = members.find(childName);
                 if (memberIt == members.end())
                 {
@@ -856,7 +891,7 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
                 return memberType; // If you want nullable custom types too, you can apply same + "?" logic here
             }
 
-            auto parentType = parentIt->second.type;
+            auto parentType = parentIt->second->type;
             return parentType;
         }
 
@@ -1171,7 +1206,7 @@ bool Semantics::signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberI
 
 bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpression *callExpr)
 {
-    bool allGood = false;
+    bool allGood = true;
 
     if (memFuncInfo.paramTypes.size() != callExpr->parameters.size())
     {
@@ -1494,7 +1529,7 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
         // Case b -- having members now this is tricky since the parser stored the whole thing as one name
         if (!childName.empty())
         {
-            auto &members = parentIt->second.members;
+            auto &members = parentIt->second->members;
             auto memberIt = members.find(childName);
             if (memberIt == members.end())
             {
@@ -1507,7 +1542,7 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
         }
 
         // If we have no members we return the parent
-        return ResolvedType{parentIt->second.type.kind, parentIt->second.typeName};
+        return ResolvedType{parentIt->second->type.kind, parentIt->second->typeName};
     }
 
     default:
