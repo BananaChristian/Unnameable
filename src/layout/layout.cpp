@@ -402,7 +402,7 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
     case DataType::ENUM:
     {
         auto enumInfo = semantics.customTypesTable[type.resolvedName];
-        baseType = getLLVMType({enumInfo.underLyingType, ""});
+        baseType = getLLVMType({enumInfo->underLyingType, ""});
         break;
     }
 
