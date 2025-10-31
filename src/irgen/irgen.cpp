@@ -119,7 +119,7 @@ void IRGenerator::generateStatement(Node *node)
 // Let statement IR generator function
 void IRGenerator::generateLetStatement(Node *node)
 {
-    //VALIDATION AND EXTRACTION
+    // VALIDATION AND EXTRACTION
     auto *letStmt = dynamic_cast<LetStatement *>(node);
     if (!letStmt)
         throw std::runtime_error("Invalid let statement");
@@ -151,7 +151,7 @@ void IRGenerator::generateLetStatement(Node *node)
         return;
     }
 
-    //LOCAL SCOPE 
+    // LOCAL SCOPE
     llvm::Value *storage = nullptr;
     llvm::StructType *structTy = nullptr;
     bool isComponent = false;
@@ -230,14 +230,13 @@ void IRGenerator::generateLetStatement(Node *node)
     sym->llvmValue = storage;
     sym->llvmType = (isComponent && structTy) ? structTy : getLLVMType(sym->type);
 
-
-    // COMPONENT-SPECIFIC MEMBER INITIALIZATION 
+    // COMPONENT-SPECIFIC MEMBER INITIALIZATION
     if (isComponent)
     {
         initializeComponentMembers(letStmt, sym, letName, storage, structTy, usedNewExpr);
     }
 
-    // HEAP CLEANUP FOR DEAD LOCALS 
+    // HEAP CLEANUP FOR DEAD LOCALS
     if (letStmt->isHeap)
     {
         Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
@@ -454,7 +453,7 @@ void IRGenerator::initializeComponentMembers(LetStatement *letStmt,
     }
 
     // Walk members by their semantic order (memberIndex must be assigned)
-    for (const auto &pair : compMetaIt->second.members)
+    for (const auto &pair : compMetaIt->second->members)
     {
         const std::string &memberName = pair.first;
         const auto &info = pair.second;
@@ -1026,7 +1025,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node)
     if (parentIt == semantics.customTypesTable.end())
         throw std::runtime_error("Type '" + parentTypeName + "' does not exist");
 
-    auto &members = parentIt->second.members;
+    auto &members = parentIt->second->members;
     auto childIt = members.find(childName);
     if (childIt == members.end())
         throw std::runtime_error("'" + childName + "' is not a member of '" + parentTypeName + "'");
@@ -1312,8 +1311,8 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
             throw std::runtime_error("Unknown struct type '" + parentTypeName + "'");
 
         auto &parentInfo = parentTypeIt->second;
-        auto memberIt = parentInfo.members.find(memberName);
-        if (memberIt == parentInfo.members.end())
+        auto memberIt = parentInfo->members.find(memberName);
+        if (memberIt == parentInfo->members.end())
             throw std::runtime_error("No member '" + memberName + "' in type '" + parentTypeName + "'");
 
         // get member index + type
@@ -1364,8 +1363,8 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         if (parentIt == semantics.customTypesTable.end())
             throw std::runtime_error("Type '" + parentTypeName + "' doesn't exist");
 
-        auto memberIt = parentIt->second.members.find(memberName);
-        if (memberIt == parentIt->second.members.end())
+        auto memberIt = parentIt->second->members.find(memberName);
+        if (memberIt == parentIt->second->members.end())
             throw std::runtime_error("Member '" + memberName + "' not found in type '" + parentTypeName + "'");
 
         unsigned memberIndex = memberIt->second->memberIndex;
@@ -2534,8 +2533,13 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
     }
 
     // The component instance (should be a pointer to the struct: %Player*)
-    llvm::Value *componentInstance = compMeta->llvmValue;
-    // llvm::Value *componentInstance = currentFunctionSelf;
+    llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
+    if (!selfAlloca)
+    {
+        // Fallback or error if 'self' is not found (e.g., accessing 'self' outside a method)
+        throw std::runtime_error("'self' access failed: not in a component method.");
+    }
+    llvm::Value *componentInstance = funcBuilder.CreateLoad(structTy->getPointerTo(), selfAlloca, compName + ".self_load");
 
     if (!componentInstance)
     {
@@ -2871,7 +2875,7 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
     case DataType::ENUM:
     {
         auto enumInfo = semantics.customTypesTable[type.resolvedName];
-        baseType = getLLVMType({enumInfo.underLyingType, ""});
+        baseType = getLLVMType({enumInfo->underLyingType, ""});
         break;
     }
 
@@ -2941,6 +2945,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(DereferenceExpression)] = &IRGenerator::generateDereferenceExpression;
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
+    expressionGeneratorsMap[typeid(MethodCallExpression)] = &IRGenerator::generateMethodCallExpression;
     expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
     expressionGeneratorsMap[typeid(NewComponentExpression)] = &IRGenerator::generateNewComponentExpression;
     expressionGeneratorsMap[typeid(InstanceExpression)] = &IRGenerator::generateInstanceExpression;

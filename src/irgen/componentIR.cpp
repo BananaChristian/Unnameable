@@ -64,7 +64,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
         throw std::runtime_error("Missing custom type info for " + instName);
     auto &typeInfo = typeInfoIt->second;
 
-    for (auto &kv : typeInfo.members)
+    for (auto &kv : typeInfo->members)
     {
         const std::string &memberName = kv.first;
         auto &info = kv.second;
@@ -90,8 +90,8 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
         if (!assign)
             continue;
         std::string fieldName = assign->identifier->expression.TokenLiteral;
-        auto memIt = typeInfo.members.find(fieldName);
-        if (memIt == typeInfo.members.end())
+        auto memIt = typeInfo->members.find(fieldName);
+        if (memIt == typeInfo->members.end())
             throw std::runtime_error("No such field in " + instName + ": " + fieldName);
         unsigned idx = memIt->second->memberIndex;
         llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(structTy, instancePtr, idx, fieldName);
@@ -127,7 +127,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     if (!structTy)
         throw std::runtime_error("LLVM type is not a struct for: " + componentName);
 
-    // Build parameter types
+    // --- FUNCTION SETUP ---
     std::vector<llvm::Type *> llvmParamTypes = {structTy->getPointerTo()}; // self
     for (auto &arg : initStmt->constructor_args)
         llvmParamTypes.push_back(getLLVMType(semantics.inferNodeDataType(arg.get())));
@@ -135,31 +135,52 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     auto *funcType = llvm::FunctionType::get(llvm::Type::getVoidTy(context), llvmParamTypes, false);
     auto *initFunc = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
                                             componentName + "_init", module.get());
+    currentFunction = initFunc;
+
+    std::cout << "[IR DEBUG] Starting generation for: " << initFunc->getName().str() << "\n"; // DEBUG
 
     auto *entryBlock = llvm::BasicBlock::Create(context, "entry", initFunc);
     funcBuilder.SetInsertPoint(entryBlock);
 
-    // Self pointer setup
+    // --- SELF POINTER DEMOTION (The Critical Fix) ---
     auto argIt = initFunc->arg_begin();
-    llvm::Value *selfPtr = &*argIt++;
-    selfPtr->setName(componentName+".self");
+    llvm::Argument *selfArg = &*argIt++;
+    selfArg->setName(componentName + ".self_arg"); // Rename arg to avoid conflict
 
-    // Register self in metadata
+    llvm::Type *selfPtrType = structTy->getPointerTo();
+    llvm::AllocaInst *selfAlloca = funcBuilder.CreateAlloca(selfPtrType, nullptr, componentName + ".self_ptr_addr");
+
+    // SAFETY CHECK: Ensure Alloca is at the beginning
+    if (selfAlloca->getParent() != entryBlock || selfAlloca->getNextNonDebugInstruction() != nullptr)
+        std::cerr << "[IR WARN] Self Alloca not at start of entry block! This can lead to bugs.\n"; // GUARD
+
+    funcBuilder.CreateStore(selfArg, selfAlloca);
+
+    std::cout << "[IR DEBUG] Self Demotion: Arg: " << selfArg << " Stored to Alloca: " << selfAlloca << "\n"; // DEBUG
+
+    // --- METADATA REGISTRATION ---
     auto compIt = semantics.metaData.find(component);
     if (compIt == semantics.metaData.end())
         throw std::runtime_error("Missing component metaData for: " + componentName);
 
+    // Store the ALLOCA address as the canonical self pointer for this function
     llvm::Value *prevInstance = compIt->second->llvmValue;
-    compIt->second->llvmValue = selfPtr;
+    compIt->second->llvmValue = selfAlloca; // Use selfAlloca (the ptr* to the self ptr)
 
     currentComponent = component;
-    currentComponentInstance = selfPtr;
+    currentComponentInstance = selfAlloca; // Use selfAlloca
+    currentFunctionSelfMap[currentFunction] = selfAlloca;
 
-    // Store constructor args
+    // --- CONSTRUCTOR ARGUMENTS (Store to Alloca) ---
     for (auto &arg : initStmt->constructor_args)
     {
         llvm::Value *argVal = &*argIt++;
         auto argName = arg->statement.TokenLiteral;
+
+        // Ensure argVal is not a temporary value being reused in a dangerous way
+        if (!llvm::isa<llvm::Argument>(argVal))
+            std::cerr << "[IR WARN] Constructor arg '" << argName << "' is not a clean Argument!.\n"; // GUARD
+
         llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(argVal->getType(), nullptr, argName);
         funcBuilder.CreateStore(argVal, alloca);
 
@@ -168,18 +189,25 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
             throw std::runtime_error("Missing metaData for ctor argument: " + argName);
 
         metaIt->second->llvmValue = alloca;
+
+        std::cout << "[IR DEBUG] Stored Ctor Arg: " << argName << " to Alloca: " << alloca << "\n"; // DEBUG
     }
 
-    // Generate body
+    // --- BODY GENERATION ---
     if (initStmt->block)
         generateBlockStatement(initStmt->block.get());
 
-    funcBuilder.CreateRetVoid();
+    // --- FINAL CHECKS ---
+    if (!funcBuilder.GetInsertBlock()->getTerminator()) // GUARD
+        funcBuilder.CreateRetVoid();
+    else if (funcBuilder.GetInsertBlock()->getTerminator() != nullptr && funcBuilder.GetInsertBlock()->getTerminator()->getOpcode() != llvm::Instruction::Ret)
+        std::cerr << "[IR WARN] Init function did not end with a return instruction!\n"; // GUARD
 
     // Cleanup
     compIt->second->llvmValue = prevInstance;
     currentComponentInstance = nullptr;
     currentComponent = nullptr;
+    currentFunction = nullptr;
     if (oldInsertPoint)
         funcBuilder.SetInsertPoint(oldInsertPoint);
 
@@ -234,8 +262,11 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
 
         // Map %this (first argument)
         llvm::Argument &thisArg = *fn->arg_begin();
-        thisArg.setName(compName+".self");
-        exprIt->second->llvmValue = &thisArg;
+        thisArg.setName(compName + ".self");
+        llvm::AllocaInst *selfAlloca = funcBuilder.CreateAlloca(thisPtrType, nullptr, compName + ".self_ptr");
+        funcBuilder.CreateStore(&thisArg, selfAlloca);
+        exprIt->second->llvmValue = selfAlloca;
+        currentFunctionSelfMap[currentFunction] = selfAlloca;
 
         // Map user parameters
         auto argIter = std::next(fn->arg_begin()); // skip %this
@@ -256,6 +287,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
 
         // Generate function body
         generateExpression(expr->block.get());
+        currentFunction = nullptr;
     }
 
     // FunctionDeclarationExpression: declaration only error out incase somehow the semantics allowed them through
@@ -266,6 +298,83 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
 
     if (oldInsertPoint)
         funcBuilder.SetInsertPoint(oldInsertPoint);
+}
+
+llvm::Value *IRGenerator::generateMethodCallExpression(Node *node)
+{
+    auto metCall = dynamic_cast<MethodCallExpression *>(node);
+    if (!metCall)
+        throw std::runtime_error("Invalid method call expression node");
+
+    // Get the metaData for the whole call
+    auto callIt = semantics.metaData.find(metCall);
+    if (callIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Missing method call metaData");
+    }
+
+    auto metSym = callIt->second;
+
+    // Check if there are semantic errors
+    if (metSym->hasError)
+    {
+        throw std::runtime_error("Semantic error detected on component method call");
+    }
+
+    // Something like p1.test()
+    // Split the call
+    auto instance = dynamic_cast<Identifier *>(metCall->instance.get());
+    // Getting the metaData for the instance
+    auto instanceIt = semantics.metaData.find(instance);
+    if (instanceIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Could not find instance metaData");
+    }
+
+    auto instanceSym = instanceIt->second;
+
+    llvm::Value *objectPtr = nullptr;
+    // Get the llvm value for the instance
+    if (instanceSym->llvmValue)
+    {
+        objectPtr = instanceSym->llvmValue;
+    }
+    else
+    {
+        objectPtr = generateExpression(instance);
+    }
+
+    // Get the component type of the object
+    std::string compName = instanceSym->type.resolvedName;
+
+    // Getting the raw function name as stored in the node
+    auto call = dynamic_cast<CallExpression *>(metCall->call.get());
+    std::string callName = call->function_identifier->expression.TokenLiteral;
+
+    // Resolve the function name
+    std::string funcName = compName + "_" + callName;
+
+    // Fetch the function from the module
+    llvm::Function *targetFunc = module->getFunction(funcName);
+    if (!targetFunc)
+    {
+        throw std::runtime_error("Undefined method '" + callName + "' from component '" + compName + "'");
+    }
+
+    // Prepare the arguments
+    std::vector<llvm::Value *> args;
+    args.push_back(objectPtr); // The implicit self
+
+    // Add user arguments if any were provided
+    for (const auto &arg : call->parameters)
+    {
+        args.push_back(generateExpression(arg.get()));
+    }
+
+    // Call the function
+    llvm::Value *result = funcBuilder.CreateCall(targetFunc, args);
+
+    return result;
 }
 
 void IRGenerator::generateComponentStatement(Node *node)
@@ -348,7 +457,7 @@ void IRGenerator::generateEnumClassStatement(Node *node)
     llvmCustomTypes[enumInfo->type.resolvedName] = enumStruct;
 
     std::cout << "[IRGEN LOG] Declared enum class " << enumInfo->type.resolvedName << " with members:\n";
-    for (auto &[memberName, member] : enumTypeInfo.members)
+    for (auto &[memberName, member] : enumTypeInfo->members)
     {
         // llvm::ConstantInt will be generated  when a member is actually used in an expression
     }

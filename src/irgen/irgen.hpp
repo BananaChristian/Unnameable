@@ -50,6 +50,7 @@ public:
     std::unordered_map<std::string, llvm::StructType *> llvmCustomTypes;
     std::unordered_map<std::string, llvm::Value *> llvmGlobalDataBlocks;
     std::unordered_map<std::string, unsigned> llvmStructIndices;
+    std::unordered_map<llvm::Function *, llvm::AllocaInst *> currentFunctionSelfMap;
 
     ComponentStatement *currentComponent = nullptr;
     llvm::Value *currentComponentInstance;
@@ -134,6 +135,7 @@ private:
     llvm::Value *generateSelfExpression(Node *node);
     llvm::Value *generateNewComponentExpression(Node *node);
     llvm::Value *generateInstanceExpression(Node *node);
+    llvm::Value *generateMethodCallExpression(Node *node);
 
     // HELPER FUNCTIONS
     void registerGeneratorFunctions();
