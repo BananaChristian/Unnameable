@@ -127,7 +127,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     if (!structTy)
         throw std::runtime_error("LLVM type is not a struct for: " + componentName);
 
-    // FUNCTION SETUP 
+    // FUNCTION SETUP
     std::vector<llvm::Type *> llvmParamTypes = {structTy->getPointerTo()}; // self
     for (auto &arg : initStmt->constructor_args)
         llvmParamTypes.push_back(getLLVMType(semantics.inferNodeDataType(arg.get())));
@@ -137,14 +137,14 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
                                             componentName + "_init", module.get());
     currentFunction = initFunc;
 
-    std::cout << "[IR DEBUG] Starting generation for: " << initFunc->getName().str() << "\n"; 
+    std::cout << "[IR DEBUG] Starting generation for: " << initFunc->getName().str() << "\n";
 
     auto *entryBlock = llvm::BasicBlock::Create(context, "entry", initFunc);
     funcBuilder.SetInsertPoint(entryBlock);
 
     auto argIt = initFunc->arg_begin();
     llvm::Argument *selfArg = &*argIt++;
-    selfArg->setName(componentName + ".self_arg"); 
+    selfArg->setName(componentName + ".self_arg");
 
     llvm::Type *selfPtrType = structTy->getPointerTo();
     llvm::AllocaInst *selfAlloca = funcBuilder.CreateAlloca(selfPtrType, nullptr, componentName + ".self_ptr_addr");
@@ -170,7 +170,7 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     currentComponentInstance = selfAlloca; // Use selfAlloca
     currentFunctionSelfMap[currentFunction] = selfAlloca;
 
-    // CONSTRUCTOR ARGUMENTS (Store to Alloca) 
+    // CONSTRUCTOR ARGUMENTS (Store to Alloca)
     for (auto &arg : initStmt->constructor_args)
     {
         llvm::Value *argVal = &*argIt++;
@@ -387,6 +387,12 @@ void IRGenerator::generateComponentStatement(Node *node)
         throw std::runtime_error("Missing component metaData for " + compStmt->component_name->expression.TokenLiteral);
 
     auto sym = it->second;
+
+    if (sym->hasError)
+    {
+        throw std::runtime_error("Semantic error detected in component block");
+    }
+
     const std::string compName = compStmt->component_name->expression.TokenLiteral;
     currentComponent = compStmt;
 
@@ -397,6 +403,7 @@ void IRGenerator::generateComponentStatement(Node *node)
     sym->llvmType = structTy;
 
     std::vector<llvm::Type *> memberTypes;
+    std::vector<FunctionExpression *> functionExpressions;
     std::unordered_map<std::string, unsigned> memberIndexMap;
 
     unsigned index = 0;
@@ -407,8 +414,8 @@ void IRGenerator::generateComponentStatement(Node *node)
 
         if (auto *funcExpr = dynamic_cast<FunctionExpression *>(info->node))
         {
-            // Inject `%this` param if function belongs to component
-            generateComponentFunctionStatement(funcExpr, compName);
+            // Store the functions for later generation when the struct body has been generated
+            functionExpressions.push_back(funcExpr);
             continue;
         }
 
@@ -424,6 +431,11 @@ void IRGenerator::generateComponentStatement(Node *node)
     // Finalize struct definition
     structTy->setBody(memberTypes);
 
+    for (const auto &func : functionExpressions)
+    {
+        // Generate functions now since the body is done being set
+        generateComponentFunctionStatement(func, compName);
+    }
     // INIT HANDLING
     if (compStmt->initConstructor)
         generateInitFunction(compStmt->initConstructor.value().get(), compStmt);

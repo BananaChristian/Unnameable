@@ -133,6 +133,7 @@ private:
     llvm::Value *generateCallExpression(Node *node);
 
     llvm::Value *generateSelfExpression(Node *node);
+    llvm::Value *generateSelfAddress(Node *node);
     llvm::Value *generateNewComponentExpression(Node *node);
     llvm::Value *generateInstanceExpression(Node *node);
     llvm::Value *generateMethodCallExpression(Node *node);
