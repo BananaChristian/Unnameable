@@ -351,7 +351,7 @@ void Sentinel::checkFieldAssignment(Node *node)
         return;
     }
 
-    auto members = parentIt->second.members;
+    auto members = parentIt->second->members;
     auto childIt = members.find(childName);
     if (childIt == members.end())
     {
