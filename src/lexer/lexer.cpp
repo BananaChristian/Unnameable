@@ -803,6 +803,7 @@ Token Lexer::tokenize()
         std::string charStr;
         appendUTF8(charStr, character);
         logError("Unexpected character: ", tokenLine, tokenColumn);
+        advance();
         return Token{charStr, TokenType::ILLEGAL, tokenLine, tokenColumn};
     }
     }
