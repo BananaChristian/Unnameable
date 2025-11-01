@@ -794,7 +794,6 @@ void Semantics::walkComponentStatement(Node *node)
             {
                 logSemanticErrors("Data block with name '" + identName + "' does not exist", ident->expression.line, ident->expression.column);
                 hasError = true;
-                return;
             }
             auto &importedMembers = typeIt->second->members;
             auto &currentScope = symbolTable.back();
@@ -912,7 +911,6 @@ void Semantics::walkComponentStatement(Node *node)
             {
                 logSemanticErrors("Method block with name '" + identName + "' does not exist", ident->expression.line, ident->expression.column);
                 hasError = true;
-                return;
             }
             auto &importedMembers = typeIt->second->members;
             auto &currentScope = symbolTable.back();
