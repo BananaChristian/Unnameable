@@ -328,40 +328,54 @@ for (mut int i | i < 10 | i++) {
 
 ## Component System (OOP-like structure)
 Unnameable supports components, clean structures for organizing data and behavior, like classes, but lightweight and predictable.
+
 ```unn
-behavior combat{
-      func kick() :void;
-      func punch(): void;
-      func super(): void;
+
+# --- DATA BLOCK ---
+data Attributes {
+    mut int max_value;
 }
 
-data attributes{
-      int health_extra;
-      int speed;
-}
+# --- COMPONENT DEFINITION ---
+component Entity {
+    # Component Fields (Field declarations use explicit types)
+    int health; 
 
-component Player {
-    int health;
+     # Import Data Block
+    use data Attributes;
 
-    #This is the constructor for the component
-    init(int h) {
+    # Component Method
+    func check_health_ratio(): int {
+        # Explicit type declarations for local variables
+        int current_health = self.health;
+        self.max_value=100;
+        int maximum = self.max_value;
+        
+        return (current_health * 10 )/ maximum;
+    }
+
+    # Component Constructor
+    init(int h=0) {
+        # Initialize the health field
         self.health = h;
     }
-
-    use behavior combat;
-    use behavior combat@super;
-
-    use data attributes;
-    use data attributes@speed;
-
-    func greet(): string {
-        return "Hello, I have " + self.health + " HP";
-    }
 }
 
-func main: int{
-    auto p = new Player(100);
-    shout! p.speed;
+# --- MAIN EXECUTION ---
+func main(): int {
+    # Explicit type declaration for player object
+    Entity player = new Entity(70);
+
+    # Explicit type declaration for the local variable
+    int player_ratio = player.check_health_ratio();
+
+    # Output results:
+    shout! "Player Ratio: ";
+    shout! player_ratio;
+
+    shout! "Player Health: ";
+    shout! player.health; 
+
     return 0;
 }
 
