@@ -670,19 +670,20 @@ void Semantics::walkAssignStatement(Node *node)
         assignName = selfExpr->field->expression.TokenLiteral;
 
         auto &compScope = currentTypeStack.back();
-        auto compMetaIt = metaData.find(compScope.node);
-        if (compMetaIt == metaData.end())
-        {
-            logSemanticErrors("Component metadata not found",
+        auto typeName = compScope.typeName;
+
+        auto compTypeIt = customTypesTable.find(typeName);
+        if(compTypeIt==customTypesTable.end()){
+            logSemanticErrors("Component '" + typeName + "' does not exist",
                               selfExpr->expression.line,
                               selfExpr->expression.column);
             hasError = true;
             return;
         }
 
-        auto compMeta = compMetaIt->second;
-        auto memIt = compMeta->members.find(assignName);
-        if (memIt == compMeta->members.end())
+        auto compInfo = compTypeIt->second;
+        auto memIt = compInfo->members.find(assignName);
+        if (memIt == compInfo->members.end())
         {
             logSemanticErrors("Field '" + assignName + "' not found in component",
                               selfExpr->expression.line,

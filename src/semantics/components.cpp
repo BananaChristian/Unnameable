@@ -811,6 +811,8 @@ void Semantics::walkComponentStatement(Node *node)
                 memberCopy->memberIndex = currentMemberIndex++;
                 members[name] = memberCopy;
 
+                componentTypeInfo->members = members;
+
                 auto memSym = std::make_shared<SymbolInfo>();
                 memSym->type = info->type;
                 memSym->isNullable = info->isNullable;
@@ -831,8 +833,6 @@ void Semantics::walkComponentStatement(Node *node)
                     // If the node wasnt populated
                     std::cout << "[SEMANTIC WARN] imported member '" << name << "' has no node\n";
                 }
-
-                componentTypeInfo->members = members;
             }
         }
 
