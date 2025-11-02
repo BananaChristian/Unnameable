@@ -159,8 +159,11 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 
 std::unique_ptr<Statement> Parser::parseDereferenceAssignment()
 {
-    if (peekToken(2).type == TokenType::EQUALS)
+    if (peekToken(2).type == TokenType::ASSIGN)
+    {
+        std::cout << "Dereference assignment triggered\n";
         return parseAssignmentStatement();
+    }
 
     // Fall back to the expression guy
     auto expr = parseExpression(Precedence::PREC_NONE);
