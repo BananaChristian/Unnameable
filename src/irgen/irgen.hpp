@@ -127,6 +127,7 @@ private:
     llvm::Value *generateIdentifierExpression(Node *node);
     llvm::Value *generateAddressExpression(Node *node);
     llvm::Value *generateDereferenceExpression(Node *node);
+    llvm::Value *generateDereferenceAddress(Node *node);
 
     llvm::Value *generateBlockExpression(Node *node);
     llvm::Value *generateFunctionExpression(Node *node);

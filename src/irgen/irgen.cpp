@@ -574,17 +574,14 @@ void IRGenerator::generatePointerStatement(Node *node)
     if (ptrSym->hasError)
         throw std::runtime_error("Semantic error detected ");
 
-    std::cout << "[IR DEBUG] Pointer type: " << ptrSym->type.resolvedName << "\n";
-
-    llvm::Function *fn = funcBuilder.GetInsertBlock()->getParent();
-    llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
-
     // Getting the pointer llvm type
     llvm::Type *ptrType = getLLVMType(ptrSym->type);
-    llvm::Type *ptrStorageType = ptrType->getPointerTo();
-
     if (!ptrType)
         throw std::runtime_error("Failed to get LLVM Type for '" + ptrName + "'");
+
+    llvm::Type *ptrStorageType = ptrType->getPointerTo();
+
+    std::cout << "[IR DEBUG] Pointer type: " << ptrSym->type.resolvedName << "\n";
 
     llvm::Value *initVal = ptrStmt->value ? generateExpression(ptrStmt->value.get())
                                           : llvm::Constant::getNullValue(ptrType);
@@ -592,12 +589,43 @@ void IRGenerator::generatePointerStatement(Node *node)
     if (!initVal)
         throw std::runtime_error("No init value");
 
-    llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(ptrStorageType, nullptr, ptrName);
-    if (!alloca)
-        throw std::runtime_error("Failed to create alloca");
+    llvm::Value *storagePtr = nullptr;
+    // If in global scope
+    if (!funcBuilder.GetInsertBlock())
+    {
+        llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
+        if (!globalInit)
+        {
+            // This happens if the target (&X) is not known at compile time,
+            // which should only happen if X is not also global.
+            // For now, let me assume global targets are constants.
+            throw std::runtime_error("Global pointer initializer must be a constant address.");
+        }
 
-    funcBuilder.CreateStore(initVal, alloca);
-    ptrSym->llvmValue = alloca;
+        llvm::GlobalVariable *globalVar = new llvm::GlobalVariable(
+            *module,
+            ptrStorageType,
+            false,
+            llvm::GlobalValue::InternalLinkage,
+            globalInit,
+            ptrName);
+
+        storagePtr = globalVar;
+    }
+    else
+    {
+
+        llvm::Function *fn = funcBuilder.GetInsertBlock()->getParent();
+        llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
+
+        storagePtr = entryBuilder.CreateAlloca(ptrStorageType, nullptr, ptrName);
+        if (!storagePtr)
+            throw std::runtime_error("Failed to allocate local pointer on call stack");
+
+        funcBuilder.CreateStore(initVal, storagePtr);
+    }
+
+    ptrSym->llvmValue = storagePtr;
     ptrSym->llvmType = ptrType;
 
     std::cout << "Exited pointer statement generator\n";
@@ -949,7 +977,7 @@ void IRGenerator::generateAssignmentStatement(Node *node)
     else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(assignStmt->identifier.get()))
     {
         std::cout << "Inside Assignment statement deref branch\n";
-        targetPtr = generateDereferenceExpression(derefExpr);
+        targetPtr = generateDereferenceAddress(derefExpr);
         if (!targetPtr)
             throw std::runtime_error("Failed to get pointer for the dereference expression");
     }
@@ -2323,6 +2351,55 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node)
     return ptr;
 }
 
+llvm::Value *IRGenerator::generateDereferenceAddress(Node *node)
+{
+    auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
+    if (!derefExpr)
+        throw std::runtime_error("Invalid dereference expression");
+
+    const std::string &name = derefExpr->identifier->expression.TokenLiteral;
+
+    auto metaIt = semantics.metaData.find(derefExpr);
+    if (metaIt == semantics.metaData.end())
+        throw std::runtime_error("Unidentified inditifier '" + name + "' in dereference expression");
+
+    auto derefSym = metaIt->second;
+    if (!derefSym)
+        throw std::runtime_error("Unidentified dereference identifier '" + name + "'");
+
+    // Check if there are any semantic errors
+    if (derefSym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
+    // Get the llvm value of the identifier(the address of the pointer) it was stored here by the generate pointer statement
+    auto derefIdent = dynamic_cast<Identifier *>(derefExpr->identifier.get());
+    if (!derefIdent)
+        throw std::runtime_error("There is an issue here check the node maybe NODE TYPE IS: '" + derefIdent->toString() + "'");
+
+    std::cout << "DEREF IDENTIFIER NODE IS: " << derefIdent->toString() << "\n";
+    AddressAndPendingFree addrAndFree = generateIdentifierAddress(derefIdent);
+    auto pointerAddress = addrAndFree.address;
+    if (!pointerAddress)
+        throw std::runtime_error("Pointer address does not exist");
+
+    // Getting the type of the pointer
+    auto pointerType = getLLVMType(derefSym->derefPtrType);
+    if (!pointerType)
+        throw std::runtime_error("Pointer type doesnt exist");
+
+    if (!pointerType->isPointerTy())
+        throw std::runtime_error("Cannot dereference non-pointer type");
+
+    // Loading the actual address stored in the pointer address(Address of the pointee)
+    auto loadedPointer = funcBuilder.CreateLoad(pointerType, pointerAddress, name + "_addr");
+    if (!loadedPointer)
+        throw std::runtime_error("Loaded pointer not created");
+
+    std::cout << "Exited dereference address generator\n";
+
+    return loadedPointer;
+}
+
 llvm::Value *IRGenerator::generateDereferenceExpression(Node *node)
 {
     auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
@@ -2793,6 +2870,30 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
 
     // This will handle whatever is inside the block including the return value
     generateExpression(fnExpr->block.get());
+
+   
+    llvm::BasicBlock *finalBlock = funcBuilder.GetInsertBlock();
+
+     // If the function is void 
+    bool isVoidFunction = funcIt->second->returnType.kind == DataType::VOID;
+
+    // CRITICAL CHECK: Does the current block exist and is it not terminated?
+    if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator()))
+    {
+        if (isVoidFunction)
+        {
+            // Inject 'ret void' for void functions that fell off the end.
+            funcBuilder.CreateRetVoid();
+            std::cout << "INJECTED missing 'ret void' terminator.\n";
+        }
+        else
+        {
+            // Non-void function finished without a return.
+            // This is a semantic failure, but we terminate for LLVM stability.
+            funcBuilder.CreateUnreachable();
+        }
+    }
+
     funcBuilder.ClearInsertionPoint();
     currentFunction = nullptr; // Set it back to a null pointer
     return fn;
