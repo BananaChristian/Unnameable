@@ -1208,10 +1208,12 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpres
 {
     bool allGood = true;
 
+    auto funcName = callExpr->function_identifier->expression.TokenLiteral;
+
     if (memFuncInfo.paramTypes.size() != callExpr->parameters.size())
     {
-        logSemanticErrors("Call has " + std::to_string(callExpr->parameters.size()) +
-                              " arguments, but function expects " + std::to_string(memFuncInfo.paramTypes.size()),
+        logSemanticErrors("Function '" + funcName + "' call has " + std::to_string(callExpr->parameters.size()) +
+                              " arguments, but expects " + std::to_string(memFuncInfo.paramTypes.size()),
                           callExpr->expression.line, callExpr->expression.column);
         return false;
     }
@@ -1250,9 +1252,9 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpres
         // --- Type strictness ---
         if (argType.kind != expectedType.first.kind)
         {
-            logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
-                                  ": expected " + expectedType.first.resolvedName +
-                                  ", got " + argType.resolvedName,
+            logSemanticErrors("Call for '" + funcName + "'has a type mismatch in argument " + std::to_string(i + 1) +
+                                  ", expected '" + expectedType.first.resolvedName +
+                                  "' but got '" + argType.resolvedName + "'",
                               param->expression.line, param->expression.column);
             allGood = false;
             continue;
@@ -1262,8 +1264,8 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpres
         if (argType.resolvedName != expectedType.first.resolvedName)
         {
             logSemanticErrors(
-                "Argument type mismatch: expected '" + expectedType.first.resolvedName +
-                    "' but got '" + argType.resolvedName + "'",
+                "Argument type mismatch, expected '" + expectedType.first.resolvedName +
+                    "' but got '" + argType.resolvedName + "' in call for '" + funcName + "'",
                 param->expression.line, param->expression.column);
             allGood = false;
             continue;
@@ -1276,11 +1278,14 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpres
 bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr)
 {
     bool allGood = true;
+
+    auto funcName = callExpr->function_identifier->expression.TokenLiteral;
+
     // 1. Check parameter count
     if (funcInfo.paramTypes.size() != callExpr->parameters.size())
     {
-        logSemanticErrors("Call has " + std::to_string(callExpr->parameters.size()) +
-                              " arguments, but function expects " + std::to_string(funcInfo.paramTypes.size()),
+        logSemanticErrors("Function '" + funcName + "' call has " + std::to_string(callExpr->parameters.size()) +
+                              " arguments, but expected " + std::to_string(funcInfo.paramTypes.size()),
                           callExpr->expression.line, callExpr->expression.column);
         return false;
     }
@@ -1319,9 +1324,9 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
         // --- Type strictness ---
         if (argType.kind != expectedType.first.kind)
         {
-            logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
-                                  ": expected " + expectedType.first.resolvedName +
-                                  ", got " + argType.resolvedName,
+            logSemanticErrors("Call for '" + funcName + "'has a type mismatch in argument " + std::to_string(i + 1) +
+                                  ", expected '" + expectedType.first.resolvedName +
+                                  "' but got '" + argType.resolvedName + "'",
                               param->expression.line, param->expression.column);
             allGood = false;
             continue;
@@ -1331,8 +1336,8 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
         if (argType.resolvedName != expectedType.first.resolvedName)
         {
             logSemanticErrors(
-                "Argument type mismatch: expected '" + expectedType.first.resolvedName +
-                    "' but got '" + argType.resolvedName + "'",
+                "Argument type mismatch, expected '" + expectedType.first.resolvedName +
+                    "' but got '" + argType.resolvedName + "' in call for '" + funcName + "'",
                 param->expression.line, param->expression.column);
             allGood = false;
             continue;

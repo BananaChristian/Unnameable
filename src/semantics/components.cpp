@@ -1323,7 +1323,6 @@ void Semantics::walkMethodCallExpression(Node *node)
     // Compatibility check
     if (!isMethodCallCompatible(*memInfo, funcCall))
     {
-        logSemanticErrors("Function call '" + funcName + "' has incompatible arguments", funcLine, funcCol);
         hasError = true;
     }
 

@@ -201,8 +201,8 @@ void Semantics::walkFunctionExpression(Node *node)
 
     insideFunction = true;
 
-    // Checking for duplicates in global scope
-    auto symbol = resolveSymbolInfo(funcName);
+    // Checking for duplicates in the same scope
+    auto symbol = lookUpInCurrentScope(funcName);
 
     // Only accessing symbol if it exists
     if (symbol)
@@ -211,10 +211,11 @@ void Semantics::walkFunctionExpression(Node *node)
         {
             logSemanticErrors("Reused name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
             insideFunction = false;
+            hasError=true;
             return;
         }
 
-        if (symbol->isDeclaration)
+        else if (symbol->isDeclaration)
         {
             if (!areSignaturesCompatible(*symbol, funcExpr))
             {
@@ -276,6 +277,12 @@ void Semantics::walkFunctionExpression(Node *node)
     }
 
     // Processing return type expression
+    if (!funcExpr->return_type)
+    {
+        logSemanticErrors("Function '" + funcName + "' is missing a return type", funcExpr->func_key.line, funcExpr->func_key.column);
+        return; // This is a fatal error so block further analysis to prevent segfaults
+    }
+
     auto retType = dynamic_cast<ReturnType *>(funcExpr->return_type.get());
     if (!retType)
     {
@@ -582,8 +589,6 @@ void Semantics::walkFunctionCallExpression(Node *node)
     // Check if call signature matches
     if (!isCallCompatible(*callSymbolInfo, funcCall))
     {
-        logSemanticErrors("Function call to '" + callName + "' has incompatible arguments",
-                          funcCall->expression.line, funcCall->expression.column);
         hasError = true;
     }
 
