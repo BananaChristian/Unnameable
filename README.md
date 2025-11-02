@@ -241,7 +241,7 @@ test_array[0]=7;
 ```
 
 ## Error handling
-
+This is the current system for error handling but its not concrete yet I look to redesigning it and making it better and more powerful
 ```unn
 func greet(string name): string {
     return "Hello" + name, error("Got an error");
@@ -253,7 +253,7 @@ func greet(string name): string {
 
 Unnameable supports multi file usage with two systems merge and module
 For now only merge is supported and as the name implies it merges multiple files into one compilation unit
-If you wrote a global variable or a function name in the another file and you are importing it be careful on the variable and function names as the compiler sees them as one
+If you wrote a global variable or a function name in the another file and you are importing it, be careful on the variable and function names as the compiler sees them as one
 Below is an example of the merge syntax
 
 ```
