@@ -27,7 +27,7 @@ This project contains the core implementation of the Unnameable compiler written
 
 ---
 
-## Data Types
+## Basic Data Types
 
 - `short` — 16-bit signed integers
 - `ushort` — 16-bit usigned integers
@@ -148,7 +148,7 @@ Functions can also return pointers for the concrete types but void pointers aren
 
 ```unn
 func test(int x=0):ptr int{
-    ptr int y=> &x;
+    ptr int y -> &x;
     return y;
 }
 ```
@@ -225,7 +225,7 @@ func TestOps_subtract(int a ,float b): float{
 
 ## Arrays
 
-Unnameable supports single dimensional and multidimensional arrays, The user must explicity list the length of the array if they dont provide initialize but if they initialize the array the compiler will just count the items inside
+Unnameable supports single dimensional for now(Semantically), The user must explicity list the length of the array if they dont provide initialize but if they initialize the array the compiler will just count the items inside
 
 ```
 #Single dimensional arrays
