@@ -7,6 +7,7 @@ void Semantics::walkInfixExpression(Node *node)
         return;
 
     std::cout << "[SEMANTIC LOG] Analyzing infix expression: " << infixExpr->toString() << "\n";
+    bool hasError = false;
 
     // Resolve left-hand side
     auto left = infixExpr->left_operand.get();
@@ -15,7 +16,35 @@ void Semantics::walkInfixExpression(Node *node)
     // Special-case: dot (.) operator
     if (infixExpr->operat.type == TokenType::FULLSTOP)
     {
-        auto lhsType = metaData[left]->type;
+        // Get the lhs name
+        auto lhsIdent = dynamic_cast<Identifier *>(infixExpr->left_operand.get());
+
+        auto lhsName = lhsIdent->identifier.TokenLiteral;
+        auto line = lhsIdent->identifier.line;
+        auto col = lhsIdent->identifier.column;
+
+        // Retrieve the symbol info of the left side
+        auto leftSym = resolveSymbolInfo(lhsName);
+        if (!leftSym)
+        {
+            logSemanticErrors("Unidentified variable '" + lhsName + "' in infix left side", line, col);
+            hasError = true;
+        }
+
+        auto lhsType = leftSym->type;
+
+        if (leftSym->isHeap)
+        {
+            leftSym->lastUseNode = infixExpr;
+            if (leftSym->refCount > 0)
+            {
+                leftSym->refCount--;
+            }
+
+            std::cout << "[SEMANTIC LOG] Heap variable '" << lhsName
+                      << "' accessed, refCount=" << leftSym->refCount
+                      << ", lastUseNode set\n";
+        }
 
         auto rhsIdent = dynamic_cast<Identifier *>(infixExpr->right_operand.get());
         if (!rhsIdent)

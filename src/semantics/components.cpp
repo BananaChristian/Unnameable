@@ -1332,6 +1332,13 @@ void Semantics::walkMethodCallExpression(Node *node)
         walker(arg.get());
     }
 
+    // Update the instance symbol metaData
+    instanceSym->lastUseNode = metCall;
+    if (instanceSym->refCount)
+    {
+        instanceSym->refCount--;
+    }
+
     // Store the metaData
     auto metCallSym = std::make_shared<SymbolInfo>();
     metCallSym->hasError = hasError;
