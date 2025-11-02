@@ -284,6 +284,30 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
 
         // Generate function body
         generateExpression(expr->block.get());
+
+        llvm::BasicBlock *finalBlock = funcBuilder.GetInsertBlock();
+
+        // If the function is void
+        bool isVoidFunction = exprIt->second->returnType.kind == DataType::VOID;
+
+        if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator()))
+        {
+            if (isVoidFunction)
+            {
+                // Inject 'ret void' for void functions that fell off the end.
+                funcBuilder.CreateRetVoid();
+                std::cout << "INJECTED missing 'ret void' terminator.\n";
+            }
+            else
+            {
+                // Non-void function finished without a return.
+                // This is a semantic failure, but we terminate for LLVM stability.
+                funcBuilder.CreateUnreachable();
+            }
+        }
+
+        funcBuilder.ClearInsertionPoint();
+
         currentFunction = nullptr;
     }
 

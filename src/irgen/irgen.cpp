@@ -2895,6 +2895,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
     }
 
     funcBuilder.ClearInsertionPoint();
+    
     currentFunction = nullptr; // Set it back to a null pointer
     return fn;
 }
