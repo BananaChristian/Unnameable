@@ -406,6 +406,9 @@ void Semantics::walkDereferenceExpression(Node *node)
 
     auto derefInfo = std::make_shared<SymbolInfo>(*derefSym->targetSymbol);
     derefInfo->isPointer = false; // Just a sanity measure
+    derefInfo->isMutable = derefSym->isMutable;
+    derefInfo->isConstant = derefSym->isConstant;
+    derefInfo->isInitialized = derefSym->isInitialized;
     derefInfo->derefPtrType = derefSym->type;
 
     std::cout << "DEREF PTR TYPE: " << derefSym->type.resolvedName << "\n";
@@ -673,7 +676,8 @@ void Semantics::walkAssignStatement(Node *node)
         auto typeName = compScope.typeName;
 
         auto compTypeIt = customTypesTable.find(typeName);
-        if(compTypeIt==customTypesTable.end()){
+        if (compTypeIt == customTypesTable.end())
+        {
             logSemanticErrors("Component '" + typeName + "' does not exist",
                               selfExpr->expression.line,
                               selfExpr->expression.column);
@@ -1208,9 +1212,15 @@ void Semantics::walkPointerStatement(Node *node)
     */
 
     if (ptrStmt->mutability == Mutability::MUTABLE)
+    {
+        std::cout << "POINTER IS MUTABLE\n";
         isMutable = true;
+    }
     else if (ptrStmt->mutability == Mutability::CONSTANT)
-        isMutable = false;
+    {
+        std::cout << "POINTER IS CONSTANT\n";
+        isConstant = true;
+    }
 
     std::cout << "POINTER TYPE: " << ptrType.resolvedName << "\n";
 
