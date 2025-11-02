@@ -634,13 +634,27 @@ struct ComponentStatement : Statement
         // Private data
         for (const auto &field : privateData)
         {
-            result += " " + field->toString() + "\n";
+            if (!field)
+            {
+                std::cout << "Encountered null field\n";
+            }
+            else
+            {
+                result += " " + field->toString() + "\n";
+            }
         }
 
         // Private methods
         for (const auto &method : privateMethods)
         {
-            result += "  " + method->toString() + "\n";
+            if (!method)
+            {
+                std::cout << "Encountered null method\n";
+            }
+            else
+            {
+                result += "  " + method->toString() + "\n";
+            }
         }
 
         // Used data blocks
