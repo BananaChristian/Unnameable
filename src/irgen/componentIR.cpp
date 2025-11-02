@@ -55,10 +55,10 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
     if (!funcBuilder.GetInsertBlock())
         throw std::runtime_error("Cannot create an instance for '" + instName + "' in the global scope");
 
-    // 1) single stack slot to build the struct in
+    // single stack slot to build the struct in
     llvm::Value *instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, instName + "_inst");
 
-    // 2) default-initialize each member directly into instancePtr (use source member order!)
+    // default-initialize each member directly into instancePtr
     auto typeInfoIt = semantics.customTypesTable.find(instName);
     if (typeInfoIt == semantics.customTypesTable.end())
         throw std::runtime_error("Missing custom type info for " + instName);
@@ -83,7 +83,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
         }
     }
 
-    // 3) apply explicit initializers from instance expression
+    // apply explicit initializers from instance expression
     for (auto &fieldStmt : instExpr->fields)
     {
         auto assign = dynamic_cast<AssignmentStatement *>(fieldStmt.get());
@@ -105,7 +105,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
         funcBuilder.CreateStore(rhsVal, fieldPtr);
     }
 
-    // 4) load struct value and return (value semantics)
+    // load struct value and return (value semantics)
     llvm::Value *loaded = funcBuilder.CreateLoad(structTy, instancePtr, instName + "_val");
     return loaded;
 }
@@ -115,6 +115,8 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     auto *initStmt = dynamic_cast<InitStatement *>(node);
     if (!initStmt || !component)
         return;
+
+    isGlobalScope = false;
 
     llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
     const std::string componentName = component->component_name->expression.TokenLiteral;
@@ -196,15 +198,19 @@ void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component
     if (initStmt->block)
         generateBlockStatement(initStmt->block.get());
 
-    if (!funcBuilder.GetInsertBlock()->getTerminator()) // GUARD
-        funcBuilder.CreateRetVoid();
-    else if (funcBuilder.GetInsertBlock()->getTerminator() != nullptr && funcBuilder.GetInsertBlock()->getTerminator()->getOpcode() != llvm::Instruction::Ret)
-        std::cerr << "[IR WARN] Init function did not end with a return instruction!\n"; // GUARD
+    llvm::BasicBlock *currentBlock = funcBuilder.GetInsertBlock();
+
+    if (!currentBlock->getTerminator())
+    {
+        llvm::IRBuilder<> terminatorBuilder(currentBlock);
+        terminatorBuilder.CreateRetVoid();
+    }
 
     // Cleanup
     compIt->second->llvmValue = prevInstance;
     currentComponentInstance = nullptr;
     currentComponent = nullptr;
+    isGlobalScope = true;
     currentFunction = nullptr;
     if (oldInsertPoint)
         funcBuilder.SetInsertPoint(oldInsertPoint);
@@ -228,6 +234,8 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
             throw std::runtime_error("Missing metadata for component function");
         if (exprIt->second->hasError)
             throw std::runtime_error("Semantic error in function: " + expr->func_key.TokenLiteral);
+
+        isGlobalScope = false;
 
         funcName = compName + "_" + expr->func_key.TokenLiteral;
 
@@ -305,7 +313,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
                 funcBuilder.CreateUnreachable();
             }
         }
-
+        isGlobalScope = true;
         funcBuilder.ClearInsertionPoint();
 
         currentFunction = nullptr;
@@ -326,6 +334,9 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node)
     auto metCall = dynamic_cast<MethodCallExpression *>(node);
     if (!metCall)
         throw std::runtime_error("Invalid method call expression node");
+
+    if (isGlobalScope)
+        throw std::runtime_error("Cannot use method calls in global scope");
 
     // Get the metaData for the whole call
     auto callIt = semantics.metaData.find(metCall);
@@ -394,6 +405,21 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node)
 
     // Call the function
     llvm::Value *result = funcBuilder.CreateCall(targetFunc, args);
+
+    if (instanceSym->isHeap && instanceSym->refCount == 0 &&
+        instanceSym->lastUseNode == metCall)
+    {
+        llvm::FunctionCallee sageFree = module->getOrInsertFunction(
+            "sage_free",
+            llvm::Type::getVoidTy(context),
+            llvm::Type::getInt64Ty(context));
+
+        llvm::Value *sizeVal = llvm::ConstantInt::get(
+            llvm::Type::getInt64Ty(context),
+            instanceSym->componentSize);
+
+        funcBuilder.CreateCall(sageFree, {sizeVal}, instance->identifier.TokenLiteral + "_sage_free");
+    }
 
     return result;
 }

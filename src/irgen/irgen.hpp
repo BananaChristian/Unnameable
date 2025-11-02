@@ -60,6 +60,8 @@ public:
     bool isSageInitCalled = false;
     bool isSageDestroyCalled = false;
 
+    bool isGlobalScope = true;
+
     bool emitObjectFile(const std::string &outPath);
     void generateSageDestroyCall();
 
@@ -153,22 +155,17 @@ private:
     uint32_t decodeChar32Literal(const std::string &literal);
     bool isIntegerType(DataType dt);
     bool isSignedInteger(DataType dt);
-    bool inFunction();
     bool currentBlockIsTerminated();
     unsigned getIntegerBitWidth(DataType dt);
 
+    // For normal variables
     void generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName);
     void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &letName, Expression *value);
-    llvm::Value *generateComponentInit(LetStatement *letStmt, llvm::StructType *structTy, bool &usedNewExpr);
+    // For components
+    llvm::Value *generateComponentInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, llvm::StructType *structTy, bool isHeap);
+    void generateGlobalComponentHeapInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structType);
     // Helper for allocating heap storage (shared logic for components and scalars)
     llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy);
-    // Helper for initializing component members
-    void initializeComponentMembers(LetStatement *letStmt,
-                                    std::shared_ptr<SymbolInfo> sym,
-                                    const std::string &letName,
-                                    llvm::Value *storagePtr,
-                                    llvm::StructType *structTy,
-                                    bool usedNewExpr);
     void freeHeapStorage(uint64_t size, const std::string &letName);
 };
 
