@@ -148,7 +148,7 @@ private:
     AddressAndPendingFree generateIdentifierAddress(Node *node);
     void generateStatement(Node *node);
     void shoutRuntime(llvm::Value *val, ResolvedType type);
-    char *unnitoa(int val, char *buf);
+    char *const_unnitoa(__int128 val, char *buf);
     char decodeCharLiteral(const std::string &literal);
     void generateSageInitCall();
     uint16_t decodeChar16Literal(const std::string &literal);

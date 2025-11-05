@@ -1336,6 +1336,18 @@ void IRGenerator::generateReturnStatement(Node *node)
     if (!retStmt)
         return;
 
+    // Retrieve the metaData (For error checking)
+    auto it = semantics.metaData.find(retStmt);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Missing return statement metaData");
+    }
+
+    if (it->second->hasError)
+    {
+        throw std::runtime_error("Semantic error detected");
+    }
+
     llvm::Value *retVal = nullptr;
     // Generating IR for the return value if it exists
     if (retStmt->return_value)
@@ -1733,7 +1745,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node)
     if (!prefix)
         throw std::runtime_error("Invalid prefix expression");
 
-    if(isGlobalScope)
+    if (isGlobalScope)
         throw std::runtime_error("Executable statements arent allowed in the global scope");
 
     llvm::Value *operand;
@@ -3449,37 +3461,42 @@ unsigned IRGenerator::getIntegerBitWidth(DataType dt)
     }
 }
 
-char *IRGenerator::unnitoa(int val, char *buf)
+char *IRGenerator::const_unnitoa(__int128 val, char *buf)
 {
-    char *p = buf;
+    char temp[64]; // Enough for 128-bit decimal digits (max ~39 digits).
+    int i = 0;
+    int neg = 0;
+
+    if (val == 0)
+    {
+        buf[0] = '0';
+        buf[1] = '\0';
+        return buf;
+    }
+
     if (val < 0)
     {
-        *p++ = '-';
+        neg = 1;
         val = -val;
     }
 
-    // Remember start of digits
-    char *start = p;
-
-    // Convert digits
-    do
+    // Extract digits into temp (reversed)
+    while (val > 0)
     {
-        *p++ = '0' + (val % 10);
+        __int128 digit = val % 10;
         val /= 10;
-    } while (val);
-
-    // Null terminate
-    *p = '\0';
-
-    // Reverse digits in place
-    char *end = p - 1;
-    while (start < end)
-    {
-        char tmp = *start;
-        *start++ = *end;
-        *end-- = tmp;
+        temp[i++] = '0' + (int)digit;
     }
 
+    if (neg)
+        temp[i++] = '-';
+
+    // Reverse into buf
+    int j = 0;
+    while (i > 0)
+        buf[j++] = temp[--i];
+
+    buf[j] = '\0';
     return buf;
 }
 
@@ -3491,8 +3508,25 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
     auto &ctx = module->getContext();
     auto i32Ty = llvm::IntegerType::getInt32Ty(ctx);
     auto i8Ty = llvm::IntegerType::getInt8Ty(ctx);
+    auto i128Ty = llvm::IntegerType::get(module->getContext(), 128);
     auto i8PtrTy = llvm::PointerType::get(i8Ty, 0);
     auto i64Ty = llvm::IntegerType::getInt64Ty(ctx);
+
+    llvm::Function *unnitoaFn = module->getFunction("unnitoa");
+    if (!unnitoaFn)
+    {
+        llvm::FunctionType *unnitoaTy =
+            llvm::FunctionType::get(
+                i8PtrTy,           // returns char*
+                {i128Ty, i8PtrTy}, // (__int128 value, char* buffer)
+                false);
+
+        unnitoaFn = llvm::Function::Create(
+            unnitoaTy,
+            llvm::GlobalValue::ExternalLinkage,
+            "unnitoa",
+            *module);
+    }
 
     auto printString = [&](llvm::Value *strVal)
     {
@@ -3529,59 +3563,29 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
 
     auto printInt = [&](llvm::Value *intVal)
     {
-        llvm::Function *unnitoaFn = module->getFunction("unnitoa");
-        if (!unnitoaFn)
-        {
-            llvm::Type *i32Ty = llvm::Type::getInt32Ty(module->getContext());
-            llvm::Type *i8Ty = llvm::Type::getInt8Ty(module->getContext());
-            llvm::PointerType *i8PtrTy = llvm::PointerType::get(i8Ty, 0);
-
-            llvm::FunctionType *unnitoaTy =
-                llvm::FunctionType::get(i8PtrTy, {i32Ty, i8PtrTy}, false);
-
-            // Note: InternalLinkage means “this function exists here”, not external
-            unnitoaFn = llvm::Function::Create(
-                unnitoaTy,
-                llvm::GlobalValue::ExternalLinkage, // not external to another module, just callable
-                "unnitoa",
-                *module);
-        }
-
         char buf[20];
 
         if (auto constInt = llvm::dyn_cast<llvm::ConstantInt>(intVal))
         {
             // Compile-time constant
-            unnitoa(static_cast<int>(constInt->getSExtValue()), buf);
+            const_unnitoa(static_cast<int>(constInt->getSExtValue()), buf);
             llvm::Value *strVal = funcBuilder.CreateGlobalStringPtr(buf);
             printString(strVal);
-        }
-        else if (intVal->getType()->isPointerTy())
-        {
-            std::cout << "Branched to pinter print";
-            // Stack/heap integer pointer
-            llvm::Type *loadedTy = llvm::cast<llvm::PointerType>(intVal->getType());
-            llvm::Value *runtimeInt = funcBuilder.CreateLoad(loadedTy, intVal, "runtime_int");
-
-            // Allocate buffer
-            llvm::Type *i8Ty = llvm::Type::getInt8Ty(module->getContext());
-            llvm::Value *bufAlloca = funcBuilder.CreateAlloca(llvm::ArrayType::get(i8Ty, 20), nullptr, "int_buf");
-            llvm::Value *bufPtr = funcBuilder.CreatePointerCast(bufAlloca, llvm::PointerType::get(i8Ty, 0));
-            // Call in-code helper directly
-
-            funcBuilder.CreateCall(unnitoaFn, {runtimeInt, bufPtr});
-            printString(bufPtr);
         }
         else if (intVal->getType()->isIntegerTy(32))
         {
             std::cout << "Branching to SSA print\n";
-            // Immediate runtime i32 value (not a pointer)
-            llvm::Type *i8Ty = llvm::Type::getInt8Ty(module->getContext());
-            llvm::Value *bufAlloca = funcBuilder.CreateAlloca(llvm::ArrayType::get(i8Ty, 20), nullptr, "int_buf");
-            llvm::Value *bufPtr = funcBuilder.CreatePointerCast(bufAlloca, llvm::PointerType::get(i8Ty, 0));
+            // Promote to i128 for printing
 
-            // Pass the integer value directly
-            funcBuilder.CreateCall(unnitoaFn, {intVal, bufPtr});
+            llvm::Value *int128 = funcBuilder.CreateIntCast(intVal, i128Ty, /*isSigned=*/true);
+
+            // Allocate buffer
+            llvm::Value *bufAlloca = funcBuilder.CreateAlloca(
+                llvm::ArrayType::get(i8Ty, 64), nullptr, "int_buf");
+            llvm::Value *bufPtr = funcBuilder.CreatePointerCast(bufAlloca, i8PtrTy);
+
+            // Call the new universal printer
+            funcBuilder.CreateCall(unnitoaFn, {int128, bufPtr});
             printString(bufPtr);
         }
 
@@ -3590,6 +3594,25 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
             throw std::runtime_error("Unsupported integer value in shout!");
         }
     };
+
+    auto printPointer = [&](llvm::Value *ptrVal)
+    {
+        llvm::Value *addrInt = funcBuilder.CreatePtrToInt(ptrVal, i128Ty);
+
+        llvm::Value *bufAlloca = funcBuilder.CreateAlloca(
+            llvm::ArrayType::get(i8Ty, 64), nullptr, "ptr_buf");
+        llvm::Value *bufPtr = funcBuilder.CreatePointerCast(bufAlloca, i8PtrTy);
+
+        funcBuilder.CreateCall(unnitoaFn, {addrInt, bufPtr});
+        printString(bufPtr);
+    };
+
+    // If the expression is a pointer
+    if (type.isPointer)
+    {
+        printPointer(val);
+        return;
+    }
 
     if (type.kind == DataType::INTEGER)
     {
