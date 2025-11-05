@@ -247,10 +247,12 @@ test_array[0]=7;
 ```
 
 ## Error handling
+
 This is the current system for error handling but its not concrete yet I look to redesigning it and making it better and more powerful
+
 ```unn
-func greet(string name): string {
-    return "Hello" + name, error("Got an error");
+func greet(string name): string? {
+    return "Hello" + name, error!"Got an error";
 }
 
 ```
@@ -620,6 +622,7 @@ _Quick note_ :You cannot heap raise a reference itself this basically means a re
 _Quick note_ : References affect the lifetime of heap raised value the compiler will not free an object whose reference count isn't zero doesnt matter where u last used it the compiler will not free that object until all the references are popped off the call stack
 
 Example
+
 ```
 func main(): int {
     #Target MUST be heap raised
