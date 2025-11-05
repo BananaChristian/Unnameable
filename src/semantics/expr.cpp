@@ -232,42 +232,36 @@ void Semantics::walkExpressionStatement(Node *node)
     walker(exprStmt->expression.get());
 }
 
-void Semantics::walkErrorExpression(Node *node)
-{
-    auto errExpr = dynamic_cast<ErrorExpression *>(node);
-    if (!errExpr)
-        return;
-
-    std::cout << "[SEMANTIC LOG] Analysing the error expression " << errExpr->toString() << "\n";
-
-    auto errType = inferNodeDataType(errExpr);
-    auto errMessage = errExpr->err_message.get();
-
-    walker(errMessage);
-    ResolvedType msgType = inferNodeDataType(errMessage);
-
-    if (msgType.kind == DataType::UNKNOWN)
-    {
-        logSemanticErrors("Invalid error message type '" + msgType.resolvedName + "'", errExpr->error_token.line, errExpr->error_token.column);
-    }
-    auto info = std::make_shared<SymbolInfo>();
-
-    info->type = errType;
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    info->isInitialized = false;
-    metaData[errExpr] = info;
-}
-
 void Semantics::walkErrorStatement(Node *node)
 {
     auto errStmt = dynamic_cast<ErrorStatement *>(node);
     if (!errStmt)
         return;
     std::cout << "[SEMANTIC LOG] Analysing the error statement" << errStmt->toString() << "\n";
+
+    bool hasError = false;
+
     auto errExpr = errStmt->errorExpr.get();
+
+    if (!dynamic_cast<StringLiteral *>(errExpr) && !dynamic_cast<IntegerLiteral *>(errExpr) && !dynamic_cast<FloatLiteral *>(errExpr) && !dynamic_cast<BooleanLiteral *>(errExpr))
+    {
+        logSemanticErrors("Only literal values are allowed in error! expressions",
+                          errExpr->expression.line,
+                          errExpr->expression.column);
+        hasError = true;
+    }
     walker(errExpr);
+
+    auto it = metaData.find(errExpr);
+    if (it == metaData.end())
+    {
+        std::cout << "Could not find error expression metaData\n";
+        return;
+    }
+
+    auto errInfo = it->second;
+    errInfo->hasError = hasError;
+    metaData[errStmt] = errInfo; // Giving the error expression info to the overall statement
 }
 
 void Semantics::walkBasicType(Node *node)

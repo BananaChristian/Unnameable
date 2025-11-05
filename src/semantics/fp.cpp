@@ -78,12 +78,10 @@ void Semantics::walkReturnStatement(Node *node)
             hasError = true;
         }
         walker(retStmt->error_val.get());
-        return;
     }
 
     if (!retStmt->return_value)
     {
-        walker(retStmt->return_value.get());
         if (currentFunction.value()->returnType.kind != DataType::VOID)
         {
             logSemanticErrors("Non-void function requires a return value", retStmt->return_stmt.line, retStmt->return_stmt.column);
@@ -210,6 +208,49 @@ void Semantics::walkReturnStatement(Node *node)
                     hasError = true;
                 }
             }
+        }
+    }
+
+    // Checking if the return type is nullable if it is not we block return of an error
+    if (currentFunction.value()->returnType.isNull)
+    {
+        if (!retStmt->error_val)
+        {
+            logSemanticErrors("Must return an error fallback for nullable functions", retStmt->return_stmt.line, retStmt->return_stmt.column);
+            hasError = true;
+        }
+        else
+        {
+            // Check if the error expression type matches the function return type(concrete)
+            auto errIt = metaData.find(retStmt->error_val.get());
+            if (errIt == metaData.end())
+            {
+                std::cout << "Failed to find error statement metaData\n";
+                return;
+            }
+            // Get the error type
+            auto errSym = errIt->second;
+            if (!errSym)
+            {
+                std::cout << "Could not find error symbolInfo\n";
+                return;
+            }
+
+            auto errType = errSym->type;
+            // Check if the error type matched the concrete return type
+            if (errType.kind != currentFunction.value()->returnType.kind)
+            {
+                logSemanticErrors("Type mismatch error of type '" + errType.resolvedName + "' does not match function return type of '" + currentFunction.value()->returnType.resolvedName + "'", retStmt->return_stmt.line, retStmt->return_stmt.column);
+                hasError = true;
+            }
+        }
+    }
+    else if (!currentFunction.value()->returnType.isNull)
+    {
+        if (retStmt->error_val)
+        {
+            logSemanticErrors("Function expects a concrete return, do not provide a fallback", retStmt->return_stmt.line, retStmt->return_stmt.column);
+            hasError = true;
         }
     }
     auto info = std::make_shared<SymbolInfo>();

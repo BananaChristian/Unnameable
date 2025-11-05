@@ -12,51 +12,34 @@
 enum class DataType
 {
     SHORT_INT, // 16 BIT signed integer
-    NULLABLE_SHORT_INT,
 
     USHORT_INT, // 16 BUT unsigned integer
-    NULLABLE_USHORT_INT,
 
     INTEGER, // 32 BIT signed integer
-    NULLABLE_INT,
 
     UINTEGER, // 32 BIT unsigned integer
-    NULLABLE_UINT,
 
     LONG_INT, // 64 BIT signed integer
-    NULLABLE_LONG_INT,
 
     ULONG_INT, // 64 BIT unsigned integer
-    NULLABLE_ULONG_INT,
 
     EXTRA_INT, // 128 BIT signed integer
-    NULLABLE_EXTRA_INT,
 
     UEXTRA_INT, // 128 BIT unsigned integer
-    NULLABLE_UEXTRA_INT,
 
     BOOLEAN,
-    NULLABLE_BOOLEAN,
 
     STRING,
-    NULLABLE_STR,
 
     FLOAT,
-    NULLABLE_FLT,
 
     DOUBLE,
-    NULLABLE_DOUBLE,
 
     CHAR, // 8 BIT Char
-    NULLABLE_CHAR,
 
     CHAR16, // 16 BIT Char
-    NULLABLE_CHAR16,
 
     CHAR32, // 32 BIT Char
-    NULLABLE_CHAR32,
-
-    NULLABLE_ARR, // Special marker datatype for array member inference with nulls
 
     ENUM,
     DATABLOCK,
@@ -82,6 +65,7 @@ struct ResolvedType
     DataType kind; // For the custom inbuilt types
     std::string resolvedName;
     bool isPointer = false;
+    bool isNull = false;
 };
 
 struct MemberInfo
@@ -285,7 +269,6 @@ private:
     void walkContinueStatement(Node *node);
 
     void walkErrorStatement(Node *node);
-    void walkErrorExpression(Node *node);
 
     // Walking control flow nodes
     void walkWhileStatement(Node *node);
@@ -344,13 +327,10 @@ private:
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpression *callExpr);
     bool isInteger(const ResolvedType &t);
-    bool isNullableInteger(const ResolvedType &t);
     bool isFloat(const ResolvedType &t);
-    bool isNullableFloat(const ResolvedType &t);
     bool isBoolean(const ResolvedType &t);
     bool isString(const ResolvedType &t);
     bool isChar(const ResolvedType &t);
-    bool isNullable(const ResolvedType &t);
     void popScope();
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
 };

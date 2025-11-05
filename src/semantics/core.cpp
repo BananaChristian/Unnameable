@@ -100,7 +100,6 @@ void Semantics::registerWalkerFunctions()
 
     // Walker registration for return and error statements
     walkerFunctionsMap[typeid(ErrorStatement)] = &Semantics::walkErrorStatement;
-    walkerFunctionsMap[typeid(ErrorExpression)] = &Semantics::walkErrorExpression;
 
     // Walker registration for loops
     walkerFunctionsMap[typeid(WhileStatement)] = &Semantics::walkWhileStatement;
@@ -195,7 +194,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
             if (dynamic_cast<NullLiteral *>(member.get()))
             {
                 hasNull = true;
-                memberType = ResolvedType{DataType::NULLABLE_ARR, "null"}; // Temporary marker for the null member in the array
+                memberType = ResolvedType{DataType::ARRAY, "null", hasNull}; // Temporary marker for the null member in the array
                 continue;
             }
             memberTypes.push_back(memberType);
@@ -833,10 +832,10 @@ bool Semantics::isGlobalScope()
 
 ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
 {
-    auto makeType = [&](DataType nonNull, DataType nullable, const std::string &baseName)
+    auto makeType = [&](DataType nonNull, const std::string &baseName)
     {
         if (isNullable)
-            return ResolvedType{nullable, baseName + "?"};
+            return ResolvedType{nonNull, baseName + "?", false, isNullable};
         else
             return ResolvedType{nonNull, baseName};
     };
@@ -844,38 +843,38 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
     switch (token.type)
     {
     case TokenType::SHORT_KEYWORD:
-        return makeType(DataType::SHORT_INT, DataType::NULLABLE_SHORT_INT, "short");
+        return makeType(DataType::SHORT_INT, "short");
     case TokenType::USHORT_KEYWORD:
-        return makeType(DataType::USHORT_INT, DataType::NULLABLE_USHORT_INT, "ushort");
+        return makeType(DataType::USHORT_INT, "ushort");
     case TokenType::INTEGER_KEYWORD:
-        return makeType(DataType::INTEGER, DataType::NULLABLE_INT, "int");
+        return makeType(DataType::INTEGER, "int");
     case TokenType::UINT_KEYWORD:
-        return makeType(DataType::UINTEGER, DataType::NULLABLE_UINT, "uint");
+        return makeType(DataType::UINTEGER, "uint");
     case TokenType::LONG_KEYWORD:
-        return makeType(DataType::LONG_INT, DataType::NULLABLE_LONG_INT, "long");
+        return makeType(DataType::LONG_INT, "long");
     case TokenType::ULONG_KEYWORD:
-        return makeType(DataType::ULONG_INT, DataType::NULLABLE_ULONG_INT, "ulong");
+        return makeType(DataType::ULONG_INT, "ulong");
     case TokenType::EXTRA_KEYWORD:
-        return makeType(DataType::EXTRA_INT, DataType::NULLABLE_EXTRA_INT, "extra");
+        return makeType(DataType::EXTRA_INT, "extra");
     case TokenType::UEXTRA_KEYWORD:
-        return makeType(DataType::UEXTRA_INT, DataType::NULLABLE_UEXTRA_INT, "uextra");
+        return makeType(DataType::UEXTRA_INT, "uextra");
 
     case TokenType::FLOAT_KEYWORD:
-        return makeType(DataType::FLOAT, DataType::NULLABLE_FLT, "float");
+        return makeType(DataType::FLOAT, "float");
     case TokenType::DOUBLE_KEYWORD:
-        return makeType(DataType::DOUBLE, DataType::NULLABLE_DOUBLE, "double");
+        return makeType(DataType::DOUBLE, "double");
     case TokenType::STRING_KEYWORD:
-        return makeType(DataType::STRING, DataType::NULLABLE_STR, "string");
+        return makeType(DataType::STRING, "string");
 
     case TokenType::CHAR_KEYWORD:
-        return makeType(DataType::CHAR, DataType::NULLABLE_CHAR, "char");
+        return makeType(DataType::CHAR, "char");
     case TokenType::CHAR16_KEYWORD:
-        return makeType(DataType::CHAR16, DataType::NULLABLE_CHAR16, "char16");
+        return makeType(DataType::CHAR16, "char16");
     case TokenType::CHAR32_KEYWORD:
-        return makeType(DataType::CHAR32, DataType::NULLABLE_CHAR32, "char32");
+        return makeType(DataType::CHAR32, "char32");
 
     case TokenType::BOOL_KEYWORD:
-        return makeType(DataType::BOOLEAN, DataType::NULLABLE_BOOLEAN, "bool");
+        return makeType(DataType::BOOLEAN, "bool");
 
     case TokenType::VOID:
         return {DataType::VOID, "void"};
@@ -897,119 +896,48 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
                     return {DataType::UNKNOWN, "unknown"};
                 }
                 auto memberType = memberIt->second->type;
-                return memberType; // If you want nullable custom types too, you can apply same + "?" logic here
+                return memberType;
             }
 
             auto parentType = parentIt->second->type;
+            parentType.isNull = isNullable;
             return parentType;
         }
 
-        return {DataType::GENERIC, "generic"};
+        return {DataType::GENERIC, token.TokenLiteral, false, isNullable};
     }
 
     default:
-        return {DataType::UNKNOWN, "unknown"};
+        return {DataType::UNKNOWN, "unknown", false, false};
     }
 }
 
 bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual)
 {
-    // --- Strict pointer compatibility check ---
+    // Pointers must match
     if (expected.isPointer != actual.isPointer)
         return false;
 
-    if (expected.resolvedName == actual.resolvedName && expected.kind == actual.kind)
-        return true;
-
-    // Special case for null array members(Telling it to just return true for the guy)
-    if (actual.kind == DataType::NULLABLE_ARR || expected.kind == DataType::NULLABLE_ARR)
-        return true;
-
-    // Special case for error type as it is compatible anywhere
+    // Error type can always pass through
     if (actual.kind == DataType::ERROR)
         return true;
 
-    // Special one way case for ARRAY
-    if (expected.kind == DataType::ARRAY && actual.kind == DataType::ARRAY)
-    {
-        auto extractElemType = [](const std::string &s) -> std::string
-        {
-            // "arr[int]" -> "int", "arr[int?]" -> "int?"
-            auto start = s.find('[');
-            auto end = s.find(']');
-            if (start == std::string::npos || end == std::string::npos || end <= start)
-                return "";
-            return s.substr(start + 1, end - start - 1);
-        };
+    // If kinds differ, types differ.
+    if (expected.kind != actual.kind)
+        return false;
 
-        std::string eElem = extractElemType(expected.resolvedName);
-        std::string aElem = extractElemType(actual.resolvedName);
+    // === Nullability Rules ===
+    // Assigning nullable to non-nullable is unsafe -> BLOCK
+    if (!expected.isNull && actual.isNull)
+        return false;
 
-        // If one is nullable and the other isn’t, consider compatible
-        if (eElem.back() == '?' && aElem.back() != '?')
-            aElem += '?';
-        else if (aElem.back() == '?' && eElem.back() != '?')
-            eElem += '?';
-
-        return eElem == aElem;
-    }
-
-    // Special mirror case for ARRAY
-    if (actual.kind == DataType::ARRAY && expected.kind == DataType::ARRAY)
-    {
-        std::cout << "Comparing: '" << expected.resolvedName << "' vs '" << actual.resolvedName << "'\n";
-
-        if (actual.resolvedName.back() - 1 == '?' && expected.resolvedName.back() - 1 != '?')
-        {
-            return true;
-        }
-        // Checking if the resolved names match
-        if (actual.resolvedName != expected.resolvedName)
-        {
-            return false;
-        }
-        return true;
-    }
-    if (expected.kind == actual.kind)
-        return true;
-    if (expected.kind == DataType::VOID && actual.kind == DataType::UNKNOWN)
+    // Assigning non-nullable to nullable is safe -> ALLOW
+    if (expected.isNull && !actual.isNull)
         return true;
 
-    // One-way: nullable expected, non-nullable actual
-    if ((expected.kind == DataType::NULLABLE_SHORT_INT && actual.kind == DataType::SHORT_INT) ||
-        (expected.kind == DataType::NULLABLE_USHORT_INT && actual.kind == DataType::USHORT_INT) ||
-        (expected.kind == DataType::NULLABLE_INT && actual.kind == DataType::INTEGER) ||
-        (expected.kind == DataType::NULLABLE_UINT && actual.kind == DataType::UINTEGER) ||
-        (expected.kind == DataType::NULLABLE_LONG_INT && actual.kind == DataType::LONG_INT) ||
-        (expected.kind == DataType::NULLABLE_ULONG_INT && actual.kind == DataType::ULONG_INT) ||
-        (expected.kind == DataType::NULLABLE_EXTRA_INT && actual.kind == DataType::EXTRA_INT) ||
-        (expected.kind == DataType::NULLABLE_UEXTRA_INT && actual.kind == DataType::UEXTRA_INT) ||
-        (expected.kind == DataType::NULLABLE_FLT && actual.kind == DataType::FLOAT) ||
-        (expected.kind == DataType::NULLABLE_DOUBLE && actual.kind == DataType::DOUBLE) ||
-        (expected.kind == DataType::NULLABLE_STR && actual.kind == DataType::STRING) ||
-        (expected.kind == DataType::NULLABLE_CHAR && actual.kind == DataType::CHAR) ||
-        (expected.kind == DataType::NULLABLE_BOOLEAN && actual.kind == DataType::BOOLEAN))
-    {
+    // If both match exactly (both nullable or both non-null)
+    if (expected.isNull == actual.isNull)
         return true;
-    }
-
-    // Mirror: non-nullable expected, nullable actual
-    if ((actual.kind == DataType::NULLABLE_SHORT_INT && expected.kind == DataType::SHORT_INT) ||
-        (actual.kind == DataType::NULLABLE_USHORT_INT && expected.kind == DataType::USHORT_INT) ||
-        (actual.kind == DataType::NULLABLE_INT && expected.kind == DataType::INTEGER) ||
-        (actual.kind == DataType::NULLABLE_UINT && expected.kind == DataType::UINTEGER) ||
-        (actual.kind == DataType::NULLABLE_LONG_INT && expected.kind == DataType::LONG_INT) ||
-        (actual.kind == DataType::NULLABLE_ULONG_INT && expected.kind == DataType::ULONG_INT) ||
-        (actual.kind == DataType::NULLABLE_EXTRA_INT && expected.kind == DataType::EXTRA_INT) ||
-        (actual.kind == DataType::NULLABLE_UEXTRA_INT && expected.kind == DataType::UEXTRA_INT) ||
-        (actual.kind == DataType::NULLABLE_FLT && expected.kind == DataType::FLOAT) ||
-        (actual.kind == DataType::NULLABLE_DOUBLE && expected.kind == DataType::DOUBLE) ||
-        (actual.kind == DataType::NULLABLE_STR && expected.kind == DataType::STRING) ||
-        (actual.kind == DataType::NULLABLE_CHAR && expected.kind == DataType::CHAR) ||
-        (actual.kind == DataType::NULLABLE_BOOLEAN && expected.kind == DataType::BOOLEAN))
-    {
-        return true;
-    }
 
     return false;
 }
@@ -1244,7 +1172,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpres
         // --- Nullability rule ---
         if (auto nullLit = dynamic_cast<NullLiteral *>(param.get()))
         {
-            if (isNullable(expectedType.first))
+            if (expectedType.first.isNull)
             {
                 argType = expectedType.first; // promote null → nullable type
             }
@@ -1316,7 +1244,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
         // --- Nullability rule ---
         if (auto nullLit = dynamic_cast<NullLiteral *>(param.get()))
         {
-            if (isNullable(expectedType.first))
+            if (expectedType.first.isNull)
             {
                 argType = expectedType.first; // promote null → nullable type
             }
@@ -1386,69 +1314,28 @@ bool Semantics::isInteger(const ResolvedType &t)
     return intTypes.count(t.kind) > 0;
 }
 
-bool Semantics::isNullableInteger(const ResolvedType &t)
-{
-    static const std::unordered_set<DataType> nullableInts = {
-        DataType::NULLABLE_SHORT_INT, DataType::NULLABLE_USHORT_INT,
-        DataType::NULLABLE_INT, DataType::NULLABLE_UINT,
-        DataType::NULLABLE_LONG_INT, DataType::NULLABLE_ULONG_INT,
-        DataType::NULLABLE_EXTRA_INT, DataType::NULLABLE_UEXTRA_INT};
-    return nullableInts.count(t.kind) > 0;
-}
-
 bool Semantics::isFloat(const ResolvedType &t)
 {
     return t.kind == DataType::FLOAT || t.kind == DataType::DOUBLE;
 }
 
-bool Semantics::isNullableFloat(const ResolvedType &t)
-{
-    return t.kind == DataType::NULLABLE_FLT || t.kind == DataType::NULLABLE_DOUBLE;
-}
-
 bool Semantics::isBoolean(const ResolvedType &t)
 {
-    return t.kind == DataType::BOOLEAN ||
-           t.kind == DataType::NULLABLE_BOOLEAN;
+    return t.kind == DataType::BOOLEAN;
 }
 
 bool Semantics::isString(const ResolvedType &t)
 {
-    return t.kind == DataType::STRING || t.kind == DataType::NULLABLE_STR;
+    return t.kind == DataType::STRING;
 }
 
 bool Semantics::isChar(const ResolvedType &t)
 {
     static const std::unordered_set<DataType> charTypes = {
-        DataType::CHAR, DataType::NULLABLE_CHAR,
-        DataType::CHAR16, DataType::NULLABLE_CHAR16,
-        DataType::CHAR32, DataType::NULLABLE_CHAR32};
+        DataType::CHAR,
+        DataType::CHAR16,
+        DataType::CHAR32};
     return charTypes.count(t.kind) > 0;
-}
-
-bool Semantics::isNullable(const ResolvedType &t)
-{
-    switch (t.kind)
-    {
-    case DataType::NULLABLE_SHORT_INT:
-    case DataType::NULLABLE_USHORT_INT:
-    case DataType::NULLABLE_INT:
-    case DataType::NULLABLE_UINT:
-    case DataType::NULLABLE_LONG_INT:
-    case DataType::NULLABLE_ULONG_INT:
-    case DataType::NULLABLE_EXTRA_INT:
-    case DataType::NULLABLE_UEXTRA_INT:
-    case DataType::NULLABLE_BOOLEAN:
-    case DataType::NULLABLE_STR:
-    case DataType::NULLABLE_FLT:
-    case DataType::NULLABLE_DOUBLE:
-    case DataType::NULLABLE_CHAR:
-    case DataType::NULLABLE_CHAR16:
-    case DataType::NULLABLE_CHAR32:
-        return true;
-    default:
-        return false;
-    }
 }
 
 ResolvedType Semantics::resolvedDataType(Token token, Node *node)

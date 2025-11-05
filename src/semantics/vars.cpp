@@ -441,7 +441,7 @@ void Semantics::walkLetStatement(Node *node)
 
     if (localSym)
     {
-        logSemanticErrors("Local variable with name '" + letName + "' already exists ", letStmt->ident_token.line, letStmt->ident_token.column);
+        logSemanticErrors("Variable with name '" + letName + "' already exists in the same scope", letStmt->ident_token.line, letStmt->ident_token.column);
         hasError = true;
         return;
     }
@@ -545,7 +545,6 @@ void Semantics::walkLetStatement(Node *node)
             else
             {
                 declaredType = tokenTypeToResolvedType(letStmt->data_type_token, true);
-                declaredType.resolvedName = "null";
             }
         }
         else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
@@ -1175,7 +1174,7 @@ void Semantics::walkReferenceStatement(Node *node)
         auto refTypeNode = dynamic_cast<ReturnType *>(refStmt->type.get());
         refType = inferNodeDataType(refTypeNode); // Update the data type with the type that was declared
 
-        if (isNullable(refType))
+        if (refType.isNull)
         {
             logSemanticErrors("Cannot have a nullable reference '" + refName + "'", line, column);
             hasError = true;
