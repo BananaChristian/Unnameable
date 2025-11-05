@@ -160,6 +160,58 @@ void Semantics::walkReturnStatement(Node *node)
                           node->token.line, node->token.column);
         hasError = true;
     }
+
+    // Safety guard to prevent unsafe returns
+    if (valueType.isPointer)
+    {
+        // Identify what the pointer actually points to
+        if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get()))
+        {
+            auto &name = ident->identifier.TokenLiteral;
+            auto sym = resolveSymbolInfo(name);
+            if (sym)
+            {
+                // Get the storage type for the target
+                auto targetSym = sym->targetSymbol;
+                if (!targetSym)
+                {
+                    logSemanticErrors(
+                        "Target of pointer '" + name + "' does not exist",
+                        retStmt->return_stmt.line,
+                        retStmt->return_stmt.column);
+                }
+                // If the pointee is STACK → ILLEGAL RETURN
+                if (targetSym->storage == StorageType::STACK)
+                {
+                    logSemanticErrors(
+                        "Illegal return of pointer '" + name + "' (stack memory will be destroyed).",
+                        retStmt->return_stmt.line,
+                        retStmt->return_stmt.column);
+
+                    hasError = true;
+                }
+            }
+        }
+
+        // If &local_val literal case: e.g., return &x;
+        if (auto addr = dynamic_cast<AddressExpression *>(retStmt->return_value.get()))
+        {
+            if (auto targetIdent = dynamic_cast<Identifier *>(addr->identifier.get()))
+            {
+                auto &varName = targetIdent->identifier.TokenLiteral;
+                auto sym = resolveSymbolInfo(varName);
+                if (sym && sym->storage == StorageType::STACK)
+                {
+                    logSemanticErrors(
+                        "Illegal return of address of local variable '" + varName + "'",
+                        retStmt->return_stmt.line,
+                        retStmt->return_stmt.column);
+
+                    hasError = true;
+                }
+            }
+        }
+    }
     auto info = std::make_shared<SymbolInfo>();
     info->type = valueType;
     info->hasError = hasError;
@@ -211,7 +263,7 @@ void Semantics::walkFunctionExpression(Node *node)
         {
             logSemanticErrors("Reused name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
             insideFunction = false;
-            hasError=true;
+            hasError = true;
             return;
         }
 

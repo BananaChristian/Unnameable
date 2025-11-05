@@ -822,6 +822,15 @@ std::shared_ptr<SymbolInfo> Semantics::lookUpInCurrentScope(const std::string &n
     return nullptr;
 }
 
+bool Semantics::isGlobalScope()
+{
+    if (symbolTable.size() == 1)
+    {
+        return true;
+    }
+    return false;
+}
+
 ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
 {
     auto makeType = [&](DataType nonNull, DataType nullable, const std::string &baseName)

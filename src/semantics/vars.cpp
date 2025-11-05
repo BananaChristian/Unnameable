@@ -628,6 +628,21 @@ void Semantics::walkLetStatement(Node *node)
         }
     }
 
+    StorageType letStorageType;
+    // Storing the scope information
+    if (isGlobalScope())
+    {
+        letStorageType = StorageType::GLOBAL;
+    }
+    else if (isHeap)
+    {
+        letStorageType = StorageType::HEAP;
+    }
+    else
+    {
+        letStorageType = StorageType::STACK;
+    }
+
     // --- Metadata & symbol registration ---
     auto letInfo = std::make_shared<SymbolInfo>();
     letInfo->type = declaredType;
@@ -639,6 +654,7 @@ void Semantics::walkLetStatement(Node *node)
     letInfo->isDefinitelyNull = isDefinitelyNull;
     letInfo->isHeap = isHeap;
     letInfo->lastUseNode = isHeap ? letStmt : nullptr;
+    letInfo->storage = letStorageType;
     letInfo->hasError = hasError;
 
     metaData[letStmt] = letInfo;
@@ -767,6 +783,7 @@ void Semantics::walkAssignStatement(Node *node)
     if (assignStmt->value)
     {
         auto ident = dynamic_cast<Identifier *>(assignStmt->value.get());
+
         // Check to prevent assignment of null identifiers
         if (ident)
         {
@@ -785,7 +802,7 @@ void Semantics::walkAssignStatement(Node *node)
             }
             walker(ident);
         }
-        if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get()))
+        else if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get()))
         {
             rhsIsNull = true;
             isDefinitelyNull = true;
@@ -907,10 +924,76 @@ void Semantics::walkAssignStatement(Node *node)
     // If the symbol is a pointer
     if (symbol->isPointer)
     {
-        auto addr = dynamic_cast<AddressExpression *>(assignStmt->value.get());
-        if (!addr)
+        if (auto ident = dynamic_cast<Identifier *>(assignStmt->value.get()))
         {
-            logSemanticErrors("Must only reassign address to pointer '" + assignName + "'", assignStmt->identifier->expression.line,
+            auto identName = ident->identifier.TokenLiteral;
+            auto identSym = resolveSymbolInfo(identName);
+            // Pointer checks
+            if (!identSym->isPointer) // The identifier itself must be a pointer
+            {
+                logSemanticErrors("Cannot reassign a non pointer '" + identName + "' to pointer variable '" + assignName + "'", ident->expression.line, ident->expression.column);
+                hasError = true;
+            }
+            // Get the target symbol
+            auto targetSym = identSym->targetSymbol;
+            if (!targetSym)
+            {
+                logSemanticErrors("No target symbol for '" + identName + "' being reassigned to variable '" + assignName + "'", ident->expression.line, ident->expression.column);
+                hasError = true;
+                return; // This is a critical error leaving it will cause derefencing of nullptrs
+            }
+
+            // Check the target symbol scope and block it if it is local
+            if (targetSym->storage == StorageType::STACK)
+            {
+                // The compiler should complain
+                logSemanticErrors("Cannot reassign local pointer '" + identName + "' to pointer variable '" + assignName + "'", ident->expression.line, ident->expression.column);
+                hasError = true;
+            }
+        }
+        else if (auto addr = dynamic_cast<AddressExpression *>(assignStmt->value.get()))
+        {
+            // Get the address name
+            auto addrName = addr->identifier->expression.TokenLiteral;
+            auto line = addr->expression.line;
+            auto col = addr->expression.column;
+            // Get the symbolInfo
+            auto addrSym = resolveSymbolInfo(addrName);
+            if (!addrSym)
+            {
+                logSemanticErrors("Unidentified address pointer '" + addrName + "' cannot reassign to pointer variable '" + assignName + "'", line, col);
+                hasError = true;
+            }
+            // Get the storage type
+            if (addrSym->storage == StorageType::STACK)
+            {
+                logSemanticErrors("Cannot reassign local address pointer '" + addrName + "' to pointer variable '" + assignName + "'", line, col); // Complain
+                hasError = true;
+            }
+        }
+        else if (auto call = dynamic_cast<CallExpression *>(assignStmt->value.get()))
+        {
+            // Get the function name
+            auto funcName = call->function_identifier->expression.TokenLiteral;
+            auto line = call->function_identifier->expression.line;
+            auto col = call->function_identifier->expression.column;
+
+            // Get the symbol info
+            auto callSym = resolveSymbolInfo(funcName);
+            if (!callSym)
+            {
+                hasError = true;
+            }
+            // Ensure it is a pointer
+            if (!callSym->returnType.isPointer)
+            {
+                logSemanticErrors("Cannot reassign a non pointer call '" + funcName + "' to pointer variable '" + assignName + "'", line, col);
+                hasError = true;
+            }
+        }
+        else
+        {
+            logSemanticErrors("Must only reassign address to pointer or a pointer to '" + assignName + "'", assignStmt->identifier->expression.line,
                               assignStmt->identifier->expression.column);
             hasError = true;
         }
@@ -1106,10 +1189,11 @@ void Semantics::walkReferenceStatement(Node *node)
         }
     }
 
-    // Checking if we are refering to a heap raised variable
-    if (!refereeSymbol->isHeap)
+    // Checking if we are refering to a heap raised or global variable if not complain
+    auto refereeStorage = refereeSymbol->storage;
+    if (refereeStorage == StorageType::STACK)
     {
-        logSemanticErrors("Cannot create a reference '" + refName + "' to a non heap raised variable '" + refereeName + "'", line, column);
+        logSemanticErrors("Cannot create a reference '" + refName + "' to a local variable '" + refereeName + "'", line, column);
         hasError = true;
     }
 
@@ -1140,6 +1224,17 @@ void Semantics::walkReferenceStatement(Node *node)
     std::cout << "[DEBUG] Incremented refCount for target -> "
               << refereeSymbol->refCount << "\n";
 
+    // Updating the storage type for references
+    StorageType refStorage;
+    if (isGlobalScope())
+    {
+        refStorage = StorageType::GLOBAL;
+    }
+    else
+    {
+        refStorage = StorageType::STACK;
+    }
+
     auto refInfo = std::make_shared<SymbolInfo>();
     refInfo->type = refType;
     refInfo->isInitialized = true;
@@ -1148,6 +1243,7 @@ void Semantics::walkReferenceStatement(Node *node)
     refInfo->refereeSymbol = refereeSymbol;
     refInfo->hasError = hasError;
     refInfo->isRef = true;
+    refInfo->storage = refStorage;
 
     metaData[refStmt] = refInfo;
     symbolTable.back()[refName] = refInfo;
@@ -1168,40 +1264,80 @@ void Semantics::walkPointerStatement(Node *node)
     bool isConstant = false;
     ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
+    // Infer the type of the pointer value
+    ResolvedType targetType = inferNodeDataType(ptrStmt->value.get());
+
+    // Check if the target is a pointer
+    if (!targetType.isPointer)
+    {
+        logSemanticErrors("Must initialize the pointer '" + ptrName + "' with a pointer value", line, col);
+        hasError = true;
+        return;
+    }
+
     // Dealing with what is being pointed to
-    auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get());
-    if (!ptrValue)
+    std::string targetName = "unknown";
+    if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get()))
     {
-        logSemanticErrors("Must initialize the pointer '" + ptrName + "' with an address like(&<target>)", line, col);
+        targetName = ptrValue->identifier->expression.TokenLiteral;
+    }
+    else if (auto ptrValue = dynamic_cast<CallExpression *>(ptrStmt->value.get()))
+    {
+        targetName = ptrValue->function_identifier->expression.TokenLiteral;
+    }
+    else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get()))
+    {
+        targetName = ptrValue->identifier.TokenLiteral;
+    } // Leave it here for extensibility
+
+    // Walking the target
+    walker(ptrStmt->value.get());
+
+    auto targetSymbol = resolveSymbolInfo(targetName);
+    if (!targetSymbol)
+    {
+        logSemanticErrors("Pointer '" + ptrName + "'is pointing to an undeclared variable '" + targetName + "'", line, col);
         hasError = true;
         return;
     }
-    // Walking the address expression
-    walker(ptrValue);
-
-    auto varName = ptrValue->identifier->expression.TokenLiteral;
-    auto ptSymbol = resolveSymbolInfo(varName);
-    if (!ptSymbol)
-    {
-        logSemanticErrors("Pointer '" + ptrName + "'is pointing to an undeclared variable '" + varName + "'", line, col);
-        hasError = true;
-        return;
-    }
-
-    // Getting the type being pointed to
-    auto ptType = inferNodeDataType(ptrValue);
 
     // What if the user didnt include the type (We infer for them)
     if (!ptrStmt->type)
-        ptrType = ptType;
+        ptrType = targetType;
     else // If the user actually included a type we verify it
     {
         ptrType = inferNodeDataType(ptrStmt);
         // Check if the types are compatible
         // I am comparing with the resolved name since it is sure to either be type_ptr comparing with datatypes purely can allow bugs in the type system
-        if (ptrType.resolvedName != ptType.resolvedName)
+        if (ptrType.resolvedName != targetType.resolvedName)
         {
-            logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" + ptrType.resolvedName + "' does not match '" + varName + "' of type '" + ptType.resolvedName + "'", line, col);
+            logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" + ptrType.resolvedName + "' does not match '" + targetName + "' of type '" + targetType.resolvedName + "'", line, col);
+            hasError = true;
+        }
+    }
+
+    // Guard against local pointing
+    auto targetStorage = targetSymbol->storage;
+    if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get()))
+    {
+        if (targetStorage == StorageType::STACK)
+        {
+
+            logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" + targetName + "' because it is local", line, col);
+            hasError = true;
+        }
+    }
+    else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get()))
+    {
+        auto pointeeTargetSym = targetSymbol->targetSymbol;
+        if (!pointeeTargetSym)
+        {
+            logSemanticErrors("Pointer '" + ptrName + "'s target '" + targetName + "' lacks targetInfo", line, col);
+            return;
+        }
+        if (pointeeTargetSym->storage == StorageType::STACK)
+        {
+            logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" + targetName + "' because it also points to local variable", line, col);
             hasError = true;
         }
     }
@@ -1224,15 +1360,28 @@ void Semantics::walkPointerStatement(Node *node)
 
     std::cout << "POINTER TYPE: " << ptrType.resolvedName << "\n";
 
+    // Pointer's storage info (The pointer itself not the target)
+    // I currently dont have heap raised pointers as of yet but when I add them I will update this part
+    StorageType pointerStorage;
+    if (isGlobalScope())
+    {
+        pointerStorage = StorageType::GLOBAL;
+    }
+    else
+    {
+        pointerStorage = StorageType::STACK;
+    }
+
     auto ptrInfo = std::make_shared<SymbolInfo>();
-    ptrInfo->isHeap = ptSymbol->isHeap;
+    ptrInfo->isHeap = false; // For now
     ptrInfo->lastUseNode = ptrStmt;
     ptrInfo->type = ptrType;
     ptrInfo->hasError = hasError;
     ptrInfo->isPointer = true;
-    ptrInfo->targetSymbol = ptSymbol;
+    ptrInfo->targetSymbol = targetSymbol;
     ptrInfo->isMutable = isMutable;
     ptrInfo->isConstant = isConstant;
+    ptrInfo->storage = pointerStorage;
     ptrInfo->isInitialized = true;
 
     metaData[ptrStmt] = ptrInfo;

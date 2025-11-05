@@ -364,6 +364,17 @@ void Semantics::walkDataStatement(Node *node)
             continue;
         }
 
+        bool isHeap = letSymbol->isHeap;
+        StorageType memberStorage;
+        if (isHeap)
+        {
+            memberStorage = StorageType::HEAP;
+        }
+        else
+        {
+            memberStorage = StorageType::STACK;
+        }
+
         // Build member info
         auto memInfo = std::make_shared<MemberInfo>();
         memInfo->memberName = letStmt->ident_token.TokenLiteral;
@@ -371,7 +382,8 @@ void Semantics::walkDataStatement(Node *node)
         memInfo->isMutable = letSymbol->isMutable;
         memInfo->isConstant = letSymbol->isConstant;
         memInfo->isInitialised = letSymbol->isInitialized;
-        memInfo->isHeap = letSymbol->isHeap;
+        memInfo->isHeap = isHeap;
+        memInfo->storage = memberStorage;
         memInfo->node = field.get();
 
         // Insert into members map
@@ -805,6 +817,7 @@ void Semantics::walkComponentStatement(Node *node)
                 memberCopy->isNullable = info->isNullable;
                 memberCopy->isMutable = info->isMutable;
                 memberCopy->isConstant = info->isConstant;
+                memberCopy->storage = StorageType::STACK;
                 memberCopy->isInitialised = info->isInitialised;
 
                 memberCopy->node = info->node;
@@ -819,6 +832,7 @@ void Semantics::walkComponentStatement(Node *node)
                 memSym->isMutable = info->isMutable;
                 memSym->isConstant = info->isConstant;
                 memSym->isInitialized = info->isInitialised;
+                memSym->storage = StorageType::STACK;
                 memSym->memberIndex = memberCopy->memberIndex;
                 currentScope[name] = memSym;
 
@@ -875,6 +889,7 @@ void Semantics::walkComponentStatement(Node *node)
                     memSym->isMutable = memIt->second->isMutable;
                     memSym->isConstant = memIt->second->isConstant;
                     memSym->isInitialized = memIt->second->isInitialised;
+                    memSym->storage = StorageType::STACK;
                     memSym->memberIndex = memberCopy->memberIndex;
                     symbolTable.back()[memberName] = memSym;
 
@@ -1028,6 +1043,7 @@ void Semantics::walkComponentStatement(Node *node)
             memInfo->isMutable = letSym->isMutable;
             memInfo->isConstant = letSym->isConstant;
             memInfo->isInitialised = letSym->isInitialized;
+            memInfo->storage = letSym->storage;
             memInfo->node = letStmt;
             memInfo->memberIndex = currentMemberIndex++;
 

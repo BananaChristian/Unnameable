@@ -70,6 +70,13 @@ enum class DataType
     UNKNOWN
 };
 
+enum class StorageType
+{
+    GLOBAL,
+    STACK,
+    HEAP,
+};
+
 struct ResolvedType
 {
     DataType kind; // For the custom inbuilt types
@@ -99,6 +106,10 @@ struct MemberInfo
     llvm::Value *llvmValue = nullptr;
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
+
+    // Storage info
+    StorageType storage;
+
     bool isHeap = false;
     bool isRef = false;     // Reference flag
     bool isPointer = false; // Pointer flag
@@ -155,7 +166,11 @@ struct SymbolInfo
     ResolvedType derefPtrType;
     int memberIndex = -1;
 
+    // Storage types
+    StorageType storage;
+
     bool isHeap = false;
+
     bool isRef = false;     // Reference flag
     bool isPointer = false; // Pointer flag
 
@@ -322,6 +337,8 @@ private:
     int64_t SubscriptIndexVerifier(Node *indexNode, int64_t arrLen);
     ArrayMeta getArrayMeta(Node *node);
     int64_t getIntExprVal(Node *node);
+
+    bool isGlobalScope();
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberInfo> &declMember, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
