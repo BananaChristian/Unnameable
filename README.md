@@ -585,8 +585,8 @@ ref mut int y -> &x; #Error: Since a mutable reference cannot be made to an immu
 
 ```
 
-_Heap rule_:
-References must be made to heap raised values this way the compiler can guarantee that ur not making a reference to a non existant variable. So basically if u want to use references heap raise them
+_Heap and Global rule_:
+References must be made to only heap raised or global values this way the compiler can guarantee that ur not making a reference to a non existant variable. So basically if u want to use references heap raise the variables you want to reference or place the in global scope
 
 ```
 int a=9;
@@ -663,8 +663,8 @@ Inorder to use pointers in Unnameable you must always initialize the pointer wit
 ptr int p; #Error since you must always initialize the pointer
 ```
 
-Unlike references where u can only refer to a heap raise variable for safety, Pointers do not have this rule as it would be very limiting, inherently they are not that safe because of a lack of this rule since the heap system(SAGE, and Sentinel) cannot track ur pointer for you unless it is pointing to a heap raised address then in that case you are safe
-Quick note you cannot directly heap raise a pointer it inherits its heapiness from the address it stores
+_Heap and Global rule_:
+Pointers must point to only heap raised or global variables this way the compiler can guarantee that ur not going to use a dangling pointer. So basically if u want to use pointers heap raise the variables you want to point to or place the in global scope
 
 ```
 heap int x=10;
@@ -672,7 +672,7 @@ ptr p -> &x; #This is a heap raised pointer since x is heap raised it is safe
 
 ##
 int x =10;
-ptr p -> &x; #This is a stack pointer it is not safe the user must be careful when using this as they could dereference it and yet x doesnt exist
+ptr p -> &x; #This is a stack pointer it is not safe the compiler will immediately stop compiling
 ##
 ```
 
@@ -686,8 +686,9 @@ p=&y; #This reassignment is allowed since pointer 'p' is mutable
 Examples
 
 ```
+int x = 10;
+
 func main(): int {
-    int x = 10;
     ptr mut int p -> &x;
 
     # Write 50 to the memory location pointed to by p (i.e., update x)
