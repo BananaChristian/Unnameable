@@ -1991,9 +1991,9 @@ llvm::Value *IRGenerator::generateStringLiteral(Node *node)
     }
     DataType dt = it->second->type.kind;
 
-    if (dt != DataType::STRING && dt != DataType::NULLABLE_STR)
+    if (dt != DataType::STRING)
     {
-        throw std::runtime_error("Type error: Expected STRING or NULLABLE_STR for StringLiteral ");
+        throw std::runtime_error("Type error: Expected STRING");
     }
     std::string raw = strLit->string_token.TokenLiteral;
     llvm::Constant *strConst = llvm::ConstantDataArray::getString(context, raw, true);
@@ -2030,7 +2030,7 @@ llvm::Value *IRGenerator::generateCharLiteral(Node *node)
         throw std::runtime_error("Char literal not found in metadata");
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::CHAR && dt != DataType::NULLABLE_CHAR)
+    if (dt != DataType::CHAR)
     {
         throw std::runtime_error("Type error: Expected CHAR for CharLiteral");
     }
@@ -2053,7 +2053,7 @@ llvm::Value *IRGenerator::generateChar16Literal(Node *node)
         throw std::runtime_error("Char16 literal not found in metadata");
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::CHAR16 && dt != DataType::NULLABLE_CHAR16)
+    if (dt != DataType::CHAR16)
     {
         throw std::runtime_error("Type error: Expected CHAR16 for Char16Literal");
     }
@@ -2075,9 +2075,9 @@ llvm::Value *IRGenerator::generateChar32Literal(Node *node)
         throw std::runtime_error("Char16 literal not found in metadata");
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::CHAR16 && dt != DataType::NULLABLE_CHAR16)
+    if (dt != DataType::CHAR16)
     {
-        throw std::runtime_error("Type error: Expected CHAR32 for Char16Literal");
+        throw std::runtime_error("Type error: Expected CHAR16 for Char16Literal");
     }
     std::string tokenLiteral = char32Lit->char32_token.TokenLiteral;
     uint32_t c = decodeChar32Literal(tokenLiteral);
@@ -2097,7 +2097,7 @@ llvm::Value *IRGenerator::generateBooleanLiteral(Node *node)
         throw std::runtime_error("Boolean literal not found in metadata");
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::BOOLEAN && dt != DataType::NULLABLE_BOOLEAN)
+    if (dt != DataType::BOOLEAN)
     {
         throw std::runtime_error("Type error: Expected BOOLEAN for BooleanLiteral");
     }
@@ -2118,8 +2118,8 @@ llvm::Value *IRGenerator::generateShortLiteral(Node *node)
         throw std::runtime_error("Short literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::SHORT_INT && dt != DataType::NULLABLE_SHORT_INT)
-        throw std::runtime_error("Type error: Expected SHORT_INT or NULLABLE_SHORT_INT");
+    if (dt != DataType::SHORT_INT)
+        throw std::runtime_error("Type error: Expected SHORT_INT");
 
     int16_t value = static_cast<int16_t>(std::stoi(shortLit->short_token.TokenLiteral));
     return llvm::ConstantInt::get(context, llvm::APInt(16, value, true));
@@ -2136,8 +2136,8 @@ llvm::Value *IRGenerator::generateUnsignedShortLiteral(Node *node)
         throw std::runtime_error("UShort literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::USHORT_INT && dt != DataType::NULLABLE_USHORT_INT)
-        throw std::runtime_error("Type error: Expected USHORT_INT or NULLABLE_USHORT_INT");
+    if (dt != DataType::USHORT_INT)
+        throw std::runtime_error("Type error: Expected USHORT_INT");
 
     uint16_t value = static_cast<uint16_t>(std::stoul(ushortLit->ushort_token.TokenLiteral));
     return llvm::ConstantInt::get(context, llvm::APInt(16, value, false));
@@ -2156,9 +2156,9 @@ llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
         throw std::runtime_error("Integer literal not found in metadata at line:" + std::to_string(intLit->expression.line) + " and column: " + std::to_string(intLit->expression.column));
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::INTEGER && dt != DataType::NULLABLE_INT)
+    if (dt != DataType::INTEGER)
     {
-        throw std::runtime_error("Type error: Expected INTEGER or NULLABLE_INT for IntegerLiteral");
+        throw std::runtime_error("Type error: Expected INTEGER for IntegerLiteral");
     }
     int64_t value = std::stoll(intLit->int_token.TokenLiteral);
     return llvm::ConstantInt::get(context, llvm::APInt(32, value, true));
@@ -2175,8 +2175,8 @@ llvm::Value *IRGenerator::generateUnsignedIntegerLiteral(Node *node)
         throw std::runtime_error("Uint literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::UINTEGER && dt != DataType::NULLABLE_UINT)
-        throw std::runtime_error("Type error: Expected UINTEGER or NULLABLE_UINT");
+    if (dt != DataType::UINTEGER)
+        throw std::runtime_error("Type error: Expected UINTEGER");
 
     uint32_t value = static_cast<uint32_t>(std::stoul(uintLit->uint_token.TokenLiteral));
     return llvm::ConstantInt::get(context, llvm::APInt(32, value, false));
@@ -2193,8 +2193,8 @@ llvm::Value *IRGenerator::generateLongLiteral(Node *node)
         throw std::runtime_error("Long literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::LONG_INT && dt != DataType::NULLABLE_LONG_INT)
-        throw std::runtime_error("Type error: Expected LONG_INT or NULLABLE_LONG_INT");
+    if (dt != DataType::LONG_INT)
+        throw std::runtime_error("Type error: Expected LONG_INT ");
 
     int64_t value = std::stoll(longLit->long_token.TokenLiteral);
     return llvm::ConstantInt::get(context, llvm::APInt(64, value, true));
@@ -2211,8 +2211,8 @@ llvm::Value *IRGenerator::generateUnsignedLongLiteral(Node *node)
         throw std::runtime_error("ULong literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::ULONG_INT && dt != DataType::NULLABLE_ULONG_INT)
-        throw std::runtime_error("Type error: Expected ULONG_INT or NULLABLE_ULONG_INT");
+    if (dt != DataType::ULONG_INT)
+        throw std::runtime_error("Type error: Expected ULONG_INT");
 
     uint64_t value = std::stoull(ulongLit->ulong_token.TokenLiteral);
     return llvm::ConstantInt::get(context, llvm::APInt(64, value, false));
@@ -2229,8 +2229,8 @@ llvm::Value *IRGenerator::generateExtraLiteral(Node *node)
         throw std::runtime_error("Extra literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::EXTRA_INT && dt != DataType::NULLABLE_EXTRA_INT)
-        throw std::runtime_error("Type error: Expected EXTRA_INT or NULLABLE_EXTRA_INT");
+    if (dt != DataType::EXTRA_INT)
+        throw std::runtime_error("Type error: Expected EXTRA_INT");
 
     // Use APInt constructor with string and base 10 for 128-bit
     llvm::APInt value(128, extraLit->extra_token.TokenLiteral, 10);
@@ -2248,8 +2248,8 @@ llvm::Value *IRGenerator::generateUnsignedExtraLiteral(Node *node)
         throw std::runtime_error("UExtra literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::UEXTRA_INT && dt != DataType::NULLABLE_UEXTRA_INT)
-        throw std::runtime_error("Type error: Expected UEXTRA_INT or NULLABLE_UEXTRA_INT");
+    if (dt != DataType::UEXTRA_INT)
+        throw std::runtime_error("Type error: Expected UEXTRA_INT ");
 
     llvm::APInt value(128, uextraLit->uextra_token.TokenLiteral, 10);
     return llvm::ConstantInt::get(context, value);
@@ -2268,9 +2268,9 @@ llvm::Value *IRGenerator::generateFloatLiteral(Node *node)
         throw std::runtime_error("Float literal not found in metadata");
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::FLOAT && dt != DataType::NULLABLE_FLT)
+    if (dt != DataType::FLOAT)
     {
-        throw std::runtime_error("Type error: Expected Float or NULLABLE_FLT for FloatLiteral ");
+        throw std::runtime_error("Type error: Expected Float for FloatLiteral ");
     }
     float value = std::stof(fltLit->float_token.TokenLiteral);
     return llvm::ConstantFP::get(llvm::Type::getFloatTy(context), value);
@@ -2289,7 +2289,7 @@ llvm::Value *IRGenerator::generateDoubleLiteral(Node *node)
         throw std::runtime_error("Double literal not found in metadata");
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::DOUBLE && dt != DataType::NULLABLE_DOUBLE)
+    if (dt != DataType::DOUBLE)
     {
         throw std::runtime_error("Type error: Expected DOUBLE for DoubleLiteral");
     }
@@ -2302,49 +2302,49 @@ llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType typ
 {
     switch (type)
     {
-    case DataType::NULLABLE_STR:
+    case DataType::STRING:
         return llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
 
-    case DataType::NULLABLE_INT:
+    case DataType::INTEGER:
         // Using minimum signed int as null marker
         return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, INT32_MIN, true));
 
-    case DataType::NULLABLE_SHORT_INT:
+    case DataType::SHORT_INT:
         return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), llvm::APInt(16, INT16_MIN, true));
 
-    case DataType::NULLABLE_USHORT_INT:
+    case DataType::USHORT_INT:
         // Using zero as null for unsigned
         return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), llvm::APInt(16, 0));
 
-    case DataType::NULLABLE_UINT:
+    case DataType::UINTEGER:
         return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, 0));
 
-    case DataType::NULLABLE_LONG_INT:
+    case DataType::LONG_INT:
         return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), llvm::APInt(64, INT64_MIN, true));
 
-    case DataType::NULLABLE_ULONG_INT:
+    case DataType::ULONG_INT:
         return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), llvm::APInt(64, 0));
 
-    case DataType::NULLABLE_EXTRA_INT:
-    case DataType::NULLABLE_UEXTRA_INT:
+    case DataType::EXTRA_INT:
+    case DataType::UEXTRA_INT:
         return llvm::ConstantInt::get(llvm::Type::getInt128Ty(context), llvm::APInt(128, 0));
 
-    case DataType::NULLABLE_FLT:
+    case DataType::FLOAT:
         return llvm::ConstantFP::getNaN(llvm::Type::getFloatTy(context));
 
-    case DataType::NULLABLE_DOUBLE:
+    case DataType::DOUBLE:
         return llvm::ConstantFP::getNaN(llvm::Type::getDoubleTy(context));
 
-    case DataType::NULLABLE_BOOLEAN:
+    case DataType::BOOLEAN:
         return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), llvm::APInt(1, 0));
 
-    case DataType::NULLABLE_CHAR:
+    case DataType::CHAR:
         return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), llvm::APInt(8, 0));
 
-    case DataType::NULLABLE_CHAR16:
+    case DataType::CHAR16:
         return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), llvm::APInt(16, 0));
 
-    case DataType::NULLABLE_CHAR32:
+    case DataType::CHAR32:
         return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, 0));
 
     default:
@@ -3075,105 +3075,90 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
     switch (type.kind)
     {
     case DataType::SHORT_INT:
-    case DataType::NULLABLE_SHORT_INT:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
 
     case DataType::USHORT_INT:
-    case DataType::NULLABLE_USHORT_INT:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
 
     case DataType::INTEGER:
-    case DataType::NULLABLE_INT:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
 
     case DataType::UINTEGER:
-    case DataType::NULLABLE_UINT:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
 
     case DataType::LONG_INT:
-    case DataType::NULLABLE_LONG_INT:
     {
         baseType = llvm::Type::getInt64Ty(context);
         break;
     }
 
     case DataType::ULONG_INT:
-    case DataType::NULLABLE_ULONG_INT:
     {
         baseType = llvm::Type::getInt64Ty(context);
         break;
     }
 
     case DataType::EXTRA_INT:
-    case DataType::NULLABLE_EXTRA_INT:
     {
         baseType = llvm::Type::getInt128Ty(context);
         break;
     }
 
     case DataType::UEXTRA_INT:
-    case DataType::NULLABLE_UEXTRA_INT:
     {
         baseType = llvm::Type::getInt128Ty(context);
         break;
     }
 
     case DataType::BOOLEAN:
-    case DataType::NULLABLE_BOOLEAN:
     {
         baseType = llvm::Type::getInt1Ty(context);
         break;
     }
 
     case DataType::CHAR:
-    case DataType::NULLABLE_CHAR:
     {
         baseType = llvm::Type::getInt8Ty(context);
         break;
     }
 
     case DataType::CHAR16:
-    case DataType::NULLABLE_CHAR16:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
 
     case DataType::CHAR32:
-    case DataType::NULLABLE_CHAR32:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
 
     case DataType::FLOAT:
-    case DataType::NULLABLE_FLT:
     {
         baseType = llvm::Type::getFloatTy(context);
         break;
     }
 
     case DataType::DOUBLE:
-    case DataType::NULLABLE_DOUBLE:
     {
         baseType = llvm::Type::getDoubleTy(context);
         break;
     }
 
     case DataType::STRING:
-    case DataType::NULLABLE_STR:
     {
         baseType = llvm::PointerType::get(context, 0);
         break;
@@ -3393,21 +3378,13 @@ bool IRGenerator::isIntegerType(DataType dt)
     switch (dt)
     {
     case DataType::SHORT_INT:
-    case DataType::NULLABLE_SHORT_INT:
     case DataType::USHORT_INT:
-    case DataType::NULLABLE_USHORT_INT:
     case DataType::INTEGER:
-    case DataType::NULLABLE_INT:
     case DataType::UINTEGER:
-    case DataType::NULLABLE_UINT:
     case DataType::LONG_INT:
-    case DataType::NULLABLE_LONG_INT:
     case DataType::ULONG_INT:
-    case DataType::NULLABLE_ULONG_INT:
     case DataType::EXTRA_INT:
-    case DataType::NULLABLE_EXTRA_INT:
     case DataType::UEXTRA_INT:
-    case DataType::NULLABLE_UEXTRA_INT:
         return true;
     default:
         return false;
@@ -3419,13 +3396,9 @@ bool IRGenerator::isSignedInteger(DataType dt)
     switch (dt)
     {
     case DataType::SHORT_INT:
-    case DataType::NULLABLE_SHORT_INT:
     case DataType::INTEGER:
-    case DataType::NULLABLE_INT:
     case DataType::LONG_INT:
-    case DataType::NULLABLE_LONG_INT:
     case DataType::EXTRA_INT:
-    case DataType::NULLABLE_EXTRA_INT:
         return true;
     default:
         return false;
@@ -3437,24 +3410,16 @@ unsigned IRGenerator::getIntegerBitWidth(DataType dt)
     switch (dt)
     {
     case DataType::SHORT_INT:
-    case DataType::NULLABLE_SHORT_INT:
     case DataType::USHORT_INT:
-    case DataType::NULLABLE_USHORT_INT:
         return 16;
     case DataType::INTEGER:
-    case DataType::NULLABLE_INT:
     case DataType::UINTEGER:
-    case DataType::NULLABLE_UINT:
         return 32;
     case DataType::LONG_INT:
-    case DataType::NULLABLE_LONG_INT:
     case DataType::ULONG_INT:
-    case DataType::NULLABLE_ULONG_INT:
         return 64;
     case DataType::EXTRA_INT:
-    case DataType::NULLABLE_EXTRA_INT:
     case DataType::UEXTRA_INT:
-    case DataType::NULLABLE_UEXTRA_INT:
         return 128;
     default:
         return 0; // Not an integer type
