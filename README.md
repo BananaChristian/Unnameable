@@ -144,12 +144,18 @@ func test(arr[int] my_array): arr[int]{
 ```
 
 The return type must correspond to what is being returned
-Functions can also return pointers for the concrete types but void pointers arent support
+Functions can also return pointers for the concrete types but void pointers arent allowed
 
 ```unn
-func test(int x=0):ptr int{
+int x=100;
+func test():ptr int{
     ptr int y -> &x;
     return y;
+}
+
+func main(): int{
+    test();
+    return 0;
 }
 ```
 
