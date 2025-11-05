@@ -704,7 +704,12 @@ struct ErrorStatement : Statement
     std::unique_ptr<Expression> errorExpr;
     std::string toString() override
     {
-        return "Error statement: " + errorExpr->toString();
+        std::string errorStr = "<empty>";
+        if (errorExpr)
+        {
+            errorStr = errorExpr->toString();
+        }
+        return "Error statement: error! " + errorStr;
     };
     ErrorStatement(Token err, std::unique_ptr<Expression> errExpr) : Statement(err), errorExpr(std::move(errExpr)) {};
 };
