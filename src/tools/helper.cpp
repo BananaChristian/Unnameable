@@ -1,33 +1,35 @@
-extern "C" char *unnitoa(int val, char *buf)
+extern "C" char *unnitoa(__int128 val, char *buf)
 {
-    char *p = buf;
-    if (val < 0)
-    {
-        *p++ = '-';
+    char temp[64];  // Enough for 128-bit decimal digits (max ~39 digits).
+    int i = 0;
+    int neg = 0;
+
+    if (val == 0) {
+        buf[0] = '0';
+        buf[1] = '\0';
+        return buf;
+    }
+
+    if (val < 0) {
+        neg = 1;
         val = -val;
     }
 
-    // Remember start of digits
-    char *start = p;
-
-    // Convert digits
-    do
-    {
-        *p++ = '0' + (val % 10);
+    // Extract digits into temp (reversed)
+    while (val > 0) {
+        __int128 digit = val % 10;
         val /= 10;
-    } while (val);
-
-    // Null terminate
-    *p = '\0';
-
-    // Reverse digits in place
-    char *end = p - 1;
-    while (start < end)
-    {
-        char tmp = *start;
-        *start++ = *end;
-        *end-- = tmp;
+        temp[i++] = '0' + (int)digit;
     }
 
+    if (neg)
+        temp[i++] = '-';
+
+    // Reverse into buf
+    int j = 0;
+    while (i > 0)
+        buf[j++] = temp[--i];
+
+    buf[j] = '\0';
     return buf;
 }
