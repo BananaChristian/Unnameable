@@ -241,7 +241,7 @@ void Layout::calculateComponentStatement(Node *node)
     // Creating an empty struct type for data field types
     llvm::StructType *structTy = llvm::StructType::create(context, compName);
     structTy->setBody(fieldTypes, /*isPacked*/ false);
-    
+
     typeMap[compName] = structTy;
 
     // Calculating the imported fields
@@ -275,105 +275,90 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
     switch (type.kind)
     {
     case DataType::SHORT_INT:
-    case DataType::NULLABLE_SHORT_INT:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
 
     case DataType::USHORT_INT:
-    case DataType::NULLABLE_USHORT_INT:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
 
     case DataType::INTEGER:
-    case DataType::NULLABLE_INT:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
 
     case DataType::UINTEGER:
-    case DataType::NULLABLE_UINT:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
 
     case DataType::LONG_INT:
-    case DataType::NULLABLE_LONG_INT:
     {
         baseType = llvm::Type::getInt64Ty(context);
         break;
     }
 
     case DataType::ULONG_INT:
-    case DataType::NULLABLE_ULONG_INT:
     {
         baseType = llvm::Type::getInt64Ty(context);
         break;
     }
 
     case DataType::EXTRA_INT:
-    case DataType::NULLABLE_EXTRA_INT:
     {
         baseType = llvm::Type::getInt128Ty(context);
         break;
     }
 
     case DataType::UEXTRA_INT:
-    case DataType::NULLABLE_UEXTRA_INT:
     {
         baseType = llvm::Type::getInt128Ty(context);
         break;
     }
 
     case DataType::BOOLEAN:
-    case DataType::NULLABLE_BOOLEAN:
     {
         baseType = llvm::Type::getInt1Ty(context);
         break;
     }
 
     case DataType::CHAR:
-    case DataType::NULLABLE_CHAR:
     {
         baseType = llvm::Type::getInt8Ty(context);
         break;
     }
 
     case DataType::CHAR16:
-    case DataType::NULLABLE_CHAR16:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
 
     case DataType::CHAR32:
-    case DataType::NULLABLE_CHAR32:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
 
     case DataType::FLOAT:
-    case DataType::NULLABLE_FLT:
     {
         baseType = llvm::Type::getFloatTy(context);
         break;
     }
 
     case DataType::DOUBLE:
-    case DataType::NULLABLE_DOUBLE:
     {
         baseType = llvm::Type::getDoubleTy(context);
         break;
     }
 
     case DataType::STRING:
-    case DataType::NULLABLE_STR:
     {
         baseType = llvm::PointerType::get(context, 0);
         break;
