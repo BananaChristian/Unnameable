@@ -234,9 +234,6 @@ private:
     // Postfix expression parsing function
     std::unique_ptr<Expression> parsePostfixExpression(std::unique_ptr<Expression> left);
 
-    // Error expression
-    std::unique_ptr<Expression> parseErrorExpression();
-
     // Error statement
     std::unique_ptr<Statement> parseErrorStatement();
 

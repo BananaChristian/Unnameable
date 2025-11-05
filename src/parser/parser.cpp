@@ -1826,24 +1826,6 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters()
     return args;
 }
 
-// Parsing error expressions
-std::unique_ptr<Expression> Parser::parseErrorExpression()
-{
-    Token err_tok = currentToken();
-    advance();
-    if (currentToken().type != TokenType::LPAREN)
-    {
-        logError("Expected ( ");
-    }
-    advance();
-    auto err_message = parseExpression(Precedence::PREC_NONE);
-    if (currentToken().type != TokenType::RPAREN)
-    {
-        logError("Expected )");
-    }
-    return std::make_unique<ErrorExpression>(err_tok, std::move(err_message));
-}
-
 // Parsing block expressions
 std::unique_ptr<Expression> Parser::parseBlockExpression()
 {
@@ -2092,7 +2074,7 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
     }
 
     // Type declarations (x y)
-    if (peek1.type == TokenType::IDENTIFIER)
+    if (peek1.type == TokenType::IDENTIFIER || peek1.type == TokenType::QUESTION_MARK)
     {
         return parseLetStatementWithTypeWrapper();
     }
@@ -2116,7 +2098,18 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
 std::unique_ptr<Statement> Parser::parseErrorStatement()
 {
     Token err_token = currentToken();
-    auto errExpr = parseErrorExpression();
+    advance(); // Consume the error token
+
+    if (currentToken().type != TokenType::BANG)
+    {
+        logError("Expected ! but got " + currentToken().TokenLiteral);
+        advance(); // Consume the erronious token
+    }
+    advance(); // Consume the ! token
+    std::unique_ptr<Expression> errExpr = nullptr;
+
+    errExpr = parseExpression(Precedence::PREC_NONE);
+
     return std::make_unique<ErrorStatement>(err_token, std::move(errExpr));
 }
 
