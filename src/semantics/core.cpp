@@ -92,6 +92,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(FunctionDeclaration)] = &Semantics::walkFunctionDeclarationStatement;
     walkerFunctionsMap[typeid(FunctionDeclarationExpression)] = &Semantics::walkFunctionDeclarationExpression;
     walkerFunctionsMap[typeid(CallExpression)] = &Semantics::walkFunctionCallExpression;
+    walkerFunctionsMap[typeid(UnwrapExpression)]=&Semantics::walkUnwrapExpression;
     walkerFunctionsMap[typeid(ReturnStatement)] = &Semantics::walkReturnStatement;
 
     // Walker registration for type expressions
@@ -445,6 +446,33 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
 
         auto memInfo = it->second;
         return memInfo->type;
+    }
+    if(auto unwrapExpr=dynamic_cast<UnwrapExpression*>(node)){
+        auto line=unwrapExpr->expression.line;
+        auto col=unwrapExpr->expression.column;
+        //Get the contained call
+        auto call=dynamic_cast<CallExpression*>(unwrapExpr->call.get());
+        auto metCall=dynamic_cast<MethodCallExpression*>(unwrapExpr->call.get());
+        std::string funcName="<unidentified>";
+        if(call){
+            funcName=call->function_identifier->expression.TokenLiteral;
+        }else if(metCall){
+            auto innerCall=dynamic_cast<CallExpression*>(metCall->call.get());
+            funcName=innerCall->function_identifier->expression.TokenLiteral;
+        }
+
+        //Resolve the symbol
+        auto sym=resolveSymbolInfo(funcName);
+        if(!sym){
+            logSemanticErrors("Undefined '"+funcName+"'",line,col);
+            return ResolvedType{DataType::UNKNOWN,"unknown",false,false};
+        }
+        //Get the type
+        auto unwrapType=sym->type;
+        //Toggle the null flag
+        unwrapType.isNull=false;
+        auto finalType=unwrapType;
+        return finalType;
     }
 
     if (auto ptrStmt = dynamic_cast<PointerStatement *>(node))

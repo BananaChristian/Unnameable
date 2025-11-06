@@ -565,6 +565,14 @@ void Semantics::walkLetStatement(Node *node)
                 hasError = true;
             }
         }
+        else if(auto unwrap=dynamic_cast<UnwrapExpression*>(letStmtValue)){
+            auto line=unwrap->expression.line;
+            auto col=unwrap->expression.column;
+            if(expectedType.isNull){
+                logSemanticErrors("Cannot place unwrap expression into nullable variable declaration",line,col);
+                hasError=true;
+            }
+        }
     }
     else
     {
@@ -577,7 +585,7 @@ void Semantics::walkLetStatement(Node *node)
         if (!isTypeCompatible(expectedType, declaredType))
         {
             logSemanticErrors(
-                "Type mismatch in 'let' statement. Expected '" + expectedType.resolvedName + "' but got '" +
+                "Type mismatch in variable declaration statement '"+ letName+ "' expected '" + expectedType.resolvedName + "' but got '" +
                     declaredType.resolvedName + "'",
                 letStmt->data_type_token.line, letStmt->data_type_token.column);
             hasError = true;
@@ -659,7 +667,7 @@ void Semantics::walkLetStatement(Node *node)
     metaData[letStmt] = letInfo;
     symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
 
-    std::cout << "LET STATEMENT DATA TYPE: " << declaredType.resolvedName << "\n";
+    std::cout << "LET STATEMENT DATA TYPE: " << expectedType.resolvedName << "\n";
 }
 
 void Semantics::walkAssignStatement(Node *node)
@@ -844,6 +852,13 @@ void Semantics::walkAssignStatement(Node *node)
             {
                 logSemanticErrors("Array variable '" + assignName + "' length [" + std::to_string(assignMeta.arrLen) + "] does not match array literal length [" + std::to_string(arrLitMeta.arrLen) + "]", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
                 hasError = true;
+            }
+        }else if(auto unwrap=dynamic_cast<UnwrapExpression*>(assignStmt->value.get())){
+            auto line=unwrap->expression.line;
+            auto col=unwrap->expression.column;
+            if(symbol->type.isNull){
+                logSemanticErrors("Cannot use unwrap calls in nullable assignments ",line,col);
+                hasError=true;
             }
         }
     }

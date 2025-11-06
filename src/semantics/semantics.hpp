@@ -285,6 +285,7 @@ private:
     void walkFunctionDeclarationStatement(Node *node);
     void walkFunctionDeclarationExpression(Node *node);
     void walkFunctionCallExpression(Node *node);
+    void walkUnwrapExpression(Node *node);
     void walkReturnStatement(Node *node);
 
     // Walking type expressions

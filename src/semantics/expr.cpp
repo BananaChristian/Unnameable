@@ -223,6 +223,72 @@ void Semantics::walkPostfixExpression(Node *node)
     metaData[postfixExpr] = info;
 }
 
+void Semantics::walkUnwrapExpression(Node *node){
+    auto unwrapExpr=dynamic_cast<UnwrapExpression*>(node);
+    if(!unwrapExpr)
+        return;
+
+    bool hasError=false;
+    auto line=unwrapExpr->expression.line;
+    auto col=unwrapExpr->expression.column;
+
+    //Block any expression other than calls and method calls
+    auto metCall=dynamic_cast<MethodCallExpression*>(unwrapExpr->call.get());
+    auto call=dynamic_cast<CallExpression*>(unwrapExpr->call.get());
+    if(!call && !metCall){
+        logSemanticErrors("Must only use function calls in unwrap expression",line,col);
+        hasError=true;
+    }
+
+    //Call the walkers on the calls early
+    walker(unwrapExpr->call.get());
+
+    //Get the function calls name
+    //THere are two cases normal calls and method calls so I have to cater for both
+    std::string funcName="unknown";
+    if(call){
+        //If it is a normal function call
+        funcName=call->function_identifier->expression.TokenLiteral;
+    }else if(metCall){
+        auto insideCall=dynamic_cast<CallExpression*>(metCall->call.get());//Extract the function call from the method call
+        //Extract the name from the function call
+        funcName=insideCall->function_identifier->expression.TokenLiteral;
+    }
+
+    //Resolve the symbol info to get the information about the call
+    auto unwrapSym=resolveSymbolInfo(funcName);
+    if(!unwrapSym){
+        logSemanticErrors("Undefined name '"+funcName+"'",line,col);
+        return; //Early return to avoid dereferecing null pointers
+    }
+
+    //Get the type
+    auto unwrapRetType=unwrapSym->type;
+    //Check if the call type is nullable(If it isnt unwrap must block it)
+    if(!unwrapRetType.isNull){
+        logSemanticErrors("Cannot use non nullable types in unwrap call '"+funcName+"'",line,col);
+        hasError=true;
+    }
+
+    //Convert the type from nullable to concrete
+    unwrapRetType.isNull=false;
+
+    auto unwrapType=unwrapRetType;//Store the converted type
+    if(unwrapType.isNull){
+        std::cout<<"UNWRAP TYPE IS STILL NULL\n";
+    }
+
+    //Store the metaData and symbolInfo
+    auto unwrapInfo=std::make_shared<SymbolInfo>();
+    unwrapInfo->type=unwrapType;
+    unwrapInfo->isNullable=false;
+    unwrapInfo->hasError=hasError;
+
+    metaData[unwrapExpr]=unwrapInfo;
+    symbolTable.back()[funcName]=unwrapInfo;
+
+}
+
 void Semantics::walkExpressionStatement(Node *node)
 {
     auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
