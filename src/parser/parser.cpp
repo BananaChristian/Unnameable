@@ -1978,6 +1978,7 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::DEREF] = &Parser::parseDereferenceExpression;
     PrefixParseFunctionsMap[TokenType::NEW] = &Parser::parseNewComponentExpression;
     PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
+    PrefixParseFunctionsMap[TokenType::UNWRAP]= &Parser::parseUnwrapExpression;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;

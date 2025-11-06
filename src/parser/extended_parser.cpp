@@ -821,6 +821,13 @@ std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam)
         std::move(value));
 }
 
+std::unique_ptr<Expression> Parser::parseUnwrapExpression(){
+    advance(); //Consume the unwrap token
+    auto callExpr=parseExpression(Precedence::PREC_NONE);
+
+    return std::make_unique<UnwrapExpression>(std::move(callExpr));
+}
+
 std::unique_ptr<Statement> Parser::parseQualifyStatement()
 {
     Token qualify_token = currentToken();
