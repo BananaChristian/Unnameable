@@ -76,6 +76,8 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: AUTO";
     case TokenType::AT:
         return "TokenType: AT";
+    case TokenType::UNWRAP:
+        return "TokenType: UNWRAP";
     case TokenType::RETURN:
         return "Token Type: RETURN";
     case TokenType::ENUM:
