@@ -317,19 +317,35 @@ struct CallExpression : Expression
     CallExpression(Token tok, std::unique_ptr<Expression> fn_ident, std::vector<std::unique_ptr<Expression>> params) : Expression(tok), function_identifier(std::move(fn_ident)), parameters(std::move(params)) {};
 };
 
-// Method call expression
-struct MethodCallExpression : Expression
-{
-    std::unique_ptr<Expression> instance;
+//Unwrap call expression
+struct UnwrapExpression: Expression{
     std::unique_ptr<Expression> call;
-
-    std::string toString() override
-    {
-        return "Method Call Expression: " + instance->toString() + "." + call->toString();
+    std::string toString() override{
+        std::string callStr="<no_call>";
+        if(call){
+            callStr=call->toString();
+        }
+        return "Unwrap expression: unwrap "+ callStr;
     }
 
-    MethodCallExpression(std::unique_ptr<Expression> inst, std::unique_ptr<Expression> callExpr)
-        : Expression(inst->expression), instance(std::move(inst)), call(std::move(callExpr)) {}
+    UnwrapExpression(std::unique_ptr<Expression> callExpr):Expression(callExpr->expression),call(std::move(callExpr)){};
+};
+
+// Method call expression
+struct MethodCallExpression : Expression {
+  std::unique_ptr<Expression> instance;
+  std::unique_ptr<Expression> call;
+
+  std::string toString() override {
+    return "Method Call Expression: " + instance->toString() + "." +
+           call->toString();
+  }
+
+  MethodCallExpression(std::unique_ptr<Expression> inst,
+                       std::unique_ptr<Expression> callExpr)
+      : Expression(inst->expression),
+        instance(std::move(inst)),
+        call(std::move(callExpr)) {}
 };
 
 // Instance expression
