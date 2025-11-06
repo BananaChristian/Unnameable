@@ -84,6 +84,7 @@ class Lexer
 
         {"scope", TokenType::SCOPE},
         {"shout", TokenType::SHOUT},
+        {"unwrap",TokenType::UNWRAP},
 
         {"module", TokenType::MODULE},
         {"merge", TokenType::MERGE},
