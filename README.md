@@ -149,7 +149,7 @@ Functions can also return pointers for the concrete types but void pointers aren
 ```unn
 int x=100;
 func test():ptr int{
-    ptr int y -> &x;
+    ptr int y -> addr x;
     return y;
 }
 
@@ -557,19 +557,38 @@ z=z+1s;
 
 ```
 
+## Address operator in Unnameable
+In unnameable the  `addr` operator is strictly for obtaining the memory address of a variable, It is used in references and pointers to show the target
+For example in pointers
+```
+heap int a =10;
+ptr p-> addr a;
+```
+The example above means create a pointer to the address of a so yeah that is how it used 
+For example in references
+```
+heap int b=19;
+ref r->addr b;
+```
+In the case above it means create a reference to address of a so basically a reference to a 
+
+_Quick note_:
+The compiler sees `addr <variable>` as a pointer so the type of the variable matters if the variable `x` is an integer then `addr x` has a type of `int_ptr` 
+
+
 ## References in Unnameable
 
 Unnameable provides a safe and explicit way of refering to existing symbols without copying their values
 They act as symbolic aliases
-They have a syntax of `ref <type> <name> -> &<target> `
+They have a syntax of `ref <type> <name> -> addr <target> `
 
 - ref :introduces a reference variable
-- &<target> : specifies the address of the variable being referenced
+- addr <target> : specifies the address of the variable being referenced
 - The type after ref must match the target type unless type inference is used(You can infer by just not adding the type)
 
 ```
 heap int a=10;
-ref int b -> &a;
+ref int b -> addr a;
 ```
 
 Here b refers to a. Any modification through b directly affects a
@@ -578,7 +597,7 @@ _Type inference_:
 If you omit the type, the compiler infers it from the target
 
 ```
-ref b -> &a; #Infered as int
+ref b -> addr a; #Infered as int
 ```
 
 _Mutability rules_:
@@ -586,10 +605,10 @@ By default refrences are immutable but the user must specify if they want it to 
 
 ```
 heap mut int a = 6;
-ref mut int b -> &a;
+ref mut int b -> addr a;
 
 heap int x=7;
-ref mut int y -> &x; #Error: Since a mutable reference cannot be made to an immutable target
+ref mut int y -> addr x; #Error: Since a mutable reference cannot be made to an immutable target
 
 ```
 
@@ -598,7 +617,7 @@ References must be made to only heap raised or global values this way the compil
 
 ```
 int a=9;
-ref int b -> &a; #Error since u can't reference a non-heap raised variable
+ref int b -> addr a; #Error since u can't reference a non-heap raised variable
 ```
 
 _Usage of reference variables_
@@ -606,10 +625,10 @@ Reference variables must reference one target, you cannot reassign the target to
 
 ```
 heap mut int x=19;
-ref mut int y-> &x;
+ref mut int y-> addr x;
 
 heap mut int z=23;
-y = &z; #Error since u cannot change the variable reference y is already pointing to
+y = addr z; #Error since u cannot change the variable reference y is already pointing to
 
 #This is not to be confused with this
 y=z; #Here I am simply using the value of z to change x since y is referencing x
@@ -629,7 +648,7 @@ func main(): int {
     heap int a = 10;
 
     # Reference creation (type inferred)
-    ref mut b -> &a;
+    ref mut b -> addr a;
 
     #Write 50 to the memory location of 'a' via 'b'
     b = 50;
@@ -645,15 +664,15 @@ func main(): int {
 
 Pointers in Unnameable are low level constructs that store memory addresses.
 They allow direct access and manipulation of values in memory, with no hidden behaviors or implicit conversations
-They have a syntax of `ptr <type> <name> -> &<target>`
+They have a syntax of `ptr <type> <name> -> addr <target>`
 
 - ptr :introduces a pointer variable
 - <type>: This is the type of the pointer if the user for example write int it is converted to an int_ptr(The type can be infered)
-- &<target>: This is address of the variable that you want to store
+- addr <target>: This is address of the variable that you want to store
 
 ```
 int x=10;
-ptr int p -> &x; #pointer 'p' stores the address of x
+ptr int p -> addr x; #pointer 'p' stores the address of x
 ```
 
 The type can be infered for the user if you simply just dont add the type
@@ -661,9 +680,9 @@ But if u add the type then you must ensure it matches the address type
 What I am trying to say is pointer types are very strict there is no casting between pointer types and non pointer types
 
 ```
-ptr p -> &x; #pointer 'p' will be infered to a int_ptr
+ptr p -> addr x; #pointer 'p' will be infered to a int_ptr
 uint y=18u;
-ptr int z -> &y; #Error since you told the compiler 'z' is an int_ptr and now you are giving it a uint_ptr
+ptr int z -> addr y; #Error since you told the compiler 'z' is an int_ptr and now you are giving it a uint_ptr
 ```
 
 Inorder to use pointers in Unnameable you must always initialize the pointer with an address this is to atleast tell the compiler that you're pointer is not null atleast in the beginning(Some safety is better than none)
@@ -677,19 +696,19 @@ Pointers must point to only heap raised or global variables this way the compile
 
 ```
 heap int x=10;
-ptr p -> &x; #This is a heap raised pointer since x is heap raised it is safe
+ptr p -> addr x; #This is a heap raised pointer since x is heap raised it is safe
 
 ##
 int x =10;
-ptr p -> &x; #This is a stack pointer it is not safe the compiler will immediately stop compiling
+ptr p -> addr x; #This is a stack pointer it is not safe the compiler will immediately stop compiling
 ##
 ```
 
 You cannot reassign to an immutable pointer by the way if you want to do that you must specify that the pointer is mutable
 
 ```
-ptr mut p -> &x;
-p=&y; #This reassignment is allowed since pointer 'p' is mutable
+ptr mut p -> addr x;
+p=addr y; #This reassignment is allowed since pointer 'p' is mutable
 ```
 
 Examples
@@ -698,7 +717,7 @@ Examples
 int x = 10;
 
 func main(): int {
-    ptr mut int p -> &x;
+    ptr mut int p -> addr x;
 
     # Write 50 to the memory location pointed to by p (i.e., update x)
     deref p = 50;
@@ -721,7 +740,7 @@ Anyways dereferencing is the usual it is a way to access the contents of the add
 
 ```
 int x= 10;
-ptr p -> &x;
+ptr p -> addr x;
 deref p= 16; # I am dereferencing 'p' so I can manipulate the value of x
 ```
 
@@ -729,7 +748,7 @@ A dereference has the same mutability and heap rules as the target
 
 ```
 mut int x=7;
-ptr int p -> &x;
+ptr int p -> addr x;
 deref p=10; #This is allowed since x is mutable
 ```
 
