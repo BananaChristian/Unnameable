@@ -11,7 +11,7 @@
 /runtime/*.o
 
 # Build system
-compile_commands.json
+.clang-format.
 CMakeFiles/
 CMakeCache.txt
 
