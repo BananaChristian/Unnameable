@@ -62,14 +62,14 @@ struct Identifier : Expression
 // Address expression node
 struct AddressExpression : Expression
 {
-    Token and_token;
+    Token addr_token;
     std::unique_ptr<Expression> identifier;
 
     std::string toString() override
     {
-        return "Address Expression: " + and_token.TokenLiteral + identifier->toString();
+        return "Address Expression: " + addr_token.TokenLiteral + identifier->toString();
     }
-    AddressExpression(Token and_t, std::unique_ptr<Expression> ident) : Expression(and_t), and_token(and_t), identifier(std::move(ident)) {};
+    AddressExpression(Token addr_t, std::unique_ptr<Expression> ident) : Expression(addr_t), addr_token(addr_t), identifier(std::move(ident)) {};
 };
 
 // Dereference expression node
@@ -317,35 +317,40 @@ struct CallExpression : Expression
     CallExpression(Token tok, std::unique_ptr<Expression> fn_ident, std::vector<std::unique_ptr<Expression>> params) : Expression(tok), function_identifier(std::move(fn_ident)), parameters(std::move(params)) {};
 };
 
-//Unwrap call expression
-struct UnwrapExpression: Expression{
+// Unwrap call expression
+struct UnwrapExpression : Expression
+{
     std::unique_ptr<Expression> call;
-    std::string toString() override{
-        std::string callStr="<no_call>";
-        if(call){
-            callStr=call->toString();
+    std::string toString() override
+    {
+        std::string callStr = "<no_call>";
+        if (call)
+        {
+            callStr = call->toString();
         }
-        return "Unwrap expression: unwrap "+ callStr;
+        return "Unwrap expression: unwrap " + callStr;
     }
 
-    UnwrapExpression(std::unique_ptr<Expression> callExpr):Expression(callExpr->expression),call(std::move(callExpr)){};
+    UnwrapExpression(std::unique_ptr<Expression> callExpr) : Expression(callExpr->expression), call(std::move(callExpr)) {};
 };
 
 // Method call expression
-struct MethodCallExpression : Expression {
-  std::unique_ptr<Expression> instance;
-  std::unique_ptr<Expression> call;
+struct MethodCallExpression : Expression
+{
+    std::unique_ptr<Expression> instance;
+    std::unique_ptr<Expression> call;
 
-  std::string toString() override {
-    return "Method Call Expression: " + instance->toString() + "." +
-           call->toString();
-  }
+    std::string toString() override
+    {
+        return "Method Call Expression: " + instance->toString() + "." +
+               call->toString();
+    }
 
-  MethodCallExpression(std::unique_ptr<Expression> inst,
-                       std::unique_ptr<Expression> callExpr)
-      : Expression(inst->expression),
-        instance(std::move(inst)),
-        call(std::move(callExpr)) {}
+    MethodCallExpression(std::unique_ptr<Expression> inst,
+                         std::unique_ptr<Expression> callExpr)
+        : Expression(inst->expression),
+          instance(std::move(inst)),
+          call(std::move(callExpr)) {}
 };
 
 // Instance expression
@@ -436,6 +441,19 @@ struct PointerType : Expression
         return "Pointer Type: " + underlyingType->toString() + "_ptr";
     }
     PointerType(Token ptr, std::unique_ptr<Expression> type) : Expression(ptr), ptr_token(ptr), underlyingType(std::move(type)) {};
+};
+
+struct RefType : Expression
+{
+    Token ref_token;
+    std::unique_ptr<Expression> underLyingType;
+
+    std::string toString() override
+    {
+        return "Ref type: " + underLyingType->toString() + "_ptr"; // A reference is a pointer dressed in fancy dance clothes
+    }
+
+    RefType(Token ref, std::unique_ptr<Expression> type) : Expression(ref), ref_token(ref), underLyingType(std::move(type)) {};
 };
 
 // Return type expression
