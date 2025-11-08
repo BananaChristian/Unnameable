@@ -92,7 +92,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(FunctionDeclaration)] = &Semantics::walkFunctionDeclarationStatement;
     walkerFunctionsMap[typeid(FunctionDeclarationExpression)] = &Semantics::walkFunctionDeclarationExpression;
     walkerFunctionsMap[typeid(CallExpression)] = &Semantics::walkFunctionCallExpression;
-    walkerFunctionsMap[typeid(UnwrapExpression)]=&Semantics::walkUnwrapExpression;
+    walkerFunctionsMap[typeid(UnwrapExpression)] = &Semantics::walkUnwrapExpression;
     walkerFunctionsMap[typeid(ReturnStatement)] = &Semantics::walkReturnStatement;
 
     // Walker registration for type expressions
@@ -340,7 +340,8 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
 
     if (auto derefExpr = dynamic_cast<DereferenceExpression *>(node))
     {
-        std::string name = derefExpr->identifier->expression.TokenLiteral;
+        std::string name = extractIdentifierName(derefExpr->identifier.get());
+        std::cout << "DEREF NAME BEING GIVEN DURING TYPE RESOLUTION: " << name << "\n";
         auto derefSym = resolveSymbolInfo(name);
 
         if (!derefSym)
@@ -380,10 +381,22 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         if (inner.kind == DataType::VOID)
         {
             logSemanticErrors("Cannot have a void pointer return type", ptrType->expression.line, ptrType->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
+            return ResolvedType{DataType::UNKNOWN, "unknown", false, false};
         }
         inner.isPointer = true;
         return isPointerType(inner);
+    }
+
+    if (auto refType = dynamic_cast<RefType *>(node))
+    {
+        ResolvedType inner = inferNodeDataType(refType->underLyingType.get());
+        if (inner.kind == DataType::VOID)
+        {
+            logSemanticErrors("Cannot have a void reference return type", refType->expression.line, refType->expression.column);
+            return ResolvedType{DataType::UNKNOWN, "unknown", false, false};
+        }
+        inner.isPointer = true;
+        return isPointerType(inner); // References are just pointers with some rules so I think I can use this
     }
 
     if (auto retTypeExpr = dynamic_cast<ReturnType *>(node))
@@ -447,31 +460,36 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         auto memInfo = it->second;
         return memInfo->type;
     }
-    if(auto unwrapExpr=dynamic_cast<UnwrapExpression*>(node)){
-        auto line=unwrapExpr->expression.line;
-        auto col=unwrapExpr->expression.column;
-        //Get the contained call
-        auto call=dynamic_cast<CallExpression*>(unwrapExpr->call.get());
-        auto metCall=dynamic_cast<MethodCallExpression*>(unwrapExpr->call.get());
-        std::string funcName="<unidentified>";
-        if(call){
-            funcName=call->function_identifier->expression.TokenLiteral;
-        }else if(metCall){
-            auto innerCall=dynamic_cast<CallExpression*>(metCall->call.get());
-            funcName=innerCall->function_identifier->expression.TokenLiteral;
+    if (auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node))
+    {
+        auto line = unwrapExpr->expression.line;
+        auto col = unwrapExpr->expression.column;
+        // Get the contained call
+        auto call = dynamic_cast<CallExpression *>(unwrapExpr->call.get());
+        auto metCall = dynamic_cast<MethodCallExpression *>(unwrapExpr->call.get());
+        std::string funcName = "<unidentified>";
+        if (call)
+        {
+            funcName = call->function_identifier->expression.TokenLiteral;
+        }
+        else if (metCall)
+        {
+            auto innerCall = dynamic_cast<CallExpression *>(metCall->call.get());
+            funcName = innerCall->function_identifier->expression.TokenLiteral;
         }
 
-        //Resolve the symbol
-        auto sym=resolveSymbolInfo(funcName);
-        if(!sym){
-            logSemanticErrors("Undefined '"+funcName+"'",line,col);
-            return ResolvedType{DataType::UNKNOWN,"unknown",false,false};
+        // Resolve the symbol
+        auto sym = resolveSymbolInfo(funcName);
+        if (!sym)
+        {
+            logSemanticErrors("Undefined '" + funcName + "'", line, col);
+            return ResolvedType{DataType::UNKNOWN, "unknown", false, false};
         }
-        //Get the type
-        auto unwrapType=sym->type;
-        //Toggle the null flag
-        unwrapType.isNull=false;
-        auto finalType=unwrapType;
+        // Get the type
+        auto unwrapType = sym->type;
+        // Toggle the null flag
+        unwrapType.isNull = false;
+        auto finalType = unwrapType;
         return finalType;
     }
 
@@ -484,6 +502,41 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     }
 
     return {DataType::UNKNOWN, "unknown"};
+}
+
+std::string Semantics::extractIdentifierName(Node *node)
+{
+    if (auto call = dynamic_cast<CallExpression *>(node))
+    {
+        auto callIdent = dynamic_cast<Identifier *>(call->function_identifier.get());
+        auto identName = callIdent->identifier.TokenLiteral;
+        return identName;
+    }
+    else if (auto ident = dynamic_cast<Identifier *>(node))
+    {
+        auto identName = ident->identifier.TokenLiteral;
+        return identName;
+    }
+    else if (auto metCall = dynamic_cast<MethodCallExpression *>(node))
+    {
+        auto identName = "<methodfuncName>";
+        return identName;
+    }
+    else if (auto deref = dynamic_cast<DereferenceExpression *>(node))
+    {
+        auto identName = extractIdentifierName(deref->identifier.get());
+        return identName;
+    }
+    else if (auto addr = dynamic_cast<AddressExpression *>(node))
+    {
+        auto identName = extractIdentifierName(addr->identifier.get());
+        return identName;
+    }
+    else
+    {
+        auto identName = "<Unsupported node>";
+        return identName;
+    }
 }
 
 ResolvedType Semantics::inferInfixExpressionType(Node *node)

@@ -388,7 +388,8 @@ void Semantics::walkDereferenceExpression(Node *node)
     if (!derefExpr)
         return;
 
-    auto derefName = derefExpr->identifier->expression.TokenLiteral;
+    std::string derefName = extractIdentifierName(derefExpr->identifier.get());
+
     auto line = derefExpr->identifier->expression.line;
     auto col = derefExpr->identifier->expression.column;
 
@@ -404,7 +405,7 @@ void Semantics::walkDereferenceExpression(Node *node)
     if (derefSym->isHeap)
         derefSym->lastUseNode = derefExpr;
 
-    auto derefInfo = std::make_shared<SymbolInfo>(*derefSym->targetSymbol);
+    auto derefInfo = std::make_shared<SymbolInfo>();
     derefInfo->isPointer = false; // Just a sanity measure
     derefInfo->isMutable = derefSym->isMutable;
     derefInfo->isConstant = derefSym->isConstant;
@@ -412,7 +413,6 @@ void Semantics::walkDereferenceExpression(Node *node)
     derefInfo->derefPtrType = derefSym->type;
 
     std::cout << "DEREF PTR TYPE: " << derefSym->type.resolvedName << "\n";
-    std::cout << "DEREF TYPE: " << derefSym->targetSymbol->type.resolvedName << "\n";
 
     metaData[derefExpr] = derefInfo;
 }
@@ -435,6 +435,7 @@ void Semantics::walkLetStatement(Node *node)
 
     // Checking if the name is being reused
     auto letName = letStmt->ident_token.TokenLiteral;
+    std::cout << "LET STATEMENT NAME: " << letName << "\n";
 
     auto existingSym = resolveSymbolInfo(letName);
     auto localSym = lookUpInCurrentScope(letName);
@@ -565,12 +566,14 @@ void Semantics::walkLetStatement(Node *node)
                 hasError = true;
             }
         }
-        else if(auto unwrap=dynamic_cast<UnwrapExpression*>(letStmtValue)){
-            auto line=unwrap->expression.line;
-            auto col=unwrap->expression.column;
-            if(expectedType.isNull){
-                logSemanticErrors("Cannot place unwrap expression into nullable variable declaration",line,col);
-                hasError=true;
+        else if (auto unwrap = dynamic_cast<UnwrapExpression *>(letStmtValue))
+        {
+            auto line = unwrap->expression.line;
+            auto col = unwrap->expression.column;
+            if (expectedType.isNull)
+            {
+                logSemanticErrors("Cannot place unwrap expression into nullable variable declaration", line, col);
+                hasError = true;
             }
         }
     }
@@ -585,7 +588,7 @@ void Semantics::walkLetStatement(Node *node)
         if (!isTypeCompatible(expectedType, declaredType))
         {
             logSemanticErrors(
-                "Type mismatch in variable declaration statement '"+ letName+ "' expected '" + expectedType.resolvedName + "' but got '" +
+                "Type mismatch in variable declaration statement '" + letName + "' expected '" + expectedType.resolvedName + "' but got '" +
                     declaredType.resolvedName + "'",
                 letStmt->data_type_token.line, letStmt->data_type_token.column);
             hasError = true;
@@ -853,12 +856,15 @@ void Semantics::walkAssignStatement(Node *node)
                 logSemanticErrors("Array variable '" + assignName + "' length [" + std::to_string(assignMeta.arrLen) + "] does not match array literal length [" + std::to_string(arrLitMeta.arrLen) + "]", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
                 hasError = true;
             }
-        }else if(auto unwrap=dynamic_cast<UnwrapExpression*>(assignStmt->value.get())){
-            auto line=unwrap->expression.line;
-            auto col=unwrap->expression.column;
-            if(symbol->type.isNull){
-                logSemanticErrors("Cannot use unwrap calls in nullable assignments ",line,col);
-                hasError=true;
+        }
+        else if (auto unwrap = dynamic_cast<UnwrapExpression *>(assignStmt->value.get()))
+        {
+            auto line = unwrap->expression.line;
+            auto col = unwrap->expression.column;
+            if (symbol->type.isNull)
+            {
+                logSemanticErrors("Cannot use unwrap calls in nullable assignments ", line, col);
+                hasError = true;
             }
         }
     }
@@ -1162,14 +1168,8 @@ void Semantics::walkReferenceStatement(Node *node)
     }
 
     // Checking the type of the referee
-    auto refereeIdent = dynamic_cast<AddressExpression *>(refStmt->referee.get());
-    if (!refereeIdent)
-    {
-        logSemanticErrors("Invalid reference usage '" + refName + "' must only point to an address expression", line, column);
-        hasError = true;
-        return;
-    }
-    auto refereeName = refereeIdent->identifier->expression.TokenLiteral;
+    auto refereeName = extractIdentifierName(refStmt->referee.get());
+    walker(refStmt->referee.get());
     auto refereeSymbol = resolveSymbolInfo(refereeName);
     if (!refereeSymbol)
     {

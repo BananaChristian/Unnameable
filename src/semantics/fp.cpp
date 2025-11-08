@@ -169,24 +169,28 @@ void Semantics::walkReturnStatement(Node *node)
             auto sym = resolveSymbolInfo(name);
             if (sym)
             {
-                // Get the storage type for the target
-                auto targetSym = sym->targetSymbol;
-                if (!targetSym)
+                if (!sym->isParam)
                 {
-                    logSemanticErrors(
-                        "Target of pointer '" + name + "' does not exist",
-                        retStmt->return_stmt.line,
-                        retStmt->return_stmt.column);
-                }
-                // If the pointee is STACK → ILLEGAL RETURN
-                if (targetSym->storage == StorageType::STACK)
-                {
-                    logSemanticErrors(
-                        "Illegal return of pointer '" + name + "' (stack memory will be destroyed).",
-                        retStmt->return_stmt.line,
-                        retStmt->return_stmt.column);
+                    // Get the storage type for the target
+                    auto targetSym = sym->targetSymbol;
+                    if (!targetSym)
+                    {
+                        logSemanticErrors(
+                            "Target of pointer '" + name + "' does not exist",
+                            retStmt->return_stmt.line,
+                            retStmt->return_stmt.column);
+                        return;
+                    }
+                    // If the pointee is STACK → ILLEGAL RETURN
+                    if (targetSym->storage == StorageType::STACK)
+                    {
+                        logSemanticErrors(
+                            "Illegal return of pointer '" + name + "' (stack memory will be destroyed).",
+                            retStmt->return_stmt.line,
+                            retStmt->return_stmt.column);
 
-                    hasError = true;
+                        hasError = true;
+                    }
                 }
             }
         }
@@ -260,6 +264,163 @@ void Semantics::walkReturnStatement(Node *node)
     info->isNullable = isValueNullable;
 
     metaData[retStmt] = info;
+}
+
+void Semantics::walkFunctionParameters(Node *node)
+{
+    if (auto param = dynamic_cast<LetStatement *>(node))
+    {
+        std::cout << "[SEMANTIC LOG]: Registering function parameter\n";
+
+        // Extract parameter name
+        auto paramName = param->ident_token.TokenLiteral;
+
+        // Ensure parameter name not already declared in this parameter scope
+        auto existingLocal = lookUpInCurrentScope(paramName);
+        if (existingLocal)
+        {
+            logSemanticErrors("Duplicate parameter name '" + paramName + "'",
+                              param->ident_token.line, param->ident_token.column);
+            return;
+        }
+
+        // Resolve declared type (must NOT be auto)
+        if (param->data_type_token.type == TokenType::AUTO)
+        {
+            logSemanticErrors("Function parameter '" + paramName + "' cannot use inferred (auto) type",
+                              param->data_type_token.line, param->data_type_token.column);
+            return;
+        }
+
+        bool isNullable = param->isNullable;
+        bool isMutable = (param->mutability == Mutability::MUTABLE);
+
+        ResolvedType resolvedType = tokenTypeToResolvedType(param->data_type_token, isNullable);
+
+        // Create symbol entry
+        auto info = std::make_shared<SymbolInfo>();
+        info->type = resolvedType;
+        info->isNullable = isNullable;
+        info->isMutable = isMutable;
+        info->isConstant = false;   // Parameters are never compile-time constants
+        info->isInitialized = true; // Parameters are always "initialized" as inputs
+        info->isDefinitelyNull = false;
+        info->isHeap = false; // Parameters never start on heap
+        info->isParam = true;
+        info->storage = StorageType::STACK;
+        info->hasError = false;
+
+        // Store metadata + register symbol
+        metaData[param] = info;
+        symbolTable.back()[paramName] = info;
+
+        std::cout << "PARAM DATA TYPE: " << resolvedType.resolvedName << "\n";
+    }
+    else if (auto param = dynamic_cast<PointerStatement *>(node))
+    {
+        std::cout << "[SEMANTIC LOG]: Registering pointer parameter\n";
+
+        auto ptrName = param->name->expression.TokenLiteral;
+        auto line = param->name->expression.line;
+        auto col = param->name->expression.column;
+
+        // Check for duplicate parameter name
+        if (lookUpInCurrentScope(ptrName))
+        {
+            logSemanticErrors("Duplicate parameter name '" + ptrName + "'", line, col);
+            return;
+        }
+
+        // Parameters must not infer type; they require explicit type
+        if (!param->type)
+        {
+            logSemanticErrors("Pointer parameter '" + ptrName + "' must explicitly declare its type",
+                              line, col);
+            return;
+        }
+
+        // Resolve declared pointer type directly
+        ResolvedType ptrType = inferNodeDataType(param);
+        if (!ptrType.isPointer)
+        {
+            logSemanticErrors("Parameter '" + ptrName + "' is declared as a pointer but lacks pointer type",
+                              line, col);
+            return;
+        }
+
+        bool isMutable = (param->mutability == Mutability::MUTABLE);
+
+        auto ptrInfo = std::make_shared<SymbolInfo>();
+        ptrInfo->type = ptrType;
+        ptrInfo->isPointer = true;
+        ptrInfo->isMutable = isMutable;
+        ptrInfo->isConstant = false;
+        ptrInfo->isHeap = false;
+        ptrInfo->isInitialized = true; // parameters start initialized
+        ptrInfo->isNullable = ptrType.isNull;
+        ptrInfo->isDefinitelyNull = false;
+        ptrInfo->isParam = true;
+        ptrInfo->storage = StorageType::STACK;
+        ptrInfo->hasError = false;
+
+        metaData[param] = ptrInfo;
+        symbolTable.back()[ptrName] = ptrInfo;
+
+        std::cout << "POINTER PARAM TYPE: " << ptrType.resolvedName << "\n";
+    }
+    else if (auto param = dynamic_cast<ReferenceStatement *>(node))
+    {
+        std::cout << "[SEMANTIC LOG]: Registering reference parameter\n";
+
+        auto refName = param->referer->expression.TokenLiteral;
+        auto line = param->statement.line;
+        auto col = param->statement.column;
+
+        // Check for duplicate parameter name
+        if (lookUpInCurrentScope(refName))
+        {
+            logSemanticErrors("Duplicate parameter name '" + refName + "'", line, col);
+            return;
+        }
+
+        // Parameters MUST declare type (no inference from referenced expression)
+        if (!param->type)
+        {
+            logSemanticErrors("Reference parameter '" + refName + "' must explicitly declare its type",
+                              line, col);
+            return;
+        }
+
+        // Resolve the declared type
+        ResolvedType refType = inferNodeDataType(param);
+
+        // Reference parameters are never nullable by design:
+        if (refType.isNull)
+        {
+            logSemanticErrors("Reference parameter '" + refName + "' cannot be nullable", line, col);
+            return;
+        }
+
+        bool isMutable = (param->mutability == Mutability::MUTABLE);
+
+        auto refInfo = std::make_shared<SymbolInfo>();
+        refInfo->type = refType;
+        refInfo->isRef = true;
+        refInfo->isMutable = isMutable;
+        refInfo->isConstant = false;
+        refInfo->isInitialized = true; // parameters are always initialized
+        refInfo->isNullable = false;   // references are never nullable
+        refInfo->isDefinitelyNull = false;
+        refInfo->isParam = true;
+        refInfo->isHeap = false;
+        refInfo->storage = StorageType::STACK;
+        refInfo->hasError = false;
+
+        metaData[param] = refInfo;
+        symbolTable.back()[refName] = refInfo;
+
+        std::cout << "REFERENCE PARAM TYPE: " << refType.resolvedName << "\n";
+    }
 }
 
 void Semantics::walkFunctionStatement(Node *node)
@@ -350,22 +511,45 @@ void Semantics::walkFunctionExpression(Node *node)
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
     for (const auto &param : funcExpr->call)
     {
+        if (!param)
+            continue;
+
         auto letStmt = dynamic_cast<LetStatement *>(param.get());
-        if (!letStmt)
+        auto ptrStmt = dynamic_cast<PointerStatement *>(param.get());
+        auto refStmt = dynamic_cast<ReferenceStatement *>(param.get());
+        std::string paramName = "blank";
+        if (!letStmt && !ptrStmt && !refStmt)
         {
-            logSemanticErrors("Invalid parameter: expected let statement", param.get()->statement.line, param.get()->statement.column);
+            logSemanticErrors("Invalid statement in '" + funcName + "' parameters", param.get()->statement.line, param.get()->statement.column);
             hasError = true;
+            continue;
         }
-        walkLetStatement(param.get());
+
+        if (letStmt)
+        {
+            paramName = letStmt->ident_token.TokenLiteral;
+        }
+        else if (ptrStmt)
+        {
+            paramName = ptrStmt->name->expression.TokenLiteral;
+        }
+        else if (refStmt)
+        {
+            paramName = refStmt->referer->expression.TokenLiteral;
+        }
+
+        walkFunctionParameters(param.get());
         auto paramInfo = metaData.find(param.get());
         if (paramInfo == metaData.end())
         {
-            logSemanticErrors("Parameter '" + letStmt->ident_token.TokenLiteral + "' not analyzed", param.get()->statement.line, param.get()->statement.column);
+            logSemanticErrors("Parameter '" + paramName + "' not analyzed", param.get()->statement.line, param.get()->statement.column);
             hasError = true;
+            continue;
         }
-        symbolTable.back()[letStmt->ident_token.TokenLiteral] = paramInfo->second;
-        paramTypes.emplace_back(paramInfo->second->type, paramInfo->second->genericName);
-        std::cout << "[SEMANTIC LOG] Parameter '" << letStmt->ident_token.TokenLiteral
+        symbolTable.back()[paramName] = paramInfo->second;
+        paramTypes.emplace_back(paramInfo->second->type, paramName);
+
+        std::cout << "[SEMANTIC LOG] Parameter '" << paramName
                   << "' stored with type: " << paramInfo->second->type.resolvedName << "\n";
     }
 
@@ -383,11 +567,18 @@ void Semantics::walkFunctionExpression(Node *node)
         hasError = true;
     }
 
+    if (!retType->returnExpr)
+    {
+        logSemanticErrors("Return type expression missing for function '" + funcName + "'", retType->expression.line, retType->expression.column);
+        return;
+    }
+
     // Getting the nullability from the return type
     bool isNullable = false;
     auto basicRet = dynamic_cast<BasicType *>(retType->returnExpr.get());
     auto arrayRet = dynamic_cast<ArrayType *>(retType->returnExpr.get());
     auto ptrRet = dynamic_cast<PointerType *>(retType->returnExpr.get());
+    auto refRet = dynamic_cast<RefType *>(retType->returnExpr.get());
     if (basicRet)
     {
         isNullable = basicRet->isNullable;
@@ -400,6 +591,19 @@ void Semantics::walkFunctionExpression(Node *node)
     {
         auto basicRetPtr = dynamic_cast<BasicType *>(ptrRet->underlyingType.get());
         auto arrayRetPtr = dynamic_cast<ArrayType *>(ptrRet->underlyingType.get());
+        if (basicRetPtr)
+        {
+            isNullable = basicRetPtr->isNullable;
+        }
+        else if (arrayRetPtr)
+        {
+            isNullable = arrayRetPtr->isNullable;
+        }
+    }
+    else if (refRet)
+    {
+        auto basicRetPtr = dynamic_cast<BasicType *>(refRet->underLyingType.get());
+        auto arrayRetPtr = dynamic_cast<ArrayType *>(refRet->underLyingType.get());
         if (basicRetPtr)
         {
             isNullable = basicRetPtr->isNullable;
@@ -460,6 +664,11 @@ void Semantics::walkFunctionExpression(Node *node)
               << funcInfo->returnType.resolvedName << "\n";
 
     // Process the function body block
+    if (!funcExpr->block)
+    {
+        logSemanticErrors("Function body missing for '" + funcName + "'", funcExpr->expression.line, funcExpr->expression.column);
+        return;
+    }
     auto block = dynamic_cast<BlockExpression *>(funcExpr->block.get());
     if (!block)
     {
@@ -658,6 +867,7 @@ void Semantics::walkFunctionCallExpression(Node *node)
         logSemanticErrors("Function '" + callName + "' has not been defined or declared anywhere ",
                           funcCall->expression.line, funcCall->expression.column);
         hasError = true;
+        return;
     }
 
     // Checking if the symbol retrieved is actually a function
@@ -695,6 +905,7 @@ void Semantics::walkFunctionCallExpression(Node *node)
     auto callSymbol = std::make_shared<SymbolInfo>();
     callSymbol->hasError = hasError;
     callSymbol->type = callSymbolInfo->returnType;
+    callSymbol->returnType = callSymbolInfo->returnType;
     callSymbol->isNullable = callSymbolInfo->isNullable;
 
     metaData[funcCall] = callSymbol;

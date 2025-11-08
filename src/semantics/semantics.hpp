@@ -158,6 +158,8 @@ struct SymbolInfo
     bool isRef = false;     // Reference flag
     bool isPointer = false; // Pointer flag
 
+    bool isParam=false;
+
     bool isFunction = false;
     bool isBehavior = false;
     bool isComponent = false;
@@ -202,6 +204,7 @@ public:
     bool hasReturnPath(Node *node);
     ResolvedType inferNodeDataType(Node *node);
     std::pair<std::string, std::string> splitScopedName(const std::string &fullName);
+    std::string extractIdentifierName(Node *node);
     std::string fileName;
 
 private:
@@ -306,6 +309,8 @@ private:
 
     // Walking Qualify statement
     void walkQualifyStatement(Node *node);
+
+    void walkFunctionParameters(Node *node);
 
     // HELPER FUNCTIONS
     void registerWalkerFunctions();
