@@ -78,13 +78,14 @@ class Lexer
         {"mut", TokenType::MUT},
         {"ref", TokenType::REF},
         {"ptr", TokenType::PTR},
+        {"addr", TokenType::ADDR},
         {"deref", TokenType::DEREF},
 
         {"heap", TokenType::HEAP},
 
         {"scope", TokenType::SCOPE},
         {"shout", TokenType::SHOUT},
-        {"unwrap",TokenType::UNWRAP},
+        {"unwrap", TokenType::UNWRAP},
 
         {"module", TokenType::MODULE},
         {"merge", TokenType::MERGE},
