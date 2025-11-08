@@ -1,8 +1,7 @@
 #include <iostream>
 #include "token.hpp"
-using namespace std;
 
-string TokenTypeToLiteral(TokenType type)
+std::string TokenTypeToLiteral(TokenType type)
 {
     switch (type)
     {
@@ -221,6 +220,8 @@ string TokenTypeToLiteral(TokenType type)
         return "Token Type: REF";
     case TokenType::PTR:
         return "Token Type: PTR";
+    case TokenType::ADDR:
+        return "Token Type: ADDR";
     case TokenType::DEREF:
         return "Token Type: DEREF";
     case TokenType::MODULUS:

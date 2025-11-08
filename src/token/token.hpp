@@ -88,6 +88,7 @@ enum class TokenType
     REF, //reference keyword
     PTR, //Pointer keyword
     DEREF, //Dereference keyword
+    ADDR, //addr keyword
     UNWRAP, //Unwrap keyword
 
     MODULE, //module keyword
