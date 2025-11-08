@@ -37,15 +37,18 @@ public:
 
     using generatorFunctions = void (IRGenerator::*)(Node *node);
     using expressionGenerators = llvm::Value *(IRGenerator::*)(Node * node);
+    using addressGenerators = llvm::Value *(IRGenerator::*)(Node * node);
 
     void generate(const std::vector<std::unique_ptr<Node>> &program);
     void dumpIR();
 
     llvm::Module &getLLVMModule();
     llvm::Type *getLLVMType(ResolvedType type);
+    llvm::Type *lowerFunctionType(const ResolvedType &type);
 
     std::unordered_map<std::type_index, generatorFunctions> generatorFunctionsMap;
     std::unordered_map<std::type_index, expressionGenerators> expressionGeneratorsMap;
+    std::unordered_map<std::type_index, addressGenerators> addressGeneratorsMap;
     std::unordered_map<std::string, llvm::StructType *> componentTypes;
     std::unordered_map<std::string, llvm::StructType *> llvmCustomTypes;
     std::unordered_map<std::string, llvm::Value *> llvmGlobalDataBlocks;
@@ -129,22 +132,28 @@ private:
     llvm::Value *generateIdentifierExpression(Node *node);
     llvm::Value *generateAddressExpression(Node *node);
     llvm::Value *generateDereferenceExpression(Node *node);
-    llvm::Value *generateDereferenceAddress(Node *node);
 
     llvm::Value *generateBlockExpression(Node *node);
     llvm::Value *generateFunctionExpression(Node *node);
     llvm::Value *generateCallExpression(Node *node);
+    llvm::Value *generateUnwrapCallExpression(Node *node);
 
     llvm::Value *generateSelfExpression(Node *node);
-    llvm::Value *generateSelfAddress(Node *node);
     llvm::Value *generateNewComponentExpression(Node *node);
     llvm::Value *generateInstanceExpression(Node *node);
     llvm::Value *generateMethodCallExpression(Node *node);
 
+    // GENERATOR FUNCTIONS FOR ADRRESSES(L VALUES)
+    llvm::Value *generateSelfAddress(Node *node);
+    llvm::Value *generateCallAddress(Node *node);
+    llvm::Value *generateDereferenceAddress(Node *node);
+
     // HELPER FUNCTIONS
     void registerGeneratorFunctions();
     void registerExpressionGeneratorFunctions();
+    void registerAddressGeneratorFunctions();
     llvm::Value *generateExpression(Node *node);
+    llvm::Value *generateAddress(Node *node);
     AddressAndPendingFree generateIdentifierAddress(Node *node);
     void generateStatement(Node *node);
     void shoutRuntime(llvm::Value *val, ResolvedType type);

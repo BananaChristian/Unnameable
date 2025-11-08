@@ -23,6 +23,7 @@ IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
 {
     registerGeneratorFunctions();
     registerExpressionGeneratorFunctions();
+    registerAddressGeneratorFunctions();
 
     // Declare external allocator functions so IR can call them
     llvm::FunctionType *initType = llvm::FunctionType::get(
@@ -107,6 +108,22 @@ llvm::Value *IRGenerator::generateExpression(Node *node)
     return (this->*exprIt->second)(node);
 }
 
+// Main L-value generator helper functions
+llvm::Value *IRGenerator::generateAddress(Node *node)
+{
+    if (!node)
+    {
+        std::cout << "[IRGEN] Null node! \n";
+    }
+    auto addrIt = addressGeneratorsMap.find(typeid(*node));
+    if (addrIt == addressGeneratorsMap.end())
+    {
+        throw std::runtime_error("Could not find address generator for: " + node->toString());
+    }
+
+    return (this->*addrIt->second)(node);
+}
+
 // GENERATOR FUNCTIONS
 void IRGenerator::generateStatement(Node *node)
 {
@@ -154,7 +171,6 @@ void IRGenerator::generateLetStatement(Node *node)
     if (isGlobalScope)
     {
         std::cout << "[DEBUG] No insert block (global scope) for let '" << letName << "'\n";
-        std::cout << "UHBJBFDWHJDBWKBFWUBFJKWNBF4FBW\n";
         if (isComponent && isHeap)
         {
             generateGlobalComponentHeapInit(letStmt, sym, letName, structTy);
@@ -600,27 +616,49 @@ void IRGenerator::generateReferenceStatement(Node *node)
     if (!refStmt)
         throw std::runtime_error("Invalid reference statement");
 
-    auto refName = refStmt->referer->expression.TokenLiteral;
+    const auto &refName = refStmt->referer->expression.TokenLiteral;
+    const auto &refereeName = semantics.extractIdentifierName(refStmt->referee.get());
 
+    // Lookup metadata
     auto metaIt = semantics.metaData.find(refStmt);
     if (metaIt == semantics.metaData.end())
-        throw std::runtime_error("Failed to find reference statement metaData for '" + refName + "'");
+        throw std::runtime_error("Failed to find reference metaData for '" + refName + "'");
 
     auto refSym = metaIt->second;
-    // Getting the target symbol
     auto targetSym = refSym->refereeSymbol;
-
     if (!targetSym)
         throw std::runtime_error("Reference '" + refName + "' has no target symbol");
 
     if (targetSym->hasError)
-        throw std::runtime_error("Semantic error detected");
+        throw std::runtime_error("Semantic error detected on reference target '" + refereeName + "'");
 
-    if (!targetSym->llvmValue)
-        throw std::runtime_error("Reference '" + refName + "' target has no llvmValue");
+    // Generate the LLVM pointer to the actual value, not the pointer variable
+    llvm::Value *targetAddress = nullptr;
+    if (targetSym->llvmValue)
+    {
+        // If the target has already generated LLVM value, ensure we store the **address**
+        if (targetSym->llvmValue->getType()->isPointerTy())
+        {
+            targetAddress = targetSym->llvmValue;
+        }
+        else
+        {
+            // For scalars, take their address
+            targetAddress = funcBuilder.CreateAlloca(targetSym->llvmValue->getType(), nullptr, refereeName + "_addr");
+            funcBuilder.CreateStore(targetSym->llvmValue, targetAddress);
+        }
+    }
+    else
+    {
+        // If LLVM value not yet generated, compute the address via generateAddress
+        targetAddress = generateAddress(refStmt->referee.get());
+    }
 
-    // Since references are just an alias system per se I will just give the reference the same llvm value as its target
-    refSym->llvmValue = targetSym->llvmValue;
+    if (!targetAddress || !targetAddress->getType()->isPointerTy())
+        throw std::runtime_error("Failed to resolve LLVM address for reference '" + refName + "'");
+
+    // The reference itself holds the pointer to the target
+    refSym->llvmValue = targetAddress;
 }
 
 // Pointer statement IR generator function
@@ -1026,7 +1064,7 @@ void IRGenerator::generateAssignmentStatement(Node *node)
     if (!assignStmt)
         return;
 
-    if (!funcBuilder.GetInsertBlock())
+    if (isGlobalScope)
         throw std::runtime_error("Executable statements are not allowed at global scope");
 
     llvm::Value *targetPtr = nullptr;
@@ -1052,7 +1090,6 @@ void IRGenerator::generateAssignmentStatement(Node *node)
             throw std::runtime_error("Failed to get pointer for the dereference expression");
     }
     else
-
     { // Regular variable assignment
         const std::string &varName = assignStmt->identifier->expression.TokenLiteral;
         auto metaIt = semantics.metaData.find(assignStmt);
@@ -1356,22 +1393,53 @@ void IRGenerator::generateReturnStatement(Node *node)
     }
 
     llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
-    if (retVal)
+    llvm::Type *retTy = currentFunction->getReturnType();
+    // The type is a struct if it is nullable
+    bool isNullable = retTy->isStructTy();
+
+    if (!isNullable)
     {
-        // Ensure the return type matches
-        if (retVal->getType() != currentFunction->getReturnType())
+        if (retVal)
         {
-            llvm::errs() << "Return type mismatch\n";
+            // Ensure the return type matches
+            if (retVal->getType() != retTy)
+            {
+                llvm::errs() << "Return type mismatch\n";
+            }
+            funcBuilder.CreateRet(retVal);
         }
-        funcBuilder.CreateRet(retVal);
-    }
-    else
-    {
-        // For void functions
-        if (currentFunction->getReturnType()->isVoidTy())
-            funcBuilder.CreateRetVoid();
         else
-            llvm::errs() << "Return statement missing value for non-void function\n";
+        {
+            // For void functions
+            if (currentFunction->getReturnType()->isVoidTy())
+                funcBuilder.CreateRetVoid();
+            else
+                llvm::errs() << "Return statement missing value for non-void function\n";
+        }
+    }
+    else // If the type is nullable
+    {
+        auto errStmt = dynamic_cast<ErrorStatement *>(retStmt->error_val.get());
+        if (!errStmt)
+            throw std::runtime_error("Expected error! expression in nullable return");
+
+        llvm::Value *errVal = generateExpression(errStmt->errorExpr.get());
+        if (!retVal)
+            throw std::runtime_error("Nullable return missing success value");
+
+        if (!errVal)
+            throw std::runtime_error("Error fall back is missing");
+
+        llvm::StructType *structTy = llvm::cast<llvm::StructType>(retTy);
+
+        llvm::Type *valueTy = structTy->getElementType(0);
+        llvm::Type *errTy = structTy->getElementType(1);
+
+        llvm::Value *s = llvm::UndefValue::get(structTy);
+        s = funcBuilder.CreateInsertValue(s, retVal, {0});
+        s = funcBuilder.CreateInsertValue(s, errVal, {1});
+
+        funcBuilder.CreateRet(s);
     }
 }
 
@@ -2455,110 +2523,111 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node)
     return ptr;
 }
 
-llvm::Value *IRGenerator::generateDereferenceAddress(Node *node)
-{
-    auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
-    if (!derefExpr)
-        throw std::runtime_error("Invalid dereference expression");
-
-    const std::string &name = derefExpr->identifier->expression.TokenLiteral;
-
-    auto metaIt = semantics.metaData.find(derefExpr);
-    if (metaIt == semantics.metaData.end())
-        throw std::runtime_error("Unidentified inditifier '" + name + "' in dereference expression");
-
-    auto derefSym = metaIt->second;
-    if (!derefSym)
-        throw std::runtime_error("Unidentified dereference identifier '" + name + "'");
-
-    // Check if there are any semantic errors
-    if (derefSym->hasError)
-        throw std::runtime_error("Semantic error detected");
-
-    // Get the llvm value of the identifier(the address of the pointer) it was stored here by the generate pointer statement
-    auto derefIdent = dynamic_cast<Identifier *>(derefExpr->identifier.get());
-    if (!derefIdent)
-        throw std::runtime_error("There is an issue here check the node maybe NODE TYPE IS: '" + derefIdent->toString() + "'");
-
-    std::cout << "DEREF IDENTIFIER NODE IS: " << derefIdent->toString() << "\n";
-    AddressAndPendingFree addrAndFree = generateIdentifierAddress(derefIdent);
-    auto pointerAddress = addrAndFree.address;
-    if (!pointerAddress)
-        throw std::runtime_error("Pointer address does not exist");
-
-    // Getting the type of the pointer
-    auto pointerType = getLLVMType(derefSym->derefPtrType);
-    if (!pointerType)
-        throw std::runtime_error("Pointer type doesnt exist");
-
-    if (!pointerType->isPointerTy())
-        throw std::runtime_error("Cannot dereference non-pointer type");
-
-    // Loading the actual address stored in the pointer address(Address of the pointee)
-    auto loadedPointer = funcBuilder.CreateLoad(pointerType, pointerAddress, name + "_addr");
-    if (!loadedPointer)
-        throw std::runtime_error("Loaded pointer not created");
-
-    std::cout << "Exited dereference address generator\n";
-
-    return loadedPointer;
-}
-
 llvm::Value *IRGenerator::generateDereferenceExpression(Node *node)
 {
     auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
     if (!derefExpr)
         throw std::runtime_error("Invalid dereference expression");
 
-    const std::string &name = derefExpr->identifier->expression.TokenLiteral;
+    Node *operandNode = derefExpr->identifier.get();
+    if (!operandNode)
+        throw std::runtime_error("Dereference has no operand");
+
+    const std::string &name = semantics.extractIdentifierName(operandNode);
 
     auto metaIt = semantics.metaData.find(derefExpr);
     if (metaIt == semantics.metaData.end())
-        throw std::runtime_error("Unidentified inditifier '" + name + "' in dereference expression");
+        throw std::runtime_error("Unidentified identifier '" + name + "'");
 
     auto derefSym = metaIt->second;
     if (!derefSym)
-        throw std::runtime_error("Unidentified dereference identifier '" + name + "'");
-
-    // Check if there are any semantic errors
+        throw std::runtime_error("Unidentified dereference operand '" + name + "'");
     if (derefSym->hasError)
         throw std::runtime_error("Semantic error detected");
 
-    // Get the llvm value of the identifier(the address of the pointer) it was stored here by the generate pointer statement
-    auto derefIdent = dynamic_cast<Identifier *>(derefExpr->identifier.get());
-    if (!derefIdent)
-        throw std::runtime_error("There is an issue here check the node maybe NODE TYPE IS: '" + derefIdent->toString() + "'");
+    // Get the pointer value
+    llvm::Value *value = nullptr;
+    if (auto identNode = dynamic_cast<Identifier *>(operandNode))
+    {
+        value = generateIdentifierAddress(identNode).address;
+    }
+    else
+    {
+        value = generateAddress(operandNode);
+    }
 
-    std::cout << "DEREF IDENTIFIER NODE IS: " << derefIdent->toString() << "\n";
-    AddressAndPendingFree addrAndFree = generateIdentifierAddress(derefIdent);
-    auto pointerAddress = addrAndFree.address;
-    if (!pointerAddress)
-        throw std::runtime_error("Pointer address does not exist");
+    if (!value || !value->getType()->isPointerTy())
+        throw std::runtime_error("Operand is not a pointer");
 
-    // Getting the type of the pointer
-    auto pointerType = getLLVMType(derefSym->derefPtrType);
-    if (!pointerType)
-        throw std::runtime_error("Pointer type doesnt exist");
+    // Final element type (type after all derefs)
+    llvm::Type *targetType = getLLVMType(derefSym->type);
+    if (!targetType)
+        throw std::runtime_error("Failed to get element type");
 
-    if (!pointerType->isPointerTy())
+    // Iteratively load until we reach the final type
+    llvm::Type *currentTy = getLLVMType(derefSym->derefPtrType); // pointer type
+    llvm::Type *targetTy = getLLVMType(derefSym->type);          // final type after all derefs
+
+    int step = 0;
+    while (currentTy != targetTy)
+    {
+        // Load from pointer using LLVM; opaque pointers are fine
+        value = funcBuilder.CreateLoad(currentTy, value, name + "_step" + std::to_string(step));
+
+        // Advance the type using metadata for next deref
+        currentTy = getLLVMType(derefSym->type);
+        ++step;
+    }
+    return value;
+}
+
+llvm::Value *IRGenerator::generateDereferenceAddress(Node *node)
+{
+    auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
+    if (!derefExpr)
+        throw std::runtime_error("Invalid dereference expression");
+
+    Node *operandNode = derefExpr->identifier.get();
+    if (!operandNode)
+        throw std::runtime_error("Dereference has no operand");
+
+    const std::string &name = semantics.extractIdentifierName(operandNode);
+
+    auto metaIt = semantics.metaData.find(derefExpr);
+    if (metaIt == semantics.metaData.end())
+        throw std::runtime_error("Unidentified identifier '" + name + "' in dereference expression");
+
+    auto derefSym = metaIt->second;
+    if (!derefSym)
+        throw std::runtime_error("Unidentified dereference operand '" + name + "'");
+
+    if (derefSym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
+    llvm::Value *ptrValue = nullptr;
+
+    if (auto identNode = dynamic_cast<Identifier *>(operandNode))
+    {
+        AddressAndPendingFree addrAndFree = generateIdentifierAddress(identNode);
+        ptrValue = addrAndFree.address;
+    }
+    else
+    {
+        ptrValue = generateAddress(operandNode);
+    }
+
+    if (!ptrValue || !ptrValue->getType()->isPointerTy())
+        throw std::runtime_error("Operand is not a pointer");
+
+    llvm::Type *pointerTy = getLLVMType(derefSym->derefPtrType);
+    if (!pointerTy || !pointerTy->isPointerTy())
         throw std::runtime_error("Cannot dereference non-pointer type");
 
-    // Loading the actual address stored in the pointer address(Address of the pointee)
-    auto loadedPointer = funcBuilder.CreateLoad(pointerType, pointerAddress, name + "_addr");
+    llvm::Value *loadedPointer = funcBuilder.CreateLoad(pointerTy, ptrValue, name + "_addr");
     if (!loadedPointer)
-        throw std::runtime_error("Loaded pointer not created");
+        throw std::runtime_error("Failed to load pointer address");
 
-    // Loading the actual value stored at the address of the pointee
-    auto elementType = getLLVMType(derefSym->type);
-    if (!elementType)
-        throw std::runtime_error("Failed to generate llvm type for pointee type '" + derefSym->type.resolvedName + "'");
-
-    auto finalValue = funcBuilder.CreateLoad(elementType, loadedPointer, name + "_val");
-    if (!finalValue)
-        throw std::runtime_error("Failed to generate dereference value");
-
-    std::cout << "Exited dereference expression generator\n";
-    return finalValue;
+    return loadedPointer;
 }
 
 AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
@@ -2929,7 +2998,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
     auto fnRetType = fnExpr->return_type.get();
 
     auto retType = semantics.inferNodeDataType(fnRetType);
-    llvm::FunctionType *funcType = llvm::FunctionType::get(getLLVMType(retType), llvmParamTypes, false);
+    llvm::FunctionType *funcType = llvm::FunctionType::get(lowerFunctionType(retType), llvmParamTypes, false);
 
     // Look up if the function declaration exists
     llvm::Function *fn = module->getFunction(fnName);
@@ -3026,16 +3095,17 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
     if (isGlobalScope)
         throw std::runtime_error("Function calls are not allowed at global scope");
 
+    // Getting the function name
+    const std::string &fnName = callExpr->function_identifier->expression.TokenLiteral;
+
     auto callIt = semantics.metaData.find(callExpr);
     if (callIt == semantics.metaData.end())
     {
         throw std::runtime_error("Call expression does not exist");
     }
     if (callIt->second->hasError)
-        throw std::runtime_error("Semantic error detected in call expression");
+        throw std::runtime_error("Semantic error detected in '" + fnName + "' call");
 
-    // Getting the function name
-    const std::string &fnName = callExpr->function_identifier->expression.TokenLiteral;
     // Getting the function I want to call
     llvm::Function *calledFunc = module->getFunction(fnName);
 
@@ -3064,7 +3134,109 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
     {
         return nullptr;
     }
+
+    // If the return is nullable
+    if (callIt->second->returnType.isNull)
+    {
+        // Extract the success value
+        return funcBuilder.CreateExtractValue(call, {0}, "success");
+    }
     return call;
+}
+
+llvm::Value *IRGenerator::generateCallAddress(Node *node)
+{
+    auto callExpr = dynamic_cast<CallExpression *>(node);
+    if (!callExpr)
+        throw std::runtime_error("Invalid call expression inside address generator");
+
+    if (isGlobalScope)
+        throw std::runtime_error("Function calls are not allowed in global scope");
+
+    const std::string &funcName = callExpr->function_identifier->expression.TokenLiteral;
+
+    auto callIt = semantics.metaData.find(callExpr);
+    if (callIt == semantics.metaData.end())
+        throw std::runtime_error("Call expression metaData not found");
+
+    if (callIt->second->hasError)
+        throw std::runtime_error("Semantic error detected in call for '" + funcName + "'");
+
+    llvm::Function *calledFunc = module->getFunction(funcName);
+    if (!calledFunc)
+        throw std::runtime_error("Unknown function '" + funcName + "' referenced");
+
+    // Generate IR for each argument
+    std::vector<llvm::Value *> argsV;
+    for (const auto &arg : callExpr->parameters)
+    {
+        llvm::Value *argVal = generateExpression(arg.get());
+        if (!argVal)
+            throw std::runtime_error("Argument codegen failed");
+        argsV.push_back(argVal);
+    }
+
+    llvm::Type *retTy = calledFunc->getReturnType();
+    if (retTy->isVoidTy())
+        throw std::runtime_error("Attempted to take address of a void call result");
+
+    // Ensure the temporary alloca is created in the entry block of the current function.
+    llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
+    llvm::IRBuilder<> tmpBuilder(&currentFunction->getEntryBlock(),
+                                 currentFunction->getEntryBlock().begin());
+    llvm::AllocaInst *tmpAlloca = tmpBuilder.CreateAlloca(retTy, nullptr, "calltmp.addr");
+
+    // Emit the call (value returned into caller)
+    llvm::Value *callVal = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
+
+    // Store the returned value into the caller-owned temporary and return its address.
+    funcBuilder.CreateStore(callVal, tmpAlloca);
+
+    return tmpAlloca; // pointer to caller-allocated storage containing the call result
+}
+
+llvm::Value *IRGenerator::generateUnwrapCallExpression(Node *node)
+{
+    auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node);
+    if (!unwrapExpr)
+        throw std::runtime_error("Invalid unwrap expression call");
+
+    auto unIt = semantics.metaData.find(unwrapExpr);
+    if (unIt == semantics.metaData.end())
+        throw std::runtime_error("Missing unwrap metaData");
+
+    if (unIt->second->hasError)
+        throw std::runtime_error("Semantic error detected");
+
+    if (!unIt->second->returnType.isNull)
+        throw std::runtime_error("Cannot unwrap a non-nullable function return");
+
+    auto call = dynamic_cast<CallExpression *>(unwrapExpr->call.get());
+    const std::string &fnName = call->function_identifier->expression.TokenLiteral;
+
+    llvm::Function *calledFn = module->getFunction(fnName);
+
+    if (!calledFn)
+    {
+        throw std::runtime_error("Unknown function '" + fnName + "' referenced");
+    }
+
+    // Generate IR for each argument
+    std::vector<llvm::Value *> argsV;
+    for (const auto &arg : call->parameters)
+    {
+        llvm::Value *argVal = generateExpression(arg.get());
+        if (!argVal)
+        {
+            throw std::runtime_error("Argument codegen failed");
+        }
+        argsV.push_back(argVal);
+    }
+
+    llvm::Value *raw = funcBuilder.CreateCall(calledFn, argsV, "unwrap_calltmp");
+
+    // Return the error value
+    return funcBuilder.CreateExtractValue(raw, {1}, "error");
 }
 
 // HELPER FUNCTIONS
@@ -3204,6 +3376,22 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
     return baseType;
 }
 
+llvm::Type *IRGenerator::lowerFunctionType(const ResolvedType &type)
+{
+    // If the type isnt nullable just use then normal mapper
+    if (!type.isNull)
+        return getLLVMType(type);
+
+    // If the type is nullable use the hidden struct that holds the success value and error value
+    llvm::Type *valueTy = getLLVMType({type.kind, type.resolvedName, /*isPtr*/ false, /*isNull*/ false});
+
+    // The error value has the same type as the value
+    llvm::Type *errorTy = valueTy;
+
+    std::vector<llvm::Type *> members = {valueTy, errorTy};
+    return llvm::StructType::get(context, members, false); // not packed
+}
+
 // Registering generator functions for statements
 void IRGenerator::registerGeneratorFunctions()
 {
@@ -3232,6 +3420,13 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(ShoutStatement)] = &IRGenerator::generateShoutStatement;
 }
 
+void IRGenerator::registerAddressGeneratorFunctions()
+{
+    addressGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfAddress;
+    addressGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallAddress;
+    addressGeneratorsMap[typeid(DereferenceExpression)] = &IRGenerator::generateDereferenceAddress;
+}
+
 void IRGenerator::registerExpressionGeneratorFunctions()
 {
     expressionGeneratorsMap[typeid(InfixExpression)] = &IRGenerator::generateInfixExpression;
@@ -3257,6 +3452,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(DereferenceExpression)] = &IRGenerator::generateDereferenceExpression;
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
+    expressionGeneratorsMap[typeid(UnwrapExpression)] = &IRGenerator::generateUnwrapCallExpression;
     expressionGeneratorsMap[typeid(MethodCallExpression)] = &IRGenerator::generateMethodCallExpression;
     expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
     expressionGeneratorsMap[typeid(NewComponentExpression)] = &IRGenerator::generateNewComponentExpression;

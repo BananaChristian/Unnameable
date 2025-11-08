@@ -254,7 +254,7 @@ void IRGenerator::generateComponentFunctionStatement(Node *node, const std::stri
         // Return type
         ResolvedType retType = semantics.inferNodeDataType(expr->return_type.get());
         llvm::FunctionType *fnType =
-            llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
+            llvm::FunctionType::get(lowerFunctionType(retType), paramTypes, false);
 
         // Create or fetch function
         llvm::Function *fn = module->getFunction(funcName);
