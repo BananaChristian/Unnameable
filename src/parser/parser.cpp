@@ -31,6 +31,12 @@ std::vector<std::unique_ptr<Node>> Parser::parseProgram()
             continue;
         }
 
+        if (currentToken().type == TokenType::END)
+        {
+            std::cout << "[DEBUG] Parser reached END token. Breaking loop.\n";
+            break;
+        }
+
         std::cout << "Parsing token: " << currentToken().TokenLiteral << "\n";
         Token current = currentToken();
 
@@ -1235,7 +1241,7 @@ std::unique_ptr<Expression> Parser::parseIdentifier()
 std::unique_ptr<Expression> Parser::parseAddressExpression()
 {
     Token addr_token = currentToken();
-    advance(); // Consume & token
+    advance(); // Consume addr token
 
     auto ident = parseIdentifier();
 
@@ -1248,7 +1254,7 @@ std::unique_ptr<Expression> Parser::parseDereferenceExpression()
     Token deref_token = currentToken();
     advance(); // Consume deref token
 
-    auto ident = parseIdentifier();
+    auto ident = parseExpression(Precedence::PREC_NONE);
 
     return std::make_unique<DereferenceExpression>(deref_token, std::move(ident));
 }
@@ -1564,6 +1570,12 @@ std::unique_ptr<Expression> Parser::parseMethodCallExpression(std::unique_ptr<Ex
 std::unique_ptr<Expression> Parser::parseCallExpression(std::unique_ptr<Expression> left)
 {
     std::cout << "[DEBUG] Entered parseCallExpression for: " << left->toString() << "\n";
+    if (dynamic_cast<Identifier *>(left.get()) == nullptr)
+    {
+        logError("Expected identifier as function name for call");
+        return nullptr;
+    }
+
     Token call_token = currentToken(); // We expect a left parenthesis here
 
     if (call_token.type != TokenType::LPAREN)
@@ -1658,7 +1670,7 @@ std::unique_ptr<Expression> Parser::parsePointerType()
     Token ptr_token = currentToken();
     advance(); // Consume the ptr token
     std::unique_ptr<Expression> type;
-    if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER || currentToken().type == TokenType::VOID)
+    if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
     {
         type = parseBasicType();
     }
@@ -1669,10 +1681,33 @@ std::unique_ptr<Expression> Parser::parsePointerType()
     }
     else
     {
-        logError("Expected basic or array return type ");
+        logError("Expected basic or array type for pointers ");
     }
 
     return std::make_unique<PointerType>(ptr_token, std::move(type));
+}
+
+// Parsing the ref type
+std::unique_ptr<Expression> Parser::parseRefType()
+{
+    Token ref_token = currentToken();
+    advance(); // Consume the ref token
+
+    std::unique_ptr<Expression> type;
+    if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
+    {
+        type = parseBasicType();
+    }
+    else if (currentToken().type == TokenType::ARRAY)
+    {
+        type = parseArrayType();
+    }
+    else
+    {
+        logError("Expected basic or array return for references");
+    }
+
+    return std::make_unique<RefType>(ref_token, std::move(type));
 }
 
 // Parsing the return type expression
@@ -1691,6 +1726,10 @@ std::unique_ptr<Expression> Parser::parseReturnType()
     else if (currentToken().type == TokenType::PTR)
     {
         expr = parsePointerType();
+    }
+    else if (currentToken().type == TokenType::REF)
+    {
+        expr = parseRefType();
     }
     else
     {
@@ -1729,7 +1768,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     {
         advance(); // Move past the colon signs
         if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER ||
-            currentToken().type == TokenType::VOID || currentToken().type == TokenType::ARRAY || currentToken().type == TokenType::PTR)
+            currentToken().type == TokenType::VOID || currentToken().type == TokenType::ARRAY || currentToken().type == TokenType::PTR || currentToken().type == TokenType::REF)
         {
             return_type = parseReturnType();
         }
@@ -1768,59 +1807,65 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters()
 {
     std::vector<std::unique_ptr<Statement>> args; // Declaring the empty vector
 
-    // Checking if the current token is the lparen
-    if (currentToken().type != TokenType::LPAREN)
+    // Optional parentheses if no parameters
+    bool hasParens = false;
+    if (currentToken().type == TokenType::LPAREN)
     {
-        logError("Expected a ( to start a function parameter ");
-        return args;
+        hasParens = true;
+        advance(); // move past '('
     }
 
-    // Advancing from the lparen
-    advance();
-
-    if (currentToken().type == TokenType::RPAREN)
+    // Check for empty parameter list or no parentheses
+    if (hasParens && currentToken().type == TokenType::RPAREN)
     {
-        advance();
+        advance(); // move past ')'
         if (currentToken().type != TokenType::COLON)
         {
-            logError("Expected ':' after empty parameter list ");
+            logError("Expected ':' after empty parameter list");
         }
-
-        return args; // Return an empty vector of arguments
+        return args; // empty vector
     }
 
-    auto firstParam = parseLetStatementDecider(); // Parsing the fisrt parameter i.e 1
+    // If no LPAREN, and current token is COLON, allow no-parameter function
+    if (!hasParens && currentToken().type == TokenType::COLON)
+    {
+        return args; // empty vector, no parentheses needed
+    }
 
+    // Now we parse the first parameter (if any)
+    auto firstParam = parseLetStatementDecider();
     if (!firstParam)
-    { // Checking if it failed to parse the 1st parameter
+    {
         std::cerr << "Failed to parse first parameter.\n";
         return args;
     }
-    args.push_back(std::move(firstParam)); // If its parsed we add it to the vector
+    args.push_back(std::move(firstParam));
 
     while (currentToken().type == TokenType::COMMA)
-    {                                          // If we still have commas
-        advance();                             // Advance from the comma to the second parameter
-        auto arg = parseLetStatementDecider(); // Parse the second parameter
+    {
+        advance();
+        auto arg = parseLetStatementDecider();
         if (!arg)
-        { // It it fails to parse the second parameter
+        {
             std::cerr << "Failed to parse parameter after comma\n";
             return args;
         }
         args.push_back(std::move(arg));
     }
 
-    if (currentToken().type != TokenType::RPAREN)
+    // If we used parentheses, we must have closing ')'
+    if (hasParens && currentToken().type != TokenType::RPAREN)
     {
-        logError("Expected ')' after function parameters ");
+        logError("Expected ')' after function parameters");
         return args;
     }
-    advance();
+    if (hasParens)
+        advance();
 
-    //--THIS IS WHERE THE FUNCTION HAS TO DEFER FROM PARSE CALL EXPRESSION
+    // Check colon after parameter list
     if (currentToken().type != TokenType::COLON)
     {
-        logError("Expected : after function closing ");
+        logError("Expected ':' after function declaration");
     }
 
     return args;
@@ -1974,11 +2019,11 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
 
     PrefixParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifierOrArraySubscript;
-    PrefixParseFunctionsMap[TokenType::BITWISE_AND] = &Parser::parseAddressExpression;
+    PrefixParseFunctionsMap[TokenType::ADDR] = &Parser::parseAddressExpression;
     PrefixParseFunctionsMap[TokenType::DEREF] = &Parser::parseDereferenceExpression;
     PrefixParseFunctionsMap[TokenType::NEW] = &Parser::parseNewComponentExpression;
     PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
-    PrefixParseFunctionsMap[TokenType::UNWRAP]= &Parser::parseUnwrapExpression;
+    PrefixParseFunctionsMap[TokenType::UNWRAP] = &Parser::parseUnwrapExpression;
     PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
     PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;

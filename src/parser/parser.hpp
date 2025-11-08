@@ -246,7 +246,7 @@ private:
     // Method access call expression parse function
     std::unique_ptr<Expression> parseMethodCallExpression(std::unique_ptr<Expression> left);
 
-    //Parsing unwrap expression
+    // Parsing unwrap expression
     std::unique_ptr<Expression> parseUnwrapExpression();
 
     // Parsing identifier expression
@@ -275,6 +275,9 @@ private:
 
     // Parsing for pointer return type
     std::unique_ptr<Expression> parsePointerType();
+
+    //Parsing for reference type
+    std::unique_ptr<Expression> parseRefType();
 
     // Parsing the return type expression
     std::unique_ptr<Expression> parseReturnType();
