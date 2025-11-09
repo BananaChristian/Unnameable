@@ -558,19 +558,13 @@ z=z+1s;
 ```
 
 ## Address operator in Unnameable
-In unnameable the  `addr` operator is strictly for obtaining the memory address of a variable, It is used in references and pointers to show the target
-For example in pointers
+In unnameable the  `addr` operator is strictly for obtaining the memory address of a variable, It is used in  pointers to show the target
+For example 
 ```
 heap int a =10;
 ptr p-> addr a;
 ```
-The example above means create a pointer to the address of a so yeah that is how it used 
-For example in references
-```
-heap int b=19;
-ref r->addr b;
-```
-In the case above it means create a reference to address of a so basically a reference to a 
+
 
 _Quick note_:
 The compiler sees `addr <variable>` as a pointer so the type of the variable matters if the variable `x` is an integer then `addr x` has a type of `int_ptr` 
@@ -580,15 +574,15 @@ The compiler sees `addr <variable>` as a pointer so the type of the variable mat
 
 Unnameable provides a safe and explicit way of refering to existing symbols without copying their values
 They act as symbolic aliases
-They have a syntax of `ref <type> <name> -> addr <target> `
+They have a syntax of `ref <type> <name> -> <target> `
 
 - ref :introduces a reference variable
-- addr <target> : specifies the address of the variable being referenced
+- <target> : specifies the the variable being referenced
 - The type after ref must match the target type unless type inference is used(You can infer by just not adding the type)
 
 ```
 heap int a=10;
-ref int b -> addr a;
+ref int b -> a;
 ```
 
 Here b refers to a. Any modification through b directly affects a
@@ -597,7 +591,7 @@ _Type inference_:
 If you omit the type, the compiler infers it from the target
 
 ```
-ref b -> addr a; #Infered as int
+ref b -> a; #Infered as int_ref
 ```
 
 _Mutability rules_:
@@ -605,10 +599,10 @@ By default refrences are immutable but the user must specify if they want it to 
 
 ```
 heap mut int a = 6;
-ref mut int b -> addr a;
+ref mut int b -> a;
 
 heap int x=7;
-ref mut int y -> addr x; #Error: Since a mutable reference cannot be made to an immutable target
+ref mut int y -> x; #Error: Since a mutable reference cannot be made to an immutable target
 
 ```
 
@@ -617,7 +611,7 @@ References must be made to only heap raised or global values this way the compil
 
 ```
 int a=9;
-ref int b -> addr a; #Error since u can't reference a non-heap raised variable
+ref int b -> a; #Error since u can't reference a non-heap raised variable
 ```
 
 _Usage of reference variables_
@@ -625,10 +619,10 @@ Reference variables must reference one target, you cannot reassign the target to
 
 ```
 heap mut int x=19;
-ref mut int y-> addr x;
+ref mut int y->  x;
 
 heap mut int z=23;
-y = addr z; #Error since u cannot change the variable reference y is already pointing to
+y = z; #Error since u cannot change the variable reference y is already pointing to
 
 #This is not to be confused with this
 y=z; #Here I am simply using the value of z to change x since y is referencing x
@@ -645,17 +639,18 @@ Example
 ```
 func main(): int {
     #Target MUST be heap raised
-    heap int a = 10;
+    heap mut int a = 10;
 
     # Reference creation (type inferred)
-    ref mut b -> addr a;
+    ref mut b -> a;
 
-    #Write 50 to the memory location of 'a' via 'b'
-    b = 50;
+    #Write 70 to the memory location of 'a' via 'b'
+    int c=70;
+    b = c; #This will place 70 into the location of a
 
     # Read 'a's value (50) via 'b' and add 1
     int result = b + 1;
-    shout! result;# Result will be 51
+    shout! result;# Result will be 71
     return result;
 }
 ```
