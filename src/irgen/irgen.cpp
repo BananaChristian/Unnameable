@@ -3373,6 +3373,10 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
     if (type.isPointer)
         return llvm::PointerType::get(baseType, 0);
 
+    // Wrap in a pointer if isRef is true
+    if (type.isRef)
+        return llvm::PointerType::get(baseType, 0);
+
     return baseType;
 }
 
@@ -3383,7 +3387,7 @@ llvm::Type *IRGenerator::lowerFunctionType(const ResolvedType &type)
         return getLLVMType(type);
 
     // If the type is nullable use the hidden struct that holds the success value and error value
-    llvm::Type *valueTy = getLLVMType({type.kind, type.resolvedName, /*isPtr*/ false, /*isNull*/ false});
+    llvm::Type *valueTy = getLLVMType({type.kind, type.resolvedName, /*isPtr*/ false,/*isRef*/false, /*isNull*/ false});
 
     // The error value has the same type as the value
     llvm::Type *errorTy = valueTy;
