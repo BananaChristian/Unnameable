@@ -1007,14 +1007,7 @@ void IRGenerator::generateForStatement(Node *node)
     if (forStmt->step)
     {
         std::cerr << "[IR DEBUG] Generating loop step\n";
-        llvm::Value *stepVal = generateExpression(forStmt->step.get());
-        if (!stepVal)
-        {
-            std::cerr << "[IR ERROR] loop step generation returned nullptr!\n";
-            funcBuilder.CreateBr(condBB); // keep IR consistent
-            funcBuilder.SetInsertPoint(origBB);
-            return;
-        }
+        generateStatement(forStmt->step.get());
     }
     funcBuilder.CreateBr(condBB);
 
@@ -3387,7 +3380,7 @@ llvm::Type *IRGenerator::lowerFunctionType(const ResolvedType &type)
         return getLLVMType(type);
 
     // If the type is nullable use the hidden struct that holds the success value and error value
-    llvm::Type *valueTy = getLLVMType({type.kind, type.resolvedName, /*isPtr*/ false,/*isRef*/false, /*isNull*/ false});
+    llvm::Type *valueTy = getLLVMType({type.kind, type.resolvedName, /*isPtr*/ false, /*isRef*/ false, /*isNull*/ false});
 
     // The error value has the same type as the value
     llvm::Type *errorTy = valueTy;
