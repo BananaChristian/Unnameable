@@ -871,8 +871,13 @@ void Semantics::walkAssignStatement(Node *node)
 
     // --- Infer RHS type if not null ---
     ResolvedType rhsType = inferNodeDataType(assignStmt->value.get());
+    auto lhsType = symbol->type;
+    if (symbol->isRef) // If the symbol is a reference strip it
+    {
+        lhsType.isRef = false;
+    }
 
-    if (!isTypeCompatible(symbol->type, rhsType))
+    if (!isTypeCompatible(lhsType, rhsType))
     {
         logSemanticErrors("Type mismatch: expected '" +
                               symbol->type.resolvedName + "' but got '" +
@@ -923,18 +928,6 @@ void Semantics::walkAssignStatement(Node *node)
         if (rhsDefinitelyNull)
         {
             logSemanticErrors("Cannot assign a null value to to a non-nullable variable '" + assignName + "'",
-                              assignStmt->identifier->expression.line,
-                              assignStmt->identifier->expression.column);
-            hasError = true;
-        }
-    }
-
-    // Special check if the symbol is a reference
-    if (symbol->isRef)
-    {
-        if (auto ident = dynamic_cast<AddressExpression *>(assignStmt->value.get()))
-        {
-            logSemanticErrors("Cannot reassign an address to a reference '" + assignName + "'",
                               assignStmt->identifier->expression.line,
                               assignStmt->identifier->expression.column);
             hasError = true;
@@ -1189,8 +1182,9 @@ void Semantics::walkReferenceStatement(Node *node)
     {
         // If the referee type isnt a pointer toggle the isRef flag to true
         // It is like type elevation after all we want to create a reference to something
-        refereeType.isRef = true;
-        isRefType(refereeType); // Convert the name
+        auto tempType = refereeSymbol->type;
+        tempType.isRef = true;
+        refereeType = isRefType(refereeType); // Convert the name and store it 
     }
 
     // If the reference statement has no type we just infer the type
