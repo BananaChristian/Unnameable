@@ -242,7 +242,8 @@ void Semantics::walkForStatement(Node *node)
     if (!forStmt)
         return;
     std::cout << "[SEMANTIC LOG] Analyzing for statement " << forStmt->toString() << "\n";
-
+    
+    symbolTable.push_back({});
     // Handling the initializer
     auto initializer = forStmt->initializer.get();
     walker(initializer);
@@ -254,7 +255,7 @@ void Semantics::walkForStatement(Node *node)
     walker(step);
     // Handling the block
     loopContext.push_back(true);
-    symbolTable.push_back({});
+    
     auto block = forStmt->body.get();
     walker(block);
     popScope();
