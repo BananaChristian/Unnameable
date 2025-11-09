@@ -393,10 +393,10 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         if (inner.kind == DataType::VOID)
         {
             logSemanticErrors("Cannot have a void reference return type", refType->expression.line, refType->expression.column);
-            return ResolvedType{DataType::UNKNOWN, "unknown", false, false};
+            return ResolvedType{DataType::UNKNOWN, "unknown", false, false, false};
         }
-        inner.isPointer = true;
-        return isPointerType(inner); // References are just pointers with some rules so I think I can use this
+        inner.isRef = true;
+        return isRefType(inner);
     }
 
     if (auto retTypeExpr = dynamic_cast<ReturnType *>(node))
@@ -499,6 +499,14 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         // Update the is pointer flag to true
         ptrType.isPointer = true;
         return isPointerType(ptrType);
+    }
+
+    if (auto refStmt = dynamic_cast<ReferenceStatement *>(node))
+    {
+        ResolvedType refType = inferNodeDataType(refStmt->type.get());
+        // Update the reference flag to true
+        refType.isRef = true;
+        return isRefType(refType);
     }
 
     return {DataType::UNKNOWN, "unknown"};
@@ -997,6 +1005,10 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedTyp
 {
     // Pointers must match
     if (expected.isPointer != actual.isPointer)
+        return false;
+
+    // References must match
+    if (expected.isRef != actual.isRef)
         return false;
 
     // Error type can always pass through
@@ -1652,6 +1664,35 @@ ResolvedType Semantics::isPointerType(ResolvedType t)
     };
 
     return ptrType(t.kind, t.isPointer, t.resolvedName);
+}
+
+ResolvedType Semantics::isRefType(ResolvedType t)
+{
+    // Inline lambda to check if a string ends with a suffix
+    auto endsWith = [](const std::string &str, const std::string &suffix) -> bool
+    {
+        if (str.length() < suffix.length())
+            return false;
+        return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
+    };
+
+    auto refType = [&](DataType baseType, bool isRef, std::string baseName)
+    {
+        if (isRef)
+        {
+            if (!endsWith(baseName, "_ref"))
+                baseName += "_ref";
+        }
+        else
+        {
+            if (endsWith(baseName, "_ref"))
+                baseName = baseName.substr(0, baseName.size() - 4);
+        }
+
+        return ResolvedType{baseType, baseName, false, isRef};
+    };
+
+    return refType(t.kind, t.isRef, t.resolvedName);
 }
 
 std::pair<std::string, std::string> Semantics::splitScopedName(const std::string &fullName)

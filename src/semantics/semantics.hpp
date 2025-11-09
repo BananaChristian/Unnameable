@@ -65,6 +65,7 @@ struct ResolvedType
     DataType kind; // For the custom inbuilt types
     std::string resolvedName;
     bool isPointer = false;
+    bool isRef=false;
     bool isNull = false;
 };
 
@@ -322,6 +323,7 @@ private:
     ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
     ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
     ResolvedType isPointerType(ResolvedType t);
+    ResolvedType isRefType(ResolvedType t);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     int64_t SubscriptIndexVerifier(Node *indexNode, int64_t arrLen);
     ArrayMeta getArrayMeta(Node *node);

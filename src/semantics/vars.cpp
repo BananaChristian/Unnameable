@@ -1179,6 +1179,20 @@ void Semantics::walkReferenceStatement(Node *node)
     }
 
     ResolvedType refereeType = refereeSymbol->type;
+    // Check if the referee type is a pointer and block it
+    if (refereeType.isPointer)
+    {
+        logSemanticErrors("Cannot create references to pointers", line, column);
+        hasError = true;
+    }
+    else
+    {
+        // If the referee type isnt a pointer toggle the isRef flag to true
+        // It is like type elevation after all we want to create a reference to something
+        refereeType.isRef = true;
+        isRefType(refereeType); // Convert the name
+    }
+
     // If the reference statement has no type we just infer the type
     if (!refStmt->type)
     {
@@ -1186,8 +1200,7 @@ void Semantics::walkReferenceStatement(Node *node)
     }
     else if (refStmt->type)
     {
-        auto refTypeNode = dynamic_cast<ReturnType *>(refStmt->type.get());
-        refType = inferNodeDataType(refTypeNode); // Update the data type with the type that was declared
+        refType = inferNodeDataType(refStmt); // Update the data type with the type that was declared
 
         if (refType.isNull)
         {
@@ -1196,7 +1209,7 @@ void Semantics::walkReferenceStatement(Node *node)
         }
 
         // Compare the two types
-        if (refType.kind != refereeType.kind)
+        if (!isTypeCompatible(refType, refereeType))
         {
             logSemanticErrors("Type mismatch reference '" + refName + "' of type '" + refType.resolvedName + "' does not match variable '" + refereeName + "' being refered with type '" + refereeType.resolvedName + "'", line, column);
             hasError = true;

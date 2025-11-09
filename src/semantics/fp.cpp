@@ -154,12 +154,12 @@ void Semantics::walkReturnStatement(Node *node)
     else if (!isTypeCompatible(currentFunction.value()->returnType, valueType))
     {
         logSemanticErrors("Return value type '" + valueType.resolvedName +
-                              "' does not match '" + currentFunction.value()->returnType.resolvedName + "'",
-                          node->token.line, node->token.column);
+                              "' does not match function return type of  '" + currentFunction.value()->returnType.resolvedName + "'",
+                          retStmt->return_value->expression.line, retStmt->return_value->expression.column);
         hasError = true;
     }
 
-    // Safety guard to prevent unsafe returns
+    // Safety guard to prevent unsafe returns for pointers
     if (valueType.isPointer)
     {
         // Identify what the pointer actually points to
@@ -210,6 +210,42 @@ void Semantics::walkReturnStatement(Node *node)
                         retStmt->return_stmt.column);
 
                     hasError = true;
+                }
+            }
+        }
+    }
+
+    if (valueType.isPointer)
+    {
+        // Identify what the reference actually references
+        if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get()))
+        {
+            auto &name = ident->identifier.TokenLiteral;
+            auto sym = resolveSymbolInfo(name);
+            if (sym)
+            {
+                if (!sym->isParam)
+                {
+                    // Get the storage type for the target
+                    auto targetSym = sym->refereeSymbol;
+                    if (!targetSym)
+                    {
+                        logSemanticErrors(
+                            "Target of reference '" + name + "' does not exist",
+                            retStmt->return_stmt.line,
+                            retStmt->return_stmt.column);
+                        return;
+                    }
+                    // If the pointee is STACK → ILLEGAL RETURN
+                    if (targetSym->storage == StorageType::STACK)
+                    {
+                        logSemanticErrors(
+                            "Illegal return of reference'" + name + "' (stack memory will be destroyed).",
+                            retStmt->return_stmt.line,
+                            retStmt->return_stmt.column);
+
+                        hasError = true;
+                    }
                 }
             }
         }
@@ -438,6 +474,7 @@ void Semantics::walkFunctionExpression(Node *node)
     auto funcExpr = dynamic_cast<FunctionExpression *>(node);
     // Semantic error flag
     bool hasError = false;
+
     if (!funcExpr)
     {
         logSemanticErrors("Invalid function expression", node->token.line, node->token.column);
