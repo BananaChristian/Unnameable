@@ -1159,13 +1159,13 @@ struct ForStatement : Statement
     Token for_key;
     std::unique_ptr<Statement> initializer; // int i;
     std::unique_ptr<Expression> condition;  // i < 10
-    std::unique_ptr<Expression> step;       // i = i + 1
+    std::unique_ptr<Statement> step;       // i = i + 1
     std::unique_ptr<Statement> body;        // the loop body
 
     ForStatement(Token for_k,
                  std::unique_ptr<Statement> init,
                  std::unique_ptr<Expression> cond,
-                 std::unique_ptr<Expression> step,
+                 std::unique_ptr<Statement> step,
                  std::unique_ptr<Statement> body)
         : Statement(for_k),
           for_key(for_k),
