@@ -1034,14 +1034,8 @@ std::unique_ptr<Statement> Parser::parseForStatement()
     }
     advance(); // consume second '|'
 
-    // Parse step expression (must be prefix/postfix)
-    auto step = parseExpression(Precedence::PREC_NONE);
-    if (!(dynamic_cast<PrefixExpression *>(step.get()) ||
-          dynamic_cast<PostfixExpression *>(step.get())))
-    {
-        logError("Step expression must be a prefix or postfix increment/decrement (e.g., ++i, i++)");
-        return nullptr;
-    }
+    // Parse step statement
+    auto step = parseStatement();
 
     if (currentToken().type != TokenType::RPAREN)
     {
