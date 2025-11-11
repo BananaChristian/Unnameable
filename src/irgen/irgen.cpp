@@ -34,13 +34,15 @@ IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
 
     llvm::FunctionType *allocType = llvm::FunctionType::get(
-        i8PtrTy,                           // returns void*
-        {llvm::Type::getInt64Ty(context)}, // takes size_t
+        i8PtrTy, // returns void*
+        {
+            llvm::Type::getInt64Ty(context), // takes size_t for component size
+            llvm::Type::getInt64Ty(context)  // takes size_t for alignment
+        },
         false);
 
     llvm::FunctionType *freeType = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(context),    // returns void
-        {llvm::Type::getInt64Ty(context)}, // takes size_t
+        llvm::Type::getVoidTy(context), // returns void
         false);
 
     llvm::FunctionType *destroyType = llvm::FunctionType::get(
@@ -246,7 +248,7 @@ void IRGenerator::generateLetStatement(Node *node)
         Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
         if (letStmt == lastUse && sym->refCount == 0)
         {
-            freeHeapStorage(sym->componentSize, letName);
+            freeHeapStorage(sym->componentSize, sym->alignment.value(), letName);
             std::cout << "[DEBUG] Immediately freed dead heap variable '" << letName << "'\n";
         }
     }
@@ -276,7 +278,7 @@ void IRGenerator::generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<S
     if (!llvm::dyn_cast<llvm::GlobalVariable>(globalPtr))
     {
         std::cerr << "FATAL BUG: sym->llvmValue overwritten after GlobalVariable creation for '" << letName << "'.\n";
-        // throw std::runtime_error("Symbol table corruption.");  // Uncomment to halt on error
+        throw std::runtime_error("Symbol table corruption.");
     }
     else
     {
@@ -308,6 +310,7 @@ void IRGenerator::generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<S
         i8PtrTy,
         llvm::Type::getInt64Ty(context));
     llvm::Value *allocSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
+    llvm::Value *alignment = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->alignment.value());
     llvm::Value *tmpPtr = heapBuilder.CreateCall(sageAllocFn, {allocSize}, letName + "_alloc");
 
     // Store the raw pointer in the global slot
@@ -455,6 +458,7 @@ void IRGenerator::generateGlobalComponentHeapInit(LetStatement *letStmt, std::sh
         llvm::Type::getInt64Ty(context));
 
     llvm::Value *allocSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
+    llvm::Value *alignSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->alignment.value());
 
     llvm::Value *i8_ptr = heapBuilder.CreateCall(sageAllocFn, {allocSize}, letName + ".global.ptr.i8");
     llvm::Value *typedPtr = heapBuilder.CreateBitCast(i8_ptr, ptrTy, letName + ".global.ptr.typed");
@@ -504,13 +508,11 @@ void IRGenerator::generateGlobalComponentHeapInit(LetStatement *letStmt, std::sh
         {
             llvm::FunctionCallee sageFree = module->getOrInsertFunction(
                 "sage_free",
-                llvm::Type::getVoidTy(context),
-                llvm::Type::getInt64Ty(context));
+                llvm::Type::getVoidTy(context));
 
             heapBuilder.CreateCall(
-                sageFree,
-                {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)},
-                letName + "_sage_free");
+                sageFree
+                /*letName + "_sage_free"*/);
         }
     }
 }
@@ -581,31 +583,36 @@ llvm::Value *IRGenerator::allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, c
         generateSageInitCall();
 
     uint64_t allocSize = sym->componentSize;
+    uint64_t alignSize = sym->alignment.value();
     llvm::Type *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
     llvm::FunctionCallee sageAlloc = module->getOrInsertFunction(
         "sage_alloc",
         i8PtrTy,
+        llvm::Type::getInt64Ty(context),
         llvm::Type::getInt64Ty(context));
 
     llvm::Value *rawPtr = funcBuilder.CreateCall(
         sageAlloc,
-        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), allocSize)},
+        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), allocSize),
+         llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), alignSize)},
         letName + "_sage_rawptr");
 
     llvm::Type *targetPtrTy = structTy ? structTy->getPointerTo() : getLLVMType(sym->type)->getPointerTo();
     return funcBuilder.CreateBitCast(rawPtr, targetPtrTy, letName + "_heap_ptr");
 }
 
-void IRGenerator::freeHeapStorage(uint64_t size, const std::string &letName)
+void IRGenerator::freeHeapStorage(uint64_t size, uint64_t alignSize, const std::string &letName)
 {
     llvm::FunctionCallee sageFree = module->getOrInsertFunction(
         "sage_free",
         llvm::Type::getVoidTy(context),
+        llvm::Type::getInt64Ty(context),
         llvm::Type::getInt64Ty(context));
 
     funcBuilder.CreateCall(
         sageFree,
-        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size)},
+        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size),
+         llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), alignSize)},
         letName + "_sage_free");
 }
 
@@ -2699,12 +2706,9 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
         {
             llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
                 "sage_free",
-                llvm::Type::getVoidTy(context),
-                llvm::Type::getInt64Ty(context));
+                llvm::Type::getVoidTy(context));
 
-            llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
-
-            llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn, {sizeArg});
+            llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn);
             callInst->setCallingConv(llvm::CallingConv::C);
             // Not inserted yet — caller will insert before/after as needed
             out.pendingFree = callInst;

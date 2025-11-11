@@ -175,7 +175,7 @@ private:
     void generateGlobalComponentHeapInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structType);
     // Helper for allocating heap storage (shared logic for components and scalars)
     llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy);
-    void freeHeapStorage(uint64_t size, const std::string &letName);
+    void freeHeapStorage(uint64_t size, uint64_t alignSize, const std::string &letName);
 };
 
 #endif
