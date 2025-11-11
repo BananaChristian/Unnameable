@@ -16,24 +16,24 @@ extern "C"
                   << total_size << " bytes\n";
     }
 
-    void *sage_alloc(size_t size)
+    void *sage_alloc(size_t size, size_t alignment)
     {
         if (!Allocator::global_allocator)
         {
             std::cerr << "[SAGE ERROR]: Allocator not initialized!\n";
             return nullptr;
         }
-        return Allocator::global_allocator->sage_alloc(size);
+        return Allocator::global_allocator->sage_alloc(size, alignment);
     }
 
-    void sage_free(size_t size)
+    void sage_free()
     {
         if (!Allocator::global_allocator)
         {
             std::cerr << "[SAGE ERROR]: Allocator not initialized!\n";
             return;
         }
-        Allocator::global_allocator->sage_free(size);
+        Allocator::global_allocator->sage_free();
     }
 
     void sage_destroy()
@@ -75,39 +75,57 @@ Allocator::Allocator(size_t total_heap_size)
               << ", ending at: " << general_stack_heap.limit << "\n";
 }
 
-void *Allocator::sage_alloc(size_t component_size)
+void *Allocator::sage_alloc(size_t component_size, size_t alignment)
 {
-    size_t aligned_size = component_size ; // Removed alignment
-    if ((char *)general_stack_heap.frameptr + aligned_size > (char *)general_stack_heap.limit)
+
+    uintptr_t current = (uintptr_t)general_stack_heap.frame_ptr;
+    uintptr_t aligned = (current + (alignment + 1)) & ~(alignment - 1);
+
+    if ((char *)aligned + component_size > (char *)general_stack_heap.limit)
     {
         std::cout << "sage_alloc -> Hit allocated memory limit\n";
         return nullptr;
     }
 
-    void *object_address = general_stack_heap.frameptr;
-    general_stack_heap.frameptr = (char *)general_stack_heap.frameptr + aligned_size;
+    void *object_address = (void *)aligned;
 
-    std::cout << "sage_alloc -> Allocated " << aligned_size
+    general_stack_heap.frameptr = (char *)aligned + component_size;
+
+    sage_lifo.push_back({object_address, component_size, alignment});
+
+    std::cout << "sage_alloc -> Allocated " << component_size
               << " bytes at " << object_address
               << ", new frameptr: " << general_stack_heap.frameptr << "\n";
 
     return object_address;
 }
 
-void Allocator::sage_free(size_t component_size)
+void Allocator::sage_free(size_t component_size, size_t alignment)
 {
-    char *new_frame = (char *)general_stack_heap.frameptr - component_size;
-    if (new_frame < (char *)general_stack_heap.baseptr)
+    if (sage_lifo.empty())
     {
-        std::cout << "sage_free -> Underflow, cannot free "
-                  << component_size << " bytes\n";
+        std::cout << "sage_free -> nothing to free\n";
         return;
     }
 
-    uintptr_t old_frame_addr = (uintptr_t)general_stack_heap.frameptr;
+    auto last=sage_lifo.back();
+    sage_lifo.pop_back();
+
+    uintptr_t current = (unintptr_t)general_stack_heap.frameptr;
+    size_t mask = last.alignment - 1;
+    uintptr_t aligned = (current - last.size + mask) & ~mask;
+
+    char *new_frame = (char *)aligned;
+    if (new_frame < (char *)general_stack_heap.baseptr)
+    {
+        std::cout << "sage_free -> Underflow, cannot free "
+                  << last.size << " bytes\n";
+        return;
+    }
+
     uintptr_t new_frame_addr = (uintptr_t)new_frame;
 
-    uintptr_t old_aligned = old_frame_addr & ~(pagesize - 1);
+    uintptr_t old_aligned = current & ~(pagesize - 1);
     uintptr_t new_aligned = (new_frame_addr + pagesize - 1) & ~(pagesize - 1);
 
     if (new_aligned < old_aligned)
@@ -129,7 +147,7 @@ void Allocator::sage_free(size_t component_size)
 
     general_stack_heap.frameptr = new_frame;
 
-    std::cout << "sage_free -> Freed " << component_size
+    std::cout << "sage_free -> Freed " << last.size
               << " bytes, new frameptr: " << general_stack_heap.frameptr << "\n";
 }
 
@@ -211,38 +229,56 @@ Allocator::Allocator(size_t total_heap_size)
               << ", ending at: " << general_stack_heap.limit << "\n";
 }
 
-void *Allocator::sage_alloc(size_t component_size)
+void *Allocator::sage_alloc(size_t component_size, size_t alignment)
 {
-    size_t aligned_size =component_size; // Have removed aligning for now
-    if ((char *)general_stack_heap.frameptr + aligned_size > (char *)general_stack_heap.limit)
+    uintptr_t current = (uintptr_t)general_stack_heap.frameptr;
+    uintptr_t aligned = (current + (alignment - 1)) & ~(alignment - 1);
+
+    if ((char *)aligned + component_size > (char *)general_stack_heap.limit)
     {
         std::cout << "sage_alloc -> Hit allocated memory limit\n";
         return nullptr;
     }
 
-    void *object_address = general_stack_heap.frameptr;
-    general_stack_heap.frameptr = (char *)general_stack_heap.frameptr + aligned_size;
+    void *object_address = (void *)aligned;
 
-    std::cout << "sage_alloc -> Allocated " << aligned_size << " bytes at "
+    general_stack_heap.frameptr = (char *)aligned + component_size;
+
+    sage_lifo.push_back({object_address, component_size, alignment});
+
+    std::cout << "sage_alloc -> Allocated " << component_size << " bytes at "
               << object_address << ", new frameptr: " << general_stack_heap.frameptr << "\n";
 
     return object_address;
 }
 
-void Allocator::sage_free(size_t component_size)
+void Allocator::sage_free()
 {
-    char *new_frame = (char *)general_stack_heap.frameptr - component_size;
-    if (new_frame < (char *)general_stack_heap.baseptr)
+
+    if (sage_lifo.empty())
     {
-        std::cout << "sage_free -> Underflow, cannot free "
-                  << component_size << " bytes\n";
+        std::cout << "sage_free -> nothing to free\n";
         return;
     }
 
-    uintptr_t old_frame_addr = (uintptr_t)general_stack_heap.frameptr;
+    auto last = sage_lifo.back();
+    sage_lifo.pop_back();
+
+    uintptr_t current = (uintptr_t)general_stack_heap.frameptr;
+    size_t mask = last.alignment - 1;
+    uintptr_t aligned = (current - last.size + mask) & ~mask;
+
+    char *new_frame = (char *)aligned;
+    if (new_frame < (char *)general_stack_heap.baseptr)
+    {
+        std::cout << "sage_free -> Underflow, cannot free "
+                  << last.size << " bytes\n";
+        return;
+    }
+
     uintptr_t new_frame_addr = (uintptr_t)new_frame;
 
-    uintptr_t old_aligned = old_frame_addr & ~(pagesize - 1);
+    uintptr_t old_aligned = current & ~(pagesize - 1);
     uintptr_t new_aligned = (new_frame_addr + pagesize - 1) & ~(pagesize - 1);
 
     if (new_aligned < old_aligned)
@@ -263,7 +299,7 @@ void Allocator::sage_free(size_t component_size)
 
     general_stack_heap.frameptr = new_frame;
 
-    std::cout << "sage_free -> Freed " << component_size
+    std::cout << "sage_free -> Freed " << last.size
               << " bytes, new frameptr: " << general_stack_heap.frameptr << "\n";
 }
 
