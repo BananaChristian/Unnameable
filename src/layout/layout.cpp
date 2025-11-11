@@ -59,6 +59,7 @@ void Layout::calculateLetStatementSize(Node *node)
     const std::string &name = letStmt->ident_token.TokenLiteral;
 
     uint64_t compSize = 0;
+    llvm::Align compAlignment;
 
     // Getting the let statement metaData
     auto letMeta = semantics.metaData.find(letStmt);
@@ -86,8 +87,9 @@ void Layout::calculateLetStatementSize(Node *node)
     llvm::DataLayout DL(tempModule.get());
 
     compSize = DL.getTypeAllocSize(letType);
+    compAlignment = DL.getABITypeAlign(letType);
 
-    // Populating the com
+    letSym->alignment = compAlignment;
     letSym->componentSize = compSize;
 
     totalHeapSize += compSize;
@@ -399,6 +401,9 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
 
     // Wrap in a pointer if isPointer is true
     if (type.isPointer)
+        return llvm::PointerType::get(baseType, 0);
+
+    if (type.isRef)
         return llvm::PointerType::get(baseType, 0);
 
     return baseType;
