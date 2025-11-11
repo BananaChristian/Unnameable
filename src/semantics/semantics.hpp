@@ -174,6 +174,7 @@ struct SymbolInfo
     std::shared_ptr<SymbolInfo> fieldSymbol; // The actual member accessed (health)
 
     size_t componentSize;
+    llvm::Align alignment;
     int alloc_id = 0; // This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
     int refCount = 0;
