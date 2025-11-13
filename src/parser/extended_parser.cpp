@@ -454,7 +454,7 @@ std::unique_ptr<Expression> Parser::parseArrayType()
         }
         advance(); // consume ']'
 
-        // Return a node representing this array type (flat, no nesting)
+        // Return a node representing this array type 
         return std::make_unique<ArrayType>(arr_token, std::move(innerType), isNullable);
     }
     else if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
@@ -481,36 +481,38 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
         advance(); // Consume the const
     }
 
-    Token arr_token = currentToken();
-
     // Parse the array type (arr[...] with basic or custom type inside)
     auto arrTypeNode = parseArrayType();
     if (!arrTypeNode)
         return nullptr;
 
+    // Parse the lengths
+
     // Optional single dimension [size]
     std::unique_ptr<Expression> lengthExpr = nullptr;
-    if (currentToken().type == TokenType::LBRACKET)
+    std::vector<std::unique_ptr<Expression>> lengths;
+
+    while (currentToken().type == TokenType::LBRACKET)
     {
         advance(); // consume '['
 
-        lengthExpr = parseExpression(Precedence::PREC_NONE);
+        std::unique_ptr<Expression> lengthExpr;
         if (currentToken().type == TokenType::IDENTIFIER)
-        {
             lengthExpr = parseIdentifier();
-        }
-        else if (currentToken().type != TokenType::RBRACKET)
-        {
-            logError("Unexpected token in array length '" + currentToken().TokenLiteral + "'");
+        else
+            lengthExpr = parseExpression(Precedence::PREC_NONE);
+
+        if (!lengthExpr)
             return nullptr;
-        }
 
         if (currentToken().type != TokenType::RBRACKET)
         {
-            logError("Expected ']' after array length");
+            logError("Expected ']' after array length but got '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
         advance(); // consume ']'
+
+        lengths.push_back(std::move(lengthExpr));
     }
 
     // Expect identifier
@@ -553,12 +555,11 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
             return nullptr;
         }
     }
-    // Done – always leaves parser positioned AFTER the statement
+ 
     return std::make_unique<ArrayStatement>(
         mutability,
-        arr_token,
         std::move(arrTypeNode),
-        std::move(lengthExpr),
+        std::move(lengths),
         std::move(ident),
         std::move(items));
 }
@@ -821,9 +822,10 @@ std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam)
         std::move(value));
 }
 
-std::unique_ptr<Expression> Parser::parseUnwrapExpression(){
-    advance(); //Consume the unwrap token
-    auto callExpr=parseExpression(Precedence::PREC_NONE);
+std::unique_ptr<Expression> Parser::parseUnwrapExpression()
+{
+    advance(); // Consume the unwrap token
+    auto callExpr = parseExpression(Precedence::PREC_NONE);
 
     return std::make_unique<UnwrapExpression>(std::move(callExpr));
 }
