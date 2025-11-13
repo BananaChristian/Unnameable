@@ -1159,7 +1159,7 @@ struct ForStatement : Statement
     Token for_key;
     std::unique_ptr<Statement> initializer; // int i;
     std::unique_ptr<Expression> condition;  // i < 10
-    std::unique_ptr<Statement> step;       // i = i + 1
+    std::unique_ptr<Statement> step;        // i = i + 1
     std::unique_ptr<Statement> body;        // the loop body
 
     ForStatement(Token for_k,
@@ -1386,46 +1386,56 @@ struct ArrayLiteral : Expression
 struct ArrayStatement : Statement
 {
     Mutability mutability;
-    Token arr_token;                        // 'arr' keyword
-    std::unique_ptr<Expression> arrType;    // BasicReturnType only
-    std::unique_ptr<Expression> length;     // Optional single dimension
-    std::unique_ptr<Expression> identifier; // Array name
-    std::unique_ptr<Expression> items;      // Optional initializer
+    std::unique_ptr<Expression> arrayType;            // Like arr[int]
+    std::vector<std::unique_ptr<Expression>> lengths; // Stuff like [1] or [2][3] it is optional though
+    std::unique_ptr<Expression> identifier;
+    std::unique_ptr<Expression> array_content;
 
     std::string toString() override
     {
-        std::string lengthStr = length ? "[" + length->toString() + "]" : "";
+        std::string lenStr = "";
+        if (!lengths.empty())
+        {
+            for (const auto &len : lengths)
+            {
+                lenStr += "["+ len->toString() +"]";
+            }
+        }
         std::string mutStr = "";
         if (mutability == Mutability::MUTABLE)
         {
-            mutStr += "mut ";
+            mutStr += "mut";
         }
         else if (mutability == Mutability::CONSTANT)
         {
-            mutStr = "const ";
+            mutStr += "const";
         }
-        return "Array Statement: " +
-               mutStr +
-               (arrType ? arrType->toString() : "<unknown>") +
-               lengthStr + " Name: " +
-               (identifier ? identifier->toString() : "<unnamed>") + " " +
-               (items ? items->toString() : "");
+
+        std::string arrayTypeStr = "<no type>";
+        if (arrayType)
+            arrayTypeStr = arrayType->toString();
+
+        std::string arrName = "<no name>";
+        if (identifier)
+        {
+            arrName = identifier->toString();
+        }
+
+        std::string arrContent = "[]";
+        if (array_content)
+        {
+            arrContent = array_content->toString();
+        }
+
+        return "Array Statement: " + mutStr + " " + arrayTypeStr + " Lengths: " + lenStr + " " + arrName + " " + arrContent;
     }
 
     ArrayStatement(
         Mutability mut,
-        Token arr,
-        std::unique_ptr<Expression> typeNode,
-        std::unique_ptr<Expression> len,
-        std::unique_ptr<Expression> name,
-        std::unique_ptr<Expression> contents)
-        : Statement(arr),
-          mutability(mut),
-          arr_token(arr),
-          arrType(std::move(typeNode)),
-          length(std::move(len)),
-          identifier(std::move(name)),
-          items(std::move(contents)) {}
+        std::unique_ptr<Expression> arrayTy,
+        std::vector<std::unique_ptr<Expression>> lens,
+        std::unique_ptr<Expression> ident,
+        std::unique_ptr<Expression> array) : Statement(arrayTy ? arrayTy->token : Token{"",TokenType::ILLEGAL,0,0}), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
 };
 
 // Array Subscript expression
