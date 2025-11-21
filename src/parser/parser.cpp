@@ -106,29 +106,27 @@ std::unique_ptr<Statement> Parser::parseStatement()
 // Parsing assignment statements
 std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
 {
-    std::cout << "NOW INSIDE ASSIGNEMENT STATEMENT PARSER\n";
+    std::cout << "NOW INSIDE ASSIGNMENT STATEMENT PARSER\n";
     std::unique_ptr<Expression> value = nullptr;
     Token identToken = currentToken();
     bool isQualified = false;
 
     // self.field = ...
     std::unique_ptr<Expression> lhs;
+    lhs = parseExpression(Precedence::PREC_NONE);
 
-    if (identToken.type == TokenType::SELF)
+    if (!lhs)
     {
-        lhs = parseSelfExpression();
+        logError("Invalid left-hand side in assignment");
+        return nullptr;
     }
-    else if (identToken.type == TokenType::DEREF)
+
+    if (!(dynamic_cast<Identifier *>(lhs.get()) ||
+          dynamic_cast<ArraySubscript *>(lhs.get()) ||
+          dynamic_cast<SelfExpression *>(lhs.get()) ||
+          dynamic_cast<DereferenceExpression *>(lhs.get())))
     {
-        lhs = parseDereferenceExpression();
-    }
-    else if (identToken.type == TokenType::IDENTIFIER)
-    {
-        lhs = parseIdentifier(); // consume identifier
-    }
-    else
-    {
-        logError("Invalid left-hand side in assignment: '" + identToken.TokenLiteral + "'");
+        logError("Left-hand side of assignment is not assignable");
         return nullptr;
     }
 
@@ -2064,34 +2062,54 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
 {
     Token current = currentToken();
     std::cout << "IDENTIFIER TOKEN INSIDE IDENTIFIER STATEMENT PARSER: " << current.TokenLiteral << "\n";
-    // Helper to peek after full subscript (x[0], x[y[1]], etc.)
+
     auto peekAfterSubscript = [this](int startOffset = 1) -> Token
     {
-        int depth = 0;
         int offset = startOffset;
-        while (true)
+
+        // Must start on '['
+        if (peekToken(offset).type != TokenType::LBRACKET)
+            return peekToken(offset);
+
+        while (peekToken(offset).type == TokenType::LBRACKET)
         {
-            Token t = peekToken(offset);
-            if (t.type == TokenType::LBRACKET)
-                depth++;
-            else if (t.type == TokenType::RBRACKET)
+            int depth = 0;
+
+            // Walk until we close this bracket chain
+            while (true)
             {
-                depth--;
-                if (depth == 0)
-                    return peekToken(offset + 1); // token after closing bracket
+                Token t = peekToken(offset);
+
+                if (t.type == TokenType::LBRACKET)
+                    depth++;
+                else if (t.type == TokenType::RBRACKET)
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        offset++; // move past the closing ']'
+                        break;
+                    }
+                }
+                else if (t.type == TokenType::END)
+                {
+                    return Token{"", TokenType::END};
+                }
+
+                offset++;
             }
-            else if (t.type == TokenType::END)
-                break;
-            offset++;
+            // Now offset is past a full "[...]" chain
+            // Loop continues if next token is '['
         }
-        return Token{"", TokenType::END};
+
+        // offset now points to the token AFTER the final subscript chain
+        return peekToken(offset);
     };
 
     Token peek1 = peekToken(1);
-
-    // Array subscript case
     if (peek1.type == TokenType::LBRACKET)
     {
+        std::cout << "PEEK AFTER SUBSCRIPT :" << peekAfterSubscript().TokenLiteral << "\n";
         if (peekAfterSubscript().type == TokenType::ASSIGN)
         {
             std::cout << "SUBSCRIPT ASSIGNMENT DETECTED\n";
@@ -2111,12 +2129,6 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
         Token peek3 = peekToken(3);
         if (peek3.type == TokenType::ASSIGN)
             return parseFieldAssignment();
-    }
-
-    // Type declarations (x y)
-    if (peek1.type == TokenType::IDENTIFIER || peek1.type == TokenType::QUESTION_MARK)
-    {
-        return parseLetStatementWithTypeWrapper();
     }
 
     // Fall back to generic expression statement

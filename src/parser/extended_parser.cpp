@@ -454,7 +454,7 @@ std::unique_ptr<Expression> Parser::parseArrayType()
         }
         advance(); // consume ']'
 
-        // Return a node representing this array type 
+        // Return a node representing this array type
         return std::make_unique<ArrayType>(arr_token, std::move(innerType), isNullable);
     }
     else if (isBasicType(currentToken().type) || currentToken().type == TokenType::IDENTIFIER)
@@ -497,10 +497,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
         advance(); // consume '['
 
         std::unique_ptr<Expression> lengthExpr;
-        if (currentToken().type == TokenType::IDENTIFIER)
-            lengthExpr = parseIdentifier();
-        else
-            lengthExpr = parseExpression(Precedence::PREC_NONE);
+        lengthExpr = parseExpression(Precedence::PREC_NONE);
 
         if (!lengthExpr)
             return nullptr;
@@ -555,7 +552,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
             return nullptr;
         }
     }
- 
+
     return std::make_unique<ArrayStatement>(
         mutability,
         std::move(arrTypeNode),
@@ -572,26 +569,27 @@ std::unique_ptr<Statement> Parser::parseArrayStatementWrapper()
 std::unique_ptr<Expression> Parser::parseArraySubscript()
 {
     auto ident = parseIdentifier();
+    std::vector<std::unique_ptr<Expression>> indexes;
 
-    if (currentToken().type != TokenType::LBRACKET)
+    while (currentToken().type == TokenType::LBRACKET)
     {
-        logError("Expected [ but got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
+        advance(); // Consume [
+        std::unique_ptr<Expression> index;
+        index = parseExpression(Precedence::PREC_NONE);
+
+        if (!index)
+            return nullptr;
+
+        if (currentToken().type != TokenType::RBRACKET)
+        {
+            logError("Expected ']' after index but got '" + currentToken().TokenLiteral + "'");
+            return nullptr;
+        }
+        advance(); // Consume ]
+        indexes.push_back(std::move(index));
     }
-    advance(); // Consume [
-    std::unique_ptr<Expression> index;
 
-    index = parseExpression(Precedence::PREC_NONE);
-
-    if (currentToken().type != TokenType::RBRACKET)
-    {
-        logError("Expected ] but got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
-    }
-
-    advance(); // Consume the ]
-
-    return std::make_unique<ArraySubscript>(std::move(ident), std::move(index));
+    return std::make_unique<ArraySubscript>(std::move(ident), std::move(indexes));
 }
 
 std::unique_ptr<Statement> Parser::parseAliasStatement()
