@@ -258,22 +258,21 @@ void Semantics::walkArrayLiteral(Node *node)
     // Recursively getting the data type of the contents inside the array and also calling the walkers
     std::vector<ResolvedType> itemTypes;
 
-    ArrayMeta arrMeta; // This is where the array meta is stored
+    ArrayTypeInfo arrayTypeInfo;
+    int dimensionCount = 1; // The array literal is already a dimension
+
     for (const auto &item : arrLit->array)
     {
         if (auto memArr = dynamic_cast<ArrayLiteral *>(item.get()))
         {
-            logSemanticErrors("Arrays not allowed inside arrays only use flat arrays", line, col);
-            hasError = true;
-            return;
+            dimensionCount++;
         }
         walker(item.get()); // Calling their walkers
         auto itemType = inferNodeDataType(item.get());
-        arrMeta.underLyingType = itemType;
+        arrayTypeInfo.underLyingType = itemType;
+        arrayTypeInfo.dimensions = dimensionCount;
         itemTypes.push_back(itemType);
     }
-
-    arrMeta.arrLen = arrLit->array.size();
 
     ResolvedType arrType = inferNodeDataType(arrLit);
 
@@ -284,7 +283,7 @@ void Semantics::walkArrayLiteral(Node *node)
     arrInfo->isNullable = false;
     arrInfo->isMutable = false;
     arrInfo->isConstant = false;
-    arrInfo->arrayMeta = arrMeta;
+    arrInfo->arrayTyInfo = arrayTypeInfo;
 
     metaData[arrLit] = arrInfo;
 }
@@ -296,35 +295,49 @@ void Semantics::walkArraySubscriptExpression(Node *node)
     if (!arrExpr)
         return;
 
-    // Semantic error flag
     bool hasError = false;
-
-    // Getting the variable name
     auto arrName = arrExpr->identifier->expression.TokenLiteral;
     auto line = arrExpr->expression.line;
     auto col = arrExpr->expression.column;
 
-    // Checking if the variable exists
-    auto arrSym = resolveSymbolInfo(arrName);
-    if (!arrSym)
+    auto arrSymbol = resolveSymbolInfo(arrName);
+    if (!arrSymbol)
     {
-        logSemanticErrors("Variable '" + arrName + "' does not exist", line, col);
-        auto arrError = std::make_shared<SymbolInfo>();
-        arrError->type = ResolvedType{DataType::UNKNOWN, "unknown"};
-        arrError->hasError = true;
+        logSemanticErrors("Unidentified variable '" + arrName + "'", line, col);
+        return;
     }
 
-    // If the symbol exists we get for the arrayMeta
-    auto arrMeta = arrSym->arrayMeta;
-    // We compare the length from the array meta to the index being used (To avoid out of bounds usage)
-    auto arrLength = arrMeta.arrLen;
-    // Get the index being used
-    auto index = arrExpr->index_expr.get();
+    // Get the full array type
+    ResolvedType arrType = arrSymbol->type;
 
-    // TODO: Will use the position returned from index verifier to fill in this position, will do this if I return to coding on this project(Really exhausted so I am gonna stop here till I return)
-    auto pos = SubscriptIndexVerifier(index, arrLength);
+    // Check indices
+    int indexLevel = 0;
+    for (auto &idxNode : arrExpr->index_exprs)
+    {
+        ResolvedType idxType = inferNodeDataType(idxNode.get());
+        if (idxType.kind != DataType::INTEGER)
+        {
+            logSemanticErrors("Array index must be of type int", idxNode->expression.line, idxNode->expression.column);
+            hasError = true;
+        }
 
-    metaData[arrExpr] = arrSym;
+        if (!arrType.isArray || !arrType.innerType)
+        {
+            logSemanticErrors("Too many indices for array '" + arrName + "'", idxNode->expression.line, idxNode->expression.column);
+            hasError = true;
+            break;
+        }
+
+        arrType = *arrType.innerType; // Peel one layer
+        indexLevel++;
+    }
+
+    // Optionally store info for further analysis
+    auto arrAccessInfo = std::make_shared<SymbolInfo>();
+    arrAccessInfo->type = arrType; // type after peeling
+    arrAccessInfo->hasError = hasError;
+
+    metaData[arrExpr] = arrAccessInfo;
 }
 
 // Walking the identifier expression
@@ -777,6 +790,21 @@ void Semantics::walkAssignStatement(Node *node)
             hasError = true;
         }
     }
+    else if (auto arrAccess = dynamic_cast<ArraySubscript *>(assignStmt->identifier.get()))
+    {
+        assignName = arrAccess->identifier->expression.TokenLiteral;
+        auto line = arrAccess->expression.line;
+        auto col = arrAccess->expression.column;
+        symbol = resolveSymbolInfo(assignName);
+        if (!symbol)
+        {
+            logSemanticErrors("Unidentifed variable '" + assignName + "' ", line, col);
+            hasError = true;
+            return;
+        }
+        walker(arrAccess);
+        symbol->type = inferNodeDataType(arrAccess);
+    }
 
     else
     {
@@ -839,7 +867,7 @@ void Semantics::walkAssignStatement(Node *node)
         else if (auto arrLit = dynamic_cast<ArrayLiteral *>(assignStmt->value.get()))
         {
             // Getting the length of the array literal
-            auto arrLitMeta = getArrayMeta(arrLit);
+            auto arrLitTypeInfo = getArrayTypeInfo(arrLit);
             // Getting the arrayMeta for the symbol
             auto arrSymbol = resolveSymbolInfo(assignName);
             if (!arrSymbol)
@@ -849,11 +877,11 @@ void Semantics::walkAssignStatement(Node *node)
                 hasError = true;
             }
 
-            auto assignMeta = arrSymbol->arrayMeta;
+            auto assignMeta = arrSymbol->arrayTyInfo;
             // Comapring the lengths
-            if (arrLitMeta.arrLen != assignMeta.arrLen)
+            if (arrLitTypeInfo.dimensions != assignMeta.dimensions)
             {
-                logSemanticErrors("Array variable '" + assignName + "' length [" + std::to_string(assignMeta.arrLen) + "] does not match array literal length [" + std::to_string(arrLitMeta.arrLen) + "]", assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
+                logSemanticErrors("Array variable '" + assignName + "' dimensions " + std::to_string(assignMeta.dimensions) + " does not match array literal dimensions " + std::to_string(arrLitTypeInfo.dimensions), assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
                 hasError = true;
             }
         }
@@ -1184,7 +1212,7 @@ void Semantics::walkReferenceStatement(Node *node)
         // It is like type elevation after all we want to create a reference to something
         auto tempType = refereeSymbol->type;
         tempType.isRef = true;
-        refereeType = isRefType(refereeType); // Convert the name and store it 
+        refereeType = isRefType(refereeType); // Convert the name and store it
     }
 
     // If the reference statement has no type we just infer the type

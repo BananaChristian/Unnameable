@@ -1370,17 +1370,10 @@ void Semantics::walkArrayStatement(Node *node)
     if (!arrStmt)
         return;
 
-    // Checking mutability
-    bool isMutable = false;
-    bool isConstant = false;
-    if (arrStmt->mutability == Mutability::MUTABLE)
-    {
-        isMutable = true;
-    }
-    else if (arrStmt->mutability == Mutability::CONSTANT)
-    {
-        isConstant = true;
-    }
+    // --- Mutability flags ---
+    bool isMutable = arrStmt->mutability == Mutability::MUTABLE;
+    bool isConstant = arrStmt->mutability == Mutability::CONSTANT;
+
     const auto &arrayName = arrStmt->identifier->expression.TokenLiteral;
     int arrNameLine = arrStmt->identifier->expression.line;
     int arrNameCol = arrStmt->identifier->expression.column;
@@ -1393,94 +1386,105 @@ void Semantics::walkArrayStatement(Node *node)
 
     bool hasError = false;
     bool isInitialized = false;
-    ArrayMeta arrMeta;
-    int64_t lengthValue = 0;
+    ArrayTypeInfo arrTypeInfo;
 
-    ResolvedType baseType = inferNodeDataType(arrStmt->arrType.get());
-
-    if (isConstant && !arrStmt->items)
+    // --- Base type inference ---
+    ResolvedType baseType = inferNodeDataType(arrStmt->arrayType.get());
+    ResolvedType arrayType;
+    // Get the array declaration dimensions
+    int arrStmtDimensions = 0;
+    // If the array dimesions are empty infer from the array literal but only if the array literal exists
+    if (arrStmt->lengths.empty())
     {
-        logSemanticErrors("Constant array '" + arrayName + "' must be initialized",
-                          arrStmt->statement.line, arrStmt->statement.column);
-        hasError = true;
-        return;
-    }
-
-    if (!arrStmt->length && !arrStmt->items)
-    {
-        logSemanticErrors("Uninitialized array '" + arrayName + "' is missing length declarations",
-                          arrStmt->statement.line, arrStmt->statement.column);
-        hasError = true;
-        return;
-    }
-
-    // Handle explicit length
-    if (arrStmt->length)
-    {
-        lengthValue = getIntExprVal(arrStmt->length.get());
-        if (lengthValue < 0)
+        if (!arrStmt->array_content)
         {
-            logSemanticErrors("Array length cannot be negative",
-                              arrStmt->length->expression.line, arrStmt->length->expression.column);
-            hasError = true;
+            logSemanticErrors("Cannot infer dimension count if you do not initialize array declaration '" + arrayName + "'", arrNameLine, arrNameCol);
             return;
         }
-
-        arrMeta.arrLen = lengthValue;
+        else
+        {
+            auto literalType = inferNodeDataType(arrStmt->array_content.get());
+            arrStmtDimensions = getArrayTypeInfo(arrStmt->array_content.get()).dimensions;
+            arrayType = literalType;
+        }
+    }
+    else
+    {
+        arrStmtDimensions = arrStmt->lengths.size();
+        arrayType = makeArrayType(baseType, arrStmtDimensions);
     }
 
-    // Handle initializer
-    if (arrStmt->items)
+    std::cout
+        << "BASE TYPE: " << baseType.resolvedName << "\n";
+    std::cout << "ARRAY TYPE: " << arrayType.resolvedName << "\n";
+
+    arrTypeInfo.underLyingType = baseType;
+
+    // --- Walk length expressions ---
+    for (const auto &len : arrStmt->lengths)
+        walker(len.get());
+
+    // --- Handle initializer ---
+    if (arrStmt->array_content)
     {
-        walker(arrStmt->items.get());
+        walker(arrStmt->array_content.get());
         isInitialized = true;
 
-        ArrayLiteral *arrLit = dynamic_cast<ArrayLiteral *>(arrStmt->items.get());
-        if (arrLit)
-        {
-            auto arrType = inferNodeDataType(arrLit);
-            if (!isTypeCompatible(baseType, arrType))
-            {
-                logSemanticErrors("Declared type '" + baseType.resolvedName +
-                                      "' does not match the initialised type '" + arrType.resolvedName + "'",
-                                  arrLit->expression.line, arrLit->expression.column);
-                hasError = true;
-                return;
-            }
-            arrMeta.arrLen = getArrayMeta(arrLit).arrLen;
-        }
-        else
+        ArrayLiteral *arrLit = dynamic_cast<ArrayLiteral *>(arrStmt->array_content.get());
+        if (!arrLit)
         {
             std::cerr << "Only use array literals for array statements\n";
             hasError = true;
             return;
         }
-    }
 
-    // Final check for length consistency
-    if (isInitialized && arrStmt->length)
-    {
-        auto arrLitLen = getArrayMeta(arrStmt->items.get()).arrLen;
-        if (arrMeta.arrLen != arrLitLen)
+        ResolvedType literalType = inferNodeDataType(arrLit);
+
+        // Retrieve the array literal dimensions
+        int arrLitDimensions = getArrayTypeInfo(arrLit).dimensions;
+
+        // Dimension check
+        if (arrStmtDimensions != arrLitDimensions)
         {
-            logSemanticErrors("Declared length [" + std::to_string(arrMeta.arrLen) +
-                                  "] does not match initializer length [" + std::to_string(arrLitLen) + "]",
-                              arrStmt->arr_token.line, arrStmt->arr_token.column);
+            logSemanticErrors("Dimensions mismatch in array declaration '" + arrayName + "' expected '" + std::to_string(arrStmtDimensions) + "' but got '" + std::to_string(arrLitDimensions) + "'", arrNameLine, arrNameCol);
+            hasError = true;
+        }
+
+        if (!isTypeCompatible(arrayType, literalType))
+        {
+            logSemanticErrors("Declared type '" + arrayType.resolvedName +
+                                  "' does not match the initialized type '" + literalType.resolvedName + "'",
+                              arrLit->expression.line, arrLit->expression.column);
+            hasError = true;
         }
     }
+    else if (isConstant)
+    {
+        logSemanticErrors("Constant array '" + arrayName + "' must be initialized",
+                          arrStmt->statement.line, arrStmt->statement.column);
+        hasError = true;
+    }
+    else if (arrStmt->lengths.empty())
+    {
+        logSemanticErrors("Uninitialized array '" + arrayName + "' is missing length declarations",
+                          arrStmt->statement.line, arrStmt->statement.column);
+        hasError = true;
+    }
 
-    std::cout << "FINAL ARRAY STATEMENT TYPE '" << baseType.resolvedName << "'\n";
+    arrTypeInfo.dimensions = arrStmtDimensions;
 
-    arrMeta.underLyingType = baseType;
-
+    // --- Store symbol info ---
     auto arrInfo = std::make_shared<SymbolInfo>();
     arrInfo->isMutable = isMutable;
     arrInfo->isConstant = isConstant;
-    arrInfo->arrayMeta = arrMeta;
+    arrInfo->arrayTyInfo = arrTypeInfo;
     arrInfo->hasError = hasError;
     arrInfo->isInitialized = isInitialized;
-    arrInfo->type = baseType;
+    arrInfo->type = arrayType; // store fully wrapped type
+    arrInfo->arrayTyInfo = arrTypeInfo;
 
     metaData[arrStmt] = arrInfo;
     symbolTable.back()[arrayName] = arrInfo;
+
+    std::cout << "FINAL ARRAY STATEMENT TYPE '" << arrayType.resolvedName << "'\n";
 }

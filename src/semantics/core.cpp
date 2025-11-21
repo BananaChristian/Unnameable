@@ -182,46 +182,94 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
 
     if (auto arrLit = dynamic_cast<ArrayLiteral *>(node))
     {
-        std::vector<ResolvedType> memberTypes;
-        bool hasNull = false;
-        for (const auto &member : arrLit->array)
+        // Empty literal → known to be array, unknown inner type
+        if (arrLit->array.empty())
         {
-            auto memberType = inferNodeDataType(member.get());
-            if (auto arr = dynamic_cast<ArrayLiteral *>(member.get()))
-            {
-                logSemanticErrors("Usage of nested arrays is prohibited only flat arrays are allowed", member->expression.line, member->expression.column);
-                return ResolvedType{DataType::UNKNOWN, "unknown"};
-            }
-            if (dynamic_cast<NullLiteral *>(member.get()))
-            {
-                hasNull = true;
-                memberType = ResolvedType{DataType::ARRAY, "null", hasNull}; // Temporary marker for the null member in the array
-                continue;
-            }
-            memberTypes.push_back(memberType);
+            auto unknownInner = std::make_shared<ResolvedType>(
+                ResolvedType{DataType::UNKNOWN, "unknown", false, false, false, false});
+
+            ResolvedType result;
+            result.kind = DataType::UNKNOWN;
+            result.isArray = true;
+            result.innerType = unknownInner;
+            result.resolvedName = "arr[" + unknownInner->resolvedName + "]";
+            return result;
         }
 
-        // Ensure all members are compatible
-        ResolvedType elementType = memberTypes[0];
-        for (size_t i = 1; i < memberTypes.size(); ++i)
+        // Infer type of first element
+        ResolvedType firstType = inferNodeDataType(arrLit->array[0].get());
+
+        // Wrap it: array literal ALWAYS produces an array type
+        auto innerPtr = std::make_shared<ResolvedType>(firstType);
+
+        // Now verify compatibility of all elements
+        for (size_t i = 1; i < arrLit->array.size(); ++i)
         {
-            if (!isTypeCompatible(elementType, memberTypes[i]))
+            ResolvedType elemType = inferNodeDataType(arrLit->array[i].get());
+
+            if (!isTypeCompatible(firstType, elemType))
             {
                 logSemanticErrors(
-                    "Type mismatch of array member at index " + std::to_string(i),
-                    arrLit->expression.line, arrLit->expression.column);
-                return ResolvedType{DataType::UNKNOWN, "unknown"};
+                    "Type mismatch of array member at index '" + std::to_string(i) +
+                        "' expected '" + firstType.resolvedName +
+                        "' but got '" + elemType.resolvedName + "'",
+                    arrLit->expression.line,
+                    arrLit->expression.column);
+
+                return ResolvedType{
+                    DataType::UNKNOWN, "unknown", false, false, false, false};
             }
         }
 
-        if (hasNull)
+        // Build the final array type
+        ResolvedType finalType;
+        finalType.kind = firstType.kind;
+        finalType.isArray = true;
+        finalType.innerType = innerPtr;
+
+        // Pretty print name (non-essential)
+        finalType.resolvedName = "arr[" + firstType.resolvedName + "]";
+
+        return finalType;
+    }
+
+    if (auto arrAccess = dynamic_cast<ArraySubscript *>(node))
+    {
+        // Extract the name of the array
+        auto arrayName = arrAccess->identifier->expression.TokenLiteral;
+        auto line = arrAccess->expression.line;
+        auto col = arrAccess->expression.column;
+
+        // Check for its symbolInfo
+        auto arrSym = resolveSymbolInfo(arrayName);
+        if (!arrSym)
         {
-            if (elementType.resolvedName.back() != '?')
-                elementType.resolvedName += "?";
+            logSemanticErrors("Unidentified variable '" + arrayName + "'", line, col);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
 
-        // Return flat array type: arr[elementType]
-        return ResolvedType{DataType::ARRAY, "arr[" + elementType.resolvedName + "]"};
+        // Get the array statement info
+        ResolvedType currentType = arrSym->type;
+        int accessCount = arrAccess->index_exprs.size();
+
+        for (int i = 0; i < accessCount; ++i)
+        {
+            ResolvedType idxType = inferNodeDataType(arrAccess->index_exprs[i].get());
+            if (idxType.kind != DataType::INTEGER)
+            {
+                logSemanticErrors("Array index must be of type int", line, col);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            if (!currentType.isArray || !currentType.innerType)
+            {
+                logSemanticErrors("Too many indices for array '" + arrayName + "'", line, col);
+                return ResolvedType{DataType::ERROR, "unknown"};
+            }
+            currentType = *currentType.innerType; // peel one layer
+        }
+
+        return currentType;
     }
 
     if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
@@ -370,9 +418,13 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     {
         // Resolve the inner type first
         ResolvedType inner = inferNodeDataType(arrRetType->innerType.get());
-
-        // Construct the array type itself
-        return ResolvedType{DataType::ARRAY, "arr[" + inner.resolvedName + "]"};
+        if (inner.kind == DataType::VOID)
+        {
+            logSemanticErrors("Cannot have a void array type", arrRetType->expression.line, arrRetType->expression.column);
+            return ResolvedType{DataType::UNKNOWN, "unknown", false, false, false, false};
+        }
+        inner.isArray = true; // Just toggle the boolean
+        return inner;
     }
 
     if (auto ptrType = dynamic_cast<PointerType *>(node))
@@ -1007,6 +1059,19 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedTyp
     if (expected.isPointer != actual.isPointer)
         return false;
 
+    if (expected.isArray || actual.isArray)
+    {
+        if (expected.isArray != actual.isArray)
+            return false; // one is array, one is not
+
+        // If either inner type is missing → mismatch
+        if (!expected.innerType || !actual.innerType)
+            return false;
+
+        // Recurse on inner types
+        return isTypeCompatible(*expected.innerType, *actual.innerType);
+    }
+
     // References must match
     if (expected.isRef != actual.isRef)
         return false;
@@ -1376,22 +1441,37 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo, CallExpression *cal
     return allGood;
 }
 
-ArrayMeta Semantics::getArrayMeta(Node *node)
+int Semantics::inferLiteralDimensions(ArrayLiteral *lit)
+{
+    if (lit->array.empty())
+        return 1; // [] is still 1D, undefined element type
+
+    // If the first element is not an array literal -> dimension = 1
+    auto first = lit->array[0].get();
+    auto innerArr = dynamic_cast<ArrayLiteral *>(first);
+    if (!innerArr)
+        return 1;
+
+    // Otherwise: 1 (this level) + dimension of inner
+    return 1 + inferLiteralDimensions(innerArr);
+}
+
+ArrayTypeInfo Semantics::getArrayTypeInfo(Node *node)
 {
     auto arrLit = dynamic_cast<ArrayLiteral *>(node);
     if (!arrLit)
-    {
-        return ArrayMeta{ResolvedType{DataType::UNKNOWN, "unknown"}, 0};
-    }
+        return ArrayTypeInfo{ResolvedType{DataType::UNKNOWN, "unknown", false, false, false, false}, 0};
 
-    ResolvedType underLyingType;
-    int arrLen = arrLit->array.size();
-    for (const auto &member : arrLit->array)
-    {
-        underLyingType = inferNodeDataType(member.get());
-    }
+    // Underlying element type = type of the deepest element
+    Node *cur = node;
+    while (auto inner = dynamic_cast<ArrayLiteral *>(cur))
+        cur = inner->array[0].get();
 
-    return ArrayMeta{underLyingType, arrLen};
+    ResolvedType underlying = inferNodeDataType(cur);
+
+    int dim = inferLiteralDimensions(arrLit);
+
+    return ArrayTypeInfo{underlying, dim};
 }
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
@@ -1482,9 +1562,6 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
 
     case TokenType::BOOL_KEYWORD:
         return ResolvedType{DataType::BOOLEAN, "bool"};
-
-    case TokenType::ARRAY:
-        return ResolvedType{DataType::ARRAY, "arr"};
 
     case TokenType::AUTO:
     {
@@ -1693,6 +1770,30 @@ ResolvedType Semantics::isRefType(ResolvedType t)
     };
 
     return refType(t.kind, t.isRef, t.resolvedName);
+}
+
+ResolvedType Semantics::makeArrayType(ResolvedType &t, int dimensionCount)
+{
+    ResolvedType out = t;
+
+    for (int i = 0; i < dimensionCount; i++)
+    {
+        ResolvedType arr;
+        arr.isArray = true;
+
+        // kind is always the base element type
+        arr.kind = t.kind;
+
+        // nest the previous result
+        arr.innerType = std::make_shared<ResolvedType>(out);
+
+        // name is pure sugar; doesn't affect semantics
+        arr.resolvedName = "arr[" + out.resolvedName + "]";
+
+        out = arr;
+    }
+
+    return out;
 }
 
 std::pair<std::string, std::string> Semantics::splitScopedName(const std::string &fullName)

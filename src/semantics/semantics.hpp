@@ -45,7 +45,6 @@ enum class DataType
     DATABLOCK,
     BEHAVIORBLOCK,
     COMPONENT,
-    ARRAY,
 
     ERROR,
     VOID,
@@ -65,8 +64,10 @@ struct ResolvedType
     DataType kind; // For the custom inbuilt types
     std::string resolvedName;
     bool isPointer = false;
-    bool isRef=false;
+    bool isRef = false;
     bool isNull = false;
+    bool isArray = false;
+    std::shared_ptr<ResolvedType> innerType;
 };
 
 struct MemberInfo
@@ -119,10 +120,10 @@ struct ScopeInfo
     Node *node = nullptr;
 };
 
-struct ArrayMeta
+struct ArrayTypeInfo
 {
     ResolvedType underLyingType;
-    int arrLen;
+    int dimensions;
 };
 
 // Information about the symbol(variable or object, whatever)
@@ -143,7 +144,7 @@ struct SymbolInfo
     bool isDefined = false;
 
     // Array flags
-    ArrayMeta arrayMeta;
+    ArrayTypeInfo arrayTyInfo;
 
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
     llvm::Value *llvmValue = nullptr;
@@ -159,7 +160,7 @@ struct SymbolInfo
     bool isRef = false;     // Reference flag
     bool isPointer = false; // Pointer flag
 
-    bool isParam=false;
+    bool isParam = false;
 
     bool isFunction = false;
     bool isBehavior = false;
@@ -325,9 +326,11 @@ private:
     ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
     ResolvedType isPointerType(ResolvedType t);
     ResolvedType isRefType(ResolvedType t);
+    ResolvedType makeArrayType(ResolvedType &t, int dimensionCount);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     int64_t SubscriptIndexVerifier(Node *indexNode, int64_t arrLen);
-    ArrayMeta getArrayMeta(Node *node);
+    ArrayTypeInfo getArrayTypeInfo(Node *node);
+    int inferLiteralDimensions(ArrayLiteral *arrLit);
     int64_t getIntExprVal(Node *node);
 
     bool isGlobalScope();
