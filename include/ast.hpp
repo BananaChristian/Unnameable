@@ -1398,7 +1398,7 @@ struct ArrayStatement : Statement
         {
             for (const auto &len : lengths)
             {
-                lenStr += "["+ len->toString() +"]";
+                lenStr += "[" + len->toString() + "]";
             }
         }
         std::string mutStr = "";
@@ -1435,21 +1435,26 @@ struct ArrayStatement : Statement
         std::unique_ptr<Expression> arrayTy,
         std::vector<std::unique_ptr<Expression>> lens,
         std::unique_ptr<Expression> ident,
-        std::unique_ptr<Expression> array) : Statement(arrayTy ? arrayTy->token : Token{"",TokenType::ILLEGAL,0,0}), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
+        std::unique_ptr<Expression> array) : Statement(arrayTy ? arrayTy->token : Token{"", TokenType::ILLEGAL, 0, 0}), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
 };
 
 // Array Subscript expression
 struct ArraySubscript : Expression
 {
     std::unique_ptr<Expression> identifier;
-    std::unique_ptr<Expression> index_expr;
+    std::vector<std::unique_ptr<Expression>> index_exprs;
 
     std::string toString() override
     {
-        return "Array Subscript Expression: " + identifier->toString() + "[" + index_expr->toString() + "]";
+        std::string indexStr;
+        for (const auto &index : index_exprs)
+        {
+            indexStr += "[" + index->toString() + "]";
+        }
+        return "Array Subscript Expression: " + identifier->toString() + indexStr;
     }
 
-    ArraySubscript(std::unique_ptr<Expression> ident, std::unique_ptr<Expression> id) : Expression(ident->expression), identifier(std::move(ident)), index_expr(std::move(id)) {};
+    ArraySubscript(std::unique_ptr<Expression> ident, std::vector<std::unique_ptr<Expression>> ids) : Expression(ident->expression), identifier(std::move(ident)), index_exprs(std::move(ids)) {};
 };
 
 // Alias statement
