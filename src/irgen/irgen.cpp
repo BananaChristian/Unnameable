@@ -2218,7 +2218,7 @@ llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
     {
         throw std::runtime_error("Invalid integer literal");
     }
-    auto it = semantics.metaData.find(node);
+    auto it = semantics.metaData.find(intLit);
     if (it == semantics.metaData.end())
     {
         throw std::runtime_error("Integer literal not found in metadata at line:" + std::to_string(intLit->expression.line) + " and column: " + std::to_string(intLit->expression.column));
@@ -2238,7 +2238,7 @@ llvm::Value *IRGenerator::generateUnsignedIntegerLiteral(Node *node)
     if (!uintLit)
         throw std::runtime_error("Invalid uint literal");
 
-    auto it = semantics.metaData.find(node);
+    auto it = semantics.metaData.find(uintLit);
     if (it == semantics.metaData.end())
         throw std::runtime_error("Uint literal not found in metadata");
 
@@ -2256,7 +2256,7 @@ llvm::Value *IRGenerator::generateLongLiteral(Node *node)
     if (!longLit)
         throw std::runtime_error("Invalid long literal");
 
-    auto it = semantics.metaData.find(node);
+    auto it = semantics.metaData.find(longLit);
     if (it == semantics.metaData.end())
         throw std::runtime_error("Long literal not found in metadata");
 
@@ -2274,7 +2274,7 @@ llvm::Value *IRGenerator::generateUnsignedLongLiteral(Node *node)
     if (!ulongLit)
         throw std::runtime_error("Invalid ulong literal");
 
-    auto it = semantics.metaData.find(node);
+    auto it = semantics.metaData.find(ulongLit);
     if (it == semantics.metaData.end())
         throw std::runtime_error("ULong literal not found in metadata");
 
@@ -2292,7 +2292,7 @@ llvm::Value *IRGenerator::generateExtraLiteral(Node *node)
     if (!extraLit)
         throw std::runtime_error("Invalid extra (128-bit) literal");
 
-    auto it = semantics.metaData.find(node);
+    auto it = semantics.metaData.find(extraLit);
     if (it == semantics.metaData.end())
         throw std::runtime_error("Extra literal not found in metadata");
 
@@ -2311,7 +2311,7 @@ llvm::Value *IRGenerator::generateUnsignedExtraLiteral(Node *node)
     if (!uextraLit)
         throw std::runtime_error("Invalid uextra (128-bit unsigned) literal");
 
-    auto it = semantics.metaData.find(node);
+    auto it = semantics.metaData.find(uextraLit);
     if (it == semantics.metaData.end())
         throw std::runtime_error("UExtra literal not found in metadata");
 
@@ -2330,7 +2330,7 @@ llvm::Value *IRGenerator::generateFloatLiteral(Node *node)
     {
         throw std::runtime_error("Invalid float literal");
     }
-    auto it = semantics.metaData.find(node);
+    auto it = semantics.metaData.find(fltLit);
     if (it == semantics.metaData.end())
     {
         throw std::runtime_error("Float literal not found in metadata");
@@ -2351,7 +2351,7 @@ llvm::Value *IRGenerator::generateDoubleLiteral(Node *node)
     {
         throw std::runtime_error("Invalid double literal");
     }
-    auto it = semantics.metaData.find(node); // Creating an iterator to find specific meta data about the double literal
+    auto it = semantics.metaData.find(dbLit); // Creating an iterator to find specific meta data about the double literal
     if (it == semantics.metaData.end())
     {
         throw std::runtime_error("Double literal not found in metadata");
@@ -2365,6 +2365,102 @@ llvm::Value *IRGenerator::generateDoubleLiteral(Node *node)
     double value = std::stod(dbLit->double_token.TokenLiteral);            // Converting the double literal from a string to a double
     return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), value); // Returning double value
 }
+
+llvm::Value *IRGenerator::generateArrayLiteral(Node *node)
+{
+    auto arrLit = dynamic_cast<ArrayLiteral *>(node);
+    if (!arrLit)
+        throw std::runtime_error("Invalid array literal");
+
+    auto it = semantics.metaData.find(arrLit);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("Array literal not found in metaData");
+
+    auto sym = it->second;
+
+    // Determine element type (one unwrap)
+    ResolvedType elemType = sym->type.innerType ? *sym->type.innerType : sym->type;
+
+    llvm::Type *llvmElemTy = getLLVMType(elemType);
+    size_t arraySize = arrLit->array.size();
+
+    // Full array type
+    llvm::ArrayType *arrayTy = llvm::ArrayType::get(llvmElemTy, arraySize);
+
+    // Allocate on stack
+    llvm::AllocaInst *alloc = funcBuilder.CreateAlloca(arrayTy, nullptr, "arrayLit");
+
+    llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+
+    for (size_t i = 0; i < arraySize; ++i)
+    {
+        llvm::Value *idx = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), i);
+
+        // Get pointer to element (i)
+        llvm::Value *elemPtr =
+            funcBuilder.CreateGEP(arrayTy, alloc, {zero, idx});
+
+        Node *child = arrLit->array[i].get();
+
+        if (auto nestedArr = dynamic_cast<ArrayLiteral *>(child))
+        {
+            // Recursively create nested literal
+            llvm::Value *nestedAlloc = generateArrayLiteral(nestedArr);
+
+            // Copy value-by-value because we cannot inspect pointer types
+            copyArrayLiteralValueByValue(nestedArr, nestedAlloc, elemPtr, elemType);
+        }
+        else
+        {
+            llvm::Value *val = generateExpression(child);
+            funcBuilder.CreateStore(val, elemPtr);
+        }
+    }
+
+    return alloc;
+}
+
+void IRGenerator::copyArrayLiteralValueByValue(
+    ArrayLiteral *srcLiteral,
+    llvm::Value *srcAlloc,
+    llvm::Value *destElemPtr,
+    const ResolvedType &elemType)
+{
+    // srcLiteral is guaranteed to be same shape by the semantic pass
+    size_t n = srcLiteral->array.size();
+
+    llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+
+    llvm::ArrayType *srcArrayTy =
+        llvm::ArrayType::get(getLLVMType(elemType), n);
+
+    for (size_t i = 0; i < n; ++i)
+    {
+        llvm::Value *idx =
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), i);
+
+        llvm::Value *srcPtr =
+            funcBuilder.CreateGEP(srcArrayTy, srcAlloc, {zero, idx});
+
+        llvm::Value *destPtr =
+            funcBuilder.CreateGEP(srcArrayTy, destElemPtr, {zero, idx});
+
+        Node *child = srcLiteral->array[i].get();
+
+        if (auto nested = dynamic_cast<ArrayLiteral *>(child))
+        {
+            llvm::Value *nestedSrcAlloc = generateArrayLiteral(nested);
+            copyArrayLiteralValueByValue(nested, nestedSrcAlloc, destPtr, elemType);
+        }
+        else
+        {
+            llvm::Value *val = generateExpression(child);
+            funcBuilder.CreateStore(val, destPtr);
+        }
+    }
+}
+
+
 
 llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType type)
 {
@@ -3448,6 +3544,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(UnsignedExtraLiteral)] = &IRGenerator::generateUnsignedExtraLiteral;
     expressionGeneratorsMap[typeid(FloatLiteral)] = &IRGenerator::generateFloatLiteral;
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
+    expressionGeneratorsMap[typeid(ArrayLiteral)] = &IRGenerator::generateArrayLiteral;
     expressionGeneratorsMap[typeid(Identifier)] = &IRGenerator::generateIdentifierExpression;
     expressionGeneratorsMap[typeid(AddressExpression)] = &IRGenerator::generateAddressExpression;
     expressionGeneratorsMap[typeid(DereferenceExpression)] = &IRGenerator::generateDereferenceExpression;

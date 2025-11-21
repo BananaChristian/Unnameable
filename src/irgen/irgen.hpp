@@ -118,6 +118,7 @@ private:
     llvm::Value *generateBooleanLiteral(Node *node);
     llvm::Value *generateFloatLiteral(Node *node);
     llvm::Value *generateDoubleLiteral(Node *node);
+    llvm::Value *generateArrayLiteral(Node *node);
 
     llvm::Value *generateShortLiteral(Node *node);
     llvm::Value *generateUnsignedShortLiteral(Node *node);
@@ -176,6 +177,7 @@ private:
     // Helper for allocating heap storage (shared logic for components and scalars)
     llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy);
     void freeHeapStorage(uint64_t size, uint64_t alignSize, const std::string &letName);
+    void copyArrayLiteralValueByValue(ArrayLiteral *srcLiteral,llvm::Value *srcAlloc,llvm::Value *destElemPtr,const ResolvedType &elemType);
 };
 
 #endif
