@@ -1,5 +1,6 @@
 #pragma once
 #include "token/token.hpp"
+#include "errors/errors.hpp"
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -11,6 +12,8 @@ class Lexer
     std::string input;
     int line = 1;
     int column = 0;
+    std::string fileName;
+    ErrorHandler errorHandler;
 
     std::unordered_map<std::string, TokenType> keywords = {
         {"auto", TokenType::AUTO},
@@ -93,7 +96,7 @@ class Lexer
         {"qualify", TokenType::QUALIFY}};
 
 public:
-    Lexer(const std::string &sourceCode);
+    Lexer(const std::string &sourceCode, const std::string &fileName);
     Token tokenize();
     std::vector<Token> outputTokens;
 
@@ -101,6 +104,7 @@ public:
     void updateTokenList();
 
 private:
+    std::vector<std::string> sourceLines;
     size_t getUTF8CharLength(size_t pos);
     char32_t decodeUTF8(size_t pos);
     void advance();
@@ -117,5 +121,6 @@ private:
     Token readString();
     void appendUTF8(std::string &str, char32_t ch);
     Token readChar();
+    void loadSourceLines();
     void logError(const std::string &message, int line, int column);
 };
