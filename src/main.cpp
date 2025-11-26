@@ -50,7 +50,6 @@ std::string readFileToString(const std::string &filepath)
 
 std::string resolveImportPath(const std::string &currentFile, const std::string &importString)
 {
-    fileName = currentFile;
     fs::path currentDir = fs::path(currentFile).parent_path();
     fs::path importPath(importString);
 
@@ -78,6 +77,8 @@ std::shared_ptr<FileUnit> loadFileRecursive(
     fs::path canonical = fs::weakly_canonical(fs::path(path));
     std::string canon_str = canonical.string();
 
+    fileName = canon_str;
+
     if (std::find(stack.begin(), stack.end(), canon_str) != stack.end())
         throw std::runtime_error("[MERGE ERROR] Circular import detected at " + canon_str);
 
@@ -87,7 +88,7 @@ std::shared_ptr<FileUnit> loadFileRecursive(
     stack.push_back(canon_str);
     std::string code = readFileToString(canon_str);
 
-    Lexer lexer(code);
+    Lexer lexer(code, fileName);
     lexer.updateTokenList();
 
     if (logOutput)
@@ -101,7 +102,7 @@ std::shared_ptr<FileUnit> loadFileRecursive(
         }
     }
 
-    Parser parser(lexer.token_list);
+    Parser parser(lexer.token_list, fileName);
     auto fileUnit = parser.generateFileUnit();
     fileUnit->fileName = canon_str;
 
