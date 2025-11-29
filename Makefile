@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -g \
     -Isrc -Isrc/lexer -Isrc/parser -Isrc/token -Isrc/semantics \
-    -Isrc/irgen -Isrc/allocator -Isrc/layout -Isrc/sentinel -Iinclude
+    -Isrc/irgen -Isrc/allocator -Isrc/layout -Isrc/sentinel -Isrc/errors -Iinclude
 
 LLVM_CXXFLAGS = $(shell llvm-config --cxxflags | sed 's/-std=c++[0-9]*//g;s/-fno-exceptions//g')
 LLVM_LDFLAGS   = $(shell llvm-config --ldflags --system-libs --libs core irreader support analysis transformutils bitwriter)
