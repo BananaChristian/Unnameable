@@ -1386,6 +1386,7 @@ struct ArrayLiteral : Expression
 struct ArrayStatement : Statement
 {
     Mutability mutability;
+    bool isHeap;
     std::unique_ptr<Expression> arrayType;            // Like arr[int]
     std::vector<std::unique_ptr<Expression>> lengths; // Stuff like [1] or [2][3] it is optional though
     std::unique_ptr<Expression> identifier;
@@ -1393,6 +1394,7 @@ struct ArrayStatement : Statement
 
     std::string toString() override
     {
+        std::string heapStr=isHeap?"heap ":"";
         std::string lenStr = "";
         if (!lengths.empty())
         {
@@ -1427,15 +1429,16 @@ struct ArrayStatement : Statement
             arrContent = array_content->toString();
         }
 
-        return "Array Statement: " + mutStr + " " + arrayTypeStr + " Lengths: " + lenStr + " " + arrName + " " + arrContent;
+        return "Array Statement: " + heapStr + mutStr + " " + arrayTypeStr + " Lengths: " + lenStr + " " + arrName + " " + arrContent;
     }
 
     ArrayStatement(
+        bool heap,
         Mutability mut,
         std::unique_ptr<Expression> arrayTy,
         std::vector<std::unique_ptr<Expression>> lens,
         std::unique_ptr<Expression> ident,
-        std::unique_ptr<Expression> array) : Statement(arrayTy ? arrayTy->token : Token{"", TokenType::ILLEGAL, 0, 0}), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
+        std::unique_ptr<Expression> array) : Statement(arrayTy ? arrayTy->token : Token{"", TokenType::ILLEGAL, 0, 0}),isHeap(heap), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
 };
 
 // Array Subscript expression
