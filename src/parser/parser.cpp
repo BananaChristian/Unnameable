@@ -2,19 +2,21 @@
 #include "ast.hpp"
 #include "token/token.hpp"
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <vector>
 
 #define CPPREST_FORCE_REBUILD
 
 //--------------PARSER CLASS CONSTRUCTOR-------------
-Parser::Parser(std::vector<Token> &tokenInput) : tokenInput(tokenInput), currentPos(0), nextPos(1)
+Parser::Parser(std::vector<Token> &tokenInput, const std::string &file) : tokenInput(tokenInput), fileName(file), errorHandler(file), currentPos(0), nextPos(1)
 {
     lastToken = tokenInput.empty() ? Token{"", TokenType::ILLEGAL, 999, 999} : tokenInput[0];
     registerInfixFns();
     registerPrefixFns();
     registerPostfixFns();
     registerStatementParseFns();
+    loadSourceLines();
 }
 
 // MAIN PARSER FUNCTION
@@ -97,8 +99,7 @@ std::unique_ptr<Statement> Parser::parseStatement()
 
         return std::make_unique<ExpressionStatement>(current, std::move(expr));
     }
-
-    logError("Unexpected token at start of statement '" + current.TokenLiteral + "'");
+    
     advance();
     return nullptr;
 }
@@ -381,21 +382,13 @@ std::unique_ptr<Statement> Parser::parseHeapStatement()
 {
     advance(); // consume 'heap'
 
-    // Disallow: heap data ...
     if (currentToken().type == TokenType::DATA)
     {
         logError("Cannot use 'heap' before a data block");
         return nullptr;
     }
 
-    // Disallow: heap array ...
-    if (currentToken().type == TokenType::ARRAY)
-    {
-        logError("Cannot use 'heap' before an array declaration");
-        return nullptr;
-    }
-
-    auto stmt = parseLetStatementCustomOrBasic();
+    auto stmt = parseStatement();
     if (!stmt)
         return nullptr;
 
@@ -403,9 +396,13 @@ std::unique_ptr<Statement> Parser::parseHeapStatement()
     {
         letStmt->isHeap = true;
     }
+    else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get()))
+    {
+        arrStmt->isHeap = true;
+    }
     else
     {
-        logError("'heap' can only be applied to let-statements");
+        logError("'heap' can only be applied to variable and array declarations");
         return nullptr;
     }
 
@@ -1295,8 +1292,6 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
 
     if (PrefixParseFnIt == PrefixParseFunctionsMap.end()) // Checking if the iterator has reached the end of the map
     {
-        // std::cerr << "[ERROR] No prefix parse function for token: " << currentToken().TokenLiteral << "\n";
-        logError("No prefix parse function for token '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
 
@@ -2123,6 +2118,12 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
         return parseAssignmentStatement();
     }
 
+    //Cases where there is a custom type like(Type var)
+    if (peek1.type == TokenType::IDENTIFIER)
+    {
+        return parseLetStatementCustomOrBasic();
+    }
+
     // Qualified assignment (x.y = ..., test::field = ...)
     if (peek1.type == TokenType::FULLSTOP || peek1.type == TokenType::SCOPE_OPERATOR)
     {
@@ -2226,6 +2227,27 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::DEREF] = &Parser::parseDereferenceAssignment;
 }
 
+void Parser::loadSourceLines()
+{
+    std::ifstream in(fileName);
+    if (!in.is_open())
+    {
+        std::cerr << "[PARSER LOAD ERROR] Cannot open file: " << fileName << "\n";
+        return;
+    }
+
+    std::string line;
+    while (std::getline(in, line))
+    {
+        sourceLines.push_back(line);
+    }
+
+    if (sourceLines.empty())
+        std::cerr << "[PARSER LOAD WARNING] File has no lines: " << fileName << "\n";
+    else
+        std::cerr << "[PARSER LOAD INFO] Loaded " << sourceLines.size() << " lines from " << fileName << "\n";
+}
+
 // Precedence getting function
 Precedence Parser::get_precedence(TokenType type)
 {
@@ -2261,16 +2283,21 @@ Token Parser::peekToken(int peek)
 void Parser::logError(const std::string &message)
 {
     Token token = getErrorToken();
+
     if (token.line == 0 && token.column == 0)
     {
         std::cerr << "[PANIC]: Logging an uninitialized token! Investigate token flow.\n";
     }
-    std::cerr << "[PARSER ERROR]: " << message << " At line: " << token.line << " column: " << token.column << "\n";
-    errors.push_back(
-        ParseError{
-            message,
-            token.line,
-            token.column});
+
+    CompilerError error;
+    error.level = ErrorLevel::PARSER;
+    error.line = token.line;
+    error.col = token.column;
+    error.message = message;
+    error.sourceLines = sourceLines;
+    error.hints = {};
+
+    errorHandler.report(error);
 }
 
 // Generic checker
@@ -2313,10 +2340,6 @@ std::shared_ptr<FileUnit> Parser::generateFileUnit()
         if (auto *mergeStmt = dynamic_cast<MergeStatement *>(node.get()))
         {
             fileUnit->mergers.push_back(mergeStmt->stringExpr->expression.TokenLiteral);
-        }
-        else if (auto *qualifyStmt = dynamic_cast<QualifyStatement *>(node.get()))
-        {
-            fileUnit->isEntryFile = true;
         }
     }
     return fileUnit;

@@ -469,6 +469,7 @@ std::unique_ptr<Expression> Parser::parseArrayType()
 
 std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
 {
+    bool isHeap=false;
     Mutability mutability = Mutability::IMMUTABLE;
     if (currentToken().type == TokenType::MUT)
     {
@@ -554,6 +555,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
     }
 
     return std::make_unique<ArrayStatement>(
+        isHeap,
         mutability,
         std::move(arrTypeNode),
         std::move(lengths),

@@ -1,29 +1,23 @@
 #include "token/token.hpp"
 #include "ast.hpp"
+#include "errors/errors.hpp"
 #include <string>
 #include <vector>
 #include <map>
 
 #define CPPREST_FORCE_REBUILD
 
-struct ParseError
-{
-    std::string message;
-    int line;
-    int column;
-};
-
 struct FileUnit
 {
     std::string fileName;
     std::vector<std::unique_ptr<Node>> nodes;
     std::vector<std::string> mergers;
-    bool isEntryFile;
 };
 
 class Parser
 {
     std::vector<Token> tokenInput;
+    std::string fileName;
     int currentPos;
     int nextPos;
 
@@ -58,14 +52,18 @@ class Parser
 
     Token lastToken;
 
+    ErrorHandler errorHandler;
+
 public:
     // Parser class declaration
-    Parser(std::vector<Token> &tokenInput);
+    Parser(std::vector<Token> &tokenInput, const std::string &file);
     // Main parser program
     std::vector<std::unique_ptr<Node>> parseProgram();
 
     // Sliding across the token input from the lexer;
     void advance();
+
+    void loadSourceLines();
 
     // Functions for registering the functions neccesary for parsing the different tokens
     void registerPrefixFns();
@@ -92,9 +90,9 @@ public:
     std::map<TokenType, postfixParseFns> PostfixParseFunctionsMap;
 
     std::map<TokenType, stmtParseFns> StatementParseFunctionsMap;
-    std::vector<ParseError> errors;
 
 private:
+    std::vector<std::string> sourceLines;
     //---------------PARSING STATEMENTS--------------------
     // General statement parsing function
     std::unique_ptr<Statement> parseStatement();
@@ -276,7 +274,7 @@ private:
     // Parsing for pointer return type
     std::unique_ptr<Expression> parsePointerType();
 
-    //Parsing for reference type
+    // Parsing for reference type
     std::unique_ptr<Expression> parseRefType();
 
     // Parsing the return type expression
