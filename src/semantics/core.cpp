@@ -1,5 +1,6 @@
 #include "semantics.hpp"
 #include "ast.hpp"
+#include <fstream>
 #include <algorithm>
 #include <unordered_set>
 
@@ -8,10 +9,11 @@
 #define COLOR_RESET "\033[0m"
 #define COLOR_RED "\033[31m"
 
-Semantics::Semantics(std::string &fileName) : fileName(fileName)
+Semantics::Semantics(std::string &file) : fileName(file), errorHandler(file)
 {
     symbolTable.push_back({});
     registerWalkerFunctions();
+    semanticSourceLinesLoader();
 }
 
 // Main walker function
@@ -423,7 +425,6 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
             logSemanticErrors("Cannot have a void array type", arrRetType->expression.line, arrRetType->expression.column);
             return ResolvedType{DataType::UNKNOWN, "unknown", false, false, false, false};
         }
-        inner.isArray = true; // Just toggle the boolean
         return inner;
     }
 
@@ -1062,7 +1063,8 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected, const ResolvedTyp
     if (expected.isArray || actual.isArray)
     {
         if (expected.isArray != actual.isArray)
-            return false; // one is array, one is not
+            return false;
+        // one is array, one is not
 
         // If either inner type is missing → mismatch
         if (!expected.innerType || !actual.innerType)
@@ -1456,11 +1458,23 @@ int Semantics::inferLiteralDimensions(ArrayLiteral *lit)
     return 1 + inferLiteralDimensions(innerArr);
 }
 
+void Semantics::inferSizePerDimension(ArrayLiteral *lit, std::vector<int64_t> &sizes)
+{
+    sizes.push_back(lit->array.size());
+    if (!lit->array.empty())
+    {
+        if (auto inner = dynamic_cast<ArrayLiteral *>(lit->array[0].get()))
+        {
+            inferSizePerDimension(inner, sizes);
+        }
+    }
+}
+
 ArrayTypeInfo Semantics::getArrayTypeInfo(Node *node)
 {
     auto arrLit = dynamic_cast<ArrayLiteral *>(node);
     if (!arrLit)
-        return ArrayTypeInfo{ResolvedType{DataType::UNKNOWN, "unknown", false, false, false, false}, 0};
+        return ArrayTypeInfo{ResolvedType{DataType::UNKNOWN, "unknown", false, false, false, false}, 0, {}};
 
     // Underlying element type = type of the deepest element
     Node *cur = node;
@@ -1470,13 +1484,44 @@ ArrayTypeInfo Semantics::getArrayTypeInfo(Node *node)
     ResolvedType underlying = inferNodeDataType(cur);
 
     int dim = inferLiteralDimensions(arrLit);
+    std::vector<int64_t> sizePerDim;
+    inferSizePerDimension(arrLit, sizePerDim);
 
-    return ArrayTypeInfo{underlying, dim};
+    return ArrayTypeInfo{underlying, dim, sizePerDim};
+}
+
+void Semantics::semanticSourceLinesLoader()
+{
+    std::ifstream in(fileName);
+    if (!in.is_open())
+    {
+        std::cerr << "[PARSER LOAD ERROR] Cannot open file: " << fileName << "\n";
+        return;
+    }
+
+    std::string line;
+    while (std::getline(in, line))
+    {
+        sourceLines.push_back(line);
+    }
+
+    if (sourceLines.empty())
+        std::cerr << "[PARSER LOAD WARNING] File has no lines: " << fileName << "\n";
+    else
+        std::cerr << "[PARSER LOAD INFO] Loaded " << sourceLines.size() << " lines from " << fileName << "\n";
 }
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
 {
-    std::cerr << COLOR_RED << "[SEMANTIC ERROR] " << COLOR_RESET << message << " on line: " << std::to_string(tokenLine) << " and column: " << std::to_string(tokenColumn) << " in file: " << fileName << "\n";
+    CompilerError error;
+    error.level = ErrorLevel::SEMANTIC;
+    error.line = tokenLine;
+    error.col = tokenColumn;
+    error.message = message;
+    error.sourceLines = sourceLines;
+    error.hints = {};
+
+    errorHandler.report(error);
 }
 
 bool Semantics::isInteger(const ResolvedType &t)
@@ -1772,22 +1817,16 @@ ResolvedType Semantics::isRefType(ResolvedType t)
     return refType(t.kind, t.isRef, t.resolvedName);
 }
 
-ResolvedType Semantics::makeArrayType(ResolvedType &t, int dimensionCount)
+ResolvedType Semantics::makeArrayType(const ResolvedType &t, int dimensionCount)
 {
-    ResolvedType out = t;
+    ResolvedType out = t; // base element type
 
     for (int i = 0; i < dimensionCount; i++)
     {
         ResolvedType arr;
         arr.isArray = true;
-
-        // kind is always the base element type
-        arr.kind = t.kind;
-
-        // nest the previous result
-        arr.innerType = std::make_shared<ResolvedType>(out);
-
-        // name is pure sugar; doesn't affect semantics
+        arr.kind = t.kind;                                   // always base element type
+        arr.innerType = std::make_shared<ResolvedType>(out); // wrap previous
         arr.resolvedName = "arr[" + out.resolvedName + "]";
 
         out = arr;

@@ -307,13 +307,17 @@ void Semantics::walkArraySubscriptExpression(Node *node)
         return;
     }
 
+    walker(arrExpr->identifier.get());
+
     // Get the full array type
     ResolvedType arrType = arrSymbol->type;
+    std::cout << "Array type: " << arrType.resolvedName << "\n";
 
     // Check indices
     int indexLevel = 0;
     for (auto &idxNode : arrExpr->index_exprs)
     {
+        walker(idxNode.get());
         ResolvedType idxType = inferNodeDataType(idxNode.get());
         if (idxType.kind != DataType::INTEGER)
         {
@@ -321,9 +325,16 @@ void Semantics::walkArraySubscriptExpression(Node *node)
             hasError = true;
         }
 
-        if (!arrType.isArray || !arrType.innerType)
+        if (!arrType.isArray)
         {
             logSemanticErrors("Too many indices for array '" + arrName + "'", idxNode->expression.line, idxNode->expression.column);
+            hasError = true;
+            break;
+        }
+
+        if (!arrType.innerType)
+        {
+            logSemanticErrors("Array type missing inner type.", idxNode->expression.line, idxNode->expression.column);
             hasError = true;
             break;
         }
@@ -803,7 +814,14 @@ void Semantics::walkAssignStatement(Node *node)
             return;
         }
         walker(arrAccess);
-        symbol->type = inferNodeDataType(arrAccess);
+        auto accessMeta = metaData.find(arrAccess);
+        if (accessMeta == metaData.end())
+        {
+            logSemanticErrors("Failed to get array access metaData", line, col);
+            hasError = true;
+            return;
+        }
+        symbol = accessMeta->second;
     }
 
     else

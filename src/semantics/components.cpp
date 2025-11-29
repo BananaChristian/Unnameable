@@ -1386,6 +1386,7 @@ void Semantics::walkArrayStatement(Node *node)
 
     bool hasError = false;
     bool isInitialized = false;
+    bool isHeap = arrStmt->isHeap;
     ArrayTypeInfo arrTypeInfo;
 
     // --- Base type inference ---
@@ -1480,6 +1481,8 @@ void Semantics::walkArrayStatement(Node *node)
     arrInfo->arrayTyInfo = arrTypeInfo;
     arrInfo->hasError = hasError;
     arrInfo->isInitialized = isInitialized;
+    arrInfo->isHeap = isHeap;
+    arrInfo->lastUseNode = arrStmt;
     arrInfo->type = arrayType; // store fully wrapped type
     arrInfo->arrayTyInfo = arrTypeInfo;
 

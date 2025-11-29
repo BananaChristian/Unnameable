@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ast.hpp"
+#include "errors.hpp"
 #include <string>
 #include <typeindex>
 #include <cstdint>
@@ -124,6 +125,7 @@ struct ArrayTypeInfo
 {
     ResolvedType underLyingType;
     int dimensions;
+    std::vector<int64_t> sizePerDimension;
 };
 
 // Information about the symbol(variable or object, whatever)
@@ -186,6 +188,9 @@ struct SymbolInfo
 
 class Semantics
 {
+    std::string fileName;
+    ErrorHandler errorHandler;
+
 public:
     Semantics(std::string &fileName);
     void walker(Node *node);
@@ -208,12 +213,14 @@ public:
     ResolvedType inferNodeDataType(Node *node);
     std::pair<std::string, std::string> splitScopedName(const std::string &fullName);
     std::string extractIdentifierName(Node *node);
-    std::string fileName;
+    ArrayTypeInfo getArrayTypeInfo(Node *node);
 
 private:
     bool insideFunction = false;
     bool insideBehavior = false;
     bool insideComponent = false;
+
+    std::vector<std::string> sourceLines;
 
     // Walking the data type literals
     void walkShortLiteral(Node *node);
@@ -326,11 +333,11 @@ private:
     ResolvedType resultOfScopeOrDot(TokenType operatorType, const std::string &parentName, const std::string &childName, InfixExpression *infix);
     ResolvedType isPointerType(ResolvedType t);
     ResolvedType isRefType(ResolvedType t);
-    ResolvedType makeArrayType(ResolvedType &t, int dimensionCount);
+    ResolvedType makeArrayType(const ResolvedType &t, int dimensionCount);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     int64_t SubscriptIndexVerifier(Node *indexNode, int64_t arrLen);
-    ArrayTypeInfo getArrayTypeInfo(Node *node);
     int inferLiteralDimensions(ArrayLiteral *arrLit);
+    void inferSizePerDimension(ArrayLiteral *lit, std::vector<int64_t> &sizes);
     int64_t getIntExprVal(Node *node);
 
     bool isGlobalScope();
@@ -345,4 +352,5 @@ private:
     bool isChar(const ResolvedType &t);
     void popScope();
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
+    void semanticSourceLinesLoader();
 };
