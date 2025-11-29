@@ -231,18 +231,67 @@ func TestOps_subtract(int a ,float b): float{
 
 ## Arrays
 
-Unnameable supports single dimensional for now(Semantically), The user must explicity list the length of the array if they dont provide initialize but if they initialize the array the compiler will just count the items inside
+Unnameable supports single dimensional and multidimensional arrays, The user must explicity list the length of the array if they dont provide initialize but if they initialize the array the compiler will just count the items inside
+The dimension count is what tells the compiler if an array is multideminsional or not for example
+```
+arr[int] [2][3] matrix;
+#The compiler will know that this a nested array of type arr[arr[int]] because it has 2 dimension
+```
+The dimension count are those square brackets that follow the array type like in our example above they were two so those are two dimensions
+
+The compiler can also infer the dimensions of the array but only and only if the array has been initialized  for example
+```
+arr[int] matrix = [
+        [10, 20, 30],
+        [40, 50, 60]
+];
+#The compiler will infer this to be 2 dimensional
+```
+Currently the compiler doesnt do bounds checking and all that so it cant know the length of the array so if you declare different lengths in a dimension and use something else in the array literal the compiler cannot guard you it will just take the length of the literal instead(I plan on finding a solution to this but for now it is what it is)  for example
+```
+func main: int {
+    arr[int] [2] test=[5,6,7]; #The compiler doesnt warn u it will just use the literal length of 3 so be careful
+    
+    return 0;
+}
+```
+Dimension counts must match unlike lengths the dimension counts must match because here the compiler checks dimensions and it actually uses them to know the type of an array(arr[int] or arr[arr[int]]) so a dimension mismatch will cause errors for example
 
 ```
-#Single dimensional arrays
-#Case 1: No initialization
-arr[int] [2] my_array;
+func main: int {
+    arr[int] [2][3] test=[5,6,7];#This will trigger a dimension mismatch and later a type error 
+    return 0;
+}
+```
+You cannot reassign to an immutable array so be careful there if you want to reassign you must use the `mut` keyword otherwise it will cause errors for example
 
-#Case 2: With initialization
-arr [int?] test_array=[1,2,3];
+```
+func main: int {
+    mut arr[int] [2] my_array=[5,6];
+    my_array=[8,7];
 
-#Accesing array members
-test_array[0]=7;
+    
+    return 0;
+}
+```
+
+Also by default all the values in the array are immutable unless a `mut` keyword is used on the array declaration itself to allow for reassignment via array access for example
+```
+func main: int {
+    # 2D Array: 2 rows of 3 integers (Total 6 elements)
+    mut arr[int] [2][3] matrix = [
+        [10, 20, 30],
+        [40, 50, 60]
+    ];
+    
+    # Assign a new value to the element at Row 1, Column 2 (which holds 60)
+    matrix[1][2]=99;
+
+    #This will print 99
+    shout! matrix[1][2]
+    
+    return 0;
+}
 
 ```
 
