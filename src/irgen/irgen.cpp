@@ -746,6 +746,88 @@ void IRGenerator::generatePointerStatement(Node *node)
     std::cout << "Exited pointer statement generator\n";
 }
 
+void IRGenerator::generateArrayStatement(Node *node)
+{
+    auto arrStmt = dynamic_cast<ArrayStatement *>(node);
+    if (!arrStmt)
+        return;
+
+    auto arrIt = semantics.metaData.find(arrStmt);
+    if (arrIt == semantics.metaData.end())
+        throw std::runtime_error("Failed to find array statement metaData");
+
+    auto arrName = arrStmt->identifier->expression.TokenLiteral;
+    auto sym = arrIt->second;
+    auto type = sym->type;
+    llvm::Type *elemTy = getLLVMType(type);
+
+    llvm::AllocaInst *allocaInst = nullptr;
+
+    // If the array literal has been given
+    if (arrStmt->array_content)
+    {
+        // Get ArrayTypeInfo from semantics
+        auto arrInfo = semantics.getArrayTypeInfo(arrStmt->array_content.get());
+        const auto &constantSizes = arrInfo.sizePerDimension;
+
+        // Build nested ArrayType
+        llvm::Type *arrayTy = elemTy;
+        for (auto it = constantSizes.rbegin(); it != constantSizes.rend(); ++it)
+            arrayTy = llvm::ArrayType::get(arrayTy, *it);
+
+        // Allocate array on the stack
+        allocaInst = funcBuilder.CreateAlloca(arrayTy, nullptr, arrName);
+
+        // Generate the literal as a proper typed value
+        llvm::Constant *literalVal = llvm::cast<llvm::Constant>(generateArrayLiteral(arrStmt->array_content.get()));
+
+        // Create a Read-Only Global Variable from the constant literal
+        llvm::GlobalVariable *globalInit = createGlobalArrayConstant(literalVal);
+
+        llvm::DataLayout DL(module.get());
+        uint64_t SizeInBytes = DL.getTypeAllocSize(allocaInst->getAllocatedType());
+        llvm::Value *SizeVal = funcBuilder.getInt64(SizeInBytes);
+
+        llvm::Value *DstPtr = funcBuilder.CreateBitCast(allocaInst, funcBuilder.getPtrTy());
+        llvm::Value *SrcPtr = funcBuilder.CreateBitCast(globalInit, funcBuilder.getPtrTy());
+
+        funcBuilder.CreateMemCpy(
+            DstPtr,              // Destination (stack array)
+            llvm::MaybeAlign(4), // Destination Alignment
+            SrcPtr,              // Source (global constant)
+            llvm::MaybeAlign(4), // Source Alignment
+            SizeVal,             // Size in bytes
+            false                // IsVolatile
+        );
+    }
+
+    // If the array length is missing
+    else if (!arrStmt->lengths.empty())
+    {
+        std::vector<llvm::Value *> sizes;
+        for (const auto &lenExpr : arrStmt->lengths)
+            sizes.push_back(generateExpression(lenExpr.get()));
+
+        // Compute total size = product of all dimensions
+        llvm::Value *totalSize = sizes[0];
+        for (size_t i = 1; i < sizes.size(); ++i)
+            totalSize = funcBuilder.CreateMul(totalSize, sizes[i]);
+
+        // Allocate 1D buffer on the stack
+        allocaInst = funcBuilder.CreateAlloca(elemTy, totalSize, arrName);
+
+        // Leave uninitialized; no literal
+    }
+    else
+    {
+        throw std::runtime_error(
+            "Must initialize array declaration if did not declare dimensions");
+    }
+
+    // Save pointer in the symbol for later use
+    sym->llvmValue = allocaInst;
+}
+
 // While statement IR generator function
 void IRGenerator::generateWhileStatement(Node *node)
 {
@@ -1088,6 +1170,15 @@ void IRGenerator::generateAssignmentStatement(Node *node)
         targetPtr = generateDereferenceAddress(derefExpr);
         if (!targetPtr)
             throw std::runtime_error("Failed to get pointer for the dereference expression");
+    }
+    else if (auto arraySub = dynamic_cast<ArraySubscript *>(assignStmt->identifier.get()))
+    {
+        std::cout << "Inside array sub branch\n";
+        targetPtr = generateArraySubscriptAddress(arraySub);
+        if (!targetPtr)
+        {
+            throw std::runtime_error("Failed to get L-value for array sub");
+        }
     }
     else
     { // Regular variable assignment
@@ -2378,89 +2469,60 @@ llvm::Value *IRGenerator::generateArrayLiteral(Node *node)
 
     auto sym = it->second;
 
-    // Determine element type (one unwrap)
-    ResolvedType elemType = sym->type.innerType ? *sym->type.innerType : sym->type;
+    // Base element type
+    llvm::Type *llvmElemTy = nullptr;
 
-    llvm::Type *llvmElemTy = getLLVMType(elemType);
     size_t arraySize = arrLit->array.size();
+    // llvm::ArrayType *arrayTy = llvm::ArrayType::get(llvmElemTy, arraySize);
 
-    // Full array type
-    llvm::ArrayType *arrayTy = llvm::ArrayType::get(llvmElemTy, arraySize);
-
-    // Allocate on stack
-    llvm::AllocaInst *alloc = funcBuilder.CreateAlloca(arrayTy, nullptr, "arrayLit");
-
-    llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+    // Create the vector of element constants
+    std::vector<llvm::Constant *> elems;
+    elems.reserve(arraySize);
 
     for (size_t i = 0; i < arraySize; ++i)
     {
-        llvm::Value *idx = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), i);
-
-        // Get pointer to element (i)
-        llvm::Value *elemPtr =
-            funcBuilder.CreateGEP(arrayTy, alloc, {zero, idx});
-
         Node *child = arrLit->array[i].get();
-
-        if (auto nestedArr = dynamic_cast<ArrayLiteral *>(child))
-        {
-            // Recursively create nested literal
-            llvm::Value *nestedAlloc = generateArrayLiteral(nestedArr);
-
-            // Copy value-by-value because we cannot inspect pointer types
-            copyArrayLiteralValueByValue(nestedArr, nestedAlloc, elemPtr, elemType);
-        }
-        else
-        {
-            llvm::Value *val = generateExpression(child);
-            funcBuilder.CreateStore(val, elemPtr);
-        }
-    }
-
-    return alloc;
-}
-
-void IRGenerator::copyArrayLiteralValueByValue(
-    ArrayLiteral *srcLiteral,
-    llvm::Value *srcAlloc,
-    llvm::Value *destElemPtr,
-    const ResolvedType &elemType)
-{
-    // srcLiteral is guaranteed to be same shape by the semantic pass
-    size_t n = srcLiteral->array.size();
-
-    llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
-
-    llvm::ArrayType *srcArrayTy =
-        llvm::ArrayType::get(getLLVMType(elemType), n);
-
-    for (size_t i = 0; i < n; ++i)
-    {
-        llvm::Value *idx =
-            llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), i);
-
-        llvm::Value *srcPtr =
-            funcBuilder.CreateGEP(srcArrayTy, srcAlloc, {zero, idx});
-
-        llvm::Value *destPtr =
-            funcBuilder.CreateGEP(srcArrayTy, destElemPtr, {zero, idx});
-
-        Node *child = srcLiteral->array[i].get();
+        llvm::Value *currentVal = nullptr;
 
         if (auto nested = dynamic_cast<ArrayLiteral *>(child))
         {
-            llvm::Value *nestedSrcAlloc = generateArrayLiteral(nested);
-            copyArrayLiteralValueByValue(nested, nestedSrcAlloc, destPtr, elemType);
+            currentVal = generateArrayLiteral(nested);
+            // Recursive constant array
+            llvm::Constant *nestedConst = llvm::cast<llvm::Constant>(currentVal);
+            elems.push_back(nestedConst);
+
+            if (i == 0)
+            {
+                llvmElemTy = nestedConst->getType();
+            }
         }
         else
         {
-            llvm::Value *val = generateExpression(child);
-            funcBuilder.CreateStore(val, destPtr);
+            currentVal = generateExpression(child);
+
+            auto *constVal = llvm::dyn_cast<llvm::Constant>(currentVal);
+            if (!constVal)
+                throw std::runtime_error("Array literal element is not constant");
+
+            elems.push_back(constVal);
+
+            if (i == 0)
+            {
+                llvmElemTy = constVal->getType();
+            }
         }
     }
+
+    if (elems.empty() || !llvmElemTy)
+    {
+        throw std::runtime_error("Cannot infer element type for array literal.");
+    }
+
+    llvm::ArrayType *arrayTy = llvm::ArrayType::get(llvmElemTy, arraySize);
+
+    // Return a constant LLVM array
+    return llvm::ConstantArray::get(arrayTy, elems);
 }
-
-
 
 llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType type)
 {
@@ -3237,6 +3299,101 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node)
     return call;
 }
 
+llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node)
+{
+    auto arrExpr = dynamic_cast<ArraySubscript *>(node);
+    if (!arrExpr)
+        throw std::runtime_error("Invalid array access expression");
+
+    auto arrMetaIt = semantics.metaData.find(arrExpr);
+    if (arrMetaIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Could not find array subscript metaData");
+    }
+    auto arrSym = arrMetaIt->second;
+
+    if (arrSym->hasError)
+    {
+        throw std::runtime_error("Semantic error was detected in array subscript");
+    }
+
+    llvm::Value *BaseArrayPtr = generateIdentifierAddress(arrExpr->identifier.get()).address;
+
+    llvm::PointerType *PtrTy = llvm::cast<llvm::PointerType>(BaseArrayPtr->getType());
+
+    llvm::Type *arrayType = nullptr;
+
+    if (llvm::AllocaInst *Alloca = llvm::dyn_cast<llvm::AllocaInst>(BaseArrayPtr))
+    {
+        arrayType = Alloca->getAllocatedType();
+    }
+    else if (llvm::PointerType *PtrTy = llvm::dyn_cast<llvm::PointerType>(BaseArrayPtr->getType()))
+    {
+        arrayType = PtrTy->getContainedType(0);
+    }
+    else
+    {
+        throw std::runtime_error("Base array pointer is not a recognized pointer type.");
+    }
+
+    // Check if the resulting type is indeed an ArrayType, as expected for GEP.
+    if (!llvm::isa<llvm::ArrayType>(arrayType))
+    {
+        throw std::runtime_error("GEP base must point to an aggregate type (Array or Struct).");
+    }
+
+    // i32 constant 0 for the first index
+    llvm::Value *Zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(BaseArrayPtr->getContext()), 0);
+
+    std::vector<llvm::Value *> indices;
+    indices.push_back(Zero);
+
+    // Generate llvm value for each index expression
+    for (const auto &index_expr : arrExpr->index_exprs)
+    {
+        llvm::Value *currentIndex = generateExpression(index_expr.get());
+
+        if (!currentIndex->getType()->isIntegerTy())
+            throw std::runtime_error("Array index must be an integer");
+
+        indices.push_back(currentIndex);
+    }
+
+    llvm::Value *ElementPtr = funcBuilder.CreateGEP(
+        arrayType,    // The type of the aggregate being pointed to (e.g., [2 x [3 x i32]])
+        BaseArrayPtr, // The base pointer (%my_matrix)
+        indices,      // The full list of indices: {0, I1, I2, ...}
+        "element_ptr" // Name for the resulting pointer
+    );
+
+    return ElementPtr;
+}
+
+llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node)
+{
+    auto arrExpr = dynamic_cast<ArraySubscript *>(node);
+    if (!arrExpr)
+        throw std::runtime_error("Invalid array access expression");
+
+    auto arrMetaIt = semantics.metaData.find(arrExpr);
+    if (arrMetaIt == semantics.metaData.end())
+    {
+        throw std::runtime_error("Could not find array subscript metaData");
+    }
+    auto arrSym = arrMetaIt->second;
+
+    if (arrSym->hasError)
+    {
+        throw std::runtime_error("Semantic error was detected in array subscript");
+    }
+
+    llvm::Value *ptr = generateArraySubscriptAddress(node);
+
+    llvm::Type *elemTy = getLLVMType(arrSym->type);
+
+    return funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
+}
+
 llvm::Value *IRGenerator::generateCallAddress(Node *node)
 {
     auto callExpr = dynamic_cast<CallExpression *>(node);
@@ -3514,6 +3671,7 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(ComponentStatement)] = &IRGenerator::generateComponentStatement;
     generatorFunctionsMap[typeid(EnumClassStatement)] = &IRGenerator::generateEnumClassStatement;
 
+    generatorFunctionsMap[typeid(ArrayStatement)] = &IRGenerator::generateArrayStatement;
     generatorFunctionsMap[typeid(ShoutStatement)] = &IRGenerator::generateShoutStatement;
 }
 
@@ -3521,6 +3679,7 @@ void IRGenerator::registerAddressGeneratorFunctions()
 {
     addressGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfAddress;
     addressGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallAddress;
+    addressGeneratorsMap[typeid(ArraySubscript)] = &IRGenerator::generateArraySubscriptAddress;
     addressGeneratorsMap[typeid(DereferenceExpression)] = &IRGenerator::generateDereferenceAddress;
 }
 
@@ -3555,6 +3714,7 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
     expressionGeneratorsMap[typeid(NewComponentExpression)] = &IRGenerator::generateNewComponentExpression;
     expressionGeneratorsMap[typeid(InstanceExpression)] = &IRGenerator::generateInstanceExpression;
+    expressionGeneratorsMap[typeid(ArraySubscript)] = &IRGenerator::generateArraySubscriptExpression;
 }
 
 char IRGenerator::decodeCharLiteral(const std::string &literal)
@@ -3885,6 +4045,34 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
     {
         throw std::runtime_error("shout! only supports int and string for now");
     }
+}
+
+llvm::GlobalVariable *IRGenerator::createGlobalArrayConstant(llvm::Constant *constantArray)
+{
+    // The type of the constant must be a valid ArrayType (which can be nested)
+    llvm::Type *constantType = constantArray->getType();
+
+    llvm::ArrayType *arrayTy = llvm::cast<llvm::ArrayType>(constantArray->getType());
+
+    if (!arrayTy)
+    {
+        // If the constant is NOT an ArrayType, something is fundamentally wrong
+        // with the output of generateArrayLiteral.
+        throw std::runtime_error("Attempted to create a global array constant from a non-array type.");
+    }
+
+    // 2. Create the Global Variable
+    llvm::GlobalVariable *globalArray = new llvm::GlobalVariable(
+        *module,                           // The owning module
+        arrayTy,                           // The type of the global variable
+        true,                              // IsConstant (Read-only)
+        llvm::GlobalValue::PrivateLinkage, // Linkage
+        constantArray,                     // The initializer constant value
+        "array.init"                       // Name
+    );
+    // Set alignment for safety
+    globalArray->setAlignment(llvm::MaybeAlign(arrayTy->getPrimitiveSizeInBits() / 8));
+    return globalArray;
 }
 
 void IRGenerator::dumpIR()

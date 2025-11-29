@@ -102,6 +102,8 @@ private:
     void generateComponentStatement(Node *node);
     void generateComponentFunctionStatement(Node *node, const std::string &compName);
 
+    void generateArrayStatement(Node *node);
+
     // Enum class system
     void generateEnumClassStatement(Node *node);
 
@@ -143,11 +145,13 @@ private:
     llvm::Value *generateNewComponentExpression(Node *node);
     llvm::Value *generateInstanceExpression(Node *node);
     llvm::Value *generateMethodCallExpression(Node *node);
+    llvm::Value *generateArraySubscriptExpression(Node *node);
 
     // GENERATOR FUNCTIONS FOR ADRRESSES(L VALUES)
     llvm::Value *generateSelfAddress(Node *node);
     llvm::Value *generateCallAddress(Node *node);
     llvm::Value *generateDereferenceAddress(Node *node);
+    llvm::Value *generateArraySubscriptAddress(Node *node);
 
     // HELPER FUNCTIONS
     void registerGeneratorFunctions();
@@ -168,6 +172,8 @@ private:
     bool currentBlockIsTerminated();
     unsigned getIntegerBitWidth(DataType dt);
 
+    llvm::GlobalVariable *createGlobalArrayConstant(llvm::Constant *constantArray);
+
     // For normal variables
     void generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName);
     void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &letName, Expression *value);
@@ -177,7 +183,6 @@ private:
     // Helper for allocating heap storage (shared logic for components and scalars)
     llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy);
     void freeHeapStorage(uint64_t size, uint64_t alignSize, const std::string &letName);
-    void copyArrayLiteralValueByValue(ArrayLiteral *srcLiteral,llvm::Value *srcAlloc,llvm::Value *destElemPtr,const ResolvedType &elemType);
 };
 
 #endif
