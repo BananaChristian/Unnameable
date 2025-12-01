@@ -172,14 +172,15 @@ generic MathOps(T){
         return a+b;
     };
 
-    func subtract(T a, T b){
+    func subtract(T a, T b):T{
         return a-b;
     }
 }
 
 instantiate MathOps(int) as IntOps;
 
-##Here the user is explicity telling the compiler the types he wants the compiler to generate
+##
+Here the user is explicity telling the compiler the types he wants the compiler to generate
 Hence the functions generated will look something like this
 
 func IntOps_add(int a,int b): int{
@@ -206,7 +207,7 @@ func FloatOps_subtract(float a, float b): float{
 
 #Multigeneric example
 
-generic MathOps(T,M){
+generic MathMultiOps(T,M){
     func add(T a,M b): M{
         return a+b;
     };
@@ -216,17 +217,25 @@ generic MathOps(T,M){
     }
 }
 
-instantiate MathOps(int, float) as TestOps;
+instantiate MathMultiOps(int, float) as MultiOps;
 
 ##Here the function generated will be
-func TestOps_add(int a,float b): float{
+func MultiOps_add(int a,float b): float{
     return a+b;
 }
 
-func TestOps_subtract(int a ,float b): float{
+func MultiOps_subtract(int a ,float b): float{
     return a-b;
 }
 ##
+
+func main: int{
+    int first_result=IntOps_add(10,18);
+    float second_result=MultiOps_add(14,9.0);
+
+
+    return 0;
+}
 ```
 
 ## Arrays
