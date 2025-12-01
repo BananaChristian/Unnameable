@@ -134,6 +134,10 @@ void Semantics::registerWalkerFunctions()
 
     // Wlaker registration for the qualify statement
     walkerFunctionsMap[typeid(QualifyStatement)] = &Semantics::walkQualifyStatement;
+
+    // Walker registrartion for generic system
+    walkerFunctionsMap[typeid(GenericStatement)] = &Semantics::walkGenericStatement;
+    walkerFunctionsMap[typeid(InstantiateStatement)] = &Semantics::walkInstantiateStatement;
 }
 
 ResolvedType Semantics::inferNodeDataType(Node *node)
@@ -301,8 +305,9 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     // Dealing with the let statement node type
     if (auto letStmt = dynamic_cast<LetStatement *>(node))
     {
-        auto letStmtDataToken = letStmt->data_type_token;
-        return resolvedDataType(letStmtDataToken, letStmt);
+        auto type = dynamic_cast<BasicType *>(letStmt->type.get());
+        auto letStmtDataType = type->data_token;
+        return resolvedDataType(letStmtDataType, letStmt);
     }
 
     if (auto assignStmt = dynamic_cast<AssignmentStatement *>(node))
@@ -1216,10 +1221,12 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
         auto letStmt = dynamic_cast<LetStatement *>(funcExpr->call[i].get());
         if (!letStmt)
             return false;
-        ResolvedType paramType = tokenTypeToResolvedType(letStmt->data_type_token, letStmt->isNullable);
-        std::string paramGenericName = letStmt->data_type_token.type == TokenType::IDENTIFIER ? letStmt->data_type_token.TokenLiteral : "";
+        auto type = dynamic_cast<BasicType *>(letStmt->type.get());
+        ResolvedType paramType = inferNodeDataType(type);
+        std::string paramGenericName = type->data_token.type == TokenType::IDENTIFIER ? type->data_token.TokenLiteral : "";
         // Find declaration's parameter metadata
         bool declParamNullable = false;
+        bool isLetNullable = type->isNullable;
         for (const auto &pair : metaData)
         {
             if (auto declLetStmt = dynamic_cast<LetStatement *>(pair.first))
@@ -1235,7 +1242,7 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpr
         }
         if (paramType.kind != declInfo.paramTypes[i].first.kind ||
             paramGenericName != declInfo.paramTypes[i].second ||
-            letStmt->isNullable != declParamNullable)
+            isLetNullable != declParamNullable)
         {
             return false;
         }
@@ -1267,10 +1274,12 @@ bool Semantics::signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberI
         auto letStmt = dynamic_cast<LetStatement *>(funcExpr->call[i].get());
         if (!letStmt)
             return false;
-        ResolvedType paramType = tokenTypeToResolvedType(letStmt->data_type_token, letStmt->isNullable);
-        std::string paramGenericName = letStmt->data_type_token.type == TokenType::IDENTIFIER ? letStmt->data_type_token.TokenLiteral : "";
+        auto type = dynamic_cast<BasicType *>(letStmt->type.get());
+        ResolvedType paramType = inferNodeDataType(type);
+        std::string paramGenericName = type->data_token.type == TokenType::IDENTIFIER ? type->data_token.TokenLiteral : "";
         // Find declaration's parameter metadata
         bool declParamNullable = false;
+        bool isLetNullable = type->isNullable;
         for (const auto &pair : metaData)
         {
             if (auto declLetStmt = dynamic_cast<LetStatement *>(pair.first))
@@ -1286,7 +1295,7 @@ bool Semantics::signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberI
         }
         if (paramType.kind != declMember->paramTypes[i].first.kind ||
             paramGenericName != declMember->paramTypes[i].second ||
-            letStmt->isNullable != declParamNullable)
+            isLetNullable != declParamNullable)
         {
             return false;
         }
@@ -1611,10 +1620,11 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
     case TokenType::AUTO:
     {
         auto letStmt = dynamic_cast<LetStatement *>(node);
+        auto type = dynamic_cast<BasicType *>(node);
         auto letStmtValue = letStmt->value.get();
         if (!letStmtValue)
         {
-            logSemanticErrors("Cannot infer without a value", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            logSemanticErrors("Cannot infer without a value", type->data_token.line, type->data_token.column);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
         auto inferred = inferNodeDataType(letStmtValue);
@@ -1628,37 +1638,19 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
         // Extract the identifier as this how the parser is logging the correct types
         // Case 1 is for let statements
         auto letStmt = dynamic_cast<LetStatement *>(node);
+        auto type = dynamic_cast<BasicType *>(node);
         // Extract the custom data type
-        auto letStmtType = letStmt->data_type_token.TokenLiteral;
+        auto letStmtType = type->data_token.TokenLiteral;
 
-        // Split the token literal storing the type name
-        auto [parentName, childName] = splitScopedName(letStmtType);
-        // Let us seacrh for the name of the identifier in the customTypesTable
-        // Case a -- A bare bones name
-        auto parentIt = customTypesTable.find(parentName);
-        if (parentIt == customTypesTable.end())
+        // Search for the name in the custom types table
+        auto typeIt = customTypesTable.find(letStmtType);
+        if (typeIt == customTypesTable.end())
         {
-            logSemanticErrors("Type '" + parentName + "' is unknown", letStmt->data_type_token.line, letStmt->data_type_token.column);
+            logSemanticErrors("Type '" + letStmtType + "' is unknown", type->data_token.line, type->data_token.column);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
 
-        // Case b -- having members now this is tricky since the parser stored the whole thing as one name
-        if (!childName.empty())
-        {
-            auto &members = parentIt->second->members;
-            auto memberIt = members.find(childName);
-            if (memberIt == members.end())
-            {
-                logSemanticErrors("Type '" + childName + "' does not exist in '" + parentName + "'", letStmt->data_type_token.line, letStmt->data_type_token.column);
-                return ResolvedType{DataType::UNKNOWN, "unknown"};
-            }
-            auto memberType = memberIt->second->type;
-
-            return ResolvedType{memberType.kind, memberIt->second->memberName};
-        }
-
-        // If we have no members we return the parent
-        return ResolvedType{parentIt->second->type.kind, parentIt->second->typeName};
+        return ResolvedType{typeIt->second->type.kind, typeIt->second->typeName};
     }
 
     default:
@@ -1709,54 +1701,6 @@ int64_t Semantics::getIntExprVal(Node *node)
     }
 
     return len;
-}
-
-int64_t Semantics::SubscriptIndexVerifier(Node *indexNode, int64_t arrLen)
-{
-    // Possible cases inside the index
-    auto intLit = dynamic_cast<IntegerLiteral *>(indexNode);
-    auto identExpr = dynamic_cast<Identifier *>(indexNode);
-    auto infix = dynamic_cast<InfixExpression *>(indexNode);
-    auto arrSub = dynamic_cast<ArraySubscript *>(indexNode);
-
-    int64_t index;
-    if (intLit)
-    {
-        index = std::stoll(intLit->int_token.TokenLiteral);
-        if (index > arrLen)
-        {
-            logSemanticErrors("index position provided is out of bounds", intLit->expression.line, intLit->expression.column);
-            return false;
-        }
-        return index;
-    }
-    else if (identExpr)
-    {
-        const std::string &name = identExpr->identifier.TokenLiteral;
-        auto identSym = resolveSymbolInfo(name);
-        if (!identSym)
-        {
-            logSemanticErrors("Undeclared identifier '" + name + "' used", identExpr->expression.line, identExpr->expression.column);
-            return false;
-        }
-
-        if (!identSym->isConstant)
-        {
-            logSemanticErrors("Use of a non constant variable'" + name + "'to access index", identExpr->expression.line, identExpr->expression.column);
-            return false;
-        }
-
-        index = identSym->constIntVal;
-        if (index > arrLen)
-        {
-            logSemanticErrors("index position provided is out of bounds", intLit->expression.line, intLit->expression.column);
-            return false;
-        }
-        return index;
-    }
-    // TODO: Add infix handling (I will use the positions returned to return the value the subscript holds), I am gonna stop coding on this project for now as I feel so exhausted hopefully I will return
-
-    return index;
 }
 
 ResolvedType Semantics::isPointerType(ResolvedType t)

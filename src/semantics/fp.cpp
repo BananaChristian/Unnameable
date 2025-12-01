@@ -307,7 +307,7 @@ void Semantics::walkFunctionParameters(Node *node)
     if (auto param = dynamic_cast<LetStatement *>(node))
     {
         std::cout << "[SEMANTIC LOG]: Registering function parameter\n";
-
+        auto paramType = dynamic_cast<BasicType *>(param->type.get());
         // Extract parameter name
         auto paramName = param->ident_token.TokenLiteral;
 
@@ -321,17 +321,17 @@ void Semantics::walkFunctionParameters(Node *node)
         }
 
         // Resolve declared type (must NOT be auto)
-        if (param->data_type_token.type == TokenType::AUTO)
+        if (paramType->data_token.type == TokenType::AUTO)
         {
             logSemanticErrors("Function parameter '" + paramName + "' cannot use inferred (auto) type",
-                              param->data_type_token.line, param->data_type_token.column);
+                              paramType->data_token.line, paramType->data_token.column);
             return;
         }
 
-        bool isNullable = param->isNullable;
+        bool isNullable = paramType->isNullable;
         bool isMutable = (param->mutability == Mutability::MUTABLE);
 
-        ResolvedType resolvedType = tokenTypeToResolvedType(param->data_type_token, isNullable);
+        ResolvedType resolvedType = inferNodeDataType(paramType);
 
         // Create symbol entry
         auto info = std::make_shared<SymbolInfo>();
@@ -652,14 +652,14 @@ void Semantics::walkFunctionExpression(Node *node)
     }
     ResolvedType returnType = inferNodeDataType(funcExpr->return_type.get());
     std::string customTypeName = retType->returnExpr->expression.TokenLiteral;
-    if (retType->expression.type == TokenType::IDENTIFIER)
+    if (retType->returnExpr->expression.type == TokenType::IDENTIFIER)
     {
 
         auto it = customTypesTable.find(customTypeName);
         if (it == customTypesTable.end())
         {
             logSemanticErrors("Type '" + customTypeName + "' does not exist",
-                              retType->expression.line, retType->expression.column);
+                              retType->returnExpr->expression.line, retType->returnExpr->expression.column);
 
             return;
         }

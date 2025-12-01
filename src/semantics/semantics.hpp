@@ -121,11 +121,36 @@ struct ScopeInfo
     Node *node = nullptr;
 };
 
+struct GenericBluePrint
+{
+    std::string name;                    // Block name
+    std::vector<std::string> typeParams; // The type parameters
+    std::unordered_map<std::string, int> typeParamIndex;
+    std::unique_ptr<Node> blockAST; // original AST subtree for the generic block
+};
+
 struct ArrayTypeInfo
 {
     ResolvedType underLyingType;
     int dimensions;
     std::vector<int64_t> sizePerDimension;
+};
+
+struct GenericInstantiationInfo
+{
+    std::string aliasName;
+    std::string blueprintName;
+    std::unordered_map<std::string, ResolvedType> paramToType; // T -> int
+    std::unordered_map<std::string, Token> rawTypeMap;         // T -> int token
+    std::unique_ptr<Node> instantiatedAST; // cloned + substituted AST
+    
+    GenericInstantiationInfo() = default;
+
+    GenericInstantiationInfo(const GenericInstantiationInfo&) = delete;
+    GenericInstantiationInfo& operator=(const GenericInstantiationInfo&) = delete;
+
+    GenericInstantiationInfo(GenericInstantiationInfo&&) = default;
+    GenericInstantiationInfo& operator=(GenericInstantiationInfo&&) = default;
 };
 
 // Information about the symbol(variable or object, whatever)
@@ -184,6 +209,21 @@ struct SymbolInfo
 
     // Error flag
     bool hasError = false;
+
+    // Generic flag
+    bool isGeneric = false;
+    bool isInstantiation = false;
+    std::optional<GenericInstantiationInfo> instTable;
+
+    SymbolInfo() = default;
+
+    // No copying
+    SymbolInfo(const SymbolInfo &) = delete;
+    SymbolInfo &operator=(const SymbolInfo &) = delete;
+
+    // Movable
+    SymbolInfo(SymbolInfo &&) = default;
+    SymbolInfo &operator=(SymbolInfo &&) = default;
 };
 
 class Semantics
@@ -202,6 +242,8 @@ public:
     std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
     std::vector<bool> loopContext;
     std::vector<ScopeInfo> currentTypeStack;
+
+    std::unordered_map<std::string, GenericBluePrint> genericMap;
 
     std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
 
@@ -314,6 +356,10 @@ private:
     void walkArrayStatement(Node *node);
     void walkArraySubscriptExpression(Node *node);
 
+    // Walking generics
+    void walkGenericStatement(Node *node);
+    void walkInstantiateStatement(Node *node);
+
     // Walking the shout statement
     void walkShoutStatement(Node *node);
 
@@ -335,10 +381,11 @@ private:
     ResolvedType isRefType(ResolvedType t);
     ResolvedType makeArrayType(const ResolvedType &t, int dimensionCount);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
-    int64_t SubscriptIndexVerifier(Node *indexNode, int64_t arrLen);
     int inferLiteralDimensions(ArrayLiteral *arrLit);
     void inferSizePerDimension(ArrayLiteral *lit, std::vector<int64_t> &sizes);
     int64_t getIntExprVal(Node *node);
+    void substituteTypes(Node *node, std::unordered_map<std::string, Token> &subMap);
+    void mangleGenericName(Node *node, std::string aliasName);
 
     bool isGlobalScope();
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);

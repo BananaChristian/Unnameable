@@ -399,7 +399,7 @@ void Semantics::walkAddressExpression(Node *node)
     if (symbolInfo->isHeap)
         symbolInfo->lastUseNode = addrExpr;
 
-    auto addrInfo = std::make_shared<SymbolInfo>(*symbolInfo);
+    auto addrInfo = std::make_shared<SymbolInfo>();
     addrInfo->isPointer = true;
     addrInfo->type = inferNodeDataType(addrExpr);
 
@@ -450,8 +450,10 @@ void Semantics::walkLetStatement(Node *node)
 
     std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
 
+    auto type = dynamic_cast<BasicType *>(letStmt->type.get());
+
     // --- Initial flags ---
-    bool isNullable = letStmt->isNullable;
+    bool isNullable = type->isNullable;
     bool isHeap = letStmt->isHeap;
     bool isDefinitelyNull = false;
     bool isInitialized = false;
@@ -502,7 +504,7 @@ void Semantics::walkLetStatement(Node *node)
     auto letStmtValue = letStmt->value.get();
 
     // --- Resolve type from token ---
-    ResolvedType expectedType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
+    ResolvedType expectedType = inferNodeDataType(letStmt->type.get());
     ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
     // --- Mutability & constants ---
@@ -563,13 +565,13 @@ void Semantics::walkLetStatement(Node *node)
             {
                 logSemanticErrors(
                     "Cannot assign 'null' to non-nullable variable '" + letStmt->ident_token.TokenLiteral + "'",
-                    letStmt->data_type_token.line, letStmt->data_type_token.column);
+                    type->data_token.line, type->data_token.column);
                 hasError = true;
                 declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
             }
             else
             {
-                declaredType = tokenTypeToResolvedType(letStmt->data_type_token, true);
+                declaredType = inferNodeDataType(type);
             }
         }
         else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
@@ -603,18 +605,18 @@ void Semantics::walkLetStatement(Node *node)
     }
     else
     {
-        declaredType = tokenTypeToResolvedType(letStmt->data_type_token, isNullable);
+        declaredType = inferNodeDataType(type);
     }
 
     // --- Type mismatch checks ---
-    if (letStmt->data_type_token.type != TokenType::AUTO)
+    if (type->data_token.type != TokenType::AUTO)
     {
         if (!isTypeCompatible(expectedType, declaredType))
         {
             logSemanticErrors(
                 "Type mismatch in variable declaration statement '" + letName + "' expected '" + expectedType.resolvedName + "' but got '" +
                     declaredType.resolvedName + "'",
-                letStmt->data_type_token.line, letStmt->data_type_token.column);
+                type->data_token.line, type->data_token.column);
             hasError = true;
         }
 
@@ -623,7 +625,7 @@ void Semantics::walkLetStatement(Node *node)
             logSemanticErrors(
                 "Cannot assign a nullable (possibly null) value to non-nullable variable '" +
                     letStmt->ident_token.TokenLiteral + "'",
-                letStmt->data_type_token.line, letStmt->data_type_token.column);
+                type->data_token.line, type->data_token.column);
             hasError = true;
             declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
         }
@@ -653,7 +655,7 @@ void Semantics::walkLetStatement(Node *node)
             hasError = true;
         }
 
-        if (letStmt->data_type_token.type == TokenType::AUTO)
+        if (type->data_token.type == TokenType::AUTO)
         {
             logSemanticErrors(
                 "Cannot promote auto variable '" + letStmt->ident_token.TokenLiteral + "' to the heap, please explicitly use its type",
