@@ -778,8 +778,8 @@ Token Lexer::tokenize()
     }
     case U':':
     {
-        CAPTURE_POS;
-        if (peekChar() == U':')
+        CAPTURE_POS; 
+        if (peekChar() == U':') 
         {
             advance();
             advance();
@@ -799,7 +799,8 @@ Token Lexer::tokenize()
     }
     case U'\0':
     {
-        return Token{"", TokenType::END};
+        CAPTURE_POS;
+        return Token{"", TokenType::END, tokenLine, tokenColumn};
     }
     default:
     {
