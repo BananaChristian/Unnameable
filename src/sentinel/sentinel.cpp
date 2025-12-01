@@ -41,6 +41,7 @@ void Sentinel::registerSentinelFns()
     sentinelFnsMap[typeid(DataStatement)] = &Sentinel::checkDataStatement;
     sentinelFnsMap[typeid(FieldAssignment)] = &Sentinel::checkFieldAssignment;
     sentinelFnsMap[typeid(ComponentStatement)] = &Sentinel::checkComponentStatement;
+    sentinelFnsMap[typeid(InstantiateStatement)] = &Sentinel::checkInstantiateStatement;
 }
 
 void Sentinel::checkExpressionStatement(Node *node)
@@ -407,6 +408,31 @@ void Sentinel::checkComponentStatement(Node *node)
     for (const auto &method : compStmt->privateMethods)
     {
         sentinelDriver(method.get());
+    }
+}
+
+void Sentinel::checkInstantiateStatement(Node *node)
+{
+    auto instStmt = dynamic_cast<InstantiateStatement *>(node);
+    if (!instStmt)
+        return;
+
+    auto line = instStmt->instantiate_token.line;
+    auto col = instStmt->instantiate_token.column;
+
+    auto it = semantics.metaData.find(instStmt);
+    if (it == semantics.metaData.end())
+    {
+        logError("Failed to find metaData for instantiation statement", line, col);
+        return;
+    }
+
+    auto sym = it->second;
+    const auto &instTable = sym->instTable;
+
+    if (instTable.has_value())
+    {
+        sentinelDriver(instTable->instantiatedAST.get());
     }
 }
 
