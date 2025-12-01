@@ -161,9 +161,13 @@ func main(): int{
 
 ## Generic and multigenerics
 
-Unnameable uses a system of generics called Explicitly Instantiated Generics(EIG) where the user defines what they want inside a generic block which takes arguments of the types. Then an instantiate statement allows the user to tell the compiler what sort of types they would like to create generics for.
-The alias on the instantiate statement is to uphold the langauge's rules of no overloading
-This means when the compiler generates the generic functions after the user instantiates so for examole the add for int will not be the same as the one for float the compiler will automatically add the aliases to the name generating something like IntOps_add and FloatOps_add as seen below.
+Unnameable uses a system of generics called Explicitly Instantiated Generics(EIG) where the user defines what the functions they want inside a generic block which takes arguments of the types. Then an instantiate statement allows the user to tell the compiler what sort of types they would like to create generics for.
+The alias on the instantiate statement is to uphold the langauge's rules of no overloading.
+
+This means when the compiler generates the generic functions after the user instantiates so for example the add for `int` will not be the same as the one for `float` the compiler will automatically add the aliases to the name generating something like `IntOps_add` and `FloatOps_add` as seen below.
+
+Note: The only top level statements allowed are function statements which means you can define or declare functions inside the generic blocks but other stuff is prohibited
+
 This system also supports multigenerics as shown below
 
 ```
