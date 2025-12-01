@@ -102,11 +102,12 @@ private:
     void generateComponentStatement(Node *node);
     void generateComponentFunctionStatement(Node *node, const std::string &compName);
 
+    void generateInstantiateStatement(Node *node);
+    // Array statement generator
     void generateArrayStatement(Node *node);
-
     // Enum class system
     void generateEnumClassStatement(Node *node);
-
+    // Shout statement generator
     void generateShoutStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
@@ -171,6 +172,7 @@ private:
     bool isSignedInteger(DataType dt);
     bool currentBlockIsTerminated();
     unsigned getIntegerBitWidth(DataType dt);
+    llvm::Function *declareFunctionSignature(FunctionExpression *fnExpr);
 
     llvm::GlobalVariable *createGlobalArrayConstant(llvm::Constant *constantArray);
 

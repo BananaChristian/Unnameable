@@ -3673,6 +3673,7 @@ void IRGenerator::registerGeneratorFunctions()
 
     generatorFunctionsMap[typeid(ArrayStatement)] = &IRGenerator::generateArrayStatement;
     generatorFunctionsMap[typeid(ShoutStatement)] = &IRGenerator::generateShoutStatement;
+    generatorFunctionsMap[typeid(InstantiateStatement)] = &IRGenerator::generateInstantiateStatement;
 }
 
 void IRGenerator::registerAddressGeneratorFunctions()

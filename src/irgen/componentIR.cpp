@@ -571,3 +571,75 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
     // Return the pointer
     return instancePtr;
 }
+
+llvm::Function *IRGenerator::declareFunctionSignature(FunctionExpression *fnExpr)
+{
+    // If node has an error we wont generate IR
+    auto funcIt = semantics.metaData.find(fnExpr);
+    if (funcIt == semantics.metaData.end() || funcIt->second->hasError)
+    {
+        throw std::runtime_error("Function expression semantic error or missing metaData.");
+    }
+
+    auto fnName = fnExpr->func_key.TokenLiteral;
+
+    // Building the function type
+    std::vector<llvm::Type *> llvmParamTypes;
+    for (auto &p : fnExpr->call)
+    {
+        auto it = semantics.metaData.find(p.get());
+        if (it == semantics.metaData.end())
+        {
+            throw std::runtime_error("Missing parameter meta data during function declaration.");
+        }
+        llvmParamTypes.push_back(getLLVMType(it->second->type));
+    }
+
+    // Getting the function return type
+    auto fnRetType = fnExpr->return_type.get();
+    auto retType = semantics.inferNodeDataType(fnRetType);
+    llvm::FunctionType *funcType = llvm::FunctionType::get(lowerFunctionType(retType), llvmParamTypes, false);
+
+    // Look up or create the function declaration.
+    // This is the CRITICAL part: it ensures the symbol is registered in the module.
+    llvm::Function *fn = module->getFunction(fnName);
+    if (!fn)
+    {
+        fn = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, fnName, module.get());
+    }
+    else
+    {
+        // Simple check to ensure signature matches if it was already declared somehow
+        if (fn->getFunctionType() != funcType)
+        {
+            throw std::runtime_error("Function redefinition for '" + fnName + "' with different signature.");
+        }
+    }
+    return fn;
+}
+
+void IRGenerator::generateInstantiateStatement(Node *node)
+{
+    auto instStmt = dynamic_cast<InstantiateStatement *>(node);
+
+    if (!instStmt)
+        throw std::runtime_error("Invalid instantiation statement");
+
+    auto it = semantics.metaData.find(instStmt);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Failed to find instantiation metaData");
+    }
+
+    auto sym = it->second;
+    const auto &instTable = sym->instTable;
+
+    if (instTable.has_value())
+    {
+        auto block = dynamic_cast<BlockStatement *>(instTable->instantiatedAST.get());
+        for (const auto &stmt : block->statements)
+        {
+            generateStatement(stmt.get());
+        }
+    }
+}
