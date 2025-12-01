@@ -99,7 +99,7 @@ std::unique_ptr<Statement> Parser::parseStatement()
 
         return std::make_unique<ExpressionStatement>(current, std::move(expr));
     }
-    
+
     advance();
     return nullptr;
 }
@@ -207,9 +207,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
         mutability_token = currentToken();
     }
 
-    Token dataType_token = currentToken();
-    std::cout << "[DEBUG] Data type token: " + dataType_token.TokenLiteral << "\n";
-    advance();
+    std::unique_ptr<Expression> type = parseBasicType();
 
     if (currentToken().type == TokenType::QUESTION_MARK)
     {
@@ -268,15 +266,14 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam)
         }
     }
 
-    return std::make_unique<LetStatement>(isHeap, mutability, dataType_token, isNullable, ident_token, assign_token, move(value));
+    return std::make_unique<LetStatement>(isHeap, mutability, std::move(type), ident_token, assign_token, move(value));
 }
 // Parsing let statements with custom types
 std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
 {
     std::cout << "INSIDE CUSTOM TYPE PARSER\n";
     Mutability mut = Mutability::IMMUTABLE;
-    Token data_type_token;
-    bool isNullable = false;
+    std::unique_ptr<Expression> type;
     bool isHeap = false;
 
     // Checking for mutability
@@ -294,28 +291,15 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
     // Checking for the indentifier token
     if (currentToken().type == TokenType::IDENTIFIER)
     {
-        data_type_token = currentToken();
-        std::string fullTypeName = data_type_token.TokenLiteral;
-        advance(); // Consume the identifier token
-        while (currentToken().type == TokenType::SCOPE_OPERATOR)
-        {
-            advance(); // Consume the scope operator
-            if (currentToken().type != TokenType::IDENTIFIER)
-            {
-                logError("Expected an identifier after  '::'");
-                return nullptr;
-            }
-            fullTypeName += "::" + currentToken().TokenLiteral; // append to full name
-            advance();                                          // Consume the identifier
-        }
-        data_type_token.TokenLiteral = fullTypeName; // Overriding the token's literal to allow storage of IDENTIFIER::IDENTIFIER
-    }
+        type = parseBasicType();
 
-    // Check for nullability
-    if (currentToken().type == TokenType::QUESTION_MARK)
-    {
-        isNullable = true;
-        advance();
+        if (!type)
+        {
+            // A specific error should have been logged inside parseBasicType(), but
+            // returning nullptr here prevents using a broken expression object.
+            logError("Type parse failed for '" + currentToken().TokenLiteral + "'");
+            return nullptr;
+        }
     }
 
     // Check for the variable name
@@ -329,7 +313,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
     advance(); // Consume the variable name identifier token
 
     // Checking if we have a value assigned
-    std::optional<Token> assign_token;
+    std::optional<Token> assign_token = std::nullopt;
     std::unique_ptr<Expression> value = nullptr;
 
     if (currentToken().type == TokenType::ASSIGN)
@@ -375,7 +359,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithCustomType(bool isParam)
         }
     }
 
-    return std::make_unique<LetStatement>(isHeap, mut, data_type_token, isNullable, ident_token, assign_token, std::move(value));
+    return std::make_unique<LetStatement>(isHeap, mut, std::move(type), ident_token, assign_token, std::move(value));
 }
 
 std::unique_ptr<Statement> Parser::parseHeapStatement()
@@ -438,11 +422,7 @@ std::unique_ptr<Statement> Parser::parseLetStatementDecider()
     }
     else if (current.type == TokenType::IDENTIFIER)
     {
-        if (nextToken().type == TokenType::SCOPE_OPERATOR)
-        {
-            return parseLetStatementWithCustomType(true);
-        }
-        else if (nextToken().type == TokenType::ASSIGN)
+        if (nextToken().type == TokenType::ASSIGN)
         {
             return parseAssignmentStatement(true);
         }
@@ -687,7 +667,8 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
         auto dataStmt = parseStatement();
         if (auto letStmt = dynamic_cast<LetStatement *>(dataStmt.get()))
         {
-            TokenType declaredType = letStmt->data_type_token.type;
+            auto type = dynamic_cast<BasicType *>(letStmt->type.get());
+            TokenType declaredType = type->data_token.type;
             if (isBasicType(declaredType) || declaredType == TokenType::IDENTIFIER || declaredType == TokenType::AUTO)
             {
                 fields.push_back(std::move(dataStmt));
@@ -1729,7 +1710,6 @@ std::unique_ptr<Expression> Parser::parseReturnType()
 // Parsing function expression
 std::unique_ptr<Expression> Parser::parseFunctionExpression()
 {
-    std::cout << "[TEST]Function parser is working\n";
     //--------Dealing with func keyword---------------
     Token func_tok = currentToken(); // The token representing the keyword for functions (func)
     advance();
@@ -2088,7 +2068,7 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
                 }
                 else if (t.type == TokenType::END)
                 {
-                    return Token{"", TokenType::END};
+                    return Token{"", TokenType::END, t.line, t.column};
                 }
 
                 offset++;
@@ -2118,7 +2098,7 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
         return parseAssignmentStatement();
     }
 
-    //Cases where there is a custom type like(Type var)
+    // Cases where there is a custom type like(Type var)
     if (peek1.type == TokenType::IDENTIFIER)
     {
         return parseLetStatementCustomOrBasic();

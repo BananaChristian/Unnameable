@@ -133,6 +133,7 @@ std::unique_ptr<EnumMember> Parser::parseEnumMember()
         logError("Enum member must start with an identifier, got: " + TokenTypeToLiteral(currentToken().type));
         return nullptr; // Return nullptr but don't advance to allow recovery in caller
     }
+    Token memberToken = currentToken(); 
 
     std::string name = currentToken().TokenLiteral;
     advance(); // Consume the identifier
@@ -157,7 +158,7 @@ std::unique_ptr<EnumMember> Parser::parseEnumMember()
         // No need for manual advance here; parseExpression should handle token consumption
     }
 
-    return std::make_unique<EnumMember>(name, std::move(value));
+    return std::make_unique<EnumMember>(memberToken, name, std::move(value));
 }
 
 std::unique_ptr<Statement> Parser::parseEnumClassStatement()
@@ -261,57 +262,65 @@ std::unique_ptr<Statement> Parser::parseEnumClassStatement()
 std::unique_ptr<Statement> Parser::parseGenericStatement()
 {
     Token generic_token = currentToken();
-    advance(); // Consume the keyword generic
+    advance(); // consume 'generic'
 
-    // Getting the generic name
+    // name
     if (currentToken().type != TokenType::IDENTIFIER)
     {
-        logError("Expected 'identifier' but got '" + currentToken().TokenLiteral + "'");
+        logError("Expected identifier for generic name but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
-
     auto genericIdent = parseIdentifier();
 
-    // Dealing with the type parameters
+    // type param list
     if (currentToken().type != TokenType::LPAREN)
     {
-        logError("Expected '(' but got " + currentToken().TokenLiteral + "'");
+        logError("Expected '(' after generic name but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
+    advance(); // consume '('
 
     std::vector<Token> types;
-    while (currentToken().type != TokenType::RPAREN && currentToken().type != TokenType::END)
+
+    while (currentToken().type != TokenType::RPAREN &&
+           currentToken().type != TokenType::END)
     {
-        advance();
         if (currentToken().type == TokenType::IDENTIFIER)
         {
             types.push_back(currentToken());
+            advance();
         }
-        else if (currentToken().type != TokenType::COMMA)
+        else if (currentToken().type == TokenType::COMMA)
         {
-            logError("Unexpected token in generic parameters: " + currentToken().TokenLiteral);
+            advance(); // consume comma
+        }
+        else
+        {
+            logError("Unexpected token in generic parameters: '" + currentToken().TokenLiteral + "'");
             return nullptr;
         }
-        advance();
     }
 
     if (currentToken().type != TokenType::RPAREN)
     {
-        logError("Expected ')' to close argument list");
+        logError("Expected ')' to close generic parameter list");
         return nullptr;
     }
-    advance();
+    advance(); // consume ')'
 
     if (currentToken().type != TokenType::LBRACE)
     {
-        logError("Expected '{' to start init block but got: " + currentToken().TokenLiteral);
+        logError("Expected '{' to start generic block but got '" + currentToken().TokenLiteral + "'");
         return nullptr;
     }
 
     auto block = parseBlockStatement();
-    advance();
 
-    return std::make_unique<GenericStatement>(generic_token, std::move(genericIdent), types, std::move(block));
+    return std::make_unique<GenericStatement>(
+        generic_token,
+        std::move(genericIdent),
+        types,
+        std::move(block));
 }
 
 std::unique_ptr<Statement> Parser::parseInstantiateStatement()
@@ -327,32 +336,48 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement()
     }
 
     auto ident = parseIdentifier();
+    // Expect '('
     if (currentToken().type != TokenType::LPAREN)
     {
-        logError("Expected '(' but got '" + currentToken().TokenLiteral + "'");
+        logError("Expected '(' after instantiate identifier");
         return nullptr;
     }
+    advance(); // consume '('
 
     std::vector<Token> types;
-    while (currentToken().type != TokenType::RPAREN && currentToken().type != TokenType::END)
+
+    // Parse argument list
+    while (currentToken().type != TokenType::RPAREN &&
+           currentToken().type != TokenType::END)
     {
-        advance();
-        if (isBasicType(currentToken().type))
+        // Must be a type token (basic OR custom)
+        if (currentToken().type == TokenType::IDENTIFIER ||
+            isBasicType(currentToken().type))
         {
             types.push_back(currentToken());
+            advance();
         }
-        else if (currentToken().type != TokenType::COMMA)
+        else
         {
-            logError("Unexpected token in generic call parameters: " + currentToken().TokenLiteral);
+            logError("Unexpected token in generic call: " + currentToken().TokenLiteral);
+            return nullptr;
         }
-        advance();
+
+        // If comma → eat it and continue
+        if (currentToken().type == TokenType::COMMA)
+        {
+            advance();
+            continue;
+        }
+
+        // If not comma, next MUST be ')'
+        if (currentToken().type != TokenType::RPAREN)
+        {
+            logError("Expected ',' or ')' but got '" + currentToken().TokenLiteral + "'");
+            return nullptr;
+        }
     }
 
-    if (currentToken().type != TokenType::RPAREN)
-    {
-        logError("Expected ')' to close argument list");
-        return nullptr;
-    }
     auto generic_call = std::make_unique<GenericCall>(std::move(ident), types);
 
     advance();
@@ -469,7 +494,7 @@ std::unique_ptr<Expression> Parser::parseArrayType()
 
 std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
 {
-    bool isHeap=false;
+    bool isHeap = false;
     Mutability mutability = Mutability::IMMUTABLE;
     if (currentToken().type == TokenType::MUT)
     {
