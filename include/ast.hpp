@@ -9,6 +9,26 @@
 
 #define CPPREST_FORCE_REBUILD
 
+template <typename T>
+std::unique_ptr<T> clonePtr(const std::unique_ptr<T> &ptr)
+{
+    if (!ptr)
+        return nullptr;
+    return std::unique_ptr<T>(static_cast<T *>(ptr->shallowClone()));
+}
+
+template <typename T>
+std::vector<std::unique_ptr<T>> clonePtrVector(const std::vector<std::unique_ptr<T>> &vec)
+{
+    std::vector<std::unique_ptr<T>> out;
+    out.reserve(vec.size());
+    for (auto &item : vec)
+    {
+        out.push_back(std::unique_ptr<T>(static_cast<T *>(item->shallowClone())));
+    }
+    return out;
+}
+
 enum class Mutability
 {
     IMMUTABLE,
@@ -20,10 +40,17 @@ enum class Mutability
 struct Node
 {
     Token token;
+
+    virtual ~Node() = default;
+
     virtual std::string toString()
     {
         return "Node: " + token.TokenLiteral;
     };
+
+    virtual Node *shallowClone() const = 0;
+
+    Node(Token t) : token(t) {}
 };
 
 // GENERAL EXPRESSION NODE
@@ -34,7 +61,14 @@ struct Expression : Node
     {
         return "Expression: " + expression.TokenLiteral;
     }
-    Expression(Token expr) : expression(expr) {};
+
+    Expression *shallowClone() const override
+    {
+        return new Expression(
+            expression);
+    }
+
+    Expression(Token expr) : Node(expr), expression(expr) {};
 };
 
 // GENERAL STATEMENT NODE
@@ -45,7 +79,13 @@ struct Statement : Node
     {
         return "Statement: " + statement.TokenLiteral;
     }
-    Statement(Token stmt) : statement(stmt) {};
+
+    Statement *shallowClone() const override
+    {
+        return new Statement(
+            statement);
+    }
+    Statement(Token stmt) : Node(stmt), statement(stmt) {};
 };
 
 // Identifier statement node
@@ -55,6 +95,12 @@ struct Identifier : Expression
     std::string toString() override
     {
         return "Identifier Expression: " + identifier.TokenLiteral;
+    }
+
+    Identifier *shallowClone() const override
+    {
+        return new Identifier(
+            identifier);
     }
     Identifier(Token ident) : Expression(ident), identifier(ident) {};
 };
@@ -69,6 +115,13 @@ struct AddressExpression : Expression
     {
         return "Address Expression: " + addr_token.TokenLiteral + identifier->toString();
     }
+
+    AddressExpression *shallowClone() const override
+    {
+        return new AddressExpression(
+            addr_token,
+            clonePtr(identifier));
+    }
     AddressExpression(Token addr_t, std::unique_ptr<Expression> ident) : Expression(addr_t), addr_token(addr_t), identifier(std::move(ident)) {};
 };
 
@@ -81,6 +134,13 @@ struct DereferenceExpression : Expression
     std::string toString() override
     {
         return "Dereference Expression: " + deref_token.TokenLiteral + " " + identifier->toString();
+    }
+
+    DereferenceExpression *shallowClone() const override
+    {
+        return new DereferenceExpression(
+            deref_token,
+            clonePtr(identifier));
     }
 
     DereferenceExpression(Token deref, std::unique_ptr<Expression> ident) : Expression(deref), deref_token(deref), identifier(std::move(ident)) {}
@@ -129,6 +189,12 @@ struct NullLiteral : Expression
         return "Null Literal: " + null_token.TokenLiteral;
     }
 
+    NullLiteral *shallowClone() const override
+    {
+        return new NullLiteral(
+            null_token);
+    }
+
     NullLiteral(Token null_tok) : Expression(null_tok), null_token(null_tok) {};
 };
 
@@ -139,6 +205,12 @@ struct ShortLiteral : Expression
     std::string toString() override
     {
         return "Short Literal: " + short_token.TokenLiteral;
+    }
+
+    ShortLiteral *shallowClone() const override
+    {
+        return new ShortLiteral(
+            short_token);
     }
     ShortLiteral(Token short_t) : Expression(short_t), short_token(short_t) {};
 };
@@ -151,6 +223,12 @@ struct UnsignedShortLiteral : Expression
     {
         return "UnsignedShort Literal: " + ushort_token.TokenLiteral;
     }
+    UnsignedShortLiteral *shallowClone() const override
+    {
+        return new UnsignedShortLiteral(
+            ushort_token);
+    }
+
     UnsignedShortLiteral(Token ushort_t) : Expression(ushort_t), ushort_token(ushort_t) {};
 };
 
@@ -161,6 +239,12 @@ struct IntegerLiteral : Expression
     std::string toString() override
     {
         return "Integer Literal: " + int_token.TokenLiteral;
+    }
+
+    IntegerLiteral *shallowClone() const override
+    {
+        return new IntegerLiteral(
+            int_token);
     }
     IntegerLiteral(Token int_t) : Expression(int_t), int_token(int_t) {};
 };
@@ -173,6 +257,12 @@ struct UnsignedIntegerLiteral : Expression
     {
         return "UnsignedInteger Literal: " + uint_token.TokenLiteral;
     }
+
+    UnsignedIntegerLiteral *shallowClone() const override
+    {
+        return new UnsignedIntegerLiteral(
+            uint_token);
+    }
     UnsignedIntegerLiteral(Token uint_t) : Expression(uint_t), uint_token(uint_t) {};
 };
 
@@ -183,6 +273,12 @@ struct LongLiteral : Expression
     std::string toString() override
     {
         return "Long Literal: " + long_token.TokenLiteral;
+    }
+
+    LongLiteral *shallowClone() const override
+    {
+        return new LongLiteral(
+            long_token);
     }
     LongLiteral(Token long_t) : Expression(long_t), long_token(long_t) {};
 };
@@ -195,6 +291,13 @@ struct UnsignedLongLiteral : Expression
     {
         return "UnsignedLong Literal: " + ulong_token.TokenLiteral;
     }
+
+    UnsignedLongLiteral *shallowClone() const override
+    {
+        return new UnsignedLongLiteral(
+            ulong_token);
+    }
+
     UnsignedLongLiteral(Token ulong_t) : Expression(ulong_t), ulong_token(ulong_t) {};
 };
 
@@ -205,6 +308,12 @@ struct ExtraLiteral : Expression
     std::string toString() override
     {
         return "Extra Literal: " + extra_token.TokenLiteral;
+    }
+
+    ExtraLiteral *shallowClone() const override
+    {
+        return new ExtraLiteral(
+            extra_token);
     }
     ExtraLiteral(Token extra_t) : Expression(extra_t), extra_token(extra_t) {};
 };
@@ -217,6 +326,12 @@ struct UnsignedExtraLiteral : Expression
     {
         return "UnsignedExtra Literal: " + uextra_token.TokenLiteral;
     }
+
+    UnsignedExtraLiteral *shallowClone() const override
+    {
+        return new UnsignedExtraLiteral(
+            uextra_token);
+    }
     UnsignedExtraLiteral(Token uextra_t) : Expression(uextra_t), uextra_token(uextra_t) {};
 };
 
@@ -227,6 +342,12 @@ struct BooleanLiteral : Expression
     std::string toString() override
     {
         return "Boolean Literal: " + boolean_token.TokenLiteral;
+    }
+
+    BooleanLiteral *shallowClone() const override
+    {
+        return new BooleanLiteral(
+            boolean_token);
     }
     BooleanLiteral(Token bool_t) : Expression(bool_t), boolean_token(bool_t) {};
 };
@@ -239,6 +360,12 @@ struct FloatLiteral : Expression
     {
         return "Float Literal: " + float_token.TokenLiteral;
     }
+
+    FloatLiteral *shallowClone() const override
+    {
+        return new FloatLiteral(
+            float_token);
+    }
     FloatLiteral(Token float_t) : Expression(float_t), float_token(float_t) {};
 };
 
@@ -249,6 +376,12 @@ struct DoubleLiteral : Expression
     std::string toString() override
     {
         return "Double Literal: " + double_token.TokenLiteral;
+    }
+
+    DoubleLiteral *shallowClone() const override
+    {
+        return new DoubleLiteral(
+            double_token);
     }
     DoubleLiteral(Token double_t) : Expression(double_t), double_token(double_t) {};
 };
@@ -261,6 +394,12 @@ struct CharLiteral : Expression
     {
         return "Char Literal: " + char_token.TokenLiteral;
     }
+
+    CharLiteral *shallowClone() const override
+    {
+        return new CharLiteral(
+            char_token);
+    }
     CharLiteral(Token char_t) : Expression(char_t), char_token(char_t) {};
 };
 
@@ -271,6 +410,12 @@ struct Char16Literal : Expression
     std::string toString() override
     {
         return "Char16 Literal: " + char16_token.TokenLiteral;
+    }
+
+    Char16Literal *shallowClone() const override
+    {
+        return new Char16Literal(
+            char16_token);
     }
     Char16Literal(Token char16t) : Expression(char16t), char16_token(char16t) {};
 };
@@ -283,6 +428,12 @@ struct Char32Literal : Expression
     {
         return "Char32 Literal: " + char32_token.TokenLiteral;
     }
+
+    Char32Literal *shallowClone() const override
+    {
+        return new Char32Literal(
+            char32_token);
+    }
     Char32Literal(Token char32t) : Expression(char32t), char32_token(char32t) {};
 };
 
@@ -293,6 +444,12 @@ struct StringLiteral : Expression
     std::string toString() override
     {
         return "String Literal: " + string_token.TokenLiteral;
+    }
+
+    StringLiteral *shallowClone() const override
+    {
+        return new StringLiteral(
+            string_token);
     }
     StringLiteral(Token string_t) : Expression(string_t), string_token(string_t) {};
 };
@@ -312,6 +469,14 @@ struct CallExpression : Expression
                 args_str += ", ";
         }
         return "Call Expression: " + function_identifier->toString() + "(" + args_str + ")";
+    }
+
+    CallExpression *shallowClone() const override
+    {
+        return new CallExpression(
+            function_identifier->expression,
+            clonePtr(function_identifier),
+            clonePtrVector(parameters));
     }
 
     CallExpression(Token tok, std::unique_ptr<Expression> fn_ident, std::vector<std::unique_ptr<Expression>> params) : Expression(tok), function_identifier(std::move(fn_ident)), parameters(std::move(params)) {};
@@ -402,6 +567,15 @@ struct FunctionExpression : Expression
                " Function block: " + block_str;
     }
 
+    FunctionExpression *shallowClone() const override
+    {
+        return new FunctionExpression(
+            func_key,
+            clonePtrVector(call),
+            clonePtr(return_type),
+            clonePtr(block));
+    }
+
     FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
@@ -416,6 +590,14 @@ struct ArrayType : Expression
         return "Array Type: " + arr_token.TokenLiteral + "[" + innerType->toString() + "]" + (isNullable ? "?" : "");
     }
 
+    ArrayType *shallowClone() const override
+    {
+        return new ArrayType(
+            arr_token,
+            clonePtr(innerType),
+            isNullable);
+    }
+
     ArrayType(Token arr, std::unique_ptr<Expression> inner, bool isNull)
         : Expression(arr), arr_token(arr), innerType(std::move(inner)), isNullable(isNull) {}
 };
@@ -428,6 +610,14 @@ struct BasicType : Expression
     {
         return "Basic Type: " + data_token.TokenLiteral + (isNullable ? "?" : "");
     }
+
+    BasicType *shallowClone() const override
+    {
+        return new BasicType(
+            data_token,
+            isNullable);
+    }
+
     BasicType(Token data, bool isNull) : Expression(data), data_token(data), isNullable(isNull) {};
 };
 
@@ -440,6 +630,14 @@ struct PointerType : Expression
     {
         return "Pointer Type: " + underlyingType->toString() + "_ptr";
     }
+
+    PointerType *shallowClone() const override
+    {
+        return new PointerType(
+            ptr_token,
+            clonePtr(underlyingType));
+    }
+
     PointerType(Token ptr, std::unique_ptr<Expression> type) : Expression(ptr), ptr_token(ptr), underlyingType(std::move(type)) {};
 };
 
@@ -453,6 +651,13 @@ struct RefType : Expression
         return "Ref type: " + underLyingType->toString() + "_ptr"; // A reference is a pointer dressed in fancy dance clothes
     }
 
+    RefType *shallowClone() const override
+    {
+        return new RefType(
+            ref_token,
+            clonePtr(underLyingType));
+    }
+
     RefType(Token ref, std::unique_ptr<Expression> type) : Expression(ref), ref_token(ref), underLyingType(std::move(type)) {};
 };
 
@@ -464,6 +669,13 @@ struct ReturnType : Expression
     {
         return "Return Type: " + returnExpr->toString();
     }
+
+    ReturnType *shallowClone() const override
+    {
+        return new ReturnType(
+            clonePtr(returnExpr));
+    }
+
     ReturnType(std::unique_ptr<Expression> retExpr) : Expression(retExpr->expression), returnExpr(std::move(retExpr)) {};
 };
 
@@ -503,6 +715,14 @@ struct PostfixExpression : Expression
     {
         return "Postfix Expression: (" + operand->toString() + operator_token.TokenLiteral + ")";
     }
+
+    PostfixExpression *shallowClone() const override
+    {
+        return new PostfixExpression(
+            clonePtr(operand),
+            operator_token);
+    }
+
     PostfixExpression(std::unique_ptr<Expression> op, Token operat) : Expression(operat), operand(std::move(op)), operator_token(operat) {};
 };
 
@@ -515,6 +735,14 @@ struct InfixExpression : Expression
     std::string toString() override
     {
         return "Infix Expression: (" + left_operand->toString() + " " + operat.TokenLiteral + " " + right_operand->toString() + ")";
+    }
+
+    InfixExpression *shallowClone() const override
+    {
+        return new InfixExpression(
+            clonePtr(left_operand),
+            operat,
+            clonePtr(right_operand));
     }
     InfixExpression(std::unique_ptr<Expression> left, Token op, std::unique_ptr<Expression> right) : Expression(op), left_operand(std::move(left)), operat(op), right_operand(std::move(right)) {};
 };
@@ -533,6 +761,13 @@ struct ExpressionStatement : Statement
         }
         return ";";
     }
+
+    ExpressionStatement *shallowClone() const override
+    {
+        return new ExpressionStatement(
+            expr,
+            clonePtr(expression));
+    }
     ExpressionStatement(Token exp, std::unique_ptr<Expression> expr) : Statement(exp), expr(exp), expression(std::move(expr)) {};
 };
 
@@ -544,6 +779,12 @@ struct BreakStatement : Statement
     {
         return "Break Statement: " + break_tok.TokenLiteral;
     }
+
+    BreakStatement *shallowClone() const override
+    {
+        return new BreakStatement(
+            break_tok);
+    }
     BreakStatement(Token break_t) : Statement(break_t), break_tok(break_t) {};
 };
 
@@ -554,6 +795,12 @@ struct ContinueStatement : Statement
     std::string toString() override
     {
         return "Continue Statement: " + cont_tok.TokenLiteral;
+    }
+
+    ContinueStatement *shallowClone() const override
+    {
+        return new ContinueStatement(
+            cont_tok);
     }
     ContinueStatement(Token cont_t) : Statement(cont_t), cont_tok(cont_t) {};
 };
@@ -745,6 +992,7 @@ struct ErrorStatement : Statement
         }
         return "Error statement: error! " + errorStr;
     };
+
     ErrorStatement(Token err, std::unique_ptr<Expression> errExpr) : Statement(err), errorExpr(std::move(errExpr)) {};
 };
 
@@ -783,6 +1031,16 @@ struct ReferenceStatement : Statement
 
         return "Reference Statement: " + ref_token.TokenLiteral + " " + mutStr + typeStr + " " + referer->toString() + valueStr;
     };
+
+    ReferenceStatement *shallowClone() const override
+    {
+        return new ReferenceStatement(
+            ref_token,
+            mutability,
+            clonePtr(type),
+            clonePtr(referer),
+            clonePtr(referee));
+    }
 
     ReferenceStatement(
         Token ref,
@@ -827,6 +1085,16 @@ struct PointerStatement : Statement
         return "Pointer Statement: " + ptr_token.TokenLiteral + " " + mutStr + typeStr + " " + name->toString() + valueStr;
     };
 
+    PointerStatement *shallowClone() const override
+    {
+        return new PointerStatement(
+            ptr_token,
+            mutability,
+            clonePtr(type),
+            clonePtr(name),
+            clonePtr(value));
+    }
+
     PointerStatement(
         Token ptr,
         Mutability mut,
@@ -840,8 +1108,7 @@ struct LetStatement : Statement
 {
     bool isHeap;
     Mutability mutability;
-    Token data_type_token;
-    bool isNullable = false;
+    std::unique_ptr<Expression> type;
     Token ident_token;
     std::optional<Token> assign_token;
     std::unique_ptr<Expression> value;
@@ -850,20 +1117,23 @@ struct LetStatement : Statement
         std::string mut_str = "";
         std::string nullStr = "";
         std::string heapStr = "";
+        std::string typeStr = "Failed";
         if (isHeap)
         {
             heapStr = "heap ";
         }
-        if (isNullable)
-        {
-            nullStr += "?";
-        }
-        if (mutability == Mutability::MUTABLE)
-            mut_str = "mutable ";
-        else if (mutability == Mutability::CONSTANT)
-            mut_str = "constant ";
 
-        std::string result = "Let Statement: (" + heapStr + mut_str + "Data Type: " + data_type_token.TokenLiteral + nullStr + " Variable name: " + ident_token.TokenLiteral;
+        if (type)
+        {
+            typeStr = type->toString();
+        }
+
+        if (mutability == Mutability::MUTABLE)
+            mut_str = "mut";
+        else if (mutability == Mutability::CONSTANT)
+            mut_str = "const ";
+
+        std::string result = "Let Statement: (" + heapStr + mut_str + "Data Type: " + typeStr + nullStr + " Variable name: " + ident_token.TokenLiteral;
 
         if (value)
         {
@@ -878,14 +1148,24 @@ struct LetStatement : Statement
         return result;
     }
 
-    LetStatement(bool heap, Mutability muta, Token data_t, bool isNull, Token ident_t, std::optional<Token> assign_t, std::unique_ptr<Expression> val) : isHeap(heap),
-                                                                                                                                                         mutability(muta),
-                                                                                                                                                         data_type_token(data_t),
-                                                                                                                                                         isNullable(isNull),
-                                                                                                                                                         ident_token(ident_t),
-                                                                                                                                                         assign_token(assign_t),
-                                                                                                                                                         Statement(data_t),
-                                                                                                                                                         value(std::move(val)) {};
+    LetStatement *shallowClone() const
+    {
+        return new LetStatement(
+            isHeap,
+            mutability,
+            clonePtr(type),
+            ident_token,
+            assign_token,
+            clonePtr(value));
+    }
+
+    LetStatement(bool heap, Mutability muta, std::unique_ptr<Expression> data_t, const Token &ident_t, const std::optional<Token> &assign_t, std::unique_ptr<Expression> val) : isHeap(heap),
+                                                                                                                                                                                mutability(muta),
+                                                                                                                                                                                type(std::move(data_t)),
+                                                                                                                                                                                ident_token(ident_t),
+                                                                                                                                                                                assign_token(assign_t),
+                                                                                                                                                                                Statement(ident_t),
+                                                                                                                                                                                value(std::move(val)) {};
 };
 
 struct AssignmentStatement : Statement
@@ -896,6 +1176,13 @@ struct AssignmentStatement : Statement
     {
         return "Assignment statement: (Variable: " + identifier->toString() + " Value: " + value->toString() + ")";
     };
+
+    AssignmentStatement *shallowClone() const override
+    {
+        return new AssignmentStatement(
+            clonePtr(identifier),
+            clonePtr(value));
+    }
     AssignmentStatement(std::unique_ptr<Expression> ident, std::unique_ptr<Expression> val) : Statement(ident->token), identifier(std::move(ident)), value(std::move(val)) {};
 };
 
@@ -962,6 +1249,14 @@ struct ReturnStatement : Statement
         return "Return Statement: ( Token: " + return_stmt.TokenLiteral + " Value: " +
                (return_value ? return_value->toString() : "void") + "), Error: " + (error_val ? error_val->toString() : "no error return");
     }
+
+    ReturnStatement *shallowClone() const override
+    {
+        return new ReturnStatement(
+            return_stmt,
+            clonePtr(return_value),
+            clonePtr(error_val));
+    }
     ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val, std::unique_ptr<Statement> err) : Statement(ret), return_stmt(ret), return_value(std::move(ret_val)), error_val(std::move(err)) {};
 };
 
@@ -975,6 +1270,14 @@ struct elifStatement : Statement
     std::string toString() override
     {
         return "elifStatement: " + elif_token.TokenLiteral + "(" + elif_condition->toString() + ") {" + elif_result->toString() + "}";
+    }
+
+    elifStatement *shallowClone() const override
+    {
+        return new elifStatement(
+            elif_token,
+            clonePtr(elif_condition),
+            clonePtr(elif_result));
     }
 
     elifStatement(Token token, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> result) : Statement(token),
@@ -1035,6 +1338,17 @@ struct ifStatement : Statement
         return result;
     }
 
+    ifStatement *shallowClone() const override
+    {
+        return new ifStatement(
+            if_stmt,
+            clonePtr(condition),
+            clonePtr(if_result),
+            clonePtrVector(elifClauses),
+            else_stmt,
+            clonePtr(else_result.value()));
+    }
+
     ifStatement(Token if_st, std::unique_ptr<Expression> condition_e, std::unique_ptr<Statement> if_r,
                 std::vector<std::unique_ptr<Statement>> elifStmts,
                 std::optional<Token> else_st, std::optional<std::unique_ptr<Statement>> else_r) : Statement(if_st),
@@ -1058,6 +1372,14 @@ struct CaseClause : Statement
             body_content += "\n    " + b->toString();
         }
         return "case " + condition->toString() + ":" + body_content;
+    }
+
+    CaseClause *shallowClone() const override
+    {
+        return new CaseClause(
+            case_token,
+            clonePtr(condition),
+            clonePtrVector(body));
     }
 
     CaseClause(Token token, std::unique_ptr<Expression> cond, std::vector<std::unique_ptr<Statement>> stmt)
@@ -1099,12 +1421,23 @@ struct SwitchStatement : Statement
         return result;
     }
 
+    SwitchStatement *shallowClone() const override
+    {
+        return new SwitchStatement(
+            switch_token,
+            clonePtr(switch_expr),
+            clonePtrVector(case_clauses),
+            default_token,
+            clonePtrVector(default_statements));
+    }
+
     SwitchStatement(Token token, std::unique_ptr<Expression> expr, std::vector<std::unique_ptr<Statement>> cases, Token default_tok, std::vector<std::unique_ptr<Statement>> default_stmts)
         : Statement(token), switch_token(token), switch_expr(std::move(expr)), case_clauses(std::move(cases)), default_token(default_tok), default_statements(std::move(default_stmts)) {}
 };
 
 struct EnumMember : Node
 {
+    Token t;
     std::string enumMember;
     std::unique_ptr<Expression> value;
 
@@ -1118,7 +1451,15 @@ struct EnumMember : Node
         return "Enum Member: " + enumMember + val;
     }
 
-    EnumMember(std::string member, std::unique_ptr<Expression> val) : enumMember(member), value(std::move(val)) {};
+    EnumMember *shallowClone() const override
+    {
+        return new EnumMember(
+            t,
+            enumMember,
+            clonePtr(value));
+    }
+
+    EnumMember(Token token, std::string member, std::unique_ptr<Expression> val) : Node(token), enumMember(member), value(std::move(val)) {};
 };
 
 // Enum class struct
@@ -1147,6 +1488,16 @@ struct EnumClassStatement : Statement
         return "Enum class statement: " + enum_identifier->toString() + int_typestr + " { " + enum_block + " }";
     }
 
+    EnumClassStatement *shallowClone() const override
+    {
+        return new EnumClassStatement(
+            enum_token,
+            class_token,
+            clonePtr(enum_identifier),
+            int_type,
+            clonePtrVector(enum_content));
+    }
+
     EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::optional<Token> intType, std::vector<std::unique_ptr<EnumMember>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
                                                                                                                                                                                      class_token(class_tok),
                                                                                                                                                                                      enum_identifier(std::move(enum_ident)),
@@ -1161,6 +1512,16 @@ struct ForStatement : Statement
     std::unique_ptr<Expression> condition;  // i < 10
     std::unique_ptr<Statement> step;        // i = i + 1
     std::unique_ptr<Statement> body;        // the loop body
+
+    ForStatement *shallowClone() const override
+    {
+        return new ForStatement(
+            for_key,
+            clonePtr(initializer),
+            clonePtr(condition),
+            clonePtr(step),
+            clonePtr(body));
+    }
 
     ForStatement(Token for_k,
                  std::unique_ptr<Statement> init,
@@ -1192,6 +1553,15 @@ struct EachStatement : Statement
     std::unique_ptr<Statement> iteratorVar;
     std::unique_ptr<Expression> iterable;
     std::unique_ptr<Statement> body;
+
+    EachStatement *shallowClone() const override
+    {
+        return new EachStatement(
+            each_key,
+            clonePtr(iteratorVar),
+            clonePtr(iterable),
+            clonePtr(body));
+    }
 
     EachStatement(Token for_k,
                   std::unique_ptr<Statement> iterVar,
@@ -1225,6 +1595,14 @@ struct WhileStatement : Statement
         return "While : " + condition->toString() + loop->toString();
     }
 
+    WhileStatement *shallowClone() const override
+    {
+        return new WhileStatement(
+            while_key,
+            clonePtr(condition),
+            clonePtr(loop));
+    }
+
     WhileStatement(Token while_k, std::unique_ptr<Expression> condition, std::unique_ptr<Statement> l) : Statement(while_k), while_key(while_k), condition(std::move(condition)), loop(std::move(l)) {};
 };
 
@@ -1237,6 +1615,14 @@ struct FunctionStatement : Statement
     {
         return "Function Statement: " + funcExpr->toString();
     }
+
+    FunctionStatement *shallowClone() const override
+    {
+        return new FunctionStatement(
+            token,
+            clonePtr(funcExpr));
+    }
+
     FunctionStatement(Token funcStmtTok, std::unique_ptr<Expression> expr) : Statement(funcStmtTok), funcExpr(std::move(expr)) {};
 };
 
@@ -1264,6 +1650,15 @@ struct FunctionDeclaration : Statement
                (return_type ? return_type->toString() : "[no_return]");
     }
 
+    FunctionDeclaration *shallowClone() const override
+    {
+        return new FunctionDeclaration(
+            func_keyword_token,
+            clonePtr(function_name),
+            clonePtrVector(parameters),
+            clonePtr(return_type));
+    }
+
     FunctionDeclaration(Token func, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type) : Statement(func),
                                                                                                                                                                     func_keyword_token(func),
                                                                                                                                                                     function_name(std::move(identifier)),
@@ -1280,6 +1675,14 @@ struct FunctionDeclarationExpression : Expression
     {
         return "Function Declaration Expression: " + funcDeclrStmt->toString();
     }
+
+    FunctionDeclarationExpression *shallowClone() const override
+    {
+        return new FunctionDeclarationExpression(
+            func_token,
+            clonePtr(funcDeclrStmt));
+    }
+
     FunctionDeclarationExpression(Token func, std::unique_ptr<Statement> declaration) : Expression(func), funcDeclrStmt(std::move(declaration)) {};
 };
 
@@ -1301,7 +1704,15 @@ struct BlockStatement : Statement
         out += " }";
         return out;
     }
-    BlockStatement(Token brac, std::vector<std::unique_ptr<Statement>> cont) : Statement(brac), brace(brac), statements(std::move(cont)) {}
+
+    BlockStatement *shallowClone() const override
+    {
+        return new BlockStatement(
+            brace,
+            clonePtrVector(statements));
+    }
+
+    BlockStatement(Token brac, std::vector<std::unique_ptr<Statement>> cont) : Statement(brac), brace(brac), statements(std::move(cont)) {};
 };
 
 // GENERICS
@@ -1320,7 +1731,19 @@ struct GenericStatement : Statement
         {
             parameters += param.TokenLiteral + ",";
         }
-        return "Generic Statement: " + block_name->toString() + "(" + parameters + ")" + block->toString();
+        
+        if (!parameters.empty() && parameters.back() == ',') {
+            parameters.pop_back(); 
+        }
+
+
+        std::string block_str = " { <blueprint stored> }";
+
+        if (block)
+        {
+            block_str = block->toString();
+        }
+        return "Generic Statement: " + block_name->toString() + "(" + parameters + ")" + block_str;
     }
 
     GenericStatement(Token generic, std::unique_ptr<Expression> name, std::vector<Token> types, std::unique_ptr<Statement> content) : Statement(generic), generic_token(generic), block_name(std::move(name)), type_parameters(types), block(std::move(content)) {};
@@ -1378,6 +1801,13 @@ struct ArrayLiteral : Expression
         return "ArrayLiteral: [" + items + "]";
     }
 
+    ArrayLiteral *shallowClone() const override
+    {
+        return new ArrayLiteral(
+            arr_token,
+            clonePtrVector(array));
+    }
+
     ArrayLiteral(Token arr_tok, std::vector<std::unique_ptr<Expression>> arr)
         : Expression(arr_tok), arr_token(arr_tok), array(std::move(arr)) {};
 };
@@ -1394,7 +1824,7 @@ struct ArrayStatement : Statement
 
     std::string toString() override
     {
-        std::string heapStr=isHeap?"heap ":"";
+        std::string heapStr = isHeap ? "heap " : "";
         std::string lenStr = "";
         if (!lengths.empty())
         {
@@ -1432,13 +1862,24 @@ struct ArrayStatement : Statement
         return "Array Statement: " + heapStr + mutStr + " " + arrayTypeStr + " Lengths: " + lenStr + " " + arrName + " " + arrContent;
     }
 
+    ArrayStatement *shallowClone() const
+    {
+        return new ArrayStatement(
+            isHeap,
+            mutability,
+            clonePtr(arrayType),
+            clonePtrVector(lengths),
+            clonePtr(identifier),
+            clonePtr(array_content));
+    }
+
     ArrayStatement(
         bool heap,
         Mutability mut,
         std::unique_ptr<Expression> arrayTy,
         std::vector<std::unique_ptr<Expression>> lens,
         std::unique_ptr<Expression> ident,
-        std::unique_ptr<Expression> array) : Statement(arrayTy ? arrayTy->token : Token{"", TokenType::ILLEGAL, 0, 0}),isHeap(heap), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
+        std::unique_ptr<Expression> array) : Statement(arrayTy->token), isHeap(heap), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
 };
 
 // Array Subscript expression
@@ -1455,6 +1896,13 @@ struct ArraySubscript : Expression
             indexStr += "[" + index->toString() + "]";
         }
         return "Array Subscript Expression: " + identifier->toString() + indexStr;
+    }
+
+    ArraySubscript *shallowClone() const override
+    {
+        return new ArraySubscript(
+            clonePtr(identifier),
+            clonePtrVector(index_exprs));
     }
 
     ArraySubscript(std::unique_ptr<Expression> ident, std::vector<std::unique_ptr<Expression>> ids) : Expression(ident->expression), identifier(std::move(ident)), index_exprs(std::move(ids)) {};
@@ -1513,6 +1961,13 @@ struct ShoutStatement : Statement
         return "Shout Statement: " + shout_key.TokenLiteral + "! " + expr->toString();
     }
 
+    ShoutStatement *shallowClone() const override
+    {
+        return new ShoutStatement(
+            shout_key,
+            clonePtr(expr));
+    }
+
     ShoutStatement(Token shout, std::unique_ptr<Expression> expression) : Statement(shout), shout_key(shout), expr(std::move(expression)) {};
 };
 
@@ -1537,6 +1992,17 @@ struct BlockExpression : Expression
         }
         return out + "}";
     };
+
+    BlockExpression *shallowClone() const override
+    {
+        auto b = new BlockExpression(brace);
+        b->statements = clonePtrVector(statements);
+        if (finalexpr.has_value())
+        {
+            b->finalexpr = clonePtr(finalexpr.value());
+        }
+        return b;
+    }
 
     BlockExpression(Token lbrace) : Expression(lbrace) {};
 };
