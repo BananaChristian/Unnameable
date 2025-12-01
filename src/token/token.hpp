@@ -14,9 +14,8 @@ enum class TokenType
     DIVIDE,      ///
     MODULUS,     //"%"
 
-    ARROW,        //->
-    AT, //@
-
+    ARROW, //->
+    AT,    //@
 
     // Logical Operators
     EQUALS,       //==
@@ -83,22 +82,22 @@ enum class TokenType
     SIGNAL, // signal
     ERROR,  // error
     NEW,    // new keyword for a new instance of a component
-    CONST,//constant keyword
-    MUT, //mutable keyword
-    REF, //reference keyword
-    PTR, //Pointer keyword
-    DEREF, //Dereference keyword
-    ADDR, //addr keyword
-    UNWRAP, //Unwrap keyword
+    CONST,  // constant keyword
+    MUT,    // mutable keyword
+    REF,    // reference keyword
+    PTR,    // Pointer keyword
+    DEREF,  // Dereference keyword
+    ADDR,   // addr keyword
+    UNWRAP, // Unwrap keyword
 
-    MODULE, //module keyword
-    MERGE, //Merge keyword
-    LINK,//Link keyword
-    QUALIFY, //Qualify keyword
+    MODULE,  // module keyword
+    MERGE,   // Merge keyword
+    LINK,    // Link keyword
+    QUALIFY, // Qualify keyword
 
-    SCOPE,//Scope keyword
+    SCOPE, // Scope keyword
 
-    SHOUT,//Shout keyword
+    SHOUT, // Shout keyword
 
     // Control flow
     IF,
@@ -157,12 +156,19 @@ enum class TokenType
 
 };
 
+std::string TokenTypeToLiteral(TokenType type);
+
 struct Token
 {
-    std::string TokenLiteral;
-    TokenType type;
-    int line;
-    int column;
-};
+    std::string TokenLiteral{};
+    TokenType type{TokenType::ILLEGAL};
+    int line{0};
+    int column{0};
 
-std::string TokenTypeToLiteral(TokenType type);
+    Token() = default;
+
+    Token(const std::string &literal, TokenType t, int l, int c)
+        : TokenLiteral(literal), type(t), line(l), column(c)
+    {
+    }
+};
