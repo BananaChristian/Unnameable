@@ -36,6 +36,7 @@ private:
     void calculateBlockExpression(Node *node);
     void calculateDataStatement(Node *node);
     void calculateComponentStatement(Node *node);
+    void calculateInstantiateStatement(Node *node);
     // HELPERS
     void registerComponentCalculatorFns();
     void logPrestaticError(const std::string &message, int line, int col);

@@ -42,19 +42,21 @@ void Layout::registerComponentCalculatorFns()
     calculatorFnsMap[typeid(BlockExpression)] = &Layout::calculateBlockExpression;
     calculatorFnsMap[typeid(DataStatement)] = &Layout::calculateDataStatement;
     calculatorFnsMap[typeid(ComponentStatement)] = &Layout::calculateComponentStatement;
+    calculatorFnsMap[typeid(InstantiateStatement)] = &Layout::calculateInstantiateStatement;
 }
 
 // Independent calculators
 void Layout::calculateLetStatementSize(Node *node)
 {
     auto letStmt = dynamic_cast<LetStatement *>(node);
+    auto type = dynamic_cast<BasicType *>(letStmt->type.get());
 
     if (!letStmt)
         return;
     std::cout << "[PRESTATIC LOG]: Calculating for let statement " << letStmt->toString() << "\n";
 
-    int line = letStmt->data_type_token.line;
-    int col = letStmt->data_type_token.column;
+    int line = type->data_token.line;
+    int col = type->data_token.column;
 
     const std::string &name = letStmt->ident_token.TokenLiteral;
 
@@ -191,6 +193,36 @@ void Layout::calculateBlockExpression(Node *node)
     if (blockExpr->finalexpr.has_value())
     {
         calculatorDriver(blockExpr->finalexpr.value().get());
+    }
+}
+
+void Layout::calculateInstantiateStatement(Node *node)
+{
+    auto instStmt = dynamic_cast<InstantiateStatement *>(node);
+
+    if (!instStmt)
+        return;
+
+    auto line = instStmt->instantiate_token.line;
+    auto col = instStmt->instantiate_token.column;
+
+    // Extract the semantic metaData(It has the instantiation info)
+    auto it = semantics.metaData.find(instStmt);
+    if (it == semantics.metaData.end())
+    {
+        logPrestaticError("Failed to find instantiation statement metaData", line, col);
+        return;
+    }
+
+    auto sym = it->second;
+
+    // Get the instantiation info
+    const auto &instTable = sym->instTable;
+
+    if (instTable.has_value())
+    {
+        // Call the calculator driver on the cloned AST
+        calculatorDriver(instTable->instantiatedAST.get());
     }
 }
 
