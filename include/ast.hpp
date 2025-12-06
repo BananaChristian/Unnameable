@@ -148,16 +148,21 @@ struct DereferenceExpression : Expression
 
 struct SelfExpression : Expression
 {
-    Token self_token;                  // e.g. self
-    std::unique_ptr<Expression> field; // e.g. x
+    Token self_token; // e.g. self
+    std::vector<std::unique_ptr<Expression>> fields;
 
     std::string toString() override
     {
-        return "Self Expression: " + self_token.TokenLiteral + "." + field->toString();
+        std::string fieldStr = "";
+        for (const auto &field : fields)
+        {
+            fieldStr += "." +field->toString();
+        }
+        return "Self Expression: " + self_token.TokenLiteral + fieldStr;
     }
 
-    SelfExpression(Token self, std::unique_ptr<Expression> fieldExpr)
-        : Expression(self), self_token(self), field(std::move(fieldExpr)) {};
+    SelfExpression(Token self, std::vector<std::unique_ptr<Expression>> fieldExpr)
+        : Expression(self), self_token(self), fields(std::move(fieldExpr)) {};
 };
 
 struct NewComponentExpression : Expression
@@ -540,6 +545,7 @@ struct InstanceExpression : Expression
 // Function expression struct node
 struct FunctionExpression : Expression
 {
+    bool isExportable;
     Token func_key;
     std::vector<std::unique_ptr<Statement>> call;
     std::unique_ptr<Expression> return_type;
@@ -560,23 +566,22 @@ struct FunctionExpression : Expression
 
         std::string ret_str = return_type ? return_type->toString() : "<no type>";
         std::string block_str = block ? block->toString() : "<no block>";
+        std::string exportStr = isExportable ? "export " : "";
 
-        return "FunctionExpression: " + func_key.TokenLiteral + " " +
-               "Function parameters: " + cl +
-               " Return type: " + ret_str +
-               " Function block: " + block_str;
+        return exportStr + "FunctionExpression: " + func_key.TokenLiteral + " " + "Function parameters: " + cl + " Return type: " + ret_str + " Function block: " + block_str;
     }
 
     FunctionExpression *shallowClone() const override
     {
         return new FunctionExpression(
+            isExportable,
             func_key,
             clonePtrVector(call),
             clonePtr(return_type),
             clonePtr(block));
     }
 
-    FunctionExpression(Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
+    FunctionExpression(bool exportable, Token fn, std::vector<std::unique_ptr<Statement>> c, std::unique_ptr<Expression> return_t, std::unique_ptr<Expression> bl) : Expression(fn), func_key(fn), isExportable(exportable), call(std::move(c)), return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
 struct ArrayType : Expression
@@ -827,6 +832,7 @@ struct UseStatement : Statement
 // Data statement struct
 struct DataStatement : Statement
 {
+    bool isExportable;
     Mutability mutability;
     Token data_token;
     std::unique_ptr<Expression> dataBlockName;
@@ -843,7 +849,8 @@ struct DataStatement : Statement
         {
             mutStr += "const ";
         }
-        std::string result = mutStr + " Data statement: " + dataBlockName->toString() + " {\n";
+        std::string exportStr = isExportable ? "export " : "";
+        std::string result = exportStr + mutStr + " Data statement: " + dataBlockName->toString() + " {\n";
         for (const auto &field : fields)
         {
             result += "  " + field->toString() + "\n";
@@ -852,18 +859,20 @@ struct DataStatement : Statement
         return result;
     }
 
-    DataStatement(Mutability mut, Token data, std::unique_ptr<Expression> block_name, std::vector<std::unique_ptr<Statement>> data_fields) : Statement(data), mutability(mut), data_token(data), dataBlockName(std::move(block_name)), fields(std::move(data_fields)) {};
+    DataStatement(bool exportable, Mutability mut, Token data, std::unique_ptr<Expression> block_name, std::vector<std::unique_ptr<Statement>> data_fields) : Statement(data), isExportable(exportable), mutability(mut), data_token(data), dataBlockName(std::move(block_name)), fields(std::move(data_fields)) {};
 };
 
 // Behavior statement struct
 struct BehaviorStatement : Statement
 {
+    bool isExportable;
     Token behavior_token;
     std::unique_ptr<Expression> behaviorBlockName;
     std::vector<std::unique_ptr<Statement>> functions;
     std::string toString() override
     {
-        std::string result = "Behavior statement: " + behaviorBlockName->toString() + " {\n";
+        std::string exportStr = isExportable ? "export " : "";
+        std::string result = exportStr + "Behavior statement: " + behaviorBlockName->toString() + " {\n";
         for (const auto &func : functions)
         {
             result += "  " + func->toString() + "\n";
@@ -872,7 +881,7 @@ struct BehaviorStatement : Statement
         return result;
     }
 
-    BehaviorStatement(Token behavior, std::unique_ptr<Expression> behavior_name, std::vector<std::unique_ptr<Statement>> funcs) : Statement(behavior), behavior_token(behavior), behaviorBlockName(std::move(behavior_name)), functions(std::move(funcs)) {};
+    BehaviorStatement(bool exportable, Token behavior, std::unique_ptr<Expression> behavior_name, std::vector<std::unique_ptr<Statement>> funcs) : Statement(behavior), isExportable(exportable), behavior_token(behavior), behaviorBlockName(std::move(behavior_name)), functions(std::move(funcs)) {};
 };
 
 // Init statement
@@ -898,6 +907,7 @@ struct InitStatement : Statement
 // Component statement struct
 struct ComponentStatement : Statement
 {
+    bool isExportable;
     Token component_token;
     std::unique_ptr<Expression> component_name;
 
@@ -911,7 +921,8 @@ struct ComponentStatement : Statement
 
     std::string toString() override
     {
-        std::string result = "Component Statement: " + component_name->toString() + " {\n";
+        std::string exportStr = isExportable ? "export " : "";
+        std::string result = exportStr + "Component Statement: " + component_name->toString() + " {\n";
         // Private data
         for (const auto &field : privateData)
         {
@@ -961,6 +972,7 @@ struct ComponentStatement : Statement
     }
 
     ComponentStatement(
+        bool exportable,
         Token component,
         std::unique_ptr<Expression> name,
         std::vector<std::unique_ptr<Statement>> private_data,
@@ -969,6 +981,7 @@ struct ComponentStatement : Statement
         std::vector<std::unique_ptr<Statement>> used_behavior_blocks,
         std::optional<std::unique_ptr<Statement>> init)
         : Statement(component),
+          isExportable(exportable),
           component_token(component),
           component_name(std::move(name)),
           privateData(std::move(private_data)),
@@ -1465,6 +1478,7 @@ struct EnumMember : Node
 // Enum class struct
 struct EnumClassStatement : Statement
 {
+    bool isExportable;
     Token enum_token;
     Token class_token;
     std::unique_ptr<Expression> enum_identifier;
@@ -1472,6 +1486,7 @@ struct EnumClassStatement : Statement
     std::vector<std::unique_ptr<EnumMember>> enum_content;
     std::string toString()
     {
+        std::string exportStr = isExportable ? "export " : "";
         std::string enum_block;
         std::string int_typestr = "";
 
@@ -1485,12 +1500,13 @@ struct EnumClassStatement : Statement
             enum_block += enum_cont->toString() + ",\n";
         }
 
-        return "Enum class statement: " + enum_identifier->toString() + int_typestr + " { " + enum_block + " }";
+        return exportStr + "Enum class statement: " + enum_identifier->toString() + int_typestr + " { " + enum_block + " }";
     }
 
     EnumClassStatement *shallowClone() const override
     {
         return new EnumClassStatement(
+            isExportable,
             enum_token,
             class_token,
             clonePtr(enum_identifier),
@@ -1498,11 +1514,11 @@ struct EnumClassStatement : Statement
             clonePtrVector(enum_content));
     }
 
-    EnumClassStatement(Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::optional<Token> intType, std::vector<std::unique_ptr<EnumMember>> enum_block) : Statement(enum_tok), enum_token(enum_tok),
-                                                                                                                                                                                     class_token(class_tok),
-                                                                                                                                                                                     enum_identifier(std::move(enum_ident)),
-                                                                                                                                                                                     int_type(intType),
-                                                                                                                                                                                     enum_content(std::move(enum_block)) {};
+    EnumClassStatement(bool exportable, Token enum_tok, Token class_tok, std::unique_ptr<Expression> enum_ident, std::optional<Token> intType, std::vector<std::unique_ptr<EnumMember>> enum_block) : Statement(enum_tok), isExportable(exportable), enum_token(enum_tok),
+                                                                                                                                                                                                      class_token(class_tok),
+                                                                                                                                                                                                      enum_identifier(std::move(enum_ident)),
+                                                                                                                                                                                                      int_type(intType),
+                                                                                                                                                                                                      enum_content(std::move(enum_block)) {};
 };
 
 struct ForStatement : Statement
@@ -1629,7 +1645,7 @@ struct FunctionStatement : Statement
 // Function declaration statement
 struct FunctionDeclaration : Statement
 {
-
+    bool isExportable;
     Token func_keyword_token;
     std::unique_ptr<Expression> function_name;
     std::vector<std::unique_ptr<Statement>> parameters;
@@ -1638,32 +1654,32 @@ struct FunctionDeclaration : Statement
 
     std::string toString() override
     {
+        std::string exportStr = isExportable ? "export " : "";
         std::string arguments;
         for (auto &param : parameters)
         {
             arguments += param->toString();
         }
 
-        return "Function Declaration Statement: " + func_keyword_token.TokenLiteral + " " +
-               (function_name ? function_name->toString() : "[null_name]") + " " +
-               arguments + " " +
-               (return_type ? return_type->toString() : "[no_return]");
+        return exportStr + "Function Declaration Statement: " + func_keyword_token.TokenLiteral + " " + (function_name ? function_name->toString() : "[null_name]") + " " + arguments + " " + (return_type ? return_type->toString() : "[no_return]");
     }
 
     FunctionDeclaration *shallowClone() const override
     {
         return new FunctionDeclaration(
+            isExportable,
             func_keyword_token,
             clonePtr(function_name),
             clonePtrVector(parameters),
             clonePtr(return_type));
     }
 
-    FunctionDeclaration(Token func, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type) : Statement(func),
-                                                                                                                                                                    func_keyword_token(func),
-                                                                                                                                                                    function_name(std::move(identifier)),
-                                                                                                                                                                    parameters(std::move(params)),
-                                                                                                                                                                    return_type(std::move(ret_type)) {};
+    FunctionDeclaration(bool exportable, Token func, std::unique_ptr<Expression> identifier, std::vector<std::unique_ptr<Statement>> params, std::unique_ptr<Expression> ret_type) : Statement(func),
+                                                                                                                                                                                     isExportable(exportable),
+                                                                                                                                                                                     func_keyword_token(func),
+                                                                                                                                                                                     function_name(std::move(identifier)),
+                                                                                                                                                                                     parameters(std::move(params)),
+                                                                                                                                                                                     return_type(std::move(ret_type)) {};
 };
 
 // Function Declaration expression
@@ -1731,11 +1747,11 @@ struct GenericStatement : Statement
         {
             parameters += param.TokenLiteral + ",";
         }
-        
-        if (!parameters.empty() && parameters.back() == ',') {
-            parameters.pop_back(); 
-        }
 
+        if (!parameters.empty() && parameters.back() == ',')
+        {
+            parameters.pop_back();
+        }
 
         std::string block_str = " { <blueprint stored> }";
 
