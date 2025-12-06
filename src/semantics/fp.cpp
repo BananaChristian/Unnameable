@@ -483,6 +483,8 @@ void Semantics::walkFunctionExpression(Node *node)
 
     std::string funcName = funcExpr->func_key.TokenLiteral;
 
+    bool isExportable = funcExpr->isExportable;
+
     if (insideFunction)
     {
         logSemanticErrors("Nested function definitions are prohibited",
@@ -522,6 +524,7 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo->hasError = hasError;
     funcInfo->isDeclaration = true; // Mark as declared early for recursion
     funcInfo->isDefined = false;
+    funcInfo->isExportable = isExportable;
     funcInfo->isFunction = true;                                       // It is a function after all
     funcInfo->returnType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Initially unknown return type
 
@@ -583,6 +586,23 @@ void Semantics::walkFunctionExpression(Node *node)
             hasError = true;
             continue;
         }
+
+        // Extract the paramInfo type
+        auto paramTypeName = paramInfo->second->type.resolvedName;
+        // Check the custom types table
+        auto typeIt = customTypesTable.find(paramTypeName);
+        if (typeIt != customTypesTable.end())
+        {
+            if (isExportable)
+            {
+                if (!typeIt->second->isExportable)
+                {
+                    logSemanticErrors("Exportable function '" + funcName + "' is using a non exportable type '" + paramTypeName + "' for its parameter '" + paramName + "'", param.get()->statement.line, param.get()->statement.column);
+                    hasError = true;
+                }
+            }
+        }
+
         symbolTable.back()[paramName] = paramInfo->second;
         paramTypes.emplace_back(paramInfo->second->type, paramName);
 
@@ -663,6 +683,15 @@ void Semantics::walkFunctionExpression(Node *node)
 
             return;
         }
+
+        if (isExportable)
+        {
+            if (!it->second->isExportable)
+            {
+                logSemanticErrors("Exportable function '" + funcName + "' is using non exportable type '" + customTypeName + "'", retType->returnExpr->expression.line, retType->returnExpr->expression.column);
+                hasError = true;
+            }
+        }
         returnType = it->second->type;
     }
     else if (returnType.kind == DataType::UNKNOWN)
@@ -675,6 +704,7 @@ void Semantics::walkFunctionExpression(Node *node)
     // Updating funcInfo with full signature info
     funcInfo->hasError = hasError;
     funcInfo->isNullable = isNullable;
+    funcInfo->isExportable = isExportable;
     funcInfo->type = returnType;
     funcInfo->returnType = returnType;
     funcInfo->paramTypes = paramTypes;
@@ -764,6 +794,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     // Getting the function name
     std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
 
+    bool isExportable = funcDeclrStmt->isExportable;
+
     if (insideFunction)
     {
         logSemanticErrors("Nested function declarations are prohibited", funcDeclrStmt->function_name->expression.line, funcDeclrStmt->function_name->expression.column);
@@ -793,6 +825,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     auto funcInfo = std::make_shared<SymbolInfo>();
     funcInfo->isNullable = funcDeclrStmt->isNullable;
     funcInfo->hasError = hasError;
+    funcInfo->isExportable = isExportable;
     funcInfo->isDeclaration = true;
     funcInfo->isDefined = false;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
@@ -869,6 +902,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     funcInfo->type = returnType;
     funcInfo->hasError = hasError;
     funcInfo->returnType = returnType;
+    funcInfo->isExportable = isExportable;
     funcInfo->paramTypes = paramTypes;
 
     currentFunction = funcInfo;

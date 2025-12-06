@@ -232,10 +232,43 @@ void Layout::calculateDataStatement(Node *node)
     if (!dataStmt)
         return;
 
+    auto dataName = dataStmt->dataBlockName->expression.TokenLiteral;
+    auto line = dataStmt->dataBlockName->expression.line;
+    auto col = dataStmt->dataBlockName->expression.column;
+
+    auto dataMeta = semantics.metaData.find(dataStmt);
+    if (dataMeta == semantics.metaData.end())
+    {
+        logPrestaticError("Could not find data block '" + dataName + "' metaData", line, col);
+        return;
+    }
+
+    auto dataSym = dataMeta->second;
+    if (!dataSym)
+    {
+        logPrestaticError("Unidentified type '" + dataName + "'", line, col);
+        return;
+    }
+
+    std::vector<llvm::Type *> fieldTypes;
+
+    for (const auto &[key, value] : dataSym->members)
+    {
+        llvm::Type *fieldType = getLLVMType(value->type);
+        fieldTypes.push_back(fieldType);
+    }
+
+    // Independent analysis of the members in the data block
     for (const auto &stmt : dataStmt->fields)
     {
         calculatorDriver(stmt.get());
     }
+    llvm::StructType *structTy = llvm::StructType::create(context, dataName);
+    structTy->setBody(fieldTypes, /*isPacked*/ false);
+
+    typeMap[dataName] = structTy;
+
+    
 }
 
 void Layout::calculateComponentStatement(Node *node)
@@ -287,12 +320,14 @@ void Layout::calculateComponentStatement(Node *node)
     // Calculating for the private fields
     for (const auto &data : compStmt->privateData)
     {
+        std::cout << "Inside private data calculation for: " << data->toString() << "\n";
         calculatorDriver(data.get());
     }
 
     // Calculating for the private methods
     for (const auto &method : compStmt->privateMethods)
     {
+        std::cout << "Inside private method calculation\n";
         calculatorDriver(method.get());
     }
 }

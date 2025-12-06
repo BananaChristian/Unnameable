@@ -555,6 +555,44 @@ llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt, std::shar
         funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
     }
 
+    // Apply default initializers (only if fields have actual initializer expressions)
+    auto compTypeIt = semantics.customTypesTable.find(compName);
+    if (compTypeIt == semantics.customTypesTable.end())
+    {
+        throw std::runtime_error("Could not find '" + compName + "' type");
+    }
+
+    for (const auto &[name, memInfo] : compTypeIt->second->members)
+    {
+        // Only process definitional nodes that are actually LetStatements
+        auto letNode = dynamic_cast<LetStatement *>(memInfo->node);
+        if (!letNode)
+            continue; // skip behavior blocks, functions, etc.
+
+        // If there's no initializer skip (keep zero init)
+        if (!letNode->value)
+            continue;
+
+        // Generate initializer value
+        llvm::Value *initVal = generateExpression(letNode->value.get());
+        if (!initVal)
+        {
+            // fallback to zero-init for this field
+            llvm::Type *fieldTy =
+                structTy->getElementType(memInfo->memberIndex);
+            initVal = llvm::Constant::getNullValue(fieldTy);
+        }
+
+        // Compute pointer to this field
+        llvm::Value *fieldPtr =
+            funcBuilder.CreateStructGEP(structTy, instancePtr,
+                                        memInfo->memberIndex,
+                                        name + "_field");
+
+        // Store the initializer
+        funcBuilder.CreateStore(initVal, fieldPtr);
+    }
+
     // Check for init
     if (llvm::Function *initFn = module->getFunction(compName + "_init"))
     {
@@ -1464,7 +1502,7 @@ void IRGenerator::generateReturnStatement(Node *node)
     if (!retStmt)
         return;
 
-    // Retrieve the metaData (For error checking)
+    // Retrieve the metaData (for error checking)
     auto it = semantics.metaData.find(retStmt);
     if (it == semantics.metaData.end())
     {
@@ -1477,7 +1515,6 @@ void IRGenerator::generateReturnStatement(Node *node)
     }
 
     llvm::Value *retVal = nullptr;
-    // Generating IR for the return value if it exists
     if (retStmt->return_value)
     {
         retVal = generateExpression(retStmt->return_value.get());
@@ -1485,53 +1522,75 @@ void IRGenerator::generateReturnStatement(Node *node)
 
     llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
     llvm::Type *retTy = currentFunction->getReturnType();
-    // The type is a struct if it is nullable
-    bool isNullable = retTy->isStructTy();
 
-    if (!isNullable)
+    // Void return
+    if (retTy->isVoidTy())
     {
         if (retVal)
         {
-            // Ensure the return type matches
-            if (retVal->getType() != retTy)
-            {
-                llvm::errs() << "Return type mismatch\n";
-            }
-            funcBuilder.CreateRet(retVal);
+            llvm::errs() << "Warning: returning a value from a void function; value will be ignored\n";
         }
-        else
-        {
-            // For void functions
-            if (currentFunction->getReturnType()->isVoidTy())
-                funcBuilder.CreateRetVoid();
-            else
-                llvm::errs() << "Return statement missing value for non-void function\n";
-        }
+        funcBuilder.CreateRetVoid();
+        return;
     }
-    else // If the type is nullable
+
+    // Non-void return: we expect a value
+    if (!retVal)
     {
-        auto errStmt = dynamic_cast<ErrorStatement *>(retStmt->error_val.get());
-        if (!errStmt)
-            throw std::runtime_error("Expected error! expression in nullable return");
-
-        llvm::Value *errVal = generateExpression(errStmt->errorExpr.get());
-        if (!retVal)
-            throw std::runtime_error("Nullable return missing success value");
-
-        if (!errVal)
-            throw std::runtime_error("Error fall back is missing");
-
-        llvm::StructType *structTy = llvm::cast<llvm::StructType>(retTy);
-
-        llvm::Type *valueTy = structTy->getElementType(0);
-        llvm::Type *errTy = structTy->getElementType(1);
-
-        llvm::Value *s = llvm::UndefValue::get(structTy);
-        s = funcBuilder.CreateInsertValue(s, retVal, {0});
-        s = funcBuilder.CreateInsertValue(s, errVal, {1});
-
-        funcBuilder.CreateRet(s);
+        llvm::errs() << "Return statement missing value for non-void function\n";
+        return;
     }
+
+    // If the returned value type doesn't match function return type, try to adapt
+    llvm::Type *valTy = retVal->getType();
+    if (valTy == retTy)
+    {
+        funcBuilder.CreateRet(retVal);
+        return;
+    }
+
+    // If both are pointer types and point to compatible element, bitcast the pointer
+    if (valTy->isPointerTy() && retTy->isPointerTy())
+    {
+        llvm::Value *casted = funcBuilder.CreateBitCast(retVal, retTy);
+        funcBuilder.CreateRet(casted);
+        return;
+    }
+
+    // If returning an aggregate (struct) by value but retVal is a pointer-to-aggregate (unlikely),
+    // load and return the aggregate value.
+    if (valTy->isPointerTy() && llvm::isa<llvm::StructType>(retTy))
+    {
+        llvm::Value *loaded = funcBuilder.CreateLoad(retTy, retVal);
+        funcBuilder.CreateRet(loaded);
+        return;
+    }
+
+    // If both are integer types of different widths, extend/truncate.
+    if (valTy->isIntegerTy() && retTy->isIntegerTy())
+    {
+        unsigned vbits = llvm::cast<llvm::IntegerType>(valTy)->getBitWidth();
+        unsigned rbits = llvm::cast<llvm::IntegerType>(retTy)->getBitWidth();
+        if (vbits < rbits)
+            funcBuilder.CreateRet(funcBuilder.CreateSExt(retVal, retTy));
+        else if (vbits > rbits)
+            funcBuilder.CreateRet(funcBuilder.CreateTrunc(retVal, retTy));
+        else
+            funcBuilder.CreateRet(retVal);
+        return;
+    }
+
+    // Fallback types are incompatible — emit an error and try to bitcast if possible.(This wont happen because semantics must have caught it but who knows)
+    llvm::errs() << "Return type mismatch: returning '" << *valTy << "' but function expects '" << *retTy << "'\n";
+
+    // Last-chance attempt, try a bitcast if sizes match (risky)
+    if (valTy->getPrimitiveSizeInBits() == retTy->getPrimitiveSizeInBits())
+    {
+        llvm::Value *maybe = funcBuilder.CreateBitCast(retVal, retTy);
+        funcBuilder.CreateRet(maybe);
+        return;
+    }
+
 }
 
 // EXPRESSION GENERATOR
@@ -2880,214 +2939,168 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node)
 {
     auto selfExpr = dynamic_cast<SelfExpression *>(node);
     if (!selfExpr)
-    {
         throw std::runtime_error("Invalid self expression");
-    }
+
+    std::cout << "[IR] Generating IR for self expression: " << selfExpr->toString() << "\n";
 
     const std::string &compName = currentComponent->component_name->expression.TokenLiteral;
 
-    auto ctIt = componentTypes.find(compName);
-    if (ctIt == componentTypes.end())
-    {
-        throw std::runtime_error("Component with name '" + compName + "' not found");
-    }
+    // Lookup LLVM struct for top-level component
+    llvm::StructType *currentStructTy = nullptr;
+    auto it = componentTypes.find(compName);
+    if (it == componentTypes.end())
+        throw std::runtime_error("Component '" + compName + "' not found in componentTypes");
 
-    llvm::Type *compTy = ctIt->second;
-    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(compTy);
-    if (!structTy)
-    {
-        throw std::runtime_error("Component llvm type is not a struct for: " + compName);
-    }
+    currentStructTy = it->second;
 
-    const std::string &fieldName = selfExpr->field->expression.TokenLiteral;
-
-    // Component metadata
-    auto compMetaIt = semantics.metaData.find(currentComponent);
-    if (compMetaIt == semantics.metaData.end())
-    {
-        throw std::runtime_error("Missing component metaData for '" + compName + "'");
-    }
-    auto compMeta = compMetaIt->second;
-
-    // find member info by name
-    auto memIt = compMeta->members.find(fieldName);
-    if (memIt == compMeta->members.end())
-    {
-        throw std::runtime_error("Field '" + fieldName + "' not found in component '" + compName + "'");
-    }
-
-    // IMPORTANT: use the stored member index (set during semantic walk)
-    int memberIndex = -1;
-    if (memIt->second->memberIndex >= 0)
-    {
-        std::cout << "Updated memberIndex from semantics\n";
-        memberIndex = memIt->second->memberIndex;
-        std::cout << "Member '" << fieldName << " has a memberIndex of: " << memberIndex << "\n";
-    }
-    else
-    {
-        // Compute index only if absolutely necessary
-        std::cerr << "[IR WARN] Member '" << fieldName << "' has no memberIndex, falling back to map iteration (unstable)\n";
-        unsigned idx = 0;
-        for (const auto &p : compMeta->members)
-        {
-            if (p.first == fieldName)
-                break;
-            ++idx;
-        }
-        memberIndex = static_cast<int>(idx);
-    }
-
-    // The component instance (should be a pointer to the struct: %Player*)
+    // --- Load 'self' pointer ---
     llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
     if (!selfAlloca)
-    {
-        // Fallback or error if 'self' is not found (e.g., accessing 'self' outside a method)
-        throw std::runtime_error("'self' access failed: not in a component method.");
-    }
-    llvm::Value *componentInstance = funcBuilder.CreateLoad(structTy->getPointerTo(), selfAlloca, compName + ".self_load");
+        throw std::runtime_error("'self' access outside component method");
 
-    if (!componentInstance)
-    {
-        throw std::runtime_error("Component instance llvmValue is null for '" + compName + "' when accessing '" + fieldName + "'");
-    }
+    llvm::Value *currentPtr = funcBuilder.CreateLoad(
+        currentStructTy->getPointerTo(), selfAlloca, "self_load");
 
-    // Ensure the pointer is of type "structTy*". If not, try to bitcast it.
-    llvm::Type *expectedPtrTy = structTy->getPointerTo();
-    if (componentInstance->getType() != expectedPtrTy)
+    // --- Semantic chain walk ---
+    auto ctIt = semantics.customTypesTable.find(compName);
+    if (ctIt == semantics.customTypesTable.end())
+        throw std::runtime_error("Component not found in customTypesTable");
+
+    auto currentTypeInfo = ctIt->second;
+    std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
+
+    for (size_t i = 0; i < selfExpr->fields.size(); ++i)
     {
-        if (componentInstance->getType()->isPointerTy())
+        auto ident = dynamic_cast<Identifier *>(selfExpr->fields[i].get());
+        if (!ident)
+            throw std::runtime_error("Expected identifier in self chain");
+
+        std::string fieldName = ident->identifier.TokenLiteral;
+        std::cout << "[IR] Accessing field: " << fieldName
+                  << " in type: " << currentTypeInfo->type.resolvedName << "\n";
+
+        auto memIt = currentTypeInfo->members.find(fieldName);
+        if (memIt == currentTypeInfo->members.end())
+            throw std::runtime_error("Field not found in CustomTypeInfo");
+
+        lastMemberInfo = memIt->second;
+
+        // --- GEP for this field ---
+        auto llvmIt = llvmCustomTypes.find(currentTypeInfo->type.resolvedName);
+        if (llvmIt == llvmCustomTypes.end())
+            throw std::runtime_error("LLVM struct missing for type " + currentTypeInfo->type.resolvedName);
+
+        llvm::StructType *structTy = llvmIt->second;
+
+        currentPtr = funcBuilder.CreateStructGEP(
+            structTy,
+            currentPtr,
+            lastMemberInfo->memberIndex,
+            fieldName + "_ptr");
+
+        // --- Drill into nested type if needed ---
+        if (lastMemberInfo->type.kind == DataType::COMPONENT ||
+            lastMemberInfo->type.kind == DataType::DATABLOCK)
         {
-            // bitcast to expected pointer type
-            componentInstance = funcBuilder.CreateBitCast(componentInstance, expectedPtrTy, (fieldName + "_instance_cast").c_str());
+            auto nestedIt = semantics.customTypesTable.find(lastMemberInfo->type.resolvedName);
+            if (nestedIt == semantics.customTypesTable.end())
+                throw std::runtime_error("Nested type not found in customTypesTable");
+
+            currentTypeInfo = nestedIt->second;
         }
         else
         {
-            throw std::runtime_error("Component instance is not a pointer type for '" + compName + "'");
+            // primitive reached, stop drilling
+            currentTypeInfo = nullptr;
         }
     }
 
-    // Now get the pointer to the field
-    llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(structTy, componentInstance, (unsigned)memberIndex, fieldName + "_ptr");
-    if (!fieldPtr)
-    {
-        throw std::runtime_error("CreateStructGEP failed for field '" + fieldName + "' index " + std::to_string(memberIndex));
-    }
-
-    std::cout << "[IR DEBUG] Generated field pointer for " << compName << "." << fieldName
-              << " (index=" << memberIndex << ", ptr=" << fieldPtr << ")\n";
-
-    llvm::Type *fieldType = structTy->getElementType(memberIndex);
-
-    // 2. Insert the Load instruction.
-    llvm::Value *fieldValue = funcBuilder.CreateLoad(fieldType, fieldPtr, fieldName + "_val");
-
-    // 3. Return the loaded value
-    return fieldValue;
+    // --- Final load ---
+    llvm::Type *finalTy = getLLVMType(lastMemberInfo->type);
+    return funcBuilder.CreateLoad(finalTy, currentPtr, selfExpr->fields.back()->toString() + "_val");
 }
 
 llvm::Value *IRGenerator::generateSelfAddress(Node *node)
 {
     auto selfExpr = dynamic_cast<SelfExpression *>(node);
     if (!selfExpr)
-    {
         throw std::runtime_error("Invalid self expression");
-    }
+
+    std::cout << "[IR] Generating IR for self address: " << selfExpr->toString() << "\n";
 
     const std::string &compName = currentComponent->component_name->expression.TokenLiteral;
 
-    auto ctIt = componentTypes.find(compName);
-    if (ctIt == componentTypes.end())
-    {
-        throw std::runtime_error("Component with name '" + compName + "' not found");
-    }
+    // Lookup LLVM struct for top-level component
+    llvm::StructType *currentStructTy = nullptr;
+    auto it = componentTypes.find(compName);
+    if (it == componentTypes.end())
+        throw std::runtime_error("Component '" + compName + "' not found in componentTypes");
 
-    llvm::Type *compTy = ctIt->second;
-    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(compTy);
-    if (!structTy)
-    {
-        throw std::runtime_error("Component llvm type is not a struct for: " + compName);
-    }
+    currentStructTy = it->second;
 
-    const std::string &fieldName = selfExpr->field->expression.TokenLiteral;
-
-    // Component metadata
-    auto compMetaIt = semantics.metaData.find(currentComponent);
-    if (compMetaIt == semantics.metaData.end())
-    {
-        throw std::runtime_error("Missing component metaData for '" + compName + "'");
-    }
-    auto compMeta = compMetaIt->second;
-
-    // find member info by name
-    auto memIt = compMeta->members.find(fieldName);
-    if (memIt == compMeta->members.end())
-    {
-        throw std::runtime_error("Field '" + fieldName + "' not found in component '" + compName + "'");
-    }
-
-    // IMPORTANT: use the stored member index (set during semantic walk)
-    int memberIndex = -1;
-    if (memIt->second->memberIndex >= 0)
-    {
-        std::cout << "Updated memberIndex from semantics\n";
-        memberIndex = memIt->second->memberIndex;
-        std::cout << "Member '" << fieldName << " has a memberIndex of: " << memberIndex << "\n";
-    }
-    else
-    {
-        // Compute index only if absolutely necessary
-        std::cerr << "[IR WARN] Member '" << fieldName << "' has no memberIndex, falling back to map iteration (unstable)\n";
-        unsigned idx = 0;
-        for (const auto &p : compMeta->members)
-        {
-            if (p.first == fieldName)
-                break;
-            ++idx;
-        }
-        memberIndex = static_cast<int>(idx);
-    }
-
-    // The component instance (should be a pointer to the struct: %Player*)
+    // --- Load 'self' pointer ---
     llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
     if (!selfAlloca)
-    {
-        // Fallback or error if 'self' is not found (e.g., accessing 'self' outside a method)
-        throw std::runtime_error("'self' access failed: not in a component method.");
-    }
-    llvm::Value *componentInstance = funcBuilder.CreateLoad(structTy->getPointerTo(), selfAlloca, compName + ".self_load");
+        throw std::runtime_error("'self' access outside component method");
 
-    if (!componentInstance)
-    {
-        throw std::runtime_error("Component instance llvmValue is null for '" + compName + "' when accessing '" + fieldName + "'");
-    }
+    llvm::Value *currentPtr = funcBuilder.CreateLoad(
+        currentStructTy->getPointerTo(), selfAlloca, "self_load");
 
-    // Ensure the pointer is of type "structTy*". If not, try to bitcast it.
-    llvm::Type *expectedPtrTy = structTy->getPointerTo();
-    if (componentInstance->getType() != expectedPtrTy)
+    // --- Semantic chain walk ---
+    auto ctIt = semantics.customTypesTable.find(compName);
+    if (ctIt == semantics.customTypesTable.end())
+        throw std::runtime_error("Component not found in customTypesTable");
+
+    auto currentTypeInfo = ctIt->second;
+    std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
+
+    for (size_t i = 0; i < selfExpr->fields.size(); ++i)
     {
-        if (componentInstance->getType()->isPointerTy())
+        auto ident = dynamic_cast<Identifier *>(selfExpr->fields[i].get());
+        if (!ident)
+            throw std::runtime_error("Expected identifier in self chain");
+
+        std::string fieldName = ident->identifier.TokenLiteral;
+        std::cout << "[IR] Accessing field: " << fieldName
+                  << " in type: " << currentTypeInfo->type.resolvedName << "\n";
+
+        auto memIt = currentTypeInfo->members.find(fieldName);
+        if (memIt == currentTypeInfo->members.end())
+            throw std::runtime_error("Field not found in CustomTypeInfo");
+
+        lastMemberInfo = memIt->second;
+
+        // --- GEP for this field ---
+        auto llvmIt = llvmCustomTypes.find(currentTypeInfo->type.resolvedName);
+        if (llvmIt == llvmCustomTypes.end())
+            throw std::runtime_error("LLVM struct missing for type " + currentTypeInfo->type.resolvedName);
+
+        llvm::StructType *structTy = llvmIt->second;
+
+        currentPtr = funcBuilder.CreateStructGEP(
+            structTy,
+            currentPtr,
+            lastMemberInfo->memberIndex,
+            fieldName + "_ptr");
+
+        // --- Drill into nested type if needed ---
+        if (lastMemberInfo->type.kind == DataType::COMPONENT ||
+            lastMemberInfo->type.kind == DataType::DATABLOCK)
         {
-            // bitcast to expected pointer type
-            componentInstance = funcBuilder.CreateBitCast(componentInstance, expectedPtrTy, (fieldName + "_instance_cast").c_str());
+            auto nestedIt = semantics.customTypesTable.find(lastMemberInfo->type.resolvedName);
+            if (nestedIt == semantics.customTypesTable.end())
+                throw std::runtime_error("Nested type not found in customTypesTable");
+
+            currentTypeInfo = nestedIt->second;
         }
         else
         {
-            throw std::runtime_error("Component instance is not a pointer type for '" + compName + "'");
+            // primitive reached, stop drilling
+            currentTypeInfo = nullptr;
         }
     }
 
-    // Now get the pointer to the field
-    llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(structTy, componentInstance, (unsigned)memberIndex, fieldName + "_ptr");
-    if (!fieldPtr)
-    {
-        throw std::runtime_error("CreateStructGEP failed for field '" + fieldName + "' index " + std::to_string(memberIndex));
-    }
-
-    std::cout << "[IR DEBUG] Generated field pointer for " << compName << "." << fieldName
-              << " (index=" << memberIndex << ", ptr=" << fieldPtr << ")\n";
-
-    return fieldPtr; // Generating the address
+    return currentPtr;
 }
 
 llvm::Value *IRGenerator::generateBlockExpression(Node *node)

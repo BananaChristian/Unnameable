@@ -90,9 +90,13 @@ struct MemberInfo
     ResolvedType parentType; // Parent type for enum members
 
     Node *node = nullptr;
+    Node *typeNode=nullptr;
     llvm::Value *llvmValue = nullptr;
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
+
+    // Export flag
+    bool isExportable = false;
 
     // Storage info
     StorageType storage;
@@ -110,6 +114,7 @@ struct CustomTypeInfo
     // Special for enum class
     DataType underLyingType = DataType::INTEGER; // Defaulting to 32 bit integer
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
+    bool isExportable = false;
 };
 
 struct ScopeInfo
@@ -142,15 +147,15 @@ struct GenericInstantiationInfo
     std::string blueprintName;
     std::unordered_map<std::string, ResolvedType> paramToType; // T -> int
     std::unordered_map<std::string, Token> rawTypeMap;         // T -> int token
-    std::unique_ptr<Node> instantiatedAST; // cloned + substituted AST
-    
+    std::unique_ptr<Node> instantiatedAST;                     // cloned + substituted AST
+
     GenericInstantiationInfo() = default;
 
-    GenericInstantiationInfo(const GenericInstantiationInfo&) = delete;
-    GenericInstantiationInfo& operator=(const GenericInstantiationInfo&) = delete;
+    GenericInstantiationInfo(const GenericInstantiationInfo &) = delete;
+    GenericInstantiationInfo &operator=(const GenericInstantiationInfo &) = delete;
 
-    GenericInstantiationInfo(GenericInstantiationInfo&&) = default;
-    GenericInstantiationInfo& operator=(GenericInstantiationInfo&&) = default;
+    GenericInstantiationInfo(GenericInstantiationInfo &&) = default;
+    GenericInstantiationInfo &operator=(GenericInstantiationInfo &&) = default;
 };
 
 // Information about the symbol(variable or object, whatever)
@@ -214,6 +219,9 @@ struct SymbolInfo
     bool isGeneric = false;
     bool isInstantiation = false;
     std::optional<GenericInstantiationInfo> instTable;
+
+    // Export flag
+    bool isExportable = false;
 
     SymbolInfo() = default;
 
@@ -380,6 +388,7 @@ private:
     ResolvedType isPointerType(ResolvedType t);
     ResolvedType isRefType(ResolvedType t);
     ResolvedType makeArrayType(const ResolvedType &t, int dimensionCount);
+    ResolvedType *resolveSelfChain(SelfExpression *selfExpr, const std::string &componentName);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     int inferLiteralDimensions(ArrayLiteral *arrLit);
     void inferSizePerDimension(ArrayLiteral *lit, std::vector<int64_t> &sizes);

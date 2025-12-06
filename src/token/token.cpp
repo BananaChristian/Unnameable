@@ -242,6 +242,8 @@ std::string TokenTypeToLiteral(TokenType type)
 
     case TokenType::HEAP:
         return "Token Type: HEAP";
+    case TokenType::EXPORT:
+        return "Token Type: EXPORT";
     case TokenType::BANG:
         return "Token Type: BANG";
     case TokenType::FULLSTOP:

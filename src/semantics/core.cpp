@@ -283,8 +283,42 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
 
     if (auto selfExpr = dynamic_cast<SelfExpression *>(node))
     {
-        auto fieldExpr = dynamic_cast<Identifier *>(selfExpr->field.get());
-        return inferNodeDataType(fieldExpr);
+        // Start: find the type of the component containing this method
+        if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+
+        std::string currentTypeName = currentTypeStack.back().typeName;
+
+        // Walk through the chain of fields: pos -> x -> y
+        for (const auto &field : selfExpr->fields)
+        {
+            auto ident = dynamic_cast<Identifier *>(field.get());
+            if (!ident)
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+
+            const std::string fieldName = ident->identifier.TokenLiteral;
+
+            // Look up this type's custom definition
+            auto ctIt = customTypesTable.find(currentTypeName);
+            if (ctIt == customTypesTable.end())
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+
+            // Find member in this component
+            auto &members = ctIt->second->members;
+            auto memIt = members.find(fieldName);
+            if (memIt == members.end())
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+
+            // Get the member type
+            const auto &memberInfo = memIt->second;
+            currentTypeName = memberInfo->type.resolvedName; // move deeper
+
+            // Last field: return its full type
+            if (&field == &selfExpr->fields.back())
+                return memberInfo->type;
+        }
+
+        return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
     if (auto instExpr = dynamic_cast<InstanceExpression *>(node))
@@ -316,11 +350,26 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
 
         if (auto selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
         {
-            auto fieldIdent = dynamic_cast<Identifier *>(selfExpr->field.get());
-            if (!fieldIdent)
+            if (selfExpr->fields.empty())
+            {
+                logSemanticErrors("Invalid 'self' access in assignment",
+                                  assignStmt->identifier->expression.line,
+                                  assignStmt->identifier->expression.column);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
 
-            nameToResolve = fieldIdent->identifier.TokenLiteral; // <-- real field name
+            // Grab the LAST field in the chain
+            auto lastField = selfExpr->fields.back().get();
+            auto ident = dynamic_cast<Identifier *>(lastField);
+            if (!ident)
+            {
+                logSemanticErrors("Expected identifier in 'self' field chain",
+                                  assignStmt->identifier->expression.line,
+                                  assignStmt->identifier->expression.column);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            nameToResolve = ident->identifier.TokenLiteral;
         }
         else
         {

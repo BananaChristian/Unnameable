@@ -713,6 +713,7 @@ void Semantics::walkAssignStatement(Node *node)
     if (auto *selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
     {
         std::cout << "SELF assignment has been triggered\n";
+
         if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
         {
             logSemanticErrors("'self' cannot be used outside a component",
@@ -722,35 +723,54 @@ void Semantics::walkAssignStatement(Node *node)
             return;
         }
 
-        assignName = selfExpr->field->expression.TokenLiteral;
-
+        // Start from the current component
         auto &compScope = currentTypeStack.back();
-        auto typeName = compScope.typeName;
+        auto currentTypeName = compScope.typeName;
 
-        auto compTypeIt = customTypesTable.find(typeName);
-        if (compTypeIt == customTypesTable.end())
+        std::shared_ptr<MemberInfo> fieldInfo;
+
+        // Walk the full chain of fields
+        for (const auto &field : selfExpr->fields)
         {
-            logSemanticErrors("Component '" + typeName + "' does not exist",
-                              selfExpr->expression.line,
-                              selfExpr->expression.column);
-            hasError = true;
-            return;
+            auto ident = dynamic_cast<Identifier *>(field.get());
+            if (!ident)
+            {
+                logSemanticErrors("Expected identifier in self expression chain",
+                                  selfExpr->expression.line,
+                                  selfExpr->expression.column);
+                hasError = true;
+                return;
+            }
+
+            const std::string fieldName = ident->identifier.TokenLiteral;
+
+            // Look up current type
+            auto compTypeIt = customTypesTable.find(currentTypeName);
+            if (compTypeIt == customTypesTable.end())
+            {
+                logSemanticErrors("Component '" + currentTypeName + "' does not exist",
+                                  selfExpr->expression.line,
+                                  selfExpr->expression.column);
+                hasError = true;
+                return;
+            }
+
+            auto &members = compTypeIt->second->members;
+            auto memIt = members.find(fieldName);
+            if (memIt == members.end())
+            {
+                logSemanticErrors("Field '" + fieldName + "' not found in component '" + currentTypeName + "'",
+                                  ident->identifier.line,
+                                  ident->identifier.column);
+                hasError = true;
+                return;
+            }
+
+            fieldInfo = memIt->second;
+            currentTypeName = fieldInfo->type.resolvedName; // move deeper
         }
 
-        auto compInfo = compTypeIt->second;
-        auto memIt = compInfo->members.find(assignName);
-        if (memIt == compInfo->members.end())
-        {
-            logSemanticErrors("Field '" + assignName + "' not found in component",
-                              selfExpr->expression.line,
-                              selfExpr->expression.column);
-            hasError = true;
-            return;
-        }
-
-        std::shared_ptr<MemberInfo> fieldInfo = memIt->second;
-
-        // Wrap field info into a SymbolInfo for semantic tracking
+        // Wrap final field info into SymbolInfo
         symbol = std::make_shared<SymbolInfo>();
         symbol->type = fieldInfo->type;
         symbol->isNullable = fieldInfo->isNullable;
@@ -760,6 +780,7 @@ void Semantics::walkAssignStatement(Node *node)
         symbol->memberIndex = fieldInfo->memberIndex;
         symbol->hasError = hasError;
     }
+
     // --- Handle plain identifier assignments ---
     else if (auto ident = dynamic_cast<Identifier *>(assignStmt->identifier.get()))
     {

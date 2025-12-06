@@ -90,6 +90,8 @@ enum class TokenType
     ADDR,   // addr keyword
     UNWRAP, // Unwrap keyword
 
+    EXPORT,//Export keyword
+
     MODULE,  // module keyword
     MERGE,   // Merge keyword
     LINK,    // Link keyword

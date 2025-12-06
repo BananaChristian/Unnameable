@@ -133,7 +133,7 @@ std::unique_ptr<EnumMember> Parser::parseEnumMember()
         logError("Enum member must start with an identifier, got: " + TokenTypeToLiteral(currentToken().type));
         return nullptr; // Return nullptr but don't advance to allow recovery in caller
     }
-    Token memberToken = currentToken(); 
+    Token memberToken = currentToken();
 
     std::string name = currentToken().TokenLiteral;
     advance(); // Consume the identifier
@@ -163,6 +163,7 @@ std::unique_ptr<EnumMember> Parser::parseEnumMember()
 
 std::unique_ptr<Statement> Parser::parseEnumClassStatement()
 {
+    bool isExportable = false;
     std::vector<std::unique_ptr<EnumMember>> enum_block;
     std::optional<Token> int_token;
     Token enum_token = currentToken();
@@ -256,7 +257,7 @@ std::unique_ptr<Statement> Parser::parseEnumClassStatement()
         advance(); // Consume the semicolon
     }
 
-    return std::make_unique<EnumClassStatement>(enum_token, class_token, std::move(enum_ident), int_token, std::move(enum_block));
+    return std::make_unique<EnumClassStatement>(isExportable, enum_token, class_token, std::move(enum_ident), int_token, std::move(enum_block));
 }
 
 std::unique_ptr<Statement> Parser::parseGenericStatement()

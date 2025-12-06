@@ -71,15 +71,6 @@ std::unique_ptr<Statement> Parser::parseStatement()
     std::cout << "[DEBUG] parseStatement starting with token: " << current.TokenLiteral << "\n";
 
     // Handle self.* assignments
-    if (current.type == TokenType::SELF)
-    {
-        Token peek1 = peekToken(1);
-        Token peek3 = peekToken(3);
-        if (peek3.type == TokenType::ASSIGN)
-        {
-            return parseAssignmentStatement();
-        }
-    }
 
     // Other statement types from map
     auto stmtFnIt = StatementParseFunctionsMap.find(current.type);
@@ -160,6 +151,11 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam)
               << " (" << (int)currentToken().type << ")\n";
 
     return std::make_unique<AssignmentStatement>(std::move(lhs), std::move(value));
+}
+
+std::unique_ptr<Statement> Parser::parseSelfAssignment()
+{
+    return parseAssignmentStatement();
 }
 
 std::unique_ptr<Statement> Parser::parseDereferenceAssignment()
@@ -393,6 +389,54 @@ std::unique_ptr<Statement> Parser::parseHeapStatement()
     return stmt;
 }
 
+std::unique_ptr<Statement> Parser::parseExportStatement()
+{
+    advance(); // Consume export token
+    auto stmt = parseStatement();
+
+    if (!stmt)
+        return nullptr;
+
+    if (auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get()))
+    {
+        if (auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get()))
+        {
+            fnExpr->isExportable = true;
+        }
+
+        if (auto fnDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(fnStmt->funcExpr.get()))
+        {
+            if (auto fnDeclr = dynamic_cast<FunctionDeclaration *>(fnDeclrExpr->funcDeclrStmt.get()))
+            {
+                fnDeclr->isExportable = true;
+            }
+        }
+    }
+    else if (auto dataStmt = dynamic_cast<DataStatement *>(stmt.get()))
+    {
+        dataStmt->isExportable = true;
+    }
+    else if (auto behaviorStmt = dynamic_cast<BehaviorStatement *>(stmt.get()))
+    {
+        behaviorStmt->isExportable = true;
+    }
+    else if (auto compStmt = dynamic_cast<ComponentStatement *>(stmt.get()))
+    {
+        compStmt->isExportable = true;
+    }
+    else if (auto enumStmt = dynamic_cast<EnumClassStatement *>(stmt.get()))
+    {
+        enumStmt->isExportable = true;
+    }
+    else
+    {
+        logError("'export' can only be applied to functions, and custom types");
+        return nullptr;
+    }
+
+    return stmt;
+}
+
 /*Decider on type of let statement: Now the name of this function is confusing initially I wanted it to be the function that decides how to parse let statements.
 But I have no choice  but to make it also decide how to parse a function if it was a parameter now I will fix the name in the future but for now let me just continue
 */
@@ -584,6 +628,7 @@ std::unique_ptr<Statement> Parser::parseUseStatement()
 // Parsing behavior statement
 std::unique_ptr<Statement> Parser::parseBehaviorStatement()
 {
+    bool isExportable = false;
     std::vector<std::unique_ptr<Statement>> functions;
     Token behavior_token = currentToken();
     advance(); // Consuming the behavior keyword token
@@ -621,6 +666,7 @@ std::unique_ptr<Statement> Parser::parseBehaviorStatement()
     advance();
 
     return std::make_unique<BehaviorStatement>(
+        isExportable,
         behavior_token,
         std::move(behavior_name),
         std::move(functions));
@@ -629,6 +675,7 @@ std::unique_ptr<Statement> Parser::parseBehaviorStatement()
 // Parsing data behavior
 std::unique_ptr<Statement> Parser::parseDataStatement()
 {
+    bool isExportable = false;
     Mutability mutability = Mutability::IMMUTABLE;
     std::vector<std::unique_ptr<Statement>> fields;
     if (currentToken().type == TokenType::MUT)
@@ -690,6 +737,7 @@ std::unique_ptr<Statement> Parser::parseDataStatement()
     advance();
 
     return std::make_unique<DataStatement>(
+        isExportable,
         mutability,
         data_token,
         std::move(dataBlockName),
@@ -752,6 +800,7 @@ std::unique_ptr<Expression> Parser::parseInstanceExpression(std::unique_ptr<Expr
 // Parsing component statements
 std::unique_ptr<Statement> Parser::parseComponentStatement()
 {
+    bool isExportable = false;
     std::vector<std::unique_ptr<Statement>> privateData; // An empty vector where the private data if created shall all be stored
     std::vector<std::unique_ptr<Statement>> privateMethods;
 
@@ -820,10 +869,46 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
             privateData.push_back(std::move(stmt));
             break;
         case TokenType::IDENTIFIER:
-        case TokenType::SELF:
+        {
+            Token t1 = currentToken();
+            Token t2 = nextToken();
+            Token t3 = peekToken(2);
+
+            // Case: Type Name ;
+            // Case: Type Name = initializer ;
+            if (t2.type == TokenType::IDENTIFIER &&
+                (t3.type == TokenType::SEMICOLON || t3.type == TokenType::ASSIGN))
+            {
+                stmt = parseLetStatementCustomOrBasic();
+                privateData.push_back(std::move(stmt));
+                break;
+            }
+
             stmt = parseAssignmentStatement(false);
             privateData.push_back(std::move(stmt));
             break;
+        }
+
+        case TokenType::SELF:
+        {
+            // self.something = expr;
+            stmt = parseAssignmentStatement(false);
+            privateData.push_back(std::move(stmt));
+            break;
+        }
+        case TokenType::EXPORT:
+        {
+            auto exportStmt = parseExportStatement();
+            auto fnStmt = dynamic_cast<FunctionStatement *>(exportStmt.get());
+            if (!fnStmt)
+            {
+                logError("Only function exports are allowed in component statement");
+                break;
+            }
+            privateMethods.push_back(std::move(exportStmt));
+            break;
+        }
+
         case TokenType::FUNCTION:
             stmt = parseFunctionStatement();
             privateMethods.push_back(std::move(stmt));
@@ -855,6 +940,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
     advance(); // Consume the RBRACE
 
     return std::make_unique<ComponentStatement>(
+        isExportable,
         component_token,
         std::move(component_name),
         std::move(privateData),
@@ -1243,25 +1329,26 @@ std::unique_ptr<Expression> Parser::parseSelfExpression()
     Token self_token = currentToken();
     advance();
 
-    if (currentToken().type != TokenType::FULLSTOP)
+    std::vector<std::unique_ptr<Expression>> fields;
+
+    while (currentToken().type == TokenType::FULLSTOP)
     {
-        logError("Exprected a . after self but got '" + currentToken().TokenLiteral + "'");
-        return nullptr;
+        advance(); // skip '.'
+
+        if (currentToken().type != TokenType::IDENTIFIER)
+        {
+            logError("Expected identifier after '.' in self expression");
+            return nullptr;
+        }
+
+        auto fieldIdent = std::make_unique<Identifier>(currentToken());
+        fields.push_back(std::move(fieldIdent));
+
+        advance(); // move past the identifier
     }
-
-    advance();
-
-    if (currentToken().type != TokenType::IDENTIFIER)
-    {
-        logError("Expected an identifer after . but got" + currentToken().TokenLiteral);
-        return nullptr;
-    }
-
-    // Call the identifier parser here
-    auto fieldExpr = parseIdentifier();
 
     return std::make_unique<SelfExpression>(
-        self_token, std::move(fieldExpr));
+        self_token, std::move(fields));
 }
 
 //-----------PARSING EXPRESSIONS----------
@@ -1317,7 +1404,12 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
 
         std::cout << "[DEBUG] Parsing infix token: " << currentToken().TokenLiteral << "\n";
         left_expression = (this->*InfixParseFnIt->second)(std::move(left_expression));
-        std::cout << "[DEBUG] Updated left expression (infix): " << left_expression->toString() << "\n";
+        if(left_expression){
+            std::cout << "[DEBUG] Updated left expression (infix): " << left_expression->toString() << "\n";
+        }else{
+            std::cout << "[DEBUG] Failed to parse left expression (infix) \n";
+        }
+        
     }
 
     return left_expression; // Returning the expression that was parsed it can be either prefix or infix
@@ -1710,6 +1802,7 @@ std::unique_ptr<Expression> Parser::parseReturnType()
 // Parsing function expression
 std::unique_ptr<Expression> Parser::parseFunctionExpression()
 {
+    bool isExportable = false;
     //--------Dealing with func keyword---------------
     Token func_tok = currentToken(); // The token representing the keyword for functions (func)
     advance();
@@ -1752,6 +1845,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
     {
         advance(); // consume the semicolon
         auto decl = std::make_unique<FunctionDeclaration>(
+            isExportable,
             func_tok,
             std::move(identExpr),
             std::move(call),
@@ -1766,7 +1860,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression()
         return nullptr;
     }
 
-    return std::make_unique<FunctionExpression>(identToken, std::move(call), std::move(return_type), std::move(block));
+    return std::make_unique<FunctionExpression>(isExportable, identToken, std::move(call), std::move(return_type), std::move(block));
 }
 
 // Parsing function paramemters
@@ -2095,12 +2189,18 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement()
     // Simple assignment (x = ...)
     if (peek1.type == TokenType::ASSIGN)
     {
+        std::cout << "Identifier taken assign path\n";
         return parseAssignmentStatement();
     }
 
     // Cases where there is a custom type like(Type var)
     if (peek1.type == TokenType::IDENTIFIER)
     {
+        std::cout << "Identifier taken let statement path\n";
+        if (peekToken(2).type == TokenType::SEMICOLON)
+        {
+            return parseLetStatementCustomOrBasic();
+        }
         return parseLetStatementCustomOrBasic();
     }
 
@@ -2179,6 +2279,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::CHAR32_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     // For custom types
     StatementParseFunctionsMap[TokenType::IDENTIFIER] = &Parser::parseIdentifierStatement;
+    StatementParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfAssignment;
 
     StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::DOUBLE_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
@@ -2202,6 +2303,7 @@ void Parser::registerStatementParseFns()
 
     StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatementWrapper;
     StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
+    StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseExportStatement;
     StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatementWrapper;
     StatementParseFunctionsMap[TokenType::PTR] = &Parser::parsePointerStatementWrapper;
     StatementParseFunctionsMap[TokenType::DEREF] = &Parser::parseDereferenceAssignment;

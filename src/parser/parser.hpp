@@ -129,6 +129,8 @@ private:
     // Shout statement parser
     std::unique_ptr<Statement> parseShoutStatement();
 
+    std::unique_ptr<Statement> parseSelfAssignment();
+
     // Identifer starting statements function
     std::unique_ptr<Statement> parseIdentifierStatement();
 
@@ -158,6 +160,9 @@ private:
 
     // Parsing wait statement
     std::unique_ptr<Statement> parseWaitStatement();
+
+    // Parsing export statement
+    std::unique_ptr<Statement> parseExportStatement();
 
     // Parsing the function statement
     std::unique_ptr<Statement> parseFunctionStatement();
