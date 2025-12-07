@@ -1,0 +1,24 @@
+enum class HttpStatus{
+    OK=200,
+    NotFound=404,
+    InternalServerError=500
+}
+
+func get_http_code(HttpStatus status):int{
+    if(status==HttpStatus::OK){
+        return 200;
+    }elif(status==HttpStatus::NotFound){
+        return 404;
+    }elif(status==HttpStatus::InternalServerError){
+        return 500;
+    }
+
+    return 0;
+}
+
+func main:int{
+    auto code =HttpStatus::OK;
+    int raw_code=get_http_code(code);
+    shout! raw_code; #Should print 200
+    return 0;
+}

@@ -1,0 +1,20 @@
+data Bounds{
+    int width;
+    int height;
+}
+
+data Rect{
+    int x;
+    int y;
+}
+
+func dimensions(Rect r): Bounds{
+    shout! r.x;
+    return Bounds{width=r.x,height=r.y};
+}
+
+func main:int{
+    Rect rectangle=Rect{x=100,y=50};
+    dimensions(rectangle);
+    return 0;
+}
