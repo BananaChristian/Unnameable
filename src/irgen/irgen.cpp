@@ -1590,7 +1590,6 @@ void IRGenerator::generateReturnStatement(Node *node)
         funcBuilder.CreateRet(maybe);
         return;
     }
-
 }
 
 // EXPRESSION GENERATOR
@@ -1684,85 +1683,40 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     if (infix->operat.type == TokenType::SCOPE_OPERATOR)
     {
         std::cout << "TRIGGERED SCOPE OPERATOR GUY\n";
-        if (isGlobalScope)
-            throw std::runtime_error("Executable statements are not allowed at global scope");
 
-        // Get left-hand object pointer from metadata (guaranteed pointer)
-        auto leftMetaIt = semantics.metaData.find(infix->left_operand.get());
-        if (leftMetaIt == semantics.metaData.end())
-            throw std::runtime_error("Left-hand object metadata missing");
+        // "::" is only for enum access
+        auto enumName = lhsIdent->expression.TokenLiteral;
+        auto leftTypeIt = semantics.customTypesTable.find(enumName);
+        if (leftTypeIt == semantics.customTypesTable.end())
+            throw std::runtime_error("Unknown enum class '" + enumName + "'");
 
-        llvm::Value *objectVal = leftMetaIt->second->llvmValue; // pointer to struct!
-        if (!objectVal)
-            throw std::runtime_error("Left-hand object llvmValue not set");
+        auto leftType = leftTypeIt->second->type;
 
-        // Get right-hand identifier (member)
-        auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
-        if (!memberIdent)
-            throw std::runtime_error("Right-hand side of '::' must be a field identifier");
-
-        std::string memberName = memberIdent->expression.TokenLiteral;
-
-        // Resolve member index and type
-        auto parentTypeName = leftMetaIt->second->type.resolvedName;
-        auto parentIt = semantics.customTypesTable.find(parentTypeName);
-        if (parentIt == semantics.customTypesTable.end())
-            throw std::runtime_error("Type '" + parentTypeName + "' doesn't exist");
-
-        auto memberIt = parentIt->second->members.find(memberName);
-        if (memberIt == parentIt->second->members.end())
-            throw std::runtime_error("Member '" + memberName + "' not found in type '" + parentTypeName + "'");
-
-        unsigned memberIndex = memberIt->second->memberIndex;
-        llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
-
-        // Compute pointer to the member
-        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, objectVal, memberIndex, memberName);
-        if (!memberPtr)
-            throw std::runtime_error("No llvm value for '" + memberName + "'");
-
-        llvm::Type *memberType = getLLVMType(memberIt->second->type);
-        if (!memberType)
-            throw std::runtime_error("Member Type wasn't retrieved");
-
-        // Check if the member is a heap field
-        if (memberIt->second->isHeap)
+        // If the type isn't an enum reject it
+        if (leftType.kind != DataType::ENUM)
         {
-            // ptr-to-element type
-            llvm::PointerType *elemPtrTy = memberType->getPointerTo();
-
-            // Load current heap pointer from the struct slot
-            llvm::Value *heapPtr = funcBuilder.CreateLoad(elemPtrTy, memberPtr, memberName + "_heap_load");
-
-            // If null, allocate
-            llvm::Value *nullPtr = llvm::ConstantPointerNull::get(elemPtrTy);
-            llvm::Value *isNull = funcBuilder.CreateICmpEQ(heapPtr, nullPtr, memberName + "_is_null");
-
-            llvm::Function *parentFn = funcBuilder.GetInsertBlock()->getParent();
-            llvm::BasicBlock *allocBB = llvm::BasicBlock::Create(context, memberName + "_alloc", parentFn);
-            llvm::BasicBlock *contBB = llvm::BasicBlock::Create(context, memberName + "_cont", parentFn);
-
-            funcBuilder.CreateCondBr(isNull, allocBB, contBB);
-
-            // --- allocBB
-            funcBuilder.SetInsertPoint(allocBB);
-            llvm::PointerType *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
-            llvm::FunctionCallee sageAllocFn = module->getOrInsertFunction("sage_alloc", i8PtrTy, llvm::Type::getInt64Ty(context));
-            uint64_t size = module->getDataLayout().getTypeAllocSize(memberType);
-            llvm::Value *sizeArg = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size);
-            llvm::Value *rawAlloc = funcBuilder.CreateCall(sageAllocFn, {sizeArg}, memberName + "_alloc_i8ptr");
-            llvm::Value *newHeapPtr = funcBuilder.CreateBitCast(rawAlloc, elemPtrTy, memberName + "_alloc_ptr");
-            funcBuilder.CreateStore(newHeapPtr, memberPtr);
-            funcBuilder.CreateBr(contBB);
-
-            // --- contBB
-            funcBuilder.SetInsertPoint(contBB);
-            llvm::Value *heapPtr2 = funcBuilder.CreateLoad(elemPtrTy, memberPtr, memberName + "_heap");
-            return heapPtr2; // return pointer to heap memory
+            throw std::runtime_error("The '::' operator is only valid for enum access");
         }
 
-        // Non-heap: just load the value
-        return funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
+        auto &enumInfo = leftTypeIt->second;
+
+        // RHS must be an identifier (enum member)
+        auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
+        if (!memberIdent)
+            throw std::runtime_error("Right-hand of '::' must be an enum member identifier");
+
+        auto memberName = memberIdent->expression.TokenLiteral;
+
+        // Find enum member
+        auto memIt = enumInfo->members.find(memberName);
+        if (memIt == enumInfo->members.end())
+            throw std::runtime_error("Enum '" + enumName + "' has no member named '" + memberName + "'");
+
+        uint64_t memberValue = memIt->second->constantValue;
+
+        // Return constant integer
+        llvm::Type *llvmEnumTy = getLLVMType(leftType);
+        return llvm::ConstantInt::get(llvmEnumTy, memberValue);
     }
 
     llvm::Value *left = generateExpression(infix->left_operand.get());
@@ -1851,29 +1805,32 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         infix->operat.type == TokenType::GREATER_THAN ||
         infix->operat.type == TokenType::GT_OR_EQ)
     {
-        if (isIntegerType(leftType) && isIntegerType(rightType))
+        if (isIntegerType(leftType) || leftType == DataType::ENUM)
         {
-            bool signedInt = isSignedInteger(resultType.kind);
-            switch (infix->operat.type)
+            if (isIntegerType(rightType) || rightType == DataType::ENUM)
             {
-            case TokenType::EQUALS:
-                return funcBuilder.CreateICmpEQ(left, right, "cmptmp");
-            case TokenType::NOT_EQUALS:
-                return funcBuilder.CreateICmpNE(left, right, "cmptmp");
-            case TokenType::LESS_THAN:
-                return signedInt ? funcBuilder.CreateICmpSLT(left, right, "cmptmp")
-                                 : funcBuilder.CreateICmpULT(left, right, "cmptmp");
-            case TokenType::LT_OR_EQ:
-                return signedInt ? funcBuilder.CreateICmpSLE(left, right, "cmptmp")
-                                 : funcBuilder.CreateICmpULE(left, right, "cmptmp");
-            case TokenType::GREATER_THAN:
-                return signedInt ? funcBuilder.CreateICmpSGT(left, right, "cmptmp")
-                                 : funcBuilder.CreateICmpUGT(left, right, "cmptmp");
-            case TokenType::GT_OR_EQ:
-                return signedInt ? funcBuilder.CreateICmpSGE(left, right, "cmptmp")
-                                 : funcBuilder.CreateICmpUGE(left, right, "cmptmp");
-            default:
-                throw std::runtime_error("Unsupported int comparison operator");
+                bool signedInt = isSignedInteger(resultType.kind); 
+                switch (infix->operat.type)
+                {
+                case TokenType::EQUALS:
+                    return funcBuilder.CreateICmpEQ(left, right, "cmptmp");
+                case TokenType::NOT_EQUALS:
+                    return funcBuilder.CreateICmpNE(left, right, "cmptmp");
+                case TokenType::LESS_THAN:
+                    return signedInt ? funcBuilder.CreateICmpSLT(left, right, "cmptmp")
+                                     : funcBuilder.CreateICmpULT(left, right, "cmptmp");
+                case TokenType::LT_OR_EQ:
+                    return signedInt ? funcBuilder.CreateICmpSLE(left, right, "cmptmp")
+                                     : funcBuilder.CreateICmpULE(left, right, "cmptmp");
+                case TokenType::GREATER_THAN:
+                    return signedInt ? funcBuilder.CreateICmpSGT(left, right, "cmptmp")
+                                     : funcBuilder.CreateICmpUGT(left, right, "cmptmp");
+                case TokenType::GT_OR_EQ:
+                    return signedInt ? funcBuilder.CreateICmpSGE(left, right, "cmptmp")
+                                     : funcBuilder.CreateICmpUGE(left, right, "cmptmp");
+                default:
+                    throw std::runtime_error("Unsupported int comparison operator");
+                }
             }
         }
         else if (resultType.kind == DataType::FLOAT || resultType.kind == DataType::DOUBLE)

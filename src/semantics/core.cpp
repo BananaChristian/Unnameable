@@ -1547,26 +1547,6 @@ ArrayTypeInfo Semantics::getArrayTypeInfo(Node *node)
     return ArrayTypeInfo{underlying, dim, sizePerDim};
 }
 
-void Semantics::semanticSourceLinesLoader()
-{
-    std::ifstream in(fileName);
-    if (!in.is_open())
-    {
-        std::cerr << "[PARSER LOAD ERROR] Cannot open file: " << fileName << "\n";
-        return;
-    }
-
-    std::string line;
-    while (std::getline(in, line))
-    {
-        sourceLines.push_back(line);
-    }
-
-    if (sourceLines.empty())
-        std::cerr << "[PARSER LOAD WARNING] File has no lines: " << fileName << "\n";
-    else
-        std::cerr << "[PARSER LOAD INFO] Loaded " << sourceLines.size() << " lines from " << fileName << "\n";
-}
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
 {

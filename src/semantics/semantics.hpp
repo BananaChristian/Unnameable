@@ -408,5 +408,4 @@ private:
     bool isChar(const ResolvedType &t);
     void popScope();
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
-    void semanticSourceLinesLoader();
 };
