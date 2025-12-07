@@ -53,9 +53,9 @@ runtime:
 # Run compiler on test file
 run: $(OUT) runtime
 ifeq ($(OS),Windows_NT)
-	$(OUT) tests/test.unn -verbose
+	$(OUT) compiler_test/test.unn -verbose
 else
-	./$(OUT) tests/test.unn -verbose
+	./$(OUT) compiler_test/test.unn -verbose
 endif
 
 # Compile a user's .unn file
