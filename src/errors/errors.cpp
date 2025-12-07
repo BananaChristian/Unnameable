@@ -1,5 +1,6 @@
 #include "errors.hpp"
 #include <iostream>
+#include <fstream>
 
 #define COLOR_RESET "\033[0m"
 #define COLOR_RED "\033[31m"
@@ -9,12 +10,15 @@
 #define COLOR_CYAN "\033[36m"
 #define COLOR_BOLD "\033[1m"
 
-ErrorHandler::ErrorHandler(const std::string &file) : fileName(file), hintGen() {}
+ErrorHandler::ErrorHandler(const std::string &file) : fileName(file), hintGen()
+{
+    loadSourceLines();
+}
 
 void ErrorHandler::report(CompilerError &error)
 {
     std::string displayName = getLevelDisplayName(error.level);
-    std::string sourceLine = getSourceLine(error.line, error.sourceLines);
+    std::string sourceLine = getSourceLine(error.line, sourceLines);
 
     std::string baseName = getBaseName(fileName);
 
@@ -74,6 +78,27 @@ std::string ErrorHandler::getBaseName(const std::string &fullPath)
         return fullPath;
 
     return fullPath.substr(pos + 1);
+}
+
+void ErrorHandler::loadSourceLines()
+{
+    std::ifstream in(fileName);
+    if (!in.is_open())
+    {
+        std::cerr << "[SOURCE LOAD ERROR] Cannot open file: " << fileName << "\n";
+        return;
+    }
+
+    std::string line;
+    while (std::getline(in, line))
+    {
+        sourceLines.push_back(line);
+    }
+
+    if (sourceLines.empty())
+        std::cerr << "[SOURCE LOAD WARNING] File has no lines: " << fileName << "\n";
+    else
+        std::cerr << "[SOURCE LOAD INFO] Loaded " << sourceLines.size() << " lines from " << fileName << "\n";
 }
 
 std::string ErrorHandler::getSourceLine(int line, std::vector<std::string> sourceLines)

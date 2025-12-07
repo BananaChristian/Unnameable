@@ -89,7 +89,7 @@ class Lexer
         {"scope", TokenType::SCOPE},
         {"shout", TokenType::SHOUT},
         {"unwrap", TokenType::UNWRAP},
-        {"export",TokenType::EXPORT},
+        {"export", TokenType::EXPORT},
 
         {"module", TokenType::MODULE},
         {"merge", TokenType::MERGE},
@@ -122,6 +122,5 @@ private:
     Token readString();
     void appendUTF8(std::string &str, char32_t ch);
     Token readChar();
-    void loadSourceLines();
     void logError(const std::string &message, int line, int column);
 };

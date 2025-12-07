@@ -63,8 +63,6 @@ public:
     // Sliding across the token input from the lexer;
     void advance();
 
-    void loadSourceLines();
-
     // Functions for registering the functions neccesary for parsing the different tokens
     void registerPrefixFns();
     void registerInfixFns();

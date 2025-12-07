@@ -16,7 +16,6 @@ Parser::Parser(std::vector<Token> &tokenInput, const std::string &file) : tokenI
     registerPrefixFns();
     registerPostfixFns();
     registerStatementParseFns();
-    loadSourceLines();
 }
 
 // MAIN PARSER FUNCTION
@@ -1404,12 +1403,14 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence)
 
         std::cout << "[DEBUG] Parsing infix token: " << currentToken().TokenLiteral << "\n";
         left_expression = (this->*InfixParseFnIt->second)(std::move(left_expression));
-        if(left_expression){
+        if (left_expression)
+        {
             std::cout << "[DEBUG] Updated left expression (infix): " << left_expression->toString() << "\n";
-        }else{
+        }
+        else
+        {
             std::cout << "[DEBUG] Failed to parse left expression (infix) \n";
         }
-        
     }
 
     return left_expression; // Returning the expression that was parsed it can be either prefix or infix
@@ -2309,27 +2310,6 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::DEREF] = &Parser::parseDereferenceAssignment;
 }
 
-void Parser::loadSourceLines()
-{
-    std::ifstream in(fileName);
-    if (!in.is_open())
-    {
-        std::cerr << "[PARSER LOAD ERROR] Cannot open file: " << fileName << "\n";
-        return;
-    }
-
-    std::string line;
-    while (std::getline(in, line))
-    {
-        sourceLines.push_back(line);
-    }
-
-    if (sourceLines.empty())
-        std::cerr << "[PARSER LOAD WARNING] File has no lines: " << fileName << "\n";
-    else
-        std::cerr << "[PARSER LOAD INFO] Loaded " << sourceLines.size() << " lines from " << fileName << "\n";
-}
-
 // Precedence getting function
 Precedence Parser::get_precedence(TokenType type)
 {
@@ -2376,7 +2356,6 @@ void Parser::logError(const std::string &message)
     error.line = token.line;
     error.col = token.column;
     error.message = message;
-    error.sourceLines = sourceLines;
     error.hints = {};
 
     errorHandler.report(error);

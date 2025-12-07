@@ -9,10 +9,7 @@
     int tokenLine = line; \
     int tokenColumn = column;
 
-Lexer::Lexer(const std::string &sourceCode, const std::string &file) : input(sourceCode), fileName(file), errorHandler(file), currentPosition(0), nextPosition(1), line(1), column(0)
-{
-    loadSourceLines();
-};
+Lexer::Lexer(const std::string &sourceCode, const std::string &file) : input(sourceCode), fileName(file), errorHandler(file), currentPosition(0), nextPosition(1), line(1), column(0) {};
 
 size_t Lexer::getUTF8CharLength(size_t pos)
 {
@@ -778,8 +775,8 @@ Token Lexer::tokenize()
     }
     case U':':
     {
-        CAPTURE_POS; 
-        if (peekChar() == U':') 
+        CAPTURE_POS;
+        if (peekChar() == U':')
         {
             advance();
             advance();
@@ -834,27 +831,6 @@ void Lexer::updateTokenList()
     throw std::runtime_error("Lexer safety limit exceeded");
 }
 
-void Lexer::loadSourceLines()
-{
-    std::ifstream in(fileName);
-    if (!in.is_open())
-    {
-        std::cerr << "[LEXER LOAD ERROR] Cannot open file: " << fileName << "\n";
-        return;
-    }
-
-    std::string line;
-    while (std::getline(in, line))
-    {
-        sourceLines.push_back(line);
-    }
-
-    if (sourceLines.empty())
-        std::cerr << "[LEXER LOAD WARNING] File has no lines: " << fileName << "\n";
-    else
-        std::cerr << "[LEXER LOAD INFO] Loaded " << sourceLines.size() << " lines from " << fileName << "\n";
-}
-
 void Lexer::logError(const std::string &message, int line, int column)
 {
     CompilerError error;
@@ -862,7 +838,6 @@ void Lexer::logError(const std::string &message, int line, int column)
     error.line = line;
     error.col = column;
     error.message = message;
-    error.sourceLines = sourceLines;
     error.hints = {};
 
     errorHandler.report(error);

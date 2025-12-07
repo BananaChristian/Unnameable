@@ -20,7 +20,6 @@ struct CompilerError
     int line;
     int col;
     std::string message;
-    std::vector<std::string> sourceLines;
     std::vector<std::string> hints;
 };
 
@@ -60,6 +59,7 @@ private:
     HintGenerator hintGen;
     std::vector<std::string> sourceLines;
 
+    void loadSourceLines();
     std::string getLevelDisplayName(ErrorLevel level);
     std::string getBaseName(const std::string &fullPath);
     std::string getSourceLine(int line, std::vector<std::string> sourceLines);

@@ -13,7 +13,6 @@ Semantics::Semantics(std::string &file) : fileName(file), errorHandler(file)
 {
     symbolTable.push_back({});
     registerWalkerFunctions();
-    semanticSourceLinesLoader();
 }
 
 // Main walker function
@@ -1576,7 +1575,6 @@ void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int
     error.line = tokenLine;
     error.col = tokenColumn;
     error.message = message;
-    error.sourceLines = sourceLines;
     error.hints = {};
 
     errorHandler.report(error);
