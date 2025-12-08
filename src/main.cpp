@@ -16,6 +16,7 @@
 #include "irgen/irgen.hpp"
 #include "layout/layout.hpp"
 #include "sentinel/sentinel.hpp"
+#include "stubgen/stubgen.hpp"
 
 namespace fs = std::filesystem;
 
@@ -259,6 +260,17 @@ int main(int argc, char **argv)
         Sentinel sentinel(semantics);
         for (const auto &node : cu.mergedNodes)
             sentinel.sentinelDriver(node.get());
+
+        StubGen stubGen(semantics,fileName);
+        if (compileOnly)
+        {
+            if (logOutput)
+                std::cout << COLOR_BLUE << "[STUBGEN]" << COLOR_RESET << "\n";
+            for (const auto &node : cu.mergedNodes)
+                stubGen.stubGenerator(node.get());
+
+            stubGen.finish();
+        }
 
         if (logOutput)
             std::cout << COLOR_BLUE << "[IR GENERATION]" << COLOR_RESET << "\n";
