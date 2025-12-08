@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -g \
     -Isrc -Isrc/lexer -Isrc/parser -Isrc/token -Isrc/semantics \
-    -Isrc/irgen -Isrc/allocator -Isrc/layout -Isrc/sentinel -Isrc/errors -Iinclude
+    -Isrc/irgen -Isrc/allocator -Isrc/layout -Isrc/sentinel -Isrc/errors -Isrc/stubgen -Iinclude 
 
 SAN_FLAGS = -fsanitize=address,undefined
 
