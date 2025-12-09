@@ -85,6 +85,8 @@ class Lexer
         {"deref", TokenType::DEREF},
 
         {"heap", TokenType::HEAP},
+        {"dheap", TokenType::DHEAP},
+        {"allocator", TokenType::ALLOCATOR},
 
         {"scope", TokenType::SCOPE},
         {"shout", TokenType::SHOUT},

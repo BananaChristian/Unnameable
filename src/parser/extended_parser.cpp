@@ -900,6 +900,58 @@ std::unique_ptr<Statement> Parser::parseShoutStatement()
     return std::make_unique<ShoutStatement>(shout, std::move(expr));
 }
 
+std::unique_ptr<Statement> Parser::parseAllocatorStatement()
+{
+    bool isExportable = false;
+    Token allocator_token = currentToken();
+    advance();
+
+    std::unique_ptr<Expression> allocator_name = parseIdentifier();
+
+    std::unique_ptr<Statement> block = parseBlockStatement();
+
+    return std::make_unique<AllocatorStatement>(isExportable, allocator_token, std::move(allocator_name), std::move(block));
+}
+
+std::unique_ptr<Statement> Parser::parseDHeapStatement()
+{
+    Token dheap_token = currentToken();
+    advance();
+
+    std::unique_ptr<Expression> allocType;
+
+    if (currentToken().type == TokenType::LESS_THAN)
+    {
+        advance(); // Consume < token
+        allocType = parseIdentifier();
+        if (currentToken().type != TokenType::GREATER_THAN)
+        {
+            logError("Expected '>' but got '" + currentToken().TokenLiteral + "'");
+            advance(); // Consume the wrong token
+        }
+        else
+        {
+            advance(); // Just consume the correct token
+        }
+    }
+
+    std::unique_ptr<Statement> stmt = parseStatement();
+
+    if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get()))
+    {
+        letStmt->isHeap = true;
+    }
+    else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get()))
+    {
+        arrStmt->isHeap = true;
+    }else {
+        logError("'dheap' can only be applied to variable and array declarations");
+        return nullptr;
+    }
+
+    return std::make_unique<DheapStatement>(dheap_token,std::move(allocType),std::move(stmt));
+}
+
 bool Parser::isIntegerType(TokenType type)
 {
     switch (type)

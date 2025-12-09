@@ -114,6 +114,10 @@ private:
 
     std::unique_ptr<Statement> parseHeapStatement();
 
+    std::unique_ptr<Statement> parseDHeapStatement();
+
+    std::unique_ptr<Statement> parseAllocatorStatement();
+
     std::unique_ptr<Statement> parseFieldAssignment();
 
     std::unique_ptr<Statement> parseReferenceStatement(bool isParam = false);

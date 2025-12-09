@@ -64,7 +64,10 @@ enum class TokenType
     ENUM,
     CLASS,
 
-    HEAP,      // Heap keyword that allows a user to manually tell the compiler to allocate on the heap
+    HEAP,      // Heap keyword that allows a user to manually tell the compiler to allocate on the SAGE heap
+    DHEAP,     //Dheap keword that allows a user to use a dynamic heap
+    ALLOCATOR,//Allocator keyword
+
     COMPONENT, // component key word for classes
     SELF,      // self keyword for a component instance
     DATA,      // data keyword token for class

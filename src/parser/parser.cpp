@@ -427,6 +427,10 @@ std::unique_ptr<Statement> Parser::parseExportStatement()
     {
         enumStmt->isExportable = true;
     }
+    else if (auto allocStmt = dynamic_cast<AllocatorStatement *>(stmt.get()))
+    {
+        allocStmt->isExportable = true;
+    }
     else
     {
         logError("'export' can only be applied to functions, and custom types");
@@ -2304,6 +2308,8 @@ void Parser::registerStatementParseFns()
 
     StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatementWrapper;
     StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
+    StatementParseFunctionsMap[TokenType::DHEAP] = &Parser::parseDHeapStatement;
+    StatementParseFunctionsMap[TokenType::ALLOCATOR] = &Parser::parseAllocatorStatement;
     StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseExportStatement;
     StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatementWrapper;
     StatementParseFunctionsMap[TokenType::PTR] = &Parser::parsePointerStatementWrapper;
