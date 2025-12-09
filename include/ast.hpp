@@ -156,7 +156,7 @@ struct SelfExpression : Expression
         std::string fieldStr = "";
         for (const auto &field : fields)
         {
-            fieldStr += "." +field->toString();
+            fieldStr += "." + field->toString();
         }
         return "Self Expression: " + self_token.TokenLiteral + fieldStr;
     }
@@ -808,6 +808,56 @@ struct ContinueStatement : Statement
             cont_tok);
     }
     ContinueStatement(Token cont_t) : Statement(cont_t), cont_tok(cont_t) {};
+};
+
+// Allocator interface statement
+struct AllocatorStatement : Statement
+{
+    bool isExportable;
+    Token allocator_token;
+    std::unique_ptr<Expression> allocator_name;
+    std::unique_ptr<Statement> block;
+
+    std::string toString() override
+    {
+        std::string exportStr = isExportable ? "export " : "";
+        std::string blockName = "";
+        if (allocator_name)
+        {
+            blockName = allocator_name->toString() + " ";
+        }
+
+        return "Allocator Interface: " + exportStr + blockName + block->toString();
+    }
+
+    AllocatorStatement(bool exportable, Token alloc, std::unique_ptr<Expression> name, std::unique_ptr<Statement> blk) : Statement(alloc), allocator_token(alloc), allocator_name(std::move(name)), block(std::move(blk)) {};
+};
+
+struct DheapStatement : Statement
+{
+    Token dheap_token;
+    std::unique_ptr<Expression> allocType;
+    std::unique_ptr<Statement> stmt;
+
+    std::string toString() override
+    {
+        std::string allocName = "";
+        std::string stmtStr = "";
+
+        if (allocType)
+        {
+            allocName = " <" + allocType->toString() + ">";
+        }
+
+        if (stmt)
+        {
+            stmtStr = stmt->toString();
+        }
+
+        return "DHeap Statement: " + dheap_token.TokenLiteral + allocName + " " + stmtStr;
+    }
+
+    DheapStatement(Token d_tok, std::unique_ptr<Expression> alloc, std::unique_ptr<Statement> st) : Statement(d_tok), allocType(std::move(alloc)), stmt(std::move(st)) {};
 };
 
 // Use statement struct
