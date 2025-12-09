@@ -40,6 +40,7 @@ private:
     void checkComponentStatement(Node *node);
     void checkFieldAssignment(Node *node);
     void checkInstantiateStatement(Node *node);
+    void checkGuardStatement(Node *node);
     void registerSentinelFns();
     void logError(const std::string &message, int line, int col);
 };

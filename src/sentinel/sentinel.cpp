@@ -42,6 +42,7 @@ void Sentinel::registerSentinelFns()
     sentinelFnsMap[typeid(FieldAssignment)] = &Sentinel::checkFieldAssignment;
     sentinelFnsMap[typeid(ComponentStatement)] = &Sentinel::checkComponentStatement;
     sentinelFnsMap[typeid(InstantiateStatement)] = &Sentinel::checkInstantiateStatement;
+    sentinelFnsMap[typeid(GuardStatement)] = &Sentinel::checkGuardStatement;
 }
 
 void Sentinel::checkExpressionStatement(Node *node)
@@ -434,6 +435,15 @@ void Sentinel::checkInstantiateStatement(Node *node)
     {
         sentinelDriver(instTable->instantiatedAST.get());
     }
+}
+
+void Sentinel::checkGuardStatement(Node *node)
+{
+    auto guardStmt = dynamic_cast<GuardStatement *>(node);
+    if (!guardStmt)
+        return;
+
+    sentinelDriver(guardStmt->block.get());
 }
 
 void Sentinel::logError(const std::string &message, int line, int col)

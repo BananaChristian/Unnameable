@@ -128,6 +128,8 @@ private:
 
     std::unique_ptr<Statement> parsePointerStatementWrapper();
 
+    std::unique_ptr<Statement> parseGuardStatement();
+
     // Shout statement parser
     std::unique_ptr<Statement> parseShoutStatement();
 

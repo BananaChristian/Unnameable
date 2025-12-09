@@ -128,6 +128,8 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(InstanceExpression)] = &Semantics::walkInstanceExpression;
     walkerFunctionsMap[typeid(MethodCallExpression)] = &Semantics::walkMethodCallExpression;
 
+    walkerFunctionsMap[typeid(GuardStatement)] = &Semantics::walkGuardStatement;
+
     // Walker registration for the shout system
     walkerFunctionsMap[typeid(ShoutStatement)] = &Semantics::walkShoutStatement;
 
@@ -1546,7 +1548,6 @@ ArrayTypeInfo Semantics::getArrayTypeInfo(Node *node)
 
     return ArrayTypeInfo{underlying, dim, sizePerDim};
 }
-
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn)
 {

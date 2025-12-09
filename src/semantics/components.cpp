@@ -1151,7 +1151,7 @@ void Semantics::walkComponentStatement(Node *node)
             memInfo->isInitialised = letSym->isInitialized;
             memInfo->storage = letSym->storage;
             memInfo->node = letStmt;
-            memInfo->typeNode=componentStmt;
+            memInfo->typeNode = componentStmt;
             memInfo->memberIndex = currentMemberIndex++;
 
             members[letStmt->ident_token.TokenLiteral] = memInfo;
@@ -1219,7 +1219,7 @@ void Semantics::walkComponentStatement(Node *node)
                 memInfo->isDefined = true;
                 memInfo->paramTypes = metSym->paramTypes;
                 memInfo->node = funcExpr;
-                memInfo->typeNode=componentStmt;
+                memInfo->typeNode = componentStmt;
                 members[funcName] = memInfo;
             }
             componentTypeInfo->members = members; // Update the custom type table members
@@ -1414,68 +1414,109 @@ void Semantics::walkMethodCallExpression(Node *node)
 
     walker(metCall->instance.get()); // Walk the instance as I need its metaData in the IR
 
-    // Get the type
-    auto type = instanceSym->type;
-    auto typeIt = customTypesTable.find(type.resolvedName);
-    if (typeIt == customTypesTable.end())
-    {
-        logSemanticErrors("Unknown type '" + type.resolvedName + "'", line, col);
-        hasError = true;
-        return;
-    }
-
-    // If the symbol actually exists we retrieve the members and check if the function we are calling is among them
-    auto members = typeIt->second->members;
     // Retrieve the function name itself
     auto funcCall = dynamic_cast<CallExpression *>(metCall->call.get());
     auto funcName = funcCall->function_identifier->expression.TokenLiteral;
     auto funcLine = funcCall->function_identifier->expression.line;
     auto funcCol = funcCall->function_identifier->expression.column;
 
-    // Check if the function is in the members
-    auto memIt = members.find(funcName);
-    if (memIt == members.end())
+    // Get the type
+    auto type = instanceSym->type;
+    auto typeIt = customTypesTable.find(type.resolvedName);
+    if (typeIt != customTypesTable.end())
     {
-        logSemanticErrors("'Function " + funcName + "' does not exist in type '" + type.resolvedName + "'", funcLine, funcCol);
-        return;
+        // If the symbol actually exists we retrieve the members and check if the function we are calling is among them
+        auto members = typeIt->second->members;
+
+        // Check if the function is in the members
+        auto memIt = members.find(funcName);
+        if (memIt == members.end())
+        {
+            logSemanticErrors("'Function " + funcName + "' does not exist in type '" + type.resolvedName + "'", funcLine, funcCol);
+            return;
+        }
+
+        auto memInfo = memIt->second;
+
+        // If the member exists carry out some checks
+        // Definition check
+        if (!memInfo->isDefined)
+        {
+            logSemanticErrors("'" + funcName + "' was not defined anywhere", funcLine, funcCol);
+            hasError = true;
+        }
+
+        // Compatibility check
+        if (!isMethodCallCompatible(*memInfo, funcCall))
+        {
+            hasError = true;
+        }
+
+        // Walking the arguments
+        for (const auto &arg : funcCall->parameters)
+        {
+            walker(arg.get());
+        }
+
+        // Update the instance symbol metaData
+        instanceSym->lastUseNode = metCall;
+        if (instanceSym->refCount)
+        {
+            instanceSym->refCount--;
+        }
+
+        // Store the metaData
+        auto metCallSym = std::make_shared<SymbolInfo>();
+        metCallSym->hasError = hasError;
+        metCallSym->type = memInfo->returnType;
+        metCallSym->isNullable = memInfo->isNullable;
+
+        metaData[metCall] = metCallSym;
     }
-
-    auto memInfo = memIt->second;
-
-    // If the member exists carry out some checks
-    // Definition check
-    if (!memInfo->isDefined)
+    else
     {
-        logSemanticErrors("'" + funcName + "' was not defined anywhere", funcLine, funcCol);
-        hasError = true;
+        auto guardIt = guardTable.find(instanceName);
+        if (guardIt == guardTable.end())
+        {
+            logSemanticErrors("Unknown guard block '" + instanceName + "'", line, col);
+            hasError = true;
+        }
+
+        // If the guard actually exists retrieve guardMap
+        auto guardMap = guardIt->second;
+        auto guardfnIt = guardMap.find(funcName);
+        if (guardfnIt == guardMap.end())
+        {
+            logSemanticErrors("Function '" + funcName + "' does not exist in guard '" + instanceName + "'", funcLine, funcCol);
+            hasError = true;
+            return;
+        }
+
+        auto fnInfo = guardfnIt->second;
+
+        if (!fnInfo->isDeclaration)
+        {
+            logSemanticErrors("'" + funcName + "' was not defined anywhere", funcLine, funcCol);
+            hasError = true;
+        }
+
+        if (!isCallCompatible(*fnInfo, funcCall))
+        {
+            hasError = true;
+        }
+
+        for (const auto &arg : funcCall->parameters)
+        {
+            walker(arg.get());
+        }
+
+        auto fnCallSym = std::make_shared<SymbolInfo>();
+        fnCallSym->hasError = hasError;
+        fnCallSym->type = fnInfo->returnType;
+        fnCallSym->isNullable = fnInfo->isNullable;
+
+        metaData[metCall] = fnCallSym;
     }
-
-    // Compatibility check
-    if (!isMethodCallCompatible(*memInfo, funcCall))
-    {
-        hasError = true;
-    }
-
-    // Walking the arguments
-    for (const auto &arg : funcCall->parameters)
-    {
-        walker(arg.get());
-    }
-
-    // Update the instance symbol metaData
-    instanceSym->lastUseNode = metCall;
-    if (instanceSym->refCount)
-    {
-        instanceSym->refCount--;
-    }
-
-    // Store the metaData
-    auto metCallSym = std::make_shared<SymbolInfo>();
-    metCallSym->hasError = hasError;
-    metCallSym->type = memInfo->returnType;
-    metCallSym->isNullable = memInfo->isNullable;
-
-    metaData[metCall] = metCallSym;
 }
 
 void Semantics::walkArrayStatement(Node *node)

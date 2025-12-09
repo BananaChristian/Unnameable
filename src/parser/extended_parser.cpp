@@ -944,12 +944,26 @@ std::unique_ptr<Statement> Parser::parseDHeapStatement()
     else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get()))
     {
         arrStmt->isHeap = true;
-    }else {
+    }
+    else
+    {
         logError("'dheap' can only be applied to variable and array declarations");
         return nullptr;
     }
 
-    return std::make_unique<DheapStatement>(dheap_token,std::move(allocType),std::move(stmt));
+    return std::make_unique<DheapStatement>(dheap_token, std::move(allocType), std::move(stmt));
+}
+
+std::unique_ptr<Statement> Parser::parseGuardStatement()
+{
+    bool isExportable = false;
+    Token guard_token = currentToken();
+    advance();
+
+    std::unique_ptr<Expression> guardIdent = parseIdentifier();
+    std::unique_ptr<Statement> block = parseBlockStatement();
+
+    return std::make_unique<GuardStatement>(isExportable, guard_token, std::move(guardIdent), std::move(block));
 }
 
 bool Parser::isIntegerType(TokenType type)

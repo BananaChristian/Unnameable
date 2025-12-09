@@ -88,7 +88,7 @@ class Lexer
         {"dheap", TokenType::DHEAP},
         {"allocator", TokenType::ALLOCATOR},
 
-        {"scope", TokenType::SCOPE},
+        {"guard", TokenType::GUARD},
         {"shout", TokenType::SHOUT},
         {"unwrap", TokenType::UNWRAP},
         {"export", TokenType::EXPORT},

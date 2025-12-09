@@ -233,8 +233,8 @@ std::string TokenTypeToLiteral(TokenType type)
     case TokenType::MERGE:
         return "Token Type: MERGE";
 
-    case TokenType::SCOPE:
-        return "Token Type: SCOPE";
+    case TokenType::GUARD:
+        return "Token Type: GUARD";
     case TokenType::SHOUT:
         return "Token Type: SHOUT";
     case TokenType::QUALIFY:

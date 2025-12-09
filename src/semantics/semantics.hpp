@@ -63,7 +63,7 @@ enum class StorageType
 struct ResolvedType
 {
     DataType kind; // For the custom inbuilt types
-    std::string resolvedName;
+    std::string resolvedName="unknown";
     bool isPointer = false;
     bool isRef = false;
     bool isNull = false;
@@ -90,7 +90,7 @@ struct MemberInfo
     ResolvedType parentType; // Parent type for enum members
 
     Node *node = nullptr;
-    Node *typeNode=nullptr;
+    Node *typeNode = nullptr;
     llvm::Value *llvmValue = nullptr;
     llvm::Type *llvmType = nullptr;
     int memberIndex = -1;
@@ -234,6 +234,12 @@ struct SymbolInfo
     SymbolInfo &operator=(SymbolInfo &&) = default;
 };
 
+struct GuardInfo
+{
+    std::string funcName;
+    std::shared_ptr<SymbolInfo> funcSym;
+};
+
 class Semantics
 {
     std::string fileName;
@@ -247,6 +253,7 @@ public:
     std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>> symbolTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> customTypesTable;
     std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
+    std::unordered_map<std::string,std::unordered_map<std::string,std::shared_ptr<SymbolInfo>>> guardTable;
     std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
     std::vector<bool> loopContext;
     std::vector<ScopeInfo> currentTypeStack;
@@ -367,6 +374,8 @@ private:
     // Walking generics
     void walkGenericStatement(Node *node);
     void walkInstantiateStatement(Node *node);
+
+    void walkGuardStatement(Node *node);
 
     // Walking the shout statement
     void walkShoutStatement(Node *node);

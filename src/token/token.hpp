@@ -100,7 +100,7 @@ enum class TokenType
     LINK,    // Link keyword
     QUALIFY, // Qualify keyword
 
-    SCOPE, // Scope keyword
+    GUARD, // Scope guard keyword
 
     SHOUT, // Shout keyword
 

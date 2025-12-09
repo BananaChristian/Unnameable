@@ -1014,3 +1014,91 @@ void Semantics::walkShoutStatement(Node *node)
     // Just call the walker on whatever is there
     walker(shoutStmt->expr.get());
 }
+
+void Semantics::walkGuardStatement(Node *node)
+{
+    auto guardStmt = dynamic_cast<GuardStatement *>(node);
+    if (!guardStmt)
+        return;
+
+    std::cout << "Analysing guard statement\n";
+
+    bool hasError = false;
+
+    // Extract the name
+    auto guardName = guardStmt->guardName->expression.TokenLiteral;
+    auto nameLine = guardStmt->guardName->expression.line;
+    auto nameCol = guardStmt->guardName->expression.column;
+
+    // Check if the name is already existant
+    auto existingSym = resolveSymbolInfo(guardName);
+    if (existingSym)
+    {
+        logSemanticErrors("'" + guardName + "' already exists", nameLine, nameCol);
+        hasError = true;
+    }
+
+    // Check the export flag
+    bool isExportable = guardStmt->isExportable;
+
+    auto funcGuard = std::make_shared<GuardInfo>();
+    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> guardMap;
+
+    symbolTable.push_back({});
+    // Only authorise function statements inside the guard block
+    auto blockStmt = dynamic_cast<BlockStatement *>(guardStmt->block.get());
+    for (const auto &stmt : blockStmt->statements)
+    {
+        auto funcStmt = dynamic_cast<FunctionStatement *>(stmt.get());
+        if (!funcStmt)
+        {
+            logSemanticErrors("Only function statements or declarations are allowed in guard blocks", stmt->statement.line, stmt->statement.column);
+            hasError = true;
+            return;
+        }
+
+        walker(funcStmt);
+
+        std::string name;
+        if (auto fnExpr = dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get()))
+        {
+            name = fnExpr->func_key.TokenLiteral; // The original name
+            std::cout << "Original func name: " << name << "\n";
+            fnExpr->func_key.TokenLiteral = guardName + "_" + name; // Mangled name for IRGen
+            std::cout << "Mangled func name: " << fnExpr->func_key.TokenLiteral << "\n";
+            fnExpr->isExportable = isExportable;
+        }
+        else if (auto fnDecl = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get()))
+        {
+            if (auto fnDeclStmt = dynamic_cast<FunctionDeclaration *>(fnDecl->funcDeclrStmt.get()))
+            {
+                name = fnDeclStmt->function_name->expression.TokenLiteral; // The original name
+                std::cout << "Original func name: " << name << "\n";
+                fnDeclStmt->function_name->expression.TokenLiteral = guardName + "_" + name;
+                std::cout << "Mangled func name: " << fnDeclStmt->function_name->expression.TokenLiteral << "\n";
+                fnDeclStmt->isExportable = isExportable;
+            }
+        }
+
+        funcGuard->funcName = name; // Store the original name for semantics
+
+        auto funcSym = resolveSymbolInfo(name);
+        if (!funcSym)
+        {
+            logSemanticErrors("Failed to find function '" + name + "'", funcStmt->statement.line, funcStmt->statement.column);
+            return;
+        }
+        funcSym->isExportable = isExportable; // Set the export symbol flag for the function to true
+        funcGuard->funcSym = funcSym;
+        guardMap[name] = funcSym;
+    }
+
+    auto guardSym = std::make_shared<SymbolInfo>();
+    guardSym->isExportable = isExportable;
+    guardSym->hasError = hasError;
+
+    metaData[guardStmt] = guardSym;
+    symbolTable[0][guardName] = guardSym;
+    guardTable[guardName] = guardMap;
+    popScope();
+}

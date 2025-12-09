@@ -43,6 +43,7 @@ void Layout::registerComponentCalculatorFns()
     calculatorFnsMap[typeid(DataStatement)] = &Layout::calculateDataStatement;
     calculatorFnsMap[typeid(ComponentStatement)] = &Layout::calculateComponentStatement;
     calculatorFnsMap[typeid(InstantiateStatement)] = &Layout::calculateInstantiateStatement;
+    calculatorFnsMap[typeid(GuardStatement)] = &Layout::calculateGuardStatement;
 }
 
 // Independent calculators
@@ -267,8 +268,6 @@ void Layout::calculateDataStatement(Node *node)
     structTy->setBody(fieldTypes, /*isPacked*/ false);
 
     typeMap[dataName] = structTy;
-
-    
 }
 
 void Layout::calculateComponentStatement(Node *node)
@@ -330,6 +329,15 @@ void Layout::calculateComponentStatement(Node *node)
         std::cout << "Inside private method calculation\n";
         calculatorDriver(method.get());
     }
+}
+
+void Layout::calculateGuardStatement(Node *node)
+{
+    auto guardStmt = dynamic_cast<GuardStatement *>(node);
+    if (!guardStmt)
+        return;
+
+    calculatorDriver(guardStmt->block.get());
 }
 
 void Layout::logPrestaticError(const std::string &message, int line, int col)

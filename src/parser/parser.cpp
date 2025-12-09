@@ -431,6 +431,10 @@ std::unique_ptr<Statement> Parser::parseExportStatement()
     {
         allocStmt->isExportable = true;
     }
+    else if (auto guardStmt = dynamic_cast<GuardStatement *>(stmt.get()))
+    {
+        guardStmt->isExportable = true;
+    }
     else
     {
         logError("'export' can only be applied to functions, and custom types");
@@ -2310,6 +2314,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
     StatementParseFunctionsMap[TokenType::DHEAP] = &Parser::parseDHeapStatement;
     StatementParseFunctionsMap[TokenType::ALLOCATOR] = &Parser::parseAllocatorStatement;
+    StatementParseFunctionsMap[TokenType::GUARD] = &Parser::parseGuardStatement;
     StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseExportStatement;
     StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatementWrapper;
     StatementParseFunctionsMap[TokenType::PTR] = &Parser::parsePointerStatementWrapper;
