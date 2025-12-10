@@ -860,27 +860,27 @@ struct DheapStatement : Statement
     DheapStatement(Token d_tok, std::unique_ptr<Expression> alloc, std::unique_ptr<Statement> st) : Statement(d_tok), allocType(std::move(alloc)), stmt(std::move(st)) {};
 };
 
-//Guard block statement
-struct GuardStatement: Statement{
+//Seal block statement
+struct SealStatement: Statement{
     bool isExportable;
-    Token guard_token;
-    std::unique_ptr<Expression> guardName;
+    Token seal_token;
+    std::unique_ptr<Expression> sealName;
     std::unique_ptr<Statement> block;
 
     std::string toString() override{
         std::string exportStr=isExportable?"export ":"";
         std::string name="No name";
-        if(guardName){
-            name=guardName->toString();
+        if(sealName){
+            name=sealName->toString();
         }
         std::string blockStr="";
         if(block){
             blockStr=block->toString();
         }
-        return "Guard Statement: "+exportStr+guard_token.TokenLiteral+" "+name+blockStr;
+        return "Seal Statement: "+exportStr+seal_token.TokenLiteral+" "+name+blockStr;
     }
 
-    GuardStatement(bool isExp,Token guard,std::unique_ptr<Expression> name,std::unique_ptr<Statement>blk):Statement(guard),isExportable(isExp),guard_token(guard),guardName(std::move(name)),block(std::move(blk)){}
+    SealStatement(bool isExp,Token seal,std::unique_ptr<Expression> name,std::unique_ptr<Statement>blk):Statement(seal),isExportable(isExp),seal_token(seal),sealName(std::move(name)),block(std::move(blk)){}
 };
 
 // Use statement struct
