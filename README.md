@@ -160,16 +160,35 @@ func main(): int{
 ```
 
 ## Seals
-Unnameable is extremely strict on naming as it doesnt allow overloading. Seals exist to prevent name collisions for functions across compilation units and across mergers
+Unnameable is extremely strict on naming as it doesnt allow overloading. Seals exist to prevent name collisions for functions across compilation units and across mergers.
 Seals create isolated scopes for functions. You cannot directly access a sealed function you must access it through its seal.
-At code generation the sealed function will get name mangled so for example add in a seal called Ops will become Ops_add 
-
-
+At code generation the sealed function will get name mangled so for example add in a seal called Ops will become Ops_add.
+Exportable functions must only be inside seals or components.
+If a seal is exportable then every function in that seal is exportable but you can make individual functions in a seal exportable and others private to a current compilation unit or mergers
 ```
 seal Test{
-    #Add isnt seen globally and cannot be accessed globally
+    #add isn't seen globally and cannot be accessed globally
     func add(int x,int y):int{
         return x+y;
+    }
+}
+
+export seal Food{
+    #eat will become exportable
+    func eat:string{
+        return "Eat";
+    }
+}
+
+seal AnotherTest{
+    #test is a private function
+    func test:int{
+        return 1;
+    }
+
+    #otherTest is an exportable function
+    export func otherTest:int{
+        return 1;
     }
 }
 
