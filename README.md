@@ -159,6 +159,26 @@ func main(): int{
 }
 ```
 
+## Seals
+Unnameable is extremely strict on naming as it doesnt allow overloading. Seals exist to prevent name collisions for functions across compilation units and across mergers
+Seals create isolated scopes for functions. You cannot directly access a sealed function you must access it through its seal.
+At code generation the sealed function will get name mangled so for example add in a seal called Ops will become Ops_add 
+
+
+```
+seal Test{
+    #Add isnt seen globally and cannot be accessed globally
+    func add(int x,int y):int{
+        return x+y;
+    }
+}
+
+func main:int{
+    Test.add(10,10);#To the compiler this is Test_add
+    return 0;
+}
+```
+
 ## Generic and multigenerics
 
 Unnameable uses a system of generics called Explicitly Instantiated Generics(EIG) where the user defines what the functions they want inside a generic block which takes arguments of the types. Then an instantiate statement allows the user to tell the compiler what sort of types they would like to create generics for.
