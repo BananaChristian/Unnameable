@@ -128,7 +128,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(InstanceExpression)] = &Semantics::walkInstanceExpression;
     walkerFunctionsMap[typeid(MethodCallExpression)] = &Semantics::walkMethodCallExpression;
 
-    walkerFunctionsMap[typeid(GuardStatement)] = &Semantics::walkGuardStatement;
+    walkerFunctionsMap[typeid(SealStatement)] = &Semantics::walkSealStatement;
 
     // Walker registration for the shout system
     walkerFunctionsMap[typeid(ShoutStatement)] = &Semantics::walkShoutStatement;

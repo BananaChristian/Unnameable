@@ -431,9 +431,9 @@ std::unique_ptr<Statement> Parser::parseExportStatement()
     {
         allocStmt->isExportable = true;
     }
-    else if (auto guardStmt = dynamic_cast<GuardStatement *>(stmt.get()))
+    else if (auto sealStmt = dynamic_cast<SealStatement *>(stmt.get()))
     {
-        guardStmt->isExportable = true;
+        sealStmt->isExportable = true;
     }
     else
     {
@@ -2014,6 +2014,7 @@ std::unique_ptr<Statement> Parser::parseBlockStatement()
     if (currentToken().type != TokenType::RBRACE)
     {
         logError("Expected } to close block but got '" + currentToken().TokenLiteral + "'");
+        advance();
         return nullptr;
     }
 
@@ -2314,7 +2315,7 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
     StatementParseFunctionsMap[TokenType::DHEAP] = &Parser::parseDHeapStatement;
     StatementParseFunctionsMap[TokenType::ALLOCATOR] = &Parser::parseAllocatorStatement;
-    StatementParseFunctionsMap[TokenType::GUARD] = &Parser::parseGuardStatement;
+    StatementParseFunctionsMap[TokenType::SEAL] = &Parser::parseSealStatement;
     StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseExportStatement;
     StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatementWrapper;
     StatementParseFunctionsMap[TokenType::PTR] = &Parser::parsePointerStatementWrapper;

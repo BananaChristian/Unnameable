@@ -35,7 +35,7 @@ private:
     void calculateFunctionExpression(Node *node);
     void calculateBlockExpression(Node *node);
     void calculateDataStatement(Node *node);
-    void calculateGuardStatement(Node *node);
+    void calculateSealStatement(Node *node);
     void calculateComponentStatement(Node *node);
     void calculateInstantiateStatement(Node *node);
     // HELPERS

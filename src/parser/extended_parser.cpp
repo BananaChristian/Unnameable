@@ -954,16 +954,16 @@ std::unique_ptr<Statement> Parser::parseDHeapStatement()
     return std::make_unique<DheapStatement>(dheap_token, std::move(allocType), std::move(stmt));
 }
 
-std::unique_ptr<Statement> Parser::parseGuardStatement()
+std::unique_ptr<Statement> Parser::parseSealStatement()
 {
     bool isExportable = false;
-    Token guard_token = currentToken();
+    Token seal_token = currentToken();
     advance();
 
-    std::unique_ptr<Expression> guardIdent = parseIdentifier();
+    std::unique_ptr<Expression> sealIdent = parseIdentifier();
     std::unique_ptr<Statement> block = parseBlockStatement();
 
-    return std::make_unique<GuardStatement>(isExportable, guard_token, std::move(guardIdent), std::move(block));
+    return std::make_unique<SealStatement>(isExportable, seal_token, std::move(sealIdent), std::move(block));
 }
 
 bool Parser::isIntegerType(TokenType type)

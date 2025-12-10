@@ -1422,7 +1422,9 @@ void Semantics::walkMethodCallExpression(Node *node)
 
     // Get the type
     auto type = instanceSym->type;
+
     auto typeIt = customTypesTable.find(type.resolvedName);
+    auto sealIt = sealTable.find(instanceName);
     if (typeIt != customTypesTable.end())
     {
         // If the symbol actually exists we retrieve the members and check if the function we are calling is among them
@@ -1473,42 +1475,28 @@ void Semantics::walkMethodCallExpression(Node *node)
 
         metaData[metCall] = metCallSym;
     }
-    else
+    else if (sealIt != sealTable.end())
     {
-        auto guardIt = guardTable.find(instanceName);
-        if (guardIt == guardTable.end())
-        {
-            logSemanticErrors("Unknown guard block '" + instanceName + "'", line, col);
-            hasError = true;
-        }
-
         // If the guard actually exists retrieve guardMap
-        auto guardMap = guardIt->second;
-        auto guardfnIt = guardMap.find(funcName);
-        if (guardfnIt == guardMap.end())
+        auto sealMap = sealIt->second;
+        auto sealfnIt = sealMap.find(funcName);
+        if (sealfnIt == sealMap.end())
         {
-            logSemanticErrors("Function '" + funcName + "' does not exist in guard '" + instanceName + "'", funcLine, funcCol);
+            logSemanticErrors("Function '" + funcName + "' does not exist in seal '" + instanceName + "'", funcLine, funcCol);
             hasError = true;
             return;
         }
 
-        auto fnInfo = guardfnIt->second;
+        walker(funcCall);
 
-        if (!fnInfo->isDeclaration)
+        auto fnIt = metaData.find(funcCall);
+        if (fnIt == metaData.end())
         {
-            logSemanticErrors("'" + funcName + "' was not defined anywhere", funcLine, funcCol);
-            hasError = true;
+            logSemanticErrors("Function '" + funcName + "' metaData does not exist ", funcLine, funcCol);
+            return;
         }
 
-        if (!isCallCompatible(*fnInfo, funcCall))
-        {
-            hasError = true;
-        }
-
-        for (const auto &arg : funcCall->parameters)
-        {
-            walker(arg.get());
-        }
+        auto fnInfo = fnIt->second;
 
         auto fnCallSym = std::make_shared<SymbolInfo>();
         fnCallSym->hasError = hasError;
@@ -1516,6 +1504,11 @@ void Semantics::walkMethodCallExpression(Node *node)
         fnCallSym->isNullable = fnInfo->isNullable;
 
         metaData[metCall] = fnCallSym;
+    }
+    else
+    {
+        logSemanticErrors("Unknown type or seal '" + instanceName + "'", line, col);
+        return;
     }
 }
 

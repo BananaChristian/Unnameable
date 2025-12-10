@@ -43,7 +43,7 @@ void Layout::registerComponentCalculatorFns()
     calculatorFnsMap[typeid(DataStatement)] = &Layout::calculateDataStatement;
     calculatorFnsMap[typeid(ComponentStatement)] = &Layout::calculateComponentStatement;
     calculatorFnsMap[typeid(InstantiateStatement)] = &Layout::calculateInstantiateStatement;
-    calculatorFnsMap[typeid(GuardStatement)] = &Layout::calculateGuardStatement;
+    calculatorFnsMap[typeid(SealStatement)] = &Layout::calculateSealStatement;
 }
 
 // Independent calculators
@@ -331,13 +331,13 @@ void Layout::calculateComponentStatement(Node *node)
     }
 }
 
-void Layout::calculateGuardStatement(Node *node)
+void Layout::calculateSealStatement(Node *node)
 {
-    auto guardStmt = dynamic_cast<GuardStatement *>(node);
-    if (!guardStmt)
+    auto sealStmt = dynamic_cast<SealStatement *>(node);
+    if (!sealStmt)
         return;
 
-    calculatorDriver(guardStmt->block.get());
+    calculatorDriver(sealStmt->block.get());
 }
 
 void Layout::logPrestaticError(const std::string &message, int line, int col)

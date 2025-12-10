@@ -1383,12 +1383,24 @@ void IRGenerator::generateBlockStatement(Node *node)
     std::cerr << "[IR DEBUG] Generating block statement with " << blockStmt->statements.size() << " statements\n";
     for (const auto &stmt : blockStmt->statements)
     {
-        std::cerr << "[IR DEBUG] Processing block statement child of type: " << typeid(*stmt).name() << " - " << stmt->toString() << "\n";
+        std::cerr << "[IR DEBUG] Processing block statement child of type: "
+                  << typeid(*stmt).name() << " - " << stmt->toString() << "\n";
+
         generateStatement(stmt.get());
-        if (funcBuilder.GetInsertBlock()->getTerminator())
+
+        auto currentBlock = funcBuilder.GetInsertBlock();
+        if (currentBlock)
         {
-            std::cerr << "[IR DEBUG] Terminator found in block statement child: " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
-            break;
+            if (currentBlock->getTerminator())
+            {
+                std::cerr << "[IR DEBUG] Terminator found in block statement child: "
+                          << currentBlock->getTerminator()->getOpcodeName() << "\n";
+                break; // Stop generating further instructions in this block
+            }
+        }
+        else
+        {
+            std::cerr << "[IR DEBUG] No current insert block after statement, skipping terminator check\n";
         }
     }
 }
@@ -1809,7 +1821,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
         {
             if (isIntegerType(rightType) || rightType == DataType::ENUM)
             {
-                bool signedInt = isSignedInteger(resultType.kind); 
+                bool signedInt = isSignedInteger(resultType.kind);
                 switch (infix->operat.type)
                 {
                 case TokenType::EQUALS:
@@ -2825,7 +2837,7 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
     if (!variablePtr)
         throw std::runtime_error("No llvm value for '" + identName + "'");
 
-    // Component instance -> pointer to struct (unchanged)
+    // Component instance -> pointer to struct 
     auto compIt = componentTypes.find(sym->type.resolvedName);
     if (compIt != componentTypes.end())
     {
@@ -3644,6 +3656,7 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(ArrayStatement)] = &IRGenerator::generateArrayStatement;
     generatorFunctionsMap[typeid(ShoutStatement)] = &IRGenerator::generateShoutStatement;
     generatorFunctionsMap[typeid(InstantiateStatement)] = &IRGenerator::generateInstantiateStatement;
+    generatorFunctionsMap[typeid(SealStatement)] = &IRGenerator::generateSealStatement;
 }
 
 void IRGenerator::registerAddressGeneratorFunctions()

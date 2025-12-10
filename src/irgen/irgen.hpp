@@ -103,6 +103,7 @@ private:
     void generateComponentFunctionStatement(Node *node, const std::string &compName);
 
     void generateInstantiateStatement(Node *node);
+    void generateSealStatement(Node *node);
     // Array statement generator
     void generateArrayStatement(Node *node);
     // Enum class system
@@ -172,7 +173,6 @@ private:
     bool isSignedInteger(DataType dt);
     bool currentBlockIsTerminated();
     unsigned getIntegerBitWidth(DataType dt);
-    llvm::Function *declareFunctionSignature(FunctionExpression *fnExpr);
 
     llvm::GlobalVariable *createGlobalArrayConstant(llvm::Constant *constantArray);
 

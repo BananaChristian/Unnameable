@@ -1015,44 +1015,43 @@ void Semantics::walkShoutStatement(Node *node)
     walker(shoutStmt->expr.get());
 }
 
-void Semantics::walkGuardStatement(Node *node)
+void Semantics::walkSealStatement(Node *node)
 {
-    auto guardStmt = dynamic_cast<GuardStatement *>(node);
-    if (!guardStmt)
+    auto sealStmt = dynamic_cast<SealStatement *>(node);
+    if (!sealStmt)
         return;
 
-    std::cout << "Analysing guard statement\n";
+    std::cout << "Analysing seal statement\n";
 
     bool hasError = false;
 
     // Extract the name
-    auto guardName = guardStmt->guardName->expression.TokenLiteral;
-    auto nameLine = guardStmt->guardName->expression.line;
-    auto nameCol = guardStmt->guardName->expression.column;
+    auto sealName = sealStmt->sealName->expression.TokenLiteral;
+    auto nameLine = sealStmt->sealName->expression.line;
+    auto nameCol = sealStmt->sealName->expression.column;
 
     // Check if the name is already existant
-    auto existingSym = resolveSymbolInfo(guardName);
+    auto existingSym = resolveSymbolInfo(sealName);
     if (existingSym)
     {
-        logSemanticErrors("'" + guardName + "' already exists", nameLine, nameCol);
+        logSemanticErrors("'" + sealName + "' already exists", nameLine, nameCol);
         hasError = true;
     }
 
     // Check the export flag
-    bool isExportable = guardStmt->isExportable;
+    bool isExportable = sealStmt->isExportable;
 
-    auto funcGuard = std::make_shared<GuardInfo>();
-    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> guardMap;
+    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> sealMap;
 
     symbolTable.push_back({});
     // Only authorise function statements inside the guard block
-    auto blockStmt = dynamic_cast<BlockStatement *>(guardStmt->block.get());
+    auto blockStmt = dynamic_cast<BlockStatement *>(sealStmt->block.get());
     for (const auto &stmt : blockStmt->statements)
     {
         auto funcStmt = dynamic_cast<FunctionStatement *>(stmt.get());
         if (!funcStmt)
         {
-            logSemanticErrors("Only function statements or declarations are allowed in guard blocks", stmt->statement.line, stmt->statement.column);
+            logSemanticErrors("Only function statements can be sealed ", stmt->statement.line, stmt->statement.column);
             hasError = true;
             return;
         }
@@ -1064,23 +1063,19 @@ void Semantics::walkGuardStatement(Node *node)
         {
             name = fnExpr->func_key.TokenLiteral; // The original name
             std::cout << "Original func name: " << name << "\n";
-            fnExpr->func_key.TokenLiteral = guardName + "_" + name; // Mangled name for IRGen
+            fnExpr->func_key.TokenLiteral = sealName + "_" + name; // Mangled name for IRGen
+            fnExpr->token.TokenLiteral = sealName + "_" + name;
+            fnExpr->expression.TokenLiteral = sealName + "_" + name;
+
             std::cout << "Mangled func name: " << fnExpr->func_key.TokenLiteral << "\n";
             fnExpr->isExportable = isExportable;
         }
         else if (auto fnDecl = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get()))
         {
-            if (auto fnDeclStmt = dynamic_cast<FunctionDeclaration *>(fnDecl->funcDeclrStmt.get()))
-            {
-                name = fnDeclStmt->function_name->expression.TokenLiteral; // The original name
-                std::cout << "Original func name: " << name << "\n";
-                fnDeclStmt->function_name->expression.TokenLiteral = guardName + "_" + name;
-                std::cout << "Mangled func name: " << fnDeclStmt->function_name->expression.TokenLiteral << "\n";
-                fnDeclStmt->isExportable = isExportable;
-            }
+            logSemanticErrors("Function declarations cannot be sealed", fnDecl->expression.line, fnDecl->expression.column);
+            hasError = true;
+            return;
         }
-
-        funcGuard->funcName = name; // Store the original name for semantics
 
         auto funcSym = resolveSymbolInfo(name);
         if (!funcSym)
@@ -1089,16 +1084,15 @@ void Semantics::walkGuardStatement(Node *node)
             return;
         }
         funcSym->isExportable = isExportable; // Set the export symbol flag for the function to true
-        funcGuard->funcSym = funcSym;
-        guardMap[name] = funcSym;
+        sealMap[name] = funcSym;
     }
 
-    auto guardSym = std::make_shared<SymbolInfo>();
-    guardSym->isExportable = isExportable;
-    guardSym->hasError = hasError;
+    auto sealSym = std::make_shared<SymbolInfo>();
+    sealSym->isExportable = isExportable;
+    sealSym->hasError = hasError;
 
-    metaData[guardStmt] = guardSym;
-    symbolTable[0][guardName] = guardSym;
-    guardTable[guardName] = guardMap;
+    metaData[sealStmt] = sealSym;
+    symbolTable[0][sealName] = sealSym;
+    sealTable[sealName] = sealMap;
     popScope();
 }

@@ -336,7 +336,7 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node)
         throw std::runtime_error("Invalid method call expression node");
 
     if (isGlobalScope)
-        throw std::runtime_error("Cannot use method calls in global scope");
+        throw std::runtime_error("Cannot use calls in global scope");
 
     // Get the metaData for the whole call
     auto callIt = semantics.metaData.find(metCall);
@@ -356,69 +356,93 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node)
     // Something like p1.test()
     // Split the call
     auto instance = dynamic_cast<Identifier *>(metCall->instance.get());
-    // Getting the metaData for the instance
-    auto instanceIt = semantics.metaData.find(instance);
-    if (instanceIt == semantics.metaData.end())
-    {
-        throw std::runtime_error("Could not find instance metaData");
-    }
-
-    auto instanceSym = instanceIt->second;
-
-    llvm::Value *objectPtr = nullptr;
-    // Get the llvm value for the instance
-    if (instanceSym->llvmValue)
-    {
-        objectPtr = instanceSym->llvmValue;
-    }
-    else
-    {
-        objectPtr = generateExpression(instance);
-    }
-
-    // Get the component type of the object
-    std::string compName = instanceSym->type.resolvedName;
+    std::string instanceName = instance->identifier.TokenLiteral;
+    llvm::Value *result;
+    auto sealIt = semantics.sealTable.find(instanceName);
 
     // Getting the raw function name as stored in the node
     auto call = dynamic_cast<CallExpression *>(metCall->call.get());
     std::string callName = call->function_identifier->expression.TokenLiteral;
 
-    // Resolve the function name
-    std::string funcName = compName + "_" + callName;
-
-    // Fetch the function from the module
-    llvm::Function *targetFunc = module->getFunction(funcName);
-    if (!targetFunc)
+    if (sealIt != semantics.sealTable.end())
     {
-        throw std::runtime_error("Undefined method '" + callName + "' from component '" + compName + "'");
+        std::cout << "SEAL PATH\n";
+        // Retrive the function we wish to call
+        auto sealFnMap = sealIt->second;
+        auto sealFnIt = sealFnMap.find(callName);
+        if (sealFnIt == sealFnMap.end())
+        {
+            throw std::runtime_error("Function '" + callName + "' does not exist in seal '" + instanceName + "'");
+        }
+
+        call->function_identifier->expression.TokenLiteral = instanceName + "_" + callName;
+        call->function_identifier->token.TokenLiteral = instanceName + "_" + callName;
+
+        result = generateCallExpression(call);
     }
-
-    // Prepare the arguments
-    std::vector<llvm::Value *> args;
-    args.push_back(objectPtr); // The implicit self
-
-    // Add user arguments if any were provided
-    for (const auto &arg : call->parameters)
+    else
     {
-        args.push_back(generateExpression(arg.get()));
-    }
+        std::cout << "METHOD ACCESS PATH\n";
+        // Getting the metaData for the instance
+        auto instanceIt = semantics.metaData.find(instance);
+        if (instanceIt == semantics.metaData.end())
+        {
+            throw std::runtime_error("Could not find instance metaData");
+        }
 
-    // Call the function
-    llvm::Value *result = funcBuilder.CreateCall(targetFunc, args);
+        auto instanceSym = instanceIt->second;
 
-    if (instanceSym->isHeap && instanceSym->refCount == 0 &&
-        instanceSym->lastUseNode == metCall)
-    {
-        llvm::FunctionCallee sageFree = module->getOrInsertFunction(
-            "sage_free",
-            llvm::Type::getVoidTy(context),
-            llvm::Type::getInt64Ty(context));
+        llvm::Value *objectPtr = nullptr;
+        // Get the llvm value for the instance
+        if (instanceSym->llvmValue)
+        {
+            objectPtr = instanceSym->llvmValue;
+        }
+        else
+        {
+            objectPtr = generateExpression(instance);
+        }
 
-        llvm::Value *sizeVal = llvm::ConstantInt::get(
-            llvm::Type::getInt64Ty(context),
-            instanceSym->componentSize);
+        // Get the component type of the object
+        std::string compName = instanceSym->type.resolvedName;
 
-        funcBuilder.CreateCall(sageFree, {sizeVal}, instance->identifier.TokenLiteral + "_sage_free");
+        // Resolve the function name
+        std::string funcName = compName + "_" + callName;
+
+        // Fetch the function from the module
+        llvm::Function *targetFunc = module->getFunction(funcName);
+        if (!targetFunc)
+        {
+            throw std::runtime_error("Undefined method '" + callName + "' from component '" + compName + "'");
+        }
+
+        // Prepare the arguments
+        std::vector<llvm::Value *> args;
+        args.push_back(objectPtr); // The implicit self
+
+        // Add user arguments if any were provided
+        for (const auto &arg : call->parameters)
+        {
+            args.push_back(generateExpression(arg.get()));
+        }
+
+        // Call the function
+        result = funcBuilder.CreateCall(targetFunc, args);
+
+        if (instanceSym->isHeap && instanceSym->refCount == 0 &&
+            instanceSym->lastUseNode == metCall)
+        {
+            llvm::FunctionCallee sageFree = module->getOrInsertFunction(
+                "sage_free",
+                llvm::Type::getVoidTy(context),
+                llvm::Type::getInt64Ty(context));
+
+            llvm::Value *sizeVal = llvm::ConstantInt::get(
+                llvm::Type::getInt64Ty(context),
+                instanceSym->componentSize);
+
+            funcBuilder.CreateCall(sageFree, {sizeVal}, instance->identifier.TokenLiteral + "_sage_free");
+        }
     }
 
     return result;
@@ -572,52 +596,6 @@ llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
     return instancePtr;
 }
 
-llvm::Function *IRGenerator::declareFunctionSignature(FunctionExpression *fnExpr)
-{
-    // If node has an error we wont generate IR
-    auto funcIt = semantics.metaData.find(fnExpr);
-    if (funcIt == semantics.metaData.end() || funcIt->second->hasError)
-    {
-        throw std::runtime_error("Function expression semantic error or missing metaData.");
-    }
-
-    auto fnName = fnExpr->func_key.TokenLiteral;
-
-    // Building the function type
-    std::vector<llvm::Type *> llvmParamTypes;
-    for (auto &p : fnExpr->call)
-    {
-        auto it = semantics.metaData.find(p.get());
-        if (it == semantics.metaData.end())
-        {
-            throw std::runtime_error("Missing parameter meta data during function declaration.");
-        }
-        llvmParamTypes.push_back(getLLVMType(it->second->type));
-    }
-
-    // Getting the function return type
-    auto fnRetType = fnExpr->return_type.get();
-    auto retType = semantics.inferNodeDataType(fnRetType);
-    llvm::FunctionType *funcType = llvm::FunctionType::get(lowerFunctionType(retType), llvmParamTypes, false);
-
-    // Look up or create the function declaration.
-    // This is the CRITICAL part: it ensures the symbol is registered in the module.
-    llvm::Function *fn = module->getFunction(fnName);
-    if (!fn)
-    {
-        fn = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, fnName, module.get());
-    }
-    else
-    {
-        // Simple check to ensure signature matches if it was already declared somehow
-        if (fn->getFunctionType() != funcType)
-        {
-            throw std::runtime_error("Function redefinition for '" + fnName + "' with different signature.");
-        }
-    }
-    return fn;
-}
-
 void IRGenerator::generateInstantiateStatement(Node *node)
 {
     auto instStmt = dynamic_cast<InstantiateStatement *>(node);
@@ -632,6 +610,9 @@ void IRGenerator::generateInstantiateStatement(Node *node)
     }
 
     auto sym = it->second;
+    if (sym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
     const auto &instTable = sym->instTable;
 
     if (instTable.has_value())
@@ -642,4 +623,24 @@ void IRGenerator::generateInstantiateStatement(Node *node)
             generateStatement(stmt.get());
         }
     }
+}
+
+void IRGenerator::generateSealStatement(Node *node)
+{
+    auto sealStmt = dynamic_cast<SealStatement *>(node);
+    if (!sealStmt)
+        return;
+
+    auto it = semantics.metaData.find(sealStmt);
+    if (it == semantics.metaData.end())
+    {
+        throw std::runtime_error("Failed to find seal metaData");
+    }
+
+    auto sealSym = it->second;
+    if (sealSym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
+    // Call the generator on the functions themselves
+    generateStatement(sealStmt->block.get());
 }
