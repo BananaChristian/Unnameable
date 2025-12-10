@@ -491,6 +491,14 @@ void Semantics::walkFunctionExpression(Node *node)
                           funcExpr->expression.line, funcExpr->expression.column);
         return;
     }
+    if (isExportable)
+    {
+        if (!insideSeal && !insideComponent)
+        {
+            logSemanticErrors("exportable functions must only be in a seal or component", funcExpr->expression.line, funcExpr->expression.column);
+            hasError = true;
+        }
+    }
 
     insideFunction = true;
 
@@ -529,7 +537,7 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo->returnType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Initially unknown return type
 
     // Inserting function symbol into current scope early for recursion
-    if (!insideBehavior && !insideComponent) // If we arent inside a behavior or component we place in the global scope
+    if (!insideBehavior && !insideComponent && !insideSeal) // If we arent inside a behavior, component or seal we place in the global scope
     {
         std::cout << "INSERTING FUNCTION INTO GLOBAL SCOPE\n";
         symbolTable[0][funcName] = funcInfo;
@@ -713,7 +721,7 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo->isDefined = true;
 
     std::cout << "Regsitering in parent scope\n";
-    if (!insideBehavior && !insideComponent) // If we arent inside a behavior or component we place in the global scope
+    if (!insideBehavior && !insideComponent && !insideSeal) // If we arent inside a behavior,component or seal we place in the global scope
     {
         std::cout << "2ND INSERTING FUNCTION INTO GLOBAL SCOPE WITH UPDATED INFO\n";
         symbolTable[0][funcName] = funcInfo;
@@ -795,6 +803,15 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
 
     bool isExportable = funcDeclrStmt->isExportable;
+
+    if (isExportable)
+    {
+        if (!insideBehavior)
+        {
+            logSemanticErrors("Exportable function declarations must only be inside behavior blocks", funcDeclrStmt->function_name->expression.line, funcDeclrStmt->function_name->expression.column);
+            hasError = true;
+        }
+    }
 
     if (insideFunction)
     {
@@ -930,6 +947,7 @@ void Semantics::walkFunctionCallExpression(Node *node)
     std::cout << "[SEMANTIC LOG] Analysing function call\n";
 
     std::string callName = funcCall->function_identifier->expression.TokenLiteral;
+
     auto callSymbolInfo = resolveSymbolInfo(callName);
 
     // Check if function exists
@@ -1015,6 +1033,89 @@ void Semantics::walkShoutStatement(Node *node)
     walker(shoutStmt->expr.get());
 }
 
+void Semantics::walkSealCallExpression(Node *node, const std::string &sealName)
+{
+    auto funcCall = dynamic_cast<CallExpression *>(node);
+    bool hasError = false;
+    if (!funcCall)
+    {
+        logSemanticErrors("Invalid function call expression", node->token.line, node->token.column);
+        return;
+    }
+
+    std::cout << "[SEMANTIC LOG] Analysing function call\n";
+
+    std::string callName = funcCall->function_identifier->expression.TokenLiteral;
+
+    auto sealIt = sealTable.find(sealName);
+    if (sealIt == sealTable.end())
+    {
+        logSemanticErrors("Seal '" + sealName + "' does not exist ", funcCall->expression.line, funcCall->expression.column);
+        return;
+    }
+
+    auto sealFnMap = sealIt->second;
+    auto sealFnIt = sealFnMap.find(callName);
+    if (sealFnIt == sealFnMap.end())
+    {
+        logSemanticErrors("Function '" + callName + "' does not exist in seal '" + sealName + "'", funcCall->expression.line, funcCall->expression.column);
+        return;
+    }
+
+    auto callSymbolInfo = sealFnIt->second;
+
+    // Check if function exists
+    if (!callSymbolInfo)
+    {
+        logSemanticErrors("Function '" + callName + "' has not been defined or declared anywhere in seal '" + sealName + "'",
+                          funcCall->expression.line, funcCall->expression.column);
+        hasError = true;
+        return;
+    }
+
+    // Checking if the symbol retrieved is actually a function
+    if (!callSymbolInfo->isFunction)
+    {
+        logSemanticErrors(
+            "Error: Identifier '" + callName + "' shadows a function and refers to a variable, not a function.",
+            funcCall->expression.line,
+            funcCall->expression.column);
+        // halt processing, as the arguments/definition checks would be meaningless.
+        return;
+    }
+
+    // Checking if the function is defined
+    if (!callSymbolInfo->isDefined)
+    {
+        logSemanticErrors("Function '" + callName + "' was not defined anywhere",
+                          funcCall->expression.line, funcCall->expression.column);
+        hasError = true;
+    }
+
+    // Check if call signature matches
+    if (!isCallCompatible(*callSymbolInfo, funcCall))
+    {
+        hasError = true;
+    }
+
+    // Calling the walker on the arguments
+    for (const auto &arg : funcCall->parameters)
+    {
+        walker(arg.get());
+    }
+
+    // Store metaData for the call
+    auto callSymbol = std::make_shared<SymbolInfo>();
+    callSymbol->hasError = hasError;
+    callSymbol->type = callSymbolInfo->returnType;
+    callSymbol->returnType = callSymbolInfo->returnType;
+    callSymbol->isNullable = callSymbolInfo->isNullable;
+
+    metaData[funcCall] = callSymbol;
+    std::cout << "[SEMANTIC LOG] Stored metaData for seal call to '" << callName
+              << "' with return type: " << callSymbolInfo->type.resolvedName << "\n";
+}
+
 void Semantics::walkSealStatement(Node *node)
 {
     auto sealStmt = dynamic_cast<SealStatement *>(node);
@@ -1044,6 +1145,7 @@ void Semantics::walkSealStatement(Node *node)
     std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> sealMap;
 
     symbolTable.push_back({});
+    insideSeal = true;
     // Only authorise function statements inside the guard block
     auto blockStmt = dynamic_cast<BlockStatement *>(sealStmt->block.get());
     for (const auto &stmt : blockStmt->statements)
@@ -1084,6 +1186,7 @@ void Semantics::walkSealStatement(Node *node)
             return;
         }
         funcSym->isExportable = isExportable; // Set the export symbol flag for the function to true
+        funcSym->isFunction = true;
         sealMap[name] = funcSym;
     }
 
@@ -1094,5 +1197,7 @@ void Semantics::walkSealStatement(Node *node)
     metaData[sealStmt] = sealSym;
     symbolTable[0][sealName] = sealSym;
     sealTable[sealName] = sealMap;
+
+    insideSeal = false;
     popScope();
 }

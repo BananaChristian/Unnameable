@@ -551,22 +551,38 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         auto type = instanceSym->type;
         // Check the customTypes table
         auto typeIt = customTypesTable.find(type.resolvedName);
-        if (typeIt == customTypesTable.end())
+        auto sealIt = sealTable.find(instanceName);
+        if (typeIt != customTypesTable.end())
         {
-            logSemanticErrors("Unknown type '" + type.resolvedName + "'", line, col);
+            auto members = typeIt->second->members;
+            auto it = members.find(callName);
+            if (it == members.end())
+            {
+                logSemanticErrors("Function '" + callName + "' doesnt exist in type '" + type.resolvedName + "'", line, col);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            auto memInfo = it->second;
+            return memInfo->type;
+        }
+        else if (sealIt != sealTable.end())
+        {
+            auto sealFnMap = sealIt->second;
+            auto sealFnIt = sealFnMap.find(callName);
+            if (sealFnIt == sealFnMap.end())
+            {
+                logSemanticErrors("Function '" + callName + "' doesnt exist in seal '" + instanceName + "'", line, col);
+                return ResolvedType{DataType::UNKNOWN, "unknown"};
+            }
+
+            auto sealInfo = sealFnIt->second;
+            return sealInfo->type;
+        }
+        else
+        {
+            logSemanticErrors("Unknown type or seal '" + instanceName + "'", line, col);
             return ResolvedType{DataType::UNKNOWN, "unknown"};
         }
-
-        auto members = typeIt->second->members;
-        auto it = members.find(callName);
-        if (it == members.end())
-        {
-            logSemanticErrors("Function '" + callName + "' doesnt exist in type '" + type.resolvedName + "'", line, col);
-            return ResolvedType{DataType::UNKNOWN, "unknown"};
-        }
-
-        auto memInfo = it->second;
-        return memInfo->type;
     }
     if (auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node))
     {

@@ -1394,91 +1394,41 @@ void Semantics::walkMethodCallExpression(Node *node)
     auto metCall = dynamic_cast<MethodCallExpression *>(node);
     if (!metCall)
     {
-        std::cout << "Invalid method call expression node";
+        std::cout << "Invalid method call expression node\n";
         return;
     }
 
     std::cout << "Analysing method call expression\n";
     bool hasError = false;
-    // Get the instance name
-    auto instanceName = metCall->instance->expression.TokenLiteral;
-    auto line = metCall->instance->expression.line;
-    auto col = metCall->instance->expression.column;
-    // Check the symbol table for the instance name
-    auto instanceSym = resolveSymbolInfo(instanceName);
-    if (!instanceSym)
+
+    auto instanceIdent = dynamic_cast<Identifier *>(metCall->instance.get());
+    if (!instanceIdent)
     {
-        logSemanticErrors("Unidentified instance name '" + instanceName + "'", line, col);
+        logSemanticErrors("Method call instance must be an identifier", metCall->instance->expression.line, metCall->instance->expression.column);
         return;
     }
 
-    walker(metCall->instance.get()); // Walk the instance as I need its metaData in the IR
+    const std::string instanceName = instanceIdent->identifier.TokenLiteral;
+    const int line = instanceIdent->expression.line;
+    const int col  = instanceIdent->expression.column;
 
-    // Retrieve the function name itself
+    // Get the call expression and function name
     auto funcCall = dynamic_cast<CallExpression *>(metCall->call.get());
-    auto funcName = funcCall->function_identifier->expression.TokenLiteral;
-    auto funcLine = funcCall->function_identifier->expression.line;
-    auto funcCol = funcCall->function_identifier->expression.column;
-
-    // Get the type
-    auto type = instanceSym->type;
-
-    auto typeIt = customTypesTable.find(type.resolvedName);
-    auto sealIt = sealTable.find(instanceName);
-    if (typeIt != customTypesTable.end())
+    if (!funcCall)
     {
-        // If the symbol actually exists we retrieve the members and check if the function we are calling is among them
-        auto members = typeIt->second->members;
-
-        // Check if the function is in the members
-        auto memIt = members.find(funcName);
-        if (memIt == members.end())
-        {
-            logSemanticErrors("'Function " + funcName + "' does not exist in type '" + type.resolvedName + "'", funcLine, funcCol);
-            return;
-        }
-
-        auto memInfo = memIt->second;
-
-        // If the member exists carry out some checks
-        // Definition check
-        if (!memInfo->isDefined)
-        {
-            logSemanticErrors("'" + funcName + "' was not defined anywhere", funcLine, funcCol);
-            hasError = true;
-        }
-
-        // Compatibility check
-        if (!isMethodCallCompatible(*memInfo, funcCall))
-        {
-            hasError = true;
-        }
-
-        // Walking the arguments
-        for (const auto &arg : funcCall->parameters)
-        {
-            walker(arg.get());
-        }
-
-        // Update the instance symbol metaData
-        instanceSym->lastUseNode = metCall;
-        if (instanceSym->refCount)
-        {
-            instanceSym->refCount--;
-        }
-
-        // Store the metaData
-        auto metCallSym = std::make_shared<SymbolInfo>();
-        metCallSym->hasError = hasError;
-        metCallSym->type = memInfo->returnType;
-        metCallSym->isNullable = memInfo->isNullable;
-
-        metaData[metCall] = metCallSym;
+        logSemanticErrors("Invalid call expression in method call", metCall->call->expression.line, metCall->call->expression.column);
+        return;
     }
-    else if (sealIt != sealTable.end())
+    const std::string funcName = funcCall->function_identifier->expression.TokenLiteral;
+    const int funcLine = funcCall->function_identifier->expression.line;
+    const int funcCol  = funcCall->function_identifier->expression.column;
+
+    //check if this LHS is a seal name
+    auto sealIt = sealTable.find(instanceName);
+    if (sealIt != sealTable.end())
     {
-        // If the guard actually exists retrieve guardMap
-        auto sealMap = sealIt->second;
+        // SEAL PATH
+        auto &sealMap = sealIt->second;
         auto sealfnIt = sealMap.find(funcName);
         if (sealfnIt == sealMap.end())
         {
@@ -1487,8 +1437,10 @@ void Semantics::walkMethodCallExpression(Node *node)
             return;
         }
 
-        walker(funcCall);
+        // Walk the seal call 
+        walkSealCallExpression(funcCall,instanceName);
 
+        // Retrieve the function call metaData 
         auto fnIt = metaData.find(funcCall);
         if (fnIt == metaData.end())
         {
@@ -1498,19 +1450,83 @@ void Semantics::walkMethodCallExpression(Node *node)
 
         auto fnInfo = fnIt->second;
 
+        // Fill the method-call metaData for the whole expression
         auto fnCallSym = std::make_shared<SymbolInfo>();
         fnCallSym->hasError = hasError;
         fnCallSym->type = fnInfo->returnType;
         fnCallSym->isNullable = fnInfo->isNullable;
 
         metaData[metCall] = fnCallSym;
-    }
-    else
-    {
-        logSemanticErrors("Unknown type or seal '" + instanceName + "'", line, col);
         return;
     }
+
+    // Walk the instance first to populate metaData for it
+    walker(metCall->instance.get());
+
+    // Now retrieve instance metaData 
+    auto instanceMetaIt = metaData.find(instanceIdent);
+    if (instanceMetaIt == metaData.end())
+    {
+        logSemanticErrors("Unidentified instance name '" + instanceName + "'", line, col);
+        return;
+    }
+
+    auto instanceSym = instanceMetaIt->second;
+
+    auto type = instanceSym->type;
+    auto typeIt = customTypesTable.find(type.resolvedName);
+    if (typeIt == customTypesTable.end())
+    {
+        logSemanticErrors("Unknown type '" + type.resolvedName + "' for instance '" + instanceName + "'", line, col);
+        return;
+    }
+
+    // Now check members on the component type
+    auto &members = typeIt->second->members;
+    auto memIt = members.find(funcName);
+    if (memIt == members.end())
+    {
+        logSemanticErrors("'Function " + funcName + "' does not exist in type '" + type.resolvedName + "'", funcLine, funcCol);
+        return;
+    }
+
+    auto memInfo = memIt->second;
+
+    // Definition check
+    if (!memInfo->isDefined)
+    {
+        logSemanticErrors("'" + funcName + "' was not defined anywhere", funcLine, funcCol);
+        hasError = true;
+    }
+
+    // Compatibility check (parameters/return)
+    if (!isMethodCallCompatible(*memInfo, funcCall))
+    {
+        hasError = true;
+    }
+
+    // Walk the arguments (populate metaData for them)
+    for (const auto &arg : funcCall->parameters)
+    {
+        walker(arg.get());
+    }
+
+    // Update the instance symbol metaData usage info
+    instanceSym->lastUseNode = metCall;
+    if (instanceSym->refCount)
+    {
+        instanceSym->refCount--;
+    }
+
+    // Create result metaData for this method call expression
+    auto metCallSym = std::make_shared<SymbolInfo>();
+    metCallSym->hasError = hasError;
+    metCallSym->type = memInfo->returnType;
+    metCallSym->isNullable = memInfo->isNullable;
+
+    metaData[metCall] = metCallSym;
 }
+
 
 void Semantics::walkArrayStatement(Node *node)
 {

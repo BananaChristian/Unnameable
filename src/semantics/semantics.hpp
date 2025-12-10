@@ -270,6 +270,7 @@ private:
     bool insideFunction = false;
     bool insideBehavior = false;
     bool insideComponent = false;
+    bool insideSeal = false;
 
     std::vector<std::string> sourceLines;
 
@@ -378,6 +379,8 @@ private:
     void walkQualifyStatement(Node *node);
 
     void walkFunctionParameters(Node *node);
+
+    void walkSealCallExpression(Node *node, const std::string &sealName);
 
     // HELPER FUNCTIONS
     void registerWalkerFunctions();

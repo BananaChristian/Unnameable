@@ -1492,6 +1492,11 @@ void IRGenerator::generateFunctionDeclaration(Node *node)
     {
         throw std::runtime_error("Missing function declaration meta data");
     }
+
+    auto sym = declrIt->second;
+    if (sym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
     std::vector<llvm::Type *> paramTypes;
     for (const auto &param : fnDeclr->parameters)
     {
@@ -2837,7 +2842,7 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
     if (!variablePtr)
         throw std::runtime_error("No llvm value for '" + identName + "'");
 
-    // Component instance -> pointer to struct 
+    // Component instance -> pointer to struct
     auto compIt = componentTypes.find(sym->type.resolvedName);
     if (compIt != componentTypes.end())
     {
