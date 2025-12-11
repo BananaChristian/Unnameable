@@ -1170,7 +1170,9 @@ void Semantics::walkSealStatement(Node *node)
             fnExpr->expression.TokenLiteral = sealName + "_" + name;
 
             std::cout << "Mangled func name: " << fnExpr->func_key.TokenLiteral << "\n";
-            fnExpr->isExportable = isExportable;
+            
+            if (isExportable)
+                fnExpr->isExportable = isExportable;
         }
         else if (auto fnDecl = dynamic_cast<FunctionDeclarationExpression *>(funcStmt->funcExpr.get()))
         {
@@ -1185,7 +1187,11 @@ void Semantics::walkSealStatement(Node *node)
             logSemanticErrors("Failed to find function '" + name + "'", funcStmt->statement.line, funcStmt->statement.column);
             return;
         }
-        funcSym->isExportable = isExportable; // Set the export symbol flag for the function to true
+        if (isExportable)
+        {
+            funcSym->isExportable = isExportable; // Set the export symbol flag for the function to true if the seal is exportable
+        }
+
         funcSym->isFunction = true;
         sealMap[name] = funcSym;
     }

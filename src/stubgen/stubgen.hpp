@@ -7,20 +7,29 @@
 
 enum class exportType
 {
-    FUNCTION,
-    DECLARATION,
     ENUM,
     COMPONENT,
     DATA,
+    SEAL,
     BEHAVIOR
 };
 
-struct Stub
+struct SealFunction
 {
-    std::string name;                                             // Name of the object getting exported
-    ResolvedType returnType;                                      // If the object is a declaration or function this is its return type
-    std::vector<std::pair<ResolvedType, std::string>> paramTypes; // The param types of the object and the names of the params
-    exportType type;                                              // Just a safety flag for later use in decoding                                              // The node of the object
+    std::string funcName;
+    ResolvedType returnType;
+    std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+};
+
+struct SealTable
+{
+    std::string sealName;
+    std::vector<SealFunction> sealFns;
+};
+
+struct StubTable
+{
+    std::vector<SealTable> seals;
 };
 
 class StubGen
@@ -39,15 +48,17 @@ private:
     std::string fileName;
     std::unordered_map<std::type_index, stubGenFns> stubGenFnsMap;
 
-    std::unordered_map<std::string, Stub> stubTable;
+    StubTable stubTable;
 
     // Generator functions
+    void generateSealStatement(Node *node);
     void generateFunctionStatementStub(Node *node);
     void generateFunctionExpressionStub(Node *node);
     void generateFunctionDeclarationStub(Node *node);
 
     // Helper functions
     void registerStubGeneratorFns();
+    std::string unmangle(const std::string &mangled);
 
     // Serializer functions
     inline void writeString(std::ostream &out, const std::string &str);
@@ -55,6 +66,7 @@ private:
     inline void write_u32(std::ostream &out, uint32_t v);
     void serializeResolvedType(std::ostream &out, const ResolvedType &t);
     void serializeParamTypes(std::ostream &out, const std::vector<std::pair<ResolvedType, std::string>> &params);
-    void serializeStub(std::ostream &out, const Stub &stub);
-    void serializeStubTable(const std::unordered_map<std::string, Stub> &table, const std::string &filename);
+    void serializeSealFunction(std::ostream &out, const SealFunction &fn);
+    void serializeSealTable(std::ostream &out, const SealTable &seal);
+    void serializeFullStubTable(const StubTable &table, const std::string &filename);
 };

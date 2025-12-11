@@ -11,19 +11,25 @@ void StubGen::registerStubGeneratorFns()
     stubGenFnsMap[typeid(FunctionStatement)] = &StubGen::generateFunctionStatementStub;
     stubGenFnsMap[typeid(FunctionExpression)] = &StubGen::generateFunctionExpressionStub;
     stubGenFnsMap[typeid(FunctionDeclaration)] = &StubGen::generateFunctionDeclarationStub;
+    stubGenFnsMap[typeid(SealStatement)] = &StubGen::generateSealStatement;
 }
 
 void StubGen::finish()
 {
-    // Manually create stub file path
     std::string stubFile = fileName;
     auto pos = stubFile.rfind('.');
     if (pos != std::string::npos)
-        stubFile = stubFile.substr(0, pos); // strip original extension
+        stubFile = stubFile.substr(0, pos);
 
-    stubFile += ".stub"; // add .stub extension
+    stubFile += ".stub";
 
-    serializeStubTable(stubTable, stubFile);
+    std::cout << "[DEBUG] Total seals in stubTable: " << stubTable.seals.size() << "\n";
+    for (auto &seal : stubTable.seals)
+        std::cout << "[DEBUG] Seal " << seal.sealName
+                  << " has " << seal.sealFns.size() << " functions.\n";
+
+    serializeFullStubTable(stubTable, stubFile);
+
     std::cout << "Stub file generated at: " << stubFile << "\n";
 }
 
@@ -36,6 +42,99 @@ void StubGen::stubGenerator(Node *node)
     }
 
     (this->*stubIt->second)(node);
+}
+
+void StubGen::generateSealStatement(Node *node)
+{
+    auto sealStmt = dynamic_cast<SealStatement *>(node);
+    if (!sealStmt)
+    {
+        std::cout << "[DEBUG] Node is not a SealStatement.\n";
+        return;
+    }
+
+    auto sealName = sealStmt->sealName->expression.TokenLiteral;
+    std::cout << "[DEBUG] Processing seal: " << sealName << "\n";
+
+    auto sealIt = semantics.sealTable.find(sealName);
+    if (sealIt == semantics.sealTable.end())
+    {
+        std::cout << "[DEBUG] Seal not found in semantics.sealTable: " << sealName << "\n";
+        return;
+    }
+
+    auto sealFnMap = sealIt->second;
+
+    // Print all keys in the seal function map
+    std::cout << "[DEBUG] Functions in sealFnMap: ";
+    for (auto &kv : sealFnMap)
+        std::cout << kv.first << " ";
+    std::cout << "\n";
+
+    SealTable sealTable;
+    sealTable.sealName = sealName;
+
+    auto sealBlock = dynamic_cast<BlockStatement *>(sealStmt->block.get());
+    if (!sealBlock)
+    {
+        std::cout << "[DEBUG] Seal block is null.\n";
+        return;
+    }
+
+    for (const auto &stmt : sealBlock->statements)
+    {
+        auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get());
+        if (!fnStmt)
+        {
+            std::cout << "[DEBUG] Statement is not a FunctionStatement.\n";
+            continue;
+        }
+
+        auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
+        if (!fnExpr)
+        {
+            std::cout << "[DEBUG] FunctionStatement does not contain a FunctionExpression.\n";
+            continue;
+        }
+
+        if (!fnExpr->isExportable)
+        {
+            std::cout << "[DEBUG] Function " << fnExpr->func_key.TokenLiteral << " is not exportable.\n";
+            continue;
+        }
+
+        auto fnName = fnExpr->func_key.TokenLiteral;
+        std::string unmangled = unmangle(fnName);
+        std::cout << "[DEBUG] Looking for function in sealFnMap: " << unmangled << "\n";
+
+        auto sealFnIt = sealFnMap.find(unmangled);
+        if (sealFnIt == sealFnMap.end())
+        {
+            std::cout << "[DEBUG] Function not found in sealFnMap: " << unmangled << "\n";
+            continue;
+        }
+
+        auto fnSym = sealFnIt->second;
+        if (!fnSym)
+        {
+            std::cout << "[DEBUG] SymbolInfo pointer is null for function: " << unmangled << "\n";
+            continue;
+        }
+
+        // create a NEW sealFn for each function
+        SealFunction sealFn;
+        sealFn.funcName = fnName;
+        sealFn.returnType = fnSym->returnType;
+        sealFn.paramTypes = fnSym->paramTypes;
+
+        // add to the current seal table
+        sealTable.sealFns.push_back(sealFn);
+        std::cout << "[DEBUG] Added function: " << fnName << " to sealTable.\n";
+    }
+
+    stubTable.seals.push_back(sealTable);
+    std::cout << "[DEBUG] Finished seal: " << sealName << " with "
+              << sealTable.sealFns.size() << " functions.\n";
 }
 
 // Function stub gen
@@ -81,13 +180,12 @@ void StubGen::generateFunctionExpressionStub(Node *node)
     if (sym->hasError)
         return;
 
-    Stub stub;
-    stub.name = funcName;
-    stub.returnType = sym->returnType;
-    stub.paramTypes = sym->paramTypes;
-    stub.type = exportType::FUNCTION;
+    SealFunction sealFn;
+    sealFn.funcName = funcName;
+    sealFn.returnType = sym->returnType;
+    sealFn.paramTypes = sym->paramTypes;
 
-    stubTable[funcName] = stub;
+    // stubTable[funcName] = stub;
 }
 
 void StubGen::generateFunctionDeclarationStub(Node *node)
@@ -112,6 +210,7 @@ void StubGen::generateFunctionDeclarationStub(Node *node)
     if (sym->hasError)
         return;
 
+    /*
     Stub stub;
     stub.name = funcName;
     stub.returnType = sym->returnType;
@@ -119,6 +218,7 @@ void StubGen::generateFunctionDeclarationStub(Node *node)
     stub.type = exportType::DECLARATION;
 
     stubTable[funcName] = stub;
+    */
 }
 
 void StubGen::writeString(std::ostream &out, const std::string &str)
@@ -173,15 +273,24 @@ void StubGen::serializeParamTypes(std::ostream &out, const std::vector<std::pair
     }
 }
 
-void StubGen::serializeStub(std::ostream &out, const Stub &stub)
+void StubGen::serializeSealFunction(std::ostream &out, const SealFunction &fn)
 {
-    writeString(out, stub.name);
-    serializeResolvedType(out, stub.returnType);
-    serializeParamTypes(out, stub.paramTypes);
-    write_u32(out, static_cast<uint32_t>(stub.type));
+    writeString(out, fn.funcName);
+    serializeResolvedType(out, fn.returnType);
+    serializeParamTypes(out, fn.paramTypes);
 }
 
-void StubGen::serializeStubTable(const std::unordered_map<std::string, Stub> &table, const std::string &filename)
+void StubGen::serializeSealTable(std::ostream &out, const SealTable &seal)
+{
+    writeString(out, seal.sealName);
+    write_u32(out, (uint32_t)seal.sealFns.size());
+    for (const auto &fn : seal.sealFns)
+    {
+        serializeSealFunction(out, fn);
+    }
+}
+
+void StubGen::serializeFullStubTable(const StubTable &table, const std::string &filename)
 {
     std::cout << "Serializing stub table\n";
     std::ofstream out(filename, std::ios::binary);
@@ -193,10 +302,20 @@ void StubGen::serializeStubTable(const std::unordered_map<std::string, Stub> &ta
     // Version
     write_u32(out, 1);
 
-    write_u32(out, table.size());
-
-    for (const auto &kv : table)
+    // SEALS
+    write_u32(out, (uint32_t)table.seals.size());
+    for (const auto &seal : table.seals)
     {
-        serializeStub(out, kv.second);
+        serializeSealTable(out, seal);
     }
+}
+
+// HELPERS
+std::string StubGen::unmangle(const std::string &mangled)
+{
+    auto pos = mangled.find('_');
+    if (pos == std::string::npos)
+        return mangled; // no prefix
+
+    return mangled.substr(pos + 1); // everything after the first '_'
 }
