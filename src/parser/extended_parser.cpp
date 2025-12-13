@@ -875,6 +875,26 @@ std::unique_ptr<Statement> Parser::parseMergeStatement()
     return std::make_unique<MergeStatement>(merge_token, std::move(merged));
 }
 
+std::unique_ptr<Statement> Parser::parseImportStatement()
+{
+    Token import_token = currentToken();
+    advance();
+
+    auto importStr = parseStringLiteral();
+
+    return std::make_unique<ImportStatement>(import_token, std::move(importStr));
+}
+
+std::unique_ptr<Statement> Parser::parseLinkStatement()
+{
+    Token link_token = currentToken();
+    advance();
+
+    auto linkStr = parseStringLiteral();
+
+    return std::make_unique<LinkStatement>(link_token, std::move(linkStr));
+}
+
 std::unique_ptr<Statement> Parser::parsePointerStatementWrapper()
 {
     return parsePointerStatement();

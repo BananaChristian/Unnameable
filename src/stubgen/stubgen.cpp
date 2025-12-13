@@ -123,7 +123,7 @@ void StubGen::generateSealStatement(Node *node)
 
         // create a NEW sealFn for each function
         SealFunction sealFn;
-        sealFn.funcName = fnName;
+        sealFn.funcName = unmangled;
         sealFn.returnType = fnSym->returnType;
         sealFn.paramTypes = fnSym->paramTypes;
 

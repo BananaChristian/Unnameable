@@ -375,6 +375,8 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node)
             throw std::runtime_error("Function '" + callName + "' does not exist in seal '" + instanceName + "'");
         }
 
+        declareExternalSeals();
+
         call->function_identifier->expression.TokenLiteral = instanceName + "_" + callName;
         call->function_identifier->token.TokenLiteral = instanceName + "_" + callName;
 
@@ -643,4 +645,14 @@ void IRGenerator::generateSealStatement(Node *node)
 
     // Call the generator on the functions themselves
     generateStatement(sealStmt->block.get());
+}
+
+void IRGenerator::generateQualifyStatement(Node *node)
+{
+    auto qualifyStmt = dynamic_cast<QualifyStatement *>(node);
+
+    if (!qualifyStmt)
+        return;
+
+    mainMarker = true;
 }

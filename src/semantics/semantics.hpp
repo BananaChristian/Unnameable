@@ -6,6 +6,7 @@
 #include <typeindex>
 #include <cstdint>
 #include <llvm/IR/Value.h>
+#include "deserializer/deserial.hpp"
 
 #define CPPREST_FORCE_REBUILD
 
@@ -240,7 +241,8 @@ class Semantics
     ErrorHandler errorHandler;
 
 public:
-    Semantics(std::string &fileName);
+    Deserializer &deserializer;
+    Semantics(Deserializer &deserializer, std::string &fileName);
     void walker(Node *node);
     using walkerFunctions = void (Semantics::*)(Node *);
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
@@ -378,6 +380,8 @@ private:
     // Walking Qualify statement
     void walkQualifyStatement(Node *node);
 
+    void walkImportStatement(Node *node);
+
     void walkFunctionParameters(Node *node);
 
     void walkSealCallExpression(Node *node, const std::string &sealName);
@@ -395,6 +399,9 @@ private:
     ResolvedType isRefType(ResolvedType t);
     ResolvedType makeArrayType(const ResolvedType &t, int dimensionCount);
     ResolvedType *resolveSelfChain(SelfExpression *selfExpr, const std::string &componentName);
+    ResolvedType convertImportedTypetoResolvedType(const ImportedType &importType);
+    DataType convertImportedDataTypetoResolvedDataType(const ImportedDataType &dataType);
+    std::vector<std::pair<ResolvedType, std::string>> convertImportedParamstoResolvedParams(const std::vector<std::pair<ImportedType, std::string>> &params);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     int inferLiteralDimensions(ArrayLiteral *arrLit);
     void inferSizePerDimension(ArrayLiteral *lit, std::vector<int64_t> &sizes);

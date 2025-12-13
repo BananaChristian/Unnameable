@@ -12,6 +12,7 @@
 #include "lexer/lexer.hpp"
 #include "token/token.hpp"
 #include "parser/parser.hpp"
+#include "deserializer/deserial.hpp"
 #include "semantics/semantics.hpp"
 #include "irgen/irgen.hpp"
 #include "layout/layout.hpp"
@@ -242,9 +243,12 @@ int main(int argc, char **argv)
                 cu.mergedNodes.push_back(std::move(node));
             }
 
+        Deserializer deserial;
+        deserial.processImports(cu.mergedNodes, fileName);
+
         if (logOutput)
             std::cout << COLOR_BLUE << "[SEMANTIC ANALYSIS]" << COLOR_RESET << "\n";
-        Semantics semantics(fileName);
+        Semantics semantics(deserial, fileName);
         for (const auto &node : cu.mergedNodes)
             semantics.walker(node.get());
 
@@ -261,7 +265,7 @@ int main(int argc, char **argv)
         for (const auto &node : cu.mergedNodes)
             sentinel.sentinelDriver(node.get());
 
-        StubGen stubGen(semantics,fileName);
+        StubGen stubGen(semantics, fileName);
         if (compileOnly)
         {
             if (logOutput)

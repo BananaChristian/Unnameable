@@ -228,6 +228,12 @@ private:
     // Parsing the merge statement
     std::unique_ptr<Statement> parseMergeStatement();
 
+    // Parsing the import statement
+    std::unique_ptr<Statement> parseImportStatement();
+
+    // Parsing the link statement
+    std::unique_ptr<Statement> parseLinkStatement();
+
     //--------------PARSING EXPRESSIONS--------------------
     // Main expression parsing function
     std::unique_ptr<Expression> parseExpression(Precedence precedence);

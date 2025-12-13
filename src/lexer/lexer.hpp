@@ -93,7 +93,7 @@ class Lexer
         {"unwrap", TokenType::UNWRAP},
         {"export", TokenType::EXPORT},
 
-        {"module", TokenType::MODULE},
+        {"import", TokenType::IMPORT},
         {"merge", TokenType::MERGE},
         {"link", TokenType::LINK},
         {"qualify", TokenType::QUALIFY}};

@@ -26,29 +26,31 @@ void Semantics::walkBlockStatement(Node *node)
 
         if (auto assignStmt = dynamic_cast<AssignmentStatement *>(stmt.get()))
         {
-            std::cout<<"Triggered self heap check\n";
+            std::cout << "Triggered self heap check\n";
             name = assignStmt->identifier->expression.TokenLiteral;
             int line = assignStmt->identifier->expression.line;
             int col = assignStmt->identifier->expression.column;
-            //Incase it is a self expression just call the walker for now
-            if(auto selfExpr=dynamic_cast<SelfExpression*>(assignStmt->identifier.get())){
-                
-            }else{
-
-            
-            auto assignSym = resolveSymbolInfo(name);
-            if (!assignSym)
+            // Incase it is a self expression just call the walker for now
+            if (auto selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
             {
-                logSemanticErrors("Undeclared variable '" + name + "'", line, col);
-                return;
             }
-            // only error if it's heap and not declared in this block
-            if (assignSym->isHeap &&
-                std::find(localHeapVars.begin(), localHeapVars.end(), name) == localHeapVars.end())
+            else
             {
-                logSemanticErrors("Cannot use a variable '" + name + "' that you heap raised externally inside a loop or branch", line, col);
-                return;
-            }}
+
+                auto assignSym = resolveSymbolInfo(name);
+                if (!assignSym)
+                {
+                    logSemanticErrors("Undeclared variable '" + name + "'", line, col);
+                    return;
+                }
+                // only error if it's heap and not declared in this block
+                if (assignSym->isHeap &&
+                    std::find(localHeapVars.begin(), localHeapVars.end(), name) == localHeapVars.end())
+                {
+                    logSemanticErrors("Cannot use a variable '" + name + "' that you heap raised externally inside a loop or branch", line, col);
+                    return;
+                }
+            }
         }
 
         if (auto exprStmt = dynamic_cast<ExpressionStatement *>(stmt.get()))
@@ -242,7 +244,7 @@ void Semantics::walkForStatement(Node *node)
     if (!forStmt)
         return;
     std::cout << "[SEMANTIC LOG] Analyzing for statement " << forStmt->toString() << "\n";
-    
+
     symbolTable.push_back({});
     // Handling the initializer
     auto initializer = forStmt->initializer.get();
@@ -255,7 +257,7 @@ void Semantics::walkForStatement(Node *node)
     walker(step);
     // Handling the block
     loopContext.push_back(true);
-    
+
     auto block = forStmt->body.get();
     walker(block);
     popScope();

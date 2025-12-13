@@ -9,7 +9,7 @@
 #define COLOR_RESET "\033[0m"
 #define COLOR_RED "\033[31m"
 
-Semantics::Semantics(std::string &file) : fileName(file), errorHandler(file)
+Semantics::Semantics(Deserializer &deserial, std::string &file) : deserializer(deserial), fileName(file), errorHandler(file)
 {
     symbolTable.push_back({});
     registerWalkerFunctions();
@@ -135,6 +135,7 @@ void Semantics::registerWalkerFunctions()
 
     // Wlaker registration for the qualify statement
     walkerFunctionsMap[typeid(QualifyStatement)] = &Semantics::walkQualifyStatement;
+    walkerFunctionsMap[typeid(ImportStatement)] = &Semantics::walkImportStatement;
 
     // Walker registrartion for generic system
     walkerFunctionsMap[typeid(GenericStatement)] = &Semantics::walkGenericStatement;

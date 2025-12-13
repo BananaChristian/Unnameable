@@ -2272,6 +2272,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::ALIAS] = &Parser::parseAliasStatement;
     StatementParseFunctionsMap[TokenType::QUALIFY] = &Parser::parseQualifyStatement;
     StatementParseFunctionsMap[TokenType::MERGE] = &Parser::parseMergeStatement;
+    StatementParseFunctionsMap[TokenType::LINK] = &Parser::parseLinkStatement;
+    StatementParseFunctionsMap[TokenType::IMPORT] = &Parser::parseImportStatement;
     StatementParseFunctionsMap[TokenType::SHOUT] = &Parser::parseShoutStatement;
 
     // For basic types

@@ -226,8 +226,8 @@ std::string TokenTypeToLiteral(TokenType type)
         return "Token Type: DEREF";
     case TokenType::MODULUS:
         return "Token Type: MODULUS";
-    case TokenType::MODULE:
-        return "Token Type: MODULE";
+    case TokenType::IMPORT:
+        return "Token Type: IMPORT";
     case TokenType::LINK:
         return "TokenType: LINK";
     case TokenType::MERGE:

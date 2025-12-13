@@ -95,7 +95,7 @@ enum class TokenType
 
     EXPORT,//Export keyword
 
-    MODULE,  // module keyword
+    IMPORT,  // import keyword
     MERGE,   // Merge keyword
     LINK,    // Link keyword
     QUALIFY, // Qualify keyword

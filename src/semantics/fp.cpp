@@ -970,8 +970,8 @@ void Semantics::walkFunctionCallExpression(Node *node)
         return;
     }
 
-    // Checking if the function is defined
-    if (!callSymbolInfo->isDefined)
+    // Checking if the function is declaration
+    if (!callSymbolInfo->isDeclaration)
     {
         logSemanticErrors("Function '" + callName + "' was not defined anywhere",
                           funcCall->expression.line, funcCall->expression.column);
@@ -1084,8 +1084,8 @@ void Semantics::walkSealCallExpression(Node *node, const std::string &sealName)
         return;
     }
 
-    // Checking if the function is defined
-    if (!callSymbolInfo->isDefined)
+    // Checking if the function is declared
+    if (!callSymbolInfo->isDeclaration)
     {
         logSemanticErrors("Function '" + callName + "' was not defined anywhere",
                           funcCall->expression.line, funcCall->expression.column);
