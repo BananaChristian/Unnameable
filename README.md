@@ -359,10 +359,10 @@ func greet(string name): string? {
 ```
 
 ## Multi file support
-
-Unnameable supports multi file usage with two systems merge and module
-For now only merge is supported and as the name implies it merges multiple files into one compilation unit
-If you wrote a global variable or a function name in the another file and you are importing it, be careful on the variable and function names as the compiler sees them as one
+Unnameable supports multi file usage with two systems merge and import
+To link the user must explictly use a link statement I am yet to add it though but thats the plan.
+Merge as the name implies merges multiple files into one compilation unit
+If you wrote a global variable or a function name in the another file and you are importing it, be careful on the variable and function names as the compiler sees them as one  PS: Use seals to avoid collisions
 Below is an example of the merge syntax
 
 ```
@@ -371,6 +371,13 @@ merge "test"  #The compiler will append the .unn file extension
 ##
 merge "test.unn"
 ##
+```
+Import allows a user to import content from an external file that had been marked as exportable
+The compiler loads a stub file and uses the info from the stub file in its analysis
+For now imports only support seals but I plan on expanding them to type builders like components etc.
+Below is an example of the syntax
+```
+import "test"
 ```
 
 ## Multilingual identifier support
