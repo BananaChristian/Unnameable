@@ -32,3 +32,4 @@ CMakeCache.txt
 *.log
 
 TODO
+/compile_commands.json
