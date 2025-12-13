@@ -1,0 +1,97 @@
+#pragma once
+
+#include <unordered_map>
+#include <string>
+#include <vector>
+#include <memory>
+#include <fstream>
+#include "ast.hpp"
+
+enum class ImportedDataType
+{
+    SHORT_INT,  // 16 BIT signed integer
+    USHORT_INT, // 16 BUT unsigned integer
+    INTEGER,    // 32 BIT signed integer
+    UINTEGER,   // 32 BIT unsigned integer
+    LONG_INT,   // 64 BIT signed integer
+    ULONG_INT,  // 64 BIT unsigned integer
+    EXTRA_INT,  // 128 BIT signed integer
+    UEXTRA_INT, // 128 BIT unsigned integer
+    BOOLEAN,
+    STRING,
+    FLOAT,
+    DOUBLE,
+    CHAR,   // 8 BIT Char
+    CHAR16, // 16 BIT Char
+    CHAR32, // 32 BIT Char
+    ENUM,
+    DATABLOCK,
+    BEHAVIORBLOCK,
+    COMPONENT,
+    ERROR,
+    VOID,
+    GENERIC,
+    UNKNOWN
+};
+
+struct ImportedType
+{
+    ImportedDataType kind; // For the custom inbuilt types
+    std::string resolvedName = "unknown";
+    bool isPointer = false;
+    bool isRef = false;
+    bool isNull = false;
+    bool isArray = false;
+    std::shared_ptr<ImportedType> innerType;
+};
+
+// Minimal symbol info holder shall late be used to populate the semantics symbolInfo
+struct ImportedSymbolInfo
+{
+    ImportedType returnType;
+    std::vector<std::pair<ImportedType, std::string>> paramTypes;
+};
+
+struct RawSealFunction
+{
+    std::string funcName;
+    ImportedType returnType;
+    std::vector<std::pair<ImportedType, std::string>> paramTypes;
+};
+
+struct RawSealTable
+{
+    std::string sealName;
+    std::vector<RawSealFunction> sealFns;
+};
+
+struct RawStubTable
+{
+    std::vector<RawSealTable> seals;
+};
+
+class Deserializer
+{
+public:
+    Deserializer();
+    void processImports(const std::vector<std::unique_ptr<Node>> &nodes, const std::string &currentFile);
+
+    std::unordered_map<std::string, std::string> loadedStubs;
+    std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedSealTable;
+    RawStubTable stub;
+
+private:
+    uint32_t STUB_MAGIC = 0x53545542;
+    uint16_t STUB_VERSION = 1;
+
+    std::string resolveImportPath(ImportStatement *import, const std::string &currentFile);
+
+    void loadStub(const std::string &resolved);
+    void readOrFail(std::istream &in, void *dst, size_t size);
+    uint8_t read_u8(std::istream &in);
+    uint16_t read_u16(std::istream &in);
+    uint32_t read_u32(std::istream &in);
+    std::string readString(std::istream &in);
+    ImportedType readImportedType(std::istream &in);
+    RawStubTable readStubTable(std::istream &in);
+};
