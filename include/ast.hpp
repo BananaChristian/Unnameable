@@ -860,27 +860,31 @@ struct DheapStatement : Statement
     DheapStatement(Token d_tok, std::unique_ptr<Expression> alloc, std::unique_ptr<Statement> st) : Statement(d_tok), allocType(std::move(alloc)), stmt(std::move(st)) {};
 };
 
-//Seal block statement
-struct SealStatement: Statement{
+// Seal block statement
+struct SealStatement : Statement
+{
     bool isExportable;
     Token seal_token;
     std::unique_ptr<Expression> sealName;
     std::unique_ptr<Statement> block;
 
-    std::string toString() override{
-        std::string exportStr=isExportable?"export ":"";
-        std::string name="No name";
-        if(sealName){
-            name=sealName->toString();
+    std::string toString() override
+    {
+        std::string exportStr = isExportable ? "export " : "";
+        std::string name = "No name";
+        if (sealName)
+        {
+            name = sealName->toString();
         }
-        std::string blockStr="";
-        if(block){
-            blockStr=block->toString();
+        std::string blockStr = "";
+        if (block)
+        {
+            blockStr = block->toString();
         }
-        return "Seal Statement: "+exportStr+seal_token.TokenLiteral+" "+name+blockStr;
+        return "Seal Statement: " + exportStr + seal_token.TokenLiteral + " " + name + blockStr;
     }
 
-    SealStatement(bool isExp,Token seal,std::unique_ptr<Expression> name,std::unique_ptr<Statement>blk):Statement(seal),isExportable(isExp),seal_token(seal),sealName(std::move(name)),block(std::move(blk)){}
+    SealStatement(bool isExp, Token seal, std::unique_ptr<Expression> name, std::unique_ptr<Statement> blk) : Statement(seal), isExportable(isExp), seal_token(seal), sealName(std::move(name)), block(std::move(blk)) {}
 };
 
 // Use statement struct
@@ -2037,6 +2041,34 @@ struct MergeStatement : Statement
     }
 
     MergeStatement(Token merge, std::unique_ptr<Expression> string) : Statement(merge), merge_key(merge), stringExpr(std::move(string)) {};
+};
+
+// Import statement
+struct ImportStatement : Statement
+{
+    Token import_key;
+    std::unique_ptr<Expression> stringExpr;
+
+    std::string toString() override
+    {
+        return "Import Statement: " + import_key.TokenLiteral + " " + stringExpr->toString();
+    }
+
+    ImportStatement(Token import, std::unique_ptr<Expression> string) : Statement(import), import_key(import), stringExpr(std::move(string)) {};
+};
+
+// Link statement
+struct LinkStatement : Statement
+{
+    Token link_key;
+    std::unique_ptr<Expression> stringExpr;
+
+    std::string toString() override
+    {
+        return "Link Statement: " + link_key.TokenLiteral + " " + stringExpr->toString();
+    }
+
+    LinkStatement(Token link, std::unique_ptr<Expression> string) : Statement(link), link_key(link), stringExpr(std::move(string)) {};
 };
 
 // Shout statement
