@@ -18,6 +18,7 @@
 #include "layout/layout.hpp"
 #include "sentinel/sentinel.hpp"
 #include "stubgen/stubgen.hpp"
+#include "linker/linker.hpp"
 
 namespace fs = std::filesystem;
 
@@ -300,21 +301,10 @@ int main(int argc, char **argv)
 
         // Link Executable
         fs::path exePath = fs::absolute(exeFile);
-        fs::path root = getCompilerRoot();
-        fs::path sagePath = root / "runtime" / "sage.o";
-        fs::path helperPath = root / "runtime" / "helper.o";
-
         std::cout << COLOR_YELLOW << "\nLinking executable: " << exePath.string() << COLOR_RESET << "\n";
 
-        std::string linkCmd = "g++ -o \"" + exePath.string() + "\" \"" + objPath.string() +
-                              "\" \"" + sagePath.string() + "\" \"" + helperPath.string() + "\"";
-
-        int ret = std::system(linkCmd.c_str());
-        if (ret != 0)
-        {
-            std::cerr << COLOR_RED << "[ERROR]" << COLOR_RESET << " Linking failed!\n";
-            return 1;
-        }
+        Linker linker(objPath.string());
+        linker.processLinks(cu.mergedNodes, fileName, exePath.string());
 
         std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET << " Executable generated: " << exePath.string() << "\n";
     }

@@ -10,10 +10,10 @@
 
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/CodeGen/TargetPassConfig.h>
+#include <inttypes.h>
 
 #include "irgen.hpp"
 #include "ast.hpp"
-#include "allocator/allocator.hpp"
 
 #include <iostream>
 #define CPPREST_FORCE_REBUILD
