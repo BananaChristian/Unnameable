@@ -1,10 +1,11 @@
+
 #include "deserial.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 
-// COLORS
 #define COLOR_RESET "\033[0m"
 #define COLOR_RED "\033[31m"
 #define COLOR_GREEN "\033[32m"
@@ -100,7 +101,6 @@ std::string Deserializer::resolveImportPath(ImportStatement *import, const std::
         return resolved.string();
     }
 
-
     std::cout << COLOR_GREEN << "[IMPORT]" << COLOR_RESET << " Loaded stub: " << resolved.string() << "\n";
 
     return resolved.string();
@@ -116,14 +116,6 @@ void Deserializer::loadStub(const std::string &resolved)
     if (!in)
         throw std::runtime_error("Failed to open stub");
 
-    uint32_t magic = read_u32(in);
-    if (magic != STUB_MAGIC)
-        throw std::runtime_error("Invalid magic");
-
-    uint32_t version = read_u32(in);
-    if (version != STUB_VERSION)
-        throw std::runtime_error("Unsupported stub version");
-
     stub = readStubTable(in);
 
     for (const auto &seal : stub.seals)
@@ -138,100 +130,310 @@ void Deserializer::loadStub(const std::string &resolved)
             sealMap.emplace(fn.funcName, std::move(info));
         }
     }
+
+    for (const auto &component : stub.components)
+    {
+        std::cout << "DESERIALIZER COMPONENT NAME: " << component.componentName << "\n";
+        auto &compMap = importedComponentTable[component.componentName];
+        for (const auto &member : component.members)
+        {
+            ImportedSymbolInfo info;
+            info.type = member.type;
+            info.memberIndex = member.memberIndex;
+            info.isNullable = member.isNullable;
+            info.isMutable = member.isMutable;
+            info.isConstant = member.isConstant;
+            info.isRef = member.isRef;
+            info.isPointer = member.isPointer;
+            info.storage = member.storage;
+
+            compMap.emplace(member.memberName, std::move(info));
+        }
+
+        for (const auto &method : component.methods)
+        {
+            ImportedSymbolInfo info;
+            info.returnType = method.returnType;
+            info.paramTypes = method.paramTypes;
+
+            compMap.emplace(method.methodName, std::move(info));
+        }
+    }
 }
 
-void Deserializer::readOrFail(std::istream &in, void *dst, size_t size)
+void Deserializer::readOrFail(std::istream &in, void *dst, size_t size, const std::string &context)
 {
+    // Capture position before the read attempt
+    std::streampos start_pos = in.tellg();
+
+    // Attempt the read
     if (!in.read(reinterpret_cast<char *>(dst), size))
     {
+        // On failure, clear flags to get true EOF/Fail status, then restore
+        auto state = in.rdstate();
+        in.clear();
+
+        std::cerr << COLOR_RED << COLOR_BOLD << "[!!! FAILURE !!!]" << COLOR_RESET << "\n"
+                  << "  Context: " << context << "\n"
+                  << "  Read Attempt Failed: " << size << " bytes.\n"
+                  << "  File Start Pos: " << start_pos << "\n"
+                  << "  Flags (EOF/Fail/Bad): " << in.eof() << "/" << in.fail() << "/" << in.bad() << "\n";
+
+        // Restore flags
+        in.setstate(state);
+
         throw std::runtime_error("Unexpected EOF while reading stub");
     }
 }
 
-uint8_t Deserializer::read_u8(std::istream &in)
+
+uint8_t Deserializer::read_u8(std::istream &in, const std::string &context)
 {
     uint8_t v;
-    readOrFail(in, &v, sizeof(v));
+    std::streampos pos = in.tellg();
+    readOrFail(in, &v, sizeof(v), context);
+    std::cout << COLOR_CYAN << "[TRACE] " << COLOR_RESET
+              << "Pos: " << std::hex << std::setw(4) << std::setfill('0') << pos << std::dec
+              << " | Read u8: " << (int)v << "\t\t| Context: " << context << "\n";
     return v;
 }
 
-uint16_t Deserializer::read_u16(std::istream &in)
+uint16_t Deserializer::read_u16(std::istream &in, const std::string &context)
 {
     uint16_t v;
-    readOrFail(in, &v, sizeof(v));
+    std::streampos pos = in.tellg();
+    readOrFail(in, &v, sizeof(v), context);
+    std::cout << COLOR_CYAN << "[TRACE] " << COLOR_RESET
+              << "Pos: " << std::hex << std::setw(4) << std::setfill('0') << pos << std::dec
+              << " | Read u16: " << v << "\t\t| Context: " << context << "\n";
     return v;
 }
 
-uint32_t Deserializer::read_u32(std::istream &in)
+uint32_t Deserializer::read_u32(std::istream &in, const std::string &context)
 {
     uint32_t v;
-    readOrFail(in, &v, sizeof(v));
+    std::streampos pos = in.tellg();
+    readOrFail(in, &v, sizeof(v), context);
+    std::cout << COLOR_CYAN << "[TRACE] " << COLOR_RESET
+              << "Pos: " << std::hex << std::setw(4) << std::setfill('0') << pos << std::dec
+              << " | Read u32: " << v << "\t| Context: " << context << "\n";
     return v;
 }
 
-std::string Deserializer::readString(std::istream &in)
+int32_t Deserializer::read_s32(std::istream &in, const std::string &context)
 {
-    uint32_t len = read_u32(in);
+    int32_t v;
+    std::streampos pos = in.tellg();
+    readOrFail(in, &v, sizeof(v), context);
+    std::cout << COLOR_CYAN << "[TRACE] " << COLOR_RESET
+              << "Pos: " << std::hex << std::setw(4) << std::setfill('0') << pos << std::dec
+              << " | Read s32: " << v << "\t| Context: " << context << "\n";
+    return v;
+}
+
+std::string Deserializer::readString(std::istream &in, const std::string &context)
+{
+    uint32_t len = read_u32(in, "String Length: " + context);
+
+    std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET
+              << "Reading string of calculated length: " << len << "\t| Context: " << context << "\n";
+
     std::string s(len, '\0');
-    readOrFail(in, s.data(), len);
+
+    readOrFail(in, s.data(), len, "String Data (" + std::to_string(len) + " bytes): " + context);
+
+    std::cout << COLOR_GREEN << "[SUCCESS] " << COLOR_RESET
+              << "Read string: '" << s << "'\n";
+
     return s;
 }
+
 
 ImportedType Deserializer::readImportedType(std::istream &in)
 {
     ImportedType t;
-    t.kind = static_cast<ImportedDataType>(read_u32(in));
-    t.resolvedName = readString(in);
+    std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting ImportedType read.\n";
 
-    t.isPointer = read_u8(in);
-    t.isRef = read_u8(in);
-    t.isNull = read_u8(in);
-    t.isArray = read_u8(in);
-    uint8_t hasInner = read_u8(in);
+    t.kind = static_cast<ImportedDataType>(read_u32(in, "Type Kind"));
+    t.resolvedName = readString(in, "Type Resolved Name");
+
+    t.isPointer = read_u8(in, "Type Flag: isPointer");
+    t.isRef = read_u8(in, "Type Flag: isRef");
+    t.isNull = read_u8(in, "Type Flag: isNull");
+    t.isArray = read_u8(in, "Type Flag: isArray");
+    uint8_t hasInner = read_u8(in, "Type Flag: hasInnerType");
+
     if (hasInner)
     {
+        std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Recursing for Inner Type.\n";
         t.innerType = std::make_shared<ImportedType>(readImportedType(in));
     }
+    std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished ImportedType read.\n";
 
     return t;
+}
+
+std::vector<std::pair<ImportedType, std::string>> Deserializer::readParamTypes(std::istream &in)
+{
+    std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting Parameter List read.\n";
+    uint32_t paramCount = read_u32(in, "Parameter Count");
+
+    std::vector<std::pair<ImportedType, std::string>> params;
+    params.reserve(paramCount);
+    std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Expected " << paramCount << " parameters.\n";
+
+    for (uint32_t i = 0; i < paramCount; ++i)
+    {
+        std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Reading Parameter " << i + 1 << " / " << paramCount << "\n";
+        ImportedType type = readImportedType(in);
+        std::string name = readString(in, "Parameter Name");
+        params.emplace_back(std::move(type), std::move(name));
+    }
+    std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished Parameter List read.\n";
+
+    return params;
+}
+
+RawComponentMember Deserializer::readComponentMember(std::istream &in)
+{
+    std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting Component Member read.\n";
+    RawComponentMember member;
+    member.memberName = readString(in, "Member Name");
+    member.type = readImportedType(in);
+    member.memberIndex = read_s32(in, "Member Index");
+    member.isNullable = read_u8(in, "Member Flag: isNullable");
+    member.isMutable = read_u8(in, "Member Flag: isMutable");
+    member.isConstant = read_u8(in, "Member Flag: isConstant");
+    member.isRef = read_u8(in, "Member Flag: isRef");
+    member.isPointer = read_u8(in, "Member Flag: isPointer");
+    member.storage = static_cast<ImportedStorageType>(read_u32(in, "Member Storage Type"));
+    std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished Component Member read.\n";
+
+    return member;
+}
+
+RawComponentMethod Deserializer::readComponentMethod(std::istream &in)
+{
+    std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting Component Method read.\n";
+    RawComponentMethod method;
+    method.methodName = readString(in, "Method Name");
+    method.returnType = readImportedType(in);
+    method.paramTypes = readParamTypes(in);
+    std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished Component Method read.\n";
+
+    return method;
 }
 
 RawStubTable Deserializer::readStubTable(std::istream &in)
 {
     RawStubTable table;
+    std::cout << COLOR_BOLD << "\n--- STARTING STUB TABLE DESERIALIZATION ---\n"
+              << COLOR_RESET;
 
-    uint32_t sealCount = read_u32(in);
-    table.seals.reserve(sealCount);
-
-    for (uint32_t i = 0; i < sealCount; ++i)
+    //HEADER
+    uint32_t magic = read_u32(in, "Header: Magic Number (STUB)");
+    if (magic != STUB_MAGIC)
     {
-        RawSealTable seal;
-        seal.sealName = readString(in);
-
-        uint32_t fnCount = read_u32(in);
-        seal.sealFns.reserve(fnCount);
-
-        for (uint32_t j = 0; j < fnCount; ++j)
-        {
-            RawSealFunction fn;
-            fn.funcName = readString(in);
-            fn.returnType = readImportedType(in);
-
-            uint32_t paramCount = read_u32(in);
-            fn.paramTypes.reserve(paramCount);
-
-            for (uint32_t k = 0; k < paramCount; ++k)
-            {
-                ImportedType paramType = readImportedType(in);
-                std::string paramName = readString(in);
-                fn.paramTypes.emplace_back(paramType, paramName);
-            }
-
-            seal.sealFns.push_back(std::move(fn));
-        }
-
-        table.seals.push_back(std::move(seal));
+        std::cerr << COLOR_RED << "[FATAL] " << COLOR_RESET << "Invalid stub magic: Expected "
+                  << std::hex << STUB_MAGIC << " but got " << magic << std::dec << "\n";
+        throw std::runtime_error("Invalid stub magic");
     }
 
+    uint32_t version = read_u32(in, "Header: Version (u32)"); // NOTE: Deserializer reads u32, serializer writes u32
+    if (version != STUB_VERSION)
+    {
+        std::cerr << COLOR_RED << "[FATAL] " << COLOR_RESET << "Unsupported stub version: Expected "
+                  << STUB_VERSION << " but got " << version << "\n";
+        throw std::runtime_error("Unsupported stub version");
+    }
+
+    uint16_t sectionCount = read_u16(in, "Header: Section Count");
+    std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Expecting " << sectionCount << " sections.\n";
+
+    //SECTIONS
+    for (uint16_t s = 0; s < sectionCount; ++s)
+    {
+        std::cout << COLOR_BOLD << "\n--- READING SECTION " << s + 1 << " / " << sectionCount << " ---\n"
+                  << COLOR_RESET;
+        ImportedStubSection section = static_cast<ImportedStubSection>(read_u8(in, "Section Type ID"));
+        uint32_t entryCount = read_u32(in, "Section Entry Count");
+        std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Section ID: " << (int)section << ", Expected Entries: " << entryCount << "\n";
+
+        switch (section)
+        {
+        case ImportedStubSection::SEALS:
+        {
+            table.seals.reserve(entryCount);
+
+            for (uint32_t i = 0; i < entryCount; ++i)
+            {
+                std::cout << COLOR_YELLOW << "[DEBUG]" << COLOR_RESET << " Reading Seal " << i + 1 << " of " << entryCount << "\n";
+                RawSealTable seal;
+
+                
+                seal.sealName = readString(in, "Seal Table Name");
+
+                uint32_t fnCount = read_u32(in, "Seal Function Count");
+                std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Seal '" << seal.sealName << "' expects " << fnCount << " functions.\n";
+
+                seal.sealFns.reserve(fnCount);
+
+                for (uint32_t j = 0; j < fnCount; ++j)
+                {
+                    std::cout << COLOR_YELLOW << "[DEBUG]" << COLOR_RESET << " Reading Function " << j + 1 << " of " << fnCount << " for Seal '" << seal.sealName << "'\n";
+                    RawSealFunction fn;
+                    fn.funcName = readString(in, "Seal Function Name");
+                    fn.returnType = readImportedType(in);
+                    fn.paramTypes = readParamTypes(in);
+
+                    seal.sealFns.push_back(std::move(fn));
+                }
+
+                table.seals.push_back(std::move(seal));
+            }
+            break;
+        }
+
+        case ImportedStubSection::COMPONENTS:
+        {
+            table.components.reserve(entryCount);
+
+            for (uint32_t i = 0; i < entryCount; ++i)
+            {
+                std::cout << COLOR_YELLOW << "[DEBUG]" << COLOR_RESET << " Reading Component " << i + 1 << " of " << entryCount << "\n";
+                RawComponentTable comp;
+                comp.componentName = readString(in, "Component Table Name");
+
+                // members
+                uint32_t memberCount = read_u32(in, "Component Member Count");
+                comp.members.reserve(memberCount);
+                std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Component '" << comp.componentName << "' expects " << memberCount << " members.\n";
+                for (uint32_t m = 0; m < memberCount; ++m)
+                {
+                    comp.members.push_back(readComponentMember(in));
+                }
+
+                // methods
+                uint32_t methodCount = read_u32(in, "Component Method Count");
+                comp.methods.reserve(methodCount);
+                std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Component '" << comp.componentName << "' expects " << methodCount << " methods.\n";
+                for (uint32_t m = 0; m < methodCount; ++m)
+                {
+                    comp.methods.push_back(readComponentMethod(in));
+                }
+
+                table.components.push_back(std::move(comp));
+            }
+            break;
+        }
+
+        default:
+            std::cerr << COLOR_RED << "[FATAL] " << COLOR_RESET << "Unknown stub section ID: " << (int)section << "\n";
+            throw std::runtime_error("Unknown stub section");
+        }
+    }
+
+    std::cout << COLOR_BOLD << "\n--- FINISHED STUB TABLE DESERIALIZATION ---\n"
+              << COLOR_RESET;
     return table;
 }

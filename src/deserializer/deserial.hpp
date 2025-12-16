@@ -7,6 +7,12 @@
 #include <fstream>
 #include "ast.hpp"
 
+enum class ImportedStubSection : uint8_t
+{
+    SEALS,
+    COMPONENTS
+};
+
 enum class ImportedDataType
 {
     SHORT_INT,  // 16 BIT signed integer
@@ -45,11 +51,26 @@ struct ImportedType
     std::shared_ptr<ImportedType> innerType;
 };
 
+enum class ImportedStorageType
+{
+    GLOBAL,
+    STACK,
+    HEAP,
+};
+
 // Minimal symbol info holder shall late be used to populate the semantics symbolInfo
 struct ImportedSymbolInfo
 {
     ImportedType returnType;
     std::vector<std::pair<ImportedType, std::string>> paramTypes;
+    ImportedType type;
+    int memberIndex = -1;
+    bool isNullable = false;
+    bool isMutable = false;
+    bool isConstant = false;
+    bool isRef = false;
+    bool isPointer = false;
+    ImportedStorageType storage;
 };
 
 struct RawSealFunction
@@ -65,9 +86,37 @@ struct RawSealTable
     std::vector<RawSealFunction> sealFns;
 };
 
+struct RawComponentMember
+{
+    std::string memberName;
+    ImportedType type;
+    int memberIndex = -1;
+    bool isNullable = false; // Is the member nullable
+    bool isMutable = false;
+    bool isConstant = false;
+    bool isRef = false;
+    bool isPointer = false;
+    ImportedStorageType storage;
+};
+
+struct RawComponentMethod
+{
+    std::string methodName;
+    ImportedType returnType;
+    std::vector<std::pair<ImportedType, std::string>> paramTypes;
+};
+
+struct RawComponentTable
+{
+    std::string componentName;
+    std::vector<RawComponentMember> members;
+    std::vector<RawComponentMethod> methods;
+};
+
 struct RawStubTable
 {
     std::vector<RawSealTable> seals;
+    std::vector<RawComponentTable> components;
 };
 
 class Deserializer
@@ -77,7 +126,10 @@ public:
     void processImports(const std::vector<std::unique_ptr<Node>> &nodes, const std::string &currentFile);
 
     std::unordered_map<std::string, std::string> loadedStubs;
+
     std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedSealTable;
+    std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedComponentTable;
+
     RawStubTable stub;
 
 private:
@@ -87,11 +139,16 @@ private:
     std::string resolveImportPath(ImportStatement *import, const std::string &currentFile);
 
     void loadStub(const std::string &resolved);
-    void readOrFail(std::istream &in, void *dst, size_t size);
-    uint8_t read_u8(std::istream &in);
-    uint16_t read_u16(std::istream &in);
-    uint32_t read_u32(std::istream &in);
-    std::string readString(std::istream &in);
+    void readOrFail(std::istream &in, void *dst, size_t size,const std::string& context);
+    uint8_t read_u8(std::istream &in,const std::string& context);
+    uint16_t read_u16(std::istream &in,const std::string& context);
+    uint32_t read_u32(std::istream &in,const std::string& context);
+    int32_t read_s32(std::istream &in,const std::string& context);
+    std::string readString(std::istream &in,const std::string& context);
     ImportedType readImportedType(std::istream &in);
+    std::vector<std::pair<ImportedType, std::string>> readParamTypes(std::istream &in);
+
+    RawComponentMember readComponentMember(std::istream &in);
+    RawComponentMethod readComponentMethod(std::istream &in);
     RawStubTable readStubTable(std::istream &in);
 };

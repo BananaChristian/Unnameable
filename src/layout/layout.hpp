@@ -39,6 +39,8 @@ private:
     void calculateComponentStatement(Node *node);
     void calculateInstantiateStatement(Node *node);
     // HELPERS
+    void declareAllCustomTypes();
+    void registerImportedTypes();
     void registerComponentCalculatorFns();
     void logPrestaticError(const std::string &message, int line, int col);
     llvm::Type *getLLVMType(ResolvedType type);

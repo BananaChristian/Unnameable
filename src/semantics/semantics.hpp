@@ -248,6 +248,7 @@ public:
     std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
     std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>> symbolTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> customTypesTable;
+    std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedComponentTable;
     std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>> sealTable;
     std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
@@ -401,6 +402,7 @@ private:
     ResolvedType *resolveSelfChain(SelfExpression *selfExpr, const std::string &componentName);
     ResolvedType convertImportedTypetoResolvedType(const ImportedType &importType);
     DataType convertImportedDataTypetoResolvedDataType(const ImportedDataType &dataType);
+    StorageType convertImportedStorageTypetoStorageType(const ImportedStorageType &storageType);
     std::vector<std::pair<ResolvedType, std::string>> convertImportedParamstoResolvedParams(const std::vector<std::pair<ImportedType, std::string>> &params);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     int inferLiteralDimensions(ArrayLiteral *arrLit);
@@ -408,6 +410,9 @@ private:
     int64_t getIntExprVal(Node *node);
     void substituteTypes(Node *node, std::unordered_map<std::string, Token> &subMap);
     void mangleGenericName(Node *node, std::string aliasName);
+
+    void importSeals();
+    void importComponents();
 
     bool isGlobalScope();
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);

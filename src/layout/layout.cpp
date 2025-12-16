@@ -9,6 +9,10 @@ Layout::Layout(Semantics &sem, llvm::LLVMContext &ctx)
 
     // Use the target’s data layout string (can be copied from final module settings)
     tempModule->setDataLayout("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
+
+    declareAllCustomTypes();
+
+    registerImportedTypes();
 }
 
 // Calculator driver
@@ -305,10 +309,11 @@ void Layout::calculateComponentStatement(Node *node)
     }
 
     // Creating an empty struct type for data field types
-    llvm::StructType *structTy = llvm::StructType::create(context, compName);
-    structTy->setBody(fieldTypes, /*isPacked*/ false);
+    auto *structTy = llvm::cast<llvm::StructType>(typeMap[compName]);
+    if (!structTy->isOpaque())
+        return; // already defined
 
-    typeMap[compName] = structTy;
+    structTy->setBody(fieldTypes, false);
 
     // Calculating the imported fields
     for (const auto &[key, value] : compSym->members)
@@ -482,4 +487,39 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
         return llvm::PointerType::get(baseType, 0);
 
     return baseType;
+}
+
+void Layout::declareAllCustomTypes()
+{
+    std::cout << "Declaring all custom types" << "\n";
+    for (const auto &[name, info] : semantics.customTypesTable)
+    {
+        auto typeIt = typeMap.find(name);
+        if (typeIt == typeMap.end())
+            typeMap[name] = llvm::StructType::create(context, name);
+    }
+}
+
+void Layout::registerImportedTypes()
+{
+    std::cout << "Registering component type" << "\n";
+    for (const auto &compTypesPair : semantics.ImportedComponentTable)
+    {
+        const auto &[compName, typeInfo] = compTypesPair;
+        const auto &members = typeInfo->members;
+        std::vector<llvm::Type *> fieldTypes;
+
+        for (const auto &memberPair : members)
+        {
+            const auto &[memberName, memInfo] = memberPair;
+            llvm::Type *fieldType = getLLVMType(memInfo->type);
+            fieldTypes.push_back(fieldType);
+        }
+
+        auto *structTy = llvm::cast<llvm::StructType>(typeMap[compName]);
+        if (!structTy->isOpaque())
+            return; // already defined
+
+        structTy->setBody(fieldTypes, false);
+    }
 }

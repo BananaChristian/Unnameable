@@ -878,14 +878,6 @@ void Semantics::walkComponentStatement(Node *node)
                 return;
             }
 
-            if (isExportable)
-            {
-                if (!typeIt->second->isExportable)
-                {
-                    logSemanticErrors("Non exportable data block '" + identName + "' is being imported from for an exportable component '" + componentName + "'", ident->expression.line, ident->expression.column);
-                    hasError = true;
-                }
-            }
             auto &importedMembers = typeIt->second->members;
             auto &currentScope = symbolTable.back();
             for (auto &[name, info] : importedMembers)
@@ -953,14 +945,6 @@ void Semantics::walkComponentStatement(Node *node)
             auto importedTypeIt = customTypesTable.find(dataName);
             if (importedTypeIt != customTypesTable.end())
             {
-                if (isExportable)
-                {
-                    if (!importedTypeIt->second->isExportable)
-                    {
-                        logSemanticErrors("Non exportable data block '" + dataName + "' is being imported from for an exportable component '" + componentName + "'", leftIdent->expression.line, leftIdent->expression.column);
-                        hasError = true;
-                    }
-                }
                 auto &importedMembers = importedTypeIt->second->members;
                 auto memIt = importedMembers.find(memberName);
                 if (memIt != importedMembers.end())
@@ -1014,15 +998,6 @@ void Semantics::walkComponentStatement(Node *node)
                 logSemanticErrors("Behavior block with name '" + identName + "' does not exist", ident->expression.line, ident->expression.column);
                 hasError = true;
                 return;
-            }
-
-            if (isExportable)
-            {
-                if (!typeIt->second->isExportable)
-                {
-                    logSemanticErrors("Non exportable behavior block '" + identName + "' is being imported from for an exportable component '" + componentName + "'", ident->expression.line, ident->expression.column);
-                    hasError = true;
-                }
             }
 
             auto &importedMembers = typeIt->second->members;
@@ -1094,14 +1069,6 @@ void Semantics::walkComponentStatement(Node *node)
             auto importedTypeIt = customTypesTable.find(methodName);
             if (importedTypeIt != customTypesTable.end())
             {
-                if (isExportable)
-                {
-                    if (!importedTypeIt->second->isExportable)
-                    {
-                        logSemanticErrors("Non exportable behavior block '" + methodName + "'being imported from for an exportable component '" + componentName + "'", leftIdent->expression.line, leftIdent->expression.column);
-                        hasError = true;
-                    }
-                }
                 auto &importedMembers = importedTypeIt->second->members;
                 auto memIt = importedMembers.find(memberName);
                 if (memIt != importedMembers.end())
@@ -1410,7 +1377,7 @@ void Semantics::walkMethodCallExpression(Node *node)
 
     const std::string instanceName = instanceIdent->identifier.TokenLiteral;
     const int line = instanceIdent->expression.line;
-    const int col  = instanceIdent->expression.column;
+    const int col = instanceIdent->expression.column;
 
     // Get the call expression and function name
     auto funcCall = dynamic_cast<CallExpression *>(metCall->call.get());
@@ -1421,9 +1388,9 @@ void Semantics::walkMethodCallExpression(Node *node)
     }
     const std::string funcName = funcCall->function_identifier->expression.TokenLiteral;
     const int funcLine = funcCall->function_identifier->expression.line;
-    const int funcCol  = funcCall->function_identifier->expression.column;
+    const int funcCol = funcCall->function_identifier->expression.column;
 
-    //check if this LHS is a seal name
+    // check if this LHS is a seal name
     auto sealIt = sealTable.find(instanceName);
     if (sealIt != sealTable.end())
     {
@@ -1437,10 +1404,10 @@ void Semantics::walkMethodCallExpression(Node *node)
             return;
         }
 
-        // Walk the seal call 
-        walkSealCallExpression(funcCall,instanceName);
+        // Walk the seal call
+        walkSealCallExpression(funcCall, instanceName);
 
-        // Retrieve the function call metaData 
+        // Retrieve the function call metaData
         auto fnIt = metaData.find(funcCall);
         if (fnIt == metaData.end())
         {
@@ -1463,7 +1430,7 @@ void Semantics::walkMethodCallExpression(Node *node)
     // Walk the instance first to populate metaData for it
     walker(metCall->instance.get());
 
-    // Now retrieve instance metaData 
+    // Now retrieve instance metaData
     auto instanceMetaIt = metaData.find(instanceIdent);
     if (instanceMetaIt == metaData.end())
     {
@@ -1526,7 +1493,6 @@ void Semantics::walkMethodCallExpression(Node *node)
 
     metaData[metCall] = metCallSym;
 }
-
 
 void Semantics::walkArrayStatement(Node *node)
 {

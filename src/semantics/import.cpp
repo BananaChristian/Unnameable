@@ -24,6 +24,21 @@ ResolvedType Semantics::convertImportedTypetoResolvedType(const ImportedType &im
     return type;
 }
 
+StorageType Semantics::convertImportedStorageTypetoStorageType(const ImportedStorageType &storageType)
+{
+    switch (storageType)
+    {
+    case ImportedStorageType::GLOBAL:
+        return StorageType::GLOBAL;
+    case ImportedStorageType::HEAP:
+        return StorageType::HEAP;
+    case ImportedStorageType::STACK:
+        return StorageType::STACK;
+    default:
+        return StorageType::GLOBAL; // A failure to convert make it global although I really dont expect this to happen
+    }
+}
+
 std::vector<std::pair<ResolvedType, std::string>> Semantics::convertImportedParamstoResolvedParams(const std::vector<std::pair<ImportedType, std::string>> &params)
 {
     std::vector<std::pair<ResolvedType, std::string>> resolvedParams;
@@ -96,11 +111,9 @@ DataType Semantics::convertImportedDataTypetoResolvedDataType(const ImportedData
     }
 }
 
-void Semantics::walkImportStatement(Node *node)
+void Semantics::importSeals()
 {
-    auto import = dynamic_cast<ImportStatement *>(node);
-    if (!import)
-        return;
+    std::cout << "Imported seals count: " << deserializer.importedSealTable.size() << "\n";
 
     // Iterate over all seals
     for (auto &sealPair : deserializer.importedSealTable)
@@ -134,6 +147,74 @@ void Semantics::walkImportStatement(Node *node)
         auto sealSym = std::make_shared<SymbolInfo>();
         sealSym->isExportable = true;
 
-        symbolTable[0][sealName] = sealSym;
+        symbolTable[0][sealName] = sealSym; // Inject the seal symbol into the semantics symbols
     }
+}
+
+void Semantics::importComponents()
+{
+    std::cout << "Imported seals count: " << deserializer.importedSealTable.size() << "\n";
+
+    for (auto &compPair : deserializer.importedComponentTable)
+    {
+        const std::string &compName = compPair.first;
+        std::cout << "IMPORTED COMPONENT NAME: " << compName << "\n";
+
+        auto typeInfo = std::make_shared<CustomTypeInfo>();
+
+        typeInfo->typeName = compName;
+        typeInfo->type = ResolvedType{DataType::COMPONENT, compName};
+
+        std::unordered_map<std::string, std::shared_ptr<MemberInfo>> symMembers;
+        auto &memberMap = compPair.second;
+
+        // Iterate over all members in component
+        for (auto &memPair : memberMap)
+        {
+            const std::string &memberName = memPair.first;
+            std::cout << "IMPORTED MEMBER NAME: " << memberName << "\n";
+
+            ImportedSymbolInfo &info = memPair.second;
+
+            // Create member info for the member
+            auto memInfo = std::make_shared<MemberInfo>();
+            memInfo->type = convertImportedTypetoResolvedType(info.type);
+            memInfo->returnType = convertImportedTypetoResolvedType(info.returnType);
+            memInfo->paramTypes = convertImportedParamstoResolvedParams(info.paramTypes);
+            memInfo->memberName = memberName;
+            memInfo->isNullable = info.isNullable;
+            memInfo->isExportable = true;
+            memInfo->memberIndex = info.memberIndex;
+            memInfo->storage = convertImportedStorageTypetoStorageType(info.storage);
+            memInfo->isDeclared = true;
+            memInfo->isConstant = info.isConstant;
+            memInfo->isPointer = info.isPointer;
+            memInfo->isRef = info.isRef;
+            memInfo->isMutable = info.isMutable;
+
+            typeInfo->members[memberName] = memInfo;
+            symMembers[memberName] = memInfo;
+        }
+
+        customTypesTable[compName] = typeInfo;
+        ImportedComponentTable[compName] = typeInfo;
+        auto compSym = std::make_shared<SymbolInfo>();
+        compSym->isExportable = true;
+        compSym->members = symMembers;
+        compSym->type = ResolvedType{DataType::COMPONENT, compName};
+
+        symbolTable[0][compName] = compSym;
+    }
+}
+
+void Semantics::walkImportStatement(Node *node)
+{
+    auto import = dynamic_cast<ImportStatement *>(node);
+    if (!import)
+        return;
+
+    // Import seals
+    importSeals();
+    // Import components
+    importComponents();
 }

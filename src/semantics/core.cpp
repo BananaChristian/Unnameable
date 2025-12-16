@@ -1101,16 +1101,9 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
         {
             if (!childName.empty())
             {
-                auto &members = parentIt->second->members;
-                auto memberIt = members.find(childName);
-                if (memberIt == members.end())
-                {
-                    logSemanticErrors("Type '" + childName + "' does not exist in '" + parentName + "'",
-                                      token.line, token.column);
-                    return {DataType::UNKNOWN, "unknown"};
-                }
-                auto memberType = memberIt->second->type;
-                return memberType;
+                logSemanticErrors("Type name must be a single identifier; scoped access (:: or .) is not allowed here.",
+                                  token.line, token.column);
+                return {DataType::UNKNOWN, "unknown"};
             }
 
             auto parentType = parentIt->second->type;
@@ -1118,7 +1111,8 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
             return parentType;
         }
 
-        return {DataType::GENERIC, token.TokenLiteral, false, isNullable};
+        logSemanticErrors("Unknown type identifier '" + token.TokenLiteral + "'", token.line, token.column);
+        return {DataType::UNKNOWN, "unknown"};
     }
 
     default:

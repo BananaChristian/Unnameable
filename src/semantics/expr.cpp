@@ -55,11 +55,15 @@ void Semantics::walkInfixExpression(Node *node)
             return;
         }
 
+        std::cout << "LHS INFIX TYPE: " << lhsType.resolvedName << "\n";
+
         // Resolve member in component or behavior
         auto resolved = resultOfScopeOrDot(TokenType::FULLSTOP,
-                                           lhsType.resolvedName,
+                                           lhsName,
                                            rhsIdent->identifier.TokenLiteral,
                                            infixExpr);
+
+        std::cout << "INFIX TYPE FOR MEMBER ACCESS: " << resolved.resolvedName << "\n";
 
         // Store metadata for RHS identifier
         auto rhsInfo = std::make_shared<SymbolInfo>();
