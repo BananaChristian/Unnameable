@@ -10,6 +10,7 @@ void StubGen::registerStubGeneratorFns()
 {
     stubGenFnsMap[typeid(ComponentStatement)] = &StubGen::generateComponentStatement;
     stubGenFnsMap[typeid(SealStatement)] = &StubGen::generateSealStatement;
+    stubGenFnsMap[typeid(DataStatement)] = &StubGen::generateDataStatement;
 }
 
 void StubGen::finish()
@@ -163,6 +164,31 @@ void StubGen::serializeComponentTable(std::ostream &out, const ComponentTable &c
     }
 }
 
+//________________DATA BLOCKS SERIALIZATION___________
+void StubGen::serializeDataMember(std::ostream &out, const DataMember &member)
+{
+    writeString(out, member.memberName);
+    serializeResolvedType(out, member.type);
+    write_s32(out, member.memberIndex);
+    write_u8(out, member.isNullable);
+    write_u8(out, member.isMutable);
+    write_u8(out, member.isConstant);
+    write_u8(out, member.isRef);
+    write_u8(out, member.isPointer);
+    write_u32(out, static_cast<uint32_t>(member.storage));
+}
+
+void StubGen::serializeDataTable(std::ostream &out, const DataTable &data)
+{
+    writeString(out, data.dataName);
+
+    write_u32(out, (uint32_t)data.members.size());
+    for (const auto &member : data.members)
+    {
+        serializeDataMember(out, member);
+    }
+}
+
 //________________FINAL STUB SERIALIZATION____________
 void StubGen::serializeFullStubTable(const StubTable &table, const std::string &filename)
 {
@@ -174,7 +200,7 @@ void StubGen::serializeFullStubTable(const StubTable &table, const std::string &
     // HEADER
     write_u32(out, 0x53545542); // STUB
     write_u32(out, 1);          // Version
-    write_u16(out, 2);          // Section count (2 for now)
+    write_u16(out, 3);          // Section count (3 for now)
 
     // SEALS SECTION
     write_u8(out, (uint8_t)StubSection::SEALS);
@@ -190,6 +216,14 @@ void StubGen::serializeFullStubTable(const StubTable &table, const std::string &
     for (const auto &component : table.components)
     {
         serializeComponentTable(out, component);
+    }
+
+    // DATA
+    write_u8(out, (uint8_t)StubSection::DATA);
+    write_u32(out, (uint32_t)table.data.size());
+    for (const auto &data : table.data)
+    {
+        serializeDataTable(out, data);
     }
 }
 

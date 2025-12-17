@@ -8,7 +8,8 @@
 enum class StubSection : uint8_t
 {
     SEALS,
-    COMPONENTS
+    COMPONENTS,
+    DATA
 };
 
 struct SealFunction
@@ -53,10 +54,30 @@ struct ComponentTable
     std::vector<ComponentMethod> methods;
 };
 
+struct DataMember
+{
+    std::string memberName;
+    ResolvedType type;       // Member type like int or whatever
+    int memberIndex = -1;    // Will be used by reader's IRGen so lemme keep it
+    bool isNullable = false; // Is the member nullable
+    bool isMutable = false;
+    bool isConstant = false;
+    bool isRef = false;
+    bool isPointer = false;
+    StorageType storage;
+};
+
+struct DataTable
+{
+    std::string dataName;
+    std::vector<DataMember> members;
+};
+
 struct StubTable
 {
     std::vector<SealTable> seals;
     std::vector<ComponentTable> components;
+    std::vector<DataTable> data;
 };
 
 class StubGen
@@ -80,6 +101,7 @@ private:
     // Generator functions
     void generateSealStatement(Node *node);
     void generateComponentStatement(Node *node);
+    void generateDataStatement(Node *node);
 
     // Helper functions
     void registerStubGeneratorFns();
@@ -100,6 +122,9 @@ private:
     void serializeComponentMethod(std::ostream &out, const ComponentMethod &method);
     void serializeComponentMember(std::ostream &out, const ComponentMember &member);
     void serializeComponentTable(std::ostream &out, const ComponentTable &component);
+
+    void serializeDataMember(std::ostream &out, const DataMember &member);
+    void serializeDataTable(std::ostream &out, const DataTable &data);
 
     void serializeFullStubTable(const StubTable &table, const std::string &filename);
 };

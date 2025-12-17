@@ -62,8 +62,8 @@ void StubGen::generateSealStatement(Node *node)
         auto fnName = fnExpr->func_key.TokenLiteral;
         std::string unmangled = unmangle(fnName);
         std::cout << "[DEBUG] Looking for function in sealFnMap: " << unmangled << "\n";
-        
-        auto sealFnIt=sealFnMap.find(unmangled);
+
+        auto sealFnIt = sealFnMap.find(unmangled);
         if (sealFnIt == sealFnMap.end())
         {
             std::cout << "[DEBUG] Function not found in sealFnMap: " << unmangled << "\n";
@@ -144,6 +144,7 @@ void StubGen::generateComponentStatement(Node *node)
             member.isNullable = memInfo->isNullable;
             member.isMutable = memInfo->isMutable;
             member.isConstant = memInfo->isConstant;
+            member.isPointer = memInfo->isPointer;
             member.isRef = memInfo->isRef;
             member.storage = memInfo->storage;
 
@@ -154,4 +155,52 @@ void StubGen::generateComponentStatement(Node *node)
     // Add to the stub table
     stubTable.components.push_back(componentTable);
     std::cout << "[DEBUG] Finished serializing component '" + componentName << "\n";
+}
+
+void StubGen::generateDataStatement(Node *node)
+{
+    auto dataStmt = dynamic_cast<DataStatement *>(node);
+    if (!dataStmt)
+        return;
+
+    if (!dataStmt->isExportable)
+        return;
+
+    std::string dataName = dataStmt->dataBlockName->expression.TokenLiteral;
+
+    std::cout << "Processing data block: " << dataName << "\n";
+
+    auto dataIt = semantics.metaData.find(dataStmt);
+    if (dataIt == semantics.metaData.end())
+        throw std::runtime_error("Failed to find data metaData");
+
+    auto dataSym = dataIt->second;
+    if (!dataSym)
+        throw std::runtime_error("No data symbolInfo");
+
+    if (dataSym->hasError)
+        throw std::runtime_error("Semantic error");
+
+    DataTable dataTable;
+    dataTable.dataName = dataName;
+
+    auto dataMembers = dataSym->members;
+    for (const auto &[memName, memInfo] : dataMembers)
+    {
+        DataMember member;
+        member.memberName = memInfo->memberName;
+        member.type = memInfo->type;
+        member.memberIndex = memInfo->memberIndex;
+        member.isNullable = memInfo->isNullable;
+        member.isMutable = memInfo->isMutable;
+        member.isConstant = memInfo->isConstant;
+        member.isPointer = memInfo->isPointer;
+        member.isRef = memInfo->isRef;
+        member.storage = memInfo->storage;
+
+        dataTable.members.push_back(member);
+    }
+
+    stubTable.data.push_back(dataTable);
+    std::cout << "[DEBUG] Finished serializing data '" + dataName << "\n";
 }
