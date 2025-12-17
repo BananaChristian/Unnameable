@@ -531,94 +531,54 @@ void IRGenerator::generateGlobalComponentHeapInit(LetStatement *letStmt, std::sh
 llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, llvm::StructType *structTy, bool isHeap)
 {
     std::string letName = letStmt->ident_token.TokenLiteral;
-    if (!letStmt->value)
-    {
-        return nullptr;
-    }
 
-    auto newExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get());
-    if (!newExpr)
-    {
-        return nullptr;
-    }
-
-    // Get the metaData
-    const std::string &compName = newExpr->component_name.TokenLiteral;
-
-    auto exprMetaIt = semantics.metaData.find(newExpr);
-    if (exprMetaIt == semantics.metaData.end())
-        throw std::runtime_error("Undefined component '" + compName + "'");
-    if (exprMetaIt->second->hasError)
-        throw std::runtime_error("Semantic Error detected");
-
+    // Allocate (Even if no 'new' exists)
     llvm::Value *instancePtr = nullptr;
-
     if (isHeap)
     {
         if (!isSageInitCalled)
             generateSageInitCall();
-
         instancePtr = allocateHeapStorage(sym, letName, structTy);
     }
     else
     {
-        instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, compName + ".inst");
+        instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, letName + ".stack");
+        // Zero out the memory initially
         funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
     }
 
-    // Apply default initializers (only if fields have actual initializer expressions)
-    auto compTypeIt = semantics.customTypesTable.find(compName);
-    if (compTypeIt == semantics.customTypesTable.end())
+    // Check if the initializer exists
+    auto newExpr = letStmt->value ? dynamic_cast<NewComponentExpression *>(letStmt->value.get()) : nullptr;
+
+    // Apply default field initialozers(from the component definition)
+    auto compTypeIt = semantics.customTypesTable.find(sym->type.resolvedName);
+    if (compTypeIt != semantics.customTypesTable.end())
     {
-        throw std::runtime_error("Could not find '" + compName + "' type");
+        for (const auto &[name, memInfo] : compTypeIt->second->members)
+        {
+            auto letNode = dynamic_cast<LetStatement *>(memInfo->node);
+            if (!letNode || !letNode->value)
+                continue;
+
+            llvm::Value *initVal = generateExpression(letNode->value.get());
+            llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(structTy, instancePtr, memInfo->memberIndex, name + "_field");
+            funcBuilder.CreateStore(initVal, fieldPtr);
+        }
     }
 
-    for (const auto &[name, memInfo] : compTypeIt->second->members)
+    // Only call init construtor if new was used
+    if (newExpr)
     {
-        // Only process definitional nodes that are actually LetStatements
-        auto letNode = dynamic_cast<LetStatement *>(memInfo->node);
-        if (!letNode)
-            continue; // skip behavior blocks, functions, etc.
-
-        // If there's no initializer skip (keep zero init)
-        if (!letNode->value)
-            continue;
-
-        // Generate initializer value
-        llvm::Value *initVal = generateExpression(letNode->value.get());
-        if (!initVal)
+        if (llvm::Function *initFn = module->getFunction(sym->type.resolvedName + "_init"))
         {
-            // fallback to zero-init for this field
-            llvm::Type *fieldTy =
-                structTy->getElementType(memInfo->memberIndex);
-            initVal = llvm::Constant::getNullValue(fieldTy);
+            std::vector<llvm::Value *> initArgs;
+            initArgs.push_back(instancePtr);
+            for (auto &arg : newExpr->arguments)
+            {
+                initArgs.push_back(generateExpression(arg.get()));
+            }
+            funcBuilder.CreateCall(initFn, initArgs);
         }
-
-        // Compute pointer to this field
-        llvm::Value *fieldPtr =
-            funcBuilder.CreateStructGEP(structTy, instancePtr,
-                                        memInfo->memberIndex,
-                                        name + "_field");
-
-        // Store the initializer
-        funcBuilder.CreateStore(initVal, fieldPtr);
-    }
-
-    // Check for init
-    if (llvm::Function *initFn = module->getFunction(compName + "_init"))
-    {
-        std::vector<llvm::Value *> initArgs;
-        initArgs.push_back(instancePtr); // self pointer
-
-        for (auto &arg : newExpr->arguments)
-        {
-            llvm::Value *val = generateExpression(arg.get());
-            if (!val)
-                throw std::runtime_error("Failed to generate argument for new " + compName);
-            initArgs.push_back(val);
-        }
-
-        funcBuilder.CreateCall(initFn, initArgs);
     }
 
     return instancePtr;

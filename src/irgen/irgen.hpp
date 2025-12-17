@@ -75,7 +75,7 @@ private:
     std::unique_ptr<llvm::Module> module;
     Semantics &semantics;
     size_t totalHeapSize;
-    bool mainMarker=false;
+    bool mainMarker = false;
 
     llvm::BasicBlock *heapInitFnEntry = nullptr;
 
@@ -168,6 +168,7 @@ private:
     void generateStatement(Node *node);
     void shoutRuntime(llvm::Value *val, ResolvedType type);
     void declareExternalSeals();
+    void declareImportedComponents();
     char *const_unnitoa(__int128 val, char *buf);
     char decodeCharLiteral(const std::string &literal);
     void generateSageInitCall();
