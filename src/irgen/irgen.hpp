@@ -168,7 +168,8 @@ private:
     void generateStatement(Node *node);
     void shoutRuntime(llvm::Value *val, ResolvedType type);
     void declareExternalSeals();
-    void declareImportedComponents();
+    void declareImportedTypes();
+    void declareCustomTypes();
     char *const_unnitoa(__int128 val, char *buf);
     char decodeCharLiteral(const std::string &literal);
     void generateSageInitCall();

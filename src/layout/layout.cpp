@@ -522,4 +522,25 @@ void Layout::registerImportedTypes()
 
         structTy->setBody(fieldTypes, false);
     }
+
+    for (const auto &dataTypesPair : semantics.ImportedDataBlocksTable)
+    {
+        const auto &[dataName, typeInfo] = dataTypesPair;
+        const auto &members = typeInfo->members;
+
+        std::vector<llvm::Type *> fieldTypes;
+
+        for (const auto &memberPair : members)
+        {
+            const auto &[memberName, memInfo] = memberPair;
+            llvm::Type *fieldType = getLLVMType(memInfo->type);
+            fieldTypes.push_back(fieldType);
+        }
+
+        auto *structTy = llvm::cast<llvm::StructType>(typeMap[dataName]);
+        if (!structTy->isOpaque())
+            return; // already defined
+
+        structTy->setBody(fieldTypes, false);
+    }
 }

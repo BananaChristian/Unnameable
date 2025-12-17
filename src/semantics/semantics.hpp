@@ -249,6 +249,7 @@ public:
     std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>> symbolTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> customTypesTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedComponentTable;
+    std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedDataBlocksTable;
     std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>> sealTable;
     std::optional<std::shared_ptr<SymbolInfo>> currentFunction;

@@ -252,6 +252,7 @@ void Semantics::importDataBlocks()
         }
 
         customTypesTable[dataName] = typeInfo;
+        ImportedDataBlocksTable[dataName] = typeInfo;
         auto dataSym = std::make_shared<SymbolInfo>();
         dataSym->isExportable = true;
         dataSym->members = symMembers;

@@ -39,7 +39,7 @@ void IRGenerator::declareExternalSeals()
     }
 }
 
-void IRGenerator::declareImportedComponents()
+void IRGenerator::declareImportedTypes()
 {
     std::cout << "Registering imported component type" << "\n";
 
@@ -61,5 +61,37 @@ void IRGenerator::declareImportedComponents()
             return;
 
         structTy->setBody(fieldTypes, false);
+    }
+
+    for (const auto &dataTypesPair : semantics.ImportedDataBlocksTable)
+    {
+        const auto &[dataName, typeInfo] = dataTypesPair;
+        const auto &members = typeInfo->members;
+
+        std::vector<llvm::Type *> fieldTypes;
+        for (const auto &memberPair : members)
+        {
+            const auto &[memberName, memInfo] = memberPair;
+            llvm::Type *fieldType = getLLVMType(memInfo->type);
+            fieldTypes.push_back(fieldType);
+        }
+
+        auto *structTy = llvm::cast<llvm::StructType>(llvmCustomTypes[dataName]);
+        if (!structTy->isOpaque())
+            return;
+
+        structTy->setBody(fieldTypes, false);
+    }
+}
+
+void IRGenerator::declareCustomTypes()
+{
+    std::cout << "Declaring all custom types" << "\n";
+
+    for (const auto &[name, info] : semantics.customTypesTable)
+    {
+        auto typeIt = llvmCustomTypes.find(name);
+        if (typeIt == llvmCustomTypes.end())
+            llvmCustomTypes[name] = llvm::StructType::create(context, name);
     }
 }
