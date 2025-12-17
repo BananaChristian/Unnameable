@@ -153,7 +153,7 @@ void Semantics::importSeals()
 
 void Semantics::importComponents()
 {
-    std::cout << "Imported seals count: " << deserializer.importedSealTable.size() << "\n";
+    std::cout << "Imported components count: " << deserializer.importedComponentTable.size() << "\n";
 
     for (auto &compPair : deserializer.importedComponentTable)
     {
@@ -172,7 +172,7 @@ void Semantics::importComponents()
         for (auto &memPair : memberMap)
         {
             const std::string &memberName = memPair.first;
-            std::cout << "IMPORTED MEMBER NAME: " << memberName << "\n";
+            std::cout << "IMPORTED COMPONENT MEMBER NAME: " << memberName << "\n";
 
             ImportedSymbolInfo &info = memPair.second;
 
@@ -207,6 +207,60 @@ void Semantics::importComponents()
     }
 }
 
+void Semantics::importDataBlocks()
+{
+    std::cout << "Imported data blocks count: " << deserializer.importedDataTable.size();
+
+    for (const auto &dataPair : deserializer.importedDataTable)
+    {
+        const std::string &dataName = dataPair.first;
+        std::cout << "IMPORTED DATA NAME: " << dataName << "\n";
+
+        auto typeInfo = std::make_shared<CustomTypeInfo>();
+
+        typeInfo->typeName = dataName;
+        typeInfo->type = ResolvedType{DataType::DATABLOCK, dataName};
+
+        std::unordered_map<std::string, std::shared_ptr<MemberInfo>> symMembers;
+        auto &memberMap = dataPair.second;
+
+        for (const auto &memPair : memberMap)
+        {
+            const std::string &memberName = memPair.first;
+            std::cout << "IMPORTED DATA MEMBER NAME: " << memberName << "\n";
+
+            const ImportedSymbolInfo &info = memPair.second;
+
+            // Create the member inside the member info
+            auto memInfo = std::make_shared<MemberInfo>();
+            memInfo->type = convertImportedTypetoResolvedType(info.type);
+            memInfo->returnType = convertImportedTypetoResolvedType(info.returnType);
+            memInfo->paramTypes = convertImportedParamstoResolvedParams(info.paramTypes);
+            memInfo->memberName = memberName;
+            memInfo->isNullable = info.isNullable;
+            memInfo->isExportable = true;
+            memInfo->memberIndex = info.memberIndex;
+            memInfo->storage = convertImportedStorageTypetoStorageType(info.storage);
+            memInfo->isDeclared = true;
+            memInfo->isConstant = info.isConstant;
+            memInfo->isPointer = info.isPointer;
+            memInfo->isRef = info.isRef;
+            memInfo->isMutable = info.isMutable;
+
+            typeInfo->members[memberName] = memInfo;
+            symMembers[memberName] = memInfo;
+        }
+
+        customTypesTable[dataName] = typeInfo;
+        auto dataSym = std::make_shared<SymbolInfo>();
+        dataSym->isExportable = true;
+        dataSym->members = symMembers;
+        dataSym->type = ResolvedType{DataType::DATABLOCK, dataName};
+
+        symbolTable[0][dataName] = dataSym;
+    }
+}
+
 void Semantics::walkImportStatement(Node *node)
 {
     auto import = dynamic_cast<ImportStatement *>(node);
@@ -217,4 +271,6 @@ void Semantics::walkImportStatement(Node *node)
     importSeals();
     // Import components
     importComponents();
+    // Import data
+    importDataBlocks();
 }

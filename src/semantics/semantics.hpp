@@ -413,6 +413,7 @@ private:
 
     void importSeals();
     void importComponents();
+    void importDataBlocks();
 
     bool isGlobalScope();
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
