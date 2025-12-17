@@ -118,6 +118,7 @@ void Deserializer::loadStub(const std::string &resolved)
 
     stub = readStubTable(in);
 
+    // Seal reading
     for (const auto &seal : stub.seals)
     {
         std::cout << "DESERIALIZER IMPORT SEAL NAME: " << seal.sealName << "\n";
@@ -131,6 +132,7 @@ void Deserializer::loadStub(const std::string &resolved)
         }
     }
 
+    // Component reading
     for (const auto &component : stub.components)
     {
         std::cout << "DESERIALIZER COMPONENT NAME: " << component.componentName << "\n";
@@ -159,6 +161,27 @@ void Deserializer::loadStub(const std::string &resolved)
             compMap.emplace(method.methodName, std::move(info));
         }
     }
+
+    // Data reading
+    for (const auto &data : stub.data)
+    {
+        std::cout << "DATA BLOCK NAME: " << data.dataName << "\n";
+        auto &dataMap = importedDataTable[data.dataName];
+        for (const auto &member : data.members)
+        {
+            ImportedSymbolInfo info;
+            info.type = member.type;
+            info.memberIndex = member.memberIndex;
+            info.isNullable = member.isNullable;
+            info.isMutable = member.isMutable;
+            info.isConstant = member.isConstant;
+            info.isRef = member.isRef;
+            info.isPointer = member.isPointer;
+            info.storage = member.storage;
+
+            dataMap.emplace(member.memberName, std::move(info));
+        }
+    }
 }
 
 void Deserializer::readOrFail(std::istream &in, void *dst, size_t size, const std::string &context)
@@ -185,7 +208,6 @@ void Deserializer::readOrFail(std::istream &in, void *dst, size_t size, const st
         throw std::runtime_error("Unexpected EOF while reading stub");
     }
 }
-
 
 uint8_t Deserializer::read_u8(std::istream &in, const std::string &context)
 {
@@ -248,7 +270,6 @@ std::string Deserializer::readString(std::istream &in, const std::string &contex
     return s;
 }
 
-
 ImportedType Deserializer::readImportedType(std::istream &in)
 {
     ImportedType t;
@@ -294,6 +315,7 @@ std::vector<std::pair<ImportedType, std::string>> Deserializer::readParamTypes(s
     return params;
 }
 
+//____________________COMPONENT MEMBERS READING_____________________
 RawComponentMember Deserializer::readComponentMember(std::istream &in)
 {
     std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting Component Member read.\n";
@@ -324,13 +346,34 @@ RawComponentMethod Deserializer::readComponentMethod(std::istream &in)
     return method;
 }
 
+//__________________DATA MEMBER READING_______________
+RawDataMember Deserializer::readDataMember(std::istream &in)
+{
+    std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting Data Member read.\n";
+    RawDataMember member;
+    member.memberName = readString(in, "Data Name");
+    member.type = readImportedType(in);
+    member.memberIndex = read_s32(in, "Member Index");
+    member.isNullable = read_u8(in, "Member Flag: isNullable");
+    member.isMutable = read_u8(in, "Member Flag: isMutable");
+    member.isConstant = read_u8(in, "Member Flag: isConstant");
+    member.isRef = read_u8(in, "Member Flag: isRef");
+    member.isPointer = read_u8(in, "Member Flag: isPointer");
+    member.storage = static_cast<ImportedStorageType>(read_u32(in, "Member Storage Type"));
+    std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished Data Member read.\n";
+
+    return member;
+}
+
+//___________________STUB TABLE READ___________________
+
 RawStubTable Deserializer::readStubTable(std::istream &in)
 {
     RawStubTable table;
     std::cout << COLOR_BOLD << "\n--- STARTING STUB TABLE DESERIALIZATION ---\n"
               << COLOR_RESET;
 
-    //HEADER
+    // HEADER
     uint32_t magic = read_u32(in, "Header: Magic Number (STUB)");
     if (magic != STUB_MAGIC)
     {
@@ -350,7 +393,7 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
     uint16_t sectionCount = read_u16(in, "Header: Section Count");
     std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Expecting " << sectionCount << " sections.\n";
 
-    //SECTIONS
+    // SECTIONS
     for (uint16_t s = 0; s < sectionCount; ++s)
     {
         std::cout << COLOR_BOLD << "\n--- READING SECTION " << s + 1 << " / " << sectionCount << " ---\n"
@@ -370,7 +413,6 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
                 std::cout << COLOR_YELLOW << "[DEBUG]" << COLOR_RESET << " Reading Seal " << i + 1 << " of " << entryCount << "\n";
                 RawSealTable seal;
 
-                
                 seal.sealName = readString(in, "Seal Table Name");
 
                 uint32_t fnCount = read_u32(in, "Seal Function Count");
@@ -423,6 +465,29 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
                 }
 
                 table.components.push_back(std::move(comp));
+            }
+            break;
+        }
+        case ImportedStubSection::DATA:
+        {
+            table.data.reserve(entryCount);
+
+            for (uint32_t i = 0; i < entryCount; i++)
+            {
+                std::cout << COLOR_YELLOW << "[DEBUG]" << COLOR_RESET << " Reading Data " << i + 1 << " of " << entryCount << "\n";
+                RawDataTable data;
+                data.dataName = readString(in, "Data Table Name");
+
+                // Members
+                uint32_t memberCount = read_u32(in, "Data Member Count");
+                data.members.reserve(memberCount);
+                std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Component '" << data.dataName << "' expects " << memberCount << " members.\n";
+                for (uint32_t m = 0; m < memberCount; ++m)
+                {
+                    data.members.push_back(readDataMember(in));
+                }
+
+                table.data.push_back(std::move(data));
             }
             break;
         }
