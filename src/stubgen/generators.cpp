@@ -123,15 +123,13 @@ void StubGen::generateComponentStatement(Node *node)
     auto memMap = compSym->members;
     for (const auto &[memName, memInfo] : memMap)
     {
-        if (!memInfo->node)
-            continue;
-        // If the node is a function we shall use componentMtds as this is a method
-        if (auto fnExpr = dynamic_cast<FunctionExpression *>(memInfo->node))
+        if (memInfo->isFunction)
         {
             ComponentMethod method;
             method.methodName = memName;
             method.paramTypes = memInfo->paramTypes;
             method.returnType = memInfo->returnType;
+            method.isFunction = memInfo->isFunction;
 
             componentTable.methods.push_back(method);
         }

@@ -512,6 +512,9 @@ void Layout::registerImportedTypes()
         for (const auto &memberPair : members)
         {
             const auto &[memberName, memInfo] = memberPair;
+            if (memInfo->isFunction)
+                continue;
+            
             llvm::Type *fieldType = getLLVMType(memInfo->type);
             fieldTypes.push_back(fieldType);
         }

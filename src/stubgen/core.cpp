@@ -130,6 +130,7 @@ void StubGen::serializeComponentMethod(std::ostream &out, const ComponentMethod 
     writeString(out, method.methodName);
     serializeResolvedType(out, method.returnType);
     serializeParamTypes(out, method.paramTypes);
+    write_u8(out, method.isFunction);
 }
 
 void StubGen::serializeComponentMember(std::ostream &out, const ComponentMember &member)

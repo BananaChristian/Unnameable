@@ -191,6 +191,7 @@ void Semantics::importComponents()
             memInfo->isPointer = info.isPointer;
             memInfo->isRef = info.isRef;
             memInfo->isMutable = info.isMutable;
+            memInfo->isFunction = info.isFunction;
 
             typeInfo->members[memberName] = memInfo;
             symMembers[memberName] = memInfo;

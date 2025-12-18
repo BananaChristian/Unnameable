@@ -83,6 +83,7 @@ struct MemberInfo
     bool isConstant = false;
     bool isInitialised = false;
     // Function flags
+    bool isFunction=false;
     bool isDeclared = false;
     bool isDefined = false;
 

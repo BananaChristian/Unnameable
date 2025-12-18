@@ -594,6 +594,7 @@ void Semantics::walkBehaviorStatement(Node *node)
             funcInfo->paramTypes = declSym->paramTypes;
             funcInfo->returnType = declSym->returnType;
             funcInfo->isExportable = declSym->isExportable;
+            funcInfo->isFunction=true;
             funcInfo->isDeclared = true;
             funcInfo->node = funcStmt;
 
@@ -1011,6 +1012,7 @@ void Semantics::walkComponentStatement(Node *node)
                 memberCopy->isMutable = info->isMutable;
                 memberCopy->isConstant = info->isConstant;
                 memberCopy->isInitialised = info->isInitialised;
+                memberCopy->isFunction=info->isFunction;
                 memberCopy->paramTypes = info->paramTypes;
                 memberCopy->isDefined = true;
 
@@ -1076,6 +1078,7 @@ void Semantics::walkComponentStatement(Node *node)
                     // Copy only the requested member
                     std::shared_ptr<MemberInfo> memberCopy = memIt->second;
                     memberCopy->memberIndex = currentMemberIndex++;
+                    memberCopy->isFunction=memIt->second->isFunction;
                     members[memberName] = memberCopy;
 
                     auto memSym = std::make_shared<SymbolInfo>();
@@ -1183,6 +1186,7 @@ void Semantics::walkComponentStatement(Node *node)
                 memInfo->isNullable = metSym->isNullable;
                 memInfo->isMutable = metSym->isMutable;
                 memInfo->isExportable = metSym->isExportable;
+                memInfo->isFunction=true;
                 memInfo->isDefined = true;
                 memInfo->paramTypes = metSym->paramTypes;
                 memInfo->node = funcExpr;

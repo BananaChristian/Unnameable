@@ -157,6 +157,7 @@ void Deserializer::loadStub(const std::string &resolved)
             ImportedSymbolInfo info;
             info.returnType = method.returnType;
             info.paramTypes = method.paramTypes;
+            info.isFunction = method.isFunction;
 
             compMap.emplace(method.methodName, std::move(info));
         }
@@ -341,6 +342,7 @@ RawComponentMethod Deserializer::readComponentMethod(std::istream &in)
     method.methodName = readString(in, "Method Name");
     method.returnType = readImportedType(in);
     method.paramTypes = readParamTypes(in);
+    method.isFunction = read_u8(in, "isFunction");
     std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished Component Method read.\n";
 
     return method;
@@ -406,6 +408,10 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
         {
         case ImportedStubSection::SEALS:
         {
+            if (entryCount > 1000000)
+            { // No stub should have 1 million entries
+                throw std::runtime_error("Stub corruption detected: absurdly high entry count (" + std::to_string(entryCount) + ")");
+            }
             table.seals.reserve(entryCount);
 
             for (uint32_t i = 0; i < entryCount; ++i)
@@ -438,6 +444,10 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
 
         case ImportedStubSection::COMPONENTS:
         {
+            if (entryCount > 1000000)
+            {
+                throw std::runtime_error("Stub corruption detected: absurdly high entry count (" + std::to_string(entryCount) + ")");
+            }
             table.components.reserve(entryCount);
 
             for (uint32_t i = 0; i < entryCount; ++i)
@@ -464,12 +474,17 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
                     comp.methods.push_back(readComponentMethod(in));
                 }
 
+                std::cout << "DEBUG: Finishing Component " << i + 1 << " at Pos: " << in.tellg() << "\n";
                 table.components.push_back(std::move(comp));
             }
             break;
         }
         case ImportedStubSection::DATA:
         {
+            if (entryCount > 1000000)
+            { 
+                throw std::runtime_error("Stub corruption detected: absurdly high entry count (" + std::to_string(entryCount) + ")");
+            }
             table.data.reserve(entryCount);
 
             for (uint32_t i = 0; i < entryCount; i++)

@@ -45,6 +45,7 @@ struct ComponentMethod
     std::string methodName;
     ResolvedType returnType;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+    bool isFunction=false;
 };
 
 struct ComponentTable

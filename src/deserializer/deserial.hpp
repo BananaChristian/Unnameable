@@ -72,6 +72,7 @@ struct ImportedSymbolInfo
     bool isRef = false;
     bool isPointer = false;
     ImportedStorageType storage;
+    bool isFunction = false;
 };
 
 struct RawSealFunction
@@ -105,6 +106,7 @@ struct RawComponentMethod
     std::string methodName;
     ImportedType returnType;
     std::vector<std::pair<ImportedType, std::string>> paramTypes;
+    bool isFunction=false;
 };
 
 struct RawComponentTable

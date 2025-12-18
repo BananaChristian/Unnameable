@@ -25,6 +25,10 @@ IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     registerExpressionGeneratorFunctions();
     registerAddressGeneratorFunctions();
 
+    declareCustomTypes();
+    declareImportedTypes();
+    declareImportedSeals();
+
     // Declare external allocator functions so IR can call them
     llvm::FunctionType *initType = llvm::FunctionType::get(
         llvm::Type::getVoidTy(context),    // returns void
@@ -238,6 +242,23 @@ void IRGenerator::generateLetStatement(Node *node)
 
         // scalar / normal type
         llvm::Type *varTy = getLLVMType(sym->type);
+        if (varTy->isStructTy() && llvm::cast<llvm::StructType>(varTy)->isOpaque())
+        {
+            throw std::runtime_error("Logical Error: Trying to allocate Opaque type '" +
+                                     sym->type.resolvedName + "'. Did you forget to set the body?");
+        }
+        printf("[DEBUG] Type Context: %p\n", (void *)&varTy->getContext());
+        printf("[DEBUG] Module Context: %p\n", (void *)&module->getContext());
+        printf("[DEBUG] Builder Context: %p\n", (void *)&funcBuilder.getContext());
+
+        if (&varTy->getContext() != &module->getContext())
+        {
+            printf("[CRITICAL] CONTEXT MISMATCH DETECTED!\n");
+        }
+
+        varTy->print(llvm::errs());
+        llvm::errs() << "\n";
+        
         storage = funcBuilder.CreateAlloca(varTy, nullptr, letName);
         // store initial value if we have one
         if (initVal)

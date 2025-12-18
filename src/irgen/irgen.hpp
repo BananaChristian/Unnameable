@@ -167,7 +167,7 @@ private:
     AddressAndPendingFree generateIdentifierAddress(Node *node);
     void generateStatement(Node *node);
     void shoutRuntime(llvm::Value *val, ResolvedType type);
-    void declareExternalSeals();
+    void declareImportedSeals();
     void declareImportedTypes();
     void declareCustomTypes();
     char *const_unnitoa(__int128 val, char *buf);
@@ -179,6 +179,8 @@ private:
     bool isSignedInteger(DataType dt);
     bool currentBlockIsTerminated();
     unsigned getIntegerBitWidth(DataType dt);
+
+    void finalizeTypeBody(const std::string& typeName, const std::shared_ptr<CustomTypeInfo>& typeInfo, std::string category);
 
     llvm::GlobalVariable *createGlobalArrayConstant(llvm::Constant *constantArray);
 

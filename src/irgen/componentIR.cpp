@@ -13,32 +13,33 @@ void IRGenerator::generateDataStatement(Node *node)
     auto &meta = *it->second;
     std::string blockName = meta.type.resolvedName;
 
-    // --- Build LLVM struct type  ---
-    std::vector<llvm::Type *> memberTypes;
-    for (auto &pair : meta.members)
+    // Get the struct (Should already be created by declareCustomTypes)
+    llvm::StructType *structTy = llvmCustomTypes[blockName];
+    if (!structTy)
     {
-        std::shared_ptr<MemberInfo> info = pair.second;
-        llvm::Type *ty = info->isHeap ? getLLVMType(info->type)->getPointerTo() : getLLVMType(info->type);
-        if (!ty)
-            throw std::runtime_error("Unknown member type for " + pair.first);
-        memberTypes.push_back(ty);
+        // Fallback if not pre-declared
+        structTy = llvm::StructType::create(context, blockName);
+        llvmCustomTypes[blockName] = structTy;
     }
 
-    llvm::StructType *structTy = llvm::StructType::create(context, memberTypes, blockName);
-    meta.llvmType = structTy;
-    llvmCustomTypes[blockName] = structTy;
+    if (structTy->isOpaque())
+    {
+        std::vector<llvm::Type *> memberTypes;
 
-    // Global type placeholder (zeroinit)
-    llvm::Constant *initStruct = llvm::Constant::getNullValue(structTy);
-    llvm::GlobalVariable *gv = new llvm::GlobalVariable(
-        *module,
-        structTy,
-        false,
-        llvm::GlobalValue::ExternalLinkage,
-        initStruct,
-        blockName);
-    llvmGlobalDataBlocks[blockName] = gv;
-    meta.llvmValue = gv;
+        // Create a temporary vector to hold types in the correct order
+        memberTypes.resize(meta.members.size());
+
+        for (auto &pair : meta.members)
+        {
+            std::shared_ptr<MemberInfo> info = pair.second;
+            llvm::Type *ty = info->isHeap ? getLLVMType(info->type)->getPointerTo() : getLLVMType(info->type);
+            memberTypes[info->memberIndex] = ty;
+        }
+        structTy->setBody(memberTypes);
+    }
+    meta.llvmType = structTy;
+
+    std::cout << "[IRGEN] Defined Type Body for: " << blockName << "\n";
 }
 
 llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
@@ -56,7 +57,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
         throw std::runtime_error("Cannot create an instance for '" + instName + "' in the global scope");
 
     // single stack slot to build the struct in
-    llvm::Value *instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, instName + "_inst");
+    llvm::Value *instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, instName + "inst");
 
     // default-initialize each member directly into instancePtr
     auto typeInfoIt = semantics.customTypesTable.find(instName);
@@ -64,26 +65,33 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
         throw std::runtime_error("Missing custom type info for " + instName);
     auto &typeInfo = typeInfoIt->second;
 
-    for (auto &kv : typeInfo->members)
+    for (auto const &[memberName, info] : typeInfo->members)
     {
-        const std::string &memberName = kv.first;
-        auto &info = kv.second;
-        unsigned idx = info->memberIndex; // must be set during semantic phase
+        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, instancePtr, info->memberIndex, memberName);
 
-        llvm::Value *memberPtr = funcBuilder.CreateStructGEP(structTy, instancePtr, idx, memberName);
-        if (info->isHeap)
+        llvm::Value *defaultVal = nullptr;
+        auto letStmt = dynamic_cast<LetStatement *>(info->node);
+        if (letStmt && letStmt->value)
         {
-            llvm::PointerType *pTy = getLLVMType(info->type)->getPointerTo();
-            funcBuilder.CreateStore(llvm::ConstantPointerNull::get(pTy), memberPtr);
+            // If 'int j = 1777' exists, generate that '1777'
+            defaultVal = generateExpression(letStmt->value.get());
         }
         else
         {
-            llvm::Type *elemTy = getLLVMType(info->type);
-            funcBuilder.CreateStore(llvm::Constant::getNullValue(elemTy), memberPtr);
+            // Otherwise, fallback to zero/null
+            if (info->isHeap)
+            {
+                defaultVal = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(getLLVMType(info->type)->getPointerTo()));
+            }
+            else
+            {
+                defaultVal = llvm::Constant::getNullValue(getLLVMType(info->type));
+            }
         }
+        funcBuilder.CreateStore(defaultVal, memberPtr);
     }
 
-    // apply explicit initializers from instance expression
+    // Apply user initializers
     for (auto &fieldStmt : instExpr->fields)
     {
         auto assign = dynamic_cast<AssignmentStatement *>(fieldStmt.get());
@@ -105,9 +113,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
         funcBuilder.CreateStore(rhsVal, fieldPtr);
     }
 
-    // load struct value and return (value semantics)
-    llvm::Value *loaded = funcBuilder.CreateLoad(structTy, instancePtr, instName + "_val");
-    return loaded;
+    return funcBuilder.CreateLoad(structTy, instancePtr, instName + "_val");
 }
 
 void IRGenerator::generateInitFunction(Node *node, ComponentStatement *component)
@@ -375,8 +381,6 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node)
             throw std::runtime_error("Function '" + callName + "' does not exist in seal '" + instanceName + "'");
         }
 
-        declareExternalSeals();
-
         call->function_identifier->expression.TokenLiteral = instanceName + "_" + callName;
         call->function_identifier->token.TokenLiteral = instanceName + "_" + callName;
 
@@ -472,17 +476,31 @@ void IRGenerator::generateComponentStatement(Node *node)
     const std::string compName = compStmt->component_name->expression.TokenLiteral;
     currentComponent = compStmt;
 
-    // STRUCT CREATION
-    llvm::StructType *structTy = llvm::StructType::create(context, compName);
+    llvm::StructType *structTy = llvmCustomTypes[compName];
+    if (!structTy)
+    {
+        // Fallback for safety, though declareCustomTypes should have handled this
+        structTy = llvm::StructType::create(context, compName);
+        llvmCustomTypes[compName] = structTy;
+    }
+
     componentTypes[compName] = structTy;
-    llvmCustomTypes[compName] = structTy;
     sym->llvmType = structTy;
 
     std::vector<llvm::Type *> memberTypes;
     std::vector<FunctionExpression *> functionExpressions;
     std::unordered_map<std::string, unsigned> memberIndexMap;
 
-    unsigned index = 0;
+    size_t dataMemberCount = 0;
+    for (auto const &[name, info] : sym->members)
+    {
+        if (!info->isFunction)
+        {
+            dataMemberCount++;
+        }
+    }
+    memberTypes.resize(dataMemberCount);
+
     for (const auto &[memberName, info] : sym->members)
     {
         if (!info->node)
@@ -490,22 +508,24 @@ void IRGenerator::generateComponentStatement(Node *node)
 
         if (auto *funcExpr = dynamic_cast<FunctionExpression *>(info->node))
         {
-            // Store the functions for later generation when the struct body has been generated
             functionExpressions.push_back(funcExpr);
             continue;
         }
 
-        // Handle normal data member
+        // Handle data member
         llvm::Type *memberTy = getLLVMType(info->type);
         if (!memberTy)
-            throw std::runtime_error("Unknown LLVM type for member '" + memberName + "' in component " + compName);
+            throw std::runtime_error("Unknown LLVM type for member '" + memberName + "'");
 
-        memberTypes.push_back(memberTy);
-        memberIndexMap[memberName] = index++;
+        // Use the semantic index to place it correctly in the struct
+        memberTypes[info->memberIndex] = memberTy;
     }
 
-    // Finalize struct definition
-    structTy->setBody(memberTypes);
+    if (structTy->isOpaque())
+    {
+        structTy->setBody(memberTypes);
+        std::cout << "[IRGEN] Finalized body for component: " << compName << "\n";
+    }
 
     for (const auto &func : functionExpressions)
     {
