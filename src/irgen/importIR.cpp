@@ -60,13 +60,15 @@ void IRGenerator::finalizeTypeBody(const std::string &typeName, const std::share
     // Collect and Sort Members
     // Usage of the map will ensure indices are sorted 0, 1, 2... and prevents gaps.
     std::map<int, std::pair<std::string, llvm::Type *>> layoutMap;
+    std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>> methods;
 
     std::cout << "  [Step A] Resolving Members:\n";
     for (const auto &[mName, mInfo] : typeInfo->members)
     {
         if (mInfo->isFunction)
         {
-            std::cout << "    - (Func) " << mName << " [Skipped]\n";
+            std::cout << "    - (Func) " << mName << " [Routed to method declaration storage]\n";
+            methods.push_back({mName, mInfo});
             continue;
         }
 
@@ -101,6 +103,17 @@ void IRGenerator::finalizeTypeBody(const std::string &typeName, const std::share
     // Commit to LLVM
     structTy->setBody(fieldTypes, false);
     std::cout << "  [Step C] " << typeName << " body committed to LLVM context.\n";
+
+    // Generate the component methods
+    for (const auto &methodPair : methods)
+    {
+        declareImportedComponentMethods(methodPair.first, typeName, methodPair.second);
+    }
+
+    componentTypes[typeName] = structTy;
+
+    std::cout << "  [Step D] " << typeName << " registered in componentTypes map.\n";
+    // TODO: Add imported init logic
 }
 
 void IRGenerator::declareImportedTypes()
@@ -147,4 +160,82 @@ void IRGenerator::declareCustomTypes()
             std::cout << "  [.] Already Exists: " << name << "\n";
         }
     }
+}
+
+void IRGenerator::declareImportedComponentMethods(const std::string &funcName, const std::string &typeName, const std::shared_ptr<MemberInfo> &memberInfo)
+{
+    std::cout << "\n[METHOD IMPORT] >>> Starting Declaration: " << typeName << "::" << funcName << " <<<\n";
+
+    // Name Mangling
+    std::string methodName = typeName + "_" + funcName;
+    std::cout << "  [DEBUG] Mangled Name: " << methodName << "\n";
+
+    // The 'self' Pointer (This pointer)
+    auto typeIt = llvmCustomTypes.find(typeName);
+    if (typeIt == llvmCustomTypes.end())
+    {
+        std::cerr << "  [CRITICAL] Could not find base type '" << typeName << "' for method declaration!\n";
+        return;
+    }
+
+    llvm::Type *thisPtrType = typeIt->second->getPointerTo();
+    std::vector<llvm::Type *> paramTypes = {thisPtrType};
+    std::cout << "  [DEBUG] Added 'self' parameter as pointer to: " << typeName << "\n";
+
+    // User Parameters
+    auto params = memberInfo->paramTypes;
+    for (size_t i = 0; i < params.size(); ++i)
+    {
+        llvm::Type *pTy = getLLVMType(params[i].first);
+        if (!pTy)
+        {
+            std::cerr << "  [ERROR] Failed to resolve type for param " << i << " (" << params[i].second << ")\n";
+            continue;
+        }
+        paramTypes.push_back(pTy);
+
+        std::string tyStr;
+        llvm::raw_string_ostream rso(tyStr);
+        pTy->print(rso);
+        std::cout << "  [DEBUG] Param " << i << " [" << params[i].second << "] resolved to: " << tyStr << "\n";
+    }
+
+    // Return Type Investigation
+    ResolvedType retType = memberInfo->returnType;
+    std::cout << "  [DEBUG] Metadata claims Return Type: " << retType.resolvedName
+              << " (Kind: " << (int)retType.kind << ")\n";
+
+    llvm::Type *llvmRetTy = lowerFunctionType(retType);
+
+    // Print the actual LLVM type to catch return type discrepancy
+    std::string retTyStr;
+    llvm::raw_string_ostream rsoRet(retTyStr);
+    llvmRetTy->print(rsoRet);
+    std::cout << "  [DEBUG] lowerFunctionType result: " << retTyStr << "\n";
+
+    // Function Creation
+    llvm::FunctionType *fnType = llvm::FunctionType::get(llvmRetTy, paramTypes, false);
+
+    // Check if function already exists in module to avoid symbol collisions
+    if (module->getFunction(methodName))
+    {
+        std::cout << "  [WARN] Function " << methodName << " already declared in module. Skipping creation.\n";
+        return;
+    }
+
+    llvm::Function *declaredfn = llvm::Function::Create(
+        fnType,
+        llvm::Function::ExternalLinkage,
+        methodName,
+        module.get());
+
+    // Name the 'self' parameter in the IR
+    if (declaredfn->arg_size() > 0)
+    {
+        auto argIt = declaredfn->arg_begin();
+        argIt->setName(typeName + ".self");
+        std::cout << "  [DEBUG] Named arg(0) as: " << typeName << ".self\n";
+    }
+
+    std::cout << "[METHOD IMPORT] <<< Declaration Complete >>>\n\n";
 }

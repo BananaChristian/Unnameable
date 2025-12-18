@@ -794,6 +794,12 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType, const std::st
     if (varSymbol)
     {
         auto varType = varSymbol->type;
+        // Block cases where the parentName is an actual type too
+        if (varType.resolvedName == parentName)
+        {
+            logSemanticErrors("Must instantiate type '" + varType.resolvedName + "' to access its members", infixExpr->left_operand->expression.line, infixExpr->left_operand->expression.column);
+            return ResolvedType{DataType::UNKNOWN, "unknown"};
+        }
 
         if (operatorType == TokenType::FULLSTOP)
         {

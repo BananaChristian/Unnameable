@@ -192,6 +192,10 @@ void Semantics::importComponents()
             memInfo->isRef = info.isRef;
             memInfo->isMutable = info.isMutable;
             memInfo->isFunction = info.isFunction;
+            if (info.isFunction)
+            {
+                memInfo->isDeclared = true; // By default if it is a function and it has made it this far then it was declared
+            }
 
             typeInfo->members[memberName] = memInfo;
             symMembers[memberName] = memInfo;

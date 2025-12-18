@@ -10,6 +10,11 @@ Sentinel::Sentinel(Semantics &semantics) : semantics(semantics)
 
 void Sentinel::sentinelDriver(Node *node)
 {
+    if (!node)
+    {
+        return;
+    }
+
     auto sentinelIt = sentinelFnsMap.find(typeid(*node));
     if (sentinelIt == sentinelFnsMap.end())
     {

@@ -594,7 +594,7 @@ void Semantics::walkBehaviorStatement(Node *node)
             funcInfo->paramTypes = declSym->paramTypes;
             funcInfo->returnType = declSym->returnType;
             funcInfo->isExportable = declSym->isExportable;
-            funcInfo->isFunction=true;
+            funcInfo->isFunction = true;
             funcInfo->isDeclared = true;
             funcInfo->node = funcStmt;
 
@@ -1012,8 +1012,10 @@ void Semantics::walkComponentStatement(Node *node)
                 memberCopy->isMutable = info->isMutable;
                 memberCopy->isConstant = info->isConstant;
                 memberCopy->isInitialised = info->isInitialised;
-                memberCopy->isFunction=info->isFunction;
+                memberCopy->isFunction = info->isFunction;
                 memberCopy->paramTypes = info->paramTypes;
+                memberCopy->returnType = info->returnType;
+                memberCopy->isDeclared = info->isDeclared;
                 memberCopy->isDefined = true;
 
                 memberCopy->node = info->node;
@@ -1028,6 +1030,8 @@ void Semantics::walkComponentStatement(Node *node)
                 memSym->isInitialized = info->isInitialised;
                 memSym->memberIndex = memberCopy->memberIndex;
                 memSym->paramTypes = info->paramTypes;
+                memSym->returnType = info->returnType;
+                memSym->isDeclaration = info->isDeclared;
                 memSym->isDefined = true;
                 currentScope[name] = memSym;
 
@@ -1078,7 +1082,9 @@ void Semantics::walkComponentStatement(Node *node)
                     // Copy only the requested member
                     std::shared_ptr<MemberInfo> memberCopy = memIt->second;
                     memberCopy->memberIndex = currentMemberIndex++;
-                    memberCopy->isFunction=memIt->second->isFunction;
+                    memberCopy->isFunction = memIt->second->isFunction;
+                    memberCopy->returnType = memIt->second->returnType;
+                    memberCopy->isDeclared = memIt->second->isDeclared;
                     members[memberName] = memberCopy;
 
                     auto memSym = std::make_shared<SymbolInfo>();
@@ -1088,6 +1094,7 @@ void Semantics::walkComponentStatement(Node *node)
                     memSym->isConstant = memIt->second->isConstant;
                     memSym->isInitialized = memIt->second->isInitialised;
                     memSym->memberIndex = memberCopy->memberIndex;
+                    memSym->returnType = memberCopy->returnType;
                     memSym->paramTypes = memberCopy->paramTypes;
                     memSym->isDefined = true;
                     symbolTable.back()[memberName] = memSym;
@@ -1186,8 +1193,10 @@ void Semantics::walkComponentStatement(Node *node)
                 memInfo->isNullable = metSym->isNullable;
                 memInfo->isMutable = metSym->isMutable;
                 memInfo->isExportable = metSym->isExportable;
-                memInfo->isFunction=true;
+                memInfo->returnType = metSym->returnType;
+                memInfo->isFunction = true;
                 memInfo->isDefined = true;
+                memInfo->isDeclared = true;
                 memInfo->paramTypes = metSym->paramTypes;
                 memInfo->node = funcExpr;
                 memInfo->typeNode = componentStmt;
@@ -1434,15 +1443,12 @@ void Semantics::walkMethodCallExpression(Node *node)
     // Walk the instance first to populate metaData for it
     walker(metCall->instance.get());
 
-    // Now retrieve instance metaData
-    auto instanceMetaIt = metaData.find(instanceIdent);
-    if (instanceMetaIt == metaData.end())
+    auto instanceSym = resolveSymbolInfo(instanceName);
+    if (!instanceSym)
     {
         logSemanticErrors("Unidentified instance name '" + instanceName + "'", line, col);
         return;
     }
-
-    auto instanceSym = instanceMetaIt->second;
 
     auto type = instanceSym->type;
     auto typeIt = customTypesTable.find(type.resolvedName);
@@ -1452,8 +1458,22 @@ void Semantics::walkMethodCallExpression(Node *node)
         return;
     }
 
+    // Check if the instance is the type itself and block such as it is leading to issues in LLVM
+    if (type.resolvedName == instanceName)
+    {
+        logSemanticErrors("Cannot use the actual type as the instance itself", line, col);
+        hasError = true;
+    }
+
     // Now check members on the component type
     auto &members = typeIt->second->members;
+    std::cout << "[SEMANTIC DEBUG] Searching for '" << funcName << "' in type '" << type.resolvedName << "'\n";
+    std::cout << "[SEMANTIC DEBUG] Current members in " << type.resolvedName << ": ";
+    for (auto const &[name, info] : members)
+    {
+        std::cout << name << " (isFunc: " << (info->isFunction ? "Y" : "N") << ") ";
+    }
+    std::cout << "\n";
     auto memIt = members.find(funcName);
     if (memIt == members.end())
     {
@@ -1463,10 +1483,10 @@ void Semantics::walkMethodCallExpression(Node *node)
 
     auto memInfo = memIt->second;
 
-    // Definition check
-    if (!memInfo->isDefined)
+    // Declaration check
+    if (!memInfo->isDeclared)
     {
-        logSemanticErrors("'" + funcName + "' was not defined anywhere", funcLine, funcCol);
+        logSemanticErrors("'" + funcName + "' was not declared anywhere", funcLine, funcCol);
         hasError = true;
     }
 

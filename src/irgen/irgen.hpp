@@ -181,6 +181,7 @@ private:
     unsigned getIntegerBitWidth(DataType dt);
 
     void finalizeTypeBody(const std::string& typeName, const std::shared_ptr<CustomTypeInfo>& typeInfo, std::string category);
+    void declareImportedComponentMethods(const std::string& funcName,const std::string &typeName, const std::shared_ptr<MemberInfo>&memberInfo);
 
     llvm::GlobalVariable *createGlobalArrayConstant(llvm::Constant *constantArray);
 

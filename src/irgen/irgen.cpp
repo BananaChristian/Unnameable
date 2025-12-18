@@ -258,7 +258,7 @@ void IRGenerator::generateLetStatement(Node *node)
 
         varTy->print(llvm::errs());
         llvm::errs() << "\n";
-        
+
         storage = funcBuilder.CreateAlloca(varTy, nullptr, letName);
         // store initial value if we have one
         if (initVal)
@@ -563,15 +563,25 @@ llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt, std::shar
     }
     else
     {
-        instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, letName + ".stack");
-        // Zero out the memory initially
-        funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
+        const llvm::DataLayout &DL = module->getDataLayout();
+
+        // Use Preferred Alignment 
+        llvm::Align finalAlign = DL.getPrefTypeAlign(structTy);
+
+        //Create the alloca and assign it to instancePtr
+        auto *allocaInst = funcBuilder.CreateAlloca(structTy, nullptr, letName + ".stack");
+        allocaInst->setAlignment(finalAlign);
+        instancePtr = allocaInst; //instancePtr is just the alloca result
+
+        //Use instancePtr for the store
+        auto *storeInst = funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
+        storeInst->setAlignment(finalAlign);
     }
 
     // Check if the initializer exists
     auto newExpr = letStmt->value ? dynamic_cast<NewComponentExpression *>(letStmt->value.get()) : nullptr;
 
-    // Apply default field initialozers(from the component definition)
+    // Apply default field initializers(from the component definition)
     auto compTypeIt = semantics.customTypesTable.find(sym->type.resolvedName);
     if (compTypeIt != semantics.customTypesTable.end())
     {

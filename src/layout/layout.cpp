@@ -298,6 +298,9 @@ void Layout::calculateComponentStatement(Node *node)
         return;
     }
 
+    if (compSym->hasError)
+        logPrestaticError("Semantic error detected", line, col);
+
     // Creating a component sketch
     std::vector<llvm::Type *> fieldTypes;
 
@@ -514,7 +517,7 @@ void Layout::registerImportedTypes()
             const auto &[memberName, memInfo] = memberPair;
             if (memInfo->isFunction)
                 continue;
-            
+
             llvm::Type *fieldType = getLLVMType(memInfo->type);
             fieldTypes.push_back(fieldType);
         }
