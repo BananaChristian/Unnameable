@@ -28,21 +28,22 @@ This project contains the core implementation of the Unnameable compiler written
 ---
 
 ## Basic Data Types
-
-- `short` — 16-bit signed integers
-- `ushort` — 16-bit usigned integers
-- `int` — 32-bit signed integers
-- `uint` — 32-bit unsigned integers
-- `long` — 64-bit signed integers
-- `ulong` — 64-bit unsigned integers
-- `extra` — 128-bit signed integers
-- `uextra` — 128-bit unsigned integers
+- `i8` — 8-bit signed integers
+- `u8` — 8-bit unsigned integers
+- `i16` — 16-bit signed integers
+- `u16` — 16-bit usigned integers
+- `i32` — 32-bit signed integers
+- `u32` — 32-bit unsigned integers
+- `i64` — 64-bit signed integers
+- `u64` — 64-bit unsigned integers
+- `i128` — 128-bit signed integers
+- `u128` — 128-bit unsigned integers
 
 - `bool` — true/false values
 - `string` — UTF-8 encoded sequence of characters.
   May contain Unicode text. (Basic support: no slicing or advanced string ops yet.)
 
-- `char` — 8 bit chars
+- `char8` — 8 bit chars
 - `char16` — 16 bit chars
 - `char32` — 32 bit chars
 
@@ -65,12 +66,12 @@ In unnameable
 ## Variables and type inference
 
 ```unn
-int x;
-uint x=8u;
-x = 2;
+i32 a;
+u32 x=8u32;
+a = 2;
 
-short y=8s;
-ushort m=8us;
+i16 y=8i16;
+u16 m=8u16;
 
 string name = "Iron";
 
@@ -80,7 +81,7 @@ double pi=3.14d;
 
 auto y = 42;  # Type inferred as int
 
-char test='A';
+char8 test='A';
 
 char16 test=u'A';
 
@@ -98,27 +99,27 @@ func greet(string? name): string?{
     return "Hello" + name;
 }
 
-int? x=null;
-int y=x;#This throws an error because x has a null value
+i32? x=null;
+i32 y=x;#This throws an error because x has a null value
 
 ##Correct code
-int? x=8;
-int y=x;#This will run since x now has a value
+i32? x=8;
+i32 y=x;#This will run since x now has a value
 ##
 
-int? a;
+i32? a;
 a=null;
 a+1;#This will error out since u cannot use null in operations
 
 #Usage of uninitialized variables is not allowed in the langauge
-int? c;
+i32? c;
 c+1; #BOOM error
 #OR
-int test;
-int y=test;#Error since 'test' is not initialized
+i32 test;
+i32 y=test;#Error since 'test' is not initialized
 
 #Coalescing
-int? x=null;
+i32? x=null;
 (x??1)+1;
 
 #NOTE: Coalescing only works if the the variable is nullable
@@ -137,7 +138,7 @@ func greet(string name): string {
     return "Hello" + name;
 }
 
-func test(arr[int] my_array): arr[int]{
+func test(arr[i32] my_array): arr[i32]{
     return [1,3];
 }
 
@@ -147,13 +148,13 @@ The return type must correspond to what is being returned
 Functions can also return pointers for the concrete types but void pointers arent allowed
 
 ```unn
-int x=100;
-func test():ptr int{
+i32 x=100;
+func test():ptr i32{
     ptr int y -> addr x;
     return y;
 }
 
-func main(): int{
+func main(): i32{
     test();
     return 0;
 }
@@ -168,7 +169,7 @@ If a seal is exportable then every function in that seal is exportable but you c
 ```
 seal Test{
     #add isn't seen globally and cannot be accessed globally
-    func add(int x,int y):int{
+    func add(i32 x,i32 y):i32{
         return x+y;
     }
 }
@@ -182,17 +183,17 @@ export seal Food{
 
 seal AnotherTest{
     #test is a private function
-    func test:int{
+    func test:i32{
         return 1;
     }
 
     #otherTest is an exportable function
-    export func otherTest:int{
+    export func otherTest:i32{
         return 1;
     }
 }
 
-func main:int{
+func main:i32{
     Test.add(10,10);#To the compiler this is Test_add
     return 0;
 }
@@ -220,17 +221,17 @@ generic MathOps(T){
     }
 }
 
-instantiate MathOps(int) as IntOps;
+instantiate MathOps(i32) as IntOps;
 
 ##
 Here the user is explicity telling the compiler the types he wants the compiler to generate
 Hence the functions generated will look something like this
 
-func IntOps_add(int a,int b): int{
+func IntOps_add(i32 a,i32 b): i32{
     return a+b;
 }
 
-func IntOps_subtract(int a,int b): int{
+func IntOps_subtract(i32 a,i32 b): i32{
     return a-b;
 }
 ##
@@ -260,14 +261,14 @@ generic MathMultiOps(T,M){
     }
 }
 
-instantiate MathMultiOps(int, float) as MultiOps;
+instantiate MathMultiOps(i32, float) as MultiOps;
 
 ##Here the function generated will be
 func MultiOps_add(int a,float b): float{
     return a+b;
 }
 
-func MultiOps_subtract(int a ,float b): float{
+func MultiOps_subtract(i32 a ,float b): float{
     return a-b;
 }
 ##
@@ -286,14 +287,14 @@ func main: int{
 Unnameable supports single dimensional and multidimensional arrays, The user must explicity list the length of the array if they dont provide initialize but if they initialize the array the compiler will just count the items inside
 The dimension count is what tells the compiler if an array is multideminsional or not for example
 ```
-arr[int] [2][3] matrix;
+arr[i32] [2][3] matrix;
 #The compiler will know that this a nested array of type arr[arr[int]] because it has 2 dimension
 ```
 The dimension count are those square brackets that follow the array type like in our example above they were two so those are two dimensions
 
 The compiler can also infer the dimensions of the array but only and only if the array has been initialized  for example
 ```
-arr[int] matrix = [
+arr[i32] matrix = [
         [10, 20, 30],
         [40, 50, 60]
 ];
@@ -301,25 +302,25 @@ arr[int] matrix = [
 ```
 Currently the compiler doesnt do bounds checking and all that so it cant know the length of the array so if you declare different lengths in a dimension and use something else in the array literal the compiler cannot guard you it will just take the length of the literal instead(I plan on finding a solution to this but for now it is what it is)  for example
 ```
-func main: int {
-    arr[int] [2] test=[5,6,7]; #The compiler doesnt warn u it will just use the literal length of 3 so be careful
+func main: i32 {
+    arr[i32] [2] test=[5,6,7]; #The compiler doesnt warn u it will just use the literal length of 3 so be careful
     
     return 0;
 }
 ```
-Dimension counts must match unlike lengths the dimension counts must match because here the compiler checks dimensions and it actually uses them to know the type of an array(arr[int] or arr[arr[int]]) so a dimension mismatch will cause errors for example
+Dimension counts must match unlike lengths the dimension counts must match because here the compiler checks dimensions and it actually uses them to know the type of an array(arr[i32] or arr[arr[i32]]) so a dimension mismatch will cause errors for example
 
 ```
-func main: int {
-    arr[int] [2][3] test=[5,6,7];#This will trigger a dimension mismatch and later a type error 
+func main: i32 {
+    arr[i32] [2][3] test=[5,6,7];#This will trigger a dimension mismatch and later a type error 
     return 0;
 }
 ```
 You cannot reassign to an immutable array so be careful there if you want to reassign you must use the `mut` keyword otherwise it will cause errors for example
 
 ```
-func main: int {
-    mut arr[int] [2] my_array=[5,6];
+func main: i32 {
+    mut arr[i32] [2] my_array=[5,6];
     my_array=[8,7];
 
     
@@ -329,9 +330,9 @@ func main: int {
 
 Also by default all the values in the array are immutable unless a `mut` keyword is used on the array declaration itself to allow for reassignment via array access for example
 ```
-func main: int {
+func main: i32 {
     # 2D Array: 2 rows of 3 integers (Total 6 elements)
-    mut arr[int] [2][3] matrix = [
+    mut arr[i32] [2][3] matrix = [
         [10, 20, 30],
         [40, 50, 60]
     ];
@@ -447,9 +448,9 @@ switch (name) {
 _While loops_
 
 ```
-int x=0;
+i32 x=0;
 while (x > 5) {
-    int y=10;
+    i32 y=10;
     y+2;
     x=x+1;
 }
@@ -459,7 +460,7 @@ while (x > 5) {
 _For loops_
 
 ```
-for (mut int i | i < 10 | i++) {
+for (mut i32 i | i < 10 | i++) {
     int x;
     x = x + 1;
 }
@@ -474,36 +475,36 @@ Unnameable supports components, clean structures for organizing data and behavio
 
 # --- DATA BLOCK ---
 data Attributes {
-    mut int max_value;
+    mut i32 max_value;
 }
 
 # --- COMPONENT DEFINITION ---
 component Entity {
     # Component Fields (Field declarations use explicit types)
-    int health;
+    i32 health;
 
      # Import Data Block
     use data Attributes;
 
     # Component Method
-    func check_health_ratio(): int {
+    func check_health_ratio(): i32 {
         # Explicit type declarations for local variables
-        int current_health = self.health;
+        i32 current_health = self.health;
         self.max_value=100;
-        int maximum = self.max_value;
+        i32 maximum = self.max_value;
 
         return (current_health * 10 )/ maximum;
     }
 
     # Component Constructor
-    init(int h=0) {
+    init(i32 h) {
         # Initialize the health field
         self.health = h;
     }
 }
 
 # --- MAIN EXECUTION ---
-func main(): int {
+func main(): i32 {
     # Explicit type declaration for player object
     Entity player = new Entity(70);
 
@@ -570,12 +571,12 @@ enum class HttpStatus {
 
 auto code = HttpStatus::NotFound;
 
-enum class TokenType: uint{
+enum class TokenType: u32{
     ADDITION,
     SUBTRACTION,
 }
 
-enum class TokenType: uint{
+enum class TokenType: u32{
     ADDITION=10u,
     SUBTRACTION=20u,
 }
@@ -642,11 +643,11 @@ Although it is only allowed on let statements and has some special rules applyin
 
 ```
 #Normal use of the heap promoter
-heap int x=10;
-heap mut int y=67;
-heap const int z=78;
+heap i32 x=10;
+heap mut i32 y=67;
+heap const i32 z=78;
 
-heap int x; #This will not be allowed as the compiler will ask for an initialization(If its important to be placed on the heap atleast initialize it)
+heap i32 x; #This will not be allowed as the compiler will ask for an initialization(If its important to be placed on the heap atleast initialize it)
 
 heap int? x=null; #This will be rejected by the compiler as we dont want to account for nulls in SAGE
 heap int? x; #Same story not allowed
@@ -657,8 +658,8 @@ z was the last to be declared and so should be freed first and not y
 The error message looks like this
 
 [SENTINEL ERROR] Non LIFO free detected, Tried to free 'y' which is not on top of the SAGE stack on line: 4, column: 1##
-heap mut int y=10;
-heap mut short z=11;
+heap mut i32 y=10;
+heap mut i16 z=11i16;
 
 y=y+1;
 z=z+1s;
@@ -669,7 +670,7 @@ z=z+1s;
 In unnameable the  `addr` operator is strictly for obtaining the memory address of a variable, It is used in  pointers to show the target
 For example 
 ```
-heap int a =10;
+heap i32 a =10;
 ptr p-> addr a;
 ```
 
@@ -689,8 +690,8 @@ They have a syntax of `ref <type> <name> -> <target> `
 - The type after ref must match the target type unless type inference is used(You can infer by just not adding the type)
 
 ```
-heap int a=10;
-ref int b -> a;
+heap i32 a=10;
+ref i32 b -> a;
 ```
 
 Here b refers to a. Any modification through b directly affects a
@@ -706,11 +707,11 @@ _Mutability rules_:
 By default refrences are immutable but the user must specify if they want it to be mutable, a mutable reference cannot reference an immutable target
 
 ```
-heap mut int a = 6;
-ref mut int b -> a;
+heap mut i32 a = 6;
+ref mut i32 b -> a;
 
-heap int x=7;
-ref mut int y -> x; #Error: Since a mutable reference cannot be made to an immutable target
+heap i32 x=7;
+ref mut i32 y -> x; #Error: Since a mutable reference cannot be made to an immutable target
 
 ```
 
@@ -718,18 +719,18 @@ _Heap and Global rule_:
 References must be made to only heap raised or global values this way the compiler can guarantee that ur not making a reference to a non existant variable. So basically if u want to use references heap raise the variables you want to reference or place the in global scope
 
 ```
-int a=9;
-ref int b -> a; #Error since u can't reference a non-heap raised variable
+i32 a=9;
+ref i32 b -> a; #Error since u can't reference a non-heap raised variable
 ```
 
 _Usage of reference variables_
 Reference variables must reference one target, you cannot reassign the target to which they point
 
 ```
-heap mut int x=19;
-ref mut int y->  x;
+heap mut i32 x=19;
+ref mut i32 y->  x;
 
-heap mut int z=23;
+heap mut i32 z=23;
 y = z; #Error since u cannot change the variable reference y is already pointing to
 
 #This is not to be confused with this
@@ -745,15 +746,15 @@ _Quick note_ : References affect the lifetime of heap raised value the compiler 
 Example
 
 ```
-func main(): int {
+func main(): i32{
     #Target MUST be heap raised
-    heap mut int a = 10;
+    heap mut i32 a = 10;
 
     # Reference creation (type inferred)
     ref mut b -> a;
 
     #Write 70 to the memory location of 'a' via 'b'
-    int c=70;
+    i32 c=70;
     b = c; #This will place 70 into the location of a
 
     # Read 'a's value (50) via 'b' and add 1
@@ -783,15 +784,15 @@ But if u add the type then you must ensure it matches the address type
 What I am trying to say is pointer types are very strict there is no casting between pointer types and non pointer types
 
 ```
-ptr p -> addr x; #pointer 'p' will be infered to a int_ptr
-uint y=18u;
-ptr int z -> addr y; #Error since you told the compiler 'z' is an int_ptr and now you are giving it a uint_ptr
+ptr p -> addr x; #pointer 'p' will be infered to a i32_ptr
+u32 y=18u32;
+ptr int z -> addr y; #Error since you told the compiler 'z' is an i32_ptr and now you are giving it a u32_ptr
 ```
 
 Inorder to use pointers in Unnameable you must always initialize the pointer with an address this is to atleast tell the compiler that you're pointer is not null atleast in the beginning(Some safety is better than none)
 
 ```
-ptr int p; #Error since you must always initialize the pointer
+ptr i32 p; #Error since you must always initialize the pointer
 ```
 
 _Heap and Global rule_:
@@ -817,16 +818,16 @@ p=addr y; #This reassignment is allowed since pointer 'p' is mutable
 Examples
 
 ```
-int x = 10;
+i32 x = 10;
 
-func main(): int {
-    ptr mut int p -> addr x;
+func main(): i32 {
+    ptr mut i32 p -> addr x;
 
     # Write 50 to the memory location pointed to by p (i.e., update x)
     deref p = 50;
 
     # Read the value at p (50) and add 1
-    int result = deref p + 1;
+    i32 result = deref p + 1;
 
     # The original variable x should now also hold 50
     shout! result; #Should be 51
@@ -842,7 +843,7 @@ Okay so to dereference a pointer in Unnameable I decided the syntax to be `deref
 Anyways dereferencing is the usual it is a way to access the contents of the address the pointer is storing
 
 ```
-int x= 10;
+i32 x= 10;
 ptr p -> addr x;
 deref p= 16; # I am dereferencing 'p' so I can manipulate the value of x
 ```
@@ -850,8 +851,8 @@ deref p= 16; # I am dereferencing 'p' so I can manipulate the value of x
 A dereference has the same mutability and heap rules as the target
 
 ```
-mut int x=7;
-ptr int p -> addr x;
+mut i32 x=7;
+ptr i32 p -> addr x;
 deref p=10; #This is allowed since x is mutable
 ```
 
