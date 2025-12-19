@@ -203,141 +203,173 @@ struct NullLiteral : Expression
     NullLiteral(Token null_tok) : Expression(null_tok), null_token(null_tok) {};
 };
 
-// Signed 16 bit Integer literal
-struct ShortLiteral : Expression
-{
-    Token short_token;
+//Signed 8 bit Integer literal
+struct I8Literal:Expression{
+    Token i8_token;
+
     std::string toString() override
     {
-        return "Short Literal: " + short_token.TokenLiteral;
+        return "i8 Literal: " + i8_token.TokenLiteral;
     }
 
-    ShortLiteral *shallowClone() const override
-    {
-        return new ShortLiteral(
-            short_token);
+    I8Literal *shallowClone() const override{
+        return new I8Literal(
+            i8_token);
     }
-    ShortLiteral(Token short_t) : Expression(short_t), short_token(short_t) {};
+    I8Literal(Token i8_t):Expression(i8_t),i8_token(i8_t){}
+};
+
+//Unsigned 8 bit Integer literal
+struct U8Literal:Expression{
+    Token u8_token;
+
+    std::string toString() override
+    {
+        return "u8 Literal: " + u8_token.TokenLiteral;
+    }
+
+    U8Literal *shallowClone() const override{
+        return new U8Literal(
+            u8_token);
+    }
+    U8Literal(Token u8_t):Expression(u8_t),u8_token(u8_t){}
+};
+
+// Signed 16 bit Integer literal
+struct I16Literal : Expression
+{
+    Token i16_token;
+    std::string toString() override
+    {
+        return "i16 Literal: " + i16_token.TokenLiteral;
+    }
+
+    I16Literal *shallowClone() const override
+    {
+        return new I16Literal(
+            i16_token);
+    }
+    I16Literal(Token i16_t) : Expression(i16_t), i16_token(i16_t) {};
 };
 
 // Unsigned 16 bit Ineteger literal
-struct UnsignedShortLiteral : Expression
+struct U16Literal : Expression
 {
-    Token ushort_token;
+    Token u16_token;
     std::string toString() override
     {
-        return "UnsignedShort Literal: " + ushort_token.TokenLiteral;
+        return "u16 Literal: " + u16_token.TokenLiteral;
     }
-    UnsignedShortLiteral *shallowClone() const override
+    U16Literal *shallowClone() const override
     {
-        return new UnsignedShortLiteral(
-            ushort_token);
+        return new U16Literal(
+            u16_token);
     }
 
-    UnsignedShortLiteral(Token ushort_t) : Expression(ushort_t), ushort_token(ushort_t) {};
+    U16Literal(Token u16_t) : Expression(u16_t), u16_token(u16_t) {};
 };
 
 // Signed 32 bit Integer literal
-struct IntegerLiteral : Expression
+struct I32Literal : Expression
 {
-    Token int_token;
+    Token i32_token;
     std::string toString() override
     {
-        return "Integer Literal: " + int_token.TokenLiteral;
+        return "i32 Literal: " + i32_token.TokenLiteral;
     }
 
-    IntegerLiteral *shallowClone() const override
+    I32Literal *shallowClone() const override
     {
-        return new IntegerLiteral(
-            int_token);
+        return new I32Literal(
+            i32_token);
     }
-    IntegerLiteral(Token int_t) : Expression(int_t), int_token(int_t) {};
+    I32Literal(Token i32_t) : Expression(i32_t), i32_token(i32_t) {};
 };
 
 // Unsigned 32 bit integer literal
-struct UnsignedIntegerLiteral : Expression
+struct U32Literal : Expression
 {
-    Token uint_token;
+    Token u32_token;
     std::string toString() override
     {
-        return "UnsignedInteger Literal: " + uint_token.TokenLiteral;
+        return "u32 Literal: " + u32_token.TokenLiteral;
     }
 
-    UnsignedIntegerLiteral *shallowClone() const override
+    U32Literal *shallowClone() const override
     {
-        return new UnsignedIntegerLiteral(
-            uint_token);
+        return new U32Literal(
+            u32_token);
     }
-    UnsignedIntegerLiteral(Token uint_t) : Expression(uint_t), uint_token(uint_t) {};
+    U32Literal(Token u32_t) : Expression(u32_t), u32_token(u32_t) {};
 };
 
 // Signed 64 bit integer literal
-struct LongLiteral : Expression
+struct I64Literal : Expression
 {
-    Token long_token;
+    Token i64_token;
     std::string toString() override
     {
-        return "Long Literal: " + long_token.TokenLiteral;
+        return "i64 Literal: " + i64_token.TokenLiteral;
     }
 
-    LongLiteral *shallowClone() const override
+    I64Literal *shallowClone() const override
     {
-        return new LongLiteral(
-            long_token);
+        return new I64Literal(
+            i64_token);
     }
-    LongLiteral(Token long_t) : Expression(long_t), long_token(long_t) {};
+    I64Literal(Token i64_t) : Expression(i64_t), i64_token(i64_t) {};
 };
 
 // Unsigned 64 bit integer literal
-struct UnsignedLongLiteral : Expression
+struct U64Literal : Expression
 {
-    Token ulong_token;
+    Token u64_token;
     std::string toString() override
     {
-        return "UnsignedLong Literal: " + ulong_token.TokenLiteral;
+        return "u64 Literal: " + u64_token.TokenLiteral;
     }
 
-    UnsignedLongLiteral *shallowClone() const override
+    U64Literal *shallowClone() const override
     {
-        return new UnsignedLongLiteral(
-            ulong_token);
+        return new U64Literal(
+            u64_token);
     }
 
-    UnsignedLongLiteral(Token ulong_t) : Expression(ulong_t), ulong_token(ulong_t) {};
+    U64Literal(Token u64_t) : Expression(u64_t), u64_token(u64_t) {};
 };
 
 // Signed 128 bit integer literal
-struct ExtraLiteral : Expression
+struct I128Literal : Expression
 {
-    Token extra_token;
+    Token i128_token;
     std::string toString() override
     {
-        return "Extra Literal: " + extra_token.TokenLiteral;
+        return "i128 Literal: " + i128_token.TokenLiteral;
     }
 
-    ExtraLiteral *shallowClone() const override
+    I128Literal *shallowClone() const override
     {
-        return new ExtraLiteral(
-            extra_token);
+        return new I128Literal(
+            i128_token);
     }
-    ExtraLiteral(Token extra_t) : Expression(extra_t), extra_token(extra_t) {};
+    I128Literal(Token i128_t) : Expression(i128_t), i128_token(i128_t) {};
 };
 
 // Unsigned 128 bit integer literal
-struct UnsignedExtraLiteral : Expression
+struct U128Literal : Expression
 {
-    Token uextra_token;
+    Token u128_token;
     std::string toString() override
     {
-        return "UnsignedExtra Literal: " + uextra_token.TokenLiteral;
+        return "U128 Literal: " + u128_token.TokenLiteral;
     }
 
-    UnsignedExtraLiteral *shallowClone() const override
+    U128Literal *shallowClone() const override
     {
-        return new UnsignedExtraLiteral(
-            uextra_token);
+        return new U128Literal(
+            u128_token);
     }
-    UnsignedExtraLiteral(Token uextra_t) : Expression(uextra_t), uextra_token(uextra_t) {};
+    U128Literal(Token uextra_t) : Expression(uextra_t), u128_token(uextra_t) {};
 };
 
 // Boolean literal
@@ -392,20 +424,20 @@ struct DoubleLiteral : Expression
 };
 
 // 8 bit Char literal
-struct CharLiteral : Expression
+struct Char8Literal : Expression
 {
-    Token char_token;
+    Token char8_token;
     std::string toString() override
     {
-        return "Char Literal: " + char_token.TokenLiteral;
+        return "Char8 Literal: " + char8_token.TokenLiteral;
     }
 
-    CharLiteral *shallowClone() const override
+    Char8Literal *shallowClone() const override
     {
-        return new CharLiteral(
-            char_token);
+        return new Char8Literal(
+            char8_token);
     }
-    CharLiteral(Token char_t) : Expression(char_t), char_token(char_t) {};
+    Char8Literal(Token char8_t) : Expression(char8_t), char8_token(char8_t) {};
 };
 
 // 16 bit Char literal
