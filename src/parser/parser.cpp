@@ -492,17 +492,19 @@ bool Parser::isBasicType(TokenType type)
 {
     switch (type)
     {
-    case TokenType::SHORT_KEYWORD:
-    case TokenType::USHORT_KEYWORD:
-    case TokenType::INTEGER_KEYWORD:
-    case TokenType::UINT_KEYWORD:
-    case TokenType::LONG_KEYWORD:
-    case TokenType::ULONG_KEYWORD:
-    case TokenType::EXTRA_KEYWORD:
-    case TokenType::UEXTRA_KEYWORD:
+    case TokenType::I8_KEYWORD:
+    case TokenType::U8_KEYWORD:
+    case TokenType::I16_KEYWORD:
+    case TokenType::U16_KEYWORD:
+    case TokenType::I32_KEYWORD:
+    case TokenType::U32_KEYWORD:
+    case TokenType::I64_KEYWORD:
+    case TokenType::U64_KEYWORD:
+    case TokenType::I128_KEYWORD:
+    case TokenType::U128_KEYWORD:
     case TokenType::FLOAT_KEYWORD:
     case TokenType::DOUBLE_KEYWORD:
-    case TokenType::CHAR_KEYWORD:
+    case TokenType::CHAR8_KEYWORD:
     case TokenType::CHAR16_KEYWORD:
     case TokenType::CHAR32_KEYWORD:
     case TokenType::STRING_KEYWORD:
@@ -869,7 +871,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement()
         case TokenType::CONST:
         case TokenType::FLOAT_KEYWORD:
         case TokenType::BOOL_KEYWORD:
-        case TokenType::CHAR_KEYWORD:
+        case TokenType::CHAR8_KEYWORD:
         case TokenType::CHAR16_KEYWORD:
         case TokenType::CHAR32_KEYWORD:
             stmt = parseLetStatementWithType(false);
@@ -1483,66 +1485,82 @@ std::unique_ptr<Expression> Parser::parseNullLiteral()
     return ident;
 }
 
-// 16 bit signed integer literal parse function
-std::unique_ptr<Expression> Parser::parseShortLiteral()
+// 8 bit signed integer literal parse function
+std::unique_ptr<Expression> Parser::parseI8Literal()
 {
-    auto ident = std::make_unique<ShortLiteral>(currentToken());
+    auto ident = std::make_unique<I8Literal>(currentToken());
+    advance();
+    return ident;
+}
+
+// 8 bit unsigned integer literal parse function
+std::unique_ptr<Expression> Parser::parseU8Literal()
+{
+    auto ident = std::make_unique<U8Literal>(currentToken());
+    advance();
+    return ident;
+}
+
+// 16 bit signed integer literal parse function
+std::unique_ptr<Expression> Parser::parseI16Literal()
+{
+    auto ident = std::make_unique<I16Literal>(currentToken());
     advance();
     return ident;
 }
 
 // 16 bit unsigned integer literal parse function
-std::unique_ptr<Expression> Parser::parseUnsignedShortLiteral()
+std::unique_ptr<Expression> Parser::parseU16Literal()
 {
-    auto ident = std::make_unique<UnsignedShortLiteral>(currentToken());
+    auto ident = std::make_unique<U16Literal>(currentToken());
     advance();
     return ident;
 }
 
 // 32 bit signed Integer literal parse function
-std::unique_ptr<Expression> Parser::parseIntegerLiteral()
+std::unique_ptr<Expression> Parser::parseI32Literal()
 {
-    auto ident = std::make_unique<IntegerLiteral>(currentToken());
+    auto ident = std::make_unique<I32Literal>(currentToken());
     advance();
     return ident;
 }
 
 // 32 bit unsigned Integer literal parse function
-std::unique_ptr<Expression> Parser::parseUnsignedIntegerLiteral()
+std::unique_ptr<Expression> Parser::parseU32Literal()
 {
-    auto ident = std::make_unique<UnsignedIntegerLiteral>(currentToken());
+    auto ident = std::make_unique<U32Literal>(currentToken());
     advance();
     return ident;
 }
 
 // Signed 64 bit integer parse function
-std::unique_ptr<Expression> Parser::parseLongLiteral()
+std::unique_ptr<Expression> Parser::parseI64Literal()
 {
-    auto ident = std::make_unique<LongLiteral>(currentToken());
+    auto ident = std::make_unique<I64Literal>(currentToken());
     advance();
     return ident;
 }
 
 // UnSigned 64 bit integer parse function
-std::unique_ptr<Expression> Parser::parseUnsignedLongLiteral()
+std::unique_ptr<Expression> Parser::parseU64Literal()
 {
-    auto ident = std::make_unique<UnsignedLongLiteral>(currentToken());
+    auto ident = std::make_unique<U64Literal>(currentToken());
     advance();
     return ident;
 }
 
 // Signed 128 bit integer parse function
-std::unique_ptr<Expression> Parser::parseExtraLiteral()
+std::unique_ptr<Expression> Parser::parseI128Literal()
 {
-    auto ident = std::make_unique<ExtraLiteral>(currentToken());
+    auto ident = std::make_unique<I128Literal>(currentToken());
     advance();
     return ident;
 }
 
 // UnSigned 128 bit integer parse function
-std::unique_ptr<Expression> Parser::parseUnsignedExtraLiteral()
+std::unique_ptr<Expression> Parser::parseU128Literal()
 {
-    auto ident = std::make_unique<UnsignedExtraLiteral>(currentToken());
+    auto ident = std::make_unique<U128Literal>(currentToken());
     advance();
     return ident;
 }
@@ -1572,11 +1590,11 @@ std::unique_ptr<Expression> Parser::parseDoubleLiteral()
 }
 
 // 8 bit Char literal parse function
-std::unique_ptr<Expression> Parser::parseCharLiteral()
+std::unique_ptr<Expression> Parser::parseChar8Literal()
 {
-    Token char_tok = currentToken();
+    Token char8_tok = currentToken();
     advance();
-    return std::make_unique<CharLiteral>(char_tok);
+    return std::make_unique<Char8Literal>(char8_tok);
 }
 
 // 16 bit Char literal parser function
@@ -2069,16 +2087,16 @@ void Parser::registerInfixFns()
 // Registering prefix functions for a particular token type
 void Parser::registerPrefixFns()
 {
-    PrefixParseFunctionsMap[TokenType::SHORT] = &Parser::parseShortLiteral;
-    PrefixParseFunctionsMap[TokenType::USHORT] = &Parser::parseUnsignedShortLiteral;
-    PrefixParseFunctionsMap[TokenType::INT] = &Parser::parseIntegerLiteral;
-    PrefixParseFunctionsMap[TokenType::UINT] = &Parser::parseUnsignedIntegerLiteral;
-    PrefixParseFunctionsMap[TokenType::LONG] = &Parser::parseLongLiteral;
-    PrefixParseFunctionsMap[TokenType::ULONG] = &Parser::parseUnsignedLongLiteral;
-    PrefixParseFunctionsMap[TokenType::EXTRA] = &Parser::parseExtraLiteral;
-    PrefixParseFunctionsMap[TokenType::UEXTRA] = &Parser::parseUnsignedExtraLiteral;
+    PrefixParseFunctionsMap[TokenType::INT16] = &Parser::parseI16Literal;
+    PrefixParseFunctionsMap[TokenType::UINT16] = &Parser::parseU16Literal;
+    PrefixParseFunctionsMap[TokenType::INT32] = &Parser::parseI32Literal;
+    PrefixParseFunctionsMap[TokenType::UINT32] = &Parser::parseU32Literal;
+    PrefixParseFunctionsMap[TokenType::INT64] = &Parser::parseI64Literal;
+    PrefixParseFunctionsMap[TokenType::UINT64] = &Parser::parseU64Literal;
+    PrefixParseFunctionsMap[TokenType::INT128] = &Parser::parseI128Literal;
+    PrefixParseFunctionsMap[TokenType::UINT128] = &Parser::parseU128Literal;
 
-    PrefixParseFunctionsMap[TokenType::CHAR] = &Parser::parseCharLiteral;
+    PrefixParseFunctionsMap[TokenType::CHAR8] = &Parser::parseChar8Literal;
     PrefixParseFunctionsMap[TokenType::CHAR16] = &Parser::parseChar16Literal;
     PrefixParseFunctionsMap[TokenType::CHAR32] = &Parser::parseChar32Literal;
 
@@ -2277,16 +2295,18 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::SHOUT] = &Parser::parseShoutStatement;
 
     // For basic types
-    StatementParseFunctionsMap[TokenType::SHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::USHORT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::INTEGER_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::UINT_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::LONG_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::ULONG_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::EXTRA_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
-    StatementParseFunctionsMap[TokenType::UEXTRA_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::I8_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::U8_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::I16_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::U16_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::I32_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::U32_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::I64_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::U64_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::I128_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::U128_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
 
-    StatementParseFunctionsMap[TokenType::CHAR_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::CHAR8_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR16_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR32_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     // For custom types

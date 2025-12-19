@@ -141,45 +141,54 @@ std::string TokenTypeToLiteral(TokenType type)
     case TokenType::DEFAULT:
         return "Token Type: DEFAULT";
 
-    case TokenType::SHORT:
-        return "Token Type: SHORT";
-    case TokenType::SHORT_KEYWORD:
-        return "Token Type: SHORT KEYWORD";
-    case TokenType::USHORT:
-        return "TokenType: USHORT";
-    case TokenType::USHORT_KEYWORD:
-        return "Token Type: USHORT KEYWORD";
+    case TokenType::INT8:
+        return "TokenType: I8";
+    case TokenType::I8_KEYWORD:
+        return "TokenType: I8_KEYWORD";
+    case TokenType::UINT8:
+        return "TokenType: U8";
+    case TokenType::U8_KEYWORD:
+        return "Token Type: U8_KEYWORD";
 
-    case TokenType::INT:
-        return "Token Type: INT";
-    case TokenType::INTEGER_KEYWORD:
-        return "Token Type: INTEGER KEYWORD";
-    case TokenType::UINT:
-        return "Token Type: UNINT";
-    case TokenType::UINT_KEYWORD:
-        return "Token Type: UINT KEYWORD";
+    case TokenType::INT16:
+        return "Token Type: I16";
+    case TokenType::I16_KEYWORD:
+        return "Token Type: I16_KEYWORD";
+    case TokenType::UINT16:
+        return "TokenType: U16";
+    case TokenType::U16_KEYWORD:
+        return "Token Type: U16_KEYWORD";
 
-    case TokenType::LONG:
-        return "TokenType: LONG";
-    case TokenType::LONG_KEYWORD:
-        return "Token Type: LONG KEYWORD";
-    case TokenType::ULONG:
-        return "Token Type: ULONG";
-    case TokenType::ULONG_KEYWORD:
-        return "Token Type: ULONG KEYWORD";
+    case TokenType::INT32:
+        return "Token Type: I32";
+    case TokenType::I32_KEYWORD:
+        return "Token Type: I32_KEYWORD";
+    case TokenType::UINT32:
+        return "Token Type: U32";
+    case TokenType::U32_KEYWORD:
+        return "Token Type: U32_KEYWORD";
 
-    case TokenType::EXTRA:
-        return "Token Type: EXTRA";
-    case TokenType::EXTRA_KEYWORD:
-        return "TokenType:: EXTRA_KEYWORD";
-    case TokenType::UEXTRA:
-        return "Token Type: UEXTRA";
-    case TokenType::UEXTRA_KEYWORD:
-        return "TokenType:: UEXTRA_KEYWORD";
+    case TokenType::INT64:
+        return "TokenType: I64";
+    case TokenType::I64_KEYWORD:
+        return "Token Type: I64_KEYWORD";
+    case TokenType::UINT64:
+        return "Token Type: U64";
+    case TokenType::U64_KEYWORD:
+        return "Token Type: U64_KEYWORD";
 
-    case TokenType::CHAR:
-        return "Token Type: CHAR";
-    case TokenType::CHAR_KEYWORD:
+    case TokenType::INT128:
+        return "Token Type: I128";
+    case TokenType::I128_KEYWORD:
+        return "TokenType:: I128_KEYWORD";
+    case TokenType::UINT128:
+        return "Token Type: U128";
+    case TokenType::U128_KEYWORD:
+        return "TokenType:: U128_KEYWORD";
+
+    case TokenType::CHAR8:
+        return "Token Type: CHAR8";
+    case TokenType::CHAR8_KEYWORD:
         return "Token Type: CHAR KEYWORD";
     case TokenType::CHAR16:
         return "Token Type: CHAR16";

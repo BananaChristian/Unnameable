@@ -16,19 +16,21 @@ enum class ImportedStubSection : uint8_t
 
 enum class ImportedDataType
 {
-    SHORT_INT,  // 16 BIT signed integer
-    USHORT_INT, // 16 BUT unsigned integer
-    INTEGER,    // 32 BIT signed integer
-    UINTEGER,   // 32 BIT unsigned integer
-    LONG_INT,   // 64 BIT signed integer
-    ULONG_INT,  // 64 BIT unsigned integer
-    EXTRA_INT,  // 128 BIT signed integer
-    UEXTRA_INT, // 128 BIT unsigned integer
+    I8,   // 8 BIT signed integer
+    U8,   // 8 bit unsigned integer
+    I16,  // 16 BIT signed integer
+    U16,  // 16 BUT unsigned integer
+    I32,  // 32 BIT signed integer
+    U32,  // 32 BIT unsigned integer
+    I64,  // 64 BIT signed integer
+    U64,  // 64 BIT unsigned integer
+    I128, // 128 BIT signed integer
+    U128, // 128 BIT unsigned integer
     BOOLEAN,
     STRING,
     FLOAT,
     DOUBLE,
-    CHAR,   // 8 BIT Char
+    CHAR8,  // 8 BIT Char
     CHAR16, // 16 BIT Char
     CHAR32, // 32 BIT Char
     ENUM,

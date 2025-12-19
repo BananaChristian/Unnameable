@@ -14,10 +14,10 @@ Semantics::Semantics(Deserializer &deserial, std::string &file) : deserializer(d
     symbolTable.push_back({});
     registerWalkerFunctions();
 
-    importSeals();      // Import seals
-    importComponents(); // Import components
-    importComponentInits();//Import component inits
-    importDataBlocks(); // Import data
+    importSeals();          // Import seals
+    importComponents();     // Import components
+    importComponentInits(); // Import component inits
+    importDataBlocks();     // Import data
 }
 
 // Main walker function
@@ -45,19 +45,21 @@ void Semantics::walker(Node *node)
 void Semantics::registerWalkerFunctions()
 {
     // Walker registration for the native data type literals
-    walkerFunctionsMap[typeid(ShortLiteral)] = &Semantics::walkShortLiteral;
-    walkerFunctionsMap[typeid(UnsignedShortLiteral)] = &Semantics::walkUnsignedShortLiteral;
-    walkerFunctionsMap[typeid(IntegerLiteral)] = &Semantics::walkIntegerLiteral;
-    walkerFunctionsMap[typeid(UnsignedIntegerLiteral)] = &Semantics::walkUnsignedIntegerLiteral;
-    walkerFunctionsMap[typeid(LongLiteral)] = &Semantics::walkLongLiteral;
-    walkerFunctionsMap[typeid(UnsignedLongLiteral)] = &Semantics::walkUnsignedLongLiteral;
-    walkerFunctionsMap[typeid(ExtraLiteral)] = &Semantics::walkExtraLiteral;
-    walkerFunctionsMap[typeid(UnsignedExtraLiteral)] = &Semantics::walkUnsignedExtraLiteral;
+    walkerFunctionsMap[typeid(I8Literal)] = &Semantics::walkI8Literal;
+    walkerFunctionsMap[typeid(U8Literal)] = &Semantics::walkU8Literal;
+    walkerFunctionsMap[typeid(I16Literal)] = &Semantics::walkI16Literal;
+    walkerFunctionsMap[typeid(U16Literal)] = &Semantics::walkU16Literal;
+    walkerFunctionsMap[typeid(I32Literal)] = &Semantics::walkI32Literal;
+    walkerFunctionsMap[typeid(U32Literal)] = &Semantics::walkU32Literal;
+    walkerFunctionsMap[typeid(I64Literal)] = &Semantics::walkI64Literal;
+    walkerFunctionsMap[typeid(U64Literal)] = &Semantics::walkU64Literal;
+    walkerFunctionsMap[typeid(I128Literal)] = &Semantics::walkI128Literal;
+    walkerFunctionsMap[typeid(U128Literal)] = &Semantics::walkU128Literal;
     walkerFunctionsMap[typeid(FloatLiteral)] = &Semantics::walkFloatLiteral;
     walkerFunctionsMap[typeid(DoubleLiteral)] = &Semantics::walkDoubleLiteral;
     walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
 
-    walkerFunctionsMap[typeid(CharLiteral)] = &Semantics::walkCharLiteral;
+    walkerFunctionsMap[typeid(Char8Literal)] = &Semantics::walkChar8Literal;
     walkerFunctionsMap[typeid(Char16Literal)] = &Semantics::walkChar16Literal;
     walkerFunctionsMap[typeid(Char32Literal)] = &Semantics::walkChar32Literal;
 
@@ -150,39 +152,37 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     if (!node)
         return ResolvedType{DataType::UNKNOWN, "unknown"};
 
-    if (auto shortLit = dynamic_cast<ShortLiteral *>(node))
-        return ResolvedType{DataType::SHORT_INT, "short"};
-    if (auto ushortLit = dynamic_cast<UnsignedShortLiteral *>(node))
-        return ResolvedType{DataType::USHORT_INT, "ushort"};
-
-    if (auto longLit = dynamic_cast<LongLiteral *>(node))
-        return ResolvedType{DataType::LONG_INT, "long"};
-    if (auto ulongLit = dynamic_cast<UnsignedLongLiteral *>(node))
-        return ResolvedType{DataType::ULONG_INT, "ulong"};
-
-    if (auto extraLit = dynamic_cast<ExtraLiteral *>(node))
-        return ResolvedType{DataType::EXTRA_INT, "extra"};
-    if (auto uextraLit = dynamic_cast<UnsignedExtraLiteral *>(node))
-        return ResolvedType{DataType::UEXTRA_INT, "uextra"};
-
-    if (auto inLit = dynamic_cast<IntegerLiteral *>(node))
-        return ResolvedType{DataType::INTEGER, "int"};
-
-    if (auto uintLit = dynamic_cast<UnsignedIntegerLiteral *>(node))
-        return ResolvedType{DataType::UINTEGER, "uint"};
+    if (auto i8Lit = dynamic_cast<I8Literal *>(node))
+        return ResolvedType{DataType::I8, "i8"};
+    if (auto u8Lit = dynamic_cast<U8Literal *>(node))
+        return ResolvedType{DataType::U8, "u8"};
+    if (auto i16Lit = dynamic_cast<I16Literal *>(node))
+        return ResolvedType{DataType::I16, "i16"};
+    if (auto u16Lit = dynamic_cast<U16Literal *>(node))
+        return ResolvedType{DataType::U16, "u16"};
+    if (auto i32Lit = dynamic_cast<I32Literal *>(node))
+        return ResolvedType{DataType::I32, "i32"};
+    if (auto u32Lit = dynamic_cast<U32Literal *>(node))
+        return ResolvedType{DataType::U32, "u32"};
+    if (auto i64Lit = dynamic_cast<I64Literal *>(node))
+        return ResolvedType{DataType::I64, "I64"};
+    if (auto u64Lit = dynamic_cast<U64Literal *>(node))
+        return ResolvedType{DataType::U64, "u64"};
+    if (auto i128Lit = dynamic_cast<I128Literal *>(node))
+        return ResolvedType{DataType::I128, "i128"};
+    if (auto uextraLit = dynamic_cast<U128Literal *>(node))
+        return ResolvedType{DataType::U128, "u128"};
 
     if (auto fltLit = dynamic_cast<FloatLiteral *>(node))
         return ResolvedType{DataType::FLOAT, "float"};
-
     if (auto dbLit = dynamic_cast<DoubleLiteral *>(node))
         return ResolvedType{DataType::DOUBLE, "double"};
 
     if (auto strLit = dynamic_cast<StringLiteral *>(node))
         return ResolvedType{DataType::STRING, "string"};
 
-    if (auto chrLit = dynamic_cast<CharLiteral *>(node))
-        return ResolvedType{DataType::CHAR, "char"};
-
+    if (auto chrLit = dynamic_cast<Char8Literal *>(node))
+        return ResolvedType{DataType::CHAR8, "char8"};
     if (auto char16Lit = dynamic_cast<Char16Literal *>(node))
         return ResolvedType{DataType::CHAR16, "char16"};
     if (auto char32Lit = dynamic_cast<Char32Literal *>(node))
@@ -266,9 +266,9 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         for (int i = 0; i < accessCount; ++i)
         {
             ResolvedType idxType = inferNodeDataType(arrAccess->index_exprs[i].get());
-            if (idxType.kind != DataType::INTEGER)
+            if (idxType.kind != DataType::I32)
             {
-                logSemanticErrors("Array index must be of type int", line, col);
+                logSemanticErrors("Array index must be of type i32", line, col);
                 return ResolvedType{DataType::UNKNOWN, "unknown"};
             }
 
@@ -1065,22 +1065,26 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
 
     switch (token.type)
     {
-    case TokenType::SHORT_KEYWORD:
-        return makeType(DataType::SHORT_INT, "short");
-    case TokenType::USHORT_KEYWORD:
-        return makeType(DataType::USHORT_INT, "ushort");
-    case TokenType::INTEGER_KEYWORD:
-        return makeType(DataType::INTEGER, "int");
-    case TokenType::UINT_KEYWORD:
-        return makeType(DataType::UINTEGER, "uint");
-    case TokenType::LONG_KEYWORD:
-        return makeType(DataType::LONG_INT, "long");
-    case TokenType::ULONG_KEYWORD:
-        return makeType(DataType::ULONG_INT, "ulong");
-    case TokenType::EXTRA_KEYWORD:
-        return makeType(DataType::EXTRA_INT, "extra");
-    case TokenType::UEXTRA_KEYWORD:
-        return makeType(DataType::UEXTRA_INT, "uextra");
+    case TokenType::I8_KEYWORD:
+        return makeType(DataType::I8, "i8");
+    case TokenType::U8_KEYWORD:
+        return makeType(DataType::U8, "u8");
+    case TokenType::I16_KEYWORD:
+        return makeType(DataType::I16, "i16");
+    case TokenType::U16_KEYWORD:
+        return makeType(DataType::U16, "u16");
+    case TokenType::I32_KEYWORD:
+        return makeType(DataType::I32, "i32");
+    case TokenType::U32_KEYWORD:
+        return makeType(DataType::U32, "u32");
+    case TokenType::I64_KEYWORD:
+        return makeType(DataType::I64, "i64");
+    case TokenType::U64_KEYWORD:
+        return makeType(DataType::U64, "u64");
+    case TokenType::I128_KEYWORD:
+        return makeType(DataType::I128, "i128");
+    case TokenType::U128_KEYWORD:
+        return makeType(DataType::U128, "u128");
 
     case TokenType::FLOAT_KEYWORD:
         return makeType(DataType::FLOAT, "float");
@@ -1089,8 +1093,8 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
     case TokenType::STRING_KEYWORD:
         return makeType(DataType::STRING, "string");
 
-    case TokenType::CHAR_KEYWORD:
-        return makeType(DataType::CHAR, "char");
+    case TokenType::CHAR8_KEYWORD:
+        return makeType(DataType::CHAR8, "char8");
     case TokenType::CHAR16_KEYWORD:
         return makeType(DataType::CHAR16, "char16");
     case TokenType::CHAR32_KEYWORD:
@@ -1584,8 +1588,8 @@ void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int
 bool Semantics::isInteger(const ResolvedType &t)
 {
     static const std::unordered_set<DataType> intTypes = {
-        DataType::SHORT_INT, DataType::USHORT_INT, DataType::INTEGER, DataType::UINTEGER,
-        DataType::LONG_INT, DataType::ULONG_INT, DataType::EXTRA_INT, DataType::UEXTRA_INT};
+        DataType::I8,DataType::U8,DataType::I16, DataType::U16, DataType::I32, DataType::U32,
+        DataType::I64, DataType::U64, DataType::I128, DataType::U128};
     return intTypes.count(t.kind) > 0;
 }
 
@@ -1607,7 +1611,7 @@ bool Semantics::isString(const ResolvedType &t)
 bool Semantics::isChar(const ResolvedType &t)
 {
     static const std::unordered_set<DataType> charTypes = {
-        DataType::CHAR,
+        DataType::CHAR8,
         DataType::CHAR16,
         DataType::CHAR32};
     return charTypes.count(t.kind) > 0;
@@ -1620,45 +1624,43 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
 
     switch (type)
     {
-    case TokenType::SHORT_KEYWORD:
-        return ResolvedType{DataType::SHORT_INT, "short"};
+    case TokenType::I8_KEYWORD:
+        return ResolvedType{DataType::I8,"i8"};
+    case TokenType::U8_KEYWORD:
+        return ResolvedType{DataType::U8,"u8"};
 
-    case TokenType::USHORT_KEYWORD:
-        return ResolvedType{DataType::USHORT_INT, "ushort"};
+    case TokenType::I16_KEYWORD:
+        return ResolvedType{DataType::I16, "i16"};
+    case TokenType::U16_KEYWORD:
+        return ResolvedType{DataType::U16, "u16"};
 
-    case TokenType::INTEGER_KEYWORD:
-        return ResolvedType{DataType::INTEGER, "int"};
+    case TokenType::I32_KEYWORD:
+        return ResolvedType{DataType::I32, "i32"};
+    case TokenType::U32_KEYWORD:
+        return ResolvedType{DataType::U32, "u32"};
 
-    case TokenType::UINT_KEYWORD:
-        return ResolvedType{DataType::UINTEGER, "uint"};
+    case TokenType::I64_KEYWORD:
+        return ResolvedType{DataType::I64, "i64"};
+    case TokenType::U64_KEYWORD:
+        return ResolvedType{DataType::U64, "u64"};
 
-    case TokenType::LONG_KEYWORD:
-        return ResolvedType{DataType::LONG_INT, "long"};
-
-    case TokenType::ULONG_KEYWORD:
-        return ResolvedType{DataType::ULONG_INT, "ulong"};
-
-    case TokenType::EXTRA_KEYWORD:
-        return ResolvedType{DataType::EXTRA_INT, "extra"};
-
-    case TokenType::UEXTRA_KEYWORD:
-        return ResolvedType{DataType::UEXTRA_INT, "uextra"};
+    case TokenType::I128_KEYWORD:
+        return ResolvedType{DataType::I128, "i128"};
+    case TokenType::U128_KEYWORD:
+        return ResolvedType{DataType::U128, "u128"};
 
     case TokenType::FLOAT_KEYWORD:
         return ResolvedType{DataType::FLOAT, "float"};
-
     case TokenType::DOUBLE_KEYWORD:
         return ResolvedType{DataType::DOUBLE, "double"};
 
     case TokenType::STRING_KEYWORD:
         return ResolvedType{DataType::STRING, "string"};
 
-    case TokenType::CHAR_KEYWORD:
-        return ResolvedType{DataType::CHAR, "char"};
-
+    case TokenType::CHAR8_KEYWORD:
+        return ResolvedType{DataType::CHAR8, "char8"};
     case TokenType::CHAR16_KEYWORD:
         return ResolvedType{DataType::CHAR16, "char16"};
-
     case TokenType::CHAR32_KEYWORD:
         return ResolvedType{DataType::CHAR32, "char32"};
 
@@ -1704,51 +1706,6 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
     default:
         return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
-}
-
-int64_t Semantics::getIntExprVal(Node *node)
-{
-    auto intLit = dynamic_cast<IntegerLiteral *>(node);
-    auto identExpr = dynamic_cast<Identifier *>(node);
-    int64_t len;
-    if (intLit)
-    {
-        // Getting the underlying value and converting it to int64
-        auto val = intLit->expression.TokenLiteral;
-        len = std::stoll(val);
-    }
-    else if (identExpr)
-    {
-        // Resolve the symbolInfo(To get info about contance)
-        auto line = identExpr->expression.line;
-        auto col = identExpr->expression.column;
-        auto name = identExpr->identifier.TokenLiteral;
-        auto identSym = resolveSymbolInfo(name);
-        if (!identSym)
-        {
-            logSemanticErrors("Use of undeclared variable '" + name + "'", line, col);
-        }
-
-        if (identSym->type.kind != DataType::INTEGER)
-        {
-            logSemanticErrors("Cannot use variable '" + name + "' inside array length as it is not of integer type", line, col);
-        }
-
-        if (!identSym->isConstant)
-        {
-            logSemanticErrors("Cannot use non constant variable '" + name + "' in array length", line, col);
-            return 0;
-        }
-
-        len = identSym->constIntVal;
-    }
-    else
-    {
-        Expression *expr = dynamic_cast<Expression *>(node);
-        logSemanticErrors("Invalid expression used in array length", expr->expression.line, expr->expression.column);
-    }
-
-    return len;
 }
 
 ResolvedType Semantics::isPointerType(ResolvedType t)

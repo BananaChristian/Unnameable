@@ -51,19 +51,22 @@ class Lexer
 
         {"null", TokenType::NULLABLE},
 
-        {"short", TokenType::SHORT_KEYWORD},
-        {"ushort", TokenType::USHORT_KEYWORD},
+        {"i8", TokenType::I8_KEYWORD},
+        {"u8", TokenType::U8_KEYWORD},
 
-        {"int", TokenType::INTEGER_KEYWORD},
-        {"uint", TokenType::UINT_KEYWORD},
+        {"i16", TokenType::I16_KEYWORD},
+        {"u16", TokenType::U16_KEYWORD},
 
-        {"long", TokenType::LONG_KEYWORD},
-        {"ulong", TokenType::ULONG_KEYWORD},
+        {"i32", TokenType::I32_KEYWORD},
+        {"u32", TokenType::U32_KEYWORD},
 
-        {"extra", TokenType::EXTRA_KEYWORD},
-        {"uextra", TokenType::UEXTRA_KEYWORD},
+        {"i64", TokenType::I64_KEYWORD},
+        {"u64", TokenType::U64_KEYWORD},
 
-        {"char", TokenType::CHAR_KEYWORD},
+        {"i128", TokenType::I128_KEYWORD},
+        {"u128", TokenType::U128_KEYWORD},
+
+        {"char8", TokenType::CHAR8_KEYWORD},
         {"char16", TokenType::CHAR16_KEYWORD},
         {"char32", TokenType::CHAR32_KEYWORD},
 

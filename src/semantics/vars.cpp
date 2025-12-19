@@ -7,7 +7,7 @@ void Semantics::walkBooleanLiteral(Node *node)
     auto boolLiteral = dynamic_cast<BooleanLiteral *>(node);
     if (!boolLiteral)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the boolean literal \n";
+
     auto info = std::make_shared<SymbolInfo>();
 
     info->type = ResolvedType{DataType::BOOLEAN, "bool"};
@@ -22,7 +22,7 @@ void Semantics::walkStringLiteral(Node *node)
     auto strLiteral = dynamic_cast<StringLiteral *>(node);
     if (!strLiteral)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the string literal \n";
+
     auto info = std::make_shared<SymbolInfo>();
 
     info->type = ResolvedType{DataType::STRING, "string"};
@@ -32,20 +32,19 @@ void Semantics::walkStringLiteral(Node *node)
     metaData[strLiteral] = info;
 }
 
-void Semantics::walkCharLiteral(Node *node)
+void Semantics::walkChar8Literal(Node *node)
 {
-    auto charLiteral = dynamic_cast<CharLiteral *>(node);
-    if (!charLiteral)
+    auto char8Literal = dynamic_cast<Char8Literal *>(node);
+    if (!char8Literal)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the char literal \n";
 
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::CHAR, "char"};
+    info->type = ResolvedType{DataType::CHAR8, "char8"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
-    metaData[charLiteral] = info;
+    metaData[char8Literal] = info;
 }
 
 void Semantics::walkChar16Literal(Node *node)
@@ -53,7 +52,7 @@ void Semantics::walkChar16Literal(Node *node)
     auto lit = dynamic_cast<Char16Literal *>(node);
     if (!lit)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the char16 literal\n";
+
     auto info = std::make_shared<SymbolInfo>();
 
     info->type = ResolvedType{DataType::CHAR16, "char16"};
@@ -68,7 +67,6 @@ void Semantics::walkChar32Literal(Node *node)
     auto lit = dynamic_cast<Char32Literal *>(node);
     if (!lit)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the char32 literal\n";
     auto info = std::make_shared<SymbolInfo>();
 
     info->type = ResolvedType{DataType::CHAR32, "char32"};
@@ -78,120 +76,150 @@ void Semantics::walkChar32Literal(Node *node)
     metaData[lit] = info;
 }
 
-void Semantics::walkShortLiteral(Node *node)
+void Semantics::walkI8Literal(Node *node)
 {
-    auto lit = dynamic_cast<ShortLiteral *>(node);
+    auto lit = dynamic_cast<I8Literal *>(node);
     if (!lit)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the short int literal\n";
+
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::SHORT_INT, "short"};
+    info->type = ResolvedType{DataType::I8, "i8"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
     metaData[lit] = info;
 }
 
-void Semantics::walkUnsignedShortLiteral(Node *node)
+void Semantics::walkU8Literal(Node *node)
 {
-    auto lit = dynamic_cast<UnsignedShortLiteral *>(node);
+    auto lit = dynamic_cast<U8Literal *>(node);
     if (!lit)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the unsigned short int literal\n";
+
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::USHORT_INT, "ushort"};
+    info->type = ResolvedType{DataType::U8, "u8"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
     metaData[lit] = info;
 }
 
-void Semantics::walkIntegerLiteral(Node *node)
+void Semantics::walkI16Literal(Node *node)
 {
-    auto intLiteral = dynamic_cast<IntegerLiteral *>(node);
+    auto lit = dynamic_cast<I16Literal *>(node);
+    if (!lit)
+        return;
+
+    auto info = std::make_shared<SymbolInfo>();
+
+    info->type = ResolvedType{DataType::I16, "i16"};
+    info->isNullable = false;
+    info->isMutable = false;
+    info->isConstant = false;
+    metaData[lit] = info;
+}
+
+void Semantics::walkU16Literal(Node *node)
+{
+    auto lit = dynamic_cast<U16Literal *>(node);
+    if (!lit)
+        return;
+
+    auto info = std::make_shared<SymbolInfo>();
+
+    info->type = ResolvedType{DataType::U16, "u16"};
+    info->isNullable = false;
+    info->isMutable = false;
+    info->isConstant = false;
+    metaData[lit] = info;
+}
+
+void Semantics::walkI32Literal(Node *node)
+{
+    auto intLiteral = dynamic_cast<I32Literal *>(node);
     if (!intLiteral)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the integer literal \n";
+
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::INTEGER, "int"};
+    info->type = ResolvedType{DataType::I32, "i32"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
     metaData[intLiteral] = info;
 }
 
-void Semantics::walkUnsignedIntegerLiteral(Node *node)
+void Semantics::walkU32Literal(Node *node)
 {
-    auto intLiteral = dynamic_cast<UnsignedIntegerLiteral *>(node);
+    auto intLiteral = dynamic_cast<U32Literal *>(node);
     if (!intLiteral)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the Unsigned integer literal \n";
+
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::UINTEGER, "uint"};
+    info->type = ResolvedType{DataType::U32, "u32"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
     metaData[intLiteral] = info;
 }
 
-void Semantics::walkLongLiteral(Node *node)
+void Semantics::walkI64Literal(Node *node)
 {
-    auto lit = dynamic_cast<LongLiteral *>(node);
+    auto lit = dynamic_cast<I64Literal *>(node);
     if (!lit)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the long int literal\n";
+
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::LONG_INT, "long"};
+    info->type = ResolvedType{DataType::I64, "i64"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
     metaData[lit] = info;
 }
 
-void Semantics::walkUnsignedLongLiteral(Node *node)
+void Semantics::walkU64Literal(Node *node)
 {
-    auto lit = dynamic_cast<UnsignedLongLiteral *>(node);
+    auto lit = dynamic_cast<U64Literal *>(node);
     if (!lit)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the unsigned long int literal\n";
+
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::ULONG_INT, "ulong"};
+    info->type = ResolvedType{DataType::U64, "u64"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
     metaData[lit] = info;
 }
 
-void Semantics::walkExtraLiteral(Node *node)
+void Semantics::walkI128Literal(Node *node)
 {
-    auto lit = dynamic_cast<ExtraLiteral *>(node);
+    auto lit = dynamic_cast<I128Literal *>(node);
     if (!lit)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the extra (128-bit) int literal\n";
+
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::EXTRA_INT, "extra"};
+    info->type = ResolvedType{DataType::I128, "i128"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
     metaData[lit] = info;
 }
 
-void Semantics::walkUnsignedExtraLiteral(Node *node)
+void Semantics::walkU128Literal(Node *node)
 {
-    auto lit = dynamic_cast<UnsignedExtraLiteral *>(node);
+    auto lit = dynamic_cast<U128Literal *>(node);
     if (!lit)
         return;
-    std::cout << "[SEMANTIC LOG]: Analyzing the unsigned extra (128-bit) int literal\n";
+
     auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::UEXTRA_INT, "uextra"};
+    info->type = ResolvedType{DataType::U128, "u128"};
     info->isNullable = false;
     info->isMutable = false;
     info->isConstant = false;
@@ -319,9 +347,9 @@ void Semantics::walkArraySubscriptExpression(Node *node)
     {
         walker(idxNode.get());
         ResolvedType idxType = inferNodeDataType(idxNode.get());
-        if (idxType.kind != DataType::INTEGER)
+        if (idxType.kind != DataType::I32)
         {
-            logSemanticErrors("Array index must be of type int", idxNode->expression.line, idxNode->expression.column);
+            logSemanticErrors("Array index must be of type i32", idxNode->expression.line, idxNode->expression.column);
             hasError = true;
         }
 
@@ -523,9 +551,9 @@ void Semantics::walkLetStatement(Node *node)
     int64_t constInt = 0;
     if (isConstant && letStmtValue)
     {
-        if (auto intLit = dynamic_cast<IntegerLiteral *>(letStmtValue))
+        if (auto intLit = dynamic_cast<I32Literal *>(letStmtValue))
         {
-            constInt = std::stoll(intLit->int_token.TokenLiteral);
+            constInt = std::stoll(intLit->i32_token.TokenLiteral);
         }
         else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
         {

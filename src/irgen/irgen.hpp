@@ -119,7 +119,7 @@ private:
     llvm::Value *generatePrefixExpression(Node *node);
     llvm::Value *generatePostfixExpression(Node *node);
     llvm::Value *generateStringLiteral(Node *node);
-    llvm::Value *generateCharLiteral(Node *node);
+    llvm::Value *generateChar8Literal(Node *node);
     llvm::Value *generateChar16Literal(Node *node);
     llvm::Value *generateChar32Literal(Node *node);
     llvm::Value *generateBooleanLiteral(Node *node);
@@ -127,14 +127,16 @@ private:
     llvm::Value *generateDoubleLiteral(Node *node);
     llvm::Value *generateArrayLiteral(Node *node);
 
-    llvm::Value *generateShortLiteral(Node *node);
-    llvm::Value *generateUnsignedShortLiteral(Node *node);
-    llvm::Value *generateIntegerLiteral(Node *node);
-    llvm::Value *generateUnsignedIntegerLiteral(Node *node);
-    llvm::Value *generateLongLiteral(Node *node);
-    llvm::Value *generateUnsignedLongLiteral(Node *node);
-    llvm::Value *generateExtraLiteral(Node *node);
-    llvm::Value *generateUnsignedExtraLiteral(Node *node);
+    llvm::Value *generateI8Literal(Node *node);
+    llvm::Value *generateU8Literal(Node *node);
+    llvm::Value *generateI16Literal(Node *node);
+    llvm::Value *generateU16Literal(Node *node);
+    llvm::Value *generateI32Literal(Node *node);
+    llvm::Value *generateU32Literal(Node *node);
+    llvm::Value *generateI64Literal(Node *node);
+    llvm::Value *generateU64Literal(Node *node);
+    llvm::Value *generateI128Literal(Node *node);
+    llvm::Value *generateU128Literal(Node *node);
 
     llvm::Value *generateNullLiteral(NullLiteral *nullLit, DataType type);
     llvm::Value *generateIdentifierExpression(Node *node);

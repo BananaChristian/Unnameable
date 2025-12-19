@@ -60,22 +60,24 @@ DataType Semantics::convertImportedDataTypetoResolvedDataType(const ImportedData
 {
     switch (dataType)
     {
-    case ImportedDataType::SHORT_INT:
-        return DataType::SHORT_INT;
-    case ImportedDataType::USHORT_INT:
-        return DataType::USHORT_INT;
-    case ImportedDataType::INTEGER:
-        return DataType::INTEGER;
-    case ImportedDataType::UINTEGER:
-        return DataType::UINTEGER;
-    case ImportedDataType::LONG_INT:
-        return DataType::LONG_INT;
-    case ImportedDataType::ULONG_INT:
-        return DataType::ULONG_INT;
-    case ImportedDataType::EXTRA_INT:
-        return DataType::EXTRA_INT;
-    case ImportedDataType::UEXTRA_INT:
-        return DataType::UEXTRA_INT;
+    case ImportedDataType::I8:
+        return DataType::I8;
+    case ImportedDataType::I16:
+        return DataType::I16;
+    case ImportedDataType::U16:
+        return DataType::U16;
+    case ImportedDataType::I32:
+        return DataType::I32;
+    case ImportedDataType::U32:
+        return DataType::U32;
+    case ImportedDataType::I64:
+        return DataType::I64;
+    case ImportedDataType::U64:
+        return DataType::U64;
+    case ImportedDataType::I128:
+        return DataType::I128;
+    case ImportedDataType::U128:
+        return DataType::U128;
     case ImportedDataType::BOOLEAN:
         return DataType::BOOLEAN;
     case ImportedDataType::STRING:
@@ -84,8 +86,8 @@ DataType Semantics::convertImportedDataTypetoResolvedDataType(const ImportedData
         return DataType::FLOAT;
     case ImportedDataType::DOUBLE:
         return DataType::DOUBLE;
-    case ImportedDataType::CHAR:
-        return DataType::CHAR;
+    case ImportedDataType::CHAR8:
+        return DataType::CHAR8;
     case ImportedDataType::CHAR16:
         return DataType::CHAR16;
     case ImportedDataType::CHAR32:

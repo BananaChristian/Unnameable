@@ -21,47 +21,52 @@ void Semantics::walkEnumClassStatement(Node *node)
         return;
     }
 
-    // Set underlying type (default = int)
-    ResolvedType underLyingType{DataType::INTEGER, "int"};
+    // Set underlying type (default = i32)
+    ResolvedType underLyingType{DataType::I32, "i32"};
     if (enumStmt->int_type.has_value())
     {
         switch (enumStmt->int_type.value().type)
         {
-        case TokenType::SHORT_KEYWORD:
-            underLyingType = ResolvedType{DataType::SHORT_INT, "short"};
+        case TokenType::I8_KEYWORD:
+            underLyingType = ResolvedType{DataType::I8, "i8"};
+        case TokenType::U8_KEYWORD:
+            underLyingType = ResolvedType{DataType::U8, "u8"};
+        case TokenType::I16_KEYWORD:
+            underLyingType = ResolvedType{DataType::I16, "i16"};
             break;
-        case TokenType::USHORT_KEYWORD:
-            underLyingType = ResolvedType{DataType::USHORT_INT, "ushort"};
+        case TokenType::U16_KEYWORD:
+            underLyingType = ResolvedType{DataType::U16, "u16"};
             break;
-        case TokenType::INTEGER_KEYWORD:
-            underLyingType = ResolvedType{DataType::INTEGER, "int"};
+        case TokenType::I32_KEYWORD:
+            underLyingType = ResolvedType{DataType::I32, "i32"};
             break;
-        case TokenType::UINT_KEYWORD:
-            underLyingType = ResolvedType{DataType::UINTEGER, "uint"};
+        case TokenType::U32_KEYWORD:
+            underLyingType = ResolvedType{DataType::U32, "u32"};
             break;
-        case TokenType::LONG_KEYWORD:
-            underLyingType = ResolvedType{DataType::LONG_INT, "long"};
+        case TokenType::I64_KEYWORD:
+            underLyingType = ResolvedType{DataType::I64, "i64"};
             break;
-        case TokenType::ULONG_KEYWORD:
-            underLyingType = ResolvedType{DataType::ULONG_INT, "ulong"};
+        case TokenType::U64_KEYWORD:
+            underLyingType = ResolvedType{DataType::U64, "u64"};
             break;
-        case TokenType::EXTRA_KEYWORD:
-            underLyingType = ResolvedType{DataType::EXTRA_INT, "extra"};
+        case TokenType::I128_KEYWORD:
+            underLyingType = ResolvedType{DataType::I128, "i128"};
             break;
-        case TokenType::UEXTRA_KEYWORD:
-            underLyingType = ResolvedType{DataType::UEXTRA_INT, "uextra"};
+        case TokenType::U128_KEYWORD:
+            underLyingType = ResolvedType{DataType::U128, "u128"};
             break;
         default:
-            underLyingType = ResolvedType{DataType::INTEGER, "int"};
+            underLyingType = ResolvedType{DataType::I32, "i32"};
             break;
         }
     }
 
     // Determine if underlying type is unsigned
-    bool underlyingIsUnsigned = (underLyingType.kind == DataType::USHORT_INT ||
-                                 underLyingType.kind == DataType::UINTEGER ||
-                                 underLyingType.kind == DataType::ULONG_INT ||
-                                 underLyingType.kind == DataType::UEXTRA_INT);
+    bool underlyingIsUnsigned = (underLyingType.kind == DataType::U8 ||
+                                 underLyingType.kind == DataType::U16 ||
+                                 underLyingType.kind == DataType::U32 ||
+                                 underLyingType.kind == DataType::U64 ||
+                                 underLyingType.kind == DataType::U128);
 
     // Push temporary scope
     symbolTable.push_back({});
@@ -97,54 +102,65 @@ void Semantics::walkEnumClassStatement(Node *node)
             Expression *literal = nullptr;
             TokenType literalType = TokenType::ILLEGAL; // Default invalid type
             std::string literalStr;
-
-            if (auto shortLit = dynamic_cast<ShortLiteral *>(enumMember->value.get()))
+            if (auto i8Lit = dynamic_cast<I8Literal *>(enumMember->value.get()))
             {
-                literal = shortLit;
-                literalType = TokenType::SHORT;
-                literalStr = shortLit->expression.TokenLiteral;
+                literal = i8Lit;
+                literalType = TokenType::INT8;
+                literalStr = i8Lit->expression.TokenLiteral;
             }
-            else if (auto ushortLit = dynamic_cast<UnsignedShortLiteral *>(enumMember->value.get()))
+            else if (auto u8Lit = dynamic_cast<U8Literal *>(enumMember->value.get()))
             {
-                literal = ushortLit;
-                literalType = TokenType::USHORT;
-                literalStr = ushortLit->expression.TokenLiteral;
+                literal = u8Lit;
+                literalType = TokenType::UINT8;
+                literalStr = u8Lit->expression.TokenLiteral;
             }
-            else if (auto intLit = dynamic_cast<IntegerLiteral *>(enumMember->value.get()))
+            else if (auto i16Lit = dynamic_cast<I16Literal *>(enumMember->value.get()))
             {
-                literal = intLit;
-                literalType = TokenType::INT;
-                literalStr = intLit->expression.TokenLiteral;
+                literal = i16Lit;
+                literalType = TokenType::INT16;
+                literalStr = i16Lit->expression.TokenLiteral;
             }
-            else if (auto uintLit = dynamic_cast<UnsignedIntegerLiteral *>(enumMember->value.get()))
+            else if (auto u16Lit = dynamic_cast<U16Literal *>(enumMember->value.get()))
             {
-                literal = uintLit;
-                literalType = TokenType::UINT;
-                literalStr = uintLit->expression.TokenLiteral;
+                literal = u16Lit;
+                literalType = TokenType::UINT16;
+                literalStr = u16Lit->expression.TokenLiteral;
             }
-            else if (auto longLit = dynamic_cast<LongLiteral *>(enumMember->value.get()))
+            else if (auto i32Lit = dynamic_cast<I32Literal *>(enumMember->value.get()))
             {
-                literal = longLit;
-                literalType = TokenType::LONG;
-                literalStr = longLit->expression.TokenLiteral;
+                literal = i32Lit;
+                literalType = TokenType::INT32;
+                literalStr = i32Lit->expression.TokenLiteral;
             }
-            else if (auto ulongLit = dynamic_cast<UnsignedLongLiteral *>(enumMember->value.get()))
+            else if (auto u32Lit = dynamic_cast<U32Literal *>(enumMember->value.get()))
             {
-                literal = ulongLit;
-                literalType = TokenType::ULONG;
-                literalStr = ulongLit->expression.TokenLiteral;
+                literal = u32Lit;
+                literalType = TokenType::UINT32;
+                literalStr = u32Lit->expression.TokenLiteral;
             }
-            else if (auto extraLit = dynamic_cast<ExtraLiteral *>(enumMember->value.get()))
+            else if (auto i64Lit = dynamic_cast<I64Literal *>(enumMember->value.get()))
             {
-                literal = extraLit;
-                literalType = TokenType::EXTRA;
-                literalStr = extraLit->expression.TokenLiteral;
+                literal = i64Lit;
+                literalType = TokenType::INT64;
+                literalStr = i64Lit->expression.TokenLiteral;
             }
-            else if (auto uextraLit = dynamic_cast<UnsignedExtraLiteral *>(enumMember->value.get()))
+            else if (auto u64Lit = dynamic_cast<U64Literal *>(enumMember->value.get()))
             {
-                literal = uextraLit;
-                literalType = TokenType::UEXTRA;
-                literalStr = uextraLit->expression.TokenLiteral;
+                literal = u64Lit;
+                literalType = TokenType::UINT64;
+                literalStr = u64Lit->expression.TokenLiteral;
+            }
+            else if (auto i128Lit = dynamic_cast<I128Literal *>(enumMember->value.get()))
+            {
+                literal = i128Lit;
+                literalType = TokenType::INT128;
+                literalStr = i128Lit->expression.TokenLiteral;
+            }
+            else if (auto u128Lit = dynamic_cast<U128Literal *>(enumMember->value.get()))
+            {
+                literal = u128Lit;
+                literalType = TokenType::UINT128;
+                literalStr = u128Lit->expression.TokenLiteral;
             }
             else
             {
@@ -158,28 +174,34 @@ void Semantics::walkEnumClassStatement(Node *node)
             bool isUnsignedLiteral;
             switch (literalType)
             {
-            case TokenType::SHORT:
+            case TokenType::INT8:
                 isUnsignedLiteral = false;
                 break;
-            case TokenType::USHORT:
+            case TokenType::UINT8:
+                isUnsignedLiteral = false;
+                break;
+            case TokenType::INT16:
+                isUnsignedLiteral = false;
+                break;
+            case TokenType::UINT16:
                 isUnsignedLiteral = true;
                 break;
-            case TokenType::INT:
+            case TokenType::INT32:
                 isUnsignedLiteral = false;
                 break;
-            case TokenType::UINT:
+            case TokenType::UINT32:
                 isUnsignedLiteral = true;
                 break;
-            case TokenType::LONG:
+            case TokenType::INT64:
                 isUnsignedLiteral = false;
                 break;
-            case TokenType::ULONG:
+            case TokenType::UINT64:
                 isUnsignedLiteral = true;
                 break;
-            case TokenType::EXTRA:
+            case TokenType::INT128:
                 isUnsignedLiteral = false;
                 break;
-            case TokenType::UEXTRA:
+            case TokenType::UINT128:
                 isUnsignedLiteral = true;
                 break;
             default:
@@ -212,21 +234,26 @@ void Semantics::walkEnumClassStatement(Node *node)
                 {
                     std::uint64_t parsedValue = std::stoull(literalStr);
                     memberValue = static_cast<std::int64_t>(parsedValue);
-                    if (underLyingType.kind == DataType::USHORT_INT && parsedValue > std::numeric_limits<std::uint16_t>::max())
-                        throw std::out_of_range("Value out of range for ushort (16-bit)");
-                    if (underLyingType.kind == DataType::UINTEGER && parsedValue > std::numeric_limits<std::uint32_t>::max())
-                        throw std::out_of_range("Value out of range for uint (32-bit)");
-                    // No range check for ULONG_INT, UEXTRA_INT
+                    if (underLyingType.kind == DataType::U8 && parsedValue > std::numeric_limits<std::uint8_t>::max())
+                        throw std::out_of_range("Value out of range for u8");
+                    if (underLyingType.kind == DataType::U16 && parsedValue > std::numeric_limits<std::uint16_t>::max())
+                        throw std::out_of_range("Value out of range for u16");
+                    if (underLyingType.kind == DataType::U32 && parsedValue > std::numeric_limits<std::uint32_t>::max())
+                        throw std::out_of_range("Value out of range for u32");
+                    // No range check for U64, U128
                 }
                 else
                 {
                     memberValue = std::stoll(literalStr);
-                    if (underLyingType.kind == DataType::SHORT_INT &&
+                    if (underLyingType.kind == DataType::I8 &&
+                        (memberValue < std::numeric_limits<std::int8_t>::min() || memberValue > std::numeric_limits<std::int8_t>::max()))
+                        throw std::out_of_range("Value out of range for i8");
+                    if (underLyingType.kind == DataType::I16 &&
                         (memberValue < std::numeric_limits<std::int16_t>::min() || memberValue > std::numeric_limits<std::int16_t>::max()))
-                        throw std::out_of_range("Value out of range for short (16-bit)");
-                    if (underLyingType.kind == DataType::INTEGER &&
+                        throw std::out_of_range("Value out of range for i16");
+                    if (underLyingType.kind == DataType::I32 &&
                         (memberValue < std::numeric_limits<std::int32_t>::min() || memberValue > std::numeric_limits<std::int32_t>::max()))
-                        throw std::out_of_range("Value out of range for int (32-bit)");
+                        throw std::out_of_range("Value out of range for i32");
                     // No range check for LONG_INT, EXTRA_INT
                 }
             }

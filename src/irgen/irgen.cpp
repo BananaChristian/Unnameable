@@ -383,7 +383,7 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const
 
         switch (type.kind)
         {
-        case DataType::INTEGER:
+        case DataType::I32:
         {
             if (auto constInt = llvm::dyn_cast<llvm::ConstantInt>(val))
             {
@@ -565,15 +565,15 @@ llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt, std::shar
     {
         const llvm::DataLayout &DL = module->getDataLayout();
 
-        // Use Preferred Alignment 
+        // Use Preferred Alignment
         llvm::Align finalAlign = DL.getPrefTypeAlign(structTy);
 
-        //Create the alloca and assign it to instancePtr
+        // Create the alloca and assign it to instancePtr
         auto *allocaInst = funcBuilder.CreateAlloca(structTy, nullptr, letName + ".stack");
         allocaInst->setAlignment(finalAlign);
-        instancePtr = allocaInst; //instancePtr is just the alloca result
+        instancePtr = allocaInst; // instancePtr is just the alloca result
 
-        //Use instancePtr for the store
+        // Use instancePtr for the store
         auto *storeInst = funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
         storeInst->setAlignment(finalAlign);
     }
@@ -2211,9 +2211,9 @@ llvm::Value *IRGenerator::generateStringLiteral(Node *node)
     return strPtr;
 }
 
-llvm::Value *IRGenerator::generateCharLiteral(Node *node)
+llvm::Value *IRGenerator::generateChar8Literal(Node *node)
 {
-    auto charLit = dynamic_cast<CharLiteral *>(node);
+    auto charLit = dynamic_cast<Char8Literal *>(node);
     if (!charLit)
     {
         throw std::runtime_error("Invalid char literal");
@@ -2224,11 +2224,11 @@ llvm::Value *IRGenerator::generateCharLiteral(Node *node)
         throw std::runtime_error("Char literal not found in metadata");
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::CHAR)
+    if (dt != DataType::CHAR8)
     {
         throw std::runtime_error("Type error: Expected CHAR for CharLiteral");
     }
-    std::string tokenLiteral = charLit->char_token.TokenLiteral;
+    std::string tokenLiteral = charLit->char8_token.TokenLiteral;
 
     char c = decodeCharLiteral(tokenLiteral);
     return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), static_cast<uint8_t>(c), false);
@@ -2301,151 +2301,186 @@ llvm::Value *IRGenerator::generateBooleanLiteral(Node *node)
     return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), value);
 }
 
-llvm::Value *IRGenerator::generateShortLiteral(Node *node)
+llvm::Value *IRGenerator::generateI8Literal(Node *node)
 {
-    auto shortLit = dynamic_cast<ShortLiteral *>(node);
-    if (!shortLit)
-        throw std::runtime_error("Invalid short literal");
+    auto i8Lit = dynamic_cast<I8Literal *>(node);
+    if (!i8Lit)
+        throw std::runtime_error("Invalid i8 literal");
 
     auto it = semantics.metaData.find(node);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("Short literal not found in metadata");
+        throw std::runtime_error("i8 literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::SHORT_INT)
-        throw std::runtime_error("Type error: Expected SHORT_INT");
+    if (dt != DataType::I8)
+        throw std::runtime_error("Type error: Expected i8");
 
-    int16_t value = static_cast<int16_t>(std::stoi(shortLit->short_token.TokenLiteral));
+    int16_t value = static_cast<int8_t>(std::stoi(i8Lit->i8_token.TokenLiteral));
+    return llvm::ConstantInt::get(context, llvm::APInt(8, value, true));
+}
+
+llvm::Value *IRGenerator::generateU8Literal(Node *node)
+{
+    auto u8Lit = dynamic_cast<U8Literal *>(node);
+    if (!u8Lit)
+        throw std::runtime_error("Invalid u8 literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("u8 literal not found in metadata");
+
+    DataType dt = it->second->type.kind;
+    if (dt != DataType::U8)
+        throw std::runtime_error("Type error: Expected u8");
+
+    int16_t value = static_cast<uint16_t>(std::stoi(u8Lit->u8_token.TokenLiteral));
+    return llvm::ConstantInt::get(context, llvm::APInt(8, value, true));
+}
+
+llvm::Value *IRGenerator::generateI16Literal(Node *node)
+{
+    auto i16Lit = dynamic_cast<I16Literal *>(node);
+    if (!i16Lit)
+        throw std::runtime_error("Invalid i16 literal");
+
+    auto it = semantics.metaData.find(node);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("i16 literal not found in metadata");
+
+    DataType dt = it->second->type.kind;
+    if (dt != DataType::I16)
+        throw std::runtime_error("Type error: Expected i16");
+
+    int16_t value = static_cast<int16_t>(std::stoi(i16Lit->i16_token.TokenLiteral));
     return llvm::ConstantInt::get(context, llvm::APInt(16, value, true));
 }
 
-llvm::Value *IRGenerator::generateUnsignedShortLiteral(Node *node)
+llvm::Value *IRGenerator::generateU16Literal(Node *node)
 {
-    auto ushortLit = dynamic_cast<UnsignedShortLiteral *>(node);
-    if (!ushortLit)
+    auto u16Lit = dynamic_cast<U16Literal *>(node);
+    if (!u16Lit)
         throw std::runtime_error("Invalid ushort literal");
 
     auto it = semantics.metaData.find(node);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("UShort literal not found in metadata");
+        throw std::runtime_error("u16 literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::USHORT_INT)
-        throw std::runtime_error("Type error: Expected USHORT_INT");
+    if (dt != DataType::U16)
+        throw std::runtime_error("Type error: Expected u16");
 
-    uint16_t value = static_cast<uint16_t>(std::stoul(ushortLit->ushort_token.TokenLiteral));
+    uint16_t value = static_cast<uint16_t>(std::stoul(u16Lit->u16_token.TokenLiteral));
     return llvm::ConstantInt::get(context, llvm::APInt(16, value, false));
 }
 
-llvm::Value *IRGenerator::generateIntegerLiteral(Node *node)
+llvm::Value *IRGenerator::generateI32Literal(Node *node)
 {
-    auto intLit = dynamic_cast<IntegerLiteral *>(node);
-    if (!intLit)
+    auto i32Lit = dynamic_cast<I32Literal *>(node);
+    if (!i32Lit)
     {
-        throw std::runtime_error("Invalid integer literal");
+        throw std::runtime_error("Invalid i32 literal");
     }
-    auto it = semantics.metaData.find(intLit);
+    auto it = semantics.metaData.find(i32Lit);
     if (it == semantics.metaData.end())
     {
-        throw std::runtime_error("Integer literal not found in metadata at line:" + std::to_string(intLit->expression.line) + " and column: " + std::to_string(intLit->expression.column));
+        throw std::runtime_error("i32 literal not found in metadata at line:" + std::to_string(i32Lit->expression.line) + " and column: " + std::to_string(i32Lit->expression.column));
     }
     DataType dt = it->second->type.kind;
-    if (dt != DataType::INTEGER)
+    if (dt != DataType::I32)
     {
-        throw std::runtime_error("Type error: Expected INTEGER for IntegerLiteral");
+        throw std::runtime_error("Type error: Expected i32");
     }
-    int64_t value = std::stoll(intLit->int_token.TokenLiteral);
+    int64_t value = std::stoll(i32Lit->i32_token.TokenLiteral);
     return llvm::ConstantInt::get(context, llvm::APInt(32, value, true));
 }
 
-llvm::Value *IRGenerator::generateUnsignedIntegerLiteral(Node *node)
+llvm::Value *IRGenerator::generateU32Literal(Node *node)
 {
-    auto uintLit = dynamic_cast<UnsignedIntegerLiteral *>(node);
-    if (!uintLit)
-        throw std::runtime_error("Invalid uint literal");
+    auto u32Lit = dynamic_cast<U32Literal *>(node);
+    if (!u32Lit)
+        throw std::runtime_error("Invalid u32 literal");
 
-    auto it = semantics.metaData.find(uintLit);
+    auto it = semantics.metaData.find(u32Lit);
     if (it == semantics.metaData.end())
         throw std::runtime_error("Uint literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::UINTEGER)
-        throw std::runtime_error("Type error: Expected UINTEGER");
+    if (dt != DataType::U32)
+        throw std::runtime_error("Type error: Expected u32");
 
-    uint32_t value = static_cast<uint32_t>(std::stoul(uintLit->uint_token.TokenLiteral));
+    uint32_t value = static_cast<uint32_t>(std::stoul(u32Lit->u32_token.TokenLiteral));
     return llvm::ConstantInt::get(context, llvm::APInt(32, value, false));
 }
 
-llvm::Value *IRGenerator::generateLongLiteral(Node *node)
+llvm::Value *IRGenerator::generateI64Literal(Node *node)
 {
-    auto longLit = dynamic_cast<LongLiteral *>(node);
-    if (!longLit)
-        throw std::runtime_error("Invalid long literal");
+    auto i64Lit = dynamic_cast<I64Literal *>(node);
+    if (!i64Lit)
+        throw std::runtime_error("Invalid i64 literal");
 
-    auto it = semantics.metaData.find(longLit);
+    auto it = semantics.metaData.find(i64Lit);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("Long literal not found in metadata");
+        throw std::runtime_error("i64 literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::LONG_INT)
-        throw std::runtime_error("Type error: Expected LONG_INT ");
+    if (dt != DataType::I64)
+        throw std::runtime_error("Type error: Expected i64 ");
 
-    int64_t value = std::stoll(longLit->long_token.TokenLiteral);
+    int64_t value = std::stoll(i64Lit->i64_token.TokenLiteral);
     return llvm::ConstantInt::get(context, llvm::APInt(64, value, true));
 }
 
-llvm::Value *IRGenerator::generateUnsignedLongLiteral(Node *node)
+llvm::Value *IRGenerator::generateU64Literal(Node *node)
 {
-    auto ulongLit = dynamic_cast<UnsignedLongLiteral *>(node);
-    if (!ulongLit)
-        throw std::runtime_error("Invalid ulong literal");
+    auto u64Lit = dynamic_cast<U64Literal *>(node);
+    if (!u64Lit)
+        throw std::runtime_error("Invalid u64 literal");
 
-    auto it = semantics.metaData.find(ulongLit);
+    auto it = semantics.metaData.find(u64Lit);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("ULong literal not found in metadata");
+        throw std::runtime_error("u64 literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::ULONG_INT)
-        throw std::runtime_error("Type error: Expected ULONG_INT");
+    if (dt != DataType::U64)
+        throw std::runtime_error("Type error: Expected u64");
 
-    uint64_t value = std::stoull(ulongLit->ulong_token.TokenLiteral);
+    uint64_t value = std::stoull(u64Lit->u64_token.TokenLiteral);
     return llvm::ConstantInt::get(context, llvm::APInt(64, value, false));
 }
 
-llvm::Value *IRGenerator::generateExtraLiteral(Node *node)
+llvm::Value *IRGenerator::generateI128Literal(Node *node)
 {
-    auto extraLit = dynamic_cast<ExtraLiteral *>(node);
-    if (!extraLit)
-        throw std::runtime_error("Invalid extra (128-bit) literal");
+    auto i128Lit = dynamic_cast<I128Literal *>(node);
+    if (!i128Lit)
+        throw std::runtime_error("Invalid i128 literal");
 
-    auto it = semantics.metaData.find(extraLit);
+    auto it = semantics.metaData.find(i128Lit);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("Extra literal not found in metadata");
+        throw std::runtime_error("i128 literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::EXTRA_INT)
-        throw std::runtime_error("Type error: Expected EXTRA_INT");
+    if (dt != DataType::I128)
+        throw std::runtime_error("Type error: Expected i128");
 
-    // Use APInt constructor with string and base 10 for 128-bit
-    llvm::APInt value(128, extraLit->extra_token.TokenLiteral, 10);
+    llvm::APInt value(128, i128Lit->i128_token.TokenLiteral, 10);
     return llvm::ConstantInt::get(context, value);
 }
 
-llvm::Value *IRGenerator::generateUnsignedExtraLiteral(Node *node)
+llvm::Value *IRGenerator::generateU128Literal(Node *node)
 {
-    auto uextraLit = dynamic_cast<UnsignedExtraLiteral *>(node);
-    if (!uextraLit)
-        throw std::runtime_error("Invalid uextra (128-bit unsigned) literal");
+    auto u128Lit = dynamic_cast<U128Literal *>(node);
+    if (!u128Lit)
+        throw std::runtime_error("Invalid u128 literal");
 
-    auto it = semantics.metaData.find(uextraLit);
+    auto it = semantics.metaData.find(u128Lit);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("UExtra literal not found in metadata");
+        throw std::runtime_error("u128 literal not found in metadata");
 
     DataType dt = it->second->type.kind;
-    if (dt != DataType::UEXTRA_INT)
-        throw std::runtime_error("Type error: Expected UEXTRA_INT ");
+    if (dt != DataType::U128)
+        throw std::runtime_error("Type error: Expected u128 ");
 
-    llvm::APInt value(128, uextraLit->uextra_token.TokenLiteral, 10);
+    llvm::APInt value(128, u128Lit->u128_token.TokenLiteral, 10);
     return llvm::ConstantInt::get(context, value);
 }
 
@@ -2566,28 +2601,32 @@ llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType typ
     case DataType::STRING:
         return llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
 
-    case DataType::INTEGER:
-        // Using minimum signed int as null marker
-        return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, INT32_MIN, true));
+    case DataType::I8:
+        return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), llvm::APInt(8, INT8_MIN, true));
 
-    case DataType::SHORT_INT:
+    case DataType::U8:
+        return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), llvm::APInt(8, 0));
+
+    case DataType::I16:
         return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), llvm::APInt(16, INT16_MIN, true));
 
-    case DataType::USHORT_INT:
-        // Using zero as null for unsigned
+    case DataType::U16:
         return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), llvm::APInt(16, 0));
 
-    case DataType::UINTEGER:
+    case DataType::I32:
+        return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, INT32_MIN, true));
+
+    case DataType::U32:
         return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), llvm::APInt(32, 0));
 
-    case DataType::LONG_INT:
+    case DataType::I64:
         return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), llvm::APInt(64, INT64_MIN, true));
 
-    case DataType::ULONG_INT:
+    case DataType::U64:
         return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), llvm::APInt(64, 0));
 
-    case DataType::EXTRA_INT:
-    case DataType::UEXTRA_INT:
+    case DataType::I128:
+    case DataType::U128:
         return llvm::ConstantInt::get(llvm::Type::getInt128Ty(context), llvm::APInt(128, 0));
 
     case DataType::FLOAT:
@@ -2599,7 +2638,7 @@ llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit, DataType typ
     case DataType::BOOLEAN:
         return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), llvm::APInt(1, 0));
 
-    case DataType::CHAR:
+    case DataType::CHAR8:
         return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), llvm::APInt(8, 0));
 
     case DataType::CHAR16:
@@ -3485,49 +3524,53 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
 
     switch (type.kind)
     {
-    case DataType::SHORT_INT:
+    case DataType::I8:
+    {
+        baseType = llvm::Type::getInt8Ty(context);
+        break;
+    }
+    case DataType::U8:
+    {
+        baseType = llvm::Type::getInt8Ty(context);
+        break;
+    }
+    case DataType::I16:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
-
-    case DataType::USHORT_INT:
+    case DataType::U16:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
-
-    case DataType::INTEGER:
+    case DataType::I32:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
-
-    case DataType::UINTEGER:
+    case DataType::U32:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
-
-    case DataType::LONG_INT:
+    case DataType::I64:
     {
         baseType = llvm::Type::getInt64Ty(context);
         break;
     }
-
-    case DataType::ULONG_INT:
+    case DataType::U64:
     {
         baseType = llvm::Type::getInt64Ty(context);
         break;
     }
-
-    case DataType::EXTRA_INT:
+    case DataType::I128:
     {
         baseType = llvm::Type::getInt128Ty(context);
         break;
     }
 
-    case DataType::UEXTRA_INT:
+    case DataType::U128:
     {
         baseType = llvm::Type::getInt128Ty(context);
         break;
@@ -3538,31 +3581,26 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
         baseType = llvm::Type::getInt1Ty(context);
         break;
     }
-
-    case DataType::CHAR:
+    case DataType::CHAR8:
     {
         baseType = llvm::Type::getInt8Ty(context);
         break;
     }
-
     case DataType::CHAR16:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
-
     case DataType::CHAR32:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
-
     case DataType::FLOAT:
     {
         baseType = llvm::Type::getFloatTy(context);
         break;
     }
-
     case DataType::DOUBLE:
     {
         baseType = llvm::Type::getDoubleTy(context);
@@ -3681,18 +3719,20 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(PrefixExpression)] = &IRGenerator::generatePrefixExpression;
     expressionGeneratorsMap[typeid(PostfixExpression)] = &IRGenerator::generatePostfixExpression;
     expressionGeneratorsMap[typeid(StringLiteral)] = &IRGenerator::generateStringLiteral;
-    expressionGeneratorsMap[typeid(CharLiteral)] = &IRGenerator::generateCharLiteral;
+    expressionGeneratorsMap[typeid(Char8Literal)] = &IRGenerator::generateChar8Literal;
     expressionGeneratorsMap[typeid(Char16Literal)] = &IRGenerator::generateChar16Literal;
     expressionGeneratorsMap[typeid(Char32Literal)] = &IRGenerator::generateChar32Literal;
     expressionGeneratorsMap[typeid(BooleanLiteral)] = &IRGenerator::generateBooleanLiteral;
-    expressionGeneratorsMap[typeid(ShortLiteral)] = &IRGenerator::generateShortLiteral;
-    expressionGeneratorsMap[typeid(UnsignedShortLiteral)] = &IRGenerator::generateUnsignedShortLiteral;
-    expressionGeneratorsMap[typeid(IntegerLiteral)] = &IRGenerator::generateIntegerLiteral;
-    expressionGeneratorsMap[typeid(UnsignedIntegerLiteral)] = &IRGenerator::generateUnsignedIntegerLiteral;
-    expressionGeneratorsMap[typeid(LongLiteral)] = &IRGenerator::generateLongLiteral;
-    expressionGeneratorsMap[typeid(UnsignedLongLiteral)] = &IRGenerator::generateUnsignedLongLiteral;
-    expressionGeneratorsMap[typeid(ExtraLiteral)] = &IRGenerator::generateExtraLiteral;
-    expressionGeneratorsMap[typeid(UnsignedExtraLiteral)] = &IRGenerator::generateUnsignedExtraLiteral;
+    expressionGeneratorsMap[typeid(I8Literal)] = &IRGenerator::generateI8Literal;
+    expressionGeneratorsMap[typeid(U8Literal)] = &IRGenerator::generateU8Literal;
+    expressionGeneratorsMap[typeid(I16Literal)] = &IRGenerator::generateI16Literal;
+    expressionGeneratorsMap[typeid(U16Literal)] = &IRGenerator::generateU16Literal;
+    expressionGeneratorsMap[typeid(I32Literal)] = &IRGenerator::generateI32Literal;
+    expressionGeneratorsMap[typeid(U32Literal)] = &IRGenerator::generateU32Literal;
+    expressionGeneratorsMap[typeid(I64Literal)] = &IRGenerator::generateI64Literal;
+    expressionGeneratorsMap[typeid(U64Literal)] = &IRGenerator::generateU64Literal;
+    expressionGeneratorsMap[typeid(I128Literal)] = &IRGenerator::generateI128Literal;
+    expressionGeneratorsMap[typeid(U128Literal)] = &IRGenerator::generateU128Literal;
     expressionGeneratorsMap[typeid(FloatLiteral)] = &IRGenerator::generateFloatLiteral;
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(ArrayLiteral)] = &IRGenerator::generateArrayLiteral;
@@ -3822,14 +3862,16 @@ bool IRGenerator::isIntegerType(DataType dt)
 {
     switch (dt)
     {
-    case DataType::SHORT_INT:
-    case DataType::USHORT_INT:
-    case DataType::INTEGER:
-    case DataType::UINTEGER:
-    case DataType::LONG_INT:
-    case DataType::ULONG_INT:
-    case DataType::EXTRA_INT:
-    case DataType::UEXTRA_INT:
+    case DataType::I8:
+    case DataType::U8:
+    case DataType::I16:
+    case DataType::U16:
+    case DataType::I32:
+    case DataType::U32:
+    case DataType::I64:
+    case DataType::U64:
+    case DataType::I128:
+    case DataType::U128:
         return true;
     default:
         return false;
@@ -3840,10 +3882,11 @@ bool IRGenerator::isSignedInteger(DataType dt)
 {
     switch (dt)
     {
-    case DataType::SHORT_INT:
-    case DataType::INTEGER:
-    case DataType::LONG_INT:
-    case DataType::EXTRA_INT:
+    case DataType::I8:
+    case DataType::I16:
+    case DataType::I32:
+    case DataType::I64:
+    case DataType::I128:
         return true;
     default:
         return false;
@@ -3854,17 +3897,20 @@ unsigned IRGenerator::getIntegerBitWidth(DataType dt)
 {
     switch (dt)
     {
-    case DataType::SHORT_INT:
-    case DataType::USHORT_INT:
+    case DataType::I8:
+    case DataType::U8:
+        return 8;
+    case DataType::I16:
+    case DataType::U16:
         return 16;
-    case DataType::INTEGER:
-    case DataType::UINTEGER:
+    case DataType::I32:
+    case DataType::U32:
         return 32;
-    case DataType::LONG_INT:
-    case DataType::ULONG_INT:
+    case DataType::I64:
+    case DataType::U64:
         return 64;
-    case DataType::EXTRA_INT:
-    case DataType::UEXTRA_INT:
+    case DataType::I128:
+    case DataType::U128:
         return 128;
     default:
         return 0; // Not an integer type
@@ -4024,7 +4070,7 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
         return;
     }
 
-    if (type.kind == DataType::INTEGER)
+    if (type.kind == DataType::I32)
     {
         printInt(val);
     }
@@ -4034,7 +4080,7 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type)
     }
     else
     {
-        throw std::runtime_error("shout! only supports int and string for now");
+        throw std::runtime_error("shout! only supports i32 and string for now");
     }
 }
 

@@ -359,84 +359,81 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
 
     switch (type.kind)
     {
-    case DataType::SHORT_INT:
+    case DataType::I8:
+    {
+        baseType = llvm::Type::getInt8Ty(context);
+        break;
+    }
+    case DataType::U8:
+    {
+        baseType=llvm::Type::getInt8Ty(context);
+        break;
+    }
+    case DataType::I16:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
-
-    case DataType::USHORT_INT:
+    case DataType::U16:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
-
-    case DataType::INTEGER:
+    case DataType::I32:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
-
-    case DataType::UINTEGER:
+    case DataType::U32:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
-
-    case DataType::LONG_INT:
+    case DataType::I64:
     {
         baseType = llvm::Type::getInt64Ty(context);
         break;
     }
-
-    case DataType::ULONG_INT:
+    case DataType::U64:
     {
         baseType = llvm::Type::getInt64Ty(context);
         break;
     }
-
-    case DataType::EXTRA_INT:
+    case DataType::I128:
     {
         baseType = llvm::Type::getInt128Ty(context);
         break;
     }
-
-    case DataType::UEXTRA_INT:
+    case DataType::U128:
     {
         baseType = llvm::Type::getInt128Ty(context);
         break;
     }
-
     case DataType::BOOLEAN:
     {
         baseType = llvm::Type::getInt1Ty(context);
         break;
     }
-
-    case DataType::CHAR:
+    case DataType::CHAR8:
     {
         baseType = llvm::Type::getInt8Ty(context);
         break;
     }
-
     case DataType::CHAR16:
     {
         baseType = llvm::Type::getInt16Ty(context);
         break;
     }
-
     case DataType::CHAR32:
     {
         baseType = llvm::Type::getInt32Ty(context);
         break;
     }
-
     case DataType::FLOAT:
     {
         baseType = llvm::Type::getFloatTy(context);
         break;
     }
-
     case DataType::DOUBLE:
     {
         baseType = llvm::Type::getDoubleTy(context);
@@ -448,13 +445,11 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
         baseType = llvm::PointerType::get(context, 0);
         break;
     }
-
     case DataType::VOID:
     {
         baseType = llvm::Type::getVoidTy(context);
         break;
     }
-
     case DataType::DATABLOCK:
     case DataType::COMPONENT:
     {

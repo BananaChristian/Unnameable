@@ -302,29 +302,35 @@ private:
     std::unique_ptr<Expression> parseGroupedExpression();
 
     // Parsing data type literals
+    // Signed 8 bit integer
+    std::unique_ptr<Expression> parseI8Literal();
+
+    // Unsigned 8 bit integer
+    std::unique_ptr<Expression> parseU8Literal();
+
     // Signed 16 bit integer
-    std::unique_ptr<Expression> parseShortLiteral();
+    std::unique_ptr<Expression> parseI16Literal();
 
     // Unsigned 16 bit integer
-    std::unique_ptr<Expression> parseUnsignedShortLiteral();
+    std::unique_ptr<Expression> parseU16Literal();
 
     // Signed 32 bit Integer
-    std::unique_ptr<Expression> parseIntegerLiteral();
+    std::unique_ptr<Expression> parseI32Literal();
 
     // Unsigned 32 bit integer
-    std::unique_ptr<Expression> parseUnsignedIntegerLiteral();
+    std::unique_ptr<Expression> parseU32Literal();
 
     // Signed 64 bit integer
-    std::unique_ptr<Expression> parseLongLiteral();
+    std::unique_ptr<Expression> parseI64Literal();
 
     // UnSigned 64 bit integer
-    std::unique_ptr<Expression> parseUnsignedLongLiteral();
+    std::unique_ptr<Expression> parseU64Literal();
 
     // Signed 128 bit integer
-    std::unique_ptr<Expression> parseExtraLiteral();
+    std::unique_ptr<Expression> parseI128Literal();
 
     // Unsigned 128 bit integer
-    std::unique_ptr<Expression> parseUnsignedExtraLiteral();
+    std::unique_ptr<Expression> parseU128Literal();
 
     // Boolean
     std::unique_ptr<Expression> parseBooleanLiteral();
@@ -336,7 +342,7 @@ private:
     std::unique_ptr<Expression> parseDoubleLiteral();
 
     // 8 bit Char
-    std::unique_ptr<Expression> parseCharLiteral();
+    std::unique_ptr<Expression> parseChar8Literal();
 
     // 16 bit Char
     std::unique_ptr<Expression> parseChar16Literal();

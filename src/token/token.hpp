@@ -118,30 +118,35 @@ enum class TokenType
     DEFAULT,
 
     // Data types
-    SHORT, // Signed int 16 bit
-    SHORT_KEYWORD,
-    USHORT, // Unsigned int 16 bit
-    USHORT_KEYWORD,
+    INT8,//Signed 8 bit
+    I8_KEYWORD,
+    UINT8,//Unsigned 8 bit
+    U8_KEYWORD,
 
-    INT, // Signed int 32 bit
-    INTEGER_KEYWORD,
-    UINT, // Unsingned int 32 bit
-    UINT_KEYWORD,
+    INT16,//Signed 16 bit
+    I16_KEYWORD,
+    UINT16,//Unsigned 16 bit
+    U16_KEYWORD,
 
-    LONG, // Signed int 64 bit
-    LONG_KEYWORD,
-    ULONG, // Unsigned int 64 bit
-    ULONG_KEYWORD,
+    INT32,//Signed 32 bit integer
+    I32_KEYWORD,
+    UINT32,//Unsigned 32 bit integer
+    U32_KEYWORD,
 
-    EXTRA, // Signed int 128 bit
-    EXTRA_KEYWORD,
-    UEXTRA, // Unsigned int 128 bit
-    UEXTRA_KEYWORD,
+    INT64,//Signed 64 bit
+    I64_KEYWORD,
+    UINT64,//Unsigned 64 bit
+    U64_KEYWORD,
+
+    INT128,// Signed int 128 bit
+    I128_KEYWORD,
+    UINT128, // Unsigned int 128 bit
+    U128_KEYWORD,
 
     STRING,
 
-    CHAR, // 8 bit char
-    CHAR_KEYWORD,
+    CHAR8, // 8 bit char
+    CHAR8_KEYWORD,
     CHAR16, // 16 bit char
     CHAR16_KEYWORD,
     CHAR32, // 32 bit char

@@ -149,65 +149,67 @@ Token Lexer::readNumbers()
     std::string number;
     CAPTURE_POS;
 
+    // Consume all the digits first
     while (isDigit(currentChar()))
     {
         number += convertUnicodeDigit(currentChar());
         advance();
-        if (currentChar() == U'u')
-        {
-            advance(); // Consume the u
-            if (currentChar() == U'l')
-            {
-                advance(); // Consume the l
-                return Token{number, TokenType::ULONG, tokenLine, tokenColumn};
-            }
-            if (currentChar() == U's')
-            {
-                advance();
-                return Token{number, TokenType::USHORT, tokenLine, tokenColumn};
-            }
-            if (currentChar() == U'e')
-            {
-                advance();
-                return Token{number, TokenType::UEXTRA, tokenLine, tokenColumn};
-            }
-            return Token{number, TokenType::UINT, tokenLine, tokenColumn};
-        }
-        if (currentChar() == U's')
-        {
-            advance();
-            return Token{number, TokenType::SHORT, tokenLine, tokenColumn};
-        }
-        if (currentChar() == U'l')
-        {
-            advance();
-            return Token{number, TokenType::LONG, tokenLine, tokenColumn};
-        }
-        if (currentChar() == U'e')
-        {
-            advance();
-            return Token{number, TokenType::EXTRA, tokenLine, tokenColumn};
-        }
+    }
 
-        // Dealing with decimals
-        if (currentChar() == U'.')
+    // Handle decimals
+    if (currentChar() == U'.')
+    {
+        number += currentChar();
+        advance();
+        while (isDigit(currentChar()))
         {
             number += currentChar();
             advance();
-            while (isDigit(currentChar()))
-            {
-                number += currentChar();
-                advance();
-            }
-            if (currentChar() == U'd' || currentChar() == U'D')
-            {
-                advance(); // consume 'd'
-                return Token{number, TokenType::DOUBLE, tokenLine, tokenColumn};
-            }
-            return Token{number, TokenType::FLOAT, tokenLine, tokenColumn};
         }
+        if (currentChar() == U'd' || currentChar() == U'D')
+        {
+            advance(); // consume 'd'
+            return Token{number, TokenType::DOUBLE, tokenLine, tokenColumn};
+        }
+        return Token{number, TokenType::FLOAT, tokenLine, tokenColumn};
     }
-    return Token{number, TokenType::INT, tokenLine, tokenColumn};
+
+    if ((currentChar() >= U'a' && currentChar() <= U'z') ||
+        (currentChar() >= U'A' && currentChar() <= U'Z'))
+    {
+        std::string suffix;
+        // Consume letters and numbers (like 'i' and '64')
+        while ((currentChar() >= U'a' && currentChar() <= U'z') ||
+               (currentChar() >= U'A' && currentChar() <= U'Z') ||
+               isDigit(currentChar()))
+        {
+            suffix += (char)currentChar();
+            advance();
+        }
+
+        // Map the strings to your Types
+        if (suffix == "i64")
+            return Token{number, TokenType::INT64, tokenLine, tokenColumn};
+        if (suffix == "u64")
+            return Token{number, TokenType::UINT64, tokenLine, tokenColumn};
+        if (suffix == "i16")
+            return Token{number, TokenType::INT16, tokenLine, tokenColumn};
+        if (suffix == "u16")
+            return Token{number, TokenType::UINT16, tokenLine, tokenColumn};
+        if (suffix == "i128")
+            return Token{number, TokenType::INT128, tokenLine, tokenColumn};
+        if (suffix == "u128")
+            return Token{number, TokenType::UINT128, tokenLine, tokenColumn};
+        if (suffix == "u32")
+            return Token{number, TokenType::UINT32, tokenLine, tokenColumn};
+        if (suffix == "i8")
+            return Token{number, TokenType::INT8, tokenLine, tokenColumn};
+        if (suffix == "u8")
+            return Token{number, TokenType::UINT8, tokenLine, tokenColumn};
+
+    }
+
+    return Token{number, TokenType::INT32, tokenLine, tokenColumn};
 }
 
 bool Lexer::isDigit(char32_t ch)
@@ -506,7 +508,7 @@ Token Lexer::readChar()
     advance(); // Skip closing quote
 
     // Step 5: Determine token type based on prefix
-    TokenType type = TokenType::CHAR; // default 8-bit char
+    TokenType type = TokenType::CHAR8; // default 8-bit char
     switch (prefix)
     {
     case U'u':
@@ -516,7 +518,7 @@ Token Lexer::readChar()
         type = TokenType::CHAR32;
         break;
     default:
-        type = TokenType::CHAR;
+        type = TokenType::CHAR8;
         break;
     }
 

@@ -13,34 +13,22 @@
 // Type system tracker
 enum class DataType
 {
-    SHORT_INT, // 16 BIT signed integer
-
-    USHORT_INT, // 16 BUT unsigned integer
-
-    INTEGER, // 32 BIT signed integer
-
-    UINTEGER, // 32 BIT unsigned integer
-
-    LONG_INT, // 64 BIT signed integer
-
-    ULONG_INT, // 64 BIT unsigned integer
-
-    EXTRA_INT, // 128 BIT signed integer
-
-    UEXTRA_INT, // 128 BIT unsigned integer
-
+    I8,//8 BIT signed integer
+    U8,//8 bit unsigned integer
+    I16, // 16 BIT signed integer
+    U16, // 16 BUT unsigned integer
+    I32, // 32 BIT signed integer
+    U32, // 32 BIT unsigned integer
+    I64, // 64 BIT signed integer
+    U64, // 64 BIT unsigned integer
+    I128, // 128 BIT signed integer
+    U128, // 128 BIT unsigned integer
     BOOLEAN,
-
     STRING,
-
     FLOAT,
-
     DOUBLE,
-
-    CHAR, // 8 BIT Char
-
+    CHAR8, // 8 BIT Char
     CHAR16, // 16 BIT Char
-
     CHAR32, // 32 BIT Char
 
     ENUM,
@@ -114,7 +102,7 @@ struct CustomTypeInfo
     std::string typeName;
     ResolvedType type;
     // Special for enum class
-    DataType underLyingType = DataType::INTEGER; // Defaulting to 32 bit integer
+    DataType underLyingType = DataType::I32; // Defaulting to 32 bit integer
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
     bool isExportable = false;
 };
@@ -282,19 +270,21 @@ private:
     std::vector<std::string> sourceLines;
 
     // Walking the data type literals
-    void walkShortLiteral(Node *node);
-    void walkUnsignedShortLiteral(Node *node);
-    void walkIntegerLiteral(Node *node);
-    void walkUnsignedIntegerLiteral(Node *node);
-    void walkLongLiteral(Node *node);
-    void walkUnsignedLongLiteral(Node *node);
-    void walkExtraLiteral(Node *node);
-    void walkUnsignedExtraLiteral(Node *node);
+    void walkI8Literal(Node *node);
+    void walkU8Literal(Node *node);
+    void walkI16Literal(Node *node);
+    void walkU16Literal(Node *node);
+    void walkI32Literal(Node *node);
+    void walkU32Literal(Node *node);
+    void walkI64Literal(Node *node);
+    void walkU64Literal(Node *node);
+    void walkI128Literal(Node *node);
+    void walkU128Literal(Node *node);
 
     void walkStringLiteral(Node *node);
     void walkBooleanLiteral(Node *node);
 
-    void walkCharLiteral(Node *node);
+    void walkChar8Literal(Node *node);
     void walkChar16Literal(Node *node);
     void walkChar32Literal(Node *node);
 
@@ -385,8 +375,6 @@ private:
     // Walking Qualify statement
     void walkQualifyStatement(Node *node);
 
-    void walkImportStatement(Node *node);
-
     void walkFunctionParameters(Node *node);
 
     void walkSealCallExpression(Node *node, const std::string &sealName);
@@ -411,7 +399,6 @@ private:
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
     int inferLiteralDimensions(ArrayLiteral *arrLit);
     void inferSizePerDimension(ArrayLiteral *lit, std::vector<int64_t> &sizes);
-    int64_t getIntExprVal(Node *node);
     void substituteTypes(Node *node, std::unordered_map<std::string, Token> &subMap);
     void mangleGenericName(Node *node, std::string aliasName);
 

@@ -990,14 +990,16 @@ bool Parser::isIntegerType(TokenType type)
 {
     switch (type)
     {
-    case TokenType::SHORT_KEYWORD:
-    case TokenType::USHORT_KEYWORD:
-    case TokenType::INTEGER_KEYWORD:
-    case TokenType::UINT_KEYWORD:
-    case TokenType::LONG_KEYWORD:
-    case TokenType::ULONG_KEYWORD:
-    case TokenType::EXTRA_KEYWORD:
-    case TokenType::UEXTRA_KEYWORD:
+    case TokenType::I8_KEYWORD:
+    case TokenType::U8_KEYWORD:
+    case TokenType::I16_KEYWORD:
+    case TokenType::U16_KEYWORD:
+    case TokenType::I32_KEYWORD:
+    case TokenType::U32_KEYWORD:
+    case TokenType::I64_KEYWORD:
+    case TokenType::U64_KEYWORD:
+    case TokenType::I128_KEYWORD:
+    case TokenType::U128_KEYWORD:
         return true;
     default:
         return false;
@@ -1008,14 +1010,16 @@ bool Parser::isIntegerLiteralType(TokenType type)
 {
     switch (type)
     {
-    case TokenType::SHORT:
-    case TokenType::USHORT:
-    case TokenType::INT:
-    case TokenType::UINT:
-    case TokenType::LONG:
-    case TokenType::ULONG:
-    case TokenType::EXTRA:
-    case TokenType::UEXTRA:
+    case TokenType::INT8:
+    case TokenType::UINT8:
+    case TokenType::INT16:
+    case TokenType::UINT16:
+    case TokenType::INT32:
+    case TokenType::UINT32:
+    case TokenType::INT64:
+    case TokenType::UINT64:
+    case TokenType::INT128:
+    case TokenType::UINT128:
         return true;
     default:
         return false;
