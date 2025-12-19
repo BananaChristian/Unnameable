@@ -568,55 +568,6 @@ void IRGenerator::generateEnumClassStatement(Node *node)
     }
 }
 
-llvm::Value *IRGenerator::generateNewComponentExpression(Node *node)
-{
-    auto newExpr = dynamic_cast<NewComponentExpression *>(node);
-    if (!newExpr)
-        throw std::runtime_error("Invalid new component expression");
-
-    const std::string &compName = newExpr->component_name.TokenLiteral;
-
-    auto exprMetaIt = semantics.metaData.find(newExpr);
-    if (exprMetaIt == semantics.metaData.end())
-        throw std::runtime_error("Undefined component '" + compName + "'");
-    if (exprMetaIt->second->hasError)
-        throw std::runtime_error("Semantic Error detected");
-
-    // Retrieve component struct type
-    auto compTypeIt = componentTypes.find(compName);
-    if (compTypeIt == componentTypes.end())
-        throw std::runtime_error("Component '" + compName + "' does not exist");
-
-    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(compTypeIt->second);
-    if (!structTy)
-        throw std::runtime_error("Component type '" + compName + "' is not a struct");
-
-    // Allocate on stack (for now)
-    llvm::Value *instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, compName + ".inst");
-
-    // Zero initialize (optional safety)
-    funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
-
-    // Check for init
-    if (llvm::Function *initFn = module->getFunction(compName + "_init"))
-    {
-        std::vector<llvm::Value *> initArgs;
-        initArgs.push_back(instancePtr); // self pointer
-
-        for (auto &arg : newExpr->arguments)
-        {
-            llvm::Value *val = generateExpression(arg.get());
-            if (!val)
-                throw std::runtime_error("Failed to generate argument for new " + compName);
-            initArgs.push_back(val);
-        }
-
-        funcBuilder.CreateCall(initFn, initArgs);
-    }
-
-    // Return the pointer
-    return instancePtr;
-}
 
 void IRGenerator::generateInstantiateStatement(Node *node)
 {

@@ -64,6 +64,7 @@ struct ImportedSymbolInfo
 {
     ImportedType returnType;
     std::vector<std::pair<ImportedType, std::string>> paramTypes;
+    std::vector<ImportedType> initArgs;
     ImportedType type;
     int memberIndex = -1;
     bool isNullable = false;
@@ -106,7 +107,14 @@ struct RawComponentMethod
     std::string methodName;
     ImportedType returnType;
     std::vector<std::pair<ImportedType, std::string>> paramTypes;
-    bool isFunction=false;
+    bool isFunction = false;
+};
+
+struct RawComponentInit
+{
+    std::vector<ImportedType> initArgs;
+    ImportedType returnType;
+    ImportedType type;
 };
 
 struct RawComponentTable
@@ -114,6 +122,8 @@ struct RawComponentTable
     std::string componentName;
     std::vector<RawComponentMember> members;
     std::vector<RawComponentMethod> methods;
+    bool hasInit = false;
+    RawComponentInit init;
 };
 
 struct RawDataMember
@@ -154,6 +164,9 @@ public:
     std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedComponentTable;
     std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedDataTable;
 
+    // Maps ComponentName to Constructor Metadata
+    std::unordered_map<std::string, ImportedSymbolInfo> importedInitTable;
+
     RawStubTable stub;
 
 private:
@@ -174,6 +187,7 @@ private:
 
     RawComponentMember readComponentMember(std::istream &in);
     RawComponentMethod readComponentMethod(std::istream &in);
+    RawComponentInit readComponentInit(std::istream &in);
 
     RawDataMember readDataMember(std::istream &in);
     RawStubTable readStubTable(std::istream &in);

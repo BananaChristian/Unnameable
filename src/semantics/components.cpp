@@ -665,6 +665,7 @@ void Semantics::walkInitConstructor(Node *node)
     auto initInfo = std::make_shared<SymbolInfo>();
     initInfo->type = ResolvedType{DataType::VOID, "void"};
     initInfo->returnType = ResolvedType{DataType::VOID, "void"};
+    initInfo->isDeclaration = true;
     initInfo->isDefined = true;
 
     auto currentComponentName = currentComponent.typeName;
@@ -677,6 +678,7 @@ void Semantics::walkInitConstructor(Node *node)
         // Storing the init args
         initArgs.push_back(inferNodeDataType(arg.get()));
     }
+    initInfo->initArgs = initArgs;
     componentInitArgs[currentComponentName] = initArgs;
 
     // Walk the constructor body
@@ -687,7 +689,7 @@ void Semantics::walkInitConstructor(Node *node)
     popScope();
 
     // Attach metadata
-    metaData[node] = initInfo;
+    metaData[initStmt] = initInfo;
 
     std::cout << "[SEMANTIC LOG] Init constructor added to component '"
               << currentComponent.typeName << "'\n";
@@ -1252,120 +1254,98 @@ void Semantics::walkNewComponentExpression(Node *node)
 
     auto line = newExpr->expression.line;
     auto column = newExpr->expression.column;
+    auto componentName = newExpr->component_name.TokenLiteral;
     bool hasError = false;
 
-    // Get component name
-    auto componentName = newExpr->component_name.TokenLiteral;
+    // UNIFIED TYPE LOOKUP
+    // We determine the type once and use it everywhere.
+    ResolvedType componentType;
+    bool componentExists = false;
 
-    // Look up component type
-    auto componentIt = customTypesTable.find(componentName);
-    if (componentIt == customTypesTable.end())
+    if (customTypesTable.count(componentName))
+    {
+        componentType = customTypesTable[componentName]->type;
+        componentExists = true;
+    }
+    else if (ImportedComponentTable.count(componentName))
+    {
+        componentType = ImportedComponentTable[componentName]->type;
+        componentExists = true;
+    }
+
+    if (!componentExists)
     {
         logSemanticErrors("Component '" + componentName + "' does not exist", line, column);
         return;
     }
 
-    // Look up init constructor info
-    auto it = componentInitArgs.find(componentName);
-    bool hasInitConstructor = (it != componentInitArgs.end());
+    // UNIFIED INIT LOOKUP
+    // Bridge the gap between local and imported constructor signatures.
+    std::vector<ResolvedType> expectedArgs;
+    bool hasInitConstructor = false;
+
+    if (importedInits.count(componentName))
+    {
+        hasInitConstructor = true;
+        expectedArgs = importedInits[componentName]->initArgs;
+    }
+    else if (componentInitArgs.count(componentName))
+    {
+        hasInitConstructor = true;
+        expectedArgs = componentInitArgs[componentName];
+    }
+
     const auto &givenArgs = newExpr->arguments;
 
-    // Case 1: Component has NO init constructor
+    // FLATTENED VALIDATION LOGIC
     if (!hasInitConstructor)
     {
         if (!givenArgs.empty())
         {
-            logSemanticErrors("Component '" + componentName +
-                                  "' has no init constructor, arguments not allowed.",
-                              line, column);
+            logSemanticErrors("Component '" + componentName + "' has no init constructor, arguments not allowed.", line, column);
             hasError = true;
         }
-        // store metadata and exit early
-        auto info = std::make_shared<SymbolInfo>();
-        info->type = componentIt->second->type;
-        info->hasError = hasError;
-        metaData[newExpr] = info;
-        return;
     }
-
-    const auto &expectedArgs = it->second;
-
-    // Case 2: Init constructor exists but is EMPTY
-    if (expectedArgs.empty())
+    else
     {
-        if (!givenArgs.empty())
+        // We have a constructor, check the count
+        if (expectedArgs.size() != givenArgs.size())
         {
-            logSemanticErrors("Init constructor for '" + componentName +
-                                  "' takes no arguments.",
-                              line, column);
+            std::string msg = "Constructor for '" + componentName + "' expects " +
+                              std::to_string(expectedArgs.size()) + " arguments but got " +
+                              (givenArgs.empty() ? "none" : std::to_string(givenArgs.size())) + ".";
+            logSemanticErrors(msg, line, column);
             hasError = true;
         }
-        auto info = std::make_shared<SymbolInfo>();
-        info->type = componentIt->second->type;
-        info->hasError = hasError;
-        metaData[newExpr] = info;
-        return;
-    }
 
-    // Case 3: Init constructor expects arguments but user provided NONE
-    if (givenArgs.empty())
-    {
-        logSemanticErrors("Constructor for component '" + componentName +
-                              "' expects " + std::to_string(expectedArgs.size()) +
-                              " arguments but got none.",
-                          line, column);
-        hasError = true;
-
-        auto info = std::make_shared<SymbolInfo>();
-        info->type = componentIt->second->type;
-        info->hasError = hasError;
-        metaData[newExpr] = info;
-        return;
-    }
-
-    // Case 4: Argument count mismatch
-    if (expectedArgs.size() != givenArgs.size())
-    {
-        logSemanticErrors("Constructor for component '" + componentName +
-                              "' expects " + std::to_string(expectedArgs.size()) +
-                              " arguments but got " + std::to_string(givenArgs.size()) + ".",
-                          line, column);
-        hasError = true;
-    }
-
-    // Case 5: Type checks (pairwise, safe even if sizes differ)
-    for (size_t i = 0; i < std::min(expectedArgs.size(), givenArgs.size()); ++i)
-    {
-        walker(givenArgs[i].get());
-        ResolvedType argType = inferNodeDataType(givenArgs[i].get());
-        ResolvedType expectedType = expectedArgs[i];
-
-        if (argType.kind != expectedType.kind)
+        // PAIRWISE TYPE CHECKING
+        size_t checkCount = std::min(expectedArgs.size(), givenArgs.size());
+        for (size_t i = 0; i < checkCount; ++i)
         {
-            logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
-                                  " of constructor for '" + componentName +
-                                  "'. Expected '" + expectedType.resolvedName +
-                                  "' but got '" + argType.resolvedName + "'.",
-                              line, column);
-            hasError = true;
+            walker(givenArgs[i].get()); // Analyze the argument expression
+            ResolvedType argType = inferNodeDataType(givenArgs[i].get());
+            ResolvedType expectedType = expectedArgs[i];
+
+            if (argType.kind != expectedType.kind)
+            {
+                logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
+                                      ": expected '" + expectedType.resolvedName +
+                                      "', got '" + argType.resolvedName + "'.",
+                                  line, column);
+                hasError = true;
+            }
         }
     }
 
-    // Special case (I am going to store the component symbol info so that I can retrieve it later I need it in IRGEN)
-    // Get the component symbol info and store it in the instance symbol table
+    // Fetch the actual symbol for the IR Generator
+    auto componentSym = resolveSymbolInfo(componentName);
 
-    auto componentSym = resolveSymbolInfo(componentName); // I will use the scope resolver as all components are always in globals scope
-    if (!componentSym)                                    // Chances of this happening are low but who knows
-    {
-        logSemanticErrors("Component '" + componentName + "' doesnt not exist '", line, column);
-        hasError = true;
-    }
-
-    // === Store metadata ===
     auto info = std::make_shared<SymbolInfo>();
-    info->type = componentIt->second->type;
+    info->type = componentType;
     info->hasError = hasError;
     info->componentSymbol = componentSym;
+
+    // This map link is critical for the IR Generator to know what it's looking at
     metaData[newExpr] = info;
 }
 

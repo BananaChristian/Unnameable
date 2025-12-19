@@ -13,6 +13,11 @@ Semantics::Semantics(Deserializer &deserial, std::string &file) : deserializer(d
 {
     symbolTable.push_back({});
     registerWalkerFunctions();
+
+    importSeals();      // Import seals
+    importComponents(); // Import components
+    importComponentInits();//Import component inits
+    importDataBlocks(); // Import data
 }
 
 // Main walker function
@@ -135,8 +140,6 @@ void Semantics::registerWalkerFunctions()
 
     // Wlaker registration for the qualify statement
     walkerFunctionsMap[typeid(QualifyStatement)] = &Semantics::walkQualifyStatement;
-    walkerFunctionsMap[typeid(ImportStatement)] = &Semantics::walkImportStatement;
-
     // Walker registrartion for generic system
     walkerFunctionsMap[typeid(GenericStatement)] = &Semantics::walkGenericStatement;
     walkerFunctionsMap[typeid(InstantiateStatement)] = &Semantics::walkInstantiateStatement;

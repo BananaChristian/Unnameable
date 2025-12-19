@@ -83,7 +83,7 @@ struct MemberInfo
     bool isConstant = false;
     bool isInitialised = false;
     // Function flags
-    bool isFunction=false;
+    bool isFunction = false;
     bool isDeclared = false;
     bool isDefined = false;
 
@@ -173,6 +173,7 @@ struct SymbolInfo
     int64_t constIntVal;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
     ResolvedType returnType;
+    std::vector<ResolvedType> initArgs;
     // Function flags
     bool isDeclaration = false;
     bool isDefined = false;
@@ -253,6 +254,7 @@ public:
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedDataBlocksTable;
     std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>> sealTable;
+    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> importedInits;
     std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
     std::vector<bool> loopContext;
     std::vector<ScopeInfo> currentTypeStack;
@@ -416,6 +418,7 @@ private:
     void importSeals();
     void importComponents();
     void importDataBlocks();
+    void importComponentInits();
 
     bool isGlobalScope();
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);

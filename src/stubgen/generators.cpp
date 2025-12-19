@@ -150,6 +150,34 @@ void StubGen::generateComponentStatement(Node *node)
         }
     }
 
+    // Add the init if it exists
+    if (compStmt->initConstructor.has_value())
+    {
+        ComponentInit init;
+        componentTable.hasInit = true;
+        // Since the init constructor isnt actually in the member info I will use a metaData look up
+        auto initStmt = dynamic_cast<InitStatement *>(compStmt->initConstructor.value().get());
+        auto initIt = semantics.metaData.find(initStmt);
+        if (initIt == semantics.metaData.end())
+        {
+            std::cout << "Failed to find init constructor metaData\n";
+            return;
+        }
+
+        auto initSym = initIt->second;
+        if (!initSym)
+        {
+            std::cout << "Failed to retreive init constructor symbol\n";
+            return;
+        }
+
+        init.initArgs = initSym->initArgs;
+        init.returnType = initSym->returnType;
+        init.type = initSym->type;
+
+        componentTable.init = init;
+    }
+
     // Add to the stub table
     stubTable.components.push_back(componentTable);
     std::cout << "[DEBUG] Finished serializing component '" + componentName << "\n";

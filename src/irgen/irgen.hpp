@@ -147,7 +147,6 @@ private:
     llvm::Value *generateUnwrapCallExpression(Node *node);
 
     llvm::Value *generateSelfExpression(Node *node);
-    llvm::Value *generateNewComponentExpression(Node *node);
     llvm::Value *generateInstanceExpression(Node *node);
     llvm::Value *generateMethodCallExpression(Node *node);
     llvm::Value *generateArraySubscriptExpression(Node *node);
@@ -170,6 +169,7 @@ private:
     void declareImportedSeals();
     void declareImportedTypes();
     void declareCustomTypes();
+    void declareImportedInit(const std::string &typeName);
     char *const_unnitoa(__int128 val, char *buf);
     char decodeCharLiteral(const std::string &literal);
     void generateSageInitCall();
@@ -180,8 +180,8 @@ private:
     bool currentBlockIsTerminated();
     unsigned getIntegerBitWidth(DataType dt);
 
-    void finalizeTypeBody(const std::string& typeName, const std::shared_ptr<CustomTypeInfo>& typeInfo, std::string category);
-    void declareImportedComponentMethods(const std::string& funcName,const std::string &typeName, const std::shared_ptr<MemberInfo>&memberInfo);
+    void finalizeTypeBody(const std::string &typeName, const std::shared_ptr<CustomTypeInfo> &typeInfo, std::string category);
+    void declareImportedComponentMethods(const std::string &funcName, const std::string &typeName, const std::shared_ptr<MemberInfo> &memberInfo);
 
     llvm::GlobalVariable *createGlobalArrayConstant(llvm::Constant *constantArray);
 

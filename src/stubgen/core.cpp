@@ -146,6 +146,17 @@ void StubGen::serializeComponentMember(std::ostream &out, const ComponentMember 
     write_u32(out, static_cast<uint32_t>(member.storage));
 }
 
+void StubGen::serializeComponentInit(std::ostream &out, const ComponentInit &init)
+{
+    write_u32(out, (uint32_t)init.initArgs.size());
+    for (const auto &type : init.initArgs)
+    {
+        serializeResolvedType(out, type);
+    }
+    serializeResolvedType(out, init.returnType);
+    serializeResolvedType(out, init.type);
+}
+
 void StubGen::serializeComponentTable(std::ostream &out, const ComponentTable &component)
 {
     writeString(out, component.componentName); // Component name
@@ -162,6 +173,13 @@ void StubGen::serializeComponentTable(std::ostream &out, const ComponentTable &c
     for (const auto &method : component.methods)
     {
         serializeComponentMethod(out, method);
+    }
+
+    // INIT CONSTRUCTOR SECTION
+    write_u8(out, component.hasInit);
+    if (component.hasInit)
+    {
+        serializeComponentInit(out, component.init);
     }
 }
 

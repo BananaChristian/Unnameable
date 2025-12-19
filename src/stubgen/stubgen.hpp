@@ -45,7 +45,14 @@ struct ComponentMethod
     std::string methodName;
     ResolvedType returnType;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
-    bool isFunction=false;
+    bool isFunction = false;
+};
+
+struct ComponentInit
+{
+    std::vector<ResolvedType> initArgs;
+    ResolvedType returnType;
+    ResolvedType type;
 };
 
 struct ComponentTable
@@ -53,6 +60,8 @@ struct ComponentTable
     std::string componentName;
     std::vector<ComponentMember> members;
     std::vector<ComponentMethod> methods;
+    bool hasInit=false;
+    ComponentInit init; // Every component only has one init so only one field here but its optional
 };
 
 struct DataMember
@@ -123,6 +132,7 @@ private:
     void serializeComponentMethod(std::ostream &out, const ComponentMethod &method);
     void serializeComponentMember(std::ostream &out, const ComponentMember &member);
     void serializeComponentTable(std::ostream &out, const ComponentTable &component);
+    void serializeComponentInit(std::ostream &out, const ComponentInit &init);
 
     void serializeDataMember(std::ostream &out, const DataMember &member);
     void serializeDataTable(std::ostream &out, const DataTable &data);

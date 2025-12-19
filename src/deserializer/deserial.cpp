@@ -161,6 +161,18 @@ void Deserializer::loadStub(const std::string &resolved)
 
             compMap.emplace(method.methodName, std::move(info));
         }
+
+        // Dealing with the init
+        if (component.hasInit)
+        {
+            ImportedSymbolInfo info;
+            info.initArgs = component.init.initArgs;
+            info.returnType = component.init.returnType;
+            info.type = component.init.type;
+
+            // Store in a special init table
+            importedInitTable[component.componentName] = info;
+        }
     }
 
     // Data reading
@@ -348,6 +360,25 @@ RawComponentMethod Deserializer::readComponentMethod(std::istream &in)
     return method;
 }
 
+RawComponentInit Deserializer::readComponentInit(std::istream &in)
+{
+    std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting Component Init read.\n";
+    RawComponentInit init;
+
+    uint32_t argCount = read_u32(in, "Init Argument Count");
+    init.initArgs.reserve(argCount);
+    for (uint32_t i = 0; i < argCount; ++i)
+    {
+        init.initArgs.push_back(readImportedType(in));
+    }
+
+    init.returnType = readImportedType(in);
+    init.type = readImportedType(in);
+
+    std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished Component Init read.\n";
+    return init;
+}
+
 //__________________DATA MEMBER READING_______________
 RawDataMember Deserializer::readDataMember(std::istream &in)
 {
@@ -474,6 +505,14 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
                     comp.methods.push_back(readComponentMethod(in));
                 }
 
+                // Init
+                bool hasInit = read_u8(in, "Has Init");
+                comp.hasInit = hasInit;
+                if (hasInit)
+                {
+                    comp.init = readComponentInit(in);
+                }
+
                 std::cout << "DEBUG: Finishing Component " << i + 1 << " at Pos: " << in.tellg() << "\n";
                 table.components.push_back(std::move(comp));
             }
@@ -482,7 +521,7 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
         case ImportedStubSection::DATA:
         {
             if (entryCount > 1000000)
-            { 
+            {
                 throw std::runtime_error("Stub corruption detected: absurdly high entry count (" + std::to_string(entryCount) + ")");
             }
             table.data.reserve(entryCount);

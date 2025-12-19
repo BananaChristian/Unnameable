@@ -113,7 +113,11 @@ void IRGenerator::finalizeTypeBody(const std::string &typeName, const std::share
     componentTypes[typeName] = structTy;
 
     std::cout << "  [Step D] " << typeName << " registered in componentTypes map.\n";
-    // TODO: Add imported init logic
+
+    if (category == "COMPONENT")
+    {
+        declareImportedInit(typeName);
+    }
 }
 
 void IRGenerator::declareImportedTypes()
@@ -238,4 +242,46 @@ void IRGenerator::declareImportedComponentMethods(const std::string &funcName, c
     }
 
     std::cout << "[METHOD IMPORT] <<< Declaration Complete >>>\n\n";
+}
+
+void IRGenerator::declareImportedInit(const std::string &typeName)
+{
+    auto it = semantics.importedInits.find(typeName);
+    if (it == semantics.importedInits.end())
+    {
+        return; // There is no init so dont bother
+    }
+
+    auto initSym = it->second;
+    std::string initName = typeName + "_init";
+
+    if (module->getFunction(initName))
+        return; // It was already declared so dont bother
+
+    auto structTy = llvmCustomTypes[typeName];
+    std::vector<llvm::Type *> paramTypes = {structTy->getPointerTo()};
+    for (const auto &argType : initSym->initArgs)
+    {
+        paramTypes.push_back(getLLVMType(argType));
+    }
+
+    llvm::FunctionType *fnType = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(context),
+        paramTypes,
+        false);
+
+    // Create the External Declaration
+    llvm::Function *initFn = llvm::Function::Create(
+        fnType,
+        llvm::Function::ExternalLinkage,
+        initName,
+        module.get());
+
+    // Label that first param
+    if (initFn->arg_size() > 0)
+    {
+        initFn->arg_begin()->setName(typeName + ".self");
+    }
+
+    std::cout << "  [Step E] Declared Imported Init: " << initName << "\n";
 }

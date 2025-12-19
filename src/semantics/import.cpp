@@ -267,16 +267,23 @@ void Semantics::importDataBlocks()
     }
 }
 
-void Semantics::walkImportStatement(Node *node)
+void Semantics::importComponentInits()
 {
-    auto import = dynamic_cast<ImportStatement *>(node);
-    if (!import)
-        return;
+    for (const auto &initPair : deserializer.importedInitTable)
+    {
+        const std::string componentName = initPair.first;
 
-    // Import seals
-    importSeals();
-    // Import components
-    importComponents();
-    // Import data
-    importDataBlocks();
+        auto initSym = std::make_shared<SymbolInfo>();
+        auto initInfo = initPair.second;
+        // Begin the conversions
+        for (const auto &type : initInfo.initArgs)
+        {
+            auto resolvedType = convertImportedTypetoResolvedType(type);
+            initSym->initArgs.push_back(resolvedType);
+        }
+        initSym->returnType = convertImportedTypetoResolvedType(initInfo.returnType);
+        initSym->isDeclaration = true;
+
+        importedInits[componentName] = initSym;
+    }
 }
