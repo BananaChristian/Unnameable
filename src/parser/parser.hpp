@@ -332,6 +332,12 @@ private:
     // Unsigned 128 bit integer
     std::unique_ptr<Expression> parseU128Literal();
 
+    //Signed CPU native width integer
+    std::unique_ptr<Expression> parseISIZELiteral();
+
+    //Unsigned CPU native width integer
+    std::unique_ptr<Expression> parseUSIZELiteral();
+
     // Boolean
     std::unique_ptr<Expression> parseBooleanLiteral();
 

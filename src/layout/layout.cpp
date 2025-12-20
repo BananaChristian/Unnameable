@@ -366,7 +366,7 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
     }
     case DataType::U8:
     {
-        baseType=llvm::Type::getInt8Ty(context);
+        baseType = llvm::Type::getInt8Ty(context);
         break;
     }
     case DataType::I16:
@@ -407,6 +407,14 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
     case DataType::U128:
     {
         baseType = llvm::Type::getInt128Ty(context);
+        break;
+    }
+    case DataType::ISIZE:
+    case DataType::USIZE:
+    {
+        // We ask the module's DataLayout for the integer type that matches a pointer.
+        // 'module' must be accessible here.
+        baseType = tempModule->getDataLayout().getIntPtrType(context);
         break;
     }
     case DataType::BOOLEAN:

@@ -137,6 +137,8 @@ private:
     llvm::Value *generateU64Literal(Node *node);
     llvm::Value *generateI128Literal(Node *node);
     llvm::Value *generateU128Literal(Node *node);
+    llvm::Value *generateISIZELiteral(Node *node);
+    llvm::Value *generateUSIZELiteral(Node *node);
 
     llvm::Value *generateNullLiteral(NullLiteral *nullLit, DataType type);
     llvm::Value *generateIdentifierExpression(Node *node);

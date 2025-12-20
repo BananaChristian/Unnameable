@@ -1565,6 +1565,22 @@ std::unique_ptr<Expression> Parser::parseU128Literal()
     return ident;
 }
 
+// Signed CPU Native width bit integer parse function
+std::unique_ptr<Expression> Parser::parseISIZELiteral()
+{
+    auto ident = std::make_unique<ISIZELiteral>(currentToken());
+    advance();
+    return ident;
+}
+
+// Unsigned CPU Native width bit integer parse function
+std::unique_ptr<Expression> Parser::parseUSIZELiteral()
+{
+    auto ident = std::make_unique<USIZELiteral>(currentToken());
+    advance();
+    return ident;
+}
+
 // Boolean literal parse function
 std::unique_ptr<Expression> Parser::parseBooleanLiteral()
 {
@@ -2095,6 +2111,8 @@ void Parser::registerPrefixFns()
     PrefixParseFunctionsMap[TokenType::UINT64] = &Parser::parseU64Literal;
     PrefixParseFunctionsMap[TokenType::INT128] = &Parser::parseI128Literal;
     PrefixParseFunctionsMap[TokenType::UINT128] = &Parser::parseU128Literal;
+    PrefixParseFunctionsMap[TokenType::INTSIZE] = &Parser::parseISIZELiteral;
+    PrefixParseFunctionsMap[TokenType::UINTSIZE] = &Parser::parseUSIZELiteral;
 
     PrefixParseFunctionsMap[TokenType::CHAR8] = &Parser::parseChar8Literal;
     PrefixParseFunctionsMap[TokenType::CHAR16] = &Parser::parseChar16Literal;
@@ -2305,6 +2323,8 @@ void Parser::registerStatementParseFns()
     StatementParseFunctionsMap[TokenType::U64_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::I128_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::U128_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::USIZE_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
+    StatementParseFunctionsMap[TokenType::ISIZE_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
 
     StatementParseFunctionsMap[TokenType::CHAR8_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;
     StatementParseFunctionsMap[TokenType::CHAR16_KEYWORD] = &Parser::parseLetStatementWithTypeWrapper;

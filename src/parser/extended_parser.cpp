@@ -1000,6 +1000,8 @@ bool Parser::isIntegerType(TokenType type)
     case TokenType::U64_KEYWORD:
     case TokenType::I128_KEYWORD:
     case TokenType::U128_KEYWORD:
+    case TokenType::ISIZE_KEYWORD:
+    case TokenType::USIZE_KEYWORD:
         return true;
     default:
         return false;
@@ -1020,6 +1022,8 @@ bool Parser::isIntegerLiteralType(TokenType type)
     case TokenType::UINT64:
     case TokenType::INT128:
     case TokenType::UINT128:
+    case TokenType::INTSIZE:
+    case TokenType::UINTSIZE:
         return true;
     default:
         return false;

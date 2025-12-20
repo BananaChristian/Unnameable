@@ -2492,6 +2492,48 @@ llvm::Value *IRGenerator::generateU128Literal(Node *node)
     return llvm::ConstantInt::get(context, value);
 }
 
+llvm::Value *IRGenerator::generateISIZELiteral(Node *node)
+{
+    auto isizeLit = dynamic_cast<ISIZELiteral *>(node);
+    if (!isizeLit)
+        throw std::runtime_error("Invalid isize literal");
+
+    auto it = semantics.metaData.find(isizeLit);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("isize literal not found in metadata");
+
+    // Get Native Pointer Width
+    unsigned int ptrWidth = module->getDataLayout().getPointerSizeInBits();
+
+    // Parse the string value
+    // stoll handles signed 64-bit integers
+    int64_t value = std::stoll(isizeLit->isize_token.TokenLiteral);
+
+    // Create the ConstantInt with the DYNAMIC bit width
+    return llvm::ConstantInt::get(context, llvm::APInt(ptrWidth, value, true));
+}
+
+llvm::Value *IRGenerator::generateUSIZELiteral(Node *node)
+{
+    auto usizeLit = dynamic_cast<USIZELiteral *>(node);
+    if (!usizeLit)
+        throw std::runtime_error("Invalid usize literal");
+
+    auto it = semantics.metaData.find(usizeLit);
+    if (it == semantics.metaData.end())
+        throw std::runtime_error("usize literal not found in metadata");
+
+    // Get Native Pointer Width
+    unsigned int ptrWidth = module->getDataLayout().getPointerSizeInBits();
+
+    // Parse the string value
+    // Using stoull because it handles the largest possible unsigned 64-bit int
+    uint64_t value = std::stoull(usizeLit->usize_token.TokenLiteral);
+
+    // Create the ConstantInt with the DYNAMIC bit width
+    return llvm::ConstantInt::get(context, llvm::APInt(ptrWidth, value, false));
+}
+
 llvm::Value *IRGenerator::generateFloatLiteral(Node *node)
 {
     auto fltLit = dynamic_cast<FloatLiteral *>(node);
@@ -3584,6 +3626,13 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type)
         break;
     }
 
+    case DataType::ISIZE:
+    case DataType::USIZE:
+    {
+        baseType = module->getDataLayout().getIntPtrType(context);
+        break;
+    }
+
     case DataType::BOOLEAN:
     {
         baseType = llvm::Type::getInt1Ty(context);
@@ -3741,6 +3790,8 @@ void IRGenerator::registerExpressionGeneratorFunctions()
     expressionGeneratorsMap[typeid(U64Literal)] = &IRGenerator::generateU64Literal;
     expressionGeneratorsMap[typeid(I128Literal)] = &IRGenerator::generateI128Literal;
     expressionGeneratorsMap[typeid(U128Literal)] = &IRGenerator::generateU128Literal;
+    expressionGeneratorsMap[typeid(ISIZELiteral)] = &IRGenerator::generateISIZELiteral;
+    expressionGeneratorsMap[typeid(USIZELiteral)] = &IRGenerator::generateUSIZELiteral;
     expressionGeneratorsMap[typeid(FloatLiteral)] = &IRGenerator::generateFloatLiteral;
     expressionGeneratorsMap[typeid(DoubleLiteral)] = &IRGenerator::generateDoubleLiteral;
     expressionGeneratorsMap[typeid(ArrayLiteral)] = &IRGenerator::generateArrayLiteral;
