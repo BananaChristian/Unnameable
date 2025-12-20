@@ -186,6 +186,15 @@ std::string TokenTypeToLiteral(TokenType type)
     case TokenType::U128_KEYWORD:
         return "TokenType:: U128_KEYWORD";
 
+    case TokenType::INTSIZE:
+        return "Token Type: ISIZE";
+    case TokenType::ISIZE_KEYWORD:
+        return "ISIZE_KEYWORD";
+    case TokenType::UINTSIZE:
+        return "Token Type: UINTSIZE";
+    case TokenType::USIZE_KEYWORD:
+        return "Token Type: USIZE_KEYWORD";
+
     case TokenType::CHAR8:
         return "Token Type: CHAR8";
     case TokenType::CHAR8_KEYWORD:

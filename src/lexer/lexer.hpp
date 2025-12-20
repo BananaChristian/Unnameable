@@ -66,6 +66,9 @@ class Lexer
         {"i128", TokenType::I128_KEYWORD},
         {"u128", TokenType::U128_KEYWORD},
 
+        {"isize", TokenType::ISIZE_KEYWORD},
+        {"usize", TokenType::USIZE_KEYWORD},
+
         {"char8", TokenType::CHAR8_KEYWORD},
         {"char16", TokenType::CHAR16_KEYWORD},
         {"char32", TokenType::CHAR32_KEYWORD},

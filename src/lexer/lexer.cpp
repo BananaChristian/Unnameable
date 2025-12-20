@@ -211,6 +211,10 @@ Token Lexer::readNumbers()
             return Token{number, TokenType::INT8, tokenLine, tokenColumn};
         if (suffix == "u8")
             return Token{number, TokenType::UINT8, tokenLine, tokenColumn};
+        if (suffix == "iz")
+            return Token{number, TokenType::INTSIZE, tokenLine, tokenColumn};
+        if (suffix == "uz")
+            return Token{number, TokenType::UINTSIZE, tokenLine, tokenColumn};
     }
 
     return Token{number, TokenType::INT32, tokenLine, tokenColumn};
@@ -336,7 +340,7 @@ void Lexer::readComments()
                     advance();
                     return; // EXIT HERE
                 }
-                advance(); 
+                advance();
             }
         }
         // Single line comment

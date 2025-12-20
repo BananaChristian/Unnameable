@@ -65,8 +65,8 @@ enum class TokenType
     CLASS,
 
     HEAP,      // Heap keyword that allows a user to manually tell the compiler to allocate on the SAGE heap
-    DHEAP,     //Dheap keword that allows a user to use a dynamic heap
-    ALLOCATOR,//Allocator keyword
+    DHEAP,     // Dheap keword that allows a user to use a dynamic heap
+    ALLOCATOR, // Allocator keyword
 
     COMPONENT, // component key word for classes
     SELF,      // self keyword for a component instance
@@ -93,7 +93,7 @@ enum class TokenType
     ADDR,   // addr keyword
     UNWRAP, // Unwrap keyword
 
-    EXPORT,//Export keyword
+    EXPORT, // Export keyword
 
     IMPORT,  // import keyword
     MERGE,   // Merge keyword
@@ -118,30 +118,35 @@ enum class TokenType
     DEFAULT,
 
     // Data types
-    INT8,//Signed 8 bit
+    INT8, // Signed 8 bit
     I8_KEYWORD,
-    UINT8,//Unsigned 8 bit
+    UINT8, // Unsigned 8 bit
     U8_KEYWORD,
 
-    INT16,//Signed 16 bit
+    INT16, // Signed 16 bit
     I16_KEYWORD,
-    UINT16,//Unsigned 16 bit
+    UINT16, // Unsigned 16 bit
     U16_KEYWORD,
 
-    INT32,//Signed 32 bit integer
+    INT32, // Signed 32 bit integer
     I32_KEYWORD,
-    UINT32,//Unsigned 32 bit integer
+    UINT32, // Unsigned 32 bit integer
     U32_KEYWORD,
 
-    INT64,//Signed 64 bit
+    INT64, // Signed 64 bit
     I64_KEYWORD,
-    UINT64,//Unsigned 64 bit
+    UINT64, // Unsigned 64 bit
     U64_KEYWORD,
 
-    INT128,// Signed int 128 bit
+    INT128, // Signed int 128 bit
     I128_KEYWORD,
     UINT128, // Unsigned int 128 bit
     U128_KEYWORD,
+
+    INTSIZE, // Signed Native register width bit
+    ISIZE_KEYWORD,
+    UINTSIZE, // Unsigned native register width bit
+    USIZE_KEYWORD,
 
     STRING,
 
