@@ -80,6 +80,20 @@ void Lexer::advance()
         return;
     }
 
+    // Decode the character at the currentPosition before we advance
+    char32_t ch = decodeUTF8(currentPosition);
+
+    // If the character we are leaving is a newline, move to next line
+    if (ch == U'\n')
+    {
+        line++;
+        column = 1; // Start first char of next line at column 1
+    }
+    else
+    {
+        column++;
+    }
+
     currentPosition = nextPosition;
 
     // Read current character's UTF-8 byte length
@@ -88,24 +102,15 @@ void Lexer::advance()
     // Handle invalid UTF-8
     if (charLength == 0 || currentPosition + charLength > input.length())
     {
-        logError("Invalid UTF-8 character", line, column);
-        charLength = 1; // Skip 1 byte to avoid infinite loops
+        if (currentPosition < input.length())
+        {
+            logError("Invalid UTF-8 character", line, column);
+        }
+        charLength = 1;
     }
 
     // Update next position
     nextPosition = currentPosition + charLength;
-
-    // Decode character and update column/line
-    char32_t ch = decodeUTF8(currentPosition);
-    if (ch == U'\n')
-    {
-        line++;
-        column = 0;
-    }
-    else
-    {
-        column++;
-    }
 }
 
 char32_t Lexer::peekChar()
@@ -206,7 +211,6 @@ Token Lexer::readNumbers()
             return Token{number, TokenType::INT8, tokenLine, tokenColumn};
         if (suffix == "u8")
             return Token{number, TokenType::UINT8, tokenLine, tokenColumn};
-
     }
 
     return Token{number, TokenType::INT32, tokenLine, tokenColumn};
@@ -320,21 +324,22 @@ void Lexer::readComments()
 {
     if (currentChar() == U'#')
     {
-        advance(); // Consume the #
-        if (currentChar() == U'#')
+        advance();
+        if (currentChar() == U'#') // Multi-line block
         {
-            advance(); // Consume the #
+            advance();
             while (currentChar() != U'\0')
             {
                 if (currentChar() == U'#' && peekChar() == U'#')
                 {
-                    advance(); // Consume *
-                    advance(); // Consume #
-                    break;
+                    advance();
+                    advance();
+                    return; // EXIT HERE
                 }
-                advance();
+                advance(); 
             }
         }
+        // Single line comment
         while (currentChar() != U'\0' && currentChar() != U'\n')
         {
             advance();

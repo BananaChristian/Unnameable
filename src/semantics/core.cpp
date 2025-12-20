@@ -165,7 +165,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
     if (auto u32Lit = dynamic_cast<U32Literal *>(node))
         return ResolvedType{DataType::U32, "u32"};
     if (auto i64Lit = dynamic_cast<I64Literal *>(node))
-        return ResolvedType{DataType::I64, "I64"};
+        return ResolvedType{DataType::I64, "i64"};
     if (auto u64Lit = dynamic_cast<U64Literal *>(node))
         return ResolvedType{DataType::U64, "u64"};
     if (auto i128Lit = dynamic_cast<I128Literal *>(node))
@@ -761,7 +761,14 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node)
         }
     }
 
-    return resultOfBinary(operatorType, leftType, rightType);
+    auto infixType = resultOfBinary(operatorType, leftType, rightType);
+    if (infixType.kind == DataType::UNKNOWN)
+    {
+        logSemanticErrors("Infix type issue between '" + leftType.resolvedName + "' and '" + rightType.resolvedName + "'", infixNode->left_operand->expression.line, infixNode->left_operand->expression.column);
+        return infixType; // Return the unknown type
+    }
+
+    return infixType; // Return the correct type
 }
 
 ResolvedType Semantics::inferPrefixExpressionType(Node *node)
@@ -903,7 +910,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType, ResolvedType left
 
     if (operatorType == TokenType::ASSIGN)
     {
-        std::cerr << "Cannot use '=' in binary operations; only for assignments\n";
+        std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET << "Cannot use '=' in binary operations as it only for assignments\n";
         return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
@@ -920,7 +927,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType, ResolvedType left
         if (leftType.kind == rightType.kind)
             return ResolvedType{DataType::BOOLEAN, "boolean"};
 
-        std::cerr << "[SEMANTIC ERROR] Cannot compare " << leftType.resolvedName << " and " << rightType.resolvedName << "\n";
+        std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET << "Cannot compare " << leftType.resolvedName << " and " << rightType.resolvedName << "\n";
         return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
@@ -965,11 +972,11 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType, ResolvedType left
             return rightType;
         }
 
-        std::cerr << "[SEMANTIC ERROR] Type mismatch: " << leftType.resolvedName << " does not match " << rightType.resolvedName << "\n";
+        std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET << " Type mismatch '" << leftType.resolvedName << "' does not match '" << rightType.resolvedName << "'" << "\n";
         return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
-    std::cerr << "[SEMANTIC ERROR] Unknown binary operator: " << TokenTypeToLiteral(operatorType) << " with types "
+    std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET << "Unknown binary operator: " << TokenTypeToLiteral(operatorType) << " with types "
               << leftType.resolvedName << " and " << rightType.resolvedName << "\n";
     return ResolvedType{DataType::UNKNOWN, "unknown"};
 }
@@ -992,7 +999,7 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType, const ResolvedType
     case TokenType::MINUS_MINUS:
         if (isInteger(operandType) || isFloat(operandType))
             return operandType;
-        std::cerr << "[SEMANTIC ERROR] Cannot apply " << TokenTypeToLiteral(operatorType) << " to " << operandType.resolvedName << "\n";
+        std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET << "Cannot apply " << TokenTypeToLiteral(operatorType) << " to " << operandType.resolvedName << "\n";
         return ResolvedType{DataType::UNKNOWN, "unknown"};
 
     default:
@@ -1588,7 +1595,7 @@ void Semantics::logSemanticErrors(const std::string &message, int tokenLine, int
 bool Semantics::isInteger(const ResolvedType &t)
 {
     static const std::unordered_set<DataType> intTypes = {
-        DataType::I8,DataType::U8,DataType::I16, DataType::U16, DataType::I32, DataType::U32,
+        DataType::I8, DataType::U8, DataType::I16, DataType::U16, DataType::I32, DataType::U32,
         DataType::I64, DataType::U64, DataType::I128, DataType::U128};
     return intTypes.count(t.kind) > 0;
 }
@@ -1625,9 +1632,9 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
     switch (type)
     {
     case TokenType::I8_KEYWORD:
-        return ResolvedType{DataType::I8,"i8"};
+        return ResolvedType{DataType::I8, "i8"};
     case TokenType::U8_KEYWORD:
-        return ResolvedType{DataType::U8,"u8"};
+        return ResolvedType{DataType::U8, "u8"};
 
     case TokenType::I16_KEYWORD:
         return ResolvedType{DataType::I16, "i16"};

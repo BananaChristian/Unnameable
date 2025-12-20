@@ -1619,6 +1619,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node)
     if (!infix)
         throw std::runtime_error("Invalid infix expression");
 
+    auto infixIt = semantics.metaData.find(infix);
+    if (infixIt == semantics.metaData.end())
+        throw std::runtime_error("Cannot find infix metaData");
+
+    auto infixSym = infixIt->second;
+    if (infixSym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
     auto rhsIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
     auto lhsIdent = dynamic_cast<Identifier *>(infix->left_operand.get());
 

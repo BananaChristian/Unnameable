@@ -78,6 +78,7 @@ void Semantics::walkInfixExpression(Node *node)
         infixInfo->type = resolved;
         infixInfo->isNullable = false;
         infixInfo->isConstant = false;
+        infixInfo->hasError = hasError;
         infixInfo->isInitialized = true;
         metaData[infixExpr] = infixInfo;
 
@@ -116,6 +117,7 @@ void Semantics::walkInfixExpression(Node *node)
         infixInfo->isNullable = false;
         infixInfo->isConstant = false;
         infixInfo->isInitialized = true;
+        infixInfo->hasError = hasError;
         metaData[infixExpr] = infixInfo;
 
         return; // done handling scope operator
@@ -127,11 +129,18 @@ void Semantics::walkInfixExpression(Node *node)
 
     // Infer type for normal infix
     ResolvedType infixType = inferNodeDataType(infixExpr);
+    if (infixType.kind == DataType::UNKNOWN)
+    {
+        logSemanticErrors("Infix cannot be of unknown type", infixExpr->left_operand->expression.line,
+                          infixExpr->left_operand->expression.column);
+        hasError = true;
+    }
 
     auto info = std::make_shared<SymbolInfo>();
     info->type = infixType;
     info->isNullable = false;
     info->isConstant = false;
+    info->hasError = hasError;
     info->isInitialized = false;
 
     metaData[infixExpr] = info;
