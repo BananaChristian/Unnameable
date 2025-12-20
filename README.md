@@ -39,7 +39,7 @@ This project contains the core implementation of the Unnameable compiler written
 - `i128` — 128-bit signed integers
 - `u128` — 128-bit unsigned integers
 - `isize` — CPU native width-bit signed integers
--  `isize` — CPU native width-bit unsigned integers
+- `usize` — CPU native width-bit unsigned integers
 
 - `bool` — true/false values
 - `string` — UTF-8 encoded sequence of characters.
