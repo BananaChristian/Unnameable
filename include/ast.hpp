@@ -203,8 +203,9 @@ struct NullLiteral : Expression
     NullLiteral(Token null_tok) : Expression(null_tok), null_token(null_tok) {};
 };
 
-//Signed 8 bit Integer literal
-struct I8Literal:Expression{
+// Signed 8 bit Integer literal
+struct I8Literal : Expression
+{
     Token i8_token;
 
     std::string toString() override
@@ -212,15 +213,17 @@ struct I8Literal:Expression{
         return "i8 Literal: " + i8_token.TokenLiteral;
     }
 
-    I8Literal *shallowClone() const override{
+    I8Literal *shallowClone() const override
+    {
         return new I8Literal(
             i8_token);
     }
-    I8Literal(Token i8_t):Expression(i8_t),i8_token(i8_t){}
+    I8Literal(Token i8_t) : Expression(i8_t), i8_token(i8_t) {}
 };
 
-//Unsigned 8 bit Integer literal
-struct U8Literal:Expression{
+// Unsigned 8 bit Integer literal
+struct U8Literal : Expression
+{
     Token u8_token;
 
     std::string toString() override
@@ -228,11 +231,12 @@ struct U8Literal:Expression{
         return "u8 Literal: " + u8_token.TokenLiteral;
     }
 
-    U8Literal *shallowClone() const override{
+    U8Literal *shallowClone() const override
+    {
         return new U8Literal(
             u8_token);
     }
-    U8Literal(Token u8_t):Expression(u8_t),u8_token(u8_t){}
+    U8Literal(Token u8_t) : Expression(u8_t), u8_token(u8_t) {}
 };
 
 // Signed 16 bit Integer literal
@@ -369,7 +373,39 @@ struct U128Literal : Expression
         return new U128Literal(
             u128_token);
     }
-    U128Literal(Token uextra_t) : Expression(uextra_t), u128_token(uextra_t) {};
+    U128Literal(Token u128_t) : Expression(u128_t), u128_token(u128_t) {};
+};
+
+struct ISIZELiteral : Expression
+{
+    Token isize_token;
+    std::string toString() override
+    {
+        return "ISIZE Literal: " + isize_token.TokenLiteral;
+    }
+
+    ISIZELiteral *shallowClone() const override
+    {
+        return new ISIZELiteral(isize_token);
+    }
+
+    ISIZELiteral(Token isize_t) : Expression(isize_t), isize_token(isize_t) {};
+};
+
+struct USIZELiteral : Expression
+{
+    Token usize_token;
+    std::string toString() override
+    {
+        return "USIZE Literal: " + usize_token.TokenLiteral;
+    }
+
+    USIZELiteral *shallowClone() const override
+    {
+        return new USIZELiteral(usize_token);
+    }
+
+    USIZELiteral(Token usize_t) : Expression(usize_t), usize_token(usize_t) {};
 };
 
 // Boolean literal
