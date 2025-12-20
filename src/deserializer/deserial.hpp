@@ -16,16 +16,18 @@ enum class ImportedStubSection : uint8_t
 
 enum class ImportedDataType
 {
-    I8,   // 8 BIT signed integer
-    U8,   // 8 bit unsigned integer
-    I16,  // 16 BIT signed integer
-    U16,  // 16 BUT unsigned integer
-    I32,  // 32 BIT signed integer
-    U32,  // 32 BIT unsigned integer
-    I64,  // 64 BIT signed integer
-    U64,  // 64 BIT unsigned integer
-    I128, // 128 BIT signed integer
-    U128, // 128 BIT unsigned integer
+    I8,    // 8 BIT signed integer
+    U8,    // 8 bit unsigned integer
+    I16,   // 16 BIT signed integer
+    U16,   // 16 BUT unsigned integer
+    I32,   // 32 BIT signed integer
+    U32,   // 32 BIT unsigned integer
+    I64,   // 64 BIT signed integer
+    U64,   // 64 BIT unsigned integer
+    I128,  // 128 BIT signed integer
+    U128,  // 128 BIT unsigned integer
+    ISIZE, // CPU native width signed integer
+    USIZE, // CPU native width unsigned integer
     BOOLEAN,
     STRING,
     FLOAT,
