@@ -55,6 +55,9 @@ void Semantics::walkEnumClassStatement(Node *node)
         case TokenType::U128_KEYWORD:
             underLyingType = ResolvedType{DataType::U128, "u128"};
             break;
+        case TokenType::USIZE_KEYWORD:
+            underLyingType = ResolvedType{DataType::USIZE, "usize"};
+            break;
         default:
             underLyingType = ResolvedType{DataType::I32, "i32"};
             break;
@@ -162,9 +165,21 @@ void Semantics::walkEnumClassStatement(Node *node)
                 literalType = TokenType::UINT128;
                 literalStr = u128Lit->expression.TokenLiteral;
             }
+            else if (auto isizeLit = dynamic_cast<ISIZELiteral *>(enumMember->value.get()))
+            {
+                literal = isizeLit;
+                literalType = TokenType::INTSIZE;
+                literalStr = isizeLit->expression.TokenLiteral;
+            }
+            else if (auto usizeLit = dynamic_cast<USIZELiteral *>(enumMember->value.get()))
+            {
+                literal = usizeLit;
+                literalType = TokenType::UINTSIZE;
+                literalStr = usizeLit->expression.TokenLiteral;
+            }
             else
             {
-                logSemanticErrors("Enum member value must be a short, ushort, int, uint, long, ulong, extra, or uextra literal",
+                logSemanticErrors("Enum member value must be a i8,u8, i16, u16, i32, u32, i64, u63, i128, u128 or isize, usize literal",
                                   enumMember->token.line, enumMember->token.column);
                 symbolTable.pop_back();
                 return;
@@ -204,6 +219,12 @@ void Semantics::walkEnumClassStatement(Node *node)
             case TokenType::UINT128:
                 isUnsignedLiteral = true;
                 break;
+            case TokenType::INTSIZE:
+                isUnsignedLiteral = false;
+                break;
+            case TokenType::UINTSIZE:
+                isUnsignedLiteral = true;
+                break;
             default:
                 logSemanticErrors("Invalid literal type for enum member",
                                   enumMember->token.line, enumMember->token.column);
@@ -240,7 +261,7 @@ void Semantics::walkEnumClassStatement(Node *node)
                         throw std::out_of_range("Value out of range for u16");
                     if (underLyingType.kind == DataType::U32 && parsedValue > std::numeric_limits<std::uint32_t>::max())
                         throw std::out_of_range("Value out of range for u32");
-                    // No range check for U64, U128
+                    // No range check for U64, U128, USIZE yet
                 }
                 else
                 {
@@ -254,7 +275,7 @@ void Semantics::walkEnumClassStatement(Node *node)
                     if (underLyingType.kind == DataType::I32 &&
                         (memberValue < std::numeric_limits<std::int32_t>::min() || memberValue > std::numeric_limits<std::int32_t>::max()))
                         throw std::out_of_range("Value out of range for i32");
-                    // No range check for LONG_INT, EXTRA_INT
+                    // No range check for I64, I128, ISIZE YET
                 }
             }
             catch (const std::invalid_argument &)

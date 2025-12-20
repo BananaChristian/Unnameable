@@ -13,21 +13,23 @@
 // Type system tracker
 enum class DataType
 {
-    I8,//8 BIT signed integer
-    U8,//8 bit unsigned integer
-    I16, // 16 BIT signed integer
-    U16, // 16 BUT unsigned integer
-    I32, // 32 BIT signed integer
-    U32, // 32 BIT unsigned integer
-    I64, // 64 BIT signed integer
-    U64, // 64 BIT unsigned integer
-    I128, // 128 BIT signed integer
-    U128, // 128 BIT unsigned integer
+    I8,    // 8 BIT signed integer
+    U8,    // 8 bit unsigned integer
+    I16,   // 16 BIT signed integer
+    U16,   // 16 BUT unsigned integer
+    I32,   // 32 BIT signed integer
+    U32,   // 32 BIT unsigned integer
+    I64,   // 64 BIT signed integer
+    U64,   // 64 BIT unsigned integer
+    I128,  // 128 BIT signed integer
+    U128,  // 128 BIT unsigned integer
+    ISIZE, // CPU native width signed integer
+    USIZE, // CPU native width unsigned integer
     BOOLEAN,
     STRING,
     FLOAT,
     DOUBLE,
-    CHAR8, // 8 BIT Char
+    CHAR8,  // 8 BIT Char
     CHAR16, // 16 BIT Char
     CHAR32, // 32 BIT Char
 
@@ -266,6 +268,7 @@ private:
     bool insideBehavior = false;
     bool insideComponent = false;
     bool insideSeal = false;
+    bool insideAllocator = false;
 
     std::vector<std::string> sourceLines;
 
@@ -280,6 +283,8 @@ private:
     void walkU64Literal(Node *node);
     void walkI128Literal(Node *node);
     void walkU128Literal(Node *node);
+    void walkISIZELiteral(Node *node);
+    void walkUSIZELiteral(Node *node);
 
     void walkStringLiteral(Node *node);
     void walkBooleanLiteral(Node *node);
@@ -362,6 +367,10 @@ private:
     void walkArrayLiteral(Node *node);
     void walkArrayStatement(Node *node);
     void walkArraySubscriptExpression(Node *node);
+
+    // Walking allocator interface
+    void walkAllocatorInterface(Node *node);
+    void walkAllocatorFunction(FunctionStatement *fnStmt);
 
     // Walking generics
     void walkGenericStatement(Node *node);

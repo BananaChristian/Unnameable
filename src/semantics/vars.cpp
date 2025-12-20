@@ -226,6 +226,36 @@ void Semantics::walkU128Literal(Node *node)
     metaData[lit] = info;
 }
 
+void Semantics::walkISIZELiteral(Node *node)
+{
+    auto lit = dynamic_cast<ISIZELiteral *>(node);
+    if (!lit)
+        return;
+
+    auto info = std::make_shared<SymbolInfo>();
+
+    info->type = ResolvedType{DataType::ISIZE, "isize"};
+    info->isNullable = false;
+    info->isMutable = false;
+    info->isConstant = false;
+    metaData[lit] = info;
+}
+
+void Semantics::walkUSIZELiteral(Node *node)
+{
+    auto lit = dynamic_cast<USIZELiteral *>(node);
+    if (!lit)
+        return;
+
+    auto info = std::make_shared<SymbolInfo>();
+
+    info->type = ResolvedType{DataType::USIZE, "usize"};
+    info->isNullable = false;
+    info->isMutable = false;
+    info->isConstant = false;
+    metaData[lit] = info;
+}
+
 void Semantics::walkFloatLiteral(Node *node)
 {
     auto fltLiteral = dynamic_cast<FloatLiteral *>(node);

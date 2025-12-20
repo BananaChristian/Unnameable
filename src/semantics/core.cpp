@@ -55,6 +55,8 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(U64Literal)] = &Semantics::walkU64Literal;
     walkerFunctionsMap[typeid(I128Literal)] = &Semantics::walkI128Literal;
     walkerFunctionsMap[typeid(U128Literal)] = &Semantics::walkU128Literal;
+    walkerFunctionsMap[typeid(ISIZELiteral)] = &Semantics::walkISIZELiteral;
+    walkerFunctionsMap[typeid(USIZELiteral)] = &Semantics::walkUSIZELiteral;
     walkerFunctionsMap[typeid(FloatLiteral)] = &Semantics::walkFloatLiteral;
     walkerFunctionsMap[typeid(DoubleLiteral)] = &Semantics::walkDoubleLiteral;
     walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
@@ -170,8 +172,12 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
         return ResolvedType{DataType::U64, "u64"};
     if (auto i128Lit = dynamic_cast<I128Literal *>(node))
         return ResolvedType{DataType::I128, "i128"};
-    if (auto uextraLit = dynamic_cast<U128Literal *>(node))
+    if (auto u128Lit = dynamic_cast<U128Literal *>(node))
         return ResolvedType{DataType::U128, "u128"};
+    if (auto isizeLit = dynamic_cast<ISIZELiteral *>(node))
+        return ResolvedType{DataType::ISIZE, "isize"};
+    if (auto usizeLit = dynamic_cast<USIZELiteral *>(node))
+        return ResolvedType{DataType::USIZE, "usize"};
 
     if (auto fltLit = dynamic_cast<FloatLiteral *>(node))
         return ResolvedType{DataType::FLOAT, "float"};
@@ -1092,6 +1098,10 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable)
         return makeType(DataType::I128, "i128");
     case TokenType::U128_KEYWORD:
         return makeType(DataType::U128, "u128");
+    case TokenType::ISIZE_KEYWORD:
+        return makeType(DataType::ISIZE, "isize");
+    case TokenType::USIZE_KEYWORD:
+        return makeType(DataType::USIZE, "usize");
 
     case TokenType::FLOAT_KEYWORD:
         return makeType(DataType::FLOAT, "float");
@@ -1596,7 +1606,7 @@ bool Semantics::isInteger(const ResolvedType &t)
 {
     static const std::unordered_set<DataType> intTypes = {
         DataType::I8, DataType::U8, DataType::I16, DataType::U16, DataType::I32, DataType::U32,
-        DataType::I64, DataType::U64, DataType::I128, DataType::U128};
+        DataType::I64, DataType::U64, DataType::I128, DataType::U128, DataType::ISIZE, DataType::USIZE};
     return intTypes.count(t.kind) > 0;
 }
 
@@ -1655,6 +1665,11 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node)
         return ResolvedType{DataType::I128, "i128"};
     case TokenType::U128_KEYWORD:
         return ResolvedType{DataType::U128, "u128"};
+
+    case TokenType::ISIZE_KEYWORD:
+        return ResolvedType{DataType::ISIZE, "isize"};
+    case TokenType::USIZE_KEYWORD:
+        return ResolvedType{DataType::USIZE, "usize"};
 
     case TokenType::FLOAT_KEYWORD:
         return ResolvedType{DataType::FLOAT, "float"};

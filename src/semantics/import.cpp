@@ -78,6 +78,10 @@ DataType Semantics::convertImportedDataTypetoResolvedDataType(const ImportedData
         return DataType::I128;
     case ImportedDataType::U128:
         return DataType::U128;
+    case ImportedDataType::ISIZE:
+        return DataType::ISIZE;
+    case ImportedDataType::USIZE:
+        return DataType::USIZE;
     case ImportedDataType::BOOLEAN:
         return DataType::BOOLEAN;
     case ImportedDataType::STRING:

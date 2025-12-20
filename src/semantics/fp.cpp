@@ -537,7 +537,8 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo->returnType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Initially unknown return type
 
     // Inserting function symbol into current scope early for recursion
-    if (!insideBehavior && !insideComponent && !insideSeal) // If we arent inside a behavior, component or seal we place in the global scope
+    bool insideValid = insideBehavior && insideComponent && insideSeal && insideAllocator; // If we arent inside a behavior, component, seal or a component we place in the global scope
+    if (!insideValid)
     {
         std::cout << "INSERTING FUNCTION INTO GLOBAL SCOPE\n";
         symbolTable[0][funcName] = funcInfo;
@@ -1170,7 +1171,7 @@ void Semantics::walkSealStatement(Node *node)
             fnExpr->expression.TokenLiteral = sealName + "_" + name;
 
             std::cout << "Mangled func name: " << fnExpr->func_key.TokenLiteral << "\n";
-            
+
             if (isExportable)
                 fnExpr->isExportable = isExportable;
         }
