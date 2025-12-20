@@ -38,6 +38,8 @@ This project contains the core implementation of the Unnameable compiler written
 - `u64` — 64-bit unsigned integers
 - `i128` — 128-bit signed integers
 - `u128` — 128-bit unsigned integers
+- `isize` — CPU native width-bit signed integers
+-  `isize` — CPU native width-bit unsigned integers
 
 - `bool` — true/false values
 - `string` — UTF-8 encoded sequence of characters.
@@ -84,6 +86,9 @@ auto y = 42;  # Type inferred as int
 char8 test='A';
 
 char16 test=u'A';
+
+usize x= 10uz;
+isize y=18iz;
 
 
 ```
