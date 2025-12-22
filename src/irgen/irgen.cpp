@@ -2795,7 +2795,7 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node)
     if (sym->hasError)
         throw std::runtime_error("Semantic error detected");
 
-    llvm::Value *ptr = generateIdentifierAddress(addrExpr->identifier.get()).address;
+    llvm::Value *ptr = generateExpression(addrExpr->identifier.get());
     if (!ptr)
         throw std::runtime_error("No llvm value was assigned");
 

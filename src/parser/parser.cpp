@@ -1340,7 +1340,7 @@ std::unique_ptr<Expression> Parser::parseAddressExpression()
     Token addr_token = currentToken();
     advance(); // Consume addr token
 
-    auto ident = parseIdentifier();
+    auto ident = parseExpression(Precedence::PREC_NONE);
 
     return std::make_unique<AddressExpression>(addr_token, std::move(ident));
 }
