@@ -2145,9 +2145,14 @@ struct ShoutStatement : Statement
     Token shout_key;
     std::unique_ptr<Expression> expr;
 
+    std::string exprStr = "No expression";
     std::string toString() override
     {
-        return "Shout Statement: " + shout_key.TokenLiteral + "! " + expr->toString();
+        if (expr)
+        {
+            exprStr += expr->toString();
+        }
+        return "Shout Statement: " + shout_key.TokenLiteral + "! " + exprStr;
     }
 
     ShoutStatement *shallowClone() const override
