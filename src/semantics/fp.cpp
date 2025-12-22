@@ -487,8 +487,7 @@ void Semantics::walkFunctionExpression(Node *node)
 
     if (insideFunction)
     {
-        logSemanticErrors("Nested function definitions are prohibited",
-                          funcExpr->expression.line, funcExpr->expression.column);
+        logSemanticErrors("Nested function definitions are prohibited", funcExpr->expression.line, funcExpr->expression.column);
         return;
     }
     if (isExportable)
@@ -508,22 +507,30 @@ void Semantics::walkFunctionExpression(Node *node)
     // Only accessing symbol if it exists
     if (symbol)
     {
-        if (symbol->isDefined)
+        if (symbol->isFunction)
         {
-            logSemanticErrors("Reused name '" + funcName + "'", funcExpr->func_key.line, funcExpr->func_key.column);
-            insideFunction = false;
-            hasError = true;
-            return;
-        }
-
-        else if (symbol->isDeclaration)
-        {
-            if (!areSignaturesCompatible(*symbol, funcExpr))
+            if (symbol->isDefined)
             {
-                logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope",
-                                  funcExpr->func_key.line, funcExpr->func_key.column);
+                logSemanticErrors("Function name '" + funcName + "' already in use", funcExpr->func_key.line, funcExpr->func_key.column);
+                insideFunction = false;
                 hasError = true;
+                return;
             }
+
+            else if (symbol->isDeclaration)
+            {
+                if (!areSignaturesCompatible(*symbol, funcExpr))
+                {
+                    logSemanticErrors("Function definition for '" + funcName + "' does not match prior declaration in global scope",
+                                      funcExpr->func_key.line, funcExpr->func_key.column);
+                    hasError = true;
+                }
+            }
+        }
+        else
+        {
+            logSemanticErrors("Function name '" + funcName + "' already in use", funcExpr->func_key.line, funcExpr->func_key.column);
+            hasError = true;
         }
     }
 
@@ -537,13 +544,13 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo->returnType = ResolvedType{DataType::UNKNOWN, "unknown"}; // Initially unknown return type
 
     // Inserting function symbol into current scope early for recursion
-    bool insideValid = insideBehavior && insideComponent && insideSeal && insideAllocator; // If we arent inside a behavior, component, seal or a component we place in the global scope
-    if (!insideValid)
+    bool insideMemberContext = insideBehavior || insideComponent || insideSeal || insideAllocator;
+    if (!insideMemberContext)
     {
         std::cout << "INSERTING FUNCTION INTO GLOBAL SCOPE\n";
         symbolTable[0][funcName] = funcInfo;
     }
-    else // If we are in a behavior or component insert in that scope
+    else // If we are in a behavior, component or whatever insert in that scope
     {
         std::cout << "INSERTING FUNCTION INTO LOCAL SCOPE\n";
         symbolTable.back()[funcName] = funcInfo;
@@ -722,7 +729,7 @@ void Semantics::walkFunctionExpression(Node *node)
     funcInfo->isDefined = true;
 
     std::cout << "Regsitering in parent scope\n";
-    if (!insideBehavior && !insideComponent && !insideSeal) // If we arent inside a behavior,component or seal we place in the global scope
+    if (!insideBehavior && !insideComponent && !insideSeal && !insideAllocator) // If we arent inside a behavior,component or seal we place in the global scope
     {
         std::cout << "2ND INSERTING FUNCTION INTO GLOBAL SCOPE WITH UPDATED INFO\n";
         symbolTable[0][funcName] = funcInfo;
@@ -845,6 +852,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node)
     funcInfo->hasError = hasError;
     funcInfo->isExportable = isExportable;
     funcInfo->isDeclaration = true;
+    funcInfo->isFunction = true;
     funcInfo->isDefined = false;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
 

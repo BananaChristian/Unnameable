@@ -51,6 +51,13 @@ enum class StorageType
     HEAP,
 };
 
+enum class AllocatorRole
+{
+    ALLOCATE,
+    FREE,
+    NONE
+};
+
 struct ResolvedType
 {
     DataType kind; // For the custom inbuilt types
@@ -227,6 +234,14 @@ struct SymbolInfo
     SymbolInfo &operator=(SymbolInfo &&) = default;
 };
 
+struct AllocatorHandle
+{
+    std::string allocateName;
+    std::shared_ptr<SymbolInfo> allocatorSymbol;
+    std::string freeName;
+    std::shared_ptr<SymbolInfo> freeSymbol;
+};
+
 class Semantics
 {
     std::string fileName;
@@ -250,7 +265,7 @@ public:
     std::vector<ScopeInfo> currentTypeStack;
 
     std::unordered_map<std::string, GenericBluePrint> genericMap;
-
+    std::unordered_map<std::string, AllocatorHandle> allocatorMap;
     std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
 
     // Public helpers
@@ -370,7 +385,6 @@ private:
 
     // Walking allocator interface
     void walkAllocatorInterface(Node *node);
-    void walkAllocatorFunction(FunctionStatement *fnStmt);
 
     // Walking generics
     void walkGenericStatement(Node *node);
@@ -417,6 +431,7 @@ private:
     void importComponentInits();
 
     bool isGlobalScope();
+    AllocatorRole getFunctionRole(const std::vector<std::unique_ptr<Statement>> &params, Expression *returnType, const std::string &funcName);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
     bool signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberInfo> &declMember, FunctionExpression *funcExpr);
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);

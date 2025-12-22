@@ -872,7 +872,7 @@ void Semantics::walkComponentStatement(Node *node)
 
     if (symbolTable[0].find(componentName) != symbolTable[0].end())
     {
-        logSemanticErrors("Component '" + componentName + "' already exists", componentStmt->statement.line, componentStmt->statement.column);
+        logSemanticErrors("Component name'" + componentName + "' already in use", componentStmt->statement.line, componentStmt->statement.column);
         return;
     }
 
