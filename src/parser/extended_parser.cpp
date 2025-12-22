@@ -496,6 +496,7 @@ std::unique_ptr<Expression> Parser::parseArrayType()
 std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
 {
     bool isHeap = false;
+    bool isDheap = false;
     Mutability mutability = Mutability::IMMUTABLE;
     if (currentToken().type == TokenType::MUT)
     {
@@ -582,6 +583,7 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam)
 
     return std::make_unique<ArrayStatement>(
         isHeap,
+        isDheap,
         mutability,
         std::move(arrTypeNode),
         std::move(lengths),
@@ -686,6 +688,8 @@ std::unique_ptr<Statement> Parser::parseFieldAssignment()
 
 std::unique_ptr<Statement> Parser::parseReferenceStatement(bool isParam)
 {
+    bool isHeap = false;
+    bool isDheap = false;
     Mutability mut = Mutability::IMMUTABLE;
     std::unique_ptr<Expression> type;
 
@@ -759,6 +763,8 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement(bool isParam)
         }
     }
     return std::make_unique<ReferenceStatement>(
+        isHeap,
+        isDheap,
         ref_token,
         mut,
         std::move(type),
@@ -768,6 +774,8 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement(bool isParam)
 
 std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam)
 {
+    bool isHeap = false;
+    bool isDheap = false;
     Mutability mut = Mutability::IMMUTABLE;
     std::unique_ptr<Expression> type;
 
@@ -841,6 +849,8 @@ std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam)
         }
     }
     return std::make_unique<PointerStatement>(
+        isHeap,
+        isDheap,
         ptr_token,
         mut,
         std::move(type),
@@ -959,15 +969,43 @@ std::unique_ptr<Statement> Parser::parseDHeapStatement()
 
     if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get()))
     {
-        letStmt->isHeap = true;
+        if (letStmt->isHeap)
+        {
+            logError("Cannot dynamic heap raise an already statically heap raised variable declaration");
+            return nullptr;
+        }
+        letStmt->isDheap = true;
     }
     else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get()))
     {
-        arrStmt->isHeap = true;
+        if (arrStmt->isHeap)
+        {
+            logError("Cannot dynamic heap raise an already statically heap raised array declaration");
+            return nullptr;
+        }
+        arrStmt->isDheap = true;
+    }
+    else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get()))
+    {
+        if (ptrStmt->isHeap)
+        {
+            logError("Cannot dynamic heap raise an already statically heap raised pointer statement");
+            return nullptr;
+        }
+        ptrStmt->isDheap = true;
+    }
+    else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get()))
+    {
+        if (refStmt->isHeap)
+        {
+            logError("Cannot dynamic heap raise an already statically heap raised variable declaration");
+            return nullptr;
+        }
+        refStmt->isDheap = true;
     }
     else
     {
-        logError("'dheap' can only be applied to variable and array declarations");
+        logError("'dheap' applied to non supported statement");
         return nullptr;
     }
 
