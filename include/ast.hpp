@@ -2169,7 +2169,7 @@ struct ShoutStatement : Statement
     {
         if (expr)
         {
-            exprStr += expr->toString();
+            exprStr = expr->toString();
         }
         return "Shout Statement: " + shout_key.TokenLiteral + "! " + exprStr;
     }
