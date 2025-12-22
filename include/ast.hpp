@@ -1157,6 +1157,8 @@ struct ErrorStatement : Statement
 // Reference Statament node
 struct ReferenceStatement : Statement
 {
+    bool isHeap;
+    bool isDheap;
     Token ref_token;
     Mutability mutability;
     std::unique_ptr<Expression> type;
@@ -1165,15 +1167,19 @@ struct ReferenceStatement : Statement
 
     std::string toString() override
     {
+        std::string heapStr = "";
+        if (isHeap)
+            heapStr = "heap ";
+
+        if (isDheap)
+            heapStr = "dheap ";
+
         std::string mutStr = "";
         if (mutability == Mutability::MUTABLE)
-        {
             mutStr += "mut ";
-        }
+
         else if (mutability == Mutability::CONSTANT)
-        {
             mutStr += "const ";
-        }
 
         std::string typeStr = "";
         if (type)
@@ -1187,12 +1193,14 @@ struct ReferenceStatement : Statement
             valueStr += " -> " + referee->toString();
         }
 
-        return "Reference Statement: " + ref_token.TokenLiteral + " " + mutStr + typeStr + " " + referer->toString() + valueStr;
+        return "Reference Statement: " + heapStr + ref_token.TokenLiteral + " " + mutStr + typeStr + " " + referer->toString() + valueStr;
     };
 
     ReferenceStatement *shallowClone() const override
     {
         return new ReferenceStatement(
+            isHeap,
+            isDheap,
             ref_token,
             mutability,
             clonePtr(type),
@@ -1201,16 +1209,20 @@ struct ReferenceStatement : Statement
     }
 
     ReferenceStatement(
+        bool heap,
+        bool dheap,
         Token ref,
         Mutability mut,
         std::unique_ptr<Expression> data_type,
         std::unique_ptr<Expression> identifier,
-        std::unique_ptr<Expression> value) : Statement(ref), mutability(mut), type(std::move(data_type)), referer(std::move(identifier)), referee(std::move(value)) {};
+        std::unique_ptr<Expression> value) : Statement(ref), isHeap(heap), isDheap(dheap), mutability(mut), type(std::move(data_type)), referer(std::move(identifier)), referee(std::move(value)) {};
 };
 
 // Pointer statement node
 struct PointerStatement : Statement
 {
+    bool isHeap;
+    bool isDheap;
     Token ptr_token;
     Mutability mutability;
     std::unique_ptr<Expression> type;
@@ -1219,33 +1231,36 @@ struct PointerStatement : Statement
 
     std::string toString() override
     {
+        std::string heapStr = "";
+        if (isHeap)
+            heapStr += "heap ";
+
+        if (isDheap)
+            heapStr = "dheap ";
+
         std::string mutStr = "";
         if (mutability == Mutability::MUTABLE)
-        {
             mutStr += "mut ";
-        }
+
         else if (mutability == Mutability::CONSTANT)
-        {
             mutStr += "const ";
-        }
 
         std::string typeStr = "";
         if (type)
-        {
             typeStr += type->toString();
-        }
 
         std::string valueStr = "";
         if (value)
-        {
             valueStr += " -> " + value->toString();
-        }
-        return "Pointer Statement: " + ptr_token.TokenLiteral + " " + mutStr + typeStr + " " + name->toString() + valueStr;
+
+        return "Pointer Statement: " + heapStr + ptr_token.TokenLiteral + " " + mutStr + typeStr + " " + name->toString() + valueStr;
     };
 
     PointerStatement *shallowClone() const override
     {
         return new PointerStatement(
+            isHeap,
+            isDheap,
             ptr_token,
             mutability,
             clonePtr(type),
@@ -1254,17 +1269,20 @@ struct PointerStatement : Statement
     }
 
     PointerStatement(
+        bool heap,
+        bool dheap,
         Token ptr,
         Mutability mut,
         std::unique_ptr<Expression> data_type,
         std::unique_ptr<Expression> identifier,
-        std::unique_ptr<Expression> val) : Statement(ptr), ptr_token(ptr), mutability(mut), type(std::move(data_type)), name(std::move(identifier)), value(std::move(val)) {};
+        std::unique_ptr<Expression> val) : Statement(ptr), isHeap(heap), isDheap(dheap), ptr_token(ptr), mutability(mut), type(std::move(data_type)), name(std::move(identifier)), value(std::move(val)) {};
 };
 
 // Let statement node
 struct LetStatement : Statement
 {
     bool isHeap;
+    bool isDheap;
     Mutability mutability;
     std::unique_ptr<Expression> type;
     Token ident_token;
@@ -1277,14 +1295,13 @@ struct LetStatement : Statement
         std::string heapStr = "";
         std::string typeStr = "Failed";
         if (isHeap)
-        {
             heapStr = "heap ";
-        }
+
+        if (isDheap)
+            heapStr = "dheap ";
 
         if (type)
-        {
             typeStr = type->toString();
-        }
 
         if (mutability == Mutability::MUTABLE)
             mut_str = "mut";
@@ -1294,13 +1311,9 @@ struct LetStatement : Statement
         std::string result = "Let Statement: (" + heapStr + mut_str + "Data Type: " + typeStr + nullStr + " Variable name: " + ident_token.TokenLiteral;
 
         if (value)
-        {
             result += " Value: " + value->toString();
-        }
         else
-        {
             result += " Value: <uninitialized>";
-        }
 
         result += ")";
         return result;
@@ -1310,6 +1323,7 @@ struct LetStatement : Statement
     {
         return new LetStatement(
             isHeap,
+            isDheap,
             mutability,
             clonePtr(type),
             ident_token,
@@ -1317,13 +1331,13 @@ struct LetStatement : Statement
             clonePtr(value));
     }
 
-    LetStatement(bool heap, Mutability muta, std::unique_ptr<Expression> data_t, const Token &ident_t, const std::optional<Token> &assign_t, std::unique_ptr<Expression> val) : isHeap(heap),
-                                                                                                                                                                                mutability(muta),
-                                                                                                                                                                                type(std::move(data_t)),
-                                                                                                                                                                                ident_token(ident_t),
-                                                                                                                                                                                assign_token(assign_t),
-                                                                                                                                                                                Statement(ident_t),
-                                                                                                                                                                                value(std::move(val)) {};
+    LetStatement(bool heap, bool dheap, Mutability muta, std::unique_ptr<Expression> data_t, const Token &ident_t, const std::optional<Token> &assign_t, std::unique_ptr<Expression> val) : isHeap(heap), isDheap(dheap),
+                                                                                                                                                                                            mutability(muta),
+                                                                                                                                                                                            type(std::move(data_t)),
+                                                                                                                                                                                            ident_token(ident_t),
+                                                                                                                                                                                            assign_token(assign_t),
+                                                                                                                                                                                            Statement(ident_t),
+                                                                                                                                                                                            value(std::move(val)) {};
 };
 
 struct AssignmentStatement : Statement
@@ -1978,6 +1992,7 @@ struct ArrayStatement : Statement
 {
     Mutability mutability;
     bool isHeap;
+    bool isDheap;
     std::unique_ptr<Expression> arrayType;            // Like arr[int]
     std::vector<std::unique_ptr<Expression>> lengths; // Stuff like [1] or [2][3] it is optional though
     std::unique_ptr<Expression> identifier;
@@ -1985,7 +2000,12 @@ struct ArrayStatement : Statement
 
     std::string toString() override
     {
-        std::string heapStr = isHeap ? "heap " : "";
+        std::string heapStr = "";
+        if(isHeap)
+            heapStr="heap ";
+        if(isDheap)
+            heapStr="dheap ";
+            
         std::string lenStr = "";
         if (!lengths.empty())
         {
@@ -1996,13 +2016,10 @@ struct ArrayStatement : Statement
         }
         std::string mutStr = "";
         if (mutability == Mutability::MUTABLE)
-        {
             mutStr += "mut";
-        }
+
         else if (mutability == Mutability::CONSTANT)
-        {
             mutStr += "const";
-        }
 
         std::string arrayTypeStr = "<no type>";
         if (arrayType)
@@ -2027,6 +2044,7 @@ struct ArrayStatement : Statement
     {
         return new ArrayStatement(
             isHeap,
+            isDheap,
             mutability,
             clonePtr(arrayType),
             clonePtrVector(lengths),
@@ -2036,11 +2054,12 @@ struct ArrayStatement : Statement
 
     ArrayStatement(
         bool heap,
+        bool dheap,
         Mutability mut,
         std::unique_ptr<Expression> arrayTy,
         std::vector<std::unique_ptr<Expression>> lens,
         std::unique_ptr<Expression> ident,
-        std::unique_ptr<Expression> array) : Statement(arrayTy->token), isHeap(heap), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
+        std::unique_ptr<Expression> array) : Statement(arrayTy->token), isHeap(heap), isDheap(dheap), mutability(mut), arrayType(std::move(arrayTy)), lengths(std::move(lens)), identifier(std::move(ident)), array_content(std::move(array)) {};
 };
 
 // Array Subscript expression
