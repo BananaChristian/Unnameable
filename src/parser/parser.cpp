@@ -502,6 +502,8 @@ bool Parser::isBasicType(TokenType type)
     case TokenType::U64_KEYWORD:
     case TokenType::I128_KEYWORD:
     case TokenType::U128_KEYWORD:
+    case TokenType::ISIZE_KEYWORD:
+    case TokenType::USIZE_KEYWORD:
     case TokenType::FLOAT_KEYWORD:
     case TokenType::DOUBLE_KEYWORD:
     case TokenType::CHAR8_KEYWORD:
