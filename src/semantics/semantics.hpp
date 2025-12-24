@@ -100,7 +100,7 @@ struct MemberInfo
     // Storage info
     StorageType storage;
 
-    bool isHeap = false;
+    bool isHeap = false;    // TODO: REVISIT THIS
     bool isRef = false;     // Reference flag
     bool isPointer = false; // Pointer flag
     Node *lastUseNode = nullptr;
@@ -187,7 +187,9 @@ struct SymbolInfo
     // Storage types
     StorageType storage;
 
-    bool isHeap = false;
+    bool isHeap = false;   // Sage heap flag
+    bool isDheap = false;  // Dynamic heap flag
+    std::string allocType; // The name of the allocator the dheap will use
 
     bool isRef = false;     // Reference flag
     bool isPointer = false; // Pointer flag
@@ -385,6 +387,7 @@ private:
 
     // Walking allocator interface
     void walkAllocatorInterface(Node *node);
+    void walkDheapStatement(Node *node);
 
     // Walking generics
     void walkGenericStatement(Node *node);
@@ -430,6 +433,7 @@ private:
     void importDataBlocks();
     void importComponentInits();
 
+    void registerInbuiltAllocatorTypes();
     bool isGlobalScope();
     AllocatorRole getFunctionRole(const std::vector<std::unique_ptr<Statement>> &params, Expression *returnType, const std::string &funcName);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);

@@ -56,7 +56,6 @@ void Semantics::walkAllocatorInterface(Node *node)
             continue;
         }
 
-
         auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
         if (!fnExpr)
         {
@@ -183,4 +182,94 @@ AllocatorRole Semantics::getFunctionRole(const std::vector<std::unique_ptr<State
     logSemanticErrors("Allocator function '" + funcName + "' must either return a pointer (allocate) or void (free)", retLine, retCol);
 
     return AllocatorRole::NONE;
+}
+
+void Semantics::walkDheapStatement(Node *node)
+{
+    auto dheapStmt = dynamic_cast<DheapStatement *>(node);
+    if (!dheapStmt)
+        return;
+
+    bool hasError = false;
+
+    std::string allocType;
+    // Check if it has the allocator type
+    if (dheapStmt->allocType)
+    {
+        auto allocIdent = dynamic_cast<Identifier *>(dheapStmt->allocType.get());
+        const std::string &allocName = allocIdent->identifier.TokenLiteral;
+        // Check if the allocator exists in the allocatorMap
+        auto allocIt = allocatorMap.find(allocName);
+        if (allocIt == allocatorMap.end())
+        {
+            logSemanticErrors("Unknown allocator type '" + allocName + "'", allocIdent->identifier.line, allocIdent->identifier.column);
+            return;
+        }
+
+        allocType = allocIt->first;
+    }
+    else
+    {
+        allocType = "malloc"; // The default dynamic allocator type
+    }
+
+    // If it has the stmt
+    auto stmt = dheapStmt->stmt.get();
+    walker(stmt);
+
+    // Get the symbol info of the stmt using metaData search
+    auto it = metaData.find(dheapStmt->stmt.get());
+    if (it == metaData.end())
+    {
+        logSemanticErrors("Could not find statement metaData for declaration in the dheap statement ", stmt->statement.line, stmt->statement.column);
+        return;
+    }
+
+    auto stmtSym = it->second;
+    // Toggle the dheap flag, and other flags
+    stmtSym->isDheap = true;
+    stmtSym->lastUseNode = stmt;
+    stmtSym->allocType = allocType;
+
+    // If the walked stmt has an error then so does the overall dheap statement
+    hasError = stmtSym->hasError;
+
+    auto dheapSym = std::make_shared<SymbolInfo>();
+    dheapSym->hasError = hasError;
+
+    metaData[dheapStmt] = dheapSym; // Only store in the metaData table since the initial stmt walk already registered in the semantic symbol table
+}
+
+void Semantics::registerInbuiltAllocatorTypes()
+{
+    // For now only malloc as I observe the system
+    AllocatorHandle stdHandle;
+    stdHandle.allocateName = "malloc";
+    stdHandle.freeName = "free";
+
+    // Create handle symbol for malloc
+    std::vector<std::pair<ResolvedType, std::string>> mallocParams;
+    mallocParams.emplace_back(ResolvedType{DataType::USIZE, "usize", false}, "size");
+    auto allocSym = std::make_shared<SymbolInfo>();
+    allocSym->isFunction = true;
+    allocSym->isDeclaration = true;
+    allocSym->returnType = ResolvedType{DataType::USIZE, "usize_ptr", true}; // The ptr usize return type
+    allocSym->paramTypes = mallocParams;
+    allocSym->isDefined = false;
+
+    stdHandle.allocatorSymbol = allocSym;
+
+    // Create handle symbol for free
+    std::vector<std::pair<ResolvedType, std::string>> freeParams;
+    freeParams.emplace_back(ResolvedType{DataType::USIZE, "usize_ptr", true}, "p");
+    auto freeSym = std::make_shared<SymbolInfo>();
+    freeSym->isFunction = true;
+    freeSym->isDeclaration = true;
+    freeSym->returnType = ResolvedType{DataType::VOID, "void"}; // The void return type
+    freeSym->paramTypes = freeParams;
+    freeSym->isDefined = false;
+
+    stdHandle.freeSymbol = freeSym;
+
+    allocatorMap["malloc"] = stdHandle; // Register malloc allocator type
 }

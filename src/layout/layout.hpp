@@ -26,6 +26,7 @@ public:
 private:
     // Component calculators
     void calculateLetStatementSize(Node *node);
+    void calculateDheapStatementSize(Node *node);
     void calculateWhileStatementSize(Node *node);
     void calculateForStatementSize(Node *node);
     void calculateIfStatementSize(Node *node);
@@ -38,6 +39,8 @@ private:
     void calculateSealStatement(Node *node);
     void calculateComponentStatement(Node *node);
     void calculateInstantiateStatement(Node *node);
+    void calculateAllocatorInterfaceSize(Node *node);
+
     // HELPERS
     void declareAllCustomTypes();
     void registerImportedTypes();

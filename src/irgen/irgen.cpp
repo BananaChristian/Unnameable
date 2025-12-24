@@ -28,6 +28,7 @@ IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     declareCustomTypes();
     declareImportedTypes();
     declareImportedSeals();
+    registerAllocators();
 
     // Declare external allocator functions so IR can call them
     llvm::FunctionType *initType = llvm::FunctionType::get(
@@ -153,509 +154,6 @@ void IRGenerator::generateStatement(Node *node)
     (this->*generatorIt->second)(node);
 }
 // STATEMENT GENERATOR FUNCTIONS
-// Let statement IR generator function
-void IRGenerator::generateLetStatement(Node *node)
-{
-    // VALIDATION AND EXTRACTION
-    auto *letStmt = dynamic_cast<LetStatement *>(node);
-    if (!letStmt)
-        throw std::runtime_error("Invalid let statement");
-
-    const std::string letName = letStmt->ident_token.TokenLiteral;
-    std::cout << "[DEBUG] Generating let statement for variable '" << letName << "'\n";
-
-    auto metaIt = semantics.metaData.find(letStmt);
-    if (metaIt == semantics.metaData.end())
-        throw std::runtime_error("No let metadata for '" + letName + "'");
-
-    auto sym = metaIt->second;
-    if (sym->hasError)
-        throw std::runtime_error("Semantic error detected for '" + letName + "'");
-
-    llvm::StructType *structTy = nullptr;
-    bool isHeap = letStmt->isHeap;
-    bool isComponent = false;
-
-    // Detect component type
-    auto compIt = componentTypes.find(sym->type.resolvedName);
-    if (compIt != componentTypes.end())
-    {
-        isComponent = true;
-        structTy = llvm::dyn_cast<llvm::StructType>(compIt->second); // Populate the struct type
-    }
-
-    // If there's no current insert block, handle global(GLOBAL SCOPE)
-    if (isGlobalScope)
-    {
-        std::cout << "[DEBUG] No insert block (global scope) for let '" << letName << "'\n";
-        if (isComponent && isHeap)
-        {
-            generateGlobalComponentHeapInit(letStmt, sym, letName, structTy);
-        }
-        else if (isHeap)
-        {
-            generateGlobalHeapLet(letStmt, sym, letName);
-        }
-
-        else
-        {
-            auto valExpr = dynamic_cast<Expression *>(letStmt->value.get());
-            generateGlobalScalarLet(sym, letName, valExpr);
-        }
-        return;
-    }
-
-    // LOCAL SCOPE
-    llvm::Value *storage = nullptr;
-
-    // For non-components: compute init value (scalar or other) this is for non heap
-    llvm::Value *initVal = nullptr;
-    if (!isComponent)
-    {
-        if (letStmt->value)
-            initVal = generateExpression(letStmt->value.get());
-        else
-            initVal = llvm::Constant::getNullValue(getLLVMType(sym->type));
-    }
-
-    llvm::Value *constructedPtr = nullptr;
-    // If it is a component
-    if (isComponent)
-    {
-        storage = generateComponentInit(letStmt, sym, structTy, isHeap); // It will handle its own heap business
-        if (!storage)
-        {
-            throw std::runtime_error("Component allocation failed for '" + letName + "'");
-        }
-    }
-    else if (isHeap) // Incase the value is heap raised
-    {
-        // Generate the sage_alloc and allocate the value on the heap
-        storage = allocateHeapStorage(sym, letName, nullptr);
-        llvm::Value *initVal = letStmt->value ? generateExpression(letStmt->value.get()) : llvm::Constant::getNullValue(getLLVMType(sym->type));
-
-        // Store initial value into the heap-allocated storage
-        funcBuilder.CreateStore(initVal, storage);
-    }
-    else // If it isnt a component or a heap raised value
-    {
-
-        // scalar / normal type
-        llvm::Type *varTy = getLLVMType(sym->type);
-        if (varTy->isStructTy() && llvm::cast<llvm::StructType>(varTy)->isOpaque())
-        {
-            throw std::runtime_error("Logical Error: Trying to allocate Opaque type '" +
-                                     sym->type.resolvedName + "'. Did you forget to set the body?");
-        }
-        printf("[DEBUG] Type Context: %p\n", (void *)&varTy->getContext());
-        printf("[DEBUG] Module Context: %p\n", (void *)&module->getContext());
-        printf("[DEBUG] Builder Context: %p\n", (void *)&funcBuilder.getContext());
-
-        if (&varTy->getContext() != &module->getContext())
-        {
-            printf("[CRITICAL] CONTEXT MISMATCH DETECTED!\n");
-        }
-
-        varTy->print(llvm::errs());
-        llvm::errs() << "\n";
-
-        storage = funcBuilder.CreateAlloca(varTy, nullptr, letName);
-        // store initial value if we have one
-        if (initVal)
-            funcBuilder.CreateStore(initVal, storage);
-        else
-            funcBuilder.CreateStore(llvm::Constant::getNullValue(varTy), storage);
-    }
-
-    if (!storage)
-        throw std::runtime_error("No storage allocated for let '" + letName + "'");
-
-    // Update symbol metadata with storage and type
-    sym->llvmValue = storage;
-    sym->llvmType = (isComponent && structTy) ? structTy : getLLVMType(sym->type);
-
-    // HEAP CLEANUP FOR DEAD LOCALS
-    if (letStmt->isHeap)
-    {
-        Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-        if (letStmt == lastUse && sym->refCount == 0)
-        {
-            freeHeapStorage(sym->componentSize, sym->alignment.value(), letName);
-            std::cout << "[DEBUG] Immediately freed dead heap variable '" << letName << "'\n";
-        }
-    }
-
-    std::cout << "[DEBUG] Local let statement '" << letName << "' fully processed. storage=" << storage << "\n";
-}
-
-void IRGenerator::generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName)
-{
-    std::cout << "Let statement was heap raised\n";
-
-    // If sage_init hasnt been called
-    if (!isSageInitCalled)
-        generateSageInitCall();
-
-    // Create a global raw pointer slot initialized to null
-    llvm::Type *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
-    llvm::GlobalVariable *globalPtr = new llvm::GlobalVariable(
-        *module,
-        i8PtrTy,
-        false, // Not constant
-        llvm::GlobalValue::InternalLinkage,
-        llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0)),
-        letName + "_rawptr");
-
-    // Validate and register the global pointer
-    if (!llvm::dyn_cast<llvm::GlobalVariable>(globalPtr))
-    {
-        std::cerr << "FATAL BUG: sym->llvmValue overwritten after GlobalVariable creation for '" << letName << "'.\n";
-        throw std::runtime_error("Symbol table corruption.");
-    }
-    else
-    {
-        std::cout << "[DEBUG] Global heap symbol '" << letName << "' registered as GlobalVariable.\n";
-    }
-    sym->llvmValue = globalPtr;
-
-    // Build allocation and initialization in the heap-init function (one-time setup)
-    if (!heapInitFnEntry)
-    {
-        throw std::runtime_error("Global init entry doesnt exist");
-    }
-    llvm::IRBuilder<> heapBuilder(heapInitFnEntry);
-
-    if (heapInitFnEntry->getTerminator())
-    {
-        // If the block is already terminated (which it shouldn't be here),
-        // we need to insert before the terminator.
-        heapBuilder.SetInsertPoint(heapInitFnEntry->getTerminator());
-    }
-    else
-    {
-        heapBuilder.SetInsertPoint(heapInitFnEntry);
-    }
-
-    // Allocate raw memory via sage_alloc
-    llvm::FunctionCallee sageAllocFn = module->getOrInsertFunction(
-        "sage_alloc",
-        i8PtrTy,
-        llvm::Type::getInt64Ty(context));
-    llvm::Value *allocSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
-    llvm::Value *alignment = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->alignment.value());
-    llvm::Value *tmpPtr = heapBuilder.CreateCall(sageAllocFn, {allocSize}, letName + "_alloc");
-
-    // Store the raw pointer in the global slot
-    heapBuilder.CreateStore(tmpPtr, globalPtr);
-
-    // Cast to typed pointer and store initial value
-    llvm::Type *elemTy = getLLVMType(sym->type);
-    sym->llvmType = elemTy;
-    llvm::Value *typedPtr = heapBuilder.CreateBitCast(tmpPtr, elemTy->getPointerTo(), letName + "_typed");
-    llvm::Value *initVal = generateExpression(letStmt->value.get());
-    heapBuilder.CreateStore(initVal, typedPtr);
-
-    if (letStmt->isHeap)
-    {
-        if ((sym->lastUseNode == letStmt) && (sym->refCount == 0))
-        {
-            llvm::FunctionCallee sageFree = module->getOrInsertFunction(
-                "sage_free",
-                llvm::Type::getVoidTy(context),
-                llvm::Type::getInt64Ty(context));
-
-            heapBuilder.CreateCall(
-                sageFree,
-                {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize)},
-                letName + "_sage_free");
-        }
-    }
-}
-
-void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &letName, Expression *value)
-{
-    llvm::Type *varType = getLLVMType(sym->type);
-    auto generateConstantLiteral = [&](ResolvedType type) -> llvm::Constant *
-    {
-        llvm::Value *val = generateExpression(value);
-        if (!val)
-            throw std::runtime_error("Null value returned from expression during global scalar init");
-
-        switch (type.kind)
-        {
-        case DataType::I32:
-        {
-            if (auto constInt = llvm::dyn_cast<llvm::ConstantInt>(val))
-            {
-                return llvm::ConstantInt::get(varType, constInt->getValue());
-            }
-            else
-            {
-                throw std::runtime_error("Expected ConstantInt for INTEGER literal");
-            }
-        }
-
-        case DataType::STRING:
-        {
-            if (auto constStr = llvm::dyn_cast<llvm::Constant>(val))
-            {
-                return constStr;
-            }
-            else
-            {
-                throw std::runtime_error("Expected  for STRING literal");
-            }
-        }
-
-        default:
-            throw std::runtime_error("Unsupported literal type in global scalar initialization");
-        }
-    };
-
-    llvm::Constant *init = nullptr;
-    if (sym->isInitialized)
-    {
-        init = generateConstantLiteral(sym->type);
-    }
-    else
-    {
-        init = llvm::Constant::getNullValue(varType);
-    }
-
-    bool isConst = sym->isConstant;
-    auto *g = new llvm::GlobalVariable(
-        *module,
-        varType,
-        isConst,
-        llvm::GlobalValue::ExternalLinkage,
-        init,
-        letName);
-    sym->llvmValue = g;
-    sym->llvmType = varType;
-    std::cout << "[DEBUG] Created global scalar '" << letName << "' as GlobalVariable\n";
-}
-
-void IRGenerator::generateGlobalComponentHeapInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structType)
-{
-    if (!isSageInitCalled)
-        generateSageInitCall();
-
-    llvm::PointerType *ptrTy = structType->getPointerTo();
-    llvm::Constant *initializer = llvm::ConstantPointerNull::get(ptrTy);
-
-    // Create the global variable that will hold the HEAP address
-    llvm::GlobalVariable *globalVar = new llvm::GlobalVariable(
-        *module,
-        ptrTy,
-        false,                              // Is not constant
-        llvm::GlobalValue::ExternalLinkage, // Use ExternalLinkage for visibility
-        initializer,
-        letName);
-
-    // Register the global variable in the symbol table
-    sym->llvmValue = globalVar;
-    sym->llvmType = structType;
-
-    if (!heapInitFnEntry)
-    {
-        throw std::runtime_error("Global init function entry doesnt exist");
-    }
-
-    llvm::IRBuilder<> heapBuilder(heapInitFnEntry);
-    if (heapInitFnEntry->getTerminator())
-    {
-        // If the block is already terminated (which it shouldn't be here),
-        // we need to insert before the terminator.
-        heapBuilder.SetInsertPoint(heapInitFnEntry->getTerminator());
-    }
-    else
-    {
-        // Otherwise, insert at the end.
-        heapBuilder.SetInsertPoint(heapInitFnEntry);
-    }
-
-    // Check if the initializer is present
-    auto newExpr = dynamic_cast<NewComponentExpression *>(letStmt->value.get());
-    if (!newExpr)
-    {
-        std::cout << "[GLOBAL] Warning: Global heap component '" << letName << "' declared without 'new' initializer. Skipping init code.\n";
-        return;
-    }
-
-    const std::string &compName = sym->type.resolvedName;
-
-    llvm::FunctionCallee sageAllocFn = module->getOrInsertFunction(
-        "sage_alloc",
-        llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0),
-        llvm::Type::getInt64Ty(context));
-
-    llvm::Value *allocSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->componentSize);
-    llvm::Value *alignSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sym->alignment.value());
-
-    llvm::Value *i8_ptr = heapBuilder.CreateCall(sageAllocFn, {allocSize}, letName + ".global.ptr.i8");
-    llvm::Value *typedPtr = heapBuilder.CreateBitCast(i8_ptr, ptrTy, letName + ".global.ptr.typed");
-    typedPtr->setName(letName + ".global.ptr.typed");
-
-    // Constructor call
-    if (llvm::Function *initFn = module->getFunction(compName + "_init"))
-    {
-        llvm::Type *expected = initFn->getFunctionType()->getParamType(0);
-
-        llvm::Value *callPtr = typedPtr;
-        if (typedPtr->getType() != expected)
-        {
-            callPtr = heapBuilder.CreateBitCast(typedPtr, expected, letName + ".for_call_cast");
-            callPtr->setName(letName + ".for_call_cast");
-            llvm::errs() << "Inserted call-cast: ";
-            callPtr->getType()->print(llvm::errs());
-            llvm::errs() << "\n";
-        }
-
-        std::vector<llvm::Value *> initArgs;
-        initArgs.push_back(callPtr); // self pointer
-
-        for (auto &arg : newExpr->arguments)
-        {
-            llvm::Value *val = generateExpression(arg.get());
-            if (!val)
-                throw std::runtime_error("Failed to generate argument for new " + compName);
-            initArgs.push_back(val);
-        }
-
-        heapBuilder.CreateCall(initFn, initArgs, letName + ".ctor_call");
-    }
-
-    llvm::Type *globalStoredTy = globalVar->getValueType(); // should be ptrTy, but be explicit
-    llvm::Value *toStore = typedPtr;
-    if (typedPtr->getType() != globalStoredTy)
-    {
-        toStore = heapBuilder.CreateBitCast(typedPtr, globalStoredTy, letName + ".store_cast");
-        toStore->setName(letName + ".store_cast");
-    }
-    heapBuilder.CreateStore(toStore, globalVar);
-
-    if (letStmt->isHeap)
-    {
-        if ((sym->lastUseNode == letStmt) && (sym->refCount == 0))
-        {
-            llvm::FunctionCallee sageFree = module->getOrInsertFunction(
-                "sage_free",
-                llvm::Type::getVoidTy(context));
-
-            heapBuilder.CreateCall(
-                sageFree
-                /*letName + "_sage_free"*/);
-        }
-    }
-}
-
-llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, llvm::StructType *structTy, bool isHeap)
-{
-    std::string letName = letStmt->ident_token.TokenLiteral;
-
-    // Allocate (Even if no 'new' exists)
-    llvm::Value *instancePtr = nullptr;
-    if (isHeap)
-    {
-        if (!isSageInitCalled)
-            generateSageInitCall();
-        instancePtr = allocateHeapStorage(sym, letName, structTy);
-    }
-    else
-    {
-        const llvm::DataLayout &DL = module->getDataLayout();
-
-        // Use Preferred Alignment
-        llvm::Align finalAlign = DL.getPrefTypeAlign(structTy);
-
-        // Create the alloca and assign it to instancePtr
-        auto *allocaInst = funcBuilder.CreateAlloca(structTy, nullptr, letName + ".stack");
-        allocaInst->setAlignment(finalAlign);
-        instancePtr = allocaInst; // instancePtr is just the alloca result
-
-        // Use instancePtr for the store
-        auto *storeInst = funcBuilder.CreateStore(llvm::Constant::getNullValue(structTy), instancePtr);
-        storeInst->setAlignment(finalAlign);
-    }
-
-    // Check if the initializer exists
-    auto newExpr = letStmt->value ? dynamic_cast<NewComponentExpression *>(letStmt->value.get()) : nullptr;
-
-    // Apply default field initializers(from the component definition)
-    auto compTypeIt = semantics.customTypesTable.find(sym->type.resolvedName);
-    if (compTypeIt != semantics.customTypesTable.end())
-    {
-        for (const auto &[name, memInfo] : compTypeIt->second->members)
-        {
-            auto letNode = dynamic_cast<LetStatement *>(memInfo->node);
-            if (!letNode || !letNode->value)
-                continue;
-
-            llvm::Value *initVal = generateExpression(letNode->value.get());
-            llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(structTy, instancePtr, memInfo->memberIndex, name + "_field");
-            funcBuilder.CreateStore(initVal, fieldPtr);
-        }
-    }
-
-    // Only call init construtor if new was used
-    if (newExpr)
-    {
-        if (llvm::Function *initFn = module->getFunction(sym->type.resolvedName + "_init"))
-        {
-            std::vector<llvm::Value *> initArgs;
-            initArgs.push_back(instancePtr);
-            for (auto &arg : newExpr->arguments)
-            {
-                initArgs.push_back(generateExpression(arg.get()));
-            }
-            funcBuilder.CreateCall(initFn, initArgs);
-        }
-    }
-
-    return instancePtr;
-}
-
-llvm::Value *IRGenerator::allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy)
-{
-    std::cout << "Let statement was heap raised\n";
-    // If sage_init hasnt been called
-    if (!isSageInitCalled)
-        generateSageInitCall();
-
-    uint64_t allocSize = sym->componentSize;
-    uint64_t alignSize = sym->alignment.value();
-    llvm::Type *i8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
-    llvm::FunctionCallee sageAlloc = module->getOrInsertFunction(
-        "sage_alloc",
-        i8PtrTy,
-        llvm::Type::getInt64Ty(context),
-        llvm::Type::getInt64Ty(context));
-
-    llvm::Value *rawPtr = funcBuilder.CreateCall(
-        sageAlloc,
-        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), allocSize),
-         llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), alignSize)},
-        letName + "_sage_rawptr");
-
-    llvm::Type *targetPtrTy = structTy ? structTy->getPointerTo() : getLLVMType(sym->type)->getPointerTo();
-    return funcBuilder.CreateBitCast(rawPtr, targetPtrTy, letName + "_heap_ptr");
-}
-
-void IRGenerator::freeHeapStorage(uint64_t size, uint64_t alignSize, const std::string &letName)
-{
-    llvm::FunctionCallee sageFree = module->getOrInsertFunction(
-        "sage_free",
-        llvm::Type::getVoidTy(context),
-        llvm::Type::getInt64Ty(context),
-        llvm::Type::getInt64Ty(context));
-
-    funcBuilder.CreateCall(
-        sageFree,
-        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size),
-         llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), alignSize)},
-        letName + "_sage_free");
-}
-
 // Reference statement IR generator
 void IRGenerator::generateReferenceStatement(Node *node)
 {
@@ -1190,6 +688,7 @@ void IRGenerator::generateAssignmentStatement(Node *node)
         throw std::runtime_error("Executable statements are not allowed at global scope");
 
     llvm::Value *targetPtr = nullptr;
+    llvm::CallInst *pendingFree = nullptr;
     llvm::Value *initValue = generateExpression(assignStmt->value.get());
     if (!initValue)
         throw std::runtime_error("Failed to generate IR for assignment value");
@@ -1237,7 +736,7 @@ void IRGenerator::generateAssignmentStatement(Node *node)
 
         AddressAndPendingFree addrAndPendingFree = generateIdentifierAddress(assignStmt->identifier.get());
         targetPtr = addrAndPendingFree.address;
-        llvm::CallInst *pendingFree = addrAndPendingFree.pendingFree;
+        pendingFree = addrAndPendingFree.pendingFree;
 
         if (!targetPtr)
             throw std::runtime_error("No memory allocated for variable '" + varName + "'");
@@ -1437,178 +936,6 @@ void IRGenerator::generateShoutStatement(Node *node)
 
     // Call the shoutRuntime this is the one who actually prints
     shoutRuntime(val, type);
-}
-
-void IRGenerator::generateFunctionStatement(Node *node)
-{
-    auto fnStmt = dynamic_cast<FunctionStatement *>(node);
-    if (!fnStmt)
-        return;
-
-    llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
-
-    // Checking what the function statement is holding could be a function expression or a function declaration expression
-    auto fnExpr = fnStmt->funcExpr.get();
-    // Case where it is a full function expression
-    if (auto expr = dynamic_cast<FunctionExpression *>(fnExpr))
-    {
-        generateFunctionExpression(expr);
-    }
-    // Case where it is a function declaration expression(this is the special case)
-    if (auto declrExpr = dynamic_cast<FunctionDeclarationExpression *>(fnExpr))
-    {
-        /*This is actually supposed to behave like a statement dispatcher
-        That is because it doesnt actually produce a value it is a wrapper and doesnt evaluate to anything
-        But with the  way I built the AST for my function declaration I have to do it like this kinda shady though
-        But it will work*/
-        generateFunctionDeclarationExpression(declrExpr);
-    }
-
-    if (oldInsertPoint)
-        funcBuilder.SetInsertPoint(oldInsertPoint);
-}
-
-void IRGenerator::generateFunctionDeclarationExpression(Node *node)
-{
-    auto declrExpr = dynamic_cast<FunctionDeclarationExpression *>(node);
-    if (!declrExpr)
-        return;
-
-    // This is also just a wrapper for the function declaration expression so let me just call the statement generator
-    auto fnDeclr = declrExpr->funcDeclrStmt.get();
-    // Call the statement generator for the function declaration statement
-    generateFunctionDeclaration(fnDeclr);
-}
-
-void IRGenerator::generateFunctionDeclaration(Node *node)
-{
-    auto fnDeclr = dynamic_cast<FunctionDeclaration *>(node);
-    if (!fnDeclr)
-        return;
-    // Getting the function name
-    const std::string &fnName = fnDeclr->function_name->expression.TokenLiteral;
-
-    // Registering the function and its type
-    auto declrIt = semantics.metaData.find(fnDeclr);
-    if (declrIt == semantics.metaData.end())
-    {
-        throw std::runtime_error("Missing function declaration meta data");
-    }
-
-    auto sym = declrIt->second;
-    if (sym->hasError)
-        throw std::runtime_error("Semantic error detected");
-
-    std::vector<llvm::Type *> paramTypes;
-    for (const auto &param : fnDeclr->parameters)
-    {
-        auto it = semantics.metaData.find(param.get());
-        if (it == semantics.metaData.end())
-        {
-            throw std::runtime_error("Missing function declaration parameter meta data");
-        }
-        paramTypes.push_back(getLLVMType(it->second->type));
-    }
-    auto retType = declrIt->second->returnType;
-    llvm::FunctionType *fnType = llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
-
-    llvm::Function *declaredFunc = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module.get());
-}
-
-void IRGenerator::generateReturnStatement(Node *node)
-{
-    auto retStmt = dynamic_cast<ReturnStatement *>(node);
-    if (!retStmt)
-        return;
-
-    // Retrieve the metaData (for error checking)
-    auto it = semantics.metaData.find(retStmt);
-    if (it == semantics.metaData.end())
-    {
-        throw std::runtime_error("Missing return statement metaData");
-    }
-
-    if (it->second->hasError)
-    {
-        throw std::runtime_error("Semantic error detected");
-    }
-
-    llvm::Value *retVal = nullptr;
-    if (retStmt->return_value)
-    {
-        retVal = generateExpression(retStmt->return_value.get());
-    }
-
-    llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
-    llvm::Type *retTy = currentFunction->getReturnType();
-
-    // Void return
-    if (retTy->isVoidTy())
-    {
-        if (retVal)
-        {
-            llvm::errs() << "Warning: returning a value from a void function; value will be ignored\n";
-        }
-        funcBuilder.CreateRetVoid();
-        return;
-    }
-
-    // Non-void return: we expect a value
-    if (!retVal)
-    {
-        llvm::errs() << "Return statement missing value for non-void function\n";
-        return;
-    }
-
-    // If the returned value type doesn't match function return type, try to adapt
-    llvm::Type *valTy = retVal->getType();
-    if (valTy == retTy)
-    {
-        funcBuilder.CreateRet(retVal);
-        return;
-    }
-
-    // If both are pointer types and point to compatible element, bitcast the pointer
-    if (valTy->isPointerTy() && retTy->isPointerTy())
-    {
-        llvm::Value *casted = funcBuilder.CreateBitCast(retVal, retTy);
-        funcBuilder.CreateRet(casted);
-        return;
-    }
-
-    // If returning an aggregate (struct) by value but retVal is a pointer-to-aggregate (unlikely),
-    // load and return the aggregate value.
-    if (valTy->isPointerTy() && llvm::isa<llvm::StructType>(retTy))
-    {
-        llvm::Value *loaded = funcBuilder.CreateLoad(retTy, retVal);
-        funcBuilder.CreateRet(loaded);
-        return;
-    }
-
-    // If both are integer types of different widths, extend/truncate.
-    if (valTy->isIntegerTy() && retTy->isIntegerTy())
-    {
-        unsigned vbits = llvm::cast<llvm::IntegerType>(valTy)->getBitWidth();
-        unsigned rbits = llvm::cast<llvm::IntegerType>(retTy)->getBitWidth();
-        if (vbits < rbits)
-            funcBuilder.CreateRet(funcBuilder.CreateSExt(retVal, retTy));
-        else if (vbits > rbits)
-            funcBuilder.CreateRet(funcBuilder.CreateTrunc(retVal, retTy));
-        else
-            funcBuilder.CreateRet(retVal);
-        return;
-    }
-
-    // Fallback types are incompatible — emit an error and try to bitcast if possible.(This wont happen because semantics must have caught it but who knows)
-    llvm::errs() << "Return type mismatch: returning '" << *valTy << "' but function expects '" << *retTy << "'\n";
-
-    // Last-chance attempt, try a bitcast if sizes match (risky)
-    if (valTy->getPrimitiveSizeInBits() == retTy->getPrimitiveSizeInBits())
-    {
-        llvm::Value *maybe = funcBuilder.CreateBitCast(retVal, retTy);
-        funcBuilder.CreateRet(maybe);
-        return;
-    }
 }
 
 // EXPRESSION GENERATOR
@@ -2763,6 +2090,25 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node)
                   << (sym->lastUseNode == identExpr ? "yes" : "no") << ")\n";
         return loadedVal;
     }
+    if (sym->isDheap)
+    {
+        llvm::Type *elemTy = sym->llvmType;
+        if (!elemTy)
+            throw std::runtime_error("llvmType null for dheap scalar '" + identName + "'");
+
+        // LOAD FIRST: Grab the value from the heap address
+        // Note: variableAddr is already the direct pointer from malloc/bitcast
+        llvm::Value *loadedVal = funcBuilder.CreateLoad(elemTy, variableAddr, identName + "_val");
+
+        // FREE SECOND: Now that the value is safe in a register, we can release the memory
+        if (pendingFree)
+        {
+            funcBuilder.Insert(pendingFree);
+            std::cout << "[DEBUG] Injected Dynamic Free for '" << identName << "'\n";
+        }
+
+        return loadedVal;
+    }
 
     // Non-heap scalar: variableAddr is a pointer to T, just load
     llvm::Type *identType = getLLVMType(sym->type);
@@ -2996,6 +2342,35 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
             out.pendingFree = callInst;
         }
     }
+    else if (sym->isDheap)
+    {
+        if ((sym->lastUseNode == identExpr) && (sym->refCount == 0)) // Note: usually we don't check refCount here if it's the last use node
+        {
+            // Get allocator info
+            const std::string &allocatorTypeName = sym->allocType;
+            auto it = semantics.allocatorMap.find(allocatorTypeName);
+            if (it != semantics.allocatorMap.end())
+            {
+                auto handle = it->second;
+                llvm::Function *freeFunc = module->getFunction(handle.freeName);
+
+                if (freeFunc)
+                {
+                    // Get the value you want to free
+                    llvm::Value *ptrToFree = sym->llvmValue;
+
+                    // Create the Call Instruction manually
+                    llvm::CallInst *callInst = llvm::CallInst::Create(
+                        freeFunc,
+                        {ptrToFree},
+                        "");
+
+                    // Stash it in our 'Pending' slot for the caller to insert later
+                    out.pendingFree = callInst;
+                }
+            }
+        }
+    }
 
     return out;
 }
@@ -3189,194 +2564,6 @@ llvm::Value *IRGenerator::generateBlockExpression(Node *node)
     return nullptr;
 }
 
-// Generator function for function expression
-llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
-{
-    auto fnExpr = dynamic_cast<FunctionExpression *>(node);
-    if (!fnExpr)
-        throw std::runtime_error("Invalid function expression");
-
-    // If node has an error we wont generate IR
-    auto funcIt = semantics.metaData.find(fnExpr);
-    if (funcIt == semantics.metaData.end())
-    {
-        throw std::runtime_error("Function expression does not exist");
-    }
-    if (funcIt->second->hasError)
-    {
-        throw std::runtime_error("Semantic error detected");
-    }
-
-    // Getting the function signature
-    auto fnName = fnExpr->func_key.TokenLiteral;
-
-    isGlobalScope = false;
-
-    // Building the function type
-    std::vector<llvm::Type *> llvmParamTypes;
-
-    for (auto &p : fnExpr->call)
-    {
-        // Getting the data type to push it into getLLVMType
-        auto it = semantics.metaData.find(p.get());
-        if (it == semantics.metaData.end())
-        {
-            throw std::runtime_error("Missing parameter meta data");
-        }
-        it->second->llvmType = getLLVMType(it->second->type);
-        llvmParamTypes.push_back(getLLVMType(it->second->type));
-    }
-
-    // Getting the function return type
-    auto fnRetType = fnExpr->return_type.get();
-
-    auto retType = semantics.inferNodeDataType(fnRetType);
-    llvm::FunctionType *funcType = llvm::FunctionType::get(lowerFunctionType(retType), llvmParamTypes, false);
-
-    // Look up if the function declaration exists
-    llvm::Function *fn = module->getFunction(fnName);
-    // If the function declaration exists
-    if (!fn)
-    {
-        fn = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, fnName, module.get());
-    }
-    else
-    {
-        // If the function was declared checking if the return types match
-        if (fn->getFunctionType() != funcType)
-        {
-            throw std::runtime_error("Function redefinition for '" + fnName + "' with different signature ");
-        }
-    }
-
-    currentFunction = fn; // Updating the currentFunction pointer
-    if (!currentFunction)
-    {
-        std::cerr << "Current function pointer updated \n";
-    }
-
-    // Creating the entry block
-    llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
-    funcBuilder.SetInsertPoint(entry);
-
-    // Binding parameters to namedValues
-    auto argIter = fn->arg_begin();
-    for (auto &p : fnExpr->call)
-    {
-        // Getting the statement data type
-        auto pIt = semantics.metaData.find(p.get());
-        if (pIt == semantics.metaData.end())
-        {
-            throw std::runtime_error("Failed to find paremeter meta data");
-        }
-        llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
-        funcBuilder.CreateStore(&(*argIter), alloca);
-        pIt->second->llvmValue = alloca;
-
-        argIter++;
-    }
-
-    llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
-
-    // This will handle whatever is inside the block including the return value
-    generateExpression(fnExpr->block.get());
-
-    llvm::BasicBlock *finalBlock = funcBuilder.GetInsertBlock();
-
-    // If the function is void
-    bool isVoidFunction = funcIt->second->returnType.kind == DataType::VOID;
-
-    // CRITICAL CHECK: Does the current block exist and is it not terminated?
-    if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator()))
-    {
-        if (isVoidFunction)
-        {
-            // Inject 'ret void' for void functions that fell off the end.
-            funcBuilder.CreateRetVoid();
-            std::cout << "INJECTED missing 'ret void' terminator.\n";
-        }
-        else
-        {
-            // Non-void function finished without a return.
-            // This is a semantic failure, but we terminate for LLVM stability.
-            funcBuilder.CreateUnreachable();
-        }
-    }
-
-    if (oldInsertPoint)
-    {
-        funcBuilder.SetInsertPoint(oldInsertPoint);
-    }
-    else
-    {
-        funcBuilder.ClearInsertionPoint();
-    }
-
-    isGlobalScope = true;      // Reset the flag
-    currentFunction = nullptr; // Set it back to a null pointer
-    return fn;
-}
-
-llvm::Value *IRGenerator::generateCallExpression(Node *node)
-{
-    auto callExpr = dynamic_cast<CallExpression *>(node);
-    if (!callExpr)
-    {
-        throw std::runtime_error("Invalid call expression");
-    }
-
-    if (isGlobalScope)
-        throw std::runtime_error("Function calls are not allowed at global scope");
-
-    // Getting the function name
-    const std::string &fnName = callExpr->function_identifier->expression.TokenLiteral;
-
-    auto callIt = semantics.metaData.find(callExpr);
-    if (callIt == semantics.metaData.end())
-    {
-        throw std::runtime_error("Call expression does not exist");
-    }
-    if (callIt->second->hasError)
-        throw std::runtime_error("Semantic error detected in '" + fnName + "' call");
-
-    // Getting the function I want to call
-    llvm::Function *calledFunc = module->getFunction(fnName);
-
-    if (!calledFunc)
-    {
-        throw std::runtime_error("Unknown function '" + fnName + "'referenced");
-    }
-
-    // Generate IR for each argument
-    std::vector<llvm::Value *> argsV;
-    for (const auto &arg : callExpr->parameters)
-    {
-        llvm::Value *argVal = generateExpression(arg.get());
-        if (!argVal)
-        {
-            throw std::runtime_error("Argument codegen failed");
-        }
-        argsV.push_back(argVal);
-    }
-
-    // Emitting the function call itself
-    llvm::Value *call = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
-
-    // Check if the function return type is void
-    if (calledFunc->getReturnType()->isVoidTy())
-    {
-        return nullptr;
-    }
-
-    // If the return is nullable
-    if (callIt->second->returnType.isNull)
-    {
-        // Extract the success value
-        return funcBuilder.CreateExtractValue(call, {0}, "success");
-    }
-    return call;
-}
-
 llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node)
 {
     auto arrExpr = dynamic_cast<ArraySubscript *>(node);
@@ -3470,101 +2657,6 @@ llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node)
     llvm::Type *elemTy = getLLVMType(arrSym->type);
 
     return funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
-}
-
-llvm::Value *IRGenerator::generateCallAddress(Node *node)
-{
-    auto callExpr = dynamic_cast<CallExpression *>(node);
-    if (!callExpr)
-        throw std::runtime_error("Invalid call expression inside address generator");
-
-    if (isGlobalScope)
-        throw std::runtime_error("Function calls are not allowed in global scope");
-
-    const std::string &funcName = callExpr->function_identifier->expression.TokenLiteral;
-
-    auto callIt = semantics.metaData.find(callExpr);
-    if (callIt == semantics.metaData.end())
-        throw std::runtime_error("Call expression metaData not found");
-
-    if (callIt->second->hasError)
-        throw std::runtime_error("Semantic error detected in call for '" + funcName + "'");
-
-    llvm::Function *calledFunc = module->getFunction(funcName);
-    if (!calledFunc)
-        throw std::runtime_error("Unknown function '" + funcName + "' referenced");
-
-    // Generate IR for each argument
-    std::vector<llvm::Value *> argsV;
-    for (const auto &arg : callExpr->parameters)
-    {
-        llvm::Value *argVal = generateExpression(arg.get());
-        if (!argVal)
-            throw std::runtime_error("Argument codegen failed");
-        argsV.push_back(argVal);
-    }
-
-    llvm::Type *retTy = calledFunc->getReturnType();
-    if (retTy->isVoidTy())
-        throw std::runtime_error("Attempted to take address of a void call result");
-
-    // Ensure the temporary alloca is created in the entry block of the current function.
-    llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
-    llvm::IRBuilder<> tmpBuilder(&currentFunction->getEntryBlock(),
-                                 currentFunction->getEntryBlock().begin());
-    llvm::AllocaInst *tmpAlloca = tmpBuilder.CreateAlloca(retTy, nullptr, "calltmp.addr");
-
-    // Emit the call (value returned into caller)
-    llvm::Value *callVal = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
-
-    // Store the returned value into the caller-owned temporary and return its address.
-    funcBuilder.CreateStore(callVal, tmpAlloca);
-
-    return tmpAlloca; // pointer to caller-allocated storage containing the call result
-}
-
-llvm::Value *IRGenerator::generateUnwrapCallExpression(Node *node)
-{
-    auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node);
-    if (!unwrapExpr)
-        throw std::runtime_error("Invalid unwrap expression call");
-
-    auto unIt = semantics.metaData.find(unwrapExpr);
-    if (unIt == semantics.metaData.end())
-        throw std::runtime_error("Missing unwrap metaData");
-
-    if (unIt->second->hasError)
-        throw std::runtime_error("Semantic error detected");
-
-    if (!unIt->second->returnType.isNull)
-        throw std::runtime_error("Cannot unwrap a non-nullable function return");
-
-    auto call = dynamic_cast<CallExpression *>(unwrapExpr->call.get());
-    const std::string &fnName = call->function_identifier->expression.TokenLiteral;
-
-    llvm::Function *calledFn = module->getFunction(fnName);
-
-    if (!calledFn)
-    {
-        throw std::runtime_error("Unknown function '" + fnName + "' referenced");
-    }
-
-    // Generate IR for each argument
-    std::vector<llvm::Value *> argsV;
-    for (const auto &arg : call->parameters)
-    {
-        llvm::Value *argVal = generateExpression(arg.get());
-        if (!argVal)
-        {
-            throw std::runtime_error("Argument codegen failed");
-        }
-        argsV.push_back(argVal);
-    }
-
-    llvm::Value *raw = funcBuilder.CreateCall(calledFn, argsV, "unwrap_calltmp");
-
-    // Return the error value
-    return funcBuilder.CreateExtractValue(raw, {1}, "error");
 }
 
 // HELPER FUNCTIONS
@@ -3734,6 +2826,7 @@ llvm::Type *IRGenerator::lowerFunctionType(const ResolvedType &type)
 void IRGenerator::registerGeneratorFunctions()
 {
     generatorFunctionsMap[typeid(LetStatement)] = &IRGenerator::generateLetStatement;
+    generatorFunctionsMap[typeid(DheapStatement)] = &IRGenerator::generateDheapStatement;
     generatorFunctionsMap[typeid(ReferenceStatement)] = &IRGenerator::generateReferenceStatement;
     generatorFunctionsMap[typeid(PointerStatement)] = &IRGenerator::generatePointerStatement;
     generatorFunctionsMap[typeid(ExpressionStatement)] = &IRGenerator::generateExpressionStatement;
@@ -3760,6 +2853,7 @@ void IRGenerator::registerGeneratorFunctions()
     generatorFunctionsMap[typeid(QualifyStatement)] = &IRGenerator::generateQualifyStatement;
     generatorFunctionsMap[typeid(InstantiateStatement)] = &IRGenerator::generateInstantiateStatement;
     generatorFunctionsMap[typeid(SealStatement)] = &IRGenerator::generateSealStatement;
+    generatorFunctionsMap[typeid(AllocatorStatement)] = &IRGenerator::generateAllocatorInterface;
 }
 
 void IRGenerator::registerAddressGeneratorFunctions()

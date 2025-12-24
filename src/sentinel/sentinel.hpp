@@ -41,6 +41,7 @@ private:
     void checkFieldAssignment(Node *node);
     void checkInstantiateStatement(Node *node);
     void checkSealStatement(Node *node);
+    void checkAllocatorInterface(Node *node);
     void registerSentinelFns();
     void logError(const std::string &message, int line, int col);
 };

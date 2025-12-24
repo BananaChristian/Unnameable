@@ -36,6 +36,7 @@ void Layout::calculatorDriver(Node *node)
 void Layout::registerComponentCalculatorFns()
 {
     calculatorFnsMap[typeid(LetStatement)] = &Layout::calculateLetStatementSize;
+    calculatorFnsMap[typeid(DheapStatement)] = &Layout::calculateDheapStatementSize;
     calculatorFnsMap[typeid(WhileStatement)] = &Layout::calculateWhileStatementSize;
     calculatorFnsMap[typeid(ForStatement)] = &Layout::calculateForStatementSize;
     calculatorFnsMap[typeid(ifStatement)] = &Layout::calculateIfStatementSize;
@@ -48,6 +49,7 @@ void Layout::registerComponentCalculatorFns()
     calculatorFnsMap[typeid(ComponentStatement)] = &Layout::calculateComponentStatement;
     calculatorFnsMap[typeid(InstantiateStatement)] = &Layout::calculateInstantiateStatement;
     calculatorFnsMap[typeid(SealStatement)] = &Layout::calculateSealStatement;
+    calculatorFnsMap[typeid(AllocatorStatement)] = &Layout::calculateAllocatorInterfaceSize;
 }
 
 // Independent calculators
@@ -77,9 +79,9 @@ void Layout::calculateLetStatementSize(Node *node)
     }
 
     // Getting if it is heap allocated
-    if (!letStmt->isHeap)
+    if (!letStmt->isHeap && !letStmt->isDheap)
     {
-        std::cout << "Not calculating since its not heap allocated \n";
+        std::cout << "Not calculating since its not heap or dheap allocated \n";
         // Dont bother calculating just keep it zero
         compSize = 0;
         return;
@@ -100,6 +102,16 @@ void Layout::calculateLetStatementSize(Node *node)
     letSym->componentSize = compSize;
 
     totalHeapSize += compSize;
+}
+
+void Layout::calculateDheapStatementSize(Node *node)
+{
+    auto dheapStmt = dynamic_cast<DheapStatement *>(node);
+    if (!dheapStmt)
+        return;
+
+    // Just gonna call the driver on whatever is wrapped
+    calculatorDriver(dheapStmt->stmt.get());
 }
 
 void Layout::calculateBlockStatementMembersSize(Node *node)
@@ -493,6 +505,16 @@ llvm::Type *Layout::getLLVMType(ResolvedType type)
         return llvm::PointerType::get(baseType, 0);
 
     return baseType;
+}
+
+void Layout::calculateAllocatorInterfaceSize(Node *node)
+{
+    auto allocStmt = dynamic_cast<AllocatorStatement *>(node);
+    if (!allocStmt)
+        return;
+
+    // Just call the driver on whatever is inside
+    calculatorDriver(allocStmt->block.get());
 }
 
 void Layout::declareAllCustomTypes()

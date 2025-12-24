@@ -48,6 +48,7 @@ void Sentinel::registerSentinelFns()
     sentinelFnsMap[typeid(ComponentStatement)] = &Sentinel::checkComponentStatement;
     sentinelFnsMap[typeid(InstantiateStatement)] = &Sentinel::checkInstantiateStatement;
     sentinelFnsMap[typeid(SealStatement)] = &Sentinel::checkSealStatement;
+    sentinelFnsMap[typeid(AllocatorStatement)] = &Sentinel::checkAllocatorInterface;
 }
 
 void Sentinel::checkExpressionStatement(Node *node)
@@ -449,6 +450,15 @@ void Sentinel::checkSealStatement(Node *node)
         return;
 
     sentinelDriver(sealStmt->block.get());
+}
+
+void Sentinel::checkAllocatorInterface(Node *node)
+{
+    auto allocStmt = dynamic_cast<AllocatorStatement *>(node);
+    if (!allocStmt)
+        return;
+
+    sentinelDriver(allocStmt->block.get());
 }
 
 void Sentinel::logError(const std::string &message, int line, int col)

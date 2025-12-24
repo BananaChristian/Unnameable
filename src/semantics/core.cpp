@@ -14,10 +14,11 @@ Semantics::Semantics(Deserializer &deserial, std::string &file) : deserializer(d
     symbolTable.push_back({});
     registerWalkerFunctions();
 
-    importSeals();          // Import seals
-    importComponents();     // Import components
-    importComponentInits(); // Import component inits
-    importDataBlocks();     // Import data
+    importSeals();                   // Import seals
+    importComponents();              // Import components
+    importComponentInits();          // Import component inits
+    importDataBlocks();              // Import data
+    registerInbuiltAllocatorTypes(); // Register the inbuilt allocators(malloc for now)
 }
 
 // Main walker function
@@ -137,7 +138,8 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(InstanceExpression)] = &Semantics::walkInstanceExpression;
     walkerFunctionsMap[typeid(MethodCallExpression)] = &Semantics::walkMethodCallExpression;
 
-    walkerFunctionsMap[typeid(AllocatorStatement)]=&Semantics::walkAllocatorInterface;
+    walkerFunctionsMap[typeid(AllocatorStatement)] = &Semantics::walkAllocatorInterface;
+    walkerFunctionsMap[typeid(DheapStatement)] = &Semantics::walkDheapStatement;
     walkerFunctionsMap[typeid(SealStatement)] = &Semantics::walkSealStatement;
 
     // Walker registration for the shout system

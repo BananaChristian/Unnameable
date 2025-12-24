@@ -81,6 +81,7 @@ private:
 
     // GENERATOR FUNCTIONS FOR STATEMENTS
     void generateLetStatement(Node *node);
+    void generateDheapStatement(Node *node);
     void generateReferenceStatement(Node *node);
     void generatePointerStatement(Node *node);
     void generateExpressionStatement(Node *node);
@@ -111,7 +112,7 @@ private:
     void generateEnumClassStatement(Node *node);
     // Shout statement generator
     void generateShoutStatement(Node *node);
-
+    void generateAllocatorInterface(Node *node);
     void generateQualifyStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
@@ -173,6 +174,7 @@ private:
     void declareImportedSeals();
     void declareImportedTypes();
     void declareCustomTypes();
+    void registerAllocators();
     void declareImportedInit(const std::string &typeName);
     char *const_unnitoa(__int128 val, char *buf);
     char decodeCharLiteral(const std::string &literal);
@@ -195,8 +197,11 @@ private:
     // For components
     llvm::Value *generateComponentInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, llvm::StructType *structTy, bool isHeap);
     void generateGlobalComponentHeapInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structType);
+    // Helper for allocating dheap storage
+    llvm::Value *allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName);
+    void freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym);
     // Helper for allocating heap storage (shared logic for components and scalars)
-    llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structTy);
+    llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &varName, llvm::StructType *structTy);
     void freeHeapStorage(uint64_t size, uint64_t alignSize, const std::string &letName);
 };
 

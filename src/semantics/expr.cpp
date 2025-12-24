@@ -33,7 +33,7 @@ void Semantics::walkInfixExpression(Node *node)
 
         auto lhsType = leftSym->type;
 
-        if (leftSym->isHeap)
+        if (leftSym->isHeap||leftSym->isDheap)
         {
             leftSym->lastUseNode = infixExpr;
             if (leftSym->refCount > 0)

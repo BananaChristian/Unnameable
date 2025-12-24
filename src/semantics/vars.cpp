@@ -425,7 +425,7 @@ void Semantics::walkIdentifierExpression(Node *node)
         return;
     }
 
-    if (symbolInfo->isHeap)
+    if (symbolInfo->isHeap || symbolInfo->isDheap)
     {
         symbolInfo->lastUseNode = identExpr;
     }
@@ -454,7 +454,7 @@ void Semantics::walkAddressExpression(Node *node)
         return;
     }
 
-    if (symbolInfo->isHeap)
+    if (symbolInfo->isHeap || symbolInfo->isDheap)
         symbolInfo->lastUseNode = addrExpr;
 
     auto addrInfo = std::make_shared<SymbolInfo>();
@@ -484,7 +484,7 @@ void Semantics::walkDereferenceExpression(Node *node)
         return;
     }
 
-    if (derefSym->isHeap)
+    if (derefSym->isHeap || derefSym->isDheap)
         derefSym->lastUseNode = derefExpr;
 
     auto derefInfo = std::make_shared<SymbolInfo>();
@@ -513,6 +513,7 @@ void Semantics::walkLetStatement(Node *node)
     // --- Initial flags ---
     bool isNullable = type->isNullable;
     bool isHeap = letStmt->isHeap;
+    bool isDheap = letStmt->isDheap;
     bool isDefinitelyNull = false;
     bool isInitialized = false;
     bool hasError = false;
@@ -697,7 +698,7 @@ void Semantics::walkLetStatement(Node *node)
         hasError = true;
     }
 
-    if (isHeap)
+    if (isHeap || isDheap)
     {
         if (!isInitialized)
         {
@@ -852,6 +853,13 @@ void Semantics::walkAssignStatement(Node *node)
                               ident->identifier.column);
             hasError = true;
             return;
+        }
+        if (symbol->isDheap || symbol->isHeap)
+        {
+            symbol->lastUseNode = ident;
+            std::cout<<"ASSIGNMENT STATEMENT IDENTIFIER LAST USE NODE: "<<symbol->lastUseNode->token.TokenLiteral<<"\n";
+            symbol->refCount++;
+            std::cout << "[SEMANTIC LOG] Updated lastUse for " << assignName << " to Assignment\n";
         }
         walker(ident);
     }
