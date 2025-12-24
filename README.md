@@ -671,6 +671,37 @@ z=z+1s;
 
 ```
 
+## Dynamic heap raising and custom allocators
+Unnameanle allows the user to create their own custom allocators and plug them in for the compiler to use them 
+It uses allocator blocks where the user must satisfy the allocator contract, the contract exists because the compiler calls the corresponding allocator and deallocator in  a certain way so it expects a standard signature 
+This signature is the same signature as the one used by `malloc` and `free` in C. the user must satisfy this for the compiler to allow this custom allocator 
+The compiler doesnt care about your logic in these functions it just needs you to fulfill that signature
+```
+allocator MyAllocator{
+    func alloc(usize size):ptr usize{
+        #Whatever your logic is 
+    }
+
+    func dealloc(ptr usize p):void{
+        #Whatever your logic is
+    }
+}
+
+```
+Now you can use this custom allocator by doing a dynamic heap raise using the  `dheap` keyword
+This will tell the compiler that you wanna use the dynamic heap but using a certain allocator which you must tell the compiler as seen below 
+```
+dheap<MyAllocator> i32 x=100;
+``` 
+So the compiler will allocate using the allocator function you provided and free using the deallocater function that u provided 
+The compiler will still use its last use analysis to inject your free to avoid memory bugs just like the normal heap raising with SAGE works difference is here the compiler doesnt care about how you use your stuff there is no LIFO to follow 
+Now one last thing to add is that there is a default dheap allocator if you do not specify the compiler will use malloc and the regular free for now atleast for example
+```
+dheap i32 x=100; #This is malloc under the hood
+
+```
+Note: I am ironing out some bugs on the last use analysis when it comes to assignment statements as they are proving to be a headache
+
 ## Address operator in Unnameable
 In unnameable the  `addr` operator is strictly for obtaining the memory address of a variable, It is used in  pointers to show the target
 For example 
