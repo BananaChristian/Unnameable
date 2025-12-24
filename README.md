@@ -642,9 +642,9 @@ Key features(This is all in theory as I havent yet done robust testing)
 
 ## Heap raising
 
-Since Unnameable is using a custom memory model(SAGE) components and data blocks by default shall be heap allocated but a user might want some to manually promote some features to the heap themselves
-They can do this using the `heap` keyword which is a heap promoter it will tell the compiler to treat that variable as a full blown component and place it on the heap
-Although it is only allowed on let statements and has some special rules applying to it as seen below
+Unnameable is using a custom memory model called (SAGE) a user might want some to manually promote some features to the SAGE heap themselves us
+They can do this using the `heap` keyword which is a heap promoter it will tell the compiler place it on the heap
+Although it is only allowed on let statements(for now, I look to extend it to other declarations like pointers and arrays and so on) and has some special rules applying to it as seen below 
 
 ```
 #Normal use of the heap promoter
