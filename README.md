@@ -667,7 +667,7 @@ heap mut i32 y=10;
 heap mut i16 z=11i16;
 
 y=y+1;
-z=z+1s;
+z=z+1i16;
 
 ```
 
@@ -700,7 +700,6 @@ Now one last thing to add is that there is a default dheap allocator if you do n
 dheap i32 x=100; #This is malloc under the hood
 
 ```
-Note: I am ironing out some bugs on the last use analysis when it comes to assignment statements as they are proving to be a headache
 
 ## Address operator in Unnameable
 In unnameable the  `addr` operator is strictly for obtaining the memory address of a variable, It is used in  pointers to show the target
