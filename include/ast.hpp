@@ -92,6 +92,7 @@ struct Statement : Node
 struct Identifier : Expression
 {
     Token identifier;
+    bool isKiller;
     std::string toString() override
     {
         return "Identifier Expression: " + identifier.TokenLiteral;
@@ -100,9 +101,10 @@ struct Identifier : Expression
     Identifier *shallowClone() const override
     {
         return new Identifier(
-            identifier);
+            identifier,
+            isKiller);
     }
-    Identifier(Token ident) : Expression(ident), identifier(ident) {};
+    Identifier(Token ident, bool isKill) : Expression(ident), identifier(ident), isKiller(isKill) {};
 };
 
 // Address expression node
@@ -2001,11 +2003,11 @@ struct ArrayStatement : Statement
     std::string toString() override
     {
         std::string heapStr = "";
-        if(isHeap)
-            heapStr="heap ";
-        if(isDheap)
-            heapStr="dheap ";
-            
+        if (isHeap)
+            heapStr = "heap ";
+        if (isDheap)
+            heapStr = "dheap ";
+
         std::string lenStr = "";
         if (!lengths.empty())
         {
