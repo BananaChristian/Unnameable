@@ -427,6 +427,7 @@ void Semantics::walkIdentifierExpression(Node *node)
 
     if (symbolInfo->isHeap || symbolInfo->isDheap)
     {
+        currentBranchIdents.push_back(identExpr);
         symbolInfo->lastUseNode = identExpr;
     }
 
@@ -853,13 +854,6 @@ void Semantics::walkAssignStatement(Node *node)
                               ident->identifier.column);
             hasError = true;
             return;
-        }
-        if (symbol->isDheap || symbol->isHeap)
-        {
-            symbol->lastUseNode = ident;
-            std::cout<<"ASSIGNMENT STATEMENT IDENTIFIER LAST USE NODE: "<<symbol->lastUseNode->token.TokenLiteral<<"\n";
-            symbol->refCount++;
-            std::cout << "[SEMANTIC LOG] Updated lastUse for " << assignName << " to Assignment\n";
         }
         walker(ident);
     }

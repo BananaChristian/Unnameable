@@ -265,6 +265,7 @@ public:
     std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
     std::vector<bool> loopContext;
     std::vector<ScopeInfo> currentTypeStack;
+    std::vector<Identifier*> currentBranchIdents;
 
     std::unordered_map<std::string, GenericBluePrint> genericMap;
     std::unordered_map<std::string, AllocatorHandle> allocatorMap;

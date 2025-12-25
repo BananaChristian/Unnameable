@@ -2330,6 +2330,18 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
     // Prepare pending free call (create CallInst but don't insert)
     if (sym->isHeap)
     {
+        if (identExpr->isKiller)
+        {
+            llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
+                "sage_free",
+                llvm::Type::getVoidTy(context));
+
+            llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn);
+            callInst->setCallingConv(llvm::CallingConv::C);
+            // Not inserted yet — caller will insert before/after as needed
+            out.pendingFree = callInst;
+        }
+
         if ((sym->lastUseNode == identExpr) && (sym->refCount == 0))
         {
             llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
@@ -2344,6 +2356,33 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node)
     }
     else if (sym->isDheap)
     {
+        if (identExpr->isKiller)
+        {
+            // Get allocator info
+            const std::string &allocatorTypeName = sym->allocType;
+            auto it = semantics.allocatorMap.find(allocatorTypeName);
+            if (it != semantics.allocatorMap.end())
+            {
+                auto handle = it->second;
+                llvm::Function *freeFunc = module->getFunction(handle.freeName);
+
+                if (freeFunc)
+                {
+                    // Get the value you want to free
+                    llvm::Value *ptrToFree = sym->llvmValue;
+
+                    // Create the Call Instruction manually
+                    llvm::CallInst *callInst = llvm::CallInst::Create(
+                        freeFunc,
+                        {ptrToFree},
+                        "");
+
+                    // Stash it in our 'Pending' slot for the caller to insert later
+                    out.pendingFree = callInst;
+                }
+            }
+        }
+
         if ((sym->lastUseNode == identExpr) && (sym->refCount == 0)) // Note: usually we don't check refCount here if it's the last use node
         {
             // Get allocator info

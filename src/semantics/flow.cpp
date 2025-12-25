@@ -124,10 +124,29 @@ void Semantics::walkElifStatement(Node *node)
     ResolvedType elifConditionType = inferNodeDataType(elifCondition);
     walker(elifCondition);
 
+    currentBranchIdents.clear(); // Empty it from all the pollution of earlier entries
     // Handling the elif results
     auto elifResults = elifStmt->elif_result.get();
     symbolTable.push_back({});
     walker(elifResults);
+    for (const auto &ident : currentBranchIdents)
+    {
+        const std::string &identName = ident->identifier.TokenLiteral;
+        auto identLine = ident->identifier.line;
+        auto identCol = ident->identifier.column;
+        auto identSym = resolveSymbolInfo(identName);
+        if (!identSym)
+        {
+            logSemanticErrors("Could not find the identifier symbol '" + identName + "'", identLine, identCol);
+            continue;
+        }
+
+        if (identSym->lastUseNode == ident)
+        {
+            // Trigger the identKiller for the specific identifier node
+            ident->isKiller = true;
+        }
+    }
     popScope();
 }
 
@@ -142,10 +161,29 @@ void Semantics::walkIfStatement(Node *node)
 
     walker(ifStmtCondition);
 
+    currentBranchIdents.clear(); // Empty it from all the pollution of earlier entries
     // Dealing with the if result
     auto ifResult = ifStmt->if_result.get();
     symbolTable.push_back({});
     walker(ifResult);
+    for (const auto &ident : currentBranchIdents)
+    {
+        const std::string &identName = ident->identifier.TokenLiteral;
+        auto identLine = ident->identifier.line;
+        auto identCol = ident->identifier.column;
+        auto identSym = resolveSymbolInfo(identName);
+        if (!identSym)
+        {
+            logSemanticErrors("Could not find the identifier symbol '" + identName + "'", identLine, identCol);
+            continue;
+        }
+
+        if (identSym->lastUseNode == ident)
+        {
+            // Trigger the identKiller for the specific identifier node
+            ident->isKiller = true;
+        }
+    }
     popScope();
 
     // Dealing with the elif clauses
@@ -163,8 +201,27 @@ void Semantics::walkIfStatement(Node *node)
     if (ifStmt->else_result.has_value())
     {
         auto elseStmt = ifStmt->else_result.value().get();
+        currentBranchIdents.clear();
         symbolTable.push_back({});
         walker(elseStmt);
+        for (const auto &ident : currentBranchIdents)
+        {
+            const std::string &identName = ident->identifier.TokenLiteral;
+            auto identLine = ident->identifier.line;
+            auto identCol = ident->identifier.column;
+            auto identSym = resolveSymbolInfo(identName);
+            if (!identSym)
+            {
+                logSemanticErrors("Could not find the identifier symbol '" + identName + "'", identLine, identCol);
+                continue;
+            }
+
+            if ((identSym->lastUseNode == ident) && (identSym->refCount == 0))
+            {
+                // Trigger the identKiller for the specific identifier node
+                ident->isKiller = true;
+            }
+        }
         popScope();
     }
 }
