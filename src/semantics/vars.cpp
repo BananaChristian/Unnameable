@@ -427,8 +427,26 @@ void Semantics::walkIdentifierExpression(Node *node)
 
     if (symbolInfo->isHeap || symbolInfo->isDheap)
     {
-        currentBranchIdents.push_back(identExpr);
-        symbolInfo->lastUseNode = identExpr;
+        bool inLoop = !loopContext.empty() && loopContext.back();
+        if (inLoop && !symbolInfo->bornInLoop)
+        {
+            // ELDERS 
+            symbolInfo->needsPostLoopFree = true;
+            loopDeathRow.insert(symbolInfo.get());
+        }
+        else if (inLoop && symbolInfo->bornInLoop)
+        {
+            // RESIDENTS
+            // Track them so we can ensure they die before the loop repeats
+            loopResidentDeathRow.insert(symbolInfo.get());
+            symbolInfo->lastUseNode = identExpr;
+        }
+        else
+        {
+            // Normal linear path
+            currentBranchIdents.push_back(identExpr);
+            symbolInfo->lastUseNode = identExpr;
+        }
     }
 
     metaData[identExpr] = symbolInfo;
@@ -752,6 +770,11 @@ void Semantics::walkLetStatement(Node *node)
     letInfo->lastUseNode = isHeap ? letStmt : nullptr;
     letInfo->storage = letStorageType;
     letInfo->hasError = hasError;
+    if (!loopContext.empty() && loopContext.back())
+    {
+        letInfo->needsPostLoopFree = true;
+        letInfo->bornInLoop = true;
+    }
 
     metaData[letStmt] = letInfo;
     symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;

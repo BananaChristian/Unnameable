@@ -139,22 +139,25 @@ void IRGenerator::generateLetStatement(Node *node)
     sym->llvmType = (isComponent && structTy) ? structTy : getLLVMType(sym->type);
 
     // HEAP CLEANUP FOR DEAD LOCALS
-    if (letStmt->isHeap)
+    if (!sym->needsPostLoopFree)
     {
-        Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-        if (letStmt == lastUse && sym->refCount == 0)
+        if (letStmt->isHeap)
         {
-            freeHeapStorage(sym->componentSize, sym->alignment.value(), letName);
-            std::cout << "[DEBUG] Immediately freed dead heap variable '" << letName << "'\n";
+            Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
+            if (letStmt == lastUse && sym->refCount == 0)
+            {
+                freeHeapStorage(sym->componentSize, sym->alignment.value(), letName);
+                std::cout << "[DEBUG] Immediately freed dead heap variable '" << letName << "'\n";
+            }
         }
-    }
-    else if (letStmt->isDheap)
-    {
-        Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-        if (letStmt == lastUse && sym->refCount == 0)
+        else if (letStmt->isDheap)
         {
-            freeDynamicHeapStorage(sym);
-            std::cout << "[DEBUG] Immediately freed dead dynamic heap variable '" << letName << "'\n";
+            Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
+            if (letStmt == lastUse && sym->refCount == 0)
+            {
+                freeDynamicHeapStorage(sym);
+                std::cout << "[DEBUG] Immediately freed dead dynamic heap variable '" << letName << "'\n";
+            }
         }
     }
 

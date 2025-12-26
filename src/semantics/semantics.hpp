@@ -6,6 +6,7 @@
 #include <typeindex>
 #include <cstdint>
 #include <llvm/IR/Value.h>
+#include <set>
 #include "deserializer/deserial.hpp"
 
 #define CPPREST_FORCE_REBUILD
@@ -213,6 +214,8 @@ struct SymbolInfo
     int alloc_id = 0; // This is a field for the sentinel layer
     Node *lastUseNode = nullptr;
     int refCount = 0;
+    bool needsPostLoopFree = false;
+    bool bornInLoop = false;
 
     // Error flag
     bool hasError = false;
@@ -265,7 +268,9 @@ public:
     std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
     std::vector<bool> loopContext;
     std::vector<ScopeInfo> currentTypeStack;
-    std::vector<Identifier*> currentBranchIdents;
+    std::vector<Identifier *> currentBranchIdents;
+    std::set<SymbolInfo *> loopDeathRow;
+    std::set<SymbolInfo *> loopResidentDeathRow;
 
     std::unordered_map<std::string, GenericBluePrint> genericMap;
     std::unordered_map<std::string, AllocatorHandle> allocatorMap;
