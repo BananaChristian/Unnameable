@@ -614,9 +614,7 @@ mut auto z = 5;    # Mutable variable with inferred type int
 const auto w = 3;  # Immutable variable with inferred type int
 ```
 
-## SAGE memory model
-
-Unnameable uses a memory model called Stack Aligned Garbage Elimination(SAGE).
+##  The SAGE memory model
 SAGE is a deterministic memory model designed for maximum speed and predictability. The responsibility for memory correctness entirely depends on the compiler and is enforced by layers like `sentinel` and the `layout layer`
 
 Core philosophy
@@ -700,6 +698,65 @@ Now one last thing to add is that there is a default dheap allocator if you do n
 dheap i32 x=100; #This is malloc under the hood
 
 ```
+## Scoped Memory Management (The Loop Rules)
+
+Unnameable's memory management is strictly enforced by the compiler to prevent leaks in long-running processes like loops. The compiler categorizes heap-allocated variables into two types to determine their lifespan.
+
+### 1. Residents (Born in Loop)
+
+Variables born **inside** a loop are considered **Residents**.
+
+* **The Sweep:** To prevent memory from stacking up with every iteration, the compiler performs a mandatory "Body Sweep" at the end of every loop lap.
+* **LIFO for SAGE:** If using the SAGE heap, Residents are allocated and freed in a strict Last-In-First-Out order during each iteration.
+* **Fail-Safe:** Even if a Resident isn't explicitly used until the very end of the loop, the compiler injects a cleanup call before the loop repeats to ensure zero-leak performance.
+
+```unn
+while (counter > 0) {
+    # Resident: Allocated every lap
+    dheap i32 lap_data = 999;
+    
+    shout! lap_data;
+    counter = counter - 1;
+    # Memory is automatically freed HERE before next lap
+}
+
+```
+### 2. Elders (The Sanctuary Rule)
+
+Variables born **outside** a loop but used within it are considered **Elders**.
+
+* **The Sanctuary:** The compiler grants these variables Sanctuary, meaning it will **not** attempt to free them inside the loop body, even if their "last use" appears to be inside the loop.
+* **Post-Loop Cleanup:** The memory is only released once the loop has fully terminated and the code execution reaches the end of the block.
+
+```unn
+heap i32 elder = 100; # Born outside
+
+while (counter > 0) {
+    shout! elder; # Used inside
+    counter = counter - 1;
+}
+
+# Elder is safely freed HERE, after the loop finishes
+
+```
+## Memory Safety Guards
+
+To ensure the integrity of the SAGE memory model and prevent pointer corruption, the following rules are strictly enforced:
+
+### SAGE Loop Mutation Ban
+
+Because SAGE is a stack-based allocator, mutating or referencing an **external** SAGE variable inside a loop is prohibited as it risks breaking the LIFO (Last-In-First-Out) order.
+
+* If you need to mutate a variable across loop iterations, use `dheap` (Dynamic Heap) or a standard stack variable (`mut i32`).
+* The compiler will throw a `sentinel error` if it detects a potential stack-smashing pattern in your SAGE usage.
+
+### Last-Use Analysis
+
+Unnameable does not use a Garbage Collector. Instead, it uses **Compile-Time Last-Use Analysis**.
+
+* The compiler tracks exactly where a variable is used for the final time.
+* It automatically injects the appropriate free call at that exact point.
+* If a variable is never used, the compiler "nukes" it immediately after declaration to keep the memory footprint at absolute zero.
 
 ## Address operator in Unnameable
 In unnameable the  `addr` operator is strictly for obtaining the memory address of a variable, It is used in  pointers to show the target
