@@ -731,6 +731,7 @@ Variables born **outside** a loop but used within it are considered **Elders**.
 ```unn
 heap i32 elder = 100; # Born outside
 
+mut i32 counter=5;
 while (counter > 0) {
     shout! elder; # Used inside
     counter = counter - 1;
