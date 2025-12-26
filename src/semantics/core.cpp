@@ -1828,6 +1828,18 @@ std::pair<std::string, std::string> Semantics::splitScopedName(const std::string
     return {parent, child};
 }
 
+int64_t Semantics::evaluateArrayLengthConstant(Node *node)
+{
+    int64_t val = 0;
+    if (auto lit = dynamic_cast<I32Literal *>(node))
+    {
+        val = std::stoll(lit->expression.TokenLiteral);
+        return val;
+    }
+
+    return 0;
+}
+
 void Semantics::popScope()
 {
     auto &scope = symbolTable.back();

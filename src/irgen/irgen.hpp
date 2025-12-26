@@ -199,6 +199,7 @@ private:
     void generateGlobalComponentHeapInit(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName, llvm::StructType *structType);
     // Helper for allocating dheap storage
     llvm::Value *allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &letName);
+    llvm::Value *allocateRuntimeDheap(std::shared_ptr<SymbolInfo> sym,llvm::Value *size, const std::string &varName);
     void freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym);
     // Helper for allocating heap storage (shared logic for components and scalars)
     llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym, const std::string &varName, llvm::StructType *structTy);

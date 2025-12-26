@@ -36,6 +36,7 @@ void Layout::calculatorDriver(Node *node)
 void Layout::registerComponentCalculatorFns()
 {
     calculatorFnsMap[typeid(LetStatement)] = &Layout::calculateLetStatementSize;
+    calculatorFnsMap[typeid(ArrayStatement)] = &Layout::calculateArrayStatementSize;
     calculatorFnsMap[typeid(DheapStatement)] = &Layout::calculateDheapStatementSize;
     calculatorFnsMap[typeid(WhileStatement)] = &Layout::calculateWhileStatementSize;
     calculatorFnsMap[typeid(ForStatement)] = &Layout::calculateForStatementSize;
@@ -102,6 +103,85 @@ void Layout::calculateLetStatementSize(Node *node)
     letSym->componentSize = compSize;
 
     totalHeapSize += compSize;
+}
+
+void Layout::calculateArrayStatementSize(Node *node)
+{
+    auto arrStmt = dynamic_cast<ArrayStatement *>(node);
+    if (!arrStmt)
+        return;
+
+    const std::string &name = arrStmt->identifier->expression.TokenLiteral;
+    auto arrMeta = semantics.metaData.find(arrStmt);
+    if (arrMeta == semantics.metaData.end())
+    {
+        logPrestaticError("No meta data found for array '" + name + "'", arrStmt->identifier->expression.line, arrStmt->identifier->expression.column);
+        return;
+    }
+
+    auto arrSym = arrMeta->second;
+
+    if (!arrSym->isHeap && !arrSym->isDheap)
+        return;
+
+    // --- PROBE 1: Dimension Check ---
+    auto &info = arrSym->arrayTyInfo;
+    std::cout << "[DEBUG-LAYOUT] Processing: " << name << " | Dimensions found: " << info.sizePerDimension.size() << "\n";
+
+    uint64_t totalElements = 1;
+    if (info.sizePerDimension.empty())
+    {
+        std::cout << "[WARNING-LAYOUT] Array '" << name << "' has NO dimensions in metadata!\n";
+        totalElements = 0; // This might be our culprit
+    }
+
+    for (size_t i = 0; i < info.sizePerDimension.size(); ++i)
+    {
+        int64_t dimSize = info.sizePerDimension[i];
+        std::cout << "[DEBUG-LAYOUT]  -> Dim[" << i << "]: " << dimSize << "\n";
+        if (dimSize > 0)
+        {
+            totalElements *= static_cast<uint64_t>(dimSize);
+        }
+        else
+        {
+            std::cout << "[WARNING-LAYOUT] Dimension " << i << " is <= 0. Possible dynamic box in SAGE?\n";
+        }
+    }
+
+    // --- PROBE 2: Type Size Check ---
+    llvm::Type *baseLLVMTy = getLLVMType(info.underLyingType);
+    if (!baseLLVMTy)
+    {
+        std::cout << "[ERROR-LAYOUT] Could not resolve LLVM Type for base type: " << info.underLyingType.resolvedName << "\n";
+        return;
+    }
+
+    llvm::DataLayout DL(tempModule.get());
+    uint64_t elementSize = DL.getTypeAllocSize(baseLLVMTy);
+    llvm::Align elementAlign = DL.getABITypeAlign(baseLLVMTy);
+
+    std::cout << "[DEBUG-LAYOUT] Base Element: " << info.underLyingType.resolvedName
+              << " | Size: " << elementSize << " bytes\n";
+
+    uint64_t totalByteSize = totalElements * elementSize;
+
+    // Store results for the IR Generator
+    arrSym->componentSize = totalByteSize;
+    arrSym->alignment = elementAlign;
+
+    // --- PROBE 3: Pool Addition ---
+    if (arrSym->isHeap)
+    {
+        totalHeapSize += totalByteSize;
+        std::cout << "[LAYOUT-FINAL] SAGE Array '" << name << "' -> totalElements(" << totalElements
+                  << ") * elementSize(" << elementSize << ") = " << totalByteSize << " bytes.\n";
+        std::cout << "[LAYOUT-FINAL] Current Global SAGE Pool (totalHeapSize): " << totalHeapSize << " bytes.\n";
+    }
+    else
+    {
+        std::cout << "[LAYOUT-FINAL] DHEAP Array '" << name << "' -> Calculated " << totalByteSize << " bytes (skipped pool).\n";
+    }
 }
 
 void Layout::calculateDheapStatementSize(Node *node)

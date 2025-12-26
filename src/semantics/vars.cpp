@@ -767,7 +767,8 @@ void Semantics::walkLetStatement(Node *node)
     letInfo->isInitialized = isInitialized;
     letInfo->isDefinitelyNull = isDefinitelyNull;
     letInfo->isHeap = isHeap;
-    letInfo->lastUseNode = isHeap ? letStmt : nullptr;
+    letInfo->isDheap=isDheap;
+    letInfo->lastUseNode = letStmt;
     letInfo->storage = letStorageType;
     letInfo->hasError = hasError;
     if (!loopContext.empty() && loopContext.back())

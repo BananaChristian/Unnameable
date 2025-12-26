@@ -1,5 +1,5 @@
 #include "irgen.hpp"
-// Dheap statement IR generator
+//______________DYNAMIC HEAP WRAP____________________
 void IRGenerator::generateDheapStatement(Node *node)
 {
     auto dheapStmt = dynamic_cast<DheapStatement *>(node);
@@ -9,7 +9,7 @@ void IRGenerator::generateDheapStatement(Node *node)
     generateStatement(dheapStmt->stmt.get());
 }
 
-// Let statement IR generator function
+//______________LET STATEMENT GENERATION_____________
 void IRGenerator::generateLetStatement(Node *node)
 {
     // VALIDATION AND EXTRACTION
@@ -163,6 +163,115 @@ void IRGenerator::generateLetStatement(Node *node)
 
     std::cout << "[DEBUG] Local let statement '" << letName << "' fully processed. storage=" << storage << "\n";
 }
+
+//__________________________ARRAY STATEMENT GENERATION_______________________
+void IRGenerator::generateArrayStatement(Node *node)
+{
+    auto arrStmt = dynamic_cast<ArrayStatement *>(node);
+    if (!arrStmt)
+        return;
+
+    auto arrIt = semantics.metaData.find(arrStmt);
+    if (arrIt == semantics.metaData.end())
+        throw std::runtime_error("Failed to find array statement metaData");
+
+    auto arrName = arrStmt->identifier->expression.TokenLiteral;
+    auto sym = arrIt->second;
+    if (sym->hasError)
+        throw std::runtime_error("Semantic error detected");
+
+    auto type = sym->type;
+    llvm::Type *elemTy = getLLVMType(type);
+
+    llvm::DataLayout DL(module.get());
+    uint64_t baseSize = DL.getTypeAllocSize(elemTy);
+
+    llvm::Value *runtimeByteSize = funcBuilder.getInt64(baseSize);
+
+    llvm::Value *runtimeElementCount = funcBuilder.getInt64(1);
+
+    for (const auto &lenExpr : arrStmt->lengths)
+    {
+        llvm::Value *dimVal = generateExpression(lenExpr.get());
+        dimVal = funcBuilder.CreateIntCast(dimVal, funcBuilder.getInt64Ty(), false);
+
+        runtimeByteSize = funcBuilder.CreateMul(runtimeByteSize, dimVal, "byte_size_mul");
+        runtimeElementCount = funcBuilder.CreateMul(runtimeElementCount, dimVal, "elem_count_mul");
+    }
+
+    llvm::Value *storagePtr = nullptr;
+
+    if (sym->isHeap)
+    {
+
+        storagePtr = allocateHeapStorage(sym, arrName, nullptr);
+    }
+    else if (sym->isDheap)
+    {
+
+        storagePtr = allocateRuntimeDheap(sym, runtimeByteSize, arrName);
+    }
+    else
+    {
+        storagePtr = funcBuilder.CreateAlloca(elemTy, runtimeElementCount, arrName);
+    }
+
+    // If the array literal has been given
+    if (arrStmt->array_content)
+    {
+        // Generate the literal data as a constant
+        llvm::Constant *literalVal = llvm::cast<llvm::Constant>(generateArrayLiteral(arrStmt->array_content.get()));
+
+        // Wrap it in a Global Variable so we have a source address for MemCpy
+        llvm::GlobalVariable *globalInit = createGlobalArrayConstant(literalVal);
+
+        // Prepare Pointers for MemCpy
+        llvm::Value *DstPtr = funcBuilder.CreateBitCast(storagePtr, funcBuilder.getPtrTy());
+        llvm::Value *SrcPtr = funcBuilder.CreateBitCast(globalInit, funcBuilder.getPtrTy());
+
+        // 5. Blast the data into the allocated space
+        funcBuilder.CreateMemCpy(
+            DstPtr,              // Destination
+            llvm::MaybeAlign(4), // Match our allocation alignment
+            SrcPtr,              // Source
+            llvm::MaybeAlign(4), // Global alignment
+            runtimeByteSize,     // Calculated size
+            false                // Not volatile
+        );
+    }
+    else if (!arrStmt->lengths.empty())
+    {
+    }
+    else
+    {
+        throw std::runtime_error("Must initialize array declaration if did not declare dimensions");
+    }
+
+    sym->llvmValue = storagePtr;
+
+    if (!sym->needsPostLoopFree)
+    {
+        if (arrStmt->isHeap)
+        {
+            if (sym->lastUseNode == arrStmt && sym->refCount == 0)
+            {
+
+                freeHeapStorage(sym->componentSize, sym->alignment.value(), arrName);
+                std::cout << "[DEBUG] Immediately freed dead heap array variable '" << arrName << "'\n";
+            }
+        }
+        else if (arrStmt->isDheap)
+        {
+            if (sym->lastUseNode == arrStmt && sym->refCount == 0)
+            {
+                freeDynamicHeapStorage(sym);
+                std::cout << "[DEBUG-IR] Emitted DHEAP free for array: " << arrName << "\n";
+            }
+        }
+    }
+}
+
+//_______________________HELPERS______________________________________
 
 void IRGenerator::generateGlobalHeapLet(LetStatement *letStmt, std::shared_ptr<SymbolInfo> sym, const std::string &letName)
 {
@@ -585,4 +694,19 @@ void IRGenerator::freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym)
     llvm::Value *castPtr = funcBuilder.CreatePointerCast(ptrToFree, expectedTy);
 
     funcBuilder.CreateCall(freeFunc, {castPtr});
+}
+
+llvm::Value *IRGenerator::allocateRuntimeDheap(std::shared_ptr<SymbolInfo> sym, llvm::Value *runtimeSize, const std::string &varName)
+{
+    const std::string &allocatorTypeName = sym->allocType;
+    auto it = semantics.allocatorMap.find(allocatorTypeName);
+    auto handle = it->second;
+
+    llvm::Function *allocFunc = module->getFunction(handle.allocateName);
+
+    // Pass the RUNTIME calculated size to malloc/custom allocator
+    llvm::Value *rawPtr = funcBuilder.CreateCall(allocFunc, {runtimeSize}, varName + "_dheap_raw");
+
+    llvm::Type *baseType = getLLVMType(sym->type);
+    return funcBuilder.CreateBitCast(rawPtr, baseType->getPointerTo(), varName + "_ptr");
 }

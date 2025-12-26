@@ -452,5 +452,6 @@ private:
     bool isString(const ResolvedType &t);
     bool isChar(const ResolvedType &t);
     void popScope();
+    int64_t evaluateArrayLengthConstant(Node *node);
     void logSemanticErrors(const std::string &message, int tokenLine, int tokenColumn);
 };
