@@ -2299,9 +2299,20 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
     throw std::runtime_error("Semantic error detected");
 
   // Getting the local address
-  llvm::Value *ptr = generateIdentifierAddress(arrExpr->identifier.get()).address;
+  llvm::Value *ptr =
+      generateIdentifierAddress(arrExpr->identifier.get()).address;
+
+  llvm::Type *currentLevelTy = getLLVMType(baseSym->arrayTyInfo.underLyingType);
 
   std::vector<llvm::Value *> indices;
+
+  // Wrap the type and convert it into an array format
+  const auto &dims = baseSym->arrayTyInfo.sizePerDimension;
+  for (int i = dims.size() - 1; i >= 0; i--) {
+    currentLevelTy = llvm::ArrayType::get(currentLevelTy, dims[i]);
+  }
+
+  indices.push_back(funcBuilder.getInt64(0));
 
   for (const auto &idxExpr : arrExpr->index_exprs) {
     llvm::Value *v = generateExpression(idxExpr.get());
@@ -2309,9 +2320,7 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
         funcBuilder.CreateIntCast(v, funcBuilder.getInt64Ty(), false));
   }
 
-  llvm::Type *gepBaseTy = getLLVMType(baseSym->arrayTyInfo.underLyingType);
-
-  return funcBuilder.CreateGEP(gepBaseTy, ptr, indices, "element_ptr");
+  return funcBuilder.CreateGEP(currentLevelTy, ptr, indices, "element_ptr");
 }
 
 llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
