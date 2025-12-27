@@ -2,1562 +2,1494 @@
 #include <algorithm>
 
 // Walking the data type literals
-void Semantics::walkBooleanLiteral(Node *node)
-{
-    auto boolLiteral = dynamic_cast<BooleanLiteral *>(node);
-    if (!boolLiteral)
-        return;
+void Semantics::walkBooleanLiteral(Node *node) {
+  auto boolLiteral = dynamic_cast<BooleanLiteral *>(node);
+  if (!boolLiteral)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::BOOLEAN, "bool"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[boolLiteral] = info;
+  info->type = ResolvedType{DataType::BOOLEAN, "bool"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[boolLiteral] = info;
 }
 
-void Semantics::walkStringLiteral(Node *node)
-{
-    auto strLiteral = dynamic_cast<StringLiteral *>(node);
-    if (!strLiteral)
-        return;
+void Semantics::walkStringLiteral(Node *node) {
+  auto strLiteral = dynamic_cast<StringLiteral *>(node);
+  if (!strLiteral)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::STRING, "string"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[strLiteral] = info;
+  info->type = ResolvedType{DataType::STRING, "string"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[strLiteral] = info;
 }
 
-void Semantics::walkChar8Literal(Node *node)
-{
-    auto char8Literal = dynamic_cast<Char8Literal *>(node);
-    if (!char8Literal)
-        return;
+void Semantics::walkChar8Literal(Node *node) {
+  auto char8Literal = dynamic_cast<Char8Literal *>(node);
+  if (!char8Literal)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::CHAR8, "char8"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[char8Literal] = info;
+  info->type = ResolvedType{DataType::CHAR8, "char8"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[char8Literal] = info;
 }
 
-void Semantics::walkChar16Literal(Node *node)
-{
-    auto lit = dynamic_cast<Char16Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkChar16Literal(Node *node) {
+  auto lit = dynamic_cast<Char16Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::CHAR16, "char16"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::CHAR16, "char16"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkChar32Literal(Node *node)
-{
-    auto lit = dynamic_cast<Char32Literal *>(node);
-    if (!lit)
-        return;
-    auto info = std::make_shared<SymbolInfo>();
+void Semantics::walkChar32Literal(Node *node) {
+  auto lit = dynamic_cast<Char32Literal *>(node);
+  if (!lit)
+    return;
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::CHAR32, "char32"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::CHAR32, "char32"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkI8Literal(Node *node)
-{
-    auto lit = dynamic_cast<I8Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkI8Literal(Node *node) {
+  auto lit = dynamic_cast<I8Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::I8, "i8"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::I8, "i8"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkU8Literal(Node *node)
-{
-    auto lit = dynamic_cast<U8Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkU8Literal(Node *node) {
+  auto lit = dynamic_cast<U8Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::U8, "u8"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::U8, "u8"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkI16Literal(Node *node)
-{
-    auto lit = dynamic_cast<I16Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkI16Literal(Node *node) {
+  auto lit = dynamic_cast<I16Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::I16, "i16"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::I16, "i16"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkU16Literal(Node *node)
-{
-    auto lit = dynamic_cast<U16Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkU16Literal(Node *node) {
+  auto lit = dynamic_cast<U16Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::U16, "u16"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::U16, "u16"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkI32Literal(Node *node)
-{
-    auto intLiteral = dynamic_cast<I32Literal *>(node);
-    if (!intLiteral)
-        return;
+void Semantics::walkI32Literal(Node *node) {
+  auto intLiteral = dynamic_cast<I32Literal *>(node);
+  if (!intLiteral)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::I32, "i32"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[intLiteral] = info;
+  info->type = ResolvedType{DataType::I32, "i32"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[intLiteral] = info;
 }
 
-void Semantics::walkU32Literal(Node *node)
-{
-    auto intLiteral = dynamic_cast<U32Literal *>(node);
-    if (!intLiteral)
-        return;
+void Semantics::walkU32Literal(Node *node) {
+  auto intLiteral = dynamic_cast<U32Literal *>(node);
+  if (!intLiteral)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::U32, "u32"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[intLiteral] = info;
+  info->type = ResolvedType{DataType::U32, "u32"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[intLiteral] = info;
 }
 
-void Semantics::walkI64Literal(Node *node)
-{
-    auto lit = dynamic_cast<I64Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkI64Literal(Node *node) {
+  auto lit = dynamic_cast<I64Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::I64, "i64"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::I64, "i64"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkU64Literal(Node *node)
-{
-    auto lit = dynamic_cast<U64Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkU64Literal(Node *node) {
+  auto lit = dynamic_cast<U64Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::U64, "u64"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::U64, "u64"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkI128Literal(Node *node)
-{
-    auto lit = dynamic_cast<I128Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkI128Literal(Node *node) {
+  auto lit = dynamic_cast<I128Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::I128, "i128"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::I128, "i128"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkU128Literal(Node *node)
-{
-    auto lit = dynamic_cast<U128Literal *>(node);
-    if (!lit)
-        return;
+void Semantics::walkU128Literal(Node *node) {
+  auto lit = dynamic_cast<U128Literal *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::U128, "u128"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::U128, "u128"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkISIZELiteral(Node *node)
-{
-    auto lit = dynamic_cast<ISIZELiteral *>(node);
-    if (!lit)
-        return;
+void Semantics::walkISIZELiteral(Node *node) {
+  auto lit = dynamic_cast<ISIZELiteral *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::ISIZE, "isize"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::ISIZE, "isize"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkUSIZELiteral(Node *node)
-{
-    auto lit = dynamic_cast<USIZELiteral *>(node);
-    if (!lit)
-        return;
+void Semantics::walkUSIZELiteral(Node *node) {
+  auto lit = dynamic_cast<USIZELiteral *>(node);
+  if (!lit)
+    return;
 
-    auto info = std::make_shared<SymbolInfo>();
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::USIZE, "usize"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[lit] = info;
+  info->type = ResolvedType{DataType::USIZE, "usize"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
 }
 
-void Semantics::walkFloatLiteral(Node *node)
-{
-    auto fltLiteral = dynamic_cast<FloatLiteral *>(node);
-    if (!fltLiteral)
-        return;
+void Semantics::walkFloatLiteral(Node *node) {
+  auto fltLiteral = dynamic_cast<FloatLiteral *>(node);
+  if (!fltLiteral)
+    return;
 
-    std::cout << "[SEMANTIC LOG]: Analyzing the float literal \n";
-    auto info = std::make_shared<SymbolInfo>();
+  std::cout << "[SEMANTIC LOG]: Analyzing the float literal \n";
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::FLOAT, "float"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[fltLiteral] = info;
+  info->type = ResolvedType{DataType::FLOAT, "float"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[fltLiteral] = info;
 }
 
-void Semantics::walkDoubleLiteral(Node *node)
-{
-    auto dbLiteral = dynamic_cast<DoubleLiteral *>(node);
-    if (!dbLiteral)
-        return;
-    std::cout << "[SEMANTIC LOG] Analyzing the double literal \n";
-    auto info = std::make_shared<SymbolInfo>();
+void Semantics::walkDoubleLiteral(Node *node) {
+  auto dbLiteral = dynamic_cast<DoubleLiteral *>(node);
+  if (!dbLiteral)
+    return;
+  std::cout << "[SEMANTIC LOG] Analyzing the double literal \n";
+  auto info = std::make_shared<SymbolInfo>();
 
-    info->type = ResolvedType{DataType::DOUBLE, "double"};
-    info->isNullable = false;
-    info->isMutable = false;
-    info->isConstant = false;
-    metaData[dbLiteral] = info;
+  info->type = ResolvedType{DataType::DOUBLE, "double"};
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[dbLiteral] = info;
 }
 
 // Walking the null literal
-void Semantics::walkNullLiteral(Node *node)
-{
-    auto nullLit = dynamic_cast<NullLiteral *>(node);
-    if (!nullLit)
-        return;
-    std::cout << "[SEMANTIC LOG] Analyzing null literal\n";
+void Semantics::walkNullLiteral(Node *node) {
+  auto nullLit = dynamic_cast<NullLiteral *>(node);
+  if (!nullLit)
+    return;
+  std::cout << "[SEMANTIC LOG] Analyzing null literal\n";
 
-    auto symbol = std::make_shared<SymbolInfo>();
-    symbol->type = ResolvedType{DataType::UNKNOWN, "null"}; // Unknown data type for now
-    metaData[nullLit] = symbol;
+  auto symbol = std::make_shared<SymbolInfo>();
+  symbol->type =
+      ResolvedType{DataType::UNKNOWN, "null"}; // Unknown data type for now
+  metaData[nullLit] = symbol;
 }
 
 // Walking the array literal
-void Semantics::walkArrayLiteral(Node *node)
-{
-    auto arrLit = dynamic_cast<ArrayLiteral *>(node);
-    if (!arrLit)
-        return;
+void Semantics::walkArrayLiteral(Node *node) {
+  auto arrLit = dynamic_cast<ArrayLiteral *>(node);
+  if (!arrLit)
+    return;
 
-    // Positional info for error logging
-    auto line = arrLit->expression.line;
-    auto col = arrLit->expression.column;
+  // Positional info for error logging
+  auto line = arrLit->expression.line;
+  auto col = arrLit->expression.column;
 
-    bool hasError = false;
+  bool hasError = false;
 
-    // Recursively getting the data type of the contents inside the array and also calling the walkers
-    std::vector<ResolvedType> itemTypes;
+  // Recursively getting the data type of the contents inside the array and also
+  // calling the walkers
+  std::vector<ResolvedType> itemTypes;
 
-    ArrayTypeInfo arrayTypeInfo;
-    int dimensionCount = 1; // The array literal is already a dimension
+  ArrayTypeInfo arrayTypeInfo;
+  int dimensionCount = 1; // The array literal is already a dimension
 
-    for (const auto &item : arrLit->array)
-    {
-        if (auto memArr = dynamic_cast<ArrayLiteral *>(item.get()))
-        {
-            dimensionCount++;
-        }
-        walker(item.get()); // Calling their walkers
-        auto itemType = inferNodeDataType(item.get());
-        arrayTypeInfo.underLyingType = itemType;
-        arrayTypeInfo.dimensions = dimensionCount;
-        itemTypes.push_back(itemType);
+  for (const auto &item : arrLit->array) {
+    if (auto memArr = dynamic_cast<ArrayLiteral *>(item.get())) {
+      dimensionCount++;
     }
+    walker(item.get()); // Calling their walkers
+    auto itemType = inferNodeDataType(item.get());
+    arrayTypeInfo.underLyingType = itemType;
+    arrayTypeInfo.dimensions = dimensionCount;
+    itemTypes.push_back(itemType);
+  }
 
-    ResolvedType arrType = inferNodeDataType(arrLit);
+  ResolvedType arrType = inferNodeDataType(arrLit);
 
-    // Storing metaData about the array
-    auto arrInfo = std::make_shared<SymbolInfo>();
+  // Storing metaData about the array
+  auto arrInfo = std::make_shared<SymbolInfo>();
 
-    arrInfo->type = arrType;
-    arrInfo->isNullable = false;
-    arrInfo->isMutable = false;
-    arrInfo->isConstant = false;
-    arrInfo->arrayTyInfo = arrayTypeInfo;
+  arrInfo->type = arrType;
+  arrInfo->isNullable = false;
+  arrInfo->isMutable = false;
+  arrInfo->isConstant = false;
+  arrInfo->arrayTyInfo = arrayTypeInfo;
 
-    metaData[arrLit] = arrInfo;
+  metaData[arrLit] = arrInfo;
 }
 
 // Walking array subscript expression
-void Semantics::walkArraySubscriptExpression(Node *node)
-{
-    auto arrExpr = dynamic_cast<ArraySubscript *>(node);
-    if (!arrExpr)
-        return;
+void Semantics::walkArraySubscriptExpression(Node *node) {
+  auto arrExpr = dynamic_cast<ArraySubscript *>(node);
+  if (!arrExpr)
+    return;
 
-    bool hasError = false;
-    auto arrName = arrExpr->identifier->expression.TokenLiteral;
-    auto line = arrExpr->expression.line;
-    auto col = arrExpr->expression.column;
+  bool hasError = false;
+  auto arrName = arrExpr->identifier->expression.TokenLiteral;
+  auto line = arrExpr->expression.line;
+  auto col = arrExpr->expression.column;
 
-    auto arrSymbol = resolveSymbolInfo(arrName);
-    if (!arrSymbol)
-    {
-        logSemanticErrors("Unidentified variable '" + arrName + "'", line, col);
-        return;
+  auto arrSymbol = resolveSymbolInfo(arrName);
+  if (!arrSymbol) {
+    logSemanticErrors("Unidentified variable '" + arrName + "'", line, col);
+    return;
+  }
+
+  walker(arrExpr->identifier.get());
+
+  // Get the full array type
+  ResolvedType arrType = arrSymbol->type;
+  std::cout << "Array type: " << arrType.resolvedName << "\n";
+
+  // Check indices
+  int indexLevel = 0;
+  for (auto &idxNode : arrExpr->index_exprs) {
+    walker(idxNode.get());
+    ResolvedType idxType = inferNodeDataType(idxNode.get());
+    if (idxType.kind != DataType::I32) {
+      logSemanticErrors("Array index must be of type i32",
+                        idxNode->expression.line, idxNode->expression.column);
+      hasError = true;
     }
 
-    walker(arrExpr->identifier.get());
-
-    // Get the full array type
-    ResolvedType arrType = arrSymbol->type;
-    std::cout << "Array type: " << arrType.resolvedName << "\n";
-
-    // Check indices
-    int indexLevel = 0;
-    for (auto &idxNode : arrExpr->index_exprs)
-    {
-        walker(idxNode.get());
-        ResolvedType idxType = inferNodeDataType(idxNode.get());
-        if (idxType.kind != DataType::I32)
-        {
-            logSemanticErrors("Array index must be of type i32", idxNode->expression.line, idxNode->expression.column);
-            hasError = true;
-        }
-
-        if (!arrType.isArray)
-        {
-            logSemanticErrors("Too many indices for array '" + arrName + "'", idxNode->expression.line, idxNode->expression.column);
-            hasError = true;
-            break;
-        }
-
-        if (!arrType.innerType)
-        {
-            logSemanticErrors("Array type missing inner type.", idxNode->expression.line, idxNode->expression.column);
-            hasError = true;
-            break;
-        }
-
-        arrType = *arrType.innerType; // Peel one layer
-        indexLevel++;
+    if (!arrType.isArray) {
+      logSemanticErrors("Too many indices for array '" + arrName + "'",
+                        idxNode->expression.line, idxNode->expression.column);
+      hasError = true;
+      break;
     }
 
-    // Optionally store info for further analysis
-    auto arrAccessInfo = std::make_shared<SymbolInfo>();
-    arrAccessInfo->type = arrType; // type after peeling
-    arrAccessInfo->hasError = hasError;
+    if (!arrType.innerType) {
+      logSemanticErrors("Array type missing inner type.",
+                        idxNode->expression.line, idxNode->expression.column);
+      hasError = true;
+      break;
+    }
 
-    metaData[arrExpr] = arrAccessInfo;
+    arrType = *arrType.innerType; // Peel one layer
+    indexLevel++;
+  }
+
+  // Optionally store info for further analysis
+  auto arrAccessInfo = std::make_shared<SymbolInfo>();
+  arrAccessInfo->type = arrType; // type after peeling
+  arrAccessInfo->hasError = hasError;
+  arrAccessInfo->isHeap = arrSymbol->isHeap;
+  arrAccessInfo->isDheap = arrSymbol->isDheap;
+  arrAccessInfo->arrayTyInfo=arrSymbol->arrayTyInfo;
+
+  metaData[arrExpr] = arrAccessInfo;
 }
 
 // Walking the identifier expression
-void Semantics::walkIdentifierExpression(Node *node)
-{
-    auto identExpr = dynamic_cast<Identifier *>(node);
-    if (!identExpr)
-        return;
-    std::cout << "[SEMANTIC LOG] Analyzing identifier node: " << identExpr->toString() << "\n";
-    auto identName = identExpr->identifier.TokenLiteral;
-    auto symbolInfo = resolveSymbolInfo(identName);
+void Semantics::walkIdentifierExpression(Node *node) {
+  auto identExpr = dynamic_cast<Identifier *>(node);
+  if (!identExpr)
+    return;
+  std::cout << "[SEMANTIC LOG] Analyzing identifier node: "
+            << identExpr->toString() << "\n";
+  auto identName = identExpr->identifier.TokenLiteral;
+  auto symbolInfo = resolveSymbolInfo(identName);
 
-    if (!symbolInfo)
-    {
-        logSemanticErrors(" Use of undeclared identifer '" + identName + "'", identExpr->expression.line, identExpr->expression.column);
-        return;
+  if (!symbolInfo) {
+    logSemanticErrors(" Use of undeclared identifer '" + identName + "'",
+                      identExpr->expression.line, identExpr->expression.column);
+    return;
+  }
+
+  if (symbolInfo->isHeap || symbolInfo->isDheap) {
+    bool inLoop = !loopContext.empty() && loopContext.back();
+    if (inLoop && !symbolInfo->bornInLoop) {
+      // ELDERS
+      symbolInfo->needsPostLoopFree = true;
+      loopDeathRow.insert(symbolInfo.get());
+    } else if (inLoop && symbolInfo->bornInLoop) {
+      // RESIDENTS
+      // Track them so we can ensure they die before the loop repeats
+      loopResidentDeathRow.insert(symbolInfo.get());
+      symbolInfo->lastUseNode = identExpr;
+    } else {
+      // Normal linear path
+      currentBranchIdents.push_back(identExpr);
+      symbolInfo->lastUseNode = identExpr;
     }
+  }
 
-    if (symbolInfo->isHeap || symbolInfo->isDheap)
-    {
-        bool inLoop = !loopContext.empty() && loopContext.back();
-        if (inLoop && !symbolInfo->bornInLoop)
-        {
-            // ELDERS 
-            symbolInfo->needsPostLoopFree = true;
-            loopDeathRow.insert(symbolInfo.get());
-        }
-        else if (inLoop && symbolInfo->bornInLoop)
-        {
-            // RESIDENTS
-            // Track them so we can ensure they die before the loop repeats
-            loopResidentDeathRow.insert(symbolInfo.get());
-            symbolInfo->lastUseNode = identExpr;
-        }
-        else
-        {
-            // Normal linear path
-            currentBranchIdents.push_back(identExpr);
-            symbolInfo->lastUseNode = identExpr;
-        }
-    }
-
-    metaData[identExpr] = symbolInfo;
+  metaData[identExpr] = symbolInfo;
 }
 
 // Walking address expression
-void Semantics::walkAddressExpression(Node *node)
-{
-    auto addrExpr = dynamic_cast<AddressExpression *>(node);
-    if (!addrExpr)
-        return;
+void Semantics::walkAddressExpression(Node *node) {
+  auto addrExpr = dynamic_cast<AddressExpression *>(node);
+  if (!addrExpr)
+    return;
 
-    auto addrName = addrExpr->identifier->expression.TokenLiteral;
-    auto line = addrExpr->identifier->expression.line;
-    auto col = addrExpr->identifier->expression.column;
+  auto addrName = addrExpr->identifier->expression.TokenLiteral;
+  auto line = addrExpr->identifier->expression.line;
+  auto col = addrExpr->identifier->expression.column;
 
-    walker(addrExpr->identifier.get());
-    auto symbolInfo = resolveSymbolInfo(addrName);
-    bool hasError = false;
+  walker(addrExpr->identifier.get());
+  auto symbolInfo = resolveSymbolInfo(addrName);
+  bool hasError = false;
 
-    if (!symbolInfo)
-    {
-        logSemanticErrors("Use of undeclared identifier '" + addrName + "'", line, col);
-        return;
-    }
+  if (!symbolInfo) {
+    logSemanticErrors("Use of undeclared identifier '" + addrName + "'", line,
+                      col);
+    return;
+  }
 
-    if (symbolInfo->isHeap || symbolInfo->isDheap)
-        symbolInfo->lastUseNode = addrExpr;
+  if (symbolInfo->isHeap || symbolInfo->isDheap)
+    symbolInfo->lastUseNode = addrExpr;
 
-    auto addrInfo = std::make_shared<SymbolInfo>();
-    addrInfo->isPointer = true;
-    addrInfo->type = inferNodeDataType(addrExpr);
+  auto addrInfo = std::make_shared<SymbolInfo>();
+  addrInfo->isPointer = true;
+  addrInfo->type = inferNodeDataType(addrExpr);
 
-    metaData[addrExpr] = addrInfo;
+  metaData[addrExpr] = addrInfo;
 }
 
-void Semantics::walkDereferenceExpression(Node *node)
-{
-    auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
-    if (!derefExpr)
-        return;
+void Semantics::walkDereferenceExpression(Node *node) {
+  auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
+  if (!derefExpr)
+    return;
 
-    std::string derefName = extractIdentifierName(derefExpr->identifier.get());
+  std::string derefName = extractIdentifierName(derefExpr->identifier.get());
 
-    auto line = derefExpr->identifier->expression.line;
-    auto col = derefExpr->identifier->expression.column;
+  auto line = derefExpr->identifier->expression.line;
+  auto col = derefExpr->identifier->expression.column;
 
-    walker(derefExpr->identifier.get());
+  walker(derefExpr->identifier.get());
 
-    auto derefSym = resolveSymbolInfo(derefName);
-    if (!derefSym)
-    {
-        logSemanticErrors("Use of undeclared identifier '" + derefName + "'", line, col);
-        return;
-    }
+  auto derefSym = resolveSymbolInfo(derefName);
+  if (!derefSym) {
+    logSemanticErrors("Use of undeclared identifier '" + derefName + "'", line,
+                      col);
+    return;
+  }
 
-    if (derefSym->isHeap || derefSym->isDheap)
-        derefSym->lastUseNode = derefExpr;
+  if (derefSym->isHeap || derefSym->isDheap)
+    derefSym->lastUseNode = derefExpr;
 
-    auto derefInfo = std::make_shared<SymbolInfo>();
-    derefInfo->isPointer = false; // Just a sanity measure
-    derefInfo->isMutable = derefSym->isMutable;
-    derefInfo->isConstant = derefSym->isConstant;
-    derefInfo->isInitialized = derefSym->isInitialized;
-    derefInfo->derefPtrType = derefSym->type;
+  auto derefInfo = std::make_shared<SymbolInfo>();
+  derefInfo->isPointer = false; // Just a sanity measure
+  derefInfo->isMutable = derefSym->isMutable;
+  derefInfo->isConstant = derefSym->isConstant;
+  derefInfo->isInitialized = derefSym->isInitialized;
+  derefInfo->derefPtrType = derefSym->type;
 
-    std::cout << "DEREF PTR TYPE: " << derefSym->type.resolvedName << "\n";
+  std::cout << "DEREF PTR TYPE: " << derefSym->type.resolvedName << "\n";
 
-    metaData[derefExpr] = derefInfo;
+  metaData[derefExpr] = derefInfo;
 }
 
 // Walking let statement
-void Semantics::walkLetStatement(Node *node)
-{
-    auto letStmt = dynamic_cast<LetStatement *>(node);
-    if (!letStmt)
-        return;
+void Semantics::walkLetStatement(Node *node) {
+  auto letStmt = dynamic_cast<LetStatement *>(node);
+  if (!letStmt)
+    return;
 
-    std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
+  std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
 
-    auto type = dynamic_cast<BasicType *>(letStmt->type.get());
+  auto type = dynamic_cast<BasicType *>(letStmt->type.get());
 
-    // --- Initial flags ---
-    bool isNullable = type->isNullable;
-    bool isHeap = letStmt->isHeap;
-    bool isDheap = letStmt->isDheap;
-    bool isDefinitelyNull = false;
-    bool isInitialized = false;
-    bool hasError = false;
+  // --- Initial flags ---
+  bool isNullable = type->isNullable;
+  bool isHeap = letStmt->isHeap;
+  bool isDheap = letStmt->isDheap;
+  bool isDefinitelyNull = false;
+  bool isInitialized = false;
+  bool hasError = false;
 
-    // Checking if the name is being reused
-    auto letName = letStmt->ident_token.TokenLiteral;
-    std::cout << "LET STATEMENT NAME: " << letName << "\n";
+  // Checking if the name is being reused
+  auto letName = letStmt->ident_token.TokenLiteral;
+  std::cout << "LET STATEMENT NAME: " << letName << "\n";
 
-    auto existingSym = resolveSymbolInfo(letName);
-    auto localSym = lookUpInCurrentScope(letName);
+  auto existingSym = resolveSymbolInfo(letName);
+  auto localSym = lookUpInCurrentScope(letName);
 
-    if (localSym)
-    {
-        logSemanticErrors("Variable with name '" + letName + "' already exists in the same scope", letStmt->ident_token.line, letStmt->ident_token.column);
+  if (localSym) {
+    logSemanticErrors("Variable with name '" + letName +
+                          "' already exists in the same scope",
+                      letStmt->ident_token.line, letStmt->ident_token.column);
+    hasError = true;
+    return;
+  }
+
+  if (existingSym) {
+    if (existingSym->isFunction) {
+      logSemanticErrors("Local variable '" + letName +
+                            "' shadows existing global function",
+                        letStmt->ident_token.line, letStmt->ident_token.column);
+      hasError = true;
+      return;
+    } else if (existingSym->isComponent) {
+      logSemanticErrors("Local variable '" + letName +
+                            "' shadows existing component",
+                        letStmt->ident_token.line, letStmt->ident_token.column);
+      hasError = true;
+      return;
+    } else if (existingSym->isBehavior) {
+      logSemanticErrors("Local variable '" + letName +
+                            "' shadows existing  behavior block",
+                        letStmt->ident_token.line, letStmt->ident_token.column);
+      hasError = true;
+      return;
+    } else if (existingSym->isDataBlock) {
+      logSemanticErrors("Local variable '" + letName +
+                            "' shadows existing data block",
+                        letStmt->ident_token.line, letStmt->ident_token.column);
+      hasError = true;
+      return;
+    }
+  }
+
+  auto letStmtValue = letStmt->value.get();
+
+  // --- Resolve type from token ---
+  ResolvedType expectedType = inferNodeDataType(letStmt->type.get());
+  ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
+
+  // --- Mutability & constants ---
+  bool isMutable = (letStmt->mutability == Mutability::MUTABLE);
+  bool isConstant = (letStmt->mutability == Mutability::CONSTANT);
+
+  if (isConstant && !letStmtValue) {
+    logSemanticErrors("Need to assign a value to a constant variable '" +
+                          letStmt->ident_token.TokenLiteral + "'",
+                      letStmt->ident_token.line, letStmt->ident_token.column);
+    hasError = true;
+  }
+
+  // --- Resolve constant value if present ---
+  int64_t constInt = 0;
+  if (isConstant && letStmtValue) {
+    if (auto intLit = dynamic_cast<I32Literal *>(letStmtValue)) {
+      constInt = std::stoll(intLit->i32_token.TokenLiteral);
+    } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
+      auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
+      if (!identSym) {
+        logSemanticErrors("Use of undeclared variable '" +
+                              ident->identifier.TokenLiteral +
+                              "' in constant let statement",
+                          ident->expression.line, ident->expression.column);
         hasError = true;
-        return;
-    }
-
-    if (existingSym)
-    {
-        if (existingSym->isFunction)
-        {
-            logSemanticErrors("Local variable '" + letName + "' shadows existing global function", letStmt->ident_token.line, letStmt->ident_token.column);
-            hasError = true;
-            return;
-        }
-        else if (existingSym->isComponent)
-        {
-            logSemanticErrors("Local variable '" + letName + "' shadows existing component", letStmt->ident_token.line, letStmt->ident_token.column);
-            hasError = true;
-            return;
-        }
-        else if (existingSym->isBehavior)
-        {
-            logSemanticErrors("Local variable '" + letName + "' shadows existing  behavior block", letStmt->ident_token.line, letStmt->ident_token.column);
-            hasError = true;
-            return;
-        }
-        else if (existingSym->isDataBlock)
-        {
-            logSemanticErrors("Local variable '" + letName + "' shadows existing data block", letStmt->ident_token.line, letStmt->ident_token.column);
-            hasError = true;
-            return;
-        }
-    }
-
-    auto letStmtValue = letStmt->value.get();
-
-    // --- Resolve type from token ---
-    ResolvedType expectedType = inferNodeDataType(letStmt->type.get());
-    ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
-
-    // --- Mutability & constants ---
-    bool isMutable = (letStmt->mutability == Mutability::MUTABLE);
-    bool isConstant = (letStmt->mutability == Mutability::CONSTANT);
-
-    if (isConstant && !letStmtValue)
-    {
-        logSemanticErrors(
-            "Need to assign a value to a constant variable '" + letStmt->ident_token.TokenLiteral + "'",
-            letStmt->ident_token.line, letStmt->ident_token.column);
+      } else if (!identSym->isConstant) {
+        logSemanticErrors("Cannot use non-constant variable '" +
+                              ident->identifier.TokenLiteral +
+                              "' in constant let statement",
+                          ident->expression.line, ident->expression.column);
         hasError = true;
+      } else {
+        constInt = identSym->constIntVal;
+      }
     }
+  }
 
-    // --- Resolve constant value if present ---
-    int64_t constInt = 0;
-    if (isConstant && letStmtValue)
-    {
-        if (auto intLit = dynamic_cast<I32Literal *>(letStmtValue))
-        {
-            constInt = std::stoll(intLit->i32_token.TokenLiteral);
-        }
-        else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
-        {
-            auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
-            if (!identSym)
-            {
-                logSemanticErrors(
-                    "Use of undeclared variable '" + ident->identifier.TokenLiteral + "' in constant let statement",
-                    ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-            else if (!identSym->isConstant)
-            {
-                logSemanticErrors(
-                    "Cannot use non-constant variable '" + ident->identifier.TokenLiteral + "' in constant let statement",
-                    ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-            else
-            {
-                constInt = identSym->constIntVal;
-            }
-        }
-    }
-
-    // --- Walk value & infer type ---
-    if (letStmtValue)
-    {
-        declaredType = inferNodeDataType(letStmtValue);
-        walker(letStmtValue);
-        isInitialized = true;
-
-        if (auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue))
-        {
-            isDefinitelyNull = true;
-            if (!isNullable)
-            {
-                logSemanticErrors(
-                    "Cannot assign 'null' to non-nullable variable '" + letStmt->ident_token.TokenLiteral + "'",
-                    type->data_token.line, type->data_token.column);
-                hasError = true;
-                declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
-            }
-            else
-            {
-                declaredType = inferNodeDataType(type);
-            }
-        }
-        else if (auto ident = dynamic_cast<Identifier *>(letStmtValue))
-        {
-            auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
-            if (!identSym)
-            {
-                logSemanticErrors(
-                    "Cannot assign non-existent identifier '" + ident->identifier.TokenLiteral + "'",
-                    ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-            else if (!identSym->isInitialized)
-            {
-                logSemanticErrors(
-                    "Cannot assign non-initialized identifier '" + ident->identifier.TokenLiteral + "'",
-                    ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-        }
-        else if (auto unwrap = dynamic_cast<UnwrapExpression *>(letStmtValue))
-        {
-            auto line = unwrap->expression.line;
-            auto col = unwrap->expression.column;
-            if (expectedType.isNull)
-            {
-                logSemanticErrors("Cannot place unwrap expression into nullable variable declaration", line, col);
-                hasError = true;
-            }
-        }
-    }
-    else
-    {
-        declaredType = inferNodeDataType(type);
-    }
-
-    // --- Type mismatch checks ---
-    if (type->data_token.type != TokenType::AUTO)
-    {
-        if (!isTypeCompatible(expectedType, declaredType))
-        {
-            logSemanticErrors(
-                "Type mismatch in variable declaration statement '" + letName + "' expected '" + expectedType.resolvedName + "' but got '" +
-                    declaredType.resolvedName + "'",
-                type->data_token.line, type->data_token.column);
-            hasError = true;
-        }
-
-        if (!isNullable && isDefinitelyNull)
-        {
-            logSemanticErrors(
-                "Cannot assign a nullable (possibly null) value to non-nullable variable '" +
-                    letStmt->ident_token.TokenLiteral + "'",
-                type->data_token.line, type->data_token.column);
-            hasError = true;
-            declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
-        }
-    }
-
-    // --- Constant + nullable/heap checks ---
-    if (isConstant && (isNullable || isDefinitelyNull))
-    {
-        logSemanticErrors("Cannot use null on a constant variable '" + letStmt->ident_token.TokenLiteral + "'",
-                          letStmt->ident_token.line, letStmt->ident_token.column);
-        hasError = true;
-    }
-
-    if (isHeap || isDheap)
-    {
-        if (!isInitialized)
-        {
-            logSemanticErrors("Cannot promote uninitialized variable '" + letStmt->ident_token.TokenLiteral + "' to the heap",
-                              letStmt->ident_token.line, letStmt->ident_token.column);
-            hasError = true;
-        }
-
-        if (isNullable || isDefinitelyNull)
-        {
-            logSemanticErrors("Cannot promote nullable variable '" + letStmt->ident_token.TokenLiteral + "' to the heap",
-                              letStmt->ident_token.line, letStmt->ident_token.column);
-            hasError = true;
-        }
-
-        if (type->data_token.type == TokenType::AUTO)
-        {
-            logSemanticErrors(
-                "Cannot promote auto variable '" + letStmt->ident_token.TokenLiteral + "' to the heap, please explicitly use its type",
-                letStmt->ident_token.line, letStmt->ident_token.column);
-            hasError = true;
-        }
-    }
-
-    StorageType letStorageType;
-    // Storing the scope information
-    if (isGlobalScope())
-    {
-        letStorageType = StorageType::GLOBAL;
-    }
-    else if (isHeap)
-    {
-        letStorageType = StorageType::HEAP;
-    }
-    else
-    {
-        letStorageType = StorageType::STACK;
-    }
-
-    // --- Metadata & symbol registration ---
-    auto letInfo = std::make_shared<SymbolInfo>();
-    letInfo->type = declaredType;
-    letInfo->isNullable = isNullable;
-    letInfo->isMutable = isMutable;
-    letInfo->isConstant = isConstant;
-    letInfo->constIntVal = constInt;
-    letInfo->isInitialized = isInitialized;
-    letInfo->isDefinitelyNull = isDefinitelyNull;
-    letInfo->isHeap = isHeap;
-    letInfo->isDheap=isDheap;
-    letInfo->lastUseNode = letStmt;
-    letInfo->storage = letStorageType;
-    letInfo->hasError = hasError;
-    if (!loopContext.empty() && loopContext.back())
-    {
-        letInfo->needsPostLoopFree = true;
-        letInfo->bornInLoop = true;
-    }
-
-    metaData[letStmt] = letInfo;
-    symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
-
-    std::cout << "LET STATEMENT DATA TYPE: " << expectedType.resolvedName << "\n";
-}
-
-void Semantics::walkAssignStatement(Node *node)
-{
-    auto assignStmt = dynamic_cast<AssignmentStatement *>(node);
-    if (!assignStmt)
-        return;
-
-    std::shared_ptr<SymbolInfo> symbol = nullptr;
-    std::string assignName;
-    bool hasError = false;
-
-    // --- Handle self.field assignments ---
-    if (auto *selfExpr = dynamic_cast<SelfExpression *>(assignStmt->identifier.get()))
-    {
-        std::cout << "SELF assignment has been triggered\n";
-
-        if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT)
-        {
-            logSemanticErrors("'self' cannot be used outside a component",
-                              selfExpr->expression.line,
-                              selfExpr->expression.column);
-            hasError = true;
-            return;
-        }
-
-        // Start from the current component
-        auto &compScope = currentTypeStack.back();
-        auto currentTypeName = compScope.typeName;
-
-        std::shared_ptr<MemberInfo> fieldInfo;
-
-        // Walk the full chain of fields
-        for (const auto &field : selfExpr->fields)
-        {
-            auto ident = dynamic_cast<Identifier *>(field.get());
-            if (!ident)
-            {
-                logSemanticErrors("Expected identifier in self expression chain",
-                                  selfExpr->expression.line,
-                                  selfExpr->expression.column);
-                hasError = true;
-                return;
-            }
-
-            const std::string fieldName = ident->identifier.TokenLiteral;
-
-            // Look up current type
-            auto compTypeIt = customTypesTable.find(currentTypeName);
-            if (compTypeIt == customTypesTable.end())
-            {
-                logSemanticErrors("Component '" + currentTypeName + "' does not exist",
-                                  selfExpr->expression.line,
-                                  selfExpr->expression.column);
-                hasError = true;
-                return;
-            }
-
-            auto &members = compTypeIt->second->members;
-            auto memIt = members.find(fieldName);
-            if (memIt == members.end())
-            {
-                logSemanticErrors("Field '" + fieldName + "' not found in component '" + currentTypeName + "'",
-                                  ident->identifier.line,
-                                  ident->identifier.column);
-                hasError = true;
-                return;
-            }
-
-            fieldInfo = memIt->second;
-            currentTypeName = fieldInfo->type.resolvedName; // move deeper
-        }
-
-        // Wrap final field info into SymbolInfo
-        symbol = std::make_shared<SymbolInfo>();
-        symbol->type = fieldInfo->type;
-        symbol->isNullable = fieldInfo->isNullable;
-        symbol->isMutable = fieldInfo->isMutable;
-        symbol->isConstant = fieldInfo->isConstant;
-        symbol->isInitialized = fieldInfo->isInitialised;
-        symbol->memberIndex = fieldInfo->memberIndex;
-        symbol->hasError = hasError;
-    }
-
-    // --- Handle plain identifier assignments ---
-    else if (auto ident = dynamic_cast<Identifier *>(assignStmt->identifier.get()))
-    {
-        assignName = ident->identifier.TokenLiteral;
-        symbol = resolveSymbolInfo(assignName);
-
-        if (!symbol)
-        {
-            logSemanticErrors("Variable '" + assignName + "' is not declared",
-                              ident->identifier.line,
-                              ident->identifier.column);
-            hasError = true;
-            return;
-        }
-        walker(ident);
-    }
-    //---Handle dereference identifiers
-    else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(assignStmt->identifier.get()))
-    {
-        walker(derefExpr);
-        assignName = derefExpr->identifier->expression.TokenLiteral;
-        auto derefMeta = metaData.find(derefExpr);
-        if (derefMeta == metaData.end())
-        {
-            logSemanticErrors("Failed to resolve dereference metadata for '" + assignName + "'",
-                              derefExpr->expression.line,
-                              derefExpr->expression.column);
-            hasError = true;
-            return;
-        }
-
-        // THIS is the actual pointee’s symbol info (the target of x)
-        symbol = derefMeta->second;
-
-        // Optional sanity check
-        if (symbol->isPointer)
-        {
-            logSemanticErrors("Dereference did not unwrap pointer correctly for '" + assignName + "'",
-                              derefExpr->expression.line,
-                              derefExpr->expression.column);
-            hasError = true;
-        }
-    }
-    else if (auto arrAccess = dynamic_cast<ArraySubscript *>(assignStmt->identifier.get()))
-    {
-        assignName = arrAccess->identifier->expression.TokenLiteral;
-        auto line = arrAccess->expression.line;
-        auto col = arrAccess->expression.column;
-        symbol = resolveSymbolInfo(assignName);
-        if (!symbol)
-        {
-            logSemanticErrors("Unidentifed variable '" + assignName + "' ", line, col);
-            hasError = true;
-            return;
-        }
-        walker(arrAccess);
-        auto accessMeta = metaData.find(arrAccess);
-        if (accessMeta == metaData.end())
-        {
-            logSemanticErrors("Failed to get array access metaData", line, col);
-            hasError = true;
-            return;
-        }
-        symbol = accessMeta->second;
-    }
-
-    else
-    {
-        logSemanticErrors("Invalid assignment target",
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
-        hasError = true;
-        return;
-    }
-
-    // --- Handle RHS null literal ---
-    bool rhsIsNull = false;
-    bool isDefinitelyNull = false;
-    if (assignStmt->value)
-    {
-        auto ident = dynamic_cast<Identifier *>(assignStmt->value.get());
-
-        // Check to prevent assignment of null identifiers
-        if (ident)
-        {
-            auto identName = ident->identifier.TokenLiteral;
-            auto identSym = resolveSymbolInfo(identName);
-            if (!identSym)
-            {
-                logSemanticErrors("Cannot assign non existant identifier '" + identName + "' to variable '" + assignName + "'", ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-
-            if (!identSym->isInitialized)
-            {
-                logSemanticErrors("Cannot assign non initialized identifier '" + identName + "' to variable '" + assignName + "'", ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-            walker(ident);
-        }
-        else if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get()))
-        {
-            rhsIsNull = true;
-            isDefinitelyNull = true;
-
-            if (!symbol->isNullable)
-            {
-                logSemanticErrors("Cannot assign 'null' to non-nullable variable '" + assignName + "'",
-                                  assignStmt->identifier->expression.line,
-                                  assignStmt->identifier->expression.column);
-                hasError = true;
-                return;
-            }
-
-            // Null adopts LHS type
-            symbol->type = symbol->type;
-            symbol->isInitialized = true;
-            symbol->hasError = hasError;
-            symbol->isDefinitelyNull = isDefinitelyNull;
-            metaData[assignStmt] = symbol;
-
-            // Nothing else to check
-            return;
-        }
-        else if (auto arrLit = dynamic_cast<ArrayLiteral *>(assignStmt->value.get()))
-        {
-            // Getting the length of the array literal
-            auto arrLitTypeInfo = getArrayTypeInfo(arrLit);
-            // Getting the arrayMeta for the symbol
-            auto arrSymbol = resolveSymbolInfo(assignName);
-            if (!arrSymbol)
-            {
-                logSemanticErrors("Could not find variable '" + assignName + "'", assignStmt->identifier->expression.line,
-                                  assignStmt->identifier->expression.column);
-                hasError = true;
-            }
-
-            auto assignMeta = arrSymbol->arrayTyInfo;
-            // Comapring the lengths
-            if (arrLitTypeInfo.dimensions != assignMeta.dimensions)
-            {
-                logSemanticErrors("Array variable '" + assignName + "' dimensions " + std::to_string(assignMeta.dimensions) + " does not match array literal dimensions " + std::to_string(arrLitTypeInfo.dimensions), assignStmt->identifier->expression.line, assignStmt->identifier->expression.column);
-                hasError = true;
-            }
-        }
-        else if (auto unwrap = dynamic_cast<UnwrapExpression *>(assignStmt->value.get()))
-        {
-            auto line = unwrap->expression.line;
-            auto col = unwrap->expression.column;
-            if (symbol->type.isNull)
-            {
-                logSemanticErrors("Cannot use unwrap calls in nullable assignments ", line, col);
-                hasError = true;
-            }
-        }
-    }
-
-    // --- Infer RHS type if not null ---
-    ResolvedType rhsType = inferNodeDataType(assignStmt->value.get());
-    auto lhsType = symbol->type;
-    if (symbol->isRef) // If the symbol is a reference strip it
-    {
-        lhsType.isRef = false;
-    }
-
-    if (!isTypeCompatible(lhsType, rhsType))
-    {
-        logSemanticErrors("Type mismatch: expected '" +
-                              symbol->type.resolvedName + "' but got '" +
-                              rhsType.resolvedName + "'",
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
-        hasError = true;
-    }
-
-    // --- Mutability / const checks ---
-    if (symbol->isConstant)
-    {
-        logSemanticErrors("Cannot reassign to constant variable '" + assignName + "'",
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
-        hasError = true;
-    }
-
-    if (!symbol->isMutable && symbol->isInitialized)
-    {
-        logSemanticErrors("Cannot reassign to immutable variable '" + assignName + "'",
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
-        hasError = true;
-    }
-
-    // --- Prevent assigning a nullable value to a non-nullable variable ---
-    if (!symbol->isNullable) // LHS is non-nullable
-    {
-        bool rhsDefinitelyNull = false;
-
-        if (assignStmt->value)
-        {
-            if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get()))
-            {
-                rhsDefinitelyNull = true; // literal null
-            }
-            else if (auto ident = dynamic_cast<Identifier *>(assignStmt->value.get()))
-            {
-                auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
-                if (identSym && identSym->isDefinitelyNull)
-                {
-                    rhsDefinitelyNull = true; // identifier that is definitely null
-                }
-            }
-        }
-
-        if (rhsDefinitelyNull)
-        {
-            logSemanticErrors("Cannot assign a null value to to a non-nullable variable '" + assignName + "'",
-                              assignStmt->identifier->expression.line,
-                              assignStmt->identifier->expression.column);
-            hasError = true;
-        }
-    }
-
-    // If the symbol is a pointer
-    if (symbol->isPointer)
-    {
-        if (auto ident = dynamic_cast<Identifier *>(assignStmt->value.get()))
-        {
-            auto identName = ident->identifier.TokenLiteral;
-            auto identSym = resolveSymbolInfo(identName);
-            // Pointer checks
-            if (!identSym->isPointer) // The identifier itself must be a pointer
-            {
-                logSemanticErrors("Cannot reassign a non pointer '" + identName + "' to pointer variable '" + assignName + "'", ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-            // Get the target symbol
-            auto targetSym = identSym->targetSymbol;
-            if (!targetSym)
-            {
-                logSemanticErrors("No target symbol for '" + identName + "' being reassigned to variable '" + assignName + "'", ident->expression.line, ident->expression.column);
-                hasError = true;
-                return; // This is a critical error leaving it will cause derefencing of nullptrs
-            }
-
-            // Check the target symbol scope and block it if it is local
-            if (targetSym->storage == StorageType::STACK)
-            {
-                // The compiler should complain
-                logSemanticErrors("Cannot reassign local pointer '" + identName + "' to pointer variable '" + assignName + "'", ident->expression.line, ident->expression.column);
-                hasError = true;
-            }
-        }
-        else if (auto addr = dynamic_cast<AddressExpression *>(assignStmt->value.get()))
-        {
-            // Get the address name
-            auto addrName = addr->identifier->expression.TokenLiteral;
-            auto line = addr->expression.line;
-            auto col = addr->expression.column;
-            // Get the symbolInfo
-            auto addrSym = resolveSymbolInfo(addrName);
-            if (!addrSym)
-            {
-                logSemanticErrors("Unidentified address pointer '" + addrName + "' cannot reassign to pointer variable '" + assignName + "'", line, col);
-                hasError = true;
-            }
-            // Get the storage type
-            if (addrSym->storage == StorageType::STACK)
-            {
-                logSemanticErrors("Cannot reassign local address pointer '" + addrName + "' to pointer variable '" + assignName + "'", line, col); // Complain
-                hasError = true;
-            }
-        }
-        else if (auto call = dynamic_cast<CallExpression *>(assignStmt->value.get()))
-        {
-            // Get the function name
-            auto funcName = call->function_identifier->expression.TokenLiteral;
-            auto line = call->function_identifier->expression.line;
-            auto col = call->function_identifier->expression.column;
-
-            // Get the symbol info
-            auto callSym = resolveSymbolInfo(funcName);
-            if (!callSym)
-            {
-                hasError = true;
-            }
-            // Ensure it is a pointer
-            if (!callSym->returnType.isPointer)
-            {
-                logSemanticErrors("Cannot reassign a non pointer call '" + funcName + "' to pointer variable '" + assignName + "'", line, col);
-                hasError = true;
-            }
-        }
-        else
-        {
-            logSemanticErrors("Must only reassign address to pointer or a pointer to '" + assignName + "'", assignStmt->identifier->expression.line,
-                              assignStmt->identifier->expression.column);
-            hasError = true;
-        }
-    }
-
-    // --- Mark variable initialized ---
-    symbol->isInitialized = true;
-    symbol->isDefinitelyNull = isDefinitelyNull;
-    symbol->hasError = hasError;
-
-    // --- Walk the RHS expression ---
-    if (assignStmt->value)
-        walker(assignStmt->value.get());
-
-    // --- Store metadata for later stages ---
-    metaData[assignStmt] = symbol;
-}
-
-void Semantics::walkFieldAssignmentStatement(Node *node)
-{
-    auto fieldAssignStmt = dynamic_cast<FieldAssignment *>(node);
-    if (!fieldAssignStmt)
-        return;
-
-    auto fieldName = fieldAssignStmt->assignment_token.TokenLiteral;
-    auto line = fieldAssignStmt->statement.line;
-    auto column = fieldAssignStmt->statement.column;
-    bool hasError = false;
-
-    // Split into "parent.child"
-    auto [parentName, childName] = splitScopedName(fieldName);
-    std::cout << "PARENT NAME:" << parentName << "\n";
-    std::cout << "CHILD NAME:" << childName << "\n";
-
-    // Resolve the parent symbol (must be a variable in scope)
-    auto parentSymbol = resolveSymbolInfo(parentName);
-    if (!parentSymbol)
-    {
-        logSemanticErrors("Variable '" + parentName + "' does not exist", line, column);
-        hasError = true;
-        return;
-    }
-
-    // Get the parent's type
-    std::string parentType = parentSymbol->type.resolvedName;
-    std::cout << "SEMANTIC LOG: Parent type: " << parentType << "\n";
-
-    // Look up that type in the custom types table
-    auto parentIt = customTypesTable.find(parentType);
-    if (parentIt == customTypesTable.end())
-    {
-        logSemanticErrors("Type '" + parentType + "' does not exist", line, column);
-        hasError = true;
-        return;
-    }
-
-    // Check if the childName exists in that type’s members
-    auto members = parentIt->second->members;
-    auto memberIt = members.find(childName);
-    if (memberIt == members.end())
-    {
-        logSemanticErrors("Variable '" + childName + "' does not exist in type '" + parentType + "'", line, column);
-        hasError = true;
-        return;
-    }
-
-    // Grab field properties
-    ResolvedType type = memberIt->second->type;
-    bool isNullable = memberIt->second->isNullable;
-    bool isMutable = memberIt->second->isMutable;
-    bool isConstant = memberIt->second->isConstant;
-    bool isHeap = memberIt->second->isHeap;
-    bool isInitialized = memberIt->second->isInitialised;
-
-    // Constant/immutability checks
-    if (isConstant)
-    {
-        logSemanticErrors("Cannot reassign to constant variable '" + fieldName + "'", line, column);
-        hasError = true;
-        return;
-    }
-    if (!isMutable && isInitialized)
-    {
-        logSemanticErrors("Cannot reassign to immutable variable '" + fieldName + "'", line, column);
-        hasError = true;
-        return;
-    }
-
-    // Mark initialized (since this is assignment)
+  // --- Walk value & infer type ---
+  if (letStmtValue) {
+    declaredType = inferNodeDataType(letStmtValue);
+    walker(letStmtValue);
     isInitialized = true;
 
-    // Analyse the value if present
-    if (fieldAssignStmt->value)
-    {
-        walker(fieldAssignStmt->value.get());
+    if (auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue)) {
+      isDefinitelyNull = true;
+      if (!isNullable) {
+        logSemanticErrors("Cannot assign 'null' to non-nullable variable '" +
+                              letStmt->ident_token.TokenLiteral + "'",
+                          type->data_token.line, type->data_token.column);
+        hasError = true;
+        declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
+      } else {
+        declaredType = inferNodeDataType(type);
+      }
+    } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
+      auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
+      if (!identSym) {
+        logSemanticErrors("Cannot assign non-existent identifier '" +
+                              ident->identifier.TokenLiteral + "'",
+                          ident->expression.line, ident->expression.column);
+        hasError = true;
+      } else if (!identSym->isInitialized) {
+        logSemanticErrors("Cannot assign non-initialized identifier '" +
+                              ident->identifier.TokenLiteral + "'",
+                          ident->expression.line, ident->expression.column);
+        hasError = true;
+      }
+    } else if (auto unwrap = dynamic_cast<UnwrapExpression *>(letStmtValue)) {
+      auto line = unwrap->expression.line;
+      auto col = unwrap->expression.column;
+      if (expectedType.isNull) {
+        logSemanticErrors(
+            "Cannot place unwrap expression into nullable variable declaration",
+            line, col);
+        hasError = true;
+      }
+    }
+  } else {
+    declaredType = inferNodeDataType(type);
+  }
+
+  // --- Type mismatch checks ---
+  if (type->data_token.type != TokenType::AUTO) {
+    if (!isTypeCompatible(expectedType, declaredType)) {
+      logSemanticErrors("Type mismatch in variable declaration statement '" +
+                            letName + "' expected '" +
+                            expectedType.resolvedName + "' but got '" +
+                            declaredType.resolvedName + "'",
+                        type->data_token.line, type->data_token.column);
+      hasError = true;
     }
 
-    if (memberIt->second->isHeap)
-    {
-        memberIt->second->lastUseNode = fieldAssignStmt;
+    if (!isNullable && isDefinitelyNull) {
+      logSemanticErrors("Cannot assign a nullable (possibly null) value to "
+                        "non-nullable variable '" +
+                            letStmt->ident_token.TokenLiteral + "'",
+                        type->data_token.line, type->data_token.column);
+      hasError = true;
+      declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
+    }
+  }
+
+  // --- Constant + nullable/heap checks ---
+  if (isConstant && (isNullable || isDefinitelyNull)) {
+    logSemanticErrors("Cannot use null on a constant variable '" +
+                          letStmt->ident_token.TokenLiteral + "'",
+                      letStmt->ident_token.line, letStmt->ident_token.column);
+    hasError = true;
+  }
+
+  if (isHeap || isDheap) {
+    if (!isInitialized) {
+      logSemanticErrors("Cannot promote uninitialized variable '" +
+                            letStmt->ident_token.TokenLiteral + "' to the heap",
+                        letStmt->ident_token.line, letStmt->ident_token.column);
+      hasError = true;
     }
 
-    // Symbol info for the field
-    auto fieldInfo = std::make_shared<SymbolInfo>();
-    fieldInfo->type = type;
-    fieldInfo->isNullable = isNullable;
-    fieldInfo->isConstant = isConstant;
-    fieldInfo->isInitialized = isInitialized;
-    fieldInfo->hasError = hasError;
-    fieldInfo->isHeap = isHeap;
+    if (isNullable || isDefinitelyNull) {
+      logSemanticErrors("Cannot promote nullable variable '" +
+                            letStmt->ident_token.TokenLiteral + "' to the heap",
+                        letStmt->ident_token.line, letStmt->ident_token.column);
+      hasError = true;
+    }
 
-    // Build metadata for this assignment node
-    auto info = std::make_shared<SymbolInfo>();
-    info->type = type; // The whole node still evaluates to the member type
-    info->baseSymbol = parentSymbol;
-    info->fieldSymbol = fieldInfo;
-    info->isNullable = isNullable;
-    info->isConstant = isConstant;
-    info->isInitialized = isInitialized;
-    info->hasError = hasError;
+    if (type->data_token.type == TokenType::AUTO) {
+      logSemanticErrors("Cannot promote auto variable '" +
+                            letStmt->ident_token.TokenLiteral +
+                            "' to the heap, please explicitly use its type",
+                        letStmt->ident_token.line, letStmt->ident_token.column);
+      hasError = true;
+    }
+  }
 
-    metaData[fieldAssignStmt] = info;
+  StorageType letStorageType;
+  // Storing the scope information
+  if (isGlobalScope()) {
+    letStorageType = StorageType::GLOBAL;
+  } else if (isHeap) {
+    letStorageType = StorageType::HEAP;
+  } else {
+    letStorageType = StorageType::STACK;
+  }
+
+  // --- Metadata & symbol registration ---
+  auto letInfo = std::make_shared<SymbolInfo>();
+  letInfo->type = declaredType;
+  letInfo->isNullable = isNullable;
+  letInfo->isMutable = isMutable;
+  letInfo->isConstant = isConstant;
+  letInfo->constIntVal = constInt;
+  letInfo->isInitialized = isInitialized;
+  letInfo->isDefinitelyNull = isDefinitelyNull;
+  letInfo->isHeap = isHeap;
+  letInfo->isDheap = isDheap;
+  letInfo->lastUseNode = letStmt;
+  letInfo->storage = letStorageType;
+  letInfo->hasError = hasError;
+  if (!loopContext.empty() && loopContext.back()) {
+    letInfo->needsPostLoopFree = true;
+    letInfo->bornInLoop = true;
+  }
+
+  metaData[letStmt] = letInfo;
+  symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
+
+  std::cout << "LET STATEMENT DATA TYPE: " << expectedType.resolvedName << "\n";
 }
 
-void Semantics::walkReferenceStatement(Node *node)
-{
-    auto refStmt = dynamic_cast<ReferenceStatement *>(node);
-    if (!refStmt)
+void Semantics::walkAssignStatement(Node *node) {
+  auto assignStmt = dynamic_cast<AssignmentStatement *>(node);
+  if (!assignStmt)
+    return;
+
+  std::shared_ptr<SymbolInfo> symbol = nullptr;
+  std::string assignName;
+  bool hasError = false;
+
+  // --- Handle self.field assignments ---
+  if (auto *selfExpr =
+          dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
+    std::cout << "SELF assignment has been triggered\n";
+
+    if (currentTypeStack.empty() ||
+        currentTypeStack.back().type.kind != DataType::COMPONENT) {
+      logSemanticErrors("'self' cannot be used outside a component",
+                        selfExpr->expression.line, selfExpr->expression.column);
+      hasError = true;
+      return;
+    }
+
+    // Start from the current component
+    auto &compScope = currentTypeStack.back();
+    auto currentTypeName = compScope.typeName;
+
+    std::shared_ptr<MemberInfo> fieldInfo;
+
+    // Walk the full chain of fields
+    for (const auto &field : selfExpr->fields) {
+      auto ident = dynamic_cast<Identifier *>(field.get());
+      if (!ident) {
+        logSemanticErrors("Expected identifier in self expression chain",
+                          selfExpr->expression.line,
+                          selfExpr->expression.column);
+        hasError = true;
         return;
+      }
 
-    std::cout << "[SEMANTIC LOG]: Analysing reference statement\n";
+      const std::string fieldName = ident->identifier.TokenLiteral;
 
-    auto refName = refStmt->referer->expression.TokenLiteral;
-    auto line = refStmt->statement.line;
-    auto column = refStmt->statement.column;
-    ResolvedType refType = ResolvedType{DataType::UNKNOWN, "unknown"};
-    bool hasError = false;
-
-    // Check if the reference variable name already exists
-    auto existingSym = resolveSymbolInfo(refName);
-    if (existingSym)
-    {
-        logSemanticErrors("Reference name '" + refName + "' already in use", line, column);
-        hasError = true;
-    }
-
-    // Check if the reference is pointing to something
-    if (!refStmt->referee)
-    {
-        logSemanticErrors("Reference'" + refName + "' must reference something", line, column);
-        hasError = true;
-    }
-
-    // Checking the type of the referee
-    auto refereeName = extractIdentifierName(refStmt->referee.get());
-    walker(refStmt->referee.get());
-    auto refereeSymbol = resolveSymbolInfo(refereeName);
-    if (!refereeSymbol)
-    {
-        logSemanticErrors("Reference '" + refName + "'is referencing an undeclared variable '" + refereeName + "'", line, column);
+      // Look up current type
+      auto compTypeIt = customTypesTable.find(currentTypeName);
+      if (compTypeIt == customTypesTable.end()) {
+        logSemanticErrors("Component '" + currentTypeName + "' does not exist",
+                          selfExpr->expression.line,
+                          selfExpr->expression.column);
         hasError = true;
         return;
-    }
+      }
 
-    ResolvedType refereeType = refereeSymbol->type;
-    // Check if the referee type is a pointer and block it
-    if (refereeType.isPointer)
-    {
-        logSemanticErrors("Cannot create references to pointers", line, column);
+      auto &members = compTypeIt->second->members;
+      auto memIt = members.find(fieldName);
+      if (memIt == members.end()) {
+        logSemanticErrors("Field '" + fieldName + "' not found in component '" +
+                              currentTypeName + "'",
+                          ident->identifier.line, ident->identifier.column);
         hasError = true;
-    }
-    else
-    {
-        // If the referee type isnt a pointer toggle the isRef flag to true
-        // It is like type elevation after all we want to create a reference to something
-        auto tempType = refereeSymbol->type;
-        tempType.isRef = true;
-        refereeType = isRefType(refereeType); // Convert the name and store it
+        return;
+      }
+
+      fieldInfo = memIt->second;
+      currentTypeName = fieldInfo->type.resolvedName; // move deeper
     }
 
-    // If the reference statement has no type we just infer the type
-    if (!refStmt->type)
-    {
-        refType = refereeType;
-    }
-    else if (refStmt->type)
-    {
-        refType = inferNodeDataType(refStmt); // Update the data type with the type that was declared
+    // Wrap final field info into SymbolInfo
+    symbol = std::make_shared<SymbolInfo>();
+    symbol->type = fieldInfo->type;
+    symbol->isNullable = fieldInfo->isNullable;
+    symbol->isMutable = fieldInfo->isMutable;
+    symbol->isConstant = fieldInfo->isConstant;
+    symbol->isInitialized = fieldInfo->isInitialised;
+    symbol->memberIndex = fieldInfo->memberIndex;
+    symbol->hasError = hasError;
+  }
 
-        if (refType.isNull)
-        {
-            logSemanticErrors("Cannot have a nullable reference '" + refName + "'", line, column);
-            hasError = true;
+  // --- Handle plain identifier assignments ---
+  else if (auto ident =
+               dynamic_cast<Identifier *>(assignStmt->identifier.get())) {
+    assignName = ident->identifier.TokenLiteral;
+    symbol = resolveSymbolInfo(assignName);
+
+    if (!symbol) {
+      logSemanticErrors("Variable '" + assignName + "' is not declared",
+                        ident->identifier.line, ident->identifier.column);
+      hasError = true;
+      return;
+    }
+    walker(ident);
+  }
+  //---Handle dereference identifiers
+  else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(
+               assignStmt->identifier.get())) {
+    walker(derefExpr);
+    assignName = derefExpr->identifier->expression.TokenLiteral;
+    auto derefMeta = metaData.find(derefExpr);
+    if (derefMeta == metaData.end()) {
+      logSemanticErrors(
+          "Failed to resolve dereference metadata for '" + assignName + "'",
+          derefExpr->expression.line, derefExpr->expression.column);
+      hasError = true;
+      return;
+    }
+
+    // THIS is the actual pointee’s symbol info (the target of x)
+    symbol = derefMeta->second;
+
+    // Optional sanity check
+    if (symbol->isPointer) {
+      logSemanticErrors("Dereference did not unwrap pointer correctly for '" +
+                            assignName + "'",
+                        derefExpr->expression.line,
+                        derefExpr->expression.column);
+      hasError = true;
+    }
+  } else if (auto arrAccess =
+                 dynamic_cast<ArraySubscript *>(assignStmt->identifier.get())) {
+    assignName = arrAccess->identifier->expression.TokenLiteral;
+    auto line = arrAccess->expression.line;
+    auto col = arrAccess->expression.column;
+    symbol = resolveSymbolInfo(assignName);
+    if (!symbol) {
+      logSemanticErrors("Unidentifed variable '" + assignName + "' ", line,
+                        col);
+      hasError = true;
+      return;
+    }
+    walker(arrAccess);
+    auto accessMeta = metaData.find(arrAccess);
+    if (accessMeta == metaData.end()) {
+      logSemanticErrors("Failed to get array access metaData", line, col);
+      hasError = true;
+      return;
+    }
+    symbol = accessMeta->second;
+  }
+
+  else {
+    logSemanticErrors("Invalid assignment target",
+                      assignStmt->identifier->expression.line,
+                      assignStmt->identifier->expression.column);
+    hasError = true;
+    return;
+  }
+
+  // --- Handle RHS null literal ---
+  bool rhsIsNull = false;
+  bool isDefinitelyNull = false;
+  if (assignStmt->value) {
+    auto ident = dynamic_cast<Identifier *>(assignStmt->value.get());
+
+    // Check to prevent assignment of null identifiers
+    if (ident) {
+      auto identName = ident->identifier.TokenLiteral;
+      auto identSym = resolveSymbolInfo(identName);
+      if (!identSym) {
+        logSemanticErrors("Cannot assign non existant identifier '" +
+                              identName + "' to variable '" + assignName + "'",
+                          ident->expression.line, ident->expression.column);
+        hasError = true;
+      }
+
+      if (!identSym->isInitialized) {
+        logSemanticErrors("Cannot assign non initialized identifier '" +
+                              identName + "' to variable '" + assignName + "'",
+                          ident->expression.line, ident->expression.column);
+        hasError = true;
+      }
+      walker(ident);
+    } else if (auto nullVal =
+                   dynamic_cast<NullLiteral *>(assignStmt->value.get())) {
+      rhsIsNull = true;
+      isDefinitelyNull = true;
+
+      if (!symbol->isNullable) {
+        logSemanticErrors("Cannot assign 'null' to non-nullable variable '" +
+                              assignName + "'",
+                          assignStmt->identifier->expression.line,
+                          assignStmt->identifier->expression.column);
+        hasError = true;
+        return;
+      }
+
+      // Null adopts LHS type
+      symbol->type = symbol->type;
+      symbol->isInitialized = true;
+      symbol->hasError = hasError;
+      symbol->isDefinitelyNull = isDefinitelyNull;
+      metaData[assignStmt] = symbol;
+
+      // Nothing else to check
+      return;
+    } else if (auto arrLit =
+                   dynamic_cast<ArrayLiteral *>(assignStmt->value.get())) {
+      // Getting the length of the array literal
+      auto arrLitTypeInfo = getArrayTypeInfo(arrLit);
+      // Getting the arrayMeta for the symbol
+      auto arrSymbol = resolveSymbolInfo(assignName);
+      if (!arrSymbol) {
+        logSemanticErrors("Could not find variable '" + assignName + "'",
+                          assignStmt->identifier->expression.line,
+                          assignStmt->identifier->expression.column);
+        hasError = true;
+      }
+
+      auto assignMeta = arrSymbol->arrayTyInfo;
+      // Comapring the lengths
+      if (arrLitTypeInfo.dimensions != assignMeta.dimensions) {
+        logSemanticErrors("Array variable '" + assignName + "' dimensions " +
+                              std::to_string(assignMeta.dimensions) +
+                              " does not match array literal dimensions " +
+                              std::to_string(arrLitTypeInfo.dimensions),
+                          assignStmt->identifier->expression.line,
+                          assignStmt->identifier->expression.column);
+        hasError = true;
+      }
+    } else if (auto unwrap =
+                   dynamic_cast<UnwrapExpression *>(assignStmt->value.get())) {
+      auto line = unwrap->expression.line;
+      auto col = unwrap->expression.column;
+      if (symbol->type.isNull) {
+        logSemanticErrors("Cannot use unwrap calls in nullable assignments ",
+                          line, col);
+        hasError = true;
+      }
+    }
+  }
+
+  // --- Infer RHS type if not null ---
+  ResolvedType rhsType = inferNodeDataType(assignStmt->value.get());
+  auto lhsType = symbol->type;
+  if (symbol->isRef) // If the symbol is a reference strip it
+  {
+    lhsType.isRef = false;
+  }
+
+  if (!isTypeCompatible(lhsType, rhsType)) {
+    logSemanticErrors("Type mismatch: expected '" + symbol->type.resolvedName +
+                          "' but got '" + rhsType.resolvedName + "'",
+                      assignStmt->identifier->expression.line,
+                      assignStmt->identifier->expression.column);
+    hasError = true;
+  }
+
+  // --- Mutability / const checks ---
+  if (symbol->isConstant) {
+    logSemanticErrors("Cannot reassign to constant variable '" + assignName +
+                          "'",
+                      assignStmt->identifier->expression.line,
+                      assignStmt->identifier->expression.column);
+    hasError = true;
+  }
+
+  if (!symbol->isMutable && symbol->isInitialized) {
+    logSemanticErrors("Cannot reassign to immutable variable '" + assignName +
+                          "'",
+                      assignStmt->identifier->expression.line,
+                      assignStmt->identifier->expression.column);
+    hasError = true;
+  }
+
+  // --- Prevent assigning a nullable value to a non-nullable variable ---
+  if (!symbol->isNullable) // LHS is non-nullable
+  {
+    bool rhsDefinitelyNull = false;
+
+    if (assignStmt->value) {
+      if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get())) {
+        rhsDefinitelyNull = true; // literal null
+      } else if (auto ident =
+                     dynamic_cast<Identifier *>(assignStmt->value.get())) {
+        auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
+        if (identSym && identSym->isDefinitelyNull) {
+          rhsDefinitelyNull = true; // identifier that is definitely null
         }
-
-        // Compare the two types
-        if (!isTypeCompatible(refType, refereeType))
-        {
-            logSemanticErrors("Type mismatch reference '" + refName + "' of type '" + refType.resolvedName + "' does not match variable '" + refereeName + "' being refered with type '" + refereeType.resolvedName + "'", line, column);
-            hasError = true;
-        }
+      }
     }
 
-    // Checking if we are refering to a heap raised or global variable if not complain
-    auto refereeStorage = refereeSymbol->storage;
-    if (refereeStorage == StorageType::STACK)
-    {
-        logSemanticErrors("Cannot create a reference '" + refName + "' to a local variable '" + refereeName + "'", line, column);
+    if (rhsDefinitelyNull) {
+      logSemanticErrors(
+          "Cannot assign a null value to to a non-nullable variable '" +
+              assignName + "'",
+          assignStmt->identifier->expression.line,
+          assignStmt->identifier->expression.column);
+      hasError = true;
+    }
+  }
+
+  // If the symbol is a pointer
+  if (symbol->isPointer) {
+    if (auto ident = dynamic_cast<Identifier *>(assignStmt->value.get())) {
+      auto identName = ident->identifier.TokenLiteral;
+      auto identSym = resolveSymbolInfo(identName);
+      // Pointer checks
+      if (!identSym->isPointer) // The identifier itself must be a pointer
+      {
+        logSemanticErrors("Cannot reassign a non pointer '" + identName +
+                              "' to pointer variable '" + assignName + "'",
+                          ident->expression.line, ident->expression.column);
         hasError = true;
-    }
-
-    // Checking the mutability
-    bool isMutable = false;
-    bool isConstant = false;
-    if (refStmt->mutability == Mutability::MUTABLE)
-        isMutable = true;
-
-    if (refStmt->mutability == Mutability::CONSTANT)
-        isConstant = true;
-
-    // Check if the symbol is also mutable
-    if (!refereeSymbol->isMutable && isMutable)
-    {
-        logSemanticErrors("Cannot create a mutable reference '" + refName + "' to an immutable variable '" + refereeName + "'", line, column);
+      }
+      // Get the target symbol
+      auto targetSym = identSym->targetSymbol;
+      if (!targetSym) {
+        logSemanticErrors("No target symbol for '" + identName +
+                              "' being reassigned to variable '" + assignName +
+                              "'",
+                          ident->expression.line, ident->expression.column);
         hasError = true;
-    }
+        return; // This is a critical error leaving it will cause derefencing of
+                // nullptrs
+      }
 
-    if (refereeSymbol->isNullable)
-    {
-        logSemanticErrors("Cannot create a reference to a nullable variable '" + refereeName + "'", line, column);
+      // Check the target symbol scope and block it if it is local
+      if (targetSym->storage == StorageType::STACK) {
+        // The compiler should complain
+        logSemanticErrors("Cannot reassign local pointer '" + identName +
+                              "' to pointer variable '" + assignName + "'",
+                          ident->expression.line, ident->expression.column);
         hasError = true;
+      }
+    } else if (auto addr =
+                   dynamic_cast<AddressExpression *>(assignStmt->value.get())) {
+      // Get the address name
+      auto addrName = addr->identifier->expression.TokenLiteral;
+      auto line = addr->expression.line;
+      auto col = addr->expression.column;
+      // Get the symbolInfo
+      auto addrSym = resolveSymbolInfo(addrName);
+      if (!addrSym) {
+        logSemanticErrors("Unidentified address pointer '" + addrName +
+                              "' cannot reassign to pointer variable '" +
+                              assignName + "'",
+                          line, col);
+        hasError = true;
+      }
+      // Get the storage type
+      if (addrSym->storage == StorageType::STACK) {
+        logSemanticErrors("Cannot reassign local address pointer '" + addrName +
+                              "' to pointer variable '" + assignName + "'",
+                          line, col); // Complain
+        hasError = true;
+      }
+    } else if (auto call =
+                   dynamic_cast<CallExpression *>(assignStmt->value.get())) {
+      // Get the function name
+      auto funcName = call->function_identifier->expression.TokenLiteral;
+      auto line = call->function_identifier->expression.line;
+      auto col = call->function_identifier->expression.column;
+
+      // Get the symbol info
+      auto callSym = resolveSymbolInfo(funcName);
+      if (!callSym) {
+        hasError = true;
+      }
+      // Ensure it is a pointer
+      if (!callSym->returnType.isPointer) {
+        logSemanticErrors("Cannot reassign a non pointer call '" + funcName +
+                              "' to pointer variable '" + assignName + "'",
+                          line, col);
+        hasError = true;
+      }
+    } else {
+      logSemanticErrors(
+          "Must only reassign address to pointer or a pointer to '" +
+              assignName + "'",
+          assignStmt->identifier->expression.line,
+          assignStmt->identifier->expression.column);
+      hasError = true;
     }
+  }
 
-    // Updating the reference count of the symbol being referenced
-    refereeSymbol->refCount += 1;
-    std::cout << "[DEBUG] Incremented refCount for target -> "
-              << refereeSymbol->refCount << "\n";
+  // --- Mark variable initialized ---
+  symbol->isInitialized = true;
+  symbol->isDefinitelyNull = isDefinitelyNull;
+  symbol->hasError = hasError;
 
-    // Updating the storage type for references
-    StorageType refStorage;
-    if (isGlobalScope())
-    {
-        refStorage = StorageType::GLOBAL;
-    }
-    else
-    {
-        refStorage = StorageType::STACK;
-    }
+  // --- Walk the RHS expression ---
+  if (assignStmt->value)
+    walker(assignStmt->value.get());
 
-    auto refInfo = std::make_shared<SymbolInfo>();
-    refInfo->type = refType;
-    refInfo->isInitialized = true;
-    refInfo->isMutable = isMutable;
-    refInfo->isConstant = isConstant;
-    refInfo->refereeSymbol = refereeSymbol;
-    refInfo->hasError = hasError;
-    refInfo->isRef = true;
-    refInfo->storage = refStorage;
-
-    metaData[refStmt] = refInfo;
-    symbolTable.back()[refName] = refInfo;
+  // --- Store metadata for later stages ---
+  metaData[assignStmt] = symbol;
 }
 
-void Semantics::walkPointerStatement(Node *node)
-{
-    auto ptrStmt = dynamic_cast<PointerStatement *>(node);
+void Semantics::walkFieldAssignmentStatement(Node *node) {
+  auto fieldAssignStmt = dynamic_cast<FieldAssignment *>(node);
+  if (!fieldAssignStmt)
+    return;
 
-    if (!ptrStmt)
-        return;
+  auto fieldName = fieldAssignStmt->assignment_token.TokenLiteral;
+  auto line = fieldAssignStmt->statement.line;
+  auto column = fieldAssignStmt->statement.column;
+  bool hasError = false;
 
-    auto ptrName = ptrStmt->name->expression.TokenLiteral;
-    auto line = ptrStmt->name->expression.line;
-    auto col = ptrStmt->name->expression.column;
-    bool hasError = false;
-    bool isMutable = false;
-    bool isConstant = false;
-    ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
+  // Split into "parent.child"
+  auto [parentName, childName] = splitScopedName(fieldName);
+  std::cout << "PARENT NAME:" << parentName << "\n";
+  std::cout << "CHILD NAME:" << childName << "\n";
 
-    // Infer the type of the pointer value
-    ResolvedType targetType = inferNodeDataType(ptrStmt->value.get());
+  // Resolve the parent symbol (must be a variable in scope)
+  auto parentSymbol = resolveSymbolInfo(parentName);
+  if (!parentSymbol) {
+    logSemanticErrors("Variable '" + parentName + "' does not exist", line,
+                      column);
+    hasError = true;
+    return;
+  }
 
-    // Check if the target is a pointer
-    if (!targetType.isPointer)
-    {
-        logSemanticErrors("Must initialize the pointer '" + ptrName + "' with a pointer value", line, col);
-        hasError = true;
-        return;
+  // Get the parent's type
+  std::string parentType = parentSymbol->type.resolvedName;
+  std::cout << "SEMANTIC LOG: Parent type: " << parentType << "\n";
+
+  // Look up that type in the custom types table
+  auto parentIt = customTypesTable.find(parentType);
+  if (parentIt == customTypesTable.end()) {
+    logSemanticErrors("Type '" + parentType + "' does not exist", line, column);
+    hasError = true;
+    return;
+  }
+
+  // Check if the childName exists in that type’s members
+  auto members = parentIt->second->members;
+  auto memberIt = members.find(childName);
+  if (memberIt == members.end()) {
+    logSemanticErrors("Variable '" + childName + "' does not exist in type '" +
+                          parentType + "'",
+                      line, column);
+    hasError = true;
+    return;
+  }
+
+  // Grab field properties
+  ResolvedType type = memberIt->second->type;
+  bool isNullable = memberIt->second->isNullable;
+  bool isMutable = memberIt->second->isMutable;
+  bool isConstant = memberIt->second->isConstant;
+  bool isHeap = memberIt->second->isHeap;
+  bool isInitialized = memberIt->second->isInitialised;
+
+  // Constant/immutability checks
+  if (isConstant) {
+    logSemanticErrors("Cannot reassign to constant variable '" + fieldName +
+                          "'",
+                      line, column);
+    hasError = true;
+    return;
+  }
+  if (!isMutable && isInitialized) {
+    logSemanticErrors("Cannot reassign to immutable variable '" + fieldName +
+                          "'",
+                      line, column);
+    hasError = true;
+    return;
+  }
+
+  // Mark initialized (since this is assignment)
+  isInitialized = true;
+
+  // Analyse the value if present
+  if (fieldAssignStmt->value) {
+    walker(fieldAssignStmt->value.get());
+  }
+
+  if (memberIt->second->isHeap) {
+    memberIt->second->lastUseNode = fieldAssignStmt;
+  }
+
+  // Symbol info for the field
+  auto fieldInfo = std::make_shared<SymbolInfo>();
+  fieldInfo->type = type;
+  fieldInfo->isNullable = isNullable;
+  fieldInfo->isConstant = isConstant;
+  fieldInfo->isInitialized = isInitialized;
+  fieldInfo->hasError = hasError;
+  fieldInfo->isHeap = isHeap;
+
+  // Build metadata for this assignment node
+  auto info = std::make_shared<SymbolInfo>();
+  info->type = type; // The whole node still evaluates to the member type
+  info->baseSymbol = parentSymbol;
+  info->fieldSymbol = fieldInfo;
+  info->isNullable = isNullable;
+  info->isConstant = isConstant;
+  info->isInitialized = isInitialized;
+  info->hasError = hasError;
+
+  metaData[fieldAssignStmt] = info;
+}
+
+void Semantics::walkReferenceStatement(Node *node) {
+  auto refStmt = dynamic_cast<ReferenceStatement *>(node);
+  if (!refStmt)
+    return;
+
+  std::cout << "[SEMANTIC LOG]: Analysing reference statement\n";
+
+  auto refName = refStmt->referer->expression.TokenLiteral;
+  auto line = refStmt->statement.line;
+  auto column = refStmt->statement.column;
+  ResolvedType refType = ResolvedType{DataType::UNKNOWN, "unknown"};
+  bool hasError = false;
+
+  // Check if the reference variable name already exists
+  auto existingSym = resolveSymbolInfo(refName);
+  if (existingSym) {
+    logSemanticErrors("Reference name '" + refName + "' already in use", line,
+                      column);
+    hasError = true;
+  }
+
+  // Check if the reference is pointing to something
+  if (!refStmt->referee) {
+    logSemanticErrors("Reference'" + refName + "' must reference something",
+                      line, column);
+    hasError = true;
+  }
+
+  // Checking the type of the referee
+  auto refereeName = extractIdentifierName(refStmt->referee.get());
+  walker(refStmt->referee.get());
+  auto refereeSymbol = resolveSymbolInfo(refereeName);
+  if (!refereeSymbol) {
+    logSemanticErrors("Reference '" + refName +
+                          "'is referencing an undeclared variable '" +
+                          refereeName + "'",
+                      line, column);
+    hasError = true;
+    return;
+  }
+
+  ResolvedType refereeType = refereeSymbol->type;
+  // Check if the referee type is a pointer and block it
+  if (refereeType.isPointer) {
+    logSemanticErrors("Cannot create references to pointers", line, column);
+    hasError = true;
+  } else {
+    // If the referee type isnt a pointer toggle the isRef flag to true
+    // It is like type elevation after all we want to create a reference to
+    // something
+    auto tempType = refereeSymbol->type;
+    tempType.isRef = true;
+    refereeType = isRefType(refereeType); // Convert the name and store it
+  }
+
+  // If the reference statement has no type we just infer the type
+  if (!refStmt->type) {
+    refType = refereeType;
+  } else if (refStmt->type) {
+    refType = inferNodeDataType(
+        refStmt); // Update the data type with the type that was declared
+
+    if (refType.isNull) {
+      logSemanticErrors("Cannot have a nullable reference '" + refName + "'",
+                        line, column);
+      hasError = true;
     }
 
-    // Dealing with what is being pointed to
-    std::string targetName = "unknown";
-    if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get()))
-    {
-        targetName = ptrValue->identifier->expression.TokenLiteral;
+    // Compare the two types
+    if (!isTypeCompatible(refType, refereeType)) {
+      logSemanticErrors("Type mismatch reference '" + refName + "' of type '" +
+                            refType.resolvedName +
+                            "' does not match variable '" + refereeName +
+                            "' being refered with type '" +
+                            refereeType.resolvedName + "'",
+                        line, column);
+      hasError = true;
     }
-    else if (auto ptrValue = dynamic_cast<CallExpression *>(ptrStmt->value.get()))
-    {
-        targetName = ptrValue->function_identifier->expression.TokenLiteral;
+  }
+
+  // Checking if we are refering to a heap raised or global variable if not
+  // complain
+  auto refereeStorage = refereeSymbol->storage;
+  if (refereeStorage == StorageType::STACK) {
+    logSemanticErrors("Cannot create a reference '" + refName +
+                          "' to a local variable '" + refereeName + "'",
+                      line, column);
+    hasError = true;
+  }
+
+  // Checking the mutability
+  bool isMutable = false;
+  bool isConstant = false;
+  if (refStmt->mutability == Mutability::MUTABLE)
+    isMutable = true;
+
+  if (refStmt->mutability == Mutability::CONSTANT)
+    isConstant = true;
+
+  // Check if the symbol is also mutable
+  if (!refereeSymbol->isMutable && isMutable) {
+    logSemanticErrors("Cannot create a mutable reference '" + refName +
+                          "' to an immutable variable '" + refereeName + "'",
+                      line, column);
+    hasError = true;
+  }
+
+  if (refereeSymbol->isNullable) {
+    logSemanticErrors("Cannot create a reference to a nullable variable '" +
+                          refereeName + "'",
+                      line, column);
+    hasError = true;
+  }
+
+  // Updating the reference count of the symbol being referenced
+  refereeSymbol->refCount += 1;
+  std::cout << "[DEBUG] Incremented refCount for target -> "
+            << refereeSymbol->refCount << "\n";
+
+  // Updating the storage type for references
+  StorageType refStorage;
+  if (isGlobalScope()) {
+    refStorage = StorageType::GLOBAL;
+  } else {
+    refStorage = StorageType::STACK;
+  }
+
+  auto refInfo = std::make_shared<SymbolInfo>();
+  refInfo->type = refType;
+  refInfo->isInitialized = true;
+  refInfo->isMutable = isMutable;
+  refInfo->isConstant = isConstant;
+  refInfo->refereeSymbol = refereeSymbol;
+  refInfo->hasError = hasError;
+  refInfo->isRef = true;
+  refInfo->storage = refStorage;
+
+  metaData[refStmt] = refInfo;
+  symbolTable.back()[refName] = refInfo;
+}
+
+void Semantics::walkPointerStatement(Node *node) {
+  auto ptrStmt = dynamic_cast<PointerStatement *>(node);
+
+  if (!ptrStmt)
+    return;
+
+  auto ptrName = ptrStmt->name->expression.TokenLiteral;
+  auto line = ptrStmt->name->expression.line;
+  auto col = ptrStmt->name->expression.column;
+  bool hasError = false;
+  bool isMutable = false;
+  bool isConstant = false;
+  ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
+
+  // Infer the type of the pointer value
+  ResolvedType targetType = inferNodeDataType(ptrStmt->value.get());
+
+  // Check if the target is a pointer
+  if (!targetType.isPointer) {
+    logSemanticErrors("Must initialize the pointer '" + ptrName +
+                          "' with a pointer value",
+                      line, col);
+    hasError = true;
+    return;
+  }
+
+  // Dealing with what is being pointed to
+  std::string targetName = "unknown";
+  if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get())) {
+    targetName = ptrValue->identifier->expression.TokenLiteral;
+  } else if (auto ptrValue =
+                 dynamic_cast<CallExpression *>(ptrStmt->value.get())) {
+    targetName = ptrValue->function_identifier->expression.TokenLiteral;
+  } else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get())) {
+    targetName = ptrValue->identifier.TokenLiteral;
+  } // Leave it here for extensibility
+
+  // Walking the target
+  walker(ptrStmt->value.get());
+
+  auto targetSymbol = resolveSymbolInfo(targetName);
+  if (!targetSymbol) {
+    logSemanticErrors("Pointer '" + ptrName +
+                          "'is pointing to an undeclared variable '" +
+                          targetName + "'",
+                      line, col);
+    hasError = true;
+    return;
+  }
+
+  // What if the user didnt include the type (We infer for them)
+  if (!ptrStmt->type)
+    ptrType = targetType;
+  else // If the user actually included a type we verify it
+  {
+    ptrType = inferNodeDataType(ptrStmt);
+    // Check if the types are compatible
+    // I am comparing with the resolved name since it is sure to either be
+    // type_ptr comparing with datatypes purely can allow bugs in the type
+    // system
+    if (ptrType.resolvedName != targetType.resolvedName) {
+      logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" +
+                            ptrType.resolvedName + "' does not match '" +
+                            targetName + "' of type '" +
+                            targetType.resolvedName + "'",
+                        line, col);
+      hasError = true;
     }
-    else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get()))
-    {
-        targetName = ptrValue->identifier.TokenLiteral;
-    } // Leave it here for extensibility
+  }
 
-    // Walking the target
-    walker(ptrStmt->value.get());
+  // Guard against local pointing
+  auto targetStorage = targetSymbol->storage;
+  if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get())) {
+    if (targetStorage == StorageType::STACK) {
 
-    auto targetSymbol = resolveSymbolInfo(targetName);
-    if (!targetSymbol)
-    {
-        logSemanticErrors("Pointer '" + ptrName + "'is pointing to an undeclared variable '" + targetName + "'", line, col);
-        hasError = true;
-        return;
+      logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" +
+                            targetName + "' because it is local",
+                        line, col);
+      hasError = true;
     }
-
-    // What if the user didnt include the type (We infer for them)
-    if (!ptrStmt->type)
-        ptrType = targetType;
-    else // If the user actually included a type we verify it
-    {
-        ptrType = inferNodeDataType(ptrStmt);
-        // Check if the types are compatible
-        // I am comparing with the resolved name since it is sure to either be type_ptr comparing with datatypes purely can allow bugs in the type system
-        if (ptrType.resolvedName != targetType.resolvedName)
-        {
-            logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" + ptrType.resolvedName + "' does not match '" + targetName + "' of type '" + targetType.resolvedName + "'", line, col);
-            hasError = true;
-        }
+  } else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get())) {
+    auto pointeeTargetSym = targetSymbol->targetSymbol;
+    if (!pointeeTargetSym) {
+      logSemanticErrors("Pointer '" + ptrName + "'s target '" + targetName +
+                            "' lacks targetInfo",
+                        line, col);
+      return;
     }
-
-    // Guard against local pointing
-    auto targetStorage = targetSymbol->storage;
-    if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get()))
-    {
-        if (targetStorage == StorageType::STACK)
-        {
-
-            logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" + targetName + "' because it is local", line, col);
-            hasError = true;
-        }
+    if (pointeeTargetSym->storage == StorageType::STACK) {
+      logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" +
+                            targetName +
+                            "' because it also points to local variable",
+                        line, col);
+      hasError = true;
     }
-    else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get()))
-    {
-        auto pointeeTargetSym = targetSymbol->targetSymbol;
-        if (!pointeeTargetSym)
-        {
-            logSemanticErrors("Pointer '" + ptrName + "'s target '" + targetName + "' lacks targetInfo", line, col);
-            return;
-        }
-        if (pointeeTargetSym->storage == StorageType::STACK)
-        {
-            logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" + targetName + "' because it also points to local variable", line, col);
-            hasError = true;
-        }
-    }
+  }
 
-    /*
-    Checking for mutability (It should be noted that by default the mutability is... well immutable
-    That means if the user didnt add it we are dealing with an immutable pointer
-    */
+  /*
+  Checking for mutability (It should be noted that by default the mutability
+  is... well immutable That means if the user didnt add it we are dealing with
+  an immutable pointer
+  */
 
-    if (ptrStmt->mutability == Mutability::MUTABLE)
-    {
-        std::cout << "POINTER IS MUTABLE\n";
-        isMutable = true;
-    }
-    else if (ptrStmt->mutability == Mutability::CONSTANT)
-    {
-        std::cout << "POINTER IS CONSTANT\n";
-        isConstant = true;
-    }
+  if (ptrStmt->mutability == Mutability::MUTABLE) {
+    std::cout << "POINTER IS MUTABLE\n";
+    isMutable = true;
+  } else if (ptrStmt->mutability == Mutability::CONSTANT) {
+    std::cout << "POINTER IS CONSTANT\n";
+    isConstant = true;
+  }
 
-    std::cout << "POINTER TYPE: " << ptrType.resolvedName << "\n";
+  std::cout << "POINTER TYPE: " << ptrType.resolvedName << "\n";
 
-    // Pointer's storage info (The pointer itself not the target)
-    // I currently dont have heap raised pointers as of yet but when I add them I will update this part
-    StorageType pointerStorage;
-    if (isGlobalScope())
-    {
-        pointerStorage = StorageType::GLOBAL;
-    }
-    else
-    {
-        pointerStorage = StorageType::STACK;
-    }
+  // Pointer's storage info (The pointer itself not the target)
+  // I currently dont have heap raised pointers as of yet but when I add them I
+  // will update this part
+  StorageType pointerStorage;
+  if (isGlobalScope()) {
+    pointerStorage = StorageType::GLOBAL;
+  } else {
+    pointerStorage = StorageType::STACK;
+  }
 
-    auto ptrInfo = std::make_shared<SymbolInfo>();
-    ptrInfo->isHeap = false; // For now
-    ptrInfo->lastUseNode = ptrStmt;
-    ptrInfo->type = ptrType;
-    ptrInfo->hasError = hasError;
-    ptrInfo->isPointer = true;
-    ptrInfo->targetSymbol = targetSymbol;
-    ptrInfo->isMutable = isMutable;
-    ptrInfo->isConstant = isConstant;
-    ptrInfo->storage = pointerStorage;
-    ptrInfo->isInitialized = true;
+  auto ptrInfo = std::make_shared<SymbolInfo>();
+  ptrInfo->isHeap = false; // For now
+  ptrInfo->lastUseNode = ptrStmt;
+  ptrInfo->type = ptrType;
+  ptrInfo->hasError = hasError;
+  ptrInfo->isPointer = true;
+  ptrInfo->targetSymbol = targetSymbol;
+  ptrInfo->isMutable = isMutable;
+  ptrInfo->isConstant = isConstant;
+  ptrInfo->storage = pointerStorage;
+  ptrInfo->isInitialized = true;
 
-    metaData[ptrStmt] = ptrInfo;
-    symbolTable.back()[ptrName] = ptrInfo;
+  metaData[ptrStmt] = ptrInfo;
+  symbolTable.back()[ptrName] = ptrInfo;
 }
