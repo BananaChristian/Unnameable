@@ -10,8 +10,9 @@
 #Main test folder
 compiler_test
 
-# Runtime object folder
-/runtime/*.o
+# Core object folder
+/core
+/core/*.o
 
 # Build system
 .clang-format.
