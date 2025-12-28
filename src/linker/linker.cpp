@@ -1,173 +1,118 @@
 #include "linker.hpp"
-#include <iostream>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
 
 Linker::Linker(const std::string &currentObject)
-    : currentObjectFile(currentObject)
-{
-    // Compulsory runtime objects
-    compulsoryObjects.push_back("allocator.o");
-    compulsoryObjects.push_back("helper.o");
+    : currentObjectFile(currentObject) {
+  // Compulsory runtime objects
+  compulsoryObjects.push_back("syscalls.o");
+  compulsoryObjects.push_back("allocator.o");
+  compulsoryObjects.push_back("unnitoa.o");
 }
 
-std::string Linker::resolveLinkPath(LinkStatement *link, const std::string &currentFile)
-{
-    if (!link)
-        throw std::runtime_error("Invalid link node");
+std::string Linker::resolveLinkPath(LinkStatement *link,
+                                    const std::string &currentFile) {
+  if (!link || !link->stringExpr)
+    throw std::runtime_error("Linker Error: Null link statement");
 
-    if (!link->stringExpr)
-        throw std::runtime_error("Invalid link string node");
+  auto stringExpr = dynamic_cast<StringLiteral *>(link->stringExpr.get());
+  std::string target = stringExpr->string_token.TokenLiteral;
 
-    auto stringExpr = dynamic_cast<StringLiteral *>(link->stringExpr.get());
+  // If there's no slash and no extension, it's a name-tag (-l flag)
+  bool isPath = (target.find('/') != std::string::npos);
+  bool hasExt = fs::path(target).has_extension();
 
-    std::string target = stringExpr->string_token.TokenLiteral;
-    fs::path targetPath(target);
+  if (!isPath && !hasExt) {
+    return "-l" + target;
+  }
 
-    // If the user already gave a full path, just return it
-    if (targetPath.is_absolute())
-        return targetPath.string();
+  // Resolve as a File Path
+  fs::path targetPath(target);
+  fs::path resolved;
 
-    // If it ends with a recognized object/library extension, treat as file
-    if (targetPath.has_extension())
-    {
-        fs::path resolved = fs::path(currentFile).parent_path() / targetPath;
-        return resolved.string();
-    }
+  if (targetPath.is_absolute()) {
+    resolved = targetPath;
+  } else {
+    // Resolve relative to the source file
+    resolved = fs::path(currentFile).parent_path() / targetPath;
+  }
 
-#if defined(_WIN32)
-    // Windows: .lib or .dll
-    fs::path winLib = target + ".lib";
-    fs::path resolvedWin = fs::path(currentFile).parent_path() / winLib;
-    if (fs::exists(resolvedWin))
-        return resolvedWin.string();
-#else
-    // Linux/Unix: lib{name}.a or lib{name}.so
-    fs::path libStatic = fs::path("lib" + target + ".a");
-    fs::path libShared = fs::path("lib" + target + ".so");
+  // Ensure extension (Default to .o if the user was lazy)
+  if (!resolved.has_extension()) {
+    resolved += ".o";
+  }
 
-    fs::path resolvedDir = fs::path(currentFile).parent_path();
-    fs::path resolvedStatic = resolvedDir / libStatic;
-    fs::path resolvedShared = resolvedDir / libShared;
+  if (!fs::exists(resolved)) {
+    throw std::runtime_error("Linker Error: File not found: " +
+                             resolved.string());
+  }
 
-    if (fs::exists(resolvedStatic))
-        return resolvedStatic.string();
-    if (fs::exists(resolvedShared))
-        return resolvedShared.string();
-#endif
-
-    // Fallback: assume object file in the current directory
-    fs::path fallback = fs::path(currentFile).parent_path() / (target + ".o");
-    return fallback.string();
+  return resolved.string();
 }
 
 void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
                           const std::string &currentFile,
-                          const std::string &outputExecutable)
-{
-    std::vector<std::string> filesToLink;
-    std::unordered_set<std::string> seen;
+                          const std::string &outputExecutable) {
+  std::vector<std::string> filesToLink;
+  std::string exeDir = getExecutableDir();
+  fs::path coreDir = fs::path(exeDir).parent_path() / "core";
 
-    // Always include the current compilation unit first
-    filesToLink.push_back(currentObjectFile);
-    seen.insert(currentObjectFile);
+  fs::path entryPath = coreDir / "entry.o";
+  if (!fs::exists(entryPath))
+    throw std::runtime_error("Link Driver Error: core/entry.o missing!");
+  filesToLink.push_back(entryPath.string());
 
-    // Include user links
-    for (const auto &node : nodes)
-    {
-        auto link = dynamic_cast<LinkStatement *>(node.get());
-        if (!link)
-            continue;
+  // The User's Code
+  filesToLink.push_back(currentObjectFile);
 
-        std::string resolved = resolveLinkPath(link, currentFile);
-        if (seen.insert(resolved).second)
-            filesToLink.push_back(resolved);
+  // User-requested Links (link "whatever")
+  for (const auto &node : nodes) {
+    auto link = dynamic_cast<LinkStatement *>(node.get());
+    if (link)
+      filesToLink.push_back(resolveLinkPath(link, currentFile));
+  }
+
+  // The Core Support
+  for (auto &obj : compulsoryObjects) {
+    fs::path full = coreDir / obj;
+    if (!fs::exists(full))
+      throw std::runtime_error("Link Driver Error: Missing " + obj);
+    filesToLink.push_back(full.string());
+  }
+
+  // Construct the LLD command
+  // -T points to the map. --gc-sections throws away what isn't being using.
+  std::string cmd = "ld.lld -T " + (coreDir / "linker.ld").string() +
+                    " --gc-sections -o " + outputExecutable;
+
+  for (auto &f : filesToLink) {
+    if (f[0] == '-') { // Don't quote flags like -lSDL2
+      cmd += " " + f;
+    } else {
+      cmd += " \"" + f + "\"";
     }
+  }
 
-    // Include runtime objects
-    std::string exeDir = getExecutableDir();
-    fs::path runtimeDir = fs::path(exeDir).parent_path() / "runtime";
-    for (auto &obj : compulsoryObjects)
-    {
-        fs::path full = runtimeDir / obj;
-        std::string fullStr = full.string();
-        if (!fs::exists(full))
-            throw std::runtime_error("Missing runtime object: " + fullStr);
+  std::cout << "[LINKER] Link: " << cmd << "\n";
 
-        if (seen.insert(fullStr).second)
-            filesToLink.push_back(fullStr);
-    }
-
-    // Use g++ as linker instead of LLD
-    std::string cmd = "g++ -std=c++17 -g -o \"" + outputExecutable + "\"";
-    for (auto &f : filesToLink)
-        cmd += " \"" + f + "\"";
-
-
-    std::cout << "[LINKER] Running: " << cmd << "\n";
-
-    int result = system(cmd.c_str());
-    if (result != 0)
-        throw std::runtime_error("[LINKER ERROR] g++ failed with exit code " + std::to_string(result));
-
-    std::cout << "[LINKER] Linking successful\n";
+  if (system(cmd.c_str()) != 0)
+    throw std::runtime_error("Link Driver Error: ld.lld failed.");
 }
 
-
-bool Linker::checkLLD()
-{
-#if defined(_WIN32)
-    return std::system("lld-link --version > nul 2>&1") == 0;
-#else
-    return std::system("ld.lld --version > /dev/null 2>&1") == 0;
-#endif
+bool Linker::checkLLD() {
+  return std::system("ld.lld --version > /dev/null 2>&1") == 0;
 }
 
-std::string Linker::findLibrary(const std::string &name)
-{
-    std::vector<std::string> searchPaths = {
-        "/usr/lib/x86_64-linux-gnu",
-        "/lib/x86_64-linux-gnu",
-        "/usr/lib",
-        "/lib"};
+std::string Linker::getExecutableDir() {
+  char buf[4096];
+  ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (len <= 0)
+    throw std::runtime_error("Failed to resolve compiler path");
 
-    for (auto &dir : searchPaths)
-    {
-        for (auto &entry : fs::directory_iterator(dir))
-        {
-            if (entry.path().filename().string().find(name) != std::string::npos)
-            {
-                return entry.path().string();
-            }
-        }
-    }
-    return ""; // Not found
-}
-
-void Linker::appendSystemLibs(std::string &cmd)
-{
-    std::string libc = findLibrary("libc.so");
-    std::string libgcc = findLibrary("libgcc_s.so");
-
-    if (!libc.empty())
-        cmd += " " + libc;
-    if (!libgcc.empty())
-        cmd += " " + libgcc;
-
-    if (libc.empty() || libgcc.empty())
-        std::cerr << "[LINKER WARNING] Could not find libc or libgcc!\n";
-}
-
-std::string Linker::getExecutableDir()
-{
-    char buf[4096];
-    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len <= 0)
-        throw std::runtime_error("Failed to resolve compiler path");
-
-    buf[len] = '\0';
-    return fs::path(buf).parent_path().string();
+  buf[len] = '\0';
+  return fs::path(buf).parent_path().string();
 }

@@ -3,7 +3,6 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 
 class Linker
 {
@@ -26,10 +25,6 @@ private:
 
     // Internal core libs map  (for my future use)
     std::unordered_map<std::string, std::string> coreLibsMap;
-
-    std::string findLibrary(const std::string &name);
-
-    void appendSystemLibs(std::string &cmd);
 
     std::string getExecutableDir();
 };
