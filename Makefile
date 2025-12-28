@@ -1,43 +1,48 @@
+# ___Compiler & Tools_____
 CXX = g++
+CC  = gcc
+NASM = nasm
+
+# ____Pathing______
+BIN_DIR       = bin
+OBJ_DIR       = runtime
+CORE_DIR      = core
+LIB_DIR       = lib
+URC_X86_LINUX = $(LIB_DIR)/urc/architecture/x86_64/linux
+
+# _____Compiler Flags______
 CXXFLAGS = -std=c++17 -g \
     -Isrc -Isrc/lexer -Isrc/parser -Isrc/token -Isrc/semantics \
-    -Isrc/irgen -Isrc/layout -Isrc/linker -Isrc/sentinel -Isrc/errors -Isrc/stubgen -Isrc/deserializer -Iinclude 
+    -Isrc/irgen -Isrc/layout -Isrc/linker -Isrc/sentinel -Isrc/errors \
+    -Isrc/stubgen -Isrc/deserializer -Iinclude 
 
-CC=gcc
-RUNTIME_CXXFLAGS = -std=c++17 -g
-RUNTIME_CFLAGS   = -std=c11 -g
+# ______Runtime Flags_________
+RUNTIME_CXXFLAGS   = -std=c++17 -g -ffreestanding -nostdlib -fno-stack-protector -fno-exceptions
+RUNTIME_CFLAGS     = -std=c11 -g -ffreestanding -nostdlib -fno-stack-protector
+ASFLAGS            = -f elf64
 
+# ________LLVM Integration___________
+LLVM_CXXFLAGS = $(shell llvm-config --cxxflags | sed 's/-std=c++[0-9]*//g;s/-fno-exceptions//g')
+LLVM_LDFLAGS  = $(shell llvm-config --ldflags --system-libs --libs core irreader support analysis transformutils bitwriter)
 
+# _____Sanity Checks___________
 SAN_FLAGS = -fsanitize=address,undefined
 
-LLVM_CXXFLAGS = $(shell llvm-config --cxxflags | sed 's/-std=c++[0-9]*//g;s/-fno-exceptions//g')
-LLVM_LDFLAGS   = $(shell llvm-config --ldflags --system-libs --libs core irreader support analysis transformutils bitwriter)
-
-# Detect OS for executable extension
+# ______Executable Extension Logic__________
 ifeq ($(OS),Windows_NT)
     EXE_EXT := .exe
 else
     EXE_EXT :=
 endif
 
-# Default directories
-BIN_DIR = bin
-OBJ_DIR = runtime
-
-# Compiler binary
 OUT ?= $(BIN_DIR)/unnc$(EXE_EXT)
-
-# All source files for compiler
 SRC = $(wildcard src/**/*.cpp) $(wildcard src/*.cpp)
 
-# Runtime source files
-RUNTIME_SRC = allocator/allocator.c tools/helper.cpp
-RUNTIME_OBJ = $(OBJ_DIR)/allocator.o $(OBJ_DIR)/helper.o
+# TARGETS
 
-# Default target: build compiler
-all: $(OUT)
+all: $(OUT) core
 
-# Compiler build (does NOT include runtime objects)
+# _____Build the Compiler Executable_______
 $(OUT): $(SRC)
 	@mkdir -p $(BIN_DIR)
 ifdef SANITIZE
@@ -48,37 +53,39 @@ else
 	@echo "Compiler built at $(OUT)"
 endif
 
-# Build runtime objects (allocator.o + helper.o)
-runtime: $(OBJ_DIR)/allocator.o $(OBJ_DIR)/helper.o
-	@echo "Runtime objects built in $(OBJ_DIR)/"
+# _____Build the Core Objects (Dumps into ./core)______
+core: $(CORE_DIR)/entry.o $(CORE_DIR)/syscalls.o $(CORE_DIR)/allocator.o $(CORE_DIR)/unnitoa.o
+	@echo "All sovereign core objects dumped into $(CORE_DIR)/"
 
-$(OBJ_DIR)/allocator.o: allocator/allocator.c
-	@mkdir -p $(OBJ_DIR)
+$(CORE_DIR)/entry.o: $(URC_X86_LINUX)/entry.asm
+	@mkdir -p $(CORE_DIR)
+	$(NASM) $(ASFLAGS) $< -o $@
+
+$(CORE_DIR)/syscalls.o: $(URC_X86_LINUX)/syscalls.asm
+	@mkdir -p $(CORE_DIR)
+	$(NASM) $(ASFLAGS) $< -o $@
+
+# (SAGE Allocator)
+$(CORE_DIR)/allocator.o: $(LIB_DIR)/allocator/allocator.c
+	@mkdir -p $(CORE_DIR)
 	$(CC) $(RUNTIME_CFLAGS) -c $< -o $@
 
-$(OBJ_DIR)/helper.o: tools/helper.cpp
-	@mkdir -p $(OBJ_DIR)
+# (Unnitoa)
+$(CORE_DIR)/unnitoa.o: $(LIB_DIR)/tools/unnitoa.cpp
+	@mkdir -p $(CORE_DIR)
 	$(CXX) $(RUNTIME_CXXFLAGS) -c $< -o $@
 
+# _____Utility Targets______
 
-# Run compiler on test file
-run: $(OUT) runtime
+run: $(OUT) core
 ifeq ($(OS),Windows_NT)
 	$(OUT) compiler_test/test.unn -verbose
 else
 	./$(OUT) compiler_test/test.unn -verbose
 endif
 
-# Compile a user's .unn file
-# Usage: make compile FILE=main.unn FLAGS="-c -o main.o"
-compile: runtime
-ifeq ($(FILE),)
-	$(error Please specify FILE, e.g., make compile FILE=main.unn FLAGS="-o main")
-endif
-	@mkdir -p $(BIN_DIR) $(OBJ_DIR)
-	$(OUT) $(FILE) $(FLAGS)
-
-# Clean build
 clean:
-	rm -rf $(OUT) $(OBJ_DIR)/*.o
-	@echo "Cleaned compiler"
+	rm -rf $(BIN_DIR) $(CORE_DIR)/*.o $(OBJ_DIR)/*.o
+	@echo "Cleaned build artifacts."
+
+.PHONY: all core clean run
