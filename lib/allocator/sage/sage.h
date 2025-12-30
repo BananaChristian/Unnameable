@@ -1,5 +1,5 @@
-#ifndef ALLOCATOR_H
-#define ALLOCATOR_H
+#ifndef SAGE_H
+#define SAGE_H
 #include <stddef.h>
 #include <stdint.h>
 
