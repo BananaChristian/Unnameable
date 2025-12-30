@@ -27,7 +27,7 @@ struct LoopBlocks
 struct AddressAndPendingFree
 {
     llvm::Value *address;
-    llvm::CallInst *pendingFree;
+    std::vector<llvm::CallInst*> pendingFrees;
 };
 
 class IRGenerator

@@ -1,4 +1,5 @@
 #include "layout.hpp"
+#include "ast.hpp"
 #include <string>
 
 Layout::Layout(Semantics &sem, llvm::LLVMContext &ctx)
@@ -37,6 +38,7 @@ void Layout::registerComponentCalculatorFns()
 {
     calculatorFnsMap[typeid(LetStatement)] = &Layout::calculateLetStatementSize;
     calculatorFnsMap[typeid(ArrayStatement)] = &Layout::calculateArrayStatementSize;
+    calculatorFnsMap[typeid(PointerStatement)]= &Layout::calculatePointerStatementSize;
     calculatorFnsMap[typeid(DheapStatement)] = &Layout::calculateDheapStatementSize;
     calculatorFnsMap[typeid(WhileStatement)] = &Layout::calculateWhileStatementSize;
     calculatorFnsMap[typeid(ForStatement)] = &Layout::calculateForStatementSize;
@@ -124,7 +126,7 @@ void Layout::calculateArrayStatementSize(Node *node)
     if (!arrSym->isHeap && !arrSym->isDheap)
         return;
 
-    // --- PROBE 1: Dimension Check ---
+    //  Dimension Check
     auto &info = arrSym->arrayTyInfo;
     std::cout << "[DEBUG-LAYOUT] Processing: " << name << " | Dimensions found: " << info.sizePerDimension.size() << "\n";
 
@@ -149,7 +151,7 @@ void Layout::calculateArrayStatementSize(Node *node)
         }
     }
 
-    // --- PROBE 2: Type Size Check ---
+    // Type Size Check
     llvm::Type *baseLLVMTy = getLLVMType(info.underLyingType);
     if (!baseLLVMTy)
     {
@@ -170,7 +172,7 @@ void Layout::calculateArrayStatementSize(Node *node)
     arrSym->componentSize = totalByteSize;
     arrSym->alignment = elementAlign;
 
-    // --- PROBE 3: Pool Addition ---
+    //  Pool Addition 
     if (arrSym->isHeap)
     {
         totalHeapSize += totalByteSize;
@@ -182,6 +184,35 @@ void Layout::calculateArrayStatementSize(Node *node)
     {
         std::cout << "[LAYOUT-FINAL] DHEAP Array '" << name << "' -> Calculated " << totalByteSize << " bytes (skipped pool).\n";
     }
+}
+
+void Layout::calculatePointerStatementSize(Node *node){
+    auto ptrStmt=dynamic_cast<PointerStatement*>(node);
+    if(!ptrStmt)
+        return;
+    std::cout << "[PRESTATIC LOG]: Calculating for let statement " << ptrStmt->toString() << "\n";
+    
+    auto ptrMeta=semantics.metaData.find(ptrStmt);
+    if(ptrMeta==semantics.metaData.end()){
+        logPrestaticError("Failed to find pointer statement metaData", ptrStmt->name->expression.line, ptrStmt->name->expression.line);
+        return;
+    }
+    
+    auto ptrSym=ptrMeta->second;
+    if(!ptrSym->isHeap&&!ptrSym->isDheap)
+        return;
+    
+    llvm::DataLayout DL(tempModule.get());
+    
+    llvm::Type* ptrType = llvm::PointerType::get(context, 0);
+    
+    uint64_t compSize = DL.getTypeAllocSize(ptrType); 
+    llvm::Align compAlignment = DL.getABITypeAlign(ptrType);
+    
+    ptrSym->alignment=compAlignment;
+    ptrSym->componentSize=compSize;
+    
+    totalHeapSize += compSize;
 }
 
 void Layout::calculateDheapStatementSize(Node *node)

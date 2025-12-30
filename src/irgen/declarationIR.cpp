@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "irgen.hpp"
 //______________DYNAMIC HEAP WRAP____________________
 void IRGenerator::generateDheapStatement(Node *node) {
@@ -253,6 +254,101 @@ void IRGenerator::generateArrayStatement(Node *node) {
       }
     }
   }
+}
+
+//_________________POINTER STATEMENT____________________
+void IRGenerator::generatePointerStatement(Node *node) {
+  auto ptrStmt = dynamic_cast<PointerStatement *>(node);
+  if (!ptrStmt)
+    throw std::runtime_error("Invalid pointer statement");
+
+  auto ptrName = ptrStmt->name->expression.TokenLiteral;
+
+  // Getting the pointer metaData
+  auto metaIt = semantics.metaData.find(ptrStmt);
+  if (metaIt == semantics.metaData.end())
+    throw std::runtime_error("Missing pointer statement metaData for '" +
+                             ptrName + "'");
+
+  auto ptrSym = metaIt->second;
+  if (!ptrSym)
+    throw std::runtime_error("Undefined pointer '" + ptrName + "'");
+
+  if (ptrSym->hasError)
+    throw std::runtime_error("Semantic error detected ");
+
+  // Getting the pointer llvm type
+  llvm::Type *ptrType = getLLVMType(ptrSym->type);
+  if (!ptrType)
+    throw std::runtime_error("Failed to get LLVM Type for '" + ptrName + "'");
+
+  llvm::Type *ptrStorageType = ptrType->getPointerTo();
+
+  std::cout << "[IR DEBUG] Pointer type: " << ptrSym->type.resolvedName << "\n";
+
+  llvm::Value *initVal = ptrStmt->value
+                             ? generateExpression(ptrStmt->value.get())
+                             : llvm::Constant::getNullValue(ptrType);
+
+  if (!initVal)
+    throw std::runtime_error("No init value");
+
+  llvm::Value *storagePtr = nullptr;
+  if (ptrSym->isHeap) {
+    storagePtr = allocateHeapStorage(ptrSym, ptrName, nullptr);
+    funcBuilder.CreateStore(initVal, storagePtr);
+  } else if (ptrSym->isDheap) {
+    storagePtr = allocateDynamicHeapStorage(ptrSym, ptrName);
+    funcBuilder.CreateStore(initVal, storagePtr);
+  } else if (!funcBuilder.GetInsertBlock()) {
+    llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
+    if (!globalInit)
+      throw std::runtime_error("Global pointer must be constant");
+
+    storagePtr = new llvm::GlobalVariable(*module, ptrType, false,
+                                          llvm::GlobalValue::InternalLinkage,
+                                          globalInit, ptrName);
+  } else {
+    storagePtr = funcBuilder.CreateAlloca(ptrType, nullptr, ptrName);
+    funcBuilder.CreateStore(initVal, storagePtr);
+  }
+
+  ptrSym->llvmValue = storagePtr;
+  ptrSym->llvmType = ptrType;
+
+  // Last use clean up for the pointer statement
+  if (!ptrSym->needsPostLoopFree) {
+    if (ptrStmt->isHeap) {
+      Node *lastUse = ptrSym->lastUseNode ? ptrSym->lastUseNode : ptrStmt;
+      if (ptrStmt == lastUse && ptrSym->refCount == 0) {
+        freeHeapStorage(ptrSym->componentSize, ptrSym->alignment.value(),
+                        ptrName);
+      }
+    } else if (ptrStmt->isDheap) {
+      Node *lastUse = ptrSym->lastUseNode ? ptrSym->lastUseNode : ptrStmt;
+      if (ptrStmt == lastUse && ptrSym->refCount == 0) {
+        freeDynamicHeapStorage(ptrSym);
+      }
+    }
+  }
+
+  // Clean the target too if that is its last use
+  if (auto addrExpr = dynamic_cast<AddressExpression *>(ptrStmt->value.get())) {
+    const std::string &targetName = addrExpr->expression.TokenLiteral;
+    auto targetSym = ptrSym->targetSymbol;
+    if (targetSym) {
+      if (targetSym->isHeap) {
+        if (targetSym->lastUseNode == addrExpr) {
+          freeHeapStorage(targetSym->componentSize,
+                          targetSym->alignment.value(), targetName);
+        }
+      } else if (targetSym->isDheap) {
+        freeDynamicHeapStorage(targetSym);
+      }
+    }
+  }
+
+  std::cout << "Exited pointer statement generator\n";
 }
 
 //_______________________HELPERS______________________________________
@@ -599,11 +695,7 @@ void IRGenerator::freeHeapStorage(uint64_t size, uint64_t alignSize,
       "sage_free", llvm::Type::getVoidTy(context),
       llvm::Type::getInt64Ty(context), llvm::Type::getInt64Ty(context));
 
-  funcBuilder.CreateCall(
-      sageFree,
-      {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), size),
-       llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), alignSize)},
-      letName + "_sage_free");
+  funcBuilder.CreateCall(sageFree, {}, letName + "_sage_free");
 }
 
 // Dheap storage

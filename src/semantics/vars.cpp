@@ -1,5 +1,4 @@
 #include "semantics.hpp"
-#include <algorithm>
 
 // Walking the data type literals
 void Semantics::walkBooleanLiteral(Node *node) {
@@ -383,7 +382,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   arrAccessInfo->hasError = hasError;
   arrAccessInfo->isHeap = arrSymbol->isHeap;
   arrAccessInfo->isDheap = arrSymbol->isDheap;
-  arrAccessInfo->arrayTyInfo=arrSymbol->arrayTyInfo;
+  arrAccessInfo->arrayTyInfo = arrSymbol->arrayTyInfo;
 
   metaData[arrExpr] = arrAccessInfo;
 }
@@ -438,6 +437,8 @@ void Semantics::walkAddressExpression(Node *node) {
   walker(addrExpr->identifier.get());
   auto symbolInfo = resolveSymbolInfo(addrName);
   bool hasError = false;
+  bool isHeap = symbolInfo->isHeap;
+  bool isDheap = symbolInfo->isDheap;
 
   if (!symbolInfo) {
     logSemanticErrors("Use of undeclared identifier '" + addrName + "'", line,
@@ -450,6 +451,9 @@ void Semantics::walkAddressExpression(Node *node) {
 
   auto addrInfo = std::make_shared<SymbolInfo>();
   addrInfo->isPointer = true;
+  addrInfo->isHeap = isHeap;
+  addrInfo->isDheap = isDheap;
+  addrInfo->targetSymbol = symbolInfo;
   addrInfo->type = inferNodeDataType(addrExpr);
 
   metaData[addrExpr] = addrInfo;
@@ -460,12 +464,13 @@ void Semantics::walkDereferenceExpression(Node *node) {
   if (!derefExpr)
     return;
 
-  std::string derefName = extractIdentifierName(derefExpr->identifier.get());
+  auto innerNode = derefExpr->identifier.get();
+  std::string derefName = extractIdentifierName(innerNode);
 
   auto line = derefExpr->identifier->expression.line;
   auto col = derefExpr->identifier->expression.column;
 
-  walker(derefExpr->identifier.get());
+  walker(innerNode);
 
   auto derefSym = resolveSymbolInfo(derefName);
   if (!derefSym) {
@@ -474,254 +479,40 @@ void Semantics::walkDereferenceExpression(Node *node) {
     return;
   }
 
+  auto derefInfo = std::make_shared<SymbolInfo>();
+
+  if (dynamic_cast<DereferenceExpression *>(innerNode)) {
+    derefInfo->type = derefSym->type;
+  } else {
+    derefInfo->type = derefSym->targetSymbol->type;
+    derefInfo->lastUseNode=derefExpr;
+  }
+
   if (derefSym->isHeap || derefSym->isDheap)
     derefSym->lastUseNode = derefExpr;
 
-  auto derefInfo = std::make_shared<SymbolInfo>();
+  auto derefTargetSym = derefSym->targetSymbol;
+  derefTargetSym->lastUseNode = derefExpr;
+  
+  
+  ResolvedType peeledType = derefSym->type; 
+  peeledType.isPointer=false;
+  ResolvedType finalType=isPointerType(peeledType);
+
+
   derefInfo->isPointer = false; // Just a sanity measure
   derefInfo->isMutable = derefSym->isMutable;
   derefInfo->isConstant = derefSym->isConstant;
   derefInfo->isInitialized = derefSym->isInitialized;
   derefInfo->derefPtrType = derefSym->type;
+  derefInfo->type = finalType;
+  derefInfo->targetSymbol = derefTargetSym;
+  derefInfo->isHeap = derefSym->isHeap;
+  derefInfo->isDheap = derefSym->isDheap;
 
   std::cout << "DEREF PTR TYPE: " << derefSym->type.resolvedName << "\n";
 
   metaData[derefExpr] = derefInfo;
-}
-
-// Walking let statement
-void Semantics::walkLetStatement(Node *node) {
-  auto letStmt = dynamic_cast<LetStatement *>(node);
-  if (!letStmt)
-    return;
-
-  std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
-
-  auto type = dynamic_cast<BasicType *>(letStmt->type.get());
-
-  // --- Initial flags ---
-  bool isNullable = type->isNullable;
-  bool isHeap = letStmt->isHeap;
-  bool isDheap = letStmt->isDheap;
-  bool isDefinitelyNull = false;
-  bool isInitialized = false;
-  bool hasError = false;
-
-  // Checking if the name is being reused
-  auto letName = letStmt->ident_token.TokenLiteral;
-  std::cout << "LET STATEMENT NAME: " << letName << "\n";
-
-  auto existingSym = resolveSymbolInfo(letName);
-  auto localSym = lookUpInCurrentScope(letName);
-
-  if (localSym) {
-    logSemanticErrors("Variable with name '" + letName +
-                          "' already exists in the same scope",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
-    hasError = true;
-    return;
-  }
-
-  if (existingSym) {
-    if (existingSym->isFunction) {
-      logSemanticErrors("Local variable '" + letName +
-                            "' shadows existing global function",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-      return;
-    } else if (existingSym->isComponent) {
-      logSemanticErrors("Local variable '" + letName +
-                            "' shadows existing component",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-      return;
-    } else if (existingSym->isBehavior) {
-      logSemanticErrors("Local variable '" + letName +
-                            "' shadows existing  behavior block",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-      return;
-    } else if (existingSym->isDataBlock) {
-      logSemanticErrors("Local variable '" + letName +
-                            "' shadows existing data block",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-      return;
-    }
-  }
-
-  auto letStmtValue = letStmt->value.get();
-
-  // --- Resolve type from token ---
-  ResolvedType expectedType = inferNodeDataType(letStmt->type.get());
-  ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
-
-  // --- Mutability & constants ---
-  bool isMutable = (letStmt->mutability == Mutability::MUTABLE);
-  bool isConstant = (letStmt->mutability == Mutability::CONSTANT);
-
-  if (isConstant && !letStmtValue) {
-    logSemanticErrors("Need to assign a value to a constant variable '" +
-                          letStmt->ident_token.TokenLiteral + "'",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
-    hasError = true;
-  }
-
-  // --- Resolve constant value if present ---
-  int64_t constInt = 0;
-  if (isConstant && letStmtValue) {
-    if (auto intLit = dynamic_cast<I32Literal *>(letStmtValue)) {
-      constInt = std::stoll(intLit->i32_token.TokenLiteral);
-    } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
-      auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
-      if (!identSym) {
-        logSemanticErrors("Use of undeclared variable '" +
-                              ident->identifier.TokenLiteral +
-                              "' in constant let statement",
-                          ident->expression.line, ident->expression.column);
-        hasError = true;
-      } else if (!identSym->isConstant) {
-        logSemanticErrors("Cannot use non-constant variable '" +
-                              ident->identifier.TokenLiteral +
-                              "' in constant let statement",
-                          ident->expression.line, ident->expression.column);
-        hasError = true;
-      } else {
-        constInt = identSym->constIntVal;
-      }
-    }
-  }
-
-  // --- Walk value & infer type ---
-  if (letStmtValue) {
-    declaredType = inferNodeDataType(letStmtValue);
-    walker(letStmtValue);
-    isInitialized = true;
-
-    if (auto nullVal = dynamic_cast<NullLiteral *>(letStmtValue)) {
-      isDefinitelyNull = true;
-      if (!isNullable) {
-        logSemanticErrors("Cannot assign 'null' to non-nullable variable '" +
-                              letStmt->ident_token.TokenLiteral + "'",
-                          type->data_token.line, type->data_token.column);
-        hasError = true;
-        declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
-      } else {
-        declaredType = inferNodeDataType(type);
-      }
-    } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
-      auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
-      if (!identSym) {
-        logSemanticErrors("Cannot assign non-existent identifier '" +
-                              ident->identifier.TokenLiteral + "'",
-                          ident->expression.line, ident->expression.column);
-        hasError = true;
-      } else if (!identSym->isInitialized) {
-        logSemanticErrors("Cannot assign non-initialized identifier '" +
-                              ident->identifier.TokenLiteral + "'",
-                          ident->expression.line, ident->expression.column);
-        hasError = true;
-      }
-    } else if (auto unwrap = dynamic_cast<UnwrapExpression *>(letStmtValue)) {
-      auto line = unwrap->expression.line;
-      auto col = unwrap->expression.column;
-      if (expectedType.isNull) {
-        logSemanticErrors(
-            "Cannot place unwrap expression into nullable variable declaration",
-            line, col);
-        hasError = true;
-      }
-    }
-  } else {
-    declaredType = inferNodeDataType(type);
-  }
-
-  // --- Type mismatch checks ---
-  if (type->data_token.type != TokenType::AUTO) {
-    if (!isTypeCompatible(expectedType, declaredType)) {
-      logSemanticErrors("Type mismatch in variable declaration statement '" +
-                            letName + "' expected '" +
-                            expectedType.resolvedName + "' but got '" +
-                            declaredType.resolvedName + "'",
-                        type->data_token.line, type->data_token.column);
-      hasError = true;
-    }
-
-    if (!isNullable && isDefinitelyNull) {
-      logSemanticErrors("Cannot assign a nullable (possibly null) value to "
-                        "non-nullable variable '" +
-                            letStmt->ident_token.TokenLiteral + "'",
-                        type->data_token.line, type->data_token.column);
-      hasError = true;
-      declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
-    }
-  }
-
-  // --- Constant + nullable/heap checks ---
-  if (isConstant && (isNullable || isDefinitelyNull)) {
-    logSemanticErrors("Cannot use null on a constant variable '" +
-                          letStmt->ident_token.TokenLiteral + "'",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
-    hasError = true;
-  }
-
-  if (isHeap || isDheap) {
-    if (!isInitialized) {
-      logSemanticErrors("Cannot promote uninitialized variable '" +
-                            letStmt->ident_token.TokenLiteral + "' to the heap",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-    }
-
-    if (isNullable || isDefinitelyNull) {
-      logSemanticErrors("Cannot promote nullable variable '" +
-                            letStmt->ident_token.TokenLiteral + "' to the heap",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-    }
-
-    if (type->data_token.type == TokenType::AUTO) {
-      logSemanticErrors("Cannot promote auto variable '" +
-                            letStmt->ident_token.TokenLiteral +
-                            "' to the heap, please explicitly use its type",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-    }
-  }
-
-  StorageType letStorageType;
-  // Storing the scope information
-  if (isGlobalScope()) {
-    letStorageType = StorageType::GLOBAL;
-  } else if (isHeap) {
-    letStorageType = StorageType::HEAP;
-  } else {
-    letStorageType = StorageType::STACK;
-  }
-
-  // --- Metadata & symbol registration ---
-  auto letInfo = std::make_shared<SymbolInfo>();
-  letInfo->type = declaredType;
-  letInfo->isNullable = isNullable;
-  letInfo->isMutable = isMutable;
-  letInfo->isConstant = isConstant;
-  letInfo->constIntVal = constInt;
-  letInfo->isInitialized = isInitialized;
-  letInfo->isDefinitelyNull = isDefinitelyNull;
-  letInfo->isHeap = isHeap;
-  letInfo->isDheap = isDheap;
-  letInfo->lastUseNode = letStmt;
-  letInfo->storage = letStorageType;
-  letInfo->hasError = hasError;
-  if (!loopContext.empty() && loopContext.back()) {
-    letInfo->needsPostLoopFree = true;
-    letInfo->bornInLoop = true;
-  }
-
-  metaData[letStmt] = letInfo;
-  symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
-
-  std::cout << "LET STATEMENT DATA TYPE: " << expectedType.resolvedName << "\n";
 }
 
 void Semantics::walkAssignStatement(Node *node) {
@@ -1353,143 +1144,4 @@ void Semantics::walkReferenceStatement(Node *node) {
 
   metaData[refStmt] = refInfo;
   symbolTable.back()[refName] = refInfo;
-}
-
-void Semantics::walkPointerStatement(Node *node) {
-  auto ptrStmt = dynamic_cast<PointerStatement *>(node);
-
-  if (!ptrStmt)
-    return;
-
-  auto ptrName = ptrStmt->name->expression.TokenLiteral;
-  auto line = ptrStmt->name->expression.line;
-  auto col = ptrStmt->name->expression.column;
-  bool hasError = false;
-  bool isMutable = false;
-  bool isConstant = false;
-  ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
-
-  // Infer the type of the pointer value
-  ResolvedType targetType = inferNodeDataType(ptrStmt->value.get());
-
-  // Check if the target is a pointer
-  if (!targetType.isPointer) {
-    logSemanticErrors("Must initialize the pointer '" + ptrName +
-                          "' with a pointer value",
-                      line, col);
-    hasError = true;
-    return;
-  }
-
-  // Dealing with what is being pointed to
-  std::string targetName = "unknown";
-  if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get())) {
-    targetName = ptrValue->identifier->expression.TokenLiteral;
-  } else if (auto ptrValue =
-                 dynamic_cast<CallExpression *>(ptrStmt->value.get())) {
-    targetName = ptrValue->function_identifier->expression.TokenLiteral;
-  } else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get())) {
-    targetName = ptrValue->identifier.TokenLiteral;
-  } // Leave it here for extensibility
-
-  // Walking the target
-  walker(ptrStmt->value.get());
-
-  auto targetSymbol = resolveSymbolInfo(targetName);
-  if (!targetSymbol) {
-    logSemanticErrors("Pointer '" + ptrName +
-                          "'is pointing to an undeclared variable '" +
-                          targetName + "'",
-                      line, col);
-    hasError = true;
-    return;
-  }
-
-  // What if the user didnt include the type (We infer for them)
-  if (!ptrStmt->type)
-    ptrType = targetType;
-  else // If the user actually included a type we verify it
-  {
-    ptrType = inferNodeDataType(ptrStmt);
-    // Check if the types are compatible
-    // I am comparing with the resolved name since it is sure to either be
-    // type_ptr comparing with datatypes purely can allow bugs in the type
-    // system
-    if (ptrType.resolvedName != targetType.resolvedName) {
-      logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" +
-                            ptrType.resolvedName + "' does not match '" +
-                            targetName + "' of type '" +
-                            targetType.resolvedName + "'",
-                        line, col);
-      hasError = true;
-    }
-  }
-
-  // Guard against local pointing
-  auto targetStorage = targetSymbol->storage;
-  if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get())) {
-    if (targetStorage == StorageType::STACK) {
-
-      logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" +
-                            targetName + "' because it is local",
-                        line, col);
-      hasError = true;
-    }
-  } else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get())) {
-    auto pointeeTargetSym = targetSymbol->targetSymbol;
-    if (!pointeeTargetSym) {
-      logSemanticErrors("Pointer '" + ptrName + "'s target '" + targetName +
-                            "' lacks targetInfo",
-                        line, col);
-      return;
-    }
-    if (pointeeTargetSym->storage == StorageType::STACK) {
-      logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" +
-                            targetName +
-                            "' because it also points to local variable",
-                        line, col);
-      hasError = true;
-    }
-  }
-
-  /*
-  Checking for mutability (It should be noted that by default the mutability
-  is... well immutable That means if the user didnt add it we are dealing with
-  an immutable pointer
-  */
-
-  if (ptrStmt->mutability == Mutability::MUTABLE) {
-    std::cout << "POINTER IS MUTABLE\n";
-    isMutable = true;
-  } else if (ptrStmt->mutability == Mutability::CONSTANT) {
-    std::cout << "POINTER IS CONSTANT\n";
-    isConstant = true;
-  }
-
-  std::cout << "POINTER TYPE: " << ptrType.resolvedName << "\n";
-
-  // Pointer's storage info (The pointer itself not the target)
-  // I currently dont have heap raised pointers as of yet but when I add them I
-  // will update this part
-  StorageType pointerStorage;
-  if (isGlobalScope()) {
-    pointerStorage = StorageType::GLOBAL;
-  } else {
-    pointerStorage = StorageType::STACK;
-  }
-
-  auto ptrInfo = std::make_shared<SymbolInfo>();
-  ptrInfo->isHeap = false; // For now
-  ptrInfo->lastUseNode = ptrStmt;
-  ptrInfo->type = ptrType;
-  ptrInfo->hasError = hasError;
-  ptrInfo->isPointer = true;
-  ptrInfo->targetSymbol = targetSymbol;
-  ptrInfo->isMutable = isMutable;
-  ptrInfo->isConstant = isConstant;
-  ptrInfo->storage = pointerStorage;
-  ptrInfo->isInitialized = true;
-
-  metaData[ptrStmt] = ptrInfo;
-  symbolTable.back()[ptrName] = ptrInfo;
 }

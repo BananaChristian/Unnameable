@@ -193,80 +193,6 @@ void IRGenerator::generateReferenceStatement(Node *node) {
   refSym->llvmValue = targetAddress;
 }
 
-// Pointer statement IR generator function
-void IRGenerator::generatePointerStatement(Node *node) {
-  auto ptrStmt = dynamic_cast<PointerStatement *>(node);
-  if (!ptrStmt)
-    throw std::runtime_error("Invalid pointer statement");
-
-  auto ptrName = ptrStmt->name->expression.TokenLiteral;
-
-  // Getting the pointer metaData
-  auto metaIt = semantics.metaData.find(ptrStmt);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("Missing pointer statement metaData for '" +
-                             ptrName + "'");
-
-  auto ptrSym = metaIt->second;
-  if (!ptrSym)
-    throw std::runtime_error("Undefined pointer '" + ptrName + "'");
-
-  if (ptrSym->hasError)
-    throw std::runtime_error("Semantic error detected ");
-
-  // Getting the pointer llvm type
-  llvm::Type *ptrType = getLLVMType(ptrSym->type);
-  if (!ptrType)
-    throw std::runtime_error("Failed to get LLVM Type for '" + ptrName + "'");
-
-  llvm::Type *ptrStorageType = ptrType->getPointerTo();
-
-  std::cout << "[IR DEBUG] Pointer type: " << ptrSym->type.resolvedName << "\n";
-
-  llvm::Value *initVal = ptrStmt->value
-                             ? generateExpression(ptrStmt->value.get())
-                             : llvm::Constant::getNullValue(ptrType);
-
-  if (!initVal)
-    throw std::runtime_error("No init value");
-
-  llvm::Value *storagePtr = nullptr;
-  // If in global scope
-  if (!funcBuilder.GetInsertBlock()) {
-    llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
-    if (!globalInit) {
-      // This happens if the target (&X) is not known at compile time,
-      // which should only happen if X is not also global.
-      // For now, let me assume global targets are constants.
-      throw std::runtime_error(
-          "Global pointer initializer must be a constant address.");
-    }
-
-    llvm::GlobalVariable *globalVar = new llvm::GlobalVariable(
-        *module, ptrStorageType, false, llvm::GlobalValue::InternalLinkage,
-        globalInit, ptrName);
-
-    storagePtr = globalVar;
-  } else {
-
-    llvm::Function *fn = funcBuilder.GetInsertBlock()->getParent();
-    llvm::IRBuilder<> entryBuilder(&fn->getEntryBlock(),
-                                   fn->getEntryBlock().begin());
-
-    storagePtr = entryBuilder.CreateAlloca(ptrStorageType, nullptr, ptrName);
-    if (!storagePtr)
-      throw std::runtime_error(
-          "Failed to allocate local pointer on call stack");
-
-    funcBuilder.CreateStore(initVal, storagePtr);
-  }
-
-  ptrSym->llvmValue = storagePtr;
-  ptrSym->llvmType = ptrType;
-
-  std::cout << "Exited pointer statement generator\n";
-}
-
 // IR code gen for an if statement
 void IRGenerator::generateIfStatement(Node *node) {
   auto ifStmt = dynamic_cast<ifStatement *>(node);
@@ -462,7 +388,9 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     AddressAndPendingFree addrAndPendingFree =
         generateIdentifierAddress(assignStmt->identifier.get());
     targetPtr = addrAndPendingFree.address;
-    pendingFree = addrAndPendingFree.pendingFree;
+    for (auto *freeCall : addrAndPendingFree.pendingFrees) {
+      pendingFree = funcBuilder.Insert(freeCall);
+    }
 
     if (!targetPtr)
       throw std::runtime_error("No memory allocated for variable '" + varName +
@@ -1076,7 +1004,9 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
     }
     AddressAndPendingFree addrAndFree = generateIdentifierAddress(ident);
     llvm::Value *varPtr = addrAndFree.address;
-    llvm::CallInst *pendingFree = addrAndFree.pendingFree;
+    for (auto *freeCall : addrAndFree.pendingFrees) {
+      funcBuilder.Insert(freeCall);
+    }
 
     if (!varPtr)
       throw std::runtime_error("Null variable pointer for: " +
@@ -1120,9 +1050,10 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
 
     funcBuilder.CreateStore(updated, varPtr);
 
-    if (pendingFree) {
-      funcBuilder.Insert(pendingFree);
+    for (auto *freeCall : addrAndFree.pendingFrees) {
+      funcBuilder.Insert(freeCall);
     }
+
     return updated;
   }
 
@@ -1146,7 +1077,9 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
 
   AddressAndPendingFree addrAndFree = generateIdentifierAddress(identifier);
   llvm::Value *varPtr = addrAndFree.address;
-  llvm::CallInst *pendingFree = addrAndFree.pendingFree; // may be nullptr
+  for (auto *freeCall : addrAndFree.pendingFrees) {
+    funcBuilder.Insert(freeCall);
+  }
 
   if (!varPtr)
     throw std::runtime_error("Null variable pointer for: " +
@@ -1231,10 +1164,8 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
 
   funcBuilder.CreateStore(updatedValue, varPtr);
 
-  if (pendingFree) {
-    // Insert the prepared free at the current insertion point
-    funcBuilder.Insert(
-        pendingFree); // inserts at current position (after store)
+  for (auto *freeCall : addrAndFree.pendingFrees) {
+    funcBuilder.Insert(freeCall);
   }
 
   // Return original value since postfix
@@ -1761,10 +1692,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   llvm::Value *variableAddr = addrInfo.address;
   if (!variableAddr)
     throw std::runtime_error("No llvm address for '" + identName + "'");
-
-  // If we have a pending free, insert it AFTER we load (we'll insert it here)
-  llvm::CallInst *pendingFree = addrInfo.pendingFree;
-
+  
   // Component instance -> return pointer to the struct instance (address is
   // already correct)
   auto compIt = componentTypes.find(sym->type.resolvedName);
@@ -1790,9 +1718,8 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
         funcBuilder.CreateLoad(elemTy, variableAddr, identName + "_val");
 
     // If we prepared a pending free, insert it NOW (after load)
-    if (pendingFree) {
-      // Insert the call instruction into current block before next instruction
-      funcBuilder.Insert(pendingFree);
+    for (auto *freeCall : addrInfo.pendingFrees) {
+      funcBuilder.Insert(freeCall);
     }
 
     std::cout << "[DEBUG] Returning heap scalar '" << identName
@@ -1806,16 +1733,14 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
       throw std::runtime_error("llvmType null for dheap scalar '" + identName +
                                "'");
 
-    // LOAD FIRST: Grab the value from the heap address
-    // Note: variableAddr is already the direct pointer from malloc/bitcast
+    // Grab the value from the heap address
     llvm::Value *loadedVal =
         funcBuilder.CreateLoad(elemTy, variableAddr, identName + "_val");
 
-    // FREE SECOND: Now that the value is safe in a register, we can release the
+    // Now that the value is safe in a register, we can release the
     // memory
-    if (pendingFree) {
-      funcBuilder.Insert(pendingFree);
-      std::cout << "[DEBUG] Injected Dynamic Free for '" << identName << "'\n";
+    for (auto *freeCall : addrInfo.pendingFrees) {
+      funcBuilder.Insert(freeCall);
     }
 
     return loadedVal;
@@ -1826,7 +1751,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   if (!identType)
     throw std::runtime_error("llvmType null for scalar '" + identName + "'");
 
-  // variableAddr should already be a pointer; load from it
+  // variableAddr should already be a pointer, load from it
   llvm::Value *val =
       funcBuilder.CreateLoad(identType, variableAddr, identName + "_val");
 
@@ -1852,120 +1777,83 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   if (sym->hasError)
     throw std::runtime_error("Semantic error detected");
 
-  llvm::Value *ptr = generateExpression(addrExpr->identifier.get());
+  auto targetSym = sym->targetSymbol;
+  llvm::Value *ptr = targetSym->llvmValue;
   if (!ptr)
     throw std::runtime_error("No llvm value was assigned");
 
-  std::cout << "Exited address expression generator\n";
-  sym->llvmValue = ptr;
-  sym->llvmType = getLLVMType(sym->type);
   return ptr;
 }
 
 llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
   auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
-  if (!derefExpr)
-    throw std::runtime_error("Invalid dereference expression");
 
-  Node *operandNode = derefExpr->identifier.get();
-  if (!operandNode)
-    throw std::runtime_error("Dereference has no operand");
+  Node *current = node;
+  int derefCount = 0;
+  while (auto nested = dynamic_cast<DereferenceExpression *>(current)) {
+    derefCount++;
+    current = nested->identifier.get();
+  }
+  auto identNode = dynamic_cast<Identifier *>(current);
 
-  const std::string &name = semantics.extractIdentifierName(operandNode);
+  // Get the starting address of the variable
+  AddressAndPendingFree out = generateIdentifierAddress(identNode);
+  llvm::Value *addr = out.address;
+  auto meta = semantics.metaData[node];
 
-  auto metaIt = semantics.metaData.find(derefExpr);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("Unidentified identifier '" + name + "'");
+  // This gets us the address of 'p' from 'pp'
+  addr = funcBuilder.CreateLoad(getLLVMType(meta->derefPtrType), addr,
+                                "base_lift");
 
-  auto derefSym = metaIt->second;
-  if (!derefSym)
-    throw std::runtime_error("Unidentified dereference operand '" + name + "'");
-  if (derefSym->hasError)
-    throw std::runtime_error("Semantic error detected");
-
-  // Get the pointer value
-  llvm::Value *value = nullptr;
-  if (auto identNode = dynamic_cast<Identifier *>(operandNode)) {
-    value = generateIdentifierAddress(identNode).address;
-  } else {
-    value = generateAddress(operandNode);
+  for (int i = 0; i < derefCount; i++) {
+    llvm::Type *loadTy;
+    if (i < derefCount - 1) {
+      loadTy = llvm::PointerType::getUnqual(context);
+    } else {
+      loadTy = getLLVMType(meta->type);
+    }
+    addr = funcBuilder.CreateLoad(loadTy, addr, "deref_hop");
   }
 
-  if (!value || !value->getType()->isPointerTy())
-    throw std::runtime_error("Operand is not a pointer");
-
-  // Final element type (type after all derefs)
-  llvm::Type *targetType = getLLVMType(derefSym->type);
-  if (!targetType)
-    throw std::runtime_error("Failed to get element type");
-
-  // Iteratively load until we reach the final type
-  llvm::Type *currentTy = getLLVMType(derefSym->derefPtrType); // pointer type
-  llvm::Type *targetTy =
-      getLLVMType(derefSym->type); // final type after all derefs
-
-  int step = 0;
-  while (currentTy != targetTy) {
-    // Load from pointer using LLVM; opaque pointers are fine
-    value = funcBuilder.CreateLoad(currentTy, value,
-                                   name + "_step" + std::to_string(step));
-
-    // Advance the type using metadata for next deref
-    currentTy = getLLVMType(derefSym->type);
-    ++step;
+  for (auto *freeCall : out.pendingFrees) {
+    funcBuilder.Insert(freeCall);
   }
-  return value;
+
+  return addr;
 }
 
 llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
   auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
-  if (!derefExpr)
-    throw std::runtime_error("Invalid dereference expression");
 
-  Node *operandNode = derefExpr->identifier.get();
-  if (!operandNode)
-    throw std::runtime_error("Dereference has no operand");
+  Node *current = node;
+  int derefCount = 0;
+  while (auto nested = dynamic_cast<DereferenceExpression *>(current)) {
+    derefCount++;
+    current = nested->identifier.get();
+  }
+  auto identNode = dynamic_cast<Identifier *>(current);
 
-  const std::string &name = semantics.extractIdentifierName(operandNode);
+  AddressAndPendingFree out = generateIdentifierAddress(identNode);
+  llvm::Value *addr = out.address;
+  auto meta = semantics.metaData[node];
 
-  auto metaIt = semantics.metaData.find(derefExpr);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("Unidentified identifier '" + name +
-                             "' in dereference expression");
+  addr = funcBuilder.CreateLoad(getLLVMType(meta->derefPtrType), addr,
+                                "base_lift");
 
-  auto derefSym = metaIt->second;
-  if (!derefSym)
-    throw std::runtime_error("Unidentified dereference operand '" + name + "'");
-
-  if (derefSym->hasError)
-    throw std::runtime_error("Semantic error detected");
-
-  llvm::Value *ptrValue = nullptr;
-
-  if (auto identNode = dynamic_cast<Identifier *>(operandNode)) {
-    AddressAndPendingFree addrAndFree = generateIdentifierAddress(identNode);
-    ptrValue = addrAndFree.address;
-  } else {
-    ptrValue = generateAddress(operandNode);
+  for (int i = 0; i < derefCount - 1; i++) {
+    addr = funcBuilder.CreateLoad(llvm::PointerType::getUnqual(context), addr,
+                                  "deref_hop_addr");
   }
 
-  if (!ptrValue || !ptrValue->getType()->isPointerTy())
-    throw std::runtime_error("Operand is not a pointer");
+  for (auto *freeCall : out.pendingFrees) {
+    funcBuilder.Insert(freeCall);
+  }
 
-  llvm::Type *pointerTy = getLLVMType(derefSym->derefPtrType);
-  if (!pointerTy || !pointerTy->isPointerTy())
-    throw std::runtime_error("Cannot dereference non-pointer type");
-
-  llvm::Value *loadedPointer =
-      funcBuilder.CreateLoad(pointerTy, ptrValue, name + "_addr");
-  if (!loadedPointer)
-    throw std::runtime_error("Failed to load pointer address");
-
-  return loadedPointer;
+  return addr;
 }
 
 AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
-  AddressAndPendingFree out{nullptr, nullptr};
+  AddressAndPendingFree out{nullptr, {}};
 
   auto identExpr = dynamic_cast<Identifier *>(node);
   if (!identExpr)
@@ -2034,69 +1922,46 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
   }
   // Prepare pending free call (create CallInst but don't insert)
   if (sym->isHeap) {
-    if (identExpr->isKiller) {
+    bool shouldFree = identExpr->isKiller ||
+                      ((sym->lastUseNode == identExpr) && (sym->refCount == 0));
+    if (shouldFree) {
+      std::cout << "[IR DEBUG] Freeing '" << identName
+                << "' | popCount discovered: " << sym->popCount << "\n";
       llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
           "sage_free", llvm::Type::getVoidTy(context));
 
-      llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn);
-      callInst->setCallingConv(llvm::CallingConv::C);
-      // Not inserted yet — caller will insert before/after as needed
-      out.pendingFree = callInst;
-    }
+      int weight = (sym->popCount > 0) ? sym->popCount : 1;
 
-    if ((sym->lastUseNode == identExpr) && (sym->refCount == 0)) {
-      llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-          "sage_free", llvm::Type::getVoidTy(context));
-
-      llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn);
-      callInst->setCallingConv(llvm::CallingConv::C);
-      // Not inserted yet — caller will insert before/after as needed
-      out.pendingFree = callInst;
-    }
-  } else if (sym->isDheap) {
-    if (identExpr->isKiller) {
-      // Get allocator info
-      const std::string &allocatorTypeName = sym->allocType;
-      auto it = semantics.allocatorMap.find(allocatorTypeName);
-      if (it != semantics.allocatorMap.end()) {
-        auto handle = it->second;
-        llvm::Function *freeFunc = module->getFunction(handle.freeName);
-
-        if (freeFunc) {
-          // Get the value you want to free
-          llvm::Value *ptrToFree = sym->llvmValue;
-
-          // Create the Call Instruction manually
-          llvm::CallInst *callInst =
-              llvm::CallInst::Create(freeFunc, {ptrToFree}, "");
-
-          // Stash it in our 'Pending' slot for the caller to insert later
-          out.pendingFree = callInst;
-        }
+      for (int i = 0; i < weight; i++) {
+        llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn);
+        callInst->setCallingConv(llvm::CallingConv::C);
+        // Stash it in the vector
+        out.pendingFrees.push_back(callInst);
       }
     }
+  } else if (sym->isDheap) {
+    // Determine if we should trigger a free
+    bool shouldFree = identExpr->isKiller ||
+                      ((sym->lastUseNode == identExpr) && (sym->refCount == 0));
 
-    if ((sym->lastUseNode == identExpr) &&
-        (sym->refCount == 0)) // Note: usually we don't check refCount here if
-                              // it's the last use node
-    {
+    if (shouldFree) {
       // Get allocator info
       const std::string &allocatorTypeName = sym->allocType;
       auto it = semantics.allocatorMap.find(allocatorTypeName);
+
       if (it != semantics.allocatorMap.end()) {
         auto handle = it->second;
         llvm::Function *freeFunc = module->getFunction(handle.freeName);
 
         if (freeFunc) {
-          // Get the value you want to free
           llvm::Value *ptrToFree = sym->llvmValue;
 
-          // Create the Call Instruction manually
+          // Create the single Call Instruction
           llvm::CallInst *callInst =
               llvm::CallInst::Create(freeFunc, {ptrToFree}, "");
+          callInst->setCallingConv(llvm::CallingConv::C);
 
-          // Stash it in our 'Pending' slot for the caller to insert later
-          out.pendingFree = callInst;
+          out.pendingFrees.push_back(callInst);
         }
       }
     }
@@ -2346,8 +2211,9 @@ llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
   llvm::Type *elemTy = getLLVMType(arrSym->type);
   auto loadedVal = funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
 
-  if (addrInfo.pendingFree)
-    funcBuilder.Insert(addrInfo.pendingFree);
+  for (auto *freeCall : addrInfo.pendingFrees) {
+    funcBuilder.Insert(freeCall);
+  }
 
   return loadedVal;
 }

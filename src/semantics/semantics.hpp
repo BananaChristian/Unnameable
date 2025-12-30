@@ -203,8 +203,9 @@ struct SymbolInfo
     bool isDataBlock = false;
     std::shared_ptr<SymbolInfo> targetSymbol;  // For the deref system
     std::shared_ptr<SymbolInfo> refereeSymbol; // Symbol being refered to
+    int popCount=0;//This shows the amount of times we shall call sage_free when heap pointers are used
 
-    std::shared_ptr<SymbolInfo> componentSymbol; // Symbol of the component being instantiaited
+    std::shared_ptr<SymbolInfo> componentSymbol; // Symbol of the component being instantiated
 
     std::shared_ptr<SymbolInfo> baseSymbol;  // The owner (e.g., p in p.health)
     std::shared_ptr<SymbolInfo> fieldSymbol; // The actual member accessed (health)

@@ -2,7 +2,6 @@
 #include "ast.hpp"
 #include "token/token.hpp"
 #include <iostream>
-#include <fstream>
 #include <memory>
 #include <vector>
 
@@ -159,11 +158,24 @@ std::unique_ptr<Statement> Parser::parseSelfAssignment()
 
 std::unique_ptr<Statement> Parser::parseDereferenceAssignment()
 {
-    if (peekToken(2).type == TokenType::ASSIGN)
-    {
-        std::cout << "Dereference assignment triggered\n";
-        return parseAssignmentStatement();
-    }
+    auto isDerefAssignment=[&]()->bool{
+        int i = 0;
+            // Skip all leading 'deref' tokens
+            while (peekToken(i).type == TokenType::DEREF) {
+                i++;
+            }
+            // Skip the identifier
+            if (peekToken(i).type == TokenType::IDENTIFIER) {
+                i++;
+            }
+            // Is the next thing an assignment?
+            return peekToken(i).type == TokenType::ASSIGN;  
+    };
+    
+    if (isDerefAssignment()) {
+            std::cout << "Deep Dereference assignment triggered\n";
+            return parseAssignmentStatement();
+        }
 
     // Fall back to the expression guy
     auto expr = parseExpression(Precedence::PREC_NONE);
