@@ -54,8 +54,8 @@ else
 endif
 
 # _____Build the Core Objects (Dumps into ./core)______
-core: $(CORE_DIR)/entry.o $(CORE_DIR)/syscalls.o $(CORE_DIR)/allocator.o $(CORE_DIR)/unnitoa.o
-	@echo "All sovereign core objects dumped into $(CORE_DIR)/"
+core: $(CORE_DIR)/entry.o $(CORE_DIR)/syscalls.o $(CORE_DIR)/gpa.o $(CORE_DIR)/sage.o $(CORE_DIR)/unnitoa.o
+	@echo "All core objects dumped into $(CORE_DIR)/"
 
 $(CORE_DIR)/entry.o: $(URC_X86_LINUX)/entry.asm
 	@mkdir -p $(CORE_DIR)
@@ -64,9 +64,14 @@ $(CORE_DIR)/entry.o: $(URC_X86_LINUX)/entry.asm
 $(CORE_DIR)/syscalls.o: $(URC_X86_LINUX)/syscalls.asm
 	@mkdir -p $(CORE_DIR)
 	$(NASM) $(ASFLAGS) $< -o $@
+	
+# (GPA)
+$(CORE_DIR)/gpa.o: $(LIB_DIR)/allocator/gpa/gpa.c
+	@mkdir -p $(CORE_DIR)
+	$(CC) $(RUNTIME_CFLAGS) -c $< -o $@
 
 # (SAGE Allocator)
-$(CORE_DIR)/allocator.o: $(LIB_DIR)/allocator/allocator.c
+$(CORE_DIR)/sage.o: $(LIB_DIR)/allocator/sage/sage.c
 	@mkdir -p $(CORE_DIR)
 	$(CC) $(RUNTIME_CFLAGS) -c $< -o $@
 
