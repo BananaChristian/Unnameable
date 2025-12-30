@@ -668,6 +668,7 @@ y=y+1;
 z=z+1i16;
 
 ```
+NOTE: I am still struggling with heap raised pointers heck this entire SAGE thing mostly paired with the compiler's last use analysis as I am experiencing memory leaks and who knows what I havent seen so yeah, It is really not ready
 
 ## Dynamic heap raising and custom allocators
 Unnameanle allows the user to create their own custom allocators and plug them in for the compiler to use them 
@@ -693,9 +694,9 @@ dheap<MyAllocator> i32 x=100;
 ``` 
 So the compiler will allocate using the allocator function you provided and free using the deallocater function that u provided 
 The compiler will still use its last use analysis to inject your free to avoid memory bugs just like the normal heap raising with SAGE works difference is here the compiler doesnt care about how you use your stuff there is no LIFO to follow 
-Now one last thing to add is that there is a default dheap allocator if you do not specify the compiler will use malloc and the regular free for now atleast for example
+Now one last thing to add is that there is a default dheap allocator if you do not specify the compiler will use a default allocator I added and the regular free for example
 ```
-dheap i32 x=100; #This is malloc under the hood
+dheap i32 x=100; #This is GPA under the hood
 
 ```
 ## Scoped Memory Management (The Loop Rules)
