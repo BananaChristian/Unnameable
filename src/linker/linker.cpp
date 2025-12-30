@@ -10,7 +10,8 @@ Linker::Linker(const std::string &currentObject)
     : currentObjectFile(currentObject) {
   // Compulsory runtime objects
   compulsoryObjects.push_back("syscalls.o");
-  compulsoryObjects.push_back("allocator.o");
+  compulsoryObjects.push_back("sage.o");
+  compulsoryObjects.push_back("gpa.o");
   compulsoryObjects.push_back("unnitoa.o");
 }
 

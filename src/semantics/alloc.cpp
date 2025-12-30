@@ -210,7 +210,7 @@ void Semantics::walkDheapStatement(Node *node)
     }
     else
     {
-        allocType = "malloc"; // The default dynamic allocator type
+        allocType = "GPA"; // The default GPA type
     }
 
     // If it has the stmt
@@ -242,19 +242,19 @@ void Semantics::walkDheapStatement(Node *node)
 
 void Semantics::registerInbuiltAllocatorTypes()
 {
-    // For now only malloc as I observe the system
+    //alloc for the GPA 
     AllocatorHandle stdHandle;
-    stdHandle.allocateName = "malloc";
+    stdHandle.allocateName = "alloc";
     stdHandle.freeName = "free";
 
-    // Create handle symbol for malloc
-    std::vector<std::pair<ResolvedType, std::string>> mallocParams;
-    mallocParams.emplace_back(ResolvedType{DataType::USIZE, "usize", false}, "size");
+    // Create handle symbol for alloc
+    std::vector<std::pair<ResolvedType, std::string>> allocParams;
+    allocParams.emplace_back(ResolvedType{DataType::USIZE, "usize", false}, "size");
     auto allocSym = std::make_shared<SymbolInfo>();
     allocSym->isFunction = true;
     allocSym->isDeclaration = true;
     allocSym->returnType = ResolvedType{DataType::USIZE, "usize_ptr", true}; // The ptr usize return type
-    allocSym->paramTypes = mallocParams;
+    allocSym->paramTypes = allocParams;
     allocSym->isDefined = false;
 
     stdHandle.allocatorSymbol = allocSym;
@@ -271,5 +271,5 @@ void Semantics::registerInbuiltAllocatorTypes()
 
     stdHandle.freeSymbol = freeSym;
 
-    allocatorMap["malloc"] = stdHandle; // Register malloc allocator type
+    allocatorMap["GPA"] = stdHandle; // Register malloc allocator type
 }
