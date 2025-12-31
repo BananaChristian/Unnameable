@@ -2,6 +2,7 @@
 CXX = g++
 CC  = gcc
 NASM = nasm
+AR = ar
 
 # ____Pathing______
 BIN_DIR       = bin
@@ -11,10 +12,7 @@ LIB_DIR       = lib
 URC_X86_LINUX = $(LIB_DIR)/urc/architecture/x86_64/linux
 
 # _____Compiler Flags______
-CXXFLAGS = -std=c++17 -g \
-    -Isrc -Isrc/lexer -Isrc/parser -Isrc/token -Isrc/semantics \
-    -Isrc/irgen -Isrc/layout -Isrc/linker -Isrc/sentinel -Isrc/errors \
-    -Isrc/stubgen -Isrc/deserializer -Iinclude 
+CXXFLAGS = -std=c++17 -g -Iinclude
 
 # ______Runtime Flags_________
 RUNTIME_CXXFLAGS   = -std=c++17 -g -ffreestanding -nostdlib -fno-stack-protector -fno-exceptions
@@ -38,8 +36,15 @@ endif
 OUT ?= $(BIN_DIR)/unnc$(EXE_EXT)
 SRC = $(wildcard src/**/*.cpp) $(wildcard src/*.cpp)
 
-# TARGETS
+# ______Library Outputs______
+URC_LIB = $(CORE_DIR)/urc.a
+# List only the objects that should be inside the "Toolbox"
+LIB_OBJS = $(CORE_DIR)/syscalls.o \
+           $(CORE_DIR)/gpa.o \
+           $(CORE_DIR)/sage.o \
+           $(CORE_DIR)/unnitoa.o
 
+# TARGETS
 all: $(OUT) core
 
 # _____Build the Compiler Executable_______
@@ -53,10 +58,13 @@ else
 	@echo "Compiler built at $(OUT)"
 endif
 
-# _____Build the Core Objects (Dumps into ./core)______
-core: $(CORE_DIR)/entry.o $(CORE_DIR)/syscalls.o $(CORE_DIR)/gpa.o $(CORE_DIR)/sage.o $(CORE_DIR)/unnitoa.o
-	@echo "All core objects dumped into $(CORE_DIR)/"
+# _____Build the Core  (Dumps into ./core)______
+core: $(CORE_DIR)/entry.o $(LIB_OBJS)
+	@echo "Bundling core objects into $(URC_LIB)..."
+	$(AR) rcs $(URC_LIB) $(LIB_OBJS)
+	@echo "Core Library built: $(URC_LIB)"
 
+# ___________Individual object builds_______________
 $(CORE_DIR)/entry.o: $(URC_X86_LINUX)/entry.asm
 	@mkdir -p $(CORE_DIR)
 	$(NASM) $(ASFLAGS) $< -o $@
@@ -64,7 +72,7 @@ $(CORE_DIR)/entry.o: $(URC_X86_LINUX)/entry.asm
 $(CORE_DIR)/syscalls.o: $(URC_X86_LINUX)/syscalls.asm
 	@mkdir -p $(CORE_DIR)
 	$(NASM) $(ASFLAGS) $< -o $@
-	
+
 # (GPA)
 $(CORE_DIR)/gpa.o: $(LIB_DIR)/allocator/gpa/gpa.c
 	@mkdir -p $(CORE_DIR)
