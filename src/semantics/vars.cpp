@@ -291,7 +291,7 @@ void Semantics::walkSizeOfExpression(Node *node) {
   Expression *typeNode = sizeExpr->type.get();
   if (!typeNode)
     return;
-  
+
   int line = typeNode->expression.line;
   int col = typeNode->expression.column;
 
