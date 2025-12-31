@@ -906,7 +906,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
       llvm::Value *negRight = funcBuilder.CreateNeg(right, "neg_offset");
       return funcBuilder.CreateGEP(baseTy, left, negRight, "ptr_subtmp");
     }
-    
+
     if (isIntegerType(resultType.kind))
       return funcBuilder.CreateSub(left, right, "subtmp");
     else
