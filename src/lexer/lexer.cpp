@@ -1,7 +1,6 @@
-#include "token/token.hpp"
+#include "token.hpp"
 #include "lexer.hpp"
 #include <iostream>
-#include <fstream>
 #include <unordered_map>
 #include <string>
 

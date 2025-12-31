@@ -1,5 +1,5 @@
 #include "stubgen.hpp"
-#include "typeindex"
+#include <fstream>
 
 StubGen::StubGen(Semantics &semantics, std::string &file) : semantics(semantics), fileName(file)
 {

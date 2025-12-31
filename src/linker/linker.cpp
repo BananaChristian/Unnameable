@@ -6,14 +6,8 @@
 
 namespace fs = std::filesystem;
 
-Linker::Linker(const std::string &currentObject)
-    : currentObjectFile(currentObject) {
-  // Compulsory runtime objects
-  compulsoryObjects.push_back("syscalls.o");
-  compulsoryObjects.push_back("sage.o");
-  compulsoryObjects.push_back("gpa.o");
-  compulsoryObjects.push_back("unnitoa.o");
-}
+Linker::Linker(const std::string &currentObject, bool isStatic)
+    : currentObjectFile(currentObject), isStatic(isStatic) {}
 
 std::string Linker::resolveLinkPath(LinkStatement *link,
                                     const std::string &currentFile) {
@@ -58,6 +52,23 @@ std::string Linker::resolveLinkPath(LinkStatement *link,
 void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
                           const std::string &currentFile,
                           const std::string &outputExecutable) {
+
+  if (isStatic) {
+    std::string libPath = outputExecutable;
+    // Force the .a extension if the user didn't provide it
+    if (fs::path(libPath).extension() != ".a") {
+      libPath += ".a";
+    }
+
+    std::string cmd =
+        "ar rcs \"" + libPath + "\" \"" + currentObjectFile + "\"";
+
+    std::cout << "[ARCHIVER] Packaging: " << cmd << "\n";
+    if (system(cmd.c_str()) != 0)
+      throw std::runtime_error("Link Driver Error: ar failed.");
+
+    return;
+  }
   std::vector<std::string> filesToLink;
   std::string exeDir = getExecutableDir();
   fs::path coreDir = fs::path(exeDir).parent_path() / "core";
@@ -78,12 +89,11 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
   }
 
   // The Core Support
-  for (auto &obj : compulsoryObjects) {
-    fs::path full = coreDir / obj;
-    if (!fs::exists(full))
-      throw std::runtime_error("Link Driver Error: Missing " + obj);
-    filesToLink.push_back(full.string());
-  }
+  fs::path urcLib = coreDir / "urc.a";
+  if (!fs::exists(urcLib))
+    throw std::runtime_error("Link Driver Error: Missing 'urc.a' ");
+
+  filesToLink.push_back(urcLib.string());
 
   // Construct the LLD command
   // -T points to the map. --gc-sections throws away what isn't being using.

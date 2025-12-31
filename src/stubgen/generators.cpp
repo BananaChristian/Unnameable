@@ -1,4 +1,5 @@
 #include "stubgen.hpp"
+
 //____________SERIALIZER GENERATOR____________________
 void StubGen::generateSealStatement(Node *node)
 {

@@ -1,7 +1,5 @@
 #include "semantics.hpp"
 #include "ast.hpp"
-#include <fstream>
-#include <algorithm>
 #include <unordered_set>
 
 #define CPPREST_FORCE_REBUILD
@@ -70,6 +68,7 @@ void Semantics::registerWalkerFunctions()
     walkerFunctionsMap[typeid(Identifier)] = &Semantics::walkIdentifierExpression;
     walkerFunctionsMap[typeid(AddressExpression)] = &Semantics::walkAddressExpression;
     walkerFunctionsMap[typeid(DereferenceExpression)] = &Semantics::walkDereferenceExpression;
+    walkerFunctionsMap[typeid(SizeOfExpression)]=&Semantics::walkSizeOfExpression;
 
     walkerFunctionsMap[typeid(NullLiteral)] = &Semantics::walkNullLiteral;
 
@@ -199,6 +198,9 @@ ResolvedType Semantics::inferNodeDataType(Node *node)
 
     if (auto boolLit = dynamic_cast<BooleanLiteral *>(node))
         return ResolvedType{DataType::BOOLEAN, "bool"};
+    
+    if(auto sizeOfExpr=dynamic_cast<SizeOfExpression*>(node))
+        return ResolvedType{DataType::USIZE,"usize"};
 
     if (auto arrLit = dynamic_cast<ArrayLiteral *>(node))
     {

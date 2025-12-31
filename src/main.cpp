@@ -9,16 +9,16 @@
 #include <algorithm>
 #include <llvm/IR/LLVMContext.h>
 
-#include "lexer/lexer.hpp"
-#include "token/token.hpp"
-#include "parser/parser.hpp"
-#include "deserializer/deserial.hpp"
-#include "semantics/semantics.hpp"
-#include "irgen/irgen.hpp"
-#include "layout/layout.hpp"
-#include "sentinel/sentinel.hpp"
-#include "stubgen/stubgen.hpp"
-#include "linker/linker.hpp"
+#include "lexer.hpp"
+#include "token.hpp"
+#include "parser.hpp"
+#include "deserial.hpp"
+#include "semantics.hpp"
+#include "irgen.hpp"
+#include "layout.hpp"
+#include "sentinel.hpp"
+#include "stubgen.hpp"
+#include "linker.hpp"
 
 namespace fs = std::filesystem;
 
@@ -163,6 +163,7 @@ int main(int argc, char **argv)
                       << "  -o <file>       Compile and link to executable\n"
                       << "  -verbose        Enable verbose internal logs\n"
                       << "  -help           Show this help message\n"
+                      << "  -static          Generate a static library instead of an executable\n"
                       << "  --version       Show compiler version\n\n"
                       << COLOR_YELLOW << "Example:\n"
                       << COLOR_RESET
@@ -182,6 +183,7 @@ int main(int argc, char **argv)
     std::string objFile;
     std::string exeFile;
     bool compileOnly = false;
+    bool staticCompile=false;//Boolean flag for static libgen
 
     // Parse arguments
     for (int i = 1; i < argc; ++i)
@@ -191,6 +193,8 @@ int main(int argc, char **argv)
         {
             objFile = argv[++i];
             compileOnly = true;
+        }else if(arg == "-static"){
+            staticCompile=true;
         }
         else if (arg == "-o" && i + 1 < argc)
         {
@@ -303,7 +307,7 @@ int main(int argc, char **argv)
         fs::path exePath = fs::absolute(exeFile);
         std::cout << COLOR_YELLOW << "\nLinking executable: " << exePath.string() << COLOR_RESET << "\n";
 
-        Linker linker(objPath.string());
+        Linker linker(objPath.string(),staticCompile);
         linker.processLinks(cu.mergedNodes, fileName, exePath.string());
 
         std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET << " Executable generated: " << exePath.string() << "\n";

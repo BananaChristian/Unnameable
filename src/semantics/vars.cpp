@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "semantics.hpp"
 
 // Walking the data type literals
@@ -280,6 +281,42 @@ void Semantics::walkNullLiteral(Node *node) {
   metaData[nullLit] = symbol;
 }
 
+void Semantics::walkSizeOfExpression(Node *node) {
+  auto sizeExpr = dynamic_cast<SizeOfExpression *>(node);
+  if (!sizeExpr)
+    return;
+
+  bool hasError = false;
+
+  Expression *typeNode = sizeExpr->type.get();
+  if (!typeNode)
+    return;
+  
+  int line = typeNode->expression.line;
+  int col = typeNode->expression.column;
+
+  ResolvedType type = inferNodeDataType(typeNode);
+  bool isInbuilt = isInteger(type) || isBoolean(type) || isChar(type) ||
+                   isString(type) || isFloat(type);
+
+  auto typeName = sizeExpr->type->expression.TokenLiteral;
+
+  // Check if the type written is legal that is if its not inbuilt
+  if (!isInbuilt) {
+    auto typeIt = customTypesTable.find(typeName);
+    if (typeIt == customTypesTable.end()) {
+      logSemanticErrors("Unknown type '" + typeName + "' in sizeof", line, col);
+      hasError = true;
+    }
+  }
+
+  auto sizeInfo = std::make_shared<SymbolInfo>();
+  sizeInfo->type = ResolvedType{DataType::USIZE, "usize"};
+  sizeInfo->hasError = hasError;
+
+  metaData[sizeExpr] = sizeInfo;
+}
+
 // Walking the array literal
 void Semantics::walkArrayLiteral(Node *node) {
   auto arrLit = dynamic_cast<ArrayLiteral *>(node);
@@ -485,7 +522,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
     derefInfo->type = derefSym->type;
   } else {
     derefInfo->type = derefSym->targetSymbol->type;
-    derefInfo->lastUseNode=derefExpr;
+    derefInfo->lastUseNode = derefExpr;
   }
 
   if (derefSym->isHeap || derefSym->isDheap)
@@ -493,12 +530,10 @@ void Semantics::walkDereferenceExpression(Node *node) {
 
   auto derefTargetSym = derefSym->targetSymbol;
   derefTargetSym->lastUseNode = derefExpr;
-  
-  
-  ResolvedType peeledType = derefSym->type; 
-  peeledType.isPointer=false;
-  ResolvedType finalType=isPointerType(peeledType);
 
+  ResolvedType peeledType = derefSym->type;
+  peeledType.isPointer = false;
+  ResolvedType finalType = isPointerType(peeledType);
 
   derefInfo->isPointer = false; // Just a sanity measure
   derefInfo->isMutable = derefSym->isMutable;
