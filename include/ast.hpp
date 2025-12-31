@@ -1,5 +1,5 @@
 #pragma once
-#include "token/token.hpp"
+#include "token.hpp"
 #include <memory>
 #include <string>
 #include <iostream>
@@ -529,6 +529,31 @@ struct StringLiteral : Expression
     StringLiteral(Token string_t) : Expression(string_t), string_token(string_t) {};
 };
 
+//Size of expression
+struct SizeOfExpression: Expression{
+    Token sizeOf;
+    std::unique_ptr<Expression> type;
+    
+    std::string toString() override{
+        std::string typeStr;
+        if(type){
+            typeStr=type->toString();
+        }else{
+            typeStr="type";
+        }
+        return "Sizeof Expression: sizeof<"+typeStr+">";
+    }
+    
+    SizeOfExpression *shallowClone() const override{
+        return new SizeOfExpression(
+            sizeOf,
+            clonePtr(type)
+        );
+    }
+    
+    SizeOfExpression(Token token,std::unique_ptr<Expression> ty):Expression(token),sizeOf(token),type(std::move(ty)){};
+};
+
 // Call expression
 struct CallExpression : Expression
 {
@@ -850,7 +875,7 @@ struct ExpressionStatement : Statement
 struct BreakStatement : Statement
 {
     Token break_tok;
-    std::string toString()
+    std::string toString() override
     {
         return "Break Statement: " + break_tok.TokenLiteral;
     }
@@ -1321,7 +1346,7 @@ struct LetStatement : Statement
         return result;
     }
 
-    LetStatement *shallowClone() const
+    LetStatement *shallowClone() const override
     {
         return new LetStatement(
             isHeap,
@@ -1386,7 +1411,7 @@ struct SignalStatement : Statement
         return result;
     }
 
-    SignalStatement(Token signal, std::unique_ptr<Expression> ident, std::unique_ptr<Statement> thread_st, std::unique_ptr<Expression> arg) : Statement(signal), identifier(std::move(ident)), tstart(std::move(thread_st)), func_arg(move(arg)) {};
+    SignalStatement(Token signal, std::unique_ptr<Expression> ident, std::unique_ptr<Statement> thread_st, std::unique_ptr<Expression> arg) : Statement(signal), identifier(std::move(ident)), tstart(std::move(thread_st)), func_arg(std::move(arg)) {};
 };
 
 // Start statement
@@ -1645,7 +1670,7 @@ struct EnumClassStatement : Statement
     std::unique_ptr<Expression> enum_identifier;
     std::optional<Token> int_type;
     std::vector<std::unique_ptr<EnumMember>> enum_content;
-    std::string toString()
+    std::string toString() override
     {
         std::string exportStr = isExportable ? "export " : "";
         std::string enum_block;
@@ -2042,7 +2067,7 @@ struct ArrayStatement : Statement
         return "Array Statement: " + heapStr + mutStr + " " + arrayTypeStr + " Lengths: " + lenStr + " " + arrName + " " + arrContent;
     }
 
-    ArrayStatement *shallowClone() const
+    ArrayStatement *shallowClone() const override
     {
         return new ArrayStatement(
             isHeap,
