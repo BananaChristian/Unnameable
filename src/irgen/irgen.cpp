@@ -1,4 +1,6 @@
 #include "llvm/TargetParser/Host.h"
+#include <llvm-18/llvm/IR/Constants.h>
+#include <llvm-18/llvm/IR/DataLayout.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/FileSystem.h>
@@ -21,6 +23,8 @@ IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     : semantics(semantics), totalHeapSize(totalHeap), context(),
       globalBuilder(context), funcBuilder(context),
       module(std::make_unique<llvm::Module>("unnameable", context)) {
+  this->layout = &module->getDataLayout();
+
   registerGeneratorFunctions();
   registerExpressionGeneratorFunctions();
   registerAddressGeneratorFunctions();
@@ -880,6 +884,12 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   // Arithmetic operators
   switch (infix->operat.type) {
   case TokenType::PLUS: {
+    auto lhsMeta = semantics.metaData[infix->left_operand.get()];
+
+    if (lhsMeta->type.isPointer) {
+      llvm::Type *baseTy = getLLVMType(lhsMeta->targetSymbol->type);
+      return funcBuilder.CreateGEP(baseTy, left, right, "ptr_addtmp");
+    }
 
     if (isIntegerType(resultType.kind))
       return funcBuilder.CreateAdd(left, right, "addtmp");
@@ -888,6 +898,15 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   }
 
   case TokenType::MINUS: {
+    auto lhsMeta = semantics.metaData[infix->left_operand.get()];
+
+    if (lhsMeta->type.isPointer) {
+      llvm::Type *baseTy = getLLVMType(lhsMeta->targetSymbol->type);
+
+      llvm::Value *negRight = funcBuilder.CreateNeg(right, "neg_offset");
+      return funcBuilder.CreateGEP(baseTy, left, negRight, "ptr_subtmp");
+    }
+    
     if (isIntegerType(resultType.kind))
       return funcBuilder.CreateSub(left, right, "subtmp");
     else
@@ -1692,7 +1711,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   llvm::Value *variableAddr = addrInfo.address;
   if (!variableAddr)
     throw std::runtime_error("No llvm address for '" + identName + "'");
-  
+
   // Component instance -> return pointer to the struct instance (address is
   // already correct)
   auto compIt = componentTypes.find(sym->type.resolvedName);
@@ -2133,6 +2152,21 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   return currentPtr;
 }
 
+llvm::Value *IRGenerator::generateSizeOfExpression(Node *node) {
+  auto sizeOf = dynamic_cast<SizeOfExpression *>(node);
+  if (!sizeOf)
+    throw std::runtime_error("Invalid sizeof expression");
+
+  Expression *typeExpr = sizeOf->type.get();
+  ResolvedType type = semantics.inferNodeDataType(typeExpr);
+
+  llvm::Type *llvmTY = getLLVMType(type);
+
+  uint64_t size = layout->getTypeAllocSize(llvmTY);
+  llvm::IntegerType *usizeTy = layout->getIntPtrType(context);
+  return llvm::ConstantInt::get(usizeTy, size);
+}
+
 llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
   auto blockExpr = dynamic_cast<BlockExpression *>(node);
   if (!blockExpr)
@@ -2480,6 +2514,8 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
       &IRGenerator::generateArrayLiteral;
   expressionGeneratorsMap[typeid(Identifier)] =
       &IRGenerator::generateIdentifierExpression;
+  expressionGeneratorsMap[typeid(SizeOfExpression)] =
+      &IRGenerator::generateSizeOfExpression;
   expressionGeneratorsMap[typeid(AddressExpression)] =
       &IRGenerator::generateAddressExpression;
   expressionGeneratorsMap[typeid(DereferenceExpression)] =
