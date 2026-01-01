@@ -35,8 +35,7 @@ enum class ImportedDataType
     CHAR16, // 16 BIT Char
     CHAR32, // 32 BIT Char
     ENUM,
-    DATABLOCK,
-    BEHAVIORBLOCK,
+    RECORD,
     COMPONENT,
     ERROR,
     VOID,
@@ -129,7 +128,7 @@ struct RawComponentTable
     RawComponentInit init;
 };
 
-struct RawDataMember
+struct RawRecordMember
 {
     std::string memberName;
     ImportedType type;
@@ -142,17 +141,17 @@ struct RawDataMember
     ImportedStorageType storage;
 };
 
-struct RawDataTable
+struct RawRecordTable
 {
-    std::string dataName;
-    std::vector<RawDataMember> members;
+    std::string recordName;
+    std::vector<RawRecordMember> members;
 };
 
 struct RawStubTable
 {
     std::vector<RawSealTable> seals;
     std::vector<RawComponentTable> components;
-    std::vector<RawDataTable> data;
+    std::vector<RawRecordTable> records;
 };
 
 class Deserializer
@@ -165,7 +164,7 @@ public:
 
     std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedSealTable;
     std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedComponentTable;
-    std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedDataTable;
+    std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedRecordsTable;
 
     // Maps ComponentName to Constructor Metadata
     std::unordered_map<std::string, ImportedSymbolInfo> importedInitTable;
@@ -192,6 +191,6 @@ private:
     RawComponentMethod readComponentMethod(std::istream &in);
     RawComponentInit readComponentInit(std::istream &in);
 
-    RawDataMember readDataMember(std::istream &in);
+    RawRecordMember readRecordMember(std::istream &in);
     RawStubTable readStubTable(std::istream &in);
 };

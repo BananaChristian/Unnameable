@@ -2,9 +2,9 @@
 #include "errors.hpp"
 #include "token.hpp"
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 
 #define CPPREST_FORCE_REBUILD
 
@@ -40,6 +40,7 @@ class Parser {
       {TokenType::BANG, Precedence::PREC_UNARY},
       {TokenType::MINUS_MINUS, Precedence::PREC_UNARY},
       {TokenType::PLUS_PLUS, Precedence::PREC_UNARY},
+      {TokenType::ADDR, Precedence::PREC_UNARY},
       {TokenType::FULLSTOP, Precedence::PREC_CALL},
       {TokenType::LPAREN, Precedence::PREC_CALL},
       {TokenType::SCOPE_OPERATOR, Precedence::PREC_CALL},
@@ -208,8 +209,8 @@ private:
   // Parsing behavior statements
   std::unique_ptr<Statement> parseBehaviorStatement();
 
-  // Parsing data statements
-  std::unique_ptr<Statement> parseDataStatement();
+  // Parsing record statements
+  std::unique_ptr<Statement> parseRecordStatement();
 
   // Parsing generic statements
   std::unique_ptr<Statement> parseGenericStatement();
@@ -404,6 +405,9 @@ private:
   // Checker for generics
   bool isGeneric(const std::string &typeName,
                  const std::vector<Token> &genericParams);
+  
+  //Declaration checker
+  bool isDeclaration(Node *node);
 
   // Checker for basic types
   bool isBasicType(TokenType type);

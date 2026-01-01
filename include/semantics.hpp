@@ -34,8 +34,7 @@ enum class DataType {
   CHAR32, // 32 BIT Char
 
   ENUM,
-  DATABLOCK,
-  BEHAVIORBLOCK,
+  RECORD,
   COMPONENT,
 
   ERROR,
@@ -253,7 +252,7 @@ public:
   std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
       ImportedComponentTable;
   std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
-      ImportedDataBlocksTable;
+      ImportedRecordTable;
   std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
   std::unordered_map<
       std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
@@ -279,6 +278,7 @@ public:
   std::pair<std::string, std::string>
   splitScopedName(const std::string &fullName);
   std::string extractIdentifierName(Node *node);
+  std::string extractDeclarationName(Node *node);
   ArrayTypeInfo getArrayTypeInfo(Node *node);
 
 private:
@@ -319,7 +319,7 @@ private:
   void walkNullLiteral(Node *node);
 
   // Walking the component functions declaration
-  void walkDataStatement(Node *node);
+  void walkRecordStatement(Node *node);
   void walkBehaviorStatement(Node *node);
   void walkComponentStatement(Node *node);
   void walkNewComponentExpression(Node *node);
@@ -446,7 +446,7 @@ private:
 
   void importSeals();
   void importComponents();
-  void importDataBlocks();
+  void importRecords();
   void importComponentInits();
 
   void registerInbuiltAllocatorTypes();

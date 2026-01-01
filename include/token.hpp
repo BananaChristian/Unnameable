@@ -69,7 +69,7 @@ enum class TokenType {
 
   COMPONENT, // component key word for classes
   SELF,      // self keyword for a component instance
-  DATA,      // data keyword token for class
+  RECORD,      // record keyword token for record blocks
   BEHAVIOR,  // behavior keyword token for class method blocks
   USE,       // use keyword that allows use of external data and behavior blocks
   INIT,      // constructor keyword

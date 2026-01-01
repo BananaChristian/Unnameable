@@ -25,7 +25,7 @@ class Lexer {
       {"component", TokenType::COMPONENT},
       {"self", TokenType::SELF},
       {"new", TokenType::NEW},
-      {"data", TokenType::DATA},
+      {"record", TokenType::RECORD},
       {"behavior", TokenType::BEHAVIOR},
       {"use", TokenType::USE},
       {"init", TokenType::INIT},

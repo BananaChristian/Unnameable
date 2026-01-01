@@ -1,3 +1,4 @@
+#include <llvm-18/llvm/IR/DataLayout.h>
 #include <typeindex>
 #include <unordered_map>
 #include "ast.hpp"
@@ -24,6 +25,7 @@ public:
     void calculatorDriver(Node *node);
 
 private:
+    const llvm::DataLayout *layout;
     // Component calculators
     void calculateLetStatementSize(Node *node);
     void calculateArrayStatementSize(Node *node);
@@ -37,7 +39,7 @@ private:
     void calculateFunctionStatement(Node *node);
     void calculateFunctionExpression(Node *node);
     void calculateBlockExpression(Node *node);
-    void calculateDataStatement(Node *node);
+    void calculateRecordStatement(Node *node);
     void calculateSealStatement(Node *node);
     void calculateComponentStatement(Node *node);
     void calculateInstantiateStatement(Node *node);

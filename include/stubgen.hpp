@@ -8,7 +8,7 @@ enum class StubSection : uint8_t
 {
     SEALS,
     COMPONENTS,
-    DATA
+    RECORD
 };
 
 struct SealFunction
@@ -63,7 +63,7 @@ struct ComponentTable
     ComponentInit init; // Every component only has one init so only one field here but its optional
 };
 
-struct DataMember
+struct RecordMember
 {
     std::string memberName;
     ResolvedType type;       // Member type like int or whatever
@@ -76,17 +76,17 @@ struct DataMember
     StorageType storage;
 };
 
-struct DataTable
+struct RecordTable
 {
-    std::string dataName;
-    std::vector<DataMember> members;
+    std::string recordName;
+    std::vector<RecordMember> members;
 };
 
 struct StubTable
 {
     std::vector<SealTable> seals;
     std::vector<ComponentTable> components;
-    std::vector<DataTable> data;
+    std::vector<RecordTable> records;
 };
 
 class StubGen
@@ -110,7 +110,7 @@ private:
     // Generator functions
     void generateSealStatement(Node *node);
     void generateComponentStatement(Node *node);
-    void generateDataStatement(Node *node);
+    void generateRecordStatement(Node *node);
 
     // Helper functions
     void registerStubGeneratorFns();
@@ -133,8 +133,8 @@ private:
     void serializeComponentTable(std::ostream &out, const ComponentTable &component);
     void serializeComponentInit(std::ostream &out, const ComponentInit &init);
 
-    void serializeDataMember(std::ostream &out, const DataMember &member);
-    void serializeDataTable(std::ostream &out, const DataTable &data);
+    void serializeRecordMember(std::ostream &out, const RecordMember &member);
+    void serializeRecordTable(std::ostream &out, const RecordTable &record);
 
     void serializeFullStubTable(const StubTable &table, const std::string &filename);
 };
