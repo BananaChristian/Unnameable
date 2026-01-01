@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "semantics.hpp"
+#include <string>
 #include <unordered_set>
 
 #define CPPREST_FORCE_REBUILD
@@ -15,7 +16,7 @@ Semantics::Semantics(Deserializer &deserial, std::string &file)
   importSeals();                   // Import seals
   importComponents();              // Import components
   importComponentInits();          // Import component inits
-  importRecords();              // Import records
+  importRecords();                 // Import records
   registerInbuiltAllocatorTypes(); // Register the inbuilt allocators(malloc for
                                    // now)
 }
@@ -813,9 +814,17 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
   // First, check if parentName is a **variable in current scope**
   auto varSymbol = resolveSymbolInfo(parentName);
   if (varSymbol) {
-    auto varType = varSymbol->type;
+    ResolvedType varType = varSymbol->type;
+
+    // If the type is a pointer strip the name and allow for access
+    std::string lookUpName = varType.resolvedName;
+
+    if (varType.isPointer) {
+      lookUpName = stripPtrSuffix(lookUpName);
+    }
+
     // Block cases where the parentName is an actual type too
-    if (varType.resolvedName == parentName) {
+    if (lookUpName == parentName) {
       logSemanticErrors("Must instantiate type '" + varType.resolvedName +
                             "' to access its members",
                         infixExpr->left_operand->expression.line,
@@ -832,10 +841,9 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
       }
 
       // Look up the type definition in customTypesTable
-      auto typeIt = customTypesTable.find(varType.resolvedName);
+      auto typeIt = customTypesTable.find(lookUpName);
       if (typeIt == customTypesTable.end()) {
-        logSemanticErrors("Component type '" + varType.resolvedName +
-                              "' not found",
+        logSemanticErrors("Type '" + lookUpName + "' not found",
                           infixExpr->left_operand->expression.line,
                           infixExpr->left_operand->expression.column);
         return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -844,8 +852,8 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
       // Look for childName in members
       auto memberIt = typeIt->second->members.find(childName);
       if (memberIt == typeIt->second->members.end()) {
-        logSemanticErrors("Component '" + varType.resolvedName +
-                              "' has no member '" + childName + "'",
+        logSemanticErrors("Type '" + lookUpName + "' has no member '" +
+                              childName + "'",
                           infixExpr->right_operand->expression.line,
                           infixExpr->right_operand->expression.column);
         return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -861,9 +869,9 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
       }
 
       // Look for the definition in the custom types table
-      auto typeIt = customTypesTable.find(varType.resolvedName);
+      auto typeIt = customTypesTable.find(lookUpName);
       if (typeIt == customTypesTable.end()) {
-        logSemanticErrors("Type '" + varType.resolvedName + "' not found",
+        logSemanticErrors("Type '" + lookUpName + "' not found",
                           infixExpr->left_operand->expression.line,
                           infixExpr->left_operand->expression.column);
         return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -872,8 +880,8 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
       // Look for the childName in members
       auto memIt = typeIt->second->members.find(childName);
       if (memIt == typeIt->second->members.end()) {
-        logSemanticErrors("Type '" + varType.resolvedName +
-                              "' does not have a member '" + childName + "'",
+        logSemanticErrors("Type '" + lookUpName + "' does not have a member '" +
+                              childName + "'",
                           infixExpr->left_operand->expression.line,
                           infixExpr->left_operand->expression.column);
         return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -886,36 +894,7 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
     }
   }
 
-  // If parentName is not a variable, treat it as a **type lookup** (this case
-  // will only work for use statements and enums)
-  auto typeIt = customTypesTable.find(parentName);
-  if (typeIt == customTypesTable.end()) {
-    logSemanticErrors("Parent name '" + parentName + "' does not exist",
-                      infixExpr->left_operand->expression.line,
-                      infixExpr->left_operand->expression.column);
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
-  }
-
-  if (operatorType == TokenType::SCOPE_OPERATOR) {
-    if (!(typeIt->second->type.kind == DataType::ENUM)) {
-      logSemanticErrors("Only use :: to access members of enums",
-                        infixExpr->left_operand->expression.line,
-                        infixExpr->left_operand->expression.column);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
-    }
-  }
-
-  // Look for the member in the type
-  auto memberIt = typeIt->second->members.find(childName);
-  if (memberIt == typeIt->second->members.end()) {
-    logSemanticErrors("Type '" + parentName + "' does not have member '" +
-                          childName + "'",
-                      infixExpr->right_operand->expression.line,
-                      infixExpr->right_operand->expression.column);
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
-  }
-
-  return memberIt->second->type;
+  return ResolvedType{DataType::UNKNOWN, "unknown"};
 }
 
 ResolvedType Semantics::resultOfBinary(TokenType operatorType,
@@ -1717,6 +1696,26 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
   default:
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
+}
+
+std::string Semantics::stripPtrSuffix(const std::string &type) {
+  // Inline lambda to check if a string ends with a suffix
+  auto endsWith = [](const std::string &str,
+                     const std::string &suffix) -> bool {
+    if (str.length() < suffix.length())
+      return false;
+    return str.compare(str.length() - suffix.length(), suffix.length(),
+                       suffix) == 0;
+  };
+
+  auto ptrName = [&](std::string typeName) {
+    if (endsWith(typeName, "_ptr"))
+      typeName = typeName.substr(0, typeName.size() - 4);
+
+    return typeName;
+  };
+
+  return ptrName(type);
 }
 
 ResolvedType Semantics::isPointerType(ResolvedType t) {

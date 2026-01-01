@@ -450,6 +450,7 @@ private:
   void importComponentInits();
 
   void registerInbuiltAllocatorTypes();
+  std::string stripPtrSuffix(const std::string &typeName);
   bool isGlobalScope();
   AllocatorRole
   getFunctionRole(const std::vector<std::unique_ptr<Statement>> &params,
