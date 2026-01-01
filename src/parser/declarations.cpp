@@ -478,12 +478,13 @@ std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam) {
   // Only treat as type if followed by another identifier (like "int x")
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::ARRAY ||
-      (currentToken().type != TokenType::IDENTIFIER &&
+      (currentToken().type == TokenType::IDENTIFIER &&
        nextToken().type == TokenType::IDENTIFIER)) {
+
     type = parseReturnType();
   }
 
-  // Parse identifier (the referer)
+  // Parse identifier (the name)
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected pointer name but got '" + currentToken().TokenLiteral +
              "'");
