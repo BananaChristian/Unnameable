@@ -566,7 +566,7 @@ void Parser::registerStatementParseFns() {
       &Parser::parseComponentStatement;
   StatementParseFunctionsMap[TokenType::BEHAVIOR] =
       &Parser::parseBehaviorStatement;
-  StatementParseFunctionsMap[TokenType::DATA] = &Parser::parseDataStatement;
+  StatementParseFunctionsMap[TokenType::RECORD] = &Parser::parseRecordStatement;
   StatementParseFunctionsMap[TokenType::USE] = &Parser::parseUseStatement;
   StatementParseFunctionsMap[TokenType::INIT] =
       &Parser::parseInitConstructorStatement;
@@ -620,6 +620,21 @@ Token Parser::peekToken(int peek) {
     return Token{"", TokenType::END, 0, 0}; // EOF token
   }
   return tokenInput[steps];
+}
+
+bool Parser::isDeclaration(Node *node) {
+  bool isDecl = false;
+  if (auto letStmt = dynamic_cast<LetStatement *>(node)) {
+    isDecl = true;
+  } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(node)) {
+    isDecl = true;
+  } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(node)) {
+    isDecl = true;
+  } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(node)) {
+    isDecl = true;
+  }
+
+  return isDecl;
 }
 
 // Error logging

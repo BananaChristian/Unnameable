@@ -54,7 +54,7 @@ void Layout::registerComponentCalculatorFns() {
   calculatorFnsMap[typeid(FunctionExpression)] =
       &Layout::calculateFunctionExpression;
   calculatorFnsMap[typeid(BlockExpression)] = &Layout::calculateBlockExpression;
-  calculatorFnsMap[typeid(DataStatement)] = &Layout::calculateDataStatement;
+  calculatorFnsMap[typeid(RecordStatement)] = &Layout::calculateRecordStatement;
   calculatorFnsMap[typeid(ComponentStatement)] =
       &Layout::calculateComponentStatement;
   calculatorFnsMap[typeid(InstantiateStatement)] =
@@ -341,25 +341,25 @@ void Layout::calculateInstantiateStatement(Node *node) {
   }
 }
 
-void Layout::calculateDataStatement(Node *node) {
-  auto dataStmt = dynamic_cast<DataStatement *>(node);
-  if (!dataStmt)
+void Layout::calculateRecordStatement(Node *node) {
+  auto recordStmt = dynamic_cast<RecordStatement *>(node);
+  if (!recordStmt)
     return;
 
-  auto dataName = dataStmt->dataBlockName->expression.TokenLiteral;
-  auto line = dataStmt->dataBlockName->expression.line;
-  auto col = dataStmt->dataBlockName->expression.column;
+  auto recordName = recordStmt->recordName->expression.TokenLiteral;
+  auto line = recordStmt->recordName->expression.line;
+  auto col = recordStmt->recordName->expression.column;
 
-  auto dataMeta = semantics.metaData.find(dataStmt);
+  auto dataMeta = semantics.metaData.find(recordStmt);
   if (dataMeta == semantics.metaData.end()) {
-    logPrestaticError("Could not find data block '" + dataName + "' metaData",
+    logPrestaticError("Could not find record '" + recordName + "' metaData",
                       line, col);
     return;
   }
 
   auto dataSym = dataMeta->second;
   if (!dataSym) {
-    logPrestaticError("Unidentified type '" + dataName + "'", line, col);
+    logPrestaticError("Unidentified type '" + recordName + "'", line, col);
     return;
   }
 
@@ -371,13 +371,13 @@ void Layout::calculateDataStatement(Node *node) {
   }
 
   // Independent analysis of the members in the data block
-  for (const auto &stmt : dataStmt->fields) {
+  for (const auto &stmt : recordStmt->fields) {
     calculatorDriver(stmt.get());
   }
-  llvm::StructType *structTy = llvm::StructType::create(context, dataName);
+  llvm::StructType *structTy = llvm::StructType::create(context, recordName);
   structTy->setBody(fieldTypes, /*isPacked*/ false);
 
-  typeMap[dataName] = structTy;
+  typeMap[recordName] = structTy;
 }
 
 void Layout::calculateComponentStatement(Node *node) {
@@ -537,7 +537,7 @@ llvm::Type *Layout::getLLVMType(ResolvedType type) {
     baseType = llvm::Type::getVoidTy(context);
     break;
   }
-  case DataType::DATABLOCK:
+  case DataType::RECORD:
   case DataType::COMPONENT: {
     if (type.resolvedName.empty())
       throw std::runtime_error(
@@ -616,7 +616,7 @@ void Layout::registerImportedTypes() {
     structTy->setBody(fieldTypes, false);
   }
 
-  for (const auto &dataTypesPair : semantics.ImportedDataBlocksTable) {
+  for (const auto &dataTypesPair : semantics.ImportedRecordTable) {
     const auto &[dataName, typeInfo] = dataTypesPair;
     const auto &members = typeInfo->members;
 

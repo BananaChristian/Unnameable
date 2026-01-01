@@ -191,8 +191,8 @@ Parser::parseLetStatementWithCustomType(bool isParam) {
 std::unique_ptr<Statement> Parser::parseHeapStatement() {
   advance(); // consume 'heap'
 
-  if (currentToken().type == TokenType::DATA) {
-    logError("Cannot use 'heap' before a data block");
+  if (currentToken().type == TokenType::RECORD) {
+    logError("Cannot use 'heap' before a record");
     return nullptr;
   }
 
@@ -494,7 +494,7 @@ std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam) {
   // Optional initializer
   std::unique_ptr<Expression> value = nullptr;
   if (currentToken().type == TokenType::ARROW) {
-    advance(); // Consume =>
+    advance(); // Consume ->
     value = parseExpression(Precedence::PREC_NONE);
     if (!value)
       return nullptr;
@@ -545,8 +545,8 @@ std::unique_ptr<Statement> Parser::parseLetStatementCustomOrBasic() {
 
 // Wrapper function for let statement with basic or custom type
 std::unique_ptr<Statement> Parser::parseLetStatementWithTypeWrapper() {
-  if (nextToken().type == TokenType::DATA) {
-    return parseDataStatement();
+  if (nextToken().type == TokenType::RECORD) {
+    return parseRecordStatement();
   } else if (nextToken().type == TokenType::ARRAY) {
     return parseArrayStatementWrapper();
   }

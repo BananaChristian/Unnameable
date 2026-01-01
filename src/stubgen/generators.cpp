@@ -78,7 +78,7 @@ void StubGen::generateSealStatement(Node *node)
             continue;
         }
 
-        // create a NEW sealFn for each function
+        // create a new sealFn for each function
         SealFunction sealFn;
         sealFn.funcName = unmangled;
         sealFn.returnType = fnSym->returnType;
@@ -184,37 +184,37 @@ void StubGen::generateComponentStatement(Node *node)
     std::cout << "[DEBUG] Finished serializing component '" + componentName << "\n";
 }
 
-void StubGen::generateDataStatement(Node *node)
+void StubGen::generateRecordStatement(Node *node)
 {
-    auto dataStmt = dynamic_cast<DataStatement *>(node);
-    if (!dataStmt)
+    auto recordStmt = dynamic_cast<RecordStatement *>(node);
+    if (!recordStmt)
         return;
 
-    if (!dataStmt->isExportable)
+    if (!recordStmt->isExportable)
         return;
 
-    std::string dataName = dataStmt->dataBlockName->expression.TokenLiteral;
+    std::string recordName = recordStmt->recordName->expression.TokenLiteral;
 
-    std::cout << "Processing data block: " << dataName << "\n";
+    std::cout << "Processing record: " << recordName << "\n";
 
-    auto dataIt = semantics.metaData.find(dataStmt);
+    auto dataIt = semantics.metaData.find(recordStmt);
     if (dataIt == semantics.metaData.end())
-        throw std::runtime_error("Failed to find data metaData");
+        throw std::runtime_error("Failed to find record metaData");
 
-    auto dataSym = dataIt->second;
-    if (!dataSym)
-        throw std::runtime_error("No data symbolInfo");
+    auto recordSym = dataIt->second;
+    if (!recordSym)
+        throw std::runtime_error("No record symbolInfo");
 
-    if (dataSym->hasError)
+    if (recordSym->hasError)
         throw std::runtime_error("Semantic error");
 
-    DataTable dataTable;
-    dataTable.dataName = dataName;
+    RecordTable recordTable;
+    recordTable.recordName = recordName;
 
-    auto dataMembers = dataSym->members;
-    for (const auto &[memName, memInfo] : dataMembers)
+    auto recordMembers = recordSym->members;
+    for (const auto &[memName, memInfo] : recordMembers)
     {
-        DataMember member;
+        RecordMember member;
         member.memberName = memInfo->memberName;
         member.type = memInfo->type;
         member.memberIndex = memInfo->memberIndex;
@@ -225,9 +225,9 @@ void StubGen::generateDataStatement(Node *node)
         member.isRef = memInfo->isRef;
         member.storage = memInfo->storage;
 
-        dataTable.members.push_back(member);
+        recordTable.members.push_back(member);
     }
 
-    stubTable.data.push_back(dataTable);
-    std::cout << "[DEBUG] Finished serializing data '" + dataName << "\n";
+    stubTable.records.push_back(recordTable);
+    std::cout << "[DEBUG] Finished serializing record '" + recordName << "\n";
 }

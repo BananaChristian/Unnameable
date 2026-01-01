@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "semantics.hpp"
 
 //_____________Array Statement__________________
@@ -228,15 +229,7 @@ void Semantics::walkPointerStatement(Node *node) {
   }
 
   // Dealing with what is being pointed to
-  std::string targetName = "unknown";
-  if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get())) {
-    targetName = ptrValue->identifier->expression.TokenLiteral;
-  } else if (auto ptrValue =
-                 dynamic_cast<CallExpression *>(ptrStmt->value.get())) {
-    targetName = ptrValue->function_identifier->expression.TokenLiteral;
-  } else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get())) {
-    targetName = ptrValue->identifier.TokenLiteral;
-  } // Leave it here for extensibility
+  std::string targetName = extractIdentifierName(ptrStmt->value.get());
 
   // Walking the target
   walker(ptrStmt->value.get());

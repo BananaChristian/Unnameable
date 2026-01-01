@@ -408,7 +408,7 @@ void Semantics::walkFunctionParameters(Node *node)
     {
         std::cout << "[SEMANTIC LOG]: Registering reference parameter\n";
 
-        auto refName = param->referer->expression.TokenLiteral;
+        auto refName = param->name->expression.TokenLiteral;
         auto line = param->statement.line;
         auto col = param->statement.column;
 
@@ -591,7 +591,7 @@ void Semantics::walkFunctionExpression(Node *node)
         }
         else if (refStmt)
         {
-            paramName = refStmt->referer->expression.TokenLiteral;
+            paramName = refStmt->name->expression.TokenLiteral;
         }
 
         walkFunctionParameters(param.get());

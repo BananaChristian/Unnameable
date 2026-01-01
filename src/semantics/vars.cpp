@@ -473,6 +473,12 @@ void Semantics::walkAddressExpression(Node *node) {
 
   walker(addrExpr->identifier.get());
   auto symbolInfo = resolveSymbolInfo(addrName);
+  
+  if (!symbolInfo) {
+    logSemanticErrors("Unidentified variable '" + addrName + "'", line, col);
+    return;
+  }
+
   bool hasError = false;
   bool isHeap = symbolInfo->isHeap;
   bool isDheap = symbolInfo->isDheap;
@@ -1047,7 +1053,7 @@ void Semantics::walkReferenceStatement(Node *node) {
 
   std::cout << "[SEMANTIC LOG]: Analysing reference statement\n";
 
-  auto refName = refStmt->referer->expression.TokenLiteral;
+  auto refName = refStmt->name->expression.TokenLiteral;
   auto line = refStmt->statement.line;
   auto column = refStmt->statement.column;
   ResolvedType refType = ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -1062,15 +1068,15 @@ void Semantics::walkReferenceStatement(Node *node) {
   }
 
   // Check if the reference is pointing to something
-  if (!refStmt->referee) {
+  if (!refStmt->value) {
     logSemanticErrors("Reference'" + refName + "' must reference something",
                       line, column);
     hasError = true;
   }
 
   // Checking the type of the referee
-  auto refereeName = extractIdentifierName(refStmt->referee.get());
-  walker(refStmt->referee.get());
+  auto refereeName = extractIdentifierName(refStmt->value.get());
+  walker(refStmt->value.get());
   auto refereeSymbol = resolveSymbolInfo(refereeName);
   if (!refereeSymbol) {
     logSemanticErrors("Reference '" + refName +

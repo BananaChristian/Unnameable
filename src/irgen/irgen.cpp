@@ -151,9 +151,9 @@ void IRGenerator::generateReferenceStatement(Node *node) {
   if (!refStmt)
     throw std::runtime_error("Invalid reference statement");
 
-  const auto &refName = refStmt->referer->expression.TokenLiteral;
+  const auto &refName = refStmt->name->expression.TokenLiteral;
   const auto &refereeName =
-      semantics.extractIdentifierName(refStmt->referee.get());
+      semantics.extractIdentifierName(refStmt->value.get());
 
   // Lookup metadata
   auto metaIt = semantics.metaData.find(refStmt);
@@ -186,7 +186,7 @@ void IRGenerator::generateReferenceStatement(Node *node) {
     }
   } else {
     // If LLVM value not yet generated, compute the address via generateAddress
-    targetAddress = generateAddress(refStmt->referee.get());
+    targetAddress = generateAddress(refStmt->value.get());
   }
 
   if (!targetAddress || !targetAddress->getType()->isPointerTy())
@@ -2053,7 +2053,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
 
     // --- Drill into nested type if needed ---
     if (lastMemberInfo->type.kind == DataType::COMPONENT ||
-        lastMemberInfo->type.kind == DataType::DATABLOCK) {
+        lastMemberInfo->type.kind == DataType::RECORD) {
       auto nestedIt =
           semantics.customTypesTable.find(lastMemberInfo->type.resolvedName);
       if (nestedIt == semantics.customTypesTable.end())
@@ -2136,7 +2136,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
 
     // --- Drill into nested type if needed ---
     if (lastMemberInfo->type.kind == DataType::COMPONENT ||
-        lastMemberInfo->type.kind == DataType::DATABLOCK) {
+        lastMemberInfo->type.kind == DataType::RECORD) {
       auto nestedIt =
           semantics.customTypesTable.find(lastMemberInfo->type.resolvedName);
       if (nestedIt == semantics.customTypesTable.end())
@@ -2340,7 +2340,7 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
     break;
   }
 
-  case DataType::DATABLOCK:
+  case DataType::RECORD:
   case DataType::COMPONENT: {
     if (type.resolvedName.empty())
       throw std::runtime_error(
@@ -2435,8 +2435,8 @@ void IRGenerator::registerGeneratorFunctions() {
   generatorFunctionsMap[typeid(FunctionDeclarationExpression)] =
       &IRGenerator::generateFunctionDeclarationExpression;
   // Component system
-  generatorFunctionsMap[typeid(DataStatement)] =
-      &IRGenerator::generateDataStatement;
+  generatorFunctionsMap[typeid(RecordStatement)] =
+      &IRGenerator::generateRecordStatement;
   generatorFunctionsMap[typeid(ComponentStatement)] =
       &IRGenerator::generateComponentStatement;
   generatorFunctionsMap[typeid(EnumClassStatement)] =

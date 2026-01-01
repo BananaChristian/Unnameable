@@ -134,9 +134,9 @@ void IRGenerator::declareImportedTypes()
     }
 
     // Loop through Data Blocks
-    for (const auto &[name, typeInfo] : semantics.ImportedDataBlocksTable)
+    for (const auto &[name, typeInfo] : semantics.ImportedRecordTable)
     {
-        finalizeTypeBody(name, typeInfo, "DATABLOCK");
+        finalizeTypeBody(name, typeInfo, "RECORD");
     }
 
     std::cout << "\n"

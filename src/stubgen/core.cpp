@@ -10,7 +10,7 @@ void StubGen::registerStubGeneratorFns()
 {
     stubGenFnsMap[typeid(ComponentStatement)] = &StubGen::generateComponentStatement;
     stubGenFnsMap[typeid(SealStatement)] = &StubGen::generateSealStatement;
-    stubGenFnsMap[typeid(DataStatement)] = &StubGen::generateDataStatement;
+    stubGenFnsMap[typeid(RecordStatement)] = &StubGen::generateRecordStatement;
 }
 
 void StubGen::finish()
@@ -184,7 +184,7 @@ void StubGen::serializeComponentTable(std::ostream &out, const ComponentTable &c
 }
 
 //________________DATA BLOCKS SERIALIZATION___________
-void StubGen::serializeDataMember(std::ostream &out, const DataMember &member)
+void StubGen::serializeRecordMember(std::ostream &out, const RecordMember &member)
 {
     writeString(out, member.memberName);
     serializeResolvedType(out, member.type);
@@ -197,14 +197,14 @@ void StubGen::serializeDataMember(std::ostream &out, const DataMember &member)
     write_u32(out, static_cast<uint32_t>(member.storage));
 }
 
-void StubGen::serializeDataTable(std::ostream &out, const DataTable &data)
+void StubGen::serializeRecordTable(std::ostream &out, const RecordTable &record)
 {
-    writeString(out, data.dataName);
+    writeString(out, record.recordName);
 
-    write_u32(out, (uint32_t)data.members.size());
-    for (const auto &member : data.members)
+    write_u32(out, (uint32_t)record.members.size());
+    for (const auto &member : record.members)
     {
-        serializeDataMember(out, member);
+        serializeRecordMember(out, member);
     }
 }
 
@@ -238,11 +238,11 @@ void StubGen::serializeFullStubTable(const StubTable &table, const std::string &
     }
 
     // DATA
-    write_u8(out, (uint8_t)StubSection::DATA);
-    write_u32(out, (uint32_t)table.data.size());
-    for (const auto &data : table.data)
+    write_u8(out, (uint8_t)StubSection::RECORD);
+    write_u32(out, (uint32_t)table.records.size());
+    for (const auto &record : table.records)
     {
-        serializeDataTable(out, data);
+        serializeRecordTable(out, record);
     }
 }
 

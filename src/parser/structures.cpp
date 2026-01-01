@@ -325,7 +325,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       if (nextToken().type == TokenType::BEHAVIOR) {
         stmt = parseUseStatement();
         usedBehaviorBlocks.push_back(std::move(stmt));
-      } else if (nextToken().type == TokenType::DATA) {
+      } else if (nextToken().type == TokenType::RECORD) {
         stmt = parseUseStatement();
         usedDataBlocks.push_back(std::move(stmt));
       } else {
@@ -476,18 +476,18 @@ std::unique_ptr<Statement> Parser::parseUseStatement() {
   advance(); // Consume the use keyword token
 
   Token kind_token;
-  if (currentToken().type == TokenType::DATA ||
+  if (currentToken().type == TokenType::RECORD ||
       currentToken().type == TokenType::BEHAVIOR) {
     kind_token = currentToken();
-    advance(); // Consume 'data' or 'behavior'
+    advance(); // Consume 'record' or 'behavior'
   } else {
-    logError("Expected either 'data' or 'behavior' keyword but got: " +
+    logError("Expected either 'record' or 'behavior' keyword but got: " +
              currentToken().TokenLiteral);
   }
 
   if (currentToken().type == TokenType::FULLSTOP ||
       currentToken().type == TokenType::SCOPE_OPERATOR) {
-    logError("Expected data block name but you are starting with a fullstop");
+    logError("Expected record name but you are starting with a fullstop");
   }
 
   std::unique_ptr<Expression> expr = parseExpression(Precedence::PREC_NONE);
@@ -545,29 +545,27 @@ std::unique_ptr<Statement> Parser::parseBehaviorStatement() {
                                              std::move(functions));
 }
 
-//______________________DATA BLOCK____________________
-// Parsing data behavior
-std::unique_ptr<Statement> Parser::parseDataStatement() {
+//______________________RECORDS____________________
+// Parsing record statement
+std::unique_ptr<Statement> Parser::parseRecordStatement() {
   bool isExportable = false;
   Mutability mutability = Mutability::IMMUTABLE;
   std::vector<std::unique_ptr<Statement>> fields;
   if (currentToken().type == TokenType::MUT) {
     mutability = Mutability::MUTABLE;
-    std::cout << "MUTABILITY IS MUTABLE\n";
     advance(); // Consuming the mut keyword token
   } else if (currentToken().type == TokenType::CONST) {
     mutability = Mutability::CONSTANT;
-    std::cout << "MUTABILITY IS CONSTANT\n";
     advance(); // Comsume the const keyword
   }
-  Token data_token = currentToken();
+  Token record_token = currentToken();
   advance(); // Consuming the data keyword token
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected data block name");
+    logError("Expected record name");
   }
   auto dataBlockName = parseIdentifier();
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected { to start data block");
+    logError("Expected { to start record block");
   }
 
   advance(); // Consuming the LPAREN
@@ -578,30 +576,24 @@ std::unique_ptr<Statement> Parser::parseDataStatement() {
       advance();
       continue;
     }
-    auto dataStmt = parseStatement();
-    if (auto letStmt = dynamic_cast<LetStatement *>(dataStmt.get())) {
-      auto type = dynamic_cast<BasicType *>(letStmt->type.get());
-      TokenType declaredType = type->data_token.type;
-      if (isBasicType(declaredType) || declaredType == TokenType::IDENTIFIER ||
-          declaredType == TokenType::AUTO) {
-        fields.push_back(std::move(dataStmt));
-      } else {
-        logError("Only type declarations are allowed inside data block. Got: " +
-                 dataStmt->token.TokenLiteral);
-      }
-    } else {
-      logError("Only let statements allowed inside data block");
+    auto recordStmt = parseStatement();
+    if (isDeclaration(recordStmt.get())) {
+      fields.push_back(std::move(recordStmt));
+    }else{
+        logError("Unsupported statement inside record");
     }
+    
   }
+
   if (currentToken().type != TokenType::RBRACE) {
     logError("Expected } to close data block but got '" +
              currentToken().TokenLiteral + "'");
   }
   advance();
 
-  return std::make_unique<DataStatement>(isExportable, mutability, data_token,
-                                         std::move(dataBlockName),
-                                         std::move(fields));
+  return std::make_unique<RecordStatement>(
+      isExportable, mutability, record_token, std::move(dataBlockName),
+      std::move(fields));
 }
 
 // Parsing instance expression
@@ -672,8 +664,8 @@ std::unique_ptr<Statement> Parser::parseExportStatement() {
         fnDeclr->isExportable = true;
       }
     }
-  } else if (auto dataStmt = dynamic_cast<DataStatement *>(stmt.get())) {
-    dataStmt->isExportable = true;
+  } else if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get())) {
+    recordStmt->isExportable = true;
   } else if (auto behaviorStmt =
                  dynamic_cast<BehaviorStatement *>(stmt.get())) {
     behaviorStmt->isExportable = true;

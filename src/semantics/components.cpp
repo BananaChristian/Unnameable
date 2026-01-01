@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "semantics.hpp"
 #include <algorithm>
 #include <limits>
@@ -351,44 +352,51 @@ void Semantics::walkEnumClassStatement(Node *node)
     symbolTable.pop_back();
 }
 
-void Semantics::walkDataStatement(Node *node)
+void Semantics::walkRecordStatement(Node *node)
 {
-    auto dataBlockStmt = dynamic_cast<DataStatement *>(node);
-    if (!dataBlockStmt)
+    auto recordStmt = dynamic_cast<RecordStatement *>(node);
+    if (!recordStmt)
         return;
 
     std::cout << "[SEMANTIC LOG] Analyzing data statement: "
-              << dataBlockStmt->toString() << "\n";
+              << recordStmt->toString() << "\n";
 
     // Get block name
-    std::string dataBlockName = dataBlockStmt->dataBlockName->expression.TokenLiteral;
+    std::string recordName = recordStmt->recordName->expression.TokenLiteral;
 
-    bool isExportable = dataBlockStmt->isExportable;
+    bool isExportable = recordStmt->isExportable;
 
     // Ensure name not already used
-    if (resolveSymbolInfo(dataBlockName))
+    if (resolveSymbolInfo(recordName))
     {
         logSemanticErrors(
-            "Already used the name '" + dataBlockName + "'",
-            dataBlockStmt->statement.line,
-            dataBlockStmt->statement.column);
+            "Already used the name '" + recordName + "'",
+            recordStmt->statement.line,
+            recordStmt->statement.column);
         return;
     }
 
     // Setup mutability
-    bool isBlockMutable = (dataBlockStmt->mutability == Mutability::MUTABLE);
-    bool isBlockConstant = (dataBlockStmt->mutability == Mutability::CONSTANT);
+    bool isBlockMutable = (recordStmt->mutability == Mutability::MUTABLE);
+    bool isBlockConstant = (recordStmt->mutability == Mutability::CONSTANT);
 
     // Create new local scope for analysis
     symbolTable.push_back({});
 
-    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> dataBlockMembers;
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> recordMembers;
 
     // Analyze each field
-    for (const auto &field : dataBlockStmt->fields)
+    for (const auto &field : recordStmt->fields)
     {
         auto letStmt = dynamic_cast<LetStatement *>(field.get());
-        if (!letStmt)
+        auto ptrStmt=dynamic_cast<PointerStatement*>(field.get());
+        auto refStmt=dynamic_cast<ReferenceStatement*>(field.get());
+        auto arrStmt=dynamic_cast<ArrayStatement*>(field.get());
+        
+        bool isDecl=letStmt||ptrStmt||refStmt||arrStmt;
+        
+        //Double check incase the parser messed up and leaked wrong statements
+        if (!isDecl)
         {
             logSemanticErrors(
                 "Invalid statement inside a data block",
@@ -399,28 +407,40 @@ void Semantics::walkDataStatement(Node *node)
 
         // Apply block mutability if set
         if (isBlockMutable)
+        {
             letStmt->mutability = Mutability::MUTABLE;
+            ptrStmt->mutability=Mutability::MUTABLE;
+            refStmt->mutability=Mutability::MUTABLE;
+            arrStmt->mutability=Mutability::MUTABLE;
+        }
         else if (isBlockConstant)
+        {
             letStmt->mutability = Mutability::CONSTANT;
+            ptrStmt->mutability=Mutability::CONSTANT;
+            refStmt->mutability=Mutability::CONSTANT;
+            arrStmt->mutability=Mutability::CONSTANT;
+        }
 
         // Walk the let statement to register it in the scope
         walker(field.get());
 
         // Now retrieve its symbol
-        auto letSymbol = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
-        if (!letSymbol)
+        
+        auto fieldSymbol = resolveSymbolInfo(extractDeclarationName(field.get()));
+        if (!fieldSymbol)
         {
             logSemanticErrors(
-                "Let statement '" + letStmt->ident_token.TokenLiteral +
+                "Declaration statement '" + extractDeclarationName(field.get()) +
                     "' was not analyzed properly",
-                letStmt->statement.line,
-                letStmt->statement.column);
+                field->statement.line,
+                field->statement.column);
             continue;
         }
 
-        bool isHeap = letSymbol->isHeap;
+        bool isHeap = fieldSymbol->isHeap;
+        bool isDheap=fieldSymbol->isDheap;
         StorageType memberStorage;
-        if (isHeap)
+        if (isHeap||isDheap)
         {
             memberStorage = StorageType::HEAP;
         }
@@ -432,65 +452,65 @@ void Semantics::walkDataStatement(Node *node)
         // Build member info
         auto memInfo = std::make_shared<MemberInfo>();
         memInfo->memberName = letStmt->ident_token.TokenLiteral;
-        memInfo->type = letSymbol->type;
-        memInfo->isMutable = letSymbol->isMutable;
-        memInfo->isConstant = letSymbol->isConstant;
-        memInfo->isInitialised = letSymbol->isInitialized;
+        memInfo->type = fieldSymbol->type;
+        memInfo->isMutable = fieldSymbol->isMutable;
+        memInfo->isConstant = fieldSymbol->isConstant;
+        memInfo->isInitialised = fieldSymbol->isInitialized;
         memInfo->isHeap = isHeap;
         memInfo->storage = memberStorage;
-        memInfo->typeNode = dataBlockStmt;
+        memInfo->typeNode = recordStmt;
         memInfo->node = field.get();
 
         // Insert into members map
-        dataBlockMembers[letStmt->ident_token.TokenLiteral] = memInfo;
+        recordMembers[extractDeclarationName(field.get())] = memInfo;
 
         std::cout << "[SEMANTIC LOG] Added field '"
                   << letStmt->ident_token.TokenLiteral
-                  << "' to data block '" << dataBlockName << "'\n";
+                  << "' to data block '" << recordName << "'\n";
     }
 
     int currentMemberIndex = 0;
-    for (auto &kv : dataBlockMembers)
+    for (auto &kv : recordMembers)
     {
         kv.second->memberIndex = currentMemberIndex++;
     }
 
     // Build symbol info for the whole block
     auto dataSymbolInfo = std::make_shared<SymbolInfo>();
-    dataSymbolInfo->type = ResolvedType{DataType::DATABLOCK, dataBlockName};
+    dataSymbolInfo->type = ResolvedType{DataType::RECORD, recordName};
     dataSymbolInfo->isMutable = isBlockMutable;
     dataSymbolInfo->isConstant = isBlockConstant;
     dataSymbolInfo->isExportable = isExportable;
-    dataSymbolInfo->members = dataBlockMembers;
+    dataSymbolInfo->members = recordMembers;
     dataSymbolInfo->isDataBlock = true;
 
     for (auto &kv : dataSymbolInfo->members)
     {
-        auto it = dataBlockMembers.find(kv.first);
-        if (it != dataBlockMembers.end())
+        auto it = recordMembers.find(kv.first);
+        if (it != recordMembers.end())
             kv.second->memberIndex = it->second->memberIndex;
     }
 
     // Build customtype info
     auto typeInfo = std::make_shared<CustomTypeInfo>();
 
-    typeInfo->typeName = dataBlockName;
-    typeInfo->type = ResolvedType{DataType::DATABLOCK, dataBlockName},
+    typeInfo->typeName = recordName;
+    typeInfo->type = ResolvedType{DataType::RECORD, recordName},
     typeInfo->isExportable = isExportable;
-    typeInfo->members = dataBlockMembers;
+    typeInfo->members = recordMembers;
 
     // Propagate indices to customTypesTable
     for (auto &kv : typeInfo->members)
     {
-        auto it = dataBlockMembers.find(kv.first);
-        if (it != dataBlockMembers.end())
+        auto it = recordMembers.find(kv.first);
+        if (it != recordMembers.end())
             kv.second->memberIndex = it->second->memberIndex;
     }
 
     // Store results
-    metaData[dataBlockStmt] = dataSymbolInfo;
-    symbolTable[0][dataBlockName] = dataSymbolInfo;
-    customTypesTable[dataBlockName] = typeInfo;
+    metaData[recordStmt] = dataSymbolInfo;
+    symbolTable[0][recordName] = dataSymbolInfo;
+    customTypesTable[recordName] = typeInfo;
 
     // Pop local scope
     popScope();
@@ -515,9 +535,9 @@ void Semantics::walkInstanceExpression(Node *node)
         hasError = true;
     }
 
-    if (instSym->type.kind != DataType::DATABLOCK)
+    if (instSym->type.kind != DataType::RECORD)
     {
-        logSemanticErrors("'" + instName + "' is not a data block", line, col);
+        logSemanticErrors("'" + instName + "' is not a record ", line, col);
         hasError = true;
     }
 
@@ -656,23 +676,13 @@ void Semantics::walkBehaviorStatement(Node *node)
 
     // Build symbol info
     auto sym = std::make_shared<SymbolInfo>();
-    sym->type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName};
     sym->isBehavior = true;
     sym->isExportable = isExportable;
     sym->members = behaviorMembers;
 
-    // Build custom type info
-    auto typeInfo = std::make_shared<CustomTypeInfo>();
-
-    typeInfo->typeName = behaviorName;
-    typeInfo->type = ResolvedType{DataType::BEHAVIORBLOCK, behaviorName};
-    typeInfo->isExportable = isExportable;
-    typeInfo->members = behaviorMembers;
-
     // Store results
     symbolTable[0][behaviorName] = sym; // All behavior blocks are hoisted to global scope
     metaData[behaviorStmt] = sym;
-    customTypesTable[behaviorName] = typeInfo;
 
     insideBehavior = false;
     // Pop scope
@@ -785,7 +795,7 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr, const std::s
         currentResolvedType = &memIt->second->type;
 
         // If this member is a custom type, get its CustomTypeInfo for next iteration
-        bool isCustom = currentResolvedType->kind == DataType::DATABLOCK || currentResolvedType->kind == DataType::COMPONENT || currentResolvedType->kind == DataType::ENUM;
+        bool isCustom = currentResolvedType->kind == DataType::RECORD || currentResolvedType->kind == DataType::COMPONENT || currentResolvedType->kind == DataType::ENUM;
         if (isCustom)
         {
             auto ctiIt = customTypesTable.find(currentResolvedType->resolvedName);
@@ -903,7 +913,7 @@ void Semantics::walkComponentStatement(Node *node)
     {
         if (!usedData)
         {
-            std::cout << "Invalid used data node\n";
+            std::cout << "Invalid used record node\n";
             return;
         }
 
@@ -924,7 +934,7 @@ void Semantics::walkComponentStatement(Node *node)
             auto typeIt = customTypesTable.find(identName);
             if (typeIt == customTypesTable.end())
             {
-                logSemanticErrors("Data block with name '" + identName + "' does not exist", ident->expression.line, ident->expression.column);
+                logSemanticErrors("Record with name '" + identName + "' does not exist", ident->expression.line, ident->expression.column);
                 hasError = true;
                 return;
             }

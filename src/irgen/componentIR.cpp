@@ -1,14 +1,14 @@
 #include "irgen.hpp"
 
-void IRGenerator::generateDataStatement(Node *node)
+void IRGenerator::generateRecordStatement(Node *node)
 {
-    auto dataStmt = dynamic_cast<DataStatement *>(node);
-    if (!dataStmt)
+    auto recordStmt = dynamic_cast<RecordStatement *>(node);
+    if (!recordStmt)
         return;
 
-    auto it = semantics.metaData.find(dataStmt);
+    auto it = semantics.metaData.find(recordStmt);
     if (it == semantics.metaData.end())
-        throw std::runtime_error("Missing data block metaData");
+        throw std::runtime_error("Missing record metaData");
 
     auto &meta = *it->second;
     std::string blockName = meta.type.resolvedName;
@@ -51,7 +51,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node)
     std::string instName = instExpr->blockIdent->expression.TokenLiteral;
     llvm::StructType *structTy = llvmCustomTypes[instName];
     if (!structTy)
-        throw std::runtime_error("Unknown struct type: " + instName);
+        throw std::runtime_error("Unknown record type: " + instName);
 
     if (!funcBuilder.GetInsertBlock())
         throw std::runtime_error("Cannot create an instance for '" + instName + "' in the global scope");

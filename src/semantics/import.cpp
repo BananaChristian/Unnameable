@@ -98,10 +98,8 @@ DataType Semantics::convertImportedDataTypetoResolvedDataType(const ImportedData
         return DataType::CHAR32;
     case ImportedDataType::ENUM:
         return DataType::ENUM;
-    case ImportedDataType::DATABLOCK:
-        return DataType::DATABLOCK;
-    case ImportedDataType::BEHAVIORBLOCK:
-        return DataType::BEHAVIORBLOCK;
+    case ImportedDataType::RECORD:
+        return DataType::RECORD;
     case ImportedDataType::COMPONENT:
         return DataType::COMPONENT;
     case ImportedDataType::ERROR:
@@ -218,27 +216,27 @@ void Semantics::importComponents()
     }
 }
 
-void Semantics::importDataBlocks()
+void Semantics::importRecords()
 {
-    std::cout << "Imported data blocks count: " << deserializer.importedDataTable.size();
+    std::cout << "Imported records count: " << deserializer.importedRecordsTable.size();
 
-    for (const auto &dataPair : deserializer.importedDataTable)
+    for (const auto &recordPair : deserializer.importedRecordsTable)
     {
-        const std::string &dataName = dataPair.first;
-        std::cout << "IMPORTED DATA NAME: " << dataName << "\n";
+        const std::string &recordName = recordPair.first;
+        std::cout << "IMPORTED RECORD NAME: " << recordName << "\n";
 
         auto typeInfo = std::make_shared<CustomTypeInfo>();
 
-        typeInfo->typeName = dataName;
-        typeInfo->type = ResolvedType{DataType::DATABLOCK, dataName};
+        typeInfo->typeName = recordName;
+        typeInfo->type = ResolvedType{DataType::RECORD, recordName};
 
         std::unordered_map<std::string, std::shared_ptr<MemberInfo>> symMembers;
-        auto &memberMap = dataPair.second;
+        auto &memberMap = recordPair.second;
 
         for (const auto &memPair : memberMap)
         {
             const std::string &memberName = memPair.first;
-            std::cout << "IMPORTED DATA MEMBER NAME: " << memberName << "\n";
+            std::cout << "IMPORTED RECORD MEMBER NAME: " << memberName << "\n";
 
             const ImportedSymbolInfo &info = memPair.second;
 
@@ -262,14 +260,14 @@ void Semantics::importDataBlocks()
             symMembers[memberName] = memInfo;
         }
 
-        customTypesTable[dataName] = typeInfo;
-        ImportedDataBlocksTable[dataName] = typeInfo;
-        auto dataSym = std::make_shared<SymbolInfo>();
-        dataSym->isExportable = true;
-        dataSym->members = symMembers;
-        dataSym->type = ResolvedType{DataType::DATABLOCK, dataName};
+        customTypesTable[recordName] = typeInfo;
+        ImportedRecordTable[recordName] = typeInfo;
+        auto recordSym = std::make_shared<SymbolInfo>();
+        recordSym->isExportable = true;
+        recordSym->members = symMembers;
+        recordSym->type = ResolvedType{DataType::RECORD, recordName};
 
-        symbolTable[0][dataName] = dataSym;
+        symbolTable[0][recordName] = recordSym;
     }
 }
 

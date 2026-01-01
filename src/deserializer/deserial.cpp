@@ -175,11 +175,11 @@ void Deserializer::loadStub(const std::string &resolved)
     }
 
     // Data reading
-    for (const auto &data : stub.data)
+    for (const auto &record : stub.records)
     {
-        std::cout << "DATA BLOCK NAME: " << data.dataName << "\n";
-        auto &dataMap = importedDataTable[data.dataName];
-        for (const auto &member : data.members)
+        std::cout << "RECORD NAME: " << record.recordName << "\n";
+        auto &recordMap = importedRecordsTable[record.recordName];
+        for (const auto &member : record.members)
         {
             ImportedSymbolInfo info;
             info.type = member.type;
@@ -191,7 +191,7 @@ void Deserializer::loadStub(const std::string &resolved)
             info.isPointer = member.isPointer;
             info.storage = member.storage;
 
-            dataMap.emplace(member.memberName, std::move(info));
+            recordMap.emplace(member.memberName, std::move(info));
         }
     }
 }
@@ -379,11 +379,11 @@ RawComponentInit Deserializer::readComponentInit(std::istream &in)
 }
 
 //__________________DATA MEMBER READING_______________
-RawDataMember Deserializer::readDataMember(std::istream &in)
+RawRecordMember Deserializer::readRecordMember(std::istream &in)
 {
-    std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting Data Member read.\n";
-    RawDataMember member;
-    member.memberName = readString(in, "Data Name");
+    std::cout << COLOR_BLUE << "\n[FLOW] " << COLOR_RESET << "Starting Record Member read.\n";
+    RawRecordMember member;
+    member.memberName = readString(in, "Record Name");
     member.type = readImportedType(in);
     member.memberIndex = read_s32(in, "Member Index");
     member.isNullable = read_u8(in, "Member Flag: isNullable");
@@ -392,7 +392,7 @@ RawDataMember Deserializer::readDataMember(std::istream &in)
     member.isRef = read_u8(in, "Member Flag: isRef");
     member.isPointer = read_u8(in, "Member Flag: isPointer");
     member.storage = static_cast<ImportedStorageType>(read_u32(in, "Member Storage Type"));
-    std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished Data Member read.\n";
+    std::cout << COLOR_BLUE << "[FLOW] " << COLOR_RESET << "Finished Record Member read.\n";
 
     return member;
 }
@@ -523,24 +523,24 @@ RawStubTable Deserializer::readStubTable(std::istream &in)
             {
                 throw std::runtime_error("Stub corruption detected: absurdly high entry count (" + std::to_string(entryCount) + ")");
             }
-            table.data.reserve(entryCount);
+            table.records.reserve(entryCount);
 
             for (uint32_t i = 0; i < entryCount; i++)
             {
                 std::cout << COLOR_YELLOW << "[DEBUG]" << COLOR_RESET << " Reading Data " << i + 1 << " of " << entryCount << "\n";
-                RawDataTable data;
-                data.dataName = readString(in, "Data Table Name");
+                RawRecordTable record;
+                record.recordName = readString(in, "Record Table Name");
 
                 // Members
-                uint32_t memberCount = read_u32(in, "Data Member Count");
-                data.members.reserve(memberCount);
-                std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Component '" << data.dataName << "' expects " << memberCount << " members.\n";
+                uint32_t memberCount = read_u32(in, "Record Member Count");
+                record.members.reserve(memberCount);
+                std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Record '" << record.recordName << "' expects " << memberCount << " members.\n";
                 for (uint32_t m = 0; m < memberCount; ++m)
                 {
-                    data.members.push_back(readDataMember(in));
+                    record.members.push_back(readRecordMember(in));
                 }
 
-                table.data.push_back(std::move(data));
+                table.records.push_back(std::move(record));
             }
             break;
         }

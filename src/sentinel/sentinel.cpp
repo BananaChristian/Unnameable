@@ -48,7 +48,7 @@ void Sentinel::registerSentinelFns() {
   sentinelFnsMap[typeid(InfixExpression)] = &Sentinel::checkInfixExpression;
   sentinelFnsMap[typeid(PrefixExpression)] = &Sentinel::checkPrefixExpression;
   sentinelFnsMap[typeid(PostfixExpression)] = &Sentinel::checkPostfixExpression;
-  sentinelFnsMap[typeid(DataStatement)] = &Sentinel::checkDataStatement;
+  sentinelFnsMap[typeid(RecordStatement)] = &Sentinel::checkRecordStatement;
   sentinelFnsMap[typeid(FieldAssignment)] = &Sentinel::checkFieldAssignment;
   sentinelFnsMap[typeid(ComponentStatement)] =
       &Sentinel::checkComponentStatement;
@@ -404,8 +404,8 @@ void Sentinel::checkCallExpression(Node *node) {
   }
 }
 
-void Sentinel::checkDataStatement(Node *node) {
-  auto dataStmt = dynamic_cast<DataStatement *>(node);
+void Sentinel::checkRecordStatement(Node *node) {
+  auto dataStmt = dynamic_cast<RecordStatement *>(node);
   if (!dataStmt)
     return;
 
