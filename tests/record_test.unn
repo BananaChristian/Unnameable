@@ -1,11 +1,11 @@
-data Bounds{
-    int width;
-    int height;
+record Bounds{
+    i32 width;
+    i32 height;
 }
 
-data Rect{
-    int x;
-    int y;
+record Rect{
+    i32 x;
+    i32 y;
 }
 
 func dimensions(Rect r): Bounds{
@@ -13,7 +13,7 @@ func dimensions(Rect r): Bounds{
     return Bounds{width=r.x,height=r.y};
 }
 
-func main:int{
+func main:i32{
     Rect rectangle=Rect{x=100,y=50};
     dimensions(rectangle);
     return 0;
