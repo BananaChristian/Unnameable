@@ -277,6 +277,7 @@ public:
   ResolvedType inferNodeDataType(Node *node);
   std::pair<std::string, std::string>
   splitScopedName(const std::string &fullName);
+  std::string stripPtrSuffix(const std::string &typeName);
   std::string extractIdentifierName(Node *node);
   std::string extractDeclarationName(Node *node);
   ArrayTypeInfo getArrayTypeInfo(Node *node);
@@ -285,6 +286,7 @@ private:
   bool insideFunction = false;
   bool insideBehavior = false;
   bool insideComponent = false;
+  bool insideRecord=false;
   bool insideSeal = false;
   bool insideAllocator = false;
 
@@ -450,7 +452,6 @@ private:
   void importComponentInits();
 
   void registerInbuiltAllocatorTypes();
-  std::string stripPtrSuffix(const std::string &typeName);
   bool isGlobalScope();
   AllocatorRole
   getFunctionRole(const std::vector<std::unique_ptr<Statement>> &params,
