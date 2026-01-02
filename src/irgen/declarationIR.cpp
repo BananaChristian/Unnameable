@@ -286,9 +286,13 @@ void IRGenerator::generatePointerStatement(Node *node) {
 
   std::cout << "[IR DEBUG] Pointer type: " << ptrSym->type.resolvedName << "\n";
 
-  llvm::Value *initVal = ptrStmt->value
-                             ? generateExpression(ptrStmt->value.get())
-                             : llvm::Constant::getNullValue(ptrType);
+  llvm::Value *initVal = nullptr;
+  if (ptrStmt->value) {
+    initVal = generateExpression(ptrStmt->value.get());
+  } else {
+    initVal =
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrType));
+  }
 
   if (!initVal)
     throw std::runtime_error("No init value");

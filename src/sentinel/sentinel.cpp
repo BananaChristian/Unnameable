@@ -450,12 +450,13 @@ void Sentinel::checkFieldAssignment(Node *node) {
 
   // Get the parent type from the baseSymbol
   auto parentTypeName = baseSym->type.resolvedName;
-  std::cout << "PARENT TYPE NAME: " << parentTypeName << "\n";
+  std::string lookUpName=semantics.stripPtrSuffix(parentTypeName);
+  std::cout << "PARENT TYPE NAME: " << lookUpName << "\n";
 
   // Check inside the parent
-  auto parentIt = semantics.customTypesTable.find(parentTypeName);
+  auto parentIt = semantics.customTypesTable.find(lookUpName);
   if (parentIt == semantics.customTypesTable.end()) {
-    logError("Unknown type '" + parentTypeName + "'", line, column);
+    logError("Unknown type '" + lookUpName + "'", line, column);
     return;
   }
 

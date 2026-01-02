@@ -967,12 +967,13 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
 
   // Get the parent's type
   std::string parentType = parentSymbol->type.resolvedName;
-  std::cout << "SEMANTIC LOG: Parent type: " << parentType << "\n";
+  std::string lookUpName=stripPtrSuffix(parentType);//Strip the _ptr suffix so that the semantics can search with the original name
+  std::cout << "SEMANTIC LOG: Parent type: " << lookUpName << "\n";
 
   // Look up that type in the custom types table
-  auto parentIt = customTypesTable.find(parentType);
+  auto parentIt = customTypesTable.find(lookUpName);
   if (parentIt == customTypesTable.end()) {
-    logSemanticErrors("Type '" + parentType + "' does not exist", line, column);
+    logSemanticErrors("Type '" + lookUpName + "' does not exist", line, column);
     hasError = true;
     return;
   }
@@ -1044,145 +1045,4 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   info->hasError = hasError;
 
   metaData[fieldAssignStmt] = info;
-}
-
-void Semantics::walkReferenceStatement(Node *node) {
-  auto refStmt = dynamic_cast<ReferenceStatement *>(node);
-  if (!refStmt)
-    return;
-
-  std::cout << "[SEMANTIC LOG]: Analysing reference statement\n";
-
-  auto refName = refStmt->name->expression.TokenLiteral;
-  auto line = refStmt->statement.line;
-  auto column = refStmt->statement.column;
-  ResolvedType refType = ResolvedType{DataType::UNKNOWN, "unknown"};
-  bool hasError = false;
-
-  // Check if the reference variable name already exists
-  auto existingSym = resolveSymbolInfo(refName);
-  if (existingSym) {
-    logSemanticErrors("Reference name '" + refName + "' already in use", line,
-                      column);
-    hasError = true;
-  }
-
-  // Check if the reference is pointing to something
-  if (!refStmt->value) {
-    logSemanticErrors("Reference'" + refName + "' must reference something",
-                      line, column);
-    hasError = true;
-  }
-
-  // Checking the type of the referee
-  auto refereeName = extractIdentifierName(refStmt->value.get());
-  walker(refStmt->value.get());
-  auto refereeSymbol = resolveSymbolInfo(refereeName);
-  if (!refereeSymbol) {
-    logSemanticErrors("Reference '" + refName +
-                          "'is referencing an undeclared variable '" +
-                          refereeName + "'",
-                      line, column);
-    hasError = true;
-    return;
-  }
-
-  ResolvedType refereeType = refereeSymbol->type;
-  // Check if the referee type is a pointer and block it
-  if (refereeType.isPointer) {
-    logSemanticErrors("Cannot create references to pointers", line, column);
-    hasError = true;
-  } else {
-    // If the referee type isnt a pointer toggle the isRef flag to true
-    // It is like type elevation after all we want to create a reference to
-    // something
-    auto tempType = refereeSymbol->type;
-    tempType.isRef = true;
-    refereeType = isRefType(refereeType); // Convert the name and store it
-  }
-
-  // If the reference statement has no type we just infer the type
-  if (!refStmt->type) {
-    refType = refereeType;
-  } else if (refStmt->type) {
-    refType = inferNodeDataType(
-        refStmt); // Update the data type with the type that was declared
-
-    if (refType.isNull) {
-      logSemanticErrors("Cannot have a nullable reference '" + refName + "'",
-                        line, column);
-      hasError = true;
-    }
-
-    // Compare the two types
-    if (!isTypeCompatible(refType, refereeType)) {
-      logSemanticErrors("Type mismatch reference '" + refName + "' of type '" +
-                            refType.resolvedName +
-                            "' does not match variable '" + refereeName +
-                            "' being refered with type '" +
-                            refereeType.resolvedName + "'",
-                        line, column);
-      hasError = true;
-    }
-  }
-
-  // Checking if we are refering to a heap raised or global variable if not
-  // complain
-  auto refereeStorage = refereeSymbol->storage;
-  if (refereeStorage == StorageType::STACK) {
-    logSemanticErrors("Cannot create a reference '" + refName +
-                          "' to a local variable '" + refereeName + "'",
-                      line, column);
-    hasError = true;
-  }
-
-  // Checking the mutability
-  bool isMutable = false;
-  bool isConstant = false;
-  if (refStmt->mutability == Mutability::MUTABLE)
-    isMutable = true;
-
-  if (refStmt->mutability == Mutability::CONSTANT)
-    isConstant = true;
-
-  // Check if the symbol is also mutable
-  if (!refereeSymbol->isMutable && isMutable) {
-    logSemanticErrors("Cannot create a mutable reference '" + refName +
-                          "' to an immutable variable '" + refereeName + "'",
-                      line, column);
-    hasError = true;
-  }
-
-  if (refereeSymbol->isNullable) {
-    logSemanticErrors("Cannot create a reference to a nullable variable '" +
-                          refereeName + "'",
-                      line, column);
-    hasError = true;
-  }
-
-  // Updating the reference count of the symbol being referenced
-  refereeSymbol->refCount += 1;
-  std::cout << "[DEBUG] Incremented refCount for target -> "
-            << refereeSymbol->refCount << "\n";
-
-  // Updating the storage type for references
-  StorageType refStorage;
-  if (isGlobalScope()) {
-    refStorage = StorageType::GLOBAL;
-  } else {
-    refStorage = StorageType::STACK;
-  }
-
-  auto refInfo = std::make_shared<SymbolInfo>();
-  refInfo->type = refType;
-  refInfo->isInitialized = true;
-  refInfo->isMutable = isMutable;
-  refInfo->isConstant = isConstant;
-  refInfo->refereeSymbol = refereeSymbol;
-  refInfo->hasError = hasError;
-  refInfo->isRef = true;
-  refInfo->storage = refStorage;
-
-  metaData[refStmt] = refInfo;
-  symbolTable.back()[refName] = refInfo;
 }

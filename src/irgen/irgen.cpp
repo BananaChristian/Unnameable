@@ -444,26 +444,31 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
 
   // Resolve parent type and member info
   auto parentTypeName = baseSym->type.resolvedName;
-  auto parentIt = semantics.customTypesTable.find(parentTypeName);
+  std::string lookUpName = semantics.stripPtrSuffix(parentTypeName);
+  auto parentIt = semantics.customTypesTable.find(lookUpName);
   if (parentIt == semantics.customTypesTable.end())
-    throw std::runtime_error("Type '" + parentTypeName + "' does not exist");
+    throw std::runtime_error("Type '" + lookUpName + "' does not exist");
 
   auto &members = parentIt->second->members;
   auto childIt = members.find(childName);
   if (childIt == members.end())
     throw std::runtime_error("'" + childName + "' is not a member of '" +
-                             parentTypeName + "'");
+                             lookUpName + "'");
 
   // Member metadata and types
   auto memberInfo =
       childIt->second; // whatever structure you use for member metadata
-  llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
+  llvm::StructType *structTy = llvmCustomTypes[lookUpName];
   unsigned fieldIndex = memberInfo->memberIndex;
+
+  llvm::Value *actualStructAddr = funcBuilder.CreateLoad(
+      llvm::PointerType::get(context, 0), // Load a generic 'ptr'
+      baseSym->llvmValue, parentVarName + "_addr");
 
   // GEP to the member slot inside this instance (slot type for heap-member is
   // "elem*", so the GEP yields a pointer-to-slot whose type is elem**)
   llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(
-      structTy, baseSym->llvmValue, fieldIndex, childName);
+      structTy, actualStructAddr, fieldIndex, childName);
   if (!fieldPtr)
     throw std::runtime_error("Failed to compute GEP for member '" + childName +
                              "'");
@@ -654,21 +659,22 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
       throw std::runtime_error("Missing metadata for struct expression");
 
     std::string parentTypeName = lhsMeta->type.resolvedName;
+    std::string lookUpName = semantics.stripPtrSuffix(parentTypeName);
 
     // get struct definition
-    auto parentTypeIt = semantics.customTypesTable.find(parentTypeName);
+    auto parentTypeIt = semantics.customTypesTable.find(lookUpName);
     if (parentTypeIt == semantics.customTypesTable.end())
-      throw std::runtime_error("Unknown struct type '" + parentTypeName + "'");
+      throw std::runtime_error("Unknown struct type '" + lookUpName + "'");
 
     auto &parentInfo = parentTypeIt->second;
     auto memberIt = parentInfo->members.find(memberName);
     if (memberIt == parentInfo->members.end())
       throw std::runtime_error("No member '" + memberName + "' in type '" +
-                               parentTypeName + "'");
+                               lookUpName + "'");
 
     // get member index + type
     unsigned memberIndex = memberIt->second->memberIndex;
-    llvm::StructType *structTy = llvmCustomTypes[parentTypeName];
+    llvm::StructType *structTy = llvmCustomTypes[lookUpName];
     llvm::Type *memberType = getLLVMType(memberIt->second->type);
 
     // if lhs is struct by value, we need a pointer to use GEP
@@ -678,7 +684,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
                                       gv->getName() + ".loaded");
     } else if (!lhsVal->getType()->isPointerTy()) {
       llvm::Value *allocaTmp = funcBuilder.CreateAlloca(
-          lhsVal->getType(), nullptr, parentTypeName + "_tmp");
+          lhsVal->getType(), nullptr, lookUpName + "_tmp");
       funcBuilder.CreateStore(lhsVal, allocaTmp);
       lhsPtr = allocaTmp;
     }
@@ -836,7 +842,8 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
       infix->operat.type == TokenType::GT_OR_EQ) {
     if (isIntegerType(leftType) || leftType == DataType::ENUM) {
       if (isIntegerType(rightType) || rightType == DataType::ENUM) {
-        bool signedInt = isSignedInteger(resultType.kind);
+        bool signedInt = isSignedInteger(leftType);
+
         switch (infix->operat.type) {
         case TokenType::EQUALS:
           return funcBuilder.CreateICmpEQ(left, right, "cmptmp");
@@ -858,8 +865,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
           throw std::runtime_error("Unsupported int comparison operator");
         }
       }
-    } else if (resultType.kind == DataType::FLOAT ||
-               resultType.kind == DataType::DOUBLE) {
+    } else if (leftType == DataType::FLOAT || leftType == DataType::DOUBLE) {
       switch (infix->operat.type) {
       case TokenType::EQUALS:
         return funcBuilder.CreateFCmpOEQ(left, right, "fcmptmp");
@@ -877,8 +883,10 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
         throw std::runtime_error("Unsupported float comparison operator");
       }
     } else {
-      throw std::runtime_error("Comparison not supported for type '" +
-                               resultType.resolvedName + "'");
+      throw std::runtime_error(
+          "Comparison not supported for type '" +
+          semantics.metaData[infix->left_operand.get()]->type.resolvedName +
+          "'");
     }
   }
   // Arithmetic operators
@@ -887,7 +895,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     auto lhsMeta = semantics.metaData[infix->left_operand.get()];
 
     if (lhsMeta->type.isPointer) {
-      llvm::Type *baseTy = getLLVMType(lhsMeta->targetSymbol->type);
+      ResolvedType baseTypeInfo = lhsMeta->type;
+
+      // Strip the copy to avoid mutating the original
+      baseTypeInfo.isPointer = false;
+      baseTypeInfo.resolvedName =
+          semantics.stripPtrSuffix(lhsMeta->type.resolvedName);
+
+      llvm::Type *baseTy = getLLVMType(baseTypeInfo);
       return funcBuilder.CreateGEP(baseTy, left, right, "ptr_addtmp");
     }
 
@@ -901,7 +916,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     auto lhsMeta = semantics.metaData[infix->left_operand.get()];
 
     if (lhsMeta->type.isPointer) {
-      llvm::Type *baseTy = getLLVMType(lhsMeta->targetSymbol->type);
+      ResolvedType baseTypeInfo = lhsMeta->type;
+
+      // Strip the copy to avoid mutating the original
+      baseTypeInfo.isPointer = false;
+      baseTypeInfo.resolvedName =
+          semantics.stripPtrSuffix(lhsMeta->type.resolvedName);
+
+      llvm::Type *baseTy = getLLVMType(baseTypeInfo);
 
       llvm::Value *negRight = funcBuilder.CreateNeg(right, "neg_offset");
       return funcBuilder.CreateGEP(baseTy, left, negRight, "ptr_subtmp");
@@ -2346,7 +2368,9 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
       throw std::runtime_error(
           "Custom type requested but resolvedName is empty");
 
-    auto it = llvmCustomTypes.find(type.resolvedName);
+    std::string lookUpName = type.resolvedName;
+    lookUpName = semantics.stripPtrSuffix(lookUpName);
+    auto it = llvmCustomTypes.find(lookUpName);
     if (it != llvmCustomTypes.end())
       baseType = it->second;
     else
@@ -2650,6 +2674,8 @@ bool IRGenerator::isIntegerType(DataType dt) {
   case DataType::U64:
   case DataType::I128:
   case DataType::U128:
+  case DataType::ISIZE:
+  case DataType::USIZE:
     return true;
   default:
     return false;

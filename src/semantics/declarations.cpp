@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "semantics.hpp"
+#include <memory>
 
 //_____________Array Statement__________________
 void Semantics::walkArrayStatement(Node *node) {
@@ -216,6 +217,31 @@ void Semantics::walkPointerStatement(Node *node) {
 
   ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
+  // If we dont have the value(This is only allowed inside records for now)
+  if (!ptrStmt->value) {
+    if (insideRecord) {
+      if (ptrStmt->type) {
+        ptrType = inferNodeDataType(ptrStmt);
+      } else {
+        logSemanticErrors("Cannot get pointer type if you did not provide it "
+                          "and did not provide a value for inference",
+                          line, col);
+      }
+      auto ptrInfo = std::make_shared<SymbolInfo>();
+      ptrInfo->type = ptrType;
+      ptrInfo->isPointer = true;
+      ptrInfo->isInitialized = false;
+
+      metaData[ptrStmt] = ptrInfo;
+      symbolTable.back()[ptrName] = ptrInfo;
+      return;
+    } else {
+      logSemanticErrors("Must initialize the pointer '" + ptrName + "'", line,
+                        col);
+      return;
+    }
+  }
+
   // Infer the type of the pointer value
   ResolvedType targetType = inferNodeDataType(ptrStmt->value.get());
 
@@ -306,22 +332,21 @@ void Semantics::walkPointerStatement(Node *node) {
   }
 
   std::cout << "POINTER TYPE: " << ptrType.resolvedName << "\n";
-  int ptrPopCount=0;
+  int ptrPopCount = 0;
   // Pointer's storage info (The pointer itself not the target)
   StorageType pointerStorage;
   if (isGlobalScope()) {
     pointerStorage = StorageType::GLOBAL;
   } else if (isHeap) {
     pointerStorage = StorageType::HEAP;
-    ptrPopCount=targetSymbol->popCount+1;
-    std::cout << "[SEMANTICS DEBUG] Pointer '" << ptrName 
-                  << "' points to '" << targetName
-                  << "' | target->popCount: " << targetSymbol->popCount 
-                  << " | new ptr->popCount: " << ptrPopCount << "\n";
-  }else if(isDheap){
-   pointerStorage = StorageType::HEAP;
-  }
-  else {
+    ptrPopCount = targetSymbol->popCount + 1;
+    std::cout << "[SEMANTICS DEBUG] Pointer '" << ptrName << "' points to '"
+              << targetName
+              << "' | target->popCount: " << targetSymbol->popCount
+              << " | new ptr->popCount: " << ptrPopCount << "\n";
+  } else if (isDheap) {
+    pointerStorage = StorageType::HEAP;
+  } else {
     pointerStorage = StorageType::STACK;
   }
 
@@ -336,7 +361,7 @@ void Semantics::walkPointerStatement(Node *node) {
   ptrInfo->isMutable = isMutable;
   ptrInfo->isConstant = isConstant;
   ptrInfo->storage = pointerStorage;
-  ptrInfo->popCount=ptrPopCount;
+  ptrInfo->popCount = ptrPopCount;
   ptrInfo->isInitialized = true;
 
   metaData[ptrStmt] = ptrInfo;
@@ -360,7 +385,7 @@ void Semantics::walkLetStatement(Node *node) {
   bool isDefinitelyNull = false;
   bool isInitialized = false;
   bool hasError = false;
-  int popCount=0; 
+  int popCount = 0;
 
   // Checking if the name is being reused
   auto letName = letStmt->ident_token.TokenLiteral;
@@ -550,7 +575,7 @@ void Semantics::walkLetStatement(Node *node) {
     letStorageType = StorageType::GLOBAL;
   } else if (isHeap) {
     letStorageType = StorageType::HEAP;
-    popCount=1;
+    popCount = 1;
   } else if (isDheap) {
     letStorageType = StorageType::HEAP;
   } else {
@@ -568,7 +593,7 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->isDefinitelyNull = isDefinitelyNull;
   letInfo->isHeap = isHeap;
   letInfo->isDheap = isDheap;
-  letInfo->popCount=popCount;
+  letInfo->popCount = popCount;
   letInfo->lastUseNode = letStmt;
   letInfo->storage = letStorageType;
   letInfo->hasError = hasError;
@@ -581,4 +606,165 @@ void Semantics::walkLetStatement(Node *node) {
   symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
 
   std::cout << "LET STATEMENT DATA TYPE: " << expectedType.resolvedName << "\n";
+}
+
+//__________________Reference Statement___________________
+void Semantics::walkReferenceStatement(Node *node) {
+  auto refStmt = dynamic_cast<ReferenceStatement *>(node);
+  if (!refStmt)
+    return;
+
+  std::cout << "[SEMANTIC LOG]: Analysing reference statement\n";
+
+  auto refName = refStmt->name->expression.TokenLiteral;
+  auto line = refStmt->statement.line;
+  auto column = refStmt->statement.column;
+  ResolvedType refType = ResolvedType{DataType::UNKNOWN, "unknown"};
+  bool hasError = false;
+
+  // Check if the reference variable name already exists
+  auto existingSym = resolveSymbolInfo(refName);
+  if (existingSym) {
+    logSemanticErrors("Reference name '" + refName + "' already in use", line,
+                      column);
+    hasError = true;
+  }
+
+  // Check if the reference is pointing to something
+  if (!refStmt->value) {
+    if (insideRecord) {
+      if (refStmt->type) {
+        refType = inferNodeDataType(refStmt);
+      } else {
+        logSemanticErrors("Cannot get reference type if you did not provide it "
+                          "and did not provide a value for inference",
+                          line, column);
+      }
+      refType = inferNodeDataType(refStmt->type.get());
+      auto refInfo = std::make_shared<SymbolInfo>();
+      refInfo->type = refType;
+      refInfo->isInitialized = false;
+      refInfo->isRef = true;
+
+      metaData[refStmt] = refInfo;
+      symbolTable.back()[refName] = refInfo;
+      return;
+    } else {
+      logSemanticErrors("Reference'" + refName + "' must reference something",
+                        line, column);
+      return;
+    }
+  }
+
+  // Checking the type of the referee
+  auto refereeName = extractIdentifierName(refStmt->value.get());
+  walker(refStmt->value.get());
+  auto refereeSymbol = resolveSymbolInfo(refereeName);
+  if (!refereeSymbol) {
+    logSemanticErrors("Reference '" + refName +
+                          "'is referencing an undeclared variable '" +
+                          refereeName + "'",
+                      line, column);
+    hasError = true;
+    return;
+  }
+
+  ResolvedType refereeType = refereeSymbol->type;
+  // Check if the referee type is a pointer and block it
+  if (refereeType.isPointer) {
+    logSemanticErrors("Cannot create references to pointers", line, column);
+    hasError = true;
+  } else {
+    // If the referee type isnt a pointer toggle the isRef flag to true
+    // It is like type elevation after all we want to create a reference to
+    // something
+    auto tempType = refereeSymbol->type;
+    tempType.isRef = true;
+    refereeType = isRefType(refereeType); // Convert the name and store it
+  }
+
+  // If the reference statement has no type we just infer the type
+  if (!refStmt->type) {
+    refType = refereeType;
+  } else if (refStmt->type) {
+    refType = inferNodeDataType(
+        refStmt); // Update the data type with the type that was declared
+
+    if (refType.isNull) {
+      logSemanticErrors("Cannot have a nullable reference '" + refName + "'",
+                        line, column);
+      hasError = true;
+    }
+
+    // Compare the two types
+    if (!isTypeCompatible(refType, refereeType)) {
+      logSemanticErrors("Type mismatch reference '" + refName + "' of type '" +
+                            refType.resolvedName +
+                            "' does not match variable '" + refereeName +
+                            "' being refered with type '" +
+                            refereeType.resolvedName + "'",
+                        line, column);
+      hasError = true;
+    }
+  }
+
+  // Checking if we are refering to a heap raised or global variable if not
+  // complain
+  auto refereeStorage = refereeSymbol->storage;
+  if (refereeStorage == StorageType::STACK) {
+    logSemanticErrors("Cannot create a reference '" + refName +
+                          "' to a local variable '" + refereeName + "'",
+                      line, column);
+    hasError = true;
+  }
+
+  // Checking the mutability
+  bool isMutable = false;
+  bool isConstant = false;
+  if (refStmt->mutability == Mutability::MUTABLE)
+    isMutable = true;
+
+  if (refStmt->mutability == Mutability::CONSTANT)
+    isConstant = true;
+
+  // Check if the symbol is also mutable
+  if (!refereeSymbol->isMutable && isMutable) {
+    logSemanticErrors("Cannot create a mutable reference '" + refName +
+                          "' to an immutable variable '" + refereeName + "'",
+                      line, column);
+    hasError = true;
+  }
+
+  if (refereeSymbol->isNullable) {
+    logSemanticErrors("Cannot create a reference to a nullable variable '" +
+                          refereeName + "'",
+                      line, column);
+    hasError = true;
+  }
+
+  // Updating the reference count of the symbol being referenced
+  refereeSymbol->refCount += 1;
+  std::cout << "[DEBUG] Incremented refCount for target -> "
+            << refereeSymbol->refCount << "\n";
+
+  // Updating the storage type for references
+  StorageType refStorage;
+  if (isGlobalScope()) {
+    refStorage = StorageType::GLOBAL;
+  } else {
+    refStorage = StorageType::STACK;
+  }
+
+  auto refInfo = std::make_shared<SymbolInfo>();
+  refInfo->type = refType;
+  refInfo->isInitialized = true;
+  refInfo->isMutable = isMutable;
+  refInfo->isConstant = isConstant;
+  refInfo->refereeSymbol = refereeSymbol;
+  refInfo->hasError = hasError;
+  refInfo->isRef = true;
+  refInfo->storage = refStorage;
+
+  metaData[refStmt] = refInfo;
+  symbolTable.back()[refName] = refInfo;
 }
