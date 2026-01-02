@@ -823,8 +823,8 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
       lookUpName = stripPtrSuffix(lookUpName);
     }
 
-    // Block cases where the parentName is an actual type too
-    if (lookUpName == parentName) {
+    // Block cases where the parentName is an actual type too if its not an enum
+    if (lookUpName == parentName && varType.kind!=DataType::ENUM) {
       logSemanticErrors("Must instantiate type '" + varType.resolvedName +
                             "' to access its members",
                         infixExpr->left_operand->expression.line,
