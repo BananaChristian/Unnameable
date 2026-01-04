@@ -148,10 +148,103 @@ void Lexer::skipWhiteSpace()
     }
 }
 
+bool Lexer::isHexDigit(char32_t ch) {
+    return (ch >= U'0' && ch <= U'9') || 
+           (ch >= U'a' && ch <= U'f') || 
+           (ch >= U'A' && ch <= U'F');
+}
+
+bool Lexer::isBinaryDigit(char32_t ch) {
+    return (ch == U'0' || ch == U'1');
+}
+
+bool Lexer::isAlpha(char32_t ch) {
+    return (ch >= U'a' && ch <= U'z') || 
+           (ch >= U'A' && ch <= U'Z') || 
+           (ch == U'_');
+}
+
+Token Lexer::readBinary() {
+    CAPTURE_POS;
+    std::string number = "0b";
+    advance(); // skip '0'
+    advance(); // skip 'b'
+
+    while (isBinaryDigit(currentChar()) || currentChar() == U'_') {
+        if (currentChar() != U'_') {
+            number += (char)currentChar();
+        }
+        advance();
+    }
+
+    return parseSuffix(number, tokenLine, tokenColumn);
+}
+
+Token Lexer::readHex() {
+    CAPTURE_POS;
+    std::string number = "0x";
+    advance(); // skip '0'
+    advance(); // skip 'x'
+
+    while (isHexDigit(currentChar()) || currentChar() == U'_') {
+        if (currentChar() != U'_') {
+            number += (char)currentChar();
+        }
+        advance();
+    }
+    
+    return parseSuffix(number, tokenLine, tokenColumn);
+}
+
+Token Lexer::parseSuffix(const std::string& value, int tokenLine, int tokenColumn) {
+    std::string suffix;
+    
+    // Check if a suffix follows (e.g., u8, i32)
+    while (isAlpha(currentChar()) || isDigit(currentChar())) {
+        suffix += (char)currentChar();
+        advance();
+    }
+
+    if (suffix == "i64")
+        return Token{value, TokenType::INT64, tokenLine, tokenColumn};
+    if (suffix == "u64")
+        return Token{value, TokenType::UINT64, tokenLine, tokenColumn};
+    if (suffix == "i16")
+        return Token{value, TokenType::INT16, tokenLine, tokenColumn};
+    if (suffix == "u16")
+        return Token{value, TokenType::UINT16, tokenLine, tokenColumn};
+    if (suffix == "i128")
+        return Token{value, TokenType::INT128, tokenLine, tokenColumn};
+    if (suffix == "u128")
+        return Token{value, TokenType::UINT128, tokenLine, tokenColumn};
+    if (suffix == "u32")
+        return Token{value, TokenType::UINT32, tokenLine, tokenColumn};
+    if (suffix == "i8")
+        return Token{value, TokenType::INT8, tokenLine, tokenColumn};
+    if (suffix == "u8")
+        return Token{value, TokenType::UINT8, tokenLine, tokenColumn};
+    if (suffix == "iz")
+        return Token{value, TokenType::INTSIZE, tokenLine, tokenColumn};
+    if (suffix == "uz")
+        return Token{value, TokenType::UINTSIZE, tokenLine, tokenColumn};
+
+    // Fallback if no suffix is provided
+    return Token{value, TokenType::INT32, tokenLine, tokenColumn};
+}
+
 Token Lexer::readNumbers()
 {
     std::string number;
     CAPTURE_POS;
+    
+    if(currentChar()==U'0'){
+        char32_t next=peekChar();
+        if(next==U'x'||next==U'X'){
+            return readHex();
+        }else if(next==U'b'||next==U'B'){
+            return readBinary();
+        }
+    }
 
     // Consume all the digits first
     while (isDigit(currentChar()))
@@ -178,45 +271,7 @@ Token Lexer::readNumbers()
         return Token{number, TokenType::FLOAT, tokenLine, tokenColumn};
     }
 
-    if ((currentChar() >= U'a' && currentChar() <= U'z') ||
-        (currentChar() >= U'A' && currentChar() <= U'Z'))
-    {
-        std::string suffix;
-        // Consume letters and numbers (like 'i' and '64')
-        while ((currentChar() >= U'a' && currentChar() <= U'z') ||
-               (currentChar() >= U'A' && currentChar() <= U'Z') ||
-               isDigit(currentChar()))
-        {
-            suffix += (char)currentChar();
-            advance();
-        }
-
-        // Map the strings to your Types
-        if (suffix == "i64")
-            return Token{number, TokenType::INT64, tokenLine, tokenColumn};
-        if (suffix == "u64")
-            return Token{number, TokenType::UINT64, tokenLine, tokenColumn};
-        if (suffix == "i16")
-            return Token{number, TokenType::INT16, tokenLine, tokenColumn};
-        if (suffix == "u16")
-            return Token{number, TokenType::UINT16, tokenLine, tokenColumn};
-        if (suffix == "i128")
-            return Token{number, TokenType::INT128, tokenLine, tokenColumn};
-        if (suffix == "u128")
-            return Token{number, TokenType::UINT128, tokenLine, tokenColumn};
-        if (suffix == "u32")
-            return Token{number, TokenType::UINT32, tokenLine, tokenColumn};
-        if (suffix == "i8")
-            return Token{number, TokenType::INT8, tokenLine, tokenColumn};
-        if (suffix == "u8")
-            return Token{number, TokenType::UINT8, tokenLine, tokenColumn};
-        if (suffix == "iz")
-            return Token{number, TokenType::INTSIZE, tokenLine, tokenColumn};
-        if (suffix == "uz")
-            return Token{number, TokenType::UINTSIZE, tokenLine, tokenColumn};
-    }
-
-    return Token{number, TokenType::INT32, tokenLine, tokenColumn};
+    return parseSuffix(number, tokenLine, tokenColumn);
 }
 
 bool Lexer::isDigit(char32_t ch)
@@ -259,9 +314,7 @@ bool Lexer::isIdentifierStart(char32_t ch)
 {
     return
         // Basic Latin
-        (ch >= U'A' && ch <= U'Z') ||
-        (ch >= U'a' && ch <= U'z') ||
-        (ch == U'_') ||
+        isAlpha(ch)||
 
         // Latin-based scripts
         (ch >= 0x00C0 && ch <= 0x00FF) || // Latin-1 Supplement

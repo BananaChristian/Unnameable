@@ -243,6 +243,8 @@ void Parser::registerInfixFns() {
 
 // Registering prefix functions for a particular token type
 void Parser::registerPrefixFns() {
+  PrefixParseFunctionsMap[TokenType::INT8] = &Parser::parseI8Literal;
+  PrefixParseFunctionsMap[TokenType::UINT8] = &Parser::parseU8Literal;
   PrefixParseFunctionsMap[TokenType::INT16] = &Parser::parseI16Literal;
   PrefixParseFunctionsMap[TokenType::UINT16] = &Parser::parseU16Literal;
   PrefixParseFunctionsMap[TokenType::INT32] = &Parser::parseI32Literal;
