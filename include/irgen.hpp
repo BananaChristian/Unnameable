@@ -225,6 +225,8 @@ private:
                                    llvm::StructType *structTy);
   void freeHeapStorage(uint64_t size, uint64_t alignSize,
                        const std::string &letName);
+  llvm::Value *generateIntegerLiteral(const std::string &literalStr,
+                                      uint32_t bitWidth, bool isSigned);
 };
 
 #endif

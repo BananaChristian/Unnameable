@@ -387,7 +387,7 @@ private:
   // Wrapper functions
   std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
 
-  // Checker for generics
+  // Checker for genericsparseLetStatementWithTypeWrapper
   bool isGeneric(const std::string &typeName,
                  const std::vector<Token> &genericParams);
 

@@ -120,8 +120,14 @@ private:
   char32_t peekChar();
   char32_t currentChar();
   bool isDigit(char32_t ch);
+  bool isAlpha(char32_t ch);
   void readComments();
   Token readNumbers();
+  Token readBinary();
+  Token readHex();
+  Token parseSuffix(const std::string& value, int line, int col);
+  bool isHexDigit(char32_t ch);
+  bool isBinaryDigit(char32_t ch);
   char convertUnicodeDigit(char32_t ch);
   Token readIdentifiers();
   bool isIdentifierStart(char32_t ch);
