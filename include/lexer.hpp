@@ -33,14 +33,12 @@ class Lexer {
       {"generic", TokenType::GENERIC},
       {"instantiate", TokenType::INSTANTIATE},
       {"as", TokenType::AS},
-      {"alias", TokenType::ALIAS},
 
       {"if", TokenType::IF},
       {"else", TokenType::ELSE},
       {"elif", TokenType::ELSE_IF},
       {"while", TokenType::WHILE},
       {"for", TokenType::FOR},
-      {"each", TokenType::EACH},
       {"break", TokenType::BREAK},
       {"continue", TokenType::CONTINUE},
 

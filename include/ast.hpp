@@ -1201,48 +1201,6 @@ struct FieldAssignment : Statement {
       : Statement(ident), assignment_token(ident), value(std::move(val)){};
 };
 
-// Signal statement node
-struct SignalStatement : Statement {
-  Token signal_token;
-  std::unique_ptr<Expression> identifier;
-  std::unique_ptr<Statement> tstart;
-  std::unique_ptr<Expression> func_arg;
-
-  std::string toString() override {
-    std::string result = "Signal Statement: " + signal_token.TokenLiteral +
-                         " " + identifier->toString() + "=" +
-                         tstart->toString() + "(" + func_arg->toString() + ")";
-    return result;
-  }
-
-  SignalStatement(Token signal, std::unique_ptr<Expression> ident,
-                  std::unique_ptr<Statement> thread_st,
-                  std::unique_ptr<Expression> arg)
-      : Statement(signal), identifier(std::move(ident)),
-        tstart(std::move(thread_st)), func_arg(std::move(arg)){};
-};
-
-// Start statement
-struct StartStatement : Statement {
-  Token start_tok;
-  std::string toString() override {
-    return "Start Statement: " + start_tok.TokenLiteral;
-  }
-  StartStatement(Token start) : Statement(start), start_tok(std::move(start)){};
-};
-
-// Wait statement
-struct WaitStatement : Statement {
-  Token wait_token;
-  std::unique_ptr<Expression> arg;
-  std::string toString() override {
-    return "Wait Statement: " + wait_token.TokenLiteral + "(" +
-           arg->toString() + ")";
-  };
-  WaitStatement(Token wait, std::unique_ptr<Expression> a)
-      : Statement(wait), arg(std::move(a)){};
-};
-
 // Return statement node
 struct ReturnStatement : Statement {
   Token return_stmt;
@@ -1505,33 +1463,6 @@ struct ForStatement : Statement {
     out += "  Init: " + (initializer ? initializer->toString() : "null") + "\n";
     out += "  Cond: " + (condition ? condition->toString() : "null") + "\n";
     out += "  Step: " + (step ? step->toString() : "null") + "\n";
-    out += "  Body: " + (body ? body->toString() : "null") + "\n";
-    out += ")";
-    return out;
-  }
-};
-
-struct EachStatement : Statement {
-  Token each_key;
-  std::unique_ptr<Statement> iteratorVar;
-  std::unique_ptr<Expression> iterable;
-  std::unique_ptr<Statement> body;
-
-  EachStatement *shallowClone() const override {
-    return new EachStatement(each_key, clonePtr(iteratorVar),
-                             clonePtr(iterable), clonePtr(body));
-  }
-
-  EachStatement(Token for_k, std::unique_ptr<Statement> iterVar,
-                std::unique_ptr<Expression> iterable,
-                std::unique_ptr<Statement> body)
-      : Statement(for_k), each_key(for_k), iteratorVar(std::move(iterVar)),
-        iterable(std::move(iterable)), body(std::move(body)) {}
-
-  std::string toString() override {
-    std::string out = "EachStatement(\n";
-    out += "  Var: " + (iteratorVar ? iteratorVar->toString() : "null") + "\n";
-    out += "  Iterable: " + (iterable ? iterable->toString() : "null") + "\n";
     out += "  Body: " + (body ? body->toString() : "null") + "\n";
     out += ")";
     return out;
@@ -1830,23 +1761,6 @@ struct ArraySubscript : Expression {
                  std::vector<std::unique_ptr<Expression>> ids)
       : Expression(ident->expression), identifier(std::move(ident)),
         index_exprs(std::move(ids)){};
-};
-
-// Alias statement
-struct AliasStatement : Statement {
-  Token alias_token;
-  std::unique_ptr<Expression> aliasName;
-  std::unique_ptr<Expression> aliasType;
-
-  std::string toString() override {
-    return "Alias statement: " + alias_token.TokenLiteral + " " +
-           aliasName->toString() + " = " + aliasType->toString();
-  }
-
-  AliasStatement(Token alias, std::unique_ptr<Expression> name,
-                 std::unique_ptr<Expression> type)
-      : Statement(alias), aliasName(std::move(name)),
-        aliasType(std::move(type)) {}
 };
 
 // Qualify statement

@@ -161,15 +161,6 @@ private:
   // Parsing case clause
   std::unique_ptr<Statement> parseCaseClause();
 
-  // Parsing signal statement
-  std::unique_ptr<Statement> parseSignalStatement();
-
-  // Parsing start statement
-  std::unique_ptr<Statement> parseStartStatement();
-
-  // Parsing wait statement
-  std::unique_ptr<Statement> parseWaitStatement();
-
   // Parsing export statement
   std::unique_ptr<Statement> parseExportStatement();
 
@@ -181,9 +172,6 @@ private:
 
   // Parsing for statement
   std::unique_ptr<Statement> parseForStatement();
-
-  // Parsing for each statement
-  std::unique_ptr<Statement> parseEachStatement();
 
   // Parsing while loops
   std::unique_ptr<Statement> parseWhileStatement();
@@ -223,9 +211,6 @@ private:
 
   // Array statement wrapper
   std::unique_ptr<Statement> parseArrayStatementWrapper();
-
-  // Parsing Array Statememt
-  std::unique_ptr<Statement> parseAliasStatement();
 
   // Parsing the qualify statement
   std::unique_ptr<Statement> parseQualifyStatement();
@@ -405,8 +390,8 @@ private:
   // Checker for generics
   bool isGeneric(const std::string &typeName,
                  const std::vector<Token> &genericParams);
-  
-  //Declaration checker
+
+  // Declaration checker
   bool isDeclaration(Node *node);
 
   // Checker for basic types

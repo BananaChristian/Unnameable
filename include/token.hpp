@@ -77,11 +77,7 @@ enum class TokenType {
   GENERIC, // Generic block keyword
   INSTANTIATE,
   AS,
-  ALIAS,
 
-  START,  // start
-  WAIT,   // wait
-  SIGNAL, // signal
   ERROR,  // error
   NEW,    // new keyword for a new instance of a component
   CONST,  // constant keyword
@@ -109,7 +105,6 @@ enum class TokenType {
   ELSE_IF,
   WHILE,
   FOR,
-  EACH,
   BREAK,
   CONTINUE,
   SWITCH,
