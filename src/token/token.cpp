@@ -95,10 +95,6 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: USE";
   case TokenType::INIT:
     return "Token Type: INIT";
-  case TokenType::START:
-    return "Token Type: START";
-  case TokenType::WAIT:
-    return "Token Type: WAIT";
 
   case TokenType::GENERIC:
     return "Token Type: GENERIC";
@@ -106,11 +102,7 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: INSTANTIATE";
   case TokenType::AS:
     return "Token Type: AS";
-  case TokenType::ALIAS:
-    return "Token Type:ALIAS";
 
-  case TokenType::SIGNAL:
-    return "Tokenn Type: SIGNAL";
   case TokenType::ERROR:
     return "Token Type: ERROR";
   case TokenType::IF:
@@ -123,8 +115,7 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: WHILE";
   case TokenType::FOR:
     return "Token Type: FOR";
-  case TokenType::EACH:
-    return "Token Type: EACH";
+
   case TokenType::SCOPE_OPERATOR:
     return "Token Type: SCOPE OPERATOR";
   case TokenType::BREAK:

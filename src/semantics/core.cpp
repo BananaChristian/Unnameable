@@ -85,7 +85,6 @@ void Semantics::registerWalkerFunctions() {
       &Semantics::walkAssignStatement;
   walkerFunctionsMap[typeid(FieldAssignment)] =
       &Semantics::walkFieldAssignmentStatement;
-  walkerFunctionsMap[typeid(EachStatement)] = &Semantics::walkEachStatement;
 
   // Walker registration for reference statement and pointer statement
   walkerFunctionsMap[typeid(ReferenceStatement)] =

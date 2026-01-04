@@ -315,27 +315,6 @@ void Semantics::walkForStatement(Node *node) {
   loopContext.pop_back();
 }
 
-void Semantics::walkEachStatement(Node *node) {
-  auto eachStmt = dynamic_cast<EachStatement *>(node);
-  if (!eachStmt)
-    return;
-  std::cout << "[SEMANTIC LOG] Analyzing each statement "
-            << eachStmt->toString() << "\n";
-  // Handling iterator variable
-  auto iterVar = eachStmt->iteratorVar.get();
-  walker(iterVar);
-
-  // Handling iterable
-  auto iter = eachStmt->iterable.get();
-  walker(iter);
-
-  // Handling each stmt block
-  loopContext.push_back(true);
-  auto block = eachStmt->body.get();
-  walker(block);
-  loopContext.pop_back();
-}
-
 void Semantics::walkBreakStatement(Node *node) {
   auto breakStmt = dynamic_cast<BreakStatement *>(node);
   if (!breakStmt)

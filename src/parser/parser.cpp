@@ -86,93 +86,6 @@ std::unique_ptr<Statement> Parser::parseStatement() {
   return nullptr;
 }
 
-// Parsing signal statement
-std::unique_ptr<Statement> Parser::parseSignalStatement() {
-  Token signal_token = currentToken();
-  advance();
-  auto ident = parseIdentifier();
-  if (currentToken().type != TokenType::ASSIGN) {
-    logError("Expected an =");
-    return nullptr;
-  }
-  advance(); // Move past the = sign
-  if (currentToken().type != TokenType::START) {
-    logError("Expected a thread starter");
-    return nullptr;
-  }
-  auto start = parseStartStatement();
-  if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected ( after start keyword");
-    return nullptr;
-  }
-  advance();
-  auto func_name = parseIdentifier();
-  auto func_arg = parseCallExpression(std::move(func_name));
-  advance();
-  if (currentToken().type != TokenType::SEMICOLON) {
-    std::cout << "[ERROR]: Expected ; after ) but got->"
-              << currentToken().TokenLiteral << "\n";
-    logError("Expected ; after )");
-    return nullptr;
-  }
-
-  return std::make_unique<SignalStatement>(
-      signal_token, std::move(ident), std::move(start), std::move(func_arg));
-}
-
-// Parsing start statement
-std::unique_ptr<Statement> Parser::parseStartStatement() {
-  Token start = currentToken();
-  advance();
-  return std::make_unique<StartStatement>(start);
-}
-
-// Parsing wait statement
-std::unique_ptr<Statement> Parser::parseWaitStatement() {
-  Token wait = currentToken();
-  advance();
-  if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected ( after wait keyword");
-    return nullptr;
-  }
-  advance();
-  auto call = parseIdentifier();
-  if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ) after argument");
-    return nullptr;
-  }
-  advance();
-  if (currentToken().type != TokenType::SEMICOLON) {
-    logError("Expected ; after )");
-    return nullptr;
-  }
-  return std::make_unique<WaitStatement>(wait, std::move(call));
-}
-
-std::unique_ptr<Statement> Parser::parseAliasStatement() {
-  Token alias = currentToken();
-
-  advance(); // Consume alias token
-
-  auto aliasName = parseIdentifier();
-  if (currentToken().type != TokenType::ASSIGN) {
-    logError("Expected '=' after alias name but got '" +
-             currentToken().TokenLiteral + "'");
-    return nullptr;
-  }
-  advance(); // Consume '='
-
-  auto type = parseReturnType();
-  if (currentToken().type != TokenType::SEMICOLON) {
-    logError("Expected ';' after alias statement but got '" +
-             currentToken().TokenLiteral + "'");
-    return nullptr;
-  }
-
-  return std::make_unique<AliasStatement>(alias, std::move(aliasName),
-                                          std::move(type));
-}
-
 // _____________DIRECTIVES______________________
 std::unique_ptr<Statement> Parser::parseQualifyStatement() {
   Token qualify_token = currentToken();
@@ -493,14 +406,9 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::IF] = &Parser::parseIfStatement;
   StatementParseFunctionsMap[TokenType::WHILE] = &Parser::parseWhileStatement;
   StatementParseFunctionsMap[TokenType::FOR] = &Parser::parseForStatement;
-  StatementParseFunctionsMap[TokenType::EACH] = &Parser::parseEachStatement;
   StatementParseFunctionsMap[TokenType::BREAK] = &Parser::parseBreakStatement;
   StatementParseFunctionsMap[TokenType::CONTINUE] =
       &Parser::parseContinueStatement;
-  StatementParseFunctionsMap[TokenType::SIGNAL] = &Parser::parseSignalStatement;
-  StatementParseFunctionsMap[TokenType::START] = &Parser::parseStartStatement;
-  StatementParseFunctionsMap[TokenType::WAIT] = &Parser::parseWaitStatement;
-  StatementParseFunctionsMap[TokenType::ALIAS] = &Parser::parseAliasStatement;
   StatementParseFunctionsMap[TokenType::QUALIFY] =
       &Parser::parseQualifyStatement;
   StatementParseFunctionsMap[TokenType::MERGE] = &Parser::parseMergeStatement;
