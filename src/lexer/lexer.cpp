@@ -657,6 +657,11 @@ Token Lexer::tokenize() {
     advance();
     return Token{"^", TokenType::BITWISE_XOR, tokenLine, tokenColumn};
   }
+  case U'~': {
+    CAPTURE_POS;
+    advance();
+    return Token{"~", TokenType::BITWISE_NOT, tokenLine, tokenColumn};
+  }
   case '>': {
     CAPTURE_POS;
     if (peekChar() == U'>') {

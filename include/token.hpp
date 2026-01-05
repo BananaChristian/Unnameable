@@ -24,11 +24,13 @@ enum class TokenType {
   LESS_THAN,    //<
   GT_OR_EQ,     //>=
   LT_OR_EQ,     //<=
-  SHIFT_RIGHT,  //>>
-  SHIFT_LEFT,   //<<
-  BITWISE_AND,  //&
-  BITWISE_OR,   //&
-  BITWISE_XOR,  //^
+
+  SHIFT_RIGHT, //>>
+  SHIFT_LEFT,  //<<
+  BITWISE_AND, //&
+  BITWISE_OR,  //&
+  BITWISE_XOR, //^
+  BITWISE_NOT, //~
 
   // Delimiters
   LBRACE,   //{

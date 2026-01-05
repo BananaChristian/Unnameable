@@ -1883,7 +1883,7 @@ enum class Precedence {
   PREC_SHIFT,       //<< >>
   PREC_TERM,        // + -
   PREC_FACTOR,      // "* /"
-  PREC_UNARY,       // "! -"
+  PREC_UNARY,       // "! - ~"
   PREC_POSTFIX,
   PREC_CALL, // . ()
   PREC_PRIMARY

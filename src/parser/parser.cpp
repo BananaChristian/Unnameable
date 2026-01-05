@@ -283,6 +283,7 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::UNWRAP] = &Parser::parseUnwrapExpression;
   PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
   PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
+  PrefixParseFunctionsMap[TokenType::BITWISE_NOT]=&Parser::parsePrefixExpression;
   PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;
   PrefixParseFunctionsMap[TokenType::LBRACKET] = &Parser::parseArrayLiteral;
   PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;

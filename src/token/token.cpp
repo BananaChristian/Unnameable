@@ -23,7 +23,9 @@ std::string TokenTypeToLiteral(TokenType type) {
   case TokenType::BITWISE_OR:
     return "Token Type: BITWISE OR";
   case TokenType::BITWISE_XOR:
-    return "Token Type: BITWISE_XOR";
+    return "Token Type: BITWISE XOR";
+  case TokenType::BITWISE_NOT:
+    return "Token Type: BITWISE NOT";
   case TokenType::PLUS:
     return "Token Type: PLUS";
   case TokenType::PLUS_PLUS:
