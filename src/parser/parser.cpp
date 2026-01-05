@@ -227,6 +227,10 @@ void Parser::registerInfixFns() {
   InfixParseFunctionsMap[TokenType::LESS_THAN] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::GT_OR_EQ] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::LT_OR_EQ] = &Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::BITWISE_AND]=&Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::BITWISE_OR]=&Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::SHIFT_LEFT]=&Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::SHIFT_RIGHT]=&Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::FULLSTOP] =
       &Parser::parseInfixOrMethodCallExpression;
   InfixParseFunctionsMap[TokenType::SCOPE_OPERATOR] =
