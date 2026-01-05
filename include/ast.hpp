@@ -1871,15 +1871,19 @@ struct BlockExpression : Expression {
 
 enum class Precedence {
   PREC_NONE = 0,
-  PREC_ASSIGNMENT, // =
-  PREC_COALESCE,   //"??"
-  PREC_OR,         // ||
-  PREC_AND,        // &&
-  PREC_EQUALITY,   // == !=
-  PREC_COMPARISON, // < > <= >=
-  PREC_TERM,       // + -
-  PREC_FACTOR,     // "* /"
-  PREC_UNARY,      // "! -"
+  PREC_ASSIGNMENT,  // =
+  PREC_COALESCE,    //"??"
+  PREC_OR,          // ||
+  PREC_AND,         // &&
+  PREC_EQUALITY,    // == !=
+  PREC_COMPARISON,  // < > <= >=
+  PREC_BITWISE_OR,  //|
+  PREC_BITWISE_XOR, //^
+  PREC_BITWISE_AND, //&
+  PREC_SHIFT,       //<< >>
+  PREC_TERM,        // + -
+  PREC_FACTOR,      // "* /"
+  PREC_UNARY,       // "! -"
   PREC_POSTFIX,
   PREC_CALL, // . ()
   PREC_PRIMARY

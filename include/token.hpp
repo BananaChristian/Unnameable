@@ -28,6 +28,7 @@ enum class TokenType {
   SHIFT_LEFT,   //<<
   BITWISE_AND,  //&
   BITWISE_OR,   //&
+  BITWISE_XOR,  //^
 
   // Delimiters
   LBRACE,   //{
@@ -69,7 +70,7 @@ enum class TokenType {
 
   COMPONENT, // component key word for classes
   SELF,      // self keyword for a component instance
-  RECORD,      // record keyword token for record blocks
+  RECORD,    // record keyword token for record blocks
   BEHAVIOR,  // behavior keyword token for class method blocks
   USE,       // use keyword that allows use of external data and behavior blocks
   INIT,      // constructor keyword
