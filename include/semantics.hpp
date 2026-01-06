@@ -274,7 +274,8 @@ public:
   std::shared_ptr<SymbolInfo> lookUpInCurrentScope(const std::string &name);
   ResolvedType resolvedDataType(Token token, Node *node);
   bool hasReturnPath(Node *node);
-  bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>>& stmts);
+  bool switchReturns(SwitchStatement *sw);
+  bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>> &stmts);
   ResolvedType inferNodeDataType(Node *node);
   std::pair<std::string, std::string>
   splitScopedName(const std::string &fullName);
