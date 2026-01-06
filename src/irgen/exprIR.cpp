@@ -753,15 +753,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
     throw std::runtime_error(
         "Executable statements arent allowed in the global scope");
 
-  llvm::Value *operand;
-
-  // If the operand is an identifier
-  if (auto identOperand = dynamic_cast<Identifier *>(prefix->operand.get())) {
-    operand = generateIdentifierAddress(prefix->operand.get()).address;
-  } else {
-    // If the operand is a normal literal
-    operand = generateExpression(prefix->operand.get());
-  }
+  llvm::Value *operand=generateExpression(prefix->operand.get());
 
   if (!operand)
     throw std::runtime_error("Failed to generate IR for prefix operand");
