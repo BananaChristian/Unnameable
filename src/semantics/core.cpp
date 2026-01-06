@@ -1272,29 +1272,7 @@ bool Semantics::hasReturnPath(Node *node) {
       }
 
       if (auto switchStmt = dynamic_cast<SwitchStatement *>(stmt.get())) {
-        bool hasDefault = !switchStmt->default_statements.empty();
-        if (!hasDefault) {
-          continue;
-        } else {
-          bool allCasesReturn = true;
-
-          // Check every case clause
-          for (const auto &clause : switchStmt->case_clauses) {
-            auto caseClause = dynamic_cast<CaseClause *>(clause.get());
-            if (!hasReturnPathList(caseClause->body)) {
-              allCasesReturn = false;
-              break;
-            }
-          }
-
-          // Check the default block
-          bool defaultReturns =
-              hasReturnPathList(switchStmt->default_statements);
-
-          if (allCasesReturn && defaultReturns) {
-            return true; // The whole switch is a guaranteed return path!
-          }
-        }
+        return switchReturns(switchStmt);
       }
     }
     return false; // BlockStatement has no finalexpr
@@ -1333,29 +1311,7 @@ bool Semantics::hasReturnPath(Node *node) {
       }
 
       if (auto switchStmt = dynamic_cast<SwitchStatement *>(stmt.get())) {
-        bool hasDefault = !switchStmt->default_statements.empty();
-        if (!hasDefault) {
-          continue;
-        } else {
-          bool allCasesReturn = true;
-
-          // Check every case clause
-          for (const auto &clause : switchStmt->case_clauses) {
-            auto caseClause = dynamic_cast<CaseClause *>(clause.get());
-            if (!hasReturnPathList(caseClause->body)) {
-              allCasesReturn = false;
-              break;
-            }
-          }
-
-          // Check the default block
-          bool defaultReturns =
-              hasReturnPathList(switchStmt->default_statements);
-
-          if (allCasesReturn && defaultReturns) {
-            return true; // The whole switch is a guaranteed return path!
-          }
-        }
+        return switchReturns(switchStmt);
       }
     }
 
@@ -1375,6 +1331,46 @@ bool Semantics::hasReturnPath(Node *node) {
   }
 
   return false;
+}
+
+bool Semantics::switchReturns(SwitchStatement *sw) {
+  if (sw->default_statements.empty())
+    return false;
+
+  bool defaultReturns = hasReturnPathList(sw->default_statements);
+  if (!defaultReturns)
+    return false;
+
+  // Check every case clause
+  for (size_t i = 0; i < sw->case_clauses.size(); ++i) {
+    auto caseClause = dynamic_cast<CaseClause *>(sw->case_clauses[i].get());
+
+    if (caseClause->body.empty()) {
+      // Look ahead for the next body
+      bool safelyFallsThrough = false;
+      for (size_t j = i + 1; j < sw->case_clauses.size(); ++j) {
+        auto nextClause = dynamic_cast<CaseClause *>(sw->case_clauses[j].get());
+        if (!nextClause->body.empty()) {
+          if (hasReturnPathList(nextClause->body)) {
+            safelyFallsThrough = true;
+          }
+          break;
+        }
+      }
+      // If we didn't find a returning body in later cases, check default
+      if (!safelyFallsThrough && !defaultReturns) {
+        return false;
+      }
+      // If it falls through to a valid return, this specific 'i' is safe.
+    } else {
+      // Normal body check
+      if (!hasReturnPathList(caseClause->body)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 bool Semantics::hasReturnPathList(

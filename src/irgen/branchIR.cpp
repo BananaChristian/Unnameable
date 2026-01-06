@@ -152,6 +152,8 @@ void IRGenerator::generateSwitchStatement(Node *node) {
   llvm::SwitchInst *sw =
       funcBuilder.CreateSwitch(val, defaultBB, switchStmt->case_clauses.size());
 
+  std::vector<llvm::ConstantInt *> pendingLabels;
+
   // Build the cases
   for (const auto &clause : switchStmt->case_clauses) {
     llvm::BasicBlock *caseBB =
@@ -161,16 +163,31 @@ void IRGenerator::generateSwitchStatement(Node *node) {
 
     auto *cond = llvm::cast<llvm::ConstantInt>(
         generateExpression(caseClause->condition.get()));
-    sw->addCase(cond, caseBB);
+    pendingLabels.push_back(cond);
 
-    funcBuilder.SetInsertPoint(caseBB);
-    for (const auto &stmt : caseClause->body) {
-      generateStatement(stmt.get());
-    }
+    if (!caseClause->body.empty()) {
+      llvm::BasicBlock *caseBB =
+          llvm::BasicBlock::Create(context, "sw.case", parentFunc);
 
-    if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-      funcBuilder.CreateBr(mergeBB);
+      for (auto *label : pendingLabels) {
+        sw->addCase(label, caseBB);
+      }
+      pendingLabels.clear(); // Clear the list for the next group
+
+      funcBuilder.SetInsertPoint(caseBB);
+      for (const auto &stmt : caseClause->body) {
+        generateStatement(stmt.get());
+      }
+
+      // Finalize the block
+      if (!funcBuilder.GetInsertBlock()->getTerminator()) {
+        funcBuilder.CreateBr(mergeBB);
+      }
     }
+  }
+
+  for (auto *label : pendingLabels) {
+    sw->addCase(label, mergeBB);
   }
 
   parentFunc->insert(parentFunc->end(), defaultBB);
@@ -178,7 +195,7 @@ void IRGenerator::generateSwitchStatement(Node *node) {
   for (auto &stmt : switchStmt->default_statements) {
     generateStatement(stmt.get());
   }
-  
+
   if (!funcBuilder.GetInsertBlock()->getTerminator()) {
     funcBuilder.CreateBr(mergeBB);
   }
