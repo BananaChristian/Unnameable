@@ -1,6 +1,7 @@
 #ifndef IRGENERATOR_HPP
 #define IRGENERATOR_HPP
 
+#include <llvm-18/llvm/IR/BasicBlock.h>
 #include <memory>
 #include <typeindex>
 
@@ -16,10 +17,9 @@
 
 class Node;
 
-struct LoopBlocks {
-  llvm::BasicBlock *condBB;
-  llvm::BasicBlock *stepBB;
-  llvm::BasicBlock *afterBB;
+struct JumpTarget{
+    llvm::BasicBlock *breakTarget;  
+    llvm::BasicBlock *continueTarget;
 };
 
 struct AddressAndPendingFree {
@@ -55,7 +55,7 @@ public:
   ComponentStatement *currentComponent = nullptr;
   llvm::Value *currentComponentInstance;
   llvm::Function *currentFunction;
-  std::vector<LoopBlocks> loopBlocksStack;
+  std::vector<JumpTarget> jumpStack;
 
   bool isSageInitCalled = false;
   bool isSageDestroyCalled = false;
@@ -194,7 +194,7 @@ private:
   void declareImportedComponentMethods(
       const std::string &funcName, const std::string &typeName,
       const std::shared_ptr<MemberInfo> &memberInfo);
-
+  void emitResidentSweep();
   llvm::GlobalVariable *
   createGlobalArrayConstant(llvm::Constant *constantArray);
 
