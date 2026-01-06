@@ -88,6 +88,7 @@ private:
   void generateWhileStatement(Node *node);
   void generateForStatement(Node *node);
   void generateIfStatement(Node *node);
+  void generateSwitchStatement(Node *node);
   void generateBreakStatement(Node *node);
   void generateContinueStatement(Node *node);
   void generateReturnStatement(Node *node);

@@ -1335,7 +1335,7 @@ struct CaseClause : Statement {
 
 struct SwitchStatement : Statement {
   Token switch_token;
-  std::unique_ptr<Expression> switch_expr;
+  std::unique_ptr<Expression> switch_init;
   // Inside the braces
   // Cases
   std::vector<std::unique_ptr<Statement>> case_clauses;
@@ -1344,7 +1344,7 @@ struct SwitchStatement : Statement {
   std::vector<std::unique_ptr<Statement>> default_statements;
 
   std::string toString() override {
-    std::string result = "switch (" + switch_expr->toString() + ") {\n";
+    std::string result = "switch (" + switch_init->toString() + ") {\n";
 
     // Print all case clauses
     for (const auto &clause : case_clauses) {
@@ -1364,7 +1364,7 @@ struct SwitchStatement : Statement {
   }
 
   SwitchStatement *shallowClone() const override {
-    return new SwitchStatement(switch_token, clonePtr(switch_expr),
+    return new SwitchStatement(switch_token, clonePtr(switch_init),
                                clonePtrVector(case_clauses), default_token,
                                clonePtrVector(default_statements));
   }
@@ -1373,7 +1373,7 @@ struct SwitchStatement : Statement {
                   std::vector<std::unique_ptr<Statement>> cases,
                   Token default_tok,
                   std::vector<std::unique_ptr<Statement>> default_stmts)
-      : Statement(token), switch_token(token), switch_expr(std::move(expr)),
+      : Statement(token), switch_token(token), switch_init(std::move(expr)),
         case_clauses(std::move(cases)), default_token(default_tok),
         default_statements(std::move(default_stmts)) {}
 };

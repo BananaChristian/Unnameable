@@ -197,133 +197,6 @@ void IRGenerator::generateReferenceStatement(Node *node) {
   refSym->llvmValue = targetAddress;
 }
 
-// IR code gen for an if statement
-void IRGenerator::generateIfStatement(Node *node) {
-  auto ifStmt = dynamic_cast<ifStatement *>(node);
-  if (!ifStmt) {
-    throw std::runtime_error("Invalid if statement");
-  }
-
-  std::cerr << "[IR DEBUG] Generating if statement\n";
-
-  // Generation of condition for the if
-  llvm::Value *condVal = generateExpression(ifStmt->condition.get());
-  if (!condVal) {
-    throw std::runtime_error("Invalid if condition");
-  }
-
-  if (!condVal->getType()->isIntegerTy(1)) {
-    condVal = funcBuilder.CreateICmpNE(
-        condVal, llvm::ConstantInt::get(condVal->getType(), 0), "ifcond.bool");
-  }
-
-  // Create basic blocks
-  llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
-  llvm::BasicBlock *thenBB =
-      llvm::BasicBlock::Create(context, "then", function);
-  llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(context, "ifmerge");
-
-  // Determine the next block (first elif, else, or merge)
-  llvm::BasicBlock *nextBB = nullptr;
-  if (!ifStmt->elifClauses.empty()) {
-    nextBB = llvm::BasicBlock::Create(context, "elif0");
-  } else if (ifStmt->else_result.has_value()) {
-    nextBB = llvm::BasicBlock::Create(context, "else");
-  } else {
-    nextBB = mergeBB;
-  }
-
-  // Conditional branch for if
-  std::cerr << "[IR DEBUG] Creating conditional branch for if\n";
-  funcBuilder.CreateCondBr(condVal, thenBB, nextBB);
-
-  // Generate then branch
-  funcBuilder.SetInsertPoint(thenBB);
-  std::cerr << "[IR DEBUG] Generating then branch\n";
-  generateStatement(ifStmt->if_result.get());
-  if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-    std::cerr << "[IR DEBUG] Adding branch to ifmerge from then\n";
-    funcBuilder.CreateBr(mergeBB);
-  } else {
-    std::cerr
-        << "[IR DEBUG] Skipping branch to ifmerge from then due to terminator: "
-        << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName()
-        << "\n";
-  }
-
-  // Generating elif branches
-  for (size_t i = 0; i < ifStmt->elifClauses.size(); ++i) {
-    function->insert(function->end(), nextBB);
-    funcBuilder.SetInsertPoint(nextBB);
-    std::cerr << "[IR DEBUG] Generating elif branch " << i << "\n";
-
-    const auto &elifStmt = ifStmt->elifClauses[i];
-    auto elif = dynamic_cast<elifStatement *>(elifStmt.get());
-    llvm::Value *elifCondVal = generateExpression(elif->elif_condition.get());
-    if (!elifCondVal) {
-      throw std::runtime_error("Invalid elif condition");
-    }
-    if (!elifCondVal->getType()->isIntegerTy(1)) {
-      elifCondVal = funcBuilder.CreateICmpNE(
-          elifCondVal, llvm::ConstantInt::get(elifCondVal->getType(), 0),
-          "elifcond.bool");
-    }
-
-    llvm::BasicBlock *elifBodyBB = llvm::BasicBlock::Create(
-        context, "elif.body" + std::to_string(i), function);
-    llvm::BasicBlock *nextElifBB =
-        (i + 1 < ifStmt->elifClauses.size())
-            ? llvm::BasicBlock::Create(context, "elif" + std::to_string(i + 1))
-            : (ifStmt->else_result.has_value()
-                   ? llvm::BasicBlock::Create(context, "else")
-                   : mergeBB);
-
-    std::cerr << "[IR DEBUG] Creating conditional branch for elif " << i
-              << "\n";
-    funcBuilder.CreateCondBr(elifCondVal, elifBodyBB, nextElifBB);
-
-    funcBuilder.SetInsertPoint(elifBodyBB);
-    std::cerr << "[IR DEBUG] Generating elif body " << i << "\n";
-    generateStatement(elif->elif_result.get());
-    if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-      std::cerr << "[IR DEBUG] Adding branch to ifmerge from elif " << i
-                << "\n";
-      funcBuilder.CreateBr(mergeBB);
-    } else {
-      std::cerr
-          << "[IR DEBUG] Skipping branch " << i
-          << " to ifmerge from elif due to terminator "
-          << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName()
-          << "\n";
-    }
-
-    nextBB = nextElifBB;
-  }
-
-  // Generate else branch if present
-  if (ifStmt->else_result.has_value()) {
-    function->insert(function->end(), nextBB);
-    funcBuilder.SetInsertPoint(nextBB);
-    std::cerr << "[IR DEBUG] Generating else branch\n";
-    generateStatement(ifStmt->else_result.value().get());
-    if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-      std::cerr << "[IR DEBUG] Adding branch to ifmerge from else\n";
-      funcBuilder.CreateBr(mergeBB);
-    } else {
-      std::cerr
-          << "[IR DEBUG] Skipping branch to ifmerge from else due to "
-             "terminator: "
-          << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName()
-          << "\n";
-    }
-  }
-
-  // Finalize with merge block
-  function->insert(function->end(), mergeBB);
-  funcBuilder.SetInsertPoint(mergeBB);
-  std::cerr << "[IR DEBUG] Finished generating if statement\n";
-}
-
 // Expression statement IR generator function
 void IRGenerator::generateExpressionStatement(Node *node) {
   auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
@@ -1353,6 +1226,8 @@ void IRGenerator::registerGeneratorFunctions() {
       &IRGenerator::generateForStatement;
   generatorFunctionsMap[typeid(ifStatement)] =
       &IRGenerator::generateIfStatement;
+  generatorFunctionsMap[typeid(SwitchStatement)] =
+      &IRGenerator::generateSwitchStatement;
   generatorFunctionsMap[typeid(BreakStatement)] =
       &IRGenerator::generateBreakStatement;
   generatorFunctionsMap[typeid(ContinueStatement)] =
@@ -1773,39 +1648,48 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type) {
   }
 }
 
-llvm::Value* IRGenerator::generateIntegerLiteral(const std::string& literalStr, uint32_t bitWidth, bool isSigned) {
-    int base = 10;
-    std::string cleanStr = literalStr;
-    if (literalStr.size() > 2) {
-        if (literalStr[1] == 'x' || literalStr[1] == 'X') { base = 16; cleanStr = literalStr.substr(2); }
-        else if (literalStr[1] == 'b' || literalStr[1] == 'B') { base = 2; cleanStr = literalStr.substr(2); }
+llvm::Value *IRGenerator::generateIntegerLiteral(const std::string &literalStr,
+                                                 uint32_t bitWidth,
+                                                 bool isSigned) {
+  int base = 10;
+  std::string cleanStr = literalStr;
+  if (literalStr.size() > 2) {
+    if (literalStr[1] == 'x' || literalStr[1] == 'X') {
+      base = 16;
+      cleanStr = literalStr.substr(2);
+    } else if (literalStr[1] == 'b' || literalStr[1] == 'B') {
+      base = 2;
+      cleanStr = literalStr.substr(2);
     }
+  }
 
-    // Create a WIDE APInt to hold the value safely during the check.
-    // Using a 129 bits so a 128-bit number can't "accidentally" overflow it.
-    llvm::APInt wideVal(129, cleanStr, base);
+  // Create a WIDE APInt to hold the value safely during the check.
+  // Using a 129 bits so a 128-bit number can't "accidentally" overflow it.
+  llvm::APInt wideVal(129, cleanStr, base);
 
-    // Perform the Range Check
-    if (isSigned) {
-        // Create the min/max bounds for the target bitWidth
-        llvm::APInt minBound = llvm::APInt::getSignedMinValue(bitWidth).sext(129);
-        llvm::APInt maxBound = llvm::APInt::getSignedMaxValue(bitWidth).sext(129);
+  // Perform the Range Check
+  if (isSigned) {
+    // Create the min/max bounds for the target bitWidth
+    llvm::APInt minBound = llvm::APInt::getSignedMinValue(bitWidth).sext(129);
+    llvm::APInt maxBound = llvm::APInt::getSignedMaxValue(bitWidth).sext(129);
 
-        // slt = Signed Less Than, sgt = Signed Greater Than
-        if (wideVal.slt(minBound) || wideVal.sgt(maxBound)) {
-            throw std::runtime_error("Overflow: Value out of range for signed i" + std::to_string(bitWidth));
-        }
-    } else {
-        llvm::APInt maxBound = llvm::APInt::getMaxValue(bitWidth).zext(129);
-
-        // ult = Unsigned Less Than, ugt = Unsigned Greater Than
-        if (wideVal.ugt(maxBound)) {
-            throw std::runtime_error("Overflow: Value out of range for unsigned u" + std::to_string(bitWidth));
-        }
+    // slt = Signed Less Than, sgt = Signed Greater Than
+    if (wideVal.slt(minBound) || wideVal.sgt(maxBound)) {
+      throw std::runtime_error("Overflow: Value out of range for signed i" +
+                               std::to_string(bitWidth));
     }
+  } else {
+    llvm::APInt maxBound = llvm::APInt::getMaxValue(bitWidth).zext(129);
 
-    // Shrink the wide value down to the actual target size
-    return llvm::ConstantInt::get(context, wideVal.trunc(bitWidth));
+    // ult = Unsigned Less Than, ugt = Unsigned Greater Than
+    if (wideVal.ugt(maxBound)) {
+      throw std::runtime_error("Overflow: Value out of range for unsigned u" +
+                               std::to_string(bitWidth));
+    }
+  }
+
+  // Shrink the wide value down to the actual target size
+  return llvm::ConstantInt::get(context, wideVal.trunc(bitWidth));
 }
 
 llvm::GlobalVariable *

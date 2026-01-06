@@ -274,6 +274,7 @@ public:
   std::shared_ptr<SymbolInfo> lookUpInCurrentScope(const std::string &name);
   ResolvedType resolvedDataType(Token token, Node *node);
   bool hasReturnPath(Node *node);
+  bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>>& stmts);
   ResolvedType inferNodeDataType(Node *node);
   std::pair<std::string, std::string>
   splitScopedName(const std::string &fullName);
@@ -286,7 +287,7 @@ private:
   bool insideFunction = false;
   bool insideBehavior = false;
   bool insideComponent = false;
-  bool insideRecord=false;
+  bool insideRecord = false;
   bool insideSeal = false;
   bool insideAllocator = false;
 
@@ -365,7 +366,7 @@ private:
   void walkIfStatement(Node *node);
   void walkElifStatement(Node *node);
   void walkSwitchStatement(Node *node);
-  void walkCaseStatement(Node *node);
+  void walkCaseStatement(Node *node, const ResolvedType &targetType);
 
   // walking functional programming nodes
   void walkFunctionStatement(Node *node);
@@ -468,6 +469,7 @@ private:
   bool isBoolean(const ResolvedType &t);
   bool isString(const ResolvedType &t);
   bool isChar(const ResolvedType &t);
+  bool isLiteral(Node *node);
   void popScope();
   int64_t evaluateArrayLengthConstant(Node *node);
   void logSemanticErrors(const std::string &message, int tokenLine,

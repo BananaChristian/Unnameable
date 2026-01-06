@@ -53,8 +53,7 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement() {
   }
 
   advance(); // Consuming the ( token
-  auto switchExpr = parseExpression(
-      Precedence::PREC_NONE); // I expect whatever parses this to advance
+  auto switchExpr = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
     logError("Expected ) but got: " + currentToken().TokenLiteral);
   }

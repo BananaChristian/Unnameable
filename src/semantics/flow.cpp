@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "semantics.hpp"
 
 void Semantics::walkBlockStatement(Node *node) {
@@ -223,70 +224,100 @@ void Semantics::walkIfStatement(Node *node) {
   }
 }
 
-void Semantics::walkCaseStatement(Node *node) {
+void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   auto caseStmt = dynamic_cast<CaseClause *>(node);
   if (!caseStmt)
     return;
-  std::cout << "[SEMANTIC LOG]: Analysing case clause: " << caseStmt->toString()
-            << "\n";
-  // Dealing with the condition
-  auto condition = caseStmt->condition.get();
-  walker(condition);
 
-  // Dealing with the body
-  auto &body = caseStmt->body;
-  for (auto &content : body) {
-    walker(content.get());
+  bool hasError = false;
+
+  auto caseCondition = caseStmt->condition.get();
+  int line = caseCondition->expression.line;
+  int col = caseCondition->expression.column;
+
+  if (!isLiteral(caseCondition)) {
+    logSemanticErrors("Case condition must be a constant literal", line, col);
+    hasError=true;
+    return;
   }
+
+  walker(caseCondition);
+
+  // Checking if the case type matches the type of the entire switch
+  auto caseType = metaData[caseCondition]->type;
+  bool isValid = isInteger(targetType) || isChar(targetType) ||
+                 (targetType.kind == DataType::ENUM);
+  if (!isValid) {
+    logSemanticErrors(
+        "Invalid case target expected only integers, chars, and enumarations",
+        line, col);
+    hasError = true;
+  }
+  if (caseType.kind != targetType.kind) {
+    logSemanticErrors(
+        "Type mismatch: case literal type '" + caseType.resolvedName +
+            "' doesnt match switch expression type '" +
+            targetType.resolvedName + "'",
+        caseCondition->expression.line, caseCondition->expression.line);
+    hasError = true;
+  }
+
+  symbolTable.push_back({}); // Pushing a new clause scope
+  for (const auto &stmt : caseStmt->body) {
+    walker(stmt.get());
+  }
+  popScope();
+  auto caseInfo = std::make_shared<SymbolInfo>();
+  caseInfo->hasError = hasError;
+
+  metaData[caseStmt] = caseInfo;
 }
 
 void Semantics::walkSwitchStatement(Node *node) {
   auto switchStmt = dynamic_cast<SwitchStatement *>(node);
   if (!switchStmt)
     return;
-  std::cout << "[SEMANTIC LOG]: Analysing switch statement: "
-            << switchStmt->toString() << "\n";
 
-  // Dealing with the switch expression
-  auto switchExpr = switchStmt->switch_expr.get();
-  auto switchType = inferNodeDataType(switchExpr);
-  auto switchExprName = switchStmt->switch_expr->expression.TokenLiteral;
-  auto symbolInfo = resolveSymbolInfo(switchExprName);
-  bool isConstant = symbolInfo->isConstant;
-  bool isMutable = symbolInfo->isMutable;
-  bool isNullable = symbolInfo->isNullable;
-  bool isInitialized = symbolInfo->isInitialized;
-  walker(switchExpr);
+  bool hasError = false;
 
-  // Dealing with the case clauses
-  ResolvedType caseType = ResolvedType{DataType::UNKNOWN, "unknown"};
+  symbolTable.push_back({}); // Push a new scope for the switch
 
-  loopContext.push_back(false);
-  auto &caseClause = switchStmt->case_clauses;
-  for (auto &caseSt : caseClause) {
-    caseType = inferNodeDataType(caseSt.get());
-    if (caseType.kind != switchType.kind) {
-      logSemanticErrors("Type mismatch in switch case ", node->token.line,
-                        node->token.column);
+  // The switch's init
+  walker(switchStmt->switch_init.get());
+  ResolvedType targetType = metaData[switchStmt->switch_init.get()]->type;
+  bool isValid = isInteger(targetType) || isChar(targetType) ||
+                 (targetType.kind == DataType::ENUM);
+  if (!isValid) {
+    logSemanticErrors(
+        "Invalid switch target expected only integers, chars, and enumarations",
+        switchStmt->switch_token.line, switchStmt->switch_token.column);
+    hasError = true;
+  }
+
+  for (const auto &caseClause : switchStmt->case_clauses) {
+    walkCaseStatement(caseClause.get(), targetType);
+    hasError = metaData[caseClause.get()]->hasError;
+  }
+
+  // For the default case
+  if (!switchStmt->default_statements.empty()) {
+    symbolTable.push_back({}); // Push the scope for the default statements
+    for (const auto &stmt : switchStmt->default_statements) {
+      walker(stmt.get());
     }
-    walker(caseSt.get());
-  }
-  loopContext.pop_back();
-
-  // Dealing with the default statement
-  auto &defaults = switchStmt->default_statements;
-  for (auto &content : defaults) {
-    walker(content.get());
+    popScope();
+  } else {
+    logSemanticErrors("Switch statement is missing default case",
+                      switchStmt->switch_token.line,
+                      switchStmt->switch_token.line);
+    hasError = true;
   }
 
-  auto info = std::make_shared<SymbolInfo>();
-  info->type = switchType;
-  info->isNullable = isNullable;
-  info->isMutable = isMutable;
-  info->isConstant = isConstant;
-  info->isInitialized = isInitialized;
+  popScope();
 
-  metaData[switchStmt] = info;
+  auto switchInfo = std::make_shared<SymbolInfo>();
+  switchInfo->hasError = hasError;
+  metaData[switchStmt] = switchInfo;
 }
 
 void Semantics::walkForStatement(Node *node) {
