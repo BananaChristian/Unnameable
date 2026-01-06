@@ -136,19 +136,18 @@ void IRGenerator::generateSwitchStatement(Node *node) {
 
   bool hasError = semantics.metaData[switchStmt]->hasError;
   if (hasError)
-    throw std::runtime_error("Error deteceted");
+    throw std::runtime_error("Error detected");
 
-  // Get the parent function
   llvm::Function *parentFunc = funcBuilder.GetInsertBlock()->getParent();
 
-  // Create the end point for the default
+  // 1. Create the destination for 'break' and the default landing pad
   llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(context, "sw.merge");
   llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(context, "sw.default");
 
-  // Generate the init and get the value
+  jumpStack.push_back({mergeBB, nullptr});
+
   llvm::Value *val = generateExpression(switchStmt->switch_init.get());
 
-  // Start the switch
   llvm::SwitchInst *sw =
       funcBuilder.CreateSwitch(val, defaultBB, switchStmt->case_clauses.size());
 
@@ -156,40 +155,41 @@ void IRGenerator::generateSwitchStatement(Node *node) {
 
   // Build the cases
   for (const auto &clause : switchStmt->case_clauses) {
-    llvm::BasicBlock *caseBB =
-        llvm::BasicBlock::Create(context, "sw.case", parentFunc);
-
     auto caseClause = dynamic_cast<CaseClause *>(clause.get());
 
+    // Evaluate the case label (e.g., the '1' in case 1:)
     auto *cond = llvm::cast<llvm::ConstantInt>(
         generateExpression(caseClause->condition.get()));
     pendingLabels.push_back(cond);
 
+    // Only create a block if the case actually has a body
     if (!caseClause->body.empty()) {
-      llvm::BasicBlock *caseBB =
+      llvm::BasicBlock *caseBodyBB =
           llvm::BasicBlock::Create(context, "sw.case", parentFunc);
 
       for (auto *label : pendingLabels) {
-        sw->addCase(label, caseBB);
+        sw->addCase(label, caseBodyBB);
       }
-      pendingLabels.clear(); // Clear the list for the next group
+      pendingLabels.clear();
 
-      funcBuilder.SetInsertPoint(caseBB);
+      funcBuilder.SetInsertPoint(caseBodyBB);
       for (const auto &stmt : caseClause->body) {
         generateStatement(stmt.get());
       }
 
-      // Finalize the block
+      // If the user didn't write an explicit 'break', we auto-jump to merge
       if (!funcBuilder.GetInsertBlock()->getTerminator()) {
         funcBuilder.CreateBr(mergeBB);
       }
     }
   }
 
+  // Handle any labels that were defined but had no body (fall-through to merge)
   for (auto *label : pendingLabels) {
     sw->addCase(label, mergeBB);
   }
 
+  // Generate the Default Block
   parentFunc->insert(parentFunc->end(), defaultBB);
   funcBuilder.SetInsertPoint(defaultBB);
   for (auto &stmt : switchStmt->default_statements) {
@@ -200,7 +200,8 @@ void IRGenerator::generateSwitchStatement(Node *node) {
     funcBuilder.CreateBr(mergeBB);
   }
 
-  // Finish at Merge
+  jumpStack.pop_back();
+
   parentFunc->insert(parentFunc->end(), mergeBB);
   funcBuilder.SetInsertPoint(mergeBB);
 }

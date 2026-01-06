@@ -1,293 +1,247 @@
 #include "irgen.hpp"
 
 // Generate while statament
-void IRGenerator::generateWhileStatement(Node *node)
-{
-    auto whileStmt = dynamic_cast<WhileStatement *>(node);
-    if (!whileStmt)
-    {
-        throw std::runtime_error("Invalid while statement");
-    }
+void IRGenerator::generateWhileStatement(Node *node) {
+  auto whileStmt = dynamic_cast<WhileStatement *>(node);
+  if (!whileStmt)
+    throw std::runtime_error("Invalid while statement");
+  if (isGlobalScope)
+    throw std::runtime_error("Cannot use a while loop in global scope");
 
-    if (isGlobalScope)
-        throw std::runtime_error("Cannot use a while loop in global scope");
+  llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
 
-    llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(context, "while.cond", function);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "while.body");
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "while.end");
+  // Create blocks
+  llvm::BasicBlock *condBB =
+      llvm::BasicBlock::Create(context, "while.cond", function);
+  llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "while.body");
+  llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "while.end");
 
-    std::cerr << "[IR DEBUG] Creating branch to while.cond\n";
-    funcBuilder.CreateBr(condBB);
+  // Initial jump into the condition check
+  std::cerr << "[IR DEBUG] Creating branch to while.cond\n";
+  funcBuilder.CreateBr(condBB);
 
-    funcBuilder.SetInsertPoint(condBB);
-    std::cerr << "[IR DEBUG] Generating while condition\n";
-    llvm::Value *condVal = generateExpression(whileStmt->condition.get());
-    if (!condVal)
-    {
-        throw std::runtime_error("Invalid while condition");
-    }
+  // --- CONDITION BLOCK ---
+  funcBuilder.SetInsertPoint(condBB);
+  std::cerr << "[IR DEBUG] Generating while condition\n";
+  llvm::Value *condVal = generateExpression(whileStmt->condition.get());
 
-    if (!condVal->getType()->isIntegerTy(1))
-    {
-        condVal = funcBuilder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "whilecond.bool");
-    }
+  if (!condVal->getType()->isIntegerTy(1)) {
+    condVal = funcBuilder.CreateICmpNE(
+        condVal, llvm::ConstantInt::get(condVal->getType(), 0),
+        "whilecond.bool");
+  }
+  funcBuilder.CreateCondBr(condVal, bodyBB, endBB);
 
-    std::cerr << "[IR DEBUG] Creating conditional branch\n";
-    funcBuilder.CreateCondBr(condVal, bodyBB, endBB);
+  // --- BODY BLOCK ---
+  function->insert(function->end(), bodyBB);
+  funcBuilder.SetInsertPoint(bodyBB);
 
-    // Append bodyBB to function
-    function->insert(function->end(), bodyBB);
-    funcBuilder.SetInsertPoint(bodyBB);
-    std::cerr << "[IR DEBUG] Generating while body\n";
-    loopBlocksStack.push_back({condBB, endBB});
-    generateStatement(whileStmt->loop.get());
-    loopBlocksStack.pop_back();
+  // PUSH: {breakTarget, continueTarget}
+  // For 'while', continue goes back to the condition (condBB)
+  jumpStack.push_back({endBB, condBB});
 
-    // The resident sweep: Clean up locals before jumping back to condBB
-    // This happens AT THE END of the while.body block.
-    for (auto *sym : semantics.loopResidentDeathRow)
-    {
-        // We only free if it's a heap/dheap resident
-        if (sym->isDheap)
-        {
-            const std::string &allocatorTypeName = sym->allocType;
-            auto it = semantics.allocatorMap.find(allocatorTypeName);
-            if (it != semantics.allocatorMap.end())
-            {
-                auto handle = it->second;
-                llvm::Function *freeFunc = module->getFunction(handle.freeName);
-                if (freeFunc)
-                {
-                    // Force free the local resident at the end of the lap
-                    funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
-                }
-            }
-        }
-        else if (sym->isHeap)
-        {
-            // SAGE free for locals
-            llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-                "sage_free", llvm::Type::getVoidTy(context));
-            funcBuilder.CreateCall(sageFreeFn);
-        }
-    }
-    // Clear the residents so they don't leak into the next loop
+  std::cerr << "[IR DEBUG] Generating while body\n";
+  generateStatement(whileStmt->loop.get());
+
+  // POP: Leaving body scope
+  jumpStack.pop_back();
+
+  // Resident Sweep: Clean up locals at the end of the lap
+  if (!funcBuilder.GetInsertBlock()->getTerminator()) {
+    // REWIRED: Using the helper for consistency
+    emitResidentSweep();
     semantics.loopResidentDeathRow.clear();
-    std::cerr << "[IR DEBUG] Finished generating while body\n";
 
-    if (!funcBuilder.GetInsertBlock()->getTerminator())
-    {
-        std::cerr << "[IR DEBUG] Adding branch to while.cond\n";
-        funcBuilder.CreateBr(condBB);
-    }
-    else
-    {
-        std::cerr << "[IR WARNING] While body block already has terminator: " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
-    }
+    std::cerr << "[IR DEBUG] Adding branch to while.cond\n";
+    funcBuilder.CreateBr(condBB);
+  }
 
-    // Append endBB to function
-    function->insert(function->end(), endBB);
-    funcBuilder.SetInsertPoint(endBB);
+  // --- EXIT BLOCK ---
+  function->insert(function->end(), endBB);
+  funcBuilder.SetInsertPoint(endBB);
 
-    for (auto *sym : semantics.loopDeathRow)
-    {
-        if (sym->isHeap)
-        {
-            if (sym->needsPostLoopFree)
-            {
-                // SAGE is a stack: we don't pass the pointer!
-                llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-                    "sage_free",
-                    llvm::Type::getVoidTy(context));
-
-                // Create and insert the call
-                funcBuilder.CreateCall(sageFreeFn);
-
-                // if this symbol appears multiple times in the death row
-                sym->needsPostLoopFree = false;
-            }
+  // Final Death Row: Cleanup variables that only exist for the loop's life
+  for (auto *sym : semantics.loopDeathRow) {
+    if (sym->needsPostLoopFree) {
+      if (sym->isDheap) {
+        auto it = semantics.allocatorMap.find(sym->allocType);
+        if (it != semantics.allocatorMap.end()) {
+          llvm::Function *freeFunc = module->getFunction(it->second.freeName);
+          if (freeFunc)
+            funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
         }
-
-        if (sym->isDheap)
-        {
-            if (sym->needsPostLoopFree)
-            {
-
-                // This is a direct copy of your logic from generateIdentifierAddress
-                const std::string &allocatorTypeName = sym->allocType;
-                auto it = semantics.allocatorMap.find(allocatorTypeName);
-                if (it != semantics.allocatorMap.end())
-                {
-                    auto handle = it->second;
-                    llvm::Function *freeFunc = module->getFunction(handle.freeName);
-                    if (freeFunc)
-                    {
-                        // Force the free at the exit gate
-                        funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
-                    }
-                }
-                // Clear the flag so it doesn't free again at the end of the function
-                sym->needsPostLoopFree = false;
-            }
-        }
+      } else if (sym->isHeap) {
+        llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
+            "sage_free", llvm::Type::getVoidTy(context));
+        funcBuilder.CreateCall(sageFreeFn);
+      }
+      sym->needsPostLoopFree = false;
     }
+  }
 }
 
 // IR code gen for a for loop
-void IRGenerator::generateForStatement(Node *node)
-{
-    std::cout << "Generating IR for : " << node->toString();
-    auto forStmt = dynamic_cast<ForStatement *>(node);
-    if (!forStmt)
-        throw std::runtime_error("Invalid for statement");
+void IRGenerator::generateForStatement(Node *node) {
+  auto forStmt = dynamic_cast<ForStatement *>(node);
+  if (!forStmt)
+    throw std::runtime_error("Invalid for statement");
 
-    llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
-    llvm::BasicBlock *origBB = funcBuilder.GetInsertBlock();
+  llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
 
-    // initializer
-    if (forStmt->initializer)
-    {
-        std::cerr << "[IR DEBUG] Generating initializer\n";
-        generateStatement(forStmt->initializer.get());
-    }
+  // 1. Initializer: Sets up the loop variable (e.g., mut i32 i = 0)
+  if (forStmt->initializer) {
+    std::cerr << "[IR DEBUG] Generating initializer\n";
+    generateStatement(forStmt->initializer.get());
+  }
 
-    // create blocks attached to function
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(context, "loop.cond", function);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(context, "loop.body", function);
-    llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(context, "loop.step", function);
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "loop.end", function);
+  // 2. Create the 4 core blocks of a 'for' loop
+  llvm::BasicBlock *condBB =
+      llvm::BasicBlock::Create(context, "loop.cond", function);
+  llvm::BasicBlock *bodyBB =
+      llvm::BasicBlock::Create(context, "loop.body", function);
+  llvm::BasicBlock *stepBB =
+      llvm::BasicBlock::Create(context, "loop.step", function);
+  llvm::BasicBlock *endBB =
+      llvm::BasicBlock::Create(context, "loop.end", function);
 
-    // branch to condition
-    funcBuilder.CreateBr(condBB);
+  // Initial entry into the loop condition
+  funcBuilder.CreateBr(condBB);
 
-    // condition
-    funcBuilder.SetInsertPoint(condBB);
-    std::cerr << "[IR DEBUG] Generating condition\n";
-    llvm::Value *condVal = generateExpression(forStmt->condition.get());
-    if (!condVal)
-    {
-        std::cerr << "[IR ERROR] For loop has invalid condition\n";
-        funcBuilder.SetInsertPoint(origBB);
-        return;
-    }
+  // 3. Condition Block: Check if we should keep looping
+  funcBuilder.SetInsertPoint(condBB);
+  std::cerr << "[IR DEBUG] Generating condition\n";
+  llvm::Value *condVal = generateExpression(forStmt->condition.get());
 
-    auto it = semantics.metaData.find(forStmt->condition.get());
-    if (it == semantics.metaData.end() || it->second->type.kind != DataType::BOOLEAN)
-    {
-        std::cerr << "[IR ERROR] For loop condition must evaluate to boolean.\n";
-        funcBuilder.SetInsertPoint(origBB);
-        return;
-    }
+  // Boolean promotion
+  if (!condVal->getType()->isIntegerTy(1)) {
+    condVal = funcBuilder.CreateICmpNE(
+        condVal, llvm::ConstantInt::get(condVal->getType(), 0),
+        "loopcond.bool");
+  }
+  funcBuilder.CreateCondBr(condVal, bodyBB, endBB);
 
-    // promote if needed
-    if (!condVal->getType()->isIntegerTy(1))
-    {
-        if (condVal->getType()->isIntegerTy(32))
-            condVal = funcBuilder.CreateICmpNE(condVal, llvm::ConstantInt::get(condVal->getType(), 0), "loopcond.bool");
-        else
-        {
-            std::cerr << "[IR ERROR] For loop condition must be boolean or i32\n";
-            funcBuilder.SetInsertPoint(origBB);
-            return;
-        }
-    }
+  // 4. Body Block: Where the code inside the { } lives
+  function->insert(function->end(), bodyBB);
+  funcBuilder.SetInsertPoint(bodyBB);
 
-    funcBuilder.CreateCondBr(condVal, bodyBB, endBB);
+  // --- NEW JUMP STACK PUSH ---
+  // For 'break', go to endBB. For 'continue', go to stepBB!
+  jumpStack.push_back({endBB, stepBB});
 
-    // body
-    funcBuilder.SetInsertPoint(bodyBB);
-    loopBlocksStack.push_back({condBB, stepBB, endBB}); // <-- includes stepBB now
-    std::cerr << "[IR DEBUG] Generating loop body\n";
-    generateStatement(forStmt->body.get());
-    for (auto *sym : semantics.loopResidentDeathRow)
-    {
-        if (sym->isDheap)
-        {
-            auto it = semantics.allocatorMap.find(sym->allocType);
-            if (it != semantics.allocatorMap.end())
-            {
-                llvm::Function *freeFunc = module->getFunction(it->second.freeName);
-                if (freeFunc)
-                    funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
-            }
-        }
-        else if (sym->isHeap)
-        {
-            llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction("sage_free", llvm::Type::getVoidTy(context));
-            funcBuilder.CreateCall(sageFreeFn);
-        }
-    }
+  std::cerr << "[IR DEBUG] Generating loop body\n";
+  generateStatement(forStmt->body.get());
+
+  // --- NEW JUMP STACK POP ---
+  jumpStack.pop_back();
+
+  // Resident Sweep: Free locals at the end of a successful lap
+  if (!funcBuilder.GetInsertBlock()->getTerminator()) {
+    // REWIRED: Using the helper now
+    emitResidentSweep();
     semantics.loopResidentDeathRow.clear();
-    std::cerr << "[IR DEBUG] Finished generating loop body\n";
-    loopBlocksStack.pop_back();
 
-    if (!funcBuilder.GetInsertBlock()->getTerminator())
-    {
-        std::cerr << "[IR DEBUG] Adding branch to loop.step\n";
-        funcBuilder.CreateBr(stepBB);
-    }
-    else
-    {
-        std::cerr << "[IR WARNING] Loop body block already has terminator: " << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName() << "\n";
-    }
+    // After the body and sweep, go to the STEP block
+    std::cerr << "[IR DEBUG] Adding branch to loop.step\n";
+    funcBuilder.CreateBr(stepBB);
+  }
 
-    // step
-    funcBuilder.SetInsertPoint(stepBB);
-    if (forStmt->step)
-    {
-        std::cerr << "[IR DEBUG] Generating loop step\n";
-        generateStatement(forStmt->step.get());
-    }
-    funcBuilder.CreateBr(condBB);
+  // 5. Step Block: The increment (e.g., i = i + 1)
+  function->insert(function->end(), stepBB);
+  funcBuilder.SetInsertPoint(stepBB);
+  if (forStmt->step) {
+    std::cerr << "[IR DEBUG] Generating loop step\n";
+    generateStatement(forStmt->step.get());
+  }
+  // After stepping, always go back to re-check the condition
+  funcBuilder.CreateBr(condBB);
 
-    // after
-    funcBuilder.SetInsertPoint(endBB);
+  // 6. End Block: The exit gate
+  function->insert(function->end(), endBB);
+  funcBuilder.SetInsertPoint(endBB);
 
-    for (auto *sym : semantics.loopDeathRow)
-    {
-        if (sym->needsPostLoopFree)
-        {
-            if (sym->isDheap)
-            {
-                auto it = semantics.allocatorMap.find(sym->allocType);
-                if (it != semantics.allocatorMap.end())
-                {
-                    llvm::Function *freeFunc = module->getFunction(it->second.freeName);
-                    if (freeFunc)
-                        funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
-                }
-            }
-            else if (sym->isHeap)
-            {
-                llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction("sage_free", llvm::Type::getVoidTy(context));
-                funcBuilder.CreateCall(sageFreeFn);
-            }
-            sym->needsPostLoopFree = false;
+  // Final Death Row: Cleanup variables that only exist for the loop's life
+  for (auto *sym : semantics.loopDeathRow) {
+    if (sym->needsPostLoopFree) {
+      // Logic for post-loop cleanup
+      if (sym->isDheap) {
+        auto it = semantics.allocatorMap.find(sym->allocType);
+        if (it != semantics.allocatorMap.end()) {
+          llvm::Function *freeFunc = module->getFunction(it->second.freeName);
+          if (freeFunc)
+            funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
         }
+      } else if (sym->isHeap) {
+        llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
+            "sage_free", llvm::Type::getVoidTy(context));
+        funcBuilder.CreateCall(sageFreeFn);
+      }
+      sym->needsPostLoopFree = false;
     }
+  }
 }
 
-void IRGenerator::generateBreakStatement(Node *node)
-{
-    if (loopBlocksStack.empty())
-    {
-        throw std::runtime_error("Break statement not inside a loop");
-    }
+void IRGenerator::generateBreakStatement(Node *node) {
+  if (jumpStack.empty()) {
+    throw std::runtime_error("Break statement not inside a loop or switch");
+  }
 
-    llvm::BasicBlock *afterBB = loopBlocksStack.back().afterBB;
-    std::cerr << "[IR DEBUG] Generating break to " << afterBB->getName().str() << "\n";
-    funcBuilder.CreateBr(afterBB);
+  llvm::BasicBlock *target = jumpStack.back().breakTarget;
+
+  // Debug print (Safer check)
+  std::cerr << "[IR DEBUG] Generating break to "
+            << (target->hasName() ? target->getName().str() : "unnamed block")
+            << "\n";
+
+  funcBuilder.CreateBr(target);
+
+  // Creating a dummy block for any dead code following the break
+  llvm::Function *parent = funcBuilder.GetInsertBlock()->getParent();
+  llvm::BasicBlock *deadBB =
+      llvm::BasicBlock::Create(context, "break.dead", parent);
+  funcBuilder.SetInsertPoint(deadBB);
 }
 
-void IRGenerator::generateContinueStatement(Node *node)
-{
-    if (loopBlocksStack.empty())
-    {
-        throw std::runtime_error("Continue statement not inside a loop");
-    }
+void IRGenerator::generateContinueStatement(Node *node) {
+  for (auto it = jumpStack.rbegin(); it != jumpStack.rend(); ++it) {
+    if (it->continueTarget != nullptr) {
+      std::cerr << "[IR DEBUG] Generating continue to loop header\n";
+      funcBuilder.CreateBr(it->continueTarget);
 
-    llvm::BasicBlock *condBB = loopBlocksStack.back().condBB;
-    std::cerr << "[IR DEBUG] Generating continue to " << condBB->getName().str() << "\n";
-    funcBuilder.CreateBr(condBB);
+      llvm::Function *parent = funcBuilder.GetInsertBlock()->getParent();
+      llvm::BasicBlock *deadBB =
+          llvm::BasicBlock::Create(context, "cont.dead", parent);
+      funcBuilder.SetInsertPoint(deadBB);
+      return;
+    }
+  }
+
+  throw std::runtime_error("Continue statement used outside of a loop!");
+}
+
+void IRGenerator::emitResidentSweep() {
+  if (semantics.loopResidentDeathRow.empty()) {
+    return;
+  }
+
+  std::cerr << "[IR DEBUG] Emitting resident memory sweep\n";
+
+  for (auto *sym : semantics.loopResidentDeathRow) {
+    if (sym->isDheap) {
+      const std::string &allocatorTypeName = sym->allocType;
+      auto it = semantics.allocatorMap.find(allocatorTypeName);
+      if (it != semantics.allocatorMap.end()) {
+        auto handle = it->second;
+        llvm::Function *freeFunc = module->getFunction(handle.freeName);
+        if (freeFunc) {
+          // Force free the local resident (dheap)
+          funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
+        }
+      }
+    } else if (sym->isHeap) {
+      // SAGE free for locals (heap)
+      llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
+          "sage_free", llvm::Type::getVoidTy(context));
+      funcBuilder.CreateCall(sageFreeFn);
+    }
+  }
 }
