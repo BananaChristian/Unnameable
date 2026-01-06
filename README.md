@@ -327,7 +327,6 @@ You cannot reassign to an immutable array so be careful there if you want to rea
 func main: i32 {
     mut arr[i32] [2] my_array=[5,6];
     my_array=[8,7];
-
     
     return 0;
 }
@@ -433,17 +432,24 @@ if (age > 18) {
 ## Switch statements
 
 ```
-string name="Mellisa";
+enum class Status {
+    PENDING,   
+    ACTIVE,    
+    CLOSED     
+}
 
-switch (name) {
-    case "Brenda":
-        return "That is not her";
-    case "Charity":
-        return "Getting close";
-    case "Mellisa":
-        return "That is her";
-    default:
-        return "You are way off";
+func get_status_msg(Status s): string {
+    switch (s) {
+        case Status::PENDING: { return "Wait for it..." }
+        case Status::ACTIVE:  { return "It is live!" }
+        case Status::CLOSED:  { return "Game over." }
+        default:              { return "Unknown state" }
+    }
+}
+
+func main:i32{
+    shout! get_status_msg(Status::PENDING);
+    return 0;
 }
 
 ```
