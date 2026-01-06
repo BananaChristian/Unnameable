@@ -823,7 +823,7 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
     }
 
     // Block cases where the parentName is an actual type too if its not an enum
-    if (lookUpName == parentName && varType.kind!=DataType::ENUM) {
+    if (lookUpName == parentName && varType.kind != DataType::ENUM) {
       logSemanticErrors("Must instantiate type '" + varType.resolvedName +
                             "' to access its members",
                         infixExpr->left_operand->expression.line,
@@ -977,6 +977,41 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
 
+  bool isBitwise = (operatorType == TokenType::BITWISE_AND ||
+                    operatorType == TokenType::BITWISE_OR ||
+                    operatorType == TokenType::BITWISE_XOR);
+
+  if (isBitwise) {
+    if (isInteger(leftType) && isInteger(rightType)) {
+      if (leftType.kind == rightType.kind) {
+        return leftType;
+      }
+
+      std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
+                << " Bitwise mismatch: Cannot use '"
+                << TokenTypeToLiteral(operatorType)
+                << "' on different integer sizes (" << leftType.resolvedName
+                << " and " << rightType.resolvedName << ")\n";
+      return ResolvedType{DataType::UNKNOWN, "unknown"};
+    }
+
+    std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
+              << " Bitwise operators are only for integers. Cannot use on "
+              << leftType.resolvedName << "\n";
+    return ResolvedType{DataType::UNKNOWN, "unknown"};
+  }
+
+  bool isShift = (operatorType == TokenType::SHIFT_RIGHT ||
+                  operatorType == TokenType::SHIFT_LEFT);
+  if (isShift) {
+    if (isInteger(leftType) && isInteger(rightType)) {
+      return leftType;
+    }
+    std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
+              << " Shift operators require integers on both sides.\n";
+    return ResolvedType{DataType::UNKNOWN, "unknown"};
+  }
+
   std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
             << "Unknown binary operator: " << TokenTypeToLiteral(operatorType)
             << " with types " << leftType.resolvedName << " and "
@@ -987,25 +1022,35 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
 ResolvedType Semantics::resultOfUnary(TokenType operatorType,
                                       const ResolvedType &operandType) {
   switch (operatorType) {
-  case TokenType::BANG:
+  case TokenType::BANG: {
     if (!isBoolean(operandType)) {
       std::cerr << "[SEMANTIC ERROR] Cannot apply '!' to type "
                 << operandType.resolvedName << "\n";
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
     return ResolvedType{DataType::BOOLEAN, "bool"};
-
+  }
   case TokenType::MINUS:
   case TokenType::PLUS:
   case TokenType::PLUS_PLUS:
-  case TokenType::MINUS_MINUS:
+  case TokenType::MINUS_MINUS: {
     if (isInteger(operandType) || isFloat(operandType))
       return operandType;
     std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
               << "Cannot apply " << TokenTypeToLiteral(operatorType) << " to "
               << operandType.resolvedName << "\n";
     return ResolvedType{DataType::UNKNOWN, "unknown"};
-
+  }
+  case TokenType::BITWISE_NOT: {
+    if (isInteger(operandType)) {
+      return operandType;
+    }
+    std::cerr
+        << COLOR_RED << "[SEMANTIC ERROR] " << COLOR_RESET
+        << "The bitwise NOT operator '~' can only be applied to integer types. "
+        << "Type '" << operandType.resolvedName << "' is invalid.\n";
+    return ResolvedType{DataType::UNKNOWN, "unknown"};
+  }
   default:
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }

@@ -722,6 +722,19 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
           std::to_string(infix->operat.line));
   }
 
+  case TokenType::BITWISE_AND:
+    return funcBuilder.CreateAnd(left, right, "andtmp");
+  case TokenType::BITWISE_OR:
+    return funcBuilder.CreateOr(left, right, "ortmp");
+  case TokenType::BITWISE_XOR:
+    return funcBuilder.CreateXor(left, right, "xortmp");
+  case TokenType::SHIFT_LEFT:
+    return funcBuilder.CreateShl(left, right, "shltmp");
+  case TokenType::SHIFT_RIGHT: {
+    return isSignedInteger(resultType.kind)
+               ? funcBuilder.CreateAShr(left, right, "ashrtmp")
+               : funcBuilder.CreateLShr(left, right, "lshrtmp");
+  }
   default:
     throw std::runtime_error(
         "Unsupported infix operator: " + infix->operat.TokenLiteral +
@@ -745,10 +758,10 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
   // If the operand is an identifier
   if (auto identOperand = dynamic_cast<Identifier *>(prefix->operand.get())) {
     operand = generateIdentifierAddress(prefix->operand.get()).address;
+  } else {
+    // If the operand is a normal literal
+    operand = generateExpression(prefix->operand.get());
   }
-
-  // If the operand is a normal literal
-  operand = generateExpression(prefix->operand.get());
 
   if (!operand)
     throw std::runtime_error("Failed to generate IR for prefix operand");
@@ -778,7 +791,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
   };
 
   switch (prefix->operat.type) {
-  case TokenType::MINUS:
+  case TokenType::MINUS: {
     if (resultType.kind == DataType::FLOAT ||
         resultType.kind == DataType::DOUBLE)
       return funcBuilder.CreateFNeg(operand, llvm::Twine("fnegtmp"));
@@ -786,10 +799,11 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
       return funcBuilder.CreateNeg(operand, llvm::Twine("negtmp"));
     else
       throw std::runtime_error("Unsupported type for unary minus");
-
+  }
+  case TokenType::BITWISE_NOT:
+    return funcBuilder.CreateNot(operand, llvm::Twine("bitnottmp"));
   case TokenType::BANG:
-    // Boolean NOT
-    return funcBuilder.CreateNot(operand, llvm::Twine("nottmp"));
+    return funcBuilder.CreateNot(operand, llvm::Twine("boolnottmp"));
 
   case TokenType::PLUS_PLUS:
   case TokenType::MINUS_MINUS: {
