@@ -438,21 +438,16 @@ void IRGenerator::generateBlockStatement(Node *node) {
   std::cerr << "[IR DEBUG] Generating block statement with "
             << blockStmt->statements.size() << " statements\n";
   for (const auto &stmt : blockStmt->statements) {
-    std::cerr << "[IR DEBUG] Processing block statement child of type: "
-              << typeid(*stmt).name() << " - " << stmt->toString() << "\n";
+    auto currentBlock = funcBuilder.GetInsertBlock();
+    if (currentBlock && currentBlock->getTerminator()) {
+      break;
+    }
 
     generateStatement(stmt.get());
 
-    auto currentBlock = funcBuilder.GetInsertBlock();
-    if (currentBlock) {
-      if (currentBlock->getTerminator()) {
-        std::cerr << "[IR DEBUG] Terminator found in block statement child: "
-                  << currentBlock->getTerminator()->getOpcodeName() << "\n";
-        break; // Stop generating further instructions in this block
-      }
-    } else {
-      std::cerr << "[IR DEBUG] No current insert block after statement, "
-                   "skipping terminator check\n";
+    currentBlock = funcBuilder.GetInsertBlock();
+    if (currentBlock && currentBlock->getTerminator()) {
+      break;
     }
   }
 }
@@ -488,9 +483,6 @@ void IRGenerator::generateShoutStatement(Node *node) {
   // Call the shoutRuntime this is the one who actually prints
   shoutRuntime(val, type);
 }
-
-// EXPRESSION GENERATOR
-//  Expression generator functions
 
 // Generator function for identifier expression
 llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {

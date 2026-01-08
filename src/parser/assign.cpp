@@ -1,7 +1,7 @@
 #include "parser.hpp"
 
 // Parsing assignment statements
-std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam) {
+std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
   std::cout << "NOW INSIDE ASSIGNMENT STATEMENT PARSER\n";
   std::unique_ptr<Expression> value = nullptr;
   Token identToken = currentToken();
@@ -34,14 +34,6 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement(bool isParam) {
 
   // Parse right-hand side expression
   value = parseExpression(Precedence::PREC_NONE);
-
-  // Consume optional semicolon
-  if (!isParam && currentToken().type == TokenType::SEMICOLON) {
-    advance();
-  } else if (!isParam) {
-    logError("Expected ';' after assignment but got '" +
-             currentToken().TokenLiteral + "'");
-  }
 
   if (!lhs)
     return nullptr;
@@ -81,12 +73,6 @@ std::unique_ptr<Statement> Parser::parseDereferenceAssignment() {
   // Fall back to the expression guy
   auto expr = parseExpression(Precedence::PREC_NONE);
   if (expr) {
-    if (currentToken().type == TokenType::SEMICOLON)
-      advance();
-    else
-      logError("Expected ';' after expression statement but got '" +
-               currentToken().TokenLiteral + "'");
-
     return std::make_unique<ExpressionStatement>(currentToken(),
                                                  std::move(expr));
   }

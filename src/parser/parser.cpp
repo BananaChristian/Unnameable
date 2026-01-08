@@ -73,12 +73,6 @@ std::unique_ptr<Statement> Parser::parseStatement() {
   // Fallback expression statement
   auto expr = parseExpression(Precedence::PREC_NONE);
   if (expr) {
-    if (currentToken().type == TokenType::SEMICOLON)
-      advance();
-    else
-      logError("Expected ';' after expression statement but got '" +
-               currentToken().TokenLiteral + "'");
-
     return std::make_unique<ExpressionStatement>(current, std::move(expr));
   }
 
@@ -227,10 +221,12 @@ void Parser::registerInfixFns() {
   InfixParseFunctionsMap[TokenType::LESS_THAN] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::GT_OR_EQ] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::LT_OR_EQ] = &Parser::parseInfixExpression;
-  InfixParseFunctionsMap[TokenType::BITWISE_AND]=&Parser::parseInfixExpression;
-  InfixParseFunctionsMap[TokenType::BITWISE_OR]=&Parser::parseInfixExpression;
-  InfixParseFunctionsMap[TokenType::SHIFT_LEFT]=&Parser::parseInfixExpression;
-  InfixParseFunctionsMap[TokenType::SHIFT_RIGHT]=&Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::BITWISE_AND] =
+      &Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::BITWISE_OR] = &Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::SHIFT_LEFT] = &Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::SHIFT_RIGHT] =
+      &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::FULLSTOP] =
       &Parser::parseInfixOrMethodCallExpression;
   InfixParseFunctionsMap[TokenType::SCOPE_OPERATOR] =
@@ -283,7 +279,8 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::UNWRAP] = &Parser::parseUnwrapExpression;
   PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
   PrefixParseFunctionsMap[TokenType::MINUS] = &Parser::parsePrefixExpression;
-  PrefixParseFunctionsMap[TokenType::BITWISE_NOT]=&Parser::parsePrefixExpression;
+  PrefixParseFunctionsMap[TokenType::BITWISE_NOT] =
+      &Parser::parsePrefixExpression;
   PrefixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseGroupedExpression;
   PrefixParseFunctionsMap[TokenType::LBRACKET] = &Parser::parseArrayLiteral;
   PrefixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseBlockExpression;
@@ -362,9 +359,9 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   if (peek1.type == TokenType::IDENTIFIER) {
     std::cout << "Identifier taken let statement path\n";
     if (peekToken(2).type == TokenType::SEMICOLON) {
-      return parseLetStatementCustomOrBasic();
+      return parseLetStatement();
     }
-    return parseLetStatementCustomOrBasic();
+    return parseLetStatement();
   }
 
   // Qualified assignment (x.y = ..., test::field = ...)
@@ -378,12 +375,6 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   // Fall back to generic expression statement
   auto expr = parseExpression(Precedence::PREC_NONE);
   if (expr) {
-    if (currentToken().type == TokenType::SEMICOLON)
-      advance();
-    else
-      logError("Expected ';' after expression statement but got '" +
-               currentToken().TokenLiteral + "'");
-
     return std::make_unique<ExpressionStatement>(current, std::move(expr));
   }
 
@@ -425,57 +416,54 @@ void Parser::registerStatementParseFns() {
 
   // For basic types
   StatementParseFunctionsMap[TokenType::I8_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::U8_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::I16_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::U16_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::I32_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::U32_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::I64_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::U64_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::I128_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::U128_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::USIZE_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::ISIZE_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
 
   StatementParseFunctionsMap[TokenType::CHAR8_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::CHAR16_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::CHAR32_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   // For custom types
   StatementParseFunctionsMap[TokenType::IDENTIFIER] =
       &Parser::parseIdentifierStatement;
   StatementParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfAssignment;
 
   StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::DOUBLE_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::STRING_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] =
-      &Parser::parseLetStatementWithTypeWrapper;
-  StatementParseFunctionsMap[TokenType::CONST] =
-      &Parser::parseLetStatementWithTypeWrapper;
-  StatementParseFunctionsMap[TokenType::MUT] =
-      &Parser::parseLetStatementWithTypeWrapper;
+      &Parser::parseLetStatement;
+  StatementParseFunctionsMap[TokenType::CONST] = &Parser::parseConstStatement;
+  StatementParseFunctionsMap[TokenType::MUT] = &Parser::parseMutStatement;
   StatementParseFunctionsMap[TokenType::FUNCTION] =
       &Parser::parseFunctionStatement;
-  StatementParseFunctionsMap[TokenType::AUTO] =
-      &Parser::parseLetStatementWithTypeWrapper;
+  StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::ERROR] = &Parser::parseErrorStatement;
   StatementParseFunctionsMap[TokenType::COMPONENT] =
       &Parser::parseComponentStatement;
@@ -494,18 +482,15 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::INSTANTIATE] =
       &Parser::parseInstantiateStatement;
 
-  StatementParseFunctionsMap[TokenType::ARRAY] =
-      &Parser::parseArrayStatementWrapper;
+  StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatement;
   StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
   StatementParseFunctionsMap[TokenType::DHEAP] = &Parser::parseDHeapStatement;
   StatementParseFunctionsMap[TokenType::ALLOCATOR] =
       &Parser::parseAllocatorStatement;
   StatementParseFunctionsMap[TokenType::SEAL] = &Parser::parseSealStatement;
   StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseExportStatement;
-  StatementParseFunctionsMap[TokenType::REF] =
-      &Parser::parseReferenceStatementWrapper;
-  StatementParseFunctionsMap[TokenType::PTR] =
-      &Parser::parsePointerStatementWrapper;
+  StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatement;
+  StatementParseFunctionsMap[TokenType::PTR] = &Parser::parsePointerStatement;
   StatementParseFunctionsMap[TokenType::DEREF] =
       &Parser::parseDereferenceAssignment;
 }

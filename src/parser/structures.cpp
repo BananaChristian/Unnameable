@@ -316,7 +316,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
     std::unique_ptr<Statement> stmt = nullptr;
 
     if (isIntegerType(currentToken().type)) {
-      stmt = parseLetStatementWithType(false);
+      stmt = parseLetStatement();
       privateData.push_back(std::move(stmt));
     }
 
@@ -334,15 +334,21 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
         advance(); // skip the unexpected token
       }
       break;
-    case TokenType::STRING_KEYWORD:
     case TokenType::MUT:
+      stmt = parseMutStatement();
+      privateData.push_back(std::move(stmt));
+      break;
     case TokenType::CONST:
+      stmt = parseConstStatement();
+      privateData.push_back(std::move(stmt));
+      break;
+    case TokenType::STRING_KEYWORD:
     case TokenType::FLOAT_KEYWORD:
     case TokenType::BOOL_KEYWORD:
     case TokenType::CHAR8_KEYWORD:
     case TokenType::CHAR16_KEYWORD:
     case TokenType::CHAR32_KEYWORD:
-      stmt = parseLetStatementWithType(false);
+      stmt = parseLetStatement();
       privateData.push_back(std::move(stmt));
       break;
     case TokenType::IDENTIFIER: {
@@ -354,19 +360,19 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       // Case: Type Name = initializer ;
       if (t2.type == TokenType::IDENTIFIER &&
           (t3.type == TokenType::SEMICOLON || t3.type == TokenType::ASSIGN)) {
-        stmt = parseLetStatementCustomOrBasic();
+        stmt = parseLetStatement();
         privateData.push_back(std::move(stmt));
         break;
       }
 
-      stmt = parseAssignmentStatement(false);
+      stmt = parseAssignmentStatement();
       privateData.push_back(std::move(stmt));
       break;
     }
 
     case TokenType::SELF: {
       // self.something = expr;
-      stmt = parseAssignmentStatement(false);
+      stmt = parseAssignmentStatement();
       privateData.push_back(std::move(stmt));
       break;
     }
@@ -436,7 +442,7 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
   while (currentToken().type != TokenType::RPAREN &&
          currentToken().type != TokenType::END) {
     // Parse argument
-    auto arg = parseLetStatementDecider();
+    auto arg = parseStatement();
     if (arg) {
       args.push_back(std::move(arg));
     }
@@ -579,10 +585,9 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
     auto recordStmt = parseStatement();
     if (isDeclaration(recordStmt.get())) {
       fields.push_back(std::move(recordStmt));
-    }else{
-        logError("Unsupported statement inside record");
+    } else {
+      logError("Unsupported statement inside record");
     }
-    
   }
 
   if (currentToken().type != TokenType::RBRACE) {
@@ -619,13 +624,13 @@ Parser::parseInstanceExpression(std::unique_ptr<Expression> left) {
   }
 
   // Parse the first argument
-  std::unique_ptr<Statement> firstArg = parseAssignmentStatement(true);
+  std::unique_ptr<Statement> firstArg = parseAssignmentStatement();
   if (firstArg)
     args.push_back(std::move(firstArg));
 
   while (currentToken().type == TokenType::COMMA) {
     advance(); // consume ','
-    std::unique_ptr<Statement> arg = parseAssignmentStatement(true);
+    std::unique_ptr<Statement> arg = parseAssignmentStatement();
     if (!arg) {
       logError("Failed to parse field argument after comma.");
       return nullptr;
@@ -716,15 +721,9 @@ std::unique_ptr<Statement> Parser::parseBlockStatement() {
   if (currentToken().type != TokenType::RBRACE) {
     logError("Expected } to close block but got '" +
              currentToken().TokenLiteral + "'");
-    advance();
     return nullptr;
   }
-
   advance();
-
-  if (currentToken().type == TokenType::SEMICOLON) {
-    advance();
-  }
 
   return std::make_unique<BlockStatement>(lbrace, std::move(statements));
 }

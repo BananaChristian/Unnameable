@@ -31,29 +31,26 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
   }
   advance(); // consume '('
 
-  // Parse initializer (e.g., mut int i = 0)
-  auto initializer = parseLetStatementWithType(true);
+  // Parse initializer (mut i32 i = 0)
+  auto initializer = parseStatement();
+  advance();
 
-  if (currentToken().type != TokenType::BITWISE_OR) {
-    logError("Expected '|' after initializer in for loop");
-    return nullptr;
-  }
-  advance(); // consume first '|'
-
-  // Parse condition
+  // Parse condition()
   auto condition = parseExpression(Precedence::PREC_NONE);
 
-  if (currentToken().type != TokenType::BITWISE_OR) {
-    logError("Expected '|' after condition in for loop");
+  if (currentToken().type != TokenType::SEMICOLON) {
+    logError("Expected ';' after condition in for loop but got '" +
+             currentToken().TokenLiteral + "'");
     return nullptr;
   }
-  advance(); // consume second '|'
+  advance();
 
   // Parse step statement
   auto step = parseStatement();
 
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' after step expression");
+    logError("Expected ')' after step expression but got '" +
+             currentToken().TokenLiteral + "'");
     return nullptr;
   }
   advance(); // consume ')'
@@ -74,14 +71,12 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
 std::unique_ptr<Statement> Parser::parseBreakStatement() {
   Token break_tok = currentToken();
   advance();
-  advance();
   return std::make_unique<BreakStatement>(break_tok);
 }
 
 // Parse continue statement
 std::unique_ptr<Statement> Parser::parseContinueStatement() {
   Token cont_tok = currentToken();
-  advance();
   advance();
   return std::make_unique<ContinueStatement>(cont_tok);
 }

@@ -1,53 +1,21 @@
 #include "parser.hpp"
 
-std::unique_ptr<Statement> Parser::parseLetStatementDecider() {
-  Token current = currentToken();
-
-  if (isBasicType(current.type) || current.type == TokenType::AUTO) {
-    return parseLetStatementWithType(true);
-  } else if (current.type == TokenType::ARRAY) {
-    return parseArrayStatement(true);
-  } else if (current.type == TokenType::REF) {
-    return parseReferenceStatement(true);
-  } else if (current.type == TokenType::PTR) {
-    return parsePointerStatement(true);
-  } else if (current.type == TokenType::DEREF) {
-    return parseAssignmentStatement(true);
-  } else if (current.type == TokenType::IDENTIFIER) {
-    if (nextToken().type == TokenType::ASSIGN) {
-      return parseAssignmentStatement(true);
-    } else {
-      return parseLetStatementWithCustomType(true);
-    }
-  }
-
-  std::cerr
-      << "[ERROR]: Failed to decide how to parse parameter variable. Token: "
-      << current.TokenLiteral << "\n";
-  return nullptr;
-}
-
-// Parsing let statements
-std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam) {
+std::unique_ptr<Statement> Parser::parseLetStatement() {
   bool isHeap = false;
   bool isDheap = false;
   Mutability mutability = Mutability::IMMUTABLE;
+  std::unique_ptr<Expression> type;
   bool isNullable = false;
-  Token mutability_token = currentToken();
 
-  if (mutability_token.type == TokenType::CONST) {
-    mutability = Mutability::CONSTANT;
-    std::cout << "CURRENT TOKEN: " << mutability_token.TokenLiteral << "\n";
-    advance();
-    mutability_token = currentToken();
-  } else if (mutability_token.type == TokenType::MUT) {
-    mutability = Mutability::MUTABLE;
-    std::cout << "CURRENT TOKEN: " << mutability_token.TokenLiteral << "\n";
-    advance();
-    mutability_token = currentToken();
+  if (isBasicType(currentToken().type) ||
+      currentToken().type == TokenType::IDENTIFIER ||
+      currentToken().type == TokenType::AUTO) {
+    type = parseBasicType();
+    if (!type) {
+      logError("Type parse failed for '" + currentToken().TokenLiteral + "'");
+      return nullptr;
+    }
   }
-
-  std::unique_ptr<Expression> type = parseBasicType();
 
   if (currentToken().type == TokenType::QUESTION_MARK) {
     isNullable = true;
@@ -75,116 +43,55 @@ std::unique_ptr<Statement> Parser::parseLetStatementWithType(bool isParam) {
     std::cout << "[DEBUG] Encountered semicolon token" << "\n";
   }
 
-  if (!isParam) {
-    if (currentToken().type != TokenType::SEMICOLON) {
-      logError("Expected a semicolon but got '" + currentToken().TokenLiteral +
-               "'");
-      return nullptr;
-    }
-  } else {
-    // If it's a function parameter, we expect either ')' or ',' next
-    if (currentToken().type != TokenType::COMMA &&
-        currentToken().type != TokenType::RPAREN &&
-        currentToken().type != TokenType::BITWISE_OR) {
-      logError("Expected ',' or ')' after parameter declaration but got: " +
-               currentToken().TokenLiteral);
-      return nullptr;
-    }
-  }
-
-  if (mutability == Mutability::CONSTANT) {
-    if (value == nullptr) {
-      logError("Uninitialized const variable");
-      return nullptr;
-    }
-  }
-
   return std::make_unique<LetStatement>(isHeap, isDheap, mutability,
                                         std::move(type), ident_token,
                                         assign_token, std::move(value));
 }
 
-// Parsing let statements with custom types
-std::unique_ptr<Statement>
-Parser::parseLetStatementWithCustomType(bool isParam) {
-  std::cout << "INSIDE CUSTOM TYPE PARSER\n";
-  Mutability mut = Mutability::IMMUTABLE;
-  std::unique_ptr<Expression> type;
-  bool isHeap = false;
-  bool isDheap = false;
+std::unique_ptr<Statement> Parser::parseMutStatement() {
+  advance(); // Consume the mut
+  auto stmt = parseStatement();
+  if (!stmt)
+    return nullptr;
 
-  // Checking for mutability
-  if (currentToken().type == TokenType::MUT) {
-    mut = Mutability::MUTABLE;
-    advance();
-  }
-  if (currentToken().type == TokenType::CONST) {
-    mut = Mutability::CONSTANT;
-    advance();
-  }
-
-  // Checking for the indentifier token
-  if (currentToken().type == TokenType::IDENTIFIER) {
-    type = parseBasicType();
-
-    if (!type) {
-      // A specific error should have been logged inside parseBasicType(), but
-      // returning nullptr here prevents using a broken expression object.
-      logError("Type parse failed for '" + currentToken().TokenLiteral + "'");
-      return nullptr;
-    }
-  }
-
-  // Check for the variable name
-  if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected variable name after data type");
+  if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get()))
+    letStmt->mutability = Mutability::MUTABLE;
+  else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get()))
+    arrStmt->mutability = Mutability::MUTABLE;
+  else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get()))
+    ptrStmt->mutability = Mutability::MUTABLE;
+  else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get()))
+    refStmt->mutability = Mutability::MUTABLE;
+  else if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get()))
+    recordStmt->mutability = Mutability::MUTABLE;
+  else {
+    logError("Applied 'mut' to unsupported statement");
     return nullptr;
   }
 
-  Token ident_token = currentToken();
-  advance(); // Consume the variable name identifier token
+  return stmt;
+}
 
-  // Checking if we have a value assigned
-  std::optional<Token> assign_token = std::nullopt;
-  std::unique_ptr<Expression> value = nullptr;
+std::unique_ptr<Statement> Parser::parseConstStatement() {
+  advance(); // Consume the const token
+  auto stmt = parseStatement();
+  if (!stmt)
+    return nullptr;
 
-  if (currentToken().type == TokenType::ASSIGN) {
-    assign_token = currentToken();
-    std::cout << "[DEBUG] Encountered assignment token" << "\n";
-    advance();
-    value = parseExpression(Precedence::PREC_NONE);
-  } else if (currentToken().type == TokenType::SEMICOLON) {
-    std::cout << "[DEBUG] Encountered semicolon token" << "\n";
+  if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get()))
+    letStmt->mutability = Mutability::CONSTANT;
+  else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get()))
+    arrStmt->mutability = Mutability::CONSTANT;
+  else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get()))
+    ptrStmt->mutability = Mutability::CONSTANT;
+  else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get()))
+    refStmt->mutability = Mutability::CONSTANT;
+  else {
+    logError("Applied 'const' to unsupported statement");
+    return nullptr;
   }
 
-  if (!isParam) {
-    if (currentToken().type == TokenType::SEMICOLON) {
-      advance();
-    } else {
-      logError("Expected a semicolon but got '" + currentToken().TokenLiteral +
-               "'");
-      return nullptr;
-    }
-  } else {
-    // If it's a function parameter, we expect either ')' or ',' next
-    if (currentToken().type != TokenType::COMMA &&
-        currentToken().type != TokenType::RPAREN) {
-      logError("Expected ',' or ')' after parameter declaration but got '" +
-               currentToken().TokenLiteral + "'");
-      return nullptr;
-    }
-  }
-
-  if (mut == Mutability::CONSTANT) {
-    if (value == nullptr) {
-      logError("Uninitialized const variable");
-      return nullptr;
-    }
-  }
-
-  return std::make_unique<LetStatement>(isHeap, isDheap, mut, std::move(type),
-                                        ident_token, assign_token,
-                                        std::move(value));
+  return stmt;
 }
 
 // Parse heap statement
@@ -294,17 +201,10 @@ std::unique_ptr<Statement> Parser::parseDHeapStatement() {
 }
 
 // Array statement parser
-std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam) {
+std::unique_ptr<Statement> Parser::parseArrayStatement() {
   bool isHeap = false;
   bool isDheap = false;
   Mutability mutability = Mutability::IMMUTABLE;
-  if (currentToken().type == TokenType::MUT) {
-    mutability = Mutability::MUTABLE;
-    advance(); // Consume the 'mut'
-  } else if (currentToken().type == TokenType::CONST) {
-    mutability = Mutability::CONSTANT;
-    advance(); // Consume the const
-  }
 
   // Parse the array type (arr[...] with basic or custom type inside)
   auto arrTypeNode = parseArrayType();
@@ -353,31 +253,13 @@ std::unique_ptr<Statement> Parser::parseArrayStatement(bool isParam) {
       return nullptr;
   }
 
-  // Final semicolon (only for non-parameter mode)
-  if (!isParam) {
-    if (currentToken().type == TokenType::SEMICOLON) {
-      advance();
-    } else {
-      logError("Expected a semicolon but got: " + currentToken().TokenLiteral);
-      return nullptr;
-    }
-  } else {
-    // If it's a function parameter, we expect either ')' or ',' next
-    if (currentToken().type != TokenType::COMMA &&
-        currentToken().type != TokenType::RPAREN) {
-      logError("Expected ',' or ')' after parameter declaration but got: " +
-               currentToken().TokenLiteral);
-      return nullptr;
-    }
-  }
-
   return std::make_unique<ArrayStatement>(
       isHeap, isDheap, mutability, std::move(arrTypeNode), std::move(lengths),
       std::move(ident), std::move(items));
 }
 
 // Reference statement parser
-std::unique_ptr<Statement> Parser::parseReferenceStatement(bool isParam) {
+std::unique_ptr<Statement> Parser::parseReferenceStatement() {
   bool isHeap = false;
   bool isDheap = false;
   Mutability mut = Mutability::IMMUTABLE;
@@ -421,36 +303,19 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement(bool isParam) {
   // Optional initializer
   std::unique_ptr<Expression> value = nullptr;
   if (currentToken().type == TokenType::ARROW) {
-    advance(); // Consume =>
+    advance(); // Consume ->
     value = parseExpression(Precedence::PREC_NONE);
     if (!value)
       return nullptr;
   }
 
-  // Final semicolon (only for non-parameter mode)
-  if (!isParam) {
-    if (currentToken().type == TokenType::SEMICOLON) {
-      advance();
-    } else {
-      logError("Expected a semicolon but got: " + currentToken().TokenLiteral);
-      return nullptr;
-    }
-  } else {
-    // If it's a function parameter, we expect either ')' or ',' next
-    if (currentToken().type != TokenType::COMMA &&
-        currentToken().type != TokenType::RPAREN) {
-      logError("Expected ',' or ')' after parameter declaration but got: " +
-               currentToken().TokenLiteral);
-      return nullptr;
-    }
-  }
   return std::make_unique<ReferenceStatement>(isHeap, isDheap, ref_token, mut,
                                               std::move(type), std::move(ident),
                                               std::move(value));
 }
 
 // Pointer statement parser
-std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam) {
+std::unique_ptr<Statement> Parser::parsePointerStatement() {
   bool isHeap = false;
   bool isDheap = false;
   Mutability mut = Mutability::IMMUTABLE;
@@ -501,55 +366,9 @@ std::unique_ptr<Statement> Parser::parsePointerStatement(bool isParam) {
       return nullptr;
   }
 
-  // Final semicolon (only for non-parameter mode)
-  if (!isParam) {
-    if (currentToken().type == TokenType::SEMICOLON) {
-      advance();
-    } else {
-      logError("Expected a semicolon but got: " + currentToken().TokenLiteral);
-      return nullptr;
-    }
-  } else {
-    // If it's a function parameter, we expect either ')' or ',' next
-    if (currentToken().type != TokenType::COMMA &&
-        currentToken().type != TokenType::RPAREN) {
-      logError("Expected ',' or ')' after parameter declaration but got: " +
-               currentToken().TokenLiteral);
-      return nullptr;
-    }
-  }
   return std::make_unique<PointerStatement>(isHeap, isDheap, ptr_token, mut,
                                             std::move(type), std::move(ident),
                                             std::move(value));
 }
 
-// Wrappers for the dispatcher
-std::unique_ptr<Statement> Parser::parseArrayStatementWrapper() {
-  return parseArrayStatement();
-}
 
-std::unique_ptr<Statement> Parser::parsePointerStatementWrapper() {
-  return parsePointerStatement();
-}
-
-std::unique_ptr<Statement> Parser::parseReferenceStatementWrapper() {
-  return parseReferenceStatement();
-}
-
-// Decider for custom or basic let statements
-std::unique_ptr<Statement> Parser::parseLetStatementCustomOrBasic() {
-  if (currentToken().type == TokenType::IDENTIFIER) {
-    return parseLetStatementWithCustomType();
-  }
-  return parseLetStatementWithType();
-}
-
-// Wrapper function for let statement with basic or custom type
-std::unique_ptr<Statement> Parser::parseLetStatementWithTypeWrapper() {
-  if (nextToken().type == TokenType::RECORD) {
-    return parseRecordStatement();
-  } else if (nextToken().type == TokenType::ARRAY) {
-    return parseArrayStatementWrapper();
-  }
-  return parseLetStatementCustomOrBasic();
-}
