@@ -511,16 +511,29 @@ void Semantics::walkInstanceExpression(Node *node) {
     for (const auto &field : instExpr->fields) {
       auto fieldNode = dynamic_cast<AssignmentStatement *>(field.get());
       auto fieldName = fieldNode->identifier->expression.TokenLiteral;
-      // Check if the member exists in the parent type
+
       auto it = members.find(fieldName);
       if (it == members.end()) {
         logSemanticErrors("Field '" + fieldName + "' does not exist in '" +
                               instName + "'",
                           line, col);
         hasError = true;
+        continue;
       }
 
-      walker(fieldNode->value.get());
+      auto expectedFieldType = it->second->type;
+
+      if (auto *nullLit = dynamic_cast<NullLiteral *>(fieldNode->value.get())) {
+        auto nullSym = std::make_shared<SymbolInfo>();
+        nullSym->type = expectedFieldType;
+        nullSym->isDefinitelyNull = true;
+
+        metaData[nullLit] = nullSym;
+        std::cout << "[SEMANTIC] Tagged Null at " << (void *)nullLit << " as "
+                  << expectedFieldType.resolvedName << "\n";
+      } else {
+        walker(fieldNode->value.get());
+      }
     }
   }
 

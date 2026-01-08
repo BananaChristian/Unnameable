@@ -711,37 +711,30 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
   ResolvedType rightType = inferNodeDataType(infixNode->right_operand.get());
 
   if (operatorType == TokenType::COALESCE) {
-    if (!ident) {
-      logSemanticErrors("Left-hand side of coalesce must be an identifier",
-                        ident->expression.line, ident->expression.column);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
-    }
-    if (!symbol) {
-      logSemanticErrors("Undefined variable '" +
-                            ident->identifier.TokenLiteral + "'",
-                        ident->expression.line, ident->expression.column);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
-    }
 
-    if (!symbol->isNullable) {
+    if (!leftType.isNull) {
       logSemanticErrors("Left-hand side of coalesce must be nullable",
-                        ident->expression.line, ident->expression.column);
+                        infixNode->left_operand->expression.line,
+                        infixNode->left_operand->expression.column);
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
     // Right-hand side type
     rightType = inferNodeDataType(infixNode->right_operand.get());
-    ResolvedType underlyingType = symbol->type;
+    ResolvedType baseType = leftType;
+    baseType.isNull = false;
 
-    if (!isTypeCompatible(underlyingType, rightType)) {
+    if (!isTypeCompatible(baseType, rightType)) {
       logSemanticErrors(
-          "Type of fallback in coalesce does not match nullable type",
+          "Type of fallback in coalesce does not match nullable type '" +
+              baseType.resolvedName + "' must match '" +
+              rightType.resolvedName + "'",
           ident->expression.line, ident->expression.column);
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
     // Result is the underlying type
-    return underlyingType;
+    return baseType;
   }
 
   if (ident) {
@@ -1108,9 +1101,13 @@ bool Semantics::isGlobalScope() {
 
 ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
   auto makeType = [&](DataType nonNull, const std::string &baseName) {
-    if (isNullable)
-      return ResolvedType{nonNull, baseName + "?", false, isNullable};
-    else
+    if (isNullable) {
+      ResolvedType t;
+      t.kind = nonNull;
+      t.resolvedName = baseName + "?";
+      t.isNull = isNullable;
+      return t;
+    } else
       return ResolvedType{nonNull, baseName};
   };
 

@@ -473,7 +473,7 @@ void Semantics::walkAddressExpression(Node *node) {
 
   walker(addrExpr->identifier.get());
   auto symbolInfo = resolveSymbolInfo(addrName);
-  
+
   if (!symbolInfo) {
     logSemanticErrors("Unidentified variable '" + addrName + "'", line, col);
     return;
@@ -735,12 +735,17 @@ void Semantics::walkAssignStatement(Node *node) {
                               assignName + "'",
                           assignStmt->identifier->expression.line,
                           assignStmt->identifier->expression.column);
+
         hasError = true;
         return;
       }
 
-      // Null adopts LHS type
-      symbol->type = symbol->type;
+      walker(nullVal);
+      std::cout << "[SEMANTIC TAG] Tagging Null at: "
+                << static_cast<void *>(nullVal)
+                << " with type: " << symbol->type.resolvedName << "\n";
+      metaData[nullVal]->type = symbol->type;
+
       symbol->isInitialized = true;
       symbol->hasError = hasError;
       symbol->isDefinitelyNull = isDefinitelyNull;
@@ -967,7 +972,9 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
 
   // Get the parent's type
   std::string parentType = parentSymbol->type.resolvedName;
-  std::string lookUpName=stripPtrSuffix(parentType);//Strip the _ptr suffix so that the semantics can search with the original name
+  std::string lookUpName =
+      stripPtrSuffix(parentType); // Strip the _ptr suffix so that the semantics
+                                  // can search with the original name
   std::cout << "SEMANTIC LOG: Parent type: " << lookUpName << "\n";
 
   // Look up that type in the custom types table

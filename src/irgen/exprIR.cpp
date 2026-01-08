@@ -1,5 +1,7 @@
 #include "irgen.hpp"
 #include <cstdint>
+#include <llvm-18/llvm/IR/Constants.h>
+#include <stdexcept>
 
 //___________________Literals generator_____________________
 llvm::Value *IRGenerator::generateStringLiteral(Node *node) {
@@ -305,75 +307,18 @@ llvm::Value *IRGenerator::generateArrayLiteral(Node *node) {
   return llvm::ConstantArray::get(arrayTy, elems);
 }
 
-llvm::Value *IRGenerator::generateNullLiteral(NullLiteral *nullLit,
-                                              DataType type) {
-  switch (type) {
-  case DataType::STRING:
-    return llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
+llvm::Value *IRGenerator::generateNullLiteral(Node *node) {
+  auto nullLit = dynamic_cast<NullLiteral *>(node);
+  if (!nullLit)
+    throw std::runtime_error("Invalid null literal");
 
-  case DataType::I8:
-    return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),
-                                  llvm::APInt(8, INT8_MIN, true));
+  std::cout << "[IRGEN ERROR] Looking for Null at: "
+            << static_cast<void *>(node) << "\n";
 
-  case DataType::U8:
-    return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),
-                                  llvm::APInt(8, 0));
+  ResolvedType stampedType = semantics.metaData[nullLit]->type;
+  llvm::Type *llvmType = getLLVMType(stampedType);
 
-  case DataType::I16:
-    return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),
-                                  llvm::APInt(16, INT16_MIN, true));
-
-  case DataType::U16:
-    return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),
-                                  llvm::APInt(16, 0));
-
-  case DataType::I32:
-    return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),
-                                  llvm::APInt(32, INT32_MIN, true));
-
-  case DataType::U32:
-    return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),
-                                  llvm::APInt(32, 0));
-
-  case DataType::I64:
-    return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),
-                                  llvm::APInt(64, INT64_MIN, true));
-
-  case DataType::U64:
-    return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),
-                                  llvm::APInt(64, 0));
-
-  case DataType::I128:
-  case DataType::U128:
-    return llvm::ConstantInt::get(llvm::Type::getInt128Ty(context),
-                                  llvm::APInt(128, 0));
-
-  case DataType::FLOAT:
-    return llvm::ConstantFP::getNaN(llvm::Type::getFloatTy(context));
-
-  case DataType::DOUBLE:
-    return llvm::ConstantFP::getNaN(llvm::Type::getDoubleTy(context));
-
-  case DataType::BOOLEAN:
-    return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context),
-                                  llvm::APInt(1, 0));
-
-  case DataType::CHAR8:
-    return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),
-                                  llvm::APInt(8, 0));
-
-  case DataType::CHAR16:
-    return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),
-                                  llvm::APInt(16, 0));
-
-  case DataType::CHAR32:
-    return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),
-                                  llvm::APInt(32, 0));
-
-  default:
-    throw std::runtime_error(
-        "Unsupported nullable data type in generateNullLiteral");
-  }
+  return llvm::ConstantAggregateZero::get(llvmType);
 }
 
 //_____________________Infix expression_________________________
@@ -556,6 +501,58 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     unsigned targetBits = getIntegerBitWidth(resultType.kind);
     left = promoteInt(left, leftType, resultType.kind);
     right = promoteInt(right, rightType, resultType.kind);
+  }
+
+  // --- Handle Null Coalesce (??) ---
+  if (infix->operat.type == TokenType::COALESCE) {
+    // 1. Generate LHS (The 'Box')
+    llvm::Value *leftStruct = generateExpression(infix->left_operand.get());
+
+    // 2. Extract the 'is_present' flag (index 0 in our {i1, T} struct)
+    llvm::Value *isPresent =
+        funcBuilder.CreateExtractValue(leftStruct, 0, "is_present");
+
+    // 3. Setup BasicBlocks
+    llvm::Function *theFunction = funcBuilder.GetInsertBlock()->getParent();
+
+    // We attach 'hasValueBB' immediately so it follows the current block
+    llvm::BasicBlock *hasValueBB =
+        llvm::BasicBlock::Create(context, "has_value", theFunction);
+    llvm::BasicBlock *isNullBB = llvm::BasicBlock::Create(context, "is_null");
+    llvm::BasicBlock *mergeBB =
+        llvm::BasicBlock::Create(context, "coalesce_merge");
+
+    // Branch: If true, go to value; if false, go to null handler
+    funcBuilder.CreateCondBr(isPresent, hasValueBB, isNullBB);
+
+    // --- CASE: HAS VALUE ---
+    funcBuilder.SetInsertPoint(hasValueBB);
+    // Reach into the struct and grab the actual data (index 1)
+    llvm::Value *extractedVal =
+        funcBuilder.CreateExtractValue(leftStruct, 1, "extracted_val");
+    funcBuilder.CreateBr(mergeBB);
+    // Update pointer in case builder moved
+    hasValueBB = funcBuilder.GetInsertBlock();
+
+    // --- CASE: IS NULL (Short-circuiting) ---
+    isNullBB->insertInto(theFunction); // The "Official Conductor" method
+    funcBuilder.SetInsertPoint(isNullBB);
+    // ONLY generate RHS here. If LHS was valid, this code never runs.
+    llvm::Value *rightVal = generateExpression(infix->right_operand.get());
+    funcBuilder.CreateBr(mergeBB);
+    isNullBB = funcBuilder.GetInsertBlock();
+
+    // --- MERGE ---
+    mergeBB->insertInto(theFunction);
+    funcBuilder.SetInsertPoint(mergeBB);
+
+    // The PHI node picks the value based on which block we arrived from
+    llvm::PHINode *phi =
+        funcBuilder.CreatePHI(rightVal->getType(), 2, "coalesce_res");
+    phi->addIncoming(extractedVal, hasValueBB);
+    phi->addIncoming(rightVal, isNullBB);
+
+    return phi;
   }
 
   // Handle BOOLEAN logical operators (AND, OR)
@@ -753,7 +750,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
     throw std::runtime_error(
         "Executable statements arent allowed in the global scope");
 
-  llvm::Value *operand=generateExpression(prefix->operand.get());
+  llvm::Value *operand = generateExpression(prefix->operand.get());
 
   if (!operand)
     throw std::runtime_error("Failed to generate IR for prefix operand");

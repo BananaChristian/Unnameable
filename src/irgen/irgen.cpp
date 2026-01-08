@@ -1163,17 +1163,19 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
   case DataType::ERROR:
   case DataType::GENERIC:
   case DataType::UNKNOWN:
-    throw std::runtime_error(
-        "Unsupported or unknown data type encountered in getLLVMType");
+    throw std::runtime_error("Type '" + type.resolvedName + "' is unknown");
   }
 
-  // Wrap in a pointer if isPointer is true
-  if (type.isPointer)
+  if (type.isPointer || type.isRef)
     return llvm::PointerType::get(baseType, 0);
 
-  // Wrap in a pointer if isRef is true
-  if (type.isRef)
-    return llvm::PointerType::get(baseType, 0);
+  if (type.isNull) {
+    // We create an anonymous struct: { i1 (is_present), T (actual_value) }
+    // Note: i1 is true (1) if the value is present, false (0) if it is null
+    std::vector<llvm::Type *> fields = {llvm::Type::getInt1Ty(context),
+                                        baseType};
+    return llvm::StructType::get(context, fields);
+  }
 
   return baseType;
 }
@@ -1313,6 +1315,8 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
       &IRGenerator::generateDoubleLiteral;
   expressionGeneratorsMap[typeid(ArrayLiteral)] =
       &IRGenerator::generateArrayLiteral;
+  expressionGeneratorsMap[typeid(NullLiteral)] =
+      &IRGenerator::generateNullLiteral;
   expressionGeneratorsMap[typeid(Identifier)] =
       &IRGenerator::generateIdentifierExpression;
   expressionGeneratorsMap[typeid(SizeOfExpression)] =

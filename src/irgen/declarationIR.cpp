@@ -84,48 +84,67 @@ void IRGenerator::generateLetStatement(Node *node) {
   {
     // Generate the sage_alloc and allocate the value on the heap
     storage = allocateHeapStorage(sym, letName, nullptr);
-    llvm::Value *initVal =
-        letStmt->value ? generateExpression(letStmt->value.get())
-                       : llvm::Constant::getNullValue(getLLVMType(sym->type));
-
-    // Store initial value into the heap-allocated storage
     funcBuilder.CreateStore(initVal, storage);
   } else if (isDheap) // If it is dynamic heap raise value
   {
     storage = allocateDynamicHeapStorage(sym, letName);
-    llvm::Value *initVal =
-        letStmt->value ? generateExpression(letStmt->value.get())
-                       : llvm::Constant::getNullValue(getLLVMType(sym->type));
-
     funcBuilder.CreateStore(initVal, storage);
   } else // If it isnt a component or a heap raised value
   {
 
     // scalar / normal type
     llvm::Type *varTy = getLLVMType(sym->type);
+
+    // --- TELEMETRY START ---
+    std::cout << "\n[!!!] DEBUGGING LET: " << letName << "\n";
+    std::cout << "  Semantic Type: " << sym->type.resolvedName << "\n";
+    std::cout << "  isNull Flag: " << (sym->type.isNull ? "TRUE" : "FALSE")
+              << "\n";
+
+    std::string typeStr;
+    llvm::raw_string_ostream rso(typeStr);
+    varTy->print(rso);
+    std::cout << "  LLVM varTy: " << rso.str() << "\n";
+
+    if (initVal) {
+      std::string valStr;
+      llvm::raw_string_ostream rso2(valStr);
+      initVal->getType()->print(rso2);
+      std::cout << "  LLVM initVal Type: " << rso2.str() << "\n";
+    }
+    std::cout << "[!!!] END TELEMETRY\n"
+              << "\n";
+    // --- TELEMETRY END ---
     if (varTy->isStructTy() &&
         llvm::cast<llvm::StructType>(varTy)->isOpaque()) {
       throw std::runtime_error(
           "Logical Error: Trying to allocate Opaque type '" +
           sym->type.resolvedName + "'. Did you forget to set the body?");
     }
-    printf("[DEBUG] Type Context: %p\n", (void *)&varTy->getContext());
-    printf("[DEBUG] Module Context: %p\n", (void *)&module->getContext());
-    printf("[DEBUG] Builder Context: %p\n", (void *)&funcBuilder.getContext());
-
-    if (&varTy->getContext() != &module->getContext()) {
-      printf("[CRITICAL] CONTEXT MISMATCH DETECTED!\n");
-    }
-
-    varTy->print(llvm::errs());
-    llvm::errs() << "\n";
 
     storage = funcBuilder.CreateAlloca(varTy, nullptr, letName);
-    // store initial value if we have one
-    if (initVal)
+
+    if (initVal) {
+      // If the variable is Nullable ({i1, i32}) but the value is just a scalar
+      if (sym->type.isNull && !initVal->getType()->isStructTy()) {
+        llvm::StructType *stTy = llvm::cast<llvm::StructType>(varTy);
+        // Create an undefined struct to start with
+        llvm::Value *boxed = llvm::UndefValue::get(stTy);
+        // Insert the isPresent flag = TRUE (index 0)
+        boxed = funcBuilder.CreateInsertValue(
+            boxed, llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), 1),
+            0);
+        // Insert the actual data value (index 1)
+        boxed = funcBuilder.CreateInsertValue(boxed, initVal, 1);
+        // Override initVal so we store the whole box
+        initVal = boxed;
+      }
+
       funcBuilder.CreateStore(initVal, storage);
-    else
+    } else {
+      // If no value, initialize the whole struct to zero (flag=0, value=0)
       funcBuilder.CreateStore(llvm::Constant::getNullValue(varTy), storage);
+    }
   }
 
   if (!storage)

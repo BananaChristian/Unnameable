@@ -474,7 +474,8 @@ void Semantics::walkLetStatement(Node *node) {
 
   // --- Walk value & infer type ---
   if (letStmtValue) {
-    declaredType = inferNodeDataType(letStmtValue);
+    declaredType = expectedType;
+
     walker(letStmtValue);
     isInitialized = true;
 
@@ -487,7 +488,8 @@ void Semantics::walkLetStatement(Node *node) {
         hasError = true;
         declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
       } else {
-        declaredType = inferNodeDataType(type);
+        declaredType = expectedType;
+        metaData[nullVal]->type = expectedType;
       }
     } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
       auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
@@ -511,9 +513,18 @@ void Semantics::walkLetStatement(Node *node) {
             line, col);
         hasError = true;
       }
+    } else {
+      ResolvedType valueType = inferNodeDataType(letStmtValue);
+      if (!isTypeCompatible(declaredType, valueType)) {
+        logSemanticErrors("Type mismatch: cannot assign " +
+                              valueType.resolvedName + " to " +
+                              declaredType.resolvedName,
+                          type->data_token.line, type->data_token.column);
+        hasError = true;
+      }
     }
   } else {
-    declaredType = inferNodeDataType(type);
+    declaredType = expectedType;
   }
 
   // --- Type mismatch checks ---
