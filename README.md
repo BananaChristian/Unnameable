@@ -128,6 +128,14 @@ i32 y=test#Error since 'test' is not initialized
 i32? x=null
 (x??1)+1
 
+func main(): i32 {
+    i32? a = null
+    i32? b = 42
+    i32 y = a ?? (b ?? 100)
+    shout! y
+    return 0
+}
+
 #NOTE: Coalescing only works if the the variable is nullable
 
 #Function declarations
