@@ -17,6 +17,8 @@ test
 /core
 /core/*.o
 
+/unnc_test
+
 # Build system
 .clang-format.
 CMakeFiles/
