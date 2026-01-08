@@ -725,7 +725,7 @@ struct ExpressionStatement : Statement {
 struct BreakStatement : Statement {
   Token break_tok;
   std::string toString() override {
-    return "Break Statement: " + break_tok.TokenLiteral;
+    return "Break Statement: " + break_tok.TokenLiteral +"\n";
   }
 
   BreakStatement *shallowClone() const override {
@@ -738,7 +738,7 @@ struct BreakStatement : Statement {
 struct ContinueStatement : Statement {
   Token cont_tok;
   std::string toString() override {
-    return "Continue Statement: " + cont_tok.TokenLiteral;
+    return "Continue Statement: " + cont_tok.TokenLiteral +"\n";
   }
 
   ContinueStatement *shallowClone() const override {

@@ -32,11 +32,11 @@ class Parser {
       {TokenType::LESS_THAN, Precedence::PREC_COMPARISON},
       {TokenType::GT_OR_EQ, Precedence::PREC_COMPARISON},
       {TokenType::LT_OR_EQ, Precedence::PREC_COMPARISON},
-      {TokenType::BITWISE_OR,Precedence::PREC_BITWISE_OR},
-      {TokenType::BITWISE_XOR,Precedence::PREC_BITWISE_XOR},
-      {TokenType::BITWISE_AND,Precedence::PREC_BITWISE_AND},
-      {TokenType::SHIFT_LEFT,Precedence::PREC_SHIFT},
-      {TokenType::SHIFT_RIGHT,Precedence::PREC_SHIFT},
+      {TokenType::BITWISE_OR, Precedence::PREC_BITWISE_OR},
+      {TokenType::BITWISE_XOR, Precedence::PREC_BITWISE_XOR},
+      {TokenType::BITWISE_AND, Precedence::PREC_BITWISE_AND},
+      {TokenType::SHIFT_LEFT, Precedence::PREC_SHIFT},
+      {TokenType::SHIFT_RIGHT, Precedence::PREC_SHIFT},
       {TokenType::PLUS, Precedence::PREC_TERM},
       {TokenType::MINUS, Precedence::PREC_TERM},
       {TokenType::ASTERISK, Precedence::PREC_FACTOR},
@@ -46,7 +46,8 @@ class Parser {
       {TokenType::MINUS_MINUS, Precedence::PREC_UNARY},
       {TokenType::PLUS_PLUS, Precedence::PREC_UNARY},
       {TokenType::ADDR, Precedence::PREC_UNARY},
-      {TokenType::BITWISE_NOT,Precedence::PREC_UNARY},
+      {TokenType::DEREF, Precedence::PREC_UNARY},
+      {TokenType::BITWISE_NOT, Precedence::PREC_UNARY},
       {TokenType::FULLSTOP, Precedence::PREC_CALL},
       {TokenType::LPAREN, Precedence::PREC_CALL},
       {TokenType::SCOPE_OPERATOR, Precedence::PREC_CALL},
@@ -104,24 +105,17 @@ private:
   // General statement parsing function
   std::unique_ptr<Statement> parseStatement();
 
-  // Parsing let statements with basic type
-  std::unique_ptr<Statement> parseLetStatementWithType(bool isParam = false);
+  // Parsing let statements
+  std::unique_ptr<Statement> parseLetStatement();
 
-  // Parsing let statements with custom types
-  std::unique_ptr<Statement>
-  parseLetStatementWithCustomType(bool isParam = false);
+  std::unique_ptr<Statement> parseMutStatement();
 
-  // Checker to see how to parse let statements those with custom or basic types
-  std::unique_ptr<Statement> parseLetStatementCustomOrBasic();
+  std::unique_ptr<Statement> parseConstStatement();
 
   // Parsing assignment statements
-  std::unique_ptr<Statement> parseAssignmentStatement(bool isParam = false);
+  std::unique_ptr<Statement> parseAssignmentStatement();
 
   std::unique_ptr<Statement> parseDereferenceAssignment();
-
-  // A function to determine whether to parse let statements or assignment
-  // statements
-  std::unique_ptr<Statement> parseLetStatementDecider();
 
   std::unique_ptr<Statement> parseHeapStatement();
 
@@ -131,13 +125,9 @@ private:
 
   std::unique_ptr<Statement> parseFieldAssignment();
 
-  std::unique_ptr<Statement> parseReferenceStatement(bool isParam = false);
+  std::unique_ptr<Statement> parseReferenceStatement();
 
-  std::unique_ptr<Statement> parseReferenceStatementWrapper();
-
-  std::unique_ptr<Statement> parsePointerStatement(bool isParam = false);
-
-  std::unique_ptr<Statement> parsePointerStatementWrapper();
+  std::unique_ptr<Statement> parsePointerStatement();
 
   std::unique_ptr<Statement> parseSealStatement();
 
@@ -213,10 +203,7 @@ private:
   std::unique_ptr<Statement> parseInstantiateStatement();
 
   // Parsing array statements
-  std::unique_ptr<Statement> parseArrayStatement(bool isParam = false);
-
-  // Array statement wrapper
-  std::unique_ptr<Statement> parseArrayStatementWrapper();
+  std::unique_ptr<Statement> parseArrayStatement();
 
   // Parsing the qualify statement
   std::unique_ptr<Statement> parseQualifyStatement();

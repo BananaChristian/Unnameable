@@ -17,9 +17,9 @@
 
 class Node;
 
-struct JumpTarget{
-    llvm::BasicBlock *breakTarget;  
-    llvm::BasicBlock *continueTarget;
+struct JumpTarget {
+  llvm::BasicBlock *breakTarget;
+  llvm::BasicBlock *continueTarget;
 };
 
 struct AddressAndPendingFree {
