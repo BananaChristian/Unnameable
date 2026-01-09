@@ -400,7 +400,7 @@ func main(): i32 {
 
 ### Physical Implementation
 
-Under the hood, the compiler does not use "Null Pointers." Instead, it uses a **Box and Flag** model. A nullable `i32?` is represented in LLVM IR as a struct: `{ i1, i32 }`.
+Under the hood, the compiler does not use "Null Pointers." Instead, it uses a **Box and Flag** model.
 
 * **The Flag (`i1`):** A boolean indicating if the value is "Present."
 * **The Payload (`i32`):** The actual data.
