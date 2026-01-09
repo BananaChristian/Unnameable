@@ -467,17 +467,23 @@ struct CallExpression : Expression {
 
 // Unwrap call expression
 struct UnwrapExpression : Expression {
-  std::unique_ptr<Expression> call;
+  Token unwrap_token;
+  std::unique_ptr<Expression> expr;
   std::string toString() override {
-    std::string callStr = "<no_call>";
-    if (call) {
-      callStr = call->toString();
+    std::string exprStr = "<empty>";
+    if (expr) {
+      exprStr = expr->toString();
     }
-    return "Unwrap expression: unwrap " + callStr;
+    return "Unwrap expression: " + unwrap_token.TokenLiteral + " " + exprStr +
+           "\n";
   }
 
-  UnwrapExpression(std::unique_ptr<Expression> callExpr)
-      : Expression(callExpr->expression), call(std::move(callExpr)){};
+  UnwrapExpression *shallowClone() const override {
+    return new UnwrapExpression(unwrap_token, clonePtr(expr));
+  }
+
+  UnwrapExpression(Token unwrap, std::unique_ptr<Expression> e)
+      : Expression(unwrap), unwrap_token(unwrap), expr(std::move(e)){};
 };
 
 // Method call expression
@@ -488,6 +494,10 @@ struct MethodCallExpression : Expression {
   std::string toString() override {
     return "Method Call Expression: " + instance->toString() + "." +
            call->toString();
+  }
+
+  MethodCallExpression *shallowClone() const override {
+    return new MethodCallExpression(clonePtr(instance), clonePtr(call));
   }
 
   MethodCallExpression(std::unique_ptr<Expression> inst,

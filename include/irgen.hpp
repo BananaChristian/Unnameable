@@ -150,7 +150,7 @@ private:
   llvm::Value *generateBlockExpression(Node *node);
   llvm::Value *generateFunctionExpression(Node *node);
   llvm::Value *generateCallExpression(Node *node);
-  llvm::Value *generateUnwrapCallExpression(Node *node);
+  llvm::Value *generateUnwrapExpression(Node *node);
 
   llvm::Value *generateSelfExpression(Node *node);
   llvm::Value *generateInstanceExpression(Node *node);

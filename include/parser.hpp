@@ -47,6 +47,7 @@ class Parser {
       {TokenType::PLUS_PLUS, Precedence::PREC_UNARY},
       {TokenType::ADDR, Precedence::PREC_UNARY},
       {TokenType::DEREF, Precedence::PREC_UNARY},
+      {TokenType::UNWRAP, Precedence::PREC_UNARY},
       {TokenType::BITWISE_NOT, Precedence::PREC_UNARY},
       {TokenType::FULLSTOP, Precedence::PREC_CALL},
       {TokenType::LPAREN, Precedence::PREC_CALL},

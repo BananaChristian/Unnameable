@@ -504,15 +504,6 @@ void Semantics::walkLetStatement(Node *node) {
                           ident->expression.line, ident->expression.column);
         hasError = true;
       }
-    } else if (auto unwrap = dynamic_cast<UnwrapExpression *>(letStmtValue)) {
-      auto line = unwrap->expression.line;
-      auto col = unwrap->expression.column;
-      if (expectedType.isNull) {
-        logSemanticErrors(
-            "Cannot place unwrap expression into nullable variable declaration",
-            line, col);
-        hasError = true;
-      }
     } else {
       ResolvedType valueType = inferNodeDataType(letStmtValue);
       if (!isTypeCompatible(declaredType, valueType)) {

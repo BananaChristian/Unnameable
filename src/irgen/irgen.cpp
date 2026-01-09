@@ -1312,7 +1312,7 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
   expressionGeneratorsMap[typeid(CallExpression)] =
       &IRGenerator::generateCallExpression;
   expressionGeneratorsMap[typeid(UnwrapExpression)] =
-      &IRGenerator::generateUnwrapCallExpression;
+      &IRGenerator::generateUnwrapExpression;
   expressionGeneratorsMap[typeid(MethodCallExpression)] =
       &IRGenerator::generateMethodCallExpression;
   expressionGeneratorsMap[typeid(SelfExpression)] =

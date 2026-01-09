@@ -975,3 +975,51 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
   // Return original value since postfix
   return originalValue;
 }
+
+llvm::Value *IRGenerator::generateUnwrapExpression(Node *node) {
+  auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node);
+  if (!unwrapExpr)
+    throw std::runtime_error("Invalid unwrap expression call");
+
+  auto unIt = semantics.metaData.find(unwrapExpr);
+  if (unIt == semantics.metaData.end())
+    throw std::runtime_error("Missing unwrap metaData");
+
+  if (unIt->second->hasError)
+    throw std::runtime_error("Error detected");
+
+  if (isGlobalScope)
+    throw std::runtime_error("Cannot unwrap in global scope");
+
+  llvm::Value *box = generateExpression(unwrapExpr->expr.get());
+
+  if (!box->getType()->isStructTy()) {
+    std::string typeStr;
+    llvm::raw_string_ostream rso(typeStr);
+    box->getType()->print(rso);
+    std::cout << "[CRITICAL] Unwrap expected a struct, but got: " << rso.str()
+              << "\n";
+    // This will prove that test() is returning the wrong physical thing.
+  }
+
+  llvm::Function *currentFunc = funcBuilder.GetInsertBlock()->getParent();
+
+  llvm::BasicBlock *successBB =
+      llvm::BasicBlock::Create(context, "unwrap.success", currentFunc);
+  llvm::BasicBlock *panicBB =
+      llvm::BasicBlock::Create(context, "unwrap.panic", currentFunc);
+
+  llvm::Value *isPresent = funcBuilder.CreateExtractValue(box, 0, "is_present");
+  funcBuilder.CreateCondBr(isPresent, successBB, panicBB);
+
+  funcBuilder.SetInsertPoint(panicBB);
+
+  llvm::Function *trap =
+      llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::trap);
+  funcBuilder.CreateCall(trap);
+  funcBuilder.CreateUnreachable();
+
+  funcBuilder.SetInsertPoint(successBB);
+
+  return funcBuilder.CreateExtractValue(box, 1, "unwrapped_val");
+}

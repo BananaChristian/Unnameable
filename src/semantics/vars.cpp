@@ -777,15 +777,6 @@ void Semantics::walkAssignStatement(Node *node) {
                           assignStmt->identifier->expression.column);
         hasError = true;
       }
-    } else if (auto unwrap =
-                   dynamic_cast<UnwrapExpression *>(assignStmt->value.get())) {
-      auto line = unwrap->expression.line;
-      auto col = unwrap->expression.column;
-      if (symbol->type.isNull) {
-        logSemanticErrors("Cannot use unwrap calls in nullable assignments ",
-                          line, col);
-        hasError = true;
-      }
     }
   }
 

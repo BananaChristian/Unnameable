@@ -597,29 +597,13 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   if (auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node)) {
     auto line = unwrapExpr->expression.line;
     auto col = unwrapExpr->expression.column;
-    // Get the contained call
-    auto call = dynamic_cast<CallExpression *>(unwrapExpr->call.get());
-    auto metCall = dynamic_cast<MethodCallExpression *>(unwrapExpr->call.get());
-    std::string funcName = "<unidentified>";
-    if (call) {
-      funcName = call->function_identifier->expression.TokenLiteral;
-    } else if (metCall) {
-      auto innerCall = dynamic_cast<CallExpression *>(metCall->call.get());
-      funcName = innerCall->function_identifier->expression.TokenLiteral;
-    }
 
-    // Resolve the symbol
-    auto sym = resolveSymbolInfo(funcName);
-    if (!sym) {
-      logSemanticErrors("Undefined '" + funcName + "'", line, col);
-      return ResolvedType{DataType::UNKNOWN, "unknown", false, false};
-    }
-    // Get the type
-    auto unwrapType = sym->type;
-    // Toggle the null flag
-    unwrapType.isNull = false;
-    auto finalType = unwrapType;
-    return finalType;
+    auto exprType = inferNodeDataType(unwrapExpr->expr.get());
+    exprType.isNull = false;
+    auto strippedName = stripOptionalSuffix(exprType.resolvedName);
+    exprType.resolvedName = strippedName;
+
+    return exprType;
   }
 
   if (auto ptrStmt = dynamic_cast<PointerStatement *>(node)) {
@@ -720,6 +704,8 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
     rightType = inferNodeDataType(infixNode->right_operand.get());
     ResolvedType baseType = leftType;
     baseType.isNull = false;
+    auto strippedName = stripOptionalSuffix(baseType.resolvedName);
+    baseType.resolvedName = strippedName;
 
     if (!isTypeCompatible(baseType, rightType)) {
       logSemanticErrors(
@@ -1275,7 +1261,7 @@ bool Semantics::hasReturnPath(Node *node) {
   if (auto blockExpr = dynamic_cast<BlockExpression *>(node)) {
     for (const auto &stmt : blockExpr->statements) {
       if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
-        if ( retStmt->return_value ||
+        if (retStmt->return_value ||
             (currentFunction.value()->isNullable && !retStmt->return_value)) {
           return true; // Error, value, or null return
         }
@@ -1839,6 +1825,25 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
   default:
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
+}
+
+std::string Semantics::stripOptionalSuffix(const std::string &type) {
+  auto endsWith = [](const std::string &str,
+                     const std::string &suffix) -> bool {
+    if (str.length() < suffix.length())
+      return false;
+    return str.compare(str.length() - suffix.length(), suffix.length(),
+                       suffix) == 0;
+  };
+
+  auto finalName = [&](std::string typeName) {
+    if (endsWith(typeName, "?"))
+      typeName = typeName.substr(0, typeName.size() - 1);
+
+    return typeName;
+  };
+
+  return finalName(type);
 }
 
 std::string Semantics::stripPtrSuffix(const std::string &type) {

@@ -1,4 +1,5 @@
 #include "parser.hpp"
+#include <memory>
 
 // Main Expression parsing function
 std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence) {
@@ -310,10 +311,15 @@ Parser::parseCallExpression(std::unique_ptr<Expression> left) {
 
 // Unwrap call parse
 std::unique_ptr<Expression> Parser::parseUnwrapExpression() {
+  Token unwrap = currentToken();
   advance(); // Consume the unwrap token
-  auto callExpr = parseExpression(Precedence::PREC_NONE);
+  std::unique_ptr<Expression> expr = parseExpression(Precedence::PREC_NONE);
+  if (!expr) {
+    logError("Expected an expression after unwrap but got '" +
+             currentToken().TokenLiteral + "'");
+  }
 
-  return std::make_unique<UnwrapExpression>(std::move(callExpr));
+  return std::make_unique<UnwrapExpression>(unwrap, std::move(expr));
 }
 
 std::unique_ptr<Expression>
