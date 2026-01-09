@@ -106,9 +106,7 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: INSTANTIATE";
   case TokenType::AS:
     return "Token Type: AS";
-
-  case TokenType::ERROR:
-    return "Token Type: ERROR";
+    
   case TokenType::IF:
     return "Token Type: IF";
   case TokenType::ELSE:

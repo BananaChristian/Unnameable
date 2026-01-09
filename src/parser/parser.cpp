@@ -382,22 +382,6 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   return nullptr;
 }
 
-std::unique_ptr<Statement> Parser::parseErrorStatement() {
-  Token err_token = currentToken();
-  advance(); // Consume the error token
-
-  if (currentToken().type != TokenType::BANG) {
-    logError("Expected ! but got " + currentToken().TokenLiteral);
-    advance(); // Consume the erronious token
-  }
-  advance(); // Consume the ! token
-  std::unique_ptr<Expression> errExpr = nullptr;
-
-  errExpr = parseExpression(Precedence::PREC_NONE);
-
-  return std::make_unique<ErrorStatement>(err_token, std::move(errExpr));
-}
-
 // Registering the statement parsing functions
 void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::RETURN] = &Parser::parseReturnStatement;
@@ -464,7 +448,6 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::FUNCTION] =
       &Parser::parseFunctionStatement;
   StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatement;
-  StatementParseFunctionsMap[TokenType::ERROR] = &Parser::parseErrorStatement;
   StatementParseFunctionsMap[TokenType::COMPONENT] =
       &Parser::parseComponentStatement;
   StatementParseFunctionsMap[TokenType::BEHAVIOR] =

@@ -58,7 +58,7 @@ void Semantics::walkReturnStatement(Node *node)
     }
     std::cout << "[SEMANTIC LOG] Analyzing return statement\n";
 
-    if (!retStmt->return_value && !retStmt->error_val)
+    if (!retStmt->return_value)
     {
         if (currentFunction.value()->returnType.kind != DataType::VOID)
         {
@@ -66,32 +66,7 @@ void Semantics::walkReturnStatement(Node *node)
             hasError = true;
         }
         return;
-    }
-
-    if (retStmt->error_val)
-    {
-        std::cout << "[SEMANTIC LOG] Return with error statement\n";
-        auto errorStmt = dynamic_cast<ErrorStatement *>(retStmt->error_val.get());
-        if (!errorStmt)
-        {
-            logSemanticErrors("Invalid error value in return", retStmt->error_val.get()->statement.line, retStmt->error_val.get()->statement.column);
-            hasError = true;
-        }
-        walker(retStmt->error_val.get());
-    }
-
-    if (!retStmt->return_value)
-    {
-        if (currentFunction.value()->returnType.kind != DataType::VOID)
-        {
-            logSemanticErrors("Non-void function requires a return value", retStmt->return_stmt.line, retStmt->return_stmt.column);
-            hasError = true;
-        }
-        return;
-    }
-
-    if (retStmt->return_value)
-    {
+    }else{
         walker(retStmt->return_value.get());
     }
 
@@ -195,7 +170,7 @@ void Semantics::walkReturnStatement(Node *node)
             }
         }
 
-        // If &local_val literal case: e.g., return &x;
+        // If &local_val literal case: e.g., return  addr x
         if (auto addr = dynamic_cast<AddressExpression *>(retStmt->return_value.get()))
         {
             if (auto targetIdent = dynamic_cast<Identifier *>(addr->identifier.get()))
@@ -254,45 +229,12 @@ void Semantics::walkReturnStatement(Node *node)
     // Checking if the return type is nullable if it is not we block return of an error
     if (currentFunction.value()->returnType.isNull)
     {
-        if (!retStmt->error_val)
-        {
-            logSemanticErrors("Must return an error fallback for nullable functions", retStmt->return_stmt.line, retStmt->return_stmt.column);
-            hasError = true;
-        }
-        else
-        {
-            // Check if the error expression type matches the function return type(concrete)
-            auto errIt = metaData.find(retStmt->error_val.get());
-            if (errIt == metaData.end())
-            {
-                std::cout << "Failed to find error statement metaData\n";
-                return;
-            }
-            // Get the error type
-            auto errSym = errIt->second;
-            if (!errSym)
-            {
-                std::cout << "Could not find error symbolInfo\n";
-                return;
-            }
-
-            auto errType = errSym->type;
-            // Check if the error type matched the concrete return type
-            if (errType.kind != currentFunction.value()->returnType.kind)
-            {
-                logSemanticErrors("Type mismatch error of type '" + errType.resolvedName + "' does not match function return type of '" + currentFunction.value()->returnType.resolvedName + "'", retStmt->return_stmt.line, retStmt->return_stmt.column);
-                hasError = true;
-            }
+        //If the return value is a null literal give it context
+        if (auto nullLit = dynamic_cast<NullLiteral *>(retStmt->return_value.get())){
+            metaData[nullLit]->type=currentFunction.value()->returnType;
         }
     }
-    else if (!currentFunction.value()->returnType.isNull)
-    {
-        if (retStmt->error_val)
-        {
-            logSemanticErrors("Function expects a concrete return, do not provide a fallback", retStmt->return_stmt.line, retStmt->return_stmt.column);
-            hasError = true;
-        }
-    }
+        
     auto info = std::make_shared<SymbolInfo>();
     info->type = valueType;
     info->hasError = hasError;

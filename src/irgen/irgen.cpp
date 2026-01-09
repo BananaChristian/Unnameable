@@ -1180,24 +1180,6 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
   return baseType;
 }
 
-llvm::Type *IRGenerator::lowerFunctionType(const ResolvedType &type) {
-  // If the type isnt nullable just use then normal mapper
-  if (!type.isNull)
-    return getLLVMType(type);
-
-  // If the type is nullable use the hidden struct that holds the success value
-  // and error value
-  llvm::Type *valueTy =
-      getLLVMType({type.kind, type.resolvedName, /*isPtr*/ false,
-                   /*isRef*/ false, /*isNull*/ false});
-
-  // The error value has the same type as the value
-  llvm::Type *errorTy = valueTy;
-
-  std::vector<llvm::Type *> members = {valueTy, errorTy};
-  return llvm::StructType::get(context, members, false); // not packed
-}
-
 // Registering generator functions for statements
 void IRGenerator::registerGeneratorFunctions() {
   generatorFunctionsMap[typeid(LetStatement)] =

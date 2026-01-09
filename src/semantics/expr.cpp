@@ -319,37 +319,6 @@ void Semantics::walkExpressionStatement(Node *node)
     walker(exprStmt->expression.get());
 }
 
-void Semantics::walkErrorStatement(Node *node)
-{
-    auto errStmt = dynamic_cast<ErrorStatement *>(node);
-    if (!errStmt)
-        return;
-    std::cout << "[SEMANTIC LOG] Analysing the error statement" << errStmt->toString() << "\n";
-
-    bool hasError = false;
-
-    auto errExpr = errStmt->errorExpr.get();
-
-    walker(errExpr);
-
-    auto it = metaData.find(errExpr);
-    if (it == metaData.end())
-    {
-        std::cout << "Could not find error expression metaData\n";
-        return;
-    }
-
-    auto errInfo = it->second;
-    // Check if the errExpr info is nullable(Block such as it must be concrete)
-    if (errInfo->type.isNull)
-    {
-        logSemanticErrors("Cannot use nullable symbol as an error fallback", errExpr->expression.line, errExpr->expression.column);
-        hasError = true;
-    }
-    errInfo->hasError = hasError;
-    metaData[errStmt] = errInfo; // Giving the error expression info to the overall statement
-}
-
 void Semantics::walkBasicType(Node *node)
 {
     auto basicType = dynamic_cast<BasicType *>(node);

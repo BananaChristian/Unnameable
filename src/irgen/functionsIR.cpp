@@ -118,7 +118,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node)
     auto fnRetType = fnExpr->return_type.get();
 
     auto retType = semantics.inferNodeDataType(fnRetType);
-    llvm::FunctionType *funcType = llvm::FunctionType::get(lowerFunctionType(retType), llvmParamTypes, false);
+    llvm::FunctionType *funcType = llvm::FunctionType::get(getLLVMType(retType), llvmParamTypes, false);
 
     // Look up if the function declaration exists
     llvm::Function *fn = module->getFunction(fnName);

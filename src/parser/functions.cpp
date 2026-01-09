@@ -1,4 +1,6 @@
+#include "ast.hpp"
 #include "parser.hpp"
+#include <memory>
 
 // Parsing function paramemters
 std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
@@ -178,37 +180,19 @@ std::unique_ptr<Statement> Parser::parseFunctionStatement() {
 
   return std::make_unique<FunctionStatement>(funcToken, std::move(funcExpr));
 }
+
 // Parsing return statements
 std::unique_ptr<Statement> Parser::parseReturnStatement() {
   Token return_stmt = currentToken();
   advance();
 
-  if (currentToken().type == TokenType::SEMICOLON) {
-    advance();
-    return std::make_unique<ReturnStatement>(return_stmt, nullptr, nullptr);
-  } else if (currentToken().type == TokenType::END) {
-    logError("Unexpected end of input after return");
-    return nullptr;
-  }
-
-  std::cout << "[DEBUG] Parsing return expression token: "
-            << currentToken().TokenLiteral << "\n";
-  auto return_value = parseExpression(Precedence::PREC_NONE);
+  std::unique_ptr<Expression> return_value =
+      parseExpression(Precedence::PREC_NONE);
 
   if (!return_value) {
-    logError("Return Value is NULL");
-    return nullptr;
+    return std::make_unique<ReturnStatement>(return_stmt, nullptr);
   }
 
-  std::unique_ptr<Statement> error_stmt = nullptr;
-  if (currentToken().type == TokenType::COMMA) {
-    advance();
-    error_stmt = parseErrorStatement();
-    if (!error_stmt) {
-      return nullptr;
-    }
-  }
-
-  return std::make_unique<ReturnStatement>(return_stmt, std::move(return_value),
-                                           std::move(error_stmt));
+  return std::make_unique<ReturnStatement>(return_stmt,
+                                           std::move(return_value));
 }

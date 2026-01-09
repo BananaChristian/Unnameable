@@ -209,7 +209,7 @@ void IRGenerator::declareImportedComponentMethods(const std::string &funcName, c
     std::cout << "  [DEBUG] Metadata claims Return Type: " << retType.resolvedName
               << " (Kind: " << (int)retType.kind << ")\n";
 
-    llvm::Type *llvmRetTy = lowerFunctionType(retType);
+    llvm::Type *llvmRetTy = getLLVMType(retType);
 
     // Print the actual LLVM type to catch return type discrepancy
     std::string retTyStr;

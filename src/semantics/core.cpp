@@ -120,9 +120,6 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(BasicType)] = &Semantics::walkBasicType;
   walkerFunctionsMap[typeid(ArrayType)] = &Semantics::walkArrayType;
 
-  // Walker registration for return and error statements
-  walkerFunctionsMap[typeid(ErrorStatement)] = &Semantics::walkErrorStatement;
-
   // Walker registration for loops
   walkerFunctionsMap[typeid(WhileStatement)] = &Semantics::walkWhileStatement;
   walkerFunctionsMap[typeid(ForStatement)] = &Semantics::walkForStatement;
@@ -1239,7 +1236,7 @@ bool Semantics::hasReturnPath(Node *node) {
   if (auto blockStmt = dynamic_cast<BlockStatement *>(node)) {
     for (const auto &stmt : blockStmt->statements) {
       if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
-        if (retStmt->error_val || retStmt->return_value ||
+        if (retStmt->return_value ||
             (currentFunction.value()->isNullable && !retStmt->return_value)) {
           return true; // Error, value, or null return
         }
@@ -1278,7 +1275,7 @@ bool Semantics::hasReturnPath(Node *node) {
   if (auto blockExpr = dynamic_cast<BlockExpression *>(node)) {
     for (const auto &stmt : blockExpr->statements) {
       if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
-        if (retStmt->error_val || retStmt->return_value ||
+        if ( retStmt->return_value ||
             (currentFunction.value()->isNullable && !retStmt->return_value)) {
           return true; // Error, value, or null return
         }
