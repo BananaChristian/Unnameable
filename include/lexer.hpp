@@ -96,7 +96,6 @@ class Lexer {
       {"seal", TokenType::SEAL},
       {"shout", TokenType::SHOUT},
       {"unwrap", TokenType::UNWRAP},
-      {"export", TokenType::EXPORT},
 
       {"import", TokenType::IMPORT},
       {"merge", TokenType::MERGE},

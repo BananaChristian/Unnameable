@@ -81,7 +81,6 @@ enum class TokenType {
   INSTANTIATE,
   AS,
 
-  ERROR,  // error
   NEW,    // new keyword for a new instance of a component
   CONST,  // constant keyword
   MUT,    // mutable keyword

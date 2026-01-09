@@ -232,9 +232,6 @@ private:
   std::unique_ptr<Expression>
   parsePostfixExpression(std::unique_ptr<Expression> left);
 
-  // Error statement
-  std::unique_ptr<Statement> parseErrorStatement();
-
   // New component expression parse function declaration
   std::unique_ptr<Expression> parseNewComponentExpression();
 

@@ -359,8 +359,6 @@ private:
   void walkBreakStatement(Node *node);
   void walkContinueStatement(Node *node);
 
-  void walkErrorStatement(Node *node);
-
   // Walking control flow nodes
   void walkWhileStatement(Node *node);
   void walkForStatement(Node *node);

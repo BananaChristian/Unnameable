@@ -725,7 +725,7 @@ struct ExpressionStatement : Statement {
 struct BreakStatement : Statement {
   Token break_tok;
   std::string toString() override {
-    return "Break Statement: " + break_tok.TokenLiteral +"\n";
+    return "Break Statement: " + break_tok.TokenLiteral + "\n";
   }
 
   BreakStatement *shallowClone() const override {
@@ -738,7 +738,7 @@ struct BreakStatement : Statement {
 struct ContinueStatement : Statement {
   Token cont_tok;
   std::string toString() override {
-    return "Continue Statement: " + cont_tok.TokenLiteral +"\n";
+    return "Continue Statement: " + cont_tok.TokenLiteral + "\n";
   }
 
   ContinueStatement *shallowClone() const override {
@@ -995,22 +995,6 @@ struct ComponentStatement : Statement {
         initConstructor(std::move(init)) {}
 };
 
-// Error statement
-struct ErrorStatement : Statement {
-  Token errorStmt_token;
-  std::unique_ptr<Expression> errorExpr;
-  std::string toString() override {
-    std::string errorStr = "<empty>";
-    if (errorExpr) {
-      errorStr = errorExpr->toString();
-    }
-    return "Error statement: error! " + errorStr;
-  };
-
-  ErrorStatement(Token err, std::unique_ptr<Expression> errExpr)
-      : Statement(err), errorExpr(std::move(errExpr)){};
-};
-
 // Reference Statament node
 struct ReferenceStatement : Statement {
   bool isHeap;
@@ -1205,22 +1189,20 @@ struct FieldAssignment : Statement {
 struct ReturnStatement : Statement {
   Token return_stmt;
   std::unique_ptr<Expression> return_value;
-  std::unique_ptr<Statement> error_val;
   std::string toString() override {
-    return "Return Statement: ( Token: " + return_stmt.TokenLiteral +
-           " Value: " + (return_value ? return_value->toString() : "void") +
-           "), Error: " +
-           (error_val ? error_val->toString() : "no error return");
+    std::string retStr = "";
+    if (return_value) {
+      retStr = return_value->toString();
+    }
+    return "Return Statement: " + return_stmt.TokenLiteral + " " + retStr +
+           "\n";
   }
 
   ReturnStatement *shallowClone() const override {
-    return new ReturnStatement(return_stmt, clonePtr(return_value),
-                               clonePtr(error_val));
+    return new ReturnStatement(return_stmt, clonePtr(return_value));
   }
-  ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val,
-                  std::unique_ptr<Statement> err)
-      : Statement(ret), return_stmt(ret), return_value(std::move(ret_val)),
-        error_val(std::move(err)){};
+  ReturnStatement(Token ret, std::unique_ptr<Expression> ret_val)
+      : Statement(ret), return_stmt(ret), return_value(std::move(ret_val)){};
 };
 
 // Elif statement node

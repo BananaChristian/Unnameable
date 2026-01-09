@@ -40,7 +40,6 @@ public:
 
   llvm::Module &getLLVMModule();
   llvm::Type *getLLVMType(ResolvedType type);
-  llvm::Type *lowerFunctionType(const ResolvedType &type);
 
   std::unordered_map<std::type_index, generatorFunctions> generatorFunctionsMap;
   std::unordered_map<std::type_index, expressionGenerators>
