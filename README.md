@@ -94,62 +94,13 @@ isize y=18iz
 
 ```
 
-## Null Safety
-
-By default all the variables, function return types are not nullable but with the ? on a data type this acknowledges that the variable or data type are nullable.
-This means the compiler will force you to explicitly deal with these via coalescing or using if statements but It wont allow null to be passed into variables or get used anywhere
-
-```
-string? name= null
-func greet(string? name): string?{
-    return "Hello" + name
-}
-
-i32? x=null
-i32 y=x#This throws an error because x has a null value
-
-##Correct code
-i32? x=8
-i32 y=x#This will run since x now has a value
-##
-
-i32? a
-a=null
-a+1 #This will error out since u cannot use null in operations
-
-#Usage of uninitialized variables is not allowed in the langauge
-i32? c
-c+1 #BOOM error
-#OR
-i32 test
-i32 y=test#Error since 'test' is not initialized
-
-#Coalescing
-i32? x=null
-(x??1)+1
-
-func main(): i32 {
-    i32? a = null
-    i32? b = 42
-    i32 y = a ?? (b ?? 100)
-    shout! y
-    return 0
-}
-
-#NOTE: Coalescing only works if the the variable is nullable
-
-#Function declarations
-func greet(string? name): string?
-
-```
-
 ## Functions
 
 Functions in unnameable are written using the func keyword,the function name and the optional parameters and the return type
 
 ```unn
 func greet(string name): string {
-    return "Hello" + name
+    return name
 }
 
 func test(arr[i32] my_array): arr[i32]{
@@ -370,16 +321,92 @@ func main: i32 {
 
 ```
 
-## Error handling
+## Null Safety & Error Handling
+By default, all variables, parameters, and function return types are **non-nullable**. The compiler treats a null value as a completely different "shape" than a standard value, preventing accidental usage through strict semantic checks and an explicit IR-level boxing system.
 
-This is the current system for error handling but its not concrete yet I look to redesigning it and making it better and more powerful
+### The Optional Type (`?`)
+
+To allow a variable to hold a null value, you must explicitly mark it with the `?` suffix. This tells the compiler to wrap the data in an **Optional Box**.
 
 ```unn
-func greet(string name): string? {
-    return "Hello" + name, error!"Got an error"
+string? name = null
+i32? x = 8
+
+func greet(string? name): string? {
+    return name
 }
 
 ```
+
+### Strict Usage Rules
+
+The compiler enforces safety by preventing "leaky" nulls from entering the logic of your program:
+
+1. **No Direct Assignment:** You cannot assign an `i32?` to a regular `i32` directly.
+2. **No Null Operations:** You cannot perform arithmetic or logic on nullable types (e.g., `a + 1` where `a` is `i32?` will fail).
+3. **Initialization Tracking:** Usage of uninitialized variables is strictly forbidden, whether they are nullable or not.
+
+```unn
+i32? x = null
+i32 y = x       # ERROR: Type mismatch (i32? vs i32)
+
+i32? a = null
+a + 1           # ERROR: Cannot perform math on a nullable type
+
+i32 test
+i32 y = test    # ERROR: 'test' is not initialized
+
+```
+
+### Enforcement: Unwrapping & Coalescing
+
+When you have a nullable value, you must "open the box" to get to the data inside. unnameable provides two primary mechanisms for this:
+
+#### 1. The `unwrap` Operator (Trap on Null)
+
+The `unwrap` operator is the most direct way to handle an optional. It performs a **Runtime Reality Check**. If the value is present, it extracts it; if the value is null, the compiler triggers an immediate **deterministic trap** , terminating the program to prevent a segfault.
+
+```unn
+func test() : i32? {
+    return null
+}
+
+func main() : i32 {
+    # If test() returns null, the program traps here.
+    # If it returns a value, x becomes a standard i32.
+    i32 x = unwrap test() 
+    shout! x
+    return x
+}
+
+```
+
+#### 2. The Coalescing Operator (`??`)
+
+For more graceful recovery, the `??` operator allows you to provide a fallback value. This ensures that the resulting expression is always non-nullable.
+
+```unn
+func main(): i32 {
+    i32? a = null
+    i32? b = 42
+    
+    # a ?? (b ?? 100) resolves to 42 because a is null, but b is not.
+    i32 y = a ?? (b ?? 100) 
+    shout! y
+    return 0
+}
+
+```
+
+### Physical Implementation
+
+Under the hood, the compiler does not use "Null Pointers." Instead, it uses a **Box and Flag** model. A nullable `i32?` is represented in LLVM IR as a struct: `{ i1, i32 }`.
+
+* **The Flag (`i1`):** A boolean indicating if the value is "Present."
+* **The Payload (`i32`):** The actual data.
+
+When you `unwrap` or use `??`, the generated IR inspects the flag first. This architecture ensures that your code never touches "garbage" memory, turning silent segfaults into explicit, manageable errors.
+
 
 ## Multi file support
 
