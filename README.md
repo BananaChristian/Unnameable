@@ -1,12 +1,6 @@
 # Unnameable Compiler
 
-**Unnameable** is a statically typed, ahead-of-time compiled modern programming language . It is designed to be fast, minimal, and expressive.
-
-It exists to make low-level development **clear**, **accessible**, and **fun** for everyone especially for beginners and builders working on modest machines.
-
-> **Fast and powerful, yet simple and predictable.**
-
-Unnameable's goal is to bring the joy back to low-level programming.
+**Unnameable** is a statically typed, ahead-of-time compiled modern programming language . It is designed to be fast, clear, and expressive.
 
 ---
 
@@ -407,6 +401,38 @@ Under the hood, the compiler does not use "Null Pointers." Instead, it uses a **
 
 When you `unwrap` or use `??`, the generated IR inspects the flag first. This architecture ensures that your code never touches "garbage" memory, turning silent segfaults into explicit, manageable errors.
 
+## Casting
+The language supports two types of casting i.e `cast` and `bitcast`
+Cast example
+```
+func test_math_cast():void {
+    float pi = 3.14
+    i32 rounded = cast<i32>(pi)
+    shout! rounded
+}
+
+func main:i32{
+    test_math_cast()
+    return 0
+}
+```
+
+Bitcasting example
+```
+func test_memory_bitcast():void {
+    dheap float pi = 3.14
+    ptr float p_float -> addr pi
+    ptr i32 p_int -> bitcast<ptr i32>(p_float)
+    
+    i32 bit_pattern = deref p_int
+    shout! bit_pattern
+}
+
+func main:i32 {
+    test_memory_bitcast()
+    return 0
+}
+```
 
 ## Multi file support
 
