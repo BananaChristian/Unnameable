@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "semantics.hpp"
 
 void Semantics::walkInfixExpression(Node *node) {
@@ -322,4 +323,153 @@ void Semantics::walkArrayType(Node *node) {
     return;
   std::cout << "[SEMANTIC LOG] Analysing the array type expression"
             << arrayType->toString() << "\n";
+}
+
+void Semantics::walkCastExpression(Node *node) {
+  auto castExpr = dynamic_cast<CastExpression *>(node);
+  if (!castExpr)
+    return;
+
+  bool hasError = false;
+
+  // Resolve Destination Type (The type in the < >)
+  auto type = castExpr->type.get();
+  if (!type)
+    return;
+
+  ResolvedType destinationType = inferNodeDataType(type);
+  if (destinationType.isNull) {
+    logSemanticErrors("Cannot cast to a nullable type '" +
+                          destinationType.resolvedName + "'",
+                      type->expression.line, type->expression.column);
+    hasError = true;
+  }
+  // Check if the destination type is a scalar otherwise block it
+  bool isDestinationValid = isInteger(destinationType) ||
+                            isBoolean(destinationType) ||
+                            isFloat(destinationType);
+  if (!isDestinationValid) {
+    logSemanticErrors("Invalid cast destination type '" +
+                          destinationType.resolvedName + "'",
+                      type->expression.line, type->expression.column);
+    hasError = true;
+  }
+
+  // Resolve Source Type (The expression in the ( ))
+  auto source = castExpr->expr.get();
+  if (!source)
+    return;
+
+  walker(source);
+
+  // Retrieve the metaData and check if the source type is valid
+  auto sym = metaData[source];
+  ResolvedType sourceType = sym->type;
+  if (sourceType.isNull) {
+    logSemanticErrors("Cannot cast from a nullable type '" +
+                          sourceType.resolvedName + "'",
+                      source->expression.line, source->expression.column);
+    hasError = true;
+  }
+
+  if (sourceType.isPointer) {
+    logSemanticErrors("Cannot cast from a pointer type '" +
+                          sourceType.resolvedName + "' try using a bitcast ",
+                      source->expression.line, source->expression.column);
+    hasError = true;
+  }
+
+  if (sourceType.isRef) {
+    logSemanticErrors("Cannot cast from a reference type '" +
+                          sourceType.resolvedName + "'",
+                      source->expression.line, source->expression.column);
+    hasError = true;
+  }
+
+  bool isSourceValid =
+      isInteger(sourceType) || isFloat(sourceType) || isBoolean(sourceType);
+
+  if (!isSourceValid) {
+    logSemanticErrors("Invalid source cast type '" + sourceType.resolvedName +
+                          "'",
+                      source->expression.line, source->expression.column);
+    hasError = true;
+  }
+  
+  auto castInfo = std::make_shared<SymbolInfo>();
+
+  castInfo->hasError = hasError;
+  castInfo->type = destinationType;
+
+  metaData[castExpr] = castInfo;
+}
+
+void Semantics::walkBitcastExpression(Node *node) {
+  auto bitcastExpr = dynamic_cast<BitcastExpression *>(node);
+  if (!bitcastExpr)
+    return;
+
+  bool hasError = false;
+
+  // Resolve Destination Type (The type in the < >)
+  auto type = bitcastExpr->type.get();
+  if (!type)
+    return;
+
+  ResolvedType destinationType = inferNodeDataType(type);
+  if (destinationType.isNull) {
+    logSemanticErrors("bitcast destination cannot be nullable, got '" +
+                          destinationType.resolvedName + "'",
+                      type->expression.line, type->expression.column);
+    hasError = true;
+  }
+
+  if (!destinationType.isPointer) {
+    logSemanticErrors("bitcast destination must be a pointer type, got '" +
+                          destinationType.resolvedName + "'",
+                      type->expression.line, type->expression.column);
+    hasError = true;
+  }
+
+  // Resolve Source Type (The expression in the ( ))
+  auto source = bitcastExpr->expr.get();
+  if (!source)
+    return;
+  walker(source);
+
+  auto sym = metaData[source];
+  ResolvedType sourceType = sym->type;
+
+  if (sourceType.isNull) {
+    logSemanticErrors("bitcast source cannot be nullable,got '" +
+                          sourceType.resolvedName + "'",
+                      source->expression.line, source->expression.column);
+    hasError = true;
+  }
+
+  if (sourceType.isArray) {
+    logSemanticErrors("bitcast source cannot be an array type,got '" +
+                          sourceType.resolvedName + "'",
+                      source->expression.line, source->expression.column);
+    hasError = true;
+  }
+
+  if (sourceType.isRef) {
+    logSemanticErrors("bitcast source cannot be a reference,got '" +
+                          sourceType.resolvedName + "'",
+                      source->expression.line, source->expression.column);
+    hasError = true;
+  }
+
+  if (!sourceType.isPointer) {
+    logSemanticErrors("bitcast source must be a pointer type,got '" +
+                          sourceType.resolvedName + "'",
+                      source->expression.line, source->expression.column);
+    hasError = true;
+  }
+
+  auto bitcastInfo = std::make_shared<SymbolInfo>();
+  bitcastInfo->hasError = hasError;
+  bitcastInfo->type = destinationType;
+  metaData[bitcastExpr] = bitcastInfo;
 }

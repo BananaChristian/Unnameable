@@ -496,6 +496,7 @@ void Semantics::walkAddressExpression(Node *node) {
   addrInfo->isPointer = true;
   addrInfo->isHeap = isHeap;
   addrInfo->isDheap = isDheap;
+  addrInfo->allocType = symbolInfo->allocType;
   addrInfo->targetSymbol = symbolInfo;
   addrInfo->type = inferNodeDataType(addrExpr);
 

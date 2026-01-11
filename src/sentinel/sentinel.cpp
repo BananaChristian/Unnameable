@@ -48,6 +48,8 @@ void Sentinel::registerSentinelFns() {
   sentinelFnsMap[typeid(InfixExpression)] = &Sentinel::checkInfixExpression;
   sentinelFnsMap[typeid(PrefixExpression)] = &Sentinel::checkPrefixExpression;
   sentinelFnsMap[typeid(PostfixExpression)] = &Sentinel::checkPostfixExpression;
+  sentinelFnsMap[typeid(CastExpression)] = &Sentinel::checkCastExpression;
+  sentinelFnsMap[typeid(BitcastExpression)] = &Sentinel::checkBitcastExpression;
   sentinelFnsMap[typeid(RecordStatement)] = &Sentinel::checkRecordStatement;
   sentinelFnsMap[typeid(FieldAssignment)] = &Sentinel::checkFieldAssignment;
   sentinelFnsMap[typeid(ComponentStatement)] =
@@ -132,6 +134,29 @@ void Sentinel::checkIdentifier(Node *node) {
     }
     sentinelStack.pop_back();
   }
+}
+
+void Sentinel::checkCastExpression(Node *node) {
+  auto castExpr = dynamic_cast<CastExpression *>(node);
+  if (!castExpr)
+    return;
+
+  auto src = castExpr->expr.get();
+  if (!src)
+    return;
+  
+  sentinelDriver(src);
+}
+
+void Sentinel::checkBitcastExpression(Node *node) {
+  auto bitcastExpr = dynamic_cast<BitcastExpression *>(node);
+  if (!bitcastExpr)
+    return;
+
+  auto src = bitcastExpr->expr.get();
+  if (!src)
+    return;
+  sentinelDriver(src);
 }
 
 void Sentinel::checkDereferenceExpression(Node *node) {
@@ -450,7 +475,7 @@ void Sentinel::checkFieldAssignment(Node *node) {
 
   // Get the parent type from the baseSymbol
   auto parentTypeName = baseSym->type.resolvedName;
-  std::string lookUpName=semantics.stripPtrSuffix(parentTypeName);
+  std::string lookUpName = semantics.stripPtrSuffix(parentTypeName);
   std::cout << "PARENT TYPE NAME: " << lookUpName << "\n";
 
   // Check inside the parent

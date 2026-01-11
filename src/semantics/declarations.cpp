@@ -260,7 +260,7 @@ void Semantics::walkPointerStatement(Node *node) {
   // Walking the target
   walker(ptrStmt->value.get());
 
-  auto targetSymbol = resolveSymbolInfo(targetName);
+  auto targetSymbol = metaData[ptrStmt->value.get()];
   if (!targetSymbol) {
     logSemanticErrors("Pointer '" + ptrName +
                           "'is pointing to an undeclared variable '" +

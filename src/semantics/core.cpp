@@ -72,6 +72,9 @@ void Semantics::registerWalkerFunctions() {
       &Semantics::walkSizeOfExpression;
 
   walkerFunctionsMap[typeid(NullLiteral)] = &Semantics::walkNullLiteral;
+  walkerFunctionsMap[typeid(CastExpression)] = &Semantics::walkCastExpression;
+  walkerFunctionsMap[typeid(BitcastExpression)] =
+      &Semantics::walkBitcastExpression;
 
   // Walker registration for array walker
   walkerFunctionsMap[typeid(ArrayStatement)] = &Semantics::walkArrayStatement;
@@ -221,6 +224,25 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   if (auto sizeOfExpr = dynamic_cast<SizeOfExpression *>(node))
     return ResolvedType{DataType::USIZE, "usize"};
+
+  if (auto castExpr = dynamic_cast<CastExpression *>(node)) {
+    auto type = castExpr->type.get();
+    if (type) {
+      auto destinationType = inferNodeDataType(type);
+      return destinationType;
+    }
+    return ResolvedType{DataType::UNKNOWN, "unknown"};
+  }
+
+  if (auto bitcastExpr = dynamic_cast<BitcastExpression *>(node)) {
+    auto type = bitcastExpr->type.get();
+    if (type) {
+      auto destinationType = inferNodeDataType(type);
+      return destinationType;
+    }
+
+    return ResolvedType{DataType::UNKNOWN, "unknown"};
+  }
 
   if (auto arrLit = dynamic_cast<ArrayLiteral *>(node)) {
     // Empty literal → known to be array, unknown inner type

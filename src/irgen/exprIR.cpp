@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "irgen.hpp"
 #include <cstdint>
 #include <llvm-18/llvm/IR/Constants.h>
@@ -894,17 +895,6 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
     throw std::runtime_error("Variable '" + identName + "' does not exist");
   }
 
-  std::cerr << "[IR-DEBUG] ident lastUse = "
-            << (identIt->second->lastUseNode
-                    ? typeid(*identIt->second->lastUseNode).name()
-                    : "NULL")
-            << ", postfix lastUse = "
-            << (postfixIt != semantics.metaData.end() &&
-                        postfixIt->second->lastUseNode
-                    ? typeid(*postfixIt->second->lastUseNode).name()
-                    : "NULL")
-            << "\n";
-
   if (postfixIt->second->hasError)
     return nullptr;
 
@@ -1022,4 +1012,88 @@ llvm::Value *IRGenerator::generateUnwrapExpression(Node *node) {
   funcBuilder.SetInsertPoint(successBB);
 
   return funcBuilder.CreateExtractValue(box, 1, "unwrapped_val");
+}
+
+llvm::Value *IRGenerator::generateCastExpression(Node *node) {
+  auto castExpr = dynamic_cast<CastExpression *>(node);
+  if (!castExpr)
+    throw std::runtime_error("Invalid cast expression");
+
+  auto it = semantics.metaData.find(castExpr);
+  if (it == semantics.metaData.end())
+    throw std::runtime_error("Failed to find cast metaData");
+
+  auto castSym = it->second;
+  if (castSym->hasError)
+    throw std::runtime_error("Error detected in cast");
+
+  llvm::Value *sourceVal = generateExpression(castExpr->expr.get());
+  if (!sourceVal)
+    throw std::runtime_error("Failed to generate source value");
+
+  llvm::Type *srcType = sourceVal->getType();
+  llvm::Type *dstType = getLLVMType(castSym->type);
+
+  if (srcType == dstType)
+    return sourceVal;
+
+  if (srcType->isIntegerTy() && dstType->isIntegerTy()) {
+    unsigned srcBits = srcType->getIntegerBitWidth();
+    unsigned dstBits = dstType->getIntegerBitWidth();
+
+    if (dstBits < srcBits) {
+      return funcBuilder.CreateTrunc(sourceVal, dstType, "cast_trunc");
+    } else {
+      if (isUnsigned(semantics.metaData[castExpr->expr.get()]->type)) {
+        return funcBuilder.CreateZExt(sourceVal, dstType, "cast_zext");
+      } else {
+        return funcBuilder.CreateSExt(sourceVal, dstType, "cast_sext");
+      }
+    }
+  }
+
+  // Floating Point to Integer
+  if (srcType->isFloatingPointTy() && dstType->isIntegerTy()) {
+    return funcBuilder.CreateFPToSI(sourceVal, dstType, "cast_fptosi");
+  }
+
+  // Integer to Floating Point
+  if (srcType->isIntegerTy() && dstType->isFloatingPointTy()) {
+    return funcBuilder.CreateSIToFP(sourceVal, dstType, "cast_sitofp");
+  }
+
+  // Float to Double (e.g., float to double)
+  if (srcType->isFloatingPointTy() && dstType->isFloatingPointTy()) {
+    if (dstType->getFPMantissaWidth() > srcType->getFPMantissaWidth())
+      return funcBuilder.CreateFPExt(sourceVal, dstType, "cast_fpext");
+    else
+      return funcBuilder.CreateFPTrunc(sourceVal, dstType, "cast_fptrunc");
+  }
+
+  throw std::runtime_error("Unhandled cast from " + castSym->type.resolvedName);
+}
+
+llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
+  auto bitcastExpr = dynamic_cast<BitcastExpression *>(node);
+  if (!bitcastExpr)
+    throw std::runtime_error("Invalid bitcast expression");
+
+  auto it = semantics.metaData.find(bitcastExpr);
+  if (it == semantics.metaData.end())
+    throw std::runtime_error("Failed to find bitcast metaData");
+
+  auto bitcastSym = it->second;
+  if (bitcastSym->hasError)
+    throw std::runtime_error("Error detected in bitcast");
+
+  llvm::Value *sourceVal = generateExpression(bitcastExpr->expr.get());
+  if (!sourceVal)
+    throw std::runtime_error("Failed to generate source value");
+
+  llvm::Type *srcType = sourceVal->getType();
+  llvm::Type *dstType = getLLVMType(bitcastSym->type);
+  if (srcType == dstType)
+    return sourceVal;
+
+  return funcBuilder.CreateBitCast(sourceVal, dstType, "bitcast_tmp");
 }

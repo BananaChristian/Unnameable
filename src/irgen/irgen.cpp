@@ -598,6 +598,8 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   if (!ptr)
     throw std::runtime_error("No llvm value was assigned");
 
+  sym->llvmValue = ptr;
+
   return ptr;
 }
 
@@ -1303,6 +1305,10 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
       &IRGenerator::generateIdentifierExpression;
   expressionGeneratorsMap[typeid(SizeOfExpression)] =
       &IRGenerator::generateSizeOfExpression;
+  expressionGeneratorsMap[typeid(CastExpression)] =
+      &IRGenerator::generateCastExpression;
+  expressionGeneratorsMap[typeid(BitcastExpression)] =
+      &IRGenerator::generateBitcastExpression;
   expressionGeneratorsMap[typeid(AddressExpression)] =
       &IRGenerator::generateAddressExpression;
   expressionGeneratorsMap[typeid(DereferenceExpression)] =
@@ -1452,6 +1458,22 @@ bool IRGenerator::isSignedInteger(DataType dt) {
   case DataType::I32:
   case DataType::I64:
   case DataType::I128:
+  case DataType::ISIZE:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool IRGenerator::isUnsigned(const ResolvedType &type) {
+  auto dt = type.kind;
+  switch (dt) {
+  case DataType::U8:
+  case DataType::U16:
+  case DataType::U32:
+  case DataType::U64:
+  case DataType::U128:
+  case DataType::USIZE:
     return true;
   default:
     return false;
