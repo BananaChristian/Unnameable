@@ -1,8 +1,6 @@
 #include "ast.hpp"
 #include "parser.hpp"
 #include "token.hpp"
-#include <algorithm>
-#include <stdexcept>
 
 // Main Expression parsing function
 std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence) {
@@ -21,8 +19,6 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence) {
       (this->*PrefixParseFnIt
                   ->second)(); // Calling the neccesary prefix function after
                                // encountering that particular token
-  std::cout << "[DEBUG] Initial left expression: "
-            << left_expression->toString() << "\n";
 
   while (true) {
     if (currentToken().type == TokenType::SEMICOLON ||
@@ -40,20 +36,15 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence) {
       if (precedence >= currentPrecedence)
         break;
 
-      std::cout << "[DEBUG] Parsing postfix token: "
-                << currentToken().TokenLiteral << "\n";
       left_expression =
           (this->*PostfixParseFnIt->second)(std::move(left_expression));
-      std::cout << "[DEBUG] Updated left expression (postfix): "
-                << left_expression->toString() << "\n";
+
       continue;
     }
 
     // Handle infix operators
     auto InfixParseFnIt = InfixParseFunctionsMap.find(currentToken().type);
     if (InfixParseFnIt == InfixParseFunctionsMap.end()) {
-      std::cout << "[DEBUG] No infix or postfix parser found for: "
-                << currentToken().TokenLiteral << "\n";
       break;
     }
 
@@ -287,8 +278,6 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments() {
 // Parsing the call expression
 std::unique_ptr<Expression>
 Parser::parseCallExpression(std::unique_ptr<Expression> left) {
-  std::cout << "[DEBUG] Entered parseCallExpression for: " << left->toString()
-            << "\n";
   if (dynamic_cast<Identifier *>(left.get()) == nullptr) {
     logError("Expected identifier as function name for call");
     return nullptr;
@@ -381,12 +370,18 @@ std::unique_ptr<Expression> Parser::parseCastExpression() {
   }
   advance(); // Consume the < token
 
-  if (!isBasicType(currentToken().type)) {
-    logError("Expected a numerical type but got '" +
-             currentToken().TokenLiteral + "'");
-    advance();
+  if (isBasicType(currentToken().type)) {
+    type = parseBasicType();
+  } else {
+    if (currentToken().type == TokenType::IDENTIFIER) {
+      logError("Expected a built in type but got '" +
+               currentToken().TokenLiteral + "'");
+      advance();
+    } else {
+      logError("Inavlid cast type '" + currentToken().TokenLiteral + "'");
+      advance();
+    }
   }
-  type = parseBasicType();
 
   if (currentToken().type != TokenType::GREATER_THAN) {
     logError("Expected '>' but got '" + currentToken().TokenLiteral + "'");
@@ -405,7 +400,7 @@ std::unique_ptr<Expression> Parser::parseCastExpression() {
     logError("Expected ')' but got '" + currentToken().TokenLiteral + "'");
     return nullptr;
   }
-  advance();//Consume the )
+  advance(); // Consume the )
 
   return std::make_unique<CastExpression>(cast, std::move(type),
                                           std::move(expr));
@@ -422,11 +417,13 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
   }
 
   advance();
-  if (isBasicType(currentToken().type) ||
-      currentToken().type == TokenType::IDENTIFIER) {
+  if (isBasicType(currentToken().type)) {
     type = parseBasicType();
   } else if (currentToken().type == TokenType::PTR) {
     type = parsePointerType();
+  } else {
+    logError("Invalid bitcast type '" + currentToken().TokenLiteral + "'");
+    advance();
   }
 
   if (currentToken().type != TokenType::GREATER_THAN) {
@@ -446,7 +443,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
     logError("Expected  ')' but got '" + currentToken().TokenLiteral + "'");
     return nullptr;
   }
-  advance();//Consume the )
+  advance(); // Consume the )
 
   return std::make_unique<BitcastExpression>(bitcast, std::move(type),
                                              std::move(expr));
