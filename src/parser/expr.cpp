@@ -1,5 +1,8 @@
+#include "ast.hpp"
 #include "parser.hpp"
-#include <memory>
+#include "token.hpp"
+#include <algorithm>
+#include <stdexcept>
 
 // Main Expression parsing function
 std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence) {
@@ -364,4 +367,87 @@ std::unique_ptr<Expression> Parser::parseSizeOfExpression() {
   }
 
   return std::make_unique<SizeOfExpression>(sizeOf, std::move(type));
+}
+
+std::unique_ptr<Expression> Parser::parseCastExpression() {
+  Token cast = currentToken();
+  std::unique_ptr<Expression> type = nullptr;
+  std::unique_ptr<Expression> expr = nullptr;
+
+  advance();
+  if (currentToken().type != TokenType::LESS_THAN) {
+    logError("Expected '<' but got '" + currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
+  advance(); // Consume the < token
+
+  if (!isBasicType(currentToken().type)) {
+    logError("Expected a numerical type but got '" +
+             currentToken().TokenLiteral + "'");
+    advance();
+  }
+  type = parseBasicType();
+
+  if (currentToken().type != TokenType::GREATER_THAN) {
+    logError("Expected '>' but got '" + currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
+  advance(); // Consume the > token
+
+  if (currentToken().type != TokenType::LPAREN) {
+    logError("Expected '(' but got '" + currentToken().TokenLiteral + "");
+    return nullptr;
+  }
+  advance(); // Consume the ( token
+
+  expr = parseExpression(Precedence::PREC_NONE);
+  if (currentToken().type != TokenType::RPAREN) {
+    logError("Expected ')' but got '" + currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
+  advance();//Consume the )
+
+  return std::make_unique<CastExpression>(cast, std::move(type),
+                                          std::move(expr));
+}
+
+std::unique_ptr<Expression> Parser::parseBitcastExpression() {
+  Token bitcast = currentToken();
+  std::unique_ptr<Expression> type = nullptr;
+  std::unique_ptr<Expression> expr = nullptr;
+  advance();
+  if (currentToken().type != TokenType::LESS_THAN) {
+    logError("Expected '<' but got '" + currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
+
+  advance();
+  if (isBasicType(currentToken().type) ||
+      currentToken().type == TokenType::IDENTIFIER) {
+    type = parseBasicType();
+  } else if (currentToken().type == TokenType::PTR) {
+    type = parsePointerType();
+  }
+
+  if (currentToken().type != TokenType::GREATER_THAN) {
+    logError("Expected '>' but got '" + currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
+  advance();
+
+  if (currentToken().type != TokenType::LPAREN) {
+    logError("Expected '(' but got '" + currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
+  advance();
+
+  expr = parseExpression(Precedence::PREC_NONE);
+  if (currentToken().type != TokenType::RPAREN) {
+    logError("Expected  ')' but got '" + currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
+  advance();//Consume the )
+
+  return std::make_unique<BitcastExpression>(bitcast, std::move(type),
+                                             std::move(expr));
 }

@@ -97,6 +97,9 @@ class Lexer {
       {"shout", TokenType::SHOUT},
       {"unwrap", TokenType::UNWRAP},
 
+      {"cast", TokenType::CAST},
+      {"bitcast", TokenType::BITCAST},
+
       {"import", TokenType::IMPORT},
       {"merge", TokenType::MERGE},
       {"link", TokenType::LINK},
@@ -124,7 +127,7 @@ private:
   Token readNumbers();
   Token readBinary();
   Token readHex();
-  Token parseSuffix(const std::string& value, int line, int col);
+  Token parseSuffix(const std::string &value, int line, int col);
   bool isHexDigit(char32_t ch);
   bool isBinaryDigit(char32_t ch);
   char convertUnicodeDigit(char32_t ch);

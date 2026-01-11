@@ -438,6 +438,60 @@ struct SizeOfExpression : Expression {
       : Expression(token), sizeOf(token), type(std::move(ty)){};
 };
 
+// Cast expression
+struct CastExpression : Expression {
+  Token cast;
+  std::unique_ptr<Expression> type;
+  std::unique_ptr<Expression> expr;
+
+  std::string toString() override {
+    std::string typeStr = "<No type>";
+    if (type) {
+      typeStr = "<" + type->toString() + ">";
+    }
+    std::string exprStr = "(No expr)";
+    if (expr) {
+      exprStr = "(" + expr->toString() + ")";
+    }
+    return "Cast Expression: " + cast.TokenLiteral + typeStr + exprStr;
+  }
+
+  CastExpression *shallowClone() const override {
+    return new CastExpression(cast, clonePtr(type), clonePtr(expr));
+  }
+
+  CastExpression(Token c, std::unique_ptr<Expression> t,
+                 std::unique_ptr<Expression> e)
+      : Expression(c), cast(c), type(std::move(t)), expr(std::move(e)) {}
+};
+
+// Bitcast expression
+struct BitcastExpression : Expression {
+  Token bitcast;
+  std::unique_ptr<Expression> type;
+  std::unique_ptr<Expression> expr;
+
+  std::string toString() override {
+    std::string typeStr = "<No type>";
+    if (type) {
+      typeStr = "<" + type->toString() + ">";
+    }
+    std::string exprStr = "(No expr)";
+    if (expr) {
+      exprStr = "(" + expr->toString() + ")";
+    }
+    return "Bitcast Expression: " + bitcast.TokenLiteral + typeStr + exprStr;
+  }
+
+  BitcastExpression *shallowClone() const override {
+    return new BitcastExpression(bitcast, clonePtr(type), clonePtr(expr));
+  }
+
+  BitcastExpression(Token bit, std::unique_ptr<Expression> t,
+                    std::unique_ptr<Expression> e)
+      : Expression(bit), bitcast(bit), type(std::move(t)), expr(std::move(e)) {}
+};
+
 // Call expression
 struct CallExpression : Expression {
   std::unique_ptr<Expression> function_identifier;

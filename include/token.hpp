@@ -61,6 +61,7 @@ enum class TokenType {
   AUTO,
   RETURN,
   CAST,
+  BITCAST,
 
   ENUM,
   CLASS,

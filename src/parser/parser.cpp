@@ -290,6 +290,8 @@ void Parser::registerPrefixFns() {
       &Parser::parsePrefixExpression;
   PrefixParseFunctionsMap[TokenType::FUNCTION] =
       &Parser::parseFunctionExpression;
+  PrefixParseFunctionsMap[TokenType::CAST] = &Parser::parseCastExpression;
+  PrefixParseFunctionsMap[TokenType::BITCAST] = &Parser::parseBitcastExpression;
 }
 
 // Registering the postfix parse functions

@@ -105,50 +105,37 @@ private:
   //---------------PARSING STATEMENTS--------------------
   // General statement parsing function
   std::unique_ptr<Statement> parseStatement();
-
   // Parsing let statements
   std::unique_ptr<Statement> parseLetStatement();
-
   std::unique_ptr<Statement> parseMutStatement();
-
   std::unique_ptr<Statement> parseConstStatement();
-
   // Parsing assignment statements
   std::unique_ptr<Statement> parseAssignmentStatement();
-
   std::unique_ptr<Statement> parseDereferenceAssignment();
-
+  // Parsing heap statements
   std::unique_ptr<Statement> parseHeapStatement();
-
   std::unique_ptr<Statement> parseDHeapStatement();
-
+  // Parsing allocator statement
   std::unique_ptr<Statement> parseAllocatorStatement();
-
+  // Parsing field assignment such as b.item=10
   std::unique_ptr<Statement> parseFieldAssignment();
-
+  // Parsing reference and pointer statement
   std::unique_ptr<Statement> parseReferenceStatement();
-
   std::unique_ptr<Statement> parsePointerStatement();
-
+  // Parsing seal statement
   std::unique_ptr<Statement> parseSealStatement();
-
   // Shout statement parser
   std::unique_ptr<Statement> parseShoutStatement();
 
   std::unique_ptr<Statement> parseSelfAssignment();
-
   // Identifer starting statements function
   std::unique_ptr<Statement> parseIdentifierStatement();
-
   // Parsing if statement
   std::unique_ptr<Statement> parseIfStatement();
-
   // Parsing elif statement
   std::unique_ptr<Statement> parseElifStatement();
-
   // Parsing switch statement
   std::unique_ptr<Statement> parseSwitchStatement();
-
   // Parsing enum member Node
   std::unique_ptr<EnumMember> parseEnumMember();
 
@@ -350,12 +337,13 @@ private:
   // Sizeof
   std::unique_ptr<Expression> parseSizeOfExpression();
 
+  // Cast and bitcast expression
+  std::unique_ptr<Expression> parseCastExpression();
+  std::unique_ptr<Expression> parseBitcastExpression();
   // Array literal
   std::unique_ptr<Expression> parseArrayLiteral();
-
   // Array type parse function
   std::unique_ptr<Expression> parseArrayType();
-
   // Call expression parse function
   std::unique_ptr<Expression>
   parseCallExpression(std::unique_ptr<Expression> left);
