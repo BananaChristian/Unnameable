@@ -157,6 +157,9 @@ private:
   llvm::Value *generateMethodCallExpression(Node *node);
   llvm::Value *generateArraySubscriptExpression(Node *node);
 
+  llvm::Value *generateCastExpression(Node *node);
+  llvm::Value *generateBitcastExpression(Node *node);
+
   // GENERATOR FUNCTIONS FOR ADRRESSES(L VALUES)
   llvm::Value *generateSelfAddress(Node *node);
   llvm::Value *generateCallAddress(Node *node);
@@ -185,6 +188,7 @@ private:
   bool isIntegerType(DataType dt);
   bool isSignedInteger(DataType dt);
   bool currentBlockIsTerminated();
+  bool isUnsigned(const ResolvedType &type);
   unsigned getIntegerBitWidth(DataType dt);
 
   void finalizeTypeBody(const std::string &typeName,

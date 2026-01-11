@@ -397,6 +397,10 @@ private:
   // Walking generics
   void walkGenericStatement(Node *node);
   void walkInstantiateStatement(Node *node);
+  
+  //Walking casts
+  void walkCastExpression(Node *node);
+  void walkBitcastExpression(Node *node);
 
   void walkSealStatement(Node *node);
 

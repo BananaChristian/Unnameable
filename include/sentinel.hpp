@@ -37,6 +37,8 @@ private:
   void checkInfixExpression(Node *node);
   void checkPrefixExpression(Node *node);
   void checkPostfixExpression(Node *node);
+  void checkCastExpression(Node *node);
+  void checkBitcastExpression(Node *node);
   void checkRecordStatement(Node *node);
   void checkComponentStatement(Node *node);
   void checkFieldAssignment(Node *node);
