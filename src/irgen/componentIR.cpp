@@ -244,12 +244,16 @@ void IRGenerator::generateComponentFunctionStatement(
     if (exprIt == semantics.metaData.end())
       throw std::runtime_error("Missing metadata for component function");
     if (exprIt->second->hasError)
-      throw std::runtime_error("Semantic error in function: " +
+      throw std::runtime_error("Error in function: " +
                                expr->func_key.TokenLiteral);
 
     isGlobalScope = false;
-
+    auto funcSym = exprIt->second;
     funcName = compName + "_" + expr->func_key.TokenLiteral;
+
+    llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
+    if (funcSym->isExportable)
+      linkage = llvm::Function::ExternalLinkage;
 
     // Collect parameter types (first is %this)
     llvm::Type *thisPtrType = llvmCustomTypes[compName]->getPointerTo();
@@ -271,8 +275,7 @@ void IRGenerator::generateComponentFunctionStatement(
     // Create or fetch function
     llvm::Function *fn = module->getFunction(funcName);
     if (!fn)
-      fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage,
-                                  funcName, module.get());
+      fn = llvm::Function::Create(fnType, linkage, funcName, module.get());
 
     currentFunction = fn;
     llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
@@ -602,15 +605,19 @@ void IRGenerator::generateSealStatement(Node *node) {
   if (sealSym->hasError)
     throw std::runtime_error("Semantic error detected");
 
+  auto block = dynamic_cast<BlockStatement *>(sealStmt->block.get());
   // Call the generator on the functions themselves
-  generateStatement(sealStmt->block.get());
+  for (const auto &stmt : block->statements) {
+    std::cout << "Looping through seal stmts :" + stmt->toString() << "\n";
+    generateStatement(stmt.get());
+  }
 }
 
-void IRGenerator::generateQualifyStatement(Node *node) {
-  auto qualifyStmt = dynamic_cast<QualifyStatement *>(node);
+  void IRGenerator::generateQualifyStatement(Node * node) {
+    auto qualifyStmt = dynamic_cast<QualifyStatement *>(node);
 
-  if (!qualifyStmt)
-    return;
+    if (!qualifyStmt)
+      return;
 
-  mainMarker = true;
-}
+    mainMarker = true;
+  }

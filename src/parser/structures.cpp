@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "parser.hpp"
+#include "token.hpp"
 
 //_____________Allocator statement_________________
 std::unique_ptr<Statement> Parser::parseAllocatorStatement() {
@@ -23,6 +24,12 @@ std::unique_ptr<Statement> Parser::parseSealStatement() {
   advance();
 
   std::unique_ptr<Expression> sealIdent = parseIdentifier();
+
+  if (currentToken().type != TokenType::LBRACE) {
+    logError("Expected { but got '" + currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
+
   std::unique_ptr<Statement> block = parseBlockStatement();
 
   return std::make_unique<SealStatement>(

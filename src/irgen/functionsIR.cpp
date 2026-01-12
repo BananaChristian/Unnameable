@@ -1,4 +1,5 @@
 #include "irgen.hpp"
+#include <llvm-18/llvm/IR/Function.h>
 
 void IRGenerator::generateFunctionStatement(Node *node) {
   auto fnStmt = dynamic_cast<FunctionStatement *>(node);
@@ -56,16 +57,16 @@ void IRGenerator::generateFunctionDeclaration(Node *node) {
 
   auto sym = declrIt->second;
   if (sym->hasError)
-    throw std::runtime_error("Semantic error detected");
+    throw std::runtime_error("Error detected");
 
   std::vector<llvm::Type *> paramTypes;
   for (const auto &param : fnDeclr->parameters) {
-    auto it = semantics.metaData.find(param.get());
-    if (it == semantics.metaData.end()) {
+    auto paramIt = semantics.metaData.find(param.get());
+    if (paramIt == semantics.metaData.end()) {
       throw std::runtime_error(
           "Missing function declaration parameter meta data");
     }
-    paramTypes.push_back(getLLVMType(it->second->type));
+    paramTypes.push_back(getLLVMType(paramIt->second->type));
   }
   auto retType = declrIt->second->returnType;
   llvm::FunctionType *fnType =
@@ -87,11 +88,12 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
     throw std::runtime_error("Function expression does not exist");
   }
   if (funcIt->second->hasError) {
-    throw std::runtime_error("Semantic error detected");
+    throw std::runtime_error("Error detected");
   }
 
   // Getting the function signature
   auto fnName = fnExpr->func_key.TokenLiteral;
+  auto funcSym = funcIt->second;
 
   isGlobalScope = false;
 
@@ -100,16 +102,24 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
 
   for (auto &p : fnExpr->call) {
     // Getting the data type to push it into getLLVMType
-    auto it = semantics.metaData.find(p.get());
-    if (it == semantics.metaData.end()) {
+    auto paramIt = semantics.metaData.find(p.get());
+    if (paramIt == semantics.metaData.end()) {
       throw std::runtime_error("Missing parameter meta data");
     }
-    it->second->llvmType = getLLVMType(it->second->type);
-    llvmParamTypes.push_back(getLLVMType(it->second->type));
+    paramIt->second->llvmType = getLLVMType(paramIt->second->type);
+    llvmParamTypes.push_back(getLLVMType(paramIt->second->type));
   }
 
   // Getting the function return type
   auto fnRetType = fnExpr->return_type.get();
+
+  // Get the linkage type(internal by default)
+  llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
+
+  // If it is the main function or a function marked as exportable make it
+  // public
+  if (fnName == "main" || funcSym->isExportable)
+    linkage = llvm::Function::ExternalLinkage;
 
   auto retType = semantics.inferNodeDataType(fnRetType);
   llvm::FunctionType *funcType =
@@ -119,8 +129,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   llvm::Function *fn = module->getFunction(fnName);
   // If the function declaration exists
   if (!fn) {
-    fn = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
-                                fnName, module.get());
+    fn = llvm::Function::Create(funcType, linkage, fnName, module.get());
   } else {
     // If the function was declared checking if the return types match
     if (fn->getFunctionType() != funcType) {
@@ -209,7 +218,7 @@ void IRGenerator::generateReturnStatement(Node *node) {
   llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
   llvm::Type *retTy = currentFunction->getReturnType();
 
-  //Handle Void Returns
+  // Handle Void Returns
   if (retTy->isVoidTy()) {
     funcBuilder.CreateRetVoid();
     return;
@@ -230,7 +239,6 @@ void IRGenerator::generateReturnStatement(Node *node) {
       // Check if we are returning 'null' literal
       bool isNullLiteral =
           (dynamic_cast<NullLiteral *>(retStmt->return_value.get()) != nullptr);
-
 
       llvm::Value *presentFlag = llvm::ConstantInt::get(
           llvm::Type::getInt1Ty(context), isNullLiteral ? 0 : 1);

@@ -1051,6 +1051,12 @@ void Semantics::walkSealStatement(Node *node) {
   insideSeal = true;
   // Only authorise function statements inside the guard block
   auto blockStmt = dynamic_cast<BlockStatement *>(sealStmt->block.get());
+  if (!blockStmt) {
+    logSemanticErrors("Seal '" + sealName + "' has an invalid or missing body",
+                      nameLine, nameCol);
+    return;
+  }
+  
   for (const auto &stmt : blockStmt->statements) {
     auto funcStmt = dynamic_cast<FunctionStatement *>(stmt.get());
     if (!funcStmt) {
