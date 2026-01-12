@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "parser.hpp"
 
 //_____________Allocator statement_________________
@@ -680,6 +681,8 @@ std::unique_ptr<Statement> Parser::parseExportStatement() {
     enumStmt->isExportable = true;
   } else if (auto allocStmt = dynamic_cast<AllocatorStatement *>(stmt.get())) {
     allocStmt->isExportable = true;
+  } else if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
+    letStmt->isExportable = true;
   } else if (auto sealStmt = dynamic_cast<SealStatement *>(stmt.get())) {
     sealStmt->isExportable = true;
   } else {

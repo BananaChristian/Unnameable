@@ -397,8 +397,8 @@ private:
   // Walking generics
   void walkGenericStatement(Node *node);
   void walkInstantiateStatement(Node *node);
-  
-  //Walking casts
+
+  // Walking casts
   void walkCastExpression(Node *node);
   void walkBitcastExpression(Node *node);
 
@@ -474,6 +474,7 @@ private:
   bool isString(const ResolvedType &t);
   bool isChar(const ResolvedType &t);
   bool isLiteral(Node *node);
+  bool isConstLiteral(Node *node);
   void popScope();
   int64_t evaluateArrayLengthConstant(Node *node);
   void logSemanticErrors(const std::string &message, int tokenLine,

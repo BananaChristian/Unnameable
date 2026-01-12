@@ -88,6 +88,15 @@ isize y=18iz
 
 ```
 
+## Global scope and visibility rules
+Unnameable is very strict about what can be in global scope for cases like a normal variable the compiler will force you to make it a constant otherwise it shall not be allowed in the global scope.
+By default variables in the global scope are private to prevent name collisions and issues like that to make a global variable public u must use the `export` keyword this will make that variable global and as the flag implies mark it for export by the export system 
+But note that it must strictly be in the global scope and also must be a constant otherwise u will be blocked from marking it for export
+```
+const bool PRIVATE_VAL = true #This value is private by default so its local to that file only
+export const i32 PUBLIC_VAL = 200 #This value is public 
+```
+
 ## Functions
 
 Functions in unnameable are written using the func keyword,the function name and the optional parameters and the return type

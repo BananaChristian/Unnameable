@@ -1,6 +1,7 @@
 #include "parser.hpp"
 
 std::unique_ptr<Statement> Parser::parseLetStatement() {
+  bool isExportable = false;
   bool isHeap = false;
   bool isDheap = false;
   Mutability mutability = Mutability::IMMUTABLE;
@@ -43,9 +44,9 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
     std::cout << "[DEBUG] Encountered semicolon token" << "\n";
   }
 
-  return std::make_unique<LetStatement>(isHeap, isDheap, mutability,
-                                        std::move(type), ident_token,
-                                        assign_token, std::move(value));
+  return std::make_unique<LetStatement>(
+      isExportable, isHeap, isDheap, mutability, std::move(type), ident_token,
+      assign_token, std::move(value));
 }
 
 std::unique_ptr<Statement> Parser::parseMutStatement() {
@@ -370,5 +371,3 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
                                             std::move(type), std::move(ident),
                                             std::move(value));
 }
-
-

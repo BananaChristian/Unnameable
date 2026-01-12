@@ -26,7 +26,7 @@ void IRGenerator::generateLetStatement(Node *node) {
 
   auto sym = metaIt->second;
   if (sym->hasError)
-    throw std::runtime_error("Semantic error detected for '" + letName + "'");
+    throw std::runtime_error("Error detected for '" + letName + "'");
 
   llvm::StructType *structTy = nullptr;
   bool isHeap = letStmt->isHeap;
@@ -463,50 +463,35 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName,
                                           Expression *value) {
   llvm::Type *varType = getLLVMType(sym->type);
-  auto generateConstantLiteral = [&](ResolvedType type) -> llvm::Constant * {
-    llvm::Value *val = generateExpression(value);
-    if (!val)
-      throw std::runtime_error(
-          "Null value returned from expression during global scalar init");
-
-    switch (type.kind) {
-    case DataType::I32: {
-      if (auto constInt = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-        return llvm::ConstantInt::get(varType, constInt->getValue());
-      } else {
-        throw std::runtime_error("Expected ConstantInt for INTEGER literal");
-      }
-    }
-
-    case DataType::STRING: {
-      if (auto constStr = llvm::dyn_cast<llvm::Constant>(val)) {
-        return constStr;
-      } else {
-        throw std::runtime_error("Expected  for STRING literal");
-      }
-    }
-
-    default:
-      throw std::runtime_error(
-          "Unsupported literal type in global scalar initialization");
-    }
-  };
 
   llvm::Constant *init = nullptr;
-  if (sym->isInitialized) {
-    init = generateConstantLiteral(sym->type);
+  if (sym->isInitialized && value) {
+    llvm::Value *val = generateExpression(value);
+    init = llvm::dyn_cast<llvm::Constant>(val);
+
+    if (!init) {
+      throw std::runtime_error(
+          "Global '" + letName +
+          "' must be initialized with a constant expression.");
+    }
   } else {
     init = llvm::Constant::getNullValue(varType);
   }
 
-  bool isConst = sym->isConstant;
-  auto *g = new llvm::GlobalVariable(*module, varType, isConst,
-                                     llvm::GlobalValue::ExternalLinkage, init,
-                                     letName);
+  llvm::GlobalValue::LinkageTypes linkage =
+      sym->isExportable ? llvm::GlobalValue::ExternalLinkage
+                        : llvm::GlobalValue::InternalLinkage;
+
+  auto *g = new llvm::GlobalVariable(
+      *module, varType,
+      sym->isConstant, // should be true unless semantics has screwed me
+      linkage, init, letName);
+
   sym->llvmValue = g;
   sym->llvmType = varType;
+
   std::cout << "[DEBUG] Created global scalar '" << letName
-            << "' as GlobalVariable\n";
+            << "' (Exported: " << (sym->isExportable ? "Yes" : "No") << ")\n";
 }
 
 void IRGenerator::generateGlobalComponentHeapInit(

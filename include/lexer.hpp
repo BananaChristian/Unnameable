@@ -100,6 +100,7 @@ class Lexer {
       {"cast", TokenType::CAST},
       {"bitcast", TokenType::BITCAST},
 
+      {"export", TokenType::EXPORT},
       {"import", TokenType::IMPORT},
       {"merge", TokenType::MERGE},
       {"link", TokenType::LINK},

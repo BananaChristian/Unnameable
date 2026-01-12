@@ -1,6 +1,5 @@
 #include "ast.hpp"
 #include "semantics.hpp"
-#include <memory>
 
 //_____________Array Statement__________________
 void Semantics::walkArrayStatement(Node *node) {
@@ -385,11 +384,11 @@ void Semantics::walkLetStatement(Node *node) {
   bool isDefinitelyNull = false;
   bool isInitialized = false;
   bool hasError = false;
+  bool isExportable = letStmt->isExportable;
   int popCount = 0;
 
   // Checking if the name is being reused
   auto letName = letStmt->ident_token.TokenLiteral;
-  std::cout << "LET STATEMENT NAME: " << letName << "\n";
 
   auto existingSym = resolveSymbolInfo(letName);
   auto localSym = lookUpInCurrentScope(letName);
@@ -440,35 +439,67 @@ void Semantics::walkLetStatement(Node *node) {
   bool isMutable = (letStmt->mutability == Mutability::MUTABLE);
   bool isConstant = (letStmt->mutability == Mutability::CONSTANT);
 
-  if (isConstant && !letStmtValue) {
-    logSemanticErrors("Need to assign a value to a constant variable '" +
-                          letStmt->ident_token.TokenLiteral + "'",
+  // Export check
+  if (isExportable && !isGlobalScope()) {
+    logSemanticErrors("The 'export' keyword can only be used on global "
+                      "constant declarations. "
+                      "Local variable '" +
+                          letName + "' cannot be exported.",
                       letStmt->ident_token.line, letStmt->ident_token.column);
     hasError = true;
   }
 
-  // --- Resolve constant value if present ---
-  int64_t constInt = 0;
-  if (isConstant && letStmtValue) {
-    if (auto intLit = dynamic_cast<I32Literal *>(letStmtValue)) {
-      constInt = std::stoll(intLit->i32_token.TokenLiteral);
-    } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
-      auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
-      if (!identSym) {
-        logSemanticErrors("Use of undeclared variable '" +
-                              ident->identifier.TokenLiteral +
-                              "' in constant let statement",
-                          ident->expression.line, ident->expression.column);
-        hasError = true;
-      } else if (!identSym->isConstant) {
-        logSemanticErrors("Cannot use non-constant variable '" +
-                              ident->identifier.TokenLiteral +
-                              "' in constant let statement",
-                          ident->expression.line, ident->expression.column);
-        hasError = true;
-      } else {
-        constInt = identSym->constIntVal;
-      }
+  if (isExportable && !isConstant) {
+    logSemanticErrors("The 'export' keyword can only be used on global "
+                      "constant declarations. "
+                      "Non const variable '" +
+                          letName + "' cannot be exported.",
+                      letStmt->ident_token.line, letStmt->ident_token.column);
+    hasError = true;
+  }
+
+  // Constant declaration checks
+  if (isConstant && !letStmtValue) {
+    logSemanticErrors("Need to assign a value to a constant variable '" +
+                          letName + "'",
+                      letStmt->ident_token.line, letStmt->ident_token.column);
+    hasError = true;
+  }
+
+  if (isConstant && !isConstLiteral(letStmtValue)) {
+    logSemanticErrors("Constant variable'" + letName +
+                          "' must be initialized with a raw literal, not an "
+                          "runtime expression",
+                      letStmtValue->expression.line,
+                      letStmtValue->expression.column);
+    hasError = true;
+  }
+
+  if (isConstant && isNullable) {
+    logSemanticErrors("Constant variable '" + letName +
+                          "' cannot be nullable. " +
+                          "Constants must hold a concrete literal value.",
+                      letStmt->ident_token.line, letStmt->ident_token.column);
+    hasError = true;
+  }
+
+  if (isGlobalScope()) {
+    // Force Const for stack variables
+    if (!isConstant && !isDheap && !isHeap) {
+      logSemanticErrors("Global stack variable '" + letName +
+                            "' must be declared as 'const'",
+                        letStmt->ident_token.line, letStmt->ident_token.column);
+      hasError = true;
+    }
+
+    // Strict Literal Check for Const
+    if (isConstant && !isConstLiteral(letStmtValue)) {
+      logSemanticErrors("Global constant '" + letName +
+                            "' must be initialized with a raw literal, not a "
+                            " runtime expression",
+                        letStmtValue->expression.line,
+                        letStmtValue->expression.column);
+      hasError = true;
     }
   }
 
@@ -506,12 +537,19 @@ void Semantics::walkLetStatement(Node *node) {
       }
     } else {
       ResolvedType valueType = inferNodeDataType(letStmtValue);
-      if (!isTypeCompatible(declaredType, valueType)) {
-        logSemanticErrors("Type mismatch: cannot assign " +
-                              valueType.resolvedName + " to " +
-                              declaredType.resolvedName,
-                          type->data_token.line, type->data_token.column);
-        hasError = true;
+      if (type->data_token.type == TokenType::AUTO) {
+        // If it's auto, the expected type BECOMES the value type
+        expectedType = valueType;
+        declaredType = valueType;
+      } else {
+        declaredType = expectedType;
+        if (!isTypeCompatible(declaredType, valueType)) {
+          logSemanticErrors("Type mismatch: cannot assign " +
+                                valueType.resolvedName + " to " +
+                                declaredType.resolvedName,
+                            type->data_token.line, type->data_token.column);
+          hasError = true;
+        }
       }
     }
   } else {
@@ -547,6 +585,7 @@ void Semantics::walkLetStatement(Node *node) {
     hasError = true;
   }
 
+  // Heap and Dheap checks
   if (isHeap || isDheap) {
     if (!isInitialized) {
       logSemanticErrors("Cannot promote uninitialized variable '" +
@@ -590,7 +629,6 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->isNullable = isNullable;
   letInfo->isMutable = isMutable;
   letInfo->isConstant = isConstant;
-  letInfo->constIntVal = constInt;
   letInfo->isInitialized = isInitialized;
   letInfo->isDefinitelyNull = isDefinitelyNull;
   letInfo->isHeap = isHeap;
@@ -598,6 +636,7 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->popCount = popCount;
   letInfo->lastUseNode = letStmt;
   letInfo->storage = letStorageType;
+  letInfo->isExportable = isExportable;
   letInfo->hasError = hasError;
   if (!loopContext.empty() && loopContext.back()) {
     letInfo->needsPostLoopFree = true;

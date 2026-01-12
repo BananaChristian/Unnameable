@@ -1757,6 +1757,45 @@ bool Semantics::isLiteral(Node *node) {
     return false;
 }
 
+bool Semantics::isConstLiteral(Node *node) {
+  // Integer literals
+  auto i8Lit = dynamic_cast<I8Literal *>(node);
+  auto u8Lit = dynamic_cast<U8Literal *>(node);
+  auto i16Lit = dynamic_cast<I16Literal *>(node);
+  auto u16Lit = dynamic_cast<U16Literal *>(node);
+  auto i32Lit = dynamic_cast<I32Literal *>(node);
+  auto u32Lit = dynamic_cast<U32Literal *>(node);
+  auto i64Lit = dynamic_cast<I64Literal *>(node);
+  auto u64Lit = dynamic_cast<U64Literal *>(node);
+  auto i128Lit = dynamic_cast<I128Literal *>(node);
+  auto u128Lit = dynamic_cast<U128Literal *>(node);
+  bool isIntLit = (i8Lit || u8Lit || i16Lit || u16Lit || i32Lit || u32Lit ||
+                   i64Lit || u64Lit || i128Lit || u128Lit);
+  
+  
+  // Float and double literals;
+  auto fltLit = dynamic_cast<FloatLiteral *>(node);
+  auto dbLit = dynamic_cast<DoubleLiteral *>(node);
+  bool isDecLit = (fltLit || dbLit);
+
+  // Char literal
+  auto char8Lit = dynamic_cast<Char8Literal *>(node);
+  auto char16Lit = dynamic_cast<Char16Literal *>(node);
+  auto char32Lit = dynamic_cast<Char32Literal *>(node);
+  bool isCharLit = (char8Lit || char16Lit || char32Lit);
+
+  // Boolean literal
+  auto boolLit = dynamic_cast<BooleanLiteral *>(node);
+
+  // String literal
+  auto strLit = dynamic_cast<StringLiteral *>(node);
+
+  if (isIntLit || isDecLit || isCharLit || boolLit || strLit)
+    return true;
+  else
+    return false;
+}
+
 ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
   std::cout << "INSIDE TYPE RESOLVER\n";
   TokenType type = token.type;
