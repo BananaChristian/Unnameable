@@ -323,9 +323,12 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
     }
     std::unique_ptr<Statement> stmt = nullptr;
 
-    if (isIntegerType(currentToken().type)) {
+    if (isBasicType(currentToken().type) ||
+        currentToken().type == TokenType::IDENTIFIER ||
+        currentToken().type == TokenType::AUTO) {
       stmt = parseLetStatement();
       privateData.push_back(std::move(stmt));
+      continue;
     }
 
     switch (currentToken().type) {
@@ -350,40 +353,6 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       stmt = parseConstStatement();
       privateData.push_back(std::move(stmt));
       break;
-    case TokenType::STRING_KEYWORD:
-    case TokenType::FLOAT_KEYWORD:
-    case TokenType::BOOL_KEYWORD:
-    case TokenType::CHAR8_KEYWORD:
-    case TokenType::CHAR16_KEYWORD:
-    case TokenType::CHAR32_KEYWORD:
-      stmt = parseLetStatement();
-      privateData.push_back(std::move(stmt));
-      break;
-    case TokenType::IDENTIFIER: {
-      Token t1 = currentToken();
-      Token t2 = nextToken();
-      Token t3 = peekToken(2);
-
-      // Case: Type Name ;
-      // Case: Type Name = initializer ;
-      if (t2.type == TokenType::IDENTIFIER &&
-          (t3.type == TokenType::SEMICOLON || t3.type == TokenType::ASSIGN)) {
-        stmt = parseLetStatement();
-        privateData.push_back(std::move(stmt));
-        break;
-      }
-
-      stmt = parseAssignmentStatement();
-      privateData.push_back(std::move(stmt));
-      break;
-    }
-
-    case TokenType::SELF: {
-      // self.something = expr;
-      stmt = parseAssignmentStatement();
-      privateData.push_back(std::move(stmt));
-      break;
-    }
     case TokenType::EXPORT: {
       auto exportStmt = parseExportStatement();
       auto fnStmt = dynamic_cast<FunctionStatement *>(exportStmt.get());
@@ -413,8 +382,8 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       break;
 
     default:
-      logError("Unknown statement inside component block: " +
-               currentToken().TokenLiteral);
+      logError("Invalid statement encountered inside component '" +
+               currentToken().TokenLiteral + "'");
       advance();
       continue;
     }

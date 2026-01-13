@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "irgen.hpp"
+#include <llvm-18/llvm/IR/Attributes.h>
 //______________DYNAMIC HEAP WRAP____________________
 void IRGenerator::generateDheapStatement(Node *node) {
   auto dheapStmt = dynamic_cast<DheapStatement *>(node);
@@ -94,35 +95,13 @@ void IRGenerator::generateLetStatement(Node *node) {
 
     // scalar / normal type
     llvm::Type *varTy = getLLVMType(sym->type);
-
-    // --- TELEMETRY START ---
-    std::cout << "\n[!!!] DEBUGGING LET: " << letName << "\n";
-    std::cout << "  Semantic Type: " << sym->type.resolvedName << "\n";
-    std::cout << "  isNull Flag: " << (sym->type.isNull ? "TRUE" : "FALSE")
-              << "\n";
-
-    std::string typeStr;
-    llvm::raw_string_ostream rso(typeStr);
-    varTy->print(rso);
-    std::cout << "  LLVM varTy: " << rso.str() << "\n";
-
-    if (initVal) {
-      std::string valStr;
-      llvm::raw_string_ostream rso2(valStr);
-      initVal->getType()->print(rso2);
-      std::cout << "  LLVM initVal Type: " << rso2.str() << "\n";
-    }
-    std::cout << "[!!!] END TELEMETRY\n"
-              << "\n";
-    // --- TELEMETRY END ---
-    if (varTy->isStructTy() &&
-        llvm::cast<llvm::StructType>(varTy)->isOpaque()) {
-      throw std::runtime_error(
-          "Logical Error: Trying to allocate Opaque type '" +
-          sym->type.resolvedName + "'. Did you forget to set the body?");
-    }
+    llvm::Align varAlign = layout->getABITypeAlign(varTy);
 
     storage = funcBuilder.CreateAlloca(varTy, nullptr, letName);
+
+    if (auto *allocaInst = llvm::dyn_cast<llvm::AllocaInst>(storage)) {
+      allocaInst->setAlignment(varAlign);
+    }
 
     if (initVal) {
       // If the variable is Nullable ({i1, i32}) but the value is just a scalar
@@ -140,10 +119,13 @@ void IRGenerator::generateLetStatement(Node *node) {
         initVal = boxed;
       }
 
-      funcBuilder.CreateStore(initVal, storage);
+      auto *storeInst = funcBuilder.CreateStore(initVal, storage);
+      storeInst->setAlignment(varAlign);
     } else {
       // If no value, initialize the whole struct to zero (flag=0, value=0)
-      funcBuilder.CreateStore(llvm::Constant::getNullValue(varTy), storage);
+      auto *storeInst =
+          funcBuilder.CreateStore(llvm::Constant::getNullValue(varTy), storage);
+      storeInst->setAlignment(varAlign);
     }
   }
 
@@ -195,8 +177,7 @@ void IRGenerator::generateArrayStatement(Node *node) {
   auto type = sym->type;
   llvm::Type *elemTy = getLLVMType(type);
 
-  llvm::DataLayout DL(module.get());
-  uint64_t baseSize = DL.getTypeAllocSize(elemTy);
+  uint64_t baseSize = layout->getTypeAllocSize(elemTy);
 
   llvm::Value *runtimeByteSize = funcBuilder.getInt64(baseSize);
 
@@ -240,14 +221,15 @@ void IRGenerator::generateArrayStatement(Node *node) {
     llvm::Value *SrcPtr =
         funcBuilder.CreateBitCast(globalInit, funcBuilder.getPtrTy());
 
-    // 5. Blast the data into the allocated space
-    funcBuilder.CreateMemCpy(
-        DstPtr,              // Destination
-        llvm::MaybeAlign(4), // Match our allocation alignment
-        SrcPtr,              // Source
-        llvm::MaybeAlign(4), // Global alignment
-        runtimeByteSize,     // Calculated size
-        false                // Not volatile
+    llvm::Align elemAlign = layout->getABITypeAlign(elemTy);
+
+    // Blast the data into the allocated space
+    funcBuilder.CreateMemCpy(DstPtr,          // Destination
+                             elemAlign,       // Match our allocation alignment
+                             SrcPtr,          // Source
+                             elemAlign,       // Global alignment
+                             runtimeByteSize, // Calculated size
+                             false            // Not volatile
     );
   } else if (!arrStmt->lengths.empty()) {
   } else {

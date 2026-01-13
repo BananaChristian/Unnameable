@@ -23,7 +23,7 @@ IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     : semantics(semantics), totalHeapSize(totalHeap), context(),
       globalBuilder(context), funcBuilder(context),
       module(std::make_unique<llvm::Module>("unnameable", context)) {
-  this->layout = &module->getDataLayout();
+  setupTargetLayout();
 
   registerGeneratorFunctions();
   registerExpressionGeneratorFunctions();
@@ -1777,11 +1777,29 @@ void IRGenerator::generateSageDestroyCall() {
       true; // Toggle this to true to mark that sage destroy was called
 }
 
-bool IRGenerator::emitObjectFile(const std::string &filename) {
-  // Initialization
+void IRGenerator::setupTargetLayout() {
   llvm::InitializeAllTargetInfos();
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
+
+  std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
+  module->setTargetTriple(targetTripleStr);
+
+  std::string error;
+  auto target = llvm::TargetRegistry::lookupTarget(targetTripleStr, error);
+  if (!target)
+    throw std::runtime_error("Target not found");
+
+  llvm::TargetOptions opt;
+  auto targetMachine = target->createTargetMachine(targetTripleStr, "generic",
+                                                   "", opt, llvm::Reloc::PIC_);
+
+  module->setDataLayout(targetMachine->createDataLayout());
+  this->layout = &module->getDataLayout();
+}
+
+bool IRGenerator::emitObjectFile(const std::string &filename) {
+  // Initialization
   llvm::InitializeAllAsmParsers();
   llvm::InitializeAllAsmPrinters();
 
@@ -1810,8 +1828,6 @@ bool IRGenerator::emitObjectFile(const std::string &filename) {
     llvm::errs() << "Failed to create TargetMachine\n";
     return false;
   }
-
-  module->setDataLayout(targetMachine->createDataLayout());
 
   std::error_code EC;
 

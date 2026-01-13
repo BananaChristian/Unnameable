@@ -75,6 +75,7 @@ private:
   bool mainMarker = false;
 
   llvm::BasicBlock *heapInitFnEntry = nullptr;
+  void setupTargetLayout();
 
   // GENERATOR FUNCTIONS FOR STATEMENTS
   void generateLetStatement(Node *node);

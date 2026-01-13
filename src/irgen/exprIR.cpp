@@ -196,14 +196,14 @@ llvm::Value *IRGenerator::generateU128Literal(Node *node) {
 
 llvm::Value *IRGenerator::generateISIZELiteral(Node *node) {
   auto lit = dynamic_cast<ISIZELiteral *>(node);
-  unsigned int ptrWidth = module->getDataLayout().getPointerSizeInBits();
+  unsigned int ptrWidth = layout->getPointerSizeInBits();
 
   return generateIntegerLiteral(lit->isize_token.TokenLiteral, ptrWidth, true);
 }
 
 llvm::Value *IRGenerator::generateUSIZELiteral(Node *node) {
   auto lit = dynamic_cast<USIZELiteral *>(node);
-  unsigned int ptrWidth = module->getDataLayout().getPointerSizeInBits();
+  unsigned int ptrWidth = layout->getPointerSizeInBits();
 
   return generateIntegerLiteral(lit->usize_token.TokenLiteral, ptrWidth, false);
 }
