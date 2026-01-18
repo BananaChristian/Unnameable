@@ -761,8 +761,11 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
       return {DataType::UNKNOWN, "unknown"};
     }
   }
-
-  auto infixType = resultOfBinary(operatorType, leftType, rightType);
+  
+  ResolvedType peeledLeft = peelRef(leftType);
+  ResolvedType peeledRight = peelRef(rightType);
+  
+  auto infixType = resultOfBinary(operatorType, peeledLeft, peeledRight);
   if (infixType.kind == DataType::UNKNOWN) {
     logSemanticErrors("Infix type issue between '" + leftType.resolvedName +
                           "' and '" + rightType.resolvedName + "'",
@@ -1506,7 +1509,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
   for (size_t i = 0; i < callExpr->parameters.size(); ++i) {
     auto &param = callExpr->parameters[i];
     const auto &expectedType =
-        memFuncInfo.paramTypes[i]; // pair<ResolvedType, string>
+        memFuncInfo.paramTypes[i].first; // pair<ResolvedType, string>
     ResolvedType argType = inferNodeDataType(param.get());
 
     if (argType.kind == DataType::UNKNOWN) {
@@ -1519,23 +1522,23 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
 
     // --- Nullability rule ---
     if (auto nullLit = dynamic_cast<NullLiteral *>(param.get())) {
-      if (expectedType.first.isNull) {
-        argType = expectedType.first; // promote null → nullable type
+      if (expectedType.isNull) {
+        argType = expectedType; // promote null → nullable type
       } else {
         logSemanticErrors("Cannot pass null to non-nullable parameter " +
                               std::to_string(i + 1) + ": expected " +
-                              expectedType.first.resolvedName,
+                              expectedType.resolvedName,
                           param->expression.line, param->expression.column);
         allGood = false;
         continue;
       }
     }
 
-    if (!isTypeCompatible(expectedType.first,argType)) {
+    if (!isTypeCompatible(expectedType, argType)) {
       logSemanticErrors("Call for '" + funcName +
                             "'has a type mismatch in argument " +
                             std::to_string(i + 1) + ", expected '" +
-                            expectedType.first.resolvedName + "' but got '" +
+                            expectedType.resolvedName + "' but got '" +
                             argType.resolvedName + "'",
                         param->expression.line, param->expression.column);
       allGood = false;
@@ -1565,8 +1568,30 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
   for (size_t i = 0; i < callExpr->parameters.size(); ++i) {
     auto &param = callExpr->parameters[i];
     const auto &expectedType =
-        funcInfo.paramTypes[i]; // pair<ResolvedType, string>
-    ResolvedType argType = metaData[param.get()]->type;
+        funcInfo.paramTypes[i].first; // pair<ResolvedType, string>
+    auto argInfo = metaData[param.get()];
+    if (!argInfo)
+      continue;
+
+    ResolvedType argType = argInfo->type;
+
+    bool isCompatible = isTypeCompatible(expectedType, argType);
+
+    // If the type is a reference
+    if (!isCompatible && expectedType.isRef && !argType.isRef) {
+      auto ident = dynamic_cast<Identifier *>(param.get());
+      auto deref = dynamic_cast<DereferenceExpression *>(param.get());
+
+      if (!(ident || deref)) {
+        logSemanticErrors("Cannot pass an expression to a reference parameter",
+                          param->expression.line, param->expression.column);
+        return false;
+      }
+
+      if (expectedType.kind == argType.kind) {
+        isCompatible = true;
+      }
+    }
 
     if (argType.kind == DataType::UNKNOWN) {
       logSemanticErrors("Could not infer type for argument " +
@@ -1578,23 +1603,23 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
 
     // --- Nullability rule ---
     if (auto nullLit = dynamic_cast<NullLiteral *>(param.get())) {
-      if (expectedType.first.isNull) {
-        argType = expectedType.first; // promote null → nullable type
+      if (expectedType.isNull) {
+        argType = expectedType; // promote null → nullable type
       } else {
         logSemanticErrors("Cannot pass null to non-nullable parameter " +
                               std::to_string(i + 1) + ": expected " +
-                              expectedType.first.resolvedName,
+                              expectedType.resolvedName,
                           param->expression.line, param->expression.column);
         allGood = false;
         continue;
       }
     }
 
-    if (!isTypeCompatible(expectedType.first,argType)) {
+    if (!isCompatible) {
       logSemanticErrors("Call for '" + funcName +
                             "'has a type mismatch in argument " +
                             std::to_string(i + 1) + ", expected '" +
-                            expectedType.first.resolvedName + "' but got '" +
+                            expectedType.resolvedName + "' but got '" +
                             argType.resolvedName + "'",
                         param->expression.line, param->expression.column);
       allGood = false;
@@ -1896,6 +1921,25 @@ std::string Semantics::stripPtrSuffix(const std::string &type) {
   return ptrName(type);
 }
 
+std::string Semantics::stripRefSuffix(const std::string &type) {
+  auto endsWith = [](const std::string &str,
+                     const std::string &suffix) -> bool {
+    if (str.length() < suffix.length())
+      return false;
+    return str.compare(str.length() - suffix.length(), suffix.length(),
+                       suffix) == 0;
+  };
+
+  auto refName = [&](std::string typeName) {
+    if (endsWith(typeName, "_ref"))
+      typeName = typeName.substr(0, typeName.size() - 4);
+
+    return typeName;
+  };
+
+  return refName(type);
+}
+
 ResolvedType Semantics::isPointerType(ResolvedType t) {
   // Inline lambda to check if a string ends with a suffix
   auto endsWith = [](const std::string &str,
@@ -1944,6 +1988,14 @@ ResolvedType Semantics::isRefType(ResolvedType t) {
   };
 
   return refType(t.kind, t.isRef, t.resolvedName);
+}
+
+ResolvedType Semantics::peelRef(ResolvedType t) {
+  if (t.isRef) {
+    t.isRef = false;
+    t.resolvedName = stripRefSuffix(t.resolvedName);
+  }
+  return t;
 }
 
 ResolvedType Semantics::makeArrayType(const ResolvedType &t,

@@ -340,7 +340,7 @@ void Semantics::walkRecordStatement(Node *node) {
 
   // Get block name
   std::string recordName = recordStmt->recordName->expression.TokenLiteral;
-
+  bool hasError=true;
   bool isExportable = recordStmt->isExportable;
 
   // Ensure name not already used
@@ -367,12 +367,23 @@ void Semantics::walkRecordStatement(Node *node) {
     auto refStmt = dynamic_cast<ReferenceStatement *>(field.get());
     auto arrStmt = dynamic_cast<ArrayStatement *>(field.get());
 
-    bool isDecl = letStmt || ptrStmt || refStmt || arrStmt;
+    // Special error handle in case a user tries to use a reference inside a
+    // record
+    if (refStmt) {
+      logSemanticErrors("Cannot use references inside record '" + recordName +
+                            "'",
+                        field->statement.line, field->statement.column);
+      hasError=true;
+      continue;
+    }
+
+    bool isDecl = letStmt || ptrStmt || arrStmt;
 
     // Double check incase the parser messed up and leaked wrong statements
     if (!isDecl) {
-      logSemanticErrors("Invalid statement inside a data block",
+      logSemanticErrors("Invalid statement inside record '" + recordName + "'",
                         field->statement.line, field->statement.column);
+      hasError=true;
       continue; // skip bad field but keep going
     }
 
@@ -407,6 +418,7 @@ void Semantics::walkRecordStatement(Node *node) {
       logSemanticErrors("Declaration statement '" + fieldName +
                             "' was not analyzed properly",
                         field->statement.line, field->statement.column);
+      hasError=true;
       continue;
     }
 
@@ -450,6 +462,7 @@ void Semantics::walkRecordStatement(Node *node) {
   recordInfo->isConstant = isBlockConstant;
   recordInfo->isExportable = isExportable;
   recordInfo->members = recordMembers;
+  recordInfo->hasError=true;
   recordInfo->isDataBlock = true;
 
   for (auto &kv : recordInfo->members) {

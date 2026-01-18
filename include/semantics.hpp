@@ -280,9 +280,11 @@ public:
   std::pair<std::string, std::string>
   splitScopedName(const std::string &fullName);
   std::string stripPtrSuffix(const std::string &typeName);
+  std::string stripRefSuffix(const std::string &typeName);
   std::string stripOptionalSuffix(const std::string &typeName);
   std::string extractIdentifierName(Node *node);
   std::string extractDeclarationName(Node *node);
+  ResolvedType peelRef(ResolvedType t);
   ArrayTypeInfo getArrayTypeInfo(Node *node);
 
 private:

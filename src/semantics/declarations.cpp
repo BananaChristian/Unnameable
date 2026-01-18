@@ -715,6 +715,7 @@ void Semantics::walkReferenceStatement(Node *node) {
   if (refereeType.isPointer) {
     logSemanticErrors("Cannot create references to pointers", line, column);
     hasError = true;
+    return;
   } else {
     // If the referee type isnt a pointer toggle the isRef flag to true
     // It is like type elevation after all we want to create a reference to

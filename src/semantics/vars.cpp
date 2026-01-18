@@ -520,6 +520,12 @@ void Semantics::walkDereferenceExpression(Node *node) {
     return;
   }
 
+  if (derefSym->hasError) {
+    logSemanticErrors(
+        "Cannot dereference erronious pointer '" + derefName + "'", line, col);
+    return;
+  }
+
   auto derefInfo = std::make_shared<SymbolInfo>();
 
   if (dynamic_cast<DereferenceExpression *>(innerNode)) {
@@ -783,7 +789,7 @@ void Semantics::walkAssignStatement(Node *node) {
   auto lhsType = symbol->type;
   if (symbol->isRef) // If the symbol is a reference strip it
   {
-    lhsType.isRef = false;
+    lhsType = peelRef(lhsType);
   }
 
   if (!isTypeCompatible(lhsType, rhsType)) {

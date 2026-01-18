@@ -9,7 +9,11 @@ void IRGenerator::generateRecordStatement(Node *node) {
   if (it == semantics.metaData.end())
     throw std::runtime_error("Missing record metaData");
 
+
   auto &meta = *it->second;
+  if(meta.hasError)
+        throw std::runtime_error("Error detected");
+  
   std::string blockName = meta.type.resolvedName;
 
   // Get the struct (Should already be created by declareCustomTypes)
