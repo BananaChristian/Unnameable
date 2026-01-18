@@ -202,6 +202,9 @@ private:
   llvm::GlobalVariable *
   createGlobalArrayConstant(llvm::Constant *constantArray);
 
+  std::vector<llvm::Value *>
+  prepareArguments(llvm::Function *func,
+                   const std::vector<std::unique_ptr<Expression>> &params);
   // For normal variables
   void generateGlobalHeapLet(LetStatement *letStmt,
                              std::shared_ptr<SymbolInfo> sym,

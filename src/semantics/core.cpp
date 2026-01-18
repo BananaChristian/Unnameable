@@ -150,8 +150,7 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(NewComponentExpression)] =
       &Semantics::walkNewComponentExpression;
   walkerFunctionsMap[typeid(SelfExpression)] = &Semantics::walkSelfExpression;
-  walkerFunctionsMap[typeid(EnumStatement)] =
-      &Semantics::walkEnumStatement;
+  walkerFunctionsMap[typeid(EnumStatement)] = &Semantics::walkEnumStatement;
   walkerFunctionsMap[typeid(InstanceExpression)] =
       &Semantics::walkInstanceExpression;
   walkerFunctionsMap[typeid(MethodCallExpression)] =
@@ -950,10 +949,8 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
         (leftType.kind == DataType::F64 && isInteger(rightType))) {
       return ResolvedType{DataType::F64, "f64"};
     }
-    if ((leftType.kind == DataType::F32 &&
-         rightType.kind == DataType::F64) ||
-        (leftType.kind == DataType::F64 &&
-         rightType.kind == DataType::F32)) {
+    if ((leftType.kind == DataType::F32 && rightType.kind == DataType::F64) ||
+        (leftType.kind == DataType::F64 && rightType.kind == DataType::F32)) {
       return ResolvedType{DataType::F64, "f64"};
     }
 
@@ -1534,24 +1531,12 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
       }
     }
 
-    // --- Type strictness ---
-    if (argType.kind != expectedType.first.kind) {
+    if (!isTypeCompatible(expectedType.first,argType)) {
       logSemanticErrors("Call for '" + funcName +
                             "'has a type mismatch in argument " +
                             std::to_string(i + 1) + ", expected '" +
                             expectedType.first.resolvedName + "' but got '" +
                             argType.resolvedName + "'",
-                        param->expression.line, param->expression.column);
-      allGood = false;
-      continue;
-    }
-
-    // --- Incase of Generics  ---
-    if (argType.resolvedName != expectedType.first.resolvedName) {
-      logSemanticErrors("Argument type mismatch, expected '" +
-                            expectedType.first.resolvedName + "' but got '" +
-                            argType.resolvedName + "' in call for '" +
-                            funcName + "'",
                         param->expression.line, param->expression.column);
       allGood = false;
       continue;
@@ -1581,7 +1566,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
     auto &param = callExpr->parameters[i];
     const auto &expectedType =
         funcInfo.paramTypes[i]; // pair<ResolvedType, string>
-    ResolvedType argType = inferNodeDataType(param.get());
+    ResolvedType argType = metaData[param.get()]->type;
 
     if (argType.kind == DataType::UNKNOWN) {
       logSemanticErrors("Could not infer type for argument " +
@@ -1605,24 +1590,12 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
       }
     }
 
-    // --- Type strictness ---
-    if (argType.kind != expectedType.first.kind) {
+    if (!isTypeCompatible(expectedType.first,argType)) {
       logSemanticErrors("Call for '" + funcName +
                             "'has a type mismatch in argument " +
                             std::to_string(i + 1) + ", expected '" +
                             expectedType.first.resolvedName + "' but got '" +
                             argType.resolvedName + "'",
-                        param->expression.line, param->expression.column);
-      allGood = false;
-      continue;
-    }
-
-    // --- Incase of Generics  ---
-    if (argType.resolvedName != expectedType.first.resolvedName) {
-      logSemanticErrors("Argument type mismatch, expected '" +
-                            expectedType.first.resolvedName + "' but got '" +
-                            argType.resolvedName + "' in call for '" +
-                            funcName + "'",
                         param->expression.line, param->expression.column);
       allGood = false;
       continue;
@@ -1768,8 +1741,7 @@ bool Semantics::isConstLiteral(Node *node) {
   auto u128Lit = dynamic_cast<U128Literal *>(node);
   bool isIntLit = (i8Lit || u8Lit || i16Lit || u16Lit || i32Lit || u32Lit ||
                    i64Lit || u64Lit || i128Lit || u128Lit);
-  
-  
+
   // Float and double literals;
   auto f32Lit = dynamic_cast<F32Literal *>(node);
   auto f64Lit = dynamic_cast<F64Literal *>(node);

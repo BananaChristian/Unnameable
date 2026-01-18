@@ -855,8 +855,6 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     return;
   }
 
-  std::cout << "[SEMANTIC LOG] Analysing function call\n";
-
   std::string callName = funcCall->function_identifier->expression.TokenLiteral;
 
   auto callSymbolInfo = resolveSymbolInfo(callName);
@@ -887,15 +885,32 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     hasError = true;
   }
 
+  
+  // Calling the walker on the arguments
+  for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
+    const auto &arg = funcCall->parameters[i];
+
+    walker(arg.get());
+    // If the user passes a null literal we must give it context
+    if (auto nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
+      if (i < callSymbolInfo->paramTypes.size()) {
+        auto expected = callSymbolInfo->paramTypes[i].first;
+        if (expected.isNull) {
+          metaData[nullLit]->type = expected;
+        } else {
+          logSemanticErrors("Cannot pass null to non-nullable parameter",
+                            arg->expression.line, arg->expression.column);
+          hasError = true;
+        }
+      }
+    }
+  }
+  
   // Check if call signature matches
   if (!isCallCompatible(*callSymbolInfo, funcCall)) {
     hasError = true;
   }
 
-  // Calling the walker on the arguments
-  for (const auto &arg : funcCall->parameters) {
-    walker(arg.get());
-  }
 
   // Store metaData for the call
   auto callSymbol = std::make_shared<SymbolInfo>();
@@ -905,9 +920,6 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   callSymbol->isNullable = callSymbolInfo->isNullable;
 
   metaData[funcCall] = callSymbol;
-  std::cout << "[SEMANTIC LOG] Stored metaData for call to '" << callName
-            << "' with return type: " << callSymbolInfo->type.resolvedName
-            << "\n";
 }
 
 void Semantics::walkQualifyStatement(Node *node) {
@@ -1056,7 +1068,7 @@ void Semantics::walkSealStatement(Node *node) {
                       nameLine, nameCol);
     return;
   }
-  
+
   for (const auto &stmt : blockStmt->statements) {
     auto funcStmt = dynamic_cast<FunctionStatement *>(stmt.get());
     if (!funcStmt) {

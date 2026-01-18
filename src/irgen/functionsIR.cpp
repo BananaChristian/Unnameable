@@ -315,15 +315,8 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
     throw std::runtime_error("Unknown function '" + fnName + "'referenced");
   }
 
-  // Generate IR for each argument
-  std::vector<llvm::Value *> argsV;
-  for (const auto &arg : callExpr->parameters) {
-    llvm::Value *argVal = generateExpression(arg.get());
-    if (!argVal) {
-      throw std::runtime_error("Argument codegen failed");
-    }
-    argsV.push_back(argVal);
-  }
+  std::vector<llvm::Value *> argsV =
+      prepareArguments(calledFunc, callExpr->parameters);
 
   // Emitting the function call itself
   llvm::Value *call = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
@@ -361,13 +354,8 @@ llvm::Value *IRGenerator::generateCallAddress(Node *node) {
     throw std::runtime_error("Unknown function '" + funcName + "' referenced");
 
   // Generate IR for each argument
-  std::vector<llvm::Value *> argsV;
-  for (const auto &arg : callExpr->parameters) {
-    llvm::Value *argVal = generateExpression(arg.get());
-    if (!argVal)
-      throw std::runtime_error("Argument codegen failed");
-    argsV.push_back(argVal);
-  }
+  std::vector<llvm::Value *> argsV =
+      prepareArguments(calledFunc, callExpr->parameters);
 
   llvm::Type *retTy = calledFunc->getReturnType();
   if (retTy->isVoidTy())
@@ -390,4 +378,27 @@ llvm::Value *IRGenerator::generateCallAddress(Node *node) {
 
   return tmpAlloca; // pointer to caller-allocated storage containing the call
                     // result
+}
+
+std::vector<llvm::Value *> IRGenerator::prepareArguments(
+    llvm::Function *func,
+    const std::vector<std::unique_ptr<Expression>> &params) {
+  std::vector<llvm::Value *> argsV;
+  auto funcTy = func->getFunctionType();
+
+  for (size_t i = 0; i < params.size(); ++i) {
+    llvm::Value *argVal = generateExpression(params[i].get());
+    llvm::Type *expectedTy = funcTy->getParamType(i);
+
+    // Implicit Promotion: T -> T?
+    if (expectedTy->isStructTy() && !argVal->getType()->isStructTy()) {
+      llvm::Value *wrapped = llvm::UndefValue::get(expectedTy);
+      wrapped =
+          funcBuilder.CreateInsertValue(wrapped, funcBuilder.getInt1(true), 0);
+      wrapped = funcBuilder.CreateInsertValue(wrapped, argVal, 1);
+      argVal = wrapped;
+    }
+    argsV.push_back(argVal);
+  }
+  return argsV;
 }
