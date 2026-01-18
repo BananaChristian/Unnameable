@@ -37,11 +37,8 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
 
   if (currentToken().type == TokenType::ASSIGN) {
     assign_token = currentToken();
-    std::cout << "[DEBUG] Encountered assignment token" << "\n";
     advance();
     value = parseExpression(Precedence::PREC_NONE);
-  } else if (currentToken().type == TokenType::SEMICOLON) {
-    std::cout << "[DEBUG] Encountered semicolon token" << "\n";
   }
 
   return std::make_unique<LetStatement>(

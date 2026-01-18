@@ -153,7 +153,7 @@ Token Lexer::readBinary() {
 
   while (isBinaryDigit(currentChar()) || currentChar() == U'_') {
     if (currentChar() != U'_') {
-      number += (char)currentChar();
+      number += static_cast<char>(currentChar());
     }
     advance();
   }
@@ -169,12 +169,30 @@ Token Lexer::readHex() {
 
   while (isHexDigit(currentChar()) || currentChar() == U'_') {
     if (currentChar() != U'_') {
-      number += (char)currentChar();
+      number += static_cast<char>(currentChar());
     }
     advance();
   }
 
   return parseSuffix(number, tokenLine, tokenColumn);
+}
+
+Token Lexer::parseFloatSuffix(const std::string &value, int tokenLine,
+                              int tokenColumn) {
+  std::string suffix;
+  while (isAlpha(currentChar()) || isDigit(currentChar())) {
+    suffix += static_cast<char>(currentChar());
+    advance();
+  }
+
+  if (suffix == "f64")
+    return Token{value, TokenType::F64, tokenLine, tokenColumn};
+
+  if (suffix == "f32")
+    return Token{value, TokenType::F32, tokenLine, tokenColumn};
+
+  // If no suffix was given default to f32
+  return Token{value, TokenType::F32, tokenLine, tokenColumn};
 }
 
 Token Lexer::parseSuffix(const std::string &value, int tokenLine,
@@ -183,7 +201,7 @@ Token Lexer::parseSuffix(const std::string &value, int tokenLine,
 
   // Check if a suffix follows (e.g., u8, i32)
   while (isAlpha(currentChar()) || isDigit(currentChar())) {
-    suffix += (char)currentChar();
+    suffix += static_cast<char>(currentChar());
     advance();
   }
 
@@ -241,11 +259,7 @@ Token Lexer::readNumbers() {
       number += currentChar();
       advance();
     }
-    if (currentChar() == U'd' || currentChar() == U'D') {
-      advance(); // consume 'd'
-      return Token{number, TokenType::DOUBLE, tokenLine, tokenColumn};
-    }
-    return Token{number, TokenType::FLOAT, tokenLine, tokenColumn};
+    return parseFloatSuffix(number, tokenLine, tokenColumn);
   }
 
   return parseSuffix(number, tokenLine, tokenColumn);

@@ -2,7 +2,6 @@
 
 // Parsing assignment statements
 std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
-  std::cout << "NOW INSIDE ASSIGNMENT STATEMENT PARSER\n";
   std::unique_ptr<Expression> value = nullptr;
   Token identToken = currentToken();
   bool isQualified = false;
@@ -38,10 +37,6 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
   if (!lhs)
     return nullptr;
 
-  std::cout << "[LEAVING ASSIGNMENT] Current token: "
-            << currentToken().TokenLiteral << " (" << (int)currentToken().type
-            << ")\n";
-
   return std::make_unique<AssignmentStatement>(std::move(lhs),
                                                std::move(value));
 }
@@ -66,7 +61,6 @@ std::unique_ptr<Statement> Parser::parseDereferenceAssignment() {
   };
 
   if (isDerefAssignment()) {
-    std::cout << "Deep Dereference assignment triggered\n";
     return parseAssignmentStatement();
   }
 
@@ -85,7 +79,7 @@ std::unique_ptr<Statement> Parser::parseFieldAssignment() {
   advance(); // Consume for example x
   if (currentToken().type == TokenType::SCOPE_OPERATOR ||
       currentToken().type == TokenType::FULLSTOP) {
-    std::cout << "SPECIAL IDENTIFIER CASE TRIGGERED\n";
+
     std::string fieldName = current.TokenLiteral;
     std::string operatorLiteral =
         (currentToken().type == TokenType::SCOPE_OPERATOR) ? "::" : ".";

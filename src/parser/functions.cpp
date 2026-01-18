@@ -30,7 +30,6 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
   // Now we parse the first parameter (if any)
   auto firstParam = parseStatement();
   if (!firstParam) {
-    std::cerr << "Failed to parse first parameter.\n";
     return args;
   }
   args.push_back(std::move(firstParam));
@@ -39,7 +38,6 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
     advance();
     auto arg = parseStatement();
     if (!arg) {
-      std::cerr << "Failed to parse parameter after comma\n";
       return args;
     }
     args.push_back(std::move(arg));
@@ -104,16 +102,11 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
     }
   }
 
-  std::cout << "[DEBUG]: Encountered the " << currentToken().TokenLiteral
-            << "\n";
   if (currentToken().type == TokenType::SEMICOLON) {
     advance(); // consume the semicolon
   }
 
   if (currentToken().type != TokenType::LBRACE) {
-    std::cout << "[DEBUG] No body found for " << identToken.TokenLiteral
-              << ". Treating as Declaration.\n";
-
     auto decl = std::make_unique<FunctionDeclaration>(
         isExportable, func_tok, std::move(identExpr), std::move(call),
         std::move(return_type));
@@ -124,7 +117,6 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
 
   auto block = parseBlockExpression(); // Parsing the blocks
   if (!block) {
-    std::cerr << "[ERROR] Failed to parse function body.\n";
     return nullptr;
   }
 
@@ -154,10 +146,6 @@ std::unique_ptr<Expression> Parser::parseBlockExpression() {
       block->statements.push_back(std::move(stmt));
     }
   }
-
-  std::cout << "[DEBUG] Block contains " << block->statements.size()
-            << " statement(s). Final expression present: "
-            << (block->finalexpr != nullptr) << "\n";
 
   if (currentToken().type != TokenType::RBRACE) {
     logError("Expected } but got '" + currentToken().TokenLiteral + "'");

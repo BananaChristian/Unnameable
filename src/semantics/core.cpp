@@ -54,8 +54,8 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(U128Literal)] = &Semantics::walkU128Literal;
   walkerFunctionsMap[typeid(ISIZELiteral)] = &Semantics::walkISIZELiteral;
   walkerFunctionsMap[typeid(USIZELiteral)] = &Semantics::walkUSIZELiteral;
-  walkerFunctionsMap[typeid(FloatLiteral)] = &Semantics::walkFloatLiteral;
-  walkerFunctionsMap[typeid(DoubleLiteral)] = &Semantics::walkDoubleLiteral;
+  walkerFunctionsMap[typeid(F32Literal)] = &Semantics::walkF32Literal;
+  walkerFunctionsMap[typeid(F64Literal)] = &Semantics::walkF64Literal;
   walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
 
   walkerFunctionsMap[typeid(Char8Literal)] = &Semantics::walkChar8Literal;
@@ -150,8 +150,8 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(NewComponentExpression)] =
       &Semantics::walkNewComponentExpression;
   walkerFunctionsMap[typeid(SelfExpression)] = &Semantics::walkSelfExpression;
-  walkerFunctionsMap[typeid(EnumClassStatement)] =
-      &Semantics::walkEnumClassStatement;
+  walkerFunctionsMap[typeid(EnumStatement)] =
+      &Semantics::walkEnumStatement;
   walkerFunctionsMap[typeid(InstanceExpression)] =
       &Semantics::walkInstanceExpression;
   walkerFunctionsMap[typeid(MethodCallExpression)] =
@@ -204,10 +204,10 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   if (auto usizeLit = dynamic_cast<USIZELiteral *>(node))
     return ResolvedType{DataType::USIZE, "usize"};
 
-  if (auto fltLit = dynamic_cast<FloatLiteral *>(node))
-    return ResolvedType{DataType::FLOAT, "float"};
-  if (auto dbLit = dynamic_cast<DoubleLiteral *>(node))
-    return ResolvedType{DataType::DOUBLE, "double"};
+  if (auto f32Lit = dynamic_cast<F32Literal *>(node))
+    return ResolvedType{DataType::F32, "f32"};
+  if (auto f64Lit = dynamic_cast<F64Literal *>(node))
+    return ResolvedType{DataType::F64, "f64"};
 
   if (auto strLit = dynamic_cast<StringLiteral *>(node))
     return ResolvedType{DataType::STRING, "string"};
@@ -326,9 +326,6 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
     return currentType;
   }
-
-  if (auto errExpr = dynamic_cast<ErrorExpression *>(node))
-    return ResolvedType{DataType::ERROR, "error"};
 
   if (auto selfExpr = dynamic_cast<SelfExpression *>(node)) {
     // Start: find the type of the component containing this method
@@ -946,18 +943,18 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     // Promote mixed int/float combinations
     if ((isInteger(leftType) && isFloat(rightType)) ||
         (isFloat(leftType) && isInteger(rightType))) {
-      return ResolvedType{DataType::FLOAT, "float"};
+      return ResolvedType{DataType::F32, "f32"};
     }
     // Promote int/double or float/double to double
-    if ((isInteger(leftType) && rightType.kind == DataType::DOUBLE) ||
-        (leftType.kind == DataType::DOUBLE && isInteger(rightType))) {
-      return ResolvedType{DataType::DOUBLE, "double"};
+    if ((isInteger(leftType) && rightType.kind == DataType::F64) ||
+        (leftType.kind == DataType::F64 && isInteger(rightType))) {
+      return ResolvedType{DataType::F64, "f64"};
     }
-    if ((leftType.kind == DataType::FLOAT &&
-         rightType.kind == DataType::DOUBLE) ||
-        (leftType.kind == DataType::DOUBLE &&
-         rightType.kind == DataType::FLOAT)) {
-      return ResolvedType{DataType::DOUBLE, "double"};
+    if ((leftType.kind == DataType::F32 &&
+         rightType.kind == DataType::F64) ||
+        (leftType.kind == DataType::F64 &&
+         rightType.kind == DataType::F32)) {
+      return ResolvedType{DataType::F64, "f64"};
     }
 
     if (leftType.kind == rightType.kind) {
@@ -1142,10 +1139,10 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
   case TokenType::USIZE_KEYWORD:
     return makeType(DataType::USIZE, "usize");
 
-  case TokenType::FLOAT_KEYWORD:
-    return makeType(DataType::FLOAT, "float");
-  case TokenType::DOUBLE_KEYWORD:
-    return makeType(DataType::DOUBLE, "double");
+  case TokenType::F32_KEYWORD:
+    return makeType(DataType::F32, "f32");
+  case TokenType::F64_KEYWORD:
+    return makeType(DataType::F64, "f64");
   case TokenType::STRING_KEYWORD:
     return makeType(DataType::STRING, "string");
 
@@ -1701,7 +1698,7 @@ bool Semantics::isInteger(const ResolvedType &t) {
 }
 
 bool Semantics::isFloat(const ResolvedType &t) {
-  return t.kind == DataType::FLOAT || t.kind == DataType::DOUBLE;
+  return t.kind == DataType::F32 || t.kind == DataType::F64;
 }
 
 bool Semantics::isBoolean(const ResolvedType &t) {
@@ -1734,9 +1731,9 @@ bool Semantics::isLiteral(Node *node) {
                    i64Lit || u64Lit || i128Lit || u128Lit);
 
   // Float and double literals;
-  auto fltLit = dynamic_cast<FloatLiteral *>(node);
-  auto dbLit = dynamic_cast<DoubleLiteral *>(node);
-  bool isDecLit = (fltLit || dbLit);
+  auto f32Lit = dynamic_cast<F32Literal *>(node);
+  auto f64Lit = dynamic_cast<F64Literal *>(node);
+  bool isDecLit = (f32Lit || f64Lit);
 
   // Char literal
   auto char8Lit = dynamic_cast<Char8Literal *>(node);
@@ -1774,9 +1771,9 @@ bool Semantics::isConstLiteral(Node *node) {
   
   
   // Float and double literals;
-  auto fltLit = dynamic_cast<FloatLiteral *>(node);
-  auto dbLit = dynamic_cast<DoubleLiteral *>(node);
-  bool isDecLit = (fltLit || dbLit);
+  auto f32Lit = dynamic_cast<F32Literal *>(node);
+  auto f64Lit = dynamic_cast<F64Literal *>(node);
+  bool isDecLit = (f32Lit || f64Lit);
 
   // Char literal
   auto char8Lit = dynamic_cast<Char8Literal *>(node);
@@ -1831,10 +1828,10 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
   case TokenType::USIZE_KEYWORD:
     return ResolvedType{DataType::USIZE, "usize"};
 
-  case TokenType::FLOAT_KEYWORD:
-    return ResolvedType{DataType::FLOAT, "float"};
-  case TokenType::DOUBLE_KEYWORD:
-    return ResolvedType{DataType::DOUBLE, "double"};
+  case TokenType::F32_KEYWORD:
+    return ResolvedType{DataType::F32, "f32"};
+  case TokenType::F64_KEYWORD:
+    return ResolvedType{DataType::F64, "f64"};
 
   case TokenType::STRING_KEYWORD:
     return ResolvedType{DataType::STRING, "string"};

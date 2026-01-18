@@ -51,16 +51,8 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence) {
     if (precedence >= currentPrecedence)
       break;
 
-    std::cout << "[DEBUG] Parsing infix token: " << currentToken().TokenLiteral
-              << "\n";
     left_expression =
         (this->*InfixParseFnIt->second)(std::move(left_expression));
-    if (left_expression) {
-      std::cout << "[DEBUG] Updated left expression (infix): "
-                << left_expression->toString() << "\n";
-    } else {
-      std::cout << "[DEBUG] Failed to parse left expression (infix) \n";
-    }
   }
 
   return left_expression; // Returning the expression that was parsed it can be
@@ -71,8 +63,7 @@ std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence) {
 std::unique_ptr<Expression>
 Parser::parseInfixExpression(std::unique_ptr<Expression> left) {
   Token operat = currentToken();
-  std::cout << "[DEBUG] parsing infix with operator: " << operat.TokenLiteral
-            << "\n";
+
   Precedence prec = get_precedence(operat.type);
   advance();
   auto right = parseExpression(prec);
@@ -251,7 +242,6 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments() {
 
   auto firstArg = parseExpression(Precedence::PREC_NONE);
   if (!firstArg) {
-    std::cerr << "Failed to parse first function argument.\n";
     return args;
   }
   args.push_back(std::move(firstArg));
@@ -259,8 +249,8 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments() {
   while (currentToken().type == TokenType::COMMA) {
     advance();
     auto arg = parseExpression(Precedence::PREC_NONE);
+
     if (!arg) {
-      std::cerr << "Failed to parse function argument after comma.\n";
       return args;
     }
     args.push_back(std::move(arg));
@@ -288,7 +278,8 @@ Parser::parseCallExpression(std::unique_ptr<Expression> left) {
   if (call_token.type !=
       TokenType::LPAREN) { // Checking if we encounter the left parenthesis
                            // after the function name has been declared
-    logError("Expected ( after function name");
+    logError("Expected ( after function name bug got '" +
+             currentToken().TokenLiteral + "'");
     return nullptr;
   }
 

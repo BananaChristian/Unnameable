@@ -99,17 +99,17 @@ std::unique_ptr<Expression> Parser::parseBooleanLiteral() {
 }
 
 // Float literal parse function
-std::unique_ptr<Expression> Parser::parseFloatLiteral() {
-  Token float_tok = currentToken();
+std::unique_ptr<Expression> Parser::parseF32Literal() {
+  Token f32_tok = currentToken();
   advance();
-  return std::make_unique<FloatLiteral>(float_tok);
+  return std::make_unique<F32Literal>(f32_tok);
 }
 
 // Double literal parse function
-std::unique_ptr<Expression> Parser::parseDoubleLiteral() {
-  Token double_tok = currentToken();
+std::unique_ptr<Expression> Parser::parseF64Literal() {
+  Token f64_tok = currentToken();
   advance();
-  return std::make_unique<DoubleLiteral>(double_tok);
+  return std::make_unique<F64Literal>(f64_tok);
 }
 
 // 8 bit Char literal parse function

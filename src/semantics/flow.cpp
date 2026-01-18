@@ -6,9 +6,6 @@ void Semantics::walkBlockStatement(Node *node) {
   if (!blockStmt)
     return;
 
-  std::cout << "[SEMANTIC LOG]: Analysing block statement: "
-            << blockStmt->toString() << "\n";
-
   auto &stmts = blockStmt->statements;
   // keep track of all heap-raised vars declared in this block
   std::vector<std::string> localHeapVars;

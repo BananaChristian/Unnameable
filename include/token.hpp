@@ -52,8 +52,6 @@ enum class TokenType {
 
   IDENTIFIER,
   STRING_KEYWORD,
-  FLOAT_KEYWORD,
-  DOUBLE_KEYWORD,
   BOOL_KEYWORD,
 
   // Keywords
@@ -64,7 +62,6 @@ enum class TokenType {
   BITCAST,
 
   ENUM,
-  CLASS,
 
   HEAP,      // Heap keyword that allows a user to manually tell the compiler to
              // allocate on the SAGE heap
@@ -153,14 +150,17 @@ enum class TokenType {
   CHAR16_KEYWORD,
   CHAR32, // 32 bit char
   CHAR32_KEYWORD,
-
+  
+  F32, //32 but float
+  F32_KEYWORD,
+  F64,//64 bit float
+  F64_KEYWORD,
+  
   SIZEOF, // sizeof token
 
   VOID,
-  FLOAT,
   TRUE,
   FALSE,
-  DOUBLE,
   ARRAY,
 
   NULLABLE, //"null"

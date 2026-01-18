@@ -29,8 +29,8 @@ enum class ImportedDataType
     USIZE, // CPU native width unsigned integer
     BOOLEAN,
     STRING,
-    FLOAT,
-    DOUBLE,
+    F32,
+    F64,
     CHAR8,  // 8 BIT Char
     CHAR16, // 16 BIT Char
     CHAR32, // 32 BIT Char

@@ -27,8 +27,8 @@ enum class DataType {
   USIZE, // CPU native width unsigned integer
   BOOLEAN,
   STRING,
-  FLOAT,
-  DOUBLE,
+  F32,
+  F64,
   CHAR8,  // 8 BIT Char
   CHAR16, // 16 BIT Char
   CHAR32, // 32 BIT Char
@@ -316,8 +316,8 @@ private:
   void walkChar16Literal(Node *node);
   void walkChar32Literal(Node *node);
 
-  void walkDoubleLiteral(Node *node);
-  void walkFloatLiteral(Node *node);
+  void walkF64Literal(Node *node);
+  void walkF32Literal(Node *node);
 
   void walkSizeOfExpression(Node *node);
 
@@ -330,7 +330,7 @@ private:
   void walkNewComponentExpression(Node *node);
   void walkInitConstructor(Node *node);
   void walkSelfExpression(Node *node);
-  void walkEnumClassStatement(Node *node);
+  void walkEnumStatement(Node *node);
   void walkInstanceExpression(Node *node);
   void walkMethodCallExpression(Node *node);
 

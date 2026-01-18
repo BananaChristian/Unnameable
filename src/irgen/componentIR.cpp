@@ -534,8 +534,8 @@ void IRGenerator::generateComponentStatement(Node *node) {
   currentComponent = nullptr;
 }
 
-void IRGenerator::generateEnumClassStatement(Node *node) {
-  auto enumStmt = dynamic_cast<EnumClassStatement *>(node);
+void IRGenerator::generateEnumStatement(Node *node) {
+  auto enumStmt = dynamic_cast<EnumStatement *>(node);
   if (!enumStmt)
     return;
 

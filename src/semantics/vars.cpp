@@ -239,33 +239,31 @@ void Semantics::walkUSIZELiteral(Node *node) {
   metaData[lit] = info;
 }
 
-void Semantics::walkFloatLiteral(Node *node) {
-  auto fltLiteral = dynamic_cast<FloatLiteral *>(node);
-  if (!fltLiteral)
+void Semantics::walkF32Literal(Node *node) {
+  auto f32Literal = dynamic_cast<F32Literal *>(node);
+  if (!f32Literal)
     return;
 
-  std::cout << "[SEMANTIC LOG]: Analyzing the float literal \n";
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::FLOAT, "float"};
+  info->type = ResolvedType{DataType::F32, "f32"};
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
-  metaData[fltLiteral] = info;
+  metaData[f32Literal] = info;
 }
 
-void Semantics::walkDoubleLiteral(Node *node) {
-  auto dbLiteral = dynamic_cast<DoubleLiteral *>(node);
-  if (!dbLiteral)
+void Semantics::walkF64Literal(Node *node) {
+  auto f64Literal = dynamic_cast<F64Literal *>(node);
+  if (!f64Literal)
     return;
-  std::cout << "[SEMANTIC LOG] Analyzing the double literal \n";
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::DOUBLE, "double"};
+  info->type = ResolvedType{DataType::F64, "f64"};
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
-  metaData[dbLiteral] = info;
+  metaData[f64Literal] = info;
 }
 
 // Walking the null literal
@@ -273,7 +271,6 @@ void Semantics::walkNullLiteral(Node *node) {
   auto nullLit = dynamic_cast<NullLiteral *>(node);
   if (!nullLit)
     return;
-  std::cout << "[SEMANTIC LOG] Analyzing null literal\n";
 
   auto symbol = std::make_shared<SymbolInfo>();
   symbol->type =

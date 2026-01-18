@@ -139,8 +139,8 @@ private:
   // Parsing enum member Node
   std::unique_ptr<EnumMember> parseEnumMember();
 
-  // Parsing enum class statement
-  std::unique_ptr<Statement> parseEnumClassStatement();
+  // Parsing enum statement
+  std::unique_ptr<Statement> parseEnumStatement();
 
   // Parsing case clause
   std::unique_ptr<Statement> parseCaseClause();
@@ -254,86 +254,60 @@ private:
 
   // Parsing for expression
   std::unique_ptr<Expression> parseFunctionExpression();
-
   // Parsing for basic return type
   std::unique_ptr<Expression> parseBasicType();
-
   // Parsing for pointer return type
   std::unique_ptr<Expression> parsePointerType();
-
   // Parsing for reference type
   std::unique_ptr<Expression> parseRefType();
-
   // Parsing the return type expression
   std::unique_ptr<Expression> parseReturnType();
-
   // Parsing block expressions
   std::unique_ptr<Expression> parseBlockExpression();
-
   // Parsing grouped expressions
   std::unique_ptr<Expression> parseGroupedExpression();
 
   // Parsing data type literals
   // Signed 8 bit integer
   std::unique_ptr<Expression> parseI8Literal();
-
   // Unsigned 8 bit integer
   std::unique_ptr<Expression> parseU8Literal();
-
   // Signed 16 bit integer
   std::unique_ptr<Expression> parseI16Literal();
-
   // Unsigned 16 bit integer
   std::unique_ptr<Expression> parseU16Literal();
-
   // Signed 32 bit Integer
   std::unique_ptr<Expression> parseI32Literal();
-
   // Unsigned 32 bit integer
   std::unique_ptr<Expression> parseU32Literal();
-
   // Signed 64 bit integer
   std::unique_ptr<Expression> parseI64Literal();
-
-  // UnSigned 64 bit integer
+  // Unsigned 64 bit integer
   std::unique_ptr<Expression> parseU64Literal();
-
   // Signed 128 bit integer
   std::unique_ptr<Expression> parseI128Literal();
-
   // Unsigned 128 bit integer
   std::unique_ptr<Expression> parseU128Literal();
-
   // Signed CPU native width integer
   std::unique_ptr<Expression> parseISIZELiteral();
-
   // Unsigned CPU native width integer
   std::unique_ptr<Expression> parseUSIZELiteral();
-
   // Boolean
   std::unique_ptr<Expression> parseBooleanLiteral();
-
-  // Float
-  std::unique_ptr<Expression> parseFloatLiteral();
-
-  // Double
-  std::unique_ptr<Expression> parseDoubleLiteral();
-
+  // 32 bit Float
+  std::unique_ptr<Expression> parseF32Literal();
+  // 64 bit Float
+  std::unique_ptr<Expression> parseF64Literal();
   // 8 bit Char
   std::unique_ptr<Expression> parseChar8Literal();
-
   // 16 bit Char
   std::unique_ptr<Expression> parseChar16Literal();
-
   // 32 bit Char
   std::unique_ptr<Expression> parseChar32Literal();
-
   // Null
   std::unique_ptr<Expression> parseNullLiteral();
-
   // String
   std::unique_ptr<Expression> parseStringLiteral();
-
   // Sizeof
   std::unique_ptr<Expression> parseSizeOfExpression();
 

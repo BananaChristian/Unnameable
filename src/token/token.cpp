@@ -66,8 +66,6 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: IDENTIFIER";
   case TokenType::END:
     return "Token Type:END";
-  case TokenType::FLOAT:
-    return "Token Type: FLOAT";
   case TokenType::VOID:
     return "Token Type: VOID";
   case TokenType::FUNCTION:
@@ -197,13 +195,19 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: CHAR32";
   case TokenType::CHAR32_KEYWORD:
     return "Token Type: CHAR32 KEYWORD";
+  case TokenType::F32:
+    return "Token Type: F32";
+  case TokenType::F32_KEYWORD:
+    return "Token Type: F32 KEYWORD";
+  case TokenType::F64:
+    return "Token Type: F64";
+  case TokenType::F64_KEYWORD:
+    return "Token Type: F64 KEYWORD";
 
   case TokenType::STRING:
     return "Token Type: STRING";
   case TokenType::STRING_KEYWORD:
     return "Token Type: STRING KEYWORD";
-  case TokenType::FLOAT_KEYWORD:
-    return "Token Type: FLOAT KEYWORD";
 
   case TokenType::SIZEOF:
     return "Token Type: SIZEOF";
@@ -214,8 +218,7 @@ std::string TokenTypeToLiteral(TokenType type) {
 
   case TokenType::BOOL_KEYWORD:
     return "Token Type: BOOL_KEYWORD";
-  case TokenType::DOUBLE_KEYWORD:
-    return "Token Type: DOUBLE_KEYWORD";
+
   case TokenType::NULLABLE:
     return "Token Type: NULL";
   case TokenType::TRUE:

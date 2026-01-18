@@ -23,7 +23,6 @@ std::unique_ptr<Expression> Parser::parsePointerType() {
       currentToken().type == TokenType::IDENTIFIER) {
     type = parseBasicType();
   } else if (currentToken().type == TokenType::ARRAY) {
-
     type = parseArrayType();
   } else {
     logError("Expected basic or array type for pointers ");

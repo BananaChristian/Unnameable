@@ -45,7 +45,7 @@ llvm::Value *IRGenerator::generateChar8Literal(Node *node) {
   }
   auto it = semantics.metaData.find(charLit);
   if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Char literal not found in metadata");
+    throw std::runtime_error("Char8 literal not found in metadata");
   }
   DataType dt = it->second->type.kind;
   if (dt != DataType::CHAR8) {
@@ -208,42 +208,42 @@ llvm::Value *IRGenerator::generateUSIZELiteral(Node *node) {
   return generateIntegerLiteral(lit->usize_token.TokenLiteral, ptrWidth, false);
 }
 
-llvm::Value *IRGenerator::generateFloatLiteral(Node *node) {
-  auto fltLit = dynamic_cast<FloatLiteral *>(node);
-  if (!fltLit) {
-    throw std::runtime_error("Invalid float literal");
+llvm::Value *IRGenerator::generateF32Literal(Node *node) {
+  auto f32Lit = dynamic_cast<F32Literal *>(node);
+  if (!f32Lit) {
+    throw std::runtime_error("Invalid f32 literal");
   }
-  auto it = semantics.metaData.find(fltLit);
+  auto it = semantics.metaData.find(f32Lit);
   if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Float literal not found in metadata");
+    throw std::runtime_error("F32 literal not found in metadata");
   }
   DataType dt = it->second->type.kind;
-  if (dt != DataType::FLOAT) {
-    throw std::runtime_error("Type error: Expected Float for FloatLiteral ");
+  if (dt != DataType::F32) {
+    throw std::runtime_error("Type error: Expected F32 for F32Literal ");
   }
-  float value = std::stof(fltLit->float_token.TokenLiteral);
+  float value = std::stof(f32Lit->f32_token.TokenLiteral);
   return llvm::ConstantFP::get(llvm::Type::getFloatTy(context), value);
 }
 
-llvm::Value *IRGenerator::generateDoubleLiteral(Node *node) {
-  auto dbLit = dynamic_cast<DoubleLiteral *>(node);
-  if (!dbLit) {
-    throw std::runtime_error("Invalid double literal");
+llvm::Value *IRGenerator::generateF64Literal(Node *node) {
+  auto f64Lit = dynamic_cast<F64Literal *>(node);
+  if (!f64Lit) {
+    throw std::runtime_error("Invalid f64 literal");
   }
   auto it =
-      semantics.metaData.find(dbLit); // Creating an iterator to find specific
+      semantics.metaData.find(f64Lit); // Creating an iterator to find specific
                                       // meta data about the double literal
   if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Double literal not found in metadata");
+    throw std::runtime_error("f64 literal not found in metadata");
   }
   DataType dt = it->second->type.kind;
-  if (dt != DataType::DOUBLE) {
-    throw std::runtime_error("Type error: Expected DOUBLE for DoubleLiteral");
+  if (dt != DataType::F64) {
+    throw std::runtime_error("Type error: Expected f64 for f64Literal");
   }
   // Checking if we have metaData about the double literal and if so we check to
   // see if the data type is double
   double value = std::stod(
-      dbLit->double_token.TokenLiteral); // Converting the double literal from a
+      f64Lit->f64_token.TokenLiteral); // Converting the double literal from a
                                          // string to a double
   return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context),
                                value); // Returning double value
@@ -573,20 +573,20 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   }
 
   // Handle floating point conversions
-  if (resultType.kind == DataType::FLOAT) {
+  if (resultType.kind == DataType::F32) {
     if (isIntegerType(leftType))
       left = funcBuilder.CreateSIToFP(left, llvm::Type::getFloatTy(context),
-                                      "inttofloat");
+                                      "inttof32");
     if (isIntegerType(rightType))
       right = funcBuilder.CreateSIToFP(right, llvm::Type::getFloatTy(context),
-                                       "inttofloat");
-  } else if (resultType.kind == DataType::DOUBLE) {
+                                       "inttof32");
+  } else if (resultType.kind == DataType::F64) {
     if (isIntegerType(leftType))
       left = funcBuilder.CreateSIToFP(left, llvm::Type::getDoubleTy(context),
-                                      "inttodouble");
+                                      "inttof64");
     if (isIntegerType(rightType))
       right = funcBuilder.CreateSIToFP(right, llvm::Type::getDoubleTy(context),
-                                       "inttodouble");
+                                       "inttof64");
   }
 
   // Now generate code based on operator and result type
@@ -622,7 +622,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
           throw std::runtime_error("Unsupported int comparison operator");
         }
       }
-    } else if (leftType == DataType::FLOAT || leftType == DataType::DOUBLE) {
+    } else if (leftType == DataType::F32 || leftType == DataType::F64) {
       switch (infix->operat.type) {
       case TokenType::EQUALS:
         return funcBuilder.CreateFCmpOEQ(left, right, "fcmptmp");
@@ -769,9 +769,9 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
 
   // Helper to get LLVM type from DataType
   auto getLLVMType = [&](DataType dt) -> llvm::Type * {
-    if (dt == DataType::FLOAT)
+    if (dt == DataType::F32)
       return llvm::Type::getFloatTy(context);
-    if (dt == DataType::DOUBLE)
+    if (dt == DataType::F64)
       return llvm::Type::getDoubleTy(context);
     if (isIntType(dt)) {
       unsigned bits = getIntegerBitWidth(dt);
@@ -782,8 +782,8 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
 
   switch (prefix->operat.type) {
   case TokenType::MINUS: {
-    if (resultType.kind == DataType::FLOAT ||
-        resultType.kind == DataType::DOUBLE)
+    if (resultType.kind == DataType::F32 ||
+        resultType.kind == DataType::F64)
       return funcBuilder.CreateFNeg(operand, llvm::Twine("fnegtmp"));
     else if (isIntType(resultType.kind))
       return funcBuilder.CreateNeg(operand, llvm::Twine("negtmp"));
@@ -826,8 +826,8 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
         funcBuilder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
     llvm::Value *delta = nullptr;
-    if (resultType.kind == DataType::FLOAT ||
-        resultType.kind == DataType::DOUBLE) {
+    if (resultType.kind == DataType::F32 ||
+        resultType.kind == DataType::F64) {
       delta = llvm::ConstantFP::get(varType, 1.0);
     } else if (isIntType(resultType.kind)) {
       unsigned bits = getIntegerBitWidth(resultType.kind);
@@ -839,15 +839,15 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
     llvm::Value *updated = nullptr;
     if (prefix->operat.type == TokenType::PLUS_PLUS)
       updated =
-          (resultType.kind == DataType::FLOAT ||
-           resultType.kind == DataType::DOUBLE)
+          (resultType.kind == DataType::F32 ||
+           resultType.kind == DataType::F64)
               ? funcBuilder.CreateFAdd(loaded, delta,
                                        llvm::Twine("preincfptmp"))
               : funcBuilder.CreateAdd(loaded, delta, llvm::Twine("preinctmp"));
     else
       updated =
-          (resultType.kind == DataType::FLOAT ||
-           resultType.kind == DataType::DOUBLE)
+          (resultType.kind == DataType::F32 ||
+           resultType.kind == DataType::F64)
               ? funcBuilder.CreateFSub(loaded, delta,
                                        llvm::Twine("predecfptmp"))
               : funcBuilder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
@@ -905,9 +905,9 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
 
   // Helper to get LLVM type from DataType
   auto getLLVMType = [&](DataType dt) -> llvm::Type * {
-    if (dt == DataType::FLOAT)
+    if (dt == DataType::F32)
       return llvm::Type::getFloatTy(context);
-    if (dt == DataType::DOUBLE)
+    if (dt == DataType::F64)
       return llvm::Type::getDoubleTy(context);
     if (isIntType(dt)) {
       unsigned bits = getIntegerBitWidth(dt);
@@ -926,8 +926,8 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
       funcBuilder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
   llvm::Value *delta = nullptr;
-  if (resultType.kind == DataType::FLOAT ||
-      resultType.kind == DataType::DOUBLE) {
+  if (resultType.kind == DataType::F32 ||
+      resultType.kind == DataType::F64) {
     delta = llvm::ConstantFP::get(varType, 1.0);
   } else if (isIntType(resultType.kind)) {
     unsigned bits = getIntegerBitWidth(resultType.kind);
@@ -940,14 +940,14 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
 
   if (postfix->operator_token.type == TokenType::PLUS_PLUS)
     updatedValue =
-        (resultType.kind == DataType::FLOAT ||
-         resultType.kind == DataType::DOUBLE)
+        (resultType.kind == DataType::F32 ||
+         resultType.kind == DataType::F64)
             ? funcBuilder.CreateFAdd(originalValue, delta, llvm::Twine("finc"))
             : funcBuilder.CreateAdd(originalValue, delta, llvm::Twine("inc"));
   else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
     updatedValue =
-        (resultType.kind == DataType::FLOAT ||
-         resultType.kind == DataType::DOUBLE)
+        (resultType.kind == DataType::F32 ||
+         resultType.kind == DataType::F64)
             ? funcBuilder.CreateFSub(originalValue, delta, llvm::Twine("fdec"))
             : funcBuilder.CreateSub(originalValue, delta, llvm::Twine("dec"));
   else

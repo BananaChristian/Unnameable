@@ -1120,11 +1120,11 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
     baseType = llvm::Type::getInt32Ty(context);
     break;
   }
-  case DataType::FLOAT: {
+  case DataType::F32: {
     baseType = llvm::Type::getFloatTy(context);
     break;
   }
-  case DataType::DOUBLE: {
+  case DataType::F64: {
     baseType = llvm::Type::getDoubleTy(context);
     break;
   }
@@ -1226,8 +1226,8 @@ void IRGenerator::registerGeneratorFunctions() {
       &IRGenerator::generateRecordStatement;
   generatorFunctionsMap[typeid(ComponentStatement)] =
       &IRGenerator::generateComponentStatement;
-  generatorFunctionsMap[typeid(EnumClassStatement)] =
-      &IRGenerator::generateEnumClassStatement;
+  generatorFunctionsMap[typeid(EnumStatement)] =
+      &IRGenerator::generateEnumStatement;
 
   generatorFunctionsMap[typeid(ArrayStatement)] =
       &IRGenerator::generateArrayStatement;
@@ -1293,10 +1293,10 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
       &IRGenerator::generateISIZELiteral;
   expressionGeneratorsMap[typeid(USIZELiteral)] =
       &IRGenerator::generateUSIZELiteral;
-  expressionGeneratorsMap[typeid(FloatLiteral)] =
-      &IRGenerator::generateFloatLiteral;
-  expressionGeneratorsMap[typeid(DoubleLiteral)] =
-      &IRGenerator::generateDoubleLiteral;
+  expressionGeneratorsMap[typeid(F32Literal)] =
+      &IRGenerator::generateF32Literal;
+  expressionGeneratorsMap[typeid(F64Literal)] =
+      &IRGenerator::generateF64Literal;
   expressionGeneratorsMap[typeid(ArrayLiteral)] =
       &IRGenerator::generateArrayLiteral;
   expressionGeneratorsMap[typeid(NullLiteral)] =

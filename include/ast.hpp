@@ -72,7 +72,7 @@ struct Identifier : Expression {
   Token identifier;
   bool isKiller;
   std::string toString() override {
-    return "Identifier Expression: " + identifier.TokenLiteral;
+    return "Identifier: " + identifier.TokenLiteral;
   }
 
   Identifier *shallowClone() const override {
@@ -88,13 +88,17 @@ struct AddressExpression : Expression {
   std::unique_ptr<Expression> identifier;
 
   std::string toString() override {
-    return "Address Expression: " + addr_token.TokenLiteral +
-           identifier->toString();
+    std::string var = "expr";
+    if (identifier)
+      var = identifier->toString();
+
+    return "Address Expression: " + addr_token.TokenLiteral + " " + var;
   }
 
   AddressExpression *shallowClone() const override {
     return new AddressExpression(addr_token, clonePtr(identifier));
   }
+
   AddressExpression(Token addr_t, std::unique_ptr<Expression> ident)
       : Expression(addr_t), addr_token(addr_t), identifier(std::move(ident)){};
 };
@@ -105,8 +109,12 @@ struct DereferenceExpression : Expression {
   std::unique_ptr<Expression> identifier;
 
   std::string toString() override {
+    std::string exprStr = "expr";
+    if (identifier)
+      exprStr = identifier->toString();
+
     return "Dereference Expression: " + deref_token.TokenLiteral + " " +
-           identifier->toString();
+           exprStr + "\n";
   }
 
   DereferenceExpression *shallowClone() const override {
@@ -145,6 +153,11 @@ struct NewComponentExpression : Expression {
     }
     return "NewComponentExpression: new " + component_name.TokenLiteral + "(" +
            args_str + ")";
+  }
+
+  NewComponentExpression *shallowClone() const override {
+    return new NewComponentExpression(new_token, component_name,
+                                      clonePtrVector(arguments));
   }
 
   NewComponentExpression(Token newTok, Token compName,
@@ -335,31 +348,30 @@ struct BooleanLiteral : Expression {
   BooleanLiteral(Token bool_t) : Expression(bool_t), boolean_token(bool_t){};
 };
 
-// Float literal
-struct FloatLiteral : Expression {
-  Token float_token;
+// F32 literal
+struct F32Literal : Expression {
+  Token f32_token;
   std::string toString() override {
-    return "Float Literal: " + float_token.TokenLiteral;
+    return "F32 Literal: " + f32_token.TokenLiteral;
   }
 
-  FloatLiteral *shallowClone() const override {
-    return new FloatLiteral(float_token);
+  F32Literal *shallowClone() const override {
+    return new F32Literal(f32_token);
   }
-  FloatLiteral(Token float_t) : Expression(float_t), float_token(float_t){};
+  F32Literal(Token f32_t) : Expression(f32_t), f32_token(f32_t){};
 };
 
-// Double literal
-struct DoubleLiteral : Expression {
-  Token double_token;
+// F64 literal
+struct F64Literal : Expression {
+  Token f64_token;
   std::string toString() override {
-    return "Double Literal: " + double_token.TokenLiteral;
+    return "F64 Literal: " + f64_token.TokenLiteral;
   }
 
-  DoubleLiteral *shallowClone() const override {
-    return new DoubleLiteral(double_token);
+  F64Literal *shallowClone() const override {
+    return new F64Literal(f64_token);
   }
-  DoubleLiteral(Token double_t)
-      : Expression(double_t), double_token(double_t){};
+  F64Literal(Token f64_t) : Expression(f64_t), f64_token(f64_t){};
 };
 
 // 8 bit Char literal
@@ -570,7 +582,16 @@ struct InstanceExpression : Expression {
     for (const auto &field : fields) {
       args += field->toString();
     }
-    return "Instance expression: " + blockIdent->toString() + " {" + args + "}";
+
+    std::string instName = "instName";
+    if (blockIdent)
+      instName = blockIdent->toString();
+
+    return "Instance expression: " + instName + " {" + args + "}";
+  }
+
+  InstanceExpression *shallowClone() const override {
+    return new InstanceExpression(clonePtr(blockIdent), clonePtrVector(fields));
   }
 
   InstanceExpression(std::unique_ptr<Expression> ident,
@@ -703,27 +724,23 @@ struct ReturnType : Expression {
       : Expression(retExpr->expression), returnExpr(std::move(retExpr)){};
 };
 
-// Error expression
-struct ErrorExpression : Expression {
-  Token error_token;
-  std::unique_ptr<Expression> err_message;
-  std::string toString() override {
-    return "Error expression: " + err_message->toString();
-  };
-
-  ErrorExpression(Token err_token, std::unique_ptr<Expression> message)
-      : Expression(err_token), error_token(err_token),
-        err_message(std::move(message)){};
-};
-
 // Prefix expression node for syntax like !true;
 struct PrefixExpression : Expression {
   Token operat;
   std::unique_ptr<Expression> operand;
+
   std::string toString() override {
-    return "Prefix Expression: (" + operat.TokenLiteral + operand->toString() +
-           ")";
+    std::string operStr = "No op";
+    if (operand)
+      operStr = operand->toString();
+
+    return "Prefix Expression: (" + operat.TokenLiteral + operStr + ")";
   }
+
+  PrefixExpression *shallowClone() const override {
+    return new PrefixExpression(operat, clonePtr(operand));
+  }
+
   PrefixExpression(Token opr, std::unique_ptr<Expression> oprand)
       : Expression(opr), operat(opr), operand(std::move(oprand)) {}
 };
@@ -734,8 +751,12 @@ struct PostfixExpression : Expression {
   Token operator_token;
 
   std::string toString() override {
-    return "Postfix Expression: (" + operand->toString() +
-           operator_token.TokenLiteral + ")";
+    std::string operStr = "No op";
+    if (operand)
+      operStr = operand->toString();
+
+    return "Postfix Expression: (" + operStr + operator_token.TokenLiteral +
+           ")";
   }
 
   PostfixExpression *shallowClone() const override {
@@ -751,9 +772,19 @@ struct InfixExpression : Expression {
   std::unique_ptr<Expression> left_operand;
   Token operat;
   std::unique_ptr<Expression> right_operand;
+
   std::string toString() override {
-    return "Infix Expression: (" + left_operand->toString() + " " +
-           operat.TokenLiteral + " " + right_operand->toString() + ")";
+    std::string leftSide = "left";
+    std::string rightSide = "right";
+
+    if (left_operand)
+      leftSide = left_operand->toString();
+
+    if (right_operand)
+      rightSide = right_operand->toString();
+
+    return "Infix Expression: (" + leftSide + " " + operat.TokenLiteral + " " +
+           rightSide + ")";
   }
 
   InfixExpression *shallowClone() const override {
@@ -771,16 +802,18 @@ struct InfixExpression : Expression {
 struct ExpressionStatement : Statement {
   Token expr;
   std::unique_ptr<Expression> expression;
+
   std::string toString() override {
     if (expression) {
-      return "Expression statement: " + expression->toString() + ";";
+      return "Expression statement: " + expression->toString() + "\n";
     }
-    return ";";
+    return "";
   }
 
   ExpressionStatement *shallowClone() const override {
     return new ExpressionStatement(expr, clonePtr(expression));
   }
+
   ExpressionStatement(Token exp, std::unique_ptr<Expression> expr)
       : Statement(exp), expr(exp), expression(std::move(expr)){};
 };
@@ -795,6 +828,7 @@ struct BreakStatement : Statement {
   BreakStatement *shallowClone() const override {
     return new BreakStatement(break_tok);
   }
+
   BreakStatement(Token break_t) : Statement(break_t), break_tok(break_t){};
 };
 
@@ -808,6 +842,7 @@ struct ContinueStatement : Statement {
   ContinueStatement *shallowClone() const override {
     return new ContinueStatement(cont_tok);
   }
+
   ContinueStatement(Token cont_t) : Statement(cont_t), cont_tok(cont_t){};
 };
 
@@ -1453,10 +1488,9 @@ struct EnumMember : Node {
 };
 
 // Enum class struct
-struct EnumClassStatement : Statement {
+struct EnumStatement : Statement {
   bool isExportable;
   Token enum_token;
-  Token class_token;
   std::unique_ptr<Expression> enum_identifier;
   std::optional<Token> int_type;
   std::vector<std::unique_ptr<EnumMember>> enum_content;
@@ -1473,23 +1507,23 @@ struct EnumClassStatement : Statement {
       enum_block += enum_cont->toString() + ",\n";
     }
 
-    return exportStr + "Enum class statement: " + enum_identifier->toString() +
+    return exportStr + "Enum statement: " + enum_identifier->toString() +
            int_typestr + " { " + enum_block + " }";
   }
 
-  EnumClassStatement *shallowClone() const override {
-    return new EnumClassStatement(isExportable, enum_token, class_token,
-                                  clonePtr(enum_identifier), int_type,
-                                  clonePtrVector(enum_content));
+  EnumStatement *shallowClone() const override {
+    return new EnumStatement(isExportable, enum_token,
+                             clonePtr(enum_identifier), int_type,
+                             clonePtrVector(enum_content));
   }
 
-  EnumClassStatement(bool exportable, Token enum_tok, Token class_tok,
-                     std::unique_ptr<Expression> enum_ident,
-                     std::optional<Token> intType,
-                     std::vector<std::unique_ptr<EnumMember>> enum_block)
+  EnumStatement(bool exportable, Token enum_tok,
+                std::unique_ptr<Expression> enum_ident,
+                std::optional<Token> intType,
+                std::vector<std::unique_ptr<EnumMember>> enum_block)
       : Statement(enum_tok), isExportable(exportable), enum_token(enum_tok),
-        class_token(class_tok), enum_identifier(std::move(enum_ident)),
-        int_type(intType), enum_content(std::move(enum_block)){};
+        enum_identifier(std::move(enum_ident)), int_type(intType),
+        enum_content(std::move(enum_block)){};
 };
 
 struct ForStatement : Statement {

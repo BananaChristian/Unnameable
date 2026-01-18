@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <limits>
 
-void Semantics::walkEnumClassStatement(Node *node) {
-  auto enumStmt = dynamic_cast<EnumClassStatement *>(node);
+void Semantics::walkEnumStatement(Node *node) {
+  auto enumStmt = dynamic_cast<EnumStatement *>(node);
   if (!enumStmt)
     return;
 
@@ -498,6 +498,7 @@ void Semantics::walkInstanceExpression(Node *node) {
   if (!instSym) {
     logSemanticErrors("Undefined identifier '" + instName + "'", line, col);
     hasError = true;
+    return;
   }
 
   if (instSym->type.kind != DataType::RECORD) {

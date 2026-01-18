@@ -30,11 +30,9 @@ std::vector<std::unique_ptr<Node>> Parser::parseProgram() {
     }
 
     if (currentToken().type == TokenType::END) {
-      std::cout << "[DEBUG] Parser reached END token. Breaking loop.\n";
       break;
     }
-
-    std::cout << "Parsing token: " << currentToken().TokenLiteral << "\n";
+    
     Token current = currentToken();
 
     if (current.type == TokenType::END)
@@ -50,7 +48,6 @@ std::vector<std::unique_ptr<Node>> Parser::parseProgram() {
     }
   }
 
-  std::cout << "Parser finished\n";
   return program;
 }
 
@@ -59,10 +56,6 @@ std::vector<std::unique_ptr<Node>> Parser::parseProgram() {
 // General statement parser function
 std::unique_ptr<Statement> Parser::parseStatement() {
   Token current = currentToken();
-  std::cout << "[DEBUG] parseStatement starting with token: "
-            << current.TokenLiteral << "\n";
-
-  // Handle self.* assignments
 
   // Other statement types from map
   auto stmtFnIt = StatementParseFunctionsMap.find(current.type);
@@ -185,8 +178,8 @@ bool Parser::isBasicType(TokenType type) {
   case TokenType::U128_KEYWORD:
   case TokenType::ISIZE_KEYWORD:
   case TokenType::USIZE_KEYWORD:
-  case TokenType::FLOAT_KEYWORD:
-  case TokenType::DOUBLE_KEYWORD:
+  case TokenType::F32_KEYWORD:
+  case TokenType::F64_KEYWORD:
   case TokenType::CHAR8_KEYWORD:
   case TokenType::CHAR16_KEYWORD:
   case TokenType::CHAR32_KEYWORD:
@@ -203,7 +196,6 @@ void Parser::advance() {
   if (nextPos < tokenInput.size()) {
     lastToken = currentToken();
     currentPos = nextPos;
-    std::cout << "Current token :" << currentToken().TokenLiteral << "\n";
     nextPos++;
   }
 }
@@ -263,8 +255,8 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::NULLABLE] = &Parser::parseNullLiteral;
   PrefixParseFunctionsMap[TokenType::TRUE] = &Parser::parseBooleanLiteral;
   PrefixParseFunctionsMap[TokenType::FALSE] = &Parser::parseBooleanLiteral;
-  PrefixParseFunctionsMap[TokenType::FLOAT] = &Parser::parseFloatLiteral;
-  PrefixParseFunctionsMap[TokenType::DOUBLE] = &Parser::parseDoubleLiteral;
+  PrefixParseFunctionsMap[TokenType::F32] = &Parser::parseF32Literal;
+  PrefixParseFunctionsMap[TokenType::F64] = &Parser::parseF64Literal;
   PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
   PrefixParseFunctionsMap[TokenType::SIZEOF] = &Parser::parseSizeOfExpression;
 
@@ -305,8 +297,6 @@ void Parser::registerPostfixFns() {
 // Identifer overloader parser
 std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   Token current = currentToken();
-  std::cout << "IDENTIFIER TOKEN INSIDE IDENTIFIER STATEMENT PARSER: "
-            << current.TokenLiteral << "\n";
 
   auto peekAfterSubscript = [this](int startOffset = 1) -> Token {
     int offset = startOffset;
@@ -343,23 +333,19 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
 
   Token peek1 = peekToken(1);
   if (peek1.type == TokenType::LBRACKET) {
-    std::cout << "PEEK AFTER SUBSCRIPT :" << peekAfterSubscript().TokenLiteral
-              << "\n";
+
     if (peekAfterSubscript().type == TokenType::ASSIGN) {
-      std::cout << "SUBSCRIPT ASSIGNMENT DETECTED\n";
       return parseAssignmentStatement();
     }
   }
 
   // Simple assignment (x = ...)
   if (peek1.type == TokenType::ASSIGN) {
-    std::cout << "Identifier taken assign path\n";
     return parseAssignmentStatement();
   }
 
   // Cases where there is a custom type like(Type var)
   if (peek1.type == TokenType::IDENTIFIER) {
-    std::cout << "Identifier taken let statement path\n";
     if (peekToken(2).type == TokenType::SEMICOLON) {
       return parseLetStatement();
     }
@@ -437,9 +423,9 @@ void Parser::registerStatementParseFns() {
       &Parser::parseIdentifierStatement;
   StatementParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfAssignment;
 
-  StatementParseFunctionsMap[TokenType::FLOAT_KEYWORD] =
+  StatementParseFunctionsMap[TokenType::F32_KEYWORD] =
       &Parser::parseLetStatement;
-  StatementParseFunctionsMap[TokenType::DOUBLE_KEYWORD] =
+  StatementParseFunctionsMap[TokenType::F64_KEYWORD] =
       &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::STRING_KEYWORD] =
       &Parser::parseLetStatement;
@@ -460,7 +446,7 @@ void Parser::registerStatementParseFns() {
       &Parser::parseInitConstructorStatement;
   StatementParseFunctionsMap[TokenType::SWITCH] = &Parser::parseSwitchStatement;
   StatementParseFunctionsMap[TokenType::ENUM] =
-      &Parser::parseEnumClassStatement;
+      &Parser::parseEnumStatement;
 
   StatementParseFunctionsMap[TokenType::GENERIC] =
       &Parser::parseGenericStatement;

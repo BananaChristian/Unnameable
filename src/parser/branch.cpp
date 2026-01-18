@@ -113,9 +113,7 @@ std::unique_ptr<Statement> Parser::parseElifStatement() {
   advance();
 
   if (currentToken().type != TokenType::LPAREN) {
-    std::cout << "[DEBUG] Expected '(' after 'elif', got: "
-              << currentToken().TokenLiteral << "\n";
-    logError("Expected '(' after 'elseif'");
+    logError("Expected '(' after 'elif'");
     return nullptr;
   }
 
@@ -140,9 +138,7 @@ std::unique_ptr<Statement> Parser::parseIfStatement() {
 
   auto condition = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    std::cout << "[DEBUG] Expected ')' got: " << currentToken().TokenLiteral
-              << "\n";
-    logError("Expected ')' got: ");
+    logError("Expected ')' got '" + currentToken().TokenLiteral + "'");
     return nullptr;
   }
   advance();

@@ -66,7 +66,7 @@ public:
 
 private:
   llvm::LLVMContext context;
-  llvm::IRBuilder<> globalBuilder; // THis is the global builder
+  llvm::IRBuilder<> globalBuilder; // This is the global builder
   llvm::IRBuilder<> funcBuilder;   // This is the builder for functions
   std::unique_ptr<llvm::Module> module;
   const llvm::DataLayout *layout;
@@ -110,7 +110,7 @@ private:
   // Array statement generator
   void generateArrayStatement(Node *node);
   // Enum class system
-  void generateEnumClassStatement(Node *node);
+  void generateEnumStatement(Node *node);
   // Shout statement generator
   void generateShoutStatement(Node *node);
   void generateAllocatorInterface(Node *node);
@@ -125,8 +125,8 @@ private:
   llvm::Value *generateChar16Literal(Node *node);
   llvm::Value *generateChar32Literal(Node *node);
   llvm::Value *generateBooleanLiteral(Node *node);
-  llvm::Value *generateFloatLiteral(Node *node);
-  llvm::Value *generateDoubleLiteral(Node *node);
+  llvm::Value *generateF32Literal(Node *node);
+  llvm::Value *generateF64Literal(Node *node);
   llvm::Value *generateArrayLiteral(Node *node);
   llvm::Value *generateSizeOfExpression(Node *node);
 

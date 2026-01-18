@@ -520,11 +520,11 @@ llvm::Type *Layout::getLLVMType(ResolvedType type) {
     baseType = llvm::Type::getInt32Ty(context);
     break;
   }
-  case DataType::FLOAT: {
+  case DataType::F32: {
     baseType = llvm::Type::getFloatTy(context);
     break;
   }
-  case DataType::DOUBLE: {
+  case DataType::F64: {
     baseType = llvm::Type::getDoubleTy(context);
     break;
   }

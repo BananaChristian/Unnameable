@@ -86,10 +86,10 @@ DataType Semantics::convertImportedDataTypetoResolvedDataType(const ImportedData
         return DataType::BOOLEAN;
     case ImportedDataType::STRING:
         return DataType::STRING;
-    case ImportedDataType::FLOAT:
-        return DataType::FLOAT;
-    case ImportedDataType::DOUBLE:
-        return DataType::DOUBLE;
+    case ImportedDataType::F32:
+        return DataType::F32;
+    case ImportedDataType::F64:
+        return DataType::F64;
     case ImportedDataType::CHAR8:
         return DataType::CHAR8;
     case ImportedDataType::CHAR16:

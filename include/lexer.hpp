@@ -20,7 +20,6 @@ class Lexer {
       {"return", TokenType::RETURN},
 
       {"enum", TokenType::ENUM},
-      {"class", TokenType::CLASS},
 
       {"component", TokenType::COMPONENT},
       {"self", TokenType::SELF},
@@ -69,10 +68,11 @@ class Lexer {
       {"char8", TokenType::CHAR8_KEYWORD},
       {"char16", TokenType::CHAR16_KEYWORD},
       {"char32", TokenType::CHAR32_KEYWORD},
+      
+      {"f32",TokenType::F32_KEYWORD},
+      {"f64",TokenType::F64_KEYWORD},
 
       {"string", TokenType::STRING_KEYWORD},
-      {"float", TokenType::FLOAT_KEYWORD},
-      {"double", TokenType::DOUBLE_KEYWORD},
       {"void", TokenType::VOID},
 
       {"sizeof", TokenType::SIZEOF},
@@ -129,6 +129,7 @@ private:
   Token readBinary();
   Token readHex();
   Token parseSuffix(const std::string &value, int line, int col);
+  Token parseFloatSuffix(const std::string &value, int line, int col);
   bool isHexDigit(char32_t ch);
   bool isBinaryDigit(char32_t ch);
   char convertUnicodeDigit(char32_t ch);
