@@ -4,20 +4,22 @@
 
 ---
 
-This is the base compiler for the Unnameable Programming langauge written in C++ for now many features will not added till bootstrap but I want to make this base compiler as powerful as possible to make the bootstrap extremely easy without alot of rewriting
+This is the base compiler for the Unnameable Programming langauge written in C++ for now many features will not added till bootstrap but I want to make this base compiler as powerful as I could to make the bootstrap extremely easy without alot of rewriting(If I am to bootstrap that is)
 
-This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser, abstract syntax tree (AST) builder, semantic analyzer, layout calculator,sentinel layer and LLVM IR codegen.
+This project contains the core implementation of the Unnameable compiler written in C++. It includes a custom lexer, parser,deserializer, semantic analyzer, layout calculator,sentinel layer, stubGen,and LLVM for the backend.
 
 ---
 
 ## Features
 
-- Lexer _(in progress)_
-- Parser _(in progress)_
-- Semantic Analyzer _(in progress)_
-- Layout Calculator _(active development)_
-- Sentinel layer _(active development)_
-- LLVM IR Codegen _(active development)_
+- Lexer
+- Parser 
+- Deserializer(It is just the stub deserializer if you import stuff)
+- Semantic Analyzer 
+- Layout Calculator 
+- Sentinel layer 
+- StubGen(This is the stub generator if you export stuff)
+- LLVM (For the backend)
 
 ---
 
@@ -44,8 +46,8 @@ This project contains the core implementation of the Unnameable compiler written
 - `char16` — 16 bit chars
 - `char32` — 32 bit chars
 
-- `float` — 32-bit floating-point numbers
-- `double`— 64-bit floating point number
+- `f32` — 32-bit floating-point numbers
+- `f64`— 64-bit floating point number
 
 ---
 
@@ -173,7 +175,7 @@ func main:i32{
 Unnameable uses a system of generics called Explicitly Instantiated Generics(EIG) where the user defines what the functions they want inside a generic block which takes arguments of the types. Then an instantiate statement allows the user to tell the compiler what sort of types they would like to create generics for.
 The alias on the instantiate statement is to uphold the langauge's rules of no overloading.
 
-This means when the compiler generates the generic functions after the user instantiates so for example the add for `i32` will not be the same as the one for `float` the compiler will automatically add the aliases to the name generating something like `IntOps_add` and `FloatOps_add` as seen below.
+This means when the compiler generates the generic functions after the user instantiates so for example the add for `i32` will not be the same as the one for `f32` the compiler will automatically add the aliases to the name generating something like `IntOps_add` and `FloatOps_add` as seen below.
 
 Note: The only top level statements allowed are function statements which means you can define or declare functions inside the generic blocks but other stuff is prohibited
 
@@ -205,15 +207,15 @@ func IntOps_subtract(i32 a,i32 b): i32{
 }
 ##
 
-instantiate MathOps(float) as FloatOps
+instantiate MathOps(f32) as FloatOps
 
 ##Same story here the generated functions will be
 
-func FloatOps_add(float a, float b): float{
+func FloatOps_add(f32 a, f32 b): f32{
     return a+b
 }
 
-func FloatOps_subtract(float a, float b): float{
+func FloatOps_subtract(f32 a, f32 b): float{
     return a-b
 }
 ##
@@ -230,14 +232,14 @@ generic MathMultiOps(T,M){
     }
 }
 
-instantiate MathMultiOps(i32, float) as MultiOps
+instantiate MathMultiOps(i32, f32) as MultiOps
 
 ##Here the function generated will be
-func MultiOps_add(int a,float b): float{
+func MultiOps_add(i32 a,f32 b): f32{
     return a+b
 }
 
-func MultiOps_subtract(i32 a ,float b): float{
+func MultiOps_subtract(i32 a ,f32 b): f32{
     return a-b
 }
 ##
@@ -461,7 +463,7 @@ merge "test.unn"
 
 Import allows a user to import content from an external file that had been marked as exportable
 The compiler loads a stub file and uses the info from the stub file in its analysis
-For now imports only support seals but I plan on expanding them to type builders like components etc.
+For now imports only support seals,components and records but I plan on expanding them to enums now and looking at how the EIG system can fit in(PS: this EIG isnt a guarantee when it comes to this system but I will try) etc.
 Below is an example of the syntax
 
 ```
@@ -513,9 +515,9 @@ if (age > 18) {
 ```
 
 ## Switch statements
-
+The switch statements are similar to the ones used in other langueages like C or C++ but difference the compiler will force you to give a default case 
 ```
-enum class Status {
+enum Status {
     PENDING,
     ACTIVE,
     CLOSED
@@ -580,7 +582,7 @@ func main:i32{
 
 ## Component System (OOP-like structure)
 
-Unnameable supports components, clean structures for organizing data and behavior, like classes, but lightweight and predictable.
+Unnameable supports components, clean structures for organizing data and behavior, like classes, but lightweight and predictable. Please not that you cannot nest these 
 
 ```unn
 
@@ -664,17 +666,17 @@ func main(): i32 {
 
 ## Enums
 
-Unnameable supports `enum class` as the default way to define enums a clean and type-safe way to group related symbolic values under a single name.
+Unnameable supports `enum` as the default way to define enums a clean and type-safe way to group related symbolic values under a single name.
 
 ```
-enum class Animal {
+enum Animal {
     CAT,
     DOG,
 }
 
 Animal pet = Animal::CAT
 
-enum class HttpStatus {
+enum HttpStatus {
     OK = 200,
     NotFound = 404,
     InternalServerError = 500,
@@ -682,14 +684,14 @@ enum class HttpStatus {
 
 auto code = HttpStatus::NotFound;
 
-enum class TokenType: u32{
+enum TokenType: u32{
     ADDITION,
     SUBTRACTION,
 }
 
-enum class AnotherTokenType: u32{
-    ADDITION=10u,
-    SUBTRACTION=20u,
+enum AnotherTokenType: u32{
+    ADDITION=10u32,
+    SUBTRACTION=20u32,
 }
 
 ```
@@ -701,13 +703,13 @@ Unnameable supports explicit control over variable mutability with the keywords 
 - `const` declares an immutable variable. It must be initialized at declaration and cannot be reassigned later. This ensures safety and predictability.
 
 ```
-const int x = 42  # Immutable, cannot be changed
+const i32 x = 42  # Immutable, cannot be changed
 ```
 
 - `mut` declares a mutable variable. It can be reassigned multiple times after declaration.
 
 ```
-mut int y       # Mutable, can assign later
+mut i32 y       # Mutable, can assign later
 y = 10
 y = 20          # Allowed
 ```
@@ -879,7 +881,7 @@ Unnameable does not use a Garbage Collector. Instead, it uses **Compile-Time Las
 
 ## Address operator in Unnameable
 
-In unnameable the `addr` operator is strictly for obtaining the memory address of a variable, It is used in pointers to show the target
+In unnameable the `addr` operator is strictly for obtaining the memory address of a variable, It is used in pointers to show the target it is similar to the ampersand operator in C but I wanted it to be clear 
 For example
 
 ```
@@ -986,7 +988,7 @@ They have a syntax of `ptr <type> <name> -> addr <target>`
 - addr <target>: This is address of the variable that you want to store
 
 ```
-int x=10
+i32 x=10
 ptr i32 p -> addr x #pointer 'p' stores the address of x
 ```
 
@@ -1010,11 +1012,11 @@ _Heap and Global rule_:
 Pointers must point to only heap raised or global variables this way the compiler can guarantee that ur not going to use a dangling pointer. So basically if u want to use pointers heap raise the variables you want to point to or place the in global scope
 
 ```
-heap int x=10
+heap i32 x=10
 ptr p -> addr x #This is a heap raised pointer since x is heap raised it is safe
 
 ##
-int x =10
+i32 x =10
 ptr p -> addr x #This is a stack pointer it is not safe the compiler will immediately stop compiling
 ##
 ```
@@ -1074,11 +1076,18 @@ deref p=10 #This is allowed since x is mutable
 - g++ or clang
 - LLVM 18
 - Make(optional for building)
+Oh yeah and you might also need NASM and gcc to build the core runtime as they are in assembly and C
+Also the compiler uses lld to link so you might need it 
+Currently it can only work on linux x86_64 because that is what I coded the runtime towards but I will add support for other architectures and Operating systems soon
 
 ## Philosophy
 
-Unnameable is designed to make systems programming less painful and soul draining.
-The language upholds the principles of clarity and predictability to allow it's user to build powerful things.
+I built Unnameable because I really hate a language hiding stuff from me, I would rather see the complexity upfront and try to understand it than the compiler babysitting me,Yes sometimes it is nice to get babysat but if I really want to understand what is going on that babysitting tends to be a recipe for disaster mostly in a systems language. 
+I believe the compiler is a helper but I dont want to the compiler to think for me,instead it should guide me. Clarity above all else its just better for you to know that okay this is what I am doing right now than some smart compiler hiding stuff from you
+But again sometimes hiding stuff is good it depends on what you are doing after all but in some cases it isnt and that is where Unnameable would work best. 
+
+Basically what I am saying is at some point you will ask yourself why must I write 4 different 1's like 1u32 and again 1u64 just to match the types well that is exactly the point the compiler isnt hiding anything it will not implicitly convert your types for you or assume that this is what you wanted it just obeys if you play by the language rules of course. It is just an upfront tax for you to know every detail of what your doing and that detail must be communicated directly in the code 
+I hope this is clear enough I will of course talk more about  the language philosophy but this is the gist of it clarity above anything else
 
 ## Current status
 
@@ -1086,7 +1095,7 @@ This project is under active and early development and is still highly experimen
 
 ---
 
-License
+## License
 
 Unnameable is dual-licensed under the MIT License and Apache License 2.0.
 You may choose either license to use this project.
