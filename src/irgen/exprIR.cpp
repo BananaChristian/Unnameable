@@ -232,7 +232,7 @@ llvm::Value *IRGenerator::generateF64Literal(Node *node) {
   }
   auto it =
       semantics.metaData.find(f64Lit); // Creating an iterator to find specific
-                                      // meta data about the double literal
+                                       // meta data about the double literal
   if (it == semantics.metaData.end()) {
     throw std::runtime_error("f64 literal not found in metadata");
   }
@@ -244,7 +244,7 @@ llvm::Value *IRGenerator::generateF64Literal(Node *node) {
   // see if the data type is double
   double value = std::stod(
       f64Lit->f64_token.TokenLiteral); // Converting the double literal from a
-                                         // string to a double
+                                       // string to a double
   return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context),
                                value); // Returning double value
 }
@@ -364,7 +364,13 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
       throw std::runtime_error("Missing metadata for struct expression");
 
     std::string parentTypeName = lhsMeta->type.resolvedName;
-    std::string lookUpName = semantics.stripPtrSuffix(parentTypeName);
+    std::string lookUpName = parentTypeName;
+
+    if (lhsMeta->type.isPointer) {
+      lookUpName = semantics.stripPtrSuffix(parentTypeName);
+    } else if (lhsMeta->type.isRef) {
+      lookUpName = semantics.stripRefSuffix(parentTypeName);
+    }
 
     // get struct definition
     auto parentTypeIt = semantics.customTypesTable.find(lookUpName);
@@ -782,8 +788,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
 
   switch (prefix->operat.type) {
   case TokenType::MINUS: {
-    if (resultType.kind == DataType::F32 ||
-        resultType.kind == DataType::F64)
+    if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64)
       return funcBuilder.CreateFNeg(operand, llvm::Twine("fnegtmp"));
     else if (isIntType(resultType.kind))
       return funcBuilder.CreateNeg(operand, llvm::Twine("negtmp"));
@@ -826,8 +831,7 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
         funcBuilder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
     llvm::Value *delta = nullptr;
-    if (resultType.kind == DataType::F32 ||
-        resultType.kind == DataType::F64) {
+    if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64) {
       delta = llvm::ConstantFP::get(varType, 1.0);
     } else if (isIntType(resultType.kind)) {
       unsigned bits = getIntegerBitWidth(resultType.kind);
@@ -839,15 +843,13 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
     llvm::Value *updated = nullptr;
     if (prefix->operat.type == TokenType::PLUS_PLUS)
       updated =
-          (resultType.kind == DataType::F32 ||
-           resultType.kind == DataType::F64)
+          (resultType.kind == DataType::F32 || resultType.kind == DataType::F64)
               ? funcBuilder.CreateFAdd(loaded, delta,
                                        llvm::Twine("preincfptmp"))
               : funcBuilder.CreateAdd(loaded, delta, llvm::Twine("preinctmp"));
     else
       updated =
-          (resultType.kind == DataType::F32 ||
-           resultType.kind == DataType::F64)
+          (resultType.kind == DataType::F32 || resultType.kind == DataType::F64)
               ? funcBuilder.CreateFSub(loaded, delta,
                                        llvm::Twine("predecfptmp"))
               : funcBuilder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
@@ -926,8 +928,7 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
       funcBuilder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
 
   llvm::Value *delta = nullptr;
-  if (resultType.kind == DataType::F32 ||
-      resultType.kind == DataType::F64) {
+  if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64) {
     delta = llvm::ConstantFP::get(varType, 1.0);
   } else if (isIntType(resultType.kind)) {
     unsigned bits = getIntegerBitWidth(resultType.kind);
@@ -940,14 +941,12 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
 
   if (postfix->operator_token.type == TokenType::PLUS_PLUS)
     updatedValue =
-        (resultType.kind == DataType::F32 ||
-         resultType.kind == DataType::F64)
+        (resultType.kind == DataType::F32 || resultType.kind == DataType::F64)
             ? funcBuilder.CreateFAdd(originalValue, delta, llvm::Twine("finc"))
             : funcBuilder.CreateAdd(originalValue, delta, llvm::Twine("inc"));
   else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
     updatedValue =
-        (resultType.kind == DataType::F32 ||
-         resultType.kind == DataType::F64)
+        (resultType.kind == DataType::F32 || resultType.kind == DataType::F64)
             ? funcBuilder.CreateFSub(originalValue, delta, llvm::Twine("fdec"))
             : funcBuilder.CreateSub(originalValue, delta, llvm::Twine("dec"));
   else

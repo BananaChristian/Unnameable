@@ -17,7 +17,8 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
   if (hasParens && currentToken().type == TokenType::RPAREN) {
     advance(); // move past ')'
     if (currentToken().type != TokenType::COLON) {
-      logError("Expected ':' after empty parameter list");
+      logError("Expected ':' after empty parameter list but got '" +
+               currentToken().TokenLiteral + "'");
     }
     return args; // empty vector
   }
@@ -45,7 +46,8 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
 
   // If we used parentheses, we must have closing ')'
   if (hasParens && currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' after function parameters");
+    logError("Expected ')' after function parameters but got '" +
+             currentToken().TokenLiteral + "'");
     return args;
   }
   if (hasParens)

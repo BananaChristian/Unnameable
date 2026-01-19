@@ -967,9 +967,15 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
 
   // Get the parent's type
   std::string parentType = parentSymbol->type.resolvedName;
-  std::string lookUpName =
-      stripPtrSuffix(parentType); // Strip the _ptr suffix so that the semantics
-                                  // can search with the original name
+  std::string lookUpName = parentType;
+  
+  //Stripping the suffixes to allow proper name look up 
+  if (parentSymbol->isPointer) {
+    lookUpName = stripPtrSuffix(parentType);
+  } else if (parentSymbol->isRef) {
+    lookUpName = stripRefSuffix(parentType);
+  }
+
   std::cout << "SEMANTIC LOG: Parent type: " << lookUpName << "\n";
 
   // Look up that type in the custom types table

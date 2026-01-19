@@ -475,7 +475,13 @@ void Sentinel::checkFieldAssignment(Node *node) {
 
   // Get the parent type from the baseSymbol
   auto parentTypeName = baseSym->type.resolvedName;
-  std::string lookUpName = semantics.stripPtrSuffix(parentTypeName);
+  std::string lookUpName=parentTypeName;
+  if(baseSym->isPointer){
+      lookUpName = semantics.stripPtrSuffix(parentTypeName);
+  }else if(baseSym->isRef){
+      lookUpName=semantics.stripRefSuffix(parentTypeName);
+  }
+  
   std::cout << "PARENT TYPE NAME: " << lookUpName << "\n";
 
   // Check inside the parent

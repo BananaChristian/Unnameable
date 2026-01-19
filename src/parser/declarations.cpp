@@ -285,7 +285,7 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement() {
   // Only treat as type if followed by another identifier (like "int x")
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::ARRAY ||
-      (currentToken().type != TokenType::IDENTIFIER &&
+      (currentToken().type == TokenType::IDENTIFIER &&
        nextToken().type == TokenType::IDENTIFIER)) {
     type = parseReturnType();
   }

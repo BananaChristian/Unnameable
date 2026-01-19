@@ -318,7 +318,14 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
 
   // Resolve parent type and member info
   auto parentTypeName = baseSym->type.resolvedName;
-  std::string lookUpName = semantics.stripPtrSuffix(parentTypeName);
+
+  std::string lookUpName = parentTypeName;
+  if (baseSym->type.isPointer) {
+    lookUpName = semantics.stripPtrSuffix(parentTypeName);
+  } else if (baseSym->type.isRef) {
+    lookUpName = semantics.stripRefSuffix(parentTypeName);
+  }
+  
   auto parentIt = semantics.customTypesTable.find(lookUpName);
   if (parentIt == semantics.customTypesTable.end())
     throw std::runtime_error("Type '" + lookUpName + "' does not exist");
@@ -1159,7 +1166,12 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
           "Custom type requested but resolvedName is empty");
 
     std::string lookUpName = type.resolvedName;
-    lookUpName = semantics.stripPtrSuffix(lookUpName);
+    if (type.isPointer) {
+      lookUpName = semantics.stripPtrSuffix(lookUpName);
+    } else {
+      lookUpName = semantics.stripRefSuffix(lookUpName);
+    }
+
     auto it = llvmCustomTypes.find(lookUpName);
     if (it != llvmCustomTypes.end())
       baseType = it->second;

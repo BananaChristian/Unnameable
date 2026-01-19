@@ -947,7 +947,11 @@ void Semantics::walkShoutStatement(Node *node) {
     return;
 
   // Just call the walker on whatever is there
-  walker(shoutStmt->expr.get());
+  auto shoutExpr=shoutStmt->expr.get();
+  if(!shoutExpr)
+      return;
+  
+  walker(shoutExpr);
 }
 
 void Semantics::walkSealCallExpression(Node *node,

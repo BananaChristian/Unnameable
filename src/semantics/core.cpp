@@ -800,8 +800,6 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
                                            const std::string &parentName,
                                            const std::string &childName,
                                            InfixExpression *infixExpr) {
-  std::cout << "INSIDE SCOPE RESOLVER FOR INFIX\n";
-
   if (operatorType != TokenType::FULLSTOP &&
       operatorType != TokenType::SCOPE_OPERATOR)
     return ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -816,6 +814,8 @@ ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
 
     if (varType.isPointer) {
       lookUpName = stripPtrSuffix(lookUpName);
+    } else if (varType.isRef) {
+      lookUpName = stripRefSuffix(lookUpName);
     }
 
     // Block cases where the parentName is an actual type too if its not an enum

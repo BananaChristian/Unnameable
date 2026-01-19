@@ -340,7 +340,7 @@ void Semantics::walkRecordStatement(Node *node) {
 
   // Get block name
   std::string recordName = recordStmt->recordName->expression.TokenLiteral;
-  bool hasError=true;
+  bool hasError=false;
   bool isExportable = recordStmt->isExportable;
 
   // Ensure name not already used
@@ -462,7 +462,7 @@ void Semantics::walkRecordStatement(Node *node) {
   recordInfo->isConstant = isBlockConstant;
   recordInfo->isExportable = isExportable;
   recordInfo->members = recordMembers;
-  recordInfo->hasError=true;
+  recordInfo->hasError=hasError;
   recordInfo->isDataBlock = true;
 
   for (auto &kv : recordInfo->members) {
@@ -848,7 +848,6 @@ void Semantics::walkComponentStatement(Node *node) {
     return;
 
   auto componentName = componentStmt->component_name->expression.TokenLiteral;
-  std::cout << "[SEMANTIC LOG] Analyzing component '" << componentName << "'\n";
   bool isExportable = componentStmt->isExportable;
 
   bool hasError = false;
