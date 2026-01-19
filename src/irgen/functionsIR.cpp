@@ -387,7 +387,23 @@ std::vector<llvm::Value *> IRGenerator::prepareArguments(
   auto funcTy = func->getFunctionType();
 
   for (size_t i = 0; i < params.size(); ++i) {
-    llvm::Value *argVal = generateExpression(params[i].get());
+    llvm::Value *argVal = nullptr;
+
+    auto metaIt = semantics.metaData.find(params[i].get());
+    if (metaIt != semantics.metaData.end() &&
+        metaIt->second->needsImplicitAddress) {
+      // Instead of loading the value, we grab the raw address
+      AddressAndPendingFree addrInfo =
+          generateIdentifierAddress(params[i].get());
+      argVal = addrInfo.address;
+    } else {
+      // Normal behavior like load a 10
+      argVal = generateExpression(params[i].get());
+    }
+
+    if (!argVal)
+      throw std::runtime_error("Failed to generate argument IR");
+
     llvm::Type *expectedTy = funcTy->getParamType(i);
 
     // Implicit Promotion: T -> T?

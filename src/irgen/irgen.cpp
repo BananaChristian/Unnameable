@@ -1,6 +1,7 @@
 #include "llvm/TargetParser/Host.h"
 #include <llvm-18/llvm/IR/Constants.h>
 #include <llvm-18/llvm/IR/DataLayout.h>
+#include <llvm-18/llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/FileSystem.h>
@@ -563,13 +564,19 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   }
 
   // Non-heap scalar: variableAddr is a pointer to T, just load
-  llvm::Type *identType = getLLVMType(sym->type);
-  if (!identType)
+  llvm::Type *loadedType;
+  if (sym->isRef) {
+    loadedType = getLLVMType(semantics.peelRef(sym->type));
+  } else {
+    loadedType = getLLVMType(sym->type);
+  }
+
+  if (!loadedType)
     throw std::runtime_error("llvmType null for scalar '" + identName + "'");
 
   // variableAddr should already be a pointer, load from it
   llvm::Value *val =
-      funcBuilder.CreateLoad(identType, variableAddr, identName + "_val");
+      funcBuilder.CreateLoad(loadedType, variableAddr, identName + "_val");
 
   std::cout << "ENDED IDENTIFIER GEN\n";
   return val;
@@ -690,6 +697,12 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
   llvm::Value *variablePtr = sym->llvmValue;
   if (!variablePtr)
     throw std::runtime_error("No llvm value for '" + identName + "'");
+
+  if (sym->isRef) {
+    llvm::Type *ptrType = llvm::PointerType::get(funcBuilder.getContext(), 0);
+    variablePtr =
+        funcBuilder.CreateLoad(ptrType, variablePtr, identName + "_ref_addr");
+  }
 
   // Component instance -> pointer to struct
   auto compIt = componentTypes.find(sym->type.resolvedName);

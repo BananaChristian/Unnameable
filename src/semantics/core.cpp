@@ -761,10 +761,10 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
       return {DataType::UNKNOWN, "unknown"};
     }
   }
-  
+
   ResolvedType peeledLeft = peelRef(leftType);
   ResolvedType peeledRight = peelRef(rightType);
-  
+
   auto infixType = resultOfBinary(operatorType, peeledLeft, peeledRight);
   if (infixType.kind == DataType::UNKNOWN) {
     logSemanticErrors("Infix type issue between '" + leftType.resolvedName +
@@ -1555,7 +1555,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
 
   auto funcName = callExpr->function_identifier->expression.TokenLiteral;
 
-  // 1. Check parameter count
+  // Check parameter count
   if (funcInfo.paramTypes.size() != callExpr->parameters.size()) {
     logSemanticErrors("Function '" + funcName + "' call has " +
                           std::to_string(callExpr->parameters.size()) +
@@ -1567,8 +1567,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
 
   for (size_t i = 0; i < callExpr->parameters.size(); ++i) {
     auto &param = callExpr->parameters[i];
-    const auto &expectedType =
-        funcInfo.paramTypes[i].first; // pair<ResolvedType, string>
+    const auto &expectedType = funcInfo.paramTypes[i].first;
     auto argInfo = metaData[param.get()];
     if (!argInfo)
       continue;
@@ -1590,6 +1589,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
 
       if (expectedType.kind == argType.kind) {
         isCompatible = true;
+        argInfo->needsImplicitAddress = true;
       }
     }
 

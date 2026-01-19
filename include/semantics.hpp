@@ -179,6 +179,8 @@ struct SymbolInfo {
 
   bool isRef = false;     // Reference flag
   bool isPointer = false; // Pointer flag
+  
+  bool needsImplicitAddress=false;
 
   bool isParam = false;
 
