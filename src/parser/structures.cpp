@@ -276,9 +276,9 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
     advance(); // Consume the semicolon
   }
 
-  return std::make_unique<EnumStatement>(
-      isExportable, enum_token, std::move(enum_ident), int_token,
-      std::move(enum_block));
+  return std::make_unique<EnumStatement>(isExportable, enum_token,
+                                         std::move(enum_ident), int_token,
+                                         std::move(enum_block));
 }
 
 //____________________COMPONENTS___________________
@@ -314,11 +314,16 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       break; // stop parsing component body
     }
     std::unique_ptr<Statement> stmt = nullptr;
-
-    if (isBasicType(currentToken().type) ||
-        currentToken().type == TokenType::IDENTIFIER ||
-        currentToken().type == TokenType::AUTO) {
-      stmt = parseLetStatement();
+    bool isValid = (isBasicType(currentToken().type) ||
+                    currentToken().type == TokenType::IDENTIFIER ||
+                    currentToken().type == TokenType::AUTO) ||
+                   (currentToken().type == TokenType::PTR ||
+                    currentToken().type == TokenType::REF) ||
+                   (currentToken().type == TokenType::MUT ||
+                    currentToken().type == TokenType::CONST);
+                   
+    if (isValid) {
+      stmt = parseStatement();
       privateData.push_back(std::move(stmt));
       continue;
     }
@@ -337,14 +342,8 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
         advance(); // skip the unexpected token
       }
       break;
-    case TokenType::MUT:
-      stmt = parseMutStatement();
-      privateData.push_back(std::move(stmt));
-      break;
-    case TokenType::CONST:
-      stmt = parseConstStatement();
-      privateData.push_back(std::move(stmt));
-      break;
+    case TokenType::PTR:
+      stmt = parsePointerStatement();
     case TokenType::EXPORT: {
       auto exportStmt = parseExportStatement();
       auto fnStmt = dynamic_cast<FunctionStatement *>(exportStmt.get());

@@ -1508,9 +1508,29 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
 
   for (size_t i = 0; i < callExpr->parameters.size(); ++i) {
     auto &param = callExpr->parameters[i];
-    const auto &expectedType =
-        memFuncInfo.paramTypes[i].first; // pair<ResolvedType, string>
-    ResolvedType argType = inferNodeDataType(param.get());
+    const auto &expectedType = memFuncInfo.paramTypes[i].first;
+    auto argInfo = metaData[param.get()];
+    if (!argInfo)
+      continue;
+
+    ResolvedType argType = argInfo->type;
+
+    bool isCompatible = isTypeCompatible(expectedType, argType);
+    if (!isCompatible && expectedType.isRef && !argType.isRef) {
+      auto ident = dynamic_cast<Identifier *>(param.get());
+      auto deref = dynamic_cast<DereferenceExpression *>(param.get());
+
+      if (!(ident || deref)) {
+        logSemanticErrors("Cannot pass an expression to a reference parameter",
+                          param->expression.line, param->expression.column);
+        return false;
+      }
+
+      if (expectedType.kind == argType.kind) {
+        isCompatible = true;
+        argInfo->needsImplicitAddress = true;
+      }
+    }
 
     if (argType.kind == DataType::UNKNOWN) {
       logSemanticErrors("Could not infer type for argument " +
@@ -1534,7 +1554,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
       }
     }
 
-    if (!isTypeCompatible(expectedType, argType)) {
+    if (!isCompatible) {
       logSemanticErrors("Call for '" + funcName +
                             "'has a type mismatch in argument " +
                             std::to_string(i + 1) + ", expected '" +

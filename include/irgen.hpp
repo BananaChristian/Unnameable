@@ -204,7 +204,7 @@ private:
 
   std::vector<llvm::Value *>
   prepareArguments(llvm::Function *func,
-                   const std::vector<std::unique_ptr<Expression>> &params);
+                   const std::vector<std::unique_ptr<Expression>> &params,size_t offset);
   // For normal variables
   void generateGlobalHeapLet(LetStatement *letStmt,
                              std::shared_ptr<SymbolInfo> sym,

@@ -9,11 +9,10 @@ void IRGenerator::generateRecordStatement(Node *node) {
   if (it == semantics.metaData.end())
     throw std::runtime_error("Missing record metaData");
 
-
   auto &meta = *it->second;
-  if(meta.hasError)
-        throw std::runtime_error("Error detected");
-  
+  if (meta.hasError)
+    throw std::runtime_error("Error detected");
+
   std::string blockName = meta.type.resolvedName;
 
   // Get the struct (Should already be created by declareCustomTypes)
@@ -433,10 +432,12 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node) {
     std::vector<llvm::Value *> args;
     args.push_back(objectPtr); // The implicit self
 
-    // Add user arguments if any were provided
-    for (const auto &arg : call->parameters) {
-      args.push_back(generateExpression(arg.get()));
-    }
+    // Offset of 1 is passed inorder to ignore the self paremeter getting
+    // injected
+    std::vector<llvm::Value *> userArgs =
+        prepareArguments(targetFunc, call->parameters, 1);
+
+    args.insert(args.end(), userArgs.begin(), userArgs.end());
 
     // Call the function
     result = funcBuilder.CreateCall(targetFunc, args);
@@ -617,11 +618,11 @@ void IRGenerator::generateSealStatement(Node *node) {
   }
 }
 
-  void IRGenerator::generateQualifyStatement(Node * node) {
-    auto qualifyStmt = dynamic_cast<QualifyStatement *>(node);
+void IRGenerator::generateQualifyStatement(Node *node) {
+  auto qualifyStmt = dynamic_cast<QualifyStatement *>(node);
 
-    if (!qualifyStmt)
-      return;
+  if (!qualifyStmt)
+    return;
 
-    mainMarker = true;
-  }
+  mainMarker = true;
+}

@@ -216,9 +216,9 @@ void Semantics::walkPointerStatement(Node *node) {
 
   ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
-  // If we dont have the value(This is only allowed inside records for now)
+  // If we dont have the value(This is only allowed inside records and components for now)
   if (!ptrStmt->value) {
-    if (insideRecord) {
+    if (insideRecord||insideComponent) {
       if (ptrStmt->type) {
         ptrType = inferNodeDataType(ptrStmt);
       } else {

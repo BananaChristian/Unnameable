@@ -885,7 +885,6 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     hasError = true;
   }
 
-  
   // Calling the walker on the arguments
   for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
     const auto &arg = funcCall->parameters[i];
@@ -901,16 +900,16 @@ void Semantics::walkFunctionCallExpression(Node *node) {
           logSemanticErrors("Cannot pass null to non-nullable parameter",
                             arg->expression.line, arg->expression.column);
           hasError = true;
+          continue;
         }
       }
     }
   }
-  
+
   // Check if call signature matches
   if (!isCallCompatible(*callSymbolInfo, funcCall)) {
     hasError = true;
   }
-
 
   // Store metaData for the call
   auto callSymbol = std::make_shared<SymbolInfo>();
@@ -947,10 +946,10 @@ void Semantics::walkShoutStatement(Node *node) {
     return;
 
   // Just call the walker on whatever is there
-  auto shoutExpr=shoutStmt->expr.get();
-  if(!shoutExpr)
-      return;
-  
+  auto shoutExpr = shoutStmt->expr.get();
+  if (!shoutExpr)
+    return;
+
   walker(shoutExpr);
 }
 
@@ -1014,14 +1013,29 @@ void Semantics::walkSealCallExpression(Node *node,
     hasError = true;
   }
 
+  // Calling the walker on the arguments
+  for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
+    const auto &arg = funcCall->parameters[i];
+    walker(arg.get());
+
+    if (auto nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
+      if (i < callSymbolInfo->paramTypes.size()) {
+        auto expected = callSymbolInfo->paramTypes[i].first;
+        if (expected.isNull) {
+          metaData[nullLit]->type = expected;
+        } else {
+          logSemanticErrors("Cannot pass null to non-nullable parameter",
+                            arg->expression.line, arg->expression.column);
+          hasError = true;
+          continue;
+        }
+      }
+    }
+  }
+
   // Check if call signature matches
   if (!isCallCompatible(*callSymbolInfo, funcCall)) {
     hasError = true;
-  }
-
-  // Calling the walker on the arguments
-  for (const auto &arg : funcCall->parameters) {
-    walker(arg.get());
   }
 
   // Store metaData for the call

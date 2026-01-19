@@ -316,7 +316,7 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
   }
 
   std::vector<llvm::Value *> argsV =
-      prepareArguments(calledFunc, callExpr->parameters);
+      prepareArguments(calledFunc, callExpr->parameters,0);
 
   // Emitting the function call itself
   llvm::Value *call = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
@@ -355,7 +355,7 @@ llvm::Value *IRGenerator::generateCallAddress(Node *node) {
 
   // Generate IR for each argument
   std::vector<llvm::Value *> argsV =
-      prepareArguments(calledFunc, callExpr->parameters);
+      prepareArguments(calledFunc, callExpr->parameters,0);
 
   llvm::Type *retTy = calledFunc->getReturnType();
   if (retTy->isVoidTy())
@@ -382,7 +382,7 @@ llvm::Value *IRGenerator::generateCallAddress(Node *node) {
 
 std::vector<llvm::Value *> IRGenerator::prepareArguments(
     llvm::Function *func,
-    const std::vector<std::unique_ptr<Expression>> &params) {
+    const std::vector<std::unique_ptr<Expression>> &params,size_t offset) {
   std::vector<llvm::Value *> argsV;
   auto funcTy = func->getFunctionType();
 
@@ -404,7 +404,7 @@ std::vector<llvm::Value *> IRGenerator::prepareArguments(
     if (!argVal)
       throw std::runtime_error("Failed to generate argument IR");
 
-    llvm::Type *expectedTy = funcTy->getParamType(i);
+    llvm::Type *expectedTy = funcTy->getParamType(i+offset);
 
     // Implicit Promotion: T -> T?
     if (expectedTy->isStructTy() && !argVal->getType()->isStructTy()) {

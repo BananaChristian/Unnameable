@@ -22,6 +22,7 @@ Layout::Layout(Semantics &sem, llvm::LLVMContext &ctx)
 void Layout::calculatorDriver(Node *node) {
   if (!node) {
     std::cerr << "Invalid node\n";
+    return;
   }
 
   auto it = calculatorFnsMap.find(typeid(*node));
@@ -370,10 +371,6 @@ void Layout::calculateRecordStatement(Node *node) {
     fieldTypes.push_back(fieldType);
   }
 
-  // Independent analysis of the members in the data block
-  for (const auto &stmt : recordStmt->fields) {
-    calculatorDriver(stmt.get());
-  }
   llvm::StructType *structTy = llvm::StructType::create(context, recordName);
   structTy->setBody(fieldTypes, /*isPacked*/ false);
 
@@ -424,13 +421,6 @@ void Layout::calculateComponentStatement(Node *node) {
   // Calculating the imported fields
   for (const auto &[key, value] : compSym->members) {
     calculatorDriver(value->node);
-  }
-
-  // Calculating for the private fields
-  for (const auto &data : compStmt->privateData) {
-    std::cout << "Inside private data calculation for: " << data->toString()
-              << "\n";
-    calculatorDriver(data.get());
   }
 
   // Calculating for the private methods

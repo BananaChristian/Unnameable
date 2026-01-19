@@ -340,7 +340,7 @@ void Semantics::walkRecordStatement(Node *node) {
 
   // Get block name
   std::string recordName = recordStmt->recordName->expression.TokenLiteral;
-  bool hasError=false;
+  bool hasError = false;
   bool isExportable = recordStmt->isExportable;
 
   // Ensure name not already used
@@ -373,7 +373,7 @@ void Semantics::walkRecordStatement(Node *node) {
       logSemanticErrors("Cannot use references inside record '" + recordName +
                             "'",
                         field->statement.line, field->statement.column);
-      hasError=true;
+      hasError = true;
       continue;
     }
 
@@ -383,7 +383,7 @@ void Semantics::walkRecordStatement(Node *node) {
     if (!isDecl) {
       logSemanticErrors("Invalid statement inside record '" + recordName + "'",
                         field->statement.line, field->statement.column);
-      hasError=true;
+      hasError = true;
       continue; // skip bad field but keep going
     }
 
@@ -418,7 +418,7 @@ void Semantics::walkRecordStatement(Node *node) {
       logSemanticErrors("Declaration statement '" + fieldName +
                             "' was not analyzed properly",
                         field->statement.line, field->statement.column);
-      hasError=true;
+      hasError = true;
       continue;
     }
 
@@ -462,7 +462,7 @@ void Semantics::walkRecordStatement(Node *node) {
   recordInfo->isConstant = isBlockConstant;
   recordInfo->isExportable = isExportable;
   recordInfo->members = recordMembers;
-  recordInfo->hasError=hasError;
+  recordInfo->hasError = hasError;
   recordInfo->isDataBlock = true;
 
   for (auto &kv : recordInfo->members) {
@@ -1131,40 +1131,56 @@ void Semantics::walkComponentStatement(Node *node) {
 
   for (const auto &data : componentStmt->privateData) {
     auto letStmt = dynamic_cast<LetStatement *>(data.get());
+    auto refStmt = dynamic_cast<ReferenceStatement *>(data.get());
+    auto arrStmt = dynamic_cast<ArrayStatement *>(data.get());
+    auto ptrStmt = dynamic_cast<PointerStatement *>(data.get());
 
-    if (letStmt) {
-      walker(letStmt);
-      auto letSym = resolveSymbolInfo(letStmt->ident_token.TokenLiteral);
-      if (!letSym) {
-        logSemanticErrors("Failed to resolve private data '" +
-                              letStmt->ident_token.TokenLiteral + "'",
-                          letStmt->ident_token.line,
-                          letStmt->ident_token.column);
+    std::string declName = extractDeclarationName(data.get());
+    auto declLine = data.get()->statement.line;
+    auto declCol = data.get()->statement.column;
+
+    // Block references
+    if (refStmt) {
+      logSemanticErrors("Cannot use references inside component '" +
+                            componentName + "'",
+                        declLine, declCol);
+      hasError = true;
+      continue;
+    }
+
+    bool isValidDecl = letStmt || ptrStmt || arrStmt;
+
+    if (isValidDecl) {
+      walker(data.get());
+      std::shared_ptr<SymbolInfo> declSym = resolveSymbolInfo(declName);
+      if (!declSym) {
+        logSemanticErrors("Failed to resolve member '" + declName + "'",
+                          declLine, declCol);
         hasError = true;
         continue;
       }
       auto memInfo = std::make_shared<MemberInfo>();
-      memInfo->memberName = letStmt->ident_token.TokenLiteral;
-      memInfo->type = letSym->type;
-      memInfo->isNullable = letSym->isNullable;
-      memInfo->isMutable = letSym->isMutable;
-      memInfo->isConstant = letSym->isConstant;
-      memInfo->isInitialised = letSym->isInitialized;
-      memInfo->storage = letSym->storage;
-      memInfo->node = letStmt;
+      memInfo->memberName = declName;
+      memInfo->type = declSym->type;
+      memInfo->isNullable = declSym->isNullable;
+      memInfo->isMutable = declSym->isMutable;
+      memInfo->isConstant = declSym->isConstant;
+      memInfo->isInitialised = declSym->isInitialized;
+      memInfo->storage = declSym->storage;
+      memInfo->node = data.get();
       memInfo->typeNode = componentStmt;
       memInfo->memberIndex = currentMemberIndex++;
 
-      members[letStmt->ident_token.TokenLiteral] = memInfo;
-      letSym->memberIndex = memInfo->memberIndex;
+      members[declName] = memInfo;
+      declSym->memberIndex = memInfo->memberIndex;
 
-      metaData[letStmt] = letSym;
+      metaData[letStmt] = declSym;
       componentTypeInfo->members = members;
     }
 
     else {
       if (data) {
-        logSemanticErrors("Executable statement found in component '" +
+        logSemanticErrors("Invalid statement found in component '" +
                               componentName + "' definition scope",
                           data->statement.line, data->statement.column);
         hasError = true;
@@ -1366,7 +1382,6 @@ void Semantics::walkMethodCallExpression(Node *node) {
     return;
   }
 
-  std::cout << "Analysing method call expression\n";
   bool hasError = false;
 
   auto instanceIdent = dynamic_cast<Identifier *>(metCall->instance.get());
@@ -1389,6 +1404,7 @@ void Semantics::walkMethodCallExpression(Node *node) {
                       metCall->call->expression.column);
     return;
   }
+
   const std::string funcName =
       funcCall->function_identifier->expression.TokenLiteral;
   const int funcLine = funcCall->function_identifier->expression.line;
@@ -1485,14 +1501,29 @@ void Semantics::walkMethodCallExpression(Node *node) {
     hasError = true;
   }
 
+  // Walk the arguments (populate metaData for them)
+  for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
+    const auto &arg = funcCall->parameters[i];
+    walker(arg.get());
+
+    if (auto nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
+      if (i < memInfo->paramTypes.size()) {
+        auto expected = memInfo->paramTypes[i].first;
+        if (expected.isNull) {
+          metaData[nullLit]->type = expected;
+        } else {
+          logSemanticErrors("Cannot pass null to non-nullable parameter",
+                            arg->expression.line, arg->expression.column);
+          hasError = true;
+          continue;
+        }
+      }
+    }
+  }
+
   // Compatibility check (parameters/return)
   if (!isMethodCallCompatible(*memInfo, funcCall)) {
     hasError = true;
-  }
-
-  // Walk the arguments (populate metaData for them)
-  for (const auto &arg : funcCall->parameters) {
-    walker(arg.get());
   }
 
   // Update the instance symbol metaData usage info
