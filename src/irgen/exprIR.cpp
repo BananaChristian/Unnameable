@@ -249,6 +249,103 @@ llvm::Value *IRGenerator::generateF64Literal(Node *node) {
                                value); // Returning double value
 }
 
+// Generator function for identifier expression
+llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
+  std::cout << "INSIDE IDENTIFIER GEN\n";
+  auto identExpr = dynamic_cast<Identifier *>(node);
+  if (!identExpr)
+    throw std::runtime_error("Invalid identifier expression :" +
+                             node->toString());
+
+  const std::string &identName = identExpr->identifier.TokenLiteral;
+
+  // Lookup symbol
+  auto metaIt = semantics.metaData.find(identExpr);
+  if (metaIt == semantics.metaData.end())
+    throw std::runtime_error("Unidentified identifier '" + identName + "'");
+
+  auto sym = metaIt->second;
+  if (sym->hasError)
+    throw std::runtime_error("Semantic error detected ");
+
+  // Get address and possible pending free
+  AddressAndPendingFree addrInfo = generateIdentifierAddress(identExpr);
+  llvm::Value *variableAddr = addrInfo.address;
+  if (!variableAddr)
+    throw std::runtime_error("No llvm address for '" + identName + "'");
+
+  // Component instance -> return pointer to the struct instance (address is
+  // already correct)
+  auto compIt = componentTypes.find(sym->type.resolvedName);
+  if (compIt != componentTypes.end()) {
+    return variableAddr;
+  }
+
+  // Heap scalar: variableAddr is a T* (runtime pointer). Load T from it.
+  if (sym->isHeap) {
+    llvm::Type *elemTy = sym->llvmType;
+    if (!elemTy)
+      throw std::runtime_error("llvmType null for heap scalar '" + identName +
+                               "'");
+
+    // variableAddr should be T* (address of object). If not, bitcast it.
+    llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
+    if (variableAddr->getType() != expectedPtrTy)
+      variableAddr = funcBuilder.CreateBitCast(variableAddr, expectedPtrTy,
+                                               identName + "_ptr_typed");
+
+    // Load the value
+    llvm::Value *loadedVal =
+        funcBuilder.CreateLoad(elemTy, variableAddr, identName + "_val");
+
+    // If we prepared a pending free, insert it NOW (after load)
+    for (auto *freeCall : addrInfo.pendingFrees) {
+      funcBuilder.Insert(freeCall);
+    }
+
+    std::cout << "[DEBUG] Returning heap scalar '" << identName
+              << "' (lastUse=" << (sym->lastUseNode == identExpr ? "yes" : "no")
+              << ")\n";
+    return loadedVal;
+  }
+  if (sym->isDheap) {
+    llvm::Type *elemTy = sym->llvmType;
+    if (!elemTy)
+      throw std::runtime_error("llvmType null for dheap scalar '" + identName +
+                               "'");
+
+    // Grab the value from the heap address
+    llvm::Value *loadedVal =
+        funcBuilder.CreateLoad(elemTy, variableAddr, identName + "_val");
+
+    // Now that the value is safe in a register, we can release the
+    // memory
+    for (auto *freeCall : addrInfo.pendingFrees) {
+      funcBuilder.Insert(freeCall);
+    }
+
+    return loadedVal;
+  }
+
+  // Non-heap scalar: variableAddr is a pointer to T, just load
+  llvm::Type *loadedType;
+  if (sym->isRef) {
+    loadedType = getLLVMType(semantics.peelRef(sym->type));
+  } else {
+    loadedType = getLLVMType(sym->type);
+  }
+
+  if (!loadedType)
+    throw std::runtime_error("llvmType null for scalar '" + identName + "'");
+
+  // variableAddr should already be a pointer, load from it
+  llvm::Value *val =
+      funcBuilder.CreateLoad(loadedType, variableAddr, identName + "_val");
+
+  std::cout << "ENDED IDENTIFIER GEN\n";
+  return val;
+}
+
 llvm::Value *IRGenerator::generateArrayLiteral(Node *node) {
   auto arrLit = dynamic_cast<ArrayLiteral *>(node);
   if (!arrLit)
@@ -1095,4 +1192,181 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
     return sourceVal;
 
   return funcBuilder.CreateBitCast(sourceVal, dstType, "bitcast_tmp");
+}
+
+llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
+  auto arrExpr = dynamic_cast<ArraySubscript *>(node);
+  if (!arrExpr)
+    throw std::runtime_error("Invalid array access expression");
+
+  auto arrMetaIt = semantics.metaData.find(arrExpr);
+  if (arrMetaIt == semantics.metaData.end()) {
+    throw std::runtime_error("Could not find array subscript metaData");
+  }
+  auto arrSym = arrMetaIt->second;
+
+  if (arrSym->hasError) {
+    throw std::runtime_error("Semantic error was detected in array subscript");
+  }
+
+  AddressAndPendingFree addrInfo =
+      generateIdentifierAddress(arrExpr->identifier.get());
+
+  llvm::Value *ptr = generateArraySubscriptAddress(node);
+
+  llvm::Type *elemTy = getLLVMType(arrSym->type);
+  auto loadedVal = funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
+
+  for (auto *freeCall : addrInfo.pendingFrees) {
+    funcBuilder.Insert(freeCall);
+  }
+
+  return loadedVal;
+}
+
+llvm::Value *IRGenerator::generateSizeOfExpression(Node *node) {
+  auto sizeOf = dynamic_cast<SizeOfExpression *>(node);
+  if (!sizeOf)
+    throw std::runtime_error("Invalid sizeof expression");
+
+  Expression *typeExpr = sizeOf->type.get();
+  ResolvedType type = semantics.inferNodeDataType(typeExpr);
+
+  llvm::Type *llvmTY = getLLVMType(type);
+
+  uint64_t size = layout->getTypeAllocSize(llvmTY);
+  llvm::IntegerType *usizeTy = layout->getIntPtrType(context);
+  return llvm::ConstantInt::get(usizeTy, size);
+}
+
+llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
+  auto selfExpr = dynamic_cast<SelfExpression *>(node);
+  if (!selfExpr)
+    throw std::runtime_error("Invalid self expression");
+
+  std::cout << "[IR] Generating IR for self expression: "
+            << selfExpr->toString() << "\n";
+
+  const std::string &compName =
+      currentComponent->component_name->expression.TokenLiteral;
+
+  // Lookup LLVM struct for top-level component
+  llvm::StructType *currentStructTy = nullptr;
+  auto it = componentTypes.find(compName);
+  if (it == componentTypes.end())
+    throw std::runtime_error("Component '" + compName +
+                             "' not found in componentTypes");
+
+  currentStructTy = it->second;
+
+  // --- Load 'self' pointer ---
+  llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
+  if (!selfAlloca)
+    throw std::runtime_error("'self' access outside component method");
+
+  llvm::Value *currentPtr = funcBuilder.CreateLoad(
+      currentStructTy->getPointerTo(), selfAlloca, "self_load");
+
+  // --- Semantic chain walk ---
+  auto ctIt = semantics.customTypesTable.find(compName);
+  if (ctIt == semantics.customTypesTable.end())
+    throw std::runtime_error("Unknown component '" + compName + "'");
+
+  auto currentTypeInfo = ctIt->second;
+  std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
+
+  for (size_t i = 0; i < selfExpr->fields.size(); ++i) {
+    auto ident = dynamic_cast<Identifier *>(selfExpr->fields[i].get());
+    if (!ident)
+      throw std::runtime_error("Expected identifier in self chain");
+
+    std::string currentTypeName = currentTypeInfo->type.resolvedName;
+    if (currentTypeInfo->type.isPointer)
+      currentTypeName =
+          semantics.stripPtrSuffix(currentTypeInfo->type.resolvedName);
+    else if (currentTypeInfo->type.isRef)
+      currentTypeName =
+          semantics.stripRefSuffix(currentTypeInfo->type.resolvedName);
+
+    std::string fieldName = ident->identifier.TokenLiteral;
+
+    auto memIt = currentTypeInfo->members.find(fieldName);
+    if (memIt == currentTypeInfo->members.end())
+      throw std::runtime_error("Field not found in '" + currentTypeName + "'");
+
+    lastMemberInfo = memIt->second;
+
+    // --- GEP for this field ---
+    auto llvmIt = llvmCustomTypes.find(currentTypeName);
+    if (llvmIt == llvmCustomTypes.end())
+      throw std::runtime_error("LLVM struct missing for type '" +
+                               currentTypeName + "'");
+
+    llvm::StructType *structTy = llvmIt->second;
+
+    currentPtr = funcBuilder.CreateStructGEP(
+        structTy, currentPtr, lastMemberInfo->memberIndex, fieldName + "_ptr");
+
+    // --- Drill into nested type if needed ---
+    if (lastMemberInfo->type.kind == DataType::COMPONENT ||
+        lastMemberInfo->type.kind == DataType::RECORD) {
+      std::string lookUpName = lastMemberInfo->type.resolvedName;
+      if (lastMemberInfo->type.isPointer) {
+        lookUpName =
+            semantics.stripPtrSuffix(lastMemberInfo->type.resolvedName);
+      } else if (lastMemberInfo->type.isRef)
+        lookUpName =
+            semantics.stripRefSuffix(lastMemberInfo->type.resolvedName);
+      auto nestedIt = semantics.customTypesTable.find(lookUpName);
+      if (nestedIt == semantics.customTypesTable.end())
+        throw std::runtime_error("Nested type '" + lookUpName + "'not found");
+
+      currentTypeInfo = nestedIt->second;
+    } else {
+      // primitive reached, stop drilling
+      currentTypeInfo = nullptr;
+    }
+  }
+
+  // --- Final load ---
+  llvm::Type *finalTy = getLLVMType(lastMemberInfo->type);
+  return funcBuilder.CreateLoad(finalTy, currentPtr,
+                                selfExpr->fields.back()->toString() + "_val");
+}
+
+llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
+  auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
+
+  Node *current = node;
+  int derefCount = 0;
+  while (auto nested = dynamic_cast<DereferenceExpression *>(current)) {
+    derefCount++;
+    current = nested->identifier.get();
+  }
+  auto identNode = dynamic_cast<Identifier *>(current);
+
+  // Get the starting address of the variable
+  AddressAndPendingFree out = generateIdentifierAddress(identNode);
+  llvm::Value *addr = out.address;
+  auto meta = semantics.metaData[node];
+
+  // This gets us the address of 'p' from 'pp'
+  addr = funcBuilder.CreateLoad(getLLVMType(meta->derefPtrType), addr,
+                                "base_lift");
+
+  for (int i = 0; i < derefCount; i++) {
+    llvm::Type *loadTy;
+    if (i < derefCount - 1) {
+      loadTy = llvm::PointerType::getUnqual(context);
+    } else {
+      loadTy = getLLVMType(meta->type);
+    }
+    addr = funcBuilder.CreateLoad(loadTy, addr, "deref_hop");
+  }
+
+  for (auto *freeCall : out.pendingFrees) {
+    funcBuilder.Insert(freeCall);
+  }
+
+  return addr;
 }

@@ -533,12 +533,18 @@ llvm::Type *Layout::getLLVMType(ResolvedType type) {
       throw std::runtime_error(
           "Custom type requested but resolvedName is empty");
 
-    auto it = typeMap.find(type.resolvedName);
+    std::string lookUpName = type.resolvedName;
+    if (type.isPointer)
+      lookUpName = semantics.stripPtrSuffix(type.resolvedName);
+    else if (type.isRef)
+      lookUpName = semantics.stripRefSuffix(type.resolvedName);
+
+    auto it = typeMap.find(lookUpName);
     if (it != typeMap.end())
       baseType = it->second;
     else
       throw std::runtime_error("Layout requested for unknown custom type '" +
-                               type.resolvedName + "'");
+                               lookUpName + "'");
     break;
   }
 

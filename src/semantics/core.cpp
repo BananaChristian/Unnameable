@@ -678,6 +678,14 @@ std::string Semantics::extractIdentifierName(Node *node) {
   } else if (auto infix = dynamic_cast<InfixExpression *>(node)) {
     identName = extractIdentifierName(infix->left_operand.get());
     return identName;
+  } else if (auto selfExpr = dynamic_cast<SelfExpression *>(node)) {
+    if (!selfExpr->fields.empty()) {
+      // Get the last field in the chain (e.g., self.a.b.target -> target)
+      identName = extractIdentifierName(selfExpr->fields.back().get());
+    } else {
+      identName = "self"; // Just the component itself
+    }
+    return identName;
   }
 
   return identName;
@@ -700,9 +708,15 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
   // Special case: scope or dot
   if (operatorType == TokenType::FULLSTOP ||
       operatorType == TokenType::SCOPE_OPERATOR) {
-    std::string parentName = infixNode->left_operand->expression.TokenLiteral;
+    auto parentType = inferNodeDataType(infixNode->left_operand.get());
     std::string childName = infixNode->right_operand->expression.TokenLiteral;
-    return resultOfScopeOrDot(operatorType, parentName, childName, infixNode);
+    auto result =
+        resultOfScopeOrDot(operatorType, parentType, childName, infixNode);
+    if (result) {
+      return result->type;
+    } else {
+      return ResolvedType{DataType::UNKNOWN, "unknown"};
+    }
   }
 
   // --- Regular binary operator ---
@@ -796,100 +810,99 @@ ResolvedType Semantics::inferPostfixExpressionType(Node *node) {
   return resultOfUnary(postfixOperator, operandType);
 }
 
-ResolvedType Semantics::resultOfScopeOrDot(TokenType operatorType,
-                                           const std::string &parentName,
-                                           const std::string &childName,
-                                           InfixExpression *infixExpr) {
+std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
+    TokenType operatorType, const ResolvedType &parentType,
+    const std::string &childName, InfixExpression *infixExpr) {
   if (operatorType != TokenType::FULLSTOP &&
       operatorType != TokenType::SCOPE_OPERATOR)
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return nullptr;
 
-  // First, check if parentName is a **variable in current scope**
-  auto varSymbol = resolveSymbolInfo(parentName);
-  if (varSymbol) {
-    ResolvedType varType = varSymbol->type;
+  // If the type is a pointer strip the name and allow for access
+  std::string lookUpName = parentType.resolvedName;
 
-    // If the type is a pointer strip the name and allow for access
-    std::string lookUpName = varType.resolvedName;
-
-    if (varType.isPointer) {
-      lookUpName = stripPtrSuffix(lookUpName);
-    } else if (varType.isRef) {
-      lookUpName = stripRefSuffix(lookUpName);
-    }
-
-    // Block cases where the parentName is an actual type too if its not an enum
-    if (lookUpName == parentName && varType.kind != DataType::ENUM) {
-      logSemanticErrors("Must instantiate type '" + varType.resolvedName +
-                            "' to access its members",
-                        infixExpr->left_operand->expression.line,
-                        infixExpr->left_operand->expression.column);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
-    }
-
-    if (operatorType == TokenType::FULLSTOP) {
-      if (varType.kind == DataType::ENUM) {
-        logSemanticErrors("Dot operator applied to non-component variable",
-                          infixExpr->left_operand->expression.line,
-                          infixExpr->left_operand->expression.column);
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
-      }
-
-      // Look up the type definition in customTypesTable
-      auto typeIt = customTypesTable.find(lookUpName);
-      if (typeIt == customTypesTable.end()) {
-        logSemanticErrors("Type '" + lookUpName + "' not found",
-                          infixExpr->left_operand->expression.line,
-                          infixExpr->left_operand->expression.column);
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
-      }
-
-      // Look for childName in members
-      auto memberIt = typeIt->second->members.find(childName);
-      if (memberIt == typeIt->second->members.end()) {
-        logSemanticErrors("Type '" + lookUpName + "' has no member '" +
-                              childName + "'",
-                          infixExpr->right_operand->expression.line,
-                          infixExpr->right_operand->expression.column);
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
-      }
-
-      return memberIt->second->type;
-    } else if (operatorType == TokenType::SCOPE_OPERATOR) {
-      if (varType.kind != DataType::ENUM) {
-        logSemanticErrors("Scope operator(::) applied to none enum  variable",
-                          infixExpr->left_operand->expression.line,
-                          infixExpr->left_operand->expression.column);
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
-      }
-
-      // Look for the definition in the custom types table
-      auto typeIt = customTypesTable.find(lookUpName);
-      if (typeIt == customTypesTable.end()) {
-        logSemanticErrors("Type '" + lookUpName + "' not found",
-                          infixExpr->left_operand->expression.line,
-                          infixExpr->left_operand->expression.column);
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
-      }
-
-      // Look for the childName in members
-      auto memIt = typeIt->second->members.find(childName);
-      if (memIt == typeIt->second->members.end()) {
-        logSemanticErrors("Type '" + lookUpName + "' does not have a member '" +
-                              childName + "'",
-                          infixExpr->left_operand->expression.line,
-                          infixExpr->left_operand->expression.column);
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
-      }
-
-      if (varType.kind == DataType::ENUM) {
-        return memIt->second->parentType;
-      }
-      return memIt->second->type;
-    }
+  if (parentType.isPointer) {
+    lookUpName = stripPtrSuffix(lookUpName);
+  } else if (parentType.isRef) {
+    lookUpName = stripRefSuffix(lookUpName);
   }
 
-  return ResolvedType{DataType::UNKNOWN, "unknown"};
+  if (operatorType == TokenType::FULLSTOP) {
+    if (parentType.kind == DataType::ENUM) {
+      logSemanticErrors("Dot operator applied to enum use (::) to access",
+                        infixExpr->left_operand->expression.line,
+                        infixExpr->left_operand->expression.column);
+      return nullptr;
+    }
+
+    // Look up the type definition in customTypesTable
+    auto typeIt = customTypesTable.find(lookUpName);
+    if (typeIt == customTypesTable.end()) {
+      logSemanticErrors("Type '" + lookUpName + "' not found",
+                        infixExpr->left_operand->expression.line,
+                        infixExpr->left_operand->expression.column);
+      return nullptr;
+    }
+
+    // Look for childName in members
+    auto memberIt = typeIt->second->members.find(childName);
+    if (memberIt == typeIt->second->members.end()) {
+      logSemanticErrors("Type '" + lookUpName + "' has no member '" +
+                            childName + "'",
+                        infixExpr->right_operand->expression.line,
+                        infixExpr->right_operand->expression.column);
+      return nullptr;
+    }
+
+    auto memberInfo = memberIt->second;
+    auto dotResult = std::make_shared<SymbolInfo>();
+    dotResult->type = memberInfo->type;
+    dotResult->isConstant = memberInfo->isConstant;
+    dotResult->isMutable = memberInfo->isMutable;
+    dotResult->isInitialized = memberInfo->isInitialised;
+    dotResult->isNullable = memberInfo->isNullable;
+    dotResult->memberIndex = memberInfo->memberIndex;
+
+    return dotResult;
+
+  } else if (operatorType == TokenType::SCOPE_OPERATOR) {
+    if (parentType.kind != DataType::ENUM) {
+      logSemanticErrors("Scope operator(::) applied to none enum  variable",
+                        infixExpr->left_operand->expression.line,
+                        infixExpr->left_operand->expression.column);
+      return nullptr;
+    }
+
+    // Look for the definition in the custom types table
+    auto typeIt = customTypesTable.find(lookUpName);
+    if (typeIt == customTypesTable.end()) {
+      logSemanticErrors("Type '" + lookUpName + "' not found",
+                        infixExpr->left_operand->expression.line,
+                        infixExpr->left_operand->expression.column);
+      return nullptr;
+    }
+
+    // Look for the childName in members
+    auto memIt = typeIt->second->members.find(childName);
+    if (memIt == typeIt->second->members.end()) {
+      logSemanticErrors("Type '" + lookUpName + "' does not have a member '" +
+                            childName + "'",
+                        infixExpr->left_operand->expression.line,
+                        infixExpr->left_operand->expression.column);
+      return nullptr;
+    }
+
+    auto memInfo = memIt->second;
+    auto scopeInfo = std::make_shared<SymbolInfo>();
+    scopeInfo->type = memInfo->parentType; // This is the actual enum
+    scopeInfo->isConstant = memInfo->isConstant;
+    scopeInfo->isMutable = memInfo->isMutable;
+    scopeInfo->isNullable = memInfo->isNullable;
+    scopeInfo->memberIndex = memInfo->memberIndex;
+
+    return scopeInfo;
+  }
+
+  return nullptr;
 }
 
 ResolvedType Semantics::resultOfBinary(TokenType operatorType,

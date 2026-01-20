@@ -356,6 +356,58 @@ void IRGenerator::generatePointerStatement(Node *node) {
   std::cout << "Exited pointer statement generator\n";
 }
 
+// Reference statement IR generator
+void IRGenerator::generateReferenceStatement(Node *node) {
+  auto refStmt = dynamic_cast<ReferenceStatement *>(node);
+  if (!refStmt)
+    throw std::runtime_error("Invalid reference statement");
+
+  const auto &refName = refStmt->name->expression.TokenLiteral;
+  const auto &refereeName =
+      semantics.extractIdentifierName(refStmt->value.get());
+
+  // Lookup metadata
+  auto metaIt = semantics.metaData.find(refStmt);
+  if (metaIt == semantics.metaData.end())
+    throw std::runtime_error("Failed to find reference metaData for '" +
+                             refName + "'");
+
+  auto refSym = metaIt->second;
+  auto targetSym = refSym->refereeSymbol;
+  if (!targetSym)
+    throw std::runtime_error("Reference '" + refName +
+                             "' has no target symbol");
+
+  if (targetSym->hasError)
+    throw std::runtime_error("Semantic error detected on reference target '" +
+                             refereeName + "'");
+
+  // Generate the LLVM pointer to the actual value, not the pointer variable
+  llvm::Value *targetAddress = nullptr;
+  if (targetSym->llvmValue) {
+    // If the target has already generated LLVM value, ensure we store the
+    // **address**
+    if (targetSym->llvmValue->getType()->isPointerTy()) {
+      targetAddress = targetSym->llvmValue;
+    } else {
+      // For scalars, take their address
+      targetAddress = funcBuilder.CreateAlloca(targetSym->llvmValue->getType(),
+                                               nullptr, refereeName + "_addr");
+      funcBuilder.CreateStore(targetSym->llvmValue, targetAddress);
+    }
+  } else {
+    // If LLVM value not yet generated, compute the address via generateAddress
+    targetAddress = generateAddress(refStmt->value.get());
+  }
+
+  if (!targetAddress || !targetAddress->getType()->isPointerTy())
+    throw std::runtime_error("Failed to resolve LLVM address for reference '" +
+                             refName + "'");
+
+  // The reference itself holds the pointer to the target
+  refSym->llvmValue = targetAddress;
+}
+
 //_______________________HELPERS______________________________________
 
 void IRGenerator::generateGlobalHeapLet(LetStatement *letStmt,

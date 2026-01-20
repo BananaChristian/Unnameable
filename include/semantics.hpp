@@ -428,10 +428,10 @@ private:
   ResolvedType resultOfUnary(TokenType operatorType,
                              const ResolvedType &oprendType);
   ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
-  ResolvedType resultOfScopeOrDot(TokenType operatorType,
-                                  const ResolvedType &parentType,
-                                  const std::string &childName,
-                                  InfixExpression *infix);
+  std::shared_ptr<SymbolInfo> resultOfScopeOrDot(TokenType operatorType,
+                                                 const ResolvedType &parentType,
+                                                 const std::string &childName,
+                                                 InfixExpression *infix);
   ResolvedType isPointerType(ResolvedType t);
   ResolvedType isRefType(ResolvedType t);
   ResolvedType makeArrayType(const ResolvedType &t, int dimensionCount);

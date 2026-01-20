@@ -144,7 +144,7 @@ void Sentinel::checkCastExpression(Node *node) {
   auto src = castExpr->expr.get();
   if (!src)
     return;
-  
+
   sentinelDriver(src);
 }
 
@@ -444,63 +444,7 @@ void Sentinel::checkFieldAssignment(Node *node) {
   if (!fieldStmt)
     return;
 
-  int line = fieldStmt->statement.line;
-  int column = fieldStmt->statement.column;
-
-  // Dealing with field assignment name
-  auto [parentName, childName] =
-      semantics.splitScopedName(fieldStmt->assignment_token.TokenLiteral);
-
-  // Get the symbol
-  auto fieldIt = semantics.metaData.find(fieldStmt);
-  if (fieldIt == semantics.metaData.end()) {
-    logError("Field assignment metaData not found for '" + parentName + "'",
-             line, column);
-    return;
-  }
-
-  auto fieldSym = fieldIt->second;
-  if (!fieldSym) {
-    logError("Unidentified variable '" + parentName + "'", line, column);
-    return;
-  }
-
-  // Get the base symbol
-  auto baseSym = fieldSym->baseSymbol;
-  if (!baseSym) {
-
-    logError("Unidentified variable '" + parentName + "'", line, column);
-    return;
-  }
-
-  // Get the parent type from the baseSymbol
-  auto parentTypeName = baseSym->type.resolvedName;
-  std::string lookUpName=parentTypeName;
-  if(baseSym->isPointer){
-      lookUpName = semantics.stripPtrSuffix(parentTypeName);
-  }else if(baseSym->isRef){
-      lookUpName=semantics.stripRefSuffix(parentTypeName);
-  }
-  
-  std::cout << "PARENT TYPE NAME: " << lookUpName << "\n";
-
-  // Check inside the parent
-  auto parentIt = semantics.customTypesTable.find(lookUpName);
-  if (parentIt == semantics.customTypesTable.end()) {
-    logError("Unknown type '" + lookUpName + "'", line, column);
-    return;
-  }
-
-  auto members = parentIt->second->members;
-  auto childIt = members.find(childName);
-  if (childIt == members.end()) {
-    logError("'" + childName + "' does not exist under type '" +
-                 parentTypeName + "'",
-             line, column);
-    return;
-  }
-
-  sentinelDriver(childIt->second->node);
+  sentinelDriver(fieldStmt->lhs_chain.get());
   sentinelDriver(fieldStmt->value.get());
 }
 
@@ -508,8 +452,6 @@ void Sentinel::checkComponentStatement(Node *node) {
   auto compStmt = dynamic_cast<ComponentStatement *>(node);
   if (!compStmt)
     return;
-
-  std::cout << "RUNNING Sentinel Analysis on component\n";
 
   auto compName = compStmt->component_name->expression.TokenLiteral;
   auto line = compStmt->component_name->expression.line;

@@ -526,36 +526,33 @@ void Semantics::walkDereferenceExpression(Node *node) {
     return;
   }
 
-  auto derefInfo = std::make_shared<SymbolInfo>();
-
-  if (dynamic_cast<DereferenceExpression *>(innerNode)) {
-    derefInfo->type = derefSym->type;
-  } else {
-    derefInfo->type = derefSym->targetSymbol->type;
-    derefInfo->lastUseNode = derefExpr;
+  // Block dereferencing non pointer
+  if (!derefSym->type.isPointer) {
+    logSemanticErrors("Cannot dereference non pointer type '" +
+                          derefSym->type.resolvedName + "'",
+                      line, col);
+    return; // Dont bother
   }
 
-  if (derefSym->isHeap || derefSym->isDheap)
-    derefSym->lastUseNode = derefExpr;
-
-  auto derefTargetSym = derefSym->targetSymbol;
-  derefTargetSym->lastUseNode = derefExpr;
+  derefSym->lastUseNode = derefExpr;
 
   ResolvedType peeledType = derefSym->type;
   peeledType.isPointer = false;
   ResolvedType finalType = isPointerType(peeledType);
 
-  derefInfo->isPointer = false; // Just a sanity measure
-  derefInfo->isMutable = derefSym->isMutable;
-  derefInfo->isConstant = derefSym->isConstant;
-  derefInfo->isInitialized = derefSym->isInitialized;
-  derefInfo->derefPtrType = derefSym->type;
-  derefInfo->type = finalType;
-  derefInfo->targetSymbol = derefTargetSym;
-  derefInfo->isHeap = derefSym->isHeap;
-  derefInfo->isDheap = derefSym->isDheap;
+  auto derefInfo = std::make_shared<SymbolInfo>();
 
-  std::cout << "DEREF PTR TYPE: " << derefSym->type.resolvedName << "\n";
+  derefInfo->isPointer = finalType.isPointer;
+  derefInfo->type = finalType; // Setting the final 'i32' type here
+  derefInfo->isMutable = derefSym->isMutable;
+  derefInfo->isInitialized = derefSym->isInitialized;
+
+  if (derefSym->targetSymbol != nullptr) {
+    derefInfo->targetSymbol = derefSym->targetSymbol;
+    derefSym->targetSymbol->lastUseNode = derefExpr;
+  } else {
+    derefInfo->targetSymbol = nullptr;
+  }
 
   metaData[derefExpr] = derefInfo;
 }
@@ -654,7 +651,7 @@ void Semantics::walkAssignStatement(Node *node) {
   else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(
                assignStmt->identifier.get())) {
     walker(derefExpr);
-    assignName = derefExpr->identifier->expression.TokenLiteral;
+    assignName = extractIdentifierName(derefExpr->identifier.get());
     auto derefMeta = metaData.find(derefExpr);
     if (derefMeta == metaData.end()) {
       logSemanticErrors(
@@ -695,9 +692,7 @@ void Semantics::walkAssignStatement(Node *node) {
       return;
     }
     symbol = accessMeta->second;
-  }
-
-  else {
+  } else {
     logSemanticErrors("Invalid assignment target",
                       assignStmt->identifier->expression.line,
                       assignStmt->identifier->expression.column);
@@ -946,111 +941,36 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   if (!fieldAssignStmt)
     return;
 
-  auto fieldName = fieldAssignStmt->assignment_token.TokenLiteral;
   auto line = fieldAssignStmt->statement.line;
   auto column = fieldAssignStmt->statement.column;
-  bool hasError = false;
 
-  // Split into "parent.child"
-  auto [parentName, childName] = splitScopedName(fieldName);
-  std::cout << "PARENT NAME:" << parentName << "\n";
-  std::cout << "CHILD NAME:" << childName << "\n";
+  walker(fieldAssignStmt->lhs_chain.get());
 
-  // Resolve the parent symbol (must be a variable in scope)
-  auto parentSymbol = resolveSymbolInfo(parentName);
-  if (!parentSymbol) {
-    logSemanticErrors("Variable '" + parentName + "' does not exist", line,
-                      column);
-    hasError = true;
+  auto lhsInfo = metaData[fieldAssignStmt->lhs_chain.get()];
+  if (!lhsInfo || lhsInfo->hasError) {
     return;
   }
 
-  // Get the parent's type
-  std::string parentType = parentSymbol->type.resolvedName;
-  std::string lookUpName = parentType;
-  
-  //Stripping the suffixes to allow proper name look up 
-  if (parentSymbol->isPointer) {
-    lookUpName = stripPtrSuffix(parentType);
-  } else if (parentSymbol->isRef) {
-    lookUpName = stripRefSuffix(parentType);
-  }
-
-  std::cout << "SEMANTIC LOG: Parent type: " << lookUpName << "\n";
-
-  // Look up that type in the custom types table
-  auto parentIt = customTypesTable.find(lookUpName);
-  if (parentIt == customTypesTable.end()) {
-    logSemanticErrors("Type '" + lookUpName + "' does not exist", line, column);
-    hasError = true;
+  if (lhsInfo->isConstant) {
+    logSemanticErrors("Cannot reassign to constant field", line, column);
     return;
   }
 
-  // Check if the childName exists in that type’s members
-  auto members = parentIt->second->members;
-  auto memberIt = members.find(childName);
-  if (memberIt == members.end()) {
-    logSemanticErrors("Variable '" + childName + "' does not exist in type '" +
-                          parentType + "'",
-                      line, column);
-    hasError = true;
+  if (!lhsInfo->isMutable && lhsInfo->isInitialized) {
+    logSemanticErrors("Cannot reassign to immutable field", line, column);
     return;
   }
 
-  // Grab field properties
-  ResolvedType type = memberIt->second->type;
-  bool isNullable = memberIt->second->isNullable;
-  bool isMutable = memberIt->second->isMutable;
-  bool isConstant = memberIt->second->isConstant;
-  bool isHeap = memberIt->second->isHeap;
-  bool isInitialized = memberIt->second->isInitialised;
-
-  // Constant/immutability checks
-  if (isConstant) {
-    logSemanticErrors("Cannot reassign to constant variable '" + fieldName +
-                          "'",
-                      line, column);
-    hasError = true;
-    return;
-  }
-  if (!isMutable && isInitialized) {
-    logSemanticErrors("Cannot reassign to immutable variable '" + fieldName +
-                          "'",
-                      line, column);
-    hasError = true;
-    return;
-  }
-
-  // Mark initialized (since this is assignment)
-  isInitialized = true;
-
-  // Analyse the value if present
   if (fieldAssignStmt->value) {
     walker(fieldAssignStmt->value.get());
+    auto rhsInfo = metaData[fieldAssignStmt->value.get()];
+
+    if (rhsInfo) {
+      if (!isTypeCompatible(lhsInfo->type, rhsInfo->type)) {
+        logSemanticErrors("Type mismatch in assignment", line, column);
+      }
+    }
   }
 
-  if (memberIt->second->isHeap) {
-    memberIt->second->lastUseNode = fieldAssignStmt;
-  }
-
-  // Symbol info for the field
-  auto fieldInfo = std::make_shared<SymbolInfo>();
-  fieldInfo->type = type;
-  fieldInfo->isNullable = isNullable;
-  fieldInfo->isConstant = isConstant;
-  fieldInfo->isInitialized = isInitialized;
-  fieldInfo->hasError = hasError;
-  fieldInfo->isHeap = isHeap;
-
-  // Build metadata for this assignment node
-  auto info = std::make_shared<SymbolInfo>();
-  info->type = type; // The whole node still evaluates to the member type
-  info->baseSymbol = parentSymbol;
-  info->fieldSymbol = fieldInfo;
-  info->isNullable = isNullable;
-  info->isConstant = isConstant;
-  info->isInitialized = isInitialized;
-  info->hasError = hasError;
-
-  metaData[fieldAssignStmt] = info;
+  metaData[fieldAssignStmt] = lhsInfo;
 }

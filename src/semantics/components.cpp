@@ -679,13 +679,9 @@ void Semantics::walkInitConstructor(Node *node) {
   if (!initStmt)
     return;
 
-  std::cout << "[SEMANTIC LOG] Analyzing init constructor\n";
-
   // Must be inside a component
-
   if (currentTypeStack.empty() ||
       currentTypeStack.back().type.kind != DataType::COMPONENT) {
-    std::cout << "TYPE STACK IS EMPTY\n";
     logSemanticErrors("`init` constructor must be declared inside a component",
                       initStmt->statement.line, initStmt->statement.column);
     return;
@@ -714,7 +710,7 @@ void Semantics::walkInitConstructor(Node *node) {
   // Process constructor parameters
   symbolTable.push_back({});
   for (const auto &arg : initStmt->constructor_args) {
-    walker(arg.get());
+    walkFunctionParameters(arg.get());
     // Storing the init args
     initArgs.push_back(inferNodeDataType(arg.get()));
   }
@@ -729,9 +725,6 @@ void Semantics::walkInitConstructor(Node *node) {
 
   // Attach metadata
   metaData[initStmt] = initInfo;
-
-  std::cout << "[SEMANTIC LOG] Init constructor added to component '"
-            << currentComponent.typeName << "'\n";
 }
 
 // Resolves a self expression chain like self.pos.x.y
@@ -865,10 +858,10 @@ void Semantics::walkComponentStatement(Node *node) {
   auto componentTypeInfo = std::make_shared<CustomTypeInfo>();
 
   componentSymbol->type = ResolvedType{DataType::COMPONENT, componentName};
+  componentTypeInfo->type=ResolvedType{DataType::COMPONENT,componentName};
+  
   symbolTable[0][componentName] = componentSymbol;
-
   customTypesTable[componentName] = componentTypeInfo;
-
   metaData[componentStmt] = componentSymbol;
 
   std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;

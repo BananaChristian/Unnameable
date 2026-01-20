@@ -174,6 +174,7 @@ private:
   llvm::Value *generateExpression(Node *node);
   llvm::Value *generateAddress(Node *node);
   AddressAndPendingFree generateIdentifierAddress(Node *node);
+  AddressAndPendingFree generateInfixAddress(Node *node);
   void generateStatement(Node *node);
   void shoutRuntime(llvm::Value *val, ResolvedType type);
   void declareImportedSeals();
@@ -204,7 +205,8 @@ private:
 
   std::vector<llvm::Value *>
   prepareArguments(llvm::Function *func,
-                   const std::vector<std::unique_ptr<Expression>> &params,size_t offset);
+                   const std::vector<std::unique_ptr<Expression>> &params,
+                   size_t offset);
   // For normal variables
   void generateGlobalHeapLet(LetStatement *letStmt,
                              std::shared_ptr<SymbolInfo> sym,
