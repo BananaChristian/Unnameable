@@ -1,10 +1,10 @@
+#include "ast.hpp"
 #include "parser.hpp"
 
 // Parsing assignment statements
 std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
   std::unique_ptr<Expression> value = nullptr;
   Token identToken = currentToken();
-  bool isQualified = false;
 
   // self.field = ...
   std::unique_ptr<Expression> lhs;
@@ -46,22 +46,13 @@ std::unique_ptr<Statement> Parser::parseSelfAssignment() {
 }
 
 std::unique_ptr<Statement> Parser::parseDereferenceAssignment() {
-  auto isDerefAssignment = [&]() -> bool {
-    int i = 0;
-    // Skip all leading 'deref' tokens
-    while (peekToken(i).type == TokenType::DEREF) {
-      i++;
-    }
-    // Skip the identifier
-    if (peekToken(i).type == TokenType::IDENTIFIER) {
-      i++;
-    }
-    // Is the next thing an assignment?
-    return peekToken(i).type == TokenType::ASSIGN;
-  };
+  auto lhs = parseExpression(Precedence::PREC_NONE);
 
-  if (isDerefAssignment()) {
-    return parseAssignmentStatement();
+  if (lhs && currentToken().type == TokenType::ASSIGN) {
+    advance(); // Consume '='
+    auto rhs = parseExpression(Precedence::PREC_NONE);
+    return std::make_unique<AssignmentStatement>(std::move(lhs),
+                                                 std::move(rhs));
   }
 
   // Fall back to the expression guy
@@ -74,40 +65,13 @@ std::unique_ptr<Statement> Parser::parseDereferenceAssignment() {
 }
 
 std::unique_ptr<Statement> Parser::parseFieldAssignment() {
-  std::unique_ptr<Expression> value = nullptr;
-  Token current = currentToken();
-  advance(); // Consume for example x
-  if (currentToken().type == TokenType::SCOPE_OPERATOR ||
-      currentToken().type == TokenType::FULLSTOP) {
-
-    std::string fieldName = current.TokenLiteral;
-    std::string operatorLiteral =
-        (currentToken().type == TokenType::SCOPE_OPERATOR) ? "::" : ".";
-    fieldName += operatorLiteral;
-
-    advance(); // consume scope or dot operator
-
-    if (currentToken().type != TokenType::IDENTIFIER) {
-      logError("Expected an identifier after '" + operatorLiteral +
-               "' but got '" + currentToken().TokenLiteral + "'");
-      return nullptr;
-    }
-
-    fieldName += currentToken().TokenLiteral;
-    current.TokenLiteral = fieldName;
-
-    advance(); // consume second identifier
-  }
-
+  auto path = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::ASSIGN) {
-    logError("Expected '=' after identifier in assignment but got '" +
-             currentToken().TokenLiteral + "'");
+    logError("Expected '=' after field access chain");
     return nullptr;
   }
-  advance(); // consume '='
+  advance();
 
-  // Parse right-hand side expression
-  value = parseExpression(Precedence::PREC_NONE);
-
-  return std::make_unique<FieldAssignment>(current, std::move(value));
+  auto val = parseExpression(Precedence::PREC_NONE);
+  return std::make_unique<FieldAssignment>(std::move(path), std::move(val));
 }

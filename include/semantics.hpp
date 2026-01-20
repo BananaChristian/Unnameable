@@ -179,8 +179,8 @@ struct SymbolInfo {
 
   bool isRef = false;     // Reference flag
   bool isPointer = false; // Pointer flag
-  
-  bool needsImplicitAddress=false;
+
+  bool needsImplicitAddress = false;
 
   bool isParam = false;
 
@@ -429,7 +429,7 @@ private:
                              const ResolvedType &oprendType);
   ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
   ResolvedType resultOfScopeOrDot(TokenType operatorType,
-                                  const std::string &parentName,
+                                  const ResolvedType &parentType,
                                   const std::string &childName,
                                   InfixExpression *infix);
   ResolvedType isPointerType(ResolvedType t);

@@ -32,7 +32,7 @@ std::vector<std::unique_ptr<Node>> Parser::parseProgram() {
     if (currentToken().type == TokenType::END) {
       break;
     }
-    
+
     Token current = currentToken();
 
     if (current.type == TokenType::END)
@@ -298,75 +298,81 @@ void Parser::registerPostfixFns() {
 std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   Token current = currentToken();
 
-  auto peekAfterSubscript = [this](int startOffset = 1) -> Token {
-    int offset = startOffset;
+  // --- THE UNIFIED SCANNER ---
+  // This skips dots, identifiers, AND brackets to find the operation (=, (,
+  // etc.)
+  auto peekAheadToDecision = [this]() -> Token {
+    int offset = 0;
+    while (true) {
+      Token t = peekToken(offset);
 
-    // Must start on '['
-    if (peekToken(offset).type != TokenType::LBRACKET)
-      return peekToken(offset);
-
-    while (peekToken(offset).type == TokenType::LBRACKET) {
-      int depth = 0;
-
-      // Walk until we close this bracket chain
-      while (true) {
-        Token t = peekToken(offset);
-
-        if (t.type == TokenType::LBRACKET)
-          depth++;
-        else if (t.type == TokenType::RBRACKET) {
-          depth--;
-          if (depth == 0) {
-            offset++; // move past the closing ']'
-            break;
-          }
-        } else if (t.type == TokenType::END) {
-          return Token{"", TokenType::END, t.line, t.column};
-        }
-
+      if (t.type == TokenType::IDENTIFIER || t.type == TokenType::FULLSTOP ||
+          t.type == TokenType::SCOPE_OPERATOR) {
         offset++;
+      } else if (t.type == TokenType::LBRACKET) {
+        int depth = 0;
+        while (true) {
+          Token subT = peekToken(offset);
+          if (subT.type == TokenType::LBRACKET)
+            depth++;
+          else if (subT.type == TokenType::RBRACKET) {
+            depth--;
+            if (depth == 0) {
+              offset++;
+              break;
+            }
+          } else if (subT.type == TokenType::END)
+            return subT;
+          offset++;
+        }
+      } else {
+        return t; // The token that follows the L-Value chain
       }
     }
-
-    return peekToken(offset);
   };
 
+  Token decisionToken = peekAheadToDecision();
   Token peek1 = peekToken(1);
-  if (peek1.type == TokenType::LBRACKET) {
 
-    if (peekAfterSubscript().type == TokenType::ASSIGN) {
+  // 1. Guard: Let Statement (Type var)
+  if (peek1.type == TokenType::IDENTIFIER) {
+    return parseLetStatement();
+  }
+
+  // 2. The Big Decision: Is this an assignment?
+  if (decisionToken.type == TokenType::ASSIGN) {
+
+    // Check if the chain contains ANY dots or scope operators
+    bool hasFieldAccess = false;
+    int checkOffset = 0;
+    while (true) {
+      Token t = peekToken(checkOffset);
+      if (t.type == decisionToken.type)
+        break;
+      if (t.type == TokenType::FULLSTOP ||
+          t.type == TokenType::SCOPE_OPERATOR) {
+        hasFieldAccess = true;
+        break;
+      }
+      checkOffset++;
+    }
+
+    if (hasFieldAccess) {
+      // It has dots! Use the specialized FieldAssignment
+      // This will handle: test[18].what[7].that[yy] = 10
+      return parseFieldAssignment();
+    } else {
+      // It's just a variable or a simple array: x = 10 or x[0] = 10
       return parseAssignmentStatement();
     }
   }
 
-  // Simple assignment (x = ...)
-  if (peek1.type == TokenType::ASSIGN) {
-    return parseAssignmentStatement();
-  }
-
-  // Cases where there is a custom type like(Type var)
-  if (peek1.type == TokenType::IDENTIFIER) {
-    if (peekToken(2).type == TokenType::SEMICOLON) {
-      return parseLetStatement();
-    }
-    return parseLetStatement();
-  }
-
-  // Qualified assignment (x.y = ..., test::field = ...)
-  if (peek1.type == TokenType::FULLSTOP ||
-      peek1.type == TokenType::SCOPE_OPERATOR) {
-    Token peek3 = peekToken(3);
-    if (peek3.type == TokenType::ASSIGN)
-      return parseFieldAssignment();
-  }
-
-  // Fall back to generic expression statement
+  // 3. Fallback: Expression (e.g., head.method())
   auto expr = parseExpression(Precedence::PREC_NONE);
   if (expr) {
     return std::make_unique<ExpressionStatement>(current, std::move(expr));
   }
 
-  logError("Invalid identifier statement");
   return nullptr;
 }
 
@@ -445,8 +451,7 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::INIT] =
       &Parser::parseInitConstructorStatement;
   StatementParseFunctionsMap[TokenType::SWITCH] = &Parser::parseSwitchStatement;
-  StatementParseFunctionsMap[TokenType::ENUM] =
-      &Parser::parseEnumStatement;
+  StatementParseFunctionsMap[TokenType::ENUM] = &Parser::parseEnumStatement;
 
   StatementParseFunctionsMap[TokenType::GENERIC] =
       &Parser::parseGenericStatement;
