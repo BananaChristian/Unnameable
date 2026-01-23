@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "semantics.hpp"
+#include "token.hpp"
 
 // Walking the data type literals
 void Semantics::walkBooleanLiteral(Node *node) {
@@ -464,12 +465,38 @@ void Semantics::walkAddressExpression(Node *node) {
   if (!addrExpr)
     return;
 
-  auto addrName = addrExpr->identifier->expression.TokenLiteral;
-  auto line = addrExpr->identifier->expression.line;
-  auto col = addrExpr->identifier->expression.column;
+  auto innerExpr = addrExpr->identifier.get();
+  if (!innerExpr)
+    return;
 
-  walker(addrExpr->identifier.get());
-  auto symbolInfo = resolveSymbolInfo(addrName);
+  auto addrName = extractIdentifierName(innerExpr);
+  auto line = innerExpr->expression.line;
+  auto col = innerExpr->expression.column;
+
+  auto call = dynamic_cast<CallExpression *>(innerExpr);
+  auto metCall = dynamic_cast<MethodCallExpression *>(innerExpr);
+
+  if (auto infix = dynamic_cast<InfixExpression *>(innerExpr)) {
+    // Check the operator
+    if (infix->operat.type != TokenType::FULLSTOP &&
+        infix->operat.type != TokenType::SCOPE_OPERATOR) {
+
+      logSemanticErrors(
+          "Cannot take address of an arithmetic expression or comparison",
+          infix->expression.line, infix->expression.column);
+      return;
+    }
+  }
+
+  if (call || metCall) {
+    logSemanticErrors("Cannot get the address to a temporary value '" +
+                          addrName + "'",
+                      line, col);
+    return;
+  }
+
+  walker(innerExpr);
+  auto symbolInfo = metaData[innerExpr];
 
   if (!symbolInfo) {
     logSemanticErrors("Unidentified variable '" + addrName + "'", line, col);
@@ -479,12 +506,6 @@ void Semantics::walkAddressExpression(Node *node) {
   bool hasError = false;
   bool isHeap = symbolInfo->isHeap;
   bool isDheap = symbolInfo->isDheap;
-
-  if (!symbolInfo) {
-    logSemanticErrors("Use of undeclared identifier '" + addrName + "'", line,
-                      col);
-    return;
-  }
 
   if (symbolInfo->isHeap || symbolInfo->isDheap)
     symbolInfo->lastUseNode = addrExpr;
@@ -532,6 +553,14 @@ void Semantics::walkDereferenceExpression(Node *node) {
                           derefSym->type.resolvedName + "'",
                       line, col);
     return; // Dont bother
+  }
+
+  // Block dereferencing nullable types
+  if (derefSym->type.isNull) {
+    logSemanticErrors("Cannot dereference nullable pointer type '" +
+                          derefSym->type.resolvedName + "'",
+                      line, col);
+    return;
   }
 
   derefSym->lastUseNode = derefExpr;
@@ -724,34 +753,6 @@ void Semantics::walkAssignStatement(Node *node) {
         hasError = true;
       }
       walker(ident);
-    } else if (auto nullVal =
-                   dynamic_cast<NullLiteral *>(assignStmt->value.get())) {
-      rhsIsNull = true;
-      isDefinitelyNull = true;
-
-      if (!symbol->isNullable) {
-        logSemanticErrors("Cannot assign 'null' to non-nullable variable '" +
-                              assignName + "'",
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
-
-        hasError = true;
-        return;
-      }
-
-      walker(nullVal);
-      std::cout << "[SEMANTIC TAG] Tagging Null at: "
-                << static_cast<void *>(nullVal)
-                << " with type: " << symbol->type.resolvedName << "\n";
-      metaData[nullVal]->type = symbol->type;
-
-      symbol->isInitialized = true;
-      symbol->hasError = hasError;
-      symbol->isDefinitelyNull = isDefinitelyNull;
-      metaData[assignStmt] = symbol;
-
-      // Nothing else to check
-      return;
     } else if (auto arrLit =
                    dynamic_cast<ArrayLiteral *>(assignStmt->value.get())) {
       // Getting the length of the array literal
@@ -777,6 +778,54 @@ void Semantics::walkAssignStatement(Node *node) {
         hasError = true;
       }
     }
+  }
+
+  // Enforcing the assignment usage guard
+  bool isAssign = (assignStmt->op.type == TokenType::ASSIGN);
+  bool isArrow = (assignStmt->op.type == TokenType::ARROW);
+
+  if (isArrow && !symbol->isPointer) {
+    logSemanticErrors("Cannot use '->' for non-pointer variable '" +
+                          assignName + "'. Use '=' instead.",
+                      assignStmt->op.line, assignStmt->op.column);
+    hasError = true;
+  }
+
+  if (isAssign && symbol->isPointer) {
+    // Special case: If we are assigning to a pointer, we enforce the arrow for
+    // clarity
+    logSemanticErrors("Cannot use '=' for pointer variable '" + assignName +
+                          "'. Use '->' to repoint.",
+                      assignStmt->op.line, assignStmt->op.column);
+    hasError = true;
+  }
+
+  // Check if the value is null and if do give it context
+  if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get())) {
+    rhsIsNull = true;
+    isDefinitelyNull = true;
+
+    if (!symbol->isNullable) {
+      logSemanticErrors("Cannot assign 'null' to non-nullable variable '" +
+                            assignName + "'",
+                        assignStmt->identifier->expression.line,
+                        assignStmt->identifier->expression.column);
+
+      hasError = true;
+      return;
+    }
+
+    walker(nullVal);
+
+    metaData[nullVal]->type = symbol->type;
+
+    symbol->isInitialized = true;
+    symbol->hasError = hasError;
+    symbol->isDefinitelyNull = isDefinitelyNull;
+    metaData[assignStmt] = symbol;
+
+    // Nothing else to check
+    return;
   }
 
   // --- Infer RHS type if not null ---
@@ -941,6 +990,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   if (!fieldAssignStmt)
     return;
 
+  auto name = extractIdentifierName(fieldAssignStmt->lhs_chain.get());
   auto line = fieldAssignStmt->statement.line;
   auto column = fieldAssignStmt->statement.column;
 
@@ -952,12 +1002,34 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   }
 
   if (lhsInfo->isConstant) {
-    logSemanticErrors("Cannot reassign to constant field", line, column);
+    logSemanticErrors("Cannot reassign to constant field '" + name + "'", line,
+                      column);
     return;
   }
 
   if (!lhsInfo->isMutable && lhsInfo->isInitialized) {
-    logSemanticErrors("Cannot reassign to immutable field", line, column);
+    logSemanticErrors("Cannot reassign to immutable field '" + name + "'", line,
+                      column);
+    return;
+  }
+
+  // Enforce the assignment usage or arrow usage
+  bool isAssign = (fieldAssignStmt->op.type == TokenType::ASSIGN);
+  bool isArrow = (fieldAssignStmt->op.type == TokenType::ARROW);
+
+  if (isArrow && !lhsInfo->isPointer) {
+    logSemanticErrors("Cannot use '->' for non-pointer variable '" + name +
+                          "'. Use '=' instead.",
+                      fieldAssignStmt->op.line, fieldAssignStmt->op.column);
+    return;
+  }
+
+  if (isAssign && lhsInfo->isPointer) {
+    // Special case: If we are assigning to a pointer, we enforce the arrow for
+    // clarity
+    logSemanticErrors("Cannot use '=' for pointer variable '" + name +
+                          "'. Use '->' to repoint.",
+                      fieldAssignStmt->op.line, fieldAssignStmt->op.column);
     return;
   }
 

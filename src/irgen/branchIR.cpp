@@ -11,16 +11,12 @@ void IRGenerator::generateIfStatement(Node *node) {
   std::cerr << "[IR DEBUG] Generating if statement\n";
 
   // Generation of condition for the if
-  llvm::Value *condVal = generateExpression(ifStmt->condition.get());
+  llvm::Value *rawCond = generateExpression(ifStmt->condition.get());
+  llvm::Value *condVal = coerceToBoolean(rawCond, ifStmt->condition.get());
   if (!condVal) {
     throw std::runtime_error("Invalid if condition");
   }
-
-  if (!condVal->getType()->isIntegerTy(1)) {
-    condVal = funcBuilder.CreateICmpNE(
-        condVal, llvm::ConstantInt::get(condVal->getType(), 0), "ifcond.bool");
-  }
-
+  
   // Create basic blocks
   llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
   llvm::BasicBlock *thenBB =
@@ -63,7 +59,11 @@ void IRGenerator::generateIfStatement(Node *node) {
 
     const auto &elifStmt = ifStmt->elifClauses[i];
     auto elif = dynamic_cast<elifStatement *>(elifStmt.get());
-    llvm::Value *elifCondVal = generateExpression(elif->elif_condition.get());
+
+    llvm::Value *rawCond = generateExpression(elif->elif_condition.get());
+    llvm::Value *elifCondVal =
+        coerceToBoolean(rawCond, elif->elif_condition.get());
+
     if (!elifCondVal) {
       throw std::runtime_error("Invalid elif condition");
     }

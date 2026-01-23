@@ -410,8 +410,9 @@ llvm::Value *IRGenerator::generateNullLiteral(Node *node) {
   if (!nullLit)
     throw std::runtime_error("Invalid null literal");
 
-  std::cout << "[IRGEN ERROR] Looking for Null at: "
-            << static_cast<void *>(node) << "\n";
+  auto nullMeta = semantics.metaData[nullLit];
+  if (!nullMeta)
+    throw std::runtime_error("Could not find null metaData");
 
   ResolvedType stampedType = semantics.metaData[nullLit]->type;
   llvm::Type *llvmType = getLLVMType(stampedType);

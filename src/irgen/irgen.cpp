@@ -147,7 +147,6 @@ void IRGenerator::generateStatement(Node *node) {
   (this->*generatorIt->second)(node);
 }
 
-
 // Expression statement IR generator function
 void IRGenerator::generateExpressionStatement(Node *node) {
   auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
@@ -330,7 +329,6 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   return ptr;
 }
 
-
 llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
   auto blockExpr = dynamic_cast<BlockExpression *>(node);
   if (!blockExpr)
@@ -471,18 +469,22 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
     throw std::runtime_error("Type '" + type.resolvedName + "' is unknown");
   }
 
-  if (type.isPointer || type.isRef)
-    return llvm::PointerType::get(baseType, 0);
+  llvm::Type *finalType = baseType;
+
+  if (type.isPointer || type.isRef) {
+    finalType = llvm::PointerType::get(baseType, 0);
+  }
 
   if (type.isNull) {
-    // We create an anonymous struct: { i1 (is_present), T (actual_value) }
-    // Note: i1 is true (1) if the value is present, false (0) if it is null
-    std::vector<llvm::Type *> fields = {llvm::Type::getInt1Ty(context),
-                                        baseType};
+    // This creates { i1, ptr } or { i1, i32 }
+    std::vector<llvm::Type *> fields = {
+        llvm::Type::getInt1Ty(context), // Flag
+        finalType                       // Payload (could be i32 OR ptr)
+    };
     return llvm::StructType::get(context, fields);
   }
 
-  return baseType;
+  return finalType;
 }
 
 // Registering generator functions for statements
@@ -732,6 +734,39 @@ uint32_t IRGenerator::decodeChar32Literal(const std::string &literal) {
     }
   }
   throw std::runtime_error("Invalid char32 literal: " + literal);
+}
+
+llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
+  if (!val) {
+    return nullptr;
+  }
+
+  auto it = semantics.metaData.find(exprNode);
+  if (it == semantics.metaData.end()) {
+    throw std::runtime_error("Could not find condition expr metaData");
+  } else {
+    auto sym = it->second;
+
+    if (sym->isNullable) {
+      // If it's a pointer to the box, we load it
+      if (val->getType()->isPointerTy()) {
+        llvm::Type *boxType = getLLVMType(sym->type);
+        val = funcBuilder.CreateLoad(boxType, val, "nullable.load");
+      }
+
+      auto result = funcBuilder.CreateExtractValue(val, {0}, "is_present");
+      return result;
+    }
+  }
+
+  // 3. Scalar Fallback
+  if (val->getType()->isIntegerTy(1)) {
+    return val;
+  }
+
+  auto result = funcBuilder.CreateICmpNE(
+      val, llvm::ConstantInt::get(val->getType(), 0), "coerce.bool");
+  return result;
 }
 
 bool IRGenerator::isIntegerType(DataType dt) {

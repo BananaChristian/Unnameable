@@ -208,9 +208,17 @@ void Semantics::walkUnwrapExpression(Node *node) {
   int exprLine = expr->expression.line;
   int exprCol = expr->expression.column;
 
+  auto exprName = extractIdentifierName(unwrapExpr->expr.get());
+
   walker(expr);
   auto exprSym = metaData[expr];
-  // Check if the type is nullable as we cant start unwrapping concrete stuff
+
+  if (!exprSym) {
+    logSemanticErrors("Unwrapped unknown identifier '" + exprName + "'",
+                      exprLine, exprCol);
+    return;
+  }
+
   ResolvedType exprType = exprSym->type;
 
   if (!exprType.isNull) {

@@ -342,7 +342,8 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::ARRAY ||
       (currentToken().type == TokenType::IDENTIFIER &&
-       nextToken().type == TokenType::IDENTIFIER)) {
+           nextToken().type == TokenType::IDENTIFIER ||
+       nextToken().type == TokenType::QUESTION_MARK)) {
 
     type = parseReturnType();
   }

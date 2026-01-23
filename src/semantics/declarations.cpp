@@ -213,36 +213,84 @@ void Semantics::walkPointerStatement(Node *node) {
   bool isConstant = false;
   bool isHeap = ptrStmt->isHeap;
   bool isDheap = ptrStmt->isDheap;
+  bool isNullable = false;
 
   ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
-  // If we dont have the value(This is only allowed inside records and components for now)
+  // If we dont have the value(This is only allowed inside records and
+  // components for now)
   if (!ptrStmt->value) {
-    if (insideRecord||insideComponent) {
-      if (ptrStmt->type) {
-        ptrType = inferNodeDataType(ptrStmt);
-      } else {
-        logSemanticErrors("Cannot get pointer type if you did not provide it "
-                          "and did not provide a value for inference",
-                          line, col);
-      }
-      auto ptrInfo = std::make_shared<SymbolInfo>();
-      ptrInfo->type = ptrType;
-      ptrInfo->isPointer = true;
-      ptrInfo->isInitialized = false;
-
-      metaData[ptrStmt] = ptrInfo;
-      symbolTable.back()[ptrName] = ptrInfo;
-      return;
-    } else {
-      logSemanticErrors("Must initialize the pointer '" + ptrName + "'", line,
-                        col);
-      return;
-    }
+    logSemanticErrors("Must initialize the pointer '" + ptrName + "'", line,
+                      col);
+    return;
   }
 
-  // Infer the type of the pointer value
-  ResolvedType targetType = inferNodeDataType(ptrStmt->value.get());
+  auto ptrVal = ptrStmt->value.get();
+
+  walker(ptrVal);
+
+  // Handle a null literal target
+  if (auto nullLit = dynamic_cast<NullLiteral *>(ptrVal)) {
+    // The user must provide the pointer type the compiler cannot infer from a
+    // null
+
+    if (!ptrStmt->type) {
+      logSemanticErrors("Must provide pointer type for null inference to work",
+                        line, col);
+      return;
+    }
+
+    ptrType = inferNodeDataType(ptrStmt);
+    isNullable = ptrType.isNull; // Set the null flag based of the type
+    std::cout << "NULLABLE POINTER TYPE: " << ptrType.resolvedName << "\n";
+
+    if (!ptrType.isPointer) {
+      logSemanticErrors("Cannot point to a non pointer type'" +
+                            ptrType.resolvedName + "'",
+                        line, col);
+      return;
+    }
+
+    // First of all block such if the pointer type isnt nullable
+    if (!ptrType.isNull) {
+      logSemanticErrors("Cannot use 'null' on a non nullable pointer type '" +
+                            ptrType.resolvedName + "'",
+                        line, col);
+      return;
+    }
+
+    // Now you can give the null context
+    metaData[nullLit]->type = ptrType;
+
+    // Exit
+    auto ptrInfo = std::make_shared<SymbolInfo>();
+    ptrInfo->isHeap = isHeap;
+    ptrInfo->isDheap = isDheap;
+    ptrInfo->lastUseNode = ptrStmt;
+    ptrInfo->type = ptrType;
+    ptrInfo->hasError = hasError;
+    ptrInfo->isPointer = true;
+    ptrInfo->isMutable = isMutable;
+    ptrInfo->isConstant = isConstant;
+    ptrInfo->isInitialized = true;
+    ptrInfo->isNullable = isNullable;
+
+    metaData[ptrStmt] = ptrInfo;
+    symbolTable.back()[ptrName] = ptrInfo;
+    return;
+  }
+
+  // Dealing with what is being pointed to
+  std::string targetName = extractIdentifierName(ptrVal);
+
+  auto valMetaData = metaData[ptrVal];
+  if (!valMetaData) {
+    logSemanticErrors("Pointing to unidentified target '" + targetName + "'",
+                      line, col);
+
+    return;
+  }
+  ResolvedType targetType = valMetaData->type;
 
   // Check if the target is a pointer
   if (!targetType.isPointer) {
@@ -253,13 +301,7 @@ void Semantics::walkPointerStatement(Node *node) {
     return;
   }
 
-  // Dealing with what is being pointed to
-  std::string targetName = extractIdentifierName(ptrStmt->value.get());
-
-  // Walking the target
-  walker(ptrStmt->value.get());
-
-  auto targetSymbol = metaData[ptrStmt->value.get()];
+  auto targetSymbol = metaData[ptrVal];
   if (!targetSymbol) {
     logSemanticErrors("Pointer '" + ptrName +
                           "'is pointing to an undeclared variable '" +
@@ -279,7 +321,8 @@ void Semantics::walkPointerStatement(Node *node) {
     // I am comparing with the resolved name since it is sure to either be
     // type_ptr comparing with datatypes purely can allow bugs in the type
     // system
-    if (ptrType.resolvedName != targetType.resolvedName) {
+
+    if (!isTypeCompatible(ptrType, targetType)) {
       logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" +
                             ptrType.resolvedName + "' does not match '" +
                             targetName + "' of type '" +
@@ -289,9 +332,11 @@ void Semantics::walkPointerStatement(Node *node) {
     }
   }
 
+  isNullable = ptrType.isNull; // Set the nullability based of the type
+
   // Guard against local pointing
   auto targetStorage = targetSymbol->storage;
-  if (auto ptrValue = dynamic_cast<AddressExpression *>(ptrStmt->value.get())) {
+  if (auto addrValue = dynamic_cast<AddressExpression *>(ptrVal)) {
     if (targetStorage == StorageType::STACK) {
 
       logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" +
@@ -299,7 +344,7 @@ void Semantics::walkPointerStatement(Node *node) {
                         line, col);
       hasError = true;
     }
-  } else if (auto ptrValue = dynamic_cast<Identifier *>(ptrStmt->value.get())) {
+  } else if (auto identValue = dynamic_cast<Identifier *>(ptrVal)) {
     auto pointeeTargetSym = targetSymbol->targetSymbol;
     if (!pointeeTargetSym) {
       logSemanticErrors("Pointer '" + ptrName + "'s target '" + targetName +
@@ -362,6 +407,7 @@ void Semantics::walkPointerStatement(Node *node) {
   ptrInfo->storage = pointerStorage;
   ptrInfo->popCount = ptrPopCount;
   ptrInfo->isInitialized = true;
+  ptrInfo->isNullable = isNullable;
 
   metaData[ptrStmt] = ptrInfo;
   symbolTable.back()[ptrName] = ptrInfo;

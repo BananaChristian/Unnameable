@@ -493,7 +493,8 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   }
 
   if (auto addrExpr = dynamic_cast<AddressExpression *>(node)) {
-    auto identType = inferNodeDataType(addrExpr->identifier.get());
+    auto innerExpr = addrExpr->identifier.get();
+    auto identType = inferNodeDataType(innerExpr);
     identType.isPointer = true;
     return isPointerType(identType);
   }
@@ -686,6 +687,9 @@ std::string Semantics::extractIdentifierName(Node *node) {
       identName = "self"; // Just the component itself
     }
     return identName;
+  } else if (auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node)) {
+    identName = extractIdentifierName(unwrapExpr->expr.get());
+    return identName;
   }
 
   return identName;
@@ -824,6 +828,14 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     lookUpName = stripPtrSuffix(lookUpName);
   } else if (parentType.isRef) {
     lookUpName = stripRefSuffix(lookUpName);
+  }
+
+  // Block nullable access
+  if (parentType.isNull) {
+    logSemanticErrors("Cannot access a nullable type '" + lookUpName + "'",
+                      infixExpr->left_operand->expression.line,
+                      infixExpr->left_operand->expression.column);
+    return nullptr;
   }
 
   if (operatorType == TokenType::FULLSTOP) {
@@ -1916,22 +1928,16 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
 }
 
 std::string Semantics::stripOptionalSuffix(const std::string &type) {
-  auto endsWith = [](const std::string &str,
-                     const std::string &suffix) -> bool {
-    if (str.length() < suffix.length())
-      return false;
-    return str.compare(str.length() - suffix.length(), suffix.length(),
-                       suffix) == 0;
-  };
+  std::string result = type;
 
-  auto finalName = [&](std::string typeName) {
-    if (endsWith(typeName, "?"))
-      typeName = typeName.substr(0, typeName.size() - 1);
+  // Find the '?' anywhere in the name
+  size_t qPos = result.find('?');
+  if (qPos != std::string::npos) {
+    // Erase just that one character
+    result.erase(qPos, 1);
+  }
 
-    return typeName;
-  };
-
-  return finalName(type);
+  return result;
 }
 
 std::string Semantics::stripPtrSuffix(const std::string &type) {
@@ -1992,7 +1998,16 @@ ResolvedType Semantics::isPointerType(ResolvedType t) {
         baseName = baseName.substr(0, baseName.size() - 4);
     }
 
-    return ResolvedType{baseType, baseName, isPtr};
+    ResolvedType type;
+    type.resolvedName = baseName;
+    type.kind = baseType;
+    type.isArray = t.isArray;
+    type.innerType = t.innerType;
+    type.isPointer = isPtr;
+    type.isNull = t.isNull;
+    type.isRef = false; // A pointer cannot be a pointer
+
+    return type;
   };
 
   return ptrType(t.kind, t.isPointer, t.resolvedName);
@@ -2016,6 +2031,16 @@ ResolvedType Semantics::isRefType(ResolvedType t) {
       if (endsWith(baseName, "_ref"))
         baseName = baseName.substr(0, baseName.size() - 4);
     }
+
+    ResolvedType type;
+    type.kind = baseType;
+    type.isRef = isRef;
+    type.resolvedName = baseName;
+    type.isArray = t.isArray;
+    type.innerType = t.innerType;
+    type.isPointer = false; // A reference cannot be a pointer
+
+    return type;
 
     return ResolvedType{baseType, baseName, false, isRef};
   };

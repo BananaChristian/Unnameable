@@ -200,6 +200,7 @@ private:
       const std::string &funcName, const std::string &typeName,
       const std::shared_ptr<MemberInfo> &memberInfo);
   void emitResidentSweep();
+  llvm::Value *coerceToBoolean(llvm::Value *val, Node *expr);
   llvm::GlobalVariable *
   createGlobalArrayConstant(llvm::Constant *constantArray);
 

@@ -295,6 +295,23 @@ void IRGenerator::generatePointerStatement(Node *node) {
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrType));
   }
 
+  if (ptrSym->type.isNull && initVal && !initVal->getType()->isStructTy()) {
+    llvm::StructType *stTy = llvm::cast<llvm::StructType>(ptrType);
+
+    // Create an undefined struct to start with
+    llvm::Value *boxed = llvm::UndefValue::get(stTy);
+
+    // Insert the isPresent flag = TRUE (index 0)
+    boxed = funcBuilder.CreateInsertValue(
+        boxed, llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), 1), 0);
+
+    // Insert the actual pointer value (index 1)
+    boxed = funcBuilder.CreateInsertValue(boxed, initVal, 1);
+
+    // Override initVal so we store the whole box
+    initVal = boxed;
+  }
+
   if (!initVal)
     throw std::runtime_error("No init value");
 

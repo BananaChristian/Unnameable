@@ -771,11 +771,14 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
     bool isCustom = currentResolvedType->kind == DataType::RECORD ||
                     currentResolvedType->kind == DataType::COMPONENT ||
                     currentResolvedType->kind == DataType::ENUM;
+    std::string lookUpName = currentResolvedType->resolvedName;
+    if (currentResolvedType->isPointer) {
+      lookUpName = stripPtrSuffix(currentResolvedType->resolvedName);
+    }
     if (isCustom) {
-      auto ctiIt = customTypesTable.find(currentResolvedType->resolvedName);
+      auto ctiIt = customTypesTable.find(lookUpName);
       if (ctiIt == customTypesTable.end()) {
-        logSemanticErrors("Type info for '" +
-                              currentResolvedType->resolvedName + "' not found",
+        logSemanticErrors("Type info for '" + lookUpName + "' not found",
                           ident->identifier.line, ident->identifier.column);
         return nullptr;
       }
@@ -858,8 +861,8 @@ void Semantics::walkComponentStatement(Node *node) {
   auto componentTypeInfo = std::make_shared<CustomTypeInfo>();
 
   componentSymbol->type = ResolvedType{DataType::COMPONENT, componentName};
-  componentTypeInfo->type=ResolvedType{DataType::COMPONENT,componentName};
-  
+  componentTypeInfo->type = ResolvedType{DataType::COMPONENT, componentName};
+
   symbolTable[0][componentName] = componentSymbol;
   customTypesTable[componentName] = componentTypeInfo;
   metaData[componentStmt] = componentSymbol;
@@ -1169,15 +1172,11 @@ void Semantics::walkComponentStatement(Node *node) {
 
       metaData[letStmt] = declSym;
       componentTypeInfo->members = members;
-    }
-
-    else {
-      if (data) {
-        logSemanticErrors("Invalid statement found in component '" +
-                              componentName + "' definition scope",
-                          data->statement.line, data->statement.column);
-        hasError = true;
-      }
+    } else {
+      logSemanticErrors("Invalid statement found in component '" +
+                            componentName + "' definition scope",
+                        data->statement.line, data->statement.column);
+      hasError = true;
     }
   }
 
