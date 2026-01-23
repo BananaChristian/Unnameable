@@ -92,7 +92,8 @@ struct AddressExpression : Expression {
     if (identifier)
       var = identifier->toString();
 
-    return "Address Expression: " + addr_token.TokenLiteral + " " + var;
+    return "Address Expression: (" + addr_token.TokenLiteral + " " + var +
+           ")\n";
   }
 
   AddressExpression *shallowClone() const override {
@@ -113,8 +114,8 @@ struct DereferenceExpression : Expression {
     if (identifier)
       exprStr = identifier->toString();
 
-    return "Dereference Expression: " + deref_token.TokenLiteral + " " +
-           exprStr + "\n";
+    return "Dereference Expression: (" + deref_token.TokenLiteral + " " +
+           exprStr + ")\n";
   }
 
   DereferenceExpression *shallowClone() const override {
@@ -540,8 +541,8 @@ struct UnwrapExpression : Expression {
     if (expr) {
       exprStr = expr->toString();
     }
-    return "Unwrap expression: " + unwrap_token.TokenLiteral + " " + exprStr +
-           "\n";
+    return "Unwrap expression: (" + unwrap_token.TokenLiteral + " " + exprStr +
+           ")\n";
   }
 
   UnwrapExpression *shallowClone() const override {
@@ -1264,33 +1265,39 @@ struct LetStatement : Statement {
 
 struct AssignmentStatement : Statement {
   std::unique_ptr<Expression> identifier;
+  Token op;
   std::unique_ptr<Expression> value;
   std::string toString() override {
     return "Assignment statement: (Variable: " + identifier->toString() +
-           " Value: " + value->toString() + ")";
+           op.TokenLiteral + " Value: " + value->toString() + ")";
   };
 
   AssignmentStatement *shallowClone() const override {
-    return new AssignmentStatement(clonePtr(identifier), clonePtr(value));
+    return new AssignmentStatement(clonePtr(identifier), op, clonePtr(value));
   }
-  AssignmentStatement(std::unique_ptr<Expression> ident,
+  AssignmentStatement(std::unique_ptr<Expression> ident, Token operat,
                       std::unique_ptr<Expression> val)
-      : Statement(ident->token), identifier(std::move(ident)),
+      : Statement(ident->token), identifier(std::move(ident)), op(operat),
         value(std::move(val)){};
 };
 
 struct FieldAssignment : Statement {
   std::unique_ptr<Expression> lhs_chain;
+  Token op;
   std::unique_ptr<Expression> value;
+  
+  FieldAssignment *shallowClone() const override{
+      return new FieldAssignment(clonePtr(lhs_chain),op,clonePtr(value));
+  };
 
-  FieldAssignment(std::unique_ptr<Expression> lhs,
+  FieldAssignment(std::unique_ptr<Expression> lhs, Token operat,
                   std::unique_ptr<Expression> val)
-      : Statement(lhs->expression), lhs_chain(std::move(lhs)),
+      : Statement(lhs->expression), op(operat), lhs_chain(std::move(lhs)),
         value(std::move(val)){};
 
   std::string toString() override {
     return "Field Assignment: (Path: " + lhs_chain->toString() +
-           " Value: " + value->toString() + ")";
+           op.TokenLiteral + " Value: " + value->toString() + ")";
   }
 };
 

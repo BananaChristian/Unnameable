@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "parser.hpp"
+#include "token.hpp"
 
 // Parsing assignment statements
 std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
@@ -10,6 +11,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
   std::unique_ptr<Expression> lhs;
   lhs = parseExpression(Precedence::PREC_NONE);
 
+  auto assignToken = currentToken();
   if (!lhs) {
     logError("Invalid left-hand side in assignment");
     return nullptr;
@@ -23,13 +25,14 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
     return nullptr;
   }
 
-  // Expect '=' before parsing the value
-  if (currentToken().type != TokenType::ASSIGN) {
-    logError("Expected '=' after identifier in assignment but got '" +
+  // Expect '=' or '->' before parsing the value
+  if ((assignToken.type != TokenType::ASSIGN) &&
+      (assignToken.type != TokenType::ARROW)) {
+    logError("Expected '=' or '->' after identifier in assignment but got '" +
              currentToken().TokenLiteral + "'");
     return nullptr;
   }
-  advance(); // consume '='
+  advance(); // consume '=' or '->'
 
   // Parse right-hand side expression
   value = parseExpression(Precedence::PREC_NONE);
@@ -37,7 +40,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
   if (!lhs)
     return nullptr;
 
-  return std::make_unique<AssignmentStatement>(std::move(lhs),
+  return std::make_unique<AssignmentStatement>(std::move(lhs), assignToken,
                                                std::move(value));
 }
 
@@ -48,30 +51,37 @@ std::unique_ptr<Statement> Parser::parseSelfAssignment() {
 std::unique_ptr<Statement> Parser::parseDereferenceAssignment() {
   auto lhs = parseExpression(Precedence::PREC_NONE);
 
-  if (lhs && currentToken().type == TokenType::ASSIGN) {
-    advance(); // Consume '='
+  auto assign_token = currentToken();
+  bool validAssign = ((assign_token.type == TokenType::ASSIGN) ||
+                      (assign_token.type == TokenType::ARROW));
+
+  if (lhs && validAssign) {
+    advance(); // Consume '=' or '->'
     auto rhs = parseExpression(Precedence::PREC_NONE);
-    return std::make_unique<AssignmentStatement>(std::move(lhs),
+    return std::make_unique<AssignmentStatement>(std::move(lhs), assign_token,
                                                  std::move(rhs));
   }
 
   // Fall back to the expression guy
-  auto expr = parseExpression(Precedence::PREC_NONE);
-  if (expr) {
+  if (lhs) {
     return std::make_unique<ExpressionStatement>(currentToken(),
-                                                 std::move(expr));
+                                                 std::move(lhs));
   }
   return nullptr;
 }
 
 std::unique_ptr<Statement> Parser::parseFieldAssignment() {
   auto path = parseExpression(Precedence::PREC_NONE);
-  if (currentToken().type != TokenType::ASSIGN) {
+
+  auto assign_token = currentToken();
+  if ((assign_token.type != TokenType::ASSIGN) &&
+      (assign_token.type != TokenType::ARROW)) {
     logError("Expected '=' after field access chain");
     return nullptr;
   }
   advance();
 
   auto val = parseExpression(Precedence::PREC_NONE);
-  return std::make_unique<FieldAssignment>(std::move(path), std::move(val));
+  return std::make_unique<FieldAssignment>(std::move(path), assign_token,
+                                           std::move(val));
 }

@@ -91,9 +91,10 @@ Parser::parsePostfixExpression(std::unique_ptr<Expression> left) {
 // Parsing address expression
 std::unique_ptr<Expression> Parser::parseAddressExpression() {
   Token addr_token = currentToken();
+  Precedence operatorPrecedence = get_precedence(addr_token.type);
   advance(); // Consume addr token
 
-  auto ident = parseIdentifier();
+  auto ident = parseExpression(operatorPrecedence);
 
   return std::make_unique<AddressExpression>(addr_token, std::move(ident));
 }
@@ -101,9 +102,9 @@ std::unique_ptr<Expression> Parser::parseAddressExpression() {
 // Parsing dereference expression
 std::unique_ptr<Expression> Parser::parseDereferenceExpression() {
   Token deref_token = currentToken();
+  Precedence operatorPrecedence = get_precedence(deref_token.type);
   advance(); // Consume deref token
-
-  auto ident = parseExpression(Precedence::PREC_NONE);
+  auto ident = parseExpression(operatorPrecedence);
 
   return std::make_unique<DereferenceExpression>(deref_token, std::move(ident));
 }
@@ -163,7 +164,8 @@ std::unique_ptr<Expression> Parser::parseSelfExpression() {
     advance(); // skip '.'
 
     if (currentToken().type != TokenType::IDENTIFIER) {
-      logError("Expected identifier after '.' in self expression");
+      logError("Expected identifier after '.' in self expression but got '" +
+               currentToken().TokenLiteral + "'");
       return nullptr;
     }
 
@@ -182,13 +184,14 @@ std::unique_ptr<Expression> Parser::parseNewComponentExpression() {
   advance(); // Consuming the new keyword open
   Token component_name = currentToken();
   if (component_name.type != TokenType::IDENTIFIER) {
-    logError("Expected identifier for component name after new but got: " +
-             component_name.TokenLiteral);
+    logError("Expected identifier for component name after new but got '" +
+             component_name.TokenLiteral + "'");
     return nullptr;
   }
   advance(); // Consuming the component name
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after component name in 'new' expression");
+    logError("Expected '(' after component name in 'new' expression but got '" +
+             currentToken().TokenLiteral + "'");
     return nullptr;
   }
   advance(); // Consume the lparen
@@ -208,7 +211,7 @@ std::unique_ptr<Expression> Parser::parseGroupedExpression() {
   }
 
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' to close grouped expression but got " +
+    logError("Expected ')' to close grouped expression but got '" +
              currentToken().TokenLiteral + "'");
     return nullptr;
   }
@@ -222,11 +225,7 @@ std::unique_ptr<Expression>
 Parser::parseMethodCallExpression(std::unique_ptr<Expression> left) {
   advance(); // consume FULLSTOP
 
-  std::unique_ptr<Expression> funcIdent = parseIdentifier();
-  if (!funcIdent)
-    return nullptr;
-
-  auto callExpr = parseCallExpression(std::move(funcIdent));
+  auto callExpr = parseCallExpression();
 
   return std::make_unique<MethodCallExpression>(std::move(left),
                                                 std::move(callExpr));
@@ -266,12 +265,8 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments() {
 }
 
 // Parsing the call expression
-std::unique_ptr<Expression>
-Parser::parseCallExpression(std::unique_ptr<Expression> left) {
-  if (dynamic_cast<Identifier *>(left.get()) == nullptr) {
-    logError("Expected identifier as function name for call");
-    return nullptr;
-  }
+std::unique_ptr<Expression> Parser::parseCallExpression() {
+  auto ident = parseIdentifier();
 
   Token call_token = currentToken(); // We expect a left parenthesis here
 
@@ -280,6 +275,7 @@ Parser::parseCallExpression(std::unique_ptr<Expression> left) {
                            // after the function name has been declared
     logError("Expected ( after function name bug got '" +
              currentToken().TokenLiteral + "'");
+    advance();
     return nullptr;
   }
 
@@ -288,15 +284,16 @@ Parser::parseCallExpression(std::unique_ptr<Expression> left) {
   auto args = parseCallArguments(); // Calling the parse call arguments inorder
                                     // to parse the arguments
 
-  return std::make_unique<CallExpression>(call_token, std::move(left),
+  return std::make_unique<CallExpression>(call_token, std::move(ident),
                                           std::move(args));
 }
 
 // Unwrap call parse
 std::unique_ptr<Expression> Parser::parseUnwrapExpression() {
   Token unwrap = currentToken();
+  Precedence operatorPrecedence = get_precedence(unwrap.type);
   advance(); // Consume the unwrap token
-  std::unique_ptr<Expression> expr = parseExpression(Precedence::PREC_NONE);
+  std::unique_ptr<Expression> expr = parseExpression(operatorPrecedence);
   if (!expr) {
     logError("Expected an expression after unwrap but got '" +
              currentToken().TokenLiteral + "'");

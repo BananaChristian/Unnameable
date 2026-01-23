@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "ast.hpp"
+#include "token.hpp"
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -228,7 +229,6 @@ void Parser::registerInfixFns() {
   InfixParseFunctionsMap[TokenType::AT] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::EQUALS] = &Parser::parseInfixExpression;
-  InfixParseFunctionsMap[TokenType::LPAREN] = &Parser::parseCallExpression;
   InfixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseInstanceExpression;
   InfixParseFunctionsMap[TokenType::COALESCE] = &Parser::parseInfixExpression;
 }
@@ -334,13 +334,17 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   Token decisionToken = peekAheadToDecision();
   Token peek1 = peekToken(1);
 
-  // 1. Guard: Let Statement (Type var)
   if (peek1.type == TokenType::IDENTIFIER) {
     return parseLetStatement();
   }
 
-  // 2. The Big Decision: Is this an assignment?
-  if (decisionToken.type == TokenType::ASSIGN) {
+  if (peek1.type == TokenType::LPAREN) {
+    auto callExpr = parseCallExpression();
+    return std::make_unique<ExpressionStatement>(current, std::move(callExpr));
+  }
+
+  if (decisionToken.type == TokenType::ASSIGN ||
+      decisionToken.type == TokenType::ARROW) {
 
     // Check if the chain contains ANY dots or scope operators
     bool hasFieldAccess = false;
@@ -367,7 +371,7 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
     }
   }
 
-  // 3. Fallback: Expression (e.g., head.method())
+  // Fall back to normal ident expr e.g x
   auto expr = parseExpression(Precedence::PREC_NONE);
   if (expr) {
     return std::make_unique<ExpressionStatement>(current, std::move(expr));
