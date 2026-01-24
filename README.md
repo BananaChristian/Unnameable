@@ -1038,8 +1038,54 @@ func main(): i32 {
 }
 
 ```
-
 Note: I will add more safety nets on them as I go along but for now that is it
+
+
+## The opaque pointer 
+This is a special pointer type that has no type it is meant to be a carrier it is generic in nature but the compiler enforces some rules on it
+For example you cannot dereference it, or do pointer arithmetic on it or even access what is inside them as the compiler doesnt know the type 
+You can point to anything with it but you must bitcast it to a typed pointer to use it normally otherwise the compiler will not allow you to use it normally
+```
+component Data {
+    i32 id
+    init(i32 id){
+        self.id=id
+    }
+}
+
+component Player {
+    i32 score
+    init(i32 score){
+        self.score=score
+    }
+}
+
+# The Dispatcher
+func generic_shout(ptr opaque item,i32 tag):void {
+    if (tag == 1) {
+        # Interpret as Data
+        ptr d -> bitcast<ptr Data>(item)
+        shout! d.id
+    }
+    elif (tag == 2) {
+        # Interpret as Player
+        ptr p -> bitcast<ptr Player>(item)
+        shout! p.score
+    }
+}
+
+func main():void {
+    # 1. Prepare Data
+    heap Data d = new Data(777)
+    
+    # 2. Prepare Player
+    heap Player p = new Player(999)
+
+    # 3. Use the same function for both!
+    generic_shout(addr d, 1)
+    generic_shout(addr p, 2)
+}
+```
 
 ## Dereferencing pointers in Unnameable
 
