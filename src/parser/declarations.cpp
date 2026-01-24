@@ -1,4 +1,5 @@
 #include "parser.hpp"
+#include "token.hpp"
 
 std::unique_ptr<Statement> Parser::parseLetStatement() {
   bool isExportable = false;
@@ -16,6 +17,10 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
       logError("Type parse failed for '" + currentToken().TokenLiteral + "'");
       return nullptr;
     }
+  } else {
+    logError("Invalid variable declaration type '" +
+             currentToken().TokenLiteral + "'");
+    return nullptr;
   }
 
   if (currentToken().type == TokenType::QUESTION_MARK) {
@@ -24,8 +29,8 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
   }
 
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected variable name after data type but got: " +
-             currentToken().TokenLiteral);
+    logError("Expected variable name after data type but got '" +
+             currentToken().TokenLiteral + "'");
     return nullptr;
   }
 
@@ -34,6 +39,13 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
 
   std::optional<Token> assign_token;
   std::unique_ptr<Expression> value = nullptr;
+
+  if (currentToken().type == TokenType::ARROW) {
+    logError("Inavlid assignment operator for variable declaration expected "
+             "'=' but got '" +
+             currentToken().TokenLiteral + "'");
+    return nullptr;
+  }
 
   if (currentToken().type == TokenType::ASSIGN) {
     assign_token = currentToken();
@@ -341,6 +353,7 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
   // Only treat as type if followed by another identifier (like "int x")
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::ARRAY ||
+      currentToken().type == TokenType::OPAQUE ||
       (currentToken().type == TokenType::IDENTIFIER &&
            nextToken().type == TokenType::IDENTIFIER ||
        nextToken().type == TokenType::QUESTION_MARK)) {

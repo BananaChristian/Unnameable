@@ -553,6 +553,13 @@ void Semantics::walkDereferenceExpression(Node *node) {
     return; // Dont bother
   }
 
+  // Block dereferencing opaque pointer
+  if (derefSym->type.kind == DataType::OPAQUE) {
+    logSemanticErrors(
+        "Cannot dereference an opaque pointer '" + derefName + "'", line, col);
+    return;
+  }
+
   // Block dereferencing nullable types
   if (derefSym->type.isNull) {
     logSemanticErrors("Cannot dereference nullable pointer type '" +
@@ -692,10 +699,8 @@ void Semantics::walkAssignStatement(Node *node) {
 
     // Optional sanity check
     if (symbol->isPointer) {
-      logSemanticErrors("Dereference did not unwrap pointer correctly for '" +
-                            assignName + "'",
-                        derefExpr->expression.line,
-                        derefExpr->expression.column);
+      reportDevBug("Dereference did not unwrap pointer correctly for '" +
+                   assignName + "'");
       hasError = true;
     }
   } else if (auto arrAccess =
@@ -713,7 +718,7 @@ void Semantics::walkAssignStatement(Node *node) {
     walker(arrAccess);
     auto accessMeta = metaData.find(arrAccess);
     if (accessMeta == metaData.end()) {
-      logSemanticErrors("Failed to get array access metaData", line, col);
+      reportDevBug("Failed to get array access metaData");
       hasError = true;
       return;
     }
@@ -833,7 +838,24 @@ void Semantics::walkAssignStatement(Node *node) {
     lhsType = peelRef(lhsType);
   }
 
-  if (!isTypeCompatible(lhsType, rhsType)) {
+  bool typeCheckPassed = false;
+  if (lhsType.kind == DataType::OPAQUE) {
+    if (rhsIsNull) {
+      logSemanticErrors("Cannot assign 'null' to an opaque pointer '" +
+                            assignName + "'",
+                        assignStmt->op.line, assignStmt->op.column);
+      hasError = true;
+    } else if (!rhsType.isPointer) {
+      logSemanticErrors("Cannot assign non-pointer type '" +
+                            rhsType.resolvedName + "' to opaque pointer '" +
+                            assignName + "'",
+                        assignStmt->op.line, assignStmt->op.column);
+      hasError = true;
+    }
+    typeCheckPassed = true; // We've handled the "Opaque Sink" logic
+  }
+
+  if (!typeCheckPassed && !isTypeCompatible(lhsType, rhsType)) {
     logSemanticErrors("Type mismatch: expected '" + symbol->type.resolvedName +
                           "' but got '" + rhsType.resolvedName + "'",
                       assignStmt->identifier->expression.line,
@@ -1035,7 +1057,14 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     auto rhsInfo = metaData[fieldAssignStmt->value.get()];
 
     if (rhsInfo) {
-      if (!isTypeCompatible(lhsInfo->type, rhsInfo->type)) {
+      if (lhsInfo->type.kind == DataType::OPAQUE) {
+        if (!rhsInfo->type.isPointer) {
+          logSemanticErrors("Cannot reassign non pointer type '" +
+                                rhsInfo->type.resolvedName +
+                                "' to an opaque pointer",
+                            line, column);
+        }
+      } else if (!isTypeCompatible(lhsInfo->type, rhsInfo->type)) {
         logSemanticErrors("Type mismatch in assignment", line, column);
       }
     }

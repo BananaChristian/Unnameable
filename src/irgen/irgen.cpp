@@ -17,6 +17,7 @@
 
 #include "ast.hpp"
 #include "irgen.hpp"
+#include "semantics.hpp"
 
 #include <iostream>
 #define CPPREST_FORCE_REBUILD
@@ -435,6 +436,11 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
     break;
   }
 
+  case DataType::OPAQUE: {
+    baseType = llvm::PointerType::get(context, 0);
+    break;
+  }
+
   case DataType::RECORD:
   case DataType::COMPONENT: {
     if (type.resolvedName.empty())
@@ -471,8 +477,11 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
 
   llvm::Type *finalType = baseType;
 
-  if (type.isPointer || type.isRef) {
-    finalType = llvm::PointerType::get(baseType, 0);
+  // If the data type aint opaque (I dont want ptr ptr)
+  if (type.kind != DataType::OPAQUE) {
+    if (type.isPointer || type.isRef) {
+      finalType = llvm::PointerType::get(baseType, 0);
+    }
   }
 
   if (type.isNull) {

@@ -149,6 +149,8 @@ std::unique_ptr<Expression> Parser::parseArraySubscript() {
 std::unique_ptr<Expression> Parser::parseIdentifierOrArraySubscript() {
   if (nextToken().type == TokenType::LBRACKET) {
     return parseArraySubscript();
+  } else if (nextToken().type == TokenType::LPAREN) {
+    return parseCallExpression();
   }
   return parseIdentifier();
 }

@@ -34,6 +34,7 @@ enum class ImportedDataType
     CHAR8,  // 8 BIT Char
     CHAR16, // 16 BIT Char
     CHAR32, // 32 BIT Char
+    OPAQUE,
     ENUM,
     RECORD,
     COMPONENT,

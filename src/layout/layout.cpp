@@ -1,6 +1,8 @@
 #include "layout.hpp"
 #include "ast.hpp"
 #include "errors.hpp"
+#include "semantics.hpp"
+#include <llvm-18/llvm/IR/DerivedTypes.h>
 #include <string>
 
 #define COLOR_RESET "\033[0m"
@@ -507,6 +509,11 @@ llvm::Type *Layout::getLLVMType(ResolvedType type) {
     baseType = llvm::Type::getVoidTy(context);
     break;
   }
+  case DataType::OPAQUE: {
+    baseType = llvm::PointerType::get(context, 0);
+    break;
+  }
+  
   case DataType::RECORD:
   case DataType::COMPONENT: {
     if (type.resolvedName.empty())

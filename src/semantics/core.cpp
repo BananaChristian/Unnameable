@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "semantics.hpp"
+#include "token.hpp"
 #include <string>
 #include <unordered_set>
 
@@ -476,8 +477,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   if (auto derefExpr = dynamic_cast<DereferenceExpression *>(node)) {
     std::string name = extractIdentifierName(derefExpr->identifier.get());
-    std::cout << "DEREF NAME BEING GIVEN DURING TYPE RESOLUTION: " << name
-              << "\n";
+    logInternal("Derefence name given during type resolution");
     auto derefSym = resolveSymbolInfo(name);
 
     if (!derefSym) {
@@ -1030,7 +1030,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
 
     logSemanticErrors(
         "Shift operators require integers on both sides  but got '" +
-            leftType.resolvedName + "' and rightType.resolvedName",
+            leftType.resolvedName + "' and '" + rightType.resolvedName + "'",
         leftLine, leftCol);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
@@ -1199,6 +1199,9 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
   case TokenType::BOOL_KEYWORD:
     return makeType(DataType::BOOLEAN, "bool");
 
+  case TokenType::OPAQUE:
+    return makeType(DataType::OPAQUE, "opaque");
+
   case TokenType::VOID:
     return {DataType::VOID, "void"};
 
@@ -1210,8 +1213,8 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
       return parentType;
     }
 
-    logSemanticErrors("Unknown type identifier '" + token.TokenLiteral + "'",
-                      token.line, token.column);
+    logSemanticErrors("Unknown type '" + token.TokenLiteral + "'", token.line,
+                      token.column);
     return {DataType::UNKNOWN, "unknown"};
   }
 
@@ -1222,6 +1225,15 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
 
 bool Semantics::isTypeCompatible(const ResolvedType &expected,
                                  const ResolvedType &actual) {
+
+  // Opaque pointer check
+  if (expected.kind == DataType::OPAQUE && expected.isPointer &&
+      actual.isPointer) {
+    if (!expected.isNull && actual.isNull)
+      return false;
+    return true;
+  }
+
   // Pointers must match
   if (expected.isPointer != actual.isPointer)
     return false;

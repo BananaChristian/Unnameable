@@ -155,6 +155,8 @@ enum class TokenType {
   F64,//64 bit float
   F64_KEYWORD,
   
+  OPAQUE,//opaque keyword token
+  
   SIZEOF, // sizeof token
 
   VOID,

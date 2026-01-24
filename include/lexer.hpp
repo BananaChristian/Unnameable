@@ -75,6 +75,7 @@ class Lexer {
 
       {"string", TokenType::STRING_KEYWORD},
       {"void", TokenType::VOID},
+      {"opaque", TokenType::OPAQUE},
 
       {"sizeof", TokenType::SIZEOF},
 

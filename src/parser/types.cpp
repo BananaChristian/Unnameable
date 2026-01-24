@@ -1,4 +1,5 @@
 #include "parser.hpp"
+#include "token.hpp"
 
 // Parsing basic return type
 std::unique_ptr<Expression> Parser::parseBasicType() {
@@ -20,12 +21,14 @@ std::unique_ptr<Expression> Parser::parsePointerType() {
   advance(); // Consume the ptr token
   std::unique_ptr<Expression> type;
   if (isBasicType(currentToken().type) ||
-      currentToken().type == TokenType::IDENTIFIER) {
+      currentToken().type == TokenType::IDENTIFIER ||
+      currentToken().type == TokenType::OPAQUE) {
     type = parseBasicType();
   } else if (currentToken().type == TokenType::ARRAY) {
     type = parseArrayType();
   } else {
-    logError("Expected basic or array type for pointers ");
+    logError("Expected basic or array type for pointers but got '" +
+             currentToken().TokenLiteral + "'");
   }
 
   return std::make_unique<PointerType>(ptr_token, std::move(type));
@@ -43,13 +46,14 @@ std::unique_ptr<Expression> Parser::parseRefType() {
   } else if (currentToken().type == TokenType::ARRAY) {
     type = parseArrayType();
   } else {
-    logError("Expected basic or array return for references");
+    logError("Expected basic or array return for references but got '" +
+             currentToken().TokenLiteral + "'");
   }
 
   return std::make_unique<RefType>(ref_token, std::move(type));
 }
 
-//Array type
+// Array type
 std::unique_ptr<Expression> Parser::parseArrayType() {
   // Check if we have an 'arr' keyword
   if (currentToken().type == TokenType::ARRAY) {
@@ -109,7 +113,8 @@ std::unique_ptr<Expression> Parser::parseReturnType() {
   std::unique_ptr<Expression> expr = nullptr;
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::IDENTIFIER ||
-      currentToken().type == TokenType::VOID) {
+      currentToken().type == TokenType::VOID ||
+      currentToken().type == TokenType::OPAQUE) {
     expr = parseBasicType();
   } else if (currentToken().type == TokenType::ARRAY) {
 
@@ -119,7 +124,9 @@ std::unique_ptr<Expression> Parser::parseReturnType() {
   } else if (currentToken().type == TokenType::REF) {
     expr = parseRefType();
   } else {
-    logError("Expected basic or array return type ");
+    logError("Expected basic or array return type but got '" +
+             currentToken().TokenLiteral + "'");
+    return nullptr;
   }
 
   return std::make_unique<ReturnType>(std::move(expr));

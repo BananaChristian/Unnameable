@@ -3,6 +3,7 @@
 #include "ast.hpp"
 #include "deserial.hpp"
 #include "errors.hpp"
+#include "token.hpp"
 #include <cstdint>
 #include <llvm/IR/Value.h>
 #include <set>
@@ -32,6 +33,7 @@ enum class DataType {
   CHAR8,  // 8 BIT Char
   CHAR16, // 16 BIT Char
   CHAR32, // 32 BIT Char
+  OPAQUE, // opaque ptr type;
 
   ENUM,
   RECORD,

@@ -209,6 +209,9 @@ std::string TokenTypeToLiteral(TokenType type) {
   case TokenType::STRING_KEYWORD:
     return "Token Type: STRING KEYWORD";
 
+  case TokenType::OPAQUE:
+    return "Token Type: OPAQUE";
+
   case TokenType::SIZEOF:
     return "Token Type: SIZEOF";
   case TokenType::QUESTION_MARK:

@@ -319,12 +319,18 @@ void Semantics::walkPointerStatement(Node *node) {
   else // If the user actually included a type we verify it
   {
     ptrType = inferNodeDataType(ptrStmt);
-    // Check if the types are compatible
-    // I am comparing with the resolved name since it is sure to either be
-    // type_ptr comparing with datatypes purely can allow bugs in the type
-    // system
 
-    if (!isTypeCompatible(ptrType, targetType)) {
+    // Intercept a case where the pointer is opaque
+    // If it is an opaque pointer any targetType is allowed as long as it a
+    // pointer of course
+    if (ptrType.kind == DataType::OPAQUE) {
+      if (!targetType.isPointer) {
+        logSemanticErrors(
+            "Cannot initialize an opaque pointer with a non pointer type '" +
+                targetType.resolvedName + "'",
+            line, col);
+      }
+    } else if (!isTypeCompatible(ptrType, targetType)) {
       logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" +
                             ptrType.resolvedName + "' does not match '" +
                             targetName + "' of type '" +
@@ -478,6 +484,11 @@ void Semantics::walkLetStatement(Node *node) {
 
   // --- Resolve type from token ---
   ResolvedType expectedType = inferNodeDataType(letStmt->type.get());
+  if (expectedType.kind == DataType::OPAQUE) {
+    logSemanticErrors(
+        "Cannot use an opaque pointer type on a scalar variable declaration",
+        letStmt->ident_token.line, letStmt->ident_token.column);
+  }
   ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
   // --- Mutability & constants ---

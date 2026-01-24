@@ -1,5 +1,4 @@
 #pragma once
-#include "ast.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
 #include "typeindex"

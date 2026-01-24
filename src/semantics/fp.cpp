@@ -43,8 +43,7 @@ void Semantics::walkReturnStatement(Node *node) {
   auto retStmt = dynamic_cast<ReturnStatement *>(node);
   bool hasError = false;
   if (!retStmt) {
-    logSemanticErrors("Invalid return statement node",
-                      retStmt->return_stmt.line, retStmt->return_stmt.column);
+    reportDevBug("Invalid return statement node");
     return;
   }
   if (!currentFunction) {
@@ -132,14 +131,16 @@ void Semantics::walkReturnStatement(Node *node) {
         if (!sym->isParam) {
           // Get the storage type for the target
           auto targetSym = sym->targetSymbol;
-          if (!targetSym) {
+
+          if (!targetSym && valueType.kind != DataType::OPAQUE) {
             logSemanticErrors("Target of pointer '" + name + "' does not exist",
                               retStmt->return_stmt.line,
                               retStmt->return_stmt.column);
             return;
           }
+
           // If the pointee is STACK → ILLEGAL RETURN
-          if (targetSym->storage == StorageType::STACK) {
+          if (targetSym && targetSym->storage == StorageType::STACK) {
             logSemanticErrors("Illegal return of pointer '" + name +
                                   "' (stack memory will be destroyed).",
                               retStmt->return_stmt.line,
@@ -313,7 +314,7 @@ void Semantics::walkFunctionParameters(Node *node) {
     metaData[param] = ptrInfo;
     symbolTable.back()[ptrName] = ptrInfo;
 
-    std::cout << "POINTER PARAM TYPE: " << ptrType.resolvedName << "\n";
+    logInternal("Pointer Param Type :" + ptrType.resolvedName);
   } else if (auto param = dynamic_cast<ReferenceStatement *>(node)) {
     logInternal("Analyzing reference parameter ...");
 
