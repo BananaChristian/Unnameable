@@ -380,7 +380,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
 
   // Get the full array type
   ResolvedType arrType = arrSymbol->type;
-  std::cout << "Array type: " << arrType.resolvedName << "\n";
+  logInternal("Array Type '" + arrType.resolvedName + "'");
 
   // Check indices
   int indexLevel = 0;
@@ -427,8 +427,6 @@ void Semantics::walkIdentifierExpression(Node *node) {
   auto identExpr = dynamic_cast<Identifier *>(node);
   if (!identExpr)
     return;
-  std::cout << "[SEMANTIC LOG] Analyzing identifier node: "
-            << identExpr->toString() << "\n";
   auto identName = identExpr->identifier.TokenLiteral;
   auto symbolInfo = resolveSymbolInfo(identName);
 
@@ -598,8 +596,7 @@ void Semantics::walkAssignStatement(Node *node) {
   // --- Handle self.field assignments ---
   if (auto *selfExpr =
           dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
-    std::cout << "SELF assignment has been triggered\n";
-
+    logInternal("self assignment triggered");
     if (currentTypeStack.empty() ||
         currentTypeStack.back().type.kind != DataType::COMPONENT) {
       logSemanticErrors("'self' cannot be used outside a component",

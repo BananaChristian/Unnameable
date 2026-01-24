@@ -52,7 +52,6 @@ void Semantics::walkReturnStatement(Node *node) {
                       retStmt->return_stmt.line, retStmt->return_stmt.column);
     hasError = true;
   }
-  std::cout << "[SEMANTIC LOG] Analyzing return statement\n";
 
   if (!retStmt->return_value) {
     if (currentFunction.value()->returnType.kind != DataType::VOID) {
@@ -81,29 +80,27 @@ void Semantics::walkReturnStatement(Node *node) {
       valueType = paramInfo->second->type;
       genericName = paramInfo->second->genericName;
       isValueNullable = paramInfo->second->isNullable;
-      std::cout << "[SEMANTIC LOG] Found parameter '"
-                << ident->identifier.TokenLiteral
-                << "' with type: " << valueType.resolvedName << "\n";
+      logInternal("Found parameter '" + ident->identifier.TokenLiteral +
+                  "' with type :" + valueType.resolvedName);
     } else {
       auto symbol = resolveSymbolInfo(ident->identifier.TokenLiteral);
       if (symbol) {
         valueType = symbol->type;
         genericName = symbol->genericName;
         isValueNullable = symbol->isNullable;
-        std::cout << "[SEMANTIC LOG] Found symbol '"
-                  << ident->identifier.TokenLiteral
-                  << "' with type: " << valueType.resolvedName << "\n";
+        logInternal("Found symbol '" + ident->identifier.TokenLiteral +
+                    "' with type: " + valueType.resolvedName);
       } else {
-        std::cout << "[SEMANTIC LOG] No symbol found for '"
-                  << ident->identifier.TokenLiteral << "'\n";
+        logInternal("No symbol found for '" + ident->identifier.TokenLiteral +
+                    "'");
       }
     }
   }
 
   if (valueType.kind == DataType::UNKNOWN) {
     valueType = inferNodeDataType(retStmt->return_value.get());
-    std::cout << "[SEMANTIC LOG] Inferred type for return value: "
-              << valueType.resolvedName << "\n";
+    logInternal("Infered type for return value '" + valueType.resolvedName +
+                "'");
   }
 
   if (auto nullLit = dynamic_cast<NullLiteral *>(retStmt->return_value.get())) {
@@ -222,7 +219,7 @@ void Semantics::walkReturnStatement(Node *node) {
 
 void Semantics::walkFunctionParameters(Node *node) {
   if (auto param = dynamic_cast<LetStatement *>(node)) {
-    std::cout << "[SEMANTIC LOG]: Registering function parameter\n";
+    logInternal("Analyzing variable declaration parameter");
     auto paramType = dynamic_cast<BasicType *>(param->type.get());
     // Extract parameter name
     auto paramName = param->ident_token.TokenLiteral;
@@ -266,9 +263,9 @@ void Semantics::walkFunctionParameters(Node *node) {
     metaData[param] = info;
     symbolTable.back()[paramName] = info;
 
-    std::cout << "PARAM DATA TYPE: " << resolvedType.resolvedName << "\n";
+    logInternal("Param Data Type: " + resolvedType.resolvedName);
   } else if (auto param = dynamic_cast<PointerStatement *>(node)) {
-    std::cout << "[SEMANTIC LOG]: Registering pointer parameter\n";
+    logInternal("Registering pointer parameter");
 
     auto ptrName = param->name->expression.TokenLiteral;
     auto line = param->name->expression.line;
@@ -318,7 +315,7 @@ void Semantics::walkFunctionParameters(Node *node) {
 
     std::cout << "POINTER PARAM TYPE: " << ptrType.resolvedName << "\n";
   } else if (auto param = dynamic_cast<ReferenceStatement *>(node)) {
-    std::cout << "[SEMANTIC LOG]: Registering reference parameter\n";
+    logInternal("Analyzing reference parameter ...");
 
     auto refName = param->name->expression.TokenLiteral;
     auto line = param->statement.line;
@@ -387,8 +384,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   bool hasError = false;
 
   if (!funcExpr) {
-    logSemanticErrors("Invalid function expression", node->token.line,
-                      node->token.column);
+    reportDevBug("Invalid function expression");
     return;
   }
 
@@ -456,18 +452,18 @@ void Semantics::walkFunctionExpression(Node *node) {
   bool insideMemberContext =
       insideBehavior || insideComponent || insideSeal || insideAllocator;
   if (!insideMemberContext) {
-    std::cout << "INSERTING FUNCTION INTO GLOBAL SCOPE\n";
+    logInternal("Inserting Function '" + funcName + "' into Global Scope");
     symbolTable[0][funcName] = funcInfo;
   } else // If we are in a behavior, component or whatever insert in that scope
   {
-    std::cout << "INSERTING FUNCTION INTO LOCAL SCOPE\n";
+    logInternal("Inserting Function '" + funcName + "' into Local Scope");
     symbolTable.back()[funcName] = funcInfo;
   }
 
   currentFunction = funcInfo;
-  std::cout << "[SEMANTIC LOG] Set currentFunction for '" << funcName
-            << "' with return type: " << funcInfo->returnType.resolvedName
-            << "\n";
+  logInternal("Set current function for '" + funcName +
+              "' with returnt type '" + funcInfo->returnType.resolvedName +
+              "'");
 
   // Pushing new scope for function parameters and body
   symbolTable.push_back({});
@@ -528,9 +524,8 @@ void Semantics::walkFunctionExpression(Node *node) {
     symbolTable.back()[paramName] = paramInfo->second;
     paramTypes.emplace_back(paramInfo->second->type, paramName);
 
-    std::cout << "[SEMANTIC LOG] Parameter '" << paramName
-              << "' stored with type: " << paramInfo->second->type.resolvedName
-              << "\n";
+    logInternal("Parameter '" + paramName + "' stored with type '" +
+                paramInfo->second->type.resolvedName + "'");
   }
 
   // Processing return type expression
@@ -624,26 +619,25 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   // Updating the symbol table with final function info
   funcInfo->isDefined = true;
-
-  std::cout << "Regsitering in parent scope\n";
   if (!insideBehavior && !insideComponent && !insideSeal &&
       !insideAllocator) // If we arent inside a behavior,component or seal we
                         // place in the global scope
   {
-    std::cout << "2ND INSERTING FUNCTION INTO GLOBAL SCOPE WITH UPDATED INFO\n";
+    logInternal("Fully inserting the function '" + funcName +
+                "' into Global Scope with Updated info");
     symbolTable[0][funcName] = funcInfo;
   } else // If we are in a behavior or component insert in that scope
   {
-    std::cout << "2ND INSERTING FUNCTION INTO LOCAL SCOPE WITH UPDATED INFO\n";
+    logInternal("Fully inserting the function '" + funcName +
+                "' into Local Scope with Updated info");
     symbolTable.back()[funcName] = funcInfo;
   }
 
   metaData[funcExpr] = funcInfo;
 
   currentFunction = funcInfo; // updating currentFunction with final info
-  std::cout << "[SEMANTIC LOG] Updated currentFunction for '" << funcName
-            << "' with return type: " << funcInfo->returnType.resolvedName
-            << "\n";
+  logInternal("Updated current function for '" + funcName +
+              "' with return type '" + funcInfo->returnType.resolvedName + "'");
 
   // Process the function body block
   if (!funcExpr->block) {
@@ -653,13 +647,10 @@ void Semantics::walkFunctionExpression(Node *node) {
   }
   auto block = dynamic_cast<BlockExpression *>(funcExpr->block.get());
   if (!block) {
-    logSemanticErrors("Invalid function body",
-                      funcExpr->block.get()->expression.line,
-                      funcExpr->block->expression.column);
+    reportDevBug("Invalid function body for '" + funcName + "'");
     hasError = true;
   }
-  std::cout << "[SEMANTIC LOG] Processing function block for '" << funcName
-            << "'\n";
+  logInternal("Processing block for function '" + funcName + "'");
 
   for (const auto &stmt : block->statements) {
     std::optional<std::shared_ptr<SymbolInfo>> tempFunction =
@@ -685,15 +676,13 @@ void Semantics::walkFunctionExpression(Node *node) {
   // If there was an outer function context, restore it
   insideFunction = false;
   currentFunction = std::nullopt;
-  std::cout << "[SEMANTIC LOG] Finished analyzing function '" << funcName
-            << "'\n";
+  logInternal("Analysis for function '" + funcName + "'");
 }
 
 void Semantics::walkFunctionDeclarationExpression(Node *node) {
   auto funcDeclExpr = dynamic_cast<FunctionDeclarationExpression *>(node);
   if (!funcDeclExpr)
     return;
-  std::cout << "[SEMANTIC LOG] Analysing function declaration  expression\n";
   // Since this is a wrapper for function declaration statement I am gonna call
   // the walker directly
   walkFunctionDeclarationStatement(funcDeclExpr->funcDeclrStmt.get());
@@ -703,11 +692,9 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(node);
   bool hasError = false;
   if (!funcDeclrStmt) {
-    logSemanticErrors("Invalid function declaration statement",
-                      node->token.line, node->token.column);
+    reportDevBug("Invalid function declaration statement");
     return;
   }
-  std::cout << "[SEMANTIC LOG] Analyzing function declaration statement\n";
 
   // Getting the function name
   std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
@@ -839,9 +826,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   symbolTable.back()[funcName] = funcInfo;
   metaData[funcDeclrStmt] = funcInfo;
 
-  std::cout << "[SEMANTIC LOG] Stored function declaration for '" << funcName
-            << "' with return type: " << funcInfo->returnType.resolvedName
-            << "\n";
+  logInternal("Stored function declaration for '" + funcName +
+              "' with return type '" + funcInfo->returnType.resolvedName + "");
 
   currentFunction = std::nullopt;
 }
@@ -850,8 +836,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   auto funcCall = dynamic_cast<CallExpression *>(node);
   bool hasError = false;
   if (!funcCall) {
-    logSemanticErrors("Invalid function call expression", node->token.line,
-                      node->token.column);
+    reportDevBug("Invalid function call expression");
     return;
   }
 
@@ -958,12 +943,9 @@ void Semantics::walkSealCallExpression(Node *node,
   auto funcCall = dynamic_cast<CallExpression *>(node);
   bool hasError = false;
   if (!funcCall) {
-    logSemanticErrors("Invalid function call expression", node->token.line,
-                      node->token.column);
+    reportDevBug("Invalid function call expression");
     return;
   }
-
-  std::cout << "[SEMANTIC LOG] Analysing function call\n";
 
   std::string callName = funcCall->function_identifier->expression.TokenLiteral;
 
@@ -1056,8 +1038,6 @@ void Semantics::walkSealStatement(Node *node) {
   if (!sealStmt)
     return;
 
-  std::cout << "Analysing seal statement\n";
-
   bool hasError = false;
 
   // Extract the name
@@ -1102,14 +1082,14 @@ void Semantics::walkSealStatement(Node *node) {
     if (auto fnExpr =
             dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get())) {
       name = fnExpr->func_key.TokenLiteral; // The original name
-      std::cout << "Original func name: " << name << "\n";
+      logInternal("Original function name '" + name + "'");
       fnExpr->func_key.TokenLiteral =
           sealName + "_" + name; // Mangled name for IRGen
       fnExpr->token.TokenLiteral = sealName + "_" + name;
       fnExpr->expression.TokenLiteral = sealName + "_" + name;
 
-      std::cout << "Mangled func name: " << fnExpr->func_key.TokenLiteral
-                << "\n";
+      logInternal("Mangled function name '" + fnExpr->func_key.TokenLiteral +
+                  "'");
 
       if (isExportable)
         fnExpr->isExportable = isExportable;

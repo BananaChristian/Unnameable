@@ -2,13 +2,12 @@
 #include "semantics.hpp"
 #include <algorithm>
 #include <limits>
+#include <string>
 
 void Semantics::walkEnumStatement(Node *node) {
   auto enumStmt = dynamic_cast<EnumStatement *>(node);
   if (!enumStmt)
     return;
-
-  std::cout << "[SEMANTIC LOG] Analysing enum class statement\n";
 
   std::string enumStmtName = enumStmt->enum_identifier->expression.TokenLiteral;
   bool isExportable = enumStmt->isExportable;
@@ -76,13 +75,11 @@ void Semantics::walkEnumStatement(Node *node) {
 
   for (const auto &enumMember : enumStmt->enum_content) {
     if (!enumMember) {
-      logSemanticErrors("Invalid enum member", enumStmt->statement.line,
-                        enumStmt->statement.column);
+      reportDevBug("Invalid enum member");
       symbolTable.pop_back();
       return;
     }
-
-    std::cout << "[SEMANTIC LOG] Analysing enum member node\n";
+    logInternal("Analysing enum member ...");
     std::string memberName = enumMember->enumMember;
 
     // Check for duplicate member name
@@ -335,9 +332,6 @@ void Semantics::walkRecordStatement(Node *node) {
   if (!recordStmt)
     return;
 
-  std::cout << "[SEMANTIC LOG] Analyzing data statement: "
-            << recordStmt->toString() << "\n";
-
   // Get block name
   std::string recordName = recordStmt->recordName->expression.TokenLiteral;
   bool hasError = false;
@@ -415,9 +409,8 @@ void Semantics::walkRecordStatement(Node *node) {
     auto fieldName = extractDeclarationName(field.get());
     auto fieldSymbol = resolveSymbolInfo(fieldName);
     if (!fieldSymbol) {
-      logSemanticErrors("Declaration statement '" + fieldName +
-                            "' was not analyzed properly",
-                        field->statement.line, field->statement.column);
+      reportDevBug("Declaration statement '" + fieldName +
+                   "' was not analyzed properly");
       hasError = true;
       continue;
     }
@@ -446,8 +439,8 @@ void Semantics::walkRecordStatement(Node *node) {
     // Insert into members map
     recordMembers[fieldName] = memInfo;
 
-    std::cout << "[SEMANTIC LOG] Added field '" << fieldName
-              << "' to data block '" << recordName << "'\n";
+    logInternal("Added field '" + fieldName + "' to record '" + recordName +
+                "'");
   }
 
   int currentMemberIndex = 0;
@@ -543,8 +536,6 @@ void Semantics::walkInstanceExpression(Node *node) {
         nullSym->isDefinitelyNull = true;
 
         metaData[nullLit] = nullSym;
-        std::cout << "[SEMANTIC] Tagged Null at " << (void *)nullLit << " as "
-                  << expectedFieldType.resolvedName << "\n";
       } else {
         walker(fieldNode->value.get());
       }
@@ -552,7 +543,7 @@ void Semantics::walkInstanceExpression(Node *node) {
   }
 
   ResolvedType instType = instSym->type;
-  std::cout << "Instance type: " << instType.resolvedName << "\n";
+  logInternal("Instance Type '" + instType.resolvedName + "'");
 
   auto instInfo = std::make_shared<SymbolInfo>();
   instInfo->type = instType;
@@ -565,9 +556,6 @@ void Semantics::walkBehaviorStatement(Node *node) {
   auto behaviorStmt = dynamic_cast<BehaviorStatement *>(node);
   if (!behaviorStmt)
     return;
-
-  std::cout << "[SEMANTIC LOG] Analyzing behavior statement: "
-            << behaviorStmt->toString() << "\n";
 
   // Get behavior block name
   std::string behaviorName =
@@ -624,9 +612,10 @@ void Semantics::walkBehaviorStatement(Node *node) {
       auto funcDecl = dynamic_cast<FunctionDeclaration *>(
           funcDeclExpr->funcDeclrStmt.get());
       if (!funcDecl) {
-        logSemanticErrors("Invalid function declaration inside behavior block",
-                          funcDeclExpr->expression.line,
-                          funcDeclExpr->expression.column);
+        logSemanticErrors(
+            "Invalid function declaration inside behavior block '" +
+                behaviorName + "'",
+            funcDeclExpr->expression.line, funcDeclExpr->expression.column);
         continue;
       }
 
@@ -652,9 +641,9 @@ void Semantics::walkBehaviorStatement(Node *node) {
       behaviorMembers[funcDecl->function_name->expression.TokenLiteral] =
           funcInfo;
 
-      std::cout << "[SEMANTIC LOG] Added function declaration '"
-                << funcDecl->function_name->expression.TokenLiteral
-                << "' to behavior '" << behaviorName << "'\n";
+      logInternal("Added function declaration '" +
+                  funcDecl->function_name->expression.TokenLiteral +
+                  "' to behavior '" + behaviorName + "'");
     }
   }
 
@@ -751,8 +740,7 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
     }
 
     const std::string &fieldName = ident->identifier.TokenLiteral;
-    std::cout << "NAME BEING GOTTEN FROM SELF EXPRESSION: " << fieldName
-              << "\n";
+    logInternal("Name received from self expression '" + fieldName + "'");
 
     // Look in the current type's members
     auto memIt = currentTypeInfo->members.find(fieldName);
@@ -796,9 +784,6 @@ void Semantics::walkSelfExpression(Node *node) {
   auto selfExpr = dynamic_cast<SelfExpression *>(node);
   if (!selfExpr)
     return;
-
-  std::cout << "[SEMANTIC LOG] Analysing field access expression: "
-            << selfExpr->toString() << "\n";
 
   // Must be inside a component
   if (currentTypeStack.empty() ||
@@ -882,13 +867,13 @@ void Semantics::walkComponentStatement(Node *node) {
   // Walk data/behavior imports
   for (const auto &usedData : componentStmt->usedDataBlocks) {
     if (!usedData) {
-      std::cout << "Invalid used record node\n";
+      reportDevBug("Invalid used record node ");
       return;
     }
 
     auto useStmt = dynamic_cast<UseStatement *>(usedData.get());
     if (!useStmt) {
-      std::cout << "Invalid use statement \n";
+      reportDevBug("Invalid use statement");
       continue;
     }
 
@@ -896,7 +881,8 @@ void Semantics::walkComponentStatement(Node *node) {
     auto ident = dynamic_cast<Identifier *>(useStmt->blockNameOrCall.get());
     if (ident) {
       auto identName = ident->expression.TokenLiteral;
-      std::cout << "IMPORTING DATA FROM: " << identName << "\n";
+      logInternal("Dumping fields from '" + identName + "' into '" +
+                  componentName + "'");
 
       auto typeIt = customTypesTable.find(identName);
       if (typeIt == customTypesTable.end()) {
@@ -936,12 +922,11 @@ void Semantics::walkComponentStatement(Node *node) {
 
         if (memberCopy->node) {
           metaData[memberCopy->node] = memSym;
-          std::cout << "[SEMANTIC LOG] mapped member node " << memberCopy->node
-                    << " -> symbol for '" << name << "'\n";
+          logInternal("Mapped member node '" + memberCopy->node->toString() +
+                      "' symbol for '" + name + "'");
         } else {
           // If the node wasnt populated
-          std::cout << "[SEMANTIC WARN] imported member '" << name
-                    << "' has no node\n";
+          reportDevBug("Imported member '" + name + "' has no node");
         }
       }
     }
@@ -998,13 +983,13 @@ void Semantics::walkComponentStatement(Node *node) {
 
   for (const auto &usedBehavior : componentStmt->usedBehaviorBlocks) {
     if (!usedBehavior) {
-      std::cout << "Invalid used behavior node\n";
+      reportDevBug("Invalid used behavior node");
       return;
     }
 
     auto useStmt = dynamic_cast<UseStatement *>(usedBehavior.get());
     if (!useStmt) {
-      std::cout << "Invalid use statement\n";
+      reportDevBug("Invalid use statement");
       continue;
     }
 
@@ -1012,7 +997,8 @@ void Semantics::walkComponentStatement(Node *node) {
     auto ident = dynamic_cast<Identifier *>(useStmt->blockNameOrCall.get());
     if (ident) {
       auto identName = ident->expression.TokenLiteral;
-      std::cout << "IMPORTING DATA FROM: " << identName << "\n";
+      logInternal("Dumping method from '" + identName + "' into '" +
+                  componentName + "'");
 
       auto typeIt = customTypesTable.find(identName);
       if (typeIt == customTypesTable.end()) {
@@ -1061,12 +1047,12 @@ void Semantics::walkComponentStatement(Node *node) {
 
         if (memberCopy->node) {
           metaData[memberCopy->node] = memSym;
-          std::cout << "[SEMANTIC LOG] mapped member node " << memberCopy->node
-                    << " -> symbol for '" << name << "'\n";
+          logInternal("Mapped member node '" + memberCopy->node->toString() +
+                      "' -> symbol for '" + name + "'");
+
         } else {
           // If the node wasnt populated
-          std::cout << "[SEMANTIC WARN] imported member '" << name
-                    << "' has no node\n";
+          reportDevBug("Imported member '" + name + "' has no node");
         }
       }
     }
@@ -1150,8 +1136,7 @@ void Semantics::walkComponentStatement(Node *node) {
       walker(data.get());
       std::shared_ptr<SymbolInfo> declSym = resolveSymbolInfo(declName);
       if (!declSym) {
-        logSemanticErrors("Failed to resolve member '" + declName + "'",
-                          declLine, declCol);
+        reportDevBug("Failed to resolve member '" + declName + "'");
         hasError = true;
         continue;
       }
@@ -1213,10 +1198,9 @@ void Semantics::walkComponentStatement(Node *node) {
 
       walker(funcExpr);
       auto metSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
-      std::cout << "TRYING TO INSERT: " << funcExpr->func_key.TokenLiteral
-                << "\n";
+      logInternal("Trying to insert '" + funcExpr->func_key.TokenLiteral + "'");
       if (metSym) {
-        std::cout << "INSERTING COMPONENT FUNCTION EXPRESSION\n";
+        logInternal("Inserting component function expression ....");
         auto memInfo = std::make_shared<MemberInfo>();
         memInfo->memberName = funcExpr->func_key.TokenLiteral;
         memInfo->type = metSym->type;
@@ -1266,7 +1250,7 @@ void Semantics::walkComponentStatement(Node *node) {
     walkInitConstructor(componentStmt->initConstructor.value().get());
 
   if (members.empty()) {
-    std::cout << "COMPONENT MEMBERS ARE EMPTY AT RUNTIME\n";
+    logInternal("Component members are empty at runtime");
   }
 
   // Exit component scope
@@ -1370,7 +1354,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
 void Semantics::walkMethodCallExpression(Node *node) {
   auto metCall = dynamic_cast<MethodCallExpression *>(node);
   if (!metCall) {
-    std::cout << "Invalid method call expression node\n";
+    reportDevBug("Invalid method call expression node");
     return;
   }
 

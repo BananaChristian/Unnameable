@@ -8,8 +8,9 @@
 #define COLOR_RESET "\033[0m"
 #define COLOR_RED "\033[31m"
 
-Semantics::Semantics(Deserializer &deserial, std::string &file)
-    : deserializer(deserial), fileName(file), errorHandler(file) {
+Semantics::Semantics(Deserializer &deserial, ErrorHandler &handler,
+                     bool verbose)
+    : deserializer(deserial), errorHandler(handler), verbose(verbose) {
   symbolTable.push_back({});
   registerWalkerFunctions();
 
@@ -26,16 +27,18 @@ void Semantics::walker(Node *node) {
   if (!node)
     return;
 
-  std::cout << "Analyzing AST node: " << node->toString() << "\n";
-  std::cout << "Type at runtime: " << typeid(*node).name() << "\n";
+  logInternal("Analyzing AST node: " + node->toString());
+
+  std::string nodeName = typeid(*node).name();
+  logInternal("Type at runtime: " + nodeName);
   auto walkerIt = walkerFunctionsMap.find(typeid(*node));
 
   if (walkerIt != walkerFunctionsMap.end()) {
     (this->*walkerIt->second)(node);
   } else {
-    std::cerr << "[SEMANTIC LOG]: Failed to find analyzer for: "
-              << node->toString() << "\n";
-    std::cout << "Actual runtime type: " << typeid(*node).name() << "\n";
+    reportDevBug("Failed to find analyzer for :" + node->toString());
+    logInternal("Actual runtime type: " + nodeName);
+    return;
   }
 }
 
@@ -413,8 +416,8 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     } else {
       nameToResolve = assignStmt->identifier->expression.TokenLiteral;
     }
-    std::cout << "NAME BEING USED TO RESOLVE INSIDE INFERER: " << nameToResolve
-              << "\n";
+    logInternal("Name being used to resolve inside inferer '" + nameToResolve +
+                "'");
     auto assignSymbol = resolveSymbolInfo(nameToResolve);
     auto assignStmtVal = assignStmt->value.get();
     ResolvedType assignStmtValType = inferNodeDataType(assignStmtVal);
@@ -459,12 +462,10 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   if (auto ident = dynamic_cast<Identifier *>(node)) {
     std::string name = ident->identifier.TokenLiteral;
-    std::cout << "NAME BEING USED IN IDENTIFIER INFERER: " << name << "\n";
-
+    logInternal("Identifier name in the inferer '" + name + "'");
     auto symbol = resolveSymbolInfo(name);
     if (symbol) {
-      std::cout << "IDENTIFIER DATA TYPE: " << symbol->type.resolvedName
-                << "\n";
+      logInternal("Identifier Data Type '" + symbol->type.resolvedName + "'");
       return symbol->type;
     } else {
       logSemanticErrors("Undefined variable '" + name + "'",
@@ -783,15 +784,8 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
   ResolvedType peeledLeft = peelRef(leftType);
   ResolvedType peeledRight = peelRef(rightType);
 
-  auto infixType = resultOfBinary(operatorType, peeledLeft, peeledRight);
-  if (infixType.kind == DataType::UNKNOWN) {
-    logSemanticErrors("Infix type issue between '" + leftType.resolvedName +
-                          "' and '" + rightType.resolvedName + "'",
-                      infixNode->left_operand->expression.line,
-                      infixNode->left_operand->expression.column);
-    return infixType; // Return the unknown type
-  }
-
+  auto infixType =
+      resultOfBinary(operatorType, peeledLeft, peeledRight, infixNode);
   return infixType; // Return the correct type
 }
 
@@ -802,7 +796,7 @@ ResolvedType Semantics::inferPrefixExpressionType(Node *node) {
   std::cout << "[SEMANTIC LOG] Infering prefix type\n";
   auto prefixOperator = prefixNode->operat.type;
   ResolvedType operandType = inferNodeDataType(prefixNode->operand.get());
-  return resultOfUnary(prefixOperator, operandType);
+  return resultOfUnary(prefixOperator, operandType, prefixNode);
 }
 
 ResolvedType Semantics::inferPostfixExpressionType(Node *node) {
@@ -811,7 +805,7 @@ ResolvedType Semantics::inferPostfixExpressionType(Node *node) {
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   ResolvedType operandType = inferNodeDataType(postfixNode->operand.get());
   auto postfixOperator = postfixNode->operator_token.type;
-  return resultOfUnary(postfixOperator, operandType);
+  return resultOfUnary(postfixOperator, operandType, postfixNode);
 }
 
 std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
@@ -919,7 +913,12 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
 
 ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                                        ResolvedType leftType,
-                                       ResolvedType rightType) {
+                                       ResolvedType rightType, Node *node) {
+  auto infix = dynamic_cast<InfixExpression *>(node);
+  auto leftLine = infix->left_operand->expression.line;
+  auto leftCol = infix->left_operand->expression.column;
+  std::string operatorStr = infix->operat.TokenLiteral;
+
   // Logical operators: &&, ||
   if (operatorType == TokenType::AND || operatorType == TokenType::OR) {
     if (isBoolean(leftType) && isBoolean(rightType))
@@ -928,10 +927,12 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
       return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
 
+  // The odds of this happening are low unless the parser messed up
   if (operatorType == TokenType::ASSIGN) {
-    std::cerr
-        << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
-        << "Cannot use '=' in binary operations as it only for assignments\n";
+    logSemanticErrors(
+        "Cannot use '" + operatorStr +
+            "'in binary operations. It is reserved for assignments",
+        leftLine, leftCol);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
 
@@ -946,14 +947,13 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
   if (isComparison) {
     if (leftType.kind == rightType.kind)
       return ResolvedType{DataType::BOOLEAN, "boolean"};
-
-    std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
-              << "Cannot compare " << leftType.resolvedName << " and "
-              << rightType.resolvedName << "\n";
+    logSemanticErrors("Cannot compare '" + leftType.resolvedName + "' to '" +
+                          rightType.resolvedName + "'",
+                      leftLine, leftCol);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
 
-  // String concatenation
+  // String concatenation(Not complete but I will work on this)
   if (operatorType == TokenType::PLUS && isString(leftType) &&
       isString(rightType)) {
     return ResolvedType{DataType::STRING, "string"};
@@ -990,9 +990,9 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
       return rightType;
     }
 
-    std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
-              << " Type mismatch '" << leftType.resolvedName
-              << "' does not match '" << rightType.resolvedName << "'" << "\n";
+    logSemanticErrors("Type mismatch '" + leftType.resolvedName +
+                          "' does not match '" + rightType.resolvedName + "'",
+                      leftLine, leftCol);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
 
@@ -1006,17 +1006,18 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
         return leftType;
       }
 
-      std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
-                << " Bitwise mismatch: Cannot use '"
-                << TokenTypeToLiteral(operatorType)
-                << "' on different integer sizes (" << leftType.resolvedName
-                << " and " << rightType.resolvedName << ")\n";
+      logSemanticErrors("Bitwise mismatch, Cannot use '" + operatorStr +
+                            "' on different integer types '" +
+                            leftType.resolvedName + "' and '" +
+                            rightType.resolvedName + "'",
+                        leftLine, leftCol);
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
-    std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
-              << " Bitwise operators are only for integers. Cannot use on "
-              << leftType.resolvedName << "\n";
+    logSemanticErrors("Bitwise operations cannot be performed on '" +
+                          leftType.resolvedName + "' and '" +
+                          rightType.resolvedName + "'",
+                      leftLine, leftCol);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
 
@@ -1026,25 +1027,41 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     if (isInteger(leftType) && isInteger(rightType)) {
       return leftType;
     }
-    std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
-              << " Shift operators require integers on both sides.\n";
+
+    logSemanticErrors(
+        "Shift operators require integers on both sides  but got '" +
+            leftType.resolvedName + "' and rightType.resolvedName",
+        leftLine, leftCol);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
 
-  std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
-            << "Unknown binary operator: " << TokenTypeToLiteral(operatorType)
-            << " with types " << leftType.resolvedName << " and "
-            << rightType.resolvedName << "\n";
+  logSemanticErrors("Unknown binary operator '" + operatorStr + "'", leftLine,
+                    leftCol);
   return ResolvedType{DataType::UNKNOWN, "unknown"};
 }
 
 ResolvedType Semantics::resultOfUnary(TokenType operatorType,
-                                      const ResolvedType &operandType) {
+                                      const ResolvedType &operandType,
+                                      Node *node) {
+  int line;
+  int col;
+  std::string operatorStr;
+  if (auto postfix = dynamic_cast<PostfixExpression *>(node)) {
+    line = postfix->expression.line;
+    col = postfix->expression.column;
+    operatorStr = postfix->operator_token.TokenLiteral;
+  } else if (auto prefix = dynamic_cast<PrefixExpression *>(node)) {
+    line = prefix->expression.line;
+    col = prefix->expression.column;
+    operatorStr = prefix->operat.TokenLiteral;
+  }
+
   switch (operatorType) {
   case TokenType::BANG: {
     if (!isBoolean(operandType)) {
-      std::cerr << "[SEMANTIC ERROR] Cannot apply '!' to type "
-                << operandType.resolvedName << "\n";
+      logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
+                            operandType.resolvedName + "'",
+                        line, col);
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
     return ResolvedType{DataType::BOOLEAN, "bool"};
@@ -1053,21 +1070,25 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
   case TokenType::PLUS:
   case TokenType::PLUS_PLUS:
   case TokenType::MINUS_MINUS: {
-    if (isInteger(operandType) || isFloat(operandType))
+    if (isInteger(operandType) || isFloat(operandType)) {
       return operandType;
-    std::cerr << COLOR_RED << "[SEMANTIC ERROR]" << COLOR_RESET
-              << "Cannot apply " << TokenTypeToLiteral(operatorType) << " to "
-              << operandType.resolvedName << "\n";
+    }
+
+    logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
+                          operandType.resolvedName + "'",
+                      line, col);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
   case TokenType::BITWISE_NOT: {
     if (isInteger(operandType)) {
       return operandType;
     }
-    std::cerr
-        << COLOR_RED << "[SEMANTIC ERROR] " << COLOR_RESET
-        << "The bitwise NOT operator '~' can only be applied to integer types. "
-        << "Type '" << operandType.resolvedName << "' is invalid.\n";
+
+    logSemanticErrors(
+        "Bitwise operator '" + operatorStr +
+            "' can only be applied to integer types you provided '" +
+            operandType.resolvedName + "'",
+        line, col);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
   default:
@@ -1079,43 +1100,40 @@ std::shared_ptr<SymbolInfo>
 Semantics::resolveSymbolInfo(const std::string &name) {
   for (int i = symbolTable.size() - 1; i >= 0; --i) {
     auto &scope = symbolTable[i];
-    std::cout << "[SEMANTIC LOG] Searching for '" << name << "' in scope level "
-              << i << "\n";
+    logInternal("Searching for '" + name + "' in scope level " +
+                std::to_string(i));
     for (auto &[key, value] : scope) {
-      std::cout << "    >> Key in scope: '" << key << "'\n";
+      logInternal(" >> Key in scope '" + key + "'");
     }
     if (scope.find(name) != scope.end()) {
-      std::cout << "[SEMANTIC LOG] Found match for '" << name << "'\n";
+      logInternal("Found match for '" + name + "'");
       return scope[name];
     }
   }
-  std::cout << "[SEMANTIC LOG] No match for '" << name << "'\n";
+
+  logInternal("No match for '" + name + "'");
   return nullptr;
 }
 
 std::shared_ptr<SymbolInfo>
 Semantics::lookUpInCurrentScope(const std::string &name) {
   if (symbolTable.empty()) {
-    std::cout << "[SEMANTIC LOG] ERROR: Attempted current scope lookup on "
-                 "empty symbol table.\n";
+    reportDevBug("Attempted current scope look up on empty symbol table");
     return nullptr;
   }
 
   // Access the current scope which is the latest scope in the symbol table
   auto &currentScope = symbolTable.back();
 
-  std::cout << "[SEMANTIC LOG] Searching for '" << name
-            << "' in CURRENT scope level " << symbolTable.size() - 1
-            << " only.\n";
+  logInternal("Searching for '" + name + "' in current scope level " +
+              std::to_string(symbolTable.size() - 1) + "...");
 
   if (currentScope.find(name) != currentScope.end()) {
-    std::cout << "[SEMANTIC LOG] Found match for '" << name
-              << "' in current scope.\n";
-    return currentScope.at(name); // Use .at() or [] for retrieval
+    logInternal("Found match for '" + name + "' in current scope");
+    return currentScope.at(name);
   }
 
-  std::cout << "[SEMANTIC LOG] No match for '" << name
-            << "' in current scope.\n";
+  logInternal("No match for '" + name + "' in current scope");
   return nullptr;
 }
 
@@ -1185,16 +1203,8 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
     return {DataType::VOID, "void"};
 
   case TokenType::IDENTIFIER: {
-    auto [parentName, childName] = splitScopedName(token.TokenLiteral);
-    auto parentIt = customTypesTable.find(parentName);
+    auto parentIt = customTypesTable.find(token.TokenLiteral);
     if (parentIt != customTypesTable.end()) {
-      if (!childName.empty()) {
-        logSemanticErrors("Type name must be a single identifier; scoped "
-                          "access (:: or .) is not allowed here.",
-                          token.line, token.column);
-        return {DataType::UNKNOWN, "unknown"};
-      }
-
       auto parentType = parentIt->second->type;
       parentType.isNull = isNullable;
       return parentType;
@@ -1720,18 +1730,6 @@ ArrayTypeInfo Semantics::getArrayTypeInfo(Node *node) {
   return ArrayTypeInfo{underlying, dim, sizePerDim};
 }
 
-void Semantics::logSemanticErrors(const std::string &message, int tokenLine,
-                                  int tokenColumn) {
-  CompilerError error;
-  error.level = ErrorLevel::SEMANTIC;
-  error.line = tokenLine;
-  error.col = tokenColumn;
-  error.message = message;
-  error.hints = {};
-
-  errorHandler.report(error);
-}
-
 bool Semantics::isInteger(const ResolvedType &t) {
   static const std::unordered_set<DataType> intTypes = {
       DataType::I8,   DataType::U8,   DataType::I16,   DataType::U16,
@@ -1836,7 +1834,8 @@ bool Semantics::isConstLiteral(Node *node) {
 }
 
 ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
-  std::cout << "INSIDE TYPE RESOLVER\n";
+  logInternal("Resolving Type ....");
+
   TokenType type = token.type;
 
   switch (type) {
@@ -1903,7 +1902,7 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
 
   // Dealing with custom types now
   case TokenType::IDENTIFIER: {
-    std::cout << "INSIDE CUSTOM TYPE RESOLVER\n";
+    logInternal("Resolving custom type ....");
     // Extract the identifier as this how the parser is logging the correct
     // types Case 1 is for let statements
     auto letStmt = dynamic_cast<LetStatement *>(node);
@@ -2073,26 +2072,6 @@ ResolvedType Semantics::makeArrayType(const ResolvedType &t,
   return out;
 }
 
-std::pair<std::string, std::string>
-Semantics::splitScopedName(const std::string &fullName) {
-  std::cout << "Splitting name\n";
-  size_t pos = fullName.find("::");
-
-  if (pos == std::string::npos)
-    pos = fullName.find('.');
-
-  if (pos == std::string::npos) {
-    // no scope operator just a plain type
-    return {fullName, ""};
-  }
-  std::string parent = fullName.substr(0, pos);
-  std::string child = fullName.substr(
-      pos + (fullName[pos] == ':' ? 2 : 1)); // Skipping :: if not .
-  std::cout << "Name has been split into '" + parent + "' and '" + child +
-                   "'\n";
-  return {parent, child};
-}
-
 int64_t Semantics::evaluateArrayLengthConstant(Node *node) {
   int64_t val = 0;
   if (auto lit = dynamic_cast<I32Literal *>(node)) {
@@ -2108,14 +2087,41 @@ void Semantics::popScope() {
   for (auto &[name, sym] : scope) {
     // If the symbol we come across is a reference and it is referencing validly
     if (sym->isRef && sym->refereeSymbol) {
-      std::cout << "Initial refCount: " << sym->refereeSymbol->refCount << "\n";
+      logInternal("Initial refCount :" +
+                  std::to_string(sym->refereeSymbol->refCount));
       if (sym->refereeSymbol->refCount > 0) {
         sym->refereeSymbol->refCount -= 1;
-        std::cout << "[SEMANTIC LOG]: Ref '" << name << "' released -> target '"
-                  << "' refCount now " << sym->refereeSymbol->refCount << "\n";
+        logInternal("Ref '" + name + "' relseased -> target refCount now " +
+                    std::to_string(sym->refereeSymbol->refCount));
       }
     }
   }
-  std::cout << "[SCOPE EXITED]\n";
   symbolTable.pop_back();
 }
+
+void Semantics::logSemanticErrors(const std::string &message, int tokenLine,
+                                  int tokenColumn) {
+  hasFailed = true;
+  CompilerError error;
+  error.level = ErrorLevel::SEMANTIC;
+  error.line = tokenLine;
+  error.col = tokenColumn;
+  error.message = message;
+  error.hints = {};
+
+  errorHandler.report(error);
+}
+
+void Semantics::reportDevBug(const std::string &message) {
+  hasFailed = true;
+  std::cerr << COLOR_RED << "[INTERNAL COMPILER ERROR] " << COLOR_RESET
+            << message << "\n";
+}
+
+void Semantics::logInternal(const std::string &message) {
+  if (verbose) {
+    std::cout << message << "\n";
+  }
+}
+
+bool Semantics::failed() { return hasFailed; }

@@ -131,11 +131,11 @@ func main(): i32{
 
 ## Seals
 
-Unnameable is extremely strict on naming as it doesnt allow overloading. Seals exist to prevent name collisions for functions across compilation units and across mergers.
+Unnameable is extremely strict on naming as it doesnt allow overloading. Seals exist to prevent name collisions for functions across compilation units.
 Seals create isolated scopes for functions. You cannot directly access a sealed function you must access it through its seal.
 At code generation the sealed function will get name mangled so for example add in a seal called Ops will become Ops_add.
 Exportable functions must only be inside seals or components.
-If a seal is exportable then every function in that seal is exportable but you can make individual functions in a seal exportable and others private to a current compilation unit or mergers
+If a seal is exportable then every function in that seal is exportable but you can make individual functions in a seal exportable and others private to a current compilation unit.
 
 ```
 seal Test{
@@ -414,7 +414,8 @@ When you `unwrap` or use `??`, the generated IR inspects the flag first. This ar
 
 ## Casting
 The language supports two types of casting i.e `cast` and `bitcast`
-Cast example
+A cast converts a value from one type to another (e.g., f32 to i32). This may change the underlying bit pattern to preserve the numerical value.
+For example
 ```
 func test_math_cast():void {
     float pi = 3.14
@@ -427,8 +428,8 @@ func main:i32{
     return 0
 }
 ```
-
-Bitcasting example
+Bitcasting reinterprets the raw bits of a value as a different type. The underlying bits never change. This is primarily used for low-level memory manipulation and converting `opaque(I am gonna add this soon)` pointers back to concrete types.
+For example
 ```
 func test_memory_bitcast():void {
     dheap float pi = 3.14
@@ -449,17 +450,6 @@ func main:i32 {
 
 Unnameable supports multi file usage with two systems merge and import
 To link the user must explictly use a link statement I am yet to add it though but thats the plan.
-Merge as the name implies merges multiple files into one compilation unit
-If you wrote a global variable or a function name in the another file and you are importing it, be careful on the variable and function names as the compiler sees them as one PS: Use seals to avoid collisions
-Below is an example of the merge syntax
-
-```
-merge "test"  #The compiler will append the .unn file extension
-#You can also just add the extension manually
-##
-merge "test.unn"
-##
-```
 
 Import allows a user to import content from an external file that had been marked as exportable
 The compiler loads a stub file and uses the info from the stub file in its analysis
@@ -1025,7 +1015,7 @@ You cannot reassign to an immutable pointer by the way if you want to do that yo
 
 ```
 mut ptr p -> addr x
-p=addr y #This reassignment is allowed since pointer 'p' is mutable
+p -> addr y #This reassignment is allowed since pointer 'p' is mutable
 ```
 
 Examples

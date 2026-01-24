@@ -1,5 +1,6 @@
 #include "sentinel.hpp"
 #include "ast.hpp"
+#include "errors.hpp"
 #include <iomanip>
 
 #define COLOR_RESET "\033[0m"
@@ -7,7 +8,8 @@
 #define COLOR_YELLOW "\033[33m"
 #define COLOR_GREEN "\033[32m"
 
-Sentinel::Sentinel(Semantics &semantics) : semantics(semantics) {
+Sentinel::Sentinel(Semantics &semantics, ErrorHandler &handler, bool verbose)
+    : semantics(semantics), errorHandler(handler), verbose(verbose) {
   registerSentinelFns();
 }
 
@@ -18,7 +20,7 @@ void Sentinel::sentinelDriver(Node *node) {
 
   auto sentinelIt = sentinelFnsMap.find(typeid(*node));
   if (sentinelIt == sentinelFnsMap.end()) {
-    std::cout << "Sentinel skipping node: " << node->toString() << "\n";
+    logInternal("Sentinel skipping node: " + node->toString());
     return;
   }
 
@@ -108,13 +110,13 @@ void Sentinel::checkIdentifier(Node *node) {
 
   auto metaIt = semantics.metaData.find(ident);
   if (metaIt == semantics.metaData.end()) {
-    logError("Could not find identifier '" + name + "' metaData", line, col);
+    reportDevBug("Could not find identifier '" + name + "' metaData");
     return;
   }
 
   auto identSym = metaIt->second;
   if (!identSym) {
-    logError("Unidentified identitfier '" + name + "' ", line, col);
+    reportDevBug("Unresolved identitfier '" + name + "' symbolInfo");
     return;
   }
 
@@ -171,13 +173,13 @@ void Sentinel::checkDereferenceExpression(Node *node) {
 
   auto metaIt = semantics.metaData.find(derefExpr);
   if (metaIt == semantics.metaData.end()) {
-    logError("Could not find dereference '" + name + "' metaData", line, col);
+    reportDevBug("Could not find dereference '" + name + "' metaData");
     return;
   }
 
   auto derefSym = metaIt->second;
   if (!derefSym) {
-    logError("Unidentified dereference '" + name + "' ", line, col);
+    reportDevBug("Unrsolved dereference '" + name + "' symbolInfo ");
     return;
   }
 
@@ -226,12 +228,12 @@ void Sentinel::checkLetStatement(Node *node) {
   // Getting the let statement symbol
   auto metaIt = semantics.metaData.find(letStmt);
   if (metaIt == semantics.metaData.end()) {
-    logError("Could not find let statement metaData", line, col);
+    reportDevBug("Could not find let statement metaData");
     return;
   }
   auto letSym = metaIt->second;
   if (!letSym) {
-    logError("Invalid let statement '" + name + "'", line, col);
+    reportDevBug("Invalid let statement '" + name + "'");
     return;
   }
   // Getting if the let statement is not heap raised and stopping there
@@ -271,13 +273,13 @@ void Sentinel::checkPointerStatement(Node *node) {
 
   auto metaIt = semantics.metaData.find(ptrStmt);
   if (metaIt == semantics.metaData.end()) {
-    logError("Could not find pointer statement metaData", line, col);
+    reportDevBug("Could not find pointer statement metaData");
     return;
   }
 
   auto ptrSym = metaIt->second;
   if (!ptrSym) {
-    logError("Invalid pointer statement '" + name + "'", line, col);
+    reportDevBug("Invalid pointer statement '" + name + "' symbolInfo");
     return;
   }
 
@@ -316,6 +318,7 @@ void Sentinel::checkPointerStatement(Node *node) {
       logError("Non LIFO free detected, Tried to free '" + name +
                    "' which is not on top of the SAGE stack",
                line, col);
+      printStackSnapshot();
       ptrSym->hasError = true;
       return;
     }
@@ -460,13 +463,13 @@ void Sentinel::checkComponentStatement(Node *node) {
   // Extract the members
   auto compMeta = semantics.metaData.find(compStmt);
   if (compMeta == semantics.metaData.end()) {
-    logError("Could not find '" + compName + "' metaData", line, col);
+    reportDevBug("Could not find '" + compName + "' metaData");
     return;
   }
 
   auto compSym = compMeta->second;
   if (!compSym) {
-    logError("Unidentified variable '" + compName + "' ", line, col);
+    reportDevBug("Unresolved variable '" + compName + "' symbolInfo");
     return;
   }
 
@@ -497,7 +500,7 @@ void Sentinel::checkInstantiateStatement(Node *node) {
 
   auto it = semantics.metaData.find(instStmt);
   if (it == semantics.metaData.end()) {
-    logError("Failed to find metaData for instantiation statement", line, col);
+    reportDevBug("Failed to find metaData for instantiation statement");
     return;
   }
 
@@ -526,8 +529,27 @@ void Sentinel::checkAllocatorInterface(Node *node) {
 }
 
 void Sentinel::logError(const std::string &message, int line, int col) {
-  std::cerr << COLOR_RED << "[SENTINEL ERROR] " << COLOR_RESET << message
-            << " on line: " << line << ", column: " << col << "\n";
+  hasFailed = true;
+
+  CompilerError error;
+  error.level = ErrorLevel::SENTINEL;
+  error.line = line;
+  error.col = col;
+  error.message = message;
+  error.hints = {};
+
+  errorHandler.report(error);
+}
+
+void Sentinel::reportDevBug(const std::string &message) {
+  std::cerr << COLOR_RED << "[INTERNAL COMPILER ERROR]" << COLOR_RESET
+            << message << "\n";
+}
+
+void Sentinel::logInternal(const std::string &message) {
+  if (verbose) {
+    std::cout << message << "\n";
+  }
 }
 
 void Sentinel::printStackSnapshot() {
@@ -556,3 +578,5 @@ void Sentinel::printStackSnapshot() {
   }
   std::cerr << std::string(60, '-') << "\n\n";
 }
+
+bool Sentinel::failed() { return hasFailed; }

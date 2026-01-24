@@ -1,4 +1,5 @@
 #include "lexer.hpp"
+#include "errors.hpp"
 #include "token.hpp"
 #include <iostream>
 #include <string>
@@ -8,8 +9,8 @@
   int tokenLine = line;                                                        \
   int tokenColumn = column;
 
-Lexer::Lexer(const std::string &sourceCode, const std::string &file)
-    : input(sourceCode), fileName(file), errorHandler(file), currentPosition(0),
+Lexer::Lexer(const std::string &sourceCode, ErrorHandler &handler)
+    : input(sourceCode), errorHandler(handler), currentPosition(0),
       nextPosition(1), line(1), column(0){};
 
 size_t Lexer::getUTF8CharLength(size_t pos) {
@@ -795,6 +796,7 @@ void Lexer::updateTokenList() {
 }
 
 void Lexer::logError(const std::string &message, int line, int column) {
+  hasFailed = true;
   CompilerError error;
   error.level = ErrorLevel::LEXER;
   error.line = line;
@@ -804,3 +806,5 @@ void Lexer::logError(const std::string &message, int line, int column) {
 
   errorHandler.report(error);
 }
+
+bool Lexer::failed() { return hasFailed; }

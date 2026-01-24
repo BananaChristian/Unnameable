@@ -12,7 +12,8 @@ class Lexer {
   int line = 1;
   int column = 0;
   std::string fileName;
-  ErrorHandler errorHandler;
+  ErrorHandler &errorHandler;
+  bool hasFailed = false;
 
   std::unordered_map<std::string, TokenType> keywords = {
       {"auto", TokenType::AUTO},
@@ -68,9 +69,9 @@ class Lexer {
       {"char8", TokenType::CHAR8_KEYWORD},
       {"char16", TokenType::CHAR16_KEYWORD},
       {"char32", TokenType::CHAR32_KEYWORD},
-      
-      {"f32",TokenType::F32_KEYWORD},
-      {"f64",TokenType::F64_KEYWORD},
+
+      {"f32", TokenType::F32_KEYWORD},
+      {"f64", TokenType::F64_KEYWORD},
 
       {"string", TokenType::STRING_KEYWORD},
       {"void", TokenType::VOID},
@@ -102,17 +103,18 @@ class Lexer {
 
       {"export", TokenType::EXPORT},
       {"import", TokenType::IMPORT},
-      {"merge", TokenType::MERGE},
       {"link", TokenType::LINK},
       {"qualify", TokenType::QUALIFY}};
 
 public:
-  Lexer(const std::string &sourceCode, const std::string &fileName);
+  Lexer(const std::string &sourceCode, ErrorHandler &handler);
   Token tokenize();
   std::vector<Token> outputTokens;
 
   std::vector<Token> token_list;
   void updateTokenList();
+
+  bool failed();
 
 private:
   std::vector<std::string> sourceLines;

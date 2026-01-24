@@ -20,7 +20,7 @@ void Semantics::walkBlockStatement(Node *node) {
     }
 
     if (auto assignStmt = dynamic_cast<AssignmentStatement *>(stmt.get())) {
-      std::cout << "Triggered self heap check\n";
+      logInternal("Triggered self heap check");
       name = extractIdentifierName(assignStmt->identifier.get());
       int line = assignStmt->identifier->expression.line;
       int col = assignStmt->identifier->expression.column;
@@ -52,7 +52,6 @@ void Semantics::walkBlockStatement(Node *node) {
     if (auto exprStmt = dynamic_cast<ExpressionStatement *>(stmt.get())) {
       if (auto infix =
               dynamic_cast<InfixExpression *>(exprStmt->expression.get())) {
-        std::cout << "Triggered Infix\n";
         auto checkIdent = [&](Identifier *ident) {
           std::string n = ident->identifier.TokenLiteral;
           int line = ident->expression.line;
@@ -95,13 +94,13 @@ void Semantics::walkWhileStatement(Node *node) {
   auto whileStmt = dynamic_cast<WhileStatement *>(node);
   if (!whileStmt)
     return;
-  std::cout << "[SEMANTIC LOG]: Analysing while statement: "
-            << whileStmt->toString() << "\n";
+
   auto whileCondition = whileStmt->condition.get();
   ResolvedType whileCondType = inferNodeDataType(whileCondition);
   if (whileCondType.kind != DataType::BOOLEAN) {
-    std::cerr << "[SEMANTIC ERROR] Expected boolean type but got '" +
-                     whileCondType.resolvedName + "'\n";
+    logSemanticErrors(
+        "Expected boolean type but got '" + whileCondType.resolvedName + "'",
+        whileCondition->expression.line, whileCondition->expression.column);
   }
   walker(whileCondition);
 
@@ -117,8 +116,6 @@ void Semantics::walkElifStatement(Node *node) {
   auto elifStmt = dynamic_cast<elifStatement *>(node);
   if (!elifStmt)
     return;
-  std::cout << "[SEMANTIC LOG] Analysing elif statement: "
-            << elifStmt->toString() << "\n";
   auto elifCondition = elifStmt->elif_condition.get();
   ResolvedType elifConditionType = inferNodeDataType(elifCondition);
   walker(elifCondition);
@@ -153,8 +150,7 @@ void Semantics::walkIfStatement(Node *node) {
   auto ifStmt = dynamic_cast<ifStatement *>(node);
   if (!ifStmt)
     return;
-  std::cout << "[SEMANTIC LOG]: Analysing if statement: " << ifStmt->toString()
-            << "\n";
+
   auto ifStmtCondition = ifStmt->condition.get();
   ResolvedType ifStmtType = inferNodeDataType(ifStmtCondition);
 
@@ -234,7 +230,7 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
 
   if (!isLiteral(caseCondition)) {
     logSemanticErrors("Case condition must be a constant literal", line, col);
-    hasError=true;
+    hasError = true;
     return;
   }
 
@@ -321,8 +317,6 @@ void Semantics::walkForStatement(Node *node) {
   auto forStmt = dynamic_cast<ForStatement *>(node);
   if (!forStmt)
     return;
-  std::cout << "[SEMANTIC LOG] Analyzing for statement " << forStmt->toString()
-            << "\n";
 
   symbolTable.push_back({});
   // Handling the initializer
@@ -347,11 +341,10 @@ void Semantics::walkBreakStatement(Node *node) {
   auto breakStmt = dynamic_cast<BreakStatement *>(node);
   if (!breakStmt)
     return;
-  std::cout << "[SEMANTIC LOG] Analysing break statement "
-            << breakStmt->toString() << "\n";
+
   if (loopContext.empty()) {
-    logSemanticErrors(" 'break' used outside a loop ", node->token.line,
-                      node->token.column);
+    logSemanticErrors(" 'break' used outside a loop ",
+                      breakStmt->statement.line, breakStmt->statement.column);
   }
 }
 
@@ -359,9 +352,10 @@ void Semantics::walkContinueStatement(Node *node) {
   auto continueStmt = dynamic_cast<ContinueStatement *>(node);
   if (!continueStmt)
     return;
-  std::cout << "[SEMANTIC LOG] Analysing continue statement "
-            << continueStmt->toString() << "\n";
+
   if (loopContext.empty() || !loopContext.back()) {
-    std::cerr << "[SEMANTIC ERROR] 'continue' used outside a loop\n ";
+    logSemanticErrors("'continue' used outside a loop",
+                      continueStmt->statement.line,
+                      continueStmt->statement.column);
   }
 }

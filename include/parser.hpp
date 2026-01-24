@@ -6,14 +6,6 @@
 #include <string>
 #include <vector>
 
-#define CPPREST_FORCE_REBUILD
-
-struct FileUnit {
-  std::string fileName;
-  std::vector<std::unique_ptr<Node>> nodes;
-  std::vector<std::string> mergers;
-};
-
 class Parser {
   std::vector<Token> tokenInput;
   std::string fileName;
@@ -60,13 +52,16 @@ class Parser {
 
   Token lastToken;
 
-  ErrorHandler errorHandler;
+  ErrorHandler &errorHandler;
+  bool hasFailed = false;
 
 public:
   // Parser class declaration
-  Parser(std::vector<Token> &tokenInput, const std::string &file);
+  Parser(std::vector<Token> &tokenInput, ErrorHandler &handler);
   // Main parser program
   std::vector<std::unique_ptr<Node>> parseProgram();
+
+  bool failed();
 
   // Sliding across the token input from the lexer;
   void advance();
@@ -82,9 +77,6 @@ public:
 
   // Function to get the precedence depending on the token type
   Precedence get_precedence(TokenType type);
-
-  // Generator for the file unit
-  std::shared_ptr<FileUnit> generateFileUnit();
 
   using prefixParseFns = std::unique_ptr<Expression> (Parser::*)();
   using infixParseFns =

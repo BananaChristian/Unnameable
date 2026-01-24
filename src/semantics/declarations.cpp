@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "semantics.hpp"
+#include <string>
 
 //_____________Array Statement__________________
 void Semantics::walkArrayStatement(Node *node) {
@@ -52,8 +53,8 @@ void Semantics::walkArrayStatement(Node *node) {
     arrayType = makeArrayType(baseType, arrStmtDimensions);
   }
 
-  std::cout << "BASE TYPE: " << baseType.resolvedName << "\n";
-  std::cout << "ARRAY TYPE: " << arrayType.resolvedName << "\n";
+  logInternal("Base Type : " + baseType.resolvedName);
+  logInternal("Array Type: " + arrayType.resolvedName);
 
   arrTypeInfo.underLyingType = baseType;
 
@@ -79,7 +80,9 @@ void Semantics::walkArrayStatement(Node *node) {
     ArrayLiteral *arrLit =
         dynamic_cast<ArrayLiteral *>(arrStmt->array_content.get());
     if (!arrLit) {
-      std::cerr << "Only use array literals for array statements\n";
+      logSemanticErrors("Only use array literals for array statement '" +
+                            arrayName + "'",
+                        arrNameLine, arrNameCol);
       hasError = true;
       return;
     }
@@ -194,8 +197,7 @@ void Semantics::walkArrayStatement(Node *node) {
   metaData[arrStmt] = arrInfo;
   symbolTable.back()[arrayName] = arrInfo;
 
-  std::cout << "FINAL ARRAY STATEMENT TYPE '" << arrayType.resolvedName
-            << "'\n";
+  logInternal("Final Array statement Type");
 }
 
 //_________________Pointer Statement___________________
@@ -242,7 +244,7 @@ void Semantics::walkPointerStatement(Node *node) {
 
     ptrType = inferNodeDataType(ptrStmt);
     isNullable = ptrType.isNull; // Set the null flag based of the type
-    std::cout << "NULLABLE POINTER TYPE: " << ptrType.resolvedName << "\n";
+    logInternal("Nullable Pointer Type '" + ptrType.resolvedName + "'");
 
     if (!ptrType.isPointer) {
       logSemanticErrors("Cannot point to a non pointer type'" +
@@ -368,14 +370,14 @@ void Semantics::walkPointerStatement(Node *node) {
   */
 
   if (ptrStmt->mutability == Mutability::MUTABLE) {
-    std::cout << "POINTER IS MUTABLE\n";
+    logInternal("Pointer is mutable");
     isMutable = true;
   } else if (ptrStmt->mutability == Mutability::CONSTANT) {
-    std::cout << "POINTER IS CONSTANT\n";
+    logInternal("Pointer is Constant");
     isConstant = true;
   }
 
-  std::cout << "POINTER TYPE: " << ptrType.resolvedName << "\n";
+  logInternal("Pointer Type: " + ptrType.resolvedName);
   int ptrPopCount = 0;
   // Pointer's storage info (The pointer itself not the target)
   StorageType pointerStorage;
@@ -384,10 +386,10 @@ void Semantics::walkPointerStatement(Node *node) {
   } else if (isHeap) {
     pointerStorage = StorageType::HEAP;
     ptrPopCount = targetSymbol->popCount + 1;
-    std::cout << "[SEMANTICS DEBUG] Pointer '" << ptrName << "' points to '"
-              << targetName
-              << "' | target->popCount: " << targetSymbol->popCount
-              << " | new ptr->popCount: " << ptrPopCount << "\n";
+    logInternal(
+        "Pointer '" + ptrName + "' points to '" + targetName +
+        "' | target->popCount: " + std::to_string(targetSymbol->popCount) +
+        " | new ptr->popCount: " + std::to_string(ptrPopCount));
   } else if (isDheap) {
     pointerStorage = StorageType::HEAP;
   } else {
@@ -418,9 +420,6 @@ void Semantics::walkLetStatement(Node *node) {
   auto letStmt = dynamic_cast<LetStatement *>(node);
   if (!letStmt)
     return;
-
-  std::cout << "[SEMANTIC LOG]: Analyzing let statement node\n";
-
   auto type = dynamic_cast<BasicType *>(letStmt->type.get());
 
   // --- Initial flags ---
@@ -692,7 +691,7 @@ void Semantics::walkLetStatement(Node *node) {
   metaData[letStmt] = letInfo;
   symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
 
-  std::cout << "LET STATEMENT DATA TYPE: " << expectedType.resolvedName << "\n";
+  logInternal("Variable Declaration Data Type: " + expectedType.resolvedName);
 }
 
 //__________________Reference Statement___________________
@@ -700,8 +699,6 @@ void Semantics::walkReferenceStatement(Node *node) {
   auto refStmt = dynamic_cast<ReferenceStatement *>(node);
   if (!refStmt)
     return;
-
-  std::cout << "[SEMANTIC LOG]: Analysing reference statement\n";
 
   auto refName = refStmt->name->expression.TokenLiteral;
   auto line = refStmt->statement.line;
@@ -832,8 +829,8 @@ void Semantics::walkReferenceStatement(Node *node) {
 
   // Updating the reference count of the symbol being referenced
   refereeSymbol->refCount += 1;
-  std::cout << "[DEBUG] Incremented refCount for target -> "
-            << refereeSymbol->refCount << "\n";
+  logInternal("Incremented refCount for target -> " +
+              std::to_string(refereeSymbol->refCount));
 
   // Updating the storage type for references
   StorageType refStorage;

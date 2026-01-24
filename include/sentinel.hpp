@@ -1,5 +1,6 @@
 #pragma once
 #include "ast.hpp"
+#include "errors.hpp"
 #include "semantics.hpp"
 #include "typeindex"
 #include <string>
@@ -8,7 +9,7 @@
 
 class Sentinel {
 public:
-  Sentinel(Semantics &semantics);
+  Sentinel(Semantics &semantics, ErrorHandler &errorHandler, bool verbose);
   using sentinelFn = void (Sentinel::*)(Node *node);
   std::unordered_map<std::type_index, sentinelFn> sentinelFnsMap;
   int nextAllocId = 0;
@@ -17,8 +18,14 @@ public:
 
   void sentinelDriver(Node *node);
 
+  bool failed();
+
 private:
   Semantics &semantics;
+  ErrorHandler &errorHandler;
+  bool verbose = false;
+  bool hasFailed = false;
+
   void checkLetStatement(Node *node);
   void checkPointerStatement(Node *node);
   void checkAssignmentStatement(Node *node);
@@ -47,5 +54,7 @@ private:
   void checkAllocatorInterface(Node *node);
   void registerSentinelFns();
   void logError(const std::string &message, int line, int col);
+  void reportDevBug(const std::string &message);
+  void logInternal(const std::string &message);
   void printStackSnapshot();
 };

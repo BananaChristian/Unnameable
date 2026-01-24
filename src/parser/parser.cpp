@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "ast.hpp"
+#include "errors.hpp"
 #include "token.hpp"
 #include <iostream>
 #include <memory>
@@ -8,9 +9,8 @@
 #define CPPREST_FORCE_REBUILD
 
 //--------------PARSER CLASS CONSTRUCTOR-------------
-Parser::Parser(std::vector<Token> &tokenInput, const std::string &file)
-    : tokenInput(tokenInput), fileName(file), errorHandler(file), currentPos(0),
-      nextPos(1) {
+Parser::Parser(std::vector<Token> &tokenInput, ErrorHandler &handler)
+    : tokenInput(tokenInput), errorHandler(handler), currentPos(0), nextPos(1) {
   lastToken = tokenInput.empty() ? Token{"", TokenType::ILLEGAL, 999, 999}
                                  : tokenInput[0];
   registerInfixFns();
@@ -82,14 +82,6 @@ std::unique_ptr<Statement> Parser::parseQualifyStatement() {
   std::unique_ptr<Expression> expr = parseIdentifier();
 
   return std::make_unique<QualifyStatement>(qualify_token, std::move(expr));
-}
-
-std::unique_ptr<Statement> Parser::parseMergeStatement() {
-  Token merge_token = currentToken();
-  advance(); // Consume the merge token
-  auto merged = parseStringLiteral();
-
-  return std::make_unique<MergeStatement>(merge_token, std::move(merged));
 }
 
 std::unique_ptr<Statement> Parser::parseImportStatement() {
@@ -391,7 +383,6 @@ void Parser::registerStatementParseFns() {
       &Parser::parseContinueStatement;
   StatementParseFunctionsMap[TokenType::QUALIFY] =
       &Parser::parseQualifyStatement;
-  StatementParseFunctionsMap[TokenType::MERGE] = &Parser::parseMergeStatement;
   StatementParseFunctionsMap[TokenType::LINK] = &Parser::parseLinkStatement;
   StatementParseFunctionsMap[TokenType::IMPORT] = &Parser::parseImportStatement;
   StatementParseFunctionsMap[TokenType::SHOUT] = &Parser::parseShoutStatement;
@@ -526,6 +517,8 @@ void Parser::logError(const std::string &message) {
         << "[PANIC]: Logging an uninitialized token! Investigate token flow.\n";
   }
 
+  hasFailed = true;
+
   CompilerError error;
   error.level = ErrorLevel::PARSER;
   error.line = token.line;
@@ -558,18 +551,4 @@ Token Parser::getErrorToken() {
   return tokenInput[currentPos - 1];
 }
 
-std::shared_ptr<FileUnit> Parser::generateFileUnit() {
-  // Populate the fields final field
-  std::vector<std::unique_ptr<Node>> nodes = parseProgram();
-  auto fileUnit = std::make_shared<FileUnit>();
-  fileUnit->nodes = std::move(nodes);
-
-  // Scan AST for imports and entry qualifier
-  for (auto &node : fileUnit->nodes) {
-    if (auto *mergeStmt = dynamic_cast<MergeStatement *>(node.get())) {
-      fileUnit->mergers.push_back(
-          mergeStmt->stringExpr->expression.TokenLiteral);
-    }
-  }
-  return fileUnit;
-}
+bool Parser::failed() { return hasFailed; }

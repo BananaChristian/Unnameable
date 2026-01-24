@@ -238,13 +238,14 @@ struct AllocatorHandle {
 };
 
 class Semantics {
-  std::string fileName;
-  ErrorHandler errorHandler;
+  ErrorHandler &errorHandler;
 
 public:
   Deserializer &deserializer;
-  Semantics(Deserializer &deserializer, std::string &fileName);
+  Semantics(Deserializer &deserializer, ErrorHandler &handler, bool isVerbose);
   void walker(Node *node);
+  bool failed();
+
   using walkerFunctions = void (Semantics::*)(Node *);
   std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
   std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
@@ -279,8 +280,6 @@ public:
   bool switchReturns(SwitchStatement *sw);
   bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>> &stmts);
   ResolvedType inferNodeDataType(Node *node);
-  std::pair<std::string, std::string>
-  splitScopedName(const std::string &fullName);
   std::string stripPtrSuffix(const std::string &typeName);
   std::string stripRefSuffix(const std::string &typeName);
   std::string stripOptionalSuffix(const std::string &typeName);
@@ -296,6 +295,9 @@ private:
   bool insideRecord = false;
   bool insideSeal = false;
   bool insideAllocator = false;
+
+  bool hasFailed = false;
+  bool verbose = false;
 
   std::vector<std::string> sourceLines;
 
@@ -424,9 +426,9 @@ private:
   ResolvedType inferPrefixExpressionType(Node *node);
   ResolvedType inferPostfixExpressionType(Node *node);
   ResolvedType resultOfBinary(TokenType operatorType, ResolvedType leftType,
-                              ResolvedType rightType);
+                              ResolvedType rightType, Node *expr);
   ResolvedType resultOfUnary(TokenType operatorType,
-                             const ResolvedType &oprendType);
+                             const ResolvedType &oprendType, Node *node);
   ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
   std::shared_ptr<SymbolInfo> resultOfScopeOrDot(TokenType operatorType,
                                                  const ResolvedType &parentType,
@@ -483,4 +485,6 @@ private:
   int64_t evaluateArrayLengthConstant(Node *node);
   void logSemanticErrors(const std::string &message, int tokenLine,
                          int tokenColumn);
+  void reportDevBug(const std::string &message);
+  void logInternal(const std::string &message);
 };

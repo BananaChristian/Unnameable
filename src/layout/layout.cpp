@@ -1,9 +1,15 @@
 #include "layout.hpp"
 #include "ast.hpp"
+#include "errors.hpp"
 #include <string>
 
-Layout::Layout(Semantics &sem, llvm::LLVMContext &ctx)
-    : semantics(sem), context(ctx) {
+#define COLOR_RESET "\033[0m"
+#define COLOR_RED "\033[31m"
+#define COLOR_BOLD "\033[1m"
+
+Layout::Layout(Semantics &sem, llvm::LLVMContext &ctx, ErrorHandler &handler,
+               bool verbose)
+    : semantics(sem), context(ctx), errorHandler(handler), verbose(verbose) {
   tempModule = std::make_unique<llvm::Module>("prestatic_temp", context);
   registerComponentCalculatorFns();
 
@@ -21,14 +27,14 @@ Layout::Layout(Semantics &sem, llvm::LLVMContext &ctx)
 // Calculator driver
 void Layout::calculatorDriver(Node *node) {
   if (!node) {
-    std::cerr << "Invalid node\n";
+    reportDevBug("Invalid node");
     return;
   }
 
   auto it = calculatorFnsMap.find(typeid(*node));
   if (it == calculatorFnsMap.end()) {
-    std::cerr << "No calculator found for node: " << node->toString()
-              << " Ignoring...\n";
+    logInternal("No calculator found for node '" + node->toString() +
+                "' , Ignoring ...");
     return;
   }
 
@@ -72,8 +78,6 @@ void Layout::calculateLetStatementSize(Node *node) {
 
   if (!letStmt)
     return;
-  std::cout << "[PRESTATIC LOG]: Calculating for let statement "
-            << letStmt->toString() << "\n";
 
   int line = type->data_token.line;
   int col = type->data_token.column;
@@ -86,15 +90,12 @@ void Layout::calculateLetStatementSize(Node *node) {
   // Getting the let statement metaData
   auto letMeta = semantics.metaData.find(letStmt);
   if (letMeta == semantics.metaData.end()) {
-    logPrestaticError("No meta data found for let statement '" + name + "'",
-                      line, col);
+    reportDevBug("Could not find let statement metaData for '" + name + "'");
     return;
   }
 
   // Getting if it is heap allocated
   if (!letStmt->isHeap && !letStmt->isDheap) {
-    std::cout << "Not calculating since its not heap or dheap allocated \n";
-    // Dont bother calculating just keep it zero
     compSize = 0;
     return;
   }
@@ -122,9 +123,7 @@ void Layout::calculateArrayStatementSize(Node *node) {
   const std::string &name = arrStmt->identifier->expression.TokenLiteral;
   auto arrMeta = semantics.metaData.find(arrStmt);
   if (arrMeta == semantics.metaData.end()) {
-    logPrestaticError("No meta data found for array '" + name + "'",
-                      arrStmt->identifier->expression.line,
-                      arrStmt->identifier->expression.column);
+    reportDevBug("Could not find array statement metaData for '" + name + "'");
     return;
   }
 
@@ -135,41 +134,39 @@ void Layout::calculateArrayStatementSize(Node *node) {
 
   //  Dimension Check
   auto &info = arrSym->arrayTyInfo;
-  std::cout << "[DEBUG-LAYOUT] Processing: " << name
-            << " | Dimensions found: " << info.sizePerDimension.size() << "\n";
+  logInternal("Processing '" + name + "' Dimensions found " +
+              std::to_string(info.sizePerDimension.size()));
 
   uint64_t totalElements = 1;
   if (info.sizePerDimension.empty()) {
-    std::cout << "[WARNING-LAYOUT] Array '" << name
-              << "' has NO dimensions in metadata!\n";
-    totalElements = 0; // This might be our culprit
+    logInternal("Array '" + name + "' has no dimensions in metaData");
+    totalElements = 0;
   }
 
   for (size_t i = 0; i < info.sizePerDimension.size(); ++i) {
     int64_t dimSize = info.sizePerDimension[i];
-    std::cout << "[DEBUG-LAYOUT]  -> Dim[" << i << "]: " << dimSize << "\n";
+    logInternal("Dimension [" + std::to_string(i) +
+                "]: " + std::to_string(dimSize));
     if (dimSize > 0) {
       totalElements *= static_cast<uint64_t>(dimSize);
     } else {
-      std::cout << "[WARNING-LAYOUT] Dimension " << i
-                << " is <= 0. Possible dynamic box in SAGE?\n";
+      logInternal("Dimension " + std::to_string(i) + " is <= 0");
     }
   }
 
   // Type Size Check
   llvm::Type *baseLLVMTy = getLLVMType(info.underLyingType);
   if (!baseLLVMTy) {
-    std::cout << "[ERROR-LAYOUT] Could not resolve LLVM Type for base type: "
-              << info.underLyingType.resolvedName << "\n";
+    reportDevBug("Could not resolve LLVM Type for base type '" +
+                 info.underLyingType.resolvedName + "'");
     return;
   }
 
   uint64_t elementSize = layout->getTypeAllocSize(baseLLVMTy);
   llvm::Align elementAlign = layout->getABITypeAlign(baseLLVMTy);
 
-  std::cout << "[DEBUG-LAYOUT] Base Element: "
-            << info.underLyingType.resolvedName << " | Size: " << elementSize
-            << " bytes\n";
+  logInternal("Base element: '" + info.underLyingType.resolvedName +
+              "' Size: " + std::to_string(elementSize));
 
   uint64_t totalByteSize = totalElements * elementSize;
 
@@ -180,14 +177,16 @@ void Layout::calculateArrayStatementSize(Node *node) {
   //  Pool Addition
   if (arrSym->isHeap) {
     totalHeapSize += totalByteSize;
-    std::cout << "[LAYOUT-FINAL] SAGE Array '" << name << "' -> totalElements("
-              << totalElements << ") * elementSize(" << elementSize
-              << ") = " << totalByteSize << " bytes.\n";
-    std::cout << "[LAYOUT-FINAL] Current Global SAGE Pool (totalHeapSize): "
-              << totalHeapSize << " bytes.\n";
+    logInternal("SAGE Array '" + name + "' -> Total Elements (" +
+                std::to_string(totalElements) + ")*elementSize (" +
+                std::to_string(elementSize) + ")" + " = " +
+                std::to_string(totalByteSize) + " bytes");
+
+    logInternal("Current Global SAGE Pool (totalHeapSize): " +
+                std::to_string(totalHeapSize) + " bytes");
   } else {
-    std::cout << "[LAYOUT-FINAL] DHEAP Array '" << name << "' -> Calculated "
-              << totalByteSize << " bytes (skipped pool).\n";
+    logInternal("Dheap Array '" + name + "' Calculated: " +
+                std::to_string(totalByteSize) + "bytes (skipped pool");
   }
 }
 
@@ -195,14 +194,10 @@ void Layout::calculatePointerStatementSize(Node *node) {
   auto ptrStmt = dynamic_cast<PointerStatement *>(node);
   if (!ptrStmt)
     return;
-  std::cout << "[PRESTATIC LOG]: Calculating for let statement "
-            << ptrStmt->toString() << "\n";
 
   auto ptrMeta = semantics.metaData.find(ptrStmt);
   if (ptrMeta == semantics.metaData.end()) {
-    logPrestaticError("Failed to find pointer statement metaData",
-                      ptrStmt->name->expression.line,
-                      ptrStmt->name->expression.line);
+    reportDevBug("Failed to find pointer statement metaData");
     return;
   }
 
@@ -326,8 +321,7 @@ void Layout::calculateInstantiateStatement(Node *node) {
   // Extract the semantic metaData(It has the instantiation info)
   auto it = semantics.metaData.find(instStmt);
   if (it == semantics.metaData.end()) {
-    logPrestaticError("Failed to find instantiation statement metaData", line,
-                      col);
+    reportDevBug("Failed to find instantiation statement metaData");
     return;
   }
 
@@ -353,14 +347,13 @@ void Layout::calculateRecordStatement(Node *node) {
 
   auto dataMeta = semantics.metaData.find(recordStmt);
   if (dataMeta == semantics.metaData.end()) {
-    logPrestaticError("Could not find record '" + recordName + "' metaData",
-                      line, col);
+    reportDevBug("Could not find record '" + recordName + "' metaData");
     return;
   }
 
   auto dataSym = dataMeta->second;
   if (!dataSym) {
-    logPrestaticError("Unidentified type '" + recordName + "'", line, col);
+    reportDevBug("Could not find record symbolInfo '" + recordName + "'");
     return;
   }
 
@@ -388,19 +381,16 @@ void Layout::calculateComponentStatement(Node *node) {
 
   auto compMeta = semantics.metaData.find(compStmt);
   if (compMeta == semantics.metaData.end()) {
-    logPrestaticError("Could not find component '" + compName + "' metaData",
-                      line, col);
+    reportDevBug("Could not find component metaData for component'" + compName +
+                 "'");
     return;
   }
 
   auto compSym = compMeta->second;
   if (!compSym) {
-    logPrestaticError("Unidentified type '" + compName + "'", line, col);
+    reportDevBug("Could not find component symbolInfo '" + compName + "'");
     return;
   }
-
-  if (compSym->hasError)
-    logPrestaticError("Semantic error detected", line, col);
 
   // Creating a component sketch
   std::vector<llvm::Type *> fieldTypes;
@@ -418,14 +408,9 @@ void Layout::calculateComponentStatement(Node *node) {
 
   structTy->setBody(fieldTypes, false);
 
-  // Calculating the imported fields
-  for (const auto &[key, value] : compSym->members) {
-    calculatorDriver(value->node);
-  }
-
   // Calculating for the private methods
   for (const auto &method : compStmt->privateMethods) {
-    std::cout << "Inside private method calculation\n";
+    logInternal("Inside private method calculation");
     calculatorDriver(method.get());
   }
 }
@@ -436,11 +421,6 @@ void Layout::calculateSealStatement(Node *node) {
     return;
 
   calculatorDriver(sealStmt->block.get());
-}
-
-void Layout::logPrestaticError(const std::string &message, int line, int col) {
-  std::cerr << "[LAYOUT ERROR] " << message << " on line :" << line
-            << "and column: " << col << "\n";
 }
 
 llvm::Type *Layout::getLLVMType(ResolvedType type) {
@@ -581,7 +561,7 @@ void Layout::calculateAllocatorInterfaceSize(Node *node) {
 }
 
 void Layout::declareAllCustomTypes() {
-  std::cout << "Declaring all custom types" << "\n";
+  logInternal("Declaring all custom type");
   for (const auto &[name, info] : semantics.customTypesTable) {
     auto typeIt = typeMap.find(name);
     if (typeIt == typeMap.end())
@@ -590,7 +570,7 @@ void Layout::declareAllCustomTypes() {
 }
 
 void Layout::registerImportedTypes() {
-  std::cout << "Registering component type" << "\n";
+  logInternal("Registering component type");
   for (const auto &compTypesPair : semantics.ImportedComponentTable) {
     const auto &[compName, typeInfo] = compTypesPair;
     const auto &members = typeInfo->members;
@@ -631,3 +611,30 @@ void Layout::registerImportedTypes() {
     structTy->setBody(fieldTypes, false);
   }
 }
+
+void Layout::logLayoutError(const std::string &message, int line, int col) {
+  hasFailed = true;
+
+  CompilerError error;
+  error.level = ErrorLevel::LAYOUT;
+  error.line = line;
+  error.col = col;
+  error.message = message;
+  error.hints = {};
+
+  errorHandler.report(error);
+}
+
+void Layout::reportDevBug(const std::string &message) {
+  hasFailed = true;
+  std::cerr << COLOR_RED << "[INTERNAL COMPILER ERROR]: " << COLOR_RESET
+            << message << "\n";
+}
+
+void Layout::logInternal(const std::string &message) {
+  if (verbose) {
+    std::cout << message << "\n";
+  }
+}
+
+bool Layout::failed() { return hasFailed; }

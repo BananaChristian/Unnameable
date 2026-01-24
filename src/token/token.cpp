@@ -243,8 +243,6 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: IMPORT";
   case TokenType::LINK:
     return "TokenType: LINK";
-  case TokenType::MERGE:
-    return "Token Type: MERGE";
 
   case TokenType::SEAL:
     return "Token Type: SEAL";

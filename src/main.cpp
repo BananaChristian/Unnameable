@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -6,8 +5,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <unordered_set>
-#include <vector>
 
 #include "deserial.hpp"
 #include "irgen.hpp"
@@ -33,11 +30,6 @@ namespace fs = std::filesystem;
 
 std::string fileName;
 bool logOutput = false;
-
-struct CompilationUnit {
-  std::vector<std::shared_ptr<FileUnit>> files;
-  std::vector<std::unique_ptr<Node>> mergedNodes;
-};
 
 std::string readFileToString(const std::string &filepath) {
   std::ifstream file(filepath);
@@ -68,56 +60,6 @@ std::string resolveImportPath(const std::string &currentFile,
                              resolved.string());
 
   return resolved.string();
-}
-
-std::shared_ptr<FileUnit>
-loadFileRecursive(const std::string &path, CompilationUnit &cu,
-                  std::unordered_set<std::string> &visited,
-                  std::vector<std::string> &stack) {
-  fs::path canonical = fs::weakly_canonical(fs::path(path));
-  std::string canon_str = canonical.string();
-
-  fileName = canon_str;
-
-  if (std::find(stack.begin(), stack.end(), canon_str) != stack.end())
-    throw std::runtime_error("[MERGE ERROR] Circular import detected at " +
-                             canon_str);
-
-  if (visited.count(canon_str))
-    return nullptr;
-
-  stack.push_back(canon_str);
-  std::string code = readFileToString(canon_str);
-
-  Lexer lexer(code, fileName);
-  lexer.updateTokenList();
-
-  if (logOutput) {
-    std::cout << COLOR_BLUE << "[LEXICAL ANALYSIS]" << COLOR_RESET << "\n";
-    for (const auto &token : lexer.token_list) {
-      std::cout << COLOR_CYAN << "Token: " << COLOR_RESET
-                << TokenTypeToLiteral(token.type) << ", Literal: \""
-                << token.TokenLiteral << "\"\n";
-    }
-  }
-
-  Parser parser(lexer.token_list, fileName);
-  auto fileUnit = parser.generateFileUnit();
-  fileUnit->fileName = canon_str;
-
-  for (const auto &imp : fileUnit->mergers) {
-    std::string resolved = resolveImportPath(canon_str, imp);
-    if (resolved == canon_str)
-      throw std::runtime_error("[MERGE ERROR] File merges with itself: " +
-                               canon_str);
-    loadFileRecursive(resolved, cu, visited, stack);
-  }
-
-  cu.files.push_back(fileUnit);
-  visited.insert(canon_str);
-  stack.pop_back();
-
-  return fileUnit;
 }
 
 // Locate compiler root (parent of /bin directory)
@@ -207,60 +149,96 @@ int main(int argc, char **argv) {
   if (exeFile.empty())
     exeFile = srcPath.stem().string();
 
-  CompilationUnit cu;
-  std::unordered_set<std::string> visited;
+  ErrorHandler errorHandler(sourceFile);
 
   try {
-    std::vector<std::string> stack;
-    loadFileRecursive(sourceFile, cu, visited, stack);
+    std::string sourceCode = readFileToString(sourceFile);
+
+    // Lexer phase
+    Lexer lexer(sourceCode, errorHandler);
+    lexer.updateTokenList();
+
+    if (lexer.failed())
+      return 1;
+
+    if (logOutput) {
+      std::cout << COLOR_BLUE << "[LEXICAL ANALYSIS]" << COLOR_RESET << "\n";
+      for (const auto &token : lexer.token_list) {
+        std::cout << COLOR_CYAN << "Token: " << COLOR_RESET
+                  << TokenTypeToLiteral(token.type) << ", Literal: \""
+                  << token.TokenLiteral << "\"\n";
+      }
+    }
+
+    // Parser phase
+    Parser parser(lexer.token_list, errorHandler);
+    auto AST = parser.parseProgram();
+
+    if (parser.failed())
+      return 1;
 
     if (logOutput)
       std::cout << COLOR_BLUE << "[AST GENERATION]" << COLOR_RESET << "\n";
 
-    for (auto &fu : cu.files)
-      for (auto &node : fu->nodes) {
-        if (logOutput) {
-          std::cout << "Node->" << node->toString() << " \n";
-        }
-        cu.mergedNodes.push_back(std::move(node));
+    for (auto &node : AST) {
+      if (logOutput) {
+        std::cout << "Node->" << node->toString() << " \n";
       }
+    }
 
+    // Deserializer phase
     Deserializer deserial;
-    deserial.processImports(cu.mergedNodes, fileName);
+    deserial.processImports(AST, fileName);
 
     if (logOutput)
       std::cout << COLOR_BLUE << "[SEMANTIC ANALYSIS]" << COLOR_RESET << "\n";
-    Semantics semantics(deserial, fileName);
-    for (const auto &node : cu.mergedNodes)
+    Semantics semantics(deserial, errorHandler, logOutput);
+    for (const auto &node : AST)
       semantics.walker(node.get());
 
+    if (semantics.failed()) {
+      return 1;
+    }
+
+    // Layout Phase
     if (logOutput)
       std::cout << COLOR_BLUE << "[LAYOUT ANALYSIS]" << COLOR_RESET << "\n";
     llvm::LLVMContext llvmContext;
-    Layout layout(semantics, llvmContext);
-    for (const auto &node : cu.mergedNodes)
+    Layout layout(semantics, llvmContext, errorHandler, logOutput);
+    for (const auto &node : AST)
       layout.calculatorDriver(node.get());
 
+    if (layout.failed()) {
+      return 1;
+    }
+
+    // Sentinel phase
     if (logOutput)
       std::cout << COLOR_BLUE << "[SENTINEL ANALYSIS]" << COLOR_RESET << "\n";
-    Sentinel sentinel(semantics);
-    for (const auto &node : cu.mergedNodes)
+    Sentinel sentinel(semantics, errorHandler, logOutput);
+    for (const auto &node : AST)
       sentinel.sentinelDriver(node.get());
 
+    if (sentinel.failed()) {
+      return 1;
+    }
+
+    // Stub generation phase
     StubGen stubGen(semantics, fileName);
     if (compileOnly) {
       if (logOutput)
         std::cout << COLOR_BLUE << "[STUBGEN]" << COLOR_RESET << "\n";
-      for (const auto &node : cu.mergedNodes)
+      for (const auto &node : AST)
         stubGen.stubGenerator(node.get());
 
       stubGen.finish();
     }
 
+    // IR generation
     if (logOutput)
       std::cout << COLOR_BLUE << "[IR GENERATION]" << COLOR_RESET << "\n";
     IRGenerator irgen(semantics, layout.totalHeapSize);
-    irgen.generate(cu.mergedNodes);
+    irgen.generate(AST);
     if (logOutput)
       irgen.dumpIR();
 
@@ -288,7 +266,7 @@ int main(int argc, char **argv) {
               << COLOR_RESET << "\n";
 
     Linker linker(objPath.string(), staticCompile);
-    linker.processLinks(cu.mergedNodes, fileName, exePath.string());
+    linker.processLinks(AST, fileName, exePath.string());
 
     std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
               << " Executable generated: " << exePath.string() << "\n";

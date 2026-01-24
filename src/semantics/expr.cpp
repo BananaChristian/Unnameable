@@ -37,8 +37,7 @@ void Semantics::walkInfixExpression(Node *node) {
                         infixExpr->right_operand->expression.column);
       return;
     }
-
-    std::cout << "LHS INFIX TYPE: " << lhsType.resolvedName << "\n";
+    logInternal("Lhs Infix Type: " + lhsType.resolvedName);
 
     // Resolve member
     auto memberInfo =
@@ -48,8 +47,8 @@ void Semantics::walkInfixExpression(Node *node) {
     if (!memberInfo)
       return;
 
-    std::cout << "INFIX TYPE FOR MEMBER ACCESS: "
-              << memberInfo->type.resolvedName << "\n";
+    logInternal("Infix Type for member access :" +
+                memberInfo->type.resolvedName);
 
     // Some inheritance
     if (leftSym->isConstant) {
@@ -87,8 +86,7 @@ void Semantics::walkPrefixExpression(Node *node) {
   auto prefixExpr = dynamic_cast<PrefixExpression *>(node);
   if (!prefixExpr)
     return;
-  std::cout << "[SEMANTIC LOG] Analyzing prefix expression " +
-                   prefixExpr->toString() + "\n";
+
   auto prefixExprOperand = prefixExpr->operand.get();
   ResolvedType prefixType = inferNodeDataType(prefixExpr);
   if (prefixExpr->operat.type == TokenType::PLUS_PLUS ||
@@ -140,8 +138,7 @@ void Semantics::walkPostfixExpression(Node *node) {
   auto postfixExpr = dynamic_cast<PostfixExpression *>(node);
   if (!postfixExpr)
     return;
-  std::cout << "[SEMANTIC LOG] Analyzing postfix expression " +
-                   postfixExpr->toString() + "\n";
+
   ResolvedType postfixType = inferNodeDataType(postfixExpr);
   auto postfixOperand = postfixExpr->operand.get();
   if (postfixExpr->operator_token.type == TokenType::PLUS_PLUS ||
@@ -194,15 +191,13 @@ void Semantics::walkUnwrapExpression(Node *node) {
   if (!unwrapExpr)
     return;
 
-  std::cout << "ANALYSING UNWRAP EXPRESSION " << node->toString() << "\n";
-
   bool hasError = false;
   auto line = unwrapExpr->expression.line;
   auto col = unwrapExpr->expression.column;
 
   auto expr = dynamic_cast<Expression *>(unwrapExpr->expr.get());
   if (!expr) {
-    logSemanticErrors("Invalid unwrap expression", line, col);
+    reportDevBug("Invalid unwrap expression");
     return;
   }
   int exprLine = expr->expression.line;
@@ -234,7 +229,7 @@ void Semantics::walkUnwrapExpression(Node *node) {
     hasError = true;
   }
 
-  std::cout << "UNWRAP TYPE BEFORE STRIP: " << exprType.resolvedName << "\n";
+  logInternal("Unwrap type before strip :" + exprType.resolvedName);
 
   // Stripping the type
   exprType.isNull = false;
@@ -245,7 +240,7 @@ void Semantics::walkUnwrapExpression(Node *node) {
   unwrapSym->type = exprType;
   unwrapSym->hasError = hasError;
 
-  std::cout << "UNWRAPPED TYPE: " << exprType.resolvedName << "\n";
+  logInternal("Unwrapped Type: " + exprType.resolvedName);
 
   metaData[unwrapExpr] = unwrapSym;
 }
@@ -254,25 +249,19 @@ void Semantics::walkExpressionStatement(Node *node) {
   auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
   if (!exprStmt)
     return;
-  std::cout << "[SEMANTIC LOG] Analysing the expression statement "
-            << exprStmt->toString() << "\n";
   walker(exprStmt->expression.get());
 }
 
 void Semantics::walkBasicType(Node *node) {
   auto basicType = dynamic_cast<BasicType *>(node);
   if (!basicType)
-    return;
-  std::cout << "[SEMANTIC LOG] Analysing the basic type expression"
-            << basicType->toString() << "\n";
+    return;;
 }
 
 void Semantics::walkArrayType(Node *node) {
   auto arrayType = dynamic_cast<ArrayType *>(node);
   if (!arrayType)
-    return;
-  std::cout << "[SEMANTIC LOG] Analysing the array type expression"
-            << arrayType->toString() << "\n";
+    return;;
 }
 
 void Semantics::walkCastExpression(Node *node) {
