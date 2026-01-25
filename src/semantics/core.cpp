@@ -2075,6 +2075,9 @@ ResolvedType Semantics::makeArrayType(const ResolvedType &t,
     ResolvedType arr;
     arr.isArray = true;
     arr.kind = t.kind; // always base element type
+    arr.isNull = t.isNull;
+    arr.isPointer = t.isPointer;
+    arr.isRef = t.isRef;
     arr.innerType = std::make_shared<ResolvedType>(out); // wrap previous
     arr.resolvedName = "arr[" + out.resolvedName + "]";
 

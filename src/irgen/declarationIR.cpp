@@ -175,12 +175,11 @@ void IRGenerator::generateArrayStatement(Node *node) {
     throw std::runtime_error("Semantic error detected");
 
   auto type = sym->type;
-  llvm::Type *elemTy = getLLVMType(type);
+  llvm::Type *elemTy = getLLVMType(sym->arrayTyInfo.underLyingType);
 
+  // 1. Calculate dimensions and element count
   uint64_t baseSize = layout->getTypeAllocSize(elemTy);
-
   llvm::Value *runtimeByteSize = funcBuilder.getInt64(baseSize);
-
   llvm::Value *runtimeElementCount = funcBuilder.getInt64(1);
 
   for (const auto &lenExpr : arrStmt->lengths) {
@@ -193,45 +192,81 @@ void IRGenerator::generateArrayStatement(Node *node) {
         funcBuilder.CreateMul(runtimeElementCount, dimVal, "elem_count_mul");
   }
 
-  llvm::Value *storagePtr = nullptr;
+  // Resolve final Storage Type and Allocation Count
+  // If nullable, we need ONE Box {i1, [N x T]}, not N boxes.
+  llvm::Type *storageTy = elemTy;
+  llvm::Value *allocationCount = runtimeElementCount;
 
-  if (sym->isHeap) {
+  if (type.isNull) {
+    uint64_t staticCount = 0;
+    if (auto *constCount =
+            llvm::dyn_cast<llvm::ConstantInt>(runtimeElementCount)) {
+      staticCount = constCount->getZExtValue();
+    } else {
+      throw std::runtime_error(
+          "Dynamic array lengths not yet supported for nullable boxes");
+    }
 
-    storagePtr = allocateHeapStorage(sym, arrName, nullptr);
-    sym->llvmType = elemTy;
-  } else if (sym->isDheap) {
-    storagePtr = allocateRuntimeDheap(sym, runtimeByteSize, arrName);
-    sym->llvmType = elemTy;
-  } else {
-    storagePtr = funcBuilder.CreateAlloca(elemTy, runtimeElementCount, arrName);
+    llvm::ArrayType *fullArrayTy = llvm::ArrayType::get(elemTy, staticCount);
+    storageTy = llvm::StructType::get(funcBuilder.getContext(),
+                                      {funcBuilder.getInt1Ty(), fullArrayTy});
+    allocationCount = funcBuilder.getInt64(1); // One box on stack
   }
 
-  // If the array literal has been given
+  // Perform the Allocation
+  llvm::Value *storagePtr = nullptr;
+  if (sym->isHeap) {
+    storagePtr = allocateHeapStorage(sym, arrName, nullptr);
+    sym->llvmType = storageTy;
+  } else if (sym->isDheap) {
+    // For Dheap, update byte size to the full storageTy size
+    uint64_t fullBoxSize = layout->getTypeAllocSize(storageTy);
+    storagePtr =
+        allocateRuntimeDheap(sym, funcBuilder.getInt64(fullBoxSize), arrName);
+    sym->llvmType = storageTy;
+  } else {
+    storagePtr = funcBuilder.CreateAlloca(storageTy, allocationCount, arrName);
+  }
+
+  // Initialization via Literal or Null
   if (arrStmt->array_content) {
-    // Generate the literal data as a constant
     llvm::Constant *literalVal = llvm::cast<llvm::Constant>(
-        generateArrayLiteral(arrStmt->array_content.get()));
+        generateExpression(arrStmt->array_content.get()));
 
-    // Wrap it in a Global Variable so we have a source address for MemCpy
-    llvm::GlobalVariable *globalInit = createGlobalArrayConstant(literalVal);
+    // Wrap in Box if required
+    if (type.isNull) {
+      if (!literalVal->getType()->isStructTy()) {
+        literalVal =
+            llvm::ConstantStruct::get(llvm::cast<llvm::StructType>(storageTy),
+                                      {funcBuilder.getInt1(true), literalVal});
+      }
+    }
 
-    // Prepare Pointers for MemCpy
+    // Wrap in Global
+    llvm::GlobalVariable *globalInit;
+    if (literalVal->getType()->isStructTy()) {
+      globalInit = new llvm::GlobalVariable(*module, literalVal->getType(),
+                                            true, // isConstant
+                                            llvm::GlobalValue::PrivateLinkage,
+                                            literalVal, "nullable_array_init");
+    } else {
+      globalInit = createGlobalArrayConstant(literalVal);
+    }
+
+    // Setup MemCpy
     llvm::Value *DstPtr =
         funcBuilder.CreateBitCast(storagePtr, funcBuilder.getPtrTy());
     llvm::Value *SrcPtr =
         funcBuilder.CreateBitCast(globalInit, funcBuilder.getPtrTy());
 
-    llvm::Align elemAlign = layout->getABITypeAlign(elemTy);
+    llvm::Align finalAlign = layout->getABITypeAlign(storageTy);
+    uint64_t totalSize = layout->getTypeAllocSize(literalVal->getType());
+    llvm::Value *finalByteSize = funcBuilder.getInt64(totalSize);
 
-    // Blast the data into the allocated space
-    funcBuilder.CreateMemCpy(DstPtr,          // Destination
-                             elemAlign,       // Match our allocation alignment
-                             SrcPtr,          // Source
-                             elemAlign,       // Global alignment
-                             runtimeByteSize, // Calculated size
-                             false            // Not volatile
-    );
+    funcBuilder.CreateMemCpy(DstPtr, finalAlign, SrcPtr, finalAlign,
+                             finalByteSize, false);
   } else if (!arrStmt->lengths.empty()) {
+    // Empty dimensions path
   } else {
     throw std::runtime_error(
         "Must initialize array declaration if did not declare dimensions");
@@ -242,7 +277,6 @@ void IRGenerator::generateArrayStatement(Node *node) {
   if (!sym->needsPostLoopFree) {
     if (arrStmt->isHeap) {
       if (sym->lastUseNode == arrStmt && sym->refCount == 0) {
-
         freeHeapStorage(sym->componentSize, sym->alignment.value(), arrName);
         std::cout << "[DEBUG] Immediately freed dead heap array variable '"
                   << arrName << "'\n";

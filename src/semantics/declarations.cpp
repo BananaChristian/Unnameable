@@ -35,6 +35,7 @@ void Semantics::walkArrayStatement(Node *node) {
   int arrStmtDimensions = 0;
   // If the array dimesions are empty infer from the array literal but only if
   // the array literal exists
+  NullLiteral *nullLit = nullptr;
   if (arrStmt->lengths.empty()) {
     if (!arrStmt->array_content) {
       logSemanticErrors("Cannot infer dimension count if you do not initialize "
@@ -43,6 +44,14 @@ void Semantics::walkArrayStatement(Node *node) {
                         arrNameLine, arrNameCol);
       return;
     } else {
+      nullLit = dynamic_cast<NullLiteral *>(arrStmt->array_content.get());
+      if (nullLit) {
+        logSemanticErrors(
+            "Array '" + arrayName +
+                "' is nullable so you must provide the dimensions",
+            arrNameLine, arrNameCol);
+        return; // Dont even bother
+      }
       auto literalType = inferNodeDataType(arrStmt->array_content.get());
       arrStmtDimensions =
           getArrayTypeInfo(arrStmt->array_content.get()).dimensions;
@@ -53,7 +62,12 @@ void Semantics::walkArrayStatement(Node *node) {
     arrayType = makeArrayType(baseType, arrStmtDimensions);
   }
 
-  logInternal("Base Type : " + baseType.resolvedName);
+  // Strip nulls from it the base type must be concrete
+  std::string baseTypeName = stripOptionalSuffix(baseType.resolvedName);
+  baseType.resolvedName = baseTypeName;
+  baseType.isNull = false;
+
+  logInternal("Base Type : " + baseTypeName);
   logInternal("Array Type: " + arrayType.resolvedName);
 
   arrTypeInfo.underLyingType = baseType;
@@ -76,6 +90,46 @@ void Semantics::walkArrayStatement(Node *node) {
   if (arrStmt->array_content) {
     walker(arrStmt->array_content.get());
     isInitialized = true;
+
+    // Null interception
+    if (auto nullLit =
+            dynamic_cast<NullLiteral *>(arrStmt->array_content.get())) {
+      // Check if the array type is nullable
+      if (!arrayType.isNull) {
+        logSemanticErrors("Cannot assign null to non nullable array '" +
+                              arrayName + "' of type '" +
+                              arrayType.resolvedName + "'",
+                          arrNameLine, arrNameCol);
+        return; // Dont bother
+      }
+
+      // Get the null Literal metaData and give it type context
+      metaData[nullLit]->type = arrayType;
+
+      // Store the array metaData at this point and exit early
+      auto nullArray = std::make_shared<SymbolInfo>();
+      nullArray->type = arrayType;
+      nullArray->isMutable = isMutable;
+      nullArray->isConstant = isConstant;
+      nullArray->arrayTyInfo = arrTypeInfo;
+      nullArray->hasError = hasError;
+      nullArray->isInitialized = isInitialized;
+      nullArray->isHeap = isHeap;
+      nullArray->isDheap = isDheap;
+      nullArray->lastUseNode = arrStmt;
+
+      if (!loopContext.empty() && loopContext.back()) {
+        nullArray->needsPostLoopFree = true;
+        nullArray->bornInLoop = true;
+      }
+
+      metaData[arrStmt] = nullArray;
+      symbolTable.back()[arrayName] = nullArray;
+
+      logInternal("Final Array statement Type '" + arrayType.resolvedName +
+                  "'");
+      return;
+    }
 
     ArrayLiteral *arrLit =
         dynamic_cast<ArrayLiteral *>(arrStmt->array_content.get());
@@ -188,7 +242,7 @@ void Semantics::walkArrayStatement(Node *node) {
   arrInfo->isDheap = isDheap;
   arrInfo->lastUseNode = arrStmt;
   arrInfo->type = arrayType; // store fully wrapped type
-  arrInfo->arrayTyInfo = arrTypeInfo;
+
   if (!loopContext.empty() && loopContext.back()) {
     arrInfo->needsPostLoopFree = true;
     arrInfo->bornInLoop = true;
@@ -197,7 +251,7 @@ void Semantics::walkArrayStatement(Node *node) {
   metaData[arrStmt] = arrInfo;
   symbolTable.back()[arrayName] = arrInfo;
 
-  logInternal("Final Array statement Type");
+  logInternal("Final Array statement Type '" + arrayType.resolvedName + "'");
 }
 
 //_________________Pointer Statement___________________
