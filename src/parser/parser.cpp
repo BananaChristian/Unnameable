@@ -209,6 +209,8 @@ void Parser::registerInfixFns() {
   InfixParseFunctionsMap[TokenType::BITWISE_AND] =
       &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::BITWISE_OR] = &Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::BITWISE_XOR] =
+      &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::SHIFT_LEFT] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::SHIFT_RIGHT] =
       &Parser::parseInfixExpression;
