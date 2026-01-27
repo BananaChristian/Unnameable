@@ -477,6 +477,10 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
 
   llvm::Type *finalType = baseType;
 
+  if (type.isArray) {
+    finalType = llvm::PointerType::get(baseType, 0);
+  }
+
   // If the data type aint opaque (I dont want ptr ptr)
   if (type.kind != DataType::OPAQUE) {
     if (type.isPointer || type.isRef) {

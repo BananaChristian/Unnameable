@@ -2,6 +2,7 @@
 #include "ast.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
+#include <cstdint>
 #include <llvm-18/llvm/IR/DerivedTypes.h>
 #include <string>
 
@@ -123,6 +124,10 @@ void Layout::calculateArrayStatementSize(Node *node) {
     return;
 
   const std::string &name = arrStmt->identifier->expression.TokenLiteral;
+  uint64_t totalElements = 0;
+  uint64_t totalLiteralElements = 0;
+  uint64_t totalByteSize = 0;
+
   auto arrMeta = semantics.metaData.find(arrStmt);
   if (arrMeta == semantics.metaData.end()) {
     reportDevBug("Could not find array statement metaData for '" + name + "'");
@@ -131,46 +136,68 @@ void Layout::calculateArrayStatementSize(Node *node) {
 
   auto arrSym = arrMeta->second;
 
-  if (!arrSym->isHeap && !arrSym->isDheap)
-    return;
+  // Get the element type
+  auto elementType = semantics.getArrayElementType(arrSym->type);
+  auto elemLLVMty = getLLVMType(elementType);
+  uint64_t elementSize = layout->getTypeAllocSize(elemLLVMty);
+  llvm::Align elementAlign = layout->getABITypeAlign(elemLLVMty);
 
-  //  Dimension Check
-  auto &info = arrSym->arrayTyInfo;
-  logInternal("Processing '" + name + "' Dimensions found " +
-              std::to_string(info.sizePerDimension.size()));
-
-  uint64_t totalElements = 1;
-  if (info.sizePerDimension.empty()) {
-    logInternal("Array '" + name + "' has no dimensions in metaData");
-    totalElements = 0;
-  }
-
-  for (size_t i = 0; i < info.sizePerDimension.size(); ++i) {
-    int64_t dimSize = info.sizePerDimension[i];
-    logInternal("Dimension [" + std::to_string(i) +
-                "]: " + std::to_string(dimSize));
-    if (dimSize > 0) {
-      totalElements *= static_cast<uint64_t>(dimSize);
-    } else {
-      logInternal("Dimension " + std::to_string(i) + " is <= 0");
+  // If the user provided the length
+  bool isConstantLength = true;
+  if (!arrStmt->lengths.empty()) {
+    totalElements = 1; // Start at 1 for multiplication
+    for (const auto &sizeNode : arrStmt->lengths) {
+      if (semantics.isIntegerConstant(sizeNode.get())) {
+        uint64_t dimSize = semantics.getIntegerConstant(sizeNode.get());
+        totalElements *= dimSize;
+      } else {
+        totalElements = 0;
+        isConstantLength = false;
+        break; // If one dimension is dynamic, the whole compile-time size is
+               // unknown
+      }
     }
   }
 
-  // Type Size Check
-  llvm::Type *baseLLVMTy = getLLVMType(info.underLyingType);
-  if (!baseLLVMTy) {
-    reportDevBug("Could not resolve LLVM Type for base type '" +
-                 info.underLyingType.resolvedName + "'");
-    return;
+  // If the user gave a iteral
+  if (arrStmt->array_content) {
+    if (auto arrLit =
+            dynamic_cast<ArrayLiteral *>(arrStmt->array_content.get())) {
+      totalLiteralElements = countFlattenedElements(arrLit);
+    } else if (auto nullLit =
+                   dynamic_cast<NullLiteral *>(arrStmt->array_content.get())) {
+      // I dont know yet as it could be null
+    } else {
+      auto litMeta = semantics.metaData[arrStmt->array_content.get()];
+      if (!litMeta) {
+        reportDevBug("Could not find array literal metaData");
+        return;
+      }
+      totalLiteralElements = litMeta->componentSize / elementSize;
+      logInternal("Dynamic Array literal size: " +
+                  std::to_string(totalLiteralElements));
+    }
+
+    // If the length was also added check compatibility
+    if (!arrStmt->lengths.empty() && isConstantLength) {
+      if (totalElements != totalLiteralElements) {
+        logLayoutError("Size mismatch between expected size '" +
+                           std::to_string(totalElements) +
+                           "' elements and declared size '" +
+                           std::to_string(totalLiteralElements) +
+                           "' elements for array '" + name + "'",
+                       arrStmt->identifier->expression.line,
+                       arrStmt->identifier->expression.column);
+      }
+    } else {
+      totalElements = totalLiteralElements;
+    }
   }
 
-  uint64_t elementSize = layout->getTypeAllocSize(baseLLVMTy);
-  llvm::Align elementAlign = layout->getABITypeAlign(baseLLVMTy);
+  logInternal("Element type: '" + elementType.resolvedName +
+              "'Element Size: " + std::to_string(elementSize));
 
-  logInternal("Base element: '" + info.underLyingType.resolvedName +
-              "' Size: " + std::to_string(elementSize));
-
-  uint64_t totalByteSize = totalElements * elementSize;
+  totalByteSize = totalElements * elementSize;
 
   // Store results for the IR Generator
   arrSym->componentSize = totalByteSize;
@@ -186,9 +213,9 @@ void Layout::calculateArrayStatementSize(Node *node) {
 
     logInternal("Current Global SAGE Pool (totalHeapSize): " +
                 std::to_string(totalHeapSize) + " bytes");
-  } else {
+  } else if (arrSym->isDheap) {
     logInternal("Dheap Array '" + name + "' Calculated: " +
-                std::to_string(totalByteSize) + "bytes (skipped pool");
+                std::to_string(totalByteSize) + " bytes (skipped pool)");
   }
 }
 
@@ -513,7 +540,7 @@ llvm::Type *Layout::getLLVMType(ResolvedType type) {
     baseType = llvm::PointerType::get(context, 0);
     break;
   }
-  
+
   case DataType::RECORD:
   case DataType::COMPONENT: {
     if (type.resolvedName.empty())
@@ -548,14 +575,27 @@ llvm::Type *Layout::getLLVMType(ResolvedType type) {
         "Unsupported or unknown data type encountered in getLLVMType");
   }
 
-  // Wrap in a pointer if isPointer is true
-  if (type.isPointer)
-    return llvm::PointerType::get(baseType, 0);
+  llvm::Type *finalType = baseType;
 
-  if (type.isRef)
-    return llvm::PointerType::get(baseType, 0);
+  if (type.isArray)
+    finalType = llvm::PointerType::get(baseType, 0);
 
-  return baseType;
+  if (type.kind != DataType::OPAQUE) {
+    if (type.isPointer || type.isRef) {
+      finalType = llvm::PointerType::get(baseType, 0);
+    }
+  }
+
+  if (type.isNull) {
+    // This creates { i1, ptr } or { i1, i32 }
+    std::vector<llvm::Type *> fields = {
+        llvm::Type::getInt1Ty(context), // Flag
+        finalType                       // Payload (could be i32 OR ptr)
+    };
+    return llvm::StructType::get(context, fields);
+  }
+
+  return finalType;
 }
 
 void Layout::calculateAllocatorInterfaceSize(Node *node) {
@@ -617,6 +657,18 @@ void Layout::registerImportedTypes() {
 
     structTy->setBody(fieldTypes, false);
   }
+}
+
+uint64_t Layout::countFlattenedElements(Node *node) {
+  if (auto arrLit = dynamic_cast<ArrayLiteral *>(node)) {
+    uint64_t total = 0;
+    for (auto &element : arrLit->array) {
+      total += countFlattenedElements(element.get());
+    }
+    return total;
+  }
+  // If it's not an array literal, it's a leaf (i32, f32, etc.)
+  return 1;
 }
 
 void Layout::logLayoutError(const std::string &message, int line, int col) {

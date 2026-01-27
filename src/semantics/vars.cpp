@@ -327,34 +327,20 @@ void Semantics::walkArrayLiteral(Node *node) {
 
   bool hasError = false;
 
-  // Recursively getting the data type of the contents inside the array and also
-  // calling the walkers
-  std::vector<ResolvedType> itemTypes;
-
-  ArrayTypeInfo arrayTypeInfo;
-  int dimensionCount = 1; // The array literal is already a dimension
-
+  ResolvedType arrType = inferNodeDataType(arrLit);
   for (const auto &item : arrLit->array) {
-    if (auto memArr = dynamic_cast<ArrayLiteral *>(item.get())) {
-      dimensionCount++;
-    }
     walker(item.get()); // Calling their walkers
-    auto itemType = inferNodeDataType(item.get());
-    arrayTypeInfo.underLyingType = itemType;
-    arrayTypeInfo.dimensions = dimensionCount;
-    itemTypes.push_back(itemType);
   }
 
-  ResolvedType arrType = inferNodeDataType(arrLit);
+  auto sizePerDims = getSizePerDimesion(arrLit);
 
   // Storing metaData about the array
   auto arrInfo = std::make_shared<SymbolInfo>();
-
   arrInfo->type = arrType;
   arrInfo->isNullable = false;
   arrInfo->isMutable = false;
   arrInfo->isConstant = false;
-  arrInfo->arrayTyInfo = arrayTypeInfo;
+  arrInfo->sizePerDimensions = sizePerDims;
 
   metaData[arrLit] = arrInfo;
 }
@@ -376,48 +362,40 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
     return;
   }
 
+  if (arrSymbol->hasError)
+    return;
+
   walker(arrExpr->identifier.get());
 
   // Get the full array type
   ResolvedType arrType = arrSymbol->type;
   logInternal("Array Type '" + arrType.resolvedName + "'");
 
-  // Check indices
-  int indexLevel = 0;
-  for (auto &idxNode : arrExpr->index_exprs) {
-    walker(idxNode.get());
-    ResolvedType idxType = inferNodeDataType(idxNode.get());
-    if (idxType.kind != DataType::I32) {
-      logSemanticErrors("Array index must be of type i32",
-                        idxNode->expression.line, idxNode->expression.column);
-      hasError = true;
-    }
-
-    if (!arrType.isArray) {
-      logSemanticErrors("Too many indices for array '" + arrName + "'",
-                        idxNode->expression.line, idxNode->expression.column);
-      hasError = true;
-      break;
-    }
-
-    if (!arrType.innerType) {
-      logSemanticErrors("Array type missing inner type.",
-                        idxNode->expression.line, idxNode->expression.column);
-      hasError = true;
-      break;
-    }
-
-    arrType = *arrType.innerType; // Peel one layer
-    indexLevel++;
+  if (!arrType.isArray) {
+    logSemanticErrors("Cannot index a non array '" + arrName + "of type '" +
+                          arrType.resolvedName + "'",
+                      line, col);
+    hasError = true;
   }
+
+  if (arrType.isNull) {
+    logSemanticErrors("Cannot index a nullable array '" + arrName +
+                          "' of type '" + arrType.resolvedName +
+                          "' without unwrapping it ",
+                      line, col);
+    hasError = true;
+  }
+
+  // Get the element type as when we index we want the element type itself not a
+  // full array type
+  auto elementType = getArrayElementType(arrType);
 
   // Optionally store info for further analysis
   auto arrAccessInfo = std::make_shared<SymbolInfo>();
-  arrAccessInfo->type = arrType; // type after peeling
+  arrAccessInfo->type = elementType;
   arrAccessInfo->hasError = hasError;
   arrAccessInfo->isHeap = arrSymbol->isHeap;
   arrAccessInfo->isDheap = arrSymbol->isDheap;
-  arrAccessInfo->arrayTyInfo = arrSymbol->arrayTyInfo;
 
   metaData[arrExpr] = arrAccessInfo;
 }
@@ -757,9 +735,8 @@ void Semantics::walkAssignStatement(Node *node) {
       walker(ident);
     } else if (auto arrLit =
                    dynamic_cast<ArrayLiteral *>(assignStmt->value.get())) {
-      // Getting the length of the array literal
-      auto arrLitTypeInfo = getArrayTypeInfo(arrLit);
-      // Getting the arrayMeta for the symbol
+      // Get the array literal size per dimension vector
+      auto litSizePerDim = getSizePerDimesion(arrLit);
       auto arrSymbol = resolveSymbolInfo(assignName);
       if (!arrSymbol) {
         logSemanticErrors("Could not find variable '" + assignName + "'",
@@ -767,14 +744,13 @@ void Semantics::walkAssignStatement(Node *node) {
                           assignStmt->identifier->expression.column);
         hasError = true;
       }
+      auto arrSizePerDim = arrSymbol->sizePerDimensions;
 
-      auto assignMeta = arrSymbol->arrayTyInfo;
-      // Comapring the lengths
-      if (arrLitTypeInfo.dimensions != assignMeta.dimensions) {
+      if (arrSizePerDim.size() != litSizePerDim.size()) {
         logSemanticErrors("Array variable '" + assignName + "' dimensions " +
-                              std::to_string(assignMeta.dimensions) +
+                              std::to_string(arrSizePerDim.size()) +
                               " does not match array literal dimensions " +
-                              std::to_string(arrLitTypeInfo.dimensions),
+                              std::to_string(arrSizePerDim.size()),
                           assignStmt->identifier->expression.line,
                           assignStmt->identifier->expression.column);
         hasError = true;

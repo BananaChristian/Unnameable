@@ -262,39 +262,37 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
 
 llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
   auto arrExpr = dynamic_cast<ArraySubscript *>(node);
-  auto baseName = arrExpr->identifier->expression.TokenLiteral;
 
   auto arrIt = semantics.metaData.find(arrExpr);
-  if (arrIt == semantics.metaData.end())
-    throw std::runtime_error("Could not find array index metaData");
-
   auto baseSym = arrIt->second;
-  if (baseSym->hasError)
-    throw std::runtime_error("Semantic error detected");
 
-  // Getting the local address
-  llvm::Value *ptr =
+  llvm::Value *allocaPtr =
       generateIdentifierAddress(arrExpr->identifier.get()).address;
+  llvm::Value *dataPtr =
+      funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "raw_data_ptr");
 
-  llvm::Type *currentLevelTy = getLLVMType(baseSym->arrayTyInfo.underLyingType);
+  const auto &dims = baseSym->sizePerDimensions;
 
-  std::vector<llvm::Value *> indices;
+  // 3. Calculate the Flat Linear Offset
+  llvm::Value *totalOffset = funcBuilder.getInt64(0);
 
-  // Wrap the type and convert it into an array format
-  const auto &dims = baseSym->arrayTyInfo.sizePerDimension;
-  for (int i = dims.size() - 1; i >= 0; i--) {
-    currentLevelTy = llvm::ArrayType::get(currentLevelTy, dims[i]);
+  for (size_t i = 0; i < arrExpr->index_exprs.size(); ++i) {
+    llvm::Value *idx = generateExpression(arrExpr->index_exprs[i].get());
+    idx = funcBuilder.CreateIntCast(idx, funcBuilder.getInt64Ty(), false);
+
+    uint64_t stride = 1;
+    for (size_t j = i + 1; j < dims.size(); ++j) {
+      stride *= dims[j];
+    }
+
+    llvm::Value *scaledIdx = funcBuilder.CreateMul(
+        idx, funcBuilder.getInt64(stride), "index_stride");
+    totalOffset = funcBuilder.CreateAdd(totalOffset, scaledIdx, "accum_offset");
   }
 
-  indices.push_back(funcBuilder.getInt64(0));
-
-  for (const auto &idxExpr : arrExpr->index_exprs) {
-    llvm::Value *v = generateExpression(idxExpr.get());
-    indices.push_back(
-        funcBuilder.CreateIntCast(v, funcBuilder.getInt64Ty(), false));
-  }
-
-  return funcBuilder.CreateGEP(currentLevelTy, ptr, indices, "element_ptr");
+  // We treat dataPtr as a pointer to the final element type (e.g., i32)
+  llvm::Type *elemTy = getLLVMType(baseSym->type);
+  return funcBuilder.CreateGEP(elemTy, dataPtr, {totalOffset}, "element_ptr");
 }
 
 llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {

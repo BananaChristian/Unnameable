@@ -346,63 +346,56 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   return val;
 }
 
+void IRGenerator::flattenArrayLiteral(ArrayLiteral *arrLit,
+                                      std::vector<llvm::Constant *> &flatElems,
+                                      llvm::Type *&baseType) {
+  for (auto &element : arrLit->array) {
+    if (auto nested = dynamic_cast<ArrayLiteral *>(element.get())) {
+      flattenArrayLiteral(nested, flatElems, baseType);
+    } else {
+      llvm::Value *val = generateExpression(element.get());
+      auto *constVal = llvm::dyn_cast<llvm::Constant>(val);
+      if (!constVal)
+        throw std::runtime_error("Array literal element must be constant");
+
+      if (!baseType)
+        baseType = constVal->getType();
+      flatElems.push_back(constVal);
+    }
+  }
+}
+
 llvm::Value *IRGenerator::generateArrayLiteral(Node *node) {
   auto arrLit = dynamic_cast<ArrayLiteral *>(node);
   if (!arrLit)
     throw std::runtime_error("Invalid array literal");
 
-  auto it = semantics.metaData.find(arrLit);
-  if (it == semantics.metaData.end())
-    throw std::runtime_error("Array literal not found in metaData");
+  // Steamroll the literal into a flat vector of scalars
+  std::vector<llvm::Constant *> flatElems;
+  llvm::Type *baseType = nullptr;
+  flattenArrayLiteral(arrLit, flatElems, baseType);
 
-  auto sym = it->second;
-
-  // Base element type
-  llvm::Type *llvmElemTy = nullptr;
-
-  size_t arraySize = arrLit->array.size();
-  // llvm::ArrayType *arrayTy = llvm::ArrayType::get(llvmElemTy, arraySize);
-
-  // Create the vector of element constants
-  std::vector<llvm::Constant *> elems;
-  elems.reserve(arraySize);
-
-  for (size_t i = 0; i < arraySize; ++i) {
-    Node *child = arrLit->array[i].get();
-    llvm::Value *currentVal = nullptr;
-
-    if (auto nested = dynamic_cast<ArrayLiteral *>(child)) {
-      currentVal = generateArrayLiteral(nested);
-      // Recursive constant array
-      llvm::Constant *nestedConst = llvm::cast<llvm::Constant>(currentVal);
-      elems.push_back(nestedConst);
-
-      if (i == 0) {
-        llvmElemTy = nestedConst->getType();
-      }
-    } else {
-      currentVal = generateExpression(child);
-
-      auto *constVal = llvm::dyn_cast<llvm::Constant>(currentVal);
-      if (!constVal)
-        throw std::runtime_error("Array literal element is not constant");
-
-      elems.push_back(constVal);
-
-      if (i == 0) {
-        llvmElemTy = constVal->getType();
-      }
-    }
+  if (flatElems.empty() || !baseType) {
+    throw std::runtime_error("Empty or invalid array literal");
   }
 
-  if (elems.empty() || !llvmElemTy) {
-    throw std::runtime_error("Cannot infer element type for array literal.");
-  }
+  // Create a flat LLVM Array Type [TotalCount x BaseType]
+  llvm::ArrayType *flatArrayTy =
+      llvm::ArrayType::get(baseType, flatElems.size());
+  llvm::Constant *constantData =
+      llvm::ConstantArray::get(flatArrayTy, flatElems);
 
-  llvm::ArrayType *arrayTy = llvm::ArrayType::get(llvmElemTy, arraySize);
+  //  Shove it into a Global Variable (The Data Segment)
+  // This is like 'static const int hidden_data[] = {1, 2, 3, 4};' in C
+  auto *globalData = new llvm::GlobalVariable(
+      *module, flatArrayTy,
+      true, // Constant? Yes.
+      llvm::GlobalValue::PrivateLinkage, constantData, "flat_array_literal");
+  globalData->setAlignment(layout->getABITypeAlign(baseType));
 
-  // Return a constant LLVM array
-  return llvm::ConstantArray::get(arrayTy, elems);
+  // Return the Pointer to the start of the data
+  // In LLVM IR: bitcast [4 x i32]* @flat_array_literal to i32*
+  return funcBuilder.CreateBitCast(globalData, funcBuilder.getPtrTy());
 }
 
 llvm::Value *IRGenerator::generateNullLiteral(Node *node) {

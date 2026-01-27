@@ -79,13 +79,6 @@ std::unique_ptr<Expression> Parser::parseArrayType() {
       return nullptr;
     }
 
-    // Check for nullability '?'
-    bool isNullable = false;
-    if (currentToken().type == TokenType::QUESTION_MARK) {
-      isNullable = true;
-      advance(); // consume '?'
-    }
-
     // Expect ']'
     if (currentToken().type != TokenType::RBRACKET) {
       logError("Expected ']' to close array type but got '" +
@@ -93,6 +86,13 @@ std::unique_ptr<Expression> Parser::parseArrayType() {
       return nullptr;
     }
     advance(); // consume ']'
+
+    // Check for nullability '?'
+    bool isNullable = false;
+    if (currentToken().type == TokenType::QUESTION_MARK) {
+      isNullable = true;
+      advance(); // consume '?'
+    }
 
     // Return a node representing this array type
     return std::make_unique<ArrayType>(arr_token, std::move(innerType),
