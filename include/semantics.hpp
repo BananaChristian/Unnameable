@@ -123,12 +123,6 @@ struct GenericBluePrint {
   std::unique_ptr<Node> blockAST; // original AST subtree for the generic block
 };
 
-struct ArrayTypeInfo {
-  ResolvedType underLyingType;
-  int dimensions;
-  std::vector<int64_t> sizePerDimension;
-};
-
 struct GenericInstantiationInfo {
   std::string aliasName;
   std::string blueprintName;
@@ -163,8 +157,7 @@ struct SymbolInfo {
   bool isDeclaration = false;
   bool isDefined = false;
 
-  // Array flags
-  ArrayTypeInfo arrayTyInfo;
+  std::vector<uint64_t> sizePerDimensions;
 
   std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
   llvm::Value *llvmValue = nullptr;
@@ -288,7 +281,17 @@ public:
   std::string extractIdentifierName(Node *node);
   std::string extractDeclarationName(Node *node);
   ResolvedType peelRef(ResolvedType t);
-  ArrayTypeInfo getArrayTypeInfo(Node *node);
+
+  bool isInteger(const ResolvedType &t);
+  bool isFloat(const ResolvedType &t);
+  bool isBoolean(const ResolvedType &t);
+  bool isString(const ResolvedType &t);
+  bool isChar(const ResolvedType &t);
+
+  ResolvedType getArrayElementType(ResolvedType &arrayType);
+  bool isIntegerConstant(Node *node);
+  std::vector<uint64_t> getSizePerDimesion(Node *node);
+  uint64_t getIntegerConstant(Node *node);
 
 private:
   bool insideFunction = false;
@@ -438,7 +441,6 @@ private:
                                                  InfixExpression *infix);
   ResolvedType isPointerType(ResolvedType t);
   ResolvedType isRefType(ResolvedType t);
-  ResolvedType makeArrayType(const ResolvedType &t, int dimensionCount);
   ResolvedType *resolveSelfChain(SelfExpression *selfExpr,
                                  const std::string &componentName);
   ResolvedType
@@ -476,15 +478,10 @@ private:
   bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
   bool isMethodCallCompatible(const MemberInfo &memFuncInfo,
                               CallExpression *callExpr);
-  bool isInteger(const ResolvedType &t);
-  bool isFloat(const ResolvedType &t);
-  bool isBoolean(const ResolvedType &t);
-  bool isString(const ResolvedType &t);
-  bool isChar(const ResolvedType &t);
+
   bool isLiteral(Node *node);
   bool isConstLiteral(Node *node);
   void popScope();
-  int64_t evaluateArrayLengthConstant(Node *node);
   void logSemanticErrors(const std::string &message, int tokenLine,
                          int tokenColumn);
   void reportDevBug(const std::string &message);

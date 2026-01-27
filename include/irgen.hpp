@@ -229,8 +229,10 @@ private:
                                     llvm::Value *size,
                                     const std::string &varName);
   void freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym);
-  // Helper for allocating heap storage (shared logic for components and
-  // scalars)
+
+  void flattenArrayLiteral(ArrayLiteral *arrLit,
+                          std::vector<llvm::Constant *> &flatElems,
+                          llvm::Type *&baseType);
   llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                    const std::string &varName,
                                    llvm::StructType *structTy);

@@ -55,6 +55,7 @@ private:
   void declareAllCustomTypes();
   void registerImportedTypes();
   void registerComponentCalculatorFns();
+  uint64_t countFlattenedElements(Node *node);
 
   // Loggers
   void logLayoutError(const std::string &message, int line, int col);
