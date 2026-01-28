@@ -128,6 +128,8 @@ void Layout::calculateArrayStatementSize(Node *node) {
   uint64_t totalLiteralElements = 0;
   uint64_t totalByteSize = 0;
 
+  logInternal("Calculating layout for array '" + name + "' ....");
+
   auto arrMeta = semantics.metaData.find(arrStmt);
   if (arrMeta == semantics.metaData.end()) {
     reportDevBug("Could not find array statement metaData for '" + name + "'");
@@ -166,7 +168,18 @@ void Layout::calculateArrayStatementSize(Node *node) {
       totalLiteralElements = countFlattenedElements(arrLit);
     } else if (auto nullLit =
                    dynamic_cast<NullLiteral *>(arrStmt->array_content.get())) {
-      // I dont know yet as it could be null
+      totalLiteralElements = totalElements;
+    } else if (auto unwrap = dynamic_cast<UnwrapExpression *>(
+                   arrStmt->array_content.get())) {
+      uint64_t sourceByteSize =
+          semantics.metaData[unwrap->expr.get()]->componentSize;
+
+      totalLiteralElements = sourceByteSize / elementSize;
+      logInternal("Total Unwrap array byte size :" +
+                  std::to_string(sourceByteSize));
+
+      logInternal("Total Array elements :" +
+                  std::to_string(totalLiteralElements));
     } else {
       auto litMeta = semantics.metaData[arrStmt->array_content.get()];
       if (!litMeta) {
@@ -197,7 +210,10 @@ void Layout::calculateArrayStatementSize(Node *node) {
   logInternal("Element type: '" + elementType.resolvedName +
               "'Element Size: " + std::to_string(elementSize));
 
+  logInternal("Total Array Element size :" + std::to_string(totalElements));
   totalByteSize = totalElements * elementSize;
+  logInternal("Total Array Byte size :" + std::to_string(totalByteSize) +
+              " bytes");
 
   // Store results for the IR Generator
   arrSym->componentSize = totalByteSize;

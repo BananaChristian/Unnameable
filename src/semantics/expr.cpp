@@ -239,6 +239,8 @@ void Semantics::walkUnwrapExpression(Node *node) {
   auto unwrapSym = std::make_shared<SymbolInfo>();
   unwrapSym->type = exprType;
   unwrapSym->hasError = hasError;
+  unwrapSym->sizePerDimensions = exprSym->sizePerDimensions;
+  unwrapSym->componentSize = exprSym->componentSize;
 
   logInternal("Unwrapped Type: " + exprType.resolvedName);
 
@@ -255,13 +257,15 @@ void Semantics::walkExpressionStatement(Node *node) {
 void Semantics::walkBasicType(Node *node) {
   auto basicType = dynamic_cast<BasicType *>(node);
   if (!basicType)
-    return;;
+    return;
+  ;
 }
 
 void Semantics::walkArrayType(Node *node) {
   auto arrayType = dynamic_cast<ArrayType *>(node);
   if (!arrayType)
-    return;;
+    return;
+  ;
 }
 
 void Semantics::walkCastExpression(Node *node) {

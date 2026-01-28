@@ -13,8 +13,6 @@
 
 #include "semantics.hpp"
 
-#define CPPREST_FORCE_REBUILD
-
 class Node;
 
 struct JumpTarget {

@@ -228,8 +228,27 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
       funcBuilder.Insert(pendingFree);
     }
   }
-  // Store the value
-  funcBuilder.CreateStore(initValue, targetPtr);
+
+  auto assignMeta =
+      semantics.metaData[assignStmt]; // Metadata of the assignment itself
+  if (assignMeta->type.isArray) {
+    auto elementType = semantics.getArrayElementType(assignMeta->type);
+    llvm::Type *elemLLVMTy = getLLVMType(elementType);
+
+    llvm::Align align = layout->getABITypeAlign(elemLLVMTy);
+
+    // Get the destination slab (load the ptr stored in 'y')
+    llvm::Value *destSlab = funcBuilder.CreateLoad(funcBuilder.getPtrTy(),
+                                                   targetPtr, "dest_slab_ptr");
+
+    // Perform Deep Copy
+    uint64_t byteSize = assignMeta->componentSize;
+
+    funcBuilder.CreateMemCpy(destSlab, align, initValue, align,
+                             funcBuilder.getInt64(byteSize));
+  } else {
+    funcBuilder.CreateStore(initValue, targetPtr);
+  }
   std::cout << "Exited assignment generator\n";
 }
 
@@ -240,7 +259,20 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
 
   llvm::Value *rhsVal = generateExpression(fieldStmt->value.get());
 
-  funcBuilder.CreateStore(rhsVal, lhs.address);
+  auto meta = semantics.metaData[fieldStmt];
+  if (meta->type.isArray) {
+    auto elementType = semantics.getArrayElementType(meta->type);
+    llvm::Type *elemLLVMType = getLLVMType(elementType);
+    llvm::Align align = layout->getABITypeAlign(elemLLVMType);
+
+    llvm::Value *destSlab = funcBuilder.CreateLoad(
+        funcBuilder.getPtrTy(), lhs.address, "field_slab_ptr");
+
+    funcBuilder.CreateMemCpy(destSlab, align, rhsVal, align,
+                             funcBuilder.getInt64(meta->componentSize));
+  } else {
+    funcBuilder.CreateStore(rhsVal, lhs.address);
+  }
 
   for (auto *freeCall : lhs.pendingFrees) {
     funcBuilder.Insert(freeCall); // This finally puts the free into the IR

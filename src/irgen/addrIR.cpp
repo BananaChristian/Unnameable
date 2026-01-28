@@ -280,6 +280,32 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
     llvm::Value *idx = generateExpression(arrExpr->index_exprs[i].get());
     idx = funcBuilder.CreateIntCast(idx, funcBuilder.getInt64Ty(), false);
 
+    // --- BOUNDS CHECK START ---
+    // Only guard if the dimension length is known (> 0)
+    if (i < dims.size() && dims[i] > 0) {
+      llvm::Value *limit = funcBuilder.getInt64(dims[i]);
+      // Unsigned check: catches idx < 0 and idx >= limit in one go
+      llvm::Value *isOutOfBounds =
+          funcBuilder.CreateICmpUGE(idx, limit, "out_of_bounds");
+
+      llvm::BasicBlock *panicBB =
+          llvm::BasicBlock::Create(context, "bounds.panic", currentFunction);
+      llvm::BasicBlock *successBB =
+          llvm::BasicBlock::Create(context, "bounds.ok", currentFunction);
+
+      funcBuilder.CreateCondBr(isOutOfBounds, panicBB, successBB);
+
+      // Panic Path
+      funcBuilder.SetInsertPoint(panicBB);
+      auto *trap =
+          llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::trap);
+      funcBuilder.CreateCall(trap);
+      funcBuilder.CreateUnreachable();
+
+      // Success Path - keep going
+      funcBuilder.SetInsertPoint(successBB);
+    }
+
     uint64_t stride = 1;
     for (size_t j = i + 1; j < dims.size(); ++j) {
       stride *= dims[j];

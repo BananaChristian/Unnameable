@@ -255,72 +255,82 @@ func main: i32{
 
 ## Arrays
 
-Unnameable supports single dimensional and multidimensional arrays, The user must explicity list the length of the array if they dont provide initialize but if they initialize the array the compiler will just count the items inside
-The dimension count is what tells the compiler if an array is multideminsional or not for example
+## Arrays in Unnameable
 
-```
+Unnameable provides robust support for both single-dimensional and multidimensional arrays. Under the hood, arrays are handled as continuous memory buffers (pointers), ensuring high performance while maintaining a simple syntax for the user.
+
+### Declaration & Dimensioning
+
+The number of square brackets following the type defines the **dimensionality** of the array. You have two ways to define the size:
+
+1. **Explicit Length:** Provide the size within the brackets.
+2. **Inferred Length:** Leave the brackets empty and provide an initializer; the compiler will automatically count the elements for you.
+
+```unn
+# Explicit 2D array: 2 rows, 3 columns
 arr[i32] [2][3] matrix
-#The compiler will know that this a nested array of type arr[arr[int]] because it has 2 dimension
-```
 
-The dimension count are those square brackets that follow the array type like in our example above they were two so those are two dimensions
-
-The compiler can also infer the dimensions of the array but only and only if the array has been initialized for example
-
-```
+# Inferred 2D array: The compiler sees 2 rows of 3
 arr[i32] matrix = [
-        [10, 20, 30],
-        [40, 50, 60]
+    [10, 20, 30],
+    [40, 50, 60]
 ]
-#The compiler will infer this to be 2 dimensional
-```
-
-Currently the compiler doesnt do bounds checking and all that so it cant know the length of the array so if you declare different lengths in a dimension and use something else in the array literal the compiler cannot guard you it will just take the length of the literal instead(I plan on finding a solution to this but for now it is what it is) for example
 
 ```
+
+### Type Resolution & Dimension Matching
+
+Dimensions are strictly enforced. The number of nested levels in your literal must match the number of dimension brackets in your declaration. A mismatch here will trigger a compiler error because the dimensions define the structural type of the array.
+
+> **Note:** While dimension counts and sizes must match, the compiler currently can only safe guard if you are using a constant integer literal any width is okay the compiler will just convert to 64 bit for example
+`arr[i32] [2] x=[1,2,3]` the compiler will block this but saying `arr[i32] [mySize] x=[1,2,3]` the compiler currently cannot guard you so take caution with this
+
+### Nullable Arrays and Unwrapping
+
+Arrays can be declared as **nullable** by adding a `?` to the type. This is useful for arrays that might not be initialized immediately. However, before you can use or copy a nullable array into a standard array, you must use the `unwrap` keyword.
+
+```unn
 func main: i32 {
-    arr[i32] [2] test=[5,6,7] #The compiler doesnt warn u it will just use the literal length of 3 so be careful
-
+    # A nullable 2D array
+    arr[i32]? [2][2] x = null
+    
+    # To use it, you must unwrap it
+    # If x is still null, the program will safely crash (panic)
+    arr[i32] y = unwrap x 
+    
     return 0
 }
-```
-
-Dimension counts must match unlike lengths the dimension counts must match because here the compiler checks dimensions and it actually uses them to know the type of an array(arr[i32] or arr[arr[i32]]) so a dimension mismatch will cause errors for example
 
 ```
+
+**Safety Warning:** Unwrapping a `null` value will cause an immediate "Illegal Instruction" (core dump). This prevents your program from running with "garbage" data or causing silent corruption.
+Indexing for now can bound check on single dimensional if you index more than the size your compiled program will generate an illegal instruction
+
+
+### Mutability and Assignment
+
+By default, arrays are **immutable**.
+
+* **To reassign the whole array:** You must use the `mut` keyword.
+
+```unn
 func main: i32 {
-    arr[i32] [2][3] test=[5,6,7] #This will trigger a dimension mismatch and later a type error
-    return 0
-}
-```
-
-You cannot reassign to an immutable array so be careful there if you want to reassign you must use the `mut` keyword otherwise it will cause errors for example
-
-```
-func main: i32 {
-    mut arr[i32] [2] my_array=[5,6]
-    my_array=[8,7]
-
-    return 0
-}
-```
-
-Also by default all the values in the array are immutable unless a `mut` keyword is used on the array declaration itself to allow for reassignment via array access for example
-
-```
-func main: i32 {
-    # 2D Array: 2 rows of 3 integers (Total 6 elements)
+    # Declare a mutable 2D array
     mut arr[i32] [2][3] matrix = [
         [10, 20, 30],
         [40, 50, 60]
     ]
 
-    # Assign a new value to the element at Row 1, Column 2 (which holds 60)
-    matrix[1][2]=99
+    # Reassign a single element
+    matrix[1][2] = 99
 
-    #This will print 99
-    shout! matrix[1][2]
+    # Reassign the entire array structure
+    matrix = [
+        [1, 1, 1],
+        [2, 2, 2]
+    ]
 
+    shout! matrix[1][2] # Prints 2
     return 0
 }
 

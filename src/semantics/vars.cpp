@@ -396,6 +396,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   arrAccessInfo->hasError = hasError;
   arrAccessInfo->isHeap = arrSymbol->isHeap;
   arrAccessInfo->isDheap = arrSymbol->isDheap;
+  arrAccessInfo->sizePerDimensions = arrSymbol->sizePerDimensions;
 
   metaData[arrExpr] = arrAccessInfo;
 }

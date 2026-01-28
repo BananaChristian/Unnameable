@@ -51,6 +51,10 @@ void Semantics::walkArrayStatement(Node *node) {
       if (isIntegerConstant(len.get())) {
         auto size = getIntegerConstant(len.get());
         declSizePerDim.push_back(size);
+      } else {
+        // Push a place holder to shut the counter up
+        declSizePerDim.push_back(0);
+        logInternal("Detected dynamic dimension for '" + arrayName + "'");
       }
       // Look into a dynamic
     }

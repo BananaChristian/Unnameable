@@ -239,8 +239,11 @@ void IRGenerator::generateArrayStatement(Node *node) {
     // If we have content, set flag to true and store pointer.
     // If no content (and it's nullable), it's effectively null
     // (is_present=false).
-    llvm::Value *isPresent =
-        funcBuilder.getInt1(arrStmt->array_content != nullptr);
+    bool isInitialized = (arrStmt->array_content != nullptr);
+    bool isExplicitNull = isInitialized && dynamic_cast<NullLiteral *>(
+                                               arrStmt->array_content.get());
+
+    llvm::Value *isPresent = funcBuilder.getInt1(isInitialized&&!isExplicitNull);
 
     // Create the struct value
     llvm::Value *boxVal = llvm::UndefValue::get(finalVarType);

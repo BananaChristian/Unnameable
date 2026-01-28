@@ -5,8 +5,6 @@
 #include <string>
 #include <unordered_set>
 
-#define CPPREST_FORCE_REBUILD
-
 #define COLOR_RESET "\033[0m"
 #define COLOR_RED "\033[31m"
 
@@ -287,8 +285,11 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     finalType.isPointer = firstType.isPointer;
     finalType.isRef = firstType.isRef;
 
-    // Pretty print name (non-essential)
-    finalType.resolvedName = "arr[" + firstType.resolvedName + "]";
+    if (firstType.isArray) {
+      finalType.resolvedName = firstType.resolvedName;
+    } else {
+      finalType.resolvedName = "arr[" + firstType.resolvedName + "]";
+    }
 
     return finalType;
   }
