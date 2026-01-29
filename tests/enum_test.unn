@@ -1,10 +1,10 @@
-enum class HttpStatus{
+enum HttpStatus{
     OK=200,
     NotFound=404,
     InternalServerError=500
 }
 
-func get_http_code(HttpStatus status):int{
+func get_http_code(HttpStatus status):i32{
     if(status==HttpStatus::OK){
         return 200;
     }elif(status==HttpStatus::NotFound){
