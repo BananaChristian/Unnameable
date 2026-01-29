@@ -84,15 +84,6 @@ void StubGen::serializeResolvedType(std::ostream &out, const ResolvedType &t)
     write_u8(out, t.isRef ? 1 : 0);
     write_u8(out, t.isNull ? 1 : 0);
     write_u8(out, t.isArray ? 1 : 0);
-
-    // Inner type prescence
-    uint8_t hasInner = (t.innerType != nullptr) ? 1 : 0;
-    write_u8(out, hasInner);
-
-    if (hasInner)
-    {
-        serializeResolvedType(out, *t.innerType);
-    }
 }
 
 void StubGen::serializeParamTypes(std::ostream &out, const std::vector<std::pair<ResolvedType, std::string>> &params)

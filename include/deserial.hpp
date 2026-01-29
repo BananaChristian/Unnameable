@@ -52,7 +52,6 @@ struct ImportedType
     bool isRef = false;
     bool isNull = false;
     bool isArray = false;
-    std::shared_ptr<ImportedType> innerType;
 };
 
 enum class ImportedStorageType

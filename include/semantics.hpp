@@ -58,7 +58,6 @@ struct ResolvedType {
   bool isRef = false;
   bool isNull = false;
   bool isArray = false;
-  std::shared_ptr<ResolvedType> innerType;
 };
 
 struct MemberInfo {

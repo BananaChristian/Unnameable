@@ -2088,7 +2088,6 @@ ResolvedType Semantics::isPointerType(ResolvedType t) {
     type.resolvedName = baseName;
     type.kind = baseType;
     type.isArray = t.isArray;
-    type.innerType = t.innerType;
     type.isPointer = isPtr;
     type.isNull = t.isNull;
     type.isRef = false; // A pointer cannot be a pointer
@@ -2123,7 +2122,6 @@ ResolvedType Semantics::isRefType(ResolvedType t) {
     type.isRef = isRef;
     type.resolvedName = baseName;
     type.isArray = t.isArray;
-    type.innerType = t.innerType;
     type.isPointer = false; // A reference cannot be a pointer
 
     return type;

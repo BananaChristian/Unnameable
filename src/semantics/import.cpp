@@ -11,15 +11,6 @@ Semantics::convertImportedTypetoResolvedType(const ImportedType &importType) {
   type.isNull = importType.isNull;
   type.isArray = importType.isArray;
 
-  if (importType.innerType) {
-    const ImportedType &innerImportedType = *importType.innerType;
-    ResolvedType innerResolvedType =
-        convertImportedTypetoResolvedType(innerImportedType);
-    type.innerType = std::make_shared<ResolvedType>(innerResolvedType);
-  } else {
-    type.innerType = nullptr;
-  }
-
   return type;
 }
 
