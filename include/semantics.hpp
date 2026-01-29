@@ -10,8 +10,6 @@
 #include <string>
 #include <typeindex>
 
-#define CPPREST_FORCE_REBUILD
-
 // Type system tracker
 enum class DataType {
   I8,    // 8 BIT signed integer
@@ -295,7 +293,6 @@ public:
 
 private:
   bool insideFunction = false;
-  bool insideBehavior = false;
   bool insideComponent = false;
   bool insideRecord = false;
   bool insideSeal = false;
@@ -336,7 +333,6 @@ private:
 
   // Walking the component functions declaration
   void walkRecordStatement(Node *node);
-  void walkBehaviorStatement(Node *node);
   void walkComponentStatement(Node *node);
   void walkNewComponentExpression(Node *node);
   void walkInitConstructor(Node *node);
@@ -417,9 +413,6 @@ private:
 
   // Walking the shout statement
   void walkShoutStatement(Node *node);
-
-  // Walking Qualify statement
-  void walkQualifyStatement(Node *node);
 
   void walkFunctionParameters(Node *node);
 

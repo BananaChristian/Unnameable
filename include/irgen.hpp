@@ -70,7 +70,6 @@ private:
   const llvm::DataLayout *layout;
   Semantics &semantics;
   size_t totalHeapSize;
-  bool mainMarker = false;
 
   llvm::BasicBlock *heapInitFnEntry = nullptr;
   void setupTargetLayout();
@@ -112,8 +111,7 @@ private:
   // Shout statement generator
   void generateShoutStatement(Node *node);
   void generateAllocatorInterface(Node *node);
-  void generateQualifyStatement(Node *node);
-
+  
   // GENERATOR FUNCTIONS FOR EXPRESSIONS
   llvm::Value *generateInfixExpression(Node *node);
   llvm::Value *generatePrefixExpression(Node *node);

@@ -88,15 +88,6 @@ void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program) {
 
   // Look for the main function if the user qualified the function
   llvm::Function *mainFn = module->getFunction("main");
-  if (!mainFn) {
-    if (mainMarker) {
-      throw std::runtime_error("You marked this file with qualified this file "
-                               "to be main but did not define a main function");
-    } else {
-      // No main expected, skip
-      return;
-    }
-  }
 
   llvm::BasicBlock &entryBlock = mainFn->getEntryBlock();
   llvm::IRBuilder<> tmpBuilder(&entryBlock, entryBlock.begin());
@@ -582,8 +573,6 @@ void IRGenerator::registerGeneratorFunctions() {
       &IRGenerator::generateArrayStatement;
   generatorFunctionsMap[typeid(ShoutStatement)] =
       &IRGenerator::generateShoutStatement;
-  generatorFunctionsMap[typeid(QualifyStatement)] =
-      &IRGenerator::generateQualifyStatement;
   generatorFunctionsMap[typeid(InstantiateStatement)] =
       &IRGenerator::generateInstantiateStatement;
   generatorFunctionsMap[typeid(SealStatement)] =

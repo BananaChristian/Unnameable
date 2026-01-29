@@ -450,8 +450,7 @@ void Semantics::walkFunctionExpression(Node *node) {
       DataType::UNKNOWN, "unknown"}; // Initially unknown return type
 
   // Inserting function symbol into current scope early for recursion
-  bool insideMemberContext =
-      insideBehavior || insideComponent || insideSeal || insideAllocator;
+  bool insideMemberContext = insideComponent || insideSeal || insideAllocator;
   if (!insideMemberContext) {
     logInternal("Inserting Function '" + funcName + "' into Global Scope");
     symbolTable[0][funcName] = funcInfo;
@@ -620,7 +619,7 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   // Updating the symbol table with final function info
   funcInfo->isDefined = true;
-  if (!insideBehavior && !insideComponent && !insideSeal &&
+  if (!insideComponent && !insideSeal &&
       !insideAllocator) // If we arent inside a behavior,component or seal we
                         // place in the global scope
   {
@@ -701,16 +700,6 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
 
   bool isExportable = funcDeclrStmt->isExportable;
-
-  if (isExportable) {
-    if (!insideBehavior) {
-      logSemanticErrors("Exportable function declarations must only be inside "
-                        "behavior blocks",
-                        funcDeclrStmt->function_name->expression.line,
-                        funcDeclrStmt->function_name->expression.column);
-      hasError = true;
-    }
-  }
 
   if (insideFunction) {
     logSemanticErrors("Nested function declarations are prohibited",
@@ -905,24 +894,6 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   callSymbol->isNullable = callSymbolInfo->isNullable;
 
   metaData[funcCall] = callSymbol;
-}
-
-void Semantics::walkQualifyStatement(Node *node) {
-  auto qualifyStmt = dynamic_cast<QualifyStatement *>(node);
-  if (!qualifyStmt)
-    return;
-
-  auto qualifyName = qualifyStmt->expr->expression.TokenLiteral;
-  auto line = qualifyStmt->expr->expression.line;
-  auto col = qualifyStmt->expr->expression.column;
-
-  // Checking if the name main has been used anywhere
-  // Looking through the symbolTable
-  auto mainSym = resolveSymbolInfo(qualifyName);
-  if (mainSym) {
-    logSemanticErrors("Already used '" + qualifyName + "'", line, col);
-    return;
-  }
 }
 
 void Semantics::walkShoutStatement(Node *node) {

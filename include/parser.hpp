@@ -170,9 +170,6 @@ private:
   // Parsing use statements
   std::unique_ptr<Statement> parseUseStatement();
 
-  // Parsing behavior statements
-  std::unique_ptr<Statement> parseBehaviorStatement();
-
   // Parsing record statements
   std::unique_ptr<Statement> parseRecordStatement();
 
@@ -184,9 +181,6 @@ private:
 
   // Parsing array statements
   std::unique_ptr<Statement> parseArrayStatement();
-
-  // Parsing the qualify statement
-  std::unique_ptr<Statement> parseQualifyStatement();
 
   // Parsing the merge statement
   std::unique_ptr<Statement> parseMergeStatement();

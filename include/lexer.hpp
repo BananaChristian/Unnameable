@@ -26,7 +26,6 @@ class Lexer {
       {"self", TokenType::SELF},
       {"new", TokenType::NEW},
       {"record", TokenType::RECORD},
-      {"behavior", TokenType::BEHAVIOR},
       {"use", TokenType::USE},
       {"init", TokenType::INIT},
 
@@ -104,8 +103,7 @@ class Lexer {
 
       {"export", TokenType::EXPORT},
       {"import", TokenType::IMPORT},
-      {"link", TokenType::LINK},
-      {"qualify", TokenType::QUALIFY}};
+      {"link", TokenType::LINK}};
 
 public:
   Lexer(const std::string &sourceCode, ErrorHandler &handler);

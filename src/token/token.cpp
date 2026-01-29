@@ -87,8 +87,7 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: COMPONENT";
   case TokenType::SELF:
     return "Token Type: SELF";
-  case TokenType::BEHAVIOR:
-    return "Token Type: BEHAVIOR";
+
   case TokenType::NEW:
     return "Token Type: NEW";
   case TokenType::RECORD:
@@ -251,8 +250,6 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: SEAL";
   case TokenType::SHOUT:
     return "Token Type: SHOUT";
-  case TokenType::QUALIFY:
-    return "Token Type: QUALIFY";
 
   case TokenType::CAST:
     return "Token Type: CAST";

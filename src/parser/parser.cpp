@@ -72,16 +72,6 @@ std::unique_ptr<Statement> Parser::parseStatement() {
   return nullptr;
 }
 
-// _____________DIRECTIVES______________________
-std::unique_ptr<Statement> Parser::parseQualifyStatement() {
-  Token qualify_token = currentToken();
-  advance(); // Consume the qualify token
-
-  std::unique_ptr<Expression> expr = parseIdentifier();
-
-  return std::make_unique<QualifyStatement>(qualify_token, std::move(expr));
-}
-
 std::unique_ptr<Statement> Parser::parseImportStatement() {
   Token import_token = currentToken();
   advance();
@@ -381,8 +371,6 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::BREAK] = &Parser::parseBreakStatement;
   StatementParseFunctionsMap[TokenType::CONTINUE] =
       &Parser::parseContinueStatement;
-  StatementParseFunctionsMap[TokenType::QUALIFY] =
-      &Parser::parseQualifyStatement;
   StatementParseFunctionsMap[TokenType::LINK] = &Parser::parseLinkStatement;
   StatementParseFunctionsMap[TokenType::IMPORT] = &Parser::parseImportStatement;
   StatementParseFunctionsMap[TokenType::SHOUT] = &Parser::parseShoutStatement;
@@ -439,8 +427,6 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::COMPONENT] =
       &Parser::parseComponentStatement;
-  StatementParseFunctionsMap[TokenType::BEHAVIOR] =
-      &Parser::parseBehaviorStatement;
   StatementParseFunctionsMap[TokenType::RECORD] = &Parser::parseRecordStatement;
   StatementParseFunctionsMap[TokenType::USE] = &Parser::parseUseStatement;
   StatementParseFunctionsMap[TokenType::INIT] =

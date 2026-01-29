@@ -146,8 +146,6 @@ void Semantics::registerWalkerFunctions() {
 
   // Walker registration for the component system
   walkerFunctionsMap[typeid(RecordStatement)] = &Semantics::walkRecordStatement;
-  walkerFunctionsMap[typeid(BehaviorStatement)] =
-      &Semantics::walkBehaviorStatement;
   walkerFunctionsMap[typeid(ComponentStatement)] =
       &Semantics::walkComponentStatement;
   walkerFunctionsMap[typeid(NewComponentExpression)] =
@@ -166,10 +164,6 @@ void Semantics::registerWalkerFunctions() {
 
   // Walker registration for the shout system
   walkerFunctionsMap[typeid(ShoutStatement)] = &Semantics::walkShoutStatement;
-
-  // Wlaker registration for the qualify statement
-  walkerFunctionsMap[typeid(QualifyStatement)] =
-      &Semantics::walkQualifyStatement;
   // Walker registrartion for generic system
   walkerFunctionsMap[typeid(GenericStatement)] =
       &Semantics::walkGenericStatement;

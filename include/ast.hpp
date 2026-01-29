@@ -974,32 +974,6 @@ struct RecordStatement : Statement {
         fields(std::move(record_fields)){};
 };
 
-// Behavior statement struct
-struct BehaviorStatement : Statement {
-  bool isExportable;
-  Token behavior_token;
-  std::unique_ptr<Expression> behaviorBlockName;
-  std::vector<std::unique_ptr<Statement>> functions;
-  std::string toString() override {
-    std::string exportStr = isExportable ? "export " : "";
-    std::string result =
-        exportStr + "Behavior statement: " + behaviorBlockName->toString() +
-        " {\n";
-    for (const auto &func : functions) {
-      result += "  " + func->toString() + "\n";
-    }
-    result += "}";
-    return result;
-  }
-
-  BehaviorStatement(bool exportable, Token behavior,
-                    std::unique_ptr<Expression> behavior_name,
-                    std::vector<std::unique_ptr<Statement>> funcs)
-      : Statement(behavior), isExportable(exportable), behavior_token(behavior),
-        behaviorBlockName(std::move(behavior_name)),
-        functions(std::move(funcs)){};
-};
-
 // Init statement
 struct InitStatement : Statement {
   Token init_token;
@@ -1855,19 +1829,6 @@ struct ArraySubscript : Expression {
                  std::vector<std::unique_ptr<Expression>> ids)
       : Expression(ident->expression), identifier(std::move(ident)),
         index_exprs(std::move(ids)){};
-};
-
-// Qualify statement
-struct QualifyStatement : Statement {
-  Token qualify_key;
-  std::unique_ptr<Expression> expr;
-  std::string toString() override {
-    return "Qualify Statement: " + qualify_key.TokenLiteral + " " +
-           expr->toString();
-  }
-
-  QualifyStatement(Token qualify, std::unique_ptr<Expression> main)
-      : Statement(qualify), qualify_key(qualify), expr(std::move(main)){};
 };
 
 // Merge statement

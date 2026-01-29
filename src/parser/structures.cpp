@@ -321,7 +321,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
                     currentToken().type == TokenType::REF) ||
                    (currentToken().type == TokenType::MUT ||
                     currentToken().type == TokenType::CONST);
-                   
+
     if (isValid) {
       stmt = parseStatement();
       privateData.push_back(std::move(stmt));
@@ -330,14 +330,11 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
 
     switch (currentToken().type) {
     case TokenType::USE:
-      if (nextToken().type == TokenType::BEHAVIOR) {
-        stmt = parseUseStatement();
-        usedBehaviorBlocks.push_back(std::move(stmt));
-      } else if (nextToken().type == TokenType::RECORD) {
+      if (nextToken().type == TokenType::RECORD) {
         stmt = parseUseStatement();
         usedDataBlocks.push_back(std::move(stmt));
       } else {
-        logError("Expected 'use data' or 'use behavior',but got '" +
+        logError("Expected 'use record',but got '" +
                  nextToken().TokenLiteral + "'");
         advance(); // skip the unexpected token
       }
@@ -373,8 +370,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       break;
 
     default:
-      logError("Invalid statement encountered inside component '" +
-               currentToken().TokenLiteral + "'");
+      logError("Invalid statement encountered inside component");
       advance();
       continue;
     }
@@ -451,8 +447,7 @@ std::unique_ptr<Statement> Parser::parseUseStatement() {
   advance(); // Consume the use keyword token
 
   Token kind_token;
-  if (currentToken().type == TokenType::RECORD ||
-      currentToken().type == TokenType::BEHAVIOR) {
+  if (currentToken().type == TokenType::RECORD) {
     kind_token = currentToken();
     advance(); // Consume 'record' or 'behavior'
   } else {
@@ -479,45 +474,6 @@ std::unique_ptr<Statement> Parser::parseUseStatement() {
   }
 
   return std::make_unique<UseStatement>(use_token, kind_token, std::move(expr));
-}
-
-// Parsing behavior statement
-std::unique_ptr<Statement> Parser::parseBehaviorStatement() {
-  bool isExportable = false;
-  std::vector<std::unique_ptr<Statement>> functions;
-  Token behavior_token = currentToken();
-  advance(); // Consuming the behavior keyword token
-  if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected behavior block name but got '" +
-             currentToken().TokenLiteral + "'");
-  }
-  auto behavior_name = parseIdentifier();
-  if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected { to start behavior block");
-  }
-  advance(); // Consuming the behavior lparen
-  while (currentToken().type != TokenType::RBRACE &&
-         currentToken().type != TokenType::END) {
-    auto funcStmt = parseStatement();
-    if (!funcStmt) {
-      logError("Failed to parse function statement");
-      continue;
-    }
-    if (auto func = dynamic_cast<FunctionStatement *>(funcStmt.get())) {
-      functions.push_back(std::move(funcStmt));
-    } else {
-      logError("Only function statements allowed inside behavior block");
-    }
-  }
-  if (currentToken().type != TokenType::RBRACE) {
-    logError("Expected '}' to close behavior block but got '" +
-             currentToken().TokenLiteral + "'");
-  }
-  advance();
-
-  return std::make_unique<BehaviorStatement>(isExportable, behavior_token,
-                                             std::move(behavior_name),
-                                             std::move(functions));
 }
 
 //______________________RECORDS____________________
@@ -639,9 +595,6 @@ std::unique_ptr<Statement> Parser::parseExportStatement() {
     }
   } else if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get())) {
     recordStmt->isExportable = true;
-  } else if (auto behaviorStmt =
-                 dynamic_cast<BehaviorStatement *>(stmt.get())) {
-    behaviorStmt->isExportable = true;
   } else if (auto compStmt = dynamic_cast<ComponentStatement *>(stmt.get())) {
     compStmt->isExportable = true;
   } else if (auto enumStmt = dynamic_cast<EnumStatement *>(stmt.get())) {

@@ -617,12 +617,3 @@ void IRGenerator::generateSealStatement(Node *node) {
     generateStatement(stmt.get());
   }
 }
-
-void IRGenerator::generateQualifyStatement(Node *node) {
-  auto qualifyStmt = dynamic_cast<QualifyStatement *>(node);
-
-  if (!qualifyStmt)
-    return;
-
-  mainMarker = true;
-}
