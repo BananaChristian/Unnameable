@@ -76,7 +76,7 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
     return out;
   }
   // Prepare pending free call (create CallInst but don't insert)
-  if (sym->isHeap) {
+  if (sym->isSage) {
     bool shouldFree = identExpr->isKiller ||
                       ((sym->lastUseNode == identExpr) && (sym->refCount == 0));
     if (shouldFree) {
@@ -94,7 +94,7 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
         out.pendingFrees.push_back(callInst);
       }
     }
-  } else if (sym->isDheap) {
+  } else if (sym->isHeap) {
     // Determine if we should trigger a free
     bool shouldFree = identExpr->isKiller ||
                       ((sym->lastUseNode == identExpr) && (sym->refCount == 0));

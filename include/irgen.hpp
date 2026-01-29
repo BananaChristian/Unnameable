@@ -77,7 +77,7 @@ private:
 
   // GENERATOR FUNCTIONS FOR STATEMENTS
   void generateLetStatement(Node *node);
-  void generateDheapStatement(Node *node);
+  void generateHeapStatement(Node *node);
   void generateReferenceStatement(Node *node);
   void generatePointerStatement(Node *node);
   void generateExpressionStatement(Node *node);
@@ -207,7 +207,7 @@ private:
                    const std::vector<std::unique_ptr<Expression>> &params,
                    size_t offset);
   // For normal variables
-  void generateGlobalHeapLet(LetStatement *letStmt,
+  void generateGlobalSageLet(LetStatement *letStmt,
                              std::shared_ptr<SymbolInfo> sym,
                              const std::string &letName);
   void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
@@ -216,14 +216,14 @@ private:
   llvm::Value *generateComponentInit(LetStatement *letStmt,
                                      std::shared_ptr<SymbolInfo> sym,
                                      llvm::StructType *structTy, bool isHeap);
-  void generateGlobalComponentHeapInit(LetStatement *letStmt,
+  void generateGlobalComponentSageInit(LetStatement *letStmt,
                                        std::shared_ptr<SymbolInfo> sym,
                                        const std::string &letName,
                                        llvm::StructType *structType);
   // Helper for allocating dheap storage
   llvm::Value *allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName);
-  llvm::Value *allocateRuntimeDheap(std::shared_ptr<SymbolInfo> sym,
+  llvm::Value *allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
                                     llvm::Value *size,
                                     const std::string &varName);
   void freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym);
@@ -231,10 +231,10 @@ private:
   void flattenArrayLiteral(ArrayLiteral *arrLit,
                           std::vector<llvm::Constant *> &flatElems,
                           llvm::Type *&baseType);
-  llvm::Value *allocateHeapStorage(std::shared_ptr<SymbolInfo> sym,
+  llvm::Value *allocateSageStorage(std::shared_ptr<SymbolInfo> sym,
                                    const std::string &varName,
                                    llvm::StructType *structTy);
-  void freeHeapStorage(uint64_t size, uint64_t alignSize,
+  void freeSageStorage(uint64_t size, uint64_t alignSize,
                        const std::string &letName);
   llvm::Value *generateIntegerLiteral(const std::string &literalStr,
                                       uint32_t bitWidth, bool isSigned);

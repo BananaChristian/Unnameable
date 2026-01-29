@@ -50,8 +50,8 @@ void Layout::registerComponentCalculatorFns() {
       &Layout::calculateArrayStatementSize;
   calculatorFnsMap[typeid(PointerStatement)] =
       &Layout::calculatePointerStatementSize;
-  calculatorFnsMap[typeid(DheapStatement)] =
-      &Layout::calculateDheapStatementSize;
+  calculatorFnsMap[typeid(HeapStatement)] =
+      &Layout::calculateHeapStatementSize;
   calculatorFnsMap[typeid(WhileStatement)] =
       &Layout::calculateWhileStatementSize;
   calculatorFnsMap[typeid(ForStatement)] = &Layout::calculateForStatementSize;
@@ -98,7 +98,7 @@ void Layout::calculateLetStatementSize(Node *node) {
   }
 
   // Getting if it is heap allocated
-  if (!letStmt->isHeap && !letStmt->isDheap) {
+  if (!letStmt->isSage && !letStmt->isHeap) {
     compSize = 0;
     return;
   }
@@ -220,7 +220,7 @@ void Layout::calculateArrayStatementSize(Node *node) {
   arrSym->alignment = elementAlign;
 
   //  Pool Addition
-  if (arrSym->isHeap) {
+  if (arrSym->isSage) {
     totalHeapSize += totalByteSize;
     logInternal("SAGE Array '" + name + "' -> Total Elements (" +
                 std::to_string(totalElements) + ")*elementSize (" +
@@ -229,8 +229,8 @@ void Layout::calculateArrayStatementSize(Node *node) {
 
     logInternal("Current Global SAGE Pool (totalHeapSize): " +
                 std::to_string(totalHeapSize) + " bytes");
-  } else if (arrSym->isDheap) {
-    logInternal("Dheap Array '" + name + "' Calculated: " +
+  } else if (arrSym->isHeap) {
+    logInternal("Heap Array '" + name + "' Calculated: " +
                 std::to_string(totalByteSize) + " bytes (skipped pool)");
   }
 }
@@ -247,7 +247,7 @@ void Layout::calculatePointerStatementSize(Node *node) {
   }
 
   auto ptrSym = ptrMeta->second;
-  if (!ptrSym->isHeap && !ptrSym->isDheap)
+  if (!ptrSym->isSage && !ptrSym->isHeap)
     return;
 
   llvm::Type *ptrType = llvm::PointerType::get(context, 0);
@@ -261,13 +261,13 @@ void Layout::calculatePointerStatementSize(Node *node) {
   totalHeapSize += compSize;
 }
 
-void Layout::calculateDheapStatementSize(Node *node) {
-  auto dheapStmt = dynamic_cast<DheapStatement *>(node);
-  if (!dheapStmt)
+void Layout::calculateHeapStatementSize(Node *node) {
+  auto heapStmt = dynamic_cast<HeapStatement *>(node);
+  if (!heapStmt)
     return;
 
   // Just gonna call the driver on whatever is wrapped
-  calculatorDriver(dheapStmt->stmt.get());
+  calculatorDriver(heapStmt->stmt.get());
 }
 
 void Layout::calculateBlockStatementMembersSize(Node *node) {

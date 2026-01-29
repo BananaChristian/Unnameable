@@ -282,7 +282,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   }
 
   // Heap scalar: variableAddr is a T* (runtime pointer). Load T from it.
-  if (sym->isHeap) {
+  if (sym->isSage) {
     llvm::Type *elemTy = sym->llvmType;
     if (!elemTy)
       throw std::runtime_error("llvmType null for heap scalar '" + identName +
@@ -308,7 +308,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
               << ")\n";
     return loadedVal;
   }
-  if (sym->isDheap) {
+  if (sym->isHeap) {
     llvm::Type *elemTy = sym->llvmType;
     if (!elemTy)
       throw std::runtime_error("llvmType null for dheap scalar '" + identName +

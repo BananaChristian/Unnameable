@@ -108,9 +108,6 @@ func greet(string name): string {
     return name
 }
 
-func test(arr[i32] my_array): arr[i32]{
-    return [1,3]
-}
 ```
 
 The return type must correspond to what is being returned
@@ -442,7 +439,7 @@ Bitcasting reinterprets the raw bits of a value as a different type. The underly
 For example
 ```
 func test_memory_bitcast():void {
-    dheap float pi = 3.14
+    heap float pi = 3.14
     ptr float p_float -> addr pi
     ptr i32 p_int -> bitcast<ptr i32>(p_float)
     
@@ -747,22 +744,22 @@ Key features(This is all in theory as I havent yet done robust testing)
 - Predictability: No hidden memory spikes or pauses, allocation and freeing are deterministic
 - Compile-time safety: _Sentinel_ prevents out-of-order freeing without runtime checks
 
-## Heap raising
+## Sage raising
 
-Unnameable is using a custom memory model called (SAGE) a user might want some to manually promote some features to the SAGE heap themselves us
-They can do this using the `heap` keyword which is a heap promoter it will tell the compiler place it on the heap
+Unnameable is has a custom memory model called (SAGE) a user might want some to manually promote some features to the SAGE heap themselves us
+They can do this using the `sage` keyword which is a heap promoter it will tell the compiler place it on the sage heap
 Although it is only allowed on let statements(for now, I look to extend it to other declarations like pointers and arrays and so on) and has some special rules applying to it as seen below
 
 ```
-#Normal use of the heap promoter
-heap i32 x=10
-heap mut i32 y=67
-heap const i32 z=78
+#Normal use of the sage promoter
+sage i32 x=10
+sage mut i32 y=67
+sage const i32 z=78
 
-heap i32 x #This will not be allowed as the compiler will ask for an initialization(If its important to be placed on the heap atleast initialize it)
+sage i32 x #This will not be allowed as the compiler will ask for an initialization(If its important to be placed on the heap atleast initialize it)
 
-heap int? x=null #This will be rejected by the compiler as we dont want to account for nulls in SAGE
-heap int? x #Same story not allowed
+sage int? x=null #This will be rejected by the compiler as we dont want to account for nulls in SAGE
+sage int? x #Same story not allowed
 
 #Freeing order of heap raised values
 ##The compiler will block the code below as it violates LIFO(Last In First Out) rules
@@ -770,19 +767,19 @@ z was the last to be declared and so should be freed first and not y
 The error message looks like this
 
 [SENTINEL ERROR] Non LIFO free detected, Tried to free 'y' which is not on top of the SAGE stack on line: 4, column: 1##
-heap mut i32 y=10
-heap mut i16 z=11i16
+sage mut i32 y=10
+sage mut i16 z=11i16
 
 y=y+1
 z=z+1i16
 
 ```
 
-NOTE: I am still struggling with heap raised pointers heck this entire SAGE thing mostly paired with the compiler's last use analysis as I am experiencing memory leaks and who knows what I havent seen so yeah, It is really not ready
+NOTE: I am still struggling with sage raised pointers heck this entire SAGE thing mostly paired with the compiler's last use analysis as I am experiencing memory leaks and who knows what I havent seen so yeah, It is really not ready
 
 ## Dynamic heap raising and custom allocators
 
-Unnameanle allows the user to create their own custom allocators and plug them in for the compiler to use them
+Unnameable allows the user to create their own custom allocators and plug them in for the compiler to use them
 It uses allocator blocks where the user must satisfy the allocator contract, the contract exists because the compiler calls the corresponding allocator and deallocator in a certain way so it expects a standard signature
 This signature is the same signature as the one used by `malloc` and `free` in C. the user must satisfy this for the compiler to allow this custom allocator
 The compiler doesnt care about your logic in these functions it just needs you to fulfill that signature
@@ -804,7 +801,7 @@ Now you can use this custom allocator by doing a dynamic heap raise using the `d
 This will tell the compiler that you wanna use the dynamic heap but using a certain allocator which you must tell the compiler as seen below
 
 ```
-dheap<MyAllocator> i32 x=100
+heap<MyAllocator> i32 x=100
 ```
 
 So the compiler will allocate using the allocator function you provided and free using the deallocater function that u provided
@@ -812,7 +809,7 @@ The compiler will still use its last use analysis to inject your free to avoid m
 Now one last thing to add is that there is a default dheap allocator if you do not specify the compiler will use a default allocator I added and the regular free for example
 
 ```
-dheap i32 x=100 #This is GPA under the hood
+heap i32 x=100 #This is GPA under the hood
 
 ```
 
@@ -831,7 +828,7 @@ Variables born **inside** a loop are considered **Residents**.
 ```unn
 while (counter > 0) {
     # Resident: Allocated every lap
-    dheap i32 lap_data = 999
+    heap i32 lap_data = 999
 
     shout! lap_data
     counter = counter - 1

@@ -35,7 +35,7 @@ private:
   // Component calculators
   void calculateLetStatementSize(Node *node);
   void calculateArrayStatementSize(Node *node);
-  void calculateDheapStatementSize(Node *node);
+  void calculateHeapStatementSize(Node *node);
   void calculatePointerStatementSize(Node *node);
   void calculateWhileStatementSize(Node *node);
   void calculateForStatementSize(Node *node);

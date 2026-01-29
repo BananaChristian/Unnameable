@@ -168,8 +168,8 @@ struct SymbolInfo {
   // Storage types
   StorageType storage;
 
-  bool isHeap = false;   // Sage heap flag
-  bool isDheap = false;  // Dynamic heap flag
+  bool isSage = false;   // Sage heap flag
+  bool isHeap = false;   // Dynamic heap flag
   std::string allocType; // The name of the allocator the dheap will use
 
   bool isRef = false;     // Reference flag
@@ -403,7 +403,7 @@ private:
 
   // Walking allocator interface
   void walkAllocatorInterface(Node *node);
-  void walkDheapStatement(Node *node);
+  void walkHeapStatement(Node *node);
 
   // Walking generics
   void walkGenericStatement(Node *node);

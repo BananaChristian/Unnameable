@@ -3,8 +3,8 @@
 
 std::unique_ptr<Statement> Parser::parseLetStatement() {
   bool isExportable = false;
+  bool isSage = false;
   bool isHeap = false;
-  bool isDheap = false;
   Mutability mutability = Mutability::IMMUTABLE;
   std::unique_ptr<Expression> type;
   bool isNullable = false;
@@ -54,7 +54,7 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
   }
 
   return std::make_unique<LetStatement>(
-      isExportable, isHeap, isDheap, mutability, std::move(type), ident_token,
+      isExportable, isSage, isHeap, mutability, std::move(type), ident_token,
       assign_token, std::move(value));
 }
 
@@ -105,8 +105,8 @@ std::unique_ptr<Statement> Parser::parseConstStatement() {
 }
 
 // Parse heap statement
-std::unique_ptr<Statement> Parser::parseHeapStatement() {
-  advance(); // consume 'heap'
+std::unique_ptr<Statement> Parser::parseSageStatement() {
+  advance(); // consume 'sage'
 
   if (currentToken().type == TokenType::RECORD) {
     logError("Cannot use 'heap' before a record");
@@ -118,45 +118,45 @@ std::unique_ptr<Statement> Parser::parseHeapStatement() {
     return nullptr;
 
   if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
-    if (letStmt->isDheap) {
-      logError("Cannot static heap raise an already dynamically heap raised "
+    if (letStmt->isHeap) {
+      logError("Cannot sage raise an already dynamically heap raised "
                "variable declaration");
       return nullptr;
     }
-    letStmt->isHeap = true;
+    letStmt->isSage = true;
   } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get())) {
-    if (arrStmt->isDheap) {
-      logError("Cannot static heap raise an already dynamically heap raised "
+    if (arrStmt->isHeap) {
+      logError("Cannot sage raise an already dynamically heap raised "
                "array declaration");
       return nullptr;
     }
-    arrStmt->isHeap = true;
+    arrStmt->isSage = true;
   } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get())) {
-    if (ptrStmt->isDheap) {
-      logError("Cannot static heap raise an already dynamically heap raised "
+    if (ptrStmt->isHeap) {
+      logError("Cannot sage raise an already dynamically heap raised "
                "pointer declaration");
       return nullptr;
     }
-    ptrStmt->isHeap = true;
+    ptrStmt->isSage = true;
   } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get())) {
-    if (refStmt->isDheap) {
-      logError("Cannot static heap raise an already dynamically heap raised "
+    if (refStmt->isHeap) {
+      logError("Cannot sage raise an already dynamically heap raised "
                "reference declaration");
       return nullptr;
     }
-    refStmt->isHeap = true;
+    refStmt->isSage = true;
   } else {
-    logError("'heap' applied to non supported statement");
+    logError("'sage' applied to non supported statement");
     return nullptr;
   }
 
   return stmt;
 }
 
-// Parse dheap statement
-std::unique_ptr<Statement> Parser::parseDHeapStatement() {
-  Token dheap_token = currentToken();
-  advance();
+// Parse heap statement
+std::unique_ptr<Statement> Parser::parseHeapStatement() {
+  Token heap_token = currentToken();
+  advance(); // Consume the 'heap' token
 
   std::unique_ptr<Expression> allocType;
 
@@ -174,46 +174,46 @@ std::unique_ptr<Statement> Parser::parseDHeapStatement() {
   std::unique_ptr<Statement> stmt = parseStatement();
 
   if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
-    if (letStmt->isHeap) {
-      logError("Cannot dynamic heap raise an already statically heap raised "
+    if (letStmt->isSage) {
+      logError("Cannot dynamic heap raise an already sage raised "
                "variable declaration");
       return nullptr;
     }
-    letStmt->isDheap = true;
+    letStmt->isHeap = true;
   } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get())) {
-    if (arrStmt->isHeap) {
-      logError("Cannot dynamic heap raise an already statically heap raised "
+    if (arrStmt->isSage) {
+      logError("Cannot dynamic heap raise an already sage raised "
                "array declaration");
       return nullptr;
     }
-    arrStmt->isDheap = true;
+    arrStmt->isHeap = true;
   } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get())) {
-    if (ptrStmt->isHeap) {
-      logError("Cannot dynamic heap raise an already statically heap raised "
+    if (ptrStmt->isSage) {
+      logError("Cannot dynamic heap raise an already sage raised "
                "pointer statement");
       return nullptr;
     }
-    ptrStmt->isDheap = true;
+    ptrStmt->isHeap = true;
   } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get())) {
-    if (refStmt->isHeap) {
-      logError("Cannot dynamic heap raise an already statically heap raised "
+    if (refStmt->isSage) {
+      logError("Cannot dynamic heap raise an already sage raised "
                "variable declaration");
       return nullptr;
     }
-    refStmt->isDheap = true;
+    refStmt->isHeap = true;
   } else {
-    logError("'dheap' applied to non supported statement");
+    logError("'heap' applied to non supported statement");
     return nullptr;
   }
 
-  return std::make_unique<DheapStatement>(dheap_token, std::move(allocType),
-                                          std::move(stmt));
+  return std::make_unique<HeapStatement>(heap_token, std::move(allocType),
+                                         std::move(stmt));
 }
 
 // Array statement parser
 std::unique_ptr<Statement> Parser::parseArrayStatement() {
+  bool isSage = false;
   bool isHeap = false;
-  bool isDheap = false;
   Mutability mutability = Mutability::IMMUTABLE;
 
   // Parse the array type (arr[...] with basic or custom type inside)
@@ -222,7 +222,6 @@ std::unique_ptr<Statement> Parser::parseArrayStatement() {
     return nullptr;
 
   // Parse the lengths
-
   // Optional single dimension [size]
   std::unique_ptr<Expression> lengthExpr = nullptr;
   std::vector<std::unique_ptr<Expression>> lengths;
@@ -264,14 +263,14 @@ std::unique_ptr<Statement> Parser::parseArrayStatement() {
   }
 
   return std::make_unique<ArrayStatement>(
-      isHeap, isDheap, mutability, std::move(arrTypeNode), std::move(lengths),
+      isSage, isHeap, mutability, std::move(arrTypeNode), std::move(lengths),
       std::move(ident), std::move(items));
 }
 
 // Reference statement parser
 std::unique_ptr<Statement> Parser::parseReferenceStatement() {
+  bool isSage = false;
   bool isHeap = false;
-  bool isDheap = false;
   Mutability mut = Mutability::IMMUTABLE;
   std::unique_ptr<Expression> type;
 
@@ -319,15 +318,15 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement() {
       return nullptr;
   }
 
-  return std::make_unique<ReferenceStatement>(isHeap, isDheap, ref_token, mut,
+  return std::make_unique<ReferenceStatement>(isSage, isHeap, ref_token, mut,
                                               std::move(type), std::move(ident),
                                               std::move(value));
 }
 
 // Pointer statement parser
 std::unique_ptr<Statement> Parser::parsePointerStatement() {
+  bool isSage = false;
   bool isHeap = false;
-  bool isDheap = false;
   Mutability mut = Mutability::IMMUTABLE;
   std::unique_ptr<Expression> type;
 
@@ -378,7 +377,7 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
       return nullptr;
   }
 
-  return std::make_unique<PointerStatement>(isHeap, isDheap, ptr_token, mut,
+  return std::make_unique<PointerStatement>(isSage, isHeap, ptr_token, mut,
                                             std::move(type), std::move(ident),
                                             std::move(value));
 }

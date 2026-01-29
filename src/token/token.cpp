@@ -259,10 +259,10 @@ std::string TokenTypeToLiteral(TokenType type) {
   case TokenType::BITCAST:
     return "Token Type: BITCAST";
 
+  case TokenType::SAGE:
+    return "Token Type: SAGE";
   case TokenType::HEAP:
     return "Token Type: HEAP";
-  case TokenType::DHEAP:
-    return "Token Type: DHEAP";
   case TokenType::ALLOCATOR:
     return "TokenType: ALLOCATOR";
   case TokenType::EXPORT:

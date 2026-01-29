@@ -105,8 +105,8 @@ private:
   std::unique_ptr<Statement> parseAssignmentStatement();
   std::unique_ptr<Statement> parseDereferenceAssignment();
   // Parsing heap statements
+  std::unique_ptr<Statement> parseSageStatement();
   std::unique_ptr<Statement> parseHeapStatement();
-  std::unique_ptr<Statement> parseDHeapStatement();
   // Parsing allocator statement
   std::unique_ptr<Statement> parseAllocatorStatement();
   // Parsing field assignment such as b.item=10

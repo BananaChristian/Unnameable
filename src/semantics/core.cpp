@@ -161,7 +161,7 @@ void Semantics::registerWalkerFunctions() {
 
   walkerFunctionsMap[typeid(AllocatorStatement)] =
       &Semantics::walkAllocatorInterface;
-  walkerFunctionsMap[typeid(DheapStatement)] = &Semantics::walkDheapStatement;
+  walkerFunctionsMap[typeid(HeapStatement)] = &Semantics::walkHeapStatement;
   walkerFunctionsMap[typeid(SealStatement)] = &Semantics::walkSealStatement;
 
   // Walker registration for the shout system

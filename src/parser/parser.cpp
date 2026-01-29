@@ -6,8 +6,6 @@
 #include <memory>
 #include <vector>
 
-#define CPPREST_FORCE_REBUILD
-
 //--------------PARSER CLASS CONSTRUCTOR-------------
 Parser::Parser(std::vector<Token> &tokenInput, ErrorHandler &handler)
     : tokenInput(tokenInput), errorHandler(handler), currentPos(0), nextPos(1) {
@@ -456,8 +454,8 @@ void Parser::registerStatementParseFns() {
       &Parser::parseInstantiateStatement;
 
   StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatement;
+  StatementParseFunctionsMap[TokenType::SAGE] = &Parser::parseSageStatement;
   StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
-  StatementParseFunctionsMap[TokenType::DHEAP] = &Parser::parseDHeapStatement;
   StatementParseFunctionsMap[TokenType::ALLOCATOR] =
       &Parser::parseAllocatorStatement;
   StatementParseFunctionsMap[TokenType::SEAL] = &Parser::parseSealStatement;

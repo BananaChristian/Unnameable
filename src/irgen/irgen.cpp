@@ -20,7 +20,6 @@
 #include "semantics.hpp"
 
 #include <iostream>
-#define CPPREST_FORCE_REBUILD
 
 IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     : semantics(semantics), totalHeapSize(totalHeap), context(),
@@ -536,8 +535,8 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
 void IRGenerator::registerGeneratorFunctions() {
   generatorFunctionsMap[typeid(LetStatement)] =
       &IRGenerator::generateLetStatement;
-  generatorFunctionsMap[typeid(DheapStatement)] =
-      &IRGenerator::generateDheapStatement;
+  generatorFunctionsMap[typeid(HeapStatement)] =
+      &IRGenerator::generateHeapStatement;
   generatorFunctionsMap[typeid(ReferenceStatement)] =
       &IRGenerator::generateReferenceStatement;
   generatorFunctionsMap[typeid(PointerStatement)] =

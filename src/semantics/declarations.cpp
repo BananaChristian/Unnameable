@@ -24,8 +24,8 @@ void Semantics::walkArrayStatement(Node *node) {
 
   bool hasError = false;
   bool isInitialized = false;
+  bool isSage = arrStmt->isSage;
   bool isHeap = arrStmt->isHeap;
-  bool isDheap = arrStmt->isDheap;
 
   ResolvedType arrayType = inferNodeDataType(arrStmt->arrayType.get());
   logInternal("Array Type: " + arrayType.resolvedName);
@@ -96,8 +96,8 @@ void Semantics::walkArrayStatement(Node *node) {
       nullArray->isConstant = isConstant;
       nullArray->hasError = hasError;
       nullArray->isInitialized = isInitialized;
+      nullArray->isSage = isSage;
       nullArray->isHeap = isHeap;
-      nullArray->isDheap = isDheap;
       nullArray->sizePerDimensions = declSizePerDim;
       nullArray->lastUseNode = arrStmt;
 
@@ -152,8 +152,8 @@ void Semantics::walkArrayStatement(Node *node) {
   arrayInfo->isConstant = isConstant;
   arrayInfo->isMutable = isMutable;
   arrayInfo->hasError = hasError;
+  arrayInfo->isSage = isSage;
   arrayInfo->isHeap = isHeap;
-  arrayInfo->isDheap = isDheap;
   arrayInfo->sizePerDimensions = declSizePerDim;
   arrayInfo->lastUseNode = arrStmt;
   arrayInfo->isInitialized = isInitialized;
@@ -182,8 +182,8 @@ void Semantics::walkPointerStatement(Node *node) {
   bool hasError = false;
   bool isMutable = false;
   bool isConstant = false;
+  bool isSage = ptrStmt->isSage;
   bool isHeap = ptrStmt->isHeap;
-  bool isDheap = ptrStmt->isDheap;
   bool isNullable = false;
 
   ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
@@ -235,8 +235,8 @@ void Semantics::walkPointerStatement(Node *node) {
 
     // Exit
     auto ptrInfo = std::make_shared<SymbolInfo>();
+    ptrInfo->isSage = isSage;
     ptrInfo->isHeap = isHeap;
-    ptrInfo->isDheap = isDheap;
     ptrInfo->lastUseNode = ptrStmt;
     ptrInfo->type = ptrType;
     ptrInfo->hasError = hasError;
@@ -358,22 +358,22 @@ void Semantics::walkPointerStatement(Node *node) {
   StorageType pointerStorage;
   if (isGlobalScope()) {
     pointerStorage = StorageType::GLOBAL;
-  } else if (isHeap) {
+  } else if (isSage) {
     pointerStorage = StorageType::HEAP;
     ptrPopCount = targetSymbol->popCount + 1;
     logInternal(
         "Pointer '" + ptrName + "' points to '" + targetName +
         "' | target->popCount: " + std::to_string(targetSymbol->popCount) +
         " | new ptr->popCount: " + std::to_string(ptrPopCount));
-  } else if (isDheap) {
+  } else if (isHeap) {
     pointerStorage = StorageType::HEAP;
   } else {
     pointerStorage = StorageType::STACK;
   }
 
   auto ptrInfo = std::make_shared<SymbolInfo>();
+  ptrInfo->isSage = isSage;
   ptrInfo->isHeap = isHeap;
-  ptrInfo->isDheap = isDheap;
   ptrInfo->lastUseNode = ptrStmt;
   ptrInfo->type = ptrType;
   ptrInfo->hasError = hasError;
@@ -399,8 +399,8 @@ void Semantics::walkLetStatement(Node *node) {
 
   // --- Initial flags ---
   bool isNullable = type->isNullable;
+  bool isSage = letStmt->isSage;
   bool isHeap = letStmt->isHeap;
-  bool isDheap = letStmt->isDheap;
   bool isDefinitelyNull = false;
   bool isInitialized = false;
   bool hasError = false;
@@ -510,7 +510,7 @@ void Semantics::walkLetStatement(Node *node) {
 
   if (isGlobalScope()) {
     // Force Const for stack variables
-    if (!isConstant && !isDheap && !isHeap) {
+    if (!isConstant && !isHeap && !isSage) {
       logSemanticErrors("Global stack variable '" + letName +
                             "' must be declared as 'const'",
                         letStmt->ident_token.line, letStmt->ident_token.column);
@@ -611,10 +611,11 @@ void Semantics::walkLetStatement(Node *node) {
   }
 
   // Heap and Dheap checks
-  if (isHeap || isDheap) {
+  if (isSage || isHeap) {
     if (!isInitialized) {
       logSemanticErrors("Cannot promote uninitialized variable '" +
-                            letStmt->ident_token.TokenLiteral + "' to the heap",
+                            letStmt->ident_token.TokenLiteral +
+                            "' to the heap or sage",
                         letStmt->ident_token.line, letStmt->ident_token.column);
       hasError = true;
     }
@@ -639,10 +640,10 @@ void Semantics::walkLetStatement(Node *node) {
   // Storing the scope information
   if (isGlobalScope()) {
     letStorageType = StorageType::GLOBAL;
-  } else if (isHeap) {
+  } else if (isSage) {
     letStorageType = StorageType::HEAP;
     popCount = 1;
-  } else if (isDheap) {
+  } else if (isHeap) {
     letStorageType = StorageType::HEAP;
   } else {
     letStorageType = StorageType::STACK;
@@ -656,8 +657,8 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->isConstant = isConstant;
   letInfo->isInitialized = isInitialized;
   letInfo->isDefinitelyNull = isDefinitelyNull;
+  letInfo->isSage = isSage;
   letInfo->isHeap = isHeap;
-  letInfo->isDheap = isDheap;
   letInfo->popCount = popCount;
   letInfo->lastUseNode = letStmt;
   letInfo->storage = letStorageType;

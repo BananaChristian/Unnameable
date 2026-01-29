@@ -237,7 +237,7 @@ void Sentinel::checkLetStatement(Node *node) {
     return;
   }
   // Getting if the let statement is not heap raised and stopping there
-  if (!letSym->isHeap)
+  if (!letSym->isSage)
     return;
 
   letSym->genericName = name;
@@ -283,7 +283,7 @@ void Sentinel::checkPointerStatement(Node *node) {
     return;
   }
 
-  if (!ptrSym->isHeap)
+  if (!ptrSym->isSage)
     return;
 
   ptrSym->genericName = name;

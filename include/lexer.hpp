@@ -91,8 +91,8 @@ class Lexer {
       {"addr", TokenType::ADDR},
       {"deref", TokenType::DEREF},
 
+      {"sage", TokenType::SAGE},
       {"heap", TokenType::HEAP},
-      {"dheap", TokenType::DHEAP},
       {"allocator", TokenType::ALLOCATOR},
 
       {"seal", TokenType::SEAL},

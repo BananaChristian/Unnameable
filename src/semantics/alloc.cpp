@@ -196,17 +196,17 @@ AllocatorRole Semantics::getFunctionRole(
   return AllocatorRole::NONE;
 }
 
-void Semantics::walkDheapStatement(Node *node) {
-  auto dheapStmt = dynamic_cast<DheapStatement *>(node);
-  if (!dheapStmt)
+void Semantics::walkHeapStatement(Node *node) {
+  auto heapStmt = dynamic_cast<HeapStatement *>(node);
+  if (!heapStmt)
     return;
 
   bool hasError = false;
 
   std::string allocType;
   // Check if it has the allocator type
-  if (dheapStmt->allocType) {
-    auto allocIdent = dynamic_cast<Identifier *>(dheapStmt->allocType.get());
+  if (heapStmt->allocType) {
+    auto allocIdent = dynamic_cast<Identifier *>(heapStmt->allocType.get());
     const std::string &allocName = allocIdent->identifier.TokenLiteral;
     // Check if the allocator exists in the allocatorMap
     auto allocIt = allocatorMap.find(allocName);
@@ -223,11 +223,11 @@ void Semantics::walkDheapStatement(Node *node) {
   }
 
   // If it has the stmt
-  auto stmt = dheapStmt->stmt.get();
+  auto stmt = heapStmt->stmt.get();
   walker(stmt);
 
   // Get the symbol info of the stmt using metaData search
-  auto it = metaData.find(dheapStmt->stmt.get());
+  auto it = metaData.find(heapStmt->stmt.get());
   if (it == metaData.end()) {
     logSemanticErrors("Could not find statement metaData for declaration in "
                       "the dheap statement ",
@@ -237,19 +237,19 @@ void Semantics::walkDheapStatement(Node *node) {
 
   auto stmtSym = it->second;
   // Toggle the dheap flag, and other flags
-  stmtSym->isDheap = true;
+  stmtSym->isHeap = true;
   stmtSym->lastUseNode = stmt;
   stmtSym->allocType = allocType;
 
   // If the walked stmt has an error then so does the overall dheap statement
   hasError = stmtSym->hasError;
 
-  auto dheapSym = std::make_shared<SymbolInfo>();
-  dheapSym->hasError = hasError;
+  auto heapSym = std::make_shared<SymbolInfo>();
+  heapSym->hasError = hasError;
 
-  metaData[dheapStmt] =
-      dheapSym; // Only store in the metaData table since the initial stmt walk
-                // already registered in the semantic symbol table
+  metaData[heapStmt] =
+      heapSym; // Only store in the metaData table since the initial stmt walk
+               // already registered in the semantic symbol table
 }
 
 void Semantics::registerInbuiltAllocatorTypes() {

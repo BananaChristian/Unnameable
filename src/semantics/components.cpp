@@ -415,10 +415,10 @@ void Semantics::walkRecordStatement(Node *node) {
       continue;
     }
 
+    bool isSage = fieldSymbol->isSage;
     bool isHeap = fieldSymbol->isHeap;
-    bool isDheap = fieldSymbol->isDheap;
     StorageType memberStorage;
-    if (isHeap || isDheap) {
+    if (isSage || isHeap) {
       memberStorage = StorageType::HEAP;
     } else {
       memberStorage = StorageType::STACK;

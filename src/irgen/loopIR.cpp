@@ -36,7 +36,7 @@ void IRGenerator::generateWhileStatement(Node *node) {
 
   funcBuilder.CreateCondBr(condVal, bodyBB, endBB);
 
-  // --- 4. Body block ---
+  // ---  Body block ---
   funcBuilder.SetInsertPoint(bodyBB);
 
   // Push jump targets: break -> endBB, continue -> condBB
@@ -63,14 +63,14 @@ void IRGenerator::generateWhileStatement(Node *node) {
   // Cleanup loop-only variables
   for (auto *sym : semantics.loopDeathRow) {
     if (sym->needsPostLoopFree) {
-      if (sym->isDheap) {
+      if (sym->isHeap) {
         auto it = semantics.allocatorMap.find(sym->allocType);
         if (it != semantics.allocatorMap.end()) {
           llvm::Function *freeFunc = module->getFunction(it->second.freeName);
           if (freeFunc)
             funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
         }
-      } else if (sym->isHeap) {
+      } else if (sym->isSage) {
         llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
             "sage_free", llvm::Type::getVoidTy(context));
         funcBuilder.CreateCall(sageFreeFn);
@@ -159,14 +159,14 @@ void IRGenerator::generateForStatement(Node *node) {
     if (!sym->needsPostLoopFree)
       continue;
 
-    if (sym->isDheap) {
+    if (sym->isHeap) {
       auto it = semantics.allocatorMap.find(sym->allocType);
       if (it != semantics.allocatorMap.end()) {
         llvm::Function *freeFunc = module->getFunction(it->second.freeName);
         if (freeFunc)
           funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
       }
-    } else if (sym->isHeap) {
+    } else if (sym->isSage) {
       llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
           "sage_free", llvm::Type::getVoidTy(context));
       funcBuilder.CreateCall(sageFreeFn);
@@ -207,7 +207,7 @@ void IRGenerator::emitResidentSweep() {
   std::cerr << "[IR DEBUG] Emitting resident memory sweep\n";
 
   for (auto *sym : semantics.loopResidentDeathRow) {
-    if (sym->isDheap) {
+    if (sym->isHeap) {
       const std::string &allocatorTypeName = sym->allocType;
       auto it = semantics.allocatorMap.find(allocatorTypeName);
       if (it != semantics.allocatorMap.end()) {
@@ -218,7 +218,7 @@ void IRGenerator::emitResidentSweep() {
           funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
         }
       }
-    } else if (sym->isHeap) {
+    } else if (sym->isSage) {
       // SAGE free for locals (heap)
       llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
           "sage_free", llvm::Type::getVoidTy(context));

@@ -394,8 +394,8 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   auto arrAccessInfo = std::make_shared<SymbolInfo>();
   arrAccessInfo->type = elementType;
   arrAccessInfo->hasError = hasError;
+  arrAccessInfo->isSage = arrSymbol->isSage;
   arrAccessInfo->isHeap = arrSymbol->isHeap;
-  arrAccessInfo->isDheap = arrSymbol->isDheap;
   arrAccessInfo->sizePerDimensions = arrSymbol->sizePerDimensions;
 
   metaData[arrExpr] = arrAccessInfo;
@@ -415,7 +415,7 @@ void Semantics::walkIdentifierExpression(Node *node) {
     return;
   }
 
-  if (symbolInfo->isHeap || symbolInfo->isDheap) {
+  if (symbolInfo->isSage || symbolInfo->isHeap) {
     bool inLoop = !loopContext.empty() && loopContext.back();
     if (inLoop && !symbolInfo->bornInLoop) {
       // ELDERS
@@ -481,16 +481,16 @@ void Semantics::walkAddressExpression(Node *node) {
   }
 
   bool hasError = false;
+  bool isSage = symbolInfo->isSage;
   bool isHeap = symbolInfo->isHeap;
-  bool isDheap = symbolInfo->isDheap;
 
-  if (symbolInfo->isHeap || symbolInfo->isDheap)
+  if (symbolInfo->isSage || symbolInfo->isHeap)
     symbolInfo->lastUseNode = addrExpr;
 
   auto addrInfo = std::make_shared<SymbolInfo>();
   addrInfo->isPointer = true;
+  addrInfo->isSage = isSage;
   addrInfo->isHeap = isHeap;
-  addrInfo->isDheap = isDheap;
   addrInfo->allocType = symbolInfo->allocType;
   addrInfo->targetSymbol = symbolInfo;
   addrInfo->type = inferNodeDataType(addrExpr);
