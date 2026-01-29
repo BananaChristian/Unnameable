@@ -891,7 +891,7 @@ struct HeapStatement : Statement {
   }
 
   HeapStatement(Token heap, std::unique_ptr<Expression> alloc,
-                 std::unique_ptr<Statement> st)
+                std::unique_ptr<Statement> st)
       : Statement(heap), allocType(std::move(alloc)), stmt(std::move(st)){};
 };
 
@@ -922,21 +922,22 @@ struct SealStatement : Statement {
         sealName(std::move(name)), block(std::move(blk)) {}
 };
 
-// Use statement struct
-struct UseStatement : Statement {
-  Token use_token;
-  Token kind_token; // "data" or "behavior"
+// Inject statement struct
+struct InjectStatement : Statement {
+  Token inject_token;
+  Token kind_token; // "record"
   std::unique_ptr<Expression> blockNameOrCall;
 
   std::string toString() override {
-    std::string result = "Use statement: ";
+    std::string result = "Inject statement: ";
     result += kind_token.TokenLiteral + " ";
     result += blockNameOrCall->toString();
     return result + ";";
   }
 
-  UseStatement(Token useTok, Token kindTok, std::unique_ptr<Expression> name)
-      : Statement(useTok), use_token(useTok), kind_token(kindTok),
+  InjectStatement(Token injectTok, Token kindTok,
+                  std::unique_ptr<Expression> name)
+      : Statement(injectTok), inject_token(injectTok), kind_token(kindTok),
         blockNameOrCall(std::move(name)) {}
 };
 

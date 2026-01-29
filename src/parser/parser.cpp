@@ -428,7 +428,7 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::COMPONENT] =
       &Parser::parseComponentStatement;
   StatementParseFunctionsMap[TokenType::RECORD] = &Parser::parseRecordStatement;
-  StatementParseFunctionsMap[TokenType::USE] = &Parser::parseUseStatement;
+  StatementParseFunctionsMap[TokenType::INJECT] = &Parser::parseInjectStatement;
   StatementParseFunctionsMap[TokenType::INIT] =
       &Parser::parseInitConstructorStatement;
   StatementParseFunctionsMap[TokenType::SWITCH] = &Parser::parseSwitchStatement;

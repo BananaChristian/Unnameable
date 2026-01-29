@@ -760,14 +760,14 @@ void Semantics::walkComponentStatement(Node *node) {
       return;
     }
 
-    auto useStmt = dynamic_cast<UseStatement *>(usedData.get());
-    if (!useStmt) {
+    auto injectStmt = dynamic_cast<InjectStatement *>(usedData.get());
+    if (!injectStmt) {
       reportDevBug("Invalid use statement");
       continue;
     }
 
     // Mass import case
-    auto ident = dynamic_cast<Identifier *>(useStmt->blockNameOrCall.get());
+    auto ident = dynamic_cast<Identifier *>(injectStmt->blockNameOrCall.get());
     if (ident) {
       auto identName = ident->expression.TokenLiteral;
       logInternal("Dumping fields from '" + identName + "' into '" +
@@ -822,7 +822,7 @@ void Semantics::walkComponentStatement(Node *node) {
 
     // Specific import case
     auto infixExpr =
-        dynamic_cast<InfixExpression *>(useStmt->blockNameOrCall.get());
+        dynamic_cast<InfixExpression *>(injectStmt->blockNameOrCall.get());
     if (infixExpr) {
       auto leftIdent =
           dynamic_cast<Identifier *>(infixExpr->left_operand.get());

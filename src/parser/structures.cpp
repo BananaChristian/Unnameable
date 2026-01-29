@@ -329,12 +329,12 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
     }
 
     switch (currentToken().type) {
-    case TokenType::USE:
+    case TokenType::INJECT:
       if (nextToken().type == TokenType::RECORD) {
-        stmt = parseUseStatement();
+        stmt = parseInjectStatement();
         usedDataBlocks.push_back(std::move(stmt));
       } else {
-        logError("Expected 'use record',but got '" +
+        logError("Expected 'inject record',but got '" +
                  nextToken().TokenLiteral + "'");
         advance(); // skip the unexpected token
       }
@@ -441,17 +441,17 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
 }
 
 // Parsing use statement
-std::unique_ptr<Statement> Parser::parseUseStatement() {
+std::unique_ptr<Statement> Parser::parseInjectStatement() {
   std::optional<std::unique_ptr<Expression>> functionCallOrData;
-  Token use_token = currentToken();
-  advance(); // Consume the use keyword token
+  Token inject_token = currentToken();
+  advance(); // Consume the inject keyword token
 
   Token kind_token;
   if (currentToken().type == TokenType::RECORD) {
     kind_token = currentToken();
     advance(); // Consume 'record' or 'behavior'
   } else {
-    logError("Expected either 'record' or 'behavior' keyword but got '" +
+    logError("Expected either 'record' keyword but got '" +
              currentToken().TokenLiteral + "'");
   }
 
@@ -473,7 +473,7 @@ std::unique_ptr<Statement> Parser::parseUseStatement() {
     advance();
   }
 
-  return std::make_unique<UseStatement>(use_token, kind_token, std::move(expr));
+  return std::make_unique<InjectStatement>(inject_token, kind_token, std::move(expr));
 }
 
 //______________________RECORDS____________________

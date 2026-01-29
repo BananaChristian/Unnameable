@@ -579,7 +579,7 @@ func main:i32{
 
 ## Component System (OOP-like structure)
 
-Unnameable supports components, clean structures for organizing data and behavior, like classes, but lightweight and predictable. Please not that you cannot nest these 
+Unnameable supports components, clean structures for organizing data, like classes, but lightweight and predictable. Please not that you cannot nest these 
 
 ```unn
 
@@ -594,7 +594,7 @@ component Entity {
     i32 health
 
      # Import Data Block
-    use record Attributes
+    inject record Attributes
 
     # Component Method
     func check_health_ratio(): i32 {

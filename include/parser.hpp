@@ -168,7 +168,7 @@ private:
   std::unique_ptr<Statement> parseInitConstructorStatement();
 
   // Parsing use statements
-  std::unique_ptr<Statement> parseUseStatement();
+  std::unique_ptr<Statement> parseInjectStatement();
 
   // Parsing record statements
   std::unique_ptr<Statement> parseRecordStatement();

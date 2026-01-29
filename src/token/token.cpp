@@ -92,8 +92,8 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: NEW";
   case TokenType::RECORD:
     return "Token Type: RECORD";
-  case TokenType::USE:
-    return "Token Type: USE";
+  case TokenType::INJECT:
+    return "Token Type: INJECT";
   case TokenType::INIT:
     return "Token Type: INIT";
 
