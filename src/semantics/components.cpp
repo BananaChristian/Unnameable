@@ -754,23 +754,23 @@ void Semantics::walkComponentStatement(Node *node) {
        .node = componentStmt});
 
   // Walk record imports
-  for (const auto &usedData : componentStmt->usedDataBlocks) {
-    if (!usedData) {
-      reportDevBug("Invalid used record node ");
+  for (const auto &injectedField : componentStmt->injectedFields) {
+    if (!injectedField) {
+      reportDevBug("Invalid inject record node ");
       return;
     }
 
-    auto injectStmt = dynamic_cast<InjectStatement *>(usedData.get());
+    auto injectStmt = dynamic_cast<InjectStatement *>(injectedField.get());
     if (!injectStmt) {
-      reportDevBug("Invalid use statement");
+      reportDevBug("Invalid inject statement");
       continue;
     }
 
     // Mass import case
-    auto ident = dynamic_cast<Identifier *>(injectStmt->blockNameOrCall.get());
+    auto ident = dynamic_cast<Identifier *>(injectStmt->expr.get());
     if (ident) {
       auto identName = ident->expression.TokenLiteral;
-      logInternal("Dumping fields from '" + identName + "' into '" +
+      logInternal("Injecting fields from '" + identName + "' into '" +
                   componentName + "'");
 
       auto typeIt = customTypesTable.find(identName);
@@ -821,8 +821,7 @@ void Semantics::walkComponentStatement(Node *node) {
     }
 
     // Specific import case
-    auto infixExpr =
-        dynamic_cast<InfixExpression *>(injectStmt->blockNameOrCall.get());
+    auto infixExpr = dynamic_cast<InfixExpression *>(injectStmt->expr.get());
     if (infixExpr) {
       auto leftIdent =
           dynamic_cast<Identifier *>(infixExpr->left_operand.get());
@@ -870,7 +869,7 @@ void Semantics::walkComponentStatement(Node *node) {
     }
   }
 
-  for (const auto &data : componentStmt->privateData) {
+  for (const auto &data : componentStmt->fields) {
     auto letStmt = dynamic_cast<LetStatement *>(data.get());
     auto refStmt = dynamic_cast<ReferenceStatement *>(data.get());
     auto arrStmt = dynamic_cast<ArrayStatement *>(data.get());
@@ -924,7 +923,7 @@ void Semantics::walkComponentStatement(Node *node) {
     }
   }
 
-  for (const auto &method : componentStmt->privateMethods) {
+  for (const auto &method : componentStmt->methods) {
     auto funcStmt = dynamic_cast<FunctionStatement *>(method.get());
     if (!funcStmt)
       continue;

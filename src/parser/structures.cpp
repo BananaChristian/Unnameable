@@ -286,12 +286,11 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
 std::unique_ptr<Statement> Parser::parseComponentStatement() {
   bool isExportable = false;
   std::vector<std::unique_ptr<Statement>>
-      privateData; // An empty vector where the private data if created shall
-                   // all be stored
-  std::vector<std::unique_ptr<Statement>> privateMethods;
+      fields; // An empty vector where the private data if created shall
+              // all be stored
+  std::vector<std::unique_ptr<Statement>> methods;
 
-  std::vector<std::unique_ptr<Statement>> usedDataBlocks;
-  std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
+  std::vector<std::unique_ptr<Statement>> injectedfields;
 
   std::optional<std::unique_ptr<Statement>> initConstructor;
 
@@ -324,7 +323,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
 
     if (isValid) {
       stmt = parseStatement();
-      privateData.push_back(std::move(stmt));
+      fields.push_back(std::move(stmt));
       continue;
     }
 
@@ -332,7 +331,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
     case TokenType::INJECT:
       if (nextToken().type == TokenType::RECORD) {
         stmt = parseInjectStatement();
-        usedDataBlocks.push_back(std::move(stmt));
+        injectedfields.push_back(std::move(stmt));
       } else {
         logError("Expected 'inject record',but got '" +
                  nextToken().TokenLiteral + "'");
@@ -348,13 +347,13 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
         logError("Only function exports are allowed in component statement");
         break;
       }
-      privateMethods.push_back(std::move(exportStmt));
+      methods.push_back(std::move(exportStmt));
       break;
     }
 
     case TokenType::FUNCTION:
       stmt = parseFunctionStatement();
-      privateMethods.push_back(std::move(stmt));
+      methods.push_back(std::move(stmt));
       break;
     case TokenType::INIT:
       if (initConstructor.has_value()) {
@@ -383,8 +382,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
 
   return std::make_unique<ComponentStatement>(
       isExportable, component_token, std::move(component_name),
-      std::move(privateData), std::move(privateMethods),
-      std::move(usedDataBlocks), std::move(usedBehaviorBlocks),
+      std::move(fields), std::move(methods), std::move(injectedfields),
       std::move(initConstructor));
 }
 
@@ -473,7 +471,8 @@ std::unique_ptr<Statement> Parser::parseInjectStatement() {
     advance();
   }
 
-  return std::make_unique<InjectStatement>(inject_token, kind_token, std::move(expr));
+  return std::make_unique<InjectStatement>(inject_token, kind_token,
+                                           std::move(expr));
 }
 
 //______________________RECORDS____________________

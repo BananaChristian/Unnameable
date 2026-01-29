@@ -926,19 +926,19 @@ struct SealStatement : Statement {
 struct InjectStatement : Statement {
   Token inject_token;
   Token kind_token; // "record"
-  std::unique_ptr<Expression> blockNameOrCall;
+  std::unique_ptr<Expression> expr;
 
   std::string toString() override {
     std::string result = "Inject statement: ";
     result += kind_token.TokenLiteral + " ";
-    result += blockNameOrCall->toString();
+    result += expr->toString();
     return result + ";";
   }
 
   InjectStatement(Token injectTok, Token kindTok,
                   std::unique_ptr<Expression> name)
       : Statement(injectTok), inject_token(injectTok), kind_token(kindTok),
-        blockNameOrCall(std::move(name)) {}
+        expr(std::move(name)) {}
 };
 
 // Record statement struct
@@ -1002,11 +1002,10 @@ struct ComponentStatement : Statement {
   Token component_token;
   std::unique_ptr<Expression> component_name;
 
-  std::vector<std::unique_ptr<Statement>> privateData;
-  std::vector<std::unique_ptr<Statement>> privateMethods;
+  std::vector<std::unique_ptr<Statement>> fields;
+  std::vector<std::unique_ptr<Statement>> methods;
 
-  std::vector<std::unique_ptr<Statement>> usedDataBlocks;
-  std::vector<std::unique_ptr<Statement>> usedBehaviorBlocks;
+  std::vector<std::unique_ptr<Statement>> injectedFields;
 
   std::optional<std::unique_ptr<Statement>> initConstructor;
 
@@ -1016,7 +1015,7 @@ struct ComponentStatement : Statement {
                          "Component Statement: " + component_name->toString() +
                          " {\n";
     // Private data
-    for (const auto &field : privateData) {
+    for (const auto &field : fields) {
       if (!field) {
         std::cout << "Encountered null field\n";
       } else {
@@ -1025,7 +1024,7 @@ struct ComponentStatement : Statement {
     }
 
     // Private methods
-    for (const auto &method : privateMethods) {
+    for (const auto &method : methods) {
       if (!method) {
         std::cout << "Encountered null method\n";
       } else {
@@ -1034,13 +1033,8 @@ struct ComponentStatement : Statement {
     }
 
     // Used data blocks
-    for (const auto &use : usedDataBlocks) {
-      result += "  " + use->toString() + "\n";
-    }
-
-    // Used behavior blocks
-    for (const auto &use : usedBehaviorBlocks) {
-      result += "  " + use->toString() + "\n";
+    for (const auto &field : injectedFields) {
+      result += "  " + field->toString() + "\n";
     }
 
     // Init constructor
@@ -1052,19 +1046,17 @@ struct ComponentStatement : Statement {
     return result;
   }
 
-  ComponentStatement(
-      bool exportable, Token component, std::unique_ptr<Expression> name,
-      std::vector<std::unique_ptr<Statement>> private_data,
-      std::vector<std::unique_ptr<Statement>> private_methods,
-      std::vector<std::unique_ptr<Statement>> used_data_blocks,
-      std::vector<std::unique_ptr<Statement>> used_behavior_blocks,
-      std::optional<std::unique_ptr<Statement>> init)
+  ComponentStatement(bool exportable, Token component,
+                     std::unique_ptr<Expression> name,
+                     std::vector<std::unique_ptr<Statement>> private_fields,
+                     std::vector<std::unique_ptr<Statement>> private_methods,
+                     std::vector<std::unique_ptr<Statement>> injected_fields,
+
+                     std::optional<std::unique_ptr<Statement>> init)
       : Statement(component), isExportable(exportable),
         component_token(component), component_name(std::move(name)),
-        privateData(std::move(private_data)),
-        privateMethods(std::move(private_methods)),
-        usedDataBlocks(std::move(used_data_blocks)),
-        usedBehaviorBlocks(std::move(used_behavior_blocks)),
+        fields(std::move(private_fields)), methods(std::move(private_methods)),
+        injectedFields(std::move(injected_fields)),
         initConstructor(std::move(init)) {}
 };
 

@@ -480,12 +480,12 @@ void Sentinel::checkComponentStatement(Node *node) {
   }
 
   // Call the sentinel driver on the private members(Data)
-  for (const auto &data : compStmt->privateData) {
+  for (const auto &data : compStmt->fields) {
     sentinelDriver(data.get());
   }
 
   // Call the sentinel driver on the private members(methods)
-  for (const auto &method : compStmt->privateMethods) {
+  for (const auto &method : compStmt->methods) {
     sentinelDriver(method.get());
   }
 }

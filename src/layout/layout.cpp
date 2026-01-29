@@ -50,8 +50,7 @@ void Layout::registerComponentCalculatorFns() {
       &Layout::calculateArrayStatementSize;
   calculatorFnsMap[typeid(PointerStatement)] =
       &Layout::calculatePointerStatementSize;
-  calculatorFnsMap[typeid(HeapStatement)] =
-      &Layout::calculateHeapStatementSize;
+  calculatorFnsMap[typeid(HeapStatement)] = &Layout::calculateHeapStatementSize;
   calculatorFnsMap[typeid(WhileStatement)] =
       &Layout::calculateWhileStatementSize;
   calculatorFnsMap[typeid(ForStatement)] = &Layout::calculateForStatementSize;
@@ -454,7 +453,7 @@ void Layout::calculateComponentStatement(Node *node) {
   structTy->setBody(fieldTypes, false);
 
   // Calculating for the private methods
-  for (const auto &method : compStmt->privateMethods) {
+  for (const auto &method : compStmt->methods) {
     logInternal("Inside private method calculation");
     calculatorDriver(method.get());
   }
