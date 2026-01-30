@@ -14,10 +14,7 @@ Semantics::Semantics(Deserializer &deserial, ErrorHandler &handler,
   symbolTable.push_back({});
   registerWalkerFunctions();
 
-  importSeals();                   // Import seals
-  importComponents();              // Import components
-  importComponentInits();          // Import component inits
-  importRecords();                 // Import records
+  import();
   registerInbuiltAllocatorTypes(); // Register the inbuilt allocators(malloc for
                                    // now)
 }
@@ -36,7 +33,7 @@ void Semantics::walker(Node *node) {
   if (walkerIt != walkerFunctionsMap.end()) {
     (this->*walkerIt->second)(node);
   } else {
-    reportDevBug("Failed to find analyzer for :" + node->toString());
+    logInternal("Failed to find analyzer for :" + node->toString());
     logInternal("Actual runtime type: " + nodeName);
     return;
   }

@@ -454,8 +454,11 @@ private:
 
   void importSeals();
   void importComponents();
-  void importRecords();
   void importComponentInits();
+  void importRecords();
+  void importEnums();
+  void import();
+  
 
   void registerInbuiltAllocatorTypes();
   bool isGlobalScope();

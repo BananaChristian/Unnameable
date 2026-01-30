@@ -34,32 +34,22 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
     out.address = variablePtr; // already a pointer to struct instance
   } else {
     // scalar/heap -> ensure typed pointer
-    if (sym->isHeap) {
-      std::cout << "The identifier is heap raised\n";
+    if (sym->isSage || sym->isHeap) {
+      std::cout << "The identifier is raised (Sage/Heap)\n";
       llvm::Type *elemTy = sym->llvmType;
       if (!elemTy)
-        throw std::runtime_error("llvmType null for heap scalar '" + identName +
+        throw std::runtime_error("llvmType null for scalar '" + identName +
                                  "'");
 
-      // If sym->llvmValue is a GlobalVariable (the module slot that stores T*),
-      // we must load the runtime pointer from it.
-      if (auto *gv = llvm::dyn_cast<llvm::GlobalVariable>(variablePtr)) {
-        std::cout << "Inside global heap var path PATH1 \n";
-        llvm::PointerType *ptrType = llvm::PointerType::get(
-            funcBuilder.getContext(), 0); // Generic ptr type
-        llvm::Value *runtimePtr =
-            funcBuilder.CreateLoad(ptrType, gv, identName + "_runtime_ptr");
-        out.address = runtimePtr; // address usable for subsequent loads/stores
-      } else {
-        std::cout << "Inside global heap var path PATH2c \n";
-        // variablePtr might already be a direct pointer (alloca or
-        // bitcast), ensure type matches
-        llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
-        if (variablePtr->getType() != expectedPtrTy)
-          variablePtr = funcBuilder.CreateBitCast(variablePtr, expectedPtrTy,
-                                                  identName + "_ptr_typed");
-        out.address = variablePtr;
+      // Since we banned global raises, variablePtr is always a direct pointer
+      // (the result of sage_alloc or a local alloca). No more 'load' from a
+      // global slot.
+      llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
+      if (variablePtr->getType() != expectedPtrTy) {
+        variablePtr = funcBuilder.CreateBitCast(variablePtr, expectedPtrTy,
+                                                identName + "_ptr_typed");
       }
+      out.address = variablePtr;
     } else {
       if (variablePtr->getType()->isPointerTy()) {
         std::cout << "Taken raw_ptr path\n";

@@ -289,7 +289,7 @@ void Semantics::walkEnumStatement(Node *node) {
     info->isInitialised = true;
     info->isExportable = isExportable;
     info->node = enumMember.get();
-    info->constantValue = static_cast<int>(memberValue);
+    info->constantValue = static_cast<int64_t>(memberValue);
     info->parentType = ResolvedType{DataType::ENUM, enumStmtName};
     members[memberName] = info;
 

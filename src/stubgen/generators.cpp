@@ -1,4 +1,6 @@
+#include "ast.hpp"
 #include "stubgen.hpp"
+#include <string>
 
 //____________SERIALIZER GENERATOR____________________
 void StubGen::generateSealStatement(Node *node)
@@ -7,25 +9,26 @@ void StubGen::generateSealStatement(Node *node)
     if (!sealStmt)
     {
         std::cout << "[DEBUG] Node is not a SealStatement.\n";
+        reportDevBug("Node is not a seal statement");
         return;
     }
 
     auto sealName = sealStmt->sealName->expression.TokenLiteral;
-    std::cout << "[DEBUG] Processing seal: " << sealName << "\n";
+    logInternal("Proccesing seal: "+sealName);
 
     auto sealIt = semantics.sealTable.find(sealName);
     if (sealIt == semantics.sealTable.end())
     {
-        std::cout << "[DEBUG] Seal not found in semantics.sealTable: " << sealName << "\n";
+        reportDevBug("Seal not found in the semantics sealTable");
         return;
     }
 
     auto sealFnMap = sealIt->second;
 
     // Print all keys in the seal function map
-    std::cout << "[DEBUG] Functions in sealFnMap: ";
+    logInternal("Functions in sealFnMap: ");
     for (auto &kv : sealFnMap)
-        std::cout << kv.first << " ";
+        logInternal(kv.first);
     std::cout << "\n";
 
     SealTable sealTable;
@@ -34,7 +37,7 @@ void StubGen::generateSealStatement(Node *node)
     auto sealBlock = dynamic_cast<BlockStatement *>(sealStmt->block.get());
     if (!sealBlock)
     {
-        std::cout << "[DEBUG] Seal block is null.\n";
+        reportDevBug("Seal block is null");
         return;
     }
 
@@ -43,14 +46,14 @@ void StubGen::generateSealStatement(Node *node)
         auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get());
         if (!fnStmt)
         {
-            std::cout << "[DEBUG] Statement is not a FunctionStatement.\n";
+            reportDevBug("Statement is not a function statement");
             continue;
         }
 
         auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
         if (!fnExpr)
         {
-            std::cout << "[DEBUG] FunctionStatement does not contain a FunctionExpression.\n";
+            reportDevBug("Function statement does not contain a function expression");
             continue;
         }
 
@@ -62,19 +65,19 @@ void StubGen::generateSealStatement(Node *node)
 
         auto fnName = fnExpr->func_key.TokenLiteral;
         std::string unmangled = unmangle(fnName);
-        std::cout << "[DEBUG] Looking for function in sealFnMap: " << unmangled << "\n";
+        logInternal("Looking for function in sealFnMap: "+unmangled);
 
         auto sealFnIt = sealFnMap.find(unmangled);
         if (sealFnIt == sealFnMap.end())
         {
-            std::cout << "[DEBUG] Function not found in sealFnMap: " << unmangled << "\n";
+            logInternal("Function not found in sealFnMap: "+unmangled);
             continue;
         }
 
         auto fnSym = sealFnIt->second;
         if (!fnSym)
         {
-            std::cout << "[DEBUG] SymbolInfo pointer is null for function: " << unmangled << "\n";
+            reportDevBug("SymbolInfo pointer is null for function: "+unmangled);
             continue;
         }
 
@@ -86,12 +89,11 @@ void StubGen::generateSealStatement(Node *node)
 
         // add to the current seal table
         sealTable.sealFns.push_back(sealFn);
-        std::cout << "[DEBUG] Added function: " << fnName << " to sealTable.\n";
+        logInternal("Added function: "+fnName+" to sealTable");
     }
 
     stubTable.seals.push_back(sealTable);
-    std::cout << "[DEBUG] Finished seal: " << sealName << " with "
-              << sealTable.sealFns.size() << " functions.\n";
+    logInternal("Finished seal:"+sealName+" with "+std::to_string(sealTable.sealFns.size())+" functions");
 }
 
 void StubGen::generateComponentStatement(Node *node)
@@ -105,18 +107,21 @@ void StubGen::generateComponentStatement(Node *node)
         return;
 
     std::string componentName = compStmt->component_name->expression.TokenLiteral;
-    std::cout << "[DEBUG] Processing component: " << componentName << "\n";
+    logInternal("Processing component: "+componentName);
 
     auto compIt = semantics.metaData.find(compStmt);
     if (compIt == semantics.metaData.end())
-        throw std::runtime_error("Failed to find component metadata");
+    {
+        reportDevBug("Failed to find component metaData");
+        return;
+    }
 
     auto compSym = compIt->second;
     if (!compSym)
-        throw std::runtime_error("No component symbolInfo");
-
-    if (compSym->hasError)
-        throw std::runtime_error("Semantic error");
+    {
+        reportDevBug("No component symbolInfo found");
+        return;
+    }
 
     ComponentTable componentTable;
     componentTable.componentName = componentName;
@@ -161,14 +166,14 @@ void StubGen::generateComponentStatement(Node *node)
         auto initIt = semantics.metaData.find(initStmt);
         if (initIt == semantics.metaData.end())
         {
-            std::cout << "Failed to find init constructor metaData\n";
+            reportDevBug("Failed to find init constructor metaData");
             return;
         }
 
         auto initSym = initIt->second;
         if (!initSym)
         {
-            std::cout << "Failed to retreive init constructor symbol\n";
+            reportDevBug("Failed to retreive init constructor symbol");
             return;
         }
 
@@ -181,32 +186,38 @@ void StubGen::generateComponentStatement(Node *node)
 
     // Add to the stub table
     stubTable.components.push_back(componentTable);
-    std::cout << "[DEBUG] Finished serializing component '" + componentName << "\n";
+    logInternal("Finished serializing component '"+componentName+"'");
 }
 
 void StubGen::generateRecordStatement(Node *node)
 {
     auto recordStmt = dynamic_cast<RecordStatement *>(node);
     if (!recordStmt)
+    {
+        reportDevBug("Invalid record node");
         return;
+    }
 
     if (!recordStmt->isExportable)
         return;
 
     std::string recordName = recordStmt->recordName->expression.TokenLiteral;
 
-    std::cout << "Processing record: " << recordName << "\n";
+    logInternal("Processing record '"+recordName+"'");
+    auto recordIt = semantics.metaData.find(recordStmt);
+    if (recordIt == semantics.metaData.end())
+    {
+        reportDevBug("Failed to find record metaData");
+        return;
+    }
 
-    auto dataIt = semantics.metaData.find(recordStmt);
-    if (dataIt == semantics.metaData.end())
-        throw std::runtime_error("Failed to find record metaData");
-
-    auto recordSym = dataIt->second;
+    auto recordSym = recordIt->second;
     if (!recordSym)
-        throw std::runtime_error("No record symbolInfo");
+    {
+        reportDevBug("No record symbolInfo");
+        return;
+    }
 
-    if (recordSym->hasError)
-        throw std::runtime_error("Semantic error");
 
     RecordTable recordTable;
     recordTable.recordName = recordName;
@@ -229,5 +240,50 @@ void StubGen::generateRecordStatement(Node *node)
     }
 
     stubTable.records.push_back(recordTable);
-    std::cout << "[DEBUG] Finished serializing record '" + recordName << "\n";
+    logInternal("Finished serializing record '"+recordName+"'");
+}
+
+void StubGen::generateEnumStatement(Node *node){
+    auto enumStmt=dynamic_cast<EnumStatement*>(node);
+    if(!enumStmt){
+        reportDevBug("Invalid enum node");
+        return;
+    }
+    
+    if(!enumStmt->isExportable)
+        return;
+    
+    auto enumName=enumStmt->enum_identifier->expression.TokenLiteral;
+    
+    logInternal("Processing enum '"+enumName+"'");
+    
+    //I will use the customTypesTable as it has more information about the members
+    auto enumIt=semantics.customTypesTable.find(enumName);
+    if(enumIt==semantics.customTypesTable.end()){
+        reportDevBug("Could not find type '"+enumName+"' in semantics custom types table");
+        return;
+    }
+    
+    auto enumInfo=enumIt->second;
+    if(!enumInfo){
+        reportDevBug("Could not find type info for '"+enumName+"'");
+        return;
+    }
+    
+    EnumTable enumTable;
+    enumTable.enumName=enumName;
+    
+    auto enumMembers=enumInfo->members;
+    for(const auto &[memName,memInfo]:enumMembers){
+        EnumMembers member;
+        member.memberName=memInfo->memberName;
+        member.type=memInfo->type;
+        member.constantValue=memInfo->constantValue;
+        member.enumType=memInfo->parentType;
+        
+        enumTable.members.push_back(member);
+    }
+    
+    stubTable.enums.push_back(enumTable);
+    logInternal("Finished serializing enum '"+enumName+"'");
 }

@@ -5,12 +5,14 @@
 #include <vector>
 #include <memory>
 #include "ast.hpp"
+#include "errors.hpp"
 
 enum class ImportedStubSection : uint8_t
 {
     SEALS,
     COMPONENTS,
-    DATA
+    RECORDS,
+    ENUMS
 };
 
 enum class ImportedDataType
@@ -68,6 +70,8 @@ struct ImportedSymbolInfo
     std::vector<std::pair<ImportedType, std::string>> paramTypes;
     std::vector<ImportedType> initArgs;
     ImportedType type;
+    ImportedType enumType;
+    int64_t constantValue;
     int memberIndex = -1;
     bool isNullable = false;
     bool isMutable = false;
@@ -147,24 +151,41 @@ struct RawRecordTable
     std::vector<RawRecordMember> members;
 };
 
+struct RawEnumMembers{
+    std::string memberName;
+    ImportedType type;
+    ImportedType enumType;
+    int64_t constantValue;
+};
+
+struct RawEnumTable{
+    std::string enumName;
+    ImportedType underLyingType;
+    std::vector<RawEnumMembers>members;
+};
+
 struct RawStubTable
 {
     std::vector<RawSealTable> seals;
     std::vector<RawComponentTable> components;
     std::vector<RawRecordTable> records;
+    std::vector<RawEnumTable>enums;
 };
 
 class Deserializer
 {
+    ErrorHandler &errorHandler;
 public:
-    Deserializer();
+    Deserializer(ErrorHandler &handler,bool isVerbose);
     void processImports(const std::vector<std::unique_ptr<Node>> &nodes, const std::string &currentFile);
+    bool failed();
 
     std::unordered_map<std::string, std::string> loadedStubs;
 
     std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedSealTable;
     std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedComponentTable;
     std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedRecordsTable;
+    std::unordered_map<std::string, std::unordered_map<std::string, ImportedSymbolInfo>> importedEnumsTable;
 
     // Maps ComponentName to Constructor Metadata
     std::unordered_map<std::string, ImportedSymbolInfo> importedInitTable;
@@ -174,6 +195,8 @@ public:
 private:
     uint32_t STUB_MAGIC = 0x53545542;
     uint16_t STUB_VERSION = 1;
+    bool isVerbose=false;
+    bool hasFailed=false;
 
     std::string resolveImportPath(ImportStatement *import, const std::string &currentFile);
 
@@ -183,6 +206,7 @@ private:
     uint16_t read_u16(std::istream &in, const std::string &context);
     uint32_t read_u32(std::istream &in, const std::string &context);
     int32_t read_s32(std::istream &in, const std::string &context);
+    int64_t read_s64(std::istream &in,const std::string &context);
     std::string readString(std::istream &in, const std::string &context);
     ImportedType readImportedType(std::istream &in);
     std::vector<std::pair<ImportedType, std::string>> readParamTypes(std::istream &in);
@@ -192,5 +216,11 @@ private:
     RawComponentInit readComponentInit(std::istream &in);
 
     RawRecordMember readRecordMember(std::istream &in);
+    
+    RawEnumMembers readEnumMember(std::istream &in);
     RawStubTable readStubTable(std::istream &in);
+    
+    void reportDevBug(const std::string &message);
+    void logImportError(const std::string &message,int line,int col);
+    void logInternal(const std::string &message);
 };

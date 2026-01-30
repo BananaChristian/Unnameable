@@ -9,6 +9,7 @@ enum class ErrorLevel
 {
     LEXER,
     PARSER,
+    IMPORT,
     SEMANTIC,
     LAYOUT,
     SENTINEL,

@@ -285,7 +285,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   if (sym->isSage) {
     llvm::Type *elemTy = sym->llvmType;
     if (!elemTy)
-      throw std::runtime_error("llvmType null for heap scalar '" + identName +
+      throw std::runtime_error("llvmType null for sage scalar '" + identName +
                                "'");
 
     // variableAddr should be T* (address of object). If not, bitcast it.
@@ -303,7 +303,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
       funcBuilder.Insert(freeCall);
     }
 
-    std::cout << "[DEBUG] Returning heap scalar '" << identName
+    std::cout << "[DEBUG] Returning sage scalar '" << identName
               << "' (lastUse=" << (sym->lastUseNode == identExpr ? "yes" : "no")
               << ")\n";
     return loadedVal;
@@ -311,7 +311,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   if (sym->isHeap) {
     llvm::Type *elemTy = sym->llvmType;
     if (!elemTy)
-      throw std::runtime_error("llvmType null for dheap scalar '" + identName +
+      throw std::runtime_error("llvmType null for heap scalar '" + identName +
                                "'");
 
     // Grab the value from the heap address

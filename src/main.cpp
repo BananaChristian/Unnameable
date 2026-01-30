@@ -28,7 +28,6 @@ namespace fs = std::filesystem;
 #define COLOR_CYAN "\033[36m"
 #define COLOR_BOLD "\033[1m"
 
-std::string fileName;
 bool logOutput = false;
 
 std::string readFileToString(const std::string &filepath) {
@@ -187,8 +186,14 @@ int main(int argc, char **argv) {
     }
 
     // Deserializer phase
-    Deserializer deserial;
-    deserial.processImports(AST, fileName);
+    Deserializer deserial(errorHandler,logOutput);
+    if (logOutput)
+      std::cout << COLOR_BLUE << "[STUB DESERIALIZATION]" << COLOR_RESET << "\n";
+    deserial.processImports(AST, sourceFile);
+    
+    if(deserial.failed()){
+        return 1;
+    }
 
     if (logOutput)
       std::cout << COLOR_BLUE << "[SEMANTIC ANALYSIS]" << COLOR_RESET << "\n";
@@ -224,7 +229,7 @@ int main(int argc, char **argv) {
     }
 
     // Stub generation phase
-    StubGen stubGen(semantics, fileName);
+    StubGen stubGen(semantics, sourceFile, logOutput);
     if (compileOnly) {
       if (logOutput)
         std::cout << COLOR_BLUE << "[STUBGEN]" << COLOR_RESET << "\n";
@@ -232,6 +237,10 @@ int main(int argc, char **argv) {
         stubGen.stubGenerator(node.get());
 
       stubGen.finish();
+
+      if (stubGen.failed()) {
+        return 1;
+      }
     }
 
     // IR generation
@@ -266,7 +275,7 @@ int main(int argc, char **argv) {
               << COLOR_RESET << "\n";
 
     Linker linker(objPath.string(), staticCompile);
-    linker.processLinks(AST, fileName, exePath.string());
+    linker.processLinks(AST, sourceFile, exePath.string());
 
     std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
               << " Executable generated: " << exePath.string() << "\n";

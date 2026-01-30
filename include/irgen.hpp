@@ -64,14 +64,14 @@ public:
 
 private:
   llvm::LLVMContext context;
-  llvm::IRBuilder<> globalBuilder; // This is the global builder
+  //llvm::IRBuilder<> globalBuilder; // This is the global builder
   llvm::IRBuilder<> funcBuilder;   // This is the builder for functions
   std::unique_ptr<llvm::Module> module;
   const llvm::DataLayout *layout;
   Semantics &semantics;
   size_t totalHeapSize;
 
-  llvm::BasicBlock *heapInitFnEntry = nullptr;
+  //llvm::BasicBlock *heapInitFnEntry = nullptr;
   void setupTargetLayout();
 
   // GENERATOR FUNCTIONS FOR STATEMENTS
@@ -205,19 +205,12 @@ private:
                    const std::vector<std::unique_ptr<Expression>> &params,
                    size_t offset);
   // For normal variables
-  void generateGlobalSageLet(LetStatement *letStmt,
-                             std::shared_ptr<SymbolInfo> sym,
-                             const std::string &letName);
   void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                                const std::string &letName, Expression *value);
   // For components
   llvm::Value *generateComponentInit(LetStatement *letStmt,
                                      std::shared_ptr<SymbolInfo> sym,
                                      llvm::StructType *structTy, bool isHeap);
-  void generateGlobalComponentSageInit(LetStatement *letStmt,
-                                       std::shared_ptr<SymbolInfo> sym,
-                                       const std::string &letName,
-                                       llvm::StructType *structType);
   // Helper for allocating dheap storage
   llvm::Value *allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName);

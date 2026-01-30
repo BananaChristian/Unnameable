@@ -1,5 +1,8 @@
+#include "deserial.hpp"
 #include "semantics.hpp"
+#include <memory>
 #include <string>
+#include <unordered_map>
 
 ResolvedType
 Semantics::convertImportedTypetoResolvedType(const ImportedType &importType) {
@@ -91,6 +94,8 @@ DataType Semantics::convertImportedDataTypetoResolvedDataType(
     return DataType::RECORD;
   case ImportedDataType::COMPONENT:
     return DataType::COMPONENT;
+  case ImportedDataType::OPAQUE:
+    return DataType::OPAQUE;
   case ImportedDataType::ERROR:
     return DataType::ERROR;
   case ImportedDataType::VOID:
@@ -203,6 +208,25 @@ void Semantics::importComponents() {
   }
 }
 
+void Semantics::importComponentInits() {
+  for (const auto &initPair : deserializer.importedInitTable) {
+    const std::string componentName = initPair.first;
+
+    auto initSym = std::make_shared<SymbolInfo>();
+    auto initInfo = initPair.second;
+    // Begin the conversions
+    for (const auto &type : initInfo.initArgs) {
+      auto resolvedType = convertImportedTypetoResolvedType(type);
+      initSym->initArgs.push_back(resolvedType);
+    }
+    initSym->returnType =
+        convertImportedTypetoResolvedType(initInfo.returnType);
+    initSym->isDeclaration = true;
+
+    importedInits[componentName] = initSym;
+  }
+}
+
 void Semantics::importRecords() {
   logInternal("Imported records count: " +
               std::to_string(deserializer.importedRecordsTable.size()));
@@ -257,21 +281,56 @@ void Semantics::importRecords() {
   }
 }
 
-void Semantics::importComponentInits() {
-  for (const auto &initPair : deserializer.importedInitTable) {
-    const std::string componentName = initPair.first;
+void Semantics::importEnums() {
+  logInternal("Imported enums count: " +
+              std::to_string(deserializer.importedEnumsTable.size()));
 
-    auto initSym = std::make_shared<SymbolInfo>();
-    auto initInfo = initPair.second;
-    // Begin the conversions
-    for (const auto &type : initInfo.initArgs) {
-      auto resolvedType = convertImportedTypetoResolvedType(type);
-      initSym->initArgs.push_back(resolvedType);
+  for (const auto &enumPair : deserializer.importedEnumsTable) {
+    const std::string &enumName = enumPair.first;
+    logInternal("Imported enum name: " + enumName);
+
+    auto typeInfo = std::make_shared<CustomTypeInfo>();
+    typeInfo->typeName = enumName;
+    typeInfo->type = ResolvedType{DataType::ENUM, enumName};
+
+    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> enumMembers;
+    auto &memberMap = enumPair.second;
+
+    for (const auto &memPair : memberMap) {
+      const std::string &memberName = memPair.first;
+      logInternal("Imported enum member name: " + memberName);
+
+      const ImportedSymbolInfo &info = memPair.second;
+      auto memInfo = std::make_shared<MemberInfo>();
+      memInfo->type = convertImportedTypetoResolvedType(info.type);
+      memInfo->memberName = memberName;
+      memInfo->constantValue = info.constantValue;
+      memInfo->parentType = convertImportedTypetoResolvedType(info.enumType);
+      memInfo->isConstant = true;
+      memInfo->isInitialised = true;
+      memInfo->isExportable = true;
+
+      typeInfo->members[memberName] = memInfo;
+      typeInfo->underLyingType =
+          convertImportedDataTypetoResolvedDataType(info.type.kind);
+      enumMembers[memberName] = memInfo;
     }
-    initSym->returnType =
-        convertImportedTypetoResolvedType(initInfo.returnType);
-    initSym->isDeclaration = true;
 
-    importedInits[componentName] = initSym;
+    customTypesTable[enumName] = typeInfo;
+
+    auto enumSym = std::make_shared<SymbolInfo>();
+    enumSym->isExportable = true;
+    enumSym->members = enumMembers;
+    enumSym->type = ResolvedType{DataType::ENUM, enumName};
+    
+    symbolTable[0][enumName]=enumSym;
   }
+}
+
+void Semantics::import() {
+  importSeals();          // Import seals
+  importComponents();     // Import components
+  importComponentInits(); // Import component inits
+  importRecords();        // Import records
+  importEnums();          // Import enums
 }

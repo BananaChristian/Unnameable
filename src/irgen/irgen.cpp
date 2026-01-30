@@ -23,7 +23,7 @@
 
 IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
     : semantics(semantics), totalHeapSize(totalHeap), context(),
-      globalBuilder(context), funcBuilder(context),
+      funcBuilder(context),
       module(std::make_unique<llvm::Module>("unnameable", context)) {
   setupTargetLayout();
 
@@ -65,12 +65,6 @@ IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
   module->getOrInsertFunction("sage_alloc", allocType);
   module->getOrInsertFunction("sage_free", freeType);
   module->getOrInsertFunction("sage_destroy", destroyType);
-
-  llvm::Function *globalInitFn = llvm::Function::Create(
-      llvm::FunctionType::get(llvm::Type::getVoidTy(context), false),
-      llvm::GlobalValue::InternalLinkage, "global_init", module.get());
-
-  heapInitFnEntry = llvm::BasicBlock::Create(context, "entry", globalInitFn);
 }
 
 // MAIN GENERATOR FUNCTION
@@ -79,21 +73,6 @@ void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program) {
   for (const auto &node : program) {
     generateStatement(node.get());
   }
-
-  // Finish off global heap init if it exists
-  if (heapInitFnEntry) {
-    llvm::IRBuilder<> globalInitBuilder(heapInitFnEntry);
-    globalInitBuilder.CreateRetVoid();
-  }
-
-  // Look for the main function if the user qualified the function
-  llvm::Function *mainFn = module->getFunction("main");
-
-  llvm::BasicBlock &entryBlock = mainFn->getEntryBlock();
-  llvm::IRBuilder<> tmpBuilder(&entryBlock, entryBlock.begin());
-
-  llvm::Function *globalHeapFn = module->getFunction("global_init");
-  tmpBuilder.CreateCall(globalHeapFn);
 }
 
 // MAIN GENERATOR FUNCTION FOR EXPRESSION
@@ -1121,9 +1100,7 @@ void IRGenerator::generateSageInitCall() {
                                       "sage_init", module.get());
   }
 
-  llvm::IRBuilder<> initBuilder(heapInitFnEntry, heapInitFnEntry->begin());
-
-  initBuilder.CreateCall(
+  funcBuilder.CreateCall(
       initFunc,
       {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), totalHeapSize)});
   std::cout << "Calling sage init \n";

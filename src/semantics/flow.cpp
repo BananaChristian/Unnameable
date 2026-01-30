@@ -237,6 +237,11 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   walker(caseCondition);
 
   // Checking if the case type matches the type of the entire switch
+  if (!metaData[caseCondition]) {
+    reportDevBug("Could not find case metaData");
+    return;
+  }
+  
   auto caseType = metaData[caseCondition]->type;
   bool isValid = isInteger(targetType) || isChar(targetType) ||
                  (targetType.kind == DataType::ENUM);
