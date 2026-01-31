@@ -37,10 +37,10 @@ void Semantics::walkAllocatorInterface(Node *node) {
 
   // allocator contract: exactly two functions
   if (block->statements.size() != 2) {
-    logSemanticErrors(
-        "Allocator interface '" + allocName +
-            "' must define exactly two functions (allocate and free)",
-        block->statement.line, block->statement.column);
+    logSemanticErrors("Allocator interface '" + allocName +
+                          "' must define exactly two functions (allocation "
+                          "function and freeing function)",
+                      block->statement.line, block->statement.column);
     hasError = true;
   }
 
@@ -59,40 +59,63 @@ void Semantics::walkAllocatorInterface(Node *node) {
       continue;
     }
 
-    auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
-    if (!fnExpr) {
-      // declarations are allowed syntactically but meaningless here
-      logSemanticErrors("Allocator functions must have a body",
-                        stmt->statement.line, stmt->statement.column);
-      continue;
+    std::string funcName = "Empty";
+
+    int funcLine;
+    int funcCol;
+
+    AllocatorRole role = AllocatorRole::NONE;
+
+    if (auto fnExpr =
+            dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get())) {
+      funcName = fnExpr->func_key.TokenLiteral;
+      funcLine = fnExpr->func_key.line;
+      funcCol = fnExpr->func_key.column;
+
+      if (isExportable) {
+        fnExpr->isExportable = true;
+      }
+
+      if (fnExpr->call.size() != 1) {
+        logSemanticErrors("Allocator function '" + funcName +
+                              "' must take exactly one parameter",
+                          funcLine, funcCol);
+        return;
+      }
+
+      role = getFunctionRole(fnExpr->call, fnExpr->return_type.get(), funcName);
+
+    } else if (auto fnExpr = dynamic_cast<FunctionDeclarationExpression *>(
+                   fnStmt->funcExpr.get())) {
+      auto fnDecl =
+          dynamic_cast<FunctionDeclaration *>(fnExpr->funcDeclrStmt.get());
+      funcName = fnDecl->function_name->expression.TokenLiteral;
+      funcLine = fnDecl->function_name->expression.line;
+      funcCol = fnDecl->function_name->expression.column;
+
+      if (isExportable) {
+        fnDecl->isExportable = true;
+      }
+
+      if (fnDecl->parameters.size() != 1) {
+        logSemanticErrors("Allocator function declaration'" + funcName +
+                              "' must take exactly one parameter",
+                          funcLine, funcCol);
+        return;
+      }
+
+      role = getFunctionRole(fnDecl->parameters, fnDecl->return_type.get(),
+                             funcName);
     }
 
-    std::string &funcName = fnExpr->func_key.TokenLiteral;
-
-    auto funcLine = fnExpr->func_key.line;
-    auto funCol = fnExpr->func_key.column;
-
-    if (isExportable) {
-      fnExpr->isExportable = true;
-    }
-
-    if (fnExpr->call.size() != 1) {
-      logSemanticErrors("Allocator function '" + funcName +
-                            "' must take exactly one parameter",
-                        funcLine, funCol);
-      return;
-    }
-
-    AllocatorRole role =
-        getFunctionRole(fnExpr->call, fnExpr->return_type.get(), funcName);
-    // walk as a normal function
-    walkFunctionExpression(fnStmt->funcExpr.get());
+    // walk whatever is there
+    walkFunctionStatement(fnStmt);
 
     auto funcSym = lookUpInCurrentScope(funcName);
     if (!funcSym) {
       logSemanticErrors("Allocator function '" + funcName +
                             "' does not exist in allocator '" + allocName + "'",
-                        funcLine, funCol);
+                        funcLine, funcCol);
       continue;
     }
 
@@ -107,9 +130,9 @@ void Semantics::walkAllocatorInterface(Node *node) {
       handle.freeName = funcName;
       handle.freeSymbol = funcSym;
     } else {
-      logSemanticErrors("Function '" + fnExpr->func_key.TokenLiteral +
+      logSemanticErrors("Function '" + funcName +
                             "' does not satisfy allocator contract",
-                        fnExpr->func_key.line, fnExpr->func_key.column);
+                        funcLine, funcCol);
       hasError = true;
     }
   }
@@ -151,15 +174,18 @@ AllocatorRole Semantics::getFunctionRole(
   // ALLOCATE function
   if (retType.isPointer) {
     if (paramType.kind != DataType::USIZE || paramType.isPointer) {
-      logSemanticErrors("Allocation function '" + funcName +
-                            "' must take 'usize' as its size parameter",
-                        line, col);
+      logSemanticErrors(
+          "Allocation function '" + funcName +
+              "' must take a size parameter of type 'usize' but got '" +
+              paramType.resolvedName + "'",
+          line, col);
       return AllocatorRole::NONE;
     }
 
-    if (!(retType.kind == DataType::USIZE || retType.kind == DataType::U8)) {
+    if (!(retType.kind == DataType::OPAQUE)) {
       logSemanticErrors("Allocation function '" + funcName +
-                            "' must return 'ptr usize' or 'ptr u8'",
+                            "' must return 'opaque_ptr' but got '" +
+                            retType.resolvedName + "'",
                         retLine, retCol);
       return AllocatorRole::NONE;
     }
@@ -176,11 +202,12 @@ AllocatorRole Semantics::getFunctionRole(
 
   // FREE function
   if (retType.kind == DataType::VOID) {
-    if (!paramType.isPointer || !(paramType.kind == DataType::USIZE ||
-                                  paramType.kind == DataType::U8)) {
-      logSemanticErrors("Free function '" + funcName +
-                            "' must take 'ptr usize' or 'ptr u8'",
-                        line, col);
+    if (!paramType.isPointer || !(paramType.kind == DataType::OPAQUE)) {
+      logSemanticErrors(
+          "Free function '" + funcName +
+              "' must take a parameter of 'ptr opaque' but got '" +
+              paramType.resolvedName + "'",
+          line, col);
       return AllocatorRole::NONE;
     }
 
@@ -188,10 +215,10 @@ AllocatorRole Semantics::getFunctionRole(
   }
 
   // invalid allocator signature
-  logSemanticErrors(
-      "Allocator function '" + funcName +
-          "' must either return a pointer (allocate) or void (free)",
-      retLine, retCol);
+  logSemanticErrors("Allocator function '" + funcName +
+                        "' must either return an opaque pointer (for "
+                        "allocation) or void (for freeing)",
+                    retLine, retCol);
 
   return AllocatorRole::NONE;
 }
@@ -229,14 +256,13 @@ void Semantics::walkHeapStatement(Node *node) {
   // Get the symbol info of the stmt using metaData search
   auto it = metaData.find(heapStmt->stmt.get());
   if (it == metaData.end()) {
-    logSemanticErrors("Could not find statement metaData for declaration in "
-                      "the dheap statement ",
-                      stmt->statement.line, stmt->statement.column);
+    reportDevBug("Could not find statement metaData for declaration in "
+                 "the heap statement ");
     return;
   }
 
   auto stmtSym = it->second;
-  // Toggle the dheap flag, and other flags
+  // Toggle the heap flag, and other flags
   stmtSym->isHeap = true;
   stmtSym->lastUseNode = stmt;
   stmtSym->allocType = allocType;
@@ -265,8 +291,8 @@ void Semantics::registerInbuiltAllocatorTypes() {
   auto allocSym = std::make_shared<SymbolInfo>();
   allocSym->isFunction = true;
   allocSym->isDeclaration = true;
-  allocSym->returnType = ResolvedType{DataType::USIZE, "usize_ptr",
-                                      true}; // The ptr usize return type
+  allocSym->returnType = ResolvedType{DataType::OPAQUE, "opaque_ptr",
+                                      true}; // The ptr opaque return type
   allocSym->paramTypes = allocParams;
   allocSym->isDefined = false;
 
@@ -274,7 +300,7 @@ void Semantics::registerInbuiltAllocatorTypes() {
 
   // Create handle symbol for free
   std::vector<std::pair<ResolvedType, std::string>> freeParams;
-  freeParams.emplace_back(ResolvedType{DataType::USIZE, "usize_ptr", true},
+  freeParams.emplace_back(ResolvedType{DataType::OPAQUE, "opaque_ptr", true},
                           "p");
   auto freeSym = std::make_shared<SymbolInfo>();
   freeSym->isFunction = true;
@@ -286,5 +312,5 @@ void Semantics::registerInbuiltAllocatorTypes() {
 
   stdHandle.freeSymbol = freeSym;
 
-  allocatorMap["GPA"] = stdHandle; // Register malloc allocator type
+  allocatorMap["GPA"] = stdHandle; // Register GPA allocator type
 }

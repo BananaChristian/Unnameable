@@ -744,17 +744,56 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
   // Dealing with parameters
   for (const auto &param : funcDeclrStmt->parameters) {
-    walkLetStatement(param.get());
-    auto paramInfo = metaData.find(param.get());
-    if (paramInfo == metaData.end()) {
-      logSemanticErrors("Parameter '" +
-                            dynamic_cast<LetStatement *>(param.get())
-                                ->ident_token.TokenLiteral +
-                            "' not analyzed",
+    if (!param)
+      continue;
+
+    auto letStmt = dynamic_cast<LetStatement *>(param.get());
+    auto ptrStmt = dynamic_cast<PointerStatement *>(param.get());
+    auto refStmt = dynamic_cast<ReferenceStatement *>(param.get());
+    std::string paramName = "blank";
+    if (!letStmt && !ptrStmt && !refStmt) {
+      logSemanticErrors("Invalid statement in '" + funcName + "' parameters",
                         param.get()->statement.line,
                         param.get()->statement.column);
       hasError = true;
+      continue;
     }
+
+    if (letStmt) {
+      paramName = letStmt->ident_token.TokenLiteral;
+    } else if (ptrStmt) {
+      paramName = ptrStmt->name->expression.TokenLiteral;
+    } else if (refStmt) {
+      paramName = refStmt->name->expression.TokenLiteral;
+    }
+
+    walkFunctionParameters(param.get());
+    auto paramInfo = metaData.find(param.get());
+    if (paramInfo == metaData.end()) {
+      logSemanticErrors("Parameter '" + paramName + "' not analyzed",
+                        param.get()->statement.line,
+                        param.get()->statement.column);
+      hasError = true;
+      continue;
+    }
+
+    // Extract the paramInfo type
+    auto paramTypeName = paramInfo->second->type.resolvedName;
+    // Check the custom types table
+    auto typeIt = customTypesTable.find(paramTypeName);
+    if (typeIt != customTypesTable.end()) {
+      if (isExportable) {
+        if (!typeIt->second->isExportable) {
+          logSemanticErrors(
+              "Exportable function declaration'" + funcName +
+                  "' is using a non exportable type '" + paramTypeName +
+                  "' for its parameter '" + paramName + "'",
+              param.get()->statement.line, param.get()->statement.column);
+          hasError = true;
+        }
+      }
+    }
+
     paramTypes.emplace_back(paramInfo->second->type,
                             paramInfo->second->genericName);
   }
