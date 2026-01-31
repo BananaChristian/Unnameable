@@ -28,7 +28,7 @@ This project contains the core implementation of the Unnameable compiler written
 - `i8` — 8-bit signed integers
 - `u8` — 8-bit unsigned integers
 - `i16` — 16-bit signed integers
-- `u16` — 16-bit usigned integers
+- `u16` — 16-bit unsigned integers
 - `i32` — 32-bit signed integers
 - `u32` — 32-bit unsigned integers
 - `i64` — 64-bit signed integers
@@ -243,7 +243,7 @@ func MultiOps_subtract(i32 a ,f32 b): f32{
 
 func main: i32{
     i32 first_result=IntOps_add(10,18)
-    float second_result=MultiOps_add(14,9.0)
+    f32 second_result=MultiOps_add(14,9.0)
 
 
     return 0
@@ -425,7 +425,7 @@ A cast converts a value from one type to another (e.g., f32 to i32). This may ch
 For example
 ```
 func test_math_cast():void {
-    float pi = 3.14
+    f32 pi = 3.14
     i32 rounded = cast<i32>(pi)
     shout! rounded
 }
@@ -439,8 +439,8 @@ Bitcasting reinterprets the raw bits of a value as a different type. The underly
 For example
 ```
 func test_memory_bitcast():void {
-    heap float pi = 3.14
-    ptr float p_float -> addr pi
+    heap f32 pi = 3.14
+    ptr f32 p_float -> addr pi
     ptr i32 p_int -> bitcast<ptr i32>(p_float)
     
     i32 bit_pattern = deref p_int
@@ -455,12 +455,12 @@ func main:i32 {
 
 ## Multi file support
 
-Unnameable supports multi file usage with two systems merge and import
-To link the user must explictly use a link statement I am yet to add it though but thats the plan.
+Unnameable supports multi file usage with the import system
+To link the user must explictly use a link statement I am yet to test it but it exists
 
 Import allows a user to import content from an external file that had been marked as exportable
 The compiler loads a stub file and uses the info from the stub file in its analysis
-For now imports only support seals,components and records but I plan on expanding them to enums now and looking at how the EIG system can fit in(PS: this EIG isnt a guarantee when it comes to this system but I will try) etc.
+For now imports only support seals,components,records and enums but I plan on expanding them to enums now and looking at how the EIG system can fit in(PS: this EIG isnt a guarantee when it comes to this system but I will try) etc.
 Below is an example of the syntax
 
 ```
@@ -758,8 +758,8 @@ sage const i32 z=78
 
 sage i32 x #This will not be allowed as the compiler will ask for an initialization(If its important to be placed on the heap atleast initialize it)
 
-sage int? x=null #This will be rejected by the compiler as we dont want to account for nulls in SAGE
-sage int? x #Same story not allowed
+sage i32? x=null #This will be rejected by the compiler as we dont want to account for nulls in SAGE
+sage i32? x #Same story not allowed
 
 #Freeing order of heap raised values
 ##The compiler will block the code below as it violates LIFO(Last In First Out) rules
@@ -860,7 +860,7 @@ To ensure the integrity of the SAGE memory model and prevent pointer corruption,
 
 Because SAGE is a stack-based allocator, mutating or referencing an **external** SAGE variable inside a loop is prohibited as it risks breaking the LIFO (Last-In-First-Out) order.
 
-- If you need to mutate a variable across loop iterations, use `dheap` (Dynamic Heap) or a standard stack variable (`mut i32`).
+- If you need to mutate a variable across loop iterations, use `heap` (Dynamic Heap) or a standard stack variable (`mut i32`).
 - The compiler will throw a `sentinel error` if it detects a potential stack-smashing pattern in your SAGE usage.
 
 ### Last-Use Analysis
@@ -882,7 +882,7 @@ ptr p-> addr a
 ```
 
 _Quick note_:
-The compiler sees `addr <variable>` as a pointer so the type of the variable matters if the variable `x` is an integer then `addr x` has a type of `int_ptr`
+The compiler sees `addr <variable>` as a pointer so the type of the variable matters if the variable `x` is an integer then `addr x` has a type of `i32_ptr`
 
 ## References in Unnameable
 
@@ -905,7 +905,7 @@ _Type inference_:
 If you omit the type, the compiler infers it from the target
 
 ```
-ref b -> a #Infered as int_ref
+ref b -> a #Infered as i32_ref
 ```
 
 _Mutability rules_:
