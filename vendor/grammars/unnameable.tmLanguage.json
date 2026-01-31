@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Unnameable",
+  "scopeName": "source.unnameable",
+  "fileTypes": ["unn"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#keywords" },
+    { "include": "#functions" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.block.unnameable", "begin": "##", "end": "##" },
+        { "name": "comment.line.number-sign.unnameable", "match": "#.*$" }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.unnameable",
+          "match": "\\b(if|elif|else|while|for|switch|case|default|return|import|link|export|inject)\\b"
+        },
+        {
+          "name": "keyword.other.unnameable",
+          "match": "\\b(func|generic|seal|component|record|init|new|self|enum|mut|const|sage|ptr|ref|deref|addr|say|allocator|heap|arr|instantiate|as)\\b"
+        },
+        { "name": "constant.language.null.unnameable", "match": "\\bnull\\b" }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "comment": "Fix for func main:Type - captures name regardless of what follows",
+          "match": "\\b(func)\\s+([a-zA-Z_\\x{0080}-\\x{10FFFF}][a-zA-Z0-9_\\x{0080}-\\x{10FFFF}]*)",
+          "captures": {
+            "1": { "name": "keyword.other.unnameable" },
+            "2": { "name": "entity.name.function.unnameable" }
+          }
+        },
+        {
+          "match": "\\b([a-zA-Z_\\x{0080}-\\x{10FFFF}][a-zA-Z0-9_\\x{0080}-\\x{10FFFF}]*)\\s*(?=\\()",
+          "name": "entity.name.function.unnameable"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.unnameable",
+          "match": "\\b(i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64|bool|string|char8|char16|char32|auto|void|isize|usize|opaque)\\??\\b"
+        },
+        {
+          "comment": "Scope Resolution: Highlight 'Test' in 'Test::WHAT'",
+          "match": "([a-zA-Z_\\x{0080}-\\x{10FFFF}][a-zA-Z0-9_\\x{0080}-\\x{10FFFF}]*)(?=::)",
+          "name": "entity.name.type.unnameable"
+        },
+        {
+          "comment": "The 'Player x' fix: Two identifiers in a row",
+          "match": "\\b([a-zA-Z_\\x{0080}-\\x{10FFFF}][a-zA-Z0-9_\\x{0080}-\\x{10FFFF}]*)\\s+[a-zA-Z_\\x{0080}-\\x{10FFFF}]",
+          "captures": {
+            "1": { "name": "entity.name.type.unnameable" }
+          }
+        },
+        {
+          "comment": "Contextual types: ptr, ref, sage, arr[, :",
+          "match": "(?<=\\b(ptr|ref|sage|as)\\s|arr\\[|:)\\s*([a-zA-Z_\\x{0080}-\\x{10FFFF}][a-zA-Z0-9_\\x{0080}-\\x{10FFFF}]*)",
+          "captures": {
+            "2": { "name": "entity.name.type.unnameable" }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        { "name": "keyword.operator.scope.unnameable", "match": "::" },
+        {
+          "name": "keyword.operator.unnameable",
+          "match": "(\\-\\>|\\?\\?|\\+|\\-|\\*|\\/|\\%|\\=|\\=\\=|\\!|\\<|\\>|\\&|\\||:)"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        { "name": "constant.numeric.unnameable", "match": "\\b[0-9]+(\\.[0-9]+)?(i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|iz|uz|f32|f64)?\\b" },
+        { "name": "constant.language.boolean.unnameable", "match": "\\b(true|false)\\b" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.unnameable",
+          "begin": "\"", "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.unnameable", "match": "\\\\." }]
+        },
+        { "name": "string.quoted.single.unnameable", "match": "u?'.'" }
+      ]
+    }
+  }
+}

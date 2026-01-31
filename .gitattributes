@@ -1,0 +1,3 @@
+*.unn linguist-language=Unnameable
+*.stub linguist-generated=true
+bin/* binary

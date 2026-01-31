@@ -74,9 +74,9 @@ u16 m=8u16
 
 string name = "Iron"
 
-float pi = 3.14
+f32 pi = 3.14
 
-double pi=3.14d
+f64 pi=3.14f64
 
 auto y = 42  # Type inferred as int
 
