@@ -110,6 +110,30 @@ int main(int argc, char **argv) {
     }
   }
 
+  // Get the absolute path of the file we are TRYING to compile right now
+  fs::path currentArgPath = (argc > 1) ? fs::absolute(argv[1]) : "";
+
+  // Check the "Bloodline"
+  const char *env_stack = std::getenv("UNNC_IMPORT_STACK");
+  std::string importStack = env_stack ? env_stack : "";
+
+  if (!importStack.empty() && !currentArgPath.empty()) {
+    std::stringstream ss(importStack);
+    std::string modulePath;
+
+    while (std::getline(ss, modulePath, ',')) {
+      // Both are now absolute paths. Compare apples to apples.
+      if (currentArgPath == fs::path(modulePath)) {
+        std::cerr << COLOR_RED << COLOR_BOLD
+                  << "\n[FATAL] Circular Import Detected!\n"
+                  << COLOR_RESET << COLOR_YELLOW << "Trace: " << importStack
+                  << " -> " << COLOR_RED << currentArgPath.string()
+                  << COLOR_RESET << "\n";
+        return 1;
+      }
+    }
+  }
+
   std::string sourceFile;
   std::string objFile;
   std::string exeFile;

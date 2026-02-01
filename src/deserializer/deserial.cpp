@@ -34,64 +34,106 @@ void Deserializer::processImports(
 
 std::string Deserializer::resolveImportPath(ImportStatement *import,
                                             const std::string &currentFile) {
-  if (!import) {
-    reportDevBug("Invalid import node in file: " + currentFile);
-  }
-
-  if (!import->stringExpr) {
-    reportDevBug("Invalid string in imper statement in file: " + currentFile);
+  // Validation with detailed feedback
+  if (!import || !import->stringExpr) {
+    std::string err =
+        "AST Corrupt: Import statement missing string expression in " +
+        currentFile;
+    reportDevBug(err);
+    throw std::runtime_error(err);
   }
 
   auto strLit = dynamic_cast<StringLiteral *>(import->stringExpr.get());
   std::string raw = strLit->string_token.TokenLiteral;
 
-  logInternal("Import string: " + raw);
+  // Normalize paths to absolute to prevent "Relative vs Absolute" comparison
+  // bugs
+  fs::path absCurrentFile = fs::absolute(currentFile);
+  fs::path currentDir = absCurrentFile.parent_path();
 
-  fs::path currentDir = fs::path(currentFile).parent_path();
-  fs::path importPath(raw);
+  fs::path stubPath = currentDir / (raw + ".stub");
+  fs::path unnPath = currentDir / (raw + ".unn");
 
-  // If .stub wasnt added add it
-  if (importPath.extension() != ".stub")
-    importPath += ".stub";
+  // 2. Auto-Generation Logic
+  if (!fs::exists(stubPath)) {
+    if (fs::exists(unnPath)) {
+      logInternal("[AUTO-STUB] Missing interface for '" + raw +
+                  "'. Spawning sub-compiler...");
 
-  fs::path candidate = currentDir / importPath;
+      // Recursion Guard: Pass the absolute path of the current file to the
+      // child
+      const char *env_stack = std::getenv("UNNC_IMPORT_STACK");
+      std::string newStack = (env_stack ? std::string(env_stack) + "," : "") +
+                             absCurrentFile.string();
 
-  // Canonicalize (weakly_canonical so we tolerate non-existing symlink parents)
+#ifdef _WIN32
+      _putenv_s("UNNC_IMPORT_STACK", newStack.c_str());
+#else
+      setenv("UNNC_IMPORT_STACK", newStack.c_str(), 1);
+#endif
+
+      // Find the absolute path of THIS compiler executable
+      std::string compilerExe;
+      try {
+        compilerExe = fs::canonical("/proc/self/exe").string();
+      } catch (...) {
+        // Fallback if procfs is restricted
+        compilerExe = "./unnc";
+      }
+
+      // Explicitly tell the child where to put the stub
+      std::string cmd =
+          compilerExe + " " + unnPath.string() + " -stub " + stubPath.string();
+
+      logInternal("[EXEC] " + cmd);
+      int result = std::system(cmd.c_str());
+
+      if (result != 0) {
+        std::string errorMsg =
+            "Dependency Error: Failed to generate stub for '" + raw +
+            "'. The sub-compiler returned exit code: " + std::to_string(result);
+        logImportError(errorMsg, strLit->expression.line,
+                       strLit->expression.column);
+        throw std::runtime_error(errorMsg);
+      }
+    } else {
+      std::string errorMsg = "Module Not Found: Checked for '" +
+                             stubPath.string() + "' and '" + unnPath.string() +
+                             "'";
+      logImportError(errorMsg, strLit->expression.line,
+                     strLit->expression.column);
+      throw std::runtime_error(errorMsg);
+    }
+  }
+
+  // Path Validation & Security (Weakly canonical handles symlinks)
   fs::path resolved;
   try {
-    resolved = fs::weakly_canonical(candidate);
+    resolved = fs::weakly_canonical(stubPath);
   } catch (const std::exception &e) {
-    logInternal("Failed to canonicalize import path: " + candidate.string() +
-                " (" + e.what() + ")");
+    resolved = stubPath;
   }
 
-  // Block climbing out of root directory
+  // Security: Prevent accessing files outside the project workspace
   fs::path projectRoot = fs::current_path();
-  std::string projRootStr = projectRoot.string();
   std::string resolvedStr = resolved.string();
 
-  if (resolvedStr.rfind(projRootStr, 0) != 0) {
-    logImportError("Import '" + raw +
-                       "' resolves outside project root: " + resolvedStr,
-                   strLit->expression.line, strLit->expression.column);
-    throw std::runtime_error("Import resolves outside project root");
+  if (resolvedStr.rfind(projectRoot.string(), 0) != 0) {
+    std::string errorMsg = "Security Violation: Import path '" + raw +
+                           "' escapes project root (" + projectRoot.string() +
+                           ")";
+    logImportError(errorMsg, strLit->expression.line,
+                   strLit->expression.column);
+    throw std::runtime_error(errorMsg);
   }
 
-  // If the stub file doesnt exist
-  if (!fs::exists(resolved)) {
-    logImportError("Stub file not found: " + resolvedStr,
-                   strLit->expression.line, strLit->expression.column);
-    throw std::runtime_error("Stub not found: " + resolved.string());
+  // Deduplication: Don't reload what we already have
+  if (loadedStubs.find(resolvedStr) != loadedStubs.end()) {
+    return resolvedStr;
   }
 
-  if (loadedStubs.find(resolved.string()) != loadedStubs.end()) {
-    // Already loaded, just return it
-    return resolved.string();
-  }
-
-  logInternal("Loaded stub: " + resolved.string());
-
-  return resolved.string();
+  logInternal("[SUCCESS] Resolved module '" + raw + "' to " + resolvedStr);
+  return resolvedStr;
 }
 
 void Deserializer::loadStub(const std::string &resolved) {
