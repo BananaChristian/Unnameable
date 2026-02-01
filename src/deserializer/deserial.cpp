@@ -188,6 +188,26 @@ void Deserializer::loadStub(const std::string &resolved) {
       enumMap.emplace(member.memberName, std::move(info));
     }
   }
+
+  // Allocator reading
+  for (const auto &allocators : stub.allocators) {
+    logInternal("ALLOCATOR NAME: " + allocators.allocatorName);
+    auto &allocatorMap = importedAllocatorsTable[allocators.allocatorName];
+    // Allocation and freeing function
+    auto allocFunc = allocators.allocationFunc;
+    allocatorMap.allocateName = allocFunc.funcName;
+    auto allocInfo = std::make_shared<ImportedSymbolInfo>();
+    allocInfo->returnType = allocFunc.returnType;
+    allocInfo->paramTypes = allocFunc.paramTypes;
+    allocatorMap.allocatorSymbol = allocInfo;
+
+    auto freeFunc = allocators.freeFunc;
+    allocatorMap.freeName = freeFunc.funcName;
+    auto freeInfo = std::make_shared<ImportedSymbolInfo>();
+    freeInfo->returnType = freeFunc.returnType;
+    freeInfo->paramTypes = freeFunc.paramTypes;
+    allocatorMap.freeSymbol = freeInfo;
+  }
 }
 
 void Deserializer::readOrFail(std::istream &in, void *dst, size_t size,
@@ -419,6 +439,18 @@ RawEnumMembers Deserializer::readEnumMember(std::istream &in) {
   return member;
 }
 
+//_________________ALLOCATOR FUNCTIONS READING_______________
+RawAlloctorFunction Deserializer::readAllocatorFunction(std::istream &in) {
+  logInternal("Allocator function read");
+  RawAlloctorFunction function;
+  function.funcName = readString(in, "Function name");
+  function.returnType = readImportedType(in);
+  function.paramTypes = readParamTypes(in);
+
+  logInternal("Finished allocator function read");
+  return function;
+}
+
 //___________________STUB TABLE READ___________________
 
 RawStubTable Deserializer::readStubTable(std::istream &in) {
@@ -449,8 +481,8 @@ RawStubTable Deserializer::readStubTable(std::istream &in) {
 
   // SECTIONS
   for (uint16_t s = 0; s < sectionCount; ++s) {
-    logInternal("READING SECTION '" + std::to_string(s + 1) + "' Total sections: " +
-                std::to_string(sectionCount));
+    logInternal("READING SECTION '" + std::to_string(s + 1) +
+                "' Total sections: " + std::to_string(sectionCount));
     ImportedStubSection section =
         static_cast<ImportedStubSection>(read_u8(in, "Section Type ID"));
     uint32_t entryCount = read_u32(in, "Section Entry Count");
@@ -528,9 +560,11 @@ RawStubTable Deserializer::readStubTable(std::istream &in) {
         // members
         uint32_t memberCount = read_u32(in, "Component Member Count");
         comp.members.reserve(memberCount);
-        std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Component '"
-                  << comp.componentName << "' expects " << memberCount
-                  << " members.\n";
+        if (isVerbose) {
+          std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Component '"
+                    << comp.componentName << "' expects " << memberCount
+                    << " members.\n";
+        }
         for (uint32_t m = 0; m < memberCount; ++m) {
           comp.members.push_back(readComponentMember(in));
         }
@@ -538,9 +572,11 @@ RawStubTable Deserializer::readStubTable(std::istream &in) {
         // methods
         uint32_t methodCount = read_u32(in, "Component Method Count");
         comp.methods.reserve(methodCount);
-        std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Component '"
-                  << comp.componentName << "' expects " << methodCount
-                  << " methods.\n";
+        if (isVerbose) {
+          std::cout << COLOR_YELLOW << "[INFO] " << COLOR_RESET << "Component '"
+                    << comp.componentName << "' expects " << methodCount
+                    << " methods.\n";
+        }
         for (uint32_t m = 0; m < methodCount; ++m) {
           comp.methods.push_back(readComponentMethod(in));
         }
@@ -552,8 +588,10 @@ RawStubTable Deserializer::readStubTable(std::istream &in) {
           comp.init = readComponentInit(in);
         }
 
-        std::cout << "DEBUG: Finishing Component " << i + 1
-                  << " at Pos: " << in.tellg() << "\n";
+        if (isVerbose) {
+          std::cout << "DEBUG: Finishing Component " << i + 1
+                    << " at Pos: " << in.tellg() << "\n";
+        }
         table.components.push_back(std::move(comp));
       }
       break;
@@ -622,6 +660,30 @@ RawStubTable Deserializer::readStubTable(std::istream &in) {
         }
 
         table.enums.push_back(std::move(enumTable));
+      }
+      break;
+    }
+    case ImportedStubSection::ALLOCATORS: {
+      if (entryCount > 1000000) {
+        throw std::runtime_error(
+            "Stub corruption detected: absurdly high entry count (" +
+            std::to_string(entryCount) + ")");
+      }
+      table.allocators.reserve(entryCount);
+      for (uint32_t i = 0; i < entryCount; i++) {
+        if (isVerbose) {
+          std::cout << COLOR_YELLOW << "[DEBUG]" << COLOR_RESET
+                    << " Reading Allocator " << i + 1 << " of " << entryCount
+                    << "\n";
+        }
+        RawAllocatorTable allocatorTable;
+        allocatorTable.allocatorName = readString(in, "Allocator Name");
+
+        // The allocation and free function
+        allocatorTable.allocationFunc = readAllocatorFunction(in);
+        allocatorTable.freeFunc = readAllocatorFunction(in);
+
+        table.allocators.push_back(std::move(allocatorTable));
       }
       break;
     }

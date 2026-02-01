@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
       staticCompile = true;
     } else if (arg == "-o" && i + 1 < argc) {
       exeFile = argv[++i];
-    } else if (arg == "-verbose") {
+    } else if (arg == "-verbose"||arg=="--verbose") {
       logOutput = true;
     } else if (arg[0] != '-') {
       sourceFile = arg;

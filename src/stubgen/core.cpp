@@ -18,6 +18,8 @@ void StubGen::registerStubGeneratorFns() {
   stubGenFnsMap[typeid(SealStatement)] = &StubGen::generateSealStatement;
   stubGenFnsMap[typeid(RecordStatement)] = &StubGen::generateRecordStatement;
   stubGenFnsMap[typeid(EnumStatement)] = &StubGen::generateEnumStatement;
+  stubGenFnsMap[typeid(AllocatorStatement)] =
+      &StubGen::generateAllocatorStatement;
 }
 
 void StubGen::finish() {
@@ -218,6 +220,21 @@ void StubGen::serializeEnumTable(std::ostream &out, const EnumTable &table) {
   }
 }
 
+//___________________ALLOCATOR SERIALIZATION________________
+void StubGen::serializeAllocatorFunction(std::ostream &out,
+                                         const AllocatorFunction &function) {
+  writeString(out, function.functionName);
+  serializeResolvedType(out, function.returnType);
+  serializeParamTypes(out, function.paramTypes);
+}
+
+void StubGen::serializeAllocator(std::ostream &out,
+                                 const Allocator &allocator) {
+  writeString(out, allocator.allocatorName);
+  serializeAllocatorFunction(out, allocator.allocator);
+  serializeAllocatorFunction(out, allocator.free);
+}
+
 //________________FINAL STUB SERIALIZATION____________
 void StubGen::serializeFullStubTable(const StubTable &table,
                                      const std::string &filename) {
@@ -229,7 +246,7 @@ void StubGen::serializeFullStubTable(const StubTable &table,
   // HEADER
   write_u32(out, 0x53545542); // STUB
   write_u32(out, 1);          // Version
-  write_u16(out, 4);          // Section count (4 for now)
+  write_u16(out, 5);          // Section count (5 for now)
 
   // SEALS
   write_u8(out, static_cast<uint8_t>(StubSection::SEALS));
@@ -258,6 +275,13 @@ void StubGen::serializeFullStubTable(const StubTable &table,
   write_u32(out, static_cast<uint32_t>(table.enums.size()));
   for (const auto &enums : table.enums) {
     serializeEnumTable(out, enums);
+  }
+
+  // ALLOCATORS
+  write_u8(out, static_cast<uint8_t>(StubSection::ALLOCATORS));
+  write_u32(out, static_cast<uint32_t>(table.allocators.size()));
+  for (const auto &allocator : table.allocators) {
+    serializeAllocator(out, allocator);
   }
 }
 

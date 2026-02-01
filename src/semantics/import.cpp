@@ -322,8 +322,50 @@ void Semantics::importEnums() {
     enumSym->isExportable = true;
     enumSym->members = enumMembers;
     enumSym->type = ResolvedType{DataType::ENUM, enumName};
+
+    symbolTable[0][enumName] = enumSym;
+  }
+}
+
+void Semantics::importAllocators() {
+  logInternal("Imported allocators count: " +
+              std::to_string(deserializer.importedAllocatorsTable.size()));
+  for (const auto &allocPair : deserializer.importedAllocatorsTable) {
+    const std::string &allocatorName = allocPair.first;
+    logInternal("Import allocator name: " + allocatorName);
+    auto allocateMembers = allocPair.second;
+    AllocatorHandle importedHandle;
     
-    symbolTable[0][enumName]=enumSym;
+    //Dealing the allocator function
+    importedHandle.allocateName = allocateMembers.allocateName;
+    // Convert the allocator symbol from imported to concrete
+    auto allocatorSymbol = std::make_shared<SymbolInfo>();
+    auto importedAllocatorSymbol = allocateMembers.allocatorSymbol;
+    allocatorSymbol->returnType =
+        convertImportedTypetoResolvedType(importedAllocatorSymbol->returnType);
+    allocatorSymbol->paramTypes = convertImportedParamstoResolvedParams(
+        importedAllocatorSymbol->paramTypes);
+
+    importedHandle.allocatorSymbol = allocatorSymbol;
+    
+    //Dealing with the free function
+    importedHandle.freeName = allocateMembers.freeName;
+    // Convert the free symbol from imported to concrete
+    auto freeSymbol = std::make_shared<SymbolInfo>();
+    auto importedFreeSymbol = allocateMembers.freeSymbol;
+    freeSymbol->returnType =
+        convertImportedTypetoResolvedType(importedFreeSymbol->returnType);
+    freeSymbol->paramTypes =
+        convertImportedParamstoResolvedParams(importedFreeSymbol->paramTypes);
+    
+    importedHandle.freeSymbol=freeSymbol;
+    
+    //Write some basic allocator interface symbol
+    auto interfaceSym=std::make_shared<SymbolInfo>();
+    interfaceSym->isExportable=true;
+    
+    allocatorMap[allocatorName]=importedHandle;
+    symbolTable[0][allocatorName]=interfaceSym;
   }
 }
 
@@ -333,4 +375,5 @@ void Semantics::import() {
   importComponentInits(); // Import component inits
   importRecords();        // Import records
   importEnums();          // Import enums
+  importAllocators();     // ImportAllocators
 }

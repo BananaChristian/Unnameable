@@ -1,10 +1,17 @@
 #include "ast.hpp"
 #include "semantics.hpp"
 #include "typeindex"
+#include <ostream>
 #include <unordered_map>
 #include <vector>
 
-enum class StubSection : uint8_t { SEALS, COMPONENTS, RECORDS, ENUMS };
+enum class StubSection : uint8_t {
+  SEALS,
+  COMPONENTS,
+  RECORDS,
+  ENUMS,
+  ALLOCATORS
+};
 
 struct SealFunction {
   std::string funcName;
@@ -83,11 +90,24 @@ struct EnumTable {
   std::vector<EnumMembers> members;
 };
 
+struct AllocatorFunction {
+  std::string functionName;
+  ResolvedType returnType;
+  std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+};
+
+struct Allocator {
+  std::string allocatorName;
+  AllocatorFunction allocator;
+  AllocatorFunction free;
+};
+
 struct StubTable {
   std::vector<SealTable> seals;
   std::vector<ComponentTable> components;
   std::vector<RecordTable> records;
   std::vector<EnumTable> enums;
+  std::vector<Allocator> allocators;
 };
 
 class StubGen {
@@ -114,6 +134,7 @@ private:
   void generateComponentStatement(Node *node);
   void generateRecordStatement(Node *node);
   void generateEnumStatement(Node *node);
+  void generateAllocatorStatement(Node *node);
 
   // Helper functions
   void registerStubGeneratorFns();
@@ -123,7 +144,7 @@ private:
   inline void writeString(std::ostream &out, const std::string &str);
   inline void write_u8(std::ostream &out, uint8_t v);
   inline void write_s32(std::ostream &out, int32_t v);
-  inline void write_s64(std::ostream &out,int64_t v);
+  inline void write_s64(std::ostream &out, int64_t v);
   inline void write_u16(std::ostream &out, uint16_t v);
   inline void write_u32(std::ostream &out, uint32_t v);
   void serializeResolvedType(std::ostream &out, const ResolvedType &t);
@@ -147,6 +168,10 @@ private:
 
   void serializeEnumMember(std::ostream &out, const EnumMembers &member);
   void serializeEnumTable(std::ostream &out, const EnumTable &enumTable);
+
+  void serializeAllocatorFunction(std::ostream &out,
+                                  const AllocatorFunction &function);
+  void serializeAllocator(std::ostream &out, const Allocator &allocator);
 
   void serializeFullStubTable(const StubTable &table,
                               const std::string &filename);

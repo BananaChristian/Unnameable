@@ -457,6 +457,7 @@ private:
   void importComponentInits();
   void importRecords();
   void importEnums();
+  void importAllocators();
   void import();
   
 
