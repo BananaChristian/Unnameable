@@ -74,9 +74,9 @@ fs::path getCompilerRoot() {
 
 int main(int argc, char **argv) {
   if (argc < 2) {
-    std::cerr
-        << COLOR_YELLOW << "Usage:" << COLOR_RESET
-        << " unnc <source.unn> [-c <object>] [-o <executable>] [-verbose]\n";
+    std::cerr << COLOR_YELLOW << "Usage:" << COLOR_RESET
+              << " unnc <source.unn> [-compile <object>] [-build <executable>] "
+                 "[-verbose]\n";
     return 1;
   }
 
@@ -90,16 +90,17 @@ int main(int argc, char **argv) {
                 << COLOR_RESET << "  unnc <source.unn> [options]\n\n"
                 << COLOR_BOLD << "Options:\n"
                 << COLOR_RESET
-                << "  -c <file>       Compile to object file only\n"
-                << "  -o <file>       Compile and link to executable\n"
+                << "  -compile <file>       Compile to object file only\n"
+                << "  -build <file>       Compile and link to executable\n"
+                << "  -stub <file>      Generate a stub file\n"
                 << "  -verbose        Enable verbose internal logs\n"
                 << "  -help           Show this help message\n"
                 << "  -static          Generate a static library instead of an "
                    "executable\n"
                 << "  --version       Show compiler version\n\n"
                 << COLOR_YELLOW << "Example:\n"
-                << COLOR_RESET << "  unnc main.unn -o app\n"
-                << "  unnc main.unn -c main.o\n\n";
+                << COLOR_RESET << "  unnc main.unn -build app\n"
+                << "  unnc main.unn -compile main.o\n\n";
       return 0;
     }
     if (arg == "--version") {
@@ -112,20 +113,29 @@ int main(int argc, char **argv) {
   std::string sourceFile;
   std::string objFile;
   std::string exeFile;
+  std::string stubFile;
   bool compileOnly = false;
+  bool stubOnly = false;
   bool staticCompile = false; // Boolean flag for static libgen
 
   // Parse arguments
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
-    if (arg == "-c" && i + 1 < argc) {
+    if (arg == "-compile" && i + 1 < argc) {
       objFile = argv[++i];
       compileOnly = true;
     } else if (arg == "-static") {
       staticCompile = true;
-    } else if (arg == "-o" && i + 1 < argc) {
+    } else if (arg == "-build" && i + 1 < argc) {
       exeFile = argv[++i];
-    } else if (arg == "-verbose"||arg=="--verbose") {
+    } else if (arg == "-stub") {
+      // Check if a filename was provided after -stub, or if the next arg is
+      // another flag
+      if (i + 1 < argc && argv[i + 1][0] != '-') {
+        stubFile = argv[++i];
+      }
+      stubOnly = true;
+    } else if (arg == "-verbose") {
       logOutput = true;
     } else if (arg[0] != '-') {
       sourceFile = arg;
@@ -147,6 +157,8 @@ int main(int argc, char **argv) {
     objFile = srcPath.stem().string() + ".o";
   if (exeFile.empty())
     exeFile = srcPath.stem().string();
+  if (stubFile.empty())
+    stubFile = srcPath.stem().string() + ".stub";
 
   ErrorHandler errorHandler(sourceFile);
 
@@ -186,13 +198,14 @@ int main(int argc, char **argv) {
     }
 
     // Deserializer phase
-    Deserializer deserial(errorHandler,logOutput);
+    Deserializer deserial(errorHandler, logOutput);
     if (logOutput)
-      std::cout << COLOR_BLUE << "[STUB DESERIALIZATION]" << COLOR_RESET << "\n";
+      std::cout << COLOR_BLUE << "[STUB DESERIALIZATION]" << COLOR_RESET
+                << "\n";
     deserial.processImports(AST, sourceFile);
-    
-    if(deserial.failed()){
-        return 1;
+
+    if (deserial.failed()) {
+      return 1;
     }
 
     if (logOutput)
@@ -229,8 +242,8 @@ int main(int argc, char **argv) {
     }
 
     // Stub generation phase
-    StubGen stubGen(semantics, sourceFile, logOutput);
-    if (compileOnly) {
+    StubGen stubGen(semantics, stubFile, logOutput);
+    if (compileOnly || stubOnly) {
       if (logOutput)
         std::cout << COLOR_BLUE << "[STUBGEN]" << COLOR_RESET << "\n";
       for (const auto &node : AST)
@@ -240,6 +253,13 @@ int main(int argc, char **argv) {
 
       if (stubGen.failed()) {
         return 1;
+      }
+
+      // If the user ONLY wanted a stub, we stop here
+      if (stubOnly && !compileOnly) {
+        std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
+                  << " Interface stub generated: " << stubFile << "\n";
+        return 0;
       }
     }
 

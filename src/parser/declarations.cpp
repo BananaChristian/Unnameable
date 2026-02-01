@@ -2,7 +2,6 @@
 #include "token.hpp"
 
 std::unique_ptr<Statement> Parser::parseLetStatement() {
-  bool isExportable = false;
   bool isSage = false;
   bool isHeap = false;
   Mutability mutability = Mutability::IMMUTABLE;
@@ -53,9 +52,9 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
     value = parseExpression(Precedence::PREC_NONE);
   }
 
-  return std::make_unique<LetStatement>(
-      isExportable, isSage, isHeap, mutability, std::move(type), ident_token,
-      assign_token, std::move(value));
+  return std::make_unique<LetStatement>(isSage, isHeap, mutability,
+                                        std::move(type), ident_token,
+                                        assign_token, std::move(value));
 }
 
 std::unique_ptr<Statement> Parser::parseMutStatement() {

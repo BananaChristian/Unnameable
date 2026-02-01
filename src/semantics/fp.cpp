@@ -708,6 +708,15 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     return;
   }
 
+  //If it is not inside an allocator block restrivt
+  if (!insideAllocator) {
+    if (isExportable) {
+      logSemanticErrors("Cannot export function declarations",
+                        funcDeclrStmt->function_name->expression.line,
+                        funcDeclrStmt->function_name->expression.column);
+    }
+  }
+
   // Checking if the declaration already exists
   auto symbol = resolveSymbolInfo(funcName);
   if (symbol) {

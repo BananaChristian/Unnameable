@@ -404,7 +404,6 @@ void Semantics::walkLetStatement(Node *node) {
   bool isDefinitelyNull = false;
   bool isInitialized = false;
   bool hasError = false;
-  bool isExportable = letStmt->isExportable;
   int popCount = 0;
 
   // Checking if the name is being reused
@@ -464,36 +463,18 @@ void Semantics::walkLetStatement(Node *node) {
   bool isMutable = (letStmt->mutability == Mutability::MUTABLE);
   bool isConstant = (letStmt->mutability == Mutability::CONSTANT);
 
-  // Export check
-  if (isExportable && !isGlobalScope()) {
-    logSemanticErrors("The 'export' keyword can only be used on global "
-                      "constant declarations. "
-                      "Local variable '" +
-                          letName + "' cannot be exported.",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
-    hasError = true;
-  }
-
-  if (isExportable && !isConstant) {
-    logSemanticErrors("The 'export' keyword can only be used on global "
-                      "constant declarations. "
-                      "Non const variable '" +
-                          letName + "' cannot be exported.",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
-    hasError = true;
-  }
-
   // Constant declaration checks
   if (isConstant && !letStmtValue) {
     logSemanticErrors("Need to assign a value to a constant variable '" +
                           letName + "'",
                       letStmt->ident_token.line, letStmt->ident_token.column);
     hasError = true;
+    return;
   }
 
   if (isConstant && !isConstLiteral(letStmtValue)) {
     logSemanticErrors("Constant variable'" + letName +
-                          "' must be initialized with a raw literal, not an "
+                          "' must be initialized with a raw literal, not a "
                           "runtime expression",
                       letStmtValue->expression.line,
                       letStmtValue->expression.column);
@@ -662,7 +643,6 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->popCount = popCount;
   letInfo->lastUseNode = letStmt;
   letInfo->storage = letStorageType;
-  letInfo->isExportable = isExportable;
   letInfo->hasError = hasError;
   if (!loopContext.empty() && loopContext.back()) {
     letInfo->needsPostLoopFree = true;

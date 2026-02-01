@@ -47,7 +47,7 @@ void IRGenerator::generateLetStatement(Node *node) {
     std::cout << "[DEBUG] No insert block (global scope) for let '" << letName
               << "'\n";
     if (isComponent && isSage) {
-        throw std::runtime_error("Cannot sage raise component in global scope");
+      throw std::runtime_error("Cannot sage raise component in global scope");
     } else if (isSage) {
       throw std::runtime_error("Cannot sage raise in global scope");
     }
@@ -494,14 +494,10 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
     init = llvm::Constant::getNullValue(varType);
   }
 
-  llvm::GlobalValue::LinkageTypes linkage =
-      sym->isExportable ? llvm::GlobalValue::ExternalLinkage
-                        : llvm::GlobalValue::InternalLinkage;
-
   auto *g = new llvm::GlobalVariable(
       *module, varType,
       sym->isConstant, // should be true unless semantics has screwed me
-      linkage, init, letName);
+      llvm::GlobalValue::InternalLinkage, init, letName);
 
   sym->llvmValue = g;
   sym->llvmType = varType;
@@ -675,8 +671,8 @@ void IRGenerator::freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym) {
 }
 
 llvm::Value *IRGenerator::allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
-                                               llvm::Value *runtimeSize,
-                                               const std::string &varName) {
+                                              llvm::Value *runtimeSize,
+                                              const std::string &varName) {
   const std::string &allocatorTypeName = sym->allocType;
   auto it = semantics.allocatorMap.find(allocatorTypeName);
   auto handle = it->second;

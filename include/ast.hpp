@@ -1168,7 +1168,6 @@ struct PointerStatement : Statement {
 
 // Let statement node
 struct LetStatement : Statement {
-  bool isExportable;
   bool isSage;
   bool isHeap;
   Mutability mutability;
@@ -1180,11 +1179,7 @@ struct LetStatement : Statement {
     std::string mut_str = "";
     std::string nullStr = "";
     std::string heapStr = "";
-    std::string exportStr = "";
     std::string typeStr = "Failed";
-
-    if (isExportable)
-      exportStr = "export ";
 
     if (isSage)
       heapStr = "sage ";
@@ -1200,7 +1195,7 @@ struct LetStatement : Statement {
     else if (mutability == Mutability::CONSTANT)
       mut_str = "const ";
 
-    std::string result = "Let Statement: (" + exportStr + heapStr + mut_str +
+    std::string result = "Let Statement: (" + heapStr + mut_str +
                          "Data Type: " + typeStr + nullStr +
                          " Variable name: " + ident_token.TokenLiteral;
 
@@ -1214,18 +1209,17 @@ struct LetStatement : Statement {
   }
 
   LetStatement *shallowClone() const override {
-    return new LetStatement(isExportable, isSage, isHeap, mutability,
-                            clonePtr(type), ident_token, assign_token,
-                            clonePtr(value));
+    return new LetStatement(isSage, isHeap, mutability, clonePtr(type),
+                            ident_token, assign_token, clonePtr(value));
   }
 
-  LetStatement(bool exp, bool sage, bool heap, Mutability muta,
+  LetStatement(bool sage, bool heap, Mutability muta,
                std::unique_ptr<Expression> data_t, const Token &ident_t,
                const std::optional<Token> &assign_t,
                std::unique_ptr<Expression> val)
-      : isExportable(exp), isSage(sage), isHeap(heap), mutability(muta),
-        type(std::move(data_t)), ident_token(ident_t), assign_token(assign_t),
-        Statement(ident_t), value(std::move(val)){};
+      : isSage(sage), isHeap(heap), mutability(muta), type(std::move(data_t)),
+        ident_token(ident_t), assign_token(assign_t), Statement(ident_t),
+        value(std::move(val)){};
 };
 
 struct AssignmentStatement : Statement {

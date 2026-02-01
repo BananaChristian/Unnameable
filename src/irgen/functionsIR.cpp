@@ -64,6 +64,10 @@ void IRGenerator::generateFunctionDeclaration(Node *node) {
   if (sym->hasError)
     throw std::runtime_error("Error detected");
 
+  llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
+  if (sym->isExportable)
+    linkage = llvm::Function::ExternalLinkage;
+
   std::vector<llvm::Type *> paramTypes;
   for (const auto &param : fnDeclr->parameters) {
     auto paramIt = semantics.metaData.find(param.get());
@@ -77,8 +81,8 @@ void IRGenerator::generateFunctionDeclaration(Node *node) {
   llvm::FunctionType *fnType =
       llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
 
-  llvm::Function *declaredFunc = llvm::Function::Create(
-      fnType, llvm::Function::ExternalLinkage, fnName, module.get());
+  llvm::Function *declaredFunc =
+      llvm::Function::Create(fnType, linkage, fnName, module.get());
 }
 
 // Generator function for function expression
