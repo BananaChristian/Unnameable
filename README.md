@@ -131,7 +131,6 @@ func main(): i32{
 Unnameable is extremely strict on naming as it doesnt allow overloading. Seals exist to prevent name collisions for functions across compilation units.
 Seals create isolated scopes for functions. You cannot directly access a sealed function you must access it through its seal.
 At code generation the sealed function will get name mangled so for example add in a seal called Ops will become Ops_add.
-Exportable functions must only be inside seals or components.
 If a seal is exportable then every function in that seal is exportable but you can make individual functions in a seal exportable and others private to a current compilation unit.
 
 ```
