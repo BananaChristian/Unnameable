@@ -136,6 +136,7 @@ void Semantics::importSeals() {
       sym->type = convertImportedTypetoResolvedType(info.returnType);
       sym->returnType = convertImportedTypetoResolvedType(info.returnType);
       sym->paramTypes = convertImportedParamstoResolvedParams(info.paramTypes);
+      sym->isExportable=true;
 
       sealMap[funcName] = sym;
     }
@@ -276,6 +277,10 @@ void Semantics::importRecords() {
     recordSym->isExportable = true;
     recordSym->members = symMembers;
     recordSym->type = ResolvedType{DataType::RECORD, recordName};
+    if (recordName == "Attributes") {
+      std::cout << "[DEBUG] Attributes Symbol Type isNull: "
+                << recordSym->type.isNull << "\n";
+    }
 
     symbolTable[0][recordName] = recordSym;
   }
@@ -335,8 +340,8 @@ void Semantics::importAllocators() {
     logInternal("Import allocator name: " + allocatorName);
     auto allocateMembers = allocPair.second;
     AllocatorHandle importedHandle;
-    
-    //Dealing the allocator function
+
+    // Dealing the allocator function
     importedHandle.allocateName = allocateMembers.allocateName;
     // Convert the allocator symbol from imported to concrete
     auto allocatorSymbol = std::make_shared<SymbolInfo>();
@@ -347,8 +352,8 @@ void Semantics::importAllocators() {
         importedAllocatorSymbol->paramTypes);
 
     importedHandle.allocatorSymbol = allocatorSymbol;
-    
-    //Dealing with the free function
+
+    // Dealing with the free function
     importedHandle.freeName = allocateMembers.freeName;
     // Convert the free symbol from imported to concrete
     auto freeSymbol = std::make_shared<SymbolInfo>();
@@ -357,15 +362,15 @@ void Semantics::importAllocators() {
         convertImportedTypetoResolvedType(importedFreeSymbol->returnType);
     freeSymbol->paramTypes =
         convertImportedParamstoResolvedParams(importedFreeSymbol->paramTypes);
-    
-    importedHandle.freeSymbol=freeSymbol;
-    
-    //Write some basic allocator interface symbol
-    auto interfaceSym=std::make_shared<SymbolInfo>();
-    interfaceSym->isExportable=true;
-    
-    allocatorMap[allocatorName]=importedHandle;
-    symbolTable[0][allocatorName]=interfaceSym;
+
+    importedHandle.freeSymbol = freeSymbol;
+
+    // Write some basic allocator interface symbol
+    auto interfaceSym = std::make_shared<SymbolInfo>();
+    interfaceSym->isExportable = true;
+
+    allocatorMap[allocatorName] = importedHandle;
+    symbolTable[0][allocatorName] = interfaceSym;
   }
 }
 

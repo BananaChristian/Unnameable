@@ -53,8 +53,10 @@ std::string Deserializer::resolveImportPath(ImportStatement *import,
 
   fs::path stubPath = currentDir / (raw + ".stub");
   fs::path unnPath = currentDir / (raw + ".unn");
+  fs::path binaryPath = currentDir / (raw + ".o"); // For now use .o
+  recordLink(binaryPath);
 
-  // 2. Auto-Generation Logic
+  // Auto-Generation Logic
   if (!fs::exists(stubPath)) {
     if (fs::exists(unnPath)) {
       logInternal("[AUTO-STUB] Missing interface for '" + raw +
@@ -134,6 +136,20 @@ std::string Deserializer::resolveImportPath(ImportStatement *import,
 
   logInternal("[SUCCESS] Resolved module '" + raw + "' to " + resolvedStr);
   return resolvedStr;
+}
+
+void Deserializer::recordLink(const std::string &path) {
+  // Check to avoid deduplication
+  for (const auto &entry : linkerRegistery) {
+    if (entry.path == path)
+      return;
+  }
+
+  RegistryEntry entry;
+  entry.path = path;
+  entry.origin = LinkOrigin::NATIVE_IMPORT;
+
+  linkerRegistery.push_back(entry);
 }
 
 void Deserializer::loadStub(const std::string &resolved) {

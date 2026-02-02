@@ -1,4 +1,5 @@
 #include "irgen.hpp"
+#include <llvm-18/llvm/IR/Function.h>
 
 void IRGenerator::declareImportedSeals() {
   for (const auto &sealPair : semantics.sealTable) {
@@ -9,6 +10,7 @@ void IRGenerator::declareImportedSeals() {
 
       // Create the MANGLED name
       std::string mangledName = sealName + "_" + callName; // e.g. "Test_add"
+    
 
       llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
       if (fnSym->isExportable)
@@ -107,12 +109,10 @@ void IRGenerator::finalizeTypeBody(
                                     methodPair.second);
   }
 
-  componentTypes[typeName] = structTy;
-
-  std::cout << "  [Step D] " << typeName
-            << " registered in componentTypes map.\n";
-
   if (category == "COMPONENT") {
+    componentTypes[typeName] = structTy;
+    std::cout << "  [Step D] " << typeName
+              << " registered in componentTypes map.\n";
     declareImportedInit(typeName);
   }
 }

@@ -105,7 +105,13 @@ void IRGenerator::generateLetStatement(Node *node) {
 
     if (initVal) {
       // If the variable is Nullable ({i1, i32}) but the value is just a scalar
-      if (sym->type.isNull && !initVal->getType()->isStructTy()) {
+      if(sym->type.isNull){
+          std::cout<<"THE DECLARATION IS NULLABLE\n";
+      }else{
+          std::cout<<"THE DECLARATION ISNT NULLABLE\n";
+      }
+      if (sym->type.isNull && !isComponent &&
+          !llvm::isa<llvm::StructType>(varTy)) {
         llvm::StructType *stTy = llvm::cast<llvm::StructType>(varTy);
         // Create an undefined struct to start with
         llvm::Value *boxed = llvm::UndefValue::get(stTy);

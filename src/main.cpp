@@ -147,6 +147,10 @@ int main(int argc, char **argv) {
     std::string arg = argv[i];
     if (arg == "-compile" && i + 1 < argc) {
       objFile = argv[++i];
+      // .o extension if the user forgot it
+      if (fs::path(objFile).extension() != ".o") {
+        objFile += ".o";
+      }
       compileOnly = true;
     } else if (arg == "-static") {
       staticCompile = true;
@@ -318,7 +322,7 @@ int main(int argc, char **argv) {
     std::cout << COLOR_YELLOW << "\nLinking executable: " << exePath.string()
               << COLOR_RESET << "\n";
 
-    Linker linker(objPath.string(), staticCompile);
+    Linker linker(deserial, objPath.string(), staticCompile);
     linker.processLinks(AST, sourceFile, exePath.string());
 
     std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET

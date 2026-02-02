@@ -7,6 +7,13 @@
 #include <unordered_map>
 #include <vector>
 
+enum class LinkOrigin { NATIVE_IMPORT, MANUAL_LINK };
+
+struct RegistryEntry {
+  std::string path;
+  LinkOrigin origin;
+};
+
 enum class ImportedStubSection : uint8_t {
   SEALS,
   COMPONENTS,
@@ -189,6 +196,8 @@ public:
                       const std::string &currentFile);
   bool failed();
 
+  std::vector<RegistryEntry> linkerRegistery;
+
   std::unordered_map<std::string, std::string> loadedStubs;
 
   std::unordered_map<std::string,
@@ -219,7 +228,7 @@ private:
 
   std::string resolveImportPath(ImportStatement *import,
                                 const std::string &currentFile);
-
+  void recordLink(const std::string &path);
   void loadStub(const std::string &resolved);
   void readOrFail(std::istream &in, void *dst, size_t size,
                   const std::string &context);

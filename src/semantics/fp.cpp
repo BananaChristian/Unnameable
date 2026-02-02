@@ -221,7 +221,7 @@ void Semantics::walkReturnStatement(Node *node) {
 void Semantics::walkFunctionParameters(Node *node) {
   if (auto param = dynamic_cast<LetStatement *>(node)) {
     logInternal("Analyzing variable declaration parameter");
-    auto paramType = dynamic_cast<BasicType *>(param->type.get());
+    auto paramTypeNode = dynamic_cast<BasicType *>(param->type.get());
     // Extract parameter name
     auto paramName = param->ident_token.TokenLiteral;
 
@@ -234,18 +234,18 @@ void Semantics::walkFunctionParameters(Node *node) {
     }
 
     // Resolve declared type (must NOT be auto)
-    if (paramType->data_token.type == TokenType::AUTO) {
+    if (paramTypeNode->data_token.type == TokenType::AUTO) {
       logSemanticErrors("Function parameter '" + paramName +
                             "' cannot use inferred (auto) type",
-                        paramType->data_token.line,
-                        paramType->data_token.column);
+                        paramTypeNode->data_token.line,
+                        paramTypeNode->data_token.column);
       return;
     }
 
-    bool isNullable = paramType->isNullable;
-    bool isMutable = (param->mutability == Mutability::MUTABLE);
+    ResolvedType resolvedType = inferNodeDataType(paramTypeNode);
 
-    ResolvedType resolvedType = inferNodeDataType(paramType);
+    bool isNullable = resolvedType.isNull;
+    bool isMutable = (param->mutability == Mutability::MUTABLE);
 
     // Create symbol entry
     auto info = std::make_shared<SymbolInfo>();
@@ -397,14 +397,6 @@ void Semantics::walkFunctionExpression(Node *node) {
     logSemanticErrors("Nested function definitions are prohibited",
                       funcExpr->expression.line, funcExpr->expression.column);
     return;
-  }
-  if (isExportable) {
-    if (!insideSeal && !insideComponent) {
-      logSemanticErrors(
-          "exportable functions must only be in a seal or component",
-          funcExpr->expression.line, funcExpr->expression.column);
-      hasError = true;
-    }
   }
 
   insideFunction = true;
@@ -708,14 +700,6 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     return;
   }
 
-  //If it is not inside an allocator block restrivt
-  if (!insideAllocator) {
-    if (isExportable) {
-      logSemanticErrors("Cannot export function declarations",
-                        funcDeclrStmt->function_name->expression.line,
-                        funcDeclrStmt->function_name->expression.column);
-    }
-  }
 
   // Checking if the declaration already exists
   auto symbol = resolveSymbolInfo(funcName);

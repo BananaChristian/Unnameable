@@ -1,13 +1,18 @@
 #include "linker.hpp"
+#include "deserial.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
+#include <sys/types.h>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
 
-Linker::Linker(const std::string &currentObject, bool isStatic)
-    : currentObjectFile(currentObject), isStatic(isStatic) {}
+Linker::Linker(Deserializer &deserializer, const std::string &currentObject,
+               bool isStatic)
+    : deserializer(deserializer), currentObjectFile(currentObject),
+      isStatic(isStatic) {}
 
 std::string Linker::resolveLinkPath(LinkStatement *link,
                                     const std::string &currentFile) {
@@ -17,26 +22,39 @@ std::string Linker::resolveLinkPath(LinkStatement *link,
   auto stringExpr = dynamic_cast<StringLiteral *>(link->stringExpr.get());
   std::string target = stringExpr->string_token.TokenLiteral;
 
-  // If there's no slash and no extension, it's a name-tag (-l flag)
-  bool isPath = (target.find('/') != std::string::npos);
+  // ---  Directory Search Path (-L flag) ---
+  // If it ends in a slash, treat it as a library search directory.
+  // We check this first to prevent appending ".o" to directory names.
+  if (!target.empty() && (target.back() == '/' || target.back() == '\\')) {
+    fs::path searchPath(target);
+    if (searchPath.is_relative()) {
+      searchPath = fs::path(currentFile).parent_path() / searchPath;
+    }
+    return "-L" + fs::absolute(searchPath).string();
+  }
+
+  // --- System Library (-l flag) ---
+  // No slash (not a path) and no extension (not a file) = name-tag.
+  bool isPath = (target.find('/') != std::string::npos ||
+                 target.find('\\') != std::string::npos);
   bool hasExt = fs::path(target).has_extension();
 
   if (!isPath && !hasExt) {
     return "-l" + target;
   }
 
-  // Resolve as a File Path
+  // --- Specific File Path (.o, .a, .so) ---
   fs::path targetPath(target);
   fs::path resolved;
 
   if (targetPath.is_absolute()) {
     resolved = targetPath;
   } else {
-    // Resolve relative to the source file
+    // Resolve relative to the source file where 'link' was written
     resolved = fs::path(currentFile).parent_path() / targetPath;
   }
 
-  // Ensure extension (Default to .o if the user was lazy)
+  //If the user  left off the extension for a file path
   if (!resolved.has_extension()) {
     resolved += ".o";
   }
@@ -65,7 +83,7 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
 
     std::cout << "[ARCHIVER] Packaging: " << cmd << "\n";
     if (system(cmd.c_str()) != 0)
-      throw std::runtime_error("Link Driver Error: ar failed.");
+      throw std::runtime_error("Link Driver Error: archiver(ar) failed.");
 
     return;
   }
@@ -80,6 +98,28 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
 
   // The User's Code
   filesToLink.push_back(currentObjectFile);
+
+  // Link what the deserializer gave us
+  for (const auto &entry : deserializer.linkerRegistery) {
+    if (entry.origin == LinkOrigin::NATIVE_IMPORT) {
+      fs::path objPath(entry.path);
+
+      // If .o is missing, attempt to auto-compile the .unn
+      if (!fs::exists(objPath)) {
+        fs::path sourcePath = objPath;
+        sourcePath.replace_extension(".unn");
+
+        if (fs::exists(sourcePath)) {
+          std::cout << "[AUTO-COMPILE] " << sourcePath.string() << "\n";
+          compileNativeModule(sourcePath.string(), objPath.string());
+        } else {
+          throw std::runtime_error(
+              "Linker Error: Cannot find object or source for: " + entry.path);
+        }
+      }
+      filesToLink.push_back(objPath.string());
+    }
+  }
 
   // User-requested Links (link "whatever")
   for (const auto &node : nodes) {
@@ -112,6 +152,34 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
 
   if (system(cmd.c_str()) != 0)
     throw std::runtime_error("Link Driver Error: ld.lld failed.");
+}
+
+void Linker::compileNativeModule(const std::string &source,
+                                 const std::string &output) {
+  // Get the absolute path to this compiler binary
+  char buf[4096];
+  ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (len <= 0)
+    throw std::runtime_error(
+        "Linker Error: Failed to resolve self-path for auto-compile");
+
+  buf[len] = '\0';
+  std::string compilerPath(buf);
+
+  // Build the command: unnc <source> -compile <output>
+  std::string cmd =
+      "\"" + compilerPath + "\" \"" + source + "\" -compile \"" + output + "\"";
+
+  std::cout << "[AUTO-COMPILE] " << source << " -> " << output << "\n";
+
+  // Fire the sub-compiler
+  int result = std::system(cmd.c_str());
+
+  if (result != 0) {
+    throw std::runtime_error(
+        "Linker Error: Failed to compile module: " + source +
+        " (Exit code: " + std::to_string(result) + ")");
+  }
 }
 
 bool Linker::checkLLD() {
