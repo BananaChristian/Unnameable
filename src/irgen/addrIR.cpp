@@ -1,22 +1,25 @@
 #include "ast.hpp"
 #include "irgen.hpp"
+#include <string>
 
 AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
   AddressAndPendingFree out{nullptr, {}};
 
   auto identExpr = dynamic_cast<Identifier *>(node);
-  if (!identExpr)
-    throw std::runtime_error("Invalid identifier expression: " +
-                             node->toString());
+  if (!identExpr) {
+    reportDevBug("Invalid identifier expression", node->token.line,
+                 node->token.column);
+  }
 
   const std::string &identName = identExpr->identifier.TokenLiteral;
   auto metaIt = semantics.metaData.find(identExpr);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("Unidentified identifier '" + identName + "'");
+  if (metaIt == semantics.metaData.end()) {
+    errorHandler.addHint("Semantics did not register the identifier metadata");
+    reportDevBug("Could not find identifier metadata",
+                 identExpr->identifier.line, identExpr->identifier.column);
+  }
 
   auto sym = metaIt->second;
-  if (sym->hasError)
-    throw std::runtime_error("Semantic error detected ");
 
   llvm::Value *variablePtr = sym->llvmValue;
   if (!variablePtr)
@@ -35,15 +38,13 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
   } else {
     // scalar/heap -> ensure typed pointer
     if (sym->isSage || sym->isHeap) {
-      std::cout << "The identifier is raised (Sage/Heap)\n";
+      logInternal("The identifier is heap raised");
       llvm::Type *elemTy = sym->llvmType;
-      if (!elemTy)
-        throw std::runtime_error("llvmType null for scalar '" + identName +
-                                 "'");
+      if (!elemTy) {
+        reportDevBug("No type for '" + identName + "'",
+                     identExpr->identifier.line, identExpr->identifier.column);
+      }
 
-      // Since we banned global raises, variablePtr is always a direct pointer
-      // (the result of sage_alloc or a local alloca). No more 'load' from a
-      // global slot.
       llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
       if (variablePtr->getType() != expectedPtrTy) {
         variablePtr = funcBuilder.CreateBitCast(variablePtr, expectedPtrTy,
@@ -52,11 +53,11 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
       out.address = variablePtr;
     } else {
       if (variablePtr->getType()->isPointerTy()) {
-        std::cout << "Taken raw_ptr path\n";
+        logInternal("Taken noramal pointer path");
         out.address = variablePtr;
       } else {
-        throw std::runtime_error("Identifier '" + identName +
-                                 "' does not have pointer-like llvmValue");
+        reportDevBug("Identifier '" + identName + "' doesnt have a value",
+                     identExpr->identifier.line, identExpr->identifier.column);
       }
     }
   }
@@ -70,8 +71,8 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
     bool shouldFree = identExpr->isKiller ||
                       ((sym->lastUseNode == identExpr) && (sym->refCount == 0));
     if (shouldFree) {
-      std::cout << "[IR DEBUG] Freeing '" << identName
-                << "' | popCount discovered: " << sym->popCount << "\n";
+      logInternal("Freeing identifier '" + identName +
+                  "' pop count discovered: " + std::to_string(sym->popCount));
       llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
           "sage_free", llvm::Type::getVoidTy(context));
 
@@ -160,11 +161,10 @@ AddressAndPendingFree IRGenerator::generateInfixAddress(Node *node) {
 // Self address generator
 llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   auto selfExpr = dynamic_cast<SelfExpression *>(node);
-  if (!selfExpr)
-    throw std::runtime_error("Invalid self expression");
-
-  std::cout << "[IR] Generating IR for self address: " << selfExpr->toString()
-            << "\n";
+  if (!selfExpr) {
+    reportDevBug("Invalid self expression", node->token.line,
+                 node->token.column);
+  }
 
   const std::string &compName =
       currentComponent->component_name->expression.TokenLiteral;
@@ -172,32 +172,45 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   // Lookup LLVM struct for top-level component
   llvm::StructType *currentStructTy = nullptr;
   auto it = componentTypes.find(compName);
-  if (it == componentTypes.end())
-    throw std::runtime_error("Component '" + compName +
-                             "' not found in componentTypes");
+  if (it == componentTypes.end()) {
+    errorHandler.addHint("Component '" + compName +
+                         "' was not added into the componentTypes table");
+    reportDevBug("Component '" + compName + "' not found in componentTypes",
+                 currentComponent->component_name->expression.line,
+                 currentComponent->component_name->expression.column);
+  }
 
   currentStructTy = it->second;
 
   // --- Load 'self' pointer ---
   llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
-  if (!selfAlloca)
-    throw std::runtime_error("'self' access outside component method");
+  if (!selfAlloca) {
+    reportDevBug("'self' access outside component method",
+                 selfExpr->expression.line, selfExpr->expression.column);
+  }
 
   llvm::Value *currentPtr = funcBuilder.CreateLoad(
       currentStructTy->getPointerTo(), selfAlloca, "self_load");
 
   // --- Semantic chain walk ---
   auto ctIt = semantics.customTypesTable.find(compName);
-  if (ctIt == semantics.customTypesTable.end())
-    throw std::runtime_error("Component not found in customTypesTable");
+  if (ctIt == semantics.customTypesTable.end()) {
+    errorHandler.addHint(
+        "The type was never registered by the semantic analyzer");
+    reportDevBug("Component not found in customTypeTable",
+                 currentComponent->component_name->expression.line,
+                 currentComponent->component_name->expression.column);
+  }
 
   auto currentTypeInfo = ctIt->second;
   std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
 
   for (size_t i = 0; i < selfExpr->fields.size(); ++i) {
     auto ident = dynamic_cast<Identifier *>(selfExpr->fields[i].get());
-    if (!ident)
-      throw std::runtime_error("Expected identifier in self chain");
+    if (!ident) {
+      reportDevBug("Invalid node in the self chain", selfExpr->expression.line,
+                   selfExpr->expression.column);
+    }
 
     std::string currentTypeName = currentTypeInfo->type.resolvedName;
     if (currentTypeInfo->type.isPointer)
@@ -210,16 +223,21 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     std::string fieldName = ident->identifier.TokenLiteral;
 
     auto memIt = currentTypeInfo->members.find(fieldName);
-    if (memIt == currentTypeInfo->members.end())
-      throw std::runtime_error("Field not found in '" + currentTypeName + "'");
+    if (memIt == currentTypeInfo->members.end()) {
+      reportDevBug("Field not found in '" + currentTypeName + "'",
+                   selfExpr->expression.line, selfExpr->expression.column);
+    }
 
     lastMemberInfo = memIt->second;
 
     // --- GEP for this field ---
     auto llvmIt = llvmCustomTypes.find(currentTypeName);
-    if (llvmIt == llvmCustomTypes.end())
-      throw std::runtime_error("LLVM struct missing for type '" +
-                               currentTypeName + "'");
+    if (llvmIt == llvmCustomTypes.end()) {
+      errorHandler.addHint("Could not find the type '" + currentTypeName +
+                           "' in the type table");
+      reportDevBug("Unrecognised type '" + currentTypeName + "'",
+                   selfExpr->expression.line, selfExpr->expression.column);
+    }
 
     llvm::StructType *structTy = llvmIt->second;
 
@@ -237,8 +255,12 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
         lookUpName =
             semantics.stripRefSuffix(lastMemberInfo->type.resolvedName);
       auto nestedIt = semantics.customTypesTable.find(lookUpName);
-      if (nestedIt == semantics.customTypesTable.end())
-        throw std::runtime_error("Nested type '" + lookUpName + "'not found");
+      if (nestedIt == semantics.customTypesTable.end()) {
+        errorHandler.addHint("Type '" + lookUpName +
+                             "' was not registered by the semantic analyzer");
+        reportDevBug("Nested type '" + lookUpName + "' not found",
+                     selfExpr->expression.line, selfExpr->expression.column);
+      }
 
       currentTypeInfo = nestedIt->second;
     } else {
@@ -335,7 +357,8 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
   }
 
   if (!addr) {
-    throw std::runtime_error("Failed to get address to dereference");
+    reportDevBug("Failed to get address to dereference ",
+                 derefExpr->expression.line, derefExpr->expression.column);
   }
 
   auto ptrType = llvm::PointerType::getUnqual(context);

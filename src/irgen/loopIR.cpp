@@ -3,10 +3,15 @@
 // Generate while statament
 void IRGenerator::generateWhileStatement(Node *node) {
   auto whileStmt = dynamic_cast<WhileStatement *>(node);
-  if (!whileStmt)
-    throw std::runtime_error("Invalid while statement");
-  if (isGlobalScope)
-    throw std::runtime_error("Cannot use a while loop in global scope");
+  if (!whileStmt) {
+    reportDevBug("Invalid while statement ", node->token.line,
+                 node->token.line);
+  }
+
+  if (isGlobalScope) {
+    reportDevBug("Cannot use a while loop in a global scope",
+                 whileStmt->statement.line, whileStmt->statement.column);
+  }
 
   llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
 
@@ -19,12 +24,10 @@ void IRGenerator::generateWhileStatement(Node *node) {
       llvm::BasicBlock::Create(context, "while.end", function);
 
   // --- Initial jump to condition ---
-  std::cerr << "[IR DEBUG] Branching to while.cond\n";
   funcBuilder.CreateBr(condBB);
 
-  // --- 3. Condition block ---
+  // ---  Condition block ---
   funcBuilder.SetInsertPoint(condBB);
-  std::cerr << "[IR DEBUG] Generating while condition\n";
   llvm::Value *condVal = generateExpression(whileStmt->condition.get());
 
   // Promote to boolean if needed
@@ -42,7 +45,6 @@ void IRGenerator::generateWhileStatement(Node *node) {
   // Push jump targets: break -> endBB, continue -> condBB
   jumpStack.push_back({endBB, condBB});
 
-  std::cerr << "[IR DEBUG] Generating while body\n";
   generateStatement(whileStmt->loop.get());
 
   // Pop after body generation
@@ -53,7 +55,6 @@ void IRGenerator::generateWhileStatement(Node *node) {
     emitResidentSweep();
     semantics.loopResidentDeathRow.clear();
 
-    std::cerr << "[IR DEBUG] Adding branch back to while.cond\n";
     funcBuilder.CreateBr(condBB);
   }
 
@@ -83,14 +84,14 @@ void IRGenerator::generateWhileStatement(Node *node) {
 // IR code gen for a for loop
 void IRGenerator::generateForStatement(Node *node) {
   auto forStmt = dynamic_cast<ForStatement *>(node);
-  if (!forStmt)
-    throw std::runtime_error("Invalid for statement");
+  if (!forStmt) {
+    reportDevBug("Invalid for statement", node->token.line, node->token.column);
+  }
 
   llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
 
   // Initializer
   if (forStmt->initializer) {
-    std::cerr << "[IR DEBUG] Generating initializer\n";
     generateStatement(forStmt->initializer.get());
   }
 
@@ -109,7 +110,6 @@ void IRGenerator::generateForStatement(Node *node) {
 
   // Condition block
   funcBuilder.SetInsertPoint(condBB);
-  std::cerr << "[IR DEBUG] Generating condition\n";
 
   llvm::Value *condVal = generateExpression(forStmt->condition.get());
 
@@ -128,7 +128,6 @@ void IRGenerator::generateForStatement(Node *node) {
   // Push break / continue targets
   jumpStack.push_back({endBB, stepBB});
 
-  std::cerr << "[IR DEBUG] Generating loop body\n";
   generateStatement(forStmt->body.get());
 
   // Pop jump stack
@@ -145,7 +144,6 @@ void IRGenerator::generateForStatement(Node *node) {
   funcBuilder.SetInsertPoint(stepBB);
 
   if (forStmt->step) {
-    std::cerr << "[IR DEBUG] Generating loop step\n";
     generateStatement(forStmt->step.get());
   }
 
@@ -184,27 +182,26 @@ void IRGenerator::generateBreakStatement(Node *node) {
     }
   }
 
-  throw std::runtime_error("Break used outside of a loop!");
+  reportDevBug("Break used outside a loop or switch", node->token.line,
+               node->token.column);
 }
 
 void IRGenerator::generateContinueStatement(Node *node) {
   for (auto it = jumpStack.rbegin(); it != jumpStack.rend(); ++it) {
     if (it->continueTarget) {
-      std::cerr << "[IR DEBUG] Generating continue\n";
       funcBuilder.CreateBr(it->continueTarget);
       return;
     }
   }
-
-  throw std::runtime_error("Continue used outside of a loop!");
+  reportDevBug("Continue used outside a loop", node->token.line,
+               node->token.column);
 }
 
 void IRGenerator::emitResidentSweep() {
   if (semantics.loopResidentDeathRow.empty()) {
     return;
   }
-
-  std::cerr << "[IR DEBUG] Emitting resident memory sweep\n";
+  logInternal("Emitting resident memory sweep");
 
   for (auto *sym : semantics.loopResidentDeathRow) {
     if (sym->isHeap) {

@@ -6,19 +6,21 @@
 
 //___________________Literals generator_____________________
 llvm::Value *IRGenerator::generateStringLiteral(Node *node) {
-  std::cout << "INSIDE GENERATE IR FOR STRING\n";
   auto strLit = dynamic_cast<StringLiteral *>(node);
   if (!strLit) {
-    throw std::runtime_error("Invalid string literal");
+    reportDevBug("Invalid string literal", node->token.line,
+                 node->token.column);
   }
   auto it = semantics.metaData.find(strLit);
   if (it == semantics.metaData.end()) {
-    throw std::runtime_error("String literal not found in metadata");
+    reportDevBug("String literal not found in metaData",
+                 strLit->expression.line, strLit->expression.column);
   }
   DataType dt = it->second->type.kind;
 
   if (dt != DataType::STRING) {
-    throw std::runtime_error("Type error: Expected STRING");
+    reportDevBug("Invalid type expected 'string'", strLit->expression.line,
+                 strLit->expression.column);
   }
   std::string raw = strLit->string_token.TokenLiteral;
   llvm::Constant *strConst =
@@ -251,28 +253,30 @@ llvm::Value *IRGenerator::generateF64Literal(Node *node) {
 
 // Generator function for identifier expression
 llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
-  std::cout << "INSIDE IDENTIFIER GEN\n";
   auto identExpr = dynamic_cast<Identifier *>(node);
-  if (!identExpr)
-    throw std::runtime_error("Invalid identifier expression :" +
-                             node->toString());
+  if (!identExpr) {
+    reportDevBug("Invalid identifier node", node->token.line,
+                 node->token.column);
+  }
 
   const std::string &identName = identExpr->identifier.TokenLiteral;
 
   // Lookup symbol
   auto metaIt = semantics.metaData.find(identExpr);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("Unidentified identifier '" + identName + "'");
+  if (metaIt == semantics.metaData.end()) {
+    reportDevBug("Unidentified identifier '" + identName + "'",
+                 identExpr->identifier.line, identExpr->identifier.column);
+  }
 
   auto sym = metaIt->second;
-  if (sym->hasError)
-    throw std::runtime_error("Semantic error detected ");
 
   // Get address and possible pending free
   AddressAndPendingFree addrInfo = generateIdentifierAddress(identExpr);
   llvm::Value *variableAddr = addrInfo.address;
-  if (!variableAddr)
-    throw std::runtime_error("No llvm address for '" + identName + "'");
+  if (!variableAddr) {
+    reportDevBug("No address for '" + identName + "'",
+                 identExpr->identifier.line, identExpr->identifier.column);
+  }
 
   // Component instance -> return pointer to the struct instance (address is
   // already correct)
@@ -284,9 +288,10 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   // Heap scalar: variableAddr is a T* (runtime pointer). Load T from it.
   if (sym->isSage) {
     llvm::Type *elemTy = sym->llvmType;
-    if (!elemTy)
-      throw std::runtime_error("llvmType null for sage scalar '" + identName +
-                               "'");
+    if (!elemTy) {
+      reportDevBug("No type for sage scalar '" + identName + "'",
+                   identExpr->identifier.line, identExpr->identifier.column);
+    }
 
     // variableAddr should be T* (address of object). If not, bitcast it.
     llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
@@ -302,17 +307,14 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     for (auto *freeCall : addrInfo.pendingFrees) {
       funcBuilder.Insert(freeCall);
     }
-
-    std::cout << "[DEBUG] Returning sage scalar '" << identName
-              << "' (lastUse=" << (sym->lastUseNode == identExpr ? "yes" : "no")
-              << ")\n";
     return loadedVal;
   }
   if (sym->isHeap) {
     llvm::Type *elemTy = sym->llvmType;
-    if (!elemTy)
-      throw std::runtime_error("llvmType null for heap scalar '" + identName +
-                               "'");
+    if (!elemTy) {
+      reportDevBug("No type for heap scalar '" + identName + "'",
+                   identExpr->identifier.line, identExpr->identifier.column);
+    }
 
     // Grab the value from the heap address
     llvm::Value *loadedVal =
@@ -335,14 +337,15 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     loadedType = getLLVMType(sym->type);
   }
 
-  if (!loadedType)
-    throw std::runtime_error("llvmType null for scalar '" + identName + "'");
+  if (!loadedType) {
+    reportDevBug("Type mapper failed for scalar '" + identName + "'",
+                 identExpr->identifier.line, identExpr->identifier.column);
+  }
 
   // variableAddr should already be a pointer, load from it
   llvm::Value *val =
       funcBuilder.CreateLoad(loadedType, variableAddr, identName + "_val");
 
-  std::cout << "ENDED IDENTIFIER GEN\n";
   return val;
 }
 
@@ -515,7 +518,6 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   }
 
   if (infix->operat.type == TokenType::SCOPE_OPERATOR) {
-    std::cout << "TRIGGERED SCOPE OPERATOR GUY\n";
 
     // "::" is only for enum access
     auto enumName = lhsIdent->expression.TokenLiteral;
@@ -839,7 +841,6 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
 
 //__________________Prefix expression______________________
 llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
-  std::cout << "Inside prefix generator\n";
   auto prefix = dynamic_cast<PrefixExpression *>(node);
   if (!prefix)
     throw std::runtime_error("Invalid prefix expression");

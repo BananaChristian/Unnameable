@@ -148,9 +148,6 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   }
 
   currentFunction = fn; // Updating the currentFunction pointer
-  if (!currentFunction) {
-    std::cerr << "Current function pointer updated \n";
-  }
 
   // Creating the entry block
   llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
@@ -187,7 +184,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
     if (isVoidFunction) {
       // Inject 'ret void' for void functions that fell off the end.
       funcBuilder.CreateRetVoid();
-      std::cout << "INJECTED missing 'ret void' terminator.\n";
+      logInternal("Injected missing ret void terminator");
     } else {
       // Non-void function finished without a return.
       // This is a semantic failure, but we terminate for LLVM stability.

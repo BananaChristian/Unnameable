@@ -27,7 +27,8 @@ struct AddressAndPendingFree {
 
 class IRGenerator {
 public:
-  IRGenerator(Semantics &semantics, size_t totalHeapSize);
+  IRGenerator(Semantics &semantics, ErrorHandler &handler, size_t totalHeapSize,
+              bool isVerbose);
 
   using generatorFunctions = void (IRGenerator::*)(Node *node);
   using expressionGenerators = llvm::Value *(IRGenerator::*)(Node *node);
@@ -64,14 +65,16 @@ public:
 
 private:
   llvm::LLVMContext context;
-  //llvm::IRBuilder<> globalBuilder; // This is the global builder
-  llvm::IRBuilder<> funcBuilder;   // This is the builder for functions
+  // llvm::IRBuilder<> globalBuilder; // This is the global builder
+  llvm::IRBuilder<> funcBuilder; // This is the builder for functions
   std::unique_ptr<llvm::Module> module;
   const llvm::DataLayout *layout;
   Semantics &semantics;
+  ErrorHandler &errorHandler;
   size_t totalHeapSize;
+  bool isVerbose;
 
-  //llvm::BasicBlock *heapInitFnEntry = nullptr;
+  // llvm::BasicBlock *heapInitFnEntry = nullptr;
   void setupTargetLayout();
 
   // GENERATOR FUNCTIONS FOR STATEMENTS
@@ -111,7 +114,7 @@ private:
   // Shout statement generator
   void generateShoutStatement(Node *node);
   void generateAllocatorInterface(Node *node);
-  
+
   // GENERATOR FUNCTIONS FOR EXPRESSIONS
   llvm::Value *generateInfixExpression(Node *node);
   llvm::Value *generatePrefixExpression(Node *node);
@@ -215,13 +218,13 @@ private:
   llvm::Value *allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName);
   llvm::Value *allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
-                                    llvm::Value *size,
-                                    const std::string &varName);
+                                   llvm::Value *size,
+                                   const std::string &varName);
   void freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym);
 
   void flattenArrayLiteral(ArrayLiteral *arrLit,
-                          std::vector<llvm::Constant *> &flatElems,
-                          llvm::Type *&baseType);
+                           std::vector<llvm::Constant *> &flatElems,
+                           llvm::Type *&baseType);
   llvm::Value *allocateSageStorage(std::shared_ptr<SymbolInfo> sym,
                                    const std::string &varName,
                                    llvm::StructType *structTy);
@@ -229,6 +232,9 @@ private:
                        const std::string &letName);
   llvm::Value *generateIntegerLiteral(const std::string &literalStr,
                                       uint32_t bitWidth, bool isSigned);
+
+  void reportDevBug(const std::string &message, int line, int col);
+  void logInternal(const std::string &message);
 };
 
 #endif

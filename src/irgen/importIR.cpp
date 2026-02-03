@@ -1,5 +1,7 @@
 #include "irgen.hpp"
+#include "map"
 #include <llvm-18/llvm/IR/Function.h>
+#include <string>
 
 void IRGenerator::declareImportedSeals() {
   for (const auto &sealPair : semantics.sealTable) {
@@ -10,7 +12,6 @@ void IRGenerator::declareImportedSeals() {
 
       // Create the MANGLED name
       std::string mangledName = sealName + "_" + callName; // e.g. "Test_add"
-    
 
       llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
       if (fnSym->isExportable)
@@ -40,88 +41,70 @@ void IRGenerator::declareImportedSeals() {
 void IRGenerator::finalizeTypeBody(
     const std::string &typeName,
     const std::shared_ptr<CustomTypeInfo> &typeInfo, std::string category) {
-  std::cout << "\n  >>> Finalizing [" << category << "]: " << typeName
-            << " <<<\n";
 
+  logInternal("Finalizing " + category + ": " + typeName);
+
+  // Locate the Opaque Stub
   auto typeIt = llvmCustomTypes.find(typeName);
   if (typeIt == llvmCustomTypes.end()) {
-    std::cerr << "  [!!!] ERROR: " << typeName
-              << " not found in CustomTypes map!\n";
+    errorHandler
+        .addHint("Type '" + typeName + "' missing from llvmCustomTypes.")
+        .addHint("Ensure Phase 1 (declareCustomTypes) ran for this module.");
+    reportDevBug("Internal IRGen Error: Type stub not found", 0, 0);
     return;
   }
 
   auto *structTy = llvm::cast<llvm::StructType>(typeIt->second);
   if (!structTy->isOpaque()) {
-    std::cout << "  [i] Skipping: Body already defined.\n";
-    return;
+    return; // Body already defined, skip to avoid LLVM double-set panic
   }
 
-  // Collect and Sort Members
-  // Usage of the map will ensure indices are sorted 0, 1, 2... and prevents
-  // gaps.
+  // Separate Data (Layout) from Methods
+  // Use a map for layout to force correct index ordering (0, 1, 2...)
   std::map<int, std::pair<std::string, llvm::Type *>> layoutMap;
   std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>> methods;
 
-  std::cout << "  [Step A] Resolving Members:\n";
   for (const auto &[mName, mInfo] : typeInfo->members) {
     if (mInfo->isFunction) {
-      std::cout << "    - (Func) " << mName
-                << " [Routed to method declaration storage]\n";
       methods.push_back({mName, mInfo});
       continue;
     }
 
     llvm::Type *ty = getLLVMType(mInfo->type);
     if (!ty) {
-      std::cout << "    - (DATA) " << mName << " [!!! RESOLUTION FAILED !!!]\n";
-      // Safety fallback to prevent LLVM Segfault
-      ty = llvm::Type::getInt32Ty(context);
-    } else {
-      std::string typeNameStr;
-      llvm::raw_string_ostream rso(typeNameStr);
-      ty->print(rso);
-      std::cout << "    - (DATA) " << mName
-                << " | Index: " << mInfo->memberIndex
-                << " | Type: " << typeNameStr << "\n";
+      errorHandler.addHint("Failed to resolve type for member: " + mName)
+          .addHint("Check if custom type '" + mInfo->type.resolvedName +
+                   "' is fully declared.");
+      reportDevBug("Type Resolution Failure", 0, 0);
     }
-    layoutMap[mInfo->memberIndex] = {mName, ty};
+
+    layoutMap[mInfo->memberIndex] = std::make_pair(mName, ty);
   }
 
-  // Build Dense Vector ("Anti-Segfault" Shield)
+  // Flatten the Map into a Dense Field Vector
   std::vector<llvm::Type *> fieldTypes;
-  std::cout << "  [Step B] Packing Struct Layout:\n";
-
   for (auto const &[index, pair] : layoutMap) {
-    const auto &[name, ty] = pair;
-    fieldTypes.push_back(ty);
-    std::cout << "    Slot " << fieldTypes.size() - 1 << " <- " << name
-              << " (orig index " << index << ")\n";
+    fieldTypes.push_back(pair.second);
   }
 
-  // Commit to LLVM
+  // Commit Body to LLVM
   structTy->setBody(fieldTypes, false);
-  std::cout << "  [Step C] " << typeName
-            << " body committed to LLVM context.\n";
+  logInternal("Committed body for " + typeName);
 
-  // Generate the component methods
+  // Generate Method Declarations
   for (const auto &methodPair : methods) {
     declareImportedComponentMethods(methodPair.first, typeName,
                                     methodPair.second);
   }
 
+  // Handle Component-specific logic
   if (category == "COMPONENT") {
     componentTypes[typeName] = structTy;
-    std::cout << "  [Step D] " << typeName
-              << " registered in componentTypes map.\n";
     declareImportedInit(typeName);
   }
 }
 
 void IRGenerator::declareImportedTypes() {
-  std::cout << "\n" << std::string(50, '=') << "\n";
-  std::cout << "[PHASE 2] IMPORT BODY FINALIZATION\n";
-  std::cout << std::string(50, '=') << "\n";
-
   // Loop through Components
   for (const auto &[name, typeInfo] : semantics.ImportedComponentTable) {
     finalizeTypeBody(name, typeInfo, "COMPONENT");
@@ -131,23 +114,15 @@ void IRGenerator::declareImportedTypes() {
   for (const auto &[name, typeInfo] : semantics.ImportedRecordTable) {
     finalizeTypeBody(name, typeInfo, "RECORD");
   }
-
-  std::cout << "\n" << std::string(50, '=') << "\n";
-  std::cout << "[IR GENERATION STARTING...]\n";
-  std::cout << std::string(50, '=') << "\n";
 }
 
 void IRGenerator::declareCustomTypes() {
-  std::cout << "\n" << std::string(50, '=') << "\n";
-  std::cout << "[PHASE 1] DECLARING OPAQUE STUBS\n";
-  std::cout << std::string(50, '=') << "\n";
-
   for (const auto &[name, info] : semantics.customTypesTable) {
     if (llvmCustomTypes.find(name) == llvmCustomTypes.end()) {
-      std::cout << "  [+] Creating Opaque: " << name << "\n";
+      logInternal("[+] Creating opaque '" + name + "'");
       llvmCustomTypes[name] = llvm::StructType::create(context, name);
     } else {
-      std::cout << "  [.] Already Exists: " << name << "\n";
+      logInternal("[.] Already exists '" + name + "'");
     }
   }
 }
@@ -155,56 +130,41 @@ void IRGenerator::declareCustomTypes() {
 void IRGenerator::declareImportedComponentMethods(
     const std::string &funcName, const std::string &typeName,
     const std::shared_ptr<MemberInfo> &memberInfo) {
-  std::cout << "\n[METHOD IMPORT] >>> Starting Declaration: " << typeName
-            << "::" << funcName << " <<<\n";
+
+  logInternal("Importing method '" + funcName + "'");
 
   // Name Mangling
   std::string methodName = typeName + "_" + funcName;
-  std::cout << "  [DEBUG] Mangled Name: " << methodName << "\n";
+  logInternal("Mangled name '" + methodName + "'");
 
   // The 'self' Pointer (This pointer)
   auto typeIt = llvmCustomTypes.find(typeName);
   if (typeIt == llvmCustomTypes.end()) {
-    std::cerr << "  [CRITICAL] Could not find base type '" << typeName
-              << "' for method declaration!\n";
-    return;
+    reportDevBug("Could not find base type '" + typeName +
+                     "' for method declaration",
+                 0, 0);
   }
 
   llvm::Type *thisPtrType = typeIt->second->getPointerTo();
   std::vector<llvm::Type *> paramTypes = {thisPtrType};
-  std::cout << "  [DEBUG] Added 'self' parameter as pointer to: " << typeName
-            << "\n";
+  logInternal("Added 'self' paramter as pointer to '" + typeName + "'");
 
   // User Parameters
   auto params = memberInfo->paramTypes;
   for (size_t i = 0; i < params.size(); ++i) {
     llvm::Type *pTy = getLLVMType(params[i].first);
     if (!pTy) {
-      std::cerr << "  [ERROR] Failed to resolve type for param " << i << " ("
-                << params[i].second << ")\n";
+      logInternal("Failed to resolve type for param " + std::to_string(i) +
+                  " (" + params[i].second + ")");
       continue;
     }
     paramTypes.push_back(pTy);
-
-    std::string tyStr;
-    llvm::raw_string_ostream rso(tyStr);
-    pTy->print(rso);
-    std::cout << "  [DEBUG] Param " << i << " [" << params[i].second
-              << "] resolved to: " << tyStr << "\n";
   }
 
   // Return Type Investigation
   ResolvedType retType = memberInfo->returnType;
-  std::cout << "  [DEBUG] Metadata claims Return Type: " << retType.resolvedName
-            << " (Kind: " << (int)retType.kind << ")\n";
 
   llvm::Type *llvmRetTy = getLLVMType(retType);
-
-  // Print the actual LLVM type to catch return type discrepancy
-  std::string retTyStr;
-  llvm::raw_string_ostream rsoRet(retTyStr);
-  llvmRetTy->print(rsoRet);
-  std::cout << "  [DEBUG] lowerFunctionType result: " << retTyStr << "\n";
 
   // Function Creation
   llvm::FunctionType *fnType =
@@ -212,8 +172,8 @@ void IRGenerator::declareImportedComponentMethods(
 
   // Check if function already exists in module to avoid symbol collisions
   if (module->getFunction(methodName)) {
-    std::cout << "  [WARN] Function " << methodName
-              << " already declared in module. Skipping creation.\n";
+    logInternal("Function '" + methodName +
+                "' already declared in module skipping creation");
     return;
   }
 
@@ -224,10 +184,8 @@ void IRGenerator::declareImportedComponentMethods(
   if (declaredfn->arg_size() > 0) {
     auto argIt = declaredfn->arg_begin();
     argIt->setName(typeName + ".self");
-    std::cout << "  [DEBUG] Named arg(0) as: " << typeName << ".self\n";
+    logInternal("Name arg(0) as: " + typeName + ".self");
   }
-
-  std::cout << "[METHOD IMPORT] <<< Declaration Complete >>>\n\n";
 }
 
 void IRGenerator::declareImportedInit(const std::string &typeName) {
@@ -260,5 +218,5 @@ void IRGenerator::declareImportedInit(const std::string &typeName) {
     initFn->arg_begin()->setName(typeName + ".self");
   }
 
-  std::cout << "  [Step E] Declared Imported Init: " << initName << "\n";
+  logInternal("Declared imported init '" + initName + "'");
 }

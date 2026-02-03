@@ -5,18 +5,17 @@
 void IRGenerator::generateIfStatement(Node *node) {
   auto ifStmt = dynamic_cast<ifStatement *>(node);
   if (!ifStmt) {
-    throw std::runtime_error("Invalid if statement");
+    reportDevBug("Invalid if statement", node->token.line, node->token.column);
   }
-
-  std::cerr << "[IR DEBUG] Generating if statement\n";
 
   // Generation of condition for the if
   llvm::Value *rawCond = generateExpression(ifStmt->condition.get());
   llvm::Value *condVal = coerceToBoolean(rawCond, ifStmt->condition.get());
   if (!condVal) {
-    throw std::runtime_error("Invalid if condition");
+    reportDevBug("Invalid if condition", ifStmt->condition->expression.line,
+                 ifStmt->condition->expression.column);
   }
-  
+
   // Create basic blocks
   llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
   llvm::BasicBlock *thenBB =
@@ -34,28 +33,19 @@ void IRGenerator::generateIfStatement(Node *node) {
   }
 
   // Conditional branch for if
-  std::cerr << "[IR DEBUG] Creating conditional branch for if\n";
   funcBuilder.CreateCondBr(condVal, thenBB, nextBB);
 
   // Generate then branch
   funcBuilder.SetInsertPoint(thenBB);
-  std::cerr << "[IR DEBUG] Generating then branch\n";
   generateStatement(ifStmt->if_result.get());
   if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-    std::cerr << "[IR DEBUG] Adding branch to ifmerge from then\n";
     funcBuilder.CreateBr(mergeBB);
-  } else {
-    std::cerr
-        << "[IR DEBUG] Skipping branch to ifmerge from then due to terminator: "
-        << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName()
-        << "\n";
   }
 
   // Generating elif branches
   for (size_t i = 0; i < ifStmt->elifClauses.size(); ++i) {
     function->insert(function->end(), nextBB);
     funcBuilder.SetInsertPoint(nextBB);
-    std::cerr << "[IR DEBUG] Generating elif branch " << i << "\n";
 
     const auto &elifStmt = ifStmt->elifClauses[i];
     auto elif = dynamic_cast<elifStatement *>(elifStmt.get());
@@ -65,7 +55,9 @@ void IRGenerator::generateIfStatement(Node *node) {
         coerceToBoolean(rawCond, elif->elif_condition.get());
 
     if (!elifCondVal) {
-      throw std::runtime_error("Invalid elif condition");
+      reportDevBug("Invalid elif condition",
+                   elif->elif_condition->expression.line,
+                   elif->elif_condition->expression.column);
     }
     if (!elifCondVal->getType()->isIntegerTy(1)) {
       elifCondVal = funcBuilder.CreateICmpNE(
@@ -82,23 +74,12 @@ void IRGenerator::generateIfStatement(Node *node) {
                    ? llvm::BasicBlock::Create(context, "else")
                    : mergeBB);
 
-    std::cerr << "[IR DEBUG] Creating conditional branch for elif " << i
-              << "\n";
     funcBuilder.CreateCondBr(elifCondVal, elifBodyBB, nextElifBB);
 
     funcBuilder.SetInsertPoint(elifBodyBB);
-    std::cerr << "[IR DEBUG] Generating elif body " << i << "\n";
     generateStatement(elif->elif_result.get());
     if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-      std::cerr << "[IR DEBUG] Adding branch to ifmerge from elif " << i
-                << "\n";
       funcBuilder.CreateBr(mergeBB);
-    } else {
-      std::cerr
-          << "[IR DEBUG] Skipping branch " << i
-          << " to ifmerge from elif due to terminator "
-          << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName()
-          << "\n";
     }
 
     nextBB = nextElifBB;
@@ -108,24 +89,15 @@ void IRGenerator::generateIfStatement(Node *node) {
   if (ifStmt->else_result.has_value()) {
     function->insert(function->end(), nextBB);
     funcBuilder.SetInsertPoint(nextBB);
-    std::cerr << "[IR DEBUG] Generating else branch\n";
     generateStatement(ifStmt->else_result.value().get());
     if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-      std::cerr << "[IR DEBUG] Adding branch to ifmerge from else\n";
       funcBuilder.CreateBr(mergeBB);
-    } else {
-      std::cerr
-          << "[IR DEBUG] Skipping branch to ifmerge from else due to "
-             "terminator: "
-          << funcBuilder.GetInsertBlock()->getTerminator()->getOpcodeName()
-          << "\n";
     }
   }
 
   // Finalize with merge block
   function->insert(function->end(), mergeBB);
   funcBuilder.SetInsertPoint(mergeBB);
-  std::cerr << "[IR DEBUG] Finished generating if statement\n";
 }
 
 //___________Switch statement________
@@ -133,10 +105,6 @@ void IRGenerator::generateSwitchStatement(Node *node) {
   auto switchStmt = dynamic_cast<SwitchStatement *>(node);
   if (!switchStmt)
     return;
-
-  bool hasError = semantics.metaData[switchStmt]->hasError;
-  if (hasError)
-    throw std::runtime_error("Error detected");
 
   llvm::Function *parentFunc = funcBuilder.GetInsertBlock()->getParent();
 

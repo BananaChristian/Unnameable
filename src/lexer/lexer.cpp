@@ -771,6 +771,7 @@ Token Lexer::tokenize() {
     CAPTURE_POS;
     std::string charStr;
     appendUTF8(charStr, character);
+    errorHandler.addHint("This character is not supported");
     logError("Unexpected character: ", tokenLine, tokenColumn);
     advance();
     return Token{charStr, TokenType::ILLEGAL, tokenLine, tokenColumn};

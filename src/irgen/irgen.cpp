@@ -16,14 +16,18 @@
 #include <llvm/CodeGen/TargetPassConfig.h>
 
 #include "ast.hpp"
+#include "errors.hpp"
 #include "irgen.hpp"
 #include "semantics.hpp"
 
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
-IRGenerator::IRGenerator(Semantics &semantics, size_t totalHeap)
-    : semantics(semantics), totalHeapSize(totalHeap), context(),
-      funcBuilder(context),
+IRGenerator::IRGenerator(Semantics &semantics, ErrorHandler &handler,
+                         size_t totalHeap, bool isVerbose)
+    : semantics(semantics), errorHandler(handler), totalHeapSize(totalHeap),
+      isVerbose(isVerbose), context(), funcBuilder(context),
       module(std::make_unique<llvm::Module>("unnameable", context)) {
   setupTargetLayout();
 
@@ -79,14 +83,15 @@ void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program) {
 //  Main Expression generator helper function
 llvm::Value *IRGenerator::generateExpression(Node *node) {
   if (!node) {
-    std::cout << "[IRGEN] NULL node!\n";
-    return nullptr;
+    throw std::runtime_error(
+        "Null node sent to the expression generator dispatcher");
   }
 
   auto exprIt = expressionGeneratorsMap.find(typeid(*node));
   if (exprIt == expressionGeneratorsMap.end()) {
-    throw std::runtime_error("Could not find expression type IR generator: " +
-                             node->toString());
+    reportDevBug("Could not find expression type IR generator for: " +
+                     node->toString(),
+                 node->token.line, node->token.column);
   }
 
   return (this->*exprIt->second)(node);
@@ -95,7 +100,8 @@ llvm::Value *IRGenerator::generateExpression(Node *node) {
 // Main L-value generator helper functions
 llvm::Value *IRGenerator::generateAddress(Node *node) {
   if (!node) {
-    std::cout << "[IRGEN] Null node! \n";
+    throw std::runtime_error(
+        "Null node sent to the address generator dispatcher");
   }
   auto addrIt = addressGeneratorsMap.find(typeid(*node));
   if (addrIt == addressGeneratorsMap.end()) {
@@ -110,8 +116,6 @@ llvm::Value *IRGenerator::generateAddress(Node *node) {
 void IRGenerator::generateStatement(Node *node) {
   auto generatorIt = generatorFunctionsMap.find(typeid(*node));
   if (generatorIt == generatorFunctionsMap.end()) {
-    std::cout << "Failed to find statement IR generator for : "
-              << node->toString() << "\n";
     return;
   }
   (this->*generatorIt->second)(node);
@@ -132,15 +136,23 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   if (!assignStmt)
     return;
 
-  if (isGlobalScope)
-    throw std::runtime_error(
-        "Executable statements are not allowed at global scope");
+  if (isGlobalScope) {
+    errorHandler.addHint(
+        "Semantics failed to guard an assignment in the global scope");
+    reportDevBug("Executable statements are not allowed at global scope",
+                 assignStmt->statement.line, assignStmt->statement.column);
+  }
 
   llvm::Value *targetPtr = nullptr;
   llvm::CallInst *pendingFree = nullptr;
   llvm::Value *initValue = generateExpression(assignStmt->value.get());
-  if (!initValue)
-    throw std::runtime_error("Failed to generate IR for assignment value");
+  if (!initValue) {
+    errorHandler.addHint("The expression generator failed to generate the "
+                         "value of the RHS expression in the assignment");
+    reportDevBug("Failed to generate IR for assignment value",
+                 assignStmt->value->expression.line,
+                 assignStmt->value->expression.column);
+  }
 
   // Check if it's a SelfExpression (self.field)
   if (auto *selfExpr =
@@ -148,39 +160,60 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     // Generate pointer to the field in the struct
     targetPtr = generateSelfAddress(selfExpr);
     if (!targetPtr)
-      throw std::runtime_error("Failed to get pointer for self field");
+      errorHandler.addHint(
+          "The self address generator failed to generate the "
+          "LHS value of the self expression in the assignment");
+    reportDevBug("Failed to get the LHS for the self assignment",
+                 selfExpr->expression.line, selfExpr->expression.column);
   }
 
   // Checking if it is a dereference expression
   else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(
                assignStmt->identifier.get())) {
-    std::cout << "Inside Assignment statement deref branch\n";
+    logInternal("Handling assignment deref");
     targetPtr = generateDereferenceAddress(derefExpr);
-    if (!targetPtr)
-      throw std::runtime_error(
-          "Failed to get pointer for the dereference expression");
+    if (!targetPtr) {
+      errorHandler.addHint(
+          "The derefenece address generator failed to generate the "
+          "LHS value "
+          "of the dereference expression in the assignment");
+      reportDevBug("Failed to get the LHS for the dereference assignment",
+                   derefExpr->expression.line, derefExpr->expression.column);
+    }
   } else if (auto arraySub =
                  dynamic_cast<ArraySubscript *>(assignStmt->identifier.get())) {
-    std::cout << "Inside array sub branch\n";
+    logInternal("Handling array indexing assignment");
     targetPtr = generateArraySubscriptAddress(arraySub);
     if (!targetPtr) {
-      throw std::runtime_error("Failed to get L-value for array sub");
+      errorHandler.addHint(
+          "The array index address generator failed to generate the "
+          "LHS value "
+          "for the array index assignment");
+      reportDevBug("Failed to get the LHS value for the array index assignment",
+                   arraySub->identifier->expression.line,
+                   arraySub->identifier->expression.column);
     }
   } else { // Regular variable assignment
+    logInternal("Handling regular assignment");
     const std::string &varName =
         assignStmt->identifier->expression.TokenLiteral;
     auto metaIt = semantics.metaData.find(assignStmt);
-    if (metaIt == semantics.metaData.end())
-      throw std::runtime_error("Could not find variable '" + varName +
-                               "' metaData");
+    if (metaIt == semantics.metaData.end()) {
+      errorHandler.addHint("Looks like the semantics might not have registered "
+                           "the assignment statement metaData");
+      reportDevBug("Could not find assignment '" + varName + "' metaData",
+                   assignStmt->statement.line, assignStmt->statement.column);
+    }
 
     auto assignSym = metaIt->second;
 
-    if (!assignSym)
-      throw std::runtime_error("Could not find variable '" + varName + "'");
-
-    if (assignSym->hasError)
-      throw std::runtime_error("Semantic error detected");
+    if (!assignSym) {
+      errorHandler.addHint("Semantics might have failed to register symbolInfo "
+                           "and just added an empty key ");
+      reportDevBug(
+          "Could not find assignment statement symbolInfo from the metaData",
+          assignStmt->statement.line, assignStmt->statement.column);
+    }
 
     AddressAndPendingFree addrAndPendingFree =
         generateIdentifierAddress(assignStmt->identifier.get());
@@ -189,9 +222,14 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
       pendingFree = funcBuilder.Insert(freeCall);
     }
 
-    if (!targetPtr)
-      throw std::runtime_error("No memory allocated for variable '" + varName +
-                               "'");
+    if (!targetPtr) {
+      errorHandler.addHint(
+          "The identifier address generator failed to generate the LHS value");
+      reportDevBug("Failed to get the LHS value for assignment of variable '" +
+                       varName + "'",
+                   assignStmt->identifier->expression.line,
+                   assignStmt->identifier->expression.column);
+    }
 
     if (pendingFree) {
       funcBuilder.Insert(pendingFree);
@@ -200,6 +238,12 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
 
   auto assignMeta =
       semantics.metaData[assignStmt]; // Metadata of the assignment itself
+  if (!assignMeta) {
+    errorHandler.addHint("Semantics might have failed to register the "
+                         "assignment statement metaData");
+    reportDevBug("Failed to get assignment statement metaData",
+                 assignStmt->statement.line, assignStmt->statement.column);
+  }
   if (assignMeta->type.isArray) {
     auto elementType = semantics.getArrayElementType(assignMeta->type);
     llvm::Type *elemLLVMTy = getLLVMType(elementType);
@@ -218,7 +262,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   } else {
     funcBuilder.CreateStore(initValue, targetPtr);
   }
-  std::cout << "Exited assignment generator\n";
+  logInternal("Ended assignment generation");
 }
 
 void IRGenerator::generateFieldAssignmentStatement(Node *node) {
@@ -251,11 +295,12 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
 void IRGenerator::generateBlockStatement(Node *node) {
   auto blockStmt = dynamic_cast<BlockStatement *>(node);
   if (!blockStmt) {
-    throw std::runtime_error("Invalid block statement");
+    reportDevBug("Invalid block statement", node->token.line,
+                 node->token.column);
   }
 
-  std::cerr << "[IR DEBUG] Generating block statement with "
-            << blockStmt->statements.size() << " statements\n";
+  logInternal("Generating block statement with '" +
+              std::to_string(blockStmt->statements.size()) + "' statements");
   for (const auto &stmt : blockStmt->statements) {
     auto currentBlock = funcBuilder.GetInsertBlock();
     if (currentBlock && currentBlock->getTerminator()) {
@@ -274,30 +319,48 @@ void IRGenerator::generateBlockStatement(Node *node) {
 void IRGenerator::generateShoutStatement(Node *node) {
   auto shoutStmt = dynamic_cast<ShoutStatement *>(node);
 
-  if (!shoutStmt)
-    throw std::runtime_error("Invalid shout statement node");
+  if (!shoutStmt) {
+    reportDevBug("Invalid shout statement node", node->token.line,
+                 node->token.column);
+  }
 
-  if (isGlobalScope)
-    throw std::runtime_error("Expected shout to be inside a function");
+  if (isGlobalScope) {
+    errorHandler.addHint("Semantics failed to guard against this");
+    reportDevBug("Executable statements must not be in global scope",
+                 shoutStmt->shout_key.line, shoutStmt->shout_key.column);
+  }
 
   // Getting the semantic type of the val
   auto it = semantics.metaData.find(shoutStmt->expr.get());
-  if (it == semantics.metaData.end())
-    throw std::runtime_error("Missing metaData for shout expression");
+  if (it == semantics.metaData.end()) {
+    errorHandler.addHint(
+        "Semantics failed to register metadata for the shout expression");
+    reportDevBug("Missing metadata for shout expression",
+                 shoutStmt->expr->expression.line,
+                 shoutStmt->expr->expression.column);
+  }
 
   // Getting the symbol
   auto exprSym = it->second;
-  if (!exprSym)
-    throw std::runtime_error("No symbol info found ");
+  if (!exprSym) {
+    errorHandler.addHint("The semantics registered the metadata but didnt "
+                         "provide the symbol info");
+    reportDevBug("No symbol information was found for the shout expression",
+                 shoutStmt->expr->expression.line,
+                 shoutStmt->expr->expression.column);
+  }
 
   // Getting the type
   ResolvedType type = exprSym->type;
 
   // Call the expression generation n the expression
   auto val = generateExpression(shoutStmt->expr.get());
-  if (!val)
-    throw std::runtime_error(
-        "No llvm value was generated for expression in shout");
+  if (!val) {
+    errorHandler.addHint("The expression generator failed");
+    reportDevBug("Failed to get value for the shout expression",
+                 shoutStmt->expr->expression.line,
+                 shoutStmt->expr->expression.column);
+  }
 
   // Call the shoutRuntime this is the one who actually prints
   shoutRuntime(val, type);
@@ -305,27 +368,31 @@ void IRGenerator::generateShoutStatement(Node *node) {
 
 llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   auto addrExpr = dynamic_cast<AddressExpression *>(node);
-  if (!addrExpr)
-    throw std::runtime_error("Invalid address expression");
+  if (!addrExpr) {
+    errorHandler.addHint("Sent the wrong node to the address generator");
+    reportDevBug("Invalid address expression", node->token.line,
+                 node->token.column);
+  }
 
-  std::cout << "Inside the address expression generator\n";
+  logInternal("Handling address expression generation");
 
   const std::string &name = addrExpr->identifier->expression.TokenLiteral;
 
   auto metaIt = semantics.metaData.find(addrExpr);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("Unidentified address identifier '" + name + "'");
+  if (metaIt == semantics.metaData.end()) {
+    errorHandler.addHint("Semantics failed to register the address metaData");
+    reportDevBug("Could not find address metadata", addrExpr->expression.line,
+                 addrExpr->expression.column);
+  }
 
   auto sym = metaIt->second;
 
-  if (sym->hasError)
-    throw std::runtime_error("Semantic error detected");
-
   auto targetSym = sym->targetSymbol;
   llvm::Value *ptr = targetSym->llvmValue;
-  if (!ptr)
-    throw std::runtime_error("No llvm value was assigned");
-
+  if (!ptr) {
+    reportDevBug("No value was assigned to the target",
+                 addrExpr->expression.line, addrExpr->expression.column);
+  }
   sym->llvmValue = ptr;
 
   return ptr;
@@ -333,13 +400,17 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
 
 llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
   auto blockExpr = dynamic_cast<BlockExpression *>(node);
-  if (!blockExpr)
-    throw std::runtime_error("Invalid block expression");
+  if (!blockExpr) {
+    errorHandler.addHint("Sent a wrong node to the block expression generator "
+                         "could be a malformed AST");
+    reportDevBug("Invalid block expression", node->token.line,
+                 node->token.column);
+  }
 
   for (const auto &stmts : blockExpr->statements) {
     // Check if the current block is already terminated by a return or branch
     if (funcBuilder.GetInsertBlock()->getTerminator()) {
-      std::cout << "SKIPPING statement - block terminated\n";
+      logInternal("Skipping statement- block terminated");
       break;
     }
     generateStatement(stmts.get());
@@ -444,9 +515,12 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
 
   case DataType::RECORD:
   case DataType::COMPONENT: {
-    if (type.resolvedName.empty())
-      throw std::runtime_error(
-          "Custom type requested but resolvedName is empty");
+    if (type.resolvedName.empty()) {
+      errorHandler.addHint(
+          "The semantics probably stored a type whose type name is empty");
+      reportDevBug("Custom type requested but the resolved name is empty", 0,
+                   0);
+    }
 
     std::string lookUpName = type.resolvedName;
     if (type.isPointer) {
@@ -458,9 +532,13 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
     auto it = llvmCustomTypes.find(lookUpName);
     if (it != llvmCustomTypes.end())
       baseType = it->second;
-    else
-      throw std::runtime_error("LLVM IR requested for unknown custom type '" +
-                               type.resolvedName + "'");
+    else {
+      errorHandler.addHint(
+          "The type '" + lookUpName +
+          "' was not stoed in the custom type map used by the IRGenerator");
+      reportDevBug(
+          "IRgenerator requested for unknown type '" + lookUpName + "'", 0, 0);
+    }
     break;
   }
 
@@ -472,8 +550,11 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
 
   case DataType::ERROR:
   case DataType::GENERIC:
-  case DataType::UNKNOWN:
-    throw std::runtime_error("Type '" + type.resolvedName + "' is unknown");
+  case DataType::UNKNOWN: {
+    errorHandler.addHint(
+        "Semantics failed to guard against unknown error leaks");
+    reportDevBug("Type '" + type.resolvedName + "' is unknown", 0, 0);
+  }
   }
 
   llvm::Type *finalType = baseType;
@@ -667,12 +748,15 @@ char IRGenerator::decodeCharLiteral(const std::string &literal) {
       return '\r';
     case '0':
       return '\0';
-    default:
-      throw std::runtime_error("Unknown escape sequence in char literal: " +
-                               literal);
+    default: {
+      reportDevBug("Unknown escape sequence in char literal '" + literal + "'",
+                   0, 0);
+    }
     }
   }
-  throw std::runtime_error("Invalid char literal: " + literal);
+
+  reportDevBug("Invalid char literal '" + literal + "'", 0, 0);
+  return '\t';
 }
 
 uint16_t IRGenerator::decodeChar16Literal(const std::string &literal) {
@@ -755,7 +839,9 @@ llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
 
   auto it = semantics.metaData.find(exprNode);
   if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Could not find condition expr metaData");
+    errorHandler.addHint("Semantics did not register the condition metadata");
+    reportDevBug("Could not find condition expression metadata",
+                 exprNode->token.line, exprNode->token.column);
   } else {
     auto sym = it->second;
 
@@ -771,7 +857,7 @@ llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
     }
   }
 
-  // 3. Scalar Fallback
+  //  Scalar Fallback
   if (val->getType()->isIntegerTy(1)) {
     return val;
   }
@@ -888,8 +974,9 @@ char *IRGenerator::const_unnitoa(__int128 val, char *buf) {
 }
 
 void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type) {
-  if (!val)
-    throw std::runtime_error("shout! called with null value");
+  if (!val) {
+    reportDevBug("shout! called with a null value", 0, 0);
+  }
 
   auto &ctx = module->getContext();
   auto i32Ty = llvm::IntegerType::getInt32Ty(ctx);
@@ -910,8 +997,9 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type) {
   }
 
   auto printString = [&](llvm::Value *strVal) {
-    if (!strVal)
-      throw std::runtime_error("printString received null llvm::Value");
+    if (!strVal) {
+      reportDevBug("printString received value", 0, 0);
+    }
 
     // Ensure 'write' exists
     llvm::Function *writeFn = module->getFunction("write");
@@ -951,7 +1039,7 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type) {
       llvm::Value *strVal = funcBuilder.CreateGlobalStringPtr(buf);
       printString(strVal);
     } else if (intVal->getType()->isIntegerTy(32)) {
-      std::cout << "Branching to SSA print\n";
+      logInternal("Branching to SSA print");
       // Promote to i128 for printing
 
       llvm::Value *int128 =
@@ -968,7 +1056,7 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type) {
     }
 
     else {
-      throw std::runtime_error("Unsupported integer value in shout!");
+      reportDevBug("Unsupported integer value in shout! ", 0, 0);
     }
   };
 
@@ -1103,7 +1191,7 @@ void IRGenerator::generateSageInitCall() {
   funcBuilder.CreateCall(
       initFunc,
       {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), totalHeapSize)});
-  std::cout << "Calling sage init \n";
+  logInternal("Initializing sage");
   isSageInitCalled =
       true; // Toggle this to true to mark that sage init was called
 }
@@ -1120,7 +1208,7 @@ void IRGenerator::generateSageDestroyCall() {
   }
 
   funcBuilder.CreateCall(destroyFunc, {});
-  std::cout << "Calling sage destroy\n";
+  logInternal("Destroying sage");
   isSageDestroyCalled =
       true; // Toggle this to true to mark that sage destroy was called
 }
@@ -1198,4 +1286,24 @@ bool IRGenerator::emitObjectFile(const std::string &filename) {
   dest.flush();
 
   return true;
+}
+
+void IRGenerator::reportDevBug(const std::string &message, int line, int col) {
+  CompilerError error;
+
+  error.level = ErrorLevel::INTERNAL;
+  error.line = line;
+  error.col = col;
+  error.message = message;
+  error.hints = {};
+
+  errorHandler.report(error);
+
+  std::abort();
+}
+
+void IRGenerator::logInternal(const std::string &message) {
+  if (isVerbose) {
+    std::cout << message << "\n";
+  }
 }

@@ -14,20 +14,22 @@ void IRGenerator::generateHeapStatement(Node *node) {
 void IRGenerator::generateLetStatement(Node *node) {
   // VALIDATION AND EXTRACTION
   auto *letStmt = dynamic_cast<LetStatement *>(node);
-  if (!letStmt)
-    throw std::runtime_error("Invalid let statement");
+  if (!letStmt) {
+    reportDevBug("Invalid variable declaration", node->token.line,
+                 node->token.column);
+  }
 
   const std::string letName = letStmt->ident_token.TokenLiteral;
-  std::cout << "[DEBUG] Generating let statement for variable '" << letName
-            << "'\n";
-
+  logInternal("Generating variable declaration for variable '" + letName + "'");
   auto metaIt = semantics.metaData.find(letStmt);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("No let metadata for '" + letName + "'");
+  if (metaIt == semantics.metaData.end()) {
+    errorHandler.addHint("Semantics did not register the metaData for '" +
+                         letName + "'");
+    reportDevBug("No variable declaration metaData for '" + letName + "",
+                 letStmt->ident_token.line, letStmt->ident_token.column);
+  }
 
   auto sym = metaIt->second;
-  if (sym->hasError)
-    throw std::runtime_error("Error detected for '" + letName + "'");
 
   llvm::StructType *structTy = nullptr;
   bool isSage = letStmt->isSage;
@@ -44,12 +46,12 @@ void IRGenerator::generateLetStatement(Node *node) {
 
   // If there's no current insert block, handle global(GLOBAL SCOPE)
   if (isGlobalScope) {
-    std::cout << "[DEBUG] No insert block (global scope) for let '" << letName
-              << "'\n";
     if (isComponent && isSage) {
-      throw std::runtime_error("Cannot sage raise component in global scope");
+      reportDevBug("Cannot sage raise a component in global scope",
+                   letStmt->ident_token.line, letStmt->ident_token.column);
     } else if (isSage) {
-      throw std::runtime_error("Cannot sage raise in global scope");
+      reportDevBug("Cannot sage raise in global scope ",
+                   letStmt->ident_token.line, letStmt->ident_token.column);
     }
 
     else {
@@ -78,8 +80,8 @@ void IRGenerator::generateLetStatement(Node *node) {
     storage = generateComponentInit(
         letStmt, sym, structTy, isHeap); // It will handle its own heap business
     if (!storage) {
-      throw std::runtime_error("Component allocation failed for '" + letName +
-                               "'");
+      reportDevBug("Component allocation failed for '" + letName + "'",
+                   letStmt->ident_token.line, letStmt->ident_token.column);
     }
   } else if (isSage) // Incase the value is sage raised
   {
@@ -105,11 +107,6 @@ void IRGenerator::generateLetStatement(Node *node) {
 
     if (initVal) {
       // If the variable is Nullable ({i1, i32}) but the value is just a scalar
-      if(sym->type.isNull){
-          std::cout<<"THE DECLARATION IS NULLABLE\n";
-      }else{
-          std::cout<<"THE DECLARATION ISNT NULLABLE\n";
-      }
       if (sym->type.isNull && !isComponent &&
           !llvm::isa<llvm::StructType>(varTy)) {
         llvm::StructType *stTy = llvm::cast<llvm::StructType>(varTy);
@@ -135,8 +132,10 @@ void IRGenerator::generateLetStatement(Node *node) {
     }
   }
 
-  if (!storage)
-    throw std::runtime_error("No storage allocated for let '" + letName + "'");
+  if (!storage) {
+    reportDevBug("No storage allocated for '" + letName + "'",
+                 letStmt->ident_token.line, letStmt->ident_token.column);
+  }
 
   // Update symbol metadata with storage and type
   sym->llvmValue = storage;
@@ -148,21 +147,16 @@ void IRGenerator::generateLetStatement(Node *node) {
       Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
       if (letStmt == lastUse && sym->refCount == 0) {
         freeSageStorage(sym->componentSize, sym->alignment.value(), letName);
-        std::cout << "[DEBUG] Immediately freed dead heap variable '" << letName
-                  << "'\n";
+        logInternal("Immediately freed dead sage variable");
       }
     } else if (letStmt->isHeap) {
       Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
       if (letStmt == lastUse && sym->refCount == 0) {
         freeDynamicHeapStorage(sym);
-        std::cout << "[DEBUG] Immediately freed dead dynamic heap variable '"
-                  << letName << "'\n";
+        logInternal("Immediately freed dead dynamic heap variable");
       }
     }
   }
-
-  std::cout << "[DEBUG] Local let statement '" << letName
-            << "' fully processed. storage=" << storage << "\n";
 }
 
 //__________________________ARRAY STATEMENT GENERATION_______________________
@@ -172,13 +166,13 @@ void IRGenerator::generateArrayStatement(Node *node) {
     return;
 
   auto arrIt = semantics.metaData.find(arrStmt);
-  if (arrIt == semantics.metaData.end())
-    throw std::runtime_error("Failed to find array statement metaData");
+  if (arrIt == semantics.metaData.end()) {
+    reportDevBug("Failed to find array statement metaData",
+                 arrStmt->statement.line, arrStmt->statement.column);
+  }
 
   auto arrName = arrStmt->identifier->expression.TokenLiteral;
   auto sym = arrIt->second;
-  if (sym->hasError)
-    throw std::runtime_error("Semantic error detected");
 
   llvm::Type *elemTy = getLLVMType(semantics.getArrayElementType(sym->type));
   llvm::Value *allocationCount = nullptr;
@@ -211,7 +205,8 @@ void IRGenerator::generateArrayStatement(Node *node) {
         sym->componentSize / layout->getTypeAllocSize(elemTy);
     allocationCount = funcBuilder.getInt64(totalElements);
   } else {
-    throw std::runtime_error("Array " + arrName + " has no length or literal.");
+    reportDevBug("Array '" + arrName + "' has no length or literal",
+                 arrStmt->statement.line, arrStmt->statement.column);
   }
 
   llvm::Type *finalVarType = funcBuilder.getPtrTy();
@@ -267,13 +262,13 @@ void IRGenerator::generateArrayStatement(Node *node) {
 
   if (arrStmt->array_content &&
       !dynamic_cast<NullLiteral *>(arrStmt->array_content.get())) {
-    // 1. Get the source pointer (The Steamrollered Global)
+    // Get the source pointer (The Steamrollered Global)
     llvm::Value *srcData = generateExpression(arrStmt->array_content.get());
 
-    // 2. Get the real alignment from the element type
+    // Get the real alignment from the element type
     llvm::Align finalAlign = layout->getABITypeAlign(elemTy);
 
-    // 3. Determine the byte count without phantom fields
+    // Determine the byte count without phantom fields
     llvm::Value *totalBytes = nullptr;
     if (sym->componentSize > 0) {
       // The Accountant already did the work for a constant size
@@ -285,7 +280,7 @@ void IRGenerator::generateArrayStatement(Node *node) {
                                          funcBuilder.getInt64(elementSize));
     }
 
-    // 4. Emit the MemCpy
+    // Emit the MemCpy
     funcBuilder.CreateMemCpy(dataPtr, // Dst: %x_data (or heap ptr)
                              finalAlign,
                              srcData, // Src: @flat_array_literal
@@ -298,14 +293,12 @@ void IRGenerator::generateArrayStatement(Node *node) {
     if (arrStmt->isSage) {
       if (sym->lastUseNode == arrStmt && sym->refCount == 0) {
         freeSageStorage(sym->componentSize, sym->alignment.value(), arrName);
-        std::cout << "[DEBUG] Immediately freed dead heap array variable '"
-                  << arrName << "'\n";
+        logInternal("Immediately freed dead sage variable '" + arrName + "'");
       }
     } else if (arrStmt->isHeap) {
       if (sym->lastUseNode == arrStmt && sym->refCount == 0) {
         freeDynamicHeapStorage(sym);
-        std::cout << "[DEBUG-IR] Emitted DHEAP free for array: " << arrName
-                  << "\n";
+        logInternal("Immediately freed dead heap variable '" + arrName + "'");
       }
     }
   }
@@ -314,32 +307,30 @@ void IRGenerator::generateArrayStatement(Node *node) {
 //_________________POINTER STATEMENT____________________
 void IRGenerator::generatePointerStatement(Node *node) {
   auto ptrStmt = dynamic_cast<PointerStatement *>(node);
-  if (!ptrStmt)
-    throw std::runtime_error("Invalid pointer statement");
+  if (!ptrStmt) {
+    reportDevBug("Invalid pointer statement", node->token.line,
+                 node->token.column);
+  }
 
   auto ptrName = ptrStmt->name->expression.TokenLiteral;
 
   // Getting the pointer metaData
   auto metaIt = semantics.metaData.find(ptrStmt);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("Missing pointer statement metaData for '" +
-                             ptrName + "'");
+  if (metaIt == semantics.metaData.end()) {
+    reportDevBug("Missing pointer statement metaData for '" + ptrName + "'",
+                 ptrStmt->statement.line, ptrStmt->statement.column);
+  }
 
   auto ptrSym = metaIt->second;
-  if (!ptrSym)
-    throw std::runtime_error("Undefined pointer '" + ptrName + "'");
-
-  if (ptrSym->hasError)
-    throw std::runtime_error("Semantic error detected ");
 
   // Getting the pointer llvm type
   llvm::Type *ptrType = getLLVMType(ptrSym->type);
-  if (!ptrType)
-    throw std::runtime_error("Failed to get LLVM Type for '" + ptrName + "'");
+  if (!ptrType) {
+    reportDevBug("Failed to get pointer type for '" + ptrName + "'",
+                 ptrStmt->statement.line, ptrStmt->statement.column);
+  }
 
   llvm::Type *ptrStorageType = ptrType->getPointerTo();
-
-  std::cout << "[IR DEBUG] Pointer type: " << ptrSym->type.resolvedName << "\n";
 
   llvm::Value *initVal = nullptr;
   if (ptrStmt->value) {
@@ -366,8 +357,10 @@ void IRGenerator::generatePointerStatement(Node *node) {
     initVal = boxed;
   }
 
-  if (!initVal)
-    throw std::runtime_error("No init value");
+  if (!initVal) {
+    reportDevBug("No initial value for pointer '" + ptrName + "'",
+                 ptrStmt->statement.line, ptrStmt->statement.column);
+  }
 
   llvm::Value *storagePtr = nullptr;
   if (ptrSym->isSage) {
@@ -378,8 +371,10 @@ void IRGenerator::generatePointerStatement(Node *node) {
     funcBuilder.CreateStore(initVal, storagePtr);
   } else if (!funcBuilder.GetInsertBlock()) {
     llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
-    if (!globalInit)
-      throw std::runtime_error("Global pointer must be constant");
+    if (!globalInit) {
+      reportDevBug("Global pointer must be constant", ptrStmt->statement.line,
+                   ptrStmt->statement.column);
+    }
 
     storagePtr = new llvm::GlobalVariable(*module, ptrType, false,
                                           llvm::GlobalValue::InternalLinkage,
@@ -423,15 +418,15 @@ void IRGenerator::generatePointerStatement(Node *node) {
       }
     }
   }
-
-  std::cout << "Exited pointer statement generator\n";
 }
 
 // Reference statement IR generator
 void IRGenerator::generateReferenceStatement(Node *node) {
   auto refStmt = dynamic_cast<ReferenceStatement *>(node);
-  if (!refStmt)
-    throw std::runtime_error("Invalid reference statement");
+  if (!refStmt) {
+    reportDevBug("Invalid reference statemnt", node->token.line,
+                 node->token.column);
+  }
 
   const auto &refName = refStmt->name->expression.TokenLiteral;
   const auto &refereeName =
@@ -439,19 +434,17 @@ void IRGenerator::generateReferenceStatement(Node *node) {
 
   // Lookup metadata
   auto metaIt = semantics.metaData.find(refStmt);
-  if (metaIt == semantics.metaData.end())
-    throw std::runtime_error("Failed to find reference metaData for '" +
-                             refName + "'");
+  if (metaIt == semantics.metaData.end()) {
+    reportDevBug("Failed to find reference metaData for '" + refName + "'",
+                 refStmt->statement.line, refStmt->statement.column);
+  }
 
   auto refSym = metaIt->second;
   auto targetSym = refSym->refereeSymbol;
-  if (!targetSym)
-    throw std::runtime_error("Reference '" + refName +
-                             "' has no target symbol");
-
-  if (targetSym->hasError)
-    throw std::runtime_error("Semantic error detected on reference target '" +
-                             refereeName + "'");
+  if (!targetSym) {
+    reportDevBug("Reference '" + refName + "' has no target symbol",
+                 refStmt->statement.line, refStmt->statement.column);
+  }
 
   // Generate the LLVM pointer to the actual value, not the pointer variable
   llvm::Value *targetAddress = nullptr;
@@ -471,9 +464,10 @@ void IRGenerator::generateReferenceStatement(Node *node) {
     targetAddress = generateAddress(refStmt->value.get());
   }
 
-  if (!targetAddress || !targetAddress->getType()->isPointerTy())
-    throw std::runtime_error("Failed to resolve LLVM address for reference '" +
-                             refName + "'");
+  if (!targetAddress || !targetAddress->getType()->isPointerTy()) {
+    reportDevBug("Failed to resolve address for reference '" + refName + "'",
+                 refStmt->statement.line, refStmt->statement.column);
+  }
 
   // The reference itself holds the pointer to the target
   refSym->llvmValue = targetAddress;
@@ -492,9 +486,9 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
     init = llvm::dyn_cast<llvm::Constant>(val);
 
     if (!init) {
-      throw std::runtime_error(
-          "Global '" + letName +
-          "' must be initialized with a constant expression.");
+      reportDevBug("Global '" + letName +
+                       "' must be initialized with a constant expression",
+                   value->expression.line, value->expression.column);
     }
   } else {
     init = llvm::Constant::getNullValue(varType);
@@ -507,9 +501,6 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
 
   sym->llvmValue = g;
   sym->llvmType = varType;
-
-  std::cout << "[DEBUG] Created global scalar '" << letName
-            << "' (Exported: " << (sym->isExportable ? "Yes" : "No") << ")\n";
 }
 
 llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt,
@@ -583,7 +574,6 @@ llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt,
 llvm::Value *IRGenerator::allocateSageStorage(std::shared_ptr<SymbolInfo> sym,
                                               const std::string &letName,
                                               llvm::StructType *structTy) {
-  std::cout << "Let statement was heap raised\n";
   // If sage_init hasnt been called
   if (!isSageInitCalled)
     generateSageInitCall();
@@ -620,23 +610,23 @@ void IRGenerator::freeSageStorage(uint64_t size, uint64_t alignSize,
 llvm::Value *
 IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                         const std::string &varName) {
-  std::cout << "Let statement was dynamic heap raised\n";
 
   const std::string &allocatorTypeName = sym->allocType;
 
   auto it = semantics.allocatorMap.find(allocatorTypeName);
-  if (it == semantics.allocatorMap.end())
-    throw std::runtime_error("Unknown allocator type '" + allocatorTypeName +
-                             "'");
+  if (it == semantics.allocatorMap.end()) {
+    reportDevBug("Unknown allocator type '" + allocatorTypeName + "'", 0, 0);
+  }
 
   auto handle = it->second;
   auto allocatorName = handle.allocateName;
 
   // Find the function in the module(it was created in registerAllocators)
   llvm::Function *allocFunc = module->getFunction(allocatorName);
-  if (!allocFunc)
-    throw std::runtime_error("Function not found for allocator: " +
-                             allocatorName);
+  if (!allocFunc) {
+    reportDevBug("Function not found for allocator '" + allocatorName + "'", 0,
+                 0);
+  }
 
   size_t allocSize = sym->componentSize; // Get the size for the allocation
   llvm::Value *sizeArg =
@@ -654,20 +644,22 @@ IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
 void IRGenerator::freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym) {
   const std::string &allocatorTypeName = sym->allocType;
   auto it = semantics.allocatorMap.find(allocatorTypeName);
-  if (it == semantics.allocatorMap.end())
-    throw std::runtime_error("Unknown allocator type '" + allocatorTypeName +
-                             "'");
+  if (it == semantics.allocatorMap.end()) {
+    reportDevBug("Unknown allocator type '" + allocatorTypeName + "'", 0, 0);
+  }
 
   auto handle = it->second;
   auto freeName = handle.freeName;
 
   llvm::Function *freeFunc = module->getFunction(freeName);
-  if (!freeFunc)
-    throw std::runtime_error("Function not found for free: " + freeName);
+  if (!freeFunc) {
+    reportDevBug("Function not found for free '" + freeName + "'", 0, 0);
+  }
 
   llvm::Value *ptrToFree = sym->llvmValue;
-  if (!ptrToFree)
-    throw std::runtime_error("No LLVM value stored in symbol for freeing");
+  if (!ptrToFree) {
+    reportDevBug("No value stored in symbol info for freeing", 0, 0);
+  }
 
   llvm::Type *expectedTy = freeFunc->getFunctionType()->getParamType(0);
 

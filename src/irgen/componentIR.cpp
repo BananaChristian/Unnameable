@@ -6,12 +6,13 @@ void IRGenerator::generateRecordStatement(Node *node) {
     return;
 
   auto it = semantics.metaData.find(recordStmt);
-  if (it == semantics.metaData.end())
-    throw std::runtime_error("Missing record metaData");
+  if (it == semantics.metaData.end()) {
+    reportDevBug("Miising record metaData",
+                 recordStmt->recordName->expression.line,
+                 recordStmt->recordName->expression.line);
+  }
 
   auto &meta = *it->second;
-  if (meta.hasError)
-    throw std::runtime_error("Error detected");
 
   std::string blockName = meta.type.resolvedName;
 

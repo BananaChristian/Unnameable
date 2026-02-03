@@ -294,7 +294,7 @@ int main(int argc, char **argv) {
     // IR generation
     if (logOutput)
       std::cout << COLOR_BLUE << "[IR GENERATION]" << COLOR_RESET << "\n";
-    IRGenerator irgen(semantics, layout.totalHeapSize);
+    IRGenerator irgen(semantics, errorHandler, layout.totalHeapSize, logOutput);
     irgen.generate(AST);
     if (logOutput)
       irgen.dumpIR();

@@ -10,18 +10,22 @@
 #define COLOR_CYAN "\033[36m"
 #define COLOR_BOLD "\033[1m"
 
-ErrorHandler::ErrorHandler(const std::string &file)
-    : fileName(file), hintGen() {
+ErrorHandler::ErrorHandler(const std::string &file) : fileName(file) {
   loadSourceLines();
 }
 
 void ErrorHandler::report(CompilerError &error) {
+  if (!hintBuffer.empty()) {
+    for (auto &h : hintBuffer) {
+      error.hints.push_back(std::move(h));
+    }
+    hintBuffer.clear();
+  }
+
   std::string displayName = getLevelDisplayName(error.level);
   std::string sourceLine = getSourceLine(error.line, sourceLines);
 
   std::string baseName = getBaseName(fileName);
-
-  error.hints = hintGen.generateHints(error, sourceLine);
 
   std::cerr << COLOR_BOLD << COLOR_RED << "[" << displayName << "] "
             << COLOR_RESET << baseName << error.line << ":" << error.col << " "
@@ -53,8 +57,10 @@ std::string ErrorHandler::getLevelDisplayName(ErrorLevel level) {
     return "Layout issue";
   case ErrorLevel::SENTINEL:
     return "Sentinel issue";
-  case ErrorLevel::IRGEN:
-    return "Codegen issue";
+  case ErrorLevel::INTERNAL:
+    return "Internal Compiler error";
+  case ErrorLevel::IMPORT:
+    return "Import issue";
   }
 
   return "Unknown issue";
@@ -104,97 +110,7 @@ std::string ErrorHandler::getSourceLine(int line,
   return sourceLines[line - 1];
 }
 
-//---------------------HINT GENERATOR-------------------------
-
-HintGenerator::HintGenerator() { registerHintFns(); }
-
-void HintGenerator::registerHintFns() {
-  hintGeneratorFnsMap[ErrorLevel::PARSER] = &HintGenerator::generateParserHints;
-  hintGeneratorFnsMap[ErrorLevel::SEMANTIC] =
-      &HintGenerator::generateSemanticHints;
-}
-
-std::vector<std::string>
-HintGenerator::generateHints(const CompilerError &error,
-                             std::string sourceLine) {
-
-  std::vector<std::string> out;
-  auto it = hintGeneratorFnsMap.find(error.level);
-  if (it != hintGeneratorFnsMap.end()) {
-    out = (this->*(it->second))(error, sourceLine);
-  }
-
-  return out;
-}
-
-std::vector<std::string>
-HintGenerator::generateParserHints(const CompilerError &error,
-                                   std::string sourceLine) {
-  std::vector<std::string> hints;
-  std::smatch match;
-
-  static const std::vector<HintRule> rules = {
-
-      {std::regex("unexpected token '([^']+)'"),
-       [](const std::smatch &m, const std::string &src) {
-         std::vector<std::string> h;
-         h.push_back("Token '" + m[1].str() + "' cannot appear here.");
-         if (!src.empty() && src.back() != ';')
-           h.push_back("This line may be missing a semicolon.");
-         return h;
-       }}};
-
-  for (const auto &rule : rules) {
-    if (std::regex_search(error.message, match, rule.pattern)) {
-      auto result = rule.handler(match, sourceLine);
-      hints.insert(hints.end(), result.begin(), result.end());
-    }
-  }
-
-  return hints;
-}
-
-std::vector<std::string>
-HintGenerator::generateSemanticHints(const CompilerError &error,
-                                     std::string sourceLine) {
-  // Local output
-  std::vector<std::string> hints;
-  std::smatch match;
-
-  // ---- RULES TABLE ----
-  static const std::vector<HintRule> rules = {
-
-      // Undeclared variable
-      {std::regex("undeclared[^']*'([a-zA-Z_][a-zA-Z0-9_]*)'"),
-       [](const std::smatch &m, const std::string &src) {
-         return std::vector<std::string>{
-             "You used '" + m[1].str() + "' but it was never declared",
-             "Check for typos or missing declarations"};
-       }},
-
-      // Type mismatch ( expected X but got Y)
-      {std::regex("expected '([^']+)' but got '([^']+)'"),
-       [](const std::smatch &m, const std::string &src) {
-         return std::vector<std::string>{"Convert '" + m[2].str() + "' to '" +
-                                         m[1].str() +
-                                         "' or adjust the variable type"};
-       }},
-
-      // Cannot convert implicitly(This will come in handy when I add casting)
-      {std::regex("cannot convert from '([^']+)' to '([^']+)'"),
-       [](const std::smatch &m, const std::string &) {
-         return std::vector<std::string>{
-             "Consider explicit casting or using the correct type: '" +
-             m[1].str() + "' → '" + m[2].str() + "'"};
-       }}};
-
-  // Rule execution
-  for (const auto &rule : rules) {
-    if (std::regex_search(error.message, match, rule.pattern)) {
-      auto result = rule.handler(match, sourceLine);
-      hints.insert(hints.end(), result.begin(), result.end());
-    }
-  }
-
-  return hints;
+ErrorHandler &ErrorHandler::addHint(const std::string &hint) {
+  hintBuffer.push_back(hint);
+  return *this;
 }
