@@ -54,7 +54,7 @@ std::string Linker::resolveLinkPath(LinkStatement *link,
     resolved = fs::path(currentFile).parent_path() / targetPath;
   }
 
-  //If the user  left off the extension for a file path
+  // If the user  left off the extension for a file path
   if (!resolved.has_extension()) {
     resolved += ".o";
   }
@@ -87,9 +87,35 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
 
     return;
   }
+
+  // --- ANALYZE FOR DYNAMIC DEPENDENCIES ---
+  std::vector<std::string> userLinks;
+  bool needsDynamic = false;
+
+  for (const auto &node : nodes) {
+    if (auto link = dynamic_cast<LinkStatement *>(node.get())) {
+      std::string resolved = resolveLinkPath(link, currentFile);
+      userLinks.push_back(resolved);
+
+      // Trigger dynamic mode if we see a .so or a system library flag (-l)
+      if (resolved.find(".so") != std::string::npos ||
+          resolved.substr(0, 2) == "-l") {
+        needsDynamic = true;
+      }
+    }
+  }
+
   std::vector<std::string> filesToLink;
   std::string exeDir = getExecutableDir();
   fs::path coreDir = fs::path(exeDir).parent_path() / "core";
+
+  if (needsDynamic) {
+    fs::path interpPath = coreDir / "interp.o";
+    if (!fs::exists(interpPath))
+      throw std::runtime_error(
+          "Linker Error: interp.o missing for dynamic build!");
+    filesToLink.push_back(interpPath.string());
+  }
 
   fs::path entryPath = coreDir / "entry.o";
   if (!fs::exists(entryPath))
@@ -135,10 +161,18 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
 
   filesToLink.push_back(urcLib.string());
 
+  // ---CHOOSE THE SCRIPT AND EXECUTE ---
+  std::string scriptName =
+      needsDynamic ? "linker_dynamic.ld" : "linker_static.ld";
+  fs::path scriptPath = coreDir / scriptName;
+
+  if (!fs::exists(scriptPath))
+    throw std::runtime_error("Linker Error: Missing script " + scriptName);
+
   // Construct the LLD command
   // -T points to the map. --gc-sections throws away what isn't being using.
-  std::string cmd = "ld.lld -T " + (coreDir / "linker.ld").string() +
-                    " --gc-sections -o " + outputExecutable;
+  std::string cmd = "ld.lld -T " + scriptPath.string() + " --gc-sections -o " +
+                    outputExecutable;
 
   for (auto &f : filesToLink) {
     if (f[0] == '-') { // Don't quote flags like -lSDL2
@@ -148,6 +182,8 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
     }
   }
 
+  std::cout << "[LINKER] Mode: " << (needsDynamic ? "DYNAMIC" : "STATIC")
+            << "\n";
   std::cout << "[LINKER] Link: " << cmd << "\n";
 
   if (system(cmd.c_str()) != 0)
