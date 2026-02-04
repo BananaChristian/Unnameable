@@ -63,14 +63,16 @@ enum class TokenType {
 
   ENUM,
 
-  SAGE,      //Sage keyword that allows a user to manually tell the compiler to allocate on the SAGE heap
-  HEAP,     // heap keword that allows a user to use a dynamic heap
+  SAGE, // Sage keyword that allows a user to manually tell the compiler to
+        // allocate on the SAGE heap
+  HEAP,      // heap keword that allows a user to use a dynamic heap
   ALLOCATOR, // Allocator keyword
 
   COMPONENT, // component key word for classes
   SELF,      // self keyword for a component instance
   RECORD,    // record keyword token for record blocks
-  INJECT,       // inject keyword that injects the record fields directly into the component
+  INJECT,    // inject keyword that injects the record fields directly into the
+             // component
   INIT,      // constructor keyword
 
   GENERIC, // Generic block keyword
@@ -85,11 +87,12 @@ enum class TokenType {
   DEREF,  // Dereference keyword
   ADDR,   // addr keyword
   UNWRAP, // Unwrap keyword
+  MOVE,   // move keyword
 
   EXPORT, // Export keyword
 
-  IMPORT,  // import keyword
-  LINK,    // Link keyword
+  IMPORT, // import keyword
+  LINK,   // Link keyword
 
   SEAL, // Scope seal keyword
 
@@ -146,14 +149,14 @@ enum class TokenType {
   CHAR16_KEYWORD,
   CHAR32, // 32 bit char
   CHAR32_KEYWORD,
-  
-  F32, //32 but float
+
+  F32, // 32 but float
   F32_KEYWORD,
-  F64,//64 bit float
+  F64, // 64 bit float
   F64_KEYWORD,
-  
-  OPAQUE,//opaque keyword token
-  
+
+  OPAQUE, // opaque keyword token
+
   SIZEOF, // sizeof token
 
   VOID,

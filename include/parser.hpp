@@ -39,6 +39,7 @@ class Parser {
       {TokenType::PLUS_PLUS, Precedence::PREC_UNARY},
       {TokenType::ADDR, Precedence::PREC_UNARY},
       {TokenType::DEREF, Precedence::PREC_UNARY},
+      {TokenType::MOVE, Precedence::PREC_UNARY},
       {TokenType::UNWRAP, Precedence::PREC_UNARY},
       {TokenType::BITWISE_NOT, Precedence::PREC_UNARY},
       {TokenType::FULLSTOP, Precedence::PREC_CALL},
@@ -217,24 +218,16 @@ private:
   std::unique_ptr<Expression>
   parseMethodCallExpression(std::unique_ptr<Expression> left);
 
-  // Parsing unwrap expression
   std::unique_ptr<Expression> parseUnwrapExpression();
-
-  // Parsing identifier expression
   std::unique_ptr<Expression> parseIdentifier();
-
-  // Parsing address expression
   std::unique_ptr<Expression> parseAddressExpression();
-
-  // Parsing dereference expression
+  std::unique_ptr<Expression> parseMoveExpression();
   std::unique_ptr<Expression> parseDereferenceExpression();
 
   // Parsing array subscript expression
   std::unique_ptr<Expression> parseArraySubscript();
-
   // Decider for identifier or array subscript
   std::unique_ptr<Expression> parseIdentifierOrArraySubscript();
-
   // Parsing self expression
   std::unique_ptr<Expression> parseSelfExpression();
 

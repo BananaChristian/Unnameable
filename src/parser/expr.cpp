@@ -1,6 +1,7 @@
 #include "ast.hpp"
 #include "parser.hpp"
 #include "token.hpp"
+#include <memory>
 
 // Main Expression parsing function
 std::unique_ptr<Expression> Parser::parseExpression(Precedence precedence) {
@@ -97,6 +98,16 @@ std::unique_ptr<Expression> Parser::parseAddressExpression() {
   auto ident = parseExpression(operatorPrecedence);
 
   return std::make_unique<AddressExpression>(addr_token, std::move(ident));
+}
+
+// Parsing move expression
+std::unique_ptr<Expression> Parser::parseMoveExpression() {
+  Token move_token = currentToken();
+  Precedence opPrecedence = get_precedence(move_token.type);
+  advance(); // Consume the move token
+
+  auto expr = parseExpression(opPrecedence);
+  return std::make_unique<MoveExpression>(move_token, std::move(expr));
 }
 
 // Parsing dereference expression

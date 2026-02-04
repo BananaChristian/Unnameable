@@ -247,6 +247,7 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::ADDR] = &Parser::parseAddressExpression;
   PrefixParseFunctionsMap[TokenType::DEREF] =
       &Parser::parseDereferenceExpression;
+  PrefixParseFunctionsMap[TokenType::MOVE] = &Parser::parseMoveExpression;
   PrefixParseFunctionsMap[TokenType::NEW] =
       &Parser::parseNewComponentExpression;
   PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
