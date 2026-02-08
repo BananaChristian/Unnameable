@@ -55,8 +55,6 @@ std::string ErrorHandler::getLevelDisplayName(ErrorLevel level) {
     return "Semantic issue";
   case ErrorLevel::LAYOUT:
     return "Layout issue";
-  case ErrorLevel::SENTINEL:
-    return "Sentinel issue";
   case ErrorLevel::INTERNAL:
     return "Internal Compiler error";
   case ErrorLevel::IMPORT:

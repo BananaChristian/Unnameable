@@ -67,6 +67,25 @@ void IRGenerator::generateLetStatement(Node *node) {
   // For non-components: compute init value (scalar or other) this is for non
   // heap
   llvm::Value *initVal = nullptr;
+
+  // Intercept the valiue if it is a move
+  if (auto moveExpr = dynamic_cast<MoveExpression *>(letStmt->value.get())) {
+    logInternal("Handling Move-Initialization for " + letName);
+
+    // Get the baton (this nulls the source)
+    initVal = generateMoveExpression(moveExpr);
+
+    // Create the stack slot (the parking spot for the pointer)
+    storage =
+        funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, letName);
+
+    // Adopt the baton
+    funcBuilder.CreateStore(initVal, storage);
+
+    sym->llvmValue = storage;
+    sym->llvmType = funcBuilder.getPtrTy();
+    return;
+  }
   if (!isComponent) {
     if (letStmt->value)
       initVal = generateExpression(letStmt->value.get());
@@ -90,8 +109,14 @@ void IRGenerator::generateLetStatement(Node *node) {
     funcBuilder.CreateStore(initVal, storage);
   } else if (isHeap) // If it is dynamic heap raise value
   {
-    storage = allocateDynamicHeapStorage(sym, letName);
-    funcBuilder.CreateStore(initVal, storage);
+    // Create a map on the stack that holds the pointer to the heap memory
+    storage =
+        funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, letName);
+    // The address on the heap where the value is stored
+    llvm::Value *actualHeapPointer = allocateDynamicHeapStorage(sym, letName);
+    //
+    funcBuilder.CreateStore(actualHeapPointer, storage);
+    funcBuilder.CreateStore(initVal, actualHeapPointer);
   } else // If it isnt a component or a heap raised value
   {
 
@@ -140,22 +165,8 @@ void IRGenerator::generateLetStatement(Node *node) {
   // Update symbol metadata with storage and type
   sym->llvmValue = storage;
   sym->llvmType = (isComponent && structTy) ? structTy : getLLVMType(sym->type);
-
-  // HEAP CLEANUP FOR DEAD LOCALS
   if (!sym->needsPostLoopFree) {
-    if (letStmt->isSage) {
-      Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-      if (letStmt == lastUse && sym->refCount == 0) {
-        freeSageStorage(sym->componentSize, sym->alignment.value(), letName);
-        logInternal("Immediately freed dead sage variable");
-      }
-    } else if (letStmt->isHeap) {
-      Node *lastUse = sym->lastUseNode ? sym->lastUseNode : letStmt;
-      if (letStmt == lastUse && sym->refCount == 0) {
-        freeDynamicHeapStorage(sym);
-        logInternal("Immediately freed dead dynamic heap variable");
-      }
-    }
+    emitCleanup(letStmt, sym);
   }
 }
 
@@ -290,17 +301,7 @@ void IRGenerator::generateArrayStatement(Node *node) {
   sym->llvmValue = variableStorage;
 
   if (!sym->needsPostLoopFree) {
-    if (arrStmt->isSage) {
-      if (sym->lastUseNode == arrStmt && sym->refCount == 0) {
-        freeSageStorage(sym->componentSize, sym->alignment.value(), arrName);
-        logInternal("Immediately freed dead sage variable '" + arrName + "'");
-      }
-    } else if (arrStmt->isHeap) {
-      if (sym->lastUseNode == arrStmt && sym->refCount == 0) {
-        freeDynamicHeapStorage(sym);
-        logInternal("Immediately freed dead heap variable '" + arrName + "'");
-      }
-    }
+    emitCleanup(arrStmt, sym);
   }
 }
 
@@ -389,34 +390,7 @@ void IRGenerator::generatePointerStatement(Node *node) {
 
   // Last use clean up for the pointer statement
   if (!ptrSym->needsPostLoopFree) {
-    if (ptrStmt->isSage) {
-      Node *lastUse = ptrSym->lastUseNode ? ptrSym->lastUseNode : ptrStmt;
-      if (ptrStmt == lastUse && ptrSym->refCount == 0) {
-        freeSageStorage(ptrSym->componentSize, ptrSym->alignment.value(),
-                        ptrName);
-      }
-    } else if (ptrStmt->isHeap) {
-      Node *lastUse = ptrSym->lastUseNode ? ptrSym->lastUseNode : ptrStmt;
-      if (ptrStmt == lastUse && ptrSym->refCount == 0) {
-        freeDynamicHeapStorage(ptrSym);
-      }
-    }
-  }
-
-  // Clean the target too if that is its last use
-  if (auto addrExpr = dynamic_cast<AddressExpression *>(ptrStmt->value.get())) {
-    const std::string &targetName = addrExpr->expression.TokenLiteral;
-    auto targetSym = ptrSym->targetSymbol;
-    if (targetSym) {
-      if (targetSym->isSage) {
-        if (targetSym->lastUseNode == addrExpr) {
-          freeSageStorage(targetSym->componentSize,
-                          targetSym->alignment.value(), targetName);
-        }
-      } else if (targetSym->isHeap) {
-        freeDynamicHeapStorage(targetSym);
-      }
-    }
+    emitCleanup(ptrStmt, ptrSym);
   }
 }
 
@@ -490,6 +464,8 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                        "' must be initialized with a constant expression",
                    value->expression.line, value->expression.column);
     }
+  } else if (semantics.customTypesTable.count(sym->type.resolvedName)) {
+    init = generateGlobalRecordDefaults(sym->type.resolvedName);
   } else {
     init = llvm::Constant::getNullValue(varType);
   }
@@ -501,6 +477,37 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
 
   sym->llvmValue = g;
   sym->llvmType = varType;
+}
+
+llvm::Constant *
+IRGenerator::generateGlobalRecordDefaults(const std::string &typeName) {
+  llvm::StructType *structTy =
+      llvm::cast<llvm::StructType>(llvmCustomTypes[typeName]);
+  auto compInfo = semantics.customTypesTable[typeName];
+
+  // We need to fill this vector in the exact order of the struct fields
+  std::vector<llvm::Constant *> fieldConstants(compInfo->members.size());
+
+  for (const auto &[name, memInfo] : compInfo->members) {
+    auto letNode = dynamic_cast<LetStatement *>(memInfo->node);
+    llvm::Constant *fieldInit = nullptr;
+
+    if (letNode && letNode->value) {
+      // Field has a default like field1 = 100
+      // We must evaluate it as a constant
+      fieldInit = llvm::dyn_cast<llvm::Constant>(
+          generateExpression(letNode->value.get()));
+    }
+
+    if (!fieldInit) {
+      // No default? Use the "Recursive Null" (handles nested records/nullables)
+      fieldInit = llvm::Constant::getNullValue(getLLVMType(memInfo->type));
+    }
+
+    fieldConstants[memInfo->memberIndex] = fieldInit;
+  }
+
+  return llvm::ConstantStruct::get(structTy, fieldConstants);
 }
 
 llvm::Value *IRGenerator::generateComponentInit(LetStatement *letStmt,
@@ -594,16 +601,7 @@ llvm::Value *IRGenerator::allocateSageStorage(std::shared_ptr<SymbolInfo> sym,
 
   llvm::Type *targetPtrTy = structTy ? structTy->getPointerTo()
                                      : getLLVMType(sym->type)->getPointerTo();
-  return funcBuilder.CreateBitCast(rawPtr, targetPtrTy, letName + "_heap_ptr");
-}
-
-void IRGenerator::freeSageStorage(uint64_t size, uint64_t alignSize,
-                                  const std::string &letName) {
-  llvm::FunctionCallee sageFree = module->getOrInsertFunction(
-      "sage_free", llvm::Type::getVoidTy(context),
-      llvm::Type::getInt64Ty(context), llvm::Type::getInt64Ty(context));
-
-  funcBuilder.CreateCall(sageFree, {}, letName + "_sage_free");
+  return funcBuilder.CreateBitCast(rawPtr, targetPtrTy, letName + "_sage_ptr");
 }
 
 // Dynamic heap storage
@@ -633,39 +631,12 @@ IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
       llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), allocSize);
 
   llvm::Value *rawPtr =
-      funcBuilder.CreateCall(allocFunc, {sizeArg}, varName + "_dheap_raw");
+      funcBuilder.CreateCall(allocFunc, {sizeArg}, varName + "_heap_raw");
 
   llvm::Type *baseType = getLLVMType(sym->type);
 
   return funcBuilder.CreateBitCast(rawPtr, baseType->getPointerTo(),
                                    varName + "_ptr");
-}
-
-void IRGenerator::freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym) {
-  const std::string &allocatorTypeName = sym->allocType;
-  auto it = semantics.allocatorMap.find(allocatorTypeName);
-  if (it == semantics.allocatorMap.end()) {
-    reportDevBug("Unknown allocator type '" + allocatorTypeName + "'", 0, 0);
-  }
-
-  auto handle = it->second;
-  auto freeName = handle.freeName;
-
-  llvm::Function *freeFunc = module->getFunction(freeName);
-  if (!freeFunc) {
-    reportDevBug("Function not found for free '" + freeName + "'", 0, 0);
-  }
-
-  llvm::Value *ptrToFree = sym->llvmValue;
-  if (!ptrToFree) {
-    reportDevBug("No value stored in symbol info for freeing", 0, 0);
-  }
-
-  llvm::Type *expectedTy = freeFunc->getFunctionType()->getParamType(0);
-
-  llvm::Value *castPtr = funcBuilder.CreatePointerCast(ptrToFree, expectedTy);
-
-  funcBuilder.CreateCall(freeFunc, {castPtr});
 }
 
 llvm::Value *IRGenerator::allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
@@ -677,9 +648,9 @@ llvm::Value *IRGenerator::allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
 
   llvm::Function *allocFunc = module->getFunction(handle.allocateName);
 
-  // Pass the RUNTIME calculated size to malloc/custom allocator
+  // Pass the RUNTIME calculated size to the custom allocator
   llvm::Value *rawPtr =
-      funcBuilder.CreateCall(allocFunc, {runtimeSize}, varName + "_dheap_raw");
+      funcBuilder.CreateCall(allocFunc, {runtimeSize}, varName + "_heap_raw");
 
   llvm::Type *baseType = getLLVMType(sym->type);
   return funcBuilder.CreateBitCast(rawPtr, baseType->getPointerTo(),

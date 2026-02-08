@@ -20,11 +20,6 @@ struct JumpTarget {
   llvm::BasicBlock *continueTarget;
 };
 
-struct AddressAndPendingFree {
-  llvm::Value *address;
-  std::vector<llvm::CallInst *> pendingFrees;
-};
-
 class IRGenerator {
 public:
   IRGenerator(Semantics &semantics, ErrorHandler &handler, size_t totalHeapSize,
@@ -151,6 +146,7 @@ private:
   llvm::Value *generateFunctionExpression(Node *node);
   llvm::Value *generateCallExpression(Node *node);
   llvm::Value *generateUnwrapExpression(Node *node);
+  llvm::Value *generateMoveExpression(Node *node);
 
   llvm::Value *generateSelfExpression(Node *node);
   llvm::Value *generateInstanceExpression(Node *node);
@@ -165,15 +161,17 @@ private:
   llvm::Value *generateCallAddress(Node *node);
   llvm::Value *generateDereferenceAddress(Node *node);
   llvm::Value *generateArraySubscriptAddress(Node *node);
+  llvm::Value *generateIdentifierAddress(Node *node);
+  llvm::Value *generateInfixAddress(Node *node);
 
   // HELPER FUNCTIONS
   void registerGeneratorFunctions();
   void registerExpressionGeneratorFunctions();
   void registerAddressGeneratorFunctions();
+
   llvm::Value *generateExpression(Node *node);
   llvm::Value *generateAddress(Node *node);
-  AddressAndPendingFree generateIdentifierAddress(Node *node);
-  AddressAndPendingFree generateInfixAddress(Node *node);
+
   void generateStatement(Node *node);
   void shoutRuntime(llvm::Value *val, ResolvedType type);
   void declareImportedSeals();
@@ -210,6 +208,7 @@ private:
   // For normal variables
   void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                                const std::string &letName, Expression *value);
+  llvm::Constant *generateGlobalRecordDefaults(const std::string &typeName);
   // For components
   llvm::Value *generateComponentInit(LetStatement *letStmt,
                                      std::shared_ptr<SymbolInfo> sym,
@@ -220,16 +219,15 @@ private:
   llvm::Value *allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
                                    llvm::Value *size,
                                    const std::string &varName);
-  void freeDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym);
-
+  void executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym);
+  void emitCleanup(Node *contextNode,
+                   const std::shared_ptr<SymbolInfo> &contextSymbol);
   void flattenArrayLiteral(ArrayLiteral *arrLit,
                            std::vector<llvm::Constant *> &flatElems,
                            llvm::Type *&baseType);
   llvm::Value *allocateSageStorage(std::shared_ptr<SymbolInfo> sym,
                                    const std::string &varName,
                                    llvm::StructType *structTy);
-  void freeSageStorage(uint64_t size, uint64_t alignSize,
-                       const std::string &letName);
   llvm::Value *generateIntegerLiteral(const std::string &literalStr,
                                       uint32_t bitWidth, bool isSigned);
 

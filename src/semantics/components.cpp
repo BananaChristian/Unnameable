@@ -431,6 +431,8 @@ void Semantics::walkRecordStatement(Node *node) {
     memInfo->isMutable = fieldSymbol->isMutable;
     memInfo->isConstant = fieldSymbol->isConstant;
     memInfo->isInitialised = fieldSymbol->isInitialized;
+    memInfo->isPointer = fieldSymbol->isPointer;
+    memInfo->isNullable = fieldSymbol->isNullable;
     memInfo->isHeap = isHeap;
     memInfo->storage = memberStorage;
     memInfo->typeNode = recordStmt;
@@ -486,7 +488,7 @@ void Semantics::walkRecordStatement(Node *node) {
 
   // Pop local scope
   insideRecord = false;
-  popScope();
+  symbolTable.pop_back();
 }
 
 void Semantics::walkInstanceExpression(Node *node) {
@@ -500,6 +502,12 @@ void Semantics::walkInstanceExpression(Node *node) {
   bool hasError = false;
 
   auto instSym = resolveSymbolInfo(instName);
+
+  if (isGlobalScope()) {
+    logSemanticErrors("Cannot create an instance in the global scope", line,
+                      col);
+    return;
+  }
 
   if (!instSym) {
     logSemanticErrors("Undefined identifier '" + instName + "'", line, col);
@@ -1014,7 +1022,7 @@ void Semantics::walkComponentStatement(Node *node) {
   // Exit component scope
   currentTypeStack.pop_back();
   insideComponent = false;
-  popScope();
+  symbolTable.pop_back();
 }
 
 void Semantics::walkNewComponentExpression(Node *node) {
@@ -1027,6 +1035,11 @@ void Semantics::walkNewComponentExpression(Node *node) {
   auto componentName = newExpr->component_name.TokenLiteral;
   bool hasError = false;
 
+  if (isGlobalScope()) {
+    logSemanticErrors("Cannot instiate a component in global scope", line,
+                      column);
+    return;
+  }
   // UNIFIED TYPE LOOKUP
   // We determine the type once and use it everywhere.
   ResolvedType componentType;
@@ -1261,7 +1274,7 @@ void Semantics::walkMethodCallExpression(Node *node) {
   }
 
   // Update the instance symbol metaData usage info
-  instanceSym->lastUseNode = metCall;
+  // instanceSym->lastUseNode = metCall;
   if (instanceSym->refCount) {
     instanceSym->refCount--;
   }

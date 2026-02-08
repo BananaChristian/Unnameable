@@ -50,11 +50,6 @@ void Semantics::walkInfixExpression(Node *node) {
     logInternal("Infix Type for member access :" +
                 memberInfo->type.resolvedName);
 
-    // Some inheritance
-    if (leftSym->isConstant) {
-      memberInfo->isConstant = true;
-    }
-
     // Store metadata for RHS identifier
     metaData[rhsIdent] = memberInfo;
     metaData[infixExpr] = memberInfo;
@@ -354,65 +349,79 @@ void Semantics::walkBitcastExpression(Node *node) {
 
   bool hasError = false;
 
-  // Resolve Destination Type (The type in the < >)
-  auto type = bitcastExpr->type.get();
-  if (!type)
+  // Resolve Destination Type (The type inside < >)
+  auto destTypeNode = bitcastExpr->type.get();
+  if (!destTypeNode)
+    return;
+  ResolvedType destinationType = inferNodeDataType(destTypeNode);
+
+  // Resolve Source Type (The expression inside ( ))
+  auto sourceExpr = bitcastExpr->expr.get();
+  if (!sourceExpr)
     return;
 
-  ResolvedType destinationType = inferNodeDataType(type);
-  if (destinationType.isNull) {
-    logSemanticErrors("bitcast destination cannot be nullable, got '" +
-                          destinationType.resolvedName + "'",
-                      type->expression.line, type->expression.column);
-    hasError = true;
-  }
+  walker(sourceExpr); // Analyze the source expression first
+  auto sourceSym = metaData[sourceExpr];
 
-  if (!destinationType.isPointer) {
-    logSemanticErrors("bitcast destination must be a pointer type, got '" +
-                          destinationType.resolvedName + "'",
-                      type->expression.line, type->expression.column);
-    hasError = true;
-  }
-
-  // Resolve Source Type (The expression in the ( ))
-  auto source = bitcastExpr->expr.get();
-  if (!source)
+  if (!sourceSym) {
+    reportDevBug("Could not resolve source expression for bitcast");
     return;
-  walker(source);
+  }
+  ResolvedType sourceType = sourceSym->type;
 
-  auto sym = metaData[source];
-  ResolvedType sourceType = sym->type;
+  // Bitcastable is any type that fits in a general-purpose
+  //  register.
+  auto isBitcastable = [](ResolvedType type) {
+    bool isPtr = type.isPointer;
+    auto kind = type.kind;
+    if (isPtr)
+      return true;
+    switch (kind) {
+    case DataType::I8:
+    case DataType::U8:
+    case DataType::I16:
+    case DataType::U16:
+    case DataType::I32:
+    case DataType::U32:
+    case DataType::I64:
+    case DataType::U64:
+    case DataType::I128:
+    case DataType::U128:
+    case DataType::USIZE:
+    case DataType::ISIZE:
+    case DataType::F32:
+    case DataType::F64:
+    case DataType::OPAQUE:
+      return true;
+    default:
+      return false;
+    }
+  };
 
-  if (sourceType.isNull) {
-    logSemanticErrors("bitcast source cannot be nullable,got '" +
-                          sourceType.resolvedName + "'",
-                      source->expression.line, source->expression.column);
+  if (!isBitcastable(sourceType)) {
+    logSemanticErrors(
+        "bitcast source must be a pointer or integer type, got '" +
+            sourceType.resolvedName + "'",
+        sourceExpr->expression.line, sourceExpr->expression.column);
     hasError = true;
   }
 
-  if (sourceType.isArray) {
-    logSemanticErrors("bitcast source cannot be an array type,got '" +
-                          sourceType.resolvedName + "'",
-                      source->expression.line, source->expression.column);
+  if (!isBitcastable(destinationType)) {
+    logSemanticErrors(
+        "bitcast destination must be a pointer or integer type, got '" +
+            destinationType.resolvedName + "'",
+        destTypeNode->expression.line, destTypeNode->expression.column);
     hasError = true;
   }
 
-  if (sourceType.isRef) {
-    logSemanticErrors("bitcast source cannot be a reference,got '" +
-                          sourceType.resolvedName + "'",
-                      source->expression.line, source->expression.column);
-    hasError = true;
-  }
-
-  if (!sourceType.isPointer) {
-    logSemanticErrors("bitcast source must be a pointer type,got '" +
-                          sourceType.resolvedName + "'",
-                      source->expression.line, source->expression.column);
-    hasError = true;
-  }
-
+  // Build the Resulting Symbol
   auto bitcastInfo = std::make_shared<SymbolInfo>();
-  bitcastInfo->hasError = hasError;
   bitcastInfo->type = destinationType;
+  bitcastInfo->hasError = hasError;
+  bitcastInfo->isPointer = destinationType.isPointer;
+  bitcastInfo->isNullable = destinationType.isNull;
   metaData[bitcastExpr] = bitcastInfo;
+
+  logInternal("Bitcast validated: " + sourceType.resolvedName + " -> " +
+              destinationType.resolvedName);
 }

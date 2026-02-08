@@ -271,9 +271,8 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   auto sym = metaIt->second;
 
   // Get address and possible pending free
-  AddressAndPendingFree addrInfo = generateIdentifierAddress(identExpr);
-  llvm::Value *variableAddr = addrInfo.address;
-  if (!variableAddr) {
+  llvm::Value *address = generateIdentifierAddress(identExpr);
+  if (!address) {
     reportDevBug("No address for '" + identName + "'",
                  identExpr->identifier.line, identExpr->identifier.column);
   }
@@ -282,7 +281,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   // already correct)
   auto compIt = componentTypes.find(sym->type.resolvedName);
   if (compIt != componentTypes.end()) {
-    return variableAddr;
+    return address;
   }
 
   // Heap scalar: variableAddr is a T* (runtime pointer). Load T from it.
@@ -295,22 +294,21 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
 
     // variableAddr should be T* (address of object). If not, bitcast it.
     llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
-    if (variableAddr->getType() != expectedPtrTy)
-      variableAddr = funcBuilder.CreateBitCast(variableAddr, expectedPtrTy,
-                                               identName + "_ptr_typed");
+    if (address->getType() != expectedPtrTy)
+      address = funcBuilder.CreateBitCast(address, expectedPtrTy,
+                                          identName + "_ptr_typed");
 
     // Load the value
     llvm::Value *loadedVal =
-        funcBuilder.CreateLoad(elemTy, variableAddr, identName + "_val");
+        funcBuilder.CreateLoad(elemTy, address, identName + "_val");
 
-    // If we prepared a pending free, insert it NOW (after load)
-    for (auto *freeCall : addrInfo.pendingFrees) {
-      funcBuilder.Insert(freeCall);
-    }
     return loadedVal;
   }
   if (sym->isHeap) {
     llvm::Type *elemTy = sym->llvmType;
+    llvm::Value *actualHeapAddr = funcBuilder.CreateLoad(
+        funcBuilder.getPtrTy(), address, identName + "_heap_ptr");
+
     if (!elemTy) {
       reportDevBug("No type for heap scalar '" + identName + "'",
                    identExpr->identifier.line, identExpr->identifier.column);
@@ -318,13 +316,11 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
 
     // Grab the value from the heap address
     llvm::Value *loadedVal =
-        funcBuilder.CreateLoad(elemTy, variableAddr, identName + "_val");
+        funcBuilder.CreateLoad(elemTy, actualHeapAddr, identName + "_val");
 
     // Now that the value is safe in a register, we can release the
     // memory
-    for (auto *freeCall : addrInfo.pendingFrees) {
-      funcBuilder.Insert(freeCall);
-    }
+    emitCleanup(identExpr, sym);
 
     return loadedVal;
   }
@@ -344,7 +340,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
 
   // variableAddr should already be a pointer, load from it
   llvm::Value *val =
-      funcBuilder.CreateLoad(loadedType, variableAddr, identName + "_val");
+      funcBuilder.CreateLoad(loadedType, address, identName + "_val");
 
   return val;
 }
@@ -485,8 +481,10 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     // if lhs is struct by value, we need a pointer to use GEP
     llvm::Value *lhsPtr = lhsVal;
     if (auto *gv = llvm::dyn_cast<llvm::GlobalVariable>(lhsVal)) {
-      lhsPtr = funcBuilder.CreateLoad(structTy->getPointerTo(), gv,
-                                      gv->getName() + ".loaded");
+      if (gv->getValueType() != structTy) {
+        lhsPtr = funcBuilder.CreateLoad(structTy->getPointerTo(), gv,
+                                        gv->getName() + "_loaded");
+      }
     } else if (!lhsVal->getType()->isPointerTy()) {
       llvm::Value *allocaTmp = funcBuilder.CreateAlloca(
           lhsVal->getType(), nullptr, lookUpName + "_tmp");
@@ -500,19 +498,6 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     // now return by-value load, not a pointer
     llvm::Value *memberVal =
         funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
-
-    // If this is the last use and the component instance was heap raised
-    if (lhsMeta->isHeap && lhsMeta->lastUseNode == infix &&
-        lhsMeta->refCount == 0) {
-      llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-          "sage_free", llvm::Type::getVoidTy(context),
-          llvm::Type::getInt64Ty(context));
-      funcBuilder.CreateCall(
-          sageFreeFn,
-          {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),
-                                  lhsMeta->componentSize)},
-          infix->left_operand->expression.TokenLiteral + "_sage_free");
-    }
 
     return memberVal;
   }
@@ -605,14 +590,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
 
   // --- Handle Null Coalesce (??) ---
   if (infix->operat.type == TokenType::COALESCE) {
-    // 1. Generate LHS (The 'Box')
+    // Generate LHS (The 'Box')
     llvm::Value *leftStruct = generateExpression(infix->left_operand.get());
 
-    // 2. Extract the 'is_present' flag (index 0 in our {i1, T} struct)
+    // Extract the 'is_present' flag (index 0 in our {i1, T} struct)
     llvm::Value *isPresent =
         funcBuilder.CreateExtractValue(leftStruct, 0, "is_present");
 
-    // 3. Setup BasicBlocks
+    // Setup BasicBlocks
     llvm::Function *theFunction = funcBuilder.GetInsertBlock()->getParent();
 
     // We attach 'hasValueBB' immediately so it follows the current block
@@ -625,7 +610,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     // Branch: If true, go to value; if false, go to null handler
     funcBuilder.CreateCondBr(isPresent, hasValueBB, isNullBB);
 
-    // --- CASE: HAS VALUE ---
+    // ---  HAS VALUE ---
     funcBuilder.SetInsertPoint(hasValueBB);
     // Reach into the struct and grab the actual data (index 1)
     llvm::Value *extractedVal =
@@ -634,7 +619,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     // Update pointer in case builder moved
     hasValueBB = funcBuilder.GetInsertBlock();
 
-    // --- CASE: IS NULL (Short-circuiting) ---
+    // ---  IS NULL (Short-circuiting) ---
     isNullBB->insertInto(theFunction); // The "Official Conductor" method
     funcBuilder.SetInsertPoint(isNullBB);
     // ONLY generate RHS here. If LHS was valid, this code never runs.
@@ -738,9 +723,35 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
       default:
         throw std::runtime_error("Unsupported float comparison operator");
       }
+    } else if (semantics.metaData[infix->left_operand.get()]->type.isPointer ||
+               semantics.metaData[infix->right_operand.get()]->type.isPointer) {
+
+      if (left->getType() != right->getType()) {
+        right =
+            funcBuilder.CreateBitCast(right, left->getType(), "ptr_cmp_norm");
+      }
+      // Pointers are compared as Unsigned Integers
+      switch (infix->operat.type) {
+      case TokenType::EQUALS:
+        return funcBuilder.CreateICmpEQ(left, right, "ptr_eq");
+      case TokenType::NOT_EQUALS:
+        return funcBuilder.CreateICmpNE(left, right, "ptr_ne");
+      case TokenType::LESS_THAN:
+        return funcBuilder.CreateICmpULT(left, right, "ptr_lt");
+      case TokenType::LT_OR_EQ:
+        return funcBuilder.CreateICmpULE(left, right, "ptr_le");
+      case TokenType::GREATER_THAN:
+        return funcBuilder.CreateICmpUGT(left, right, "ptr_gt");
+      case TokenType::GT_OR_EQ:
+        return funcBuilder.CreateICmpUGE(left, right, "ptr_ge");
+      default:
+        throw std::runtime_error("Unsupported pointer comparison operator");
+      }
     } else {
       throw std::runtime_error(
-          "Comparison not supported for type '" +
+          "Comparison not supported for types '" +
+          semantics.metaData[infix->left_operand.get()]->type.resolvedName +
+          "' and '" +
           semantics.metaData[infix->left_operand.get()]->type.resolvedName +
           "'");
     }
@@ -862,27 +873,11 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
 
   ResolvedType resultType = prefixIt->second->type;
 
-  // Helper to check if integer type
-  auto isIntType = [&](DataType dt) { return isIntegerType(dt); };
-
-  // Helper to get LLVM type from DataType
-  auto getLLVMType = [&](DataType dt) -> llvm::Type * {
-    if (dt == DataType::F32)
-      return llvm::Type::getFloatTy(context);
-    if (dt == DataType::F64)
-      return llvm::Type::getDoubleTy(context);
-    if (isIntType(dt)) {
-      unsigned bits = getIntegerBitWidth(dt);
-      return llvm::Type::getIntNTy(context, bits);
-    }
-    return nullptr;
-  };
-
   switch (prefix->operat.type) {
   case TokenType::MINUS: {
     if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64)
       return funcBuilder.CreateFNeg(operand, llvm::Twine("fnegtmp"));
-    else if (isIntType(resultType.kind))
+    else if (isIntegerType(resultType.kind))
       return funcBuilder.CreateNeg(operand, llvm::Twine("negtmp"));
     else
       throw std::runtime_error("Unsupported type for unary minus");
@@ -903,29 +898,27 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
     if (identIt == semantics.metaData.end()) {
       throw std::runtime_error("Udefined variable '" + name + "'");
     }
-    AddressAndPendingFree addrAndFree = generateIdentifierAddress(ident);
-    llvm::Value *varPtr = addrAndFree.address;
-    for (auto *freeCall : addrAndFree.pendingFrees) {
-      funcBuilder.Insert(freeCall);
-    }
+    llvm::Value *address = generateIdentifierAddress(ident);
+    // Inject the free checker
+    emitCleanup(ident, identIt->second);
 
-    if (!varPtr)
+    if (!address)
       throw std::runtime_error("Null variable pointer for: " +
                                ident->identifier.TokenLiteral);
 
     // Get the type from resultType instead of getPointerElementType
-    llvm::Type *varType = getLLVMType(resultType.kind);
+    llvm::Type *varType = getLLVMType(resultType);
     if (!varType)
       throw std::runtime_error("Invalid type for variable: " +
                                ident->identifier.TokenLiteral);
 
     llvm::Value *loaded =
-        funcBuilder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
+        funcBuilder.CreateLoad(varType, address, llvm::Twine("loadtmp"));
 
     llvm::Value *delta = nullptr;
     if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64) {
       delta = llvm::ConstantFP::get(varType, 1.0);
-    } else if (isIntType(resultType.kind)) {
+    } else if (isIntegerType(resultType.kind)) {
       unsigned bits = getIntegerBitWidth(resultType.kind);
       delta = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, bits), 1);
     } else {
@@ -946,11 +939,10 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
                                        llvm::Twine("predecfptmp"))
               : funcBuilder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
 
-    funcBuilder.CreateStore(updated, varPtr);
+    funcBuilder.CreateStore(updated, address);
 
-    for (auto *freeCall : addrAndFree.pendingFrees) {
-      funcBuilder.Insert(freeCall);
-    }
+    /*{for (const auto pendingFree : addrAndFree.pendingFrees)
+    funcBuilder.Insert(pendingFree);}*/
 
     return updated;
   }
@@ -974,13 +966,11 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
   auto identName = identifier->identifier.TokenLiteral;
   auto identIt = semantics.metaData.find(identifier);
 
-  AddressAndPendingFree addrAndFree = generateIdentifierAddress(identifier);
-  llvm::Value *varPtr = addrAndFree.address;
-  for (auto *freeCall : addrAndFree.pendingFrees) {
-    funcBuilder.Insert(freeCall);
-  }
+  llvm::Value *address = generateIdentifierAddress(identifier);
 
-  if (!varPtr)
+  emitCleanup(identifier, identIt->second);
+
+  if (!address)
     throw std::runtime_error("Null variable pointer for: " +
                              identifier->identifier.TokenLiteral);
 
@@ -989,40 +979,21 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
     throw std::runtime_error("Variable '" + identName + "' does not exist");
   }
 
-  if (postfixIt->second->hasError)
-    return nullptr;
-
   ResolvedType resultType = postfixIt->second->type;
 
-  // Helper to check if integer type
-  auto isIntType = [&](DataType dt) { return isIntegerType(dt); };
-
-  // Helper to get LLVM type from DataType
-  auto getLLVMType = [&](DataType dt) -> llvm::Type * {
-    if (dt == DataType::F32)
-      return llvm::Type::getFloatTy(context);
-    if (dt == DataType::F64)
-      return llvm::Type::getDoubleTy(context);
-    if (isIntType(dt)) {
-      unsigned bits = getIntegerBitWidth(dt);
-      return llvm::Type::getIntNTy(context, bits);
-    }
-    return nullptr;
-  };
-
   // Get the type from resultType for CreateLoad
-  llvm::Type *varType = getLLVMType(resultType.kind);
+  llvm::Type *varType = getLLVMType(resultType);
   if (!varType)
     throw std::runtime_error("Invalid type for variable: " +
                              identifier->identifier.TokenLiteral);
 
   llvm::Value *originalValue =
-      funcBuilder.CreateLoad(varType, varPtr, llvm::Twine("loadtmp"));
+      funcBuilder.CreateLoad(varType, address, llvm::Twine("loadtmp"));
 
   llvm::Value *delta = nullptr;
   if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64) {
     delta = llvm::ConstantFP::get(varType, 1.0);
-  } else if (isIntType(resultType.kind)) {
+  } else if (isIntegerType(resultType.kind)) {
     unsigned bits = getIntegerBitWidth(resultType.kind);
     delta = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, bits), 1);
   } else {
@@ -1047,11 +1018,10 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
                              " at line " +
                              std::to_string(postfix->operator_token.line));
 
-  funcBuilder.CreateStore(updatedValue, varPtr);
+  funcBuilder.CreateStore(updatedValue, address);
 
-  for (auto *freeCall : addrAndFree.pendingFrees) {
-    funcBuilder.Insert(freeCall);
-  }
+  /*{for (const auto &pendingFree : addrAndFree.pendingFrees)
+  funcBuilder.Insert(pendingFree);}*/
 
   // Return original value since postfix
   return originalValue;
@@ -1169,24 +1139,51 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
   if (!bitcastExpr)
     throw std::runtime_error("Invalid bitcast expression");
 
+  // 1. Retrieve the Semantic Metadata we fixed earlier
   auto it = semantics.metaData.find(bitcastExpr);
   if (it == semantics.metaData.end())
     throw std::runtime_error("Failed to find bitcast metaData");
 
   auto bitcastSym = it->second;
   if (bitcastSym->hasError)
-    throw std::runtime_error("Error detected in bitcast");
+    throw std::runtime_error("Error detected in bitcast: skipping generation");
 
+  // Generate the source value (the bits we are reinterpreting)
   llvm::Value *sourceVal = generateExpression(bitcastExpr->expr.get());
   if (!sourceVal)
     throw std::runtime_error("Failed to generate source value");
 
   llvm::Type *srcType = sourceVal->getType();
   llvm::Type *dstType = getLLVMType(bitcastSym->type);
+
+  // If types are already identical, just return the value
   if (srcType == dstType)
     return sourceVal;
 
-  return funcBuilder.CreateBitCast(sourceVal, dstType, "bitcast_tmp");
+  // Handle Pointer <-> Integer Reinterpretation
+  // LLVM does not allow 'BitCast' between different address spaces or
+  // between the Integer and Pointer register classes.
+
+  if (srcType->isPointerTy() && dstType->isIntegerTy()) {
+    return funcBuilder.CreatePtrToInt(sourceVal, dstType, "bitcast_ptr_to_int");
+  }
+
+  if (srcType->isIntegerTy() && dstType->isPointerTy()) {
+    // If the integer is smaller than the pointer (e.g., i32 to i64 ptr),
+    // we need to sign-extend it first to ensure bits like '-1' fill the
+    // address.
+    auto ptrWidth = module->getDataLayout().getPointerSizeInBits();
+    if (srcType->getIntegerBitWidth() < ptrWidth) {
+      sourceVal = funcBuilder.CreateSExt(
+          sourceVal, funcBuilder.getIntNTy(ptrWidth), "bitcast_sext");
+    }
+    return funcBuilder.CreateIntToPtr(sourceVal, dstType, "bitcast_int_to_ptr");
+  }
+
+  // Handle Pointer <-> Pointer or Same-Size Type Reinterpretation
+  // This covers things like ptr u8 to ptr STRUCT, or u64 to i64.
+  // We use CreateBitCast here because the bit-width must be identical.
+  return funcBuilder.CreateBitCast(sourceVal, dstType, "bitcast_raw");
 }
 
 llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
@@ -1204,17 +1201,12 @@ llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
     throw std::runtime_error("Semantic error was detected in array subscript");
   }
 
-  AddressAndPendingFree addrInfo =
-      generateIdentifierAddress(arrExpr->identifier.get());
-
   llvm::Value *ptr = generateArraySubscriptAddress(node);
 
   llvm::Type *elemTy = getLLVMType(arrSym->type);
   auto loadedVal = funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
 
-  for (auto *freeCall : addrInfo.pendingFrees) {
-    funcBuilder.Insert(freeCall);
-  }
+  emitCleanup(arrExpr, arrSym);
 
   return loadedVal;
 }
@@ -1340,28 +1332,83 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
   }
   auto identNode = dynamic_cast<Identifier *>(current);
 
-  // Get the starting address of the variable
-  AddressAndPendingFree out = generateIdentifierAddress(identNode);
-  llvm::Value *addr = out.address;
+  // Get the address of the variable (e.g., the alloca on the stack)
+  llvm::Value *addr = generateIdentifierAddress(identNode);
   auto meta = semantics.metaData[node];
 
-  // This gets us the address of 'p' from 'pp'
-  addr = funcBuilder.CreateLoad(getLLVMType(meta->derefPtrType), addr,
-                                "base_lift");
+  // Load the actual address stored in the variable.
+  // This MUST be a pointer type if we intend to dereference it further.
+  llvm::Type *ptrTy = llvm::PointerType::getUnqual(context);
+  addr = funcBuilder.CreateLoad(ptrTy, addr, "base_address");
 
+  // Perform the dereference hops
   for (int i = 0; i < derefCount; i++) {
-    llvm::Type *loadTy;
-    if (i < derefCount - 1) {
-      loadTy = llvm::PointerType::getUnqual(context);
-    } else {
-      loadTy = getLLVMType(meta->type);
-    }
-    addr = funcBuilder.CreateLoad(loadTy, addr, "deref_hop");
+    // If we have more hops to go, we are still loading addresses (pointers)
+    // If this is the LAST hop, we load the actual data (e.g., i32)
+    bool isLastHop = (i == derefCount - 1);
+
+    llvm::Type *loadTy = isLastHop ? getLLVMType(meta->type) : ptrTy;
+
+    // Create the load.
+    // If it's the last hop, this returns the value (i32).
+    // Otherwise, it returns the next address in the chain.
+    addr = funcBuilder.CreateLoad(loadTy, addr,
+                                  isLastHop ? "deref_val" : "ptr_hop");
   }
 
-  for (auto *freeCall : out.pendingFrees) {
-    funcBuilder.Insert(freeCall);
-  }
+  emitCleanup(derefExpr, meta);
 
   return addr;
+}
+
+llvm::Value *IRGenerator::generateMoveExpression(Node *node) {
+  auto moveExpr = dynamic_cast<MoveExpression *>(node);
+  if (!moveExpr)
+    return nullptr;
+
+  llvm::Value *sourceAddr = generateAddress(moveExpr->expr.get());
+
+  llvm::Value *baton =
+      funcBuilder.CreateLoad(funcBuilder.getPtrTy(), sourceAddr, "move_tmp");
+
+  auto nullPtr = llvm::ConstantPointerNull::get(funcBuilder.getPtrTy());
+  if (sourceAddr) {
+    funcBuilder.CreateStore(nullPtr, sourceAddr);
+  }
+
+  return baton;
+}
+
+llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
+  auto addrExpr = dynamic_cast<AddressExpression *>(node);
+  if (!addrExpr) {
+    errorHandler.addHint("Sent the wrong node to the address generator");
+    reportDevBug("Invalid address expression", node->token.line,
+                 node->token.column);
+  }
+
+  logInternal("Handling address expression generation");
+
+  const std::string &name = addrExpr->identifier->expression.TokenLiteral;
+
+  auto metaIt = semantics.metaData.find(addrExpr);
+  if (metaIt == semantics.metaData.end()) {
+    errorHandler.addHint("Semantics failed to register the address metaData");
+    reportDevBug("Could not find address metadata", addrExpr->expression.line,
+                 addrExpr->expression.column);
+  }
+
+  auto sym = metaIt->second;
+
+  auto targetSym = sym->targetSymbol;
+  llvm::Value *variablePtr = targetSym->llvmValue;
+  if (!variablePtr) {
+    reportDevBug("No value was assigned to the target",
+                 addrExpr->expression.line, addrExpr->expression.column);
+  }
+  sym->llvmValue = variablePtr;
+
+  emitCleanup(addrExpr, sym);
+
+  return variablePtr;
 }

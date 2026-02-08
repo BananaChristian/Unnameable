@@ -71,10 +71,6 @@ void IRGenerator::generateWhileStatement(Node *node) {
           if (freeFunc)
             funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
         }
-      } else if (sym->isSage) {
-        llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-            "sage_free", llvm::Type::getVoidTy(context));
-        funcBuilder.CreateCall(sageFreeFn);
       }
       sym->needsPostLoopFree = false;
     }
@@ -164,10 +160,6 @@ void IRGenerator::generateForStatement(Node *node) {
         if (freeFunc)
           funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
       }
-    } else if (sym->isSage) {
-      llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-          "sage_free", llvm::Type::getVoidTy(context));
-      funcBuilder.CreateCall(sageFreeFn);
     }
 
     sym->needsPostLoopFree = false;
@@ -215,11 +207,6 @@ void IRGenerator::emitResidentSweep() {
           funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
         }
       }
-    } else if (sym->isSage) {
-      // SAGE free for locals (heap)
-      llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-          "sage_free", llvm::Type::getVoidTy(context));
-      funcBuilder.CreateCall(sageFreeFn);
     }
   }
 }

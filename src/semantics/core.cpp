@@ -2,6 +2,7 @@
 #include "semantics.hpp"
 #include "token.hpp"
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_set>
 
@@ -66,6 +67,7 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(Identifier)] = &Semantics::walkIdentifierExpression;
   walkerFunctionsMap[typeid(AddressExpression)] =
       &Semantics::walkAddressExpression;
+  walkerFunctionsMap[typeid(MoveExpression)] = &Semantics::walkMoveExpression;
   walkerFunctionsMap[typeid(DereferenceExpression)] =
       &Semantics::walkDereferenceExpression;
   walkerFunctionsMap[typeid(SizeOfExpression)] =
@@ -477,6 +479,12 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     ptrType.isPointer = false;
     return isPointerType(ptrType);
   }
+  if (auto moveExpr = dynamic_cast<MoveExpression *>(node)) {
+    auto innerExpr = moveExpr->expr.get();
+    auto type = inferNodeDataType(innerExpr);
+
+    return type;
+  }
 
   if (auto addrExpr = dynamic_cast<AddressExpression *>(node)) {
     auto innerExpr = addrExpr->identifier.get();
@@ -685,7 +693,7 @@ std::string Semantics::extractIdentifierName(Node *node) {
     identName = extractIdentifierName(addr->identifier.get());
     return identName;
   } else if (auto infix = dynamic_cast<InfixExpression *>(node)) {
-    identName = extractIdentifierName(infix->left_operand.get());
+    identName = extractIdentifierName(infix->right_operand.get());
     return identName;
   } else if (auto selfExpr = dynamic_cast<SelfExpression *>(node)) {
     if (!selfExpr->fields.empty()) {
@@ -800,7 +808,6 @@ ResolvedType Semantics::inferPrefixExpressionType(Node *node) {
   auto prefixNode = dynamic_cast<PrefixExpression *>(node);
   if (!prefixNode)
     return ResolvedType{DataType::UNKNOWN, "unknown"};
-  std::cout << "[SEMANTIC LOG] Infering prefix type\n";
   auto prefixOperator = prefixNode->operat.type;
   ResolvedType operandType = inferNodeDataType(prefixNode->operand.get());
   return resultOfUnary(prefixOperator, operandType, prefixNode);
@@ -873,6 +880,7 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     dotResult->isMutable = memberInfo->isMutable;
     dotResult->isInitialized = memberInfo->isInitialised;
     dotResult->isNullable = memberInfo->isNullable;
+    dotResult->isPointer = memberInfo->isPointer;
     dotResult->memberIndex = memberInfo->memberIndex;
 
     return dotResult;
@@ -940,7 +948,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
         "Cannot use '" + operatorStr +
             "'in binary operations. It is reserved for assignments",
         leftLine, leftCol);
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return ResolvedType{DataType::ERROR, "error"};
   }
 
   // Comparison operators
@@ -952,12 +960,21 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                        operatorType == TokenType::NOT_EQUALS);
 
   if (isComparison) {
+    if (leftType.isNull || rightType.isNull) {
+      logSemanticErrors("Cannot carry out comparison on types '" +
+                            leftType.resolvedName + "' and '" +
+                            rightType.resolvedName +
+                            "' as one of them is nullable",
+                        leftLine, leftCol);
+      return ResolvedType{DataType::ERROR, "error"};
+    }
+
     if (leftType.kind == rightType.kind)
       return ResolvedType{DataType::BOOLEAN, "boolean"};
     logSemanticErrors("Cannot compare '" + leftType.resolvedName + "' to '" +
                           rightType.resolvedName + "'",
                       leftLine, leftCol);
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return ResolvedType{DataType::ERROR, "error"};
   }
 
   // String concatenation(Not complete but I will work on this)
@@ -974,6 +991,32 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
        operatorType == TokenType::ASTERISK);
 
   if (isArithmetic) {
+    if (leftType.isNull || rightType.isNull) {
+      logSemanticErrors("Cannot carry out arithmetic on types '" +
+                            leftType.resolvedName + "' and '" +
+                            rightType.resolvedName +
+                            "' as one of them is nullable",
+                        leftLine, leftCol);
+      return ResolvedType{DataType::ERROR, "error"};
+    }
+    if (leftType.isPointer && isInteger(rightType)) {
+      if (operatorType == TokenType::PLUS || operatorType == TokenType::MINUS) {
+        return leftType; // Location +/- Distance = Location
+      }
+    }
+
+    // Integer + Pointer = Pointer (Commutative Addition)
+    if (isInteger(leftType) && rightType.isPointer) {
+      if (operatorType == TokenType::PLUS) {
+        return rightType;
+      }
+    }
+
+    //  Pointer - Pointer = USIZE (Distance between two points)
+    if (leftType.isPointer && rightType.isPointer &&
+        operatorType == TokenType::MINUS) {
+      return ResolvedType{DataType::USIZE, "usize"};
+    }
     // Promote mixed int/float combinations
     if ((isInteger(leftType) && isFloat(rightType)) ||
         (isFloat(leftType) && isInteger(rightType))) {
@@ -1287,7 +1330,7 @@ bool Semantics::hasReturnPath(Node *node) {
       if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
         if (retStmt->return_value ||
             (currentFunction.value()->isNullable && !retStmt->return_value)) {
-          return true; // Error, value, or null return
+          return true; // value, or null return
         }
       }
       if (auto ifStmt = dynamic_cast<ifStatement *>(stmt.get())) {
@@ -2137,6 +2180,67 @@ ResolvedType Semantics::peelRef(ResolvedType t) {
   return t;
 }
 
+std::string Semantics::generateLifetimeID(Node *declarationNode) {
+  if (auto letStmt = dynamic_cast<LetStatement *>(declarationNode))
+    return "L" + std::to_string(letDeclCount++);
+  else if (auto ptrStmt = dynamic_cast<PointerStatement *>(declarationNode))
+    return "P" + std::to_string(ptrDeclCount++);
+
+  return "NO ID";
+}
+
+std::unique_ptr<LifeTime>
+Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
+                                 const std::shared_ptr<SymbolInfo> &declSym) {
+  logInternal("Creating lifetime baton...");
+  auto lifetime = std::make_unique<LifeTime>();
+  lifetime->ID = generateLifetimeID(declarationNode);
+  lifetime->isResponsible = true;
+
+  if (declSym->targetSymbol && targetBaton)
+    transferResponsibility(lifetime.get(), targetBaton, declSym->targetSymbol);
+
+  logInternal("Created baton: " + lifetime->ID +
+              " for Node: " + declarationNode->toString());
+  return lifetime;
+}
+
+void Semantics::transferResponsibility(
+    LifeTime *currentBaton, LifeTime *targetBaton,
+    const std::shared_ptr<SymbolInfo> &targetSym) {
+  logInternal("Disarming target briefcase " + targetBaton->ID + " into " +
+              currentBaton->ID);
+  auto targetPointerCount = targetSym->pointerCount;
+  // Check what happens to the pointer count if we subtract 1 from it
+  if ((targetPointerCount - 1) == 0) {
+    targetBaton->isResponsible = false;
+    currentBaton->dependents[targetBaton->ID] = targetSym;
+
+    for (auto const &[id, sym] : targetBaton->dependents) {
+      currentBaton->dependents[id] = sym;
+    }
+
+    // Wipe the target's dependecies
+    targetBaton->dependents.clear();
+  }
+}
+
+Node *Semantics::queryForLifeTimeBaton(const std::string &familyID) {
+  for (const auto &[node, baton] : responsibilityTable) {
+    // If the node has the briefcase
+    if (baton) {
+      // Check if we are in the same family
+      if (familyID == baton->ID) {
+        // If we are please tell me the node holding it
+        return node;
+      }
+      continue;
+    }
+    continue;
+  }
+  return nullptr;
+}
+
 void Semantics::popScope() {
   auto &scope = symbolTable.back();
   for (auto &[name, sym] : scope) {
@@ -2146,8 +2250,19 @@ void Semantics::popScope() {
                   std::to_string(sym->refereeSymbol->refCount));
       if (sym->refereeSymbol->refCount > 0) {
         sym->refereeSymbol->refCount -= 1;
-        logInternal("Ref '" + name + "' relseased -> target refCount now " +
+        logInternal("Ref '" + name +
+                    "' relseased its target the refCount now " +
                     std::to_string(sym->refereeSymbol->refCount));
+      }
+    } else if (sym->isPointer && sym->targetSymbol &&
+               sym->storage == StorageType::STACK) {
+      logInternal("Initial pointer count: " +
+                  std::to_string(sym->targetSymbol->pointerCount));
+      if (sym->targetSymbol->pointerCount > 0) {
+        sym->targetSymbol->pointerCount -= 1;
+        logInternal("Stack Pointer '" + name +
+                    "' realeased its target the pointer count is now " +
+                    std::to_string(sym->targetSymbol->pointerCount));
       }
     }
   }

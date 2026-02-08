@@ -40,7 +40,7 @@ void IRGenerator::generateRecordStatement(Node *node) {
   }
   meta.llvmType = structTy;
 
-  std::cout << "[IRGEN] Defined Type Body for: " << blockName << "\n";
+  logInternal("Defined Type Body for: " + blockName);
 }
 
 llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
@@ -146,9 +146,6 @@ void IRGenerator::generateInitFunction(Node *node,
                              componentName + "_init", module.get());
   currentFunction = initFunc;
 
-  std::cout << "[IR DEBUG] Starting generation for: "
-            << initFunc->getName().str() << "\n";
-
   auto *entryBlock = llvm::BasicBlock::Create(context, "entry", initFunc);
   funcBuilder.SetInsertPoint(entryBlock);
 
@@ -160,16 +157,12 @@ void IRGenerator::generateInitFunction(Node *node,
   llvm::AllocaInst *selfAlloca = funcBuilder.CreateAlloca(
       selfPtrType, nullptr, componentName + ".self_ptr_addr");
 
-  // SAFETY CHECK: Ensure Alloca is at the beginning
-  if (selfAlloca->getParent() != entryBlock ||
-      selfAlloca->getNextNonDebugInstruction() != nullptr)
-    std::cerr << "[IR WARN] Self Alloca not at start of entry block! This can "
-                 "lead to bugs.\n"; // GUARD
-
   funcBuilder.CreateStore(selfArg, selfAlloca);
 
-  std::cout << "[IR DEBUG] Self Demotion: Arg: " << selfArg
-            << " Stored to Alloca: " << selfAlloca << "\n"; // DEBUG
+  // Ensure Alloca is at the beginning
+  if (selfAlloca->getParent() != entryBlock ||
+      selfAlloca->getNextNonDebugInstruction() != nullptr)
+    ;
 
   // METADATA REGISTRATION
   auto compIt = semantics.metaData.find(component);
@@ -206,9 +199,6 @@ void IRGenerator::generateInitFunction(Node *node,
                                argName);
 
     metaIt->second->llvmValue = alloca;
-
-    std::cout << "[IR DEBUG] Stored Ctor Arg: " << argName
-              << " to Alloca: " << alloca << "\n"; // DEBUG
   }
 
   // Body Gen
@@ -231,7 +221,7 @@ void IRGenerator::generateInitFunction(Node *node,
   if (oldInsertPoint)
     funcBuilder.SetInsertPoint(oldInsertPoint);
 
-  std::cout << "[IR INIT] Finished generating " << componentName << "_init\n";
+  logInternal("Finished generating '" + componentName + "_init'");
 }
 
 void IRGenerator::generateComponentFunctionStatement(
@@ -443,7 +433,7 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node) {
     // Call the function
     result = funcBuilder.CreateCall(targetFunc, args);
 
-    if (instanceSym->isHeap && instanceSym->refCount == 0 &&
+    /*if (instanceSym->isHeap && instanceSym->refCount == 0 &&
         instanceSym->lastUseNode == metCall) {
       llvm::FunctionCallee sageFree = module->getOrInsertFunction(
           "sage_free", llvm::Type::getVoidTy(context),
@@ -455,8 +445,8 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node) {
       funcBuilder.CreateCall(sageFree, {sizeVal},
                              instance->identifier.TokenLiteral + "_sage_free");
     }
+    }*/
   }
-
   return result;
 }
 
@@ -566,8 +556,8 @@ void IRGenerator::generateEnumStatement(Node *node) {
   std::cout << "[IRGEN LOG] Declared enum class " << enumInfo->type.resolvedName
             << " with members:\n";
   for (auto &[memberName, member] : enumTypeInfo->members) {
-    // llvm::ConstantInt will be generated  when a member is actually used in an
-    // expression
+    // llvm::ConstantInt will be generated  when a member is actually used in
+    // an expression
   }
 }
 

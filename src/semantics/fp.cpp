@@ -54,10 +54,19 @@ void Semantics::walkReturnStatement(Node *node) {
 
   if (!retStmt->return_value) {
     if (currentFunction.value()->returnType.kind != DataType::VOID) {
-      logSemanticErrors("Non-void function requires a return statement",
+      logSemanticErrors("Function of return type '" +
+                            currentFunction.value()->returnType.resolvedName +
+                            "' must return a value of type '" +
+                            currentFunction.value()->returnType.resolvedName +
+                            "'",
                         retStmt->return_stmt.line, retStmt->return_stmt.column);
       hasError = true;
     }
+    auto voidInfo = std::make_shared<SymbolInfo>();
+    voidInfo->type = currentFunction.value()->returnType;
+    voidInfo->hasError = hasError;
+
+    metaData[retStmt] = voidInfo;
     return;
   } else {
     walker(retStmt->return_value.get());
@@ -170,9 +179,9 @@ void Semantics::walkReturnStatement(Node *node) {
     }
   }
 
-  if (valueType.isPointer) {
+  if (valueType.isRef) {
     // Identify what the reference actually references
-    if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get())) {
+    if (auto ident = dynamic_cast<Identifier * >(retStmt->return_value.get())) {
       auto &name = ident->identifier.TokenLiteral;
       auto sym = resolveSymbolInfo(name);
       if (sym) {
@@ -366,7 +375,7 @@ void Semantics::walkFunctionParameters(Node *node) {
     metaData[param] = refInfo;
     symbolTable.back()[refName] = refInfo;
 
-    std::cout << "REFERENCE PARAM TYPE: " << refType.resolvedName << "\n";
+    logInternal("Reference param Type: " + refType.resolvedName);
   }
 }
 
@@ -654,7 +663,8 @@ void Semantics::walkFunctionExpression(Node *node) {
   // Check if non-void functions have return paths
   if (returnType.kind != DataType::VOID && !hasReturnPath(block)) {
     logSemanticErrors("Non-void function '" + funcName +
-                          "' must have a return value or error",
+                          "' must have a return value of type '" +
+                          returnType.resolvedName + "'",
                       funcExpr->expression.line, funcExpr->expression.column);
     hasError = true;
   }
@@ -700,7 +710,6 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     return;
   }
 
-
   // Checking if the declaration already exists
   auto symbol = resolveSymbolInfo(funcName);
   if (symbol) {
@@ -734,6 +743,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
 
   currentFunction = funcInfo;
+
+  symbolTable.push_back({});
 
   // Dealing with parameters
   for (const auto &param : funcDeclrStmt->parameters) {
@@ -843,6 +854,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   funcInfo->paramTypes = paramTypes;
 
   currentFunction = funcInfo;
+  symbolTable.pop_back();
 
   // Store in current scope
   symbolTable.back()[funcName] = funcInfo;

@@ -8,7 +8,6 @@ enum class ErrorLevel {
   IMPORT,
   SEMANTIC,
   LAYOUT,
-  SENTINEL,
   INTERNAL
 };
 

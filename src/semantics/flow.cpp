@@ -138,10 +138,10 @@ void Semantics::walkElifStatement(Node *node) {
       continue;
     }
 
-    if (identSym->lastUseNode == ident) {
+    /*{if (identSym->isResponsible == ident) {
       // Trigger the identKiller for the specific identifier node
       ident->isKiller = true;
-    }
+      }}*/
   }
   popScope();
 }
@@ -174,10 +174,10 @@ void Semantics::walkIfStatement(Node *node) {
       continue;
     }
 
-    if (identSym->lastUseNode == ident) {
+    /*{if (identSym->isResponsible == ident) {
       // Trigger the identKiller for the specific identifier node
       ident->isKiller = true;
-    }
+      }}*/
   }
   popScope();
 
@@ -208,10 +208,11 @@ void Semantics::walkIfStatement(Node *node) {
         continue;
       }
 
-      if ((identSym->lastUseNode == ident) && (identSym->refCount == 0)) {
+      /*{if ((identSym->isResponsible == ident) && (identSym->refCount == 0) &&
+          (identSym->pointerCount == 0)) {
         // Trigger the identKiller for the specific identifier node
         ident->isKiller = true;
-      }
+        }}*/
     }
     popScope();
   }
@@ -241,7 +242,7 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
     reportDevBug("Could not find case metaData");
     return;
   }
-  
+
   auto caseType = metaData[caseCondition]->type;
   bool isValid = isInteger(targetType) || isChar(targetType) ||
                  (targetType.kind == DataType::ENUM);

@@ -13,7 +13,6 @@
 #include "linker.hpp"
 #include "parser.hpp"
 #include "semantics.hpp"
-#include "sentinel.hpp"
 #include "stubgen.hpp"
 #include "token.hpp"
 
@@ -255,17 +254,6 @@ int main(int argc, char **argv) {
       layout.calculatorDriver(node.get());
 
     if (layout.failed()) {
-      return 1;
-    }
-
-    // Sentinel phase
-    if (logOutput)
-      std::cout << COLOR_BLUE << "[SENTINEL ANALYSIS]" << COLOR_RESET << "\n";
-    Sentinel sentinel(semantics, errorHandler, logOutput);
-    for (const auto &node : AST)
-      sentinel.sentinelDriver(node.get());
-
-    if (sentinel.failed()) {
       return 1;
     }
 

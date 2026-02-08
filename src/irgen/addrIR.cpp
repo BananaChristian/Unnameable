@@ -2,8 +2,11 @@
 #include "irgen.hpp"
 #include <string>
 
-AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
-  AddressAndPendingFree out{nullptr, {}};
+// Identifier L-value generator
+llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
+  logInternal("Inside identifier address generation(L VALUE) for " +
+              node->toString());
+  llvm::Value *address = nullptr;
 
   auto identExpr = dynamic_cast<Identifier *>(node);
   if (!identExpr) {
@@ -23,7 +26,8 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
 
   llvm::Value *variablePtr = sym->llvmValue;
   if (!variablePtr)
-    throw std::runtime_error("No llvm value for '" + identName + "'");
+    reportDevBug("No value for '" + identName + "'", identExpr->identifier.line,
+                 identExpr->identifier.column);
 
   if (sym->isRef) {
     llvm::Type *ptrType = llvm::PointerType::get(funcBuilder.getContext(), 0);
@@ -34,7 +38,7 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
   // Component instance -> pointer to struct
   auto compIt = componentTypes.find(sym->type.resolvedName);
   if (compIt != componentTypes.end()) {
-    out.address = variablePtr; // already a pointer to struct instance
+    address = variablePtr;
   } else {
     // scalar/heap -> ensure typed pointer
     if (sym->isSage || sym->isHeap) {
@@ -50,11 +54,11 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
         variablePtr = funcBuilder.CreateBitCast(variablePtr, expectedPtrTy,
                                                 identName + "_ptr_typed");
       }
-      out.address = variablePtr;
+      address = variablePtr;
     } else {
       if (variablePtr->getType()->isPointerTy()) {
-        logInternal("Taken noramal pointer path");
-        out.address = variablePtr;
+        logInternal("Taken normal pointer path");
+        address = variablePtr;
       } else {
         reportDevBug("Identifier '" + identName + "' doesnt have a value",
                      identExpr->identifier.line, identExpr->identifier.column);
@@ -62,71 +66,17 @@ AddressAndPendingFree IRGenerator::generateIdentifierAddress(Node *node) {
     }
   }
 
-  // Should not free if this needs a post loop free
-  if (sym->needsPostLoopFree) {
-    return out;
-  }
-  // Prepare pending free call (create CallInst but don't insert)
-  if (sym->isSage) {
-    bool shouldFree = identExpr->isKiller ||
-                      ((sym->lastUseNode == identExpr) && (sym->refCount == 0));
-    if (shouldFree) {
-      logInternal("Freeing identifier '" + identName +
-                  "' pop count discovered: " + std::to_string(sym->popCount));
-      llvm::FunctionCallee sageFreeFn = module->getOrInsertFunction(
-          "sage_free", llvm::Type::getVoidTy(context));
-
-      int weight = (sym->popCount > 0) ? sym->popCount : 1;
-
-      for (int i = 0; i < weight; i++) {
-        llvm::CallInst *callInst = llvm::CallInst::Create(sageFreeFn);
-        callInst->setCallingConv(llvm::CallingConv::C);
-        // Stash it in the vector
-        out.pendingFrees.push_back(callInst);
-      }
-    }
-  } else if (sym->isHeap) {
-    // Determine if we should trigger a free
-    bool shouldFree = identExpr->isKiller ||
-                      ((sym->lastUseNode == identExpr) && (sym->refCount == 0));
-
-    if (shouldFree) {
-      // Get allocator info
-      const std::string &allocatorTypeName = sym->allocType;
-      auto it = semantics.allocatorMap.find(allocatorTypeName);
-
-      if (it != semantics.allocatorMap.end()) {
-        auto handle = it->second;
-        llvm::Function *freeFunc = module->getFunction(handle.freeName);
-
-        if (freeFunc) {
-          llvm::Value *ptrToFree = sym->llvmValue;
-
-          // Create the single Call Instruction
-          llvm::CallInst *callInst =
-              llvm::CallInst::Create(freeFunc, {ptrToFree}, "");
-          callInst->setCallingConv(llvm::CallingConv::C);
-
-          out.pendingFrees.push_back(callInst);
-        }
-      }
-    }
-  }
-
-  return out;
+  return address;
 }
 
-// Infix generator
-AddressAndPendingFree IRGenerator::generateInfixAddress(Node *node) {
+// Infix L-value generator
+llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
   auto infix = dynamic_cast<InfixExpression *>(node);
-
-  AddressAndPendingFree out;
-
-  if (auto ident = dynamic_cast<Identifier *>(infix->left_operand.get())) {
-    out = generateIdentifierAddress(infix->left_operand.get());
-  } else {
-    out = generateInfixAddress(infix->left_operand.get());
-  }
+  llvm::Value *address = generateInfixAddress(infix->left_operand.get());
+  if (!address)
+    reportDevBug("Failed to generate L-Value",
+                 infix->left_operand->expression.line,
+                 infix->left_operand->expression.column);
 
   if (infix->operat.type == TokenType::FULLSTOP) {
     auto lhsMeta = semantics.metaData[infix->left_operand.get()];
@@ -134,7 +84,7 @@ AddressAndPendingFree IRGenerator::generateInfixAddress(Node *node) {
 
     if (lhsMeta->type.isPointer || lhsMeta->type.isRef) {
       llvm::Type *ptrTy = llvm::PointerType::get(funcBuilder.getContext(), 0);
-      out.address = funcBuilder.CreateLoad(ptrTy, out.address, "ptr_deref");
+      address = funcBuilder.CreateLoad(ptrTy, address, "ptr_deref");
     }
 
     std::string lookUpName = lhsMeta->type.resolvedName;
@@ -149,16 +99,16 @@ AddressAndPendingFree IRGenerator::generateInfixAddress(Node *node) {
     auto memberInfo = semantics.metaData[infix];
     unsigned memberIndex = memberInfo->memberIndex;
 
-    out.address = funcBuilder.CreateStructGEP(
-        structTy, out.address, memberIndex, rhsIdent->identifier.TokenLiteral);
+    address = funcBuilder.CreateStructGEP(structTy, address, memberIndex,
+                                          rhsIdent->identifier.TokenLiteral);
 
-    return out;
+    return address;
   }
 
   throw std::runtime_error("Infix operator cannot be treated as an address");
 }
 
-// Self address generator
+// Self L-Value  generator
 llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   auto selfExpr = dynamic_cast<SelfExpression *>(node);
   if (!selfExpr) {
@@ -278,8 +228,7 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
   auto arrIt = semantics.metaData.find(arrExpr);
   auto baseSym = arrIt->second;
 
-  llvm::Value *allocaPtr =
-      generateIdentifierAddress(arrExpr->identifier.get()).address;
+  llvm::Value *allocaPtr = generateIdentifierAddress(arrExpr->identifier.get());
   llvm::Value *dataPtr =
       funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "raw_data_ptr");
 
@@ -343,18 +292,10 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
     current = nested->identifier.get();
   }
 
-  llvm::Value *addr;
+  llvm::Value *addr = generateAddress(current);
   std::vector<llvm::CallInst *> pendingFrees;
 
   auto identNode = dynamic_cast<Identifier *>(current);
-
-  if (auto identNode = dynamic_cast<Identifier *>(current)) {
-    AddressAndPendingFree out = generateIdentifierAddress(identNode);
-    addr = out.address;
-    pendingFrees = out.pendingFrees;
-  } else {
-    addr = generateAddress(current);
-  }
 
   if (!addr) {
     reportDevBug("Failed to get address to dereference ",
@@ -369,9 +310,8 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
     addr = funcBuilder.CreateLoad(ptrType, addr, "deref_hop_addr");
   }
 
-  for (auto *freeCall : pendingFrees) {
-    funcBuilder.Insert(freeCall);
-  }
+  for (const auto pendingFree : pendingFrees)
+    funcBuilder.Insert(pendingFree);
 
   return addr;
 }

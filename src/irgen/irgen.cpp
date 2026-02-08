@@ -21,6 +21,7 @@
 #include "semantics.hpp"
 
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -57,17 +58,12 @@ IRGenerator::IRGenerator(Semantics &semantics, ErrorHandler &handler,
       },
       false);
 
-  llvm::FunctionType *freeType =
-      llvm::FunctionType::get(llvm::Type::getVoidTy(context), // returns void
-                              false);
-
   llvm::FunctionType *destroyType = llvm::FunctionType::get(
       llvm::Type::getVoidTy(context), {}, false); // void()
 
   // Add them to the module
   module->getOrInsertFunction("sage_init", initType);
   module->getOrInsertFunction("sage_alloc", allocType);
-  module->getOrInsertFunction("sage_free", freeType);
   module->getOrInsertFunction("sage_destroy", destroyType);
 }
 
@@ -87,6 +83,9 @@ llvm::Value *IRGenerator::generateExpression(Node *node) {
         "Null node sent to the expression generator dispatcher");
   }
 
+  std::cout << "[DISPATCH] Node Type: " << typeid(*node).name()
+            << " | Value: " << node->toString() << "\n";
+
   auto exprIt = expressionGeneratorsMap.find(typeid(*node));
   if (exprIt == expressionGeneratorsMap.end()) {
     reportDevBug("Could not find expression type IR generator for: " +
@@ -103,10 +102,14 @@ llvm::Value *IRGenerator::generateAddress(Node *node) {
     throw std::runtime_error(
         "Null node sent to the address generator dispatcher");
   }
+
   auto addrIt = addressGeneratorsMap.find(typeid(*node));
   if (addrIt == addressGeneratorsMap.end()) {
-    throw std::runtime_error("Could not find address generator for: " +
-                             node->toString());
+    errorHandler.addHint(
+        "The address generator(L-value) for this node does not exist "
+        "in the address generator functions map");
+    reportDevBug("Could not find address generator for " + node->toString(),
+                 node->token.line, node->token.column);
   }
 
   return (this->*addrIt->second)(node);
@@ -143,97 +146,22 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
                  assignStmt->statement.line, assignStmt->statement.column);
   }
 
-  llvm::Value *targetPtr = nullptr;
-  llvm::CallInst *pendingFree = nullptr;
+  llvm::Value *targetPtr = generateAddress(assignStmt->identifier.get());
+  if (!targetPtr) {
+    errorHandler.addHint("The expression generator failed to generate the "
+                         "value of the LHS expression in the assignment");
+    reportDevBug("Failed to get L-Value address for the LHS expression in the "
+                 "assignment",
+                 assignStmt->identifier->expression.line,
+                 assignStmt->identifier->expression.column);
+  }
   llvm::Value *initValue = generateExpression(assignStmt->value.get());
   if (!initValue) {
     errorHandler.addHint("The expression generator failed to generate the "
                          "value of the RHS expression in the assignment");
-    reportDevBug("Failed to generate IR for assignment value",
+    reportDevBug("Failed to generate R-Value for assignment value",
                  assignStmt->value->expression.line,
                  assignStmt->value->expression.column);
-  }
-
-  // Check if it's a SelfExpression (self.field)
-  if (auto *selfExpr =
-          dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
-    // Generate pointer to the field in the struct
-    targetPtr = generateSelfAddress(selfExpr);
-    if (!targetPtr)
-      errorHandler.addHint(
-          "The self address generator failed to generate the "
-          "LHS value of the self expression in the assignment");
-    reportDevBug("Failed to get the LHS for the self assignment",
-                 selfExpr->expression.line, selfExpr->expression.column);
-  }
-
-  // Checking if it is a dereference expression
-  else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(
-               assignStmt->identifier.get())) {
-    logInternal("Handling assignment deref");
-    targetPtr = generateDereferenceAddress(derefExpr);
-    if (!targetPtr) {
-      errorHandler.addHint(
-          "The derefenece address generator failed to generate the "
-          "LHS value "
-          "of the dereference expression in the assignment");
-      reportDevBug("Failed to get the LHS for the dereference assignment",
-                   derefExpr->expression.line, derefExpr->expression.column);
-    }
-  } else if (auto arraySub =
-                 dynamic_cast<ArraySubscript *>(assignStmt->identifier.get())) {
-    logInternal("Handling array indexing assignment");
-    targetPtr = generateArraySubscriptAddress(arraySub);
-    if (!targetPtr) {
-      errorHandler.addHint(
-          "The array index address generator failed to generate the "
-          "LHS value "
-          "for the array index assignment");
-      reportDevBug("Failed to get the LHS value for the array index assignment",
-                   arraySub->identifier->expression.line,
-                   arraySub->identifier->expression.column);
-    }
-  } else { // Regular variable assignment
-    logInternal("Handling regular assignment");
-    const std::string &varName =
-        assignStmt->identifier->expression.TokenLiteral;
-    auto metaIt = semantics.metaData.find(assignStmt);
-    if (metaIt == semantics.metaData.end()) {
-      errorHandler.addHint("Looks like the semantics might not have registered "
-                           "the assignment statement metaData");
-      reportDevBug("Could not find assignment '" + varName + "' metaData",
-                   assignStmt->statement.line, assignStmt->statement.column);
-    }
-
-    auto assignSym = metaIt->second;
-
-    if (!assignSym) {
-      errorHandler.addHint("Semantics might have failed to register symbolInfo "
-                           "and just added an empty key ");
-      reportDevBug(
-          "Could not find assignment statement symbolInfo from the metaData",
-          assignStmt->statement.line, assignStmt->statement.column);
-    }
-
-    AddressAndPendingFree addrAndPendingFree =
-        generateIdentifierAddress(assignStmt->identifier.get());
-    targetPtr = addrAndPendingFree.address;
-    for (auto *freeCall : addrAndPendingFree.pendingFrees) {
-      pendingFree = funcBuilder.Insert(freeCall);
-    }
-
-    if (!targetPtr) {
-      errorHandler.addHint(
-          "The identifier address generator failed to generate the LHS value");
-      reportDevBug("Failed to get the LHS value for assignment of variable '" +
-                       varName + "'",
-                   assignStmt->identifier->expression.line,
-                   assignStmt->identifier->expression.column);
-    }
-
-    if (pendingFree) {
-      funcBuilder.Insert(pendingFree);
-    }
   }
 
   auto assignMeta =
@@ -244,8 +172,34 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     reportDevBug("Failed to get assignment statement metaData",
                  assignStmt->statement.line, assignStmt->statement.column);
   }
-  if (assignMeta->type.isArray) {
-    auto elementType = semantics.getArrayElementType(assignMeta->type);
+
+  // If it is a move assignmenT(I need to revisit this for now comment)
+  if (auto moveVal = dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
+    logInternal("Handling move assignment");
+
+    // Dump the destination if it's heap-declared
+    if (assignMeta->storage == StorageType::HEAP) {
+      // freeDynamicHeapStorage(assignMeta, assignStmt);
+    }
+
+    funcBuilder.CreateStore(initValue, targetPtr);
+    return; // Move is done.
+  }
+
+  bool isHuge = (assignMeta->type.kind == DataType::COMPONENT ||
+                 assignMeta->type.kind == DataType::RECORD) &&
+                (!assignMeta->type.isPointer);
+  if (assignMeta->type.isArray || isHuge) {
+    uint64_t byteSize = assignMeta->componentSize;
+    llvm::Value *sizeVal = funcBuilder.getInt64(byteSize);
+
+    ResolvedType elementType;
+    if (assignMeta->type.isArray) {
+      elementType = semantics.getArrayElementType(assignMeta->type);
+    } else {
+      elementType = assignMeta->type;
+    }
+
     llvm::Type *elemLLVMTy = getLLVMType(elementType);
 
     llvm::Align align = layout->getABITypeAlign(elemLLVMTy);
@@ -255,7 +209,6 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
                                                    targetPtr, "dest_slab_ptr");
 
     // Perform Deep Copy
-    uint64_t byteSize = assignMeta->componentSize;
 
     funcBuilder.CreateMemCpy(destSlab, align, initValue, align,
                              funcBuilder.getInt64(byteSize));
@@ -268,7 +221,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
 void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   auto *fieldStmt = dynamic_cast<FieldAssignment *>(node);
 
-  AddressAndPendingFree lhs = generateInfixAddress(fieldStmt->lhs_chain.get());
+  llvm::Value *lhsAddress = generateInfixAddress(fieldStmt->lhs_chain.get());
 
   llvm::Value *rhsVal = generateExpression(fieldStmt->value.get());
 
@@ -279,17 +232,18 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
     llvm::Align align = layout->getABITypeAlign(elemLLVMType);
 
     llvm::Value *destSlab = funcBuilder.CreateLoad(
-        funcBuilder.getPtrTy(), lhs.address, "field_slab_ptr");
+        funcBuilder.getPtrTy(), lhsAddress, "field_slab_ptr");
 
     funcBuilder.CreateMemCpy(destSlab, align, rhsVal, align,
                              funcBuilder.getInt64(meta->componentSize));
   } else {
-    funcBuilder.CreateStore(rhsVal, lhs.address);
+    funcBuilder.CreateStore(rhsVal, lhsAddress);
   }
 
-  for (auto *freeCall : lhs.pendingFrees) {
-    funcBuilder.Insert(freeCall); // This finally puts the free into the IR
-  }
+  // A free was happening here pause it as I study the system
+  /*{for (auto pendingFree : lhs.pendingFrees)
+      funcBuilder.Insert(pendingFree); // This finally puts the free into the
+     IR}*/
 }
 
 void IRGenerator::generateBlockStatement(Node *node) {
@@ -364,38 +318,6 @@ void IRGenerator::generateShoutStatement(Node *node) {
 
   // Call the shoutRuntime this is the one who actually prints
   shoutRuntime(val, type);
-}
-
-llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
-  auto addrExpr = dynamic_cast<AddressExpression *>(node);
-  if (!addrExpr) {
-    errorHandler.addHint("Sent the wrong node to the address generator");
-    reportDevBug("Invalid address expression", node->token.line,
-                 node->token.column);
-  }
-
-  logInternal("Handling address expression generation");
-
-  const std::string &name = addrExpr->identifier->expression.TokenLiteral;
-
-  auto metaIt = semantics.metaData.find(addrExpr);
-  if (metaIt == semantics.metaData.end()) {
-    errorHandler.addHint("Semantics failed to register the address metaData");
-    reportDevBug("Could not find address metadata", addrExpr->expression.line,
-                 addrExpr->expression.column);
-  }
-
-  auto sym = metaIt->second;
-
-  auto targetSym = sym->targetSymbol;
-  llvm::Value *ptr = targetSym->llvmValue;
-  if (!ptr) {
-    reportDevBug("No value was assigned to the target",
-                 addrExpr->expression.line, addrExpr->expression.column);
-  }
-  sym->llvmValue = ptr;
-
-  return ptr;
 }
 
 llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
@@ -650,6 +572,10 @@ void IRGenerator::registerAddressGeneratorFunctions() {
       &IRGenerator::generateArraySubscriptAddress;
   addressGeneratorsMap[typeid(DereferenceExpression)] =
       &IRGenerator::generateDereferenceAddress;
+  addressGeneratorsMap[typeid(Identifier)] =
+      &IRGenerator::generateIdentifierAddress;
+  addressGeneratorsMap[typeid(InfixExpression)] =
+      &IRGenerator::generateInfixAddress;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions() {
@@ -711,6 +637,8 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
       &IRGenerator::generateAddressExpression;
   expressionGeneratorsMap[typeid(DereferenceExpression)] =
       &IRGenerator::generateDereferenceExpression;
+  expressionGeneratorsMap[typeid(MoveExpression)] =
+      &IRGenerator::generateMoveExpression;
   expressionGeneratorsMap[typeid(BlockExpression)] =
       &IRGenerator::generateBlockExpression;
   expressionGeneratorsMap[typeid(CallExpression)] =
@@ -833,40 +761,55 @@ uint32_t IRGenerator::decodeChar32Literal(const std::string &literal) {
 }
 
 llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
-  if (!val) {
+  if (!val)
     return nullptr;
-  }
 
   auto it = semantics.metaData.find(exprNode);
   if (it == semantics.metaData.end()) {
     errorHandler.addHint("Semantics did not register the condition metadata");
     reportDevBug("Could not find condition expression metadata",
                  exprNode->token.line, exprNode->token.column);
-  } else {
-    auto sym = it->second;
-
-    if (sym->isNullable) {
-      // If it's a pointer to the box, we load it
-      if (val->getType()->isPointerTy()) {
-        llvm::Type *boxType = getLLVMType(sym->type);
-        val = funcBuilder.CreateLoad(boxType, val, "nullable.load");
-      }
-
-      auto result = funcBuilder.CreateExtractValue(val, {0}, "is_present");
-      return result;
-    }
+    return nullptr;
   }
 
-  //  Scalar Fallback
+  auto sym = it->second;
+
+  // Handle Nullable Boxes {i1, T}
+  if (sym->isNullable) {
+    // If we have a pointer to the box (from an alloca or global), load the
+    // struct first
+    if (val->getType()->isPointerTy()) {
+      // Check if it's a pointer to a struct, not just any pointer
+      llvm::Type *boxType = getLLVMType(sym->type);
+      val = funcBuilder.CreateLoad(boxType, val, "nullable.load");
+    }
+    // The boolean 'is_present' is always at index 0
+    return funcBuilder.CreateExtractValue(val, {0}, "is_present");
+  }
+
+  // Handle Booleans (i1)
   if (val->getType()->isIntegerTy(1)) {
     return val;
   }
 
-  auto result = funcBuilder.CreateICmpNE(
-      val, llvm::ConstantInt::get(val->getType(), 0), "coerce.bool");
-  return result;
-}
+  // Handle Raw Pointers
+  if (val->getType()->isPointerTy()) {
+    // Pointers are compared against the null pointer constant
+    llvm::Value *nullPtr = llvm::ConstantPointerNull::get(
+        llvm::cast<llvm::PointerType>(val->getType()));
+    return funcBuilder.CreateICmpNE(val, nullPtr, "ptr.not_null");
+  }
 
+  // Handle Scalars (i8, i32, i64, etc.)
+  if (val->getType()->isIntegerTy()) {
+    return funcBuilder.CreateICmpNE(
+        val, llvm::ConstantInt::get(val->getType(), 0), "coerce.bool");
+  }
+
+  reportDevBug("Attempted to coerce a non-nullable aggregate to boolean",
+               exprNode->token.line, exprNode->token.column);
+  return funcBuilder.getInt1(false);
+}
 bool IRGenerator::isIntegerType(DataType dt) {
   switch (dt) {
   case DataType::I8:
@@ -1083,6 +1026,59 @@ void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type) {
     printString(val);
   } else {
     throw std::runtime_error("shout! only supports i32 and string for now");
+  }
+}
+
+void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
+  if (!sym || !sym->llvmValue)
+    return;
+
+  logInternal("  [Metal] Generating  deallocation for: " + sym->ID);
+
+  auto it = semantics.allocatorMap.find(sym->allocType);
+  if (it == semantics.allocatorMap.end())
+    return;
+
+  auto deallocatorName = it->second.freeName;
+  llvm::Function *deallocFunc = module->getFunction(deallocatorName);
+
+  // The Assembly-level logic
+  llvm::Value *ptrVal =
+      funcBuilder.CreateLoad(funcBuilder.getPtrTy(), sym->llvmValue);
+  llvm::Value *castPtr = funcBuilder.CreatePointerCast(
+      ptrVal, deallocFunc->getFunctionType()->getParamType(0));
+
+  funcBuilder.CreateCall(deallocFunc, {castPtr});
+}
+
+void IRGenerator::emitCleanup(Node *contextNode,
+                              const std::shared_ptr<SymbolInfo> &contextSym) {
+  auto it = semantics.responsibilityTable.find(contextNode);
+  if (it == semantics.responsibilityTable.end())
+    return;
+
+  auto &baton = it->second;
+  if (!baton || !baton->isResponsible)
+    return;
+
+  // Trigger Logic (Counts)
+  if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
+
+    // Free the depenedents first
+    logInternal("Freeing '" + std::to_string(baton->dependents.size()) +
+                "' dependents...");
+    for (const auto &[id, depSym] : baton->dependents) {
+      executePhysicalFree(depSym);
+    }
+
+    // Free the leader
+    if (contextSym->isHeap) {
+      logInternal("  [Leader] deallocation for: " + contextSym->ID);
+      executePhysicalFree(contextSym);
+    }
+
+    // Defuse to avoid issues
+    baton->isResponsible = false;
   }
 }
 

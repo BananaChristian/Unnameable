@@ -7,8 +7,9 @@
 *.o
 *.obj
 
-#Main test folder
+#Test folders
 compiler_test
+experiments
 
 #Test binary
 test

@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "semantics.hpp"
+
 #include <string>
 
 //_____________Array Statement__________________
@@ -99,7 +100,7 @@ void Semantics::walkArrayStatement(Node *node) {
       nullArray->isSage = isSage;
       nullArray->isHeap = isHeap;
       nullArray->sizePerDimensions = declSizePerDim;
-      nullArray->lastUseNode = arrStmt;
+      //nullArray->isResponsibl = arrStmt;
 
       if (!loopContext.empty() && loopContext.back()) {
         nullArray->needsPostLoopFree = true;
@@ -155,7 +156,7 @@ void Semantics::walkArrayStatement(Node *node) {
   arrayInfo->isSage = isSage;
   arrayInfo->isHeap = isHeap;
   arrayInfo->sizePerDimensions = declSizePerDim;
-  arrayInfo->lastUseNode = arrStmt;
+  //arrayInfo->isResponsible = arrStmt;
   arrayInfo->isInitialized = isInitialized;
 
   if (!loopContext.empty() && loopContext.back()) {
@@ -194,6 +195,14 @@ void Semantics::walkPointerStatement(Node *node) {
     logSemanticErrors("Must initialize the pointer '" + ptrName + "'", line,
                       col);
     return;
+  }
+
+  if (ptrStmt->mutability == Mutability::MUTABLE) {
+    logInternal("Pointer is mutable");
+    isMutable = true;
+  } else if (ptrStmt->mutability == Mutability::CONSTANT) {
+    logInternal("Pointer is Constant");
+    isConstant = true;
   }
 
   auto ptrVal = ptrStmt->value.get();
@@ -237,7 +246,6 @@ void Semantics::walkPointerStatement(Node *node) {
     auto ptrInfo = std::make_shared<SymbolInfo>();
     ptrInfo->isSage = isSage;
     ptrInfo->isHeap = isHeap;
-    ptrInfo->lastUseNode = ptrStmt;
     ptrInfo->type = ptrType;
     ptrInfo->hasError = hasError;
     ptrInfo->isPointer = true;
@@ -311,7 +319,7 @@ void Semantics::walkPointerStatement(Node *node) {
 
   isNullable = ptrType.isNull; // Set the nullability based of the type
 
-  // Guard against local pointing
+  // Guard against local pointing and update pointer count
   auto targetStorage = targetSymbol->storage;
   if (auto addrValue = dynamic_cast<AddressExpression *>(ptrVal)) {
     if (targetStorage == StorageType::STACK) {
@@ -321,6 +329,10 @@ void Semantics::walkPointerStatement(Node *node) {
                         line, col);
       hasError = true;
     }
+
+    // Increment pointer count of x in addr x as it is now being pointed to
+    targetSymbol->pointerCount++;
+
   } else if (auto identValue = dynamic_cast<Identifier *>(ptrVal)) {
     auto pointeeTargetSym = targetSymbol->targetSymbol;
     if (!pointeeTargetSym) {
@@ -336,6 +348,8 @@ void Semantics::walkPointerStatement(Node *node) {
                         line, col);
       hasError = true;
     }
+
+    targetSymbol->pointerCount++;
   }
 
   /*
@@ -344,27 +358,13 @@ void Semantics::walkPointerStatement(Node *node) {
   an immutable pointer
   */
 
-  if (ptrStmt->mutability == Mutability::MUTABLE) {
-    logInternal("Pointer is mutable");
-    isMutable = true;
-  } else if (ptrStmt->mutability == Mutability::CONSTANT) {
-    logInternal("Pointer is Constant");
-    isConstant = true;
-  }
-
   logInternal("Pointer Type: " + ptrType.resolvedName);
-  int ptrPopCount = 0;
   // Pointer's storage info (The pointer itself not the target)
   StorageType pointerStorage;
   if (isGlobalScope()) {
     pointerStorage = StorageType::GLOBAL;
   } else if (isSage) {
-    pointerStorage = StorageType::HEAP;
-    ptrPopCount = targetSymbol->popCount + 1;
-    logInternal(
-        "Pointer '" + ptrName + "' points to '" + targetName +
-        "' | target->popCount: " + std::to_string(targetSymbol->popCount) +
-        " | new ptr->popCount: " + std::to_string(ptrPopCount));
+    pointerStorage = StorageType::SAGE;
   } else if (isHeap) {
     pointerStorage = StorageType::HEAP;
   } else {
@@ -374,7 +374,6 @@ void Semantics::walkPointerStatement(Node *node) {
   auto ptrInfo = std::make_shared<SymbolInfo>();
   ptrInfo->isSage = isSage;
   ptrInfo->isHeap = isHeap;
-  ptrInfo->lastUseNode = ptrStmt;
   ptrInfo->type = ptrType;
   ptrInfo->hasError = hasError;
   ptrInfo->isPointer = true;
@@ -382,10 +381,16 @@ void Semantics::walkPointerStatement(Node *node) {
   ptrInfo->isMutable = isMutable;
   ptrInfo->isConstant = isConstant;
   ptrInfo->storage = pointerStorage;
-  ptrInfo->popCount = ptrPopCount;
   ptrInfo->isInitialized = true;
   ptrInfo->isNullable = isNullable;
 
+  // Get the target baton
+  LifeTime *targetBaton = responsibilityTable[ptrStmt->value.get()].get();
+
+  auto lifetime = createLifeTimeTracker(ptrStmt, targetBaton, ptrInfo);
+  ptrInfo->ID = lifetime->ID;
+
+  responsibilityTable[ptrStmt] = std::move(lifetime);
   metaData[ptrStmt] = ptrInfo;
   symbolTable.back()[ptrName] = ptrInfo;
 }
@@ -404,7 +409,6 @@ void Semantics::walkLetStatement(Node *node) {
   bool isDefinitelyNull = false;
   bool isInitialized = false;
   bool hasError = false;
-  int popCount = 0;
 
   // Checking if the name is being reused
   auto letName = letStmt->ident_token.TokenLiteral;
@@ -489,26 +493,6 @@ void Semantics::walkLetStatement(Node *node) {
     hasError = true;
   }
 
-  if (isGlobalScope()) {
-    // Force Const for stack variables
-    if (!isConstant && !isHeap && !isSage) {
-      logSemanticErrors("Global stack variable '" + letName +
-                            "' must be declared as 'const'",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-    }
-
-    // Strict Literal Check for Const
-    if (isConstant && !isConstLiteral(letStmtValue)) {
-      logSemanticErrors("Global constant '" + letName +
-                            "' must be initialized with a raw literal, not a "
-                            " runtime expression",
-                        letStmtValue->expression.line,
-                        letStmtValue->expression.column);
-      hasError = true;
-    }
-  }
-
   // --- Walk value & infer type ---
   if (letStmtValue) {
     declaredType = expectedType;
@@ -527,6 +511,25 @@ void Semantics::walkLetStatement(Node *node) {
       } else {
         declaredType = expectedType;
         metaData[nullVal]->type = expectedType;
+      }
+    } else if (auto moveVal = dynamic_cast<MoveExpression *>(letStmtValue)) {
+      auto moveSym = metaData[moveVal];
+      if (!moveSym)
+        return;
+
+      if (isHeap && moveSym->storage != StorageType::HEAP) {
+        errorHandler.addHint(
+            "This variable was "
+            "explicitly declared as 'heap', "
+            "imposing a strict memory policy. Moving a non heap "
+            "value into it would force the "
+            "compiler to break that contract and switch to a "
+            "storage type you didn't request. "
+            "If you need this assignment to work, the source "
+            "must also be a 'heap' allocation.");
+        logSemanticErrors(
+            "Cannot move a non heap variable into a heap variable",
+            moveVal->expr->expression.line, moveVal->expr->expression.line);
       }
     } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
       auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
@@ -592,15 +595,9 @@ void Semantics::walkLetStatement(Node *node) {
   }
 
   // Heap and Dheap checks
+  // TODO: Revise this rule
   if (isSage || isHeap) {
-    if (!isInitialized) {
-      logSemanticErrors("Cannot promote uninitialized variable '" +
-                            letStmt->ident_token.TokenLiteral +
-                            "' to the heap or sage",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
-      hasError = true;
-    }
-
+    // REVISE THESE LAWS TOO
     if (isNullable || isDefinitelyNull) {
       logSemanticErrors("Cannot promote nullable variable '" +
                             letStmt->ident_token.TokenLiteral + "' to the heap",
@@ -622,8 +619,7 @@ void Semantics::walkLetStatement(Node *node) {
   if (isGlobalScope()) {
     letStorageType = StorageType::GLOBAL;
   } else if (isSage) {
-    letStorageType = StorageType::HEAP;
-    popCount = 1;
+    letStorageType = StorageType::SAGE;
   } else if (isHeap) {
     letStorageType = StorageType::HEAP;
   } else {
@@ -640,8 +636,8 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->isDefinitelyNull = isDefinitelyNull;
   letInfo->isSage = isSage;
   letInfo->isHeap = isHeap;
-  letInfo->popCount = popCount;
-  letInfo->lastUseNode = letStmt;
+  letInfo->pointerCount = 0;
+
   letInfo->storage = letStorageType;
   letInfo->hasError = hasError;
   if (!loopContext.empty() && loopContext.back()) {
@@ -649,6 +645,12 @@ void Semantics::walkLetStatement(Node *node) {
     letInfo->bornInLoop = true;
   }
 
+  // Since this is a normal let statement it has no target baton as its target
+  // is independent to it(The compiler uses a deep copy first style so these are
+  // independent)
+  auto lifetime = createLifeTimeTracker(letStmt, nullptr, letInfo);
+  letInfo->ID = lifetime->ID;
+  responsibilityTable[letStmt] = std::move(lifetime);
   metaData[letStmt] = letInfo;
   symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
 

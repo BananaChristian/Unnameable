@@ -124,6 +124,28 @@ struct DereferenceExpression : Expression {
       : Expression(deref), deref_token(deref), identifier(std::move(ident)) {}
 };
 
+// Move expression
+struct MoveExpression : Expression {
+  Token move_token;
+  std::unique_ptr<Expression> expr;
+
+  std::string toString() override {
+    std::string exprStr;
+    if (expr)
+      exprStr = expr->toString();
+
+    return "Move Expression: (" + move_token.TokenLiteral + " " + exprStr +
+           ")\n";
+  }
+
+  MoveExpression *shallowClone() const override {
+    return new MoveExpression(move_token, clonePtr(expr));
+  }
+
+  MoveExpression(Token move_t, std::unique_ptr<Expression> ex)
+      : Expression(move_t), move_token(move_t), expr(std::move(ex)) {}
+};
+
 struct SelfExpression : Expression {
   Token self_token; // e.g. self
   std::vector<std::unique_ptr<Expression>> fields;

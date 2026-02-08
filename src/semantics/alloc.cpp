@@ -264,7 +264,6 @@ void Semantics::walkHeapStatement(Node *node) {
   auto stmtSym = it->second;
   // Toggle the heap flag, and other flags
   stmtSym->isHeap = true;
-  stmtSym->lastUseNode = stmt;
   stmtSym->allocType = allocType;
 
   // If the walked stmt has an error then so does the overall dheap statement

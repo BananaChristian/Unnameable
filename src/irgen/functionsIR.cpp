@@ -211,7 +211,8 @@ void IRGenerator::generateReturnStatement(Node *node) {
   // Fetch Semantic Metadata
   auto it = semantics.metaData.find(retStmt);
   if (it == semantics.metaData.end()) {
-    throw std::runtime_error("IRGen Error: Return statement missing metadata.");
+    reportDevBug("Could not find return statement metaData",
+                 retStmt->return_stmt.line, retStmt->return_stmt.column);
   }
 
   // Generate the value being returned
@@ -399,9 +400,7 @@ std::vector<llvm::Value *> IRGenerator::prepareArguments(
     if (metaIt != semantics.metaData.end() &&
         metaIt->second->needsImplicitAddress) {
       // Instead of loading the value, we grab the raw address
-      AddressAndPendingFree addrInfo =
-          generateIdentifierAddress(params[i].get());
-      argVal = addrInfo.address;
+      argVal = generateIdentifierAddress(params[i].get());
     } else {
       // Normal behavior like load a 10
       argVal = generateExpression(params[i].get());

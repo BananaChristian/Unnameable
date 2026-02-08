@@ -6,6 +6,8 @@
 #include "token.hpp"
 #include <cstdint>
 #include <llvm/IR/Value.h>
+#include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <typeindex>
@@ -43,11 +45,7 @@ enum class DataType {
   UNKNOWN
 };
 
-enum class StorageType {
-  GLOBAL,
-  STACK,
-  HEAP,
-};
+enum class StorageType { GLOBAL, STACK, HEAP, SAGE };
 
 enum class AllocatorRole { ALLOCATE, FREE, NONE };
 
@@ -137,6 +135,8 @@ struct GenericInstantiationInfo {
   GenericInstantiationInfo &operator=(GenericInstantiationInfo &&) = default;
 };
 
+struct LifeTime;
+
 // Information about the symbol(variable or object, whatever)
 struct SymbolInfo {
   ResolvedType type;
@@ -182,8 +182,6 @@ struct SymbolInfo {
   bool isDataBlock = false;
   std::shared_ptr<SymbolInfo> targetSymbol;  // For the deref system
   std::shared_ptr<SymbolInfo> refereeSymbol; // Symbol being refered to
-  int popCount = 0; // This shows the amount of times we shall call sage_free
-                    // when heap pointers are used
 
   std::shared_ptr<SymbolInfo>
       componentSymbol; // Symbol of the component being instantiated
@@ -195,8 +193,10 @@ struct SymbolInfo {
   size_t componentSize;
   llvm::Align alignment;
   int alloc_id = 0; // This is a field for the sentinel layer
-  Node *lastUseNode = nullptr;
+  std::string ID;
   int refCount = 0;
+  int pointerCount = 0;
+  bool isInvalid = false;
   bool needsPostLoopFree = false;
   bool bornInLoop = false;
 
@@ -220,6 +220,12 @@ struct SymbolInfo {
   // Movable
   SymbolInfo(SymbolInfo &&) = default;
   SymbolInfo &operator=(SymbolInfo &&) = default;
+};
+
+struct LifeTime {
+  std::string ID;
+  bool isResponsible = false;
+  std::map<std::string, std::shared_ptr<SymbolInfo>> dependents;
 };
 
 struct AllocatorHandle {
@@ -249,6 +255,7 @@ public:
   std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
       ImportedRecordTable;
   std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
+  std::unordered_map<Node *, std::unique_ptr<LifeTime>> responsibilityTable;
   std::unordered_map<
       std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
       sealTable;
@@ -300,7 +307,8 @@ private:
   bool hasFailed = false;
   bool verbose = false;
 
-  std::vector<std::string> sourceLines;
+  uint64_t letDeclCount = 0;
+  uint64_t ptrDeclCount = 0;
 
   // Walking the data type literals
   void walkI8Literal(Node *node);
@@ -345,10 +353,10 @@ private:
   void walkPrefixExpression(Node *node);
   void walkPostfixExpression(Node *node);
 
-  // Waling identifier expression
   void walkIdentifierExpression(Node *node);
   void walkAddressExpression(Node *node);
   void walkDereferenceExpression(Node *node);
+  void walkMoveExpression(Node *node);
 
   // Walking expression statement
   void walkExpressionStatement(Node *node);
@@ -459,7 +467,6 @@ private:
   void importEnums();
   void importAllocators();
   void import();
-  
 
   void registerInbuiltAllocatorTypes();
   bool isGlobalScope();
@@ -478,6 +485,13 @@ private:
   bool isLiteral(Node *node);
   bool isConstLiteral(Node *node);
   void popScope();
+  std::string generateLifetimeID(Node *declarationNode);
+  std::unique_ptr<LifeTime>
+  createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
+                        const std::shared_ptr<SymbolInfo> &declSym);
+  void transferResponsibility(LifeTime *currentBaton, LifeTime *targetBaton,
+                              const std::shared_ptr<SymbolInfo> &tagetSym);
+  Node *queryForLifeTimeBaton(const std::string &familyID);
   void logSemanticErrors(const std::string &message, int tokenLine,
                          int tokenColumn);
   void reportDevBug(const std::string &message);

@@ -415,7 +415,8 @@ void Semantics::walkIdentifierExpression(Node *node) {
     return;
   }
 
-  if (symbolInfo->isSage || symbolInfo->isHeap) {
+  if (symbolInfo->isHeap) {
+    // Elder and resident check for loop logic
     bool inLoop = !loopContext.empty() && loopContext.back();
     if (inLoop && !symbolInfo->bornInLoop) {
       // ELDERS
@@ -425,14 +426,15 @@ void Semantics::walkIdentifierExpression(Node *node) {
       // RESIDENTS
       // Track them so we can ensure they die before the loop repeats
       loopResidentDeathRow.insert(symbolInfo.get());
-      symbolInfo->lastUseNode = identExpr;
+
     } else {
       // Normal linear path
       currentBranchIdents.push_back(identExpr);
-      symbolInfo->lastUseNode = identExpr;
     }
   }
 
+  Node *holder = queryForLifeTimeBaton(symbolInfo->ID);
+  responsibilityTable[identExpr] = std::move(responsibilityTable[holder]);
   metaData[identExpr] = symbolInfo;
 }
 
@@ -457,7 +459,14 @@ void Semantics::walkAddressExpression(Node *node) {
     // Check the operator
     if (infix->operat.type != TokenType::FULLSTOP &&
         infix->operat.type != TokenType::SCOPE_OPERATOR) {
-
+      errorHandler
+          .addHint(
+              "When you use the 'addr' operator you want to get the address "
+              "of that expression")
+          .addHint("The 'addr' operator can only work on an expression with a "
+                   "permanent "
+                   "location an arithetic operation of any sorts does not have "
+                   "this");
       logSemanticErrors(
           "Cannot take address of an arithmetic expression or comparison",
           infix->expression.line, infix->expression.column);
@@ -466,6 +475,13 @@ void Semantics::walkAddressExpression(Node *node) {
   }
 
   if (call || metCall) {
+
+    errorHandler
+        .addHint("When you use the 'addr' operator you want to get the address "
+                 "of that expression")
+        .addHint("The 'addr' operator can only work on an expression "
+                 "with a permanent location, function calls are "
+                 "temporary in nature and have no location ");
     logSemanticErrors("Cannot get the address to a temporary value '" +
                           addrName + "'",
                       line, col);
@@ -484,18 +500,99 @@ void Semantics::walkAddressExpression(Node *node) {
   bool isSage = symbolInfo->isSage;
   bool isHeap = symbolInfo->isHeap;
 
-  if (symbolInfo->isSage || symbolInfo->isHeap)
-    symbolInfo->lastUseNode = addrExpr;
-
   auto addrInfo = std::make_shared<SymbolInfo>();
   addrInfo->isPointer = true;
   addrInfo->isSage = isSage;
   addrInfo->isHeap = isHeap;
+  addrInfo->ID = symbolInfo->ID;
   addrInfo->allocType = symbolInfo->allocType;
   addrInfo->targetSymbol = symbolInfo;
   addrInfo->type = inferNodeDataType(addrExpr);
 
+  //Ths syncs the pointerCount with that of the original identifier
+  symbolInfo->pointerCount = addrInfo->pointerCount;
+  Node *holder = queryForLifeTimeBaton(addrInfo->ID);
+  responsibilityTable[addrExpr] = std::move(responsibilityTable[holder]);
   metaData[addrExpr] = addrInfo;
+}
+
+void Semantics::walkMoveExpression(Node *node) {
+  auto moveExpr = dynamic_cast<MoveExpression *>(node);
+  if (!moveExpr)
+    return;
+
+  auto innerExpr = moveExpr->expr.get();
+  if (!innerExpr)
+    return;
+  auto exprName = extractIdentifierName(innerExpr);
+  auto exprLine = innerExpr->expression.line;
+  auto exprCol = innerExpr->expression.column;
+
+  auto call = dynamic_cast<CallExpression *>(innerExpr);
+  auto metCall = dynamic_cast<MethodCallExpression *>(innerExpr);
+
+  if (auto infix = dynamic_cast<InfixExpression *>(innerExpr)) {
+    // Check the operator
+    if (infix->operat.type != TokenType::FULLSTOP &&
+        infix->operat.type != TokenType::SCOPE_OPERATOR) {
+      errorHandler
+          .addHint("When you use the 'move' operator you want to transfer "
+                   "ownership of memory from one variable to another")
+          .addHint("The move operator can only work on an expression with a "
+                   "permanent "
+                   "location an arithetic operation of any sorts does not have "
+                   "this");
+      logSemanticErrors("Cannot move of an arithmetic expression or comparison",
+                        infix->expression.line, infix->expression.column);
+      return;
+    }
+  }
+
+  if (call || metCall) {
+    errorHandler
+        .addHint("When you use the 'move' operator you want to transfer "
+                 "ownership of memory from one variable to another")
+        .addHint("The move operator can only work on an expression "
+                 "with a permanent location, function calls are "
+                 "temoprary in nature and have no location ");
+    logSemanticErrors("Cannot move a temporary value '" + exprName + "'",
+                      exprLine, exprCol);
+    return;
+  }
+
+  walker(innerExpr);
+  auto symbolInfo = metaData[innerExpr];
+
+  if (!symbolInfo) {
+    logSemanticErrors("Unidentified variable '" + exprName + "'", exprLine,
+                      exprCol);
+  }
+
+  if (symbolInfo->storage == StorageType::STACK) {
+    logSemanticErrors("Cannot move variable '" + exprName +
+                          "' as it is stored on the stack",
+                      exprLine, exprCol);
+  }
+
+  if (symbolInfo->type.isPointer || symbolInfo->type.isRef) {
+    logSemanticErrors("Cannot move variable '" + exprName +
+                          "' as it is of a type '" +
+                          symbolInfo->type.resolvedName + "'",
+                      exprLine, exprCol);
+  }
+
+  /*if (!symbolInfo->isOwner) {
+    logSemanticErrors("Variable '" + exprName +
+                          "' does not own the memory it holds",
+                      exprLine, exprCol);
+                      }*/
+
+  if (symbolInfo->isInvalid) {
+    logSemanticErrors("Variable '" + exprName + "' was already moved", exprLine,
+                      exprCol);
+  }
+
+  metaData[moveExpr] = symbolInfo;
 }
 
 void Semantics::walkDereferenceExpression(Node *node) {
@@ -547,8 +644,6 @@ void Semantics::walkDereferenceExpression(Node *node) {
     return;
   }
 
-  derefSym->lastUseNode = derefExpr;
-
   ResolvedType peeledType = derefSym->type;
   peeledType.isPointer = false;
   ResolvedType finalType = isPointerType(peeledType);
@@ -562,7 +657,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
 
   if (derefSym->targetSymbol != nullptr) {
     derefInfo->targetSymbol = derefSym->targetSymbol;
-    derefSym->targetSymbol->lastUseNode = derefExpr;
+    // derefSym->targetSymbol->lastUseNode = derefExpr;
   } else {
     derefInfo->targetSymbol = nullptr;
   }
@@ -714,10 +809,8 @@ void Semantics::walkAssignStatement(Node *node) {
   bool rhsIsNull = false;
   bool isDefinitelyNull = false;
   if (assignStmt->value) {
-    auto ident = dynamic_cast<Identifier *>(assignStmt->value.get());
-
     // Check to prevent assignment of null identifiers
-    if (ident) {
+    if (auto ident = dynamic_cast<Identifier *>(assignStmt->value.get())) {
       auto identName = ident->identifier.TokenLiteral;
       auto identSym = resolveSymbolInfo(identName);
       if (!identSym) {
@@ -756,6 +849,32 @@ void Semantics::walkAssignStatement(Node *node) {
                           assignStmt->identifier->expression.column);
         hasError = true;
       }
+    } else if (auto moveVal =
+                   dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
+      walker(moveVal);
+
+      auto moveSym = metaData[moveVal];
+      if (!moveSym)
+        return;
+
+      if (moveSym->storage != StorageType::HEAP && symbol->isHeap) {
+        errorHandler.addHint(
+            "This variable was "
+            "explicitly declared as 'heap', "
+            "imposing a strict memory policy. Moving a non heap "
+            "value into it would force the "
+            "compiler to break that contract and switch to a "
+            "storage type you didn't request. "
+            "If you need this assignment to work, the source "
+            "must also be a 'heap' allocation.");
+        logSemanticErrors(
+            "Cannot move a non heap variable into a heap variable",
+            moveVal->expr->expression.line, moveVal->expr->expression.line);
+      }
+
+      // symbol->isOwner = true; // Transfer ownership to say y
+      symbol->storage = moveSym->storage;
+      moveSym->isInvalid = true; // Invalidate the symbol for say move x
     }
   }
 
@@ -1032,6 +1151,19 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   if (fieldAssignStmt->value) {
     walker(fieldAssignStmt->value.get());
     auto rhsInfo = metaData[fieldAssignStmt->value.get()];
+    if (auto nullVal =
+            dynamic_cast<NullLiteral *>(fieldAssignStmt->value.get())) {
+      if (!lhsInfo->type.isNull) {
+        logSemanticErrors("Cannot assign 'null' to non nullable variable '" +
+                              name + "'",
+                          line, column);
+      }
+      rhsInfo->type = lhsInfo->type;
+      rhsInfo->isInitialized = true;
+      rhsInfo->isDefinitelyNull = true;
+
+      metaData[fieldAssignStmt] = lhsInfo;
+    }
 
     if (rhsInfo) {
       if (lhsInfo->type.kind == DataType::OPAQUE) {
@@ -1042,7 +1174,10 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
                             line, column);
         }
       } else if (!isTypeCompatible(lhsInfo->type, rhsInfo->type)) {
-        logSemanticErrors("Type mismatch in assignment", line, column);
+        logSemanticErrors("Type mismatch in assignment expected '" +
+                              lhsInfo->type.resolvedName + "' but got '" +
+                              rhsInfo->type.resolvedName + "'",
+                          line, column);
       }
     }
   }
