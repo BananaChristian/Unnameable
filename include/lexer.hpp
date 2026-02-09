@@ -96,7 +96,7 @@ class Lexer {
       {"allocator", TokenType::ALLOCATOR},
 
       {"seal", TokenType::SEAL},
-      {"shout", TokenType::SHOUT},
+      {"trace", TokenType::TRACE},
       {"unwrap", TokenType::UNWRAP},
 
       {"cast", TokenType::CAST},

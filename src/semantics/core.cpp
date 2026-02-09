@@ -161,8 +161,8 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(HeapStatement)] = &Semantics::walkHeapStatement;
   walkerFunctionsMap[typeid(SealStatement)] = &Semantics::walkSealStatement;
 
-  // Walker registration for the shout system
-  walkerFunctionsMap[typeid(ShoutStatement)] = &Semantics::walkShoutStatement;
+  // Walker registration for the trace system
+  walkerFunctionsMap[typeid(TraceStatement)] = &Semantics::walkTraceStatement;
   // Walker registrartion for generic system
   walkerFunctionsMap[typeid(GenericStatement)] =
       &Semantics::walkGenericStatement;

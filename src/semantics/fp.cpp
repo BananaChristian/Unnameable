@@ -1,5 +1,6 @@
 #include "semantics.hpp"
 #include <algorithm>
+#include <memory>
 
 void Semantics::walkBlockExpression(Node *node) {
   auto blockExpr = dynamic_cast<BlockExpression *>(node);
@@ -181,7 +182,7 @@ void Semantics::walkReturnStatement(Node *node) {
 
   if (valueType.isRef) {
     // Identify what the reference actually references
-    if (auto ident = dynamic_cast<Identifier * >(retStmt->return_value.get())) {
+    if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get())) {
       auto &name = ident->identifier.TokenLiteral;
       auto sym = resolveSymbolInfo(name);
       if (sym) {
@@ -940,18 +941,24 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   metaData[funcCall] = callSymbol;
 }
 
-void Semantics::walkShoutStatement(Node *node) {
-  auto shoutStmt = dynamic_cast<ShoutStatement *>(node);
+void Semantics::walkTraceStatement(Node *node) {
+  auto traceStmt = dynamic_cast<TraceStatement *>(node);
 
-  if (!shoutStmt)
+  if (!traceStmt)
     return;
 
   // Just call the walker on whatever is there
-  auto shoutExpr = shoutStmt->expr.get();
+  auto shoutExpr = traceStmt->expr.get();
   if (!shoutExpr)
     return;
 
   walker(shoutExpr);
+  auto exprInfo = metaData[shoutExpr];
+  if (!exprInfo)
+    return;
+  
+  Node *holder = queryForLifeTimeBaton(exprInfo->ID);
+  responsibilityTable[traceStmt] = std::move(responsibilityTable[holder]);
 }
 
 void Semantics::walkSealCallExpression(Node *node,

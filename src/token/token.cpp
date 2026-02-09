@@ -248,8 +248,8 @@ std::string TokenTypeToLiteral(TokenType type) {
 
   case TokenType::SEAL:
     return "Token Type: SEAL";
-  case TokenType::SHOUT:
-    return "Token Type: SHOUT";
+  case TokenType::TRACE:
+    return "Token Type: TRACE";
 
   case TokenType::CAST:
     return "Token Type: CAST";

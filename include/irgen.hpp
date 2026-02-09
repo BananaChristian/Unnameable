@@ -106,8 +106,8 @@ private:
   void generateArrayStatement(Node *node);
   // Enum class system
   void generateEnumStatement(Node *node);
-  // Shout statement generator
-  void generateShoutStatement(Node *node);
+  // Trace statement generator
+  void generateTraceStatement(Node *node);
   void generateAllocatorInterface(Node *node);
 
   // GENERATOR FUNCTIONS FOR EXPRESSIONS
@@ -173,7 +173,7 @@ private:
   llvm::Value *generateAddress(Node *node);
 
   void generateStatement(Node *node);
-  void shoutRuntime(llvm::Value *val, ResolvedType type);
+  void traceRuntime(llvm::Value *val, ResolvedType type);
   void declareImportedSeals();
   void declareImportedTypes();
   void declareCustomTypes();

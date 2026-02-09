@@ -419,7 +419,7 @@ private:
   void walkSealStatement(Node *node);
 
   // Walking the shout statement
-  void walkShoutStatement(Node *node);
+  void walkTraceStatement(Node *node);
 
   void walkFunctionParameters(Node *node);
 

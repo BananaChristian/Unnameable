@@ -96,7 +96,7 @@ enum class TokenType {
 
   SEAL, // Scope seal keyword
 
-  SHOUT, // Shout keyword
+  TRACE, // trace keyword
 
   // Control flow
   IF,

@@ -270,28 +270,29 @@ void IRGenerator::generateBlockStatement(Node *node) {
   }
 }
 
-void IRGenerator::generateShoutStatement(Node *node) {
-  auto shoutStmt = dynamic_cast<ShoutStatement *>(node);
+void IRGenerator::generateTraceStatement(Node *node) {
+  auto traceStmt = dynamic_cast<TraceStatement *>(node);
 
-  if (!shoutStmt) {
-    reportDevBug("Invalid shout statement node", node->token.line,
+  if (!traceStmt) {
+    reportDevBug("Invalid trace statement node", node->token.line,
                  node->token.column);
   }
 
   if (isGlobalScope) {
     errorHandler.addHint("Semantics failed to guard against this");
     reportDevBug("Executable statements must not be in global scope",
-                 shoutStmt->shout_key.line, shoutStmt->shout_key.column);
+                 traceStmt->trace_keyword.line,
+                 traceStmt->trace_keyword.column);
   }
 
   // Getting the semantic type of the val
-  auto it = semantics.metaData.find(shoutStmt->expr.get());
+  auto it = semantics.metaData.find(traceStmt->expr.get());
   if (it == semantics.metaData.end()) {
     errorHandler.addHint(
-        "Semantics failed to register metadata for the shout expression");
+        "Semantics failed to register metadata for the trace expression");
     reportDevBug("Missing metadata for shout expression",
-                 shoutStmt->expr->expression.line,
-                 shoutStmt->expr->expression.column);
+                 traceStmt->expr->expression.line,
+                 traceStmt->expr->expression.column);
   }
 
   // Getting the symbol
@@ -299,25 +300,28 @@ void IRGenerator::generateShoutStatement(Node *node) {
   if (!exprSym) {
     errorHandler.addHint("The semantics registered the metadata but didnt "
                          "provide the symbol info");
-    reportDevBug("No symbol information was found for the shout expression",
-                 shoutStmt->expr->expression.line,
-                 shoutStmt->expr->expression.column);
+    reportDevBug("No symbol information was found for the trace expression",
+                 traceStmt->expr->expression.line,
+                 traceStmt->expr->expression.column);
   }
 
   // Getting the type
   ResolvedType type = exprSym->type;
 
   // Call the expression generation n the expression
-  auto val = generateExpression(shoutStmt->expr.get());
+  auto val = generateExpression(traceStmt->expr.get());
   if (!val) {
     errorHandler.addHint("The expression generator failed");
-    reportDevBug("Failed to get value for the shout expression",
-                 shoutStmt->expr->expression.line,
-                 shoutStmt->expr->expression.column);
+    reportDevBug("Failed to get value for the trace expression",
+                 traceStmt->expr->expression.line,
+                 traceStmt->expr->expression.column);
   }
 
-  // Call the shoutRuntime this is the one who actually prints
-  shoutRuntime(val, type);
+  // Call the traceRuntime this is the one who actually prints
+  traceRuntime(val, type);
+  // Emit the free if we were holding some memory hostage and this is the
+  // lastUse
+  emitCleanup(traceStmt, exprSym);
 }
 
 llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
@@ -553,8 +557,8 @@ void IRGenerator::registerGeneratorFunctions() {
 
   generatorFunctionsMap[typeid(ArrayStatement)] =
       &IRGenerator::generateArrayStatement;
-  generatorFunctionsMap[typeid(ShoutStatement)] =
-      &IRGenerator::generateShoutStatement;
+  generatorFunctionsMap[typeid(TraceStatement)] =
+      &IRGenerator::generateTraceStatement;
   generatorFunctionsMap[typeid(InstantiateStatement)] =
       &IRGenerator::generateInstantiateStatement;
   generatorFunctionsMap[typeid(SealStatement)] =
@@ -916,7 +920,7 @@ char *IRGenerator::const_unnitoa(__int128 val, char *buf) {
   return buf;
 }
 
-void IRGenerator::shoutRuntime(llvm::Value *val, ResolvedType type) {
+void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
   if (!val) {
     reportDevBug("shout! called with a null value", 0, 0);
   }
@@ -1043,8 +1047,10 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   llvm::Function *deallocFunc = module->getFunction(deallocatorName);
 
   // The Assembly-level logic
-  llvm::Value *ptrVal =
-      funcBuilder.CreateLoad(funcBuilder.getPtrTy(), sym->llvmValue);
+  llvm::Value *ptrVal = nullptr;
+
+  ptrVal = funcBuilder.CreateLoad(funcBuilder.getPtrTy(), sym->llvmValue);
+
   llvm::Value *castPtr = funcBuilder.CreatePointerCast(
       ptrVal, deallocFunc->getFunctionType()->getParamType(0));
 

@@ -368,8 +368,12 @@ void IRGenerator::generatePointerStatement(Node *node) {
     storagePtr = allocateSageStorage(ptrSym, ptrName, nullptr);
     funcBuilder.CreateStore(initVal, storagePtr);
   } else if (ptrSym->isHeap) {
-    storagePtr = allocateDynamicHeapStorage(ptrSym, ptrName);
-    funcBuilder.CreateStore(initVal, storagePtr);
+    storagePtr =
+        funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, ptrName);
+
+    llvm::Value *actualHeapPtr = allocateDynamicHeapStorage(ptrSym, ptrName);
+    funcBuilder.CreateStore(actualHeapPtr, storagePtr);
+    funcBuilder.CreateStore(initVal, actualHeapPtr);
   } else if (!funcBuilder.GetInsertBlock()) {
     llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
     if (!globalInit) {

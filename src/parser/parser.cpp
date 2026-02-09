@@ -90,17 +90,13 @@ std::unique_ptr<Statement> Parser::parseLinkStatement() {
   return std::make_unique<LinkStatement>(link_token, std::move(linkStr));
 }
 
-std::unique_ptr<Statement> Parser::parseShoutStatement() {
-  Token shout = currentToken();
-  advance(); // Consume the shout token
-  if (currentToken().type != TokenType::BANG) {
-    logError("Expected '!' but got '" + currentToken().TokenLiteral + "'");
-    advance(); // Consume whatever is there
-  }
-  advance(); // Consume the ! token
+std::unique_ptr<Statement> Parser::parseTraceStatement() {
+  Token trace = currentToken();
+  advance(); // Consume the trace token
+
   auto expr = parseExpression(Precedence::PREC_NONE);
 
-  return std::make_unique<ShoutStatement>(shout, std::move(expr));
+  return std::make_unique<TraceStatement>(trace, std::move(expr));
 }
 
 //----------HELPER FUNCTIONS---------------
@@ -374,7 +370,7 @@ void Parser::registerStatementParseFns() {
       &Parser::parseContinueStatement;
   StatementParseFunctionsMap[TokenType::LINK] = &Parser::parseLinkStatement;
   StatementParseFunctionsMap[TokenType::IMPORT] = &Parser::parseImportStatement;
-  StatementParseFunctionsMap[TokenType::SHOUT] = &Parser::parseShoutStatement;
+  StatementParseFunctionsMap[TokenType::TRACE] = &Parser::parseTraceStatement;
 
   // For basic types
   StatementParseFunctionsMap[TokenType::I8_KEYWORD] =

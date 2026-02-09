@@ -326,7 +326,7 @@ func main: i32 {
         [2, 2, 2]
     ]
 
-    shout! matrix[1][2] # Prints 2
+    trace matrix[1][2] # Prints 2
     return 0
 }
 
@@ -386,7 +386,7 @@ func main() : i32 {
     # If test() returns null, the program traps here.
     # If it returns a value, x becomes a standard i32.
     i32 x = unwrap test() 
-    shout! x
+    trace x
     return x
 }
 
@@ -403,7 +403,7 @@ func main(): i32 {
     
     # a ?? (b ?? 100) resolves to 42 because a is null, but b is not.
     i32 y = a ?? (b ?? 100) 
-    shout! y
+    trace y
     return 0
 }
 
@@ -426,7 +426,7 @@ For example
 func test_math_cast():void {
     f32 pi = 3.14
     i32 rounded = cast<i32>(pi)
-    shout! rounded
+    trace rounded
 }
 
 func main:i32{
@@ -443,7 +443,7 @@ func test_memory_bitcast():void {
     ptr i32 p_int -> bitcast<ptr i32>(p_float)
     
     i32 bit_pattern = deref p_int
-    shout! bit_pattern
+    trace bit_pattern
 }
 
 func main:i32 {
@@ -529,7 +529,7 @@ func get_status_msg(Status s): string {
 }
 
 func main:i32{
-    shout! get_status_msg(Status::PENDING)
+    trace get_status_msg(Status::PENDING)
     return 0
 }
 
@@ -570,7 +570,7 @@ func test_for_logic(): i32 {
 }
 
 func main:i32{
-    shout! test_for_logic()
+    trace test_for_logic()
     return 0
 }
 
@@ -621,11 +621,11 @@ func main(): i32 {
     i32 player_ratio = player.check_health_ratio()
 
     # Output results:
-    shout! "Player Ratio: "
-    shout! player_ratio;
+    trace "Player Ratio: "
+    trace player_ratio;
 
-    shout! "Player Health: "
-    shout! player.health
+    trace "Player Health: "
+    trace player.health
 
     return 0
 }
@@ -652,8 +652,8 @@ func main(): i32 {
     p1.name = "Samsung"
 
     #Accessing all fields
-    shout! p1.name
-    shout! p1.color
+    trace p1.name
+    trace p1.color
 
     return 0
 }
@@ -824,7 +824,7 @@ while (counter > 0) {
     # Resident: Allocated every lap
     heap i32 lap_data = 999
 
-    shout! lap_data
+    trace lap_data
     counter = counter - 1
     # Memory is automatically freed HERE before next lap
 }
@@ -843,7 +843,7 @@ heap i32 elder = 100 # Born outside
 
 mut i32 counter=5
 while (counter > 0) {
-    shout! elder # Used inside
+    trace elder # Used inside
     counter = counter - 1
 }
 
@@ -963,7 +963,7 @@ func main(): i32{
 
     # Read 'a's value (50) via 'b' and add 1
     i32 result = b + 1
-    shout! result # Result will be 71
+    trace result # Result will be 71
     return result
 }
 ```
@@ -1034,7 +1034,7 @@ func main(): i32 {
     i32 result = deref p + 1
 
     # The original variable x should now also hold 50
-    shout! result; #Should be 51
+    trace result; #Should be 51
     return result;
 }
 
@@ -1066,12 +1066,12 @@ func generic_shout(ptr opaque item,i32 tag):void {
     if (tag == 1) {
         # Interpret as Data
         ptr d -> bitcast<ptr Data>(item)
-        shout! d.id
+        trace d.id
     }
     elif (tag == 2) {
         # Interpret as Player
         ptr p -> bitcast<ptr Player>(item)
-        shout! p.score
+        trace p.score
     }
 }
 

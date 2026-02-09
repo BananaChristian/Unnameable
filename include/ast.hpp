@@ -1882,9 +1882,9 @@ struct LinkStatement : Statement {
       : Statement(link), link_key(link), stringExpr(std::move(string)){};
 };
 
-// Shout statement
-struct ShoutStatement : Statement {
-  Token shout_key;
+// Trace statement
+struct TraceStatement : Statement {
+  Token trace_keyword;
   std::unique_ptr<Expression> expr;
 
   std::string exprStr = "No expression";
@@ -1892,15 +1892,15 @@ struct ShoutStatement : Statement {
     if (expr) {
       exprStr = expr->toString();
     }
-    return "Shout Statement: " + shout_key.TokenLiteral + "! " + exprStr;
+    return "Trace Statement: " + trace_keyword.TokenLiteral +" "+ exprStr;
   }
 
-  ShoutStatement *shallowClone() const override {
-    return new ShoutStatement(shout_key, clonePtr(expr));
+  TraceStatement *shallowClone() const override {
+    return new TraceStatement(trace_keyword, clonePtr(expr));
   }
 
-  ShoutStatement(Token shout, std::unique_ptr<Expression> expression)
-      : Statement(shout), shout_key(shout), expr(std::move(expression)){};
+  TraceStatement(Token trace, std::unique_ptr<Expression> expression)
+      : Statement(trace), trace_keyword(trace), expr(std::move(expression)){};
 };
 
 // BLOCKS

@@ -118,7 +118,7 @@ private:
   // Parsing seal statement
   std::unique_ptr<Statement> parseSealStatement();
   // Shout statement parser
-  std::unique_ptr<Statement> parseShoutStatement();
+  std::unique_ptr<Statement> parseTraceStatement();
 
   std::unique_ptr<Statement> parseSelfAssignment();
   // Identifer starting statements function
