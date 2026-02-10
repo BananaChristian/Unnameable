@@ -1047,12 +1047,11 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   llvm::Function *deallocFunc = module->getFunction(deallocatorName);
 
   // The Assembly-level logic
-  llvm::Value *ptrVal = nullptr;
-
-  ptrVal = funcBuilder.CreateLoad(funcBuilder.getPtrTy(), sym->llvmValue);
+  if(!sym->llvmValue)
+        return;
 
   llvm::Value *castPtr = funcBuilder.CreatePointerCast(
-      ptrVal, deallocFunc->getFunctionType()->getParamType(0));
+      sym->llvmValue, deallocFunc->getFunctionType()->getParamType(0));
 
   funcBuilder.CreateCall(deallocFunc, {castPtr});
 }
@@ -1069,7 +1068,6 @@ void IRGenerator::emitCleanup(Node *contextNode,
 
   // Trigger Logic (Counts)
   if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
-
     // Free the depenedents first
     logInternal("Freeing '" + std::to_string(baton->dependents.size()) +
                 "' dependents...");

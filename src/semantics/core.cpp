@@ -2219,9 +2219,6 @@ void Semantics::transferResponsibility(
     for (auto const &[id, sym] : targetBaton->dependents) {
       currentBaton->dependents[id] = sym;
     }
-
-    // Wipe the target's dependecies
-    targetBaton->dependents.clear();
   }
 }
 
@@ -2239,6 +2236,35 @@ Node *Semantics::queryForLifeTimeBaton(const std::string &familyID) {
     continue;
   }
   return nullptr;
+}
+
+// This function enforces the pointing rules(Can only point upwards)
+bool Semantics::validateLatticeMove(const StorageType &holderType,
+                                    const StorageType &targetType) {
+  if (holderType > targetType) {
+    return false;
+  }
+  return true;
+}
+
+StorageType Semantics::determineTier(const std::shared_ptr<SymbolInfo> &sym) {
+  // Just retreive the storage policy
+  return sym->storage;
+}
+
+std::string Semantics::storageStr(const StorageType &storage) {
+  switch (storage) {
+  case StorageType::GLOBAL:
+    return "global";
+  case StorageType::SAGE:
+    return "sage";
+  case StorageType::HEAP:
+    return "heap";
+  case StorageType::STACK:
+    return "stack";
+  default:
+    return "none";
+  }
 }
 
 void Semantics::popScope() {
@@ -2267,6 +2293,15 @@ void Semantics::popScope() {
     }
   }
   symbolTable.pop_back();
+}
+
+std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {
+  auto it = metaData.find(node);
+  if (it == metaData.end()) {
+    return nullptr;
+  }
+
+  return it->second;
 }
 
 void Semantics::logSemanticErrors(const std::string &message, int tokenLine,

@@ -221,6 +221,9 @@ void IRGenerator::generateReturnStatement(Node *node) {
     retVal = generateExpression(retStmt->return_value.get());
   }
 
+  
+  emitCleanup(retStmt, it->second);
+
   // Get Function Signature Info
   llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
   llvm::Type *retTy = currentFunction->getReturnType();
@@ -333,6 +336,7 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
     return nullptr;
   }
 
+  emitCleanup(callExpr, callIt->second);
   return call;
 }
 

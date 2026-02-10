@@ -45,7 +45,12 @@ enum class DataType {
   UNKNOWN
 };
 
-enum class StorageType { GLOBAL, STACK, HEAP, SAGE };
+enum class StorageType {
+  STACK = 0,
+  HEAP = 1,
+  SAGE = 2,
+  GLOBAL = 3,
+};
 
 enum class AllocatorRole { ALLOCATE, FREE, NONE };
 
@@ -167,7 +172,7 @@ struct SymbolInfo {
 
   bool isSage = false;   // Sage heap flag
   bool isHeap = false;   // Dynamic heap flag
-  std::string allocType; // The name of the allocator the dheap will use
+  std::string allocType; // The name of the allocator the heap will use
 
   bool isRef = false;     // Reference flag
   bool isPointer = false; // Pointer flag
@@ -192,7 +197,6 @@ struct SymbolInfo {
 
   size_t componentSize;
   llvm::Align alignment;
-  int alloc_id = 0; // This is a field for the sentinel layer
   std::string ID;
   int refCount = 0;
   int pointerCount = 0;
@@ -292,6 +296,8 @@ public:
   bool isString(const ResolvedType &t);
   bool isChar(const ResolvedType &t);
 
+  std::shared_ptr<SymbolInfo> getSymbolFromMeta(Node *node);
+  Node *queryForLifeTimeBaton(const std::string &familyID);
   ResolvedType getArrayElementType(ResolvedType &arrayType);
   bool isIntegerConstant(Node *node);
   std::vector<uint64_t> getSizePerDimesion(Node *node);
@@ -491,7 +497,10 @@ private:
                         const std::shared_ptr<SymbolInfo> &declSym);
   void transferResponsibility(LifeTime *currentBaton, LifeTime *targetBaton,
                               const std::shared_ptr<SymbolInfo> &tagetSym);
-  Node *queryForLifeTimeBaton(const std::string &familyID);
+  bool validateLatticeMove(const StorageType &holderType,
+                           const StorageType &targetType);
+  std::string storageStr(const StorageType &storage);
+  StorageType determineTier(const std::shared_ptr<SymbolInfo> &sym);
   void logSemanticErrors(const std::string &message, int tokenLine,
                          int tokenColumn);
   void reportDevBug(const std::string &message);

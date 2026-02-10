@@ -17,7 +17,6 @@ This project contains the core implementation of the Unnameable compiler written
 - Deserializer(It is just the stub deserializer if you import stuff)
 - Semantic Analyzer 
 - Layout Calculator 
-- Sentinel layer 
 - StubGen(This is the stub generator if you export stuff)
 - LLVM (For the backend)
 

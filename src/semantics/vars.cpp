@@ -504,12 +504,13 @@ void Semantics::walkAddressExpression(Node *node) {
   addrInfo->isPointer = true;
   addrInfo->isSage = isSage;
   addrInfo->isHeap = isHeap;
+  addrInfo->storage = symbolInfo->storage;
   addrInfo->ID = symbolInfo->ID;
   addrInfo->allocType = symbolInfo->allocType;
   addrInfo->targetSymbol = symbolInfo;
   addrInfo->type = inferNodeDataType(addrExpr);
 
-  //Ths syncs the pointerCount with that of the original identifier
+  // Ths syncs the pointerCount with that of the original identifier
   symbolInfo->pointerCount = addrInfo->pointerCount;
   Node *holder = queryForLifeTimeBaton(addrInfo->ID);
   responsibilityTable[addrExpr] = std::move(responsibilityTable[holder]);

@@ -62,6 +62,7 @@ void Layout::registerComponentCalculatorFns() {
       &Layout::calculateFunctionStatement;
   calculatorFnsMap[typeid(FunctionExpression)] =
       &Layout::calculateFunctionExpression;
+  calculatorFnsMap[typeid(ReturnStatement)] = &Layout::calculateReturnStatement;
   calculatorFnsMap[typeid(BlockExpression)] = &Layout::calculateBlockExpression;
   calculatorFnsMap[typeid(RecordStatement)] = &Layout::calculateRecordStatement;
   calculatorFnsMap[typeid(ComponentStatement)] =
@@ -337,6 +338,51 @@ void Layout::calculateFunctionExpression(Node *node) {
   calculatorDriver(funcExpr->block.get());
 }
 
+void Layout::calculateReturnStatement(Node *node) {
+  auto retStmt = dynamic_cast<ReturnStatement *>(node);
+  if (!retStmt)
+    return;
+
+  // The purpose of this function is to enforce the escape rules
+  auto retSym = semantics.getSymbolFromMeta(retStmt);
+  if (!retSym)
+    reportDevBug("Could not find return metadata");
+  logInternal("Return statement ID:" + retSym->ID);
+
+  const auto &valName =
+      semantics.extractIdentifierName(retStmt->return_value.get());
+
+  Node *batonHolder = semantics.queryForLifeTimeBaton(retSym->ID);
+  if (!batonHolder) {
+    logInternal("Failed to get baton holder");
+    return;
+  }
+  // If the return statement isnt the baton holder this is an escape
+  if (batonHolder != retStmt) {
+    logInternal("The baton escaped");
+    auto &baton = semantics.responsibilityTable[batonHolder];
+    if (!baton) {
+      logInternal("Failed to get baton yet holder exists");
+      return;
+    }
+
+    logInternal("The baton has '" + std::to_string(baton->dependents.size()) +
+                "' dependents");
+    if (baton && !baton->dependents.empty()) {
+      logInternal("The dependents exist attempting to block this return");
+      errorHandler.addHint(
+          "The compiler cannot allow the escape of a variable that is "
+          "extending the lifetime of other variables as if it frees them and "
+          "allows your pointer to escape then you will have a dangling "
+          "pointer");
+      logLayoutError("The return value '" + valName +
+                         "' cannot escape with hidden dependecies",
+                     retStmt->return_value->expression.line,
+                     retStmt->return_value->expression.column);
+    }
+  }
+}
+
 void Layout::calculateBlockExpression(Node *node) {
   auto blockExpr = dynamic_cast<BlockExpression *>(node);
   if (!blockExpr)
@@ -362,14 +408,9 @@ void Layout::calculateInstantiateStatement(Node *node) {
   auto line = instStmt->instantiate_token.line;
   auto col = instStmt->instantiate_token.column;
 
-  // Extract the semantic metaData(It has the instantiation info)
-  auto it = semantics.metaData.find(instStmt);
-  if (it == semantics.metaData.end()) {
-    reportDevBug("Failed to find instantiation statement metaData");
+  auto sym = semantics.getSymbolFromMeta(instStmt);
+  if (!sym)
     return;
-  }
-
-  auto sym = it->second;
 
   // Get the instantiation info
   const auto &instTable = sym->instTable;

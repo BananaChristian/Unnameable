@@ -47,12 +47,14 @@ void Semantics::walkReturnStatement(Node *node) {
     reportDevBug("Invalid return statement node");
     return;
   }
+  // Block if the return statement isnt inside a function
   if (!currentFunction) {
     logSemanticErrors("Invalid return statement as not in the current function",
                       retStmt->return_stmt.line, retStmt->return_stmt.column);
     hasError = true;
   }
 
+  // If we dont have a return value then check if the current function is void
   if (!retStmt->return_value) {
     if (currentFunction.value()->returnType.kind != DataType::VOID) {
       logSemanticErrors("Function of return type '" +
@@ -69,12 +71,10 @@ void Semantics::walkReturnStatement(Node *node) {
 
     metaData[retStmt] = voidInfo;
     return;
-  } else {
-    walker(retStmt->return_value.get());
   }
+  walker(retStmt->return_value.get());
 
   ResolvedType valueType = ResolvedType{DataType::UNKNOWN, "unknown"};
-  std::string genericName;
   bool isValueNullable = false;
   if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get())) {
     auto paramInfo =
@@ -87,7 +87,6 @@ void Semantics::walkReturnStatement(Node *node) {
         });
     if (paramInfo != metaData.end()) {
       valueType = paramInfo->second->type;
-      genericName = paramInfo->second->genericName;
       isValueNullable = paramInfo->second->isNullable;
       logInternal("Found parameter '" + ident->identifier.TokenLiteral +
                   "' with type :" + valueType.resolvedName);
@@ -95,7 +94,6 @@ void Semantics::walkReturnStatement(Node *node) {
       auto symbol = resolveSymbolInfo(ident->identifier.TokenLiteral);
       if (symbol) {
         valueType = symbol->type;
-        genericName = symbol->genericName;
         isValueNullable = symbol->isNullable;
         logInternal("Found symbol '" + ident->identifier.TokenLiteral +
                     "' with type: " + valueType.resolvedName);
@@ -119,6 +117,9 @@ void Semantics::walkReturnStatement(Node *node) {
                             "'",
                         node->token.line, node->token.column);
       hasError = true;
+    } else {
+      // If the return value is a null literal give it context
+      metaData[nullLit]->type = currentFunction.value()->returnType;
     }
   } else if (!isTypeCompatible(currentFunction.value()->returnType,
                                valueType)) {
@@ -131,100 +132,82 @@ void Semantics::walkReturnStatement(Node *node) {
     hasError = true;
   }
 
+  auto valSym = metaData[retStmt->return_value.get()];
+  if (!valSym) {
+    reportDevBug("Could not find return value metadata");
+    return;
+  }
+  auto valName = extractIdentifierName(retStmt->return_value.get());
+
   // Safety guard to prevent unsafe returns for pointers
   if (valueType.isPointer) {
-    // Identify what the pointer actually points to
-    if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get())) {
-      auto &name = ident->identifier.TokenLiteral;
-      auto sym = resolveSymbolInfo(name);
-      if (sym) {
-        if (!sym->isParam) {
-          // Get the storage type for the target
-          auto targetSym = sym->targetSymbol;
-
-          if (!targetSym && valueType.kind != DataType::OPAQUE) {
-            logSemanticErrors("Target of pointer '" + name + "' does not exist",
-                              retStmt->return_stmt.line,
-                              retStmt->return_stmt.column);
-            return;
-          }
-
-          // If the pointee is STACK → ILLEGAL RETURN
-          if (targetSym && targetSym->storage == StorageType::STACK) {
-            logSemanticErrors("Illegal return of pointer '" + name +
-                                  "' (stack memory will be destroyed).",
-                              retStmt->return_stmt.line,
-                              retStmt->return_stmt.column);
-
-            hasError = true;
-          }
-        }
+    // Identify what the pointer
+    // If it isnt a parameter
+    if (!valSym->isParam) {
+      // Get the target symbol
+      auto targetSym = valSym->targetSymbol;
+      if (!targetSym && valueType.kind != DataType::OPAQUE) {
+        logSemanticErrors("Target of pointer '" + valName + "' does not exist",
+                          retStmt->return_stmt.line,
+                          retStmt->return_stmt.column);
+        return;
       }
-    }
 
-    // If &local_val literal case: e.g., return  addr x
-    if (auto addr =
-            dynamic_cast<AddressExpression *>(retStmt->return_value.get())) {
-      if (auto targetIdent =
-              dynamic_cast<Identifier *>(addr->identifier.get())) {
-        auto &varName = targetIdent->identifier.TokenLiteral;
-        auto sym = resolveSymbolInfo(varName);
-        if (sym && sym->storage == StorageType::STACK) {
-          logSemanticErrors(
-              "Illegal return of address of local variable '" + varName + "'",
-              retStmt->return_stmt.line, retStmt->return_stmt.column);
-
-          hasError = true;
+      if (targetSym) {
+        errorHandler.addHint(
+            "The pointer '" + valName + "' of tier '" +
+            storageStr(valSym->storage) + "' points to memory of type '" +
+            storageStr(targetSym->storage) +
+            "' that will be freed and cause a dangling pointer");
+        if (!validateLatticeMove(valSym->storage, targetSym->storage)) {
+          logSemanticErrors("Illegal pointer return ",
+                            retStmt->return_stmt.line,
+                            retStmt->return_stmt.column);
         }
       }
     }
   }
 
+  // Safety guard against dangling references
   if (valueType.isRef) {
-    // Identify what the reference actually references
-    if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get())) {
-      auto &name = ident->identifier.TokenLiteral;
-      auto sym = resolveSymbolInfo(name);
-      if (sym) {
-        if (!sym->isParam) {
-          // Get the storage type for the target
-          auto targetSym = sym->refereeSymbol;
-          if (!targetSym) {
-            logSemanticErrors(
-                "Target of reference '" + name + "' does not exist",
-                retStmt->return_stmt.line, retStmt->return_stmt.column);
-            return;
-          }
-          // If the pointee is STACK → ILLEGAL RETURN
-          if (targetSym->storage == StorageType::STACK) {
-            logSemanticErrors("Illegal return of reference'" + name +
-                                  "' (stack memory will be destroyed).",
-                              retStmt->return_stmt.line,
-                              retStmt->return_stmt.column);
+    if (!valSym->isParam) {
+      // Get the storage type for the target
+      auto targetSym = valSym->refereeSymbol;
+      if (!targetSym) {
+        logSemanticErrors(
+            "Target of reference '" + valName + "' does not exist",
+            retStmt->return_stmt.line, retStmt->return_stmt.column);
+        return;
+      }
 
-            hasError = true;
-          }
-        }
+      if (!validateLatticeMove(valSym->storage, targetSym->storage)) {
+        errorHandler.addHint(
+            "The reference '" + valName + "' of tier '" +
+            storageStr(valSym->storage) + "' points to memory of type '" +
+            storageStr(targetSym->storage) +
+            "' that will be freed and cause a dangling reference");
+        logSemanticErrors("Illegal reference return ",
+                          retStmt->return_stmt.line,
+                          retStmt->return_stmt.column);
       }
     }
   }
 
-  // Checking if the return type is nullable if it is not we block return of an
-  // error
-  if (currentFunction.value()->returnType.isNull) {
-    // If the return value is a null literal give it context
-    if (auto nullLit =
-            dynamic_cast<NullLiteral *>(retStmt->return_value.get())) {
-      metaData[nullLit]->type = currentFunction.value()->returnType;
-    }
-  }
+  // Also give the current function the ID of whatever we are returning this is
+  // to allow the baton retriever to find this return using the familyID
+  currentFunction->get()->ID = valSym->ID;
+  currentFunction->get()->storage = valSym->storage;
+  logInternal("Return value storage policy is "+storageStr(valSym->storage));
+  logInternal("Current function storage policy is "+storageStr(currentFunction->get()->storage));
 
   auto info = std::make_shared<SymbolInfo>();
   info->type = currentFunction.value()->returnType;
   info->hasError = hasError;
-  info->genericName = genericName;
   info->isNullable = isValueNullable;
+  info->ID = valSym->ID;
 
+  Node *holder = queryForLifeTimeBaton(info->ID);
+  responsibilityTable[retStmt] = std::move(responsibilityTable[holder]);
   metaData[retStmt] = info;
 }
 
@@ -931,13 +914,19 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     hasError = true;
   }
 
+  logInternal("The call '" + callName + "' storage policy is " +
+              storageStr(callSymbolInfo->storage));
+
   // Store metaData for the call
   auto callSymbol = std::make_shared<SymbolInfo>();
   callSymbol->hasError = hasError;
   callSymbol->type = callSymbolInfo->returnType;
   callSymbol->returnType = callSymbolInfo->returnType;
   callSymbol->isNullable = callSymbolInfo->isNullable;
-
+  callSymbol->storage = callSymbolInfo->storage;
+  callSymbol->ID = callSymbolInfo->ID;
+  Node *holder = queryForLifeTimeBaton(callSymbol->ID);
+  responsibilityTable[funcCall] = std::move(responsibilityTable[holder]);
   metaData[funcCall] = callSymbol;
 }
 
@@ -956,7 +945,7 @@ void Semantics::walkTraceStatement(Node *node) {
   auto exprInfo = metaData[shoutExpr];
   if (!exprInfo)
     return;
-  
+
   Node *holder = queryForLifeTimeBaton(exprInfo->ID);
   responsibilityTable[traceStmt] = std::move(responsibilityTable[holder]);
 }

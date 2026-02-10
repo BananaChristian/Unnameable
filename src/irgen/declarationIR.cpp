@@ -110,13 +110,8 @@ void IRGenerator::generateLetStatement(Node *node) {
   } else if (isHeap) // If it is dynamic heap raise value
   {
     // Create a map on the stack that holds the pointer to the heap memory
-    storage =
-        funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, letName);
-    // The address on the heap where the value is stored
-    llvm::Value *actualHeapPointer = allocateDynamicHeapStorage(sym, letName);
-    //
-    funcBuilder.CreateStore(actualHeapPointer, storage);
-    funcBuilder.CreateStore(initVal, actualHeapPointer);
+    storage = allocateDynamicHeapStorage(sym, letName);
+    funcBuilder.CreateStore(initVal, storage);
   } else // If it isnt a component or a heap raised value
   {
 
@@ -368,12 +363,8 @@ void IRGenerator::generatePointerStatement(Node *node) {
     storagePtr = allocateSageStorage(ptrSym, ptrName, nullptr);
     funcBuilder.CreateStore(initVal, storagePtr);
   } else if (ptrSym->isHeap) {
-    storagePtr =
-        funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, ptrName);
-
-    llvm::Value *actualHeapPtr = allocateDynamicHeapStorage(ptrSym, ptrName);
-    funcBuilder.CreateStore(actualHeapPtr, storagePtr);
-    funcBuilder.CreateStore(initVal, actualHeapPtr);
+    storagePtr = allocateDynamicHeapStorage(ptrSym, ptrName);
+    funcBuilder.CreateStore(initVal, storagePtr);
   } else if (!funcBuilder.GetInsertBlock()) {
     llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
     if (!globalInit) {

@@ -100,7 +100,7 @@ void Semantics::walkArrayStatement(Node *node) {
       nullArray->isSage = isSage;
       nullArray->isHeap = isHeap;
       nullArray->sizePerDimensions = declSizePerDim;
-      //nullArray->isResponsibl = arrStmt;
+      // nullArray->isResponsibl = arrStmt;
 
       if (!loopContext.empty() && loopContext.back()) {
         nullArray->needsPostLoopFree = true;
@@ -156,7 +156,7 @@ void Semantics::walkArrayStatement(Node *node) {
   arrayInfo->isSage = isSage;
   arrayInfo->isHeap = isHeap;
   arrayInfo->sizePerDimensions = declSizePerDim;
-  //arrayInfo->isResponsible = arrStmt;
+  // arrayInfo->isResponsible = arrStmt;
   arrayInfo->isInitialized = isInitialized;
 
   if (!loopContext.empty() && loopContext.back()) {
@@ -188,6 +188,17 @@ void Semantics::walkPointerStatement(Node *node) {
   bool isNullable = false;
 
   ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
+  // Pointer's storage info (The pointer itself not the target)
+  StorageType pointerStorage;
+  if (isGlobalScope()) {
+    pointerStorage = StorageType::GLOBAL;
+  } else if (isSage) {
+    pointerStorage = StorageType::SAGE;
+  } else if (isHeap) {
+    pointerStorage = StorageType::HEAP;
+  } else {
+    pointerStorage = StorageType::STACK;
+  }
 
   // If we dont have the value(This is only allowed inside records and
   // components for now)
@@ -252,6 +263,7 @@ void Semantics::walkPointerStatement(Node *node) {
     ptrInfo->isMutable = isMutable;
     ptrInfo->isConstant = isConstant;
     ptrInfo->isInitialized = true;
+    ptrInfo->storage = pointerStorage;
     ptrInfo->isNullable = isNullable;
 
     metaData[ptrStmt] = ptrInfo;
@@ -262,29 +274,21 @@ void Semantics::walkPointerStatement(Node *node) {
   // Dealing with what is being pointed to
   std::string targetName = extractIdentifierName(ptrVal);
 
-  auto valMetaData = metaData[ptrVal];
-  if (!valMetaData) {
-    logSemanticErrors("Pointing to unidentified target '" + targetName + "'",
-                      line, col);
-
-    return;
-  }
-  ResolvedType targetType = valMetaData->type;
-
-  // Check if the target is a pointer
-  if (!targetType.isPointer) {
-    logSemanticErrors("Must initialize the pointer '" + ptrName +
-                          "' with a pointer value",
-                      line, col);
-    hasError = true;
-    return;
-  }
-
   auto targetSymbol = metaData[ptrVal];
   if (!targetSymbol) {
     logSemanticErrors("Pointer '" + ptrName +
                           "'is pointing to an undeclared variable '" +
                           targetName + "'",
+                      line, col);
+    hasError = true;
+    return;
+  }
+
+  ResolvedType targetType = targetSymbol->type;
+  // Check if the target is a pointer
+  if (!targetType.isPointer) {
+    logSemanticErrors("Must initialize the pointer '" + ptrName +
+                          "' with a pointer value",
                       line, col);
     hasError = true;
     return;
@@ -319,36 +323,24 @@ void Semantics::walkPointerStatement(Node *node) {
 
   isNullable = ptrType.isNull; // Set the nullability based of the type
 
-  // Guard against local pointing and update pointer count
+  // Guard against lattice violation pointing and update pointer count
   auto targetStorage = targetSymbol->storage;
-  if (auto addrValue = dynamic_cast<AddressExpression *>(ptrVal)) {
-    if (targetStorage == StorageType::STACK) {
-
-      logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" +
-                            targetName + "' because it is local",
-                        line, col);
-      hasError = true;
-    }
-
-    // Increment pointer count of x in addr x as it is now being pointed to
-    targetSymbol->pointerCount++;
-
-  } else if (auto identValue = dynamic_cast<Identifier *>(ptrVal)) {
-    auto pointeeTargetSym = targetSymbol->targetSymbol;
-    if (!pointeeTargetSym) {
-      logSemanticErrors("Pointer '" + ptrName + "'s target '" + targetName +
-                            "' lacks targetInfo",
-                        line, col);
-      return;
-    }
-    if (pointeeTargetSym->storage == StorageType::STACK) {
-      logSemanticErrors("Pointer '" + ptrName + "' cannot point to '" +
-                            targetName +
-                            "' because it also points to local variable",
-                        line, col);
-      hasError = true;
-    }
-
+  if (!validateLatticeMove(pointerStorage, targetStorage)) {
+    errorHandler.addHint("Lattice Rule Violation: A pointer cannot be more "
+                         "stable than the data it points to. "
+                         "If '" +
+                         ptrName + "' (" + storageStr(pointerStorage) +
+                         ") outlives '" + targetName + "' (" +
+                         storageStr(targetStorage) +
+                         "), it will become a dangling pointer "
+                         "once '" +
+                         targetName + "' is freed.");
+    logSemanticErrors("Pointer '" + ptrName + "' of memory tier '" +
+                          storageStr(pointerStorage) +
+                          "' cannot point to a target '" + targetName +
+                          "'of type '" + storageStr(targetStorage) + "'",
+                      line, col);
+  } else {
     targetSymbol->pointerCount++;
   }
 
@@ -359,17 +351,6 @@ void Semantics::walkPointerStatement(Node *node) {
   */
 
   logInternal("Pointer Type: " + ptrType.resolvedName);
-  // Pointer's storage info (The pointer itself not the target)
-  StorageType pointerStorage;
-  if (isGlobalScope()) {
-    pointerStorage = StorageType::GLOBAL;
-  } else if (isSage) {
-    pointerStorage = StorageType::SAGE;
-  } else if (isHeap) {
-    pointerStorage = StorageType::HEAP;
-  } else {
-    pointerStorage = StorageType::STACK;
-  }
 
   auto ptrInfo = std::make_shared<SymbolInfo>();
   ptrInfo->isSage = isSage;
