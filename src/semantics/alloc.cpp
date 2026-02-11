@@ -7,8 +7,6 @@ void Semantics::walkAllocatorInterface(Node *node) {
 
   const std::string allocName =
       allocStmt->allocator_name->expression.TokenLiteral;
-  const int nameLine = allocStmt->allocator_name->expression.line;
-  const int nameCol = allocStmt->allocator_name->expression.column;
 
   bool hasError = false;
 
@@ -16,7 +14,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
   auto existing = resolveSymbolInfo(allocName);
   if (existing) {
     logSemanticErrors("Allocator name '" + allocName + "' is already defined",
-                      nameLine, nameCol);
+                      allocStmt->allocator_name.get());
     return;
   }
 
@@ -25,7 +23,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
   if (!block) {
     logSemanticErrors("Allocator interface '" + allocName +
                           "' must have a block body",
-                      nameLine, nameCol);
+                      allocStmt->allocator_name.get());
     return;
   }
 
@@ -40,7 +38,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
     logSemanticErrors("Allocator interface '" + allocName +
                           "' must define exactly two functions (allocation "
                           "function and freeing function)",
-                      block->statement.line, block->statement.column);
+                      block);
     hasError = true;
   }
 
@@ -55,22 +53,17 @@ void Semantics::walkAllocatorInterface(Node *node) {
     if (!fnStmt) {
       logSemanticErrors(
           "Only functions are allowed inside an allocator interface",
-          stmt->statement.line, stmt->statement.column);
+          stmt.get());
       continue;
     }
 
     std::string funcName = "Empty";
-
-    int funcLine;
-    int funcCol;
 
     AllocatorRole role = AllocatorRole::NONE;
 
     if (auto fnExpr =
             dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get())) {
       funcName = fnExpr->func_key.TokenLiteral;
-      funcLine = fnExpr->func_key.line;
-      funcCol = fnExpr->func_key.column;
 
       if (isExportable) {
         fnExpr->isExportable = true;
@@ -79,7 +72,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
       if (fnExpr->call.size() != 1) {
         logSemanticErrors("Allocator function '" + funcName +
                               "' must take exactly one parameter",
-                          funcLine, funcCol);
+                          fnExpr);
         return;
       }
 
@@ -90,8 +83,6 @@ void Semantics::walkAllocatorInterface(Node *node) {
       auto fnDecl =
           dynamic_cast<FunctionDeclaration *>(fnExpr->funcDeclrStmt.get());
       funcName = fnDecl->function_name->expression.TokenLiteral;
-      funcLine = fnDecl->function_name->expression.line;
-      funcCol = fnDecl->function_name->expression.column;
 
       if (isExportable) {
         fnDecl->isExportable = true;
@@ -100,7 +91,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
       if (fnDecl->parameters.size() != 1) {
         logSemanticErrors("Allocator function declaration'" + funcName +
                               "' must take exactly one parameter",
-                          funcLine, funcCol);
+                          fnDecl->function_name.get());
         return;
       }
 
@@ -115,7 +106,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
     if (!funcSym) {
       logSemanticErrors("Allocator function '" + funcName +
                             "' does not exist in allocator '" + allocName + "'",
-                        funcLine, funcCol);
+                        fnStmt);
       continue;
     }
 
@@ -132,7 +123,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
     } else {
       logSemanticErrors("Function '" + funcName +
                             "' does not satisfy allocator contract",
-                        funcLine, funcCol);
+                        fnStmt);
       hasError = true;
     }
   }
@@ -142,7 +133,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
     logSemanticErrors("Allocator interface '" + allocName +
                           "' must define exactly one allocation function and "
                           "one free function",
-                      nameLine, nameCol);
+                      nullptr);
     hasError = true;
   }
 
@@ -161,12 +152,8 @@ void Semantics::walkAllocatorInterface(Node *node) {
 AllocatorRole Semantics::getFunctionRole(
     const std::vector<std::unique_ptr<Statement>> &params,
     Expression *returnType, const std::string &funcName) {
-  const int retLine = returnType->expression.line;
-  const int retCol = returnType->expression.column;
 
   auto &paramStmt = params[0];
-  const int line = paramStmt->statement.line;
-  const int col = paramStmt->statement.column;
 
   ResolvedType paramType = inferNodeDataType(paramStmt.get());
   ResolvedType retType = inferNodeDataType(returnType);
@@ -178,7 +165,7 @@ AllocatorRole Semantics::getFunctionRole(
           "Allocation function '" + funcName +
               "' must take a size parameter of type 'usize' but got '" +
               paramType.resolvedName + "'",
-          line, col);
+          paramStmt.get());
       return AllocatorRole::NONE;
     }
 
@@ -186,14 +173,14 @@ AllocatorRole Semantics::getFunctionRole(
       logSemanticErrors("Allocation function '" + funcName +
                             "' must return 'opaque_ptr' but got '" +
                             retType.resolvedName + "'",
-                        retLine, retCol);
+                        returnType);
       return AllocatorRole::NONE;
     }
 
     if (retType.isArray || retType.isRef) {
       logSemanticErrors("Allocation function '" + funcName +
                             "' cannot return arrays or references",
-                        retLine, retCol);
+                        returnType);
       return AllocatorRole::NONE;
     }
 
@@ -207,7 +194,7 @@ AllocatorRole Semantics::getFunctionRole(
           "Free function '" + funcName +
               "' must take a parameter of 'ptr opaque' but got '" +
               paramType.resolvedName + "'",
-          line, col);
+          returnType);
       return AllocatorRole::NONE;
     }
 
@@ -218,7 +205,7 @@ AllocatorRole Semantics::getFunctionRole(
   logSemanticErrors("Allocator function '" + funcName +
                         "' must either return an opaque pointer (for "
                         "allocation) or void (for freeing)",
-                    retLine, retCol);
+                    returnType);
 
   return AllocatorRole::NONE;
 }
@@ -239,8 +226,7 @@ void Semantics::walkHeapStatement(Node *node) {
     auto allocIt = allocatorMap.find(allocName);
     if (allocIt == allocatorMap.end()) {
       logSemanticErrors("Unknown allocator type '" + allocName + "'",
-                        allocIdent->identifier.line,
-                        allocIdent->identifier.column);
+                        allocIdent);
       return;
     }
 
@@ -257,7 +243,8 @@ void Semantics::walkHeapStatement(Node *node) {
   auto it = metaData.find(heapStmt->stmt.get());
   if (it == metaData.end()) {
     reportDevBug("Could not find statement metaData for declaration in "
-                 "the heap statement ");
+                 "the heap statement ",
+                 heapStmt->stmt.get());
     return;
   }
 

@@ -6,8 +6,6 @@ void Semantics::walkGenericStatement(Node *node) {
     return;
 
   std::string blockName = genericStmt->block_name->expression.TokenLiteral;
-  int line = genericStmt->block_name->expression.line;
-  int col = genericStmt->block_name->expression.column;
   bool hasError = false;
 
   // Check if the generic name is being used somewhere else in the same scope
@@ -15,7 +13,7 @@ void Semantics::walkGenericStatement(Node *node) {
 
   if (existing) {
     logSemanticErrors("Generic block name '" + blockName + "' already in use",
-                      line, col);
+                      genericStmt->block_name.get());
     hasError = true;
   }
 
@@ -41,7 +39,7 @@ void Semantics::walkGenericStatement(Node *node) {
     if (!fnStmt) {
       logSemanticErrors(
           "Must only use function statements as top level in generic blocks",
-          stmt->statement.line, stmt->statement.column);
+          stmt.get());
     }
   }
 
@@ -68,9 +66,6 @@ void Semantics::walkInstantiateStatement(Node *node) {
   // Get the name of the generic we want to instantiate
   auto genericCall = dynamic_cast<GenericCall *>(instStmt->generic_call.get());
   std::string genericName = genericCall->ident->expression.TokenLiteral;
-  auto genline = genericCall->ident->expression.line;
-  auto gencol = genericCall->ident->expression.column;
-
   // Extract the type args here and map them to the semantic type system
   std::vector<Token> rawTypes;
   std::vector<ResolvedType> resolvedArgs;
@@ -86,8 +81,7 @@ void Semantics::walkInstantiateStatement(Node *node) {
 
   auto existing = resolveSymbolInfo(aliasName);
   if (existing) {
-    logSemanticErrors("Alias '" + aliasName + "' already in use",
-                      instStmt->alias.line, instStmt->alias.column);
+    logSemanticErrors("Alias '" + aliasName + "' already in use", instStmt);
     hasError = true;
   }
 
@@ -95,8 +89,8 @@ void Semantics::walkInstantiateStatement(Node *node) {
   auto bluePrintIt = genericMap.find(genericName);
 
   if (bluePrintIt == genericMap.end()) {
-    logSemanticErrors("Unknown generic block '" + genericName + "' ", genline,
-                      gencol);
+    logSemanticErrors("Unknown generic block '" + genericName + "' ",
+                      genericCall->ident.get());
     hasError = true;
     return;
   }
@@ -111,7 +105,7 @@ void Semantics::walkInstantiateStatement(Node *node) {
     logSemanticErrors("Generic '" + genericName + "' requires " +
                           std::to_string(blueprint.typeParams.size()) +
                           " type arguments",
-                      genline, gencol);
+                      genericCall->ident.get());
     hasError = true;
   }
 

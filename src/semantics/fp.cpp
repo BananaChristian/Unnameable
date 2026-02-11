@@ -17,10 +17,8 @@ void Semantics::walkBlockExpression(Node *node) {
     walker(blockExpr->finalexpr.value().get());
     if (currentFunction) {
       if (currentFunction.value()->returnType.kind == DataType::VOID) {
-        logSemanticErrors(
-            "Void function cannot have a final expression",
-            blockExpr->finalexpr.value().get()->expression.line,
-            blockExpr->finalexpr.value().get()->expression.column);
+        logSemanticErrors("Void function cannot have a final expression",
+                          blockExpr->finalexpr.value().get());
       } else {
         ResolvedType exprType =
             inferNodeDataType(blockExpr->finalexpr.value().get());
@@ -32,8 +30,7 @@ void Semantics::walkBlockExpression(Node *node) {
               "Final expression type " + exprType.resolvedName +
                   " does not match function return type " +
                   currentFunction.value()->returnType.resolvedName,
-              blockExpr->finalexpr.value().get()->expression.line,
-              blockExpr->finalexpr.value().get()->expression.column);
+              blockExpr->finalexpr.value().get());
         }
       }
     }
@@ -44,13 +41,13 @@ void Semantics::walkReturnStatement(Node *node) {
   auto retStmt = dynamic_cast<ReturnStatement *>(node);
   bool hasError = false;
   if (!retStmt) {
-    reportDevBug("Invalid return statement node");
+    reportDevBug("Invalid return statement node", node);
     return;
   }
   // Block if the return statement isnt inside a function
   if (!currentFunction) {
     logSemanticErrors("Invalid return statement as not in the current function",
-                      retStmt->return_stmt.line, retStmt->return_stmt.column);
+                      retStmt);
     hasError = true;
   }
 
@@ -62,7 +59,7 @@ void Semantics::walkReturnStatement(Node *node) {
                             "' must return a value of type '" +
                             currentFunction.value()->returnType.resolvedName +
                             "'",
-                        retStmt->return_stmt.line, retStmt->return_stmt.column);
+                        retStmt);
       hasError = true;
     }
     auto voidInfo = std::make_shared<SymbolInfo>();
@@ -115,7 +112,7 @@ void Semantics::walkReturnStatement(Node *node) {
       logSemanticErrors("Cannot return 'null' for non-nullable type '" +
                             currentFunction.value()->returnType.resolvedName +
                             "'",
-                        node->token.line, node->token.column);
+                        node);
       hasError = true;
     } else {
       // If the return value is a null literal give it context
@@ -127,14 +124,13 @@ void Semantics::walkReturnStatement(Node *node) {
                           "' does not match function return type of  '" +
                           currentFunction.value()->returnType.resolvedName +
                           "'",
-                      retStmt->return_value->expression.line,
-                      retStmt->return_value->expression.column);
+                      retStmt);
     hasError = true;
   }
 
   auto valSym = metaData[retStmt->return_value.get()];
   if (!valSym) {
-    reportDevBug("Could not find return value metadata");
+    reportDevBug("Could not find return value metadata", retStmt);
     return;
   }
   auto valName = extractIdentifierName(retStmt->return_value.get());
@@ -148,8 +144,7 @@ void Semantics::walkReturnStatement(Node *node) {
       auto targetSym = valSym->targetSymbol;
       if (!targetSym && valueType.kind != DataType::OPAQUE) {
         logSemanticErrors("Target of pointer '" + valName + "' does not exist",
-                          retStmt->return_stmt.line,
-                          retStmt->return_stmt.column);
+                          retStmt);
         return;
       }
 
@@ -160,9 +155,7 @@ void Semantics::walkReturnStatement(Node *node) {
             storageStr(targetSym->storage) +
             "' that will be freed and cause a dangling pointer");
         if (!validateLatticeMove(valSym->storage, targetSym->storage)) {
-          logSemanticErrors("Illegal pointer return ",
-                            retStmt->return_stmt.line,
-                            retStmt->return_stmt.column);
+          logSemanticErrors("Illegal pointer return ", retStmt);
         }
       }
     }
@@ -175,8 +168,7 @@ void Semantics::walkReturnStatement(Node *node) {
       auto targetSym = valSym->refereeSymbol;
       if (!targetSym) {
         logSemanticErrors(
-            "Target of reference '" + valName + "' does not exist",
-            retStmt->return_stmt.line, retStmt->return_stmt.column);
+            "Target of reference '" + valName + "' does not exist", retStmt);
         return;
       }
 
@@ -186,9 +178,7 @@ void Semantics::walkReturnStatement(Node *node) {
             storageStr(valSym->storage) + "' points to memory of type '" +
             storageStr(targetSym->storage) +
             "' that will be freed and cause a dangling reference");
-        logSemanticErrors("Illegal reference return ",
-                          retStmt->return_stmt.line,
-                          retStmt->return_stmt.column);
+        logSemanticErrors("Illegal reference return ", retStmt);
       }
     }
   }
@@ -197,8 +187,9 @@ void Semantics::walkReturnStatement(Node *node) {
   // to allow the baton retriever to find this return using the familyID
   currentFunction->get()->ID = valSym->ID;
   currentFunction->get()->storage = valSym->storage;
-  logInternal("Return value storage policy is "+storageStr(valSym->storage));
-  logInternal("Current function storage policy is "+storageStr(currentFunction->get()->storage));
+  logInternal("Return value storage policy is " + storageStr(valSym->storage));
+  logInternal("Current function storage policy is " +
+              storageStr(currentFunction->get()->storage));
 
   auto info = std::make_shared<SymbolInfo>();
   info->type = currentFunction.value()->returnType;
@@ -221,8 +212,7 @@ void Semantics::walkFunctionParameters(Node *node) {
     // Ensure parameter name not already declared in this parameter scope
     auto existingLocal = lookUpInCurrentScope(paramName);
     if (existingLocal) {
-      logSemanticErrors("Duplicate parameter name '" + paramName + "'",
-                        param->ident_token.line, param->ident_token.column);
+      logSemanticErrors("Duplicate parameter name '" + paramName + "'", param);
       return;
     }
 
@@ -230,8 +220,7 @@ void Semantics::walkFunctionParameters(Node *node) {
     if (paramTypeNode->data_token.type == TokenType::AUTO) {
       logSemanticErrors("Function parameter '" + paramName +
                             "' cannot use inferred (auto) type",
-                        paramTypeNode->data_token.line,
-                        paramTypeNode->data_token.column);
+                        paramTypeNode);
       return;
     }
 
@@ -262,13 +251,11 @@ void Semantics::walkFunctionParameters(Node *node) {
     logInternal("Registering pointer parameter");
 
     auto ptrName = param->name->expression.TokenLiteral;
-    auto line = param->name->expression.line;
-    auto col = param->name->expression.column;
 
     // Check for duplicate parameter name
     if (lookUpInCurrentScope(ptrName)) {
-      logSemanticErrors("Duplicate parameter name '" + ptrName + "'", line,
-                        col);
+      logSemanticErrors("Duplicate parameter name '" + ptrName + "'",
+                        param->name.get());
       return;
     }
 
@@ -276,7 +263,7 @@ void Semantics::walkFunctionParameters(Node *node) {
     if (!param->type) {
       logSemanticErrors("Pointer parameter '" + ptrName +
                             "' must explicitly declare its type",
-                        line, col);
+                        param->name.get());
       return;
     }
 
@@ -285,7 +272,7 @@ void Semantics::walkFunctionParameters(Node *node) {
     if (!ptrType.isPointer) {
       logSemanticErrors("Parameter '" + ptrName +
                             "' is declared as a pointer but lacks pointer type",
-                        line, col);
+                        param->name.get());
       return;
     }
 
@@ -312,13 +299,10 @@ void Semantics::walkFunctionParameters(Node *node) {
     logInternal("Analyzing reference parameter ...");
 
     auto refName = param->name->expression.TokenLiteral;
-    auto line = param->statement.line;
-    auto col = param->statement.column;
 
     // Check for duplicate parameter name
     if (lookUpInCurrentScope(refName)) {
-      logSemanticErrors("Duplicate parameter name '" + refName + "'", line,
-                        col);
+      logSemanticErrors("Duplicate parameter name '" + refName + "'", param);
       return;
     }
 
@@ -326,7 +310,7 @@ void Semantics::walkFunctionParameters(Node *node) {
     if (!param->type) {
       logSemanticErrors("Reference parameter '" + refName +
                             "' must explicitly declare its type",
-                        line, col);
+                        param);
       return;
     }
 
@@ -335,9 +319,8 @@ void Semantics::walkFunctionParameters(Node *node) {
 
     // Reference parameters are never nullable by design:
     if (refType.isNull) {
-      logSemanticErrors("Reference parameter '" + refName +
-                            "' cannot be nullable",
-                        line, col);
+      logSemanticErrors(
+          "Reference parameter '" + refName + "' cannot be nullable", param);
       return;
     }
 
@@ -378,7 +361,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   bool hasError = false;
 
   if (!funcExpr) {
-    reportDevBug("Invalid function expression");
+    reportDevBug("Invalid function expression", node);
     return;
   }
 
@@ -387,8 +370,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   bool isExportable = funcExpr->isExportable;
 
   if (insideFunction) {
-    logSemanticErrors("Nested function definitions are prohibited",
-                      funcExpr->expression.line, funcExpr->expression.column);
+    logSemanticErrors("Nested function definitions are prohibited", funcExpr);
     return;
   }
 
@@ -402,7 +384,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     if (symbol->isFunction) {
       if (symbol->isDefined) {
         logSemanticErrors("Function name '" + funcName + "' already in use",
-                          funcExpr->func_key.line, funcExpr->func_key.column);
+                          funcExpr);
         insideFunction = false;
         hasError = true;
         return;
@@ -413,13 +395,13 @@ void Semantics::walkFunctionExpression(Node *node) {
           logSemanticErrors(
               "Function definition for '" + funcName +
                   "' does not match prior declaration in global scope",
-              funcExpr->func_key.line, funcExpr->func_key.column);
+              funcExpr);
           hasError = true;
         }
       }
     } else {
       logSemanticErrors("Function name '" + funcName + "' already in use",
-                        funcExpr->func_key.line, funcExpr->func_key.column);
+                        funcExpr);
       hasError = true;
     }
   }
@@ -465,8 +447,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     std::string paramName = "blank";
     if (!letStmt && !ptrStmt && !refStmt) {
       logSemanticErrors("Invalid statement in '" + funcName + "' parameters",
-                        param.get()->statement.line,
-                        param.get()->statement.column);
+                        param.get());
       hasError = true;
       continue;
     }
@@ -483,8 +464,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     auto paramInfo = metaData.find(param.get());
     if (paramInfo == metaData.end()) {
       logSemanticErrors("Parameter '" + paramName + "' not analyzed",
-                        param.get()->statement.line,
-                        param.get()->statement.column);
+                        param.get());
       hasError = true;
       continue;
     }
@@ -496,11 +476,11 @@ void Semantics::walkFunctionExpression(Node *node) {
     if (typeIt != customTypesTable.end()) {
       if (isExportable) {
         if (!typeIt->second->isExportable) {
-          logSemanticErrors(
-              "Exportable function '" + funcName +
-                  "' is using a non exportable type '" + paramTypeName +
-                  "' for its parameter '" + paramName + "'",
-              param.get()->statement.line, param.get()->statement.column);
+          logSemanticErrors("Exportable function '" + funcName +
+                                "' is using a non exportable type '" +
+                                paramTypeName + "' for its parameter '" +
+                                paramName + "'",
+                            param.get());
           hasError = true;
         }
       }
@@ -516,7 +496,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   // Processing return type expression
   if (!funcExpr->return_type) {
     logSemanticErrors("Function '" + funcName + "' is missing a return type",
-                      funcExpr->func_key.line, funcExpr->func_key.column);
+                      funcExpr);
     return; // This is a fatal error so block further analysis to prevent
             // segfaults
   }
@@ -524,15 +504,14 @@ void Semantics::walkFunctionExpression(Node *node) {
   auto retType = dynamic_cast<ReturnType *>(funcExpr->return_type.get());
   if (!retType) {
     logSemanticErrors("Unexpected function return type",
-                      funcExpr->return_type.get()->expression.line,
-                      funcExpr->return_type.get()->expression.column);
+                      funcExpr->return_type.get());
     hasError = true;
   }
 
   if (!retType->returnExpr) {
     logSemanticErrors("Return type expression missing for function '" +
                           funcName + "'",
-                      retType->expression.line, retType->expression.column);
+                      retType);
     return;
   }
 
@@ -570,8 +549,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     auto it = customTypesTable.find(customTypeName);
     if (it == customTypesTable.end()) {
       logSemanticErrors("Type '" + customTypeName + "' does not exist",
-                        retType->returnExpr->expression.line,
-                        retType->returnExpr->expression.column);
+                        retType);
 
       return;
     }
@@ -581,8 +559,7 @@ void Semantics::walkFunctionExpression(Node *node) {
         logSemanticErrors("Exportable function '" + funcName +
                               "' is using non exportable type '" +
                               customTypeName + "'",
-                          retType->returnExpr->expression.line,
-                          retType->returnExpr->expression.column);
+                          retType);
         hasError = true;
       }
     }
@@ -590,7 +567,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   } else if (returnType.kind == DataType::UNKNOWN) {
     logSemanticErrors("Invalid return type '" +
                           retType->expression.TokenLiteral + "'",
-                      retType->expression.line, retType->expression.column);
+                      retType);
     hasError = true;
   }
 
@@ -626,13 +603,13 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   // Process the function body block
   if (!funcExpr->block) {
-    logSemanticErrors("Function body missing for '" + funcName + "'",
-                      funcExpr->expression.line, funcExpr->expression.column);
+    logSemanticErrors("Function body missing for '" + funcName + "'", funcExpr);
     return;
   }
   auto block = dynamic_cast<BlockExpression *>(funcExpr->block.get());
   if (!block) {
-    reportDevBug("Invalid function body for '" + funcName + "'");
+    reportDevBug("Invalid function body for '" + funcName + "'",
+                 funcExpr->block.get());
     hasError = true;
   }
   logInternal("Processing block for function '" + funcName + "'");
@@ -649,7 +626,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     logSemanticErrors("Non-void function '" + funcName +
                           "' must have a return value of type '" +
                           returnType.resolvedName + "'",
-                      funcExpr->expression.line, funcExpr->expression.column);
+                      funcExpr);
     hasError = true;
   }
 
@@ -678,7 +655,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(node);
   bool hasError = false;
   if (!funcDeclrStmt) {
-    reportDevBug("Invalid function declaration statement");
+    reportDevBug("Invalid function declaration statement", node);
     return;
   }
 
@@ -689,8 +666,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
   if (insideFunction) {
     logSemanticErrors("Nested function declarations are prohibited",
-                      funcDeclrStmt->function_name->expression.line,
-                      funcDeclrStmt->function_name->expression.column);
+                      funcDeclrStmt);
     return;
   }
 
@@ -698,19 +674,16 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   auto symbol = resolveSymbolInfo(funcName);
   if (symbol) {
     logSemanticErrors("Already used the name '" + funcName + "'",
-                      funcDeclrStmt->statement.line,
-                      funcDeclrStmt->statement.column);
+                      funcDeclrStmt);
     if (symbol->isDeclaration) {
       logSemanticErrors("Function '" + funcName + " has already been declared",
-                        funcDeclrStmt->statement.line,
-                        funcDeclrStmt->statement.column);
+                        funcDeclrStmt);
       hasError = true;
     }
 
     if (symbol->isDefined) {
       logSemanticErrors("Function '" + funcName + "' has already been defined",
-                        funcDeclrStmt->statement.line,
-                        funcDeclrStmt->statement.column);
+                        funcDeclrStmt);
       hasError = true;
     }
     return;
@@ -741,8 +714,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     std::string paramName = "blank";
     if (!letStmt && !ptrStmt && !refStmt) {
       logSemanticErrors("Invalid statement in '" + funcName + "' parameters",
-                        param.get()->statement.line,
-                        param.get()->statement.column);
+                        param.get());
       hasError = true;
       continue;
     }
@@ -759,8 +731,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     auto paramInfo = metaData.find(param.get());
     if (paramInfo == metaData.end()) {
       logSemanticErrors("Parameter '" + paramName + "' not analyzed",
-                        param.get()->statement.line,
-                        param.get()->statement.column);
+                        param.get());
       hasError = true;
       continue;
     }
@@ -772,11 +743,11 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     if (typeIt != customTypesTable.end()) {
       if (isExportable) {
         if (!typeIt->second->isExportable) {
-          logSemanticErrors(
-              "Exportable function declaration'" + funcName +
-                  "' is using a non exportable type '" + paramTypeName +
-                  "' for its parameter '" + paramName + "'",
-              param.get()->statement.line, param.get()->statement.column);
+          logSemanticErrors("Exportable function declaration'" + funcName +
+                                "' is using a non exportable type '" +
+                                paramTypeName + "' for its parameter '" +
+                                paramName + "'",
+                            param.get());
           hasError = true;
         }
       }
@@ -790,8 +761,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   auto retType = dynamic_cast<ReturnType *>(funcDeclrStmt->return_type.get());
   if (!retType) {
     logSemanticErrors("Unexpected function return type",
-                      funcDeclrStmt->return_type.get()->expression.line,
-                      funcDeclrStmt->return_type.get()->expression.column);
+                      funcDeclrStmt->return_type.get());
     hasError = true;
   }
 
@@ -819,14 +789,14 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     auto it = customTypesTable.find(customTypeName);
     if (it == customTypesTable.end()) {
       logSemanticErrors("Type '" + customTypeName + "' does not exist",
-                        retType->expression.line, retType->expression.column);
+                        retType);
       hasError = true;
     }
     returnType = it->second->type;
   } else if (returnType.kind == DataType::UNKNOWN) {
     logSemanticErrors("Invalid return type '" +
                           retType->expression.TokenLiteral + "'",
-                      retType->expression.line, retType->expression.column);
+                      retType);
     hasError = true;
   }
 
@@ -854,7 +824,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   auto funcCall = dynamic_cast<CallExpression *>(node);
   bool hasError = false;
   if (!funcCall) {
-    reportDevBug("Invalid function call expression");
+    reportDevBug("Invalid function call expression", node);
     return;
   }
 
@@ -866,7 +836,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   if (!callSymbolInfo) {
     logSemanticErrors("Function '" + callName +
                           "' has not been defined or declared anywhere ",
-                      funcCall->expression.line, funcCall->expression.column);
+                      funcCall);
     hasError = true;
     return;
   }
@@ -876,7 +846,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     logSemanticErrors(
         "Error: Identifier '" + callName +
             "' shadows a function and refers to a variable, not a function.",
-        funcCall->expression.line, funcCall->expression.column);
+        funcCall);
     // halt processing, as the arguments/definition checks would be meaningless.
     return;
   }
@@ -884,7 +854,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   // Checking if the function is declaration
   if (!callSymbolInfo->isDeclaration) {
     logSemanticErrors("Function '" + callName + "' was not defined anywhere",
-                      funcCall->expression.line, funcCall->expression.column);
+                      funcCall);
     hasError = true;
   }
 
@@ -901,7 +871,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
           metaData[nullLit]->type = expected;
         } else {
           logSemanticErrors("Cannot pass null to non-nullable parameter",
-                            arg->expression.line, arg->expression.column);
+                            arg.get());
           hasError = true;
           continue;
         }
@@ -955,7 +925,7 @@ void Semantics::walkSealCallExpression(Node *node,
   auto funcCall = dynamic_cast<CallExpression *>(node);
   bool hasError = false;
   if (!funcCall) {
-    reportDevBug("Invalid function call expression");
+    reportDevBug("Invalid function call expression", node);
     return;
   }
 
@@ -963,8 +933,7 @@ void Semantics::walkSealCallExpression(Node *node,
 
   auto sealIt = sealTable.find(sealName);
   if (sealIt == sealTable.end()) {
-    logSemanticErrors("Seal '" + sealName + "' does not exist ",
-                      funcCall->expression.line, funcCall->expression.column);
+    logSemanticErrors("Seal '" + sealName + "' does not exist ", funcCall);
     return;
   }
 
@@ -973,7 +942,7 @@ void Semantics::walkSealCallExpression(Node *node,
   if (sealFnIt == sealFnMap.end()) {
     logSemanticErrors("Function '" + callName + "' does not exist in seal '" +
                           sealName + "'",
-                      funcCall->expression.line, funcCall->expression.column);
+                      funcCall);
     return;
   }
 
@@ -985,7 +954,7 @@ void Semantics::walkSealCallExpression(Node *node,
         "Function '" + callName +
             "' has not been defined or declared anywhere in seal '" + sealName +
             "'",
-        funcCall->expression.line, funcCall->expression.column);
+        funcCall);
     hasError = true;
     return;
   }
@@ -995,7 +964,7 @@ void Semantics::walkSealCallExpression(Node *node,
     logSemanticErrors(
         "Error: Identifier '" + callName +
             "' shadows a function and refers to a variable, not a function.",
-        funcCall->expression.line, funcCall->expression.column);
+        funcCall);
     // halt processing, as the arguments/definition checks would be meaningless.
     return;
   }
@@ -1003,7 +972,7 @@ void Semantics::walkSealCallExpression(Node *node,
   // Checking if the function is declared
   if (!callSymbolInfo->isDeclaration) {
     logSemanticErrors("Function '" + callName + "' was not defined anywhere",
-                      funcCall->expression.line, funcCall->expression.column);
+                      funcCall);
     hasError = true;
   }
 
@@ -1019,7 +988,7 @@ void Semantics::walkSealCallExpression(Node *node,
           metaData[nullLit]->type = expected;
         } else {
           logSemanticErrors("Cannot pass null to non-nullable parameter",
-                            arg->expression.line, arg->expression.column);
+                            arg.get());
           hasError = true;
           continue;
         }
@@ -1054,13 +1023,12 @@ void Semantics::walkSealStatement(Node *node) {
 
   // Extract the name
   auto sealName = sealStmt->sealName->expression.TokenLiteral;
-  auto nameLine = sealStmt->sealName->expression.line;
-  auto nameCol = sealStmt->sealName->expression.column;
 
   // Check if the name is already existant
   auto existingSym = resolveSymbolInfo(sealName);
   if (existingSym) {
-    logSemanticErrors("'" + sealName + "' already exists", nameLine, nameCol);
+    logSemanticErrors("'" + sealName + "' already exists",
+                      sealStmt->sealName.get());
     hasError = true;
   }
 
@@ -1075,15 +1043,14 @@ void Semantics::walkSealStatement(Node *node) {
   auto blockStmt = dynamic_cast<BlockStatement *>(sealStmt->block.get());
   if (!blockStmt) {
     logSemanticErrors("Seal '" + sealName + "' has an invalid or missing body",
-                      nameLine, nameCol);
+                      sealStmt->sealName.get());
     return;
   }
 
   for (const auto &stmt : blockStmt->statements) {
     auto funcStmt = dynamic_cast<FunctionStatement *>(stmt.get());
     if (!funcStmt) {
-      logSemanticErrors("Only function statements can be sealed ",
-                        stmt->statement.line, stmt->statement.column);
+      logSemanticErrors("Only function statements can be sealed ", stmt.get());
       hasError = true;
       return;
     }
@@ -1107,16 +1074,14 @@ void Semantics::walkSealStatement(Node *node) {
         fnExpr->isExportable = isExportable;
     } else if (auto fnDecl = dynamic_cast<FunctionDeclarationExpression *>(
                    funcStmt->funcExpr.get())) {
-      logSemanticErrors("Function declarations cannot be sealed",
-                        fnDecl->expression.line, fnDecl->expression.column);
+      logSemanticErrors("Function declarations cannot be sealed", fnDecl);
       hasError = true;
       return;
     }
 
     auto funcSym = resolveSymbolInfo(name);
     if (!funcSym) {
-      logSemanticErrors("Failed to find function '" + name + "'",
-                        funcStmt->statement.line, funcStmt->statement.column);
+      logSemanticErrors("Failed to find function '" + name + "'", funcStmt);
       return;
     }
     if (isExportable) {

@@ -497,12 +497,12 @@ private:
                         const std::shared_ptr<SymbolInfo> &declSym);
   void transferResponsibility(LifeTime *currentBaton, LifeTime *targetBaton,
                               const std::shared_ptr<SymbolInfo> &tagetSym);
+  void transferBaton(Node *receiver, const std::string &familyID);
   bool validateLatticeMove(const StorageType &holderType,
                            const StorageType &targetType);
   std::string storageStr(const StorageType &storage);
   StorageType determineTier(const std::shared_ptr<SymbolInfo> &sym);
-  void logSemanticErrors(const std::string &message, int tokenLine,
-                         int tokenColumn);
-  void reportDevBug(const std::string &message);
+  void logSemanticErrors(const std::string &message, Node *contextNode);
+  void reportDevBug(const std::string &message, Node *contextNode);
   void logInternal(const std::string &message);
 };

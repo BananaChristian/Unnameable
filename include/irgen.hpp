@@ -68,6 +68,7 @@ private:
   ErrorHandler &errorHandler;
   size_t totalHeapSize;
   bool isVerbose;
+  llvm::Value *ghostStorage = nullptr;
 
   // llvm::BasicBlock *heapInitFnEntry = nullptr;
   void setupTargetLayout();
@@ -220,6 +221,10 @@ private:
                                    llvm::Value *size,
                                    const std::string &varName);
   void executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym);
+  void freeDynamicHeapStorage(const std::string &allocatorType,
+                              llvm::Value *toFree);
+  llvm::Value *handleSnatchedMove(llvm::Value *sourceAddr,
+                                  std::shared_ptr<SymbolInfo> sym, Node *node);
   void emitCleanup(Node *contextNode,
                    const std::shared_ptr<SymbolInfo> &contextSymbol);
   void flattenArrayLiteral(ArrayLiteral *arrLit,

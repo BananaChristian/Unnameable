@@ -306,8 +306,13 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   }
   if (sym->isHeap) {
     llvm::Type *elemTy = sym->llvmType;
-    llvm::Value *actualHeapAddr = funcBuilder.CreateLoad(
-        funcBuilder.getPtrTy(), address, identName + "_heap_ptr");
+    llvm::Value *actualHeapAddr = address;
+
+    // If the ghostStorage is online that means the assignment created it and
+    // now it wants the identifier to memcpy before it even frees
+    if (ghostStorage) {
+      return handleSnatchedMove(actualHeapAddr, sym, identExpr);
+    }
 
     if (!elemTy) {
       reportDevBug("No type for heap scalar '" + identName + "'",

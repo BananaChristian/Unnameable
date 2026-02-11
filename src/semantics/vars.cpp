@@ -290,9 +290,6 @@ void Semantics::walkSizeOfExpression(Node *node) {
   if (!typeNode)
     return;
 
-  int line = typeNode->expression.line;
-  int col = typeNode->expression.column;
-
   ResolvedType type = inferNodeDataType(typeNode);
   bool isInbuilt = isInteger(type) || isBoolean(type) || isChar(type) ||
                    isString(type) || isFloat(type);
@@ -303,7 +300,7 @@ void Semantics::walkSizeOfExpression(Node *node) {
   if (!isInbuilt) {
     auto typeIt = customTypesTable.find(typeName);
     if (typeIt == customTypesTable.end()) {
-      logSemanticErrors("Unknown type '" + typeName + "' in sizeof", line, col);
+      logSemanticErrors("Unknown type '" + typeName + "' in sizeof", typeNode);
       hasError = true;
     }
   }
@@ -353,12 +350,10 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
 
   bool hasError = false;
   auto arrName = arrExpr->identifier->expression.TokenLiteral;
-  auto line = arrExpr->expression.line;
-  auto col = arrExpr->expression.column;
 
   auto arrSymbol = resolveSymbolInfo(arrName);
   if (!arrSymbol) {
-    logSemanticErrors("Unidentified variable '" + arrName + "'", line, col);
+    logSemanticErrors("Unidentified variable '" + arrName + "'", arrExpr);
     return;
   }
 
@@ -374,7 +369,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   if (!arrType.isArray) {
     logSemanticErrors("Cannot index a non array '" + arrName + "of type '" +
                           arrType.resolvedName + "'",
-                      line, col);
+                      arrExpr);
     hasError = true;
   }
 
@@ -382,7 +377,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
     logSemanticErrors("Cannot index a nullable array '" + arrName +
                           "' of type '" + arrType.resolvedName +
                           "' without unwrapping it ",
-                      line, col);
+                      arrExpr);
     hasError = true;
   }
 
@@ -411,7 +406,7 @@ void Semantics::walkIdentifierExpression(Node *node) {
 
   if (!symbolInfo) {
     logSemanticErrors(" Use of undeclared identifer '" + identName + "'",
-                      identExpr->expression.line, identExpr->expression.column);
+                      identExpr);
     return;
   }
 
@@ -449,8 +444,6 @@ void Semantics::walkAddressExpression(Node *node) {
     return;
 
   auto addrName = extractIdentifierName(innerExpr);
-  auto line = innerExpr->expression.line;
-  auto col = innerExpr->expression.column;
 
   auto call = dynamic_cast<CallExpression *>(innerExpr);
   auto metCall = dynamic_cast<MethodCallExpression *>(innerExpr);
@@ -469,7 +462,7 @@ void Semantics::walkAddressExpression(Node *node) {
                    "this");
       logSemanticErrors(
           "Cannot take address of an arithmetic expression or comparison",
-          infix->expression.line, infix->expression.column);
+          infix);
       return;
     }
   }
@@ -484,7 +477,7 @@ void Semantics::walkAddressExpression(Node *node) {
                  "temporary in nature and have no location ");
     logSemanticErrors("Cannot get the address to a temporary value '" +
                           addrName + "'",
-                      line, col);
+                      innerExpr);
     return;
   }
 
@@ -492,7 +485,7 @@ void Semantics::walkAddressExpression(Node *node) {
   auto symbolInfo = metaData[innerExpr];
 
   if (!symbolInfo) {
-    logSemanticErrors("Unidentified variable '" + addrName + "'", line, col);
+    logSemanticErrors("Unidentified variable '" + addrName + "'", innerExpr);
     return;
   }
 
@@ -526,8 +519,6 @@ void Semantics::walkMoveExpression(Node *node) {
   if (!innerExpr)
     return;
   auto exprName = extractIdentifierName(innerExpr);
-  auto exprLine = innerExpr->expression.line;
-  auto exprCol = innerExpr->expression.column;
 
   auto call = dynamic_cast<CallExpression *>(innerExpr);
   auto metCall = dynamic_cast<MethodCallExpression *>(innerExpr);
@@ -544,7 +535,7 @@ void Semantics::walkMoveExpression(Node *node) {
                    "location an arithetic operation of any sorts does not have "
                    "this");
       logSemanticErrors("Cannot move of an arithmetic expression or comparison",
-                        infix->expression.line, infix->expression.column);
+                        infix);
       return;
     }
   }
@@ -557,7 +548,7 @@ void Semantics::walkMoveExpression(Node *node) {
                  "with a permanent location, function calls are "
                  "temoprary in nature and have no location ");
     logSemanticErrors("Cannot move a temporary value '" + exprName + "'",
-                      exprLine, exprCol);
+                      innerExpr);
     return;
   }
 
@@ -565,21 +556,20 @@ void Semantics::walkMoveExpression(Node *node) {
   auto symbolInfo = metaData[innerExpr];
 
   if (!symbolInfo) {
-    logSemanticErrors("Unidentified variable '" + exprName + "'", exprLine,
-                      exprCol);
+    logSemanticErrors("Unidentified variable '" + exprName + "'", innerExpr);
   }
 
   if (symbolInfo->storage == StorageType::STACK) {
     logSemanticErrors("Cannot move variable '" + exprName +
                           "' as it is stored on the stack",
-                      exprLine, exprCol);
+                      innerExpr);
   }
 
   if (symbolInfo->type.isPointer || symbolInfo->type.isRef) {
     logSemanticErrors("Cannot move variable '" + exprName +
                           "' as it is of a type '" +
                           symbolInfo->type.resolvedName + "'",
-                      exprLine, exprCol);
+                      innerExpr);
   }
 
   /*if (!symbolInfo->isOwner) {
@@ -589,8 +579,8 @@ void Semantics::walkMoveExpression(Node *node) {
                       }*/
 
   if (symbolInfo->isInvalid) {
-    logSemanticErrors("Variable '" + exprName + "' was already moved", exprLine,
-                      exprCol);
+    logSemanticErrors("Variable '" + exprName + "' was already moved",
+                      innerExpr);
   }
 
   metaData[moveExpr] = symbolInfo;
@@ -604,21 +594,18 @@ void Semantics::walkDereferenceExpression(Node *node) {
   auto innerNode = derefExpr->identifier.get();
   std::string derefName = extractIdentifierName(innerNode);
 
-  auto line = derefExpr->identifier->expression.line;
-  auto col = derefExpr->identifier->expression.column;
-
   walker(innerNode);
 
   auto derefSym = resolveSymbolInfo(derefName);
   if (!derefSym) {
-    logSemanticErrors("Use of undeclared identifier '" + derefName + "'", line,
-                      col);
+    logSemanticErrors("Use of undeclared identifier '" + derefName + "'",
+                      derefExpr);
     return;
   }
 
   if (derefSym->hasError) {
     logSemanticErrors(
-        "Cannot dereference erronious pointer '" + derefName + "'", line, col);
+        "Cannot dereference erronious pointer '" + derefName + "'", derefExpr);
     return;
   }
 
@@ -626,14 +613,14 @@ void Semantics::walkDereferenceExpression(Node *node) {
   if (!derefSym->type.isPointer) {
     logSemanticErrors("Cannot dereference non pointer type '" +
                           derefSym->type.resolvedName + "'",
-                      line, col);
+                      derefExpr);
     return; // Dont bother
   }
 
   // Block dereferencing opaque pointer
   if (derefSym->type.kind == DataType::OPAQUE) {
     logSemanticErrors(
-        "Cannot dereference an opaque pointer '" + derefName + "'", line, col);
+        "Cannot dereference an opaque pointer '" + derefName + "'", derefExpr);
     return;
   }
 
@@ -641,7 +628,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
   if (derefSym->type.isNull) {
     logSemanticErrors("Cannot dereference nullable pointer type '" +
                           derefSym->type.resolvedName + "'",
-                      line, col);
+                      derefExpr);
     return;
   }
 
@@ -671,18 +658,23 @@ void Semantics::walkAssignStatement(Node *node) {
   if (!assignStmt)
     return;
 
+  if (isGlobalScope()) {
+    logSemanticErrors(
+        "Cannot place an executable statement in the global scope", assignStmt);
+  }
+
   std::shared_ptr<SymbolInfo> symbol = nullptr;
   std::string assignName;
   bool hasError = false;
 
-  // --- Handle self.field assignments ---
+  // Handle the LHS
+  //  --- Handle self.field assignments ---
   if (auto *selfExpr =
           dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
     logInternal("self assignment triggered");
     if (currentTypeStack.empty() ||
         currentTypeStack.back().type.kind != DataType::COMPONENT) {
-      logSemanticErrors("'self' cannot be used outside a component",
-                        selfExpr->expression.line, selfExpr->expression.column);
+      logSemanticErrors("'self' cannot be used outside a component", selfExpr);
       hasError = true;
       return;
     }
@@ -698,8 +690,7 @@ void Semantics::walkAssignStatement(Node *node) {
       auto ident = dynamic_cast<Identifier *>(field.get());
       if (!ident) {
         logSemanticErrors("Expected identifier in self expression chain",
-                          selfExpr->expression.line,
-                          selfExpr->expression.column);
+                          selfExpr);
         hasError = true;
         return;
       }
@@ -710,8 +701,7 @@ void Semantics::walkAssignStatement(Node *node) {
       auto compTypeIt = customTypesTable.find(currentTypeName);
       if (compTypeIt == customTypesTable.end()) {
         logSemanticErrors("Component '" + currentTypeName + "' does not exist",
-                          selfExpr->expression.line,
-                          selfExpr->expression.column);
+                          selfExpr);
         hasError = true;
         return;
       }
@@ -721,7 +711,7 @@ void Semantics::walkAssignStatement(Node *node) {
       if (memIt == members.end()) {
         logSemanticErrors("Field '" + fieldName + "' not found in component '" +
                               currentTypeName + "'",
-                          ident->identifier.line, ident->identifier.column);
+                          ident);
         hasError = true;
         return;
       }
@@ -739,71 +729,10 @@ void Semantics::walkAssignStatement(Node *node) {
     symbol->isInitialized = fieldInfo->isInitialised;
     symbol->memberIndex = fieldInfo->memberIndex;
     symbol->hasError = hasError;
-  }
-
-  // --- Handle plain identifier assignments ---
-  else if (auto ident =
-               dynamic_cast<Identifier *>(assignStmt->identifier.get())) {
-    assignName = ident->identifier.TokenLiteral;
-    symbol = resolveSymbolInfo(assignName);
-
-    if (!symbol) {
-      logSemanticErrors("Variable '" + assignName + "' is not declared",
-                        ident->identifier.line, ident->identifier.column);
-      hasError = true;
-      return;
-    }
-    walker(ident);
-  }
-  //---Handle dereference identifiers
-  else if (auto derefExpr = dynamic_cast<DereferenceExpression *>(
-               assignStmt->identifier.get())) {
-    walker(derefExpr);
-    assignName = extractIdentifierName(derefExpr->identifier.get());
-    auto derefMeta = metaData.find(derefExpr);
-    if (derefMeta == metaData.end()) {
-      logSemanticErrors(
-          "Failed to resolve dereference metadata for '" + assignName + "'",
-          derefExpr->expression.line, derefExpr->expression.column);
-      hasError = true;
-      return;
-    }
-
-    // THIS is the actual pointee’s symbol info (the target of x)
-    symbol = derefMeta->second;
-
-    // Optional sanity check
-    if (symbol->isPointer) {
-      reportDevBug("Dereference did not unwrap pointer correctly for '" +
-                   assignName + "'");
-      hasError = true;
-    }
-  } else if (auto arrAccess =
-                 dynamic_cast<ArraySubscript *>(assignStmt->identifier.get())) {
-    assignName = arrAccess->identifier->expression.TokenLiteral;
-    auto line = arrAccess->expression.line;
-    auto col = arrAccess->expression.column;
-    symbol = resolveSymbolInfo(assignName);
-    if (!symbol) {
-      logSemanticErrors("Unidentifed variable '" + assignName + "' ", line,
-                        col);
-      hasError = true;
-      return;
-    }
-    walker(arrAccess);
-    auto accessMeta = metaData.find(arrAccess);
-    if (accessMeta == metaData.end()) {
-      reportDevBug("Failed to get array access metaData");
-      hasError = true;
-      return;
-    }
-    symbol = accessMeta->second;
   } else {
-    logSemanticErrors("Invalid assignment target",
-                      assignStmt->identifier->expression.line,
-                      assignStmt->identifier->expression.column);
-    hasError = true;
-    return;
+    walker(assignStmt->identifier.get());
+    assignName = extractIdentifierName(assignStmt->identifier.get());
+    symbol = getSymbolFromMeta(assignStmt->identifier.get());
   }
 
   // --- Handle RHS null literal ---
@@ -817,14 +746,14 @@ void Semantics::walkAssignStatement(Node *node) {
       if (!identSym) {
         logSemanticErrors("Cannot assign non existant identifier '" +
                               identName + "' to variable '" + assignName + "'",
-                          ident->expression.line, ident->expression.column);
+                          ident);
         hasError = true;
       }
 
       if (!identSym->isInitialized) {
         logSemanticErrors("Cannot assign non initialized identifier '" +
                               identName + "' to variable '" + assignName + "'",
-                          ident->expression.line, ident->expression.column);
+                          ident);
         hasError = true;
       }
       walker(ident);
@@ -835,8 +764,7 @@ void Semantics::walkAssignStatement(Node *node) {
       auto arrSymbol = resolveSymbolInfo(assignName);
       if (!arrSymbol) {
         logSemanticErrors("Could not find variable '" + assignName + "'",
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
+                          assignStmt->identifier.get());
         hasError = true;
       }
       auto arrSizePerDim = arrSymbol->sizePerDimensions;
@@ -846,8 +774,7 @@ void Semantics::walkAssignStatement(Node *node) {
                               std::to_string(arrSizePerDim.size()) +
                               " does not match array literal dimensions " +
                               std::to_string(arrSizePerDim.size()),
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
+                          assignStmt->identifier.get());
         hasError = true;
       }
     } else if (auto moveVal =
@@ -870,7 +797,7 @@ void Semantics::walkAssignStatement(Node *node) {
             "must also be a 'heap' allocation.");
         logSemanticErrors(
             "Cannot move a non heap variable into a heap variable",
-            moveVal->expr->expression.line, moveVal->expr->expression.line);
+            moveVal->expr.get());
       }
 
       // symbol->isOwner = true; // Transfer ownership to say y
@@ -886,7 +813,7 @@ void Semantics::walkAssignStatement(Node *node) {
   if (isArrow && !symbol->isPointer) {
     logSemanticErrors("Cannot use '->' for non-pointer variable '" +
                           assignName + "'. Use '=' instead.",
-                      assignStmt->op.line, assignStmt->op.column);
+                      assignStmt);
     hasError = true;
   }
 
@@ -895,7 +822,7 @@ void Semantics::walkAssignStatement(Node *node) {
     // clarity
     logSemanticErrors("Cannot use '=' for pointer variable '" + assignName +
                           "'. Use '->' to repoint.",
-                      assignStmt->op.line, assignStmt->op.column);
+                      assignStmt);
     hasError = true;
   }
 
@@ -907,8 +834,7 @@ void Semantics::walkAssignStatement(Node *node) {
     if (!symbol->isNullable) {
       logSemanticErrors("Cannot assign 'null' to non-nullable variable '" +
                             assignName + "'",
-                        assignStmt->identifier->expression.line,
-                        assignStmt->identifier->expression.column);
+                        assignStmt->identifier.get());
 
       hasError = true;
       return;
@@ -940,13 +866,13 @@ void Semantics::walkAssignStatement(Node *node) {
     if (rhsIsNull) {
       logSemanticErrors("Cannot assign 'null' to an opaque pointer '" +
                             assignName + "'",
-                        assignStmt->op.line, assignStmt->op.column);
+                        assignStmt);
       hasError = true;
     } else if (!rhsType.isPointer) {
       logSemanticErrors("Cannot assign non-pointer type '" +
                             rhsType.resolvedName + "' to opaque pointer '" +
                             assignName + "'",
-                        assignStmt->op.line, assignStmt->op.column);
+                        assignStmt);
       hasError = true;
     }
     typeCheckPassed = true; // We've handled the "Opaque Sink" logic
@@ -955,8 +881,7 @@ void Semantics::walkAssignStatement(Node *node) {
   if (!typeCheckPassed && !isTypeCompatible(lhsType, rhsType)) {
     logSemanticErrors("Type mismatch: expected '" + symbol->type.resolvedName +
                           "' but got '" + rhsType.resolvedName + "'",
-                      assignStmt->identifier->expression.line,
-                      assignStmt->identifier->expression.column);
+                      assignStmt->identifier.get());
     hasError = true;
   }
 
@@ -964,16 +889,14 @@ void Semantics::walkAssignStatement(Node *node) {
   if (symbol->isConstant) {
     logSemanticErrors("Cannot reassign to constant variable '" + assignName +
                           "'",
-                      assignStmt->identifier->expression.line,
-                      assignStmt->identifier->expression.column);
+                      assignStmt->identifier.get());
     hasError = true;
   }
 
   if (!symbol->isMutable && symbol->isInitialized) {
     logSemanticErrors("Cannot reassign to immutable variable '" + assignName +
                           "'",
-                      assignStmt->identifier->expression.line,
-                      assignStmt->identifier->expression.column);
+                      assignStmt->identifier.get());
     hasError = true;
   }
 
@@ -998,8 +921,7 @@ void Semantics::walkAssignStatement(Node *node) {
       logSemanticErrors(
           "Cannot assign a null value to to a non-nullable variable '" +
               assignName + "'",
-          assignStmt->identifier->expression.line,
-          assignStmt->identifier->expression.column);
+          assignStmt->identifier.get());
       hasError = true;
     }
   }
@@ -1014,7 +936,7 @@ void Semantics::walkAssignStatement(Node *node) {
       {
         logSemanticErrors("Cannot reassign a non pointer '" + identName +
                               "' to pointer variable '" + assignName + "'",
-                          ident->expression.line, ident->expression.column);
+                          ident);
         hasError = true;
       }
       // Get the target symbol
@@ -1023,7 +945,7 @@ void Semantics::walkAssignStatement(Node *node) {
         logSemanticErrors("No target symbol for '" + identName +
                               "' being reassigned to variable '" + assignName +
                               "'",
-                          ident->expression.line, ident->expression.column);
+                          ident);
         hasError = true;
         return; // This is a critical error leaving it will cause derefencing of
                 // nullptrs
@@ -1034,37 +956,33 @@ void Semantics::walkAssignStatement(Node *node) {
         // The compiler should complain
         logSemanticErrors("Cannot reassign local pointer '" + identName +
                               "' to pointer variable '" + assignName + "'",
-                          ident->expression.line, ident->expression.column);
+                          ident);
         hasError = true;
       }
     } else if (auto addr =
                    dynamic_cast<AddressExpression *>(assignStmt->value.get())) {
       // Get the address name
       auto addrName = addr->identifier->expression.TokenLiteral;
-      auto line = addr->expression.line;
-      auto col = addr->expression.column;
       // Get the symbolInfo
       auto addrSym = resolveSymbolInfo(addrName);
       if (!addrSym) {
         logSemanticErrors("Unidentified address pointer '" + addrName +
                               "' cannot reassign to pointer variable '" +
                               assignName + "'",
-                          line, col);
+                          addr);
         hasError = true;
       }
       // Get the storage type
       if (addrSym->storage == StorageType::STACK) {
         logSemanticErrors("Cannot reassign local address pointer '" + addrName +
                               "' to pointer variable '" + assignName + "'",
-                          line, col); // Complain
+                          addr); // Complain
         hasError = true;
       }
     } else if (auto call =
                    dynamic_cast<CallExpression *>(assignStmt->value.get())) {
       // Get the function name
       auto funcName = call->function_identifier->expression.TokenLiteral;
-      auto line = call->function_identifier->expression.line;
-      auto col = call->function_identifier->expression.column;
 
       // Get the symbol info
       auto callSym = resolveSymbolInfo(funcName);
@@ -1075,15 +993,14 @@ void Semantics::walkAssignStatement(Node *node) {
       if (!callSym->returnType.isPointer) {
         logSemanticErrors("Cannot reassign a non pointer call '" + funcName +
                               "' to pointer variable '" + assignName + "'",
-                          line, col);
+                          call->function_identifier.get());
         hasError = true;
       }
     } else {
       logSemanticErrors(
           "Must only reassign address to pointer or a pointer to '" +
               assignName + "'",
-          assignStmt->identifier->expression.line,
-          assignStmt->identifier->expression.column);
+          assignStmt->identifier.get());
       hasError = true;
     }
   }
@@ -1098,6 +1015,7 @@ void Semantics::walkAssignStatement(Node *node) {
     walker(assignStmt->value.get());
 
   // --- Store metadata for later stages ---
+  transferBaton(assignStmt, symbol->ID);
   metaData[assignStmt] = symbol;
 }
 
@@ -1107,8 +1025,6 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     return;
 
   auto name = extractIdentifierName(fieldAssignStmt->lhs_chain.get());
-  auto line = fieldAssignStmt->statement.line;
-  auto column = fieldAssignStmt->statement.column;
 
   walker(fieldAssignStmt->lhs_chain.get());
 
@@ -1118,14 +1034,14 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   }
 
   if (lhsInfo->isConstant) {
-    logSemanticErrors("Cannot reassign to constant field '" + name + "'", line,
-                      column);
+    logSemanticErrors("Cannot reassign to constant field '" + name + "'",
+                      fieldAssignStmt);
     return;
   }
 
   if (!lhsInfo->isMutable && lhsInfo->isInitialized) {
-    logSemanticErrors("Cannot reassign to immutable field '" + name + "'", line,
-                      column);
+    logSemanticErrors("Cannot reassign to immutable field '" + name + "'",
+                      fieldAssignStmt);
     return;
   }
 
@@ -1136,7 +1052,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   if (isArrow && !lhsInfo->isPointer) {
     logSemanticErrors("Cannot use '->' for non-pointer variable '" + name +
                           "'. Use '=' instead.",
-                      fieldAssignStmt->op.line, fieldAssignStmt->op.column);
+                      fieldAssignStmt);
     return;
   }
 
@@ -1145,7 +1061,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     // clarity
     logSemanticErrors("Cannot use '=' for pointer variable '" + name +
                           "'. Use '->' to repoint.",
-                      fieldAssignStmt->op.line, fieldAssignStmt->op.column);
+                      fieldAssignStmt);
     return;
   }
 
@@ -1157,7 +1073,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
       if (!lhsInfo->type.isNull) {
         logSemanticErrors("Cannot assign 'null' to non nullable variable '" +
                               name + "'",
-                          line, column);
+                          fieldAssignStmt);
       }
       rhsInfo->type = lhsInfo->type;
       rhsInfo->isInitialized = true;
@@ -1172,13 +1088,13 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
           logSemanticErrors("Cannot reassign non pointer type '" +
                                 rhsInfo->type.resolvedName +
                                 "' to an opaque pointer",
-                            line, column);
+                            fieldAssignStmt);
         }
       } else if (!isTypeCompatible(lhsInfo->type, rhsInfo->type)) {
         logSemanticErrors("Type mismatch in assignment expected '" +
                               lhsInfo->type.resolvedName + "' but got '" +
                               rhsInfo->type.resolvedName + "'",
-                          line, column);
+                          fieldAssignStmt);
       }
     }
   }

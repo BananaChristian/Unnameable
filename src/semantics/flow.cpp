@@ -22,8 +22,6 @@ void Semantics::walkBlockStatement(Node *node) {
     if (auto assignStmt = dynamic_cast<AssignmentStatement *>(stmt.get())) {
       logInternal("Triggered self heap check");
       name = extractIdentifierName(assignStmt->identifier.get());
-      int line = assignStmt->identifier->expression.line;
-      int col = assignStmt->identifier->expression.column;
       // Incase it is a self expression just call the walker for now
       if (auto selfExpr =
               dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
@@ -33,7 +31,8 @@ void Semantics::walkBlockStatement(Node *node) {
 
         auto assignSym = resolveSymbolInfo(name);
         if (!assignSym) {
-          logSemanticErrors("Undeclared variable '" + name + "'", line, col);
+          logSemanticErrors("Undeclared variable '" + name + "'",
+                            assignStmt->identifier.get());
           return;
         }
         // only error if it's heap and not declared in this block
@@ -43,7 +42,7 @@ void Semantics::walkBlockStatement(Node *node) {
           logSemanticErrors(
               "Cannot use a variable '" + name +
                   "' that you heap raised externally inside a loop or branch",
-              line, col);
+              assignStmt->identifier.get());
           return;
         }
       }
@@ -54,12 +53,9 @@ void Semantics::walkBlockStatement(Node *node) {
               dynamic_cast<InfixExpression *>(exprStmt->expression.get())) {
         auto checkIdent = [&](Identifier *ident) {
           std::string n = ident->identifier.TokenLiteral;
-          int line = ident->expression.line;
-          int col = ident->expression.column;
           auto sym = resolveSymbolInfo(n);
           if (!sym) {
-            logSemanticErrors("Use of undeclared variable '" + n + "'", line,
-                              col);
+            logSemanticErrors("Use of undeclared variable '" + n + "'", ident);
             return false;
           }
           if (sym->isHeap &&
@@ -68,7 +64,7 @@ void Semantics::walkBlockStatement(Node *node) {
             logSemanticErrors(
                 "Cannot use a variable '" + n +
                     "' that you heap raised externally inside a loop",
-                line, col);
+                ident);
             return false;
           }
           return true;
@@ -98,9 +94,9 @@ void Semantics::walkWhileStatement(Node *node) {
   auto whileCondition = whileStmt->condition.get();
   ResolvedType whileCondType = inferNodeDataType(whileCondition);
   if (whileCondType.kind != DataType::BOOLEAN) {
-    logSemanticErrors(
-        "Expected boolean type but got '" + whileCondType.resolvedName + "'",
-        whileCondition->expression.line, whileCondition->expression.column);
+    logSemanticErrors("Expected boolean type but got '" +
+                          whileCondType.resolvedName + "'",
+                      whileCondition);
   }
   walker(whileCondition);
 
@@ -128,13 +124,10 @@ void Semantics::walkElifStatement(Node *node) {
   walker(elifResults);
   for (const auto &ident : currentBranchIdents) {
     const std::string &identName = ident->identifier.TokenLiteral;
-    auto identLine = ident->identifier.line;
-    auto identCol = ident->identifier.column;
     auto identSym = resolveSymbolInfo(identName);
     if (!identSym) {
-      logSemanticErrors("Could not find the identifier symbol '" + identName +
-                            "'",
-                        identLine, identCol);
+      logSemanticErrors(
+          "Could not find the identifier symbol '" + identName + "'", ident);
       continue;
     }
 
@@ -168,9 +161,8 @@ void Semantics::walkIfStatement(Node *node) {
     auto identCol = ident->identifier.column;
     auto identSym = resolveSymbolInfo(identName);
     if (!identSym) {
-      logSemanticErrors("Could not find the identifier symbol '" + identName +
-                            "'",
-                        identLine, identCol);
+      logSemanticErrors(
+          "Could not find the identifier symbol '" + identName + "'", ident);
       continue;
     }
 
@@ -202,9 +194,8 @@ void Semantics::walkIfStatement(Node *node) {
       auto identCol = ident->identifier.column;
       auto identSym = resolveSymbolInfo(identName);
       if (!identSym) {
-        logSemanticErrors("Could not find the identifier symbol '" + identName +
-                              "'",
-                          identLine, identCol);
+        logSemanticErrors(
+            "Could not find the identifier symbol '" + identName + "'", ident);
         continue;
       }
 
@@ -226,11 +217,10 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   bool hasError = false;
 
   auto caseCondition = caseStmt->condition.get();
-  int line = caseCondition->expression.line;
-  int col = caseCondition->expression.column;
 
   if (!isLiteral(caseCondition)) {
-    logSemanticErrors("Case condition must be a constant literal", line, col);
+    logSemanticErrors("Case condition must be a constant literal",
+                      caseCondition);
     hasError = true;
     return;
   }
@@ -239,7 +229,7 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
 
   // Checking if the case type matches the type of the entire switch
   if (!metaData[caseCondition]) {
-    reportDevBug("Could not find case metaData");
+    reportDevBug("Could not find case metaData", caseCondition);
     return;
   }
 
@@ -249,15 +239,15 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   if (!isValid) {
     logSemanticErrors(
         "Invalid case target expected only integers, chars, and enumarations",
-        line, col);
+        caseCondition);
     hasError = true;
   }
   if (caseType.kind != targetType.kind) {
-    logSemanticErrors(
-        "Type mismatch: case literal type '" + caseType.resolvedName +
-            "' doesnt match switch expression type '" +
-            targetType.resolvedName + "'",
-        caseCondition->expression.line, caseCondition->expression.line);
+    logSemanticErrors("Type mismatch: case literal type '" +
+                          caseType.resolvedName +
+                          "' doesnt match switch expression type '" +
+                          targetType.resolvedName + "'",
+                      caseCondition);
     hasError = true;
   }
 
@@ -289,7 +279,7 @@ void Semantics::walkSwitchStatement(Node *node) {
   if (!isValid) {
     logSemanticErrors(
         "Invalid switch target expected only integers, chars, and enumarations",
-        switchStmt->switch_token.line, switchStmt->switch_token.column);
+        switchStmt);
     hasError = true;
   }
 
@@ -306,9 +296,7 @@ void Semantics::walkSwitchStatement(Node *node) {
     }
     popScope();
   } else {
-    logSemanticErrors("Switch statement is missing default case",
-                      switchStmt->switch_token.line,
-                      switchStmt->switch_token.line);
+    logSemanticErrors("Switch statement is missing default case", switchStmt);
     hasError = true;
   }
 
@@ -349,8 +337,7 @@ void Semantics::walkBreakStatement(Node *node) {
     return;
 
   if (loopContext.empty()) {
-    logSemanticErrors(" 'break' used outside a loop ",
-                      breakStmt->statement.line, breakStmt->statement.column);
+    logSemanticErrors(" 'break' used outside a loop ", breakStmt);
   }
 }
 
@@ -360,8 +347,6 @@ void Semantics::walkContinueStatement(Node *node) {
     return;
 
   if (loopContext.empty() || !loopContext.back()) {
-    logSemanticErrors("'continue' used outside a loop",
-                      continueStmt->statement.line,
-                      continueStmt->statement.column);
+    logSemanticErrors("'continue' used outside a loop", continueStmt);
   }
 }

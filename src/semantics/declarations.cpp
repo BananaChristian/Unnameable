@@ -14,12 +14,10 @@ void Semantics::walkArrayStatement(Node *node) {
   bool isConstant = arrStmt->mutability == Mutability::CONSTANT;
 
   const auto &arrayName = arrStmt->identifier->expression.TokenLiteral;
-  int arrNameLine = arrStmt->identifier->expression.line;
-  int arrNameCol = arrStmt->identifier->expression.column;
 
   if (resolveSymbolInfo(arrayName)) {
     logSemanticErrors("Array name '" + arrayName + "' already exists",
-                      arrNameLine, arrNameCol);
+                      arrStmt->identifier.get());
     return;
   }
 
@@ -34,14 +32,14 @@ void Semantics::walkArrayStatement(Node *node) {
   // Enforce initialization rules and constance rules
   if (isConstant) {
     logSemanticErrors("Constant array '" + arrayName + "' must be initialized",
-                      arrStmt->statement.line, arrStmt->statement.column);
+                      arrStmt);
     hasError = true;
   }
 
   if (!arrStmt->array_content && arrStmt->lengths.empty()) {
     logSemanticErrors("Uninitialized array '" + arrayName +
                           "' is missing length declaration",
-                      arrStmt->statement.line, arrStmt->statement.column);
+                      arrStmt);
     hasError = true;
   }
 
@@ -67,7 +65,8 @@ void Semantics::walkArrayStatement(Node *node) {
     walker(arrStmt->array_content.get());
 
     if (!metaData[arrStmt->array_content.get()]) {
-      reportDevBug("Could not find array literal metaData");
+      reportDevBug("Could not find array literal metaData",
+                   arrStmt->array_content.get());
       return;
     }
 
@@ -78,14 +77,14 @@ void Semantics::walkArrayStatement(Node *node) {
         logSemanticErrors("Cannot assign null to non nullable array '" +
                               arrayName + "' of type '" +
                               arrayType.resolvedName + "'",
-                          arrNameLine, arrNameCol);
+                          arrStmt->identifier.get());
         hasError = true;
       }
 
       if (arrStmt->lengths.empty()) {
         logSemanticErrors("Cannot assign null to an array'" + arrayName +
                               "' whose dimensions you have not specified",
-                          arrNameLine, arrNameCol);
+                          arrStmt->identifier.get());
         hasError = true;
       }
 
@@ -127,8 +126,7 @@ void Semantics::walkArrayStatement(Node *node) {
                 std::to_string(declSizePerDim.size()) +
                 "' dimensions but got '" +
                 std::to_string(literalDimensionSizePerDim.size()) + "'",
-            arrStmt->array_content->expression.line,
-            arrStmt->array_content->expression.column);
+            arrStmt->array_content.get());
         hasError = true;
       }
     } else {
@@ -142,8 +140,7 @@ void Semantics::walkArrayStatement(Node *node) {
       logSemanticErrors("Declared type '" + arrayType.resolvedName +
                             "' does not match the initialized type '" +
                             literalType.resolvedName + "'",
-                        arrStmt->array_content->expression.line,
-                        arrStmt->array_content->expression.column);
+                        arrStmt->array_content.get());
       hasError = true;
     }
   }
@@ -178,8 +175,6 @@ void Semantics::walkPointerStatement(Node *node) {
     return;
 
   auto ptrName = ptrStmt->name->expression.TokenLiteral;
-  auto line = ptrStmt->name->expression.line;
-  auto col = ptrStmt->name->expression.column;
   bool hasError = false;
   bool isMutable = false;
   bool isConstant = false;
@@ -203,8 +198,8 @@ void Semantics::walkPointerStatement(Node *node) {
   // If we dont have the value(This is only allowed inside records and
   // components for now)
   if (!ptrStmt->value) {
-    logSemanticErrors("Must initialize the pointer '" + ptrName + "'", line,
-                      col);
+    logSemanticErrors("Must initialize the pointer '" + ptrName + "'",
+                      ptrStmt->name.get());
     return;
   }
 
@@ -227,7 +222,7 @@ void Semantics::walkPointerStatement(Node *node) {
 
     if (!ptrStmt->type) {
       logSemanticErrors("Must provide pointer type for null inference to work",
-                        line, col);
+                        ptrStmt->name.get());
       return;
     }
 
@@ -238,7 +233,7 @@ void Semantics::walkPointerStatement(Node *node) {
     if (!ptrType.isPointer) {
       logSemanticErrors("Cannot point to a non pointer type'" +
                             ptrType.resolvedName + "'",
-                        line, col);
+                        ptrStmt->name.get());
       return;
     }
 
@@ -246,7 +241,7 @@ void Semantics::walkPointerStatement(Node *node) {
     if (!ptrType.isNull) {
       logSemanticErrors("Cannot use 'null' on a non nullable pointer type '" +
                             ptrType.resolvedName + "'",
-                        line, col);
+                        ptrStmt->name.get());
       return;
     }
 
@@ -279,7 +274,7 @@ void Semantics::walkPointerStatement(Node *node) {
     logSemanticErrors("Pointer '" + ptrName +
                           "'is pointing to an undeclared variable '" +
                           targetName + "'",
-                      line, col);
+                      ptrStmt->name.get());
     hasError = true;
     return;
   }
@@ -289,7 +284,7 @@ void Semantics::walkPointerStatement(Node *node) {
   if (!targetType.isPointer) {
     logSemanticErrors("Must initialize the pointer '" + ptrName +
                           "' with a pointer value",
-                      line, col);
+                      ptrStmt->name.get());
     hasError = true;
     return;
   }
@@ -309,14 +304,14 @@ void Semantics::walkPointerStatement(Node *node) {
         logSemanticErrors(
             "Cannot initialize an opaque pointer with a non pointer type '" +
                 targetType.resolvedName + "'",
-            line, col);
+            ptrStmt->name.get());
       }
     } else if (!isTypeCompatible(ptrType, targetType)) {
       logSemanticErrors("Type mismatch pointer '" + ptrName + "' of type '" +
                             ptrType.resolvedName + "' does not match '" +
                             targetName + "' of type '" +
                             targetType.resolvedName + "'",
-                        line, col);
+                        ptrStmt->name.get());
       hasError = true;
     }
   }
@@ -339,7 +334,7 @@ void Semantics::walkPointerStatement(Node *node) {
                           storageStr(pointerStorage) +
                           "' cannot point to a target '" + targetName +
                           "'of type '" + storageStr(targetStorage) + "'",
-                      line, col);
+                      ptrStmt->name.get());
   } else {
     targetSymbol->pointerCount++;
   }
@@ -400,7 +395,7 @@ void Semantics::walkLetStatement(Node *node) {
   if (localSym) {
     logSemanticErrors("Variable with name '" + letName +
                           "' already exists in the same scope",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
+                      letStmt);
     hasError = true;
     return;
   }
@@ -409,25 +404,25 @@ void Semantics::walkLetStatement(Node *node) {
     if (existingSym->isFunction) {
       logSemanticErrors("Local variable '" + letName +
                             "' shadows existing global function",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
+                        letStmt);
       hasError = true;
       return;
     } else if (existingSym->isComponent) {
       logSemanticErrors("Local variable '" + letName +
                             "' shadows existing component",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
+                        letStmt);
       hasError = true;
       return;
     } else if (existingSym->isBehavior) {
       logSemanticErrors("Local variable '" + letName +
                             "' shadows existing  behavior block",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
+                        letStmt);
       hasError = true;
       return;
     } else if (existingSym->isDataBlock) {
       logSemanticErrors("Local variable '" + letName +
                             "' shadows existing data block",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
+                        letStmt);
       hasError = true;
       return;
     }
@@ -440,7 +435,7 @@ void Semantics::walkLetStatement(Node *node) {
   if (expectedType.kind == DataType::OPAQUE) {
     logSemanticErrors(
         "Cannot use an opaque pointer type on a scalar variable declaration",
-        letStmt->ident_token.line, letStmt->ident_token.column);
+        letStmt);
   }
   ResolvedType declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
 
@@ -452,7 +447,7 @@ void Semantics::walkLetStatement(Node *node) {
   if (isConstant && !letStmtValue) {
     logSemanticErrors("Need to assign a value to a constant variable '" +
                           letName + "'",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
+                      letStmt);
     hasError = true;
     return;
   }
@@ -461,8 +456,7 @@ void Semantics::walkLetStatement(Node *node) {
     logSemanticErrors("Constant variable'" + letName +
                           "' must be initialized with a raw literal, not a "
                           "runtime expression",
-                      letStmtValue->expression.line,
-                      letStmtValue->expression.column);
+                      letStmtValue);
     hasError = true;
   }
 
@@ -470,7 +464,7 @@ void Semantics::walkLetStatement(Node *node) {
     logSemanticErrors("Constant variable '" + letName +
                           "' cannot be nullable. " +
                           "Constants must hold a concrete literal value.",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
+                      letStmt);
     hasError = true;
   }
 
@@ -486,7 +480,7 @@ void Semantics::walkLetStatement(Node *node) {
       if (!isNullable) {
         logSemanticErrors("Cannot assign 'null' to non-nullable variable '" +
                               letStmt->ident_token.TokenLiteral + "'",
-                          type->data_token.line, type->data_token.column);
+                          type);
         hasError = true;
         declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
       } else {
@@ -509,20 +503,19 @@ void Semantics::walkLetStatement(Node *node) {
             "If you need this assignment to work, the source "
             "must also be a 'heap' allocation.");
         logSemanticErrors(
-            "Cannot move a non heap variable into a heap variable",
-            moveVal->expr->expression.line, moveVal->expr->expression.line);
+            "Cannot move a non heap variable into a heap variable", moveVal);
       }
     } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
       auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
       if (!identSym) {
         logSemanticErrors("Cannot assign non-existent identifier '" +
                               ident->identifier.TokenLiteral + "'",
-                          ident->expression.line, ident->expression.column);
+                          ident);
         hasError = true;
       } else if (!identSym->isInitialized) {
         logSemanticErrors("Cannot assign non-initialized identifier '" +
                               ident->identifier.TokenLiteral + "'",
-                          ident->expression.line, ident->expression.column);
+                          ident);
         hasError = true;
       }
     } else {
@@ -537,7 +530,7 @@ void Semantics::walkLetStatement(Node *node) {
           logSemanticErrors("Type mismatch: cannot assign " +
                                 valueType.resolvedName + " to " +
                                 declaredType.resolvedName,
-                            type->data_token.line, type->data_token.column);
+                            type);
           hasError = true;
         }
       }
@@ -553,7 +546,7 @@ void Semantics::walkLetStatement(Node *node) {
                             letName + "' expected '" +
                             expectedType.resolvedName + "' but got '" +
                             declaredType.resolvedName + "'",
-                        type->data_token.line, type->data_token.column);
+                        type);
       hasError = true;
     }
 
@@ -561,7 +554,7 @@ void Semantics::walkLetStatement(Node *node) {
       logSemanticErrors("Cannot assign a nullable (possibly null) value to "
                         "non-nullable variable '" +
                             letStmt->ident_token.TokenLiteral + "'",
-                        type->data_token.line, type->data_token.column);
+                        type);
       hasError = true;
       declaredType = ResolvedType{DataType::UNKNOWN, "unknown"};
     }
@@ -571,7 +564,7 @@ void Semantics::walkLetStatement(Node *node) {
   if (isConstant && (isNullable || isDefinitelyNull)) {
     logSemanticErrors("Cannot use null on a constant variable '" +
                           letStmt->ident_token.TokenLiteral + "'",
-                      letStmt->ident_token.line, letStmt->ident_token.column);
+                      letStmt);
     hasError = true;
   }
 
@@ -582,7 +575,7 @@ void Semantics::walkLetStatement(Node *node) {
     if (isNullable || isDefinitelyNull) {
       logSemanticErrors("Cannot promote nullable variable '" +
                             letStmt->ident_token.TokenLiteral + "' to the heap",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
+                        letStmt);
       hasError = true;
     }
 
@@ -590,7 +583,7 @@ void Semantics::walkLetStatement(Node *node) {
       logSemanticErrors("Cannot promote auto variable '" +
                             letStmt->ident_token.TokenLiteral +
                             "' to the heap, please explicitly use its type",
-                        letStmt->ident_token.line, letStmt->ident_token.column);
+                        letStmt);
       hasError = true;
     }
   }
@@ -645,16 +638,15 @@ void Semantics::walkReferenceStatement(Node *node) {
     return;
 
   auto refName = refStmt->name->expression.TokenLiteral;
-  auto line = refStmt->statement.line;
-  auto column = refStmt->statement.column;
+
   ResolvedType refType = ResolvedType{DataType::UNKNOWN, "unknown"};
   bool hasError = false;
 
   // Check if the reference variable name already exists
   auto existingSym = resolveSymbolInfo(refName);
   if (existingSym) {
-    logSemanticErrors("Reference name '" + refName + "' already in use", line,
-                      column);
+    logSemanticErrors("Reference name '" + refName + "' already in use",
+                      refStmt);
     hasError = true;
   }
 
@@ -666,7 +658,7 @@ void Semantics::walkReferenceStatement(Node *node) {
       } else {
         logSemanticErrors("Cannot get reference type if you did not provide it "
                           "and did not provide a value for inference",
-                          line, column);
+                          refStmt);
       }
       refType = inferNodeDataType(refStmt->type.get());
       auto refInfo = std::make_shared<SymbolInfo>();
@@ -679,7 +671,7 @@ void Semantics::walkReferenceStatement(Node *node) {
       return;
     } else {
       logSemanticErrors("Reference'" + refName + "' must reference something",
-                        line, column);
+                        refStmt);
       return;
     }
   }
@@ -692,7 +684,7 @@ void Semantics::walkReferenceStatement(Node *node) {
     logSemanticErrors("Reference '" + refName +
                           "'is referencing an undeclared variable '" +
                           refereeName + "'",
-                      line, column);
+                      refStmt);
     hasError = true;
     return;
   }
@@ -700,7 +692,7 @@ void Semantics::walkReferenceStatement(Node *node) {
   ResolvedType refereeType = refereeSymbol->type;
   // Check if the referee type is a pointer and block it
   if (refereeType.isPointer) {
-    logSemanticErrors("Cannot create references to pointers", line, column);
+    logSemanticErrors("Cannot create references to pointers", refStmt);
     hasError = true;
     return;
   } else {
@@ -721,7 +713,7 @@ void Semantics::walkReferenceStatement(Node *node) {
 
     if (refType.isNull) {
       logSemanticErrors("Cannot have a nullable reference '" + refName + "'",
-                        line, column);
+                        refStmt);
       hasError = true;
     }
 
@@ -732,7 +724,7 @@ void Semantics::walkReferenceStatement(Node *node) {
                             "' does not match variable '" + refereeName +
                             "' being refered with type '" +
                             refereeType.resolvedName + "'",
-                        line, column);
+                        refStmt);
       hasError = true;
     }
   }
@@ -743,7 +735,7 @@ void Semantics::walkReferenceStatement(Node *node) {
   if (refereeStorage == StorageType::STACK) {
     logSemanticErrors("Cannot create a reference '" + refName +
                           "' to a local variable '" + refereeName + "'",
-                      line, column);
+                      refStmt);
     hasError = true;
   }
 
@@ -760,14 +752,14 @@ void Semantics::walkReferenceStatement(Node *node) {
   if (!refereeSymbol->isMutable && isMutable) {
     logSemanticErrors("Cannot create a mutable reference '" + refName +
                           "' to an immutable variable '" + refereeName + "'",
-                      line, column);
+                      refStmt);
     hasError = true;
   }
 
   if (refereeSymbol->isNullable) {
     logSemanticErrors("Cannot create a reference to a nullable variable '" +
                           refereeName + "'",
-                      line, column);
+                      refStmt);
     hasError = true;
   }
 

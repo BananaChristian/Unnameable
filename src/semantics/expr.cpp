@@ -13,13 +13,9 @@ void Semantics::walkInfixExpression(Node *node) {
 
   auto leftSym = metaData[left];
 
-  auto leftLine = left->expression.line;
-  auto leftCol = left->expression.column;
-
   // Retrieve the symbol info of the left side
   if (!leftSym) {
-    logSemanticErrors("Unresolved expression in infix left side", leftLine,
-                      leftCol);
+    logSemanticErrors("Unresolved expression in infix left side", left);
     hasError = true;
     return;
   }
@@ -33,8 +29,7 @@ void Semantics::walkInfixExpression(Node *node) {
     auto rhsIdent = dynamic_cast<Identifier *>(infixExpr->right_operand.get());
     if (!rhsIdent) {
       logSemanticErrors("Right-hand side of '.' must be an identifier",
-                        infixExpr->right_operand->expression.line,
-                        infixExpr->right_operand->expression.column);
+                        infixExpr->right_operand.get());
       return;
     }
     logInternal("Lhs Infix Type: " + lhsType.resolvedName);
@@ -62,8 +57,7 @@ void Semantics::walkInfixExpression(Node *node) {
   ResolvedType infixType = inferNodeDataType(infixExpr);
   if (infixType.kind == DataType::UNKNOWN) {
     logSemanticErrors("Infix cannot be of unknown type",
-                      infixExpr->left_operand->expression.line,
-                      infixExpr->left_operand->expression.column);
+                      infixExpr->left_operand.get());
     hasError = true;
   }
 
@@ -91,31 +85,27 @@ void Semantics::walkPrefixExpression(Node *node) {
       if (!symbol) {
         logSemanticErrors("Undefined variable in prefix expression '" +
                               ident->expression.TokenLiteral + "'",
-                          prefixExpr->expression.line,
-                          prefixExpr->expression.column);
+                          prefixExpr);
         return;
       }
       if (!symbol->isMutable) {
         logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral +
                               "' to immutable variable '" +
                               ident->expression.TokenLiteral + "'",
-                          prefixExpr->expression.line,
-                          prefixExpr->expression.column);
+                          prefixExpr);
         return;
       }
       if (!symbol->isInitialized) {
         logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral +
                               "' to uninitialized variable '" +
                               ident->expression.TokenLiteral + "'",
-                          prefixExpr->expression.line,
-                          prefixExpr->expression.column);
+                          prefixExpr);
         return;
       }
     } else {
       logSemanticErrors("Prefix operator '" + prefixExpr->operat.TokenLiteral +
                             "' can only be applied to identifiers",
-                        prefixExpr->expression.line,
-                        prefixExpr->expression.column);
+                        prefixExpr);
       return;
     }
   }
@@ -143,31 +133,30 @@ void Semantics::walkPostfixExpression(Node *node) {
       if (!symbol) {
         logSemanticErrors("Undefined variable in postfix expression '" +
                               ident->expression.TokenLiteral + "'",
-                          postfixExpr->expression.line,
-                          postfixExpr->expression.column);
+                          postfixExpr);
         return;
       }
       if (symbol->isMutable == false) {
-        logSemanticErrors(
-            "Cannot apply '" + postfixExpr->operator_token.TokenLiteral +
-                "' to immutable variable '" + ident->expression.TokenLiteral +
-                "'",
-            postfixExpr->expression.line, postfixExpr->expression.column);
+        logSemanticErrors("Cannot apply '" +
+                              postfixExpr->operator_token.TokenLiteral +
+                              "' to immutable variable '" +
+                              ident->expression.TokenLiteral + "'",
+                          postfixExpr);
         return;
       }
       if (!symbol->isInitialized) {
-        logSemanticErrors(
-            "Cannot apply '" + postfixExpr->operator_token.TokenLiteral +
-                "' to uninitialized variable '" +
-                ident->expression.TokenLiteral + "'",
-            postfixExpr->expression.line, postfixExpr->expression.column);
+        logSemanticErrors("Cannot apply '" +
+                              postfixExpr->operator_token.TokenLiteral +
+                              "' to uninitialized variable '" +
+                              ident->expression.TokenLiteral + "'",
+                          postfixExpr);
         return;
       }
     } else {
-      logSemanticErrors(
-          "Postfix operator '" + postfixExpr->operator_token.TokenLiteral +
-              "' can only be applied to identifiers",
-          postfixExpr->expression.line, postfixExpr->expression.column);
+      logSemanticErrors("Postfix operator '" +
+                            postfixExpr->operator_token.TokenLiteral +
+                            "' can only be applied to identifiers",
+                        postfixExpr);
       return;
     }
   }
@@ -187,12 +176,10 @@ void Semantics::walkUnwrapExpression(Node *node) {
     return;
 
   bool hasError = false;
-  auto line = unwrapExpr->expression.line;
-  auto col = unwrapExpr->expression.column;
 
   auto expr = dynamic_cast<Expression *>(unwrapExpr->expr.get());
   if (!expr) {
-    reportDevBug("Invalid unwrap expression");
+    reportDevBug("Invalid unwrap expression", unwrapExpr->expr.get());
     return;
   }
   int exprLine = expr->expression.line;
@@ -205,7 +192,7 @@ void Semantics::walkUnwrapExpression(Node *node) {
 
   if (!exprSym) {
     logSemanticErrors("Unwrapped unknown identifier '" + exprName + "'",
-                      exprLine, exprCol);
+                      unwrapExpr);
     return;
   }
 
@@ -214,13 +201,13 @@ void Semantics::walkUnwrapExpression(Node *node) {
   if (!exprType.isNull) {
     logSemanticErrors("Cannot unwrap a concrete type '" +
                           exprType.resolvedName + "'",
-                      exprLine, exprCol);
+                      unwrapExpr);
     hasError = true;
   }
 
   if (exprType.kind == DataType::VOID || exprType.kind == DataType::UNKNOWN) {
     logSemanticErrors("Cannot unwrap type '" + exprType.resolvedName + "'",
-                      exprLine, exprCol);
+                      unwrapExpr);
     hasError = true;
   }
 
@@ -279,7 +266,7 @@ void Semantics::walkCastExpression(Node *node) {
   if (destinationType.isNull) {
     logSemanticErrors("Cannot cast to a nullable type '" +
                           destinationType.resolvedName + "'",
-                      type->expression.line, type->expression.column);
+                      type);
     hasError = true;
   }
   // Check if the destination type is a scalar otherwise block it
@@ -289,7 +276,7 @@ void Semantics::walkCastExpression(Node *node) {
   if (!isDestinationValid) {
     logSemanticErrors("Invalid cast destination type '" +
                           destinationType.resolvedName + "'",
-                      type->expression.line, type->expression.column);
+                      type);
     hasError = true;
   }
 
@@ -306,21 +293,21 @@ void Semantics::walkCastExpression(Node *node) {
   if (sourceType.isNull) {
     logSemanticErrors("Cannot cast from a nullable type '" +
                           sourceType.resolvedName + "'",
-                      source->expression.line, source->expression.column);
+                      source);
     hasError = true;
   }
 
   if (sourceType.isPointer) {
     logSemanticErrors("Cannot cast from a pointer type '" +
                           sourceType.resolvedName + "' try using a bitcast ",
-                      source->expression.line, source->expression.column);
+                      source);
     hasError = true;
   }
 
   if (sourceType.isRef) {
     logSemanticErrors("Cannot cast from a reference type '" +
                           sourceType.resolvedName + "'",
-                      source->expression.line, source->expression.column);
+                      source);
     hasError = true;
   }
 
@@ -328,9 +315,8 @@ void Semantics::walkCastExpression(Node *node) {
       isInteger(sourceType) || isFloat(sourceType) || isBoolean(sourceType);
 
   if (!isSourceValid) {
-    logSemanticErrors("Invalid source cast type '" + sourceType.resolvedName +
-                          "'",
-                      source->expression.line, source->expression.column);
+    logSemanticErrors(
+        "Invalid source cast type '" + sourceType.resolvedName + "'", source);
     hasError = true;
   }
 
@@ -364,7 +350,7 @@ void Semantics::walkBitcastExpression(Node *node) {
   auto sourceSym = metaData[sourceExpr];
 
   if (!sourceSym) {
-    reportDevBug("Could not resolve source expression for bitcast");
+    reportDevBug("Could not resolve source expression for bitcast", sourceExpr);
     return;
   }
   ResolvedType sourceType = sourceSym->type;
@@ -402,7 +388,7 @@ void Semantics::walkBitcastExpression(Node *node) {
     logSemanticErrors(
         "bitcast source must be a pointer or integer type, got '" +
             sourceType.resolvedName + "'",
-        sourceExpr->expression.line, sourceExpr->expression.column);
+        sourceExpr);
     hasError = true;
   }
 
@@ -410,7 +396,7 @@ void Semantics::walkBitcastExpression(Node *node) {
     logSemanticErrors(
         "bitcast destination must be a pointer or integer type, got '" +
             destinationType.resolvedName + "'",
-        destTypeNode->expression.line, destTypeNode->expression.column);
+        destTypeNode);
     hasError = true;
   }
 

@@ -146,78 +146,93 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
                  assignStmt->statement.line, assignStmt->statement.column);
   }
 
+  // targetPtr is the STACK location of the variable (e.g., the slot holding the
+  // ptr to y's heap)
   llvm::Value *targetPtr = generateAddress(assignStmt->identifier.get());
   if (!targetPtr) {
-    errorHandler.addHint("The expression generator failed to generate the "
-                         "value of the LHS expression in the assignment");
-    reportDevBug("Failed to get L-Value address for the LHS expression in the "
-                 "assignment",
+    reportDevBug("Failed to get L-Value address for the LHS expression",
                  assignStmt->identifier->expression.line,
                  assignStmt->identifier->expression.column);
   }
-  llvm::Value *initValue = generateExpression(assignStmt->value.get());
+
+  llvm::Value *initValue = nullptr;
+  llvm::Value *activeGhost = nullptr;
+  auto valSym = semantics.getSymbolFromMeta(assignStmt->value.get());
+
+  // RHS Evaluation & Ghost Escrow Deployment
+  if (valSym->isHeap) {
+    Node *valHolder = semantics.queryForLifeTimeBaton(valSym->ID);
+    if (valHolder == assignStmt->value.get()) {
+      logInternal(
+          "The RHS of the assignment is holding its baton - Deploying Ghost");
+      activeGhost = allocateDynamicHeapStorage(valSym, "ghost_escrow");
+      this->ghostStorage = activeGhost;
+      initValue = generateExpression(assignStmt->value.get());
+      this->ghostStorage = nullptr;
+    } else {
+      initValue = generateExpression(assignStmt->value.get());
+    }
+  } else {
+    initValue = generateExpression(assignStmt->value.get());
+  }
+
   if (!initValue) {
-    errorHandler.addHint("The expression generator failed to generate the "
-                         "value of the RHS expression in the assignment");
-    reportDevBug("Failed to generate R-Value for assignment value",
+    reportDevBug("Failed to generate R-Value for assignment",
                  assignStmt->value->expression.line,
                  assignStmt->value->expression.column);
   }
 
-  auto assignMeta =
-      semantics.metaData[assignStmt]; // Metadata of the assignment itself
+  auto assignMeta = semantics.metaData[assignStmt];
   if (!assignMeta) {
-    errorHandler.addHint("Semantics might have failed to register the "
-                         "assignment statement metaData");
     reportDevBug("Failed to get assignment statement metaData",
                  assignStmt->statement.line, assignStmt->statement.column);
   }
 
-  // If it is a move assignmenT(I need to revisit this for now comment)
+  // Handling Move Expressions (Pointer Takeover)
   if (auto moveVal = dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
     logInternal("Handling move assignment");
-
-    // Dump the destination if it's heap-declared
-    if (assignMeta->storage == StorageType::HEAP) {
-      // freeDynamicHeapStorage(assignMeta, assignStmt);
-    }
-
+    // In a move, we DO overwrite the stack slot to point to the new memory
     funcBuilder.CreateStore(initValue, targetPtr);
-    return; // Move is done.
+    return;
   }
 
+  // Handling Deep Copy (Value Migration)
   bool isHuge = (assignMeta->type.kind == DataType::COMPONENT ||
                  assignMeta->type.kind == DataType::RECORD) &&
                 (!assignMeta->type.isPointer);
+
   if (assignMeta->type.isArray || isHuge) {
     uint64_t byteSize = assignMeta->componentSize;
-    llvm::Value *sizeVal = funcBuilder.getInt64(byteSize);
-
-    ResolvedType elementType;
-    if (assignMeta->type.isArray) {
-      elementType = semantics.getArrayElementType(assignMeta->type);
-    } else {
-      elementType = assignMeta->type;
-    }
-
-    llvm::Type *elemLLVMTy = getLLVMType(elementType);
-
+    llvm::Type *elemLLVMTy =
+        getLLVMType(assignMeta->type.isArray
+                        ? semantics.getArrayElementType(assignMeta->type)
+                        : assignMeta->type);
     llvm::Align align = layout->getABITypeAlign(elemLLVMTy);
 
-    // Get the destination slab (load the ptr stored in 'y')
-    llvm::Value *destSlab = funcBuilder.CreateLoad(funcBuilder.getPtrTy(),
-                                                   targetPtr, "dest_slab_ptr");
-
-    // Perform Deep Copy
-
-    funcBuilder.CreateMemCpy(destSlab, align, initValue, align,
+    funcBuilder.CreateMemCpy(targetPtr, align, initValue, align,
                              funcBuilder.getInt64(byteSize));
   } else {
-    funcBuilder.CreateStore(initValue, targetPtr);
+    // SCALAR CASE
+    if (assignMeta->storage == StorageType::HEAP) {
+      llvm::Value *actualData = funcBuilder.CreateLoad(
+          getLLVMType(assignMeta->type), initValue, "snatched_val");
+
+      // Store the value into y's existing heap space
+      funcBuilder.CreateStore(actualData, targetPtr);
+    } else {
+      // Standard stack-to-stack assignment
+      funcBuilder.CreateStore(initValue, targetPtr);
+    }
   }
+
+  // Ghost Decommissioning
+  if (activeGhost) {
+    freeDynamicHeapStorage(valSym->allocType, activeGhost);
+    logInternal("Ghost Box safely settled and destroyed");
+  }
+
   logInternal("Ended assignment generation");
 }
-
 void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   auto *fieldStmt = dynamic_cast<FieldAssignment *>(node);
 
@@ -1033,6 +1048,21 @@ void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
   }
 }
 
+void IRGenerator::freeDynamicHeapStorage(const std::string &allocatorType,
+                                         llvm::Value *toFree) {
+  auto it = semantics.allocatorMap.find(allocatorType);
+  if (it == semantics.allocatorMap.end())
+    return;
+
+  auto deallocatorName = it->second.freeName;
+  llvm::Function *deallocFunc = module->getFunction(deallocatorName);
+
+  llvm::Value *castPtr = funcBuilder.CreatePointerCast(
+      toFree, deallocFunc->getFunctionType()->getParamType(0));
+
+  funcBuilder.CreateCall(deallocFunc, {castPtr});
+}
+
 void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   if (!sym || !sym->llvmValue)
     return;
@@ -1047,13 +1077,32 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   llvm::Function *deallocFunc = module->getFunction(deallocatorName);
 
   // The Assembly-level logic
-  if(!sym->llvmValue)
-        return;
+  if (!sym->llvmValue)
+    return;
 
   llvm::Value *castPtr = funcBuilder.CreatePointerCast(
       sym->llvmValue, deallocFunc->getFunctionType()->getParamType(0));
 
   funcBuilder.CreateCall(deallocFunc, {castPtr});
+}
+
+llvm::Value *IRGenerator::handleSnatchedMove(llvm::Value *sourceAddr,
+                                             std::shared_ptr<SymbolInfo> sym,
+                                             Node *node) {
+  logInternal("Executing Snatched Move Helper");
+
+  llvm::Align align = layout->getABITypeAlign(sym->llvmType);
+  uint64_t byteSize = sym->componentSize;
+
+  // Move from source to the established Escrow
+  funcBuilder.CreateMemCpy(ghostStorage, align, sourceAddr, align,
+                           funcBuilder.getInt64(byteSize));
+
+  // The source dies now. Its duty is done.
+  emitCleanup(node, sym);
+
+  // Return the escrow address so the assignment knows where the data is
+  return ghostStorage;
 }
 
 void IRGenerator::emitCleanup(Node *contextNode,

@@ -2,6 +2,7 @@
 #include "semantics.hpp"
 #include "token.hpp"
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -264,7 +265,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
                               std::to_string(i) + "' expected '" +
                               firstType.resolvedName + "' but got '" +
                               elemType.resolvedName + "'",
-                          arrLit->expression.line, arrLit->expression.column);
+                          arrLit);
 
         return ResolvedType{DataType::ERROR, "error", false,
                             false,           false,   false};
@@ -290,27 +291,26 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   if (auto arrAccess = dynamic_cast<ArraySubscript *>(node)) {
     // Extract the name of the array
     auto arrayName = arrAccess->identifier->expression.TokenLiteral;
-    auto line = arrAccess->expression.line;
-    auto col = arrAccess->expression.column;
 
     // Check for its symbolInfo
     auto arrSym = resolveSymbolInfo(arrayName);
     if (!arrSym) {
-      logSemanticErrors("Unidentified variable '" + arrayName + "'", line, col);
+      logSemanticErrors("Unidentified variable '" + arrayName + "'",
+                        arrAccess->identifier.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
 
     if (!arrSym->type.isArray) {
       logSemanticErrors("Cannot index into non array type '" +
                             arrSym->type.resolvedName + "'",
-                        line, col);
+                        arrAccess->identifier.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
 
     if (arrSym->type.isNull) {
       logSemanticErrors("Cannot index into a nullable array '" + arrayName +
                             "' of type '" + arrSym->type.resolvedName + "'",
-                        line, col);
+                        arrAccess->identifier.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
 
@@ -358,13 +358,12 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   if (auto instExpr = dynamic_cast<InstanceExpression *>(node)) {
     auto instName = instExpr->blockIdent->expression.TokenLiteral;
-    auto line = instExpr->blockIdent->expression.line;
-    auto col = instExpr->blockIdent->expression.column;
+
     auto sym = resolveSymbolInfo(instName);
     if (!sym) {
       logSemanticErrors("Failed to infer type for unidentified identifier '" +
                             instName + "'",
-                        line, col);
+                        instExpr->blockIdent.get());
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
@@ -385,8 +384,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
             dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
       if (selfExpr->fields.empty()) {
         logSemanticErrors("Invalid 'self' access in assignment",
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
+                          assignStmt->identifier.get());
         return ResolvedType{DataType::UNKNOWN, "unknown"};
       }
 
@@ -395,8 +393,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       auto ident = dynamic_cast<Identifier *>(lastField);
       if (!ident) {
         logSemanticErrors("Expected identifier in 'self' field chain",
-                          assignStmt->identifier->expression.line,
-                          assignStmt->identifier->expression.column);
+                          assignStmt->identifier.get());
         return ResolvedType{DataType::UNKNOWN, "unknown"};
       }
 
@@ -413,8 +410,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       logSemanticErrors("Type mismatch expected '" +
                             assignStmtValType.resolvedName + "' but got '" +
                             assignSymbol->type.resolvedName + "'",
-                        assignStmt->identifier->expression.line,
-                        assignStmt->identifier->expression.column);
+                        assignStmt->identifier.get());
     } else {
       return assignSymbol->type;
     }
@@ -422,12 +418,10 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   if (auto newExpr = dynamic_cast<NewComponentExpression *>(node)) {
     auto componentName = newExpr->component_name.TokenLiteral;
-    int line = newExpr->expression.line;
-    int column = newExpr->expression.column;
     auto componentIt = customTypesTable.find(componentName);
     if (componentIt == customTypesTable.end()) {
       logSemanticErrors("Component '" + componentName + "' does not exist",
-                        line, column);
+                        newExpr);
       return ResolvedType{DataType::ERROR, "error"};
     }
     return componentIt->second->type;
@@ -456,8 +450,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       logInternal("Identifier Data Type '" + symbol->type.resolvedName + "'");
       return symbol->type;
     } else {
-      logSemanticErrors("Undefined variable '" + name + "'",
-                        ident->expression.line, ident->expression.column);
+      logSemanticErrors("Undefined variable '" + name + "'", ident);
       return ResolvedType{DataType::ERROR, "error"};
     }
   }
@@ -469,8 +462,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
     if (!derefSym) {
       logSemanticErrors("Undefined variable '" + name + "'",
-                        derefExpr->identifier->expression.line,
-                        derefExpr->identifier->expression.column);
+                        derefExpr->identifier.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
     // Get the ptr_type
@@ -503,9 +495,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     ResolvedType inner = inferNodeDataType(arrRetType->innerType.get());
     // Block void
     if (inner.kind == DataType::VOID) {
-      logSemanticErrors("Cannot have a void array type",
-                        arrRetType->expression.line,
-                        arrRetType->expression.column);
+      logSemanticErrors("Cannot have a void array type", arrRetType);
       return ResolvedType{DataType::ERROR, "error", false, false, false, false};
     }
 
@@ -514,7 +504,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       logSemanticErrors(
           "The inner type of an array cannot be a nullable type '" +
               inner.resolvedName + "'",
-          arrRetType->expression.line, arrRetType->expression.column);
+          arrRetType);
       return ResolvedType{DataType::ERROR, "error", false, false, false, false};
     }
 
@@ -534,8 +524,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   if (auto ptrType = dynamic_cast<PointerType *>(node)) {
     ResolvedType inner = inferNodeDataType(ptrType->underlyingType.get());
     if (inner.kind == DataType::VOID) {
-      logSemanticErrors("Cannot have a void pointer return type",
-                        ptrType->expression.line, ptrType->expression.column);
+      logSemanticErrors("Cannot have a void pointer return type", ptrType);
       return ResolvedType{DataType::ERROR, "error", false, false};
     }
     inner.isPointer = true;
@@ -545,8 +534,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   if (auto refType = dynamic_cast<RefType *>(node)) {
     ResolvedType inner = inferNodeDataType(refType->underLyingType.get());
     if (inner.kind == DataType::VOID) {
-      logSemanticErrors("Cannot have a void reference return type",
-                        refType->expression.line, refType->expression.column);
+      logSemanticErrors("Cannot have a void reference return type", refType);
       return ResolvedType{DataType::ERROR, "error", false, false, false, false};
       ;
     }
@@ -569,22 +557,19 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       logSemanticErrors(
           "Undefined function name '" +
               callExpr->function_identifier->expression.TokenLiteral + "'",
-          callExpr->function_identifier->expression.line,
-          callExpr->function_identifier->expression.column);
+          callExpr->function_identifier.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
   }
 
   if (auto metCall = dynamic_cast<MethodCallExpression *>(node)) {
     auto instanceName = metCall->instance->expression.TokenLiteral;
-    auto line = metCall->instance->expression.line;
-    auto col = metCall->instance->expression.column;
 
     auto instanceSym = resolveSymbolInfo(instanceName);
 
     if (!instanceSym) {
-      logSemanticErrors("Undefined instance name '" + instanceName + "' ", line,
-                        col);
+      logSemanticErrors("Undefined instance name '" + instanceName + "' ",
+                        metCall->instance.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
 
@@ -605,7 +590,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       if (it == members.end()) {
         logSemanticErrors("Function '" + callName + "' doesnt exist in type '" +
                               type.resolvedName + "'",
-                          line, col);
+                          call->function_identifier.get());
         return ResolvedType{DataType::ERROR, "error"};
       }
 
@@ -617,15 +602,15 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       if (sealFnIt == sealFnMap.end()) {
         logSemanticErrors("Function '" + callName + "' doesnt exist in seal '" +
                               instanceName + "'",
-                          line, col);
+                          call->function_identifier.get());
         return ResolvedType{DataType::ERROR, "error"};
       }
 
       auto sealInfo = sealFnIt->second;
       return sealInfo->type;
     } else {
-      logSemanticErrors("Unknown type or seal '" + instanceName + "'", line,
-                        col);
+      logSemanticErrors("Unknown type or seal '" + instanceName + "'",
+                        call->function_identifier.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
   }
@@ -735,7 +720,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
     if (result) {
       return result->type;
     } else {
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+      return ResolvedType{DataType::ERROR, "error"};
     }
   }
 
@@ -747,8 +732,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
 
     if (!leftType.isNull) {
       logSemanticErrors("Left-hand side of coalesce must be nullable",
-                        infixNode->left_operand->expression.line,
-                        infixNode->left_operand->expression.column);
+                        infixNode->left_operand.get());
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
@@ -764,8 +748,8 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
           "Type of fallback in coalesce does not match nullable type '" +
               baseType.resolvedName + "' must match '" +
               rightType.resolvedName + "'",
-          ident->expression.line, ident->expression.column);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+          ident);
+      return ResolvedType{DataType::ERROR, "error"};
     }
 
     // Result is the underlying type
@@ -775,24 +759,23 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
   if (ident) {
     auto symbol = resolveSymbolInfo(ident->identifier.TokenLiteral);
     if (!symbol) {
-      logSemanticErrors("Undefined variable '" +
-                            ident->identifier.TokenLiteral + "'",
-                        ident->expression.line, ident->expression.column);
-      return {DataType::UNKNOWN, "unknown"};
+      logSemanticErrors(
+          "Undefined variable '" + ident->identifier.TokenLiteral + "'", ident);
+      return {DataType::ERROR, "error"};
     }
     if (!symbol->isInitialized) {
       logSemanticErrors("Cannot use an uninitialized variable '" +
                             ident->identifier.TokenLiteral + "' in operations",
-                        ident->expression.line, ident->expression.column);
+                        ident);
       symbol->hasError = true;
-      return {DataType::UNKNOWN, "unknown"};
+      return {DataType::ERROR, "error"};
     }
     if (symbol->isDefinitelyNull) {
       logSemanticErrors("Cannot use definitely-null variable '" +
                             ident->identifier.TokenLiteral + "' in operations",
-                        ident->expression.line, ident->expression.column);
+                        ident);
       symbol->hasError = true;
-      return {DataType::UNKNOWN, "unknown"};
+      return {DataType::ERROR, "error"};
     }
   }
 
@@ -807,7 +790,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
 ResolvedType Semantics::inferPrefixExpressionType(Node *node) {
   auto prefixNode = dynamic_cast<PrefixExpression *>(node);
   if (!prefixNode)
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return {DataType::ERROR, "error"};
   auto prefixOperator = prefixNode->operat.type;
   ResolvedType operandType = inferNodeDataType(prefixNode->operand.get());
   return resultOfUnary(prefixOperator, operandType, prefixNode);
@@ -816,7 +799,7 @@ ResolvedType Semantics::inferPrefixExpressionType(Node *node) {
 ResolvedType Semantics::inferPostfixExpressionType(Node *node) {
   auto postfixNode = dynamic_cast<PostfixExpression *>(node);
   if (!postfixNode)
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return {DataType::ERROR, "error"};
   ResolvedType operandType = inferNodeDataType(postfixNode->operand.get());
   auto postfixOperator = postfixNode->operator_token.type;
   return resultOfUnary(postfixOperator, operandType, postfixNode);
@@ -841,16 +824,14 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
   // Block nullable access
   if (parentType.isNull) {
     logSemanticErrors("Cannot access a nullable type '" + lookUpName + "'",
-                      infixExpr->left_operand->expression.line,
-                      infixExpr->left_operand->expression.column);
+                      infixExpr->left_operand.get());
     return nullptr;
   }
 
   if (operatorType == TokenType::FULLSTOP) {
     if (parentType.kind == DataType::ENUM) {
       logSemanticErrors("Dot operator applied to enum use (::) to access",
-                        infixExpr->left_operand->expression.line,
-                        infixExpr->left_operand->expression.column);
+                        infixExpr->left_operand.get());
       return nullptr;
     }
 
@@ -858,8 +839,7 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     auto typeIt = customTypesTable.find(lookUpName);
     if (typeIt == customTypesTable.end()) {
       logSemanticErrors("Type '" + lookUpName + "' not found",
-                        infixExpr->left_operand->expression.line,
-                        infixExpr->left_operand->expression.column);
+                        infixExpr->left_operand.get());
       return nullptr;
     }
 
@@ -868,8 +848,7 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     if (memberIt == typeIt->second->members.end()) {
       logSemanticErrors("Type '" + lookUpName + "' has no member '" +
                             childName + "'",
-                        infixExpr->right_operand->expression.line,
-                        infixExpr->right_operand->expression.column);
+                        infixExpr->right_operand.get());
       return nullptr;
     }
 
@@ -888,8 +867,7 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
   } else if (operatorType == TokenType::SCOPE_OPERATOR) {
     if (parentType.kind != DataType::ENUM) {
       logSemanticErrors("Scope operator(::) applied to none enum  variable",
-                        infixExpr->left_operand->expression.line,
-                        infixExpr->left_operand->expression.column);
+                        infixExpr->left_operand.get());
       return nullptr;
     }
 
@@ -897,8 +875,7 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     auto typeIt = customTypesTable.find(lookUpName);
     if (typeIt == customTypesTable.end()) {
       logSemanticErrors("Type '" + lookUpName + "' not found",
-                        infixExpr->left_operand->expression.line,
-                        infixExpr->left_operand->expression.column);
+                        infixExpr->left_operand.get());
       return nullptr;
     }
 
@@ -907,8 +884,7 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     if (memIt == typeIt->second->members.end()) {
       logSemanticErrors("Type '" + lookUpName + "' does not have a member '" +
                             childName + "'",
-                        infixExpr->left_operand->expression.line,
-                        infixExpr->left_operand->expression.column);
+                        infixExpr->left_operand.get());
       return nullptr;
     }
 
@@ -930,8 +906,6 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                                        ResolvedType leftType,
                                        ResolvedType rightType, Node *node) {
   auto infix = dynamic_cast<InfixExpression *>(node);
-  auto leftLine = infix->left_operand->expression.line;
-  auto leftCol = infix->left_operand->expression.column;
   std::string operatorStr = infix->operat.TokenLiteral;
 
   // Logical operators: &&, ||
@@ -939,7 +913,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     if (isBoolean(leftType) && isBoolean(rightType))
       return ResolvedType{DataType::BOOLEAN, "boolean"};
     else
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+      return ResolvedType{DataType::ERROR, "error"};
   }
 
   // The odds of this happening are low unless the parser messed up
@@ -947,7 +921,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     logSemanticErrors(
         "Cannot use '" + operatorStr +
             "'in binary operations. It is reserved for assignments",
-        leftLine, leftCol);
+        infix->left_operand.get());
     return ResolvedType{DataType::ERROR, "error"};
   }
 
@@ -965,7 +939,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                             leftType.resolvedName + "' and '" +
                             rightType.resolvedName +
                             "' as one of them is nullable",
-                        leftLine, leftCol);
+                        infix->left_operand.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
 
@@ -973,7 +947,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
       return ResolvedType{DataType::BOOLEAN, "boolean"};
     logSemanticErrors("Cannot compare '" + leftType.resolvedName + "' to '" +
                           rightType.resolvedName + "'",
-                      leftLine, leftCol);
+                      infix->left_operand.get());
     return ResolvedType{DataType::ERROR, "error"};
   }
 
@@ -996,7 +970,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                             leftType.resolvedName + "' and '" +
                             rightType.resolvedName +
                             "' as one of them is nullable",
-                        leftLine, leftCol);
+                        infix->left_operand.get());
       return ResolvedType{DataType::ERROR, "error"};
     }
     if (leftType.isPointer && isInteger(rightType)) {
@@ -1042,8 +1016,8 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
 
     logSemanticErrors("Type mismatch '" + leftType.resolvedName +
                           "' does not match '" + rightType.resolvedName + "'",
-                      leftLine, leftCol);
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+                      infix->left_operand.get());
+    return ResolvedType{DataType::ERROR, "error"};
   }
 
   bool isBitwise = (operatorType == TokenType::BITWISE_AND ||
@@ -1060,15 +1034,15 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                             "' on different integer types '" +
                             leftType.resolvedName + "' and '" +
                             rightType.resolvedName + "'",
-                        leftLine, leftCol);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+                        infix->left_operand.get());
+      return ResolvedType{DataType::ERROR, "error"};
     }
 
     logSemanticErrors("Bitwise operations cannot be performed on '" +
                           leftType.resolvedName + "' and '" +
                           rightType.resolvedName + "'",
-                      leftLine, leftCol);
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+                      infix->left_operand.get());
+    return ResolvedType{DataType::ERROR, "error"};
   }
 
   bool isShift = (operatorType == TokenType::SHIFT_RIGHT ||
@@ -1081,37 +1055,30 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     logSemanticErrors(
         "Shift operators require integers on both sides  but got '" +
             leftType.resolvedName + "' and '" + rightType.resolvedName + "'",
-        leftLine, leftCol);
+        infix->left_operand.get());
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
 
-  logSemanticErrors("Unknown binary operator '" + operatorStr + "'", leftLine,
-                    leftCol);
+  logSemanticErrors("Unknown binary operator '" + operatorStr + "'",
+                    infix->left_operand.get());
   return ResolvedType{DataType::UNKNOWN, "unknown"};
 }
 
 ResolvedType Semantics::resultOfUnary(TokenType operatorType,
                                       const ResolvedType &operandType,
                                       Node *node) {
-  int line;
-  int col;
   std::string operatorStr;
-  if (auto postfix = dynamic_cast<PostfixExpression *>(node)) {
-    line = postfix->expression.line;
-    col = postfix->expression.column;
+  if (auto postfix = dynamic_cast<PostfixExpression *>(node))
     operatorStr = postfix->operator_token.TokenLiteral;
-  } else if (auto prefix = dynamic_cast<PrefixExpression *>(node)) {
-    line = prefix->expression.line;
-    col = prefix->expression.column;
+  else if (auto prefix = dynamic_cast<PrefixExpression *>(node))
     operatorStr = prefix->operat.TokenLiteral;
-  }
 
   switch (operatorType) {
   case TokenType::BANG: {
     if (!isBoolean(operandType)) {
       logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
                             operandType.resolvedName + "'",
-                        line, col);
+                        node);
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
     return ResolvedType{DataType::BOOLEAN, "bool"};
@@ -1126,7 +1093,7 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
 
     logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
                           operandType.resolvedName + "'",
-                      line, col);
+                      node);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
   case TokenType::BITWISE_NOT: {
@@ -1138,7 +1105,7 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
         "Bitwise operator '" + operatorStr +
             "' can only be applied to integer types you provided '" +
             operandType.resolvedName + "'",
-        line, col);
+        node);
     return ResolvedType{DataType::UNKNOWN, "unknown"};
   }
   default:
@@ -1168,7 +1135,8 @@ Semantics::resolveSymbolInfo(const std::string &name) {
 std::shared_ptr<SymbolInfo>
 Semantics::lookUpInCurrentScope(const std::string &name) {
   if (symbolTable.empty()) {
-    reportDevBug("Attempted current scope look up on empty symbol table");
+    reportDevBug("Attempted current scope look up on empty symbol table",
+                 nullptr);
     return nullptr;
   }
 
@@ -1263,11 +1231,9 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
       return parentType;
     }
 
-    logSemanticErrors("Unknown type '" + token.TokenLiteral + "'", token.line,
-                      token.column);
+    logSemanticErrors("Unknown type '" + token.TokenLiteral + "'", nullptr);
     return {DataType::UNKNOWN, "unknown"};
   }
-
   default:
     return {DataType::UNKNOWN, "unknown", false, false};
   }
@@ -1589,7 +1555,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
                           std::to_string(callExpr->parameters.size()) +
                           " arguments, but expects " +
                           std::to_string(memFuncInfo.paramTypes.size()),
-                      callExpr->expression.line, callExpr->expression.column);
+                      callExpr);
     return false;
   }
 
@@ -1609,7 +1575,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
 
       if (!(ident || deref)) {
         logSemanticErrors("Cannot pass an expression to a reference parameter",
-                          param->expression.line, param->expression.column);
+                          param.get());
         return false;
       }
 
@@ -1622,7 +1588,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
     if (argType.kind == DataType::UNKNOWN) {
       logSemanticErrors("Could not infer type for argument " +
                             std::to_string(i + 1),
-                        param->expression.line, param->expression.column);
+                        param.get());
       allGood = false;
       continue;
     }
@@ -1635,7 +1601,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
         logSemanticErrors("Cannot pass null to non-nullable parameter " +
                               std::to_string(i + 1) + ": expected " +
                               expectedType.resolvedName,
-                          param->expression.line, param->expression.column);
+                          param.get());
         allGood = false;
         continue;
       }
@@ -1647,7 +1613,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
                             std::to_string(i + 1) + ", expected '" +
                             expectedType.resolvedName + "' but got '" +
                             argType.resolvedName + "'",
-                        param->expression.line, param->expression.column);
+                        param.get());
       allGood = false;
       continue;
     }
@@ -1668,7 +1634,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
                           std::to_string(callExpr->parameters.size()) +
                           " arguments, but expected " +
                           std::to_string(funcInfo.paramTypes.size()),
-                      callExpr->expression.line, callExpr->expression.column);
+                      callExpr);
     return false;
   }
 
@@ -1690,7 +1656,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
 
       if (!(ident || deref)) {
         logSemanticErrors("Cannot pass an expression to a reference parameter",
-                          param->expression.line, param->expression.column);
+                          param.get());
         return false;
       }
 
@@ -1703,7 +1669,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
     if (argType.kind == DataType::UNKNOWN) {
       logSemanticErrors("Could not infer type for argument " +
                             std::to_string(i + 1),
-                        param->expression.line, param->expression.column);
+                        param.get());
       allGood = false;
       continue;
     }
@@ -1716,7 +1682,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
         logSemanticErrors("Cannot pass null to non-nullable parameter " +
                               std::to_string(i + 1) + ": expected " +
                               expectedType.resolvedName,
-                          param->expression.line, param->expression.column);
+                          param.get());
         allGood = false;
         continue;
       }
@@ -1728,7 +1694,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
                             std::to_string(i + 1) + ", expected '" +
                             expectedType.resolvedName + "' but got '" +
                             argType.resolvedName + "'",
-                        param->expression.line, param->expression.column);
+                        param.get());
       allGood = false;
       continue;
     }
@@ -1997,8 +1963,7 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
     auto type = dynamic_cast<BasicType *>(node);
     auto letStmtValue = letStmt->value.get();
     if (!letStmtValue) {
-      logSemanticErrors("Cannot infer without a value", type->data_token.line,
-                        type->data_token.column);
+      logSemanticErrors("Cannot infer without a value", type);
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
     auto inferred = inferNodeDataType(letStmtValue);
@@ -2018,8 +1983,7 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
     // Search for the name in the custom types table
     auto typeIt = customTypesTable.find(letStmtType);
     if (typeIt == customTypesTable.end()) {
-      logSemanticErrors("Type '" + letStmtType + "' is unknown",
-                        type->data_token.line, type->data_token.column);
+      logSemanticErrors("Type '" + letStmtType + "' is unknown", type);
       return ResolvedType{DataType::UNKNOWN, "unknown"};
     }
 
@@ -2252,6 +2216,15 @@ StorageType Semantics::determineTier(const std::shared_ptr<SymbolInfo> &sym) {
   return sym->storage;
 }
 
+void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
+  Node *holder = queryForLifeTimeBaton(familyID);
+  if (!holder) {
+    reportDevBug("Could not find the baton holder", receiver);
+    return;
+  }
+  responsibilityTable[receiver] = std::move(responsibilityTable[holder]);
+}
+
 std::string Semantics::storageStr(const StorageType &storage) {
   switch (storage) {
   case StorageType::GLOBAL:
@@ -2298,14 +2271,21 @@ void Semantics::popScope() {
 std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {
   auto it = metaData.find(node);
   if (it == metaData.end()) {
+    reportDevBug("Could not find requested metadata", node);
     return nullptr;
   }
 
   return it->second;
 }
 
-void Semantics::logSemanticErrors(const std::string &message, int tokenLine,
-                                  int tokenColumn) {
+void Semantics::logSemanticErrors(const std::string &message,
+                                  Node *contextNode) {
+  auto tokenLine = 0;
+  auto tokenColumn = 0;
+  if (contextNode) {
+    tokenLine = contextNode->token.line;
+    tokenColumn = contextNode->token.column;
+  }
   hasFailed = true;
   CompilerError error;
   error.level = ErrorLevel::SEMANTIC;
@@ -2317,10 +2297,24 @@ void Semantics::logSemanticErrors(const std::string &message, int tokenLine,
   errorHandler.report(error);
 }
 
-void Semantics::reportDevBug(const std::string &message) {
-  hasFailed = true;
-  std::cerr << COLOR_RED << "[INTERNAL COMPILER ERROR] " << COLOR_RESET
-            << message << "\n";
+void Semantics::reportDevBug(const std::string &message, Node *contextNode) {
+  int line = 0;
+  int col = 0;
+  if (contextNode) {
+    line = contextNode->token.line;
+    col = contextNode->token.column;
+  }
+
+  CompilerError error;
+  error.level = ErrorLevel::INTERNAL;
+  error.line = line;
+  error.col = col;
+  error.message = message;
+  error.hints = {};
+
+  errorHandler.report(error);
+
+  std::abort();
 }
 
 void Semantics::logInternal(const std::string &message) {

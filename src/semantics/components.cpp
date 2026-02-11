@@ -14,8 +14,7 @@ void Semantics::walkEnumStatement(Node *node) {
 
   // Check duplicate type name
   if (resolveSymbolInfo(enumStmtName)) {
-    logSemanticErrors("Already used the name '" + enumStmtName + "'",
-                      enumStmt->statement.line, enumStmt->statement.column);
+    logSemanticErrors("Already used the name '" + enumStmtName + "'", enumStmt);
     return;
   }
 
@@ -75,7 +74,7 @@ void Semantics::walkEnumStatement(Node *node) {
 
   for (const auto &enumMember : enumStmt->enum_content) {
     if (!enumMember) {
-      reportDevBug("Invalid enum member");
+      reportDevBug("Invalid enum member", node);
       symbolTable.pop_back();
       return;
     }
@@ -85,7 +84,7 @@ void Semantics::walkEnumStatement(Node *node) {
     // Check for duplicate member name
     if (members.count(memberName) || resolveSymbolInfo(memberName)) {
       logSemanticErrors("Enum member name '" + memberName + "' already exists",
-                        enumMember->token.line, enumMember->token.column);
+                        enumMember.get());
       symbolTable.pop_back();
       return;
     }
@@ -158,7 +157,7 @@ void Semantics::walkEnumStatement(Node *node) {
       } else {
         logSemanticErrors("Enum member value must be a i8,u8, i16, u16, i32, "
                           "u32, i64, u63, i128, u128 or isize, usize literal",
-                          enumMember->token.line, enumMember->token.column);
+                          enumMember.get());
         symbolTable.pop_back();
         return;
       }
@@ -204,7 +203,7 @@ void Semantics::walkEnumStatement(Node *node) {
         break;
       default:
         logSemanticErrors("Invalid literal type for enum member",
-                          enumMember->token.line, enumMember->token.column);
+                          enumMember.get());
         symbolTable.pop_back();
         return;
       }
@@ -213,14 +212,14 @@ void Semantics::walkEnumStatement(Node *node) {
       if (isUnsignedLiteral && !underlyingIsUnsigned) {
         logSemanticErrors("Unsigned literal '" + literalStr +
                               "' incompatible with signed underlying type",
-                          enumMember->token.line, enumMember->token.column);
+                          enumMember.get());
         symbolTable.pop_back();
         return;
       }
       if (!isUnsignedLiteral && underlyingIsUnsigned) {
         logSemanticErrors("Signed literal '" + literalStr +
                               "' incompatible with unsigned underlying type",
-                          enumMember->token.line, enumMember->token.column);
+                          enumMember.get());
         symbolTable.pop_back();
         return;
       }
@@ -258,14 +257,14 @@ void Semantics::walkEnumStatement(Node *node) {
         }
       } catch (const std::invalid_argument &) {
         logSemanticErrors("Invalid integer literal '" + literalStr + "'",
-                          enumMember->token.line, enumMember->token.column);
+                          enumMember.get());
         symbolTable.pop_back();
         return;
       } catch (const std::out_of_range &e) {
         logSemanticErrors(
             "Value '" + literalStr +
                 "' out of range for underlying type: " + std::string(e.what()),
-            enumMember->token.line, enumMember->token.column);
+            enumMember.get());
         symbolTable.pop_back();
         return;
       }
@@ -275,7 +274,7 @@ void Semantics::walkEnumStatement(Node *node) {
         logSemanticErrors("Negative auto-incremented value '" +
                               std::to_string(memberValue) +
                               "' invalid for unsigned underlying type",
-                          enumMember->token.line, enumMember->token.column);
+                          enumMember.get());
         symbolTable.pop_back();
         return;
       }
@@ -339,8 +338,7 @@ void Semantics::walkRecordStatement(Node *node) {
 
   // Ensure name not already used
   if (resolveSymbolInfo(recordName)) {
-    logSemanticErrors("Already used the name '" + recordName + "'",
-                      recordStmt->statement.line, recordStmt->statement.column);
+    logSemanticErrors("Already used the name '" + recordName + "'", recordStmt);
     return;
   }
 
@@ -366,7 +364,7 @@ void Semantics::walkRecordStatement(Node *node) {
     if (refStmt) {
       logSemanticErrors("Cannot use references inside record '" + recordName +
                             "'",
-                        field->statement.line, field->statement.column);
+                        field.get());
       hasError = true;
       continue;
     }
@@ -376,7 +374,7 @@ void Semantics::walkRecordStatement(Node *node) {
     // Double check incase the parser messed up and leaked wrong statements
     if (!isDecl) {
       logSemanticErrors("Invalid statement inside record '" + recordName + "'",
-                        field->statement.line, field->statement.column);
+                        field.get());
       hasError = true;
       continue; // skip bad field but keep going
     }
@@ -410,7 +408,8 @@ void Semantics::walkRecordStatement(Node *node) {
     auto fieldSymbol = resolveSymbolInfo(fieldName);
     if (!fieldSymbol) {
       reportDevBug("Declaration statement '" + fieldName +
-                   "' was not analyzed properly");
+                       "' was not analyzed properly",
+                   field.get());
       hasError = true;
       continue;
     }
@@ -497,26 +496,27 @@ void Semantics::walkInstanceExpression(Node *node) {
     return;
 
   auto instName = instExpr->blockIdent->expression.TokenLiteral;
-  auto line = instExpr->blockIdent->expression.line;
-  auto col = instExpr->blockIdent->expression.column;
+
   bool hasError = false;
 
   auto instSym = resolveSymbolInfo(instName);
 
   if (isGlobalScope()) {
-    logSemanticErrors("Cannot create an instance in the global scope", line,
-                      col);
+    logSemanticErrors("Cannot create an instance in the global scope",
+                      instExpr->blockIdent.get());
     return;
   }
 
   if (!instSym) {
-    logSemanticErrors("Undefined identifier '" + instName + "'", line, col);
+    logSemanticErrors("Undefined identifier '" + instName + "'",
+                      instExpr->blockIdent.get());
     hasError = true;
     return;
   }
 
   if (instSym->type.kind != DataType::RECORD) {
-    logSemanticErrors("'" + instName + "' is not a record ", line, col);
+    logSemanticErrors("'" + instName + "' is not a record ",
+                      instExpr->blockIdent.get());
     hasError = true;
   }
 
@@ -531,7 +531,7 @@ void Semantics::walkInstanceExpression(Node *node) {
       if (it == members.end()) {
         logSemanticErrors("Field '" + fieldName + "' does not exist in '" +
                               instName + "'",
-                          line, col);
+                          instExpr->blockIdent.get());
         hasError = true;
         continue;
       }
@@ -569,7 +569,7 @@ void Semantics::walkInitConstructor(Node *node) {
   if (currentTypeStack.empty() ||
       currentTypeStack.back().type.kind != DataType::COMPONENT) {
     logSemanticErrors("`init` constructor must be declared inside a component",
-                      initStmt->statement.line, initStmt->statement.column);
+                      initStmt);
     return;
   }
 
@@ -579,7 +579,7 @@ void Semantics::walkInitConstructor(Node *node) {
   if (currentComponent.hasInitConstructor) {
     logSemanticErrors("Component '" + currentComponent.typeName +
                           "' already has an init constructor",
-                      initStmt->token.line, initStmt->token.column);
+                      initStmt);
     return;
   }
   currentComponent.hasInitConstructor = true;
@@ -620,8 +620,7 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
   // Look up the component's type info
   auto ctIt = customTypesTable.find(componentName);
   if (ctIt == customTypesTable.end()) {
-    logSemanticErrors("Component '" + componentName + "' not found",
-                      selfExpr->expression.line, selfExpr->expression.column);
+    logSemanticErrors("Component '" + componentName + "' not found", selfExpr);
     return nullptr;
   }
 
@@ -631,8 +630,7 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
   for (const auto &fieldNode : selfExpr->fields) {
     auto ident = dynamic_cast<Identifier *>(fieldNode.get());
     if (!ident) {
-      logSemanticErrors("Expected identifier in 'self' field chain",
-                        selfExpr->expression.line, selfExpr->expression.column);
+      logSemanticErrors("Expected identifier in 'self' field chain", selfExpr);
       return nullptr;
     }
 
@@ -644,7 +642,7 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
     if (memIt == currentTypeInfo->members.end()) {
       logSemanticErrors("'" + fieldName + "' does not exist in type '" +
                             currentTypeInfo->type.resolvedName + "'",
-                        ident->identifier.line, ident->identifier.column);
+                        ident);
       return nullptr;
     }
 
@@ -664,7 +662,7 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
       auto ctiIt = customTypesTable.find(lookUpName);
       if (ctiIt == customTypesTable.end()) {
         logSemanticErrors("Type info for '" + lookUpName + "' not found",
-                          ident->identifier.line, ident->identifier.column);
+                          ident);
         return nullptr;
       }
       currentTypeInfo = ctiIt->second;
@@ -685,8 +683,7 @@ void Semantics::walkSelfExpression(Node *node) {
   // Must be inside a component
   if (currentTypeStack.empty() ||
       currentTypeStack.back().type.kind != DataType::COMPONENT) {
-    logSemanticErrors("'self' cannot be used outside a component",
-                      selfExpr->expression.line, selfExpr->expression.column);
+    logSemanticErrors("'self' cannot be used outside a component", selfExpr);
     return;
   }
 
@@ -733,8 +730,7 @@ void Semantics::walkComponentStatement(Node *node) {
 
   if (symbolTable[0].find(componentName) != symbolTable[0].end()) {
     logSemanticErrors("Component name'" + componentName + "' already in use",
-                      componentStmt->statement.line,
-                      componentStmt->statement.column);
+                      componentStmt);
     return;
   }
 
@@ -764,13 +760,13 @@ void Semantics::walkComponentStatement(Node *node) {
   // Walk record imports
   for (const auto &injectedField : componentStmt->injectedFields) {
     if (!injectedField) {
-      reportDevBug("Invalid inject record node ");
+      reportDevBug("Invalid inject record node ", nullptr);
       return;
     }
 
     auto injectStmt = dynamic_cast<InjectStatement *>(injectedField.get());
     if (!injectStmt) {
-      reportDevBug("Invalid inject statement");
+      reportDevBug("Invalid inject statement", injectedField.get());
       continue;
     }
 
@@ -784,7 +780,7 @@ void Semantics::walkComponentStatement(Node *node) {
       auto typeIt = customTypesTable.find(identName);
       if (typeIt == customTypesTable.end()) {
         logSemanticErrors("Record with name '" + identName + "' does not exist",
-                          ident->expression.line, ident->expression.column);
+                          ident);
         hasError = true;
         return;
       }
@@ -823,7 +819,7 @@ void Semantics::walkComponentStatement(Node *node) {
                       "' symbol for '" + name + "'");
         } else {
           // If the node wasnt populated
-          reportDevBug("Imported member '" + name + "' has no node");
+          reportDevBug("Injected member '" + name + "' has no node", nullptr);
         }
       }
     }
@@ -843,8 +839,8 @@ void Semantics::walkComponentStatement(Node *node) {
       if (op != TokenType::AT) {
         logSemanticErrors("Invalid operator '" +
                               infixExpr->operat.TokenLiteral +
-                              "' for explicit use statement import",
-                          infixExpr->operat.line, infixExpr->operat.column);
+                              "' for explicit injection",
+                          infixExpr);
         hasError = true;
       }
 
@@ -884,14 +880,11 @@ void Semantics::walkComponentStatement(Node *node) {
     auto ptrStmt = dynamic_cast<PointerStatement *>(data.get());
 
     std::string declName = extractDeclarationName(data.get());
-    auto declLine = data.get()->statement.line;
-    auto declCol = data.get()->statement.column;
-
     // Block references
     if (refStmt) {
       logSemanticErrors("Cannot use references inside component '" +
                             componentName + "'",
-                        declLine, declCol);
+                        data.get());
       hasError = true;
       continue;
     }
@@ -902,7 +895,7 @@ void Semantics::walkComponentStatement(Node *node) {
       walker(data.get());
       std::shared_ptr<SymbolInfo> declSym = resolveSymbolInfo(declName);
       if (!declSym) {
-        reportDevBug("Failed to resolve member '" + declName + "'");
+        reportDevBug("Failed to resolve member '" + declName + "'", data.get());
         hasError = true;
         continue;
       }
@@ -926,7 +919,7 @@ void Semantics::walkComponentStatement(Node *node) {
     } else {
       logSemanticErrors("Invalid statement found in component '" +
                             componentName + "' definition scope",
-                        data->statement.line, data->statement.column);
+                        data.get());
       hasError = true;
     }
   }
@@ -957,7 +950,7 @@ void Semantics::walkComponentStatement(Node *node) {
           logSemanticErrors(
               "Component function '" + funcExpr->func_key.TokenLiteral +
                   "' does not match imported behavior declaration",
-              funcExpr->func_key.line, funcExpr->func_key.column);
+              funcExpr);
           continue; // skip registration, it's private and mismatched
         }
       }
@@ -997,7 +990,7 @@ void Semantics::walkComponentStatement(Node *node) {
       logSemanticErrors(
           "Cannot use function declarations inside a component '" +
               componentName + "'",
-          funcDeclrExpr->expression.line, funcDeclrExpr->expression.column);
+          funcDeclrExpr);
       hasError = true;
     }
   }
@@ -1030,14 +1023,11 @@ void Semantics::walkNewComponentExpression(Node *node) {
   if (!newExpr)
     return;
 
-  auto line = newExpr->expression.line;
-  auto column = newExpr->expression.column;
   auto componentName = newExpr->component_name.TokenLiteral;
   bool hasError = false;
 
   if (isGlobalScope()) {
-    logSemanticErrors("Cannot instiate a component in global scope", line,
-                      column);
+    logSemanticErrors("Cannot instiate a component in global scope", newExpr);
     return;
   }
   // UNIFIED TYPE LOOKUP
@@ -1054,8 +1044,8 @@ void Semantics::walkNewComponentExpression(Node *node) {
   }
 
   if (!componentExists) {
-    logSemanticErrors("Component '" + componentName + "' does not exist", line,
-                      column);
+    logSemanticErrors("Component '" + componentName + "' does not exist",
+                      newExpr);
     return;
   }
 
@@ -1079,7 +1069,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
     if (!givenArgs.empty()) {
       logSemanticErrors("Component '" + componentName +
                             "' has no init constructor, arguments not allowed.",
-                        line, column);
+                        newExpr);
       hasError = true;
     }
   } else {
@@ -1089,7 +1079,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
           "Constructor for '" + componentName + "' expects " +
           std::to_string(expectedArgs.size()) + " arguments but got " +
           (givenArgs.empty() ? "none" : std::to_string(givenArgs.size())) + ".";
-      logSemanticErrors(msg, line, column);
+      logSemanticErrors(msg, newExpr);
       hasError = true;
     }
 
@@ -1104,7 +1094,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
         logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
                               ": expected '" + expectedType.resolvedName +
                               "', got '" + argType.resolvedName + "'.",
-                          line, column);
+                          newExpr);
         hasError = true;
       }
     }
@@ -1125,7 +1115,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
 void Semantics::walkMethodCallExpression(Node *node) {
   auto metCall = dynamic_cast<MethodCallExpression *>(node);
   if (!metCall) {
-    reportDevBug("Invalid method call expression node");
+    reportDevBug("Invalid method call expression node", node);
     return;
   }
 
@@ -1133,9 +1123,7 @@ void Semantics::walkMethodCallExpression(Node *node) {
 
   auto instanceIdent = dynamic_cast<Identifier *>(metCall->instance.get());
   if (!instanceIdent) {
-    logSemanticErrors("Method call instance must be an identifier",
-                      metCall->instance->expression.line,
-                      metCall->instance->expression.column);
+    logSemanticErrors("Method call instance must be an identifier", metCall);
     return;
   }
 
@@ -1146,16 +1134,12 @@ void Semantics::walkMethodCallExpression(Node *node) {
   // Get the call expression and function name
   auto funcCall = dynamic_cast<CallExpression *>(metCall->call.get());
   if (!funcCall) {
-    logSemanticErrors("Invalid call expression in method call",
-                      metCall->call->expression.line,
-                      metCall->call->expression.column);
+    logSemanticErrors("Invalid call expression in method call", metCall);
     return;
   }
 
   const std::string funcName =
       funcCall->function_identifier->expression.TokenLiteral;
-  const int funcLine = funcCall->function_identifier->expression.line;
-  const int funcCol = funcCall->function_identifier->expression.column;
 
   // check if this LHS is a seal name
   auto sealIt = sealTable.find(instanceName);
@@ -1166,7 +1150,7 @@ void Semantics::walkMethodCallExpression(Node *node) {
     if (sealfnIt == sealMap.end()) {
       logSemanticErrors("Function '" + funcName + "' does not exist in seal '" +
                             instanceName + "'",
-                        funcLine, funcCol);
+                        funcCall->function_identifier.get());
       hasError = true;
       return;
     }
@@ -1178,7 +1162,7 @@ void Semantics::walkMethodCallExpression(Node *node) {
     auto fnIt = metaData.find(funcCall);
     if (fnIt == metaData.end()) {
       logSemanticErrors("Function '" + funcName + "' metaData does not exist ",
-                        funcLine, funcCol);
+                        funcCall->function_identifier.get());
       return;
     }
 
@@ -1199,8 +1183,8 @@ void Semantics::walkMethodCallExpression(Node *node) {
 
   auto instanceSym = resolveSymbolInfo(instanceName);
   if (!instanceSym) {
-    logSemanticErrors("Unidentified instance name '" + instanceName + "'", line,
-                      col);
+    logSemanticErrors("Unidentified instance name '" + instanceName + "'",
+                      funcCall->function_identifier.get());
     return;
   }
 
@@ -1209,15 +1193,15 @@ void Semantics::walkMethodCallExpression(Node *node) {
   if (typeIt == customTypesTable.end()) {
     logSemanticErrors("Unknown type '" + type.resolvedName +
                           "' for instance '" + instanceName + "'",
-                      line, col);
+                      funcCall->function_identifier.get());
     return;
   }
 
   // Check if the instance is the type itself and block such as it is leading to
   // issues in LLVM
   if (type.resolvedName == instanceName) {
-    logSemanticErrors("Cannot use the actual type as the instance itself", line,
-                      col);
+    logSemanticErrors("Cannot use the actual type as the instance itself",
+                      funcCall->function_identifier.get());
     hasError = true;
   }
 
@@ -1235,7 +1219,7 @@ void Semantics::walkMethodCallExpression(Node *node) {
   if (memIt == members.end()) {
     logSemanticErrors("'Function " + funcName + "' does not exist in type '" +
                           type.resolvedName + "'",
-                      funcLine, funcCol);
+                      funcCall->function_identifier.get());
     return;
   }
 
@@ -1243,8 +1227,8 @@ void Semantics::walkMethodCallExpression(Node *node) {
 
   // Declaration check
   if (!memInfo->isDeclared) {
-    logSemanticErrors("'" + funcName + "' was not declared anywhere", funcLine,
-                      funcCol);
+    logSemanticErrors("'" + funcName + "' was not declared anywhere",
+                      funcCall->function_identifier.get());
     hasError = true;
   }
 
@@ -1260,7 +1244,7 @@ void Semantics::walkMethodCallExpression(Node *node) {
           metaData[nullLit]->type = expected;
         } else {
           logSemanticErrors("Cannot pass null to non-nullable parameter",
-                            arg->expression.line, arg->expression.column);
+                            arg.get());
           hasError = true;
           continue;
         }
