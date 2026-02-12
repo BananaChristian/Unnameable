@@ -163,12 +163,18 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   if (valSym->isHeap) {
     Node *valHolder = semantics.queryForLifeTimeBaton(valSym->ID);
     if (valHolder == assignStmt->value.get()) {
-      logInternal(
-          "The RHS of the assignment is holding its baton - Deploying Ghost");
-      activeGhost = allocateDynamicHeapStorage(valSym, "ghost_escrow");
-      this->ghostStorage = activeGhost;
-      initValue = generateExpression(assignStmt->value.get());
-      this->ghostStorage = nullptr;
+      // The assign statement value is holding the baton we have to check if the
+      // responsibility lies with him as that is the only way we can know if the
+      // memory was meant to die here
+      const auto &baton = semantics.responsibilityTable[valHolder];
+      if (baton->isResponsible) {
+        logInternal(
+            "The RHS of the assignment is holding its baton - Deploying Ghost");
+        activeGhost = allocateDynamicHeapStorage(valSym, "ghost_escrow");
+        this->ghostStorage = activeGhost;
+        initValue = generateExpression(assignStmt->value.get());
+        this->ghostStorage = nullptr;
+      }
     } else {
       initValue = generateExpression(assignStmt->value.get());
     }

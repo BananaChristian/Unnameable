@@ -7,6 +7,7 @@ enum class ErrorLevel {
   PARSER,
   IMPORT,
   SEMANTIC,
+  AUDITOR,
   LAYOUT,
   INTERNAL
 };

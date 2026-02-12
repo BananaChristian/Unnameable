@@ -53,10 +53,12 @@ std::string ErrorHandler::getLevelDisplayName(ErrorLevel level) {
     return "Parsing issue";
   case ErrorLevel::SEMANTIC:
     return "Semantic issue";
+  case ErrorLevel::AUDITOR:
+    return "Auditor issue";
   case ErrorLevel::LAYOUT:
     return "Layout issue";
   case ErrorLevel::INTERNAL:
-    return "Internal Compiler error";
+    return "INTERNAL COMPILER ERROR";
   case ErrorLevel::IMPORT:
     return "Import issue";
   }

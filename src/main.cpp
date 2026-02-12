@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 
+#include "audit.hpp"
 #include "deserial.hpp"
 #include "irgen.hpp"
 #include "layout.hpp"
@@ -200,7 +201,8 @@ int main(int argc, char **argv) {
       return 1;
 
     if (logOutput) {
-      std::cout << COLOR_BLUE << "[LEXICAL ANALYSIS]" << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Tokeninizing tokens ..."
+                << COLOR_RESET << "\n";
       for (const auto &token : lexer.token_list) {
         std::cout << COLOR_CYAN << "Token: " << COLOR_RESET
                   << TokenTypeToLiteral(token.type) << ", Literal: \""
@@ -216,7 +218,8 @@ int main(int argc, char **argv) {
       return 1;
 
     if (logOutput)
-      std::cout << COLOR_BLUE << "[AST GENERATION]" << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Generating AST..."
+                << COLOR_RESET << "\n";
 
     for (auto &node : AST) {
       if (logOutput) {
@@ -227,16 +230,18 @@ int main(int argc, char **argv) {
     // Deserializer phase
     Deserializer deserial(errorHandler, logOutput);
     if (logOutput)
-      std::cout << COLOR_BLUE << "[STUB DESERIALIZATION]" << COLOR_RESET
-                << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Deserializing stub.."
+                << COLOR_RESET << "\n";
     deserial.processImports(AST, sourceFile);
 
     if (deserial.failed()) {
       return 1;
     }
 
+    // SEMANTICS PASS
     if (logOutput)
-      std::cout << COLOR_BLUE << "[SEMANTIC ANALYSIS]" << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Analyzing semantics..."
+                << COLOR_RESET << "\n";
     Semantics semantics(deserial, errorHandler, logOutput);
     for (const auto &node : AST)
       semantics.walker(node.get());
@@ -245,9 +250,22 @@ int main(int argc, char **argv) {
       return 1;
     }
 
-    // Layout Phase
+    // BATON AUDITOR PASS
     if (logOutput)
-      std::cout << COLOR_BLUE << "[LAYOUT ANALYSIS]" << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Auditing baton state..."
+                << COLOR_RESET << "\n";
+    Auditor auditor(semantics, errorHandler, logOutput);
+    for (const auto &node : AST)
+      auditor.audit(node.get());
+
+    if (auditor.failed()) {
+      return 1;
+    }
+
+    // LAYOUT PASS
+    if (logOutput)
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Calculating layout..."
+                << COLOR_RESET << "\n";
     llvm::LLVMContext llvmContext;
     Layout layout(semantics, llvmContext, errorHandler, logOutput);
     for (const auto &node : AST)
@@ -257,11 +275,11 @@ int main(int argc, char **argv) {
       return 1;
     }
 
-    // Stub generation phase
+    // STUB GENERATION
     StubGen stubGen(semantics, stubFile, logOutput);
     if (compileOnly || stubOnly) {
       if (logOutput)
-        std::cout << COLOR_BLUE << "[STUBGEN]" << COLOR_RESET << "\n";
+        std::cout << COLOR_BLUE << "Generating stub ..." << COLOR_RESET << "\n";
       for (const auto &node : AST)
         stubGen.stubGenerator(node.get());
 
@@ -279,9 +297,10 @@ int main(int argc, char **argv) {
       }
     }
 
-    // IR generation
+    // IR GENERATION
     if (logOutput)
-      std::cout << COLOR_BLUE << "[IR GENERATION]" << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Generating IR..." << COLOR_RESET
+                << "\n";
     IRGenerator irgen(semantics, errorHandler, layout.totalHeapSize, logOutput);
     irgen.generate(AST);
     if (logOutput)

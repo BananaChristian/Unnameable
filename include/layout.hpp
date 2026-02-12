@@ -45,7 +45,6 @@ private:
   void calculateFunctionStatement(Node *node);
   void calculateFunctionExpression(Node *node);
   void calculateBlockExpression(Node *node);
-  void calculateReturnStatement(Node *node);
   void calculateRecordStatement(Node *node);
   void calculateSealStatement(Node *node);
   void calculateComponentStatement(Node *node);
