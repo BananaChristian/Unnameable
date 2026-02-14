@@ -889,8 +889,16 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
   }
   case TokenType::BITWISE_NOT:
     return funcBuilder.CreateNot(operand, llvm::Twine("bitnottmp"));
-  case TokenType::BANG:
+  case TokenType::BANG: { // If it's a pointer, we don't 'NOT' it, we compare it
+                          // to NULL
+    if (operand->getType()->isPointerTy()) {
+      // Logic: !p  is equivalent to  p == null
+      llvm::Value *nullPtr = llvm::ConstantPointerNull::get(
+          llvm::cast<llvm::PointerType>(operand->getType()));
+      return funcBuilder.CreateICmpEQ(operand, nullPtr, "ptr_is_null");
+    }
     return funcBuilder.CreateNot(operand, llvm::Twine("boolnottmp"));
+  }
 
   case TokenType::PLUS_PLUS:
   case TokenType::MINUS_MINUS: {

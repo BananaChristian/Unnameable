@@ -135,7 +135,6 @@ void StubGen::generateComponentStatement(Node *node) {
       member.isConstant = memInfo->isConstant;
       member.isPointer = memInfo->isPointer;
       member.isRef = memInfo->isRef;
-      member.storage = memInfo->storage;
 
       componentTable.members.push_back(member);
     }
@@ -212,7 +211,6 @@ void StubGen::generateRecordStatement(Node *node) {
     member.isConstant = memInfo->isConstant;
     member.isPointer = memInfo->isPointer;
     member.isRef = memInfo->isRef;
-    member.storage = memInfo->storage;
 
     recordTable.members.push_back(member);
   }

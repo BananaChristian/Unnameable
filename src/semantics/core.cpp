@@ -714,7 +714,8 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
   if (operatorType == TokenType::FULLSTOP ||
       operatorType == TokenType::SCOPE_OPERATOR) {
     auto parentType = inferNodeDataType(infixNode->left_operand.get());
-    std::string childName = infixNode->right_operand->expression.TokenLiteral;
+    std::string childName =
+        extractIdentifierName(infixNode->right_operand.get());
     auto result =
         resultOfScopeOrDot(operatorType, parentType, childName, infixNode);
     if (result) {
@@ -761,13 +762,6 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
     if (!symbol) {
       logSemanticErrors(
           "Undefined variable '" + ident->identifier.TokenLiteral + "'", ident);
-      return {DataType::ERROR, "error"};
-    }
-    if (!symbol->isInitialized) {
-      logSemanticErrors("Cannot use an uninitialized variable '" +
-                            ident->identifier.TokenLiteral + "' in operations",
-                        ident);
-      symbol->hasError = true;
       return {DataType::ERROR, "error"};
     }
     if (symbol->isDefinitelyNull) {
@@ -1061,7 +1055,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
 
   logSemanticErrors("Unknown binary operator '" + operatorStr + "'",
                     infix->left_operand.get());
-  return ResolvedType{DataType::UNKNOWN, "unknown"};
+  return ResolvedType{DataType::ERROR, "error"};
 }
 
 ResolvedType Semantics::resultOfUnary(TokenType operatorType,
@@ -1075,13 +1069,13 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
 
   switch (operatorType) {
   case TokenType::BANG: {
-    if (!isBoolean(operandType)) {
-      logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
-                            operandType.resolvedName + "'",
-                        node);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+    if (isBoolean(operandType) || operandType.isPointer) {
+      return ResolvedType{DataType::BOOLEAN, "bool"};
     }
-    return ResolvedType{DataType::BOOLEAN, "bool"};
+    logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
+                          operandType.resolvedName + "'",
+                      node);
+    return ResolvedType{DataType::ERROR, "error"};
   }
   case TokenType::MINUS:
   case TokenType::PLUS:
@@ -1094,7 +1088,7 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
     logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
                           operandType.resolvedName + "'",
                       node);
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return ResolvedType{DataType::ERROR, "error"};
   }
   case TokenType::BITWISE_NOT: {
     if (isInteger(operandType)) {
@@ -1106,10 +1100,10 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
             "' can only be applied to integer types you provided '" +
             operandType.resolvedName + "'",
         node);
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return ResolvedType{DataType::ERROR, "error"};
   }
   default:
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return ResolvedType{DataType::ERROR, "error"};
   }
 }
 
@@ -1231,7 +1225,8 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
       return parentType;
     }
 
-    logSemanticErrors("Unknown type '" + token.TokenLiteral + "'", nullptr);
+    logSpecialErrors("Unknown type '" + token.TokenLiteral + "'", token.line,
+                     token.column);
     return {DataType::UNKNOWN, "unknown"};
   }
   default:
@@ -1861,8 +1856,11 @@ bool Semantics::isConstLiteral(Node *node) {
   auto u64Lit = dynamic_cast<U64Literal *>(node);
   auto i128Lit = dynamic_cast<I128Literal *>(node);
   auto u128Lit = dynamic_cast<U128Literal *>(node);
-  bool isIntLit = (i8Lit || u8Lit || i16Lit || u16Lit || i32Lit || u32Lit ||
-                   i64Lit || u64Lit || i128Lit || u128Lit);
+  auto isizeLit = dynamic_cast<ISIZELiteral *>(node);
+  auto usizeLit = dynamic_cast<USIZELiteral *>(node);
+  bool isIntLit =
+      (i8Lit || u8Lit || i16Lit || u16Lit || i32Lit || u32Lit || i64Lit ||
+       u64Lit || i128Lit || u128Lit || isizeLit || usizeLit);
 
   // Float and double literals;
   auto f32Lit = dynamic_cast<F32Literal *>(node);
@@ -1898,8 +1896,11 @@ bool Semantics::isIntegerConstant(Node *node) {
   auto u64Lit = dynamic_cast<U64Literal *>(node);
   auto i128Lit = dynamic_cast<I128Literal *>(node);
   auto u128Lit = dynamic_cast<U128Literal *>(node);
-  bool isIntLit = (i8Lit || u8Lit || i16Lit || u16Lit || i32Lit || u32Lit ||
-                   i64Lit || u64Lit || i128Lit || u128Lit);
+  auto isizeLit = dynamic_cast<ISIZELiteral *>(node);
+  auto usizeLit = dynamic_cast<USIZELiteral *>(node);
+  bool isIntLit =
+      (i8Lit || u8Lit || i16Lit || u16Lit || i32Lit || u32Lit || i64Lit ||
+       u64Lit || i128Lit || u128Lit || isizeLit || usizeLit);
 
   return isIntLit;
 }
@@ -2172,18 +2173,43 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
 void Semantics::transferResponsibility(
     LifeTime *currentBaton, LifeTime *targetBaton,
     const std::shared_ptr<SymbolInfo> &targetSym) {
-  logInternal("Disarming target briefcase " + targetBaton->ID + " into " +
-              currentBaton->ID);
+
+  logInternal("--- HEIST START ---");
+  logInternal("Robber (Current): " + currentBaton->ID);
+  logInternal("Victim (Target): " + targetBaton->ID);
+  logInternal("Target Pointer Count: " +
+              std::to_string(targetSym->pointerCount));
+
+  if (!targetSym->isHeap) {
+    logInternal("The victim is not heap raised dont bother");
+    return;
+  }
+
   auto targetPointerCount = targetSym->pointerCount;
-  // Check what happens to the pointer count if we subtract 1 from it
-  if ((targetPointerCount - 1) == 0) {
-    targetBaton->isResponsible = false;
+
+  // The moment of truth: Can we rob it?
+  if (targetPointerCount <= 2) {
+    logInternal("SUCCESS: Robbery approved. Disarming " + targetBaton->ID);
+
+    targetBaton->isResponsible = false;      // The Victim is now impotent
+    targetBaton->ownedBy = currentBaton->ID; // The Master-Slave link
+
+    // The Robber takes the specific target
     currentBaton->dependents[targetBaton->ID] = targetSym;
 
+    // THE LOOT: Robber takes all the victim's existing dependents too
     for (auto const &[id, sym] : targetBaton->dependents) {
+      logInternal("COLLECTING LOOT: Robber " + currentBaton->ID + " now owns " +
+                  id);
       currentBaton->dependents[id] = sym;
     }
+  } else {
+    logInternal("FAILURE: Robbery vetoed. Pointer count (" +
+                std::to_string(targetPointerCount) + ") is too high.");
   }
+
+  logInternal("--- HEIST END: Victim " + targetBaton->ID + " isResponsible = " +
+              (targetBaton->isResponsible ? "TRUE" : "FALSE") + " ---");
 }
 
 Node *Semantics::queryForLifeTimeBaton(const std::string &familyID) {
@@ -2202,20 +2228,6 @@ Node *Semantics::queryForLifeTimeBaton(const std::string &familyID) {
   return nullptr;
 }
 
-// This function enforces the pointing rules(Can only point upwards)
-bool Semantics::validateLatticeMove(const StorageType &holderType,
-                                    const StorageType &targetType) {
-  if (holderType > targetType) {
-    return false;
-  }
-  return true;
-}
-
-StorageType Semantics::determineTier(const std::shared_ptr<SymbolInfo> &sym) {
-  // Just retreive the storage policy
-  return sym->storage;
-}
-
 void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
   Node *holder = queryForLifeTimeBaton(familyID);
   if (!holder) {
@@ -2223,21 +2235,6 @@ void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
     return;
   }
   responsibilityTable[receiver] = std::move(responsibilityTable[holder]);
-}
-
-std::string Semantics::storageStr(const StorageType &storage) {
-  switch (storage) {
-  case StorageType::GLOBAL:
-    return "global";
-  case StorageType::SAGE:
-    return "sage";
-  case StorageType::HEAP:
-    return "heap";
-  case StorageType::STACK:
-    return "stack";
-  default:
-    return "none";
-  }
 }
 
 void Semantics::popScope() {
@@ -2253,8 +2250,8 @@ void Semantics::popScope() {
                     "' relseased its target the refCount now " +
                     std::to_string(sym->refereeSymbol->refCount));
       }
-    } else if (sym->isPointer && sym->targetSymbol &&
-               sym->storage == StorageType::STACK) {
+    } else if (sym->isPointer && sym->targetSymbol && !sym->isHeap &&
+               !sym->isSage) {
       logInternal("Initial pointer count: " +
                   std::to_string(sym->targetSymbol->pointerCount));
       if (sym->targetSymbol->pointerCount > 0) {
@@ -2276,6 +2273,19 @@ std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {
   }
 
   return it->second;
+}
+
+void Semantics::logSpecialErrors(const std::string &message, int line,
+                                 int col) {
+  hasFailed = true;
+  CompilerError error;
+  error.level = ErrorLevel::SEMANTIC;
+  error.line = line;
+  error.col = col;
+  error.message = message;
+  error.hints = {};
+
+  errorHandler.report(error);
 }
 
 void Semantics::logSemanticErrors(const std::string &message,

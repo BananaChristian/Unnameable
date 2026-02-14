@@ -17,6 +17,7 @@ public:
 private:
   using auditFn = void (Auditor::*)(Node *node);
   std::unordered_map<std::type_index, auditFn> auditFnsMap;
+  std::unordered_map<std::string, std::vector<std::string>> candidateRegistry;
   void registerAuditorFunctions();
 
   // Variable declaration auditors
@@ -33,9 +34,16 @@ private:
   void auditBlockExpression(Node *node);
 
   // Statement auditors
+  void auditAssignmentStatement(Node *node);
   void auditReturnStatement(Node *node);
 
   // Helpers
+  void transferDependent(const std::string &dependentID,
+                         const std::shared_ptr<SymbolInfo> &dependentSym,
+                         bool dropCount);
+  void simulateFree(const std::string &contextID);
+
+  // Loggers and reporters
   void logAuditError(const std::string &message, Node *contextNode);
   void reportDevBug(const std::string &message, Node *contextNode);
   void logInternal(const std::string &message);

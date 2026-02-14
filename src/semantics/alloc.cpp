@@ -267,8 +267,8 @@ void Semantics::walkHeapStatement(Node *node) {
 void Semantics::registerInbuiltAllocatorTypes() {
   // alloc for the GPA
   AllocatorHandle stdHandle;
-  stdHandle.allocateName = "alloc";
-  stdHandle.freeName = "free";
+  stdHandle.allocateName = "unn_alloc";
+  stdHandle.freeName = "unn_dealloc";
 
   // Create handle symbol for alloc
   std::vector<std::pair<ResolvedType, std::string>> allocParams;

@@ -411,3 +411,342 @@ void Semantics::walkBitcastExpression(Node *node) {
   logInternal("Bitcast validated: " + sourceType.resolvedName + " -> " +
               destinationType.resolvedName);
 }
+
+// Walking array subscript expression
+void Semantics::walkArraySubscriptExpression(Node *node) {
+  auto arrExpr = dynamic_cast<ArraySubscript *>(node);
+  if (!arrExpr)
+    return;
+
+  bool hasError = false;
+  auto arrName = arrExpr->identifier->expression.TokenLiteral;
+
+  auto arrSymbol = resolveSymbolInfo(arrName);
+  if (!arrSymbol) {
+    logSemanticErrors("Unidentified variable '" + arrName + "'", arrExpr);
+    return;
+  }
+
+  if (arrSymbol->hasError)
+    return;
+
+  walker(arrExpr->identifier.get());
+
+  // Get the full array type
+  ResolvedType arrType = arrSymbol->type;
+  logInternal("Array Type '" + arrType.resolvedName + "'");
+
+  if (!arrType.isArray) {
+    logSemanticErrors("Cannot index a non array '" + arrName + "of type '" +
+                          arrType.resolvedName + "'",
+                      arrExpr);
+    hasError = true;
+  }
+
+  if (arrType.isNull) {
+    logSemanticErrors("Cannot index a nullable array '" + arrName +
+                          "' of type '" + arrType.resolvedName +
+                          "' without unwrapping it ",
+                      arrExpr);
+    hasError = true;
+  }
+
+  // Get the element type as when we index we want the element type itself not a
+  // full array type
+  auto elementType = getArrayElementType(arrType);
+
+  // Optionally store info for further analysis
+  auto arrAccessInfo = std::make_shared<SymbolInfo>();
+  arrAccessInfo->type = elementType;
+  arrAccessInfo->hasError = hasError;
+  arrAccessInfo->isSage = arrSymbol->isSage;
+  arrAccessInfo->isHeap = arrSymbol->isHeap;
+  arrAccessInfo->sizePerDimensions = arrSymbol->sizePerDimensions;
+
+  metaData[arrExpr] = arrAccessInfo;
+}
+
+// Walking the identifier expression
+void Semantics::walkIdentifierExpression(Node *node) {
+  auto identExpr = dynamic_cast<Identifier *>(node);
+  if (!identExpr)
+    return;
+  auto identName = identExpr->identifier.TokenLiteral;
+  auto symbolInfo = resolveSymbolInfo(identName);
+
+  if (!symbolInfo) {
+    logSemanticErrors(" Use of undeclared identifer '" + identName + "'",
+                      identExpr);
+    return;
+  }
+
+  if (symbolInfo->isHeap) {
+    // Elder and resident check for loop logic
+    bool inLoop = !loopContext.empty() && loopContext.back();
+    if (inLoop && !symbolInfo->bornInLoop) {
+      // ELDERS
+      symbolInfo->needsPostLoopFree = true;
+      loopDeathRow.insert(symbolInfo.get());
+    } else if (inLoop && symbolInfo->bornInLoop) {
+      // RESIDENTS
+      // Track them so we can ensure they die before the loop repeats
+      loopResidentDeathRow.insert(symbolInfo.get());
+
+    } else {
+      // Normal linear path
+      currentBranchIdents.push_back(identExpr);
+    }
+  }
+
+  Node *holder = queryForLifeTimeBaton(symbolInfo->ID);
+  responsibilityTable[identExpr] = std::move(responsibilityTable[holder]);
+  metaData[identExpr] = symbolInfo;
+}
+
+// Walking address expression
+void Semantics::walkAddressExpression(Node *node) {
+  auto addrExpr = dynamic_cast<AddressExpression *>(node);
+  if (!addrExpr)
+    return;
+
+  auto innerExpr = addrExpr->identifier.get();
+  if (!innerExpr)
+    return;
+
+  auto addrName = extractIdentifierName(innerExpr);
+
+  auto call = dynamic_cast<CallExpression *>(innerExpr);
+  auto metCall = dynamic_cast<MethodCallExpression *>(innerExpr);
+
+  if (auto infix = dynamic_cast<InfixExpression *>(innerExpr)) {
+    // Check the operator
+    if (infix->operat.type != TokenType::FULLSTOP &&
+        infix->operat.type != TokenType::SCOPE_OPERATOR) {
+      errorHandler
+          .addHint(
+              "When you use the 'addr' operator you want to get the address "
+              "of that expression")
+          .addHint("The 'addr' operator can only work on an expression with a "
+                   "permanent "
+                   "location an arithetic operation of any sorts does not have "
+                   "this");
+      logSemanticErrors(
+          "Cannot take address of an arithmetic expression or comparison",
+          infix);
+      return;
+    }
+  }
+
+  if (call || metCall) {
+
+    errorHandler
+        .addHint("When you use the 'addr' operator you want to get the address "
+                 "of that expression")
+        .addHint("The 'addr' operator can only work on an expression "
+                 "with a permanent location, function calls are "
+                 "temporary in nature and have no location ");
+    logSemanticErrors("Cannot get the address to a temporary value '" +
+                          addrName + "'",
+                      innerExpr);
+    return;
+  }
+
+  walker(innerExpr);
+  auto symbolInfo = metaData[innerExpr];
+
+  if (!symbolInfo) {
+    logSemanticErrors("Unidentified variable '" + addrName + "'", innerExpr);
+    return;
+  }
+
+  bool hasError = false;
+  bool isSage = symbolInfo->isSage;
+  bool isHeap = symbolInfo->isHeap;
+
+  auto addrInfo = std::make_shared<SymbolInfo>();
+  addrInfo->isPointer = true;
+  addrInfo->isSage = isSage;
+  addrInfo->isHeap = isHeap;
+  addrInfo->ID = symbolInfo->ID;
+  addrInfo->allocType = symbolInfo->allocType;
+  addrInfo->targetSymbol = symbolInfo;
+  addrInfo->type = inferNodeDataType(addrExpr);
+
+  // Ths syncs the pointerCount with that of the original identifier
+  symbolInfo->pointerCount = addrInfo->pointerCount;
+  if (isHeap) {
+    Node *holder = queryForLifeTimeBaton(addrInfo->ID);
+    responsibilityTable[addrExpr] = std::move(responsibilityTable[holder]);
+  }
+  metaData[addrExpr] = addrInfo;
+}
+
+void Semantics::walkMoveExpression(Node *node) {
+  auto moveExpr = dynamic_cast<MoveExpression *>(node);
+  if (!moveExpr)
+    return;
+
+  auto innerExpr = moveExpr->expr.get();
+  if (!innerExpr)
+    return;
+  auto exprName = extractIdentifierName(innerExpr);
+
+  auto call = dynamic_cast<CallExpression *>(innerExpr);
+  auto metCall = dynamic_cast<MethodCallExpression *>(innerExpr);
+
+  if (auto infix = dynamic_cast<InfixExpression *>(innerExpr)) {
+    // Check the operator
+    if (infix->operat.type != TokenType::FULLSTOP &&
+        infix->operat.type != TokenType::SCOPE_OPERATOR) {
+      errorHandler
+          .addHint("When you use the 'move' operator you want to transfer "
+                   "ownership of memory from one variable to another")
+          .addHint("The move operator can only work on an expression with a "
+                   "permanent "
+                   "location an arithetic operation of any sorts does not have "
+                   "this");
+      logSemanticErrors("Cannot move of an arithmetic expression or comparison",
+                        infix);
+      return;
+    }
+  }
+
+  if (call || metCall) {
+    errorHandler
+        .addHint("When you use the 'move' operator you want to transfer "
+                 "ownership of memory from one variable to another")
+        .addHint("The move operator can only work on an expression "
+                 "with a permanent location, function calls are "
+                 "temoprary in nature and have no location ");
+    logSemanticErrors("Cannot move a temporary value '" + exprName + "'",
+                      innerExpr);
+    return;
+  }
+
+  walker(innerExpr);
+  auto symbolInfo = metaData[innerExpr];
+
+  if (!symbolInfo) {
+    logSemanticErrors("Unidentified variable '" + exprName + "'", innerExpr);
+  }
+
+  if (!symbolInfo->isHeap && !symbolInfo->isSage) {
+    logSemanticErrors("Cannot move variable '" + exprName +
+                          "' as it is stored on the stack",
+                      innerExpr);
+  }
+
+  if (symbolInfo->type.isPointer || symbolInfo->type.isRef) {
+    logSemanticErrors("Cannot move variable '" + exprName +
+                          "' as it is of a type '" +
+                          symbolInfo->type.resolvedName + "'",
+                      innerExpr);
+  }
+
+  if (symbolInfo->isInvalid) {
+    logSemanticErrors("Variable '" + exprName + "' was already moved",
+                      innerExpr);
+  }
+
+  metaData[moveExpr] = symbolInfo;
+}
+
+void Semantics::walkDereferenceExpression(Node *node) {
+  auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
+  if (!derefExpr)
+    return;
+
+  auto innerNode = derefExpr->identifier.get();
+  std::string derefName = extractIdentifierName(innerNode);
+
+  walker(innerNode);
+
+  auto derefSym = resolveSymbolInfo(derefName);
+  if (!derefSym) {
+    logSemanticErrors("Use of undeclared identifier '" + derefName + "'",
+                      derefExpr);
+    return;
+  }
+
+  if (derefSym->hasError) {
+    logSemanticErrors(
+        "Cannot dereference erronious pointer '" + derefName + "'", derefExpr);
+    return;
+  }
+
+  // Block dereferencing non pointer
+  if (!derefSym->type.isPointer) {
+    logSemanticErrors("Cannot dereference non pointer type '" +
+                          derefSym->type.resolvedName + "'",
+                      derefExpr);
+    return; // Dont bother
+  }
+
+  // Block dereferencing opaque pointer
+  if (derefSym->type.kind == DataType::OPAQUE) {
+    logSemanticErrors(
+        "Cannot dereference an opaque pointer '" + derefName + "'", derefExpr);
+    return;
+  }
+
+  // Block dereferencing nullable types
+  if (derefSym->type.isNull) {
+    logSemanticErrors("Cannot dereference nullable pointer type '" +
+                          derefSym->type.resolvedName + "'",
+                      derefExpr);
+    return;
+  }
+
+  ResolvedType peeledType = derefSym->type;
+  peeledType.isPointer = false;
+  ResolvedType finalType = isPointerType(peeledType);
+
+  auto derefInfo = std::make_shared<SymbolInfo>();
+
+  derefInfo->isPointer = finalType.isPointer;
+  derefInfo->type = finalType; // Setting the final 'i32' type here
+  derefInfo->isMutable = derefSym->isMutable;
+  derefInfo->isInitialized = derefSym->isInitialized;
+
+  if (derefSym->targetSymbol != nullptr) {
+    derefInfo->targetSymbol = derefSym->targetSymbol;
+    // derefSym->targetSymbol->lastUseNode = derefExpr;
+  } else {
+    derefInfo->targetSymbol = nullptr;
+  }
+
+  metaData[derefExpr] = derefInfo;
+}
+
+void Semantics::walkSizeOfExpression(Node *node) {
+  auto sizeExpr = dynamic_cast<SizeOfExpression *>(node);
+  if (!sizeExpr)
+    return;
+
+  bool hasError = false;
+
+  Expression *typeNode = sizeExpr->type.get();
+  if (!typeNode)
+    return;
+
+  ResolvedType type = inferNodeDataType(typeNode);
+  bool isInbuilt = isInteger(type) || isBoolean(type) || isChar(type) ||
+                   isString(type) || isFloat(type);
+
+  auto typeName = sizeExpr->type->expression.TokenLiteral;
+
+  // Check if the type written is legal that is if its not inbuilt
+  if (!isInbuilt) {
+    auto typeIt = customTypesTable.find(typeName);
+    if (typeIt == customTypesTable.end()) {
+      logSemanticErrors("Unknown type '" + typeName + "' in sizeof", typeNode);
+      hasError = true;
+    }
+  }
+
+  auto sizeInfo = std::make_shared<SymbolInfo>();
+  sizeInfo->type = ResolvedType{DataType::USIZE, "usize"};
+  sizeInfo->hasError = hasError;
+
+  metaData[sizeExpr] = sizeInfo;
+}

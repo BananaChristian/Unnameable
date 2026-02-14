@@ -82,10 +82,6 @@ llvm::Value *IRGenerator::generateExpression(Node *node) {
     throw std::runtime_error(
         "Null node sent to the expression generator dispatcher");
   }
-
-  std::cout << "[DISPATCH] Node Type: " << typeid(*node).name()
-            << " | Value: " << node->toString() << "\n";
-
   auto exprIt = expressionGeneratorsMap.find(typeid(*node));
   if (exprIt == expressionGeneratorsMap.end()) {
     reportDevBug("Could not find expression type IR generator for: " +
@@ -133,17 +129,32 @@ void IRGenerator::generateExpressionStatement(Node *node) {
   generateExpression(exprStmt->expression.get());
 }
 
+void IRGenerator::generatePointerAssignmentStatement(
+    AssignmentStatement *assignStmt) {
+  auto assignSym = semantics.getSymbolFromMeta(assignStmt);
+  if (!assignSym)
+    return;
+
+  logInternal("Inside the pointer reassignment");
+
+  llvm::Value *targetPtr = generateAddress(assignStmt->identifier.get());
+  llvm::Value *newAddr = generateExpression(assignStmt->value.get());
+  funcBuilder.CreateStore(newAddr, targetPtr);
+
+  emitCleanup(assignStmt, assignSym);
+}
+
 // Assignment statement IR generator function
 void IRGenerator::generateAssignmentStatement(Node *node) {
   auto *assignStmt = dynamic_cast<AssignmentStatement *>(node);
   if (!assignStmt)
     return;
 
-  if (isGlobalScope) {
-    errorHandler.addHint(
-        "Semantics failed to guard an assignment in the global scope");
-    reportDevBug("Executable statements are not allowed at global scope",
-                 assignStmt->statement.line, assignStmt->statement.column);
+  auto assignSym = semantics.getSymbolFromMeta(assignStmt);
+
+  if (assignSym->isPointer) {
+    generatePointerAssignmentStatement(assignStmt);
+    return;
   }
 
   // targetPtr is the STACK location of the variable (e.g., the slot holding the
@@ -219,7 +230,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
                              funcBuilder.getInt64(byteSize));
   } else {
     // SCALAR CASE
-    if (assignMeta->storage == StorageType::HEAP) {
+    if (assignMeta->isHeap) {
       llvm::Value *actualData = funcBuilder.CreateLoad(
           getLLVMType(assignMeta->type), initValue, "snatched_val");
 
@@ -239,6 +250,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
 
   logInternal("Ended assignment generation");
 }
+
 void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   auto *fieldStmt = dynamic_cast<FieldAssignment *>(node);
 
@@ -1073,7 +1085,10 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   if (!sym || !sym->llvmValue)
     return;
 
-  logInternal("  [Metal] Generating  deallocation for: " + sym->ID);
+  if (!sym->isHeap)
+    return;
+
+  logInternal("  [Deallocating] Generating  deallocation for: " + sym->ID);
 
   auto it = semantics.allocatorMap.find(sym->allocType);
   if (it == semantics.allocatorMap.end())

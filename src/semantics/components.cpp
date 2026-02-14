@@ -346,6 +346,26 @@ void Semantics::walkRecordStatement(Node *node) {
   bool isBlockMutable = (recordStmt->mutability == Mutability::MUTABLE);
   bool isBlockConstant = (recordStmt->mutability == Mutability::CONSTANT);
 
+  // Build the record symbol
+  auto recordSym = std::make_shared<SymbolInfo>();
+  recordSym->isExportable = isExportable;
+  recordSym->isMutable = isBlockMutable;
+  recordSym->isConstant = isBlockConstant;
+  recordSym->isExportable = isExportable;
+  recordSym->type = {DataType::RECORD, recordName};
+  recordSym->isRecord = true;
+
+  // Build customtype info
+  auto typeInfo = std::make_shared<CustomTypeInfo>();
+  typeInfo->typeName = recordName;
+  typeInfo->type = ResolvedType{DataType::RECORD, recordName},
+  typeInfo->isExportable = isExportable;
+
+  // Early registration
+  symbolTable[0][recordName] = recordSym;
+  customTypesTable[recordName] = typeInfo;
+  metaData[recordStmt] = recordSym;
+
   // Create new local scope for analysis
   insideRecord = true;
   symbolTable.push_back({});
@@ -416,12 +436,6 @@ void Semantics::walkRecordStatement(Node *node) {
 
     bool isSage = fieldSymbol->isSage;
     bool isHeap = fieldSymbol->isHeap;
-    StorageType memberStorage;
-    if (isSage || isHeap) {
-      memberStorage = StorageType::HEAP;
-    } else {
-      memberStorage = StorageType::STACK;
-    }
 
     // Build member info
     auto memInfo = std::make_shared<MemberInfo>();
@@ -433,7 +447,6 @@ void Semantics::walkRecordStatement(Node *node) {
     memInfo->isPointer = fieldSymbol->isPointer;
     memInfo->isNullable = fieldSymbol->isNullable;
     memInfo->isHeap = isHeap;
-    memInfo->storage = memberStorage;
     memInfo->typeNode = recordStmt;
     memInfo->node = field.get();
 
@@ -450,27 +463,15 @@ void Semantics::walkRecordStatement(Node *node) {
   }
 
   // Build symbol info for the whole block
-  auto recordInfo = std::make_shared<SymbolInfo>();
-  recordInfo->type = ResolvedType{DataType::RECORD, recordName};
-  recordInfo->isMutable = isBlockMutable;
-  recordInfo->isConstant = isBlockConstant;
-  recordInfo->isExportable = isExportable;
-  recordInfo->members = recordMembers;
-  recordInfo->hasError = hasError;
-  recordInfo->isDataBlock = true;
+  recordSym->members = recordMembers;
+  recordSym->hasError = hasError;
 
-  for (auto &kv : recordInfo->members) {
+  for (auto &kv : recordSym->members) {
     auto it = recordMembers.find(kv.first);
     if (it != recordMembers.end())
       kv.second->memberIndex = it->second->memberIndex;
   }
 
-  // Build customtype info
-  auto typeInfo = std::make_shared<CustomTypeInfo>();
-
-  typeInfo->typeName = recordName;
-  typeInfo->type = ResolvedType{DataType::RECORD, recordName},
-  typeInfo->isExportable = isExportable;
   typeInfo->members = recordMembers;
 
   // Propagate indices to customTypesTable
@@ -480,11 +481,7 @@ void Semantics::walkRecordStatement(Node *node) {
       kv.second->memberIndex = it->second->memberIndex;
   }
 
-  // Store results
-  metaData[recordStmt] = recordInfo;
-  symbolTable[0][recordName] = recordInfo;
   customTypesTable[recordName] = typeInfo;
-
   // Pop local scope
   insideRecord = false;
   symbolTable.pop_back();
@@ -794,7 +791,6 @@ void Semantics::walkComponentStatement(Node *node) {
         memberCopy->isNullable = info->isNullable;
         memberCopy->isMutable = info->isMutable;
         memberCopy->isConstant = info->isConstant;
-        memberCopy->storage = StorageType::STACK;
         memberCopy->isInitialised = info->isInitialised;
 
         memberCopy->node = info->node;
@@ -809,7 +805,6 @@ void Semantics::walkComponentStatement(Node *node) {
         memSym->isMutable = info->isMutable;
         memSym->isConstant = info->isConstant;
         memSym->isInitialized = info->isInitialised;
-        memSym->storage = StorageType::STACK;
         memSym->memberIndex = memberCopy->memberIndex;
         currentScope[name] = memSym;
 
@@ -863,7 +858,6 @@ void Semantics::walkComponentStatement(Node *node) {
           memSym->isMutable = memIt->second->isMutable;
           memSym->isConstant = memIt->second->isConstant;
           memSym->isInitialized = memIt->second->isInitialised;
-          memSym->storage = StorageType::STACK;
           memSym->memberIndex = memberCopy->memberIndex;
           symbolTable.back()[memberName] = memSym;
 
@@ -906,7 +900,6 @@ void Semantics::walkComponentStatement(Node *node) {
       memInfo->isMutable = declSym->isMutable;
       memInfo->isConstant = declSym->isConstant;
       memInfo->isInitialised = declSym->isInitialized;
-      memInfo->storage = declSym->storage;
       memInfo->node = data.get();
       memInfo->typeNode = componentStmt;
       memInfo->memberIndex = currentMemberIndex++;

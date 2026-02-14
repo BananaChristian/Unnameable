@@ -188,7 +188,6 @@ void Deserializer::loadStub(const std::string &resolved) {
       info.isConstant = member.isConstant;
       info.isRef = member.isRef;
       info.isPointer = member.isPointer;
-      info.storage = member.storage;
 
       compMap.emplace(member.memberName, std::move(info));
     }
@@ -227,7 +226,6 @@ void Deserializer::loadStub(const std::string &resolved) {
       info.isConstant = member.isConstant;
       info.isRef = member.isRef;
       info.isPointer = member.isPointer;
-      info.storage = member.storage;
 
       recordMap.emplace(member.memberName, std::move(info));
     }
@@ -427,8 +425,6 @@ RawComponentMember Deserializer::readComponentMember(std::istream &in) {
   member.isConstant = read_u8(in, "Member Flag: isConstant");
   member.isRef = read_u8(in, "Member Flag: isRef");
   member.isPointer = read_u8(in, "Member Flag: isPointer");
-  member.storage =
-      static_cast<ImportedStorageType>(read_u32(in, "Member Storage Type"));
   logInternal("Finished Component Member read");
 
   return member;
@@ -475,8 +471,6 @@ RawRecordMember Deserializer::readRecordMember(std::istream &in) {
   member.isConstant = read_u8(in, "Member Flag: isConstant");
   member.isRef = read_u8(in, "Member Flag: isRef");
   member.isPointer = read_u8(in, "Member Flag: isPointer");
-  member.storage =
-      static_cast<ImportedStorageType>(read_u32(in, "Member Storage Type"));
 
   logInternal("Finished Record Member read");
 

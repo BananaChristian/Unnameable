@@ -72,7 +72,7 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
 // Infix L-value generator
 llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
   auto infix = dynamic_cast<InfixExpression *>(node);
-  llvm::Value *address = generateInfixAddress(infix->left_operand.get());
+  llvm::Value *address = generateAddress(infix->left_operand.get());
   if (!address)
     reportDevBug("Failed to generate L-Value",
                  infix->left_operand->expression.line,

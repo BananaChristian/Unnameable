@@ -11,6 +11,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Value.h>
 
+#include "ast.hpp"
 #include "semantics.hpp"
 
 class Node;
@@ -79,8 +80,11 @@ private:
   void generateReferenceStatement(Node *node);
   void generatePointerStatement(Node *node);
   void generateExpressionStatement(Node *node);
+
   void generateAssignmentStatement(Node *node);
   void generateFieldAssignmentStatement(Node *node);
+  void generatePointerAssignmentStatement(AssignmentStatement *assignStmt);
+
   void generateWhileStatement(Node *node);
   void generateForStatement(Node *node);
   void generateIfStatement(Node *node);

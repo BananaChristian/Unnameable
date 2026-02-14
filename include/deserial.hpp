@@ -61,12 +61,6 @@ struct ImportedType {
   bool isArray = false;
 };
 
-enum class ImportedStorageType {
-  GLOBAL,
-  STACK,
-  HEAP,
-};
-
 // Minimal symbol info holder shall late be used to populate the semantics
 // symbolInfo
 struct ImportedSymbolInfo {
@@ -82,7 +76,6 @@ struct ImportedSymbolInfo {
   bool isConstant = false;
   bool isRef = false;
   bool isPointer = false;
-  ImportedStorageType storage;
   bool isFunction = false;
 };
 
@@ -113,7 +106,6 @@ struct RawComponentMember {
   bool isConstant = false;
   bool isRef = false;
   bool isPointer = false;
-  ImportedStorageType storage;
 };
 
 struct RawComponentMethod {
@@ -146,7 +138,6 @@ struct RawRecordMember {
   bool isConstant = false;
   bool isRef = false;
   bool isPointer = false;
-  ImportedStorageType storage;
 };
 
 struct RawRecordTable {

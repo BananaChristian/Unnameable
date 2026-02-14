@@ -183,17 +183,6 @@ void Semantics::walkPointerStatement(Node *node) {
   bool isNullable = false;
 
   ResolvedType ptrType = ResolvedType{DataType::UNKNOWN, "unknown"};
-  // Pointer's storage info (The pointer itself not the target)
-  StorageType pointerStorage;
-  if (isGlobalScope()) {
-    pointerStorage = StorageType::GLOBAL;
-  } else if (isSage) {
-    pointerStorage = StorageType::SAGE;
-  } else if (isHeap) {
-    pointerStorage = StorageType::HEAP;
-  } else {
-    pointerStorage = StorageType::STACK;
-  }
 
   // If we dont have the value(This is only allowed inside records and
   // components for now)
@@ -258,7 +247,6 @@ void Semantics::walkPointerStatement(Node *node) {
     ptrInfo->isMutable = isMutable;
     ptrInfo->isConstant = isConstant;
     ptrInfo->isInitialized = true;
-    ptrInfo->storage = pointerStorage;
     ptrInfo->isNullable = isNullable;
 
     metaData[ptrStmt] = ptrInfo;
@@ -287,6 +275,8 @@ void Semantics::walkPointerStatement(Node *node) {
                       ptrStmt->name.get());
     hasError = true;
     return;
+  } else {
+    targetSymbol->pointerCount++;
   }
 
   // What if the user didnt include the type (We infer for them)
@@ -317,34 +307,6 @@ void Semantics::walkPointerStatement(Node *node) {
   }
 
   isNullable = ptrType.isNull; // Set the nullability based of the type
-
-  // Guard against lattice violation pointing and update pointer count
-  auto targetStorage = targetSymbol->storage;
-  if (!validateLatticeMove(pointerStorage, targetStorage)) {
-    errorHandler.addHint("Lattice Rule Violation: A pointer cannot be more "
-                         "stable than the data it points to. "
-                         "If '" +
-                         ptrName + "' (" + storageStr(pointerStorage) +
-                         ") outlives '" + targetName + "' (" +
-                         storageStr(targetStorage) +
-                         "), it will become a dangling pointer "
-                         "once '" +
-                         targetName + "' is freed.");
-    logSemanticErrors("Pointer '" + ptrName + "' of memory tier '" +
-                          storageStr(pointerStorage) +
-                          "' cannot point to a target '" + targetName +
-                          "'of type '" + storageStr(targetStorage) + "'",
-                      ptrStmt->name.get());
-  } else {
-    targetSymbol->pointerCount++;
-  }
-
-  /*
-  Checking for mutability (It should be noted that by default the mutability
-  is... well immutable That means if the user didnt add it we are dealing with
-  an immutable pointer
-  */
-
   logInternal("Pointer Type: " + ptrType.resolvedName);
 
   auto ptrInfo = std::make_shared<SymbolInfo>();
@@ -356,17 +318,18 @@ void Semantics::walkPointerStatement(Node *node) {
   ptrInfo->targetSymbol = targetSymbol;
   ptrInfo->isMutable = isMutable;
   ptrInfo->isConstant = isConstant;
-  ptrInfo->storage = pointerStorage;
   ptrInfo->isInitialized = true;
   ptrInfo->isNullable = isNullable;
 
   // Get the target baton
-  LifeTime *targetBaton = responsibilityTable[ptrStmt->value.get()].get();
+  if (isHeap) {
+    LifeTime *targetBaton = responsibilityTable[ptrStmt->value.get()].get();
 
-  auto lifetime = createLifeTimeTracker(ptrStmt, targetBaton, ptrInfo);
-  ptrInfo->ID = lifetime->ID;
+    auto lifetime = createLifeTimeTracker(ptrStmt, targetBaton, ptrInfo);
+    ptrInfo->ID = lifetime->ID;
 
-  responsibilityTable[ptrStmt] = std::move(lifetime);
+    responsibilityTable[ptrStmt] = std::move(lifetime);
+  }
   metaData[ptrStmt] = ptrInfo;
   symbolTable.back()[ptrName] = ptrInfo;
 }
@@ -419,7 +382,7 @@ void Semantics::walkLetStatement(Node *node) {
                         letStmt);
       hasError = true;
       return;
-    } else if (existingSym->isDataBlock) {
+    } else if (existingSym->isRecord) {
       logSemanticErrors("Local variable '" + letName +
                             "' shadows existing data block",
                         letStmt);
@@ -488,23 +451,7 @@ void Semantics::walkLetStatement(Node *node) {
         metaData[nullVal]->type = expectedType;
       }
     } else if (auto moveVal = dynamic_cast<MoveExpression *>(letStmtValue)) {
-      auto moveSym = metaData[moveVal];
-      if (!moveSym)
-        return;
-
-      if (isHeap && moveSym->storage != StorageType::HEAP) {
-        errorHandler.addHint(
-            "This variable was "
-            "explicitly declared as 'heap', "
-            "imposing a strict memory policy. Moving a non heap "
-            "value into it would force the "
-            "compiler to break that contract and switch to a "
-            "storage type you didn't request. "
-            "If you need this assignment to work, the source "
-            "must also be a 'heap' allocation.");
-        logSemanticErrors(
-            "Cannot move a non heap variable into a heap variable", moveVal);
-      }
+      // SOME LOGIC ON THE MOVE GUY EMPTIED FOR NOW
     } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
       auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);
       if (!identSym) {
@@ -588,18 +535,6 @@ void Semantics::walkLetStatement(Node *node) {
     }
   }
 
-  StorageType letStorageType;
-  // Storing the scope information
-  if (isGlobalScope()) {
-    letStorageType = StorageType::GLOBAL;
-  } else if (isSage) {
-    letStorageType = StorageType::SAGE;
-  } else if (isHeap) {
-    letStorageType = StorageType::HEAP;
-  } else {
-    letStorageType = StorageType::STACK;
-  }
-
   // --- Metadata & symbol registration ---
   auto letInfo = std::make_shared<SymbolInfo>();
   letInfo->type = declaredType;
@@ -611,20 +546,22 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->isSage = isSage;
   letInfo->isHeap = isHeap;
   letInfo->pointerCount = 0;
-
-  letInfo->storage = letStorageType;
   letInfo->hasError = hasError;
-  if (!loopContext.empty() && loopContext.back()) {
-    letInfo->needsPostLoopFree = true;
-    letInfo->bornInLoop = true;
-  }
 
   // Since this is a normal let statement it has no target baton as its target
   // is independent to it(The compiler uses a deep copy first style so these are
   // independent)
-  auto lifetime = createLifeTimeTracker(letStmt, nullptr, letInfo);
-  letInfo->ID = lifetime->ID;
-  responsibilityTable[letStmt] = std::move(lifetime);
+  if (isHeap) {
+    if (!loopContext.empty() && loopContext.back()) {
+      letInfo->needsPostLoopFree = true;
+      letInfo->bornInLoop = true;
+    }
+
+    auto lifetime = createLifeTimeTracker(letStmt, nullptr, letInfo);
+    letInfo->ID = lifetime->ID;
+    responsibilityTable[letStmt] = std::move(lifetime);
+  }
+
   metaData[letStmt] = letInfo;
   symbolTable.back()[letStmt->ident_token.TokenLiteral] = letInfo;
 
@@ -731,8 +668,7 @@ void Semantics::walkReferenceStatement(Node *node) {
 
   // Checking if we are refering to a heap raised or global variable if not
   // complain
-  auto refereeStorage = refereeSymbol->storage;
-  if (refereeStorage == StorageType::STACK) {
+  if (!refereeSymbol->isHeap || !refereeSymbol->isSage) {
     logSemanticErrors("Cannot create a reference '" + refName +
                           "' to a local variable '" + refereeName + "'",
                       refStmt);
@@ -768,14 +704,6 @@ void Semantics::walkReferenceStatement(Node *node) {
   logInternal("Incremented refCount for target -> " +
               std::to_string(refereeSymbol->refCount));
 
-  // Updating the storage type for references
-  StorageType refStorage;
-  if (isGlobalScope()) {
-    refStorage = StorageType::GLOBAL;
-  } else {
-    refStorage = StorageType::STACK;
-  }
-
   auto refInfo = std::make_shared<SymbolInfo>();
   refInfo->type = refType;
   refInfo->isInitialized = true;
@@ -784,7 +712,6 @@ void Semantics::walkReferenceStatement(Node *node) {
   refInfo->refereeSymbol = refereeSymbol;
   refInfo->hasError = hasError;
   refInfo->isRef = true;
-  refInfo->storage = refStorage;
 
   metaData[refStmt] = refInfo;
   symbolTable.back()[refName] = refInfo;

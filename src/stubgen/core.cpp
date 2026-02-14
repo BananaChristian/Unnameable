@@ -142,7 +142,6 @@ void StubGen::serializeComponentMember(std::ostream &out,
   write_u8(out, member.isConstant);
   write_u8(out, member.isRef);
   write_u8(out, member.isPointer);
-  write_u32(out, static_cast<uint32_t>(member.storage));
 }
 
 void StubGen::serializeComponentInit(std::ostream &out,
@@ -189,7 +188,6 @@ void StubGen::serializeRecordMember(std::ostream &out,
   write_u8(out, member.isConstant);
   write_u8(out, member.isRef);
   write_u8(out, member.isPointer);
-  write_u32(out, static_cast<uint32_t>(member.storage));
 }
 
 void StubGen::serializeRecordTable(std::ostream &out,

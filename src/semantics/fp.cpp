@@ -135,7 +135,7 @@ void Semantics::walkReturnStatement(Node *node) {
   }
   auto valName = extractIdentifierName(retStmt->return_value.get());
 
-  // Safety guard to prevent unsafe returns for pointers
+  /*{// Safety guard to prevent unsafe returns for pointers
   if (valueType.isPointer) {
     // Identify what the pointer
     // If it isnt a parameter
@@ -147,19 +147,8 @@ void Semantics::walkReturnStatement(Node *node) {
                           retStmt);
         return;
       }
-
-      if (targetSym) {
-        errorHandler.addHint(
-            "The pointer '" + valName + "' of tier '" +
-            storageStr(valSym->storage) + "' points to memory of type '" +
-            storageStr(targetSym->storage) +
-            "' that will be freed and cause a dangling pointer");
-        if (!validateLatticeMove(valSym->storage, targetSym->storage)) {
-          logSemanticErrors("Illegal pointer return ", retStmt);
-        }
-      }
     }
-  }
+    }}*/
 
   // Safety guard against dangling references
   if (valueType.isRef) {
@@ -171,25 +160,12 @@ void Semantics::walkReturnStatement(Node *node) {
             "Target of reference '" + valName + "' does not exist", retStmt);
         return;
       }
-
-      if (!validateLatticeMove(valSym->storage, targetSym->storage)) {
-        errorHandler.addHint(
-            "The reference '" + valName + "' of tier '" +
-            storageStr(valSym->storage) + "' points to memory of type '" +
-            storageStr(targetSym->storage) +
-            "' that will be freed and cause a dangling reference");
-        logSemanticErrors("Illegal reference return ", retStmt);
-      }
     }
   }
 
   // Also give the current function the ID of whatever we are returning this is
   // to allow the baton retriever to find this return using the familyID
   currentFunction->get()->ID = valSym->ID;
-  currentFunction->get()->storage = valSym->storage;
-  logInternal("Return value storage policy is " + storageStr(valSym->storage));
-  logInternal("Current function storage policy is " +
-              storageStr(currentFunction->get()->storage));
 
   auto info = std::make_shared<SymbolInfo>();
   info->type = currentFunction.value()->returnType;
@@ -239,7 +215,6 @@ void Semantics::walkFunctionParameters(Node *node) {
     info->isDefinitelyNull = false;
     info->isHeap = false; // Parameters never start on heap
     info->isParam = true;
-    info->storage = StorageType::STACK;
     info->hasError = false;
 
     // Store metadata + register symbol
@@ -288,7 +263,6 @@ void Semantics::walkFunctionParameters(Node *node) {
     ptrInfo->isNullable = ptrType.isNull;
     ptrInfo->isDefinitelyNull = false;
     ptrInfo->isParam = true;
-    ptrInfo->storage = StorageType::STACK;
     ptrInfo->hasError = false;
 
     metaData[param] = ptrInfo;
@@ -336,7 +310,6 @@ void Semantics::walkFunctionParameters(Node *node) {
     refInfo->isDefinitelyNull = false;
     refInfo->isParam = true;
     refInfo->isHeap = false;
-    refInfo->storage = StorageType::STACK;
     refInfo->hasError = false;
 
     metaData[param] = refInfo;
@@ -884,16 +857,12 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     hasError = true;
   }
 
-  logInternal("The call '" + callName + "' storage policy is " +
-              storageStr(callSymbolInfo->storage));
-
   // Store metaData for the call
   auto callSymbol = std::make_shared<SymbolInfo>();
   callSymbol->hasError = hasError;
   callSymbol->type = callSymbolInfo->returnType;
   callSymbol->returnType = callSymbolInfo->returnType;
   callSymbol->isNullable = callSymbolInfo->isNullable;
-  callSymbol->storage = callSymbolInfo->storage;
   callSymbol->ID = callSymbolInfo->ID;
   Node *holder = queryForLifeTimeBaton(callSymbol->ID);
   responsibilityTable[funcCall] = std::move(responsibilityTable[holder]);

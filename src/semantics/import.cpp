@@ -17,21 +17,6 @@ Semantics::convertImportedTypetoResolvedType(const ImportedType &importType) {
   return type;
 }
 
-StorageType Semantics::convertImportedStorageTypetoStorageType(
-    const ImportedStorageType &storageType) {
-  switch (storageType) {
-  case ImportedStorageType::GLOBAL:
-    return StorageType::GLOBAL;
-  case ImportedStorageType::HEAP:
-    return StorageType::HEAP;
-  case ImportedStorageType::STACK:
-    return StorageType::STACK;
-  default:
-    return StorageType::GLOBAL; // A failure to convert make it global although
-                                // I really dont expect this to happen
-  }
-}
-
 std::vector<std::pair<ResolvedType, std::string>>
 Semantics::convertImportedParamstoResolvedParams(
     const std::vector<std::pair<ImportedType, std::string>> &params) {
@@ -182,7 +167,6 @@ void Semantics::importComponents() {
       memInfo->isNullable = info.isNullable;
       memInfo->isExportable = true;
       memInfo->memberIndex = info.memberIndex;
-      memInfo->storage = convertImportedStorageTypetoStorageType(info.storage);
       memInfo->isDeclared = true;
       memInfo->isConstant = info.isConstant;
       memInfo->isPointer = info.isPointer;
@@ -260,7 +244,6 @@ void Semantics::importRecords() {
       memInfo->isNullable = info.isNullable;
       memInfo->isExportable = true;
       memInfo->memberIndex = info.memberIndex;
-      memInfo->storage = convertImportedStorageTypetoStorageType(info.storage);
       memInfo->isDeclared = true;
       memInfo->isConstant = info.isConstant;
       memInfo->isPointer = info.isPointer;

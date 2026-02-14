@@ -45,13 +45,6 @@ enum class DataType {
   UNKNOWN
 };
 
-enum class StorageType {
-  STACK = 0,
-  HEAP = 1,
-  SAGE = 2,
-  GLOBAL = 3,
-};
-
 enum class AllocatorRole { ALLOCATE, FREE, NONE };
 
 struct ResolvedType {
@@ -89,9 +82,6 @@ struct MemberInfo {
 
   // Export flag
   bool isExportable = false;
-
-  // Storage info
-  StorageType storage;
 
   bool isHeap = false;    // TODO: REVISIT THIS
   bool isRef = false;     // Reference flag
@@ -167,9 +157,6 @@ struct SymbolInfo {
   ResolvedType derefPtrType;
   int memberIndex = -1;
 
-  // Storage types
-  StorageType storage;
-
   bool isSage = false;   // Sage heap flag
   bool isHeap = false;   // Dynamic heap flag
   std::string allocType; // The name of the allocator the heap will use
@@ -184,7 +171,7 @@ struct SymbolInfo {
   bool isFunction = false;
   bool isBehavior = false;
   bool isComponent = false;
-  bool isDataBlock = false;
+  bool isRecord = false;
   std::shared_ptr<SymbolInfo> targetSymbol;  // For the deref system
   std::shared_ptr<SymbolInfo> refereeSymbol; // Symbol being refered to
 
@@ -228,7 +215,9 @@ struct SymbolInfo {
 
 struct LifeTime {
   std::string ID;
+  std::string ownedBy;
   bool isResponsible = false;
+  bool isAlive = false;
   std::map<std::string, std::shared_ptr<SymbolInfo>> dependents;
 };
 
@@ -297,6 +286,8 @@ public:
   bool isChar(const ResolvedType &t);
 
   std::shared_ptr<SymbolInfo> getSymbolFromMeta(Node *node);
+  void transferResponsibility(LifeTime *currentBaton, LifeTime *targetBaton,
+                              const std::shared_ptr<SymbolInfo> &tagetSym);
   Node *queryForLifeTimeBaton(const std::string &familyID);
   ResolvedType getArrayElementType(ResolvedType &arrayType);
   bool isIntegerConstant(Node *node);
@@ -369,6 +360,7 @@ private:
 
   // Walking the let statements and assignment statements
   void walkLetStatement(Node *node);
+  void walkSelfAssignment(AssignmentStatement *assignStmt);
   void walkAssignStatement(Node *node);
   void walkFieldAssignmentStatement(Node *node);
 
@@ -453,8 +445,6 @@ private:
   convertImportedTypetoResolvedType(const ImportedType &importType);
   DataType
   convertImportedDataTypetoResolvedDataType(const ImportedDataType &dataType);
-  StorageType convertImportedStorageTypetoStorageType(
-      const ImportedStorageType &storageType);
   std::vector<std::pair<ResolvedType, std::string>>
   convertImportedParamstoResolvedParams(
       const std::vector<std::pair<ImportedType, std::string>> &params);
@@ -495,14 +485,9 @@ private:
   std::unique_ptr<LifeTime>
   createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
                         const std::shared_ptr<SymbolInfo> &declSym);
-  void transferResponsibility(LifeTime *currentBaton, LifeTime *targetBaton,
-                              const std::shared_ptr<SymbolInfo> &tagetSym);
   void transferBaton(Node *receiver, const std::string &familyID);
-  bool validateLatticeMove(const StorageType &holderType,
-                           const StorageType &targetType);
-  std::string storageStr(const StorageType &storage);
-  StorageType determineTier(const std::shared_ptr<SymbolInfo> &sym);
   void logSemanticErrors(const std::string &message, Node *contextNode);
+  void logSpecialErrors(const std::string &message, int line, int col);
   void reportDevBug(const std::string &message, Node *contextNode);
   void logInternal(const std::string &message);
 };

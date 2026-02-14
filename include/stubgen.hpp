@@ -34,7 +34,6 @@ struct ComponentMember {
   bool isConstant = false;
   bool isRef = false;
   bool isPointer = false;
-  StorageType storage;
 };
 
 // Struct that will hold a component method
@@ -69,7 +68,6 @@ struct RecordMember {
   bool isConstant = false;
   bool isRef = false;
   bool isPointer = false;
-  StorageType storage;
 };
 
 struct RecordTable {

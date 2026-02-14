@@ -2,6 +2,7 @@
 #include "audit.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
+#include <string>
 Auditor::Auditor(Semantics &semantics, ErrorHandler &errorHandler,
                  bool isVerbose)
     : semantics(semantics), errorHandler(errorHandler), verbose(isVerbose) {
@@ -20,16 +21,18 @@ void Auditor::registerAuditorFunctions() {
 
   auditFnsMap[typeid(BlockStatement)] = &Auditor::auditBlockStatement;
   auditFnsMap[typeid(BlockExpression)] = &Auditor::auditBlockExpression;
+
+  auditFnsMap[typeid(AssignmentStatement)] = &Auditor::auditAssignmentStatement;
 }
 
 void Auditor::audit(Node *node) {
   auto auditIt = auditFnsMap.find(typeid(*node));
-  logInternal("[Dispatch node]:" + node->toString());
   if (auditIt == auditFnsMap.end()) {
     return;
   }
   (this->*auditIt->second)(node);
 }
+
 void Auditor::auditHeapStatement(Node *node) {
   auto heapStmt = dynamic_cast<HeapStatement *>(node);
   if (!heapStmt)
@@ -37,10 +40,10 @@ void Auditor::auditHeapStatement(Node *node) {
 
   audit(heapStmt->stmt.get());
 }
+
 void Auditor::auditLetStatement(Node *node) {}
 
 void Auditor::auditPointerStatement(Node *node) {
-  logInternal("Auditing pointer statement");
   auto ptrStmt = dynamic_cast<PointerStatement *>(node);
   if (!ptrStmt)
     return;
@@ -48,31 +51,109 @@ void Auditor::auditPointerStatement(Node *node) {
   auto ptrSym = semantics.getSymbolFromMeta(ptrStmt);
   if (!ptrSym)
     return;
-  // First check the value's baton
-  bool ValueDoesntDieHere = false;
+
+  if (!ptrSym->isHeap) {
+    logInternal("Pointer statement is not heap raised not tracking");
+    return;
+  }
+
+  logInternal("\n[AUDIT] >>> PointerStatement: " + ptrSym->ID);
+
   if (ptrStmt->value) {
     auto valSym = semantics.getSymbolFromMeta(ptrStmt->value.get());
     if (!valSym)
       return;
-    Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->ID);
-    if (valBatonHolder != ptrStmt->value.get()) {
-      auto &valBaton = semantics.responsibilityTable[valBatonHolder];
-      ValueDoesntDieHere = true;
 
-      // Get the baton for p's family wherever it is rightnow
-      Node *ptrBatonHolder = semantics.queryForLifeTimeBaton(ptrSym->ID);
+    Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->ID);
+    Node *ptrBatonHolder = semantics.queryForLifeTimeBaton(ptrSym->ID);
+
+    logInternal("  [VALUE] ID: " + valSym->ID +
+                " | Holder Node: " + (valBatonHolder ? "VALID" : "NULL"));
+    logInternal("  [POINTER] ID: " + ptrSym->ID +
+                " | Holder Node: " + (ptrBatonHolder ? "VALID" : "NULL"));
+
+    if (valBatonHolder && valBatonHolder != ptrStmt->value.get()) {
+      auto &valBaton = semantics.responsibilityTable[valBatonHolder];
       auto &ptrBaton = semantics.responsibilityTable[ptrBatonHolder];
-      // So the last use of the value wasnt here that means semantics cooked us
-      // reverse its mess
-      if (ValueDoesntDieHere) {
-        logInternal("The value doesnt die here so remove the job of freeing "
-                    "from this pointer");
+
+      logInternal("  [REVERSE-LOGIC] Detected non-death use. Correcting baton "
+                  "states...");
+      logInternal("    Before: Ptr(" + ptrSym->ID +
+                  ") Deps: " + std::to_string(ptrBaton->dependents.size()));
+
+      // The "Undo"
+      if (ptrBaton->dependents.count(valSym->ID)) {
         ptrBaton->dependents.erase(valSym->ID);
-        // Rearm that baton
-        valBaton->isResponsible = true;
+        logInternal("    Action: Erased " + valSym->ID + " from Ptr " +
+                    ptrSym->ID);
+      } else {
+        logInternal("    Warning: " + valSym->ID +
+                    " was NOT in Ptr dependents. Exclusivity might be broken.");
+      }
+
+      valBaton->isResponsible = true;
+      logInternal("    Action: Rearmed ValBaton " + valBaton->ID +
+                  " (isResponsible = TRUE)");
+    }
+  }
+
+  logInternal("  [FINISHING] Calling simulateFree for: " + ptrSym->ID);
+  simulateFree(ptrSym->ID);
+}
+
+void Auditor::auditAssignmentStatement(Node *node) {
+  auto assignStmt = dynamic_cast<AssignmentStatement *>(node);
+  if (!assignStmt)
+    return;
+
+  auto assignSym = semantics.getSymbolFromMeta(assignStmt);
+  if (!assignSym->isHeap)
+    return;
+
+  auto valSym = semantics.getSymbolFromMeta(assignStmt->value.get());
+
+  logInternal("\n[AUDIT] >>> Assignment: " + assignSym->ID + " = " +
+              (valSym ? valSym->ID : "NULL"));
+
+  if (assignSym && valSym) {
+    if (assignSym->isPointer) {
+      valSym->pointerCount++;
+      logInternal("  [COUNT] Incrementing pointerCount for " + valSym->ID +
+                  " to " + std::to_string(valSym->pointerCount));
+    }
+
+    if (valSym->isHeap) {
+      Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->ID);
+      if (valBatonHolder == assignStmt->value.get()) {
+        auto &valBaton = semantics.responsibilityTable[valBatonHolder];
+
+        logInternal(
+            "  [HEIST-CHECK] ValBaton " + valBaton->ID +
+            " isResponsible: " + (valBaton->isResponsible ? "YES" : "NO"));
+
+        if (valBaton->isResponsible) {
+          Node *currentBatonHolder =
+              semantics.queryForLifeTimeBaton(assignSym->ID);
+          auto &currentBaton =
+              semantics.responsibilityTable[currentBatonHolder];
+
+          logInternal("  [ACTION] Attempting Robbery: " + currentBaton->ID +
+                      " robbing " + valBaton->ID);
+          semantics.transferResponsibility(currentBaton.get(), valBaton.get(),
+                                           valSym);
+        } else {
+          logInternal("  [ACTION] Already robbed. Registering " +
+                      assignSym->ID + " as candidate for " + valSym->ID);
+          candidateRegistry[valBaton->ID].push_back(assignSym->ID);
+        }
+      } else {
+        logInternal("  [BYPASS] valBatonHolder is not current value node. No "
+                    "robbery possible here.");
       }
     }
   }
+
+  simulateFree(assignSym->ID);
 }
 
 void Auditor::auditFunctionStatement(Node *node) {
@@ -97,6 +178,8 @@ void Auditor::auditReturnStatement(Node *node) {
     return;
 
   auto retSym = semantics.getSymbolFromMeta(retStmt);
+  if (!retSym->isHeap)
+    return;
 
   logInternal("Return statement ID: " + retSym->ID);
 
@@ -160,6 +243,134 @@ void Auditor::auditBlockExpression(Node *node) {
 }
 
 // Helpers
+void Auditor::simulateFree(const std::string &contextID) {
+  logInternal("\n  [SIMULATE-FREE] Target: " + contextID);
+
+  Node *holderNode = semantics.queryForLifeTimeBaton(contextID);
+  if (!holderNode) {
+    logInternal("    [ERROR] No holder node found for " + contextID);
+    return;
+  }
+
+  auto &baton = semantics.responsibilityTable[holderNode];
+  auto contextSym = semantics.getSymbolFromMeta(holderNode);
+
+  logInternal("    Baton ID: " + baton->ID);
+  logInternal("    State: isResponsible=" +
+              std::string(baton->isResponsible ? "T" : "F") +
+              ", isAlive=" + std::string(baton->isAlive ? "T" : "F") +
+              ", ptrCount=" + std::to_string(contextSym->pointerCount));
+
+  if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
+    if (baton->isResponsible && baton->isAlive) {
+      logInternal("    [DEATH] Condition met. Killing family: " + contextID);
+      baton->isAlive = false;
+
+      bool dropCount = (contextSym->isPointer && contextSym->isHeap);
+      logInternal("    Dependents to process: " +
+                  std::to_string(baton->dependents.size()));
+
+      for (const auto &[id, depSym] : baton->dependents) {
+        logInternal("    [TRANSFER] Dependent " + id +
+                    " (dropCount=" + (dropCount ? "T" : "F") + ")");
+        transferDependent(id, depSym, dropCount);
+      }
+    } else {
+      logInternal(
+          "    [STAY-ALIVE] Family is already dead or not responsible.");
+    }
+  } else {
+    logInternal("    [STAY-ALIVE] References/Pointers still exist (" +
+                std::to_string(contextSym->pointerCount) + ")");
+  }
+}
+
+void Auditor::transferDependent(const std::string &dependentID,
+                                const std::shared_ptr<SymbolInfo> &dependentSym,
+                                bool dropCount) {
+  logInternal("\n    [TRANSFER-LOGIC] Processing Dependent: " + dependentID);
+
+  auto regIt = candidateRegistry.find(dependentID);
+  if (regIt == candidateRegistry.end()) {
+    logInternal("      [STATUS] Victim " + dependentID +
+                " not in Candidate Registry.");
+    if (dropCount) {
+      dependentSym->pointerCount--;
+      logInternal("      [ACTION] dropCount=TRUE. PointerCount for " +
+                  dependentID +
+                  " is now: " + std::to_string(dependentSym->pointerCount));
+    }
+    return;
+  }
+
+  bool adoptionPassed = false;
+  auto &robbers = regIt->second;
+  logInternal("      [REGISTRY] Found " + std::to_string(robbers.size()) +
+              " potential robbers for this loot.");
+
+  for (const auto &robberID : robbers) {
+    logInternal("      [CHECKING ROBBER] ID: " + robberID);
+
+    Node *robberBatonHolder = semantics.queryForLifeTimeBaton(robberID);
+    if (!robberBatonHolder) {
+      logInternal("        [SKIP] Robber " + robberID +
+                  " has no baton holder node.");
+      continue;
+    }
+
+    auto &robberBaton = semantics.responsibilityTable[robberBatonHolder];
+    logInternal("        [STATE] isAlive: " +
+                std::string(robberBaton->isAlive ? "YES" : "NO") +
+                " | isResponsible: " +
+                std::string(robberBaton->isResponsible ? "YES" : "NO"));
+
+    if (robberBaton->isAlive) {
+      adoptionPassed = true;
+
+      if (robberBaton->isResponsible) {
+        logInternal("        [ADOPTION] Robber " + robberID +
+                    " is a MASTER. Taking loot directly.");
+        robberBaton->dependents[dependentID] = dependentSym;
+      } else {
+        const std::string &masterID = robberBaton->ownedBy;
+        logInternal("        [RELOCATION] Robber " + robberID +
+                    " is a SLAVE. Passing loot to Master: " + masterID);
+
+        Node *masterBatonHolder = semantics.queryForLifeTimeBaton(masterID);
+        if (masterBatonHolder) {
+          auto &masterBaton = semantics.responsibilityTable[masterBatonHolder];
+          masterBaton->dependents[dependentID] = dependentSym;
+          logInternal("        [SUCCESS] Loot " + dependentID +
+                      " moved to Master " + masterID + " briefcase.");
+        } else {
+          logInternal("        [CRITICAL] Master " + masterID +
+                      " exists in records but has no Baton Holder!");
+        }
+      }
+      // Once one valid robber takes it, the dependent is saved for now.
+      logInternal("      [SUCCESS] Adoption complete for " + dependentID);
+      break;
+    } else {
+      logInternal("        [SKIP] Robber " + robberID + " is already dead.");
+    }
+  }
+
+  if (!adoptionPassed) {
+    logInternal("      [FINAL-JUDGMENT] No living heirs found for " +
+                dependentID);
+    if (dropCount) {
+      dependentSym->pointerCount--;
+      logInternal("      [ACTION] dropCount=TRUE. Final PointerCount for " +
+                  dependentID + ": " +
+                  std::to_string(dependentSym->pointerCount));
+      if (dependentSym->pointerCount == 0) {
+        logInternal("      [TERMINAL] " + dependentID +
+                    " is now eligible for physical deallocation.");
+      }
+    }
+  }
+}
+
 void Auditor::logInternal(const std::string &message) {
   if (verbose) {
     std::cout << message << "\n";
