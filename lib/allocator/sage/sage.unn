@@ -1,0 +1,85 @@
+const i32 UCR_PROT_READ=0x1
+const i32 UCR_PROT_WRITE= 0x2
+const i32 UCR_MAP_PRIVATE= 0x02
+const i32 UCR_MAP_ANONYMOUS= 0x20
+
+
+#Function declarations for the syscalls
+export func mmap(ptr opaque address, usize len, i32 prot, i32 flags, i32 fd, isize offset): ptr opaque
+export func munmap(ptr opaque address,usize len):i32
+
+
+mut record Arena{
+    ptr u8 baseptr->bitcast<ptr u8>(0)
+    ptr u8 frameptr->bitcast<ptr u8>(0)
+    ptr u8 limitptr->bitcast<ptr u8>(0)
+}
+
+record Manager{
+    mut ptr opaque os_heap->bitcast<ptr opaque>(0)
+    mut usize os_heap_size
+    usize page_size=4096uz #Hard code for now
+    Arena arena
+}
+
+Manager manager
+#This will initialize the system 
+export func sage_init(usize total_size):void{
+    #Align the requested size
+    usize alloc_size=((total_size + manager.page_size - 1uz) / manager.page_size) * manager.page_size
+
+    #Ask mmap for the memory
+    ptr opaque raw_mem->mmap(bitcast<ptr opaque>(0), alloc_size, UCR_PROT_READ | UCR_PROT_WRITE, UCR_MAP_PRIVATE | UCR_MAP_ANONYMOUS, -1, 0iz)
+
+    #Check if mmap failed or if it actaully gave us null
+    if(raw_mem==bitcast<ptr opaque>(-1)||raw_mem==bitcast<ptr opaque>(0)){
+        manager.os_heap->bitcast<ptr opaque>(0)#Set the memory to null
+        manager.os_heap_size=0uz
+        return
+    }
+
+    manager.os_heap->raw_mem
+    manager.os_heap_size=alloc_size
+
+    #Set up the arena pointers
+    #Align the memory
+    usize start_addr=bitcast<usize>(raw_mem)
+    usize aligned_start=(start_addr+15uz)&~15uz
+    manager.arena.baseptr->bitcast<ptr u8>(aligned_start)
+    manager.arena.frameptr->bitcast<ptr u8>(aligned_start)
+
+    manager.arena.limitptr->bitcast<ptr u8>(start_addr+alloc_size)
+}
+
+export func sage_alloc(usize size,mut usize alignment):ptr opaque{
+    #This will prevent weird division by zeros if the caller gives us garbage
+    if(alignment==0uz){
+        alignment=1uz
+    }
+
+    usize current=bitcast<usize>(manager.arena.frameptr)
+    usize aligned=(current+(alignment-1uz))& ~(alignment-1uz)
+
+    #Check if we are surpasing the limit 
+    if(bitcast<ptr u8>(aligned+size)>bitcast<ptr u8>(manager.arena.limitptr)){
+        return bitcast<ptr opaque>(0)
+    }
+
+    #Move the frame pointer by the size
+    manager.arena.frameptr->bitcast<ptr u8>(aligned+size)
+
+    return bitcast<ptr opaque>(aligned)
+}
+
+export func sage_destroy():void{
+    if(manager.os_heap){
+        munmap(manager.os_heap,manager.os_heap_size)
+        manager.os_heap->bitcast<ptr u8>(0)
+        manager.os_heap_size=0uz
+    }
+
+    manager.arena.baseptr->bitcast<ptr u8>(0)
+    manager.arena.frameptr->bitcast<ptr u8>(0)
+    manager.arena.limitptr->bitcast<ptr u8>(0)
+}
+

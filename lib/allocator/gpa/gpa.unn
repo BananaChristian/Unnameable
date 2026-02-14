@@ -1,0 +1,133 @@
+const i32 UCR_PROT_READ= 0x1
+const i32 UCR_PROT_WRITE= 0x2
+const i32 UCR_MAP_PRIVATE= 0x02
+const i32 UCR_MAP_ANONYMOUS= 0x20
+
+const usize PAGE_SIZE=4096uz
+
+export func mmap(ptr opaque address, usize len, i32 prot, i32 flags, i32 fd, isize offset): ptr opaque
+export func munmap(ptr opaque address,usize len):i32
+
+
+mut record AllocationData{
+    ptr AllocationData previous -> bitcast<ptr AllocationData>(0)
+    usize size;
+    bool isFree=false;
+    ptr AllocationData next -> bitcast<ptr AllocationData>(0) 
+}
+
+mut ptr AllocationData freeHead->bitcast<ptr AllocationData>(0)
+
+func split(ptr AllocationData originalAlloc, usize requested_size): void {
+    # Calculate exactly where the new header starts
+    # We move forward by: HeaderSize + the size the user actually gets
+    ptr AllocationData newAllocation -> bitcast<ptr AllocationData>(bitcast<usize>(originalAlloc) + sizeof<AllocationData> + requested_size)
+
+    # The new block's size is the OLD size minus the chunk we just took and the new header
+    newAllocation.size = originalAlloc.size - requested_size - sizeof<AllocationData>
+    newAllocation.isFree = true
+    
+    # Standard linked list insertion
+    newAllocation.next -> originalAlloc.next
+    newAllocation.previous -> originalAlloc
+
+    if (newAllocation.next != bitcast<ptr AllocationData>(0)) {
+        newAllocation.next.previous -> newAllocation
+    }
+
+    # Original block is now exactly the requested size
+    originalAlloc.size = requested_size
+    originalAlloc.isFree = false
+    originalAlloc.next -> newAllocation
+}
+
+func findFit(usize requested_size): ptr AllocationData {
+    mut ptr AllocationData current -> freeHead
+    while (current != bitcast<ptr AllocationData>(0)) {
+        if (current.isFree && current.size >= requested_size) {
+            return current
+        }
+        # MOVE TO THE NEXT BLOCK!
+        current -> current.next
+    }
+    return bitcast<ptr AllocationData>(0)
+}
+
+export func unn_alloc(usize size): ptr opaque {
+    # 1. Try to find space
+    mut ptr AllocationData block -> findFit(size)
+    
+    # 2. If no space, mmap a new PAGE
+    if (block == bitcast<ptr AllocationData>(0)) {
+        mut usize bytesToRequest
+        if (size + sizeof<AllocationData> > PAGE_SIZE) {
+            bytesToRequest = size + sizeof<AllocationData>
+        } else {
+            bytesToRequest = PAGE_SIZE
+        }
+
+        ptr opaque pointer -> mmap(bitcast<ptr opaque>(0), bytesToRequest, UCR_PROT_READ | UCR_PROT_WRITE, UCR_MAP_PRIVATE | UCR_MAP_ANONYMOUS, -1, 0iz);
+        
+        if (pointer == bitcast<ptr opaque>(-1)) {
+            return bitcast<ptr opaque>(0)
+        }
+
+        block -> bitcast<ptr AllocationData>(pointer)
+        block.size = bytesToRequest - sizeof<AllocationData>
+        block.isFree = true
+
+        # Push to the front of the global list
+        block.next -> freeHead
+        block.previous -> bitcast<ptr AllocationData>(0)
+        if (freeHead != bitcast<ptr AllocationData>(0)) {
+            freeHead.previous -> block
+        }
+        freeHead -> block
+    }
+
+    # 3. Split if the block is way too big
+    # We need at least: requested size + header + small fragment (8 bytes)
+    if (block.size >= (size + sizeof<AllocationData> + 8uz)) {
+        split(block, size)
+    }
+
+    # 4. Claim it and return the payload (skipping the header)
+    block.isFree = false
+    return bitcast<ptr opaque>(bitcast<usize>(block) + sizeof<AllocationData>)
+}
+
+export func unn_dealloc(ptr opaque p): void {
+    if (!p) {
+        return
+    }
+
+    # Step back exactly 32 bytes (or whatever sizeof<AllocationData> is)
+    ptr AllocationData data -> bitcast<ptr AllocationData>(bitcast<usize>(p) - sizeof<AllocationData>)
+    data.isFree = true
+
+    # Melting forward (Merging with the next block)
+    if (data.next != bitcast<ptr AllocationData>(0) && data.next.isFree) {
+        # Combine sizes: MySize + Header of Next + NextSize
+        data.size = data.size + sizeof<AllocationData> + data.next.size
+        
+        # Bypass the next block in the list
+        data.next -> data.next.next
+        if (data.next != bitcast<ptr AllocationData>(0)) {
+            data.next.previous -> data
+        }
+    }
+
+    # Melting backward (Merging with the previous block)
+    if (data.previous != bitcast<ptr AllocationData>(0) && data.previous.isFree) {
+        ptr AllocationData prev -> data.previous
+        
+        # Combine sizes: PrevSize + MyHeader + MySize
+        prev.size = prev.size + sizeof<AllocationData> + data.size
+        
+        # Bypass 'data' in the list
+        prev.next -> data.next
+        if (data.next != bitcast<ptr AllocationData>(0)) {
+            data.next.previous -> prev
+        }
+    }
+}
