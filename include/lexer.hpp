@@ -140,6 +140,7 @@ private:
   bool isIdentifierContinue(char32_t ch);
   Token readString();
   void appendUTF8(std::string &str, char32_t ch);
+  char32_t readHexEscape(int digits);
   Token readChar();
   void logError(const std::string &message, int line, int column);
 };

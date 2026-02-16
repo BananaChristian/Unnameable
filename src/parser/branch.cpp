@@ -9,7 +9,7 @@ std::unique_ptr<Statement> Parser::parseCaseClause() {
   std::vector<std::unique_ptr<Statement>> body;
   Token case_token = currentToken();
   if (case_token.type != TokenType::CASE) {
-    logError("Expected case keyword but got: " + currentToken().TokenLiteral);
+    logError("Expected case keyword but got: " + currentToken().TokenLiteral,currentToken());
   }
 
   advance();
@@ -18,7 +18,7 @@ std::unique_ptr<Statement> Parser::parseCaseClause() {
 
   if (currentToken().type != TokenType::COLON) {
     logError("Expected : after case condition but got: " +
-             currentToken().TokenLiteral);
+             currentToken().TokenLiteral,currentToken());
   }
 
   advance();
@@ -49,18 +49,18 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement() {
   advance(); // Advancing past the switch keyword
   if (currentToken().type != TokenType::LPAREN) {
     logError("Expected ( after switch keyword but got: " +
-             currentToken().TokenLiteral);
+             currentToken().TokenLiteral,currentToken());
   }
 
   advance(); // Consuming the ( token
   auto switchExpr = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ) but got: " + currentToken().TokenLiteral);
+    logError("Expected ) but got: " + currentToken().TokenLiteral,currentToken());
   }
 
   advance(); // Consume the ) token;
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected { but got: " + currentToken().TokenLiteral);
+    logError("Expected { but got: " + currentToken().TokenLiteral,currentToken());
   }
 
   advance(); // Consume the { token;
@@ -74,7 +74,7 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement() {
       advance(); // Consume DEFAULT
       if (currentToken().type != TokenType::COLON) {
         logError("Expected : after default keyword but got: " +
-                 currentToken().TokenLiteral);
+                 currentToken().TokenLiteral,currentToken());
       }
       advance(); // Consume COLON
       while (currentToken().type != TokenType::CASE &&
@@ -89,13 +89,13 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement() {
       }
     } else {
       logError("Unexpected token in switch statement: " +
-               currentToken().TokenLiteral);
+               currentToken().TokenLiteral,currentToken());
       advance();
     }
   }
 
   if (default_token.type != TokenType::DEFAULT) {
-    logError("Missing the default case");
+    logError("Missing the default case",currentToken());
     return nullptr;
   }
 
@@ -113,7 +113,7 @@ std::unique_ptr<Statement> Parser::parseElifStatement() {
   advance();
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after 'elif'");
+    logError("Expected '(' after 'elif'",currentToken());
     return nullptr;
   }
 
@@ -131,14 +131,14 @@ std::unique_ptr<Statement> Parser::parseIfStatement() {
   advance();
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after 'if' ");
+    logError("Expected '(' after 'if' ",currentToken());
     return nullptr;
   }
   advance();
 
   auto condition = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' got '" + currentToken().TokenLiteral + "'");
+    logError("Expected ')' got '" + currentToken().TokenLiteral + "'",currentToken());
     return nullptr;
   }
   advance();

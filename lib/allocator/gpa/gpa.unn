@@ -54,10 +54,10 @@ func findFit(usize requested_size): ptr AllocationData {
 }
 
 export func unn_alloc(usize size): ptr opaque {
-    # 1. Try to find space
+    # Try to find space
     mut ptr AllocationData block -> findFit(size)
     
-    # 2. If no space, mmap a new PAGE
+    #  If no space, mmap a new PAGE
     if (block == bitcast<ptr AllocationData>(0)) {
         mut usize bytesToRequest
         if (size + sizeof<AllocationData> > PAGE_SIZE) {
@@ -85,13 +85,13 @@ export func unn_alloc(usize size): ptr opaque {
         freeHead -> block
     }
 
-    # 3. Split if the block is way too big
+    #  Split if the block is way too big
     # We need at least: requested size + header + small fragment (8 bytes)
     if (block.size >= (size + sizeof<AllocationData> + 8uz)) {
         split(block, size)
     }
 
-    # 4. Claim it and return the payload (skipping the header)
+    #. Claim it and return the payload (skipping the header)
     block.isFree = false
     return bitcast<ptr opaque>(bitcast<usize>(block) + sizeof<AllocationData>)
 }

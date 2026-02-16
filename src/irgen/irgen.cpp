@@ -670,108 +670,46 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
 }
 
 char IRGenerator::decodeCharLiteral(const std::string &literal) {
-  if (literal.length() == 3 && literal.front() == '\'' &&
-      literal.back() == '\'') {
-    return literal[1];
-  } else if (literal.length() == 4 && literal.front() == '\'' &&
-             literal.back() == '\'' && literal[1] == '\\') {
-    switch (literal[2]) {
-    case 'n':
-      return '\n';
-    case 't':
-      return '\t';
-    case '\\':
-      return '\\';
-    case '\'':
-      return '\'';
-    case '\"':
-      return '\"';
-    case 'r':
-      return '\r';
-    case '0':
-      return '\0';
-    default: {
-      reportDevBug("Unknown escape sequence in char literal '" + literal + "'",
-                   0, 0);
-    }
-    }
-  }
+  if (literal.empty())
+    return '\0';
+  // Just return the first byte of the already-decoded UTF-8 string
+  return literal[0];
+}
 
-  reportDevBug("Invalid char literal '" + literal + "'", 0, 0);
-  return '\t';
+uint32_t IRGenerator::decodeUTF8ToCodePoint(const std::string &literal) {
+  if (literal.empty())
+    return 0;
+
+  unsigned char first = static_cast<unsigned char>(literal[0]);
+  if (first < 0x80)
+    return first; // Simple ASCII
+
+  // Reassemble the bits
+  uint32_t cp = 0;
+  size_t len = literal.length();
+
+  if ((first & 0xE0) == 0xC0 && len >= 2) {
+    cp =
+        ((first & 0x1F) << 6) | (static_cast<unsigned char>(literal[1]) & 0x3F);
+  } else if ((first & 0xF0) == 0xE0 && len >= 3) {
+    cp = ((first & 0x0F) << 12) |
+         ((static_cast<unsigned char>(literal[1]) & 0x3F) << 6) |
+         (static_cast<unsigned char>(literal[2]) & 0x3F);
+  } else if ((first & 0xF8) == 0xF0 && len >= 4) {
+    cp = ((first & 0x07) << 18) |
+         ((static_cast<unsigned char>(literal[1]) & 0x3F) << 12) |
+         ((static_cast<unsigned char>(literal[2]) & 0x3F) << 6) |
+         (static_cast<unsigned char>(literal[3]) & 0x3F);
+  }
+  return cp;
 }
 
 uint16_t IRGenerator::decodeChar16Literal(const std::string &literal) {
-  // Example formats: 'A', '\n', '\u1234' (unicode escape)
-
-  if (literal.length() == 3 && literal.front() == '\'' &&
-      literal.back() == '\'') {
-    return static_cast<uint16_t>(literal[1]);
-  } else if (literal.length() == 8 && literal.substr(0, 2) == "'\\u" &&
-             literal.back() == '\'') {
-    std::string hex = literal.substr(3, 4); // 4 hex digits
-    return static_cast<uint16_t>(std::stoi(hex, nullptr, 16));
-  } else if (literal.length() == 4 && literal.front() == '\'' &&
-             literal.back() == '\'' && literal[1] == '\\') {
-    // Simple escapes like '\n'
-    switch (literal[2]) {
-    case 'n':
-      return '\n';
-    case 't':
-      return '\t';
-    case '\\':
-      return '\\';
-    case '\'':
-      return '\'';
-    case '\"':
-      return '\"';
-    case 'r':
-      return '\r';
-    case '0':
-      return '\0';
-    default:
-      throw std::runtime_error("Unknown escape sequence in char16 literal: " +
-                               literal);
-    }
-  }
-  throw std::runtime_error("Invalid char16 literal: " + literal);
+  return static_cast<uint16_t>(decodeUTF8ToCodePoint(literal));
 }
 
-// Decodes UTF-32 char32 literals (returns uint32_t)
 uint32_t IRGenerator::decodeChar32Literal(const std::string &literal) {
-  // Example formats: 'A', '\U0001F600' (unicode escape for emoji)
-
-  if (literal.length() == 3 && literal.front() == '\'' &&
-      literal.back() == '\'') {
-    return static_cast<uint32_t>(literal[1]);
-  } else if (literal.length() == 12 && literal.substr(0, 2) == "'\\U" &&
-             literal.back() == '\'') {
-    std::string hex = literal.substr(3, 8); // 8 hex digits
-    return static_cast<uint32_t>(std::stoul(hex, nullptr, 16));
-  } else if (literal.length() == 4 && literal.front() == '\'' &&
-             literal.back() == '\'' && literal[1] == '\\') {
-    // Simple escapes like '\n'
-    switch (literal[2]) {
-    case 'n':
-      return '\n';
-    case 't':
-      return '\t';
-    case '\\':
-      return '\\';
-    case '\'':
-      return '\'';
-    case '\"':
-      return '\"';
-    case 'r':
-      return '\r';
-    case '0':
-      return '\0';
-    default:
-      throw std::runtime_error("Unknown escape sequence in char32 literal: " +
-                               literal);
-    }
-  }
-  throw std::runtime_error("Invalid char32 literal: " + literal);
+  return decodeUTF8ToCodePoint(literal);
 }
 
 llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {

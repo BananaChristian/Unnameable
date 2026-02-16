@@ -13,12 +13,14 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
       currentToken().type == TokenType::AUTO) {
     type = parseBasicType();
     if (!type) {
-      logError("Type parse failed for '" + currentToken().TokenLiteral + "'");
+      logError("Type parse failed for '" + currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr;
     }
   } else {
     logError("Invalid variable declaration type '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 
@@ -29,7 +31,8 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
 
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected variable name after data type but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 
@@ -42,7 +45,8 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
   if (currentToken().type == TokenType::ARROW) {
     logError("Inavlid assignment operator for variable declaration expected "
              "'=' but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 
@@ -74,7 +78,7 @@ std::unique_ptr<Statement> Parser::parseMutStatement() {
   else if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get()))
     recordStmt->mutability = Mutability::MUTABLE;
   else {
-    logError("Applied 'mut' to unsupported statement");
+    logError("Applied 'mut' to unsupported statement", currentToken());
     return nullptr;
   }
 
@@ -96,7 +100,7 @@ std::unique_ptr<Statement> Parser::parseConstStatement() {
   else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get()))
     refStmt->mutability = Mutability::CONSTANT;
   else {
-    logError("Applied 'const' to unsupported statement");
+    logError("Applied 'const' to unsupported statement", currentToken());
     return nullptr;
   }
 
@@ -108,7 +112,7 @@ std::unique_ptr<Statement> Parser::parseSageStatement() {
   advance(); // consume 'sage'
 
   if (currentToken().type == TokenType::RECORD) {
-    logError("Cannot use 'heap' before a record");
+    logError("Cannot use 'heap' before a record", currentToken());
     return nullptr;
   }
 
@@ -119,33 +123,37 @@ std::unique_ptr<Statement> Parser::parseSageStatement() {
   if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
     if (letStmt->isHeap) {
       logError("Cannot sage raise an already dynamically heap raised "
-               "variable declaration");
+               "variable declaration",
+               currentToken());
       return nullptr;
     }
     letStmt->isSage = true;
   } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get())) {
     if (arrStmt->isHeap) {
       logError("Cannot sage raise an already dynamically heap raised "
-               "array declaration");
+               "array declaration",
+               currentToken());
       return nullptr;
     }
     arrStmt->isSage = true;
   } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get())) {
     if (ptrStmt->isHeap) {
       logError("Cannot sage raise an already dynamically heap raised "
-               "pointer declaration");
+               "pointer declaration",
+               currentToken());
       return nullptr;
     }
     ptrStmt->isSage = true;
   } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get())) {
     if (refStmt->isHeap) {
       logError("Cannot sage raise an already dynamically heap raised "
-               "reference declaration");
+               "reference declaration",
+               currentToken());
       return nullptr;
     }
     refStmt->isSage = true;
   } else {
-    logError("'sage' applied to non supported statement");
+    logError("'sage' applied to non supported statement", currentToken());
     return nullptr;
   }
 
@@ -163,7 +171,8 @@ std::unique_ptr<Statement> Parser::parseHeapStatement() {
     advance(); // Consume < token
     allocType = parseIdentifier();
     if (currentToken().type != TokenType::GREATER_THAN) {
-      logError("Expected '>' but got '" + currentToken().TokenLiteral + "'");
+      logError("Expected '>' but got '" + currentToken().TokenLiteral + "'",
+               currentToken());
       advance(); // Consume the wrong token
     } else {
       advance(); // Just consume the correct token
@@ -175,33 +184,37 @@ std::unique_ptr<Statement> Parser::parseHeapStatement() {
   if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
     if (letStmt->isSage) {
       logError("Cannot dynamic heap raise an already sage raised "
-               "variable declaration");
+               "variable declaration",
+               currentToken());
       return nullptr;
     }
     letStmt->isHeap = true;
   } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get())) {
     if (arrStmt->isSage) {
       logError("Cannot dynamic heap raise an already sage raised "
-               "array declaration");
+               "array declaration",
+               currentToken());
       return nullptr;
     }
     arrStmt->isHeap = true;
   } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get())) {
     if (ptrStmt->isSage) {
       logError("Cannot dynamic heap raise an already sage raised "
-               "pointer statement");
+               "pointer statement",
+               currentToken());
       return nullptr;
     }
     ptrStmt->isHeap = true;
   } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get())) {
     if (refStmt->isSage) {
       logError("Cannot dynamic heap raise an already sage raised "
-               "variable declaration");
+               "variable declaration",
+               currentToken());
       return nullptr;
     }
     refStmt->isHeap = true;
   } else {
-    logError("'heap' applied to non supported statement");
+    logError("'heap' applied to non supported statement", currentToken());
     return nullptr;
   }
 
@@ -236,7 +249,8 @@ std::unique_ptr<Statement> Parser::parseArrayStatement() {
 
     if (currentToken().type != TokenType::RBRACKET) {
       logError("Expected ']' after array length but got '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr;
     }
     advance(); // consume ']'
@@ -247,7 +261,8 @@ std::unique_ptr<Statement> Parser::parseArrayStatement() {
   // Expect identifier
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected array name but got '" + currentToken().TokenLiteral +
-             "'");
+                 "'",
+             currentToken());
     return nullptr;
   }
   auto ident = parseIdentifier(); // this consumes the IDENTIFIER
@@ -287,7 +302,8 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement() {
 
   if (currentToken().type == TokenType::AUTO) {
     logError("Do not use 'auto' if u want to infer the type just dont include "
-             "the type");
+             "the type",
+             currentToken());
     advance(); // Consume auto
   }
 
@@ -303,7 +319,8 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement() {
   // Parse identifier (the referer)
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected reference name but got '" + currentToken().TokenLiteral +
-             "'");
+                 "'",
+             currentToken());
     return nullptr;
   }
   std::unique_ptr<Expression> ident = parseIdentifier();
@@ -343,7 +360,8 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
 
   if (currentToken().type == TokenType::AUTO) {
     logError("Do not use 'auto' if u want to infer the type just dont include "
-             "the type");
+             "the type",
+             currentToken());
     advance(); // Consume auto
   }
 
@@ -362,7 +380,8 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
   // Parse identifier (the name)
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected pointer name but got '" + currentToken().TokenLiteral +
-             "'");
+                 "'",
+             currentToken());
     return nullptr;
   }
   std::unique_ptr<Expression> ident = parseIdentifier();

@@ -28,7 +28,8 @@ std::unique_ptr<Expression> Parser::parsePointerType() {
     type = parseArrayType();
   } else {
     logError("Expected basic or array type for pointers but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
   }
 
   return std::make_unique<PointerType>(ptr_token, std::move(type));
@@ -47,7 +48,8 @@ std::unique_ptr<Expression> Parser::parseRefType() {
     type = parseArrayType();
   } else {
     logError("Expected basic or array return for references but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
   }
 
   return std::make_unique<RefType>(ref_token, std::move(type));
@@ -63,7 +65,8 @@ std::unique_ptr<Expression> Parser::parseArrayType() {
     // Expect '['
     if (currentToken().type != TokenType::LBRACKET) {
       logError("Expected '[' after 'arr' keyword but got '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr;
     }
     advance(); // consume '['
@@ -75,14 +78,16 @@ std::unique_ptr<Expression> Parser::parseArrayType() {
       innerType = parseBasicType();
     } else {
       logError("Arrays can only contain a basic type or custom type, got '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr;
     }
 
     // Expect ']'
     if (currentToken().type != TokenType::RBRACKET) {
       logError("Expected ']' to close array type but got '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr;
     }
     advance(); // consume ']'
@@ -104,7 +109,8 @@ std::unique_ptr<Expression> Parser::parseArrayType() {
   }
 
   logError("Expected array type or basic type but got '" +
-           currentToken().TokenLiteral + "'");
+               currentToken().TokenLiteral + "'",
+           currentToken());
   return nullptr;
 }
 
@@ -125,7 +131,8 @@ std::unique_ptr<Expression> Parser::parseReturnType() {
     expr = parseRefType();
   } else {
     logError("Expected basic or array return type but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 

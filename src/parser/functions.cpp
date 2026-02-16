@@ -18,7 +18,7 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
     advance(); // move past ')'
     if (currentToken().type != TokenType::COLON) {
       logError("Expected ':' after empty parameter list but got '" +
-               currentToken().TokenLiteral + "'");
+               currentToken().TokenLiteral + "'",currentToken());
     }
     return args; // empty vector
   }
@@ -47,7 +47,7 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
   // If we used parentheses, we must have closing ')'
   if (hasParens && currentToken().type != TokenType::RPAREN) {
     logError("Expected ')' after function parameters but got '" +
-             currentToken().TokenLiteral + "'");
+             currentToken().TokenLiteral + "'",currentToken());
     return args;
   }
   if (hasParens)
@@ -55,7 +55,7 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
 
   // Check colon after parameter list
   if (currentToken().type != TokenType::COLON) {
-    logError("Expected ':' after function declaration");
+    logError("Expected ':' after function declaration",currentToken());
   }
 
   return args;
@@ -75,7 +75,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
 
   if (!identNode) {
     logError("Expected identifier for function name after 'func' but got '" +
-             currentToken().TokenLiteral + "'");
+             currentToken().TokenLiteral + "'",currentToken());
     return nullptr;
   }
 
@@ -99,7 +99,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
     }
 
     else {
-      logError("Unexpected return type '" + currentToken().TokenLiteral + "'");
+      logError("Unexpected return type '" + currentToken().TokenLiteral + "'",currentToken());
       return nullptr;
     }
   }
@@ -132,14 +132,14 @@ std::unique_ptr<Expression> Parser::parseBlockExpression() {
   Token lbrace = currentToken();
   if (lbrace.type != TokenType::LBRACE) {
     logError("Expected { after data type but got '" +
-             currentToken().TokenLiteral + "'");
+             currentToken().TokenLiteral + "'",currentToken());
     return nullptr;
   }
   advance();
   auto block = std::make_unique<BlockExpression>(lbrace);
   while (currentToken().type != TokenType::RBRACE) {
     if (currentToken().type == TokenType::END) {
-      logError("Unterminated block experession");
+      logError("Unterminated block experession",currentToken());
       return nullptr;
     }
 
@@ -150,7 +150,7 @@ std::unique_ptr<Expression> Parser::parseBlockExpression() {
   }
 
   if (currentToken().type != TokenType::RBRACE) {
-    logError("Expected } but got '" + currentToken().TokenLiteral + "'");
+    logError("Expected } but got '" + currentToken().TokenLiteral + "'",currentToken());
     advance();
     return nullptr;
   }

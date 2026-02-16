@@ -2,7 +2,7 @@
 #include "ast.hpp"
 #include "errors.hpp"
 #include "token.hpp"
-#include <iostream>
+#include <cstdlib>
 #include <memory>
 #include <vector>
 
@@ -492,14 +492,7 @@ bool Parser::isDeclaration(Node *node) {
 }
 
 // Error logging
-void Parser::logError(const std::string &message) {
-  Token token = getErrorToken();
-
-  if (token.line == 0 && token.column == 0) {
-    std::cerr
-        << "[PANIC]: Logging an uninitialized token! Investigate token flow.\n";
-  }
-
+void Parser::logError(const std::string &message, const Token &token) {
   hasFailed = true;
 
   CompilerError error;
@@ -512,26 +505,20 @@ void Parser::logError(const std::string &message) {
   errorHandler.report(error);
 }
 
-// Generic checker
-bool Parser::isGeneric(const std::string &typeName,
-                       const std::vector<Token> &genericParams) {
-  for (const auto &param : genericParams) {
-    if (param.TokenLiteral == typeName && param.type == TokenType::IDENTIFIER) {
-      return true;
-    }
-  }
-  return false;
+void Parser::reportDevBug(const std::string &message, const Token &token) {
+  CompilerError error;
+  error.level = ErrorLevel::INTERNAL;
+  error.line = token.line;
+  error.col = token.column;
+  error.message = message;
+  error.hints = {};
+
+  errorHandler.report(error);
+  std::abort();
 }
 
-// Getting the error token
-Token Parser::getErrorToken() {
-  if (currentPos >= tokenInput.size()) {
-    if (lastToken.line == 0) {
-      return Token{"", TokenType::ILLEGAL, 999, 999};
-    }
-    return lastToken;
-  }
-  return tokenInput[currentPos - 1];
+void Parser::logInternal(const std::string &message) {
+  std::cout << message << "\n";
 }
 
 bool Parser::failed() { return hasFailed; }

@@ -157,13 +157,14 @@ std::unique_ptr<Expression> Parser::parseArrayLiteral() {
       advance(); // consume ',' and continue
     } else if (currentToken().type != TokenType::RBRACKET) {
       logError("Unexpected token in array literal: " +
-               currentToken().TokenLiteral);
+                   currentToken().TokenLiteral,
+               currentToken());
       return nullptr;
     }
   }
 
   if (currentToken().type != TokenType::RBRACKET) {
-    logError("Expected ']' to close array literal");
+    logError("Expected ']' to close array literal", currentToken());
     return nullptr;
   }
   advance(); // consume ']'

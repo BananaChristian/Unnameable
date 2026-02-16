@@ -5,13 +5,13 @@ std::unique_ptr<Statement> Parser::parseWhileStatement() {
   Token while_key = currentToken();
   advance();
   if (currentToken().type != TokenType::LPAREN) {
-    logError(" Expected ')' after keyword while ");
+    logError(" Expected ')' after keyword while ", currentToken());
     return nullptr;
   }
   advance();
   auto condition = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    logError(" Expected ')' after while condition");
+    logError(" Expected ')' after while condition", currentToken());
     return nullptr;
   }
   advance();
@@ -26,7 +26,7 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
   advance(); // consume 'for'
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after 'for'");
+    logError("Expected '(' after 'for'", currentToken());
     return nullptr;
   }
   advance(); // consume '('
@@ -40,7 +40,8 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
 
   if (currentToken().type != TokenType::SEMICOLON) {
     logError("Expected ';' after condition in for loop but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance();
@@ -50,13 +51,14 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
 
   if (currentToken().type != TokenType::RPAREN) {
     logError("Expected ')' after step expression but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance(); // consume ')'
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected '{' to start for loop block");
+    logError("Expected '{' to start for loop block", currentToken());
     return nullptr;
   }
 

@@ -81,15 +81,15 @@ llvm::Value *IRGenerator::generateChar16Literal(Node *node) {
 llvm::Value *IRGenerator::generateChar32Literal(Node *node) {
   auto char32Lit = dynamic_cast<Char32Literal *>(node);
   if (!char32Lit) {
-    throw std::runtime_error("Invalid char 32 literal");
+    throw std::runtime_error("Invalid char32 literal");
   }
   auto it = semantics.metaData.find(char32Lit);
   if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Char16 literal not found in metadata");
+    throw std::runtime_error("Char32 literal not found in metadata");
   }
   DataType dt = it->second->type.kind;
-  if (dt != DataType::CHAR16) {
-    throw std::runtime_error("Type error: Expected CHAR16 for Char16Literal");
+  if (dt != DataType::CHAR32) {
+    throw std::runtime_error("Type error: Expected CHAR32 for Char32Literal");
   }
   std::string tokenLiteral = char32Lit->char32_token.TokenLiteral;
   uint32_t c = decodeChar32Literal(tokenLiteral);

@@ -10,6 +10,7 @@
 #Test folders
 compiler_test
 experiments
+legacyC
 
 #Test binary
 test

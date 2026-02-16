@@ -188,6 +188,7 @@ private:
   void declareImportedInit(const std::string &typeName);
   char *const_unnitoa(__int128 val, char *buf);
   char decodeCharLiteral(const std::string &literal);
+  uint32_t decodeUTF8ToCodePoint(const std::string &literal);
   void generateSageInitCall();
   uint16_t decodeChar16Literal(const std::string &literal);
   uint32_t decodeChar32Literal(const std::string &literal);

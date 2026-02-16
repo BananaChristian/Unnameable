@@ -26,7 +26,8 @@ std::unique_ptr<Statement> Parser::parseSealStatement() {
   std::unique_ptr<Expression> sealIdent = parseIdentifier();
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected { but got '" + currentToken().TokenLiteral + "'");
+    logError("Expected { but got '" + currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 
@@ -44,7 +45,8 @@ std::unique_ptr<Statement> Parser::parseGenericStatement() {
   // name
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected identifier for generic name but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   auto genericIdent = parseIdentifier();
@@ -52,7 +54,8 @@ std::unique_ptr<Statement> Parser::parseGenericStatement() {
   // type param list
   if (currentToken().type != TokenType::LPAREN) {
     logError("Expected '(' after generic name but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance(); // consume '('
@@ -68,20 +71,22 @@ std::unique_ptr<Statement> Parser::parseGenericStatement() {
       advance(); // consume comma
     } else {
       logError("Unexpected token in generic parameters: '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr;
     }
   }
 
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' to close generic parameter list");
+    logError("Expected ')' to close generic parameter list", currentToken());
     return nullptr;
   }
   advance(); // consume ')'
 
   if (currentToken().type != TokenType::LBRACE) {
     logError("Expected '{' to start generic block but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 
@@ -98,14 +103,15 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
   // Dealing with the generic call
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected 'identifier' for  generic call but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 
   auto ident = parseIdentifier();
   // Expect '('
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after instantiate identifier");
+    logError("Expected '(' after instantiate identifier", currentToken());
     return nullptr;
   }
   advance(); // consume '('
@@ -122,7 +128,8 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
       advance();
     } else {
       logError("Unexpected token in generic call: " +
-               currentToken().TokenLiteral);
+                   currentToken().TokenLiteral,
+               currentToken());
       return nullptr;
     }
 
@@ -135,7 +142,8 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
     // If not comma, next MUST be ')'
     if (currentToken().type != TokenType::RPAREN) {
       logError("Expected ',' or ')' but got '" + currentToken().TokenLiteral +
-               "'");
+                   "'",
+               currentToken());
       return nullptr;
     }
   }
@@ -145,7 +153,8 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
   advance();
 
   if (currentToken().type != TokenType::AS) {
-    logError("Expected 'as' but got '" + currentToken().TokenLiteral + "'");
+    logError("Expected 'as' but got '" + currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   Token as = currentToken();
@@ -153,7 +162,8 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
 
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected 'identifier' but got '" + currentToken().TokenLiteral +
-             "'");
+                 "'",
+             currentToken());
   }
   Token alias = currentToken();
   advance();
@@ -168,7 +178,8 @@ std::unique_ptr<EnumMember> Parser::parseEnumMember() {
   // Check if the current token is an identifier
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Enum member must start with an identifier, got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr; // Return nullptr but don't advance to allow recovery in
                     // caller
   }
@@ -183,13 +194,14 @@ std::unique_ptr<EnumMember> Parser::parseEnumMember() {
     advance(); // Consume the assignment token
     if (!isIntegerLiteralType(currentToken().type)) {
       logError("Enum member value must be an integer, got '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr; // Return nullptr without advancing
     }
     // Parse the expression for the integer value
     value = parseExpression(Precedence::PREC_NONE);
     if (!value) {
-      logError("Failed to parse enum member value");
+      logError("Failed to parse enum member value", currentToken());
       return nullptr;
     }
     // No need for manual advance here; parseExpression should handle token
@@ -210,7 +222,8 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
   auto enum_ident = parseIdentifier();
   if (!enum_ident) {
     logError("Expected identifier for enum class name, got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 
@@ -219,7 +232,8 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
     advance(); // Consume the colon token
     if (!isIntegerType(currentToken().type)) {
       logError("Expected integer type after colon in enum class, got '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr;
     }
     int_token = currentToken();
@@ -229,7 +243,8 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
   // Check for opening brace
   if (currentToken().type != TokenType::LBRACE) {
     logError("Expected '{' for enum class body, got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance(); // Consume the { token
@@ -254,11 +269,13 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
       advance(); // Consume the comma
     } else if (currentToken().type == TokenType::SEMICOLON) {
       logError("Semicolons are not allowed inside enum class; use commas to "
-               "separate members");
+               "separate members",
+               currentToken());
       advance(); // Consume the semicolon to continue parsing
     } else if (currentToken().type != TokenType::RBRACE) {
       logError("Expected ',' or '}' after enum member, got '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       // Don't advance here; let the loop check the next token
     }
   }
@@ -266,7 +283,8 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
   // Check for closing brace
   if (currentToken().type != TokenType::RBRACE) {
     logError("Expected '}' to close enum class, got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance(); // Consume the } token
@@ -298,11 +316,13 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
   advance(); // Consume the keyword component
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected component name but got '" + currentToken().TokenLiteral +
-             "'");
+                 "'",
+             currentToken());
   }
   auto component_name = parseIdentifier();
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected { but got '" + currentToken().TokenLiteral + "'");
+    logError("Expected { but got '" + currentToken().TokenLiteral + "'",
+             currentToken());
   }
   advance(); // Consuming the LPAREN
   // Now here we are inside the block so we have to parse the stuff inside
@@ -334,7 +354,8 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
         injectedfields.push_back(std::move(stmt));
       } else {
         logError("Expected 'inject record',but got '" +
-                 nextToken().TokenLiteral + "'");
+                     nextToken().TokenLiteral + "'",
+                 currentToken());
         advance(); // skip the unexpected token
       }
       break;
@@ -344,7 +365,8 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       auto exportStmt = parseExportStatement();
       auto fnStmt = dynamic_cast<FunctionStatement *>(exportStmt.get());
       if (!fnStmt) {
-        logError("Only function exports are allowed in component statement");
+        logError("Only function exports are allowed in component statement",
+                 currentToken());
         break;
       }
       methods.push_back(std::move(exportStmt));
@@ -357,7 +379,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       break;
     case TokenType::INIT:
       if (initConstructor.has_value()) {
-        logError("Duplicate init constructor in component");
+        logError("Duplicate init constructor in component", currentToken());
         advance();
         break;
       }
@@ -369,14 +391,16 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       break;
 
     default:
-      logError("Invalid statement encountered inside component");
+      logError("Invalid statement encountered inside component",
+               currentToken());
       advance();
       continue;
     }
   }
   if (currentToken().type != TokenType::RBRACE) {
     logError("Expected } to close component block but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
   }
   advance(); // Consume the RBRACE
 
@@ -395,7 +419,8 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
   // Expect LPAREN
   if (currentToken().type != TokenType::LPAREN) {
     logError("Expected '(' after 'init', but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance(); // consume '('
@@ -413,7 +438,8 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
       advance(); // consume comma and continue
     } else if (currentToken().type != TokenType::RPAREN) {
       logError("Expected ',' or ')' in init argument list, got '" +
-               currentToken().TokenLiteral + "'");
+                   currentToken().TokenLiteral + "'",
+               currentToken());
       return nullptr;
     }
   }
@@ -421,7 +447,8 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
   // Expect closing RPAREN
   if (currentToken().type != TokenType::RPAREN) {
     logError("Expected ')' to close init argument list but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance(); // consume ')'
@@ -429,7 +456,8 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
   // Parse the block statement
   if (currentToken().type != TokenType::LBRACE) {
     logError("[ERROR] Expected '{' to start init block but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
 
@@ -450,12 +478,14 @@ std::unique_ptr<Statement> Parser::parseInjectStatement() {
     advance(); // Consume 'record' or 'behavior'
   } else {
     logError("Expected either 'record' keyword but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
   }
 
   if (currentToken().type == TokenType::FULLSTOP ||
       currentToken().type == TokenType::SCOPE_OPERATOR) {
-    logError("Expected record name but you are starting with a fullstop");
+    logError("Expected record name but you are starting with a fullstop",
+             currentToken());
   }
 
   std::unique_ptr<Expression> expr = parseExpression(Precedence::PREC_NONE);
@@ -463,7 +493,7 @@ std::unique_ptr<Statement> Parser::parseInjectStatement() {
   // Special check to prevent function calls
   auto callExpr = dynamic_cast<CallExpression *>(expr.get());
   if (callExpr) {
-    logError("Unexpected function call");
+    logError("Unexpected function call", currentToken());
     return nullptr;
   }
 
@@ -492,12 +522,14 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
   advance(); // Consuming the data keyword token
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected record name but got '" + currentToken().TokenLiteral +
-             "'");
+                 "'",
+             currentToken());
   }
   auto dataBlockName = parseIdentifier();
   if (currentToken().type != TokenType::LBRACE) {
     logError("Expected { to start record block but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
   }
 
   advance(); // Consuming the LPAREN
@@ -512,13 +544,14 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
     if (isDeclaration(recordStmt.get())) {
       fields.push_back(std::move(recordStmt));
     } else {
-      logError("Unsupported statement inside record");
+      logError("Unsupported statement inside record", currentToken());
     }
   }
 
   if (currentToken().type != TokenType::RBRACE) {
     logError("Expected } to close data block but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
   }
   advance();
 
@@ -533,7 +566,8 @@ Parser::parseInstanceExpression(std::unique_ptr<Expression> left) {
   std::vector<std::unique_ptr<Statement>> args;
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected '{' but got '" + currentToken().TokenLiteral + "'");
+    logError("Expected '{' but got '" + currentToken().TokenLiteral + "'",
+             currentToken());
     advance();
     return nullptr;
   }
@@ -564,7 +598,7 @@ Parser::parseInstanceExpression(std::unique_ptr<Expression> left) {
   if (currentToken().type == TokenType::RBRACE) {
     advance(); // consume '}'
   } else {
-    logError("Expected '}' after instance arguments");
+    logError("Expected '}' after instance arguments", currentToken());
     return nullptr;
   }
 
@@ -603,7 +637,8 @@ std::unique_ptr<Statement> Parser::parseExportStatement() {
   } else if (auto sealStmt = dynamic_cast<SealStatement *>(stmt.get())) {
     sealStmt->isExportable = true;
   } else {
-    logError("'export' can only be applied to functions, and custom types");
+    logError("'export' can only be applied to functions, and custom types",
+             currentToken());
     return nullptr;
   }
 
@@ -615,7 +650,8 @@ std::unique_ptr<Statement> Parser::parseBlockStatement() {
   Token lbrace = currentToken();
   if (lbrace.type != TokenType::LBRACE) {
     logError("Expected '{' to start block but got '" + lbrace.TokenLiteral +
-             "'");
+                 "'",
+             currentToken());
     return nullptr;
   }
   advance();
@@ -637,7 +673,8 @@ std::unique_ptr<Statement> Parser::parseBlockStatement() {
 
   if (currentToken().type != TokenType::RBRACE) {
     logError("Expected } to close block but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance();

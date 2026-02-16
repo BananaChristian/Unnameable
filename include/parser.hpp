@@ -318,10 +318,6 @@ private:
   // Wrapper functions
   std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
 
-  // Checker for genericsparseLetStatementWithTypeWrapper
-  bool isGeneric(const std::string &typeName,
-                 const std::vector<Token> &genericParams);
-
   // Declaration checker
   bool isDeclaration(Node *node);
 
@@ -334,9 +330,8 @@ private:
   // Checker for integer literals
   bool isIntegerLiteralType(TokenType type);
 
-  // Error logging
-  void logError(const std::string &message);
-
-  // Getting the error token
-  Token getErrorToken();
+  // Logging
+  void logError(const std::string &message, const Token &token);
+  void reportDevBug(const std::string &message, const Token &token);
+  void logInternal(const std::string &message);
 };

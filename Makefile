@@ -11,6 +11,9 @@ CORE_DIR      = core
 LIB_DIR       = lib
 URC_X86_LINUX = $(LIB_DIR)/urc/architecture/x86_64/linux
 
+# ____Unnameable Compiler____
+UNNC = ./$(BIN_DIR)/unnc
+
 # _____Compiler Flags______
 CXXFLAGS = -std=c++17 -g -Iinclude
 
@@ -74,14 +77,14 @@ $(CORE_DIR)/syscalls.o: $(URC_X86_LINUX)/syscalls.asm
 	$(NASM) $(ASFLAGS) $< -o $@
 
 # (GPA)
-$(CORE_DIR)/gpa.o: $(LIB_DIR)/allocator/gpa/gpa.c
+$(CORE_DIR)/gpa.o: $(LIB_DIR)/allocator/gpa/gpa.unn
 	@mkdir -p $(CORE_DIR)
-	$(CC) $(RUNTIME_CFLAGS) -c $< -o $@
+	$(UNNC) $< -compile $@
 
 # (SAGE Allocator)
-$(CORE_DIR)/sage.o: $(LIB_DIR)/allocator/sage/sage.c
+$(CORE_DIR)/sage.o: $(LIB_DIR)/allocator/sage/sage.unn
 	@mkdir -p $(CORE_DIR)
-	$(CC) $(RUNTIME_CFLAGS) -c $< -o $@
+	$(UNNC) $< -compile $< $@
 
 # (Unnitoa)
 $(CORE_DIR)/unnitoa.o: $(LIB_DIR)/tools/unnitoa.cpp

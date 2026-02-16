@@ -458,6 +458,19 @@ void Lexer::appendUTF8(std::string &str, char32_t ch) {
   }
 }
 
+char32_t Lexer::readHexEscape(int digits) {
+  std::string hexStr;
+  for (int i = 0; i < digits; ++i) {
+    hexStr += static_cast<char>(currentChar());
+    advance();
+  }
+  try {
+    return static_cast<char32_t>(std::stoul(hexStr, nullptr, 16));
+  } catch (...) {
+    return 0;
+  }
+}
+
 Token Lexer::readChar() {
   CAPTURE_POS;
 
@@ -505,6 +518,14 @@ Token Lexer::readChar() {
       break;
     case U'\\':
       unescapedChar = U'\\';
+      break;
+    case U'u':
+      advance(); // move past 'u'
+      unescapedChar = readHexEscape(4);
+      break;
+    case U'U':
+      advance(); // move past 'U'
+      unescapedChar = readHexEscape(8);
       break;
     default:
       logError("Invalid escape sequence", tokenLine, tokenColumn);

@@ -13,7 +13,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
 
   auto assignToken = currentToken();
   if (!lhs) {
-    logError("Invalid left-hand side in assignment");
+    logError("Invalid left-hand side in assignment", currentToken());
     return nullptr;
   }
 
@@ -21,7 +21,7 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
         dynamic_cast<ArraySubscript *>(lhs.get()) ||
         dynamic_cast<SelfExpression *>(lhs.get()) ||
         dynamic_cast<DereferenceExpression *>(lhs.get()))) {
-    logError("Left-hand side of assignment is not assignable");
+    logError("Left-hand side of assignment is not assignable", currentToken());
     return nullptr;
   }
 
@@ -29,7 +29,8 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
   if ((assignToken.type != TokenType::ASSIGN) &&
       (assignToken.type != TokenType::ARROW)) {
     logError("Expected '=' or '->' after identifier in assignment but got '" +
-             currentToken().TokenLiteral + "'");
+                 currentToken().TokenLiteral + "'",
+             currentToken());
     return nullptr;
   }
   advance(); // consume '=' or '->'
@@ -76,7 +77,7 @@ std::unique_ptr<Statement> Parser::parseFieldAssignment() {
   auto assign_token = currentToken();
   if ((assign_token.type != TokenType::ASSIGN) &&
       (assign_token.type != TokenType::ARROW)) {
-    logError("Expected '=' after field access chain");
+    logError("Expected '=' or '->' after field access chain", currentToken());
     return nullptr;
   }
   advance();
