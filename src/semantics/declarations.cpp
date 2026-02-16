@@ -153,7 +153,6 @@ void Semantics::walkArrayStatement(Node *node) {
   arrayInfo->isSage = isSage;
   arrayInfo->isHeap = isHeap;
   arrayInfo->sizePerDimensions = declSizePerDim;
-  // arrayInfo->isResponsible = arrStmt;
   arrayInfo->isInitialized = isInitialized;
 
   if (!loopContext.empty() && loopContext.back()) {

@@ -12,6 +12,7 @@
 #include <llvm/IR/Value.h>
 
 #include "ast.hpp"
+#include "audit.hpp"
 #include "semantics.hpp"
 
 class Node;
@@ -23,8 +24,8 @@ struct JumpTarget {
 
 class IRGenerator {
 public:
-  IRGenerator(Semantics &semantics, ErrorHandler &handler, size_t totalHeapSize,
-              bool isVerbose);
+  IRGenerator(Semantics &semantics, ErrorHandler &handler, Auditor &auditor,
+              size_t totalHeapSize, bool isVerbose);
 
   using generatorFunctions = void (IRGenerator::*)(Node *node);
   using expressionGenerators = llvm::Value *(IRGenerator::*)(Node *node);
@@ -67,6 +68,7 @@ private:
   const llvm::DataLayout *layout;
   Semantics &semantics;
   ErrorHandler &errorHandler;
+  Auditor &auditor;
   size_t totalHeapSize;
   bool isVerbose;
   llvm::Value *ghostStorage = nullptr;
@@ -231,6 +233,7 @@ private:
                                   std::shared_ptr<SymbolInfo> sym, Node *node);
   void emitCleanup(Node *contextNode,
                    const std::shared_ptr<SymbolInfo> &contextSymbol);
+  void emptyLeakedDeputiesBag(Node *branchRoot);
   void flattenArrayLiteral(ArrayLiteral *arrLit,
                            std::vector<llvm::Constant *> &flatElems,
                            llvm::Type *&baseType);

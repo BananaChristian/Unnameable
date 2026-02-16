@@ -1,5 +1,7 @@
 #include "ast.hpp"
 #include "semantics.hpp"
+#include <algorithm>
+#include <memory>
 
 void Semantics::walkBlockStatement(Node *node) {
   auto blockStmt = dynamic_cast<BlockStatement *>(node);
@@ -108,34 +110,21 @@ void Semantics::walkWhileStatement(Node *node) {
   loopContext.pop_back();
 }
 
-void Semantics::walkElifStatement(Node *node) {
+void Semantics::walkElifStatement(Node *node, LifeTimeTable &baselineTable) {
   auto elifStmt = dynamic_cast<elifStatement *>(node);
   if (!elifStmt)
     return;
   auto elifCondition = elifStmt->elif_condition.get();
   ResolvedType elifConditionType = inferNodeDataType(elifCondition);
   walker(elifCondition);
-
-  currentBranchIdents
-      .clear(); // Empty it from all the pollution of earlier entries
   // Handling the elif results
   auto elifResults = elifStmt->elif_result.get();
   symbolTable.push_back({});
+  phonyTable =
+      std::make_unique<LifeTimeTable>(std::move(cloneTable(baselineTable)));
   walker(elifResults);
-  for (const auto &ident : currentBranchIdents) {
-    const std::string &identName = ident->identifier.TokenLiteral;
-    auto identSym = resolveSymbolInfo(identName);
-    if (!identSym) {
-      logSemanticErrors(
-          "Could not find the identifier symbol '" + identName + "'", ident);
-      continue;
-    }
-
-    /*{if (identSym->isResponsible == ident) {
-      // Trigger the identKiller for the specific identifier node
-      ident->isKiller = true;
-      }}*/
-  }
+  takeBranchSnapShot(elifResults, *phonyTable);
+  phonyTable.reset();
   popScope();
 }
 
@@ -148,63 +137,36 @@ void Semantics::walkIfStatement(Node *node) {
   ResolvedType ifStmtType = inferNodeDataType(ifStmtCondition);
 
   walker(ifStmtCondition);
-
-  currentBranchIdents
-      .clear(); // Empty it from all the pollution of earlier entries
+  auto baselineState = cloneTable(
+      responsibilityTable); // This gives us a copy of the responsibility table
+                            // before we branch anywhere
   // Dealing with the if result
   auto ifResult = ifStmt->if_result.get();
   symbolTable.push_back({});
+  phonyTable =
+      std::make_unique<LifeTimeTable>(std::move(cloneTable(baselineState)));
   walker(ifResult);
-  for (const auto &ident : currentBranchIdents) {
-    const std::string &identName = ident->identifier.TokenLiteral;
-    auto identLine = ident->identifier.line;
-    auto identCol = ident->identifier.column;
-    auto identSym = resolveSymbolInfo(identName);
-    if (!identSym) {
-      logSemanticErrors(
-          "Could not find the identifier symbol '" + identName + "'", ident);
-      continue;
-    }
-
-    /*{if (identSym->isResponsible == ident) {
-      // Trigger the identKiller for the specific identifier node
-      ident->isKiller = true;
-      }}*/
-  }
+  takeBranchSnapShot(ifResult, *phonyTable);
+  phonyTable.reset();
   popScope();
 
   // Dealing with the elif clauses
   auto &elifClauses = ifStmt->elifClauses;
   if (!elifClauses.empty()) {
-
     for (const auto &clause : elifClauses) {
-      walkElifStatement(clause.get());
+      walkElifStatement(clause.get(), baselineState);
     }
   }
 
   // Dealing with else statement result
   if (ifStmt->else_result.has_value()) {
     auto elseStmt = ifStmt->else_result.value().get();
-    currentBranchIdents.clear();
     symbolTable.push_back({});
+    phonyTable =
+        std::make_unique<LifeTimeTable>(std::move(cloneTable(baselineState)));
     walker(elseStmt);
-    for (const auto &ident : currentBranchIdents) {
-      const std::string &identName = ident->identifier.TokenLiteral;
-      auto identLine = ident->identifier.line;
-      auto identCol = ident->identifier.column;
-      auto identSym = resolveSymbolInfo(identName);
-      if (!identSym) {
-        logSemanticErrors(
-            "Could not find the identifier symbol '" + identName + "'", ident);
-        continue;
-      }
-
-      /*{if ((identSym->isResponsible == ident) && (identSym->refCount == 0) &&
-          (identSym->pointerCount == 0)) {
-        // Trigger the identKiller for the specific identifier node
-        ident->isKiller = true;
-        }}*/
-    }
+    takeBranchSnapShot(elseStmt, *phonyTable);
+    phonyTable.reset();
     popScope();
   }
 }

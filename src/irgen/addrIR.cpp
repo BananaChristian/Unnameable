@@ -4,8 +4,6 @@
 
 // Identifier L-value generator
 llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
-  logInternal("Inside identifier address generation(L VALUE) for " +
-              node->toString());
   llvm::Value *address = nullptr;
 
   auto identExpr = dynamic_cast<Identifier *>(node);
@@ -42,7 +40,6 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
   } else {
     // scalar/heap -> ensure typed pointer
     if (sym->isSage || sym->isHeap) {
-      logInternal("The identifier is heap raised");
       llvm::Type *elemTy = sym->llvmType;
       if (!elemTy) {
         reportDevBug("No type for '" + identName + "'",
@@ -57,7 +54,6 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
       address = variablePtr;
     } else {
       if (variablePtr->getType()->isPointerTy()) {
-        logInternal("Taken normal pointer path");
         address = variablePtr;
       } else {
         reportDevBug("Identifier '" + identName + "' doesnt have a value",

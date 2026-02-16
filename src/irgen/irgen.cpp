@@ -16,6 +16,7 @@
 #include <llvm/CodeGen/TargetPassConfig.h>
 
 #include "ast.hpp"
+#include "audit.hpp"
 #include "errors.hpp"
 #include "irgen.hpp"
 #include "semantics.hpp"
@@ -26,9 +27,10 @@
 #include <string>
 
 IRGenerator::IRGenerator(Semantics &semantics, ErrorHandler &handler,
-                         size_t totalHeap, bool isVerbose)
-    : semantics(semantics), errorHandler(handler), totalHeapSize(totalHeap),
-      isVerbose(isVerbose), context(), funcBuilder(context),
+                         Auditor &auditor, size_t totalHeap, bool isVerbose)
+    : semantics(semantics), errorHandler(handler), auditor(auditor),
+      totalHeapSize(totalHeap), isVerbose(isVerbose), context(),
+      funcBuilder(context),
       module(std::make_unique<llvm::Module>("unnameable", context)) {
   setupTargetLayout();
 
@@ -311,35 +313,10 @@ void IRGenerator::generateTraceStatement(Node *node) {
                  node->token.column);
   }
 
-  if (isGlobalScope) {
-    errorHandler.addHint("Semantics failed to guard against this");
-    reportDevBug("Executable statements must not be in global scope",
-                 traceStmt->trace_keyword.line,
-                 traceStmt->trace_keyword.column);
-  }
-
-  // Getting the semantic type of the val
-  auto it = semantics.metaData.find(traceStmt->expr.get());
-  if (it == semantics.metaData.end()) {
-    errorHandler.addHint(
-        "Semantics failed to register metadata for the trace expression");
-    reportDevBug("Missing metadata for shout expression",
-                 traceStmt->expr->expression.line,
-                 traceStmt->expr->expression.column);
-  }
-
-  // Getting the symbol
-  auto exprSym = it->second;
-  if (!exprSym) {
-    errorHandler.addHint("The semantics registered the metadata but didnt "
-                         "provide the symbol info");
-    reportDevBug("No symbol information was found for the trace expression",
-                 traceStmt->expr->expression.line,
-                 traceStmt->expr->expression.column);
-  }
+  auto traceSym = semantics.getSymbolFromMeta(traceStmt);
 
   // Getting the type
-  ResolvedType type = exprSym->type;
+  ResolvedType type = traceSym->type;
 
   // Call the expression generation n the expression
   auto val = generateExpression(traceStmt->expr.get());
@@ -354,7 +331,7 @@ void IRGenerator::generateTraceStatement(Node *node) {
   traceRuntime(val, type);
   // Emit the free if we were holding some memory hostage and this is the
   // lastUse
-  emitCleanup(traceStmt, exprSym);
+  emitCleanup(traceStmt, traceSym);
 }
 
 llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
@@ -1081,25 +1058,88 @@ void IRGenerator::freeDynamicHeapStorage(const std::string &allocatorType,
   funcBuilder.CreateCall(deallocFunc, {castPtr});
 }
 
-void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
-  if (!sym || !sym->llvmValue)
+void IRGenerator::emptyLeakedDeputiesBag(Node *branchRoot) {
+  auto &bag = auditor.leakedDeputiesBag[branchRoot];
+  if (bag.empty()) {
+    logInternal("Deputy bag is empty");
     return;
+  }
 
-  if (!sym->isHeap)
+  logInternal("[IR-BAG] Emptying Deputy Bag for branch: " +
+              branchRoot->toString());
+
+  for (auto &deputy : bag) {
+    if (!deputy->isResponsible)
+      continue;
+
+    // This will allow us to get the actual holder no matter the branch and just
+    // ask for his symbolInfo
+    Node *actualHolder = semantics.queryForLifeTimeBaton(deputy->ID);
+    auto sym = semantics.getSymbolFromMeta(actualHolder);
+
+    if (!sym) {
+      logInternal("  [BAG-FAIL] Could not find SymbolInfo for ID: " +
+                  deputy->ID);
+      continue;
+    }
+
+    logInternal("  [BAG-CLEANUP] Processing Deputy: " + sym->ID);
+
+    if (sym->pointerCount == 0 && sym->refCount == 0) {
+
+      // Free dependents (the children of the baton)
+      for (const auto &[depID, depSym] : deputy->dependents) {
+        logInternal("    [Bag-Dep-Free] ID: " + depID);
+        executePhysicalFree(depSym);
+      }
+
+      // Free the leader (the heap variable itself)
+      if (sym->isHeap) {
+        executePhysicalFree(sym);
+      }
+
+      // Revoke responsibility to be safe
+      deputy->isResponsible = false;
+    }
+  }
+
+  // Clear the bag so it's not processed again
+  bag.clear();
+}
+
+void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
+  if (!sym) {
+    logInternal("  [EXEC-FREE-FAIL] Symbol is null.");
+    return;
+  }
+
+  logInternal("  [EXEC-FREE] ID: " + sym->ID +
+              " | HasLLVM: " + (sym->llvmValue ? "T" : "F") +
+              " | IsHeap: " + (sym->isHeap ? "T" : "F"));
+
+  if (!sym->llvmValue || !sym->isHeap)
     return;
 
   logInternal("  [Deallocating] Generating  deallocation for: " + sym->ID);
 
   auto it = semantics.allocatorMap.find(sym->allocType);
-  if (it == semantics.allocatorMap.end())
+  if (it == semantics.allocatorMap.end()) {
+    logInternal(
+        "  [EXEC-FREE-FAIL] No allocator mapping for type allocator type '" +
+        sym->allocType + "'");
     return;
+  }
 
   auto deallocatorName = it->second.freeName;
   llvm::Function *deallocFunc = module->getFunction(deallocatorName);
 
-  // The Assembly-level logic
-  if (!sym->llvmValue)
+  if (!deallocFunc) {
+    logInternal("  [EXEC-FREE-FAIL] Could not find LLVM function: " +
+                deallocatorName);
     return;
+  }
+
+  logInternal("  [EMITTING-CALL] @ " + deallocatorName + " for " + sym->ID);
 
   llvm::Value *castPtr = funcBuilder.CreatePointerCast(
       sym->llvmValue, deallocFunc->getFunctionType()->getParamType(0));
@@ -1128,31 +1168,53 @@ llvm::Value *IRGenerator::handleSnatchedMove(llvm::Value *sourceAddr,
 
 void IRGenerator::emitCleanup(Node *contextNode,
                               const std::shared_ptr<SymbolInfo> &contextSym) {
+  logInternal("[CLEANUP-CHECK] Node: " + contextNode->toString());
   auto it = semantics.responsibilityTable.find(contextNode);
-  if (it == semantics.responsibilityTable.end())
+  if (it == semantics.responsibilityTable.end()) {
+    logInternal("  [SKIP] No baton associated with this node: " +
+                contextNode->toString());
     return;
+  }
 
   auto &baton = it->second;
-  if (!baton || !baton->isResponsible)
+  if (!baton) {
+    logInternal("  [SKIP] Baton pointer is null.");
     return;
+  }
+
+  logInternal("  [BATON-STATE] ID: " + contextSym->ID +
+              " | Responsible: " + (baton->isResponsible ? "T" : "F") +
+              " | PtrCount: " + std::to_string(contextSym->pointerCount) +
+              " | RefCount: " + std::to_string(contextSym->refCount));
+
+  if (!baton->isResponsible) {
+    logInternal("  [SKIP] Baton is not responsible for memory.");
+    return;
+  }
 
   // Trigger Logic (Counts)
   if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
+    logInternal("  [TRIGGER] Last use detected. Commencing physical free.");
     // Free the depenedents first
-    logInternal("Freeing '" + std::to_string(baton->dependents.size()) +
-                "' dependents...");
+    logInternal("  [Dependents] Size: " +
+                std::to_string(baton->dependents.size()));
     for (const auto &[id, depSym] : baton->dependents) {
+      logInternal("    [Dep-Free] ID: " + id);
       executePhysicalFree(depSym);
     }
 
     // Free the leader
     if (contextSym->isHeap) {
-      logInternal("  [Leader] deallocation for: " + contextSym->ID);
+      logInternal("  [Leader] ID: " + contextSym->ID);
       executePhysicalFree(contextSym);
     }
 
     // Defuse to avoid issues
     baton->isResponsible = false;
+    logInternal("  [BATON-DEFUSED] Responsibility revoked for: " +
+                contextSym->ID);
+  } else {
+    logInternal("  [HOLD] Baton still has active references/pointers.");
   }
 }
 

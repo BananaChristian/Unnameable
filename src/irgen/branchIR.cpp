@@ -38,6 +38,7 @@ void IRGenerator::generateIfStatement(Node *node) {
   // Generate then branch
   funcBuilder.SetInsertPoint(thenBB);
   generateStatement(ifStmt->if_result.get());
+  emptyLeakedDeputiesBag(ifStmt->if_result.get());
   if (!funcBuilder.GetInsertBlock()->getTerminator()) {
     funcBuilder.CreateBr(mergeBB);
   }
@@ -78,6 +79,7 @@ void IRGenerator::generateIfStatement(Node *node) {
 
     funcBuilder.SetInsertPoint(elifBodyBB);
     generateStatement(elif->elif_result.get());
+    emptyLeakedDeputiesBag(elif->elif_result.get());
     if (!funcBuilder.GetInsertBlock()->getTerminator()) {
       funcBuilder.CreateBr(mergeBB);
     }
@@ -90,6 +92,7 @@ void IRGenerator::generateIfStatement(Node *node) {
     function->insert(function->end(), nextBB);
     funcBuilder.SetInsertPoint(nextBB);
     generateStatement(ifStmt->else_result.value().get());
+    emptyLeakedDeputiesBag(ifStmt->else_result.value().get());
     if (!funcBuilder.GetInsertBlock()->getTerminator()) {
       funcBuilder.CreateBr(mergeBB);
     }

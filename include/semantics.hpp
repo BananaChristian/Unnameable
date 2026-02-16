@@ -130,8 +130,6 @@ struct GenericInstantiationInfo {
   GenericInstantiationInfo &operator=(GenericInstantiationInfo &&) = default;
 };
 
-struct LifeTime;
-
 // Information about the symbol(variable or object, whatever)
 struct SymbolInfo {
   ResolvedType type;
@@ -219,6 +217,23 @@ struct LifeTime {
   bool isResponsible = false;
   bool isAlive = false;
   std::map<std::string, std::shared_ptr<SymbolInfo>> dependents;
+
+  LifeTime() = default;
+  LifeTime(const LifeTime &other) = default;
+};
+
+struct BatonStateSnapshot {
+  std::string id;
+  std::string ownedBy;
+  int ptrCount = 0;
+  int refCount = 0;
+  bool isResponsible = false;
+  Node *terminalNode = nullptr; // Where the baton was last "seen" or killed
+  std::map<std::string, std::shared_ptr<SymbolInfo>> dependents;
+};
+
+struct BranchSnapshot {
+  std::map<std::string, BatonStateSnapshot> batonStates;
 };
 
 struct AllocatorHandle {
@@ -248,15 +263,18 @@ public:
   std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
       ImportedRecordTable;
   std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
-  std::unordered_map<Node *, std::unique_ptr<LifeTime>> responsibilityTable;
+
+  using LifeTimeTable = std::unordered_map<Node *, std::unique_ptr<LifeTime>>;
+  LifeTimeTable responsibilityTable;
+
   std::unordered_map<
       std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
       sealTable;
+  std::map<Node *, std::vector<BranchSnapshot>> snapshotRegistry;
   std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> importedInits;
   std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
   std::vector<bool> loopContext;
   std::vector<ScopeInfo> currentTypeStack;
-  std::vector<Identifier *> currentBranchIdents;
   std::set<SymbolInfo *> loopDeathRow;
   std::set<SymbolInfo *> loopResidentDeathRow;
 
@@ -306,6 +324,7 @@ private:
 
   uint64_t letDeclCount = 0;
   uint64_t ptrDeclCount = 0;
+  std::unique_ptr<LifeTimeTable> phonyTable;
 
   // Walking the data type literals
   void walkI8Literal(Node *node);
@@ -376,7 +395,7 @@ private:
   void walkWhileStatement(Node *node);
   void walkForStatement(Node *node);
   void walkIfStatement(Node *node);
-  void walkElifStatement(Node *node);
+  void walkElifStatement(Node *node, LifeTimeTable &baselineTable);
   void walkSwitchStatement(Node *node);
   void walkCaseStatement(Node *node, const ResolvedType &targetType);
 
@@ -486,6 +505,11 @@ private:
   createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
                         const std::shared_ptr<SymbolInfo> &declSym);
   void transferBaton(Node *receiver, const std::string &familyID);
+  void takeBranchSnapShot(
+      Node *branch,
+      const std::unordered_map<Node *, std::unique_ptr<LifeTime>> &tableToScan);
+  std::unordered_map<Node *, std::unique_ptr<LifeTime>> cloneTable(
+      const std::unordered_map<Node *, std::unique_ptr<LifeTime>> &source);
   void logSemanticErrors(const std::string &message, Node *contextNode);
   void logSpecialErrors(const std::string &message, int line, int col);
   void reportDevBug(const std::string &message, Node *contextNode);

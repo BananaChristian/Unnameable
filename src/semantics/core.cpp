@@ -29,7 +29,6 @@ void Semantics::walker(Node *node) {
   logInternal("Analyzing AST node: " + node->toString());
 
   std::string nodeName = typeid(*node).name();
-  logInternal("Type at runtime: " + nodeName);
   auto walkerIt = walkerFunctionsMap.find(typeid(*node));
 
   if (walkerIt != walkerFunctionsMap.end()) {
@@ -2231,10 +2230,84 @@ Node *Semantics::queryForLifeTimeBaton(const std::string &familyID) {
 void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
   Node *holder = queryForLifeTimeBaton(familyID);
   if (!holder) {
-    reportDevBug("Could not find the baton holder", receiver);
+    reportDevBug("Could not find the baton holder for lifetime ID: " + familyID,
+                 receiver);
     return;
   }
+  logInternal("Transfering baton of ID: " + familyID + " from node: " +
+              holder->toString() + " to node: " + receiver->toString());
   responsibilityTable[receiver] = std::move(responsibilityTable[holder]);
+
+  // Move the phony baton too if it exists
+  if (phonyTable) {
+    Node *phonyHolder = nullptr;
+    for (auto const &[phonyNode, phonyBaton] : *phonyTable) {
+      if (phonyBaton && phonyBaton->ID == familyID) {
+        phonyHolder = phonyNode;
+        break;
+      }
+    }
+    if (phonyHolder) {
+      // Move the baton to the receiver's slot in the phony map.
+      (*phonyTable)[receiver] = std::move((*phonyTable)[phonyHolder]);
+    }
+  }
+}
+
+std::unordered_map<Node *, std::unique_ptr<LifeTime>> Semantics::cloneTable(
+    const std::unordered_map<Node *, std::unique_ptr<LifeTime>> &source) {
+
+  std::unordered_map<Node *, std::unique_ptr<LifeTime>> copy;
+  for (auto const &[node, baton] : source) {
+    if (baton) {
+      auto newBaton = std::make_unique<LifeTime>();
+      newBaton->ID = baton->ID;
+      newBaton->isResponsible = baton->isResponsible;
+      newBaton->isAlive = baton->isAlive;
+      newBaton->ownedBy = baton->ownedBy;
+      newBaton->dependents = baton->dependents;
+      copy[node] = std::move(newBaton);
+    }
+  }
+  return copy;
+}
+
+void Semantics::takeBranchSnapShot(Node *branch,
+                                   const LifeTimeTable &tableToScan) {
+  BranchSnapshot currentSnap;
+
+  // Capture the state of every baton currently in the table
+  for (auto const &[holderNode, baton] : tableToScan) {
+    if (!baton)
+      continue;
+
+    BatonStateSnapshot s;
+    s.id = baton->ID;
+    s.isResponsible = baton->isResponsible;
+    s.ownedBy = baton->ownedBy;
+    s.dependents = baton->dependents;
+
+    // We link this state to the 'holderNode'
+    // This is the node that currently "owns" the baton in this branch
+    s.terminalNode = holderNode;
+    if (s.terminalNode)
+      logInternal("[SNAPSHOT] Terminal node for branch: " + branch->toString() +
+                  " is: " + s.terminalNode->toString());
+    else
+      logInternal("[SNAPSHOT] No terminal node for branch: " +
+                  branch->toString());
+
+    auto sym = getSymbolFromMeta(holderNode);
+    if (sym) {
+      s.ptrCount = sym->pointerCount;
+      s.refCount = sym->refCount;
+    }
+
+    currentSnap.batonStates[s.id] = s;
+  }
+
+  // Save this "frame" to the registry
+  snapshotRegistry[branch].push_back(currentSnap);
 }
 
 void Semantics::popScope() {

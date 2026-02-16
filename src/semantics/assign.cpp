@@ -307,17 +307,12 @@ void Semantics::walkAssignStatement(Node *node) {
     rhsSym->isInvalid = true; // Invalidate the symbol for say move x
   }
 
-  auto assignSym = std::make_shared<SymbolInfo>();
-  assignSym->ID = lhsSym->ID;
-  assignSym->type = lhsSym->type;
-  assignSym->isInitialized = true;
-  assignSym->hasError = hasError;
-  assignSym->isPointer = lhsSym->isPointer;
+  lhsSym->isInitialized = true;
 
   if (lhsSym->isHeap && rhsSym->isHeap) {
-    transferBaton(assignStmt, assignSym->ID);
+    transferBaton(assignStmt, lhsSym->ID);
   }
-  metaData[assignStmt] = assignSym;
+  metaData[assignStmt] = lhsSym;
 }
 
 void Semantics::walkFieldAssignmentStatement(Node *node) {

@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "semantics.hpp"
 #include <algorithm>
 #include <memory>
@@ -875,18 +876,26 @@ void Semantics::walkTraceStatement(Node *node) {
   if (!traceStmt)
     return;
 
+  if (isGlobalScope()) {
+    logSemanticErrors("Cannot use trace statement in global scope", traceStmt);
+    return;
+  }
+
   // Just call the walker on whatever is there
-  auto shoutExpr = traceStmt->expr.get();
-  if (!shoutExpr)
+  auto innerExpr = traceStmt->expr.get();
+  if (!innerExpr)
     return;
 
-  walker(shoutExpr);
-  auto exprInfo = metaData[shoutExpr];
+  walker(innerExpr);
+  auto exprInfo = metaData[innerExpr];
   if (!exprInfo)
     return;
 
-  Node *holder = queryForLifeTimeBaton(exprInfo->ID);
-  responsibilityTable[traceStmt] = std::move(responsibilityTable[holder]);
+  if (exprInfo->isHeap) {
+    transferBaton(traceStmt, exprInfo->ID);
+  }
+
+  metaData[traceStmt] = exprInfo;
 }
 
 void Semantics::walkSealCallExpression(Node *node,

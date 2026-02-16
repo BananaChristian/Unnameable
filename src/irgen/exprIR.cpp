@@ -1336,6 +1336,10 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
 
 llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
   auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
+  if (!derefExpr)
+    return nullptr;
+
+  auto derefSym = semantics.getSymbolFromMeta(derefExpr);
 
   Node *current = node;
   int derefCount = 0;
@@ -1347,7 +1351,8 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
 
   // Get the address of the variable (e.g., the alloca on the stack)
   llvm::Value *addr = generateIdentifierAddress(identNode);
-  auto meta = semantics.metaData[node];
+  derefSym->llvmValue = addr;
+  auto meta = semantics.getSymbolFromMeta(node);
 
   // Load the actual address stored in the variable.
   // This MUST be a pointer type if we intend to dereference it further.

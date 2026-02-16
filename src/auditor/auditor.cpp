@@ -2,6 +2,8 @@
 #include "audit.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
+
+#include <memory>
 #include <string>
 Auditor::Auditor(Semantics &semantics, ErrorHandler &errorHandler,
                  bool isVerbose)
@@ -23,6 +25,7 @@ void Auditor::registerAuditorFunctions() {
   auditFnsMap[typeid(BlockExpression)] = &Auditor::auditBlockExpression;
 
   auditFnsMap[typeid(AssignmentStatement)] = &Auditor::auditAssignmentStatement;
+  auditFnsMap[typeid(ifStatement)] = &Auditor::auditIfStatement;
 }
 
 void Auditor::audit(Node *node) {
@@ -98,6 +101,9 @@ void Auditor::auditPointerStatement(Node *node) {
   }
 
   logInternal("  [FINISHING] Calling simulateFree for: " + ptrSym->ID);
+  auto ptrInfo = std::make_shared<TemporalInfo>();
+  ptrInfo->insideBranch = isInsideBranch;
+  temporaryData[ptrStmt] = ptrInfo;
   simulateFree(ptrSym->ID);
 }
 
@@ -153,6 +159,8 @@ void Auditor::auditAssignmentStatement(Node *node) {
     }
   }
 
+  auto assignInfo = std::make_shared<TemporalInfo>();
+  assignInfo->insideBranch = isInsideBranch;
   simulateFree(assignSym->ID);
 }
 
@@ -170,6 +178,30 @@ void Auditor::auditFunctionExpression(Node *node) {
     return;
 
   audit(funcExpr->block.get());
+}
+
+void Auditor::auditElifStatement(Node *node) {
+  auto elifStmt = dynamic_cast<elifStatement *>(node);
+  if (!elifStmt)
+    return;
+}
+
+void Auditor::auditIfStatement(Node *node) {
+  auto ifStmt = dynamic_cast<ifStatement *>(node);
+  if (!ifStmt)
+    return;
+
+  // The superposition pass
+  performSuperpositionSync(ifStmt);
+
+  // The normal standard pass
+  audit(ifStmt->if_result.get());
+  for (const auto &elif : ifStmt->elifClauses) {
+    audit(elif.get());
+  }
+  if (ifStmt->else_result.has_value() && ifStmt->else_result.value()) {
+    audit(ifStmt->else_result.value().get());
+  }
 }
 
 void Auditor::auditReturnStatement(Node *node) {
@@ -214,6 +246,31 @@ void Auditor::auditReturnStatement(Node *node) {
                     retStmt->return_value.get());
     }
   }
+
+  auto retInfo = std::make_shared<TemporalInfo>();
+  retInfo->insideBranch = isInsideBranch;
+  simulateFree(retSym->ID);
+}
+
+void Auditor::auditIdentifier(Node *node) {
+  auto ident = dynamic_cast<Identifier *>(node);
+  if (!ident)
+    return;
+
+  auto identSym = semantics.getSymbolFromMeta(ident);
+  simulateFree(identSym->ID);
+}
+
+void Auditor::auditTraceStatement(Node *node) {
+  auto traceStmt = dynamic_cast<TraceStatement *>(node);
+  if (!traceStmt)
+    return;
+
+  auto traceSym = semantics.getSymbolFromMeta(traceStmt);
+
+  audit(traceStmt->expr.get());
+
+  simulateFree(traceSym->ID);
 }
 
 void Auditor::auditBlockStatement(Node *node) {
@@ -243,6 +300,291 @@ void Auditor::auditBlockExpression(Node *node) {
 }
 
 // Helpers
+bool Auditor::containsNaturalDeath(Node *branchRoot,
+                                   const std::string &targetID) {
+  if (!branchRoot)
+    return false;
+
+  logInternal("[SCOUT] Investigating branch: " + branchRoot->toString());
+
+  // Get the Snapshot for THIS specific branch root.
+  auto it = semantics.snapshotRegistry.find(branchRoot);
+  if (it == semantics.snapshotRegistry.end() || it->second.empty()) {
+    logInternal("[SCOUT] No snapshot found for branch. Skipping...");
+    return false;
+  }
+
+  // We take the last frame of the branch (the exit state)
+  const auto &exitSnapshot = it->second.back();
+
+  // Find the baton's status in this specific timeline
+  auto snapIt = exitSnapshot.batonStates.find(targetID);
+  if (snapIt == exitSnapshot.batonStates.end()) {
+    logInternal("[SCOUT] Baton " + targetID + " not found in branch snapshot.");
+    return false;
+  }
+
+  Node *branchTerminalNode = snapIt->second.terminalNode;
+
+  logInternal("[SCOUT] Snapshot terminal node for " + targetID + " is: " +
+              (branchTerminalNode ? branchTerminalNode->toString() : "NULL"));
+
+  if (containsNode(branchRoot, branchTerminalNode)) {
+    logInternal("[SCOUT] Found NATURAL DEATH for " + targetID +
+                " inside branch at: " + branchTerminalNode->toString());
+    return true;
+  }
+
+  logInternal("[SCOUT] Baton " + targetID +
+              " survives this branch (Terminal node is outside).");
+  return false;
+}
+
+std::set<std::string> Auditor::getAllActiveBatonIDs() {
+  logInternal(
+      "[ACTIVE_SCAN] Identifying all live batons in responsibilityTable...");
+  std::set<std::string> activeIDs;
+
+  for (const auto &[node, baton] : semantics.responsibilityTable) {
+    if (!baton)
+      continue;
+
+    // Log every baton we encounter to see what's in the table
+    logInternal("[ACTIVE_SCAN] Inspecting Table Entry: Node(" +
+                node->toString() + ") -> BatonID(" + baton->ID + ")");
+
+    if (baton->isResponsible) {
+      Node *holder = semantics.queryForLifeTimeBaton(baton->ID);
+      if (!holder) {
+        logInternal("[ACTIVE_SCAN] ! ERROR: No holder found for ID: " +
+                    baton->ID);
+        continue;
+      }
+
+      auto holderSym = semantics.getSymbolFromMeta(holder);
+      if (!holderSym) {
+        logInternal(
+            "[ACTIVE_SCAN] ! ERROR: No symbol metadata for holder of: " +
+            baton->ID);
+        continue;
+      }
+
+      logInternal("[ACTIVE_SCAN] Checking Stats for " + baton->ID +
+                  ": isResponsible(" + std::to_string(baton->isResponsible) +
+                  ") refCount(" + std::to_string(holderSym->refCount) +
+                  ") ptrCount(" + std::to_string(holderSym->pointerCount) +
+                  ")");
+
+      logInternal("[ACTIVE_SCAN] Found LIVE baton: " + baton->ID);
+      activeIDs.insert(baton->ID);
+    }
+  }
+
+  if (activeIDs.empty()) {
+    logInternal("[ACTIVE_SCAN] FATAL: Finished scan, found 0 active IDs.");
+  } else {
+    logInternal("[ACTIVE_SCAN] Scan complete. Total Active IDs: " +
+                std::to_string(activeIDs.size()));
+  }
+
+  return activeIDs;
+}
+
+void Auditor::performSuperpositionSync(ifStatement *ifStmt) {
+  logInternal("[SYNC] Starting Superposition Check for IfStatement: " +
+              ifStmt->toString());
+  std::set<std::string> allActiveIDs = getAllActiveBatonIDs();
+
+  if (allActiveIDs.empty())
+    logInternal("Active ID list is empty");
+
+  for (const std::string &id : allActiveIDs) {
+    logInternal("[SYNC] Investigating Baton: " + id);
+    bool diesInThen = containsNaturalDeath(ifStmt->if_result.get(), id);
+
+    bool diesInAnyElif = false;
+    for (auto &elifs : ifStmt->elifClauses) {
+      auto elifStmt = dynamic_cast<elifStatement *>(elifs.get());
+      if (containsNaturalDeath(elifStmt->elif_result.get(), id)) {
+        diesInAnyElif = true;
+        break;
+      }
+    }
+
+    // Does it die in the 'Else' block?
+    bool diesInElse = false;
+    if (ifStmt->else_result.has_value()) {
+      diesInElse = containsNaturalDeath(ifStmt->else_result.value().get(), id);
+    }
+
+    bool diesSomewhere = diesInThen || diesInAnyElif || diesInElse;
+    bool survivesSomewhere =
+        !diesInThen || (ifStmt->elifClauses.size() > 0 && !diesInAnyElif) ||
+        (ifStmt->else_result.has_value() && !diesInElse);
+
+    if (diesSomewhere && survivesSomewhere) {
+      logInternal("[SYNC] DISCREPANCY DETECTED for " + id);
+      reconcileWithSnapshots(ifStmt, id);
+    } else {
+      logInternal("[SYNC] " + id + " state is consistent across all branches.");
+    }
+  }
+}
+
+void Auditor::reconcileWithSnapshots(ifStatement *ifStmt,
+                                     const std::string &id) {
+
+  logInternal("[RECONCILE] Investigating timelines for baton: " + id);
+
+  // Find where the baton ended up in the Global Reality
+  Node *globalHolder = semantics.queryForLifeTimeBaton(id);
+  if (!globalHolder) {
+    logInternal("[RECONCILE] Baton " + id +
+                " is not in the live table. Likely already dead.");
+    return;
+  }
+
+  logInternal("[RECONCILE] The baton holder for id '" + id +
+              "' is: " + globalHolder->toString());
+
+  // Helper to process a specific branch node
+  auto reconcileBranch = [&](Node *branchRoot) {
+    if (!branchRoot)
+      return;
+
+    auto it = semantics.snapshotRegistry.find(branchRoot);
+    if (it == semantics.snapshotRegistry.end()) {
+      // If no snapshot exists for an existing branch, it's a gap.
+      logInternal("[RECONCILE] No snapshot for branch: " +
+                  branchRoot->toString());
+      return;
+    }
+
+    // We take the last snapshot (the "Exit Frame" from the end of the branch)
+    const auto &snapshot = it->second.back();
+    auto snapIt = snapshot.batonStates.find(id);
+
+    if (snapIt != snapshot.batonStates.end()) {
+      Node *branchTerminal = snapIt->second.terminalNode;
+      if (!branchTerminal) {
+        logInternal("[RECONCILE] No terminal node found for branch: " +
+                    branchRoot->toString());
+        return;
+      }
+
+      logInternal(
+          "[RECONCILE] Terminal node for branch: " + branchRoot->toString() +
+          " is: " + branchTerminal->toString());
+
+      if (branchTerminal != globalHolder) {
+        logInternal("[RECONCILE] Branch " + branchRoot->toString() +
+                    " is passive for " + id);
+        materializeDeputy(id, snapIt->second, branchRoot);
+      } else {
+        logInternal("[RECONCILE] Branch " + branchRoot->toString() +
+                    " is the active for " + id);
+      }
+    }
+  };
+
+  // Handling the then block
+  reconcileBranch(ifStmt->if_result.get());
+
+  // Handle the elifs
+  for (const auto &elif : ifStmt->elifClauses) {
+    if (elif) {
+      auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
+      reconcileBranch(elifStmt->elif_result.get());
+    }
+  }
+
+  // Handle else
+  if (ifStmt->else_result.has_value() && ifStmt->else_result.value()) {
+    reconcileBranch(ifStmt->else_result.value().get());
+  } else {
+    logInternal("[RECONCILE] Handling implicit 'else' leak for " + id);
+    // Create a dummy snapshot
+    BatonStateSnapshot implicitSnap;
+    implicitSnap.id = id;
+    implicitSnap.terminalNode = ifStmt;
+    implicitSnap.isResponsible = true;
+
+    materializeDeputy(id, implicitSnap, ifStmt);
+  }
+}
+
+void Auditor::materializeDeputy(const std::string &id,
+                                const BatonStateSnapshot &snap,
+                                Node *branchRoot) {
+  logInternal("[MATERIALIZE] Creating Death Warrant for " + id + " on node " +
+              snap.terminalNode->toString());
+
+  bool isLegalTarget = containsNode(branchRoot, snap.terminalNode);
+
+  auto deputy = std::make_unique<LifeTime>();
+  deputy->ID = id;
+  deputy->isResponsible = true;
+  deputy->isAlive = false;
+  deputy->dependents = snap.dependents;
+  deputy->ownedBy = snap.ownedBy;
+
+  if (isLegalTarget) {
+    if (snap.terminalNode) {
+      logInternal("[MATERIALIZE] Restoring baton to holder: " +
+                  snap.terminalNode->toString() +
+                  " inside branch: " + branchRoot->toString());
+      semantics.responsibilityTable[snap.terminalNode] = std::move(deputy);
+    } else {
+      logInternal(
+          "[MATERIALIZE] No potential holder found in branch. Using Bag for " +
+          branchRoot->toString());
+      leakedDeputiesBag[branchRoot].push_back(std::move(deputy));
+    }
+  } else {
+    logInternal("Terminal node: " + snap.terminalNode->toString() +
+                " not inside branch: " + branchRoot->toString() +
+                " vetoing to deputy leak...");
+    leakedDeputiesBag[branchRoot].push_back(std::move(deputy));
+  }
+}
+
+bool Auditor::containsNode(Node *root, Node *target) {
+  if (!root || !target)
+    return false;
+  if (root == target)
+    return true;
+
+  if (auto block = dynamic_cast<BlockStatement *>(root)) {
+    for (auto &stmt : block->statements) {
+      if (containsNode(stmt.get(), target))
+        return true;
+    }
+
+  } else if (auto ifStmt = dynamic_cast<ifStatement *>(root)) {
+    if (containsNode(ifStmt->condition.get(), target))
+      return true;
+    if (containsNode(ifStmt->if_result.get(), target))
+      return true;
+    for (const auto &elif : ifStmt->elifClauses) {
+      if (containsNode(elif.get(), target))
+        return true;
+      continue;
+    }
+    if (ifStmt->else_stmt.has_value()) {
+      if (containsNode(ifStmt->else_result.value().get(), target))
+        return true;
+    }
+
+  } else if (auto infix = dynamic_cast<InfixExpression *>(root)) {
+    if (containsNode(infix->left_operand.get(), target))
+      return true;
+    if (containsNode(infix->right_operand.get(), target))
+      return true;
+  }
+
+  return false;
+}
+
 void Auditor::simulateFree(const std::string &contextID) {
   logInternal("\n  [SIMULATE-FREE] Target: " + contextID);
 

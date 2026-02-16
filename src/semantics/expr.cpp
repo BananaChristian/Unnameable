@@ -492,14 +492,13 @@ void Semantics::walkIdentifierExpression(Node *node) {
       // Track them so we can ensure they die before the loop repeats
       loopResidentDeathRow.insert(symbolInfo.get());
 
-    } else {
-      // Normal linear path
-      currentBranchIdents.push_back(identExpr);
-    }
+    } 
   }
 
-  Node *holder = queryForLifeTimeBaton(symbolInfo->ID);
-  responsibilityTable[identExpr] = std::move(responsibilityTable[holder]);
+  if (symbolInfo->isHeap) {
+    transferBaton(identExpr, symbolInfo->ID);
+  }
+
   metaData[identExpr] = symbolInfo;
 }
 
@@ -567,16 +566,16 @@ void Semantics::walkAddressExpression(Node *node) {
   addrInfo->isPointer = true;
   addrInfo->isSage = isSage;
   addrInfo->isHeap = isHeap;
-  addrInfo->ID = symbolInfo->ID;
   addrInfo->allocType = symbolInfo->allocType;
   addrInfo->targetSymbol = symbolInfo;
   addrInfo->type = inferNodeDataType(addrExpr);
 
   // Ths syncs the pointerCount with that of the original identifier
   symbolInfo->pointerCount = addrInfo->pointerCount;
+
   if (isHeap) {
-    Node *holder = queryForLifeTimeBaton(addrInfo->ID);
-    responsibilityTable[addrExpr] = std::move(responsibilityTable[holder]);
+    addrInfo->ID = symbolInfo->ID;
+    transferBaton(addrExpr, addrInfo->ID);
   }
   metaData[addrExpr] = addrInfo;
 }
@@ -668,11 +667,8 @@ void Semantics::walkDereferenceExpression(Node *node) {
     return;
   }
 
-  if (derefSym->hasError) {
-    logSemanticErrors(
-        "Cannot dereference erronious pointer '" + derefName + "'", derefExpr);
+  if (derefSym->hasError)
     return;
-  }
 
   // Block dereferencing non pointer
   if (!derefSym->type.isPointer) {
@@ -706,13 +702,19 @@ void Semantics::walkDereferenceExpression(Node *node) {
   derefInfo->isPointer = finalType.isPointer;
   derefInfo->type = finalType; // Setting the final 'i32' type here
   derefInfo->isMutable = derefSym->isMutable;
+  derefInfo->isHeap = derefSym->isHeap;
   derefInfo->isInitialized = derefSym->isInitialized;
+  derefInfo->allocType = derefSym->allocType;
 
   if (derefSym->targetSymbol != nullptr) {
     derefInfo->targetSymbol = derefSym->targetSymbol;
-    // derefSym->targetSymbol->lastUseNode = derefExpr;
   } else {
     derefInfo->targetSymbol = nullptr;
+  }
+
+  if (derefSym->isHeap) {
+    derefInfo->ID = derefSym->ID;
+    transferBaton(derefExpr, derefInfo->ID);
   }
 
   metaData[derefExpr] = derefInfo;
