@@ -119,13 +119,7 @@ void Semantics::walkElifStatement(Node *node, LifeTimeTable &baselineTable) {
   walker(elifCondition);
   // Handling the elif results
   auto elifResults = elifStmt->elif_result.get();
-  symbolTable.push_back({});
-  phonyTable =
-      std::make_unique<LifeTimeTable>(std::move(cloneTable(baselineTable)));
-  walker(elifResults);
-  takeBranchSnapShot(elifResults, *phonyTable);
-  phonyTable.reset();
-  popScope();
+  saveAndRestorePhonyTable(elifResults, baselineTable);
 }
 
 void Semantics::walkIfStatement(Node *node) {
@@ -140,15 +134,9 @@ void Semantics::walkIfStatement(Node *node) {
   auto baselineState = cloneTable(
       responsibilityTable); // This gives us a copy of the responsibility table
                             // before we branch anywhere
+
   // Dealing with the if result
-  auto ifResult = ifStmt->if_result.get();
-  symbolTable.push_back({});
-  phonyTable =
-      std::make_unique<LifeTimeTable>(std::move(cloneTable(baselineState)));
-  walker(ifResult);
-  takeBranchSnapShot(ifResult, *phonyTable);
-  phonyTable.reset();
-  popScope();
+  saveAndRestorePhonyTable(ifStmt->if_result.get(), baselineState);
 
   // Dealing with the elif clauses
   auto &elifClauses = ifStmt->elifClauses;
@@ -160,14 +148,7 @@ void Semantics::walkIfStatement(Node *node) {
 
   // Dealing with else statement result
   if (ifStmt->else_result.has_value()) {
-    auto elseStmt = ifStmt->else_result.value().get();
-    symbolTable.push_back({});
-    phonyTable =
-        std::make_unique<LifeTimeTable>(std::move(cloneTable(baselineState)));
-    walker(elseStmt);
-    takeBranchSnapShot(elseStmt, *phonyTable);
-    phonyTable.reset();
-    popScope();
+    saveAndRestorePhonyTable(ifStmt->else_result.value().get(), baselineState);
   }
 }
 

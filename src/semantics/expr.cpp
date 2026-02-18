@@ -491,8 +491,7 @@ void Semantics::walkIdentifierExpression(Node *node) {
       // RESIDENTS
       // Track them so we can ensure they die before the loop repeats
       loopResidentDeathRow.insert(symbolInfo.get());
-
-    } 
+    }
   }
 
   if (symbolInfo->isHeap) {

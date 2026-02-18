@@ -2310,10 +2310,98 @@ void Semantics::takeBranchSnapShot(Node *branch,
   snapshotRegistry[branch].push_back(currentSnap);
 }
 
+void Semantics::saveAndRestorePhonyTable(Node *branch,
+                                         LifeTimeTable &snappedTable) {
+  if (!branch) {
+    logInternal("[HANDOVER_CRITICAL] ! Aborting: Branch node is NULL.");
+    return;
+  }
+
+  logInternal("[HANDOVER_CRITICAL] >>> Entering Branch Analysis: " +
+              branch->toString());
+
+  // Store the existing parent phony onto the stack
+  std::unique_ptr<LifeTimeTable> parentPhonyTable = std::move(phonyTable);
+  // Place the child phonyTable into the slot
+  phonyTable = std::make_unique<LifeTimeTable>(cloneTable(snappedTable));
+  logInternal("[HANDOVER_TRACE] PhonyTable cloned. Initial baton count: " +
+              std::to_string(phonyTable->size()));
+
+  symbolTable.push_back({});
+  walker(branch);
+  takeBranchSnapShot(branch, *phonyTable);
+  popScope();
+
+  // Update the parent to see what the child has done
+  if (parentPhonyTable) {
+    logInternal(
+        "[HANDOVER] Child branch analysis complete. Syncing back to parent...");
+    logInternal("[HANDOVER] Branch Root: " + branch->toString());
+
+    for (auto const &[childHolderNode, childBaton] : *phonyTable) {
+      if (!childBaton) {
+        logInternal("[HANDOVER_DEBUG] Skipping null baton in child table.");
+        continue;
+      }
+
+      logInternal("[HANDOVER_DEBUG] Child claims Baton(" + childBaton->ID +
+                  ") is currently held by Node: " +
+                  (childHolderNode ? childHolderNode->toString() : "NULL"));
+
+      // Find where the parent *thinks* this baton is
+      Node *parentOldHolder = nullptr;
+      for (auto const &[pNode, pBaton] : *parentPhonyTable) {
+        if (pBaton && pBaton->ID == childBaton->ID) {
+          parentOldHolder = pNode;
+          break;
+        }
+      }
+
+      if (!parentOldHolder) {
+        logInternal("[HANDOVER_WARN] Parent has no record of Baton(" +
+                    childBaton->ID + "). Was it created inside this branch?");
+        continue;
+      }
+
+      // If the child found a new terminal location, update the parent's view
+      if (parentOldHolder != childHolderNode) {
+        logInternal("  [SYNC_ATTEMPT] Baton(" + childBaton->ID +
+                    ") Migration:");
+        logInternal("    FROM (Parent's View): " + parentOldHolder->toString());
+        logInternal("    TO   (Child's View) : " +
+                    (childHolderNode ? childHolderNode->toString() : "NULL"));
+
+        if (childHolderNode == branch) {
+          logInternal("  [SYNC_FATAL_HINT] ! CONTRADICTION: Child is handing "
+                      "baton back to the BRANCH ROOT itself!");
+        }
+
+        // Move the baton in the parent's table to match the child's conclusion
+        (*parentPhonyTable)[childHolderNode] =
+            std::move((*parentPhonyTable)[parentOldHolder]);
+        parentPhonyTable->erase(parentOldHolder);
+        logInternal("  [SYNC_COMPLETE] Parent table updated for " +
+                    childBaton->ID);
+      } else {
+        logInternal("  [SYNC_SKIP] Baton(" + childBaton->ID +
+                    ") did not move in this branch.");
+      }
+    }
+  } else {
+    logInternal("[HANDOVER_CRITICAL] ! No parentPhonyTable found to update.");
+  }
+
+  // Restore the parent phony
+  phonyTable = std::move(parentPhonyTable);
+  logInternal("[HANDOVER_CRITICAL] <<< Exited Branch Analysis: " +
+              branch->toString());
+}
+
 void Semantics::popScope() {
   auto &scope = symbolTable.back();
   for (auto &[name, sym] : scope) {
-    // If the symbol we come across is a reference and it is referencing validly
+    // If the symbol we come across is a reference and it is referencing
+    // validly
     if (sym->isRef && sym->refereeSymbol) {
       logInternal("Initial refCount :" +
                   std::to_string(sym->refereeSymbol->refCount));

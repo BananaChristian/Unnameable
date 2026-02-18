@@ -510,6 +510,7 @@ private:
       const std::unordered_map<Node *, std::unique_ptr<LifeTime>> &tableToScan);
   std::unordered_map<Node *, std::unique_ptr<LifeTime>> cloneTable(
       const std::unordered_map<Node *, std::unique_ptr<LifeTime>> &source);
+  void saveAndRestorePhonyTable(Node *branch, LifeTimeTable &snappedTable);
   void logSemanticErrors(const std::string &message, Node *contextNode);
   void logSpecialErrors(const std::string &message, int line, int col);
   void reportDevBug(const std::string &message, Node *contextNode);

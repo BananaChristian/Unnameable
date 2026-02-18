@@ -308,12 +308,6 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     llvm::Type *elemTy = sym->llvmType;
     llvm::Value *actualHeapAddr = address;
 
-    // If the ghostStorage is online that means the assignment created it and
-    // now it wants the identifier to memcpy before it even frees
-    if (ghostStorage) {
-      return handleSnatchedMove(actualHeapAddr, sym, identExpr);
-    }
-
     if (!elemTy) {
       reportDevBug("No type for heap scalar '" + identName + "'",
                    identExpr->identifier.line, identExpr->identifier.column);
@@ -323,9 +317,10 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     llvm::Value *loadedVal =
         funcBuilder.CreateLoad(elemTy, actualHeapAddr, identName + "_val");
 
-    // Now that the value is safe in a register, we can release the
-    // memory
-    emitCleanup(identExpr, sym);
+    // If the inhibitor is on that means there is a parent who wants this dude
+    // to relax but if he is off proceed to shoot
+    if (!inhibitCleanUp)
+      emitCleanup(identExpr, sym);
 
     return loadedVal;
   }
@@ -423,143 +418,21 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   if (!infix)
     throw std::runtime_error("Invalid infix expression");
 
-  auto infixIt = semantics.metaData.find(infix);
-  if (infixIt == semantics.metaData.end())
-    throw std::runtime_error("Cannot find infix metaData");
+  auto infixSym = semantics.getSymbolFromMeta(infix);
+  inhibitCleanUp = true;
 
-  auto infixSym = infixIt->second;
-  if (infixSym->hasError)
-    throw std::runtime_error("Semantic error detected");
+  llvm::Value *leftVal = generateExpression(infix->left_operand.get());
+  llvm::Value *rightVal = generateExpression(infix->right_operand.get());
 
-  auto rhsIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
-  auto lhsIdent = dynamic_cast<Identifier *>(infix->left_operand.get());
+  auto leftSym = semantics.getSymbolFromMeta(infix->left_operand.get());
+  auto rightSym = semantics.getSymbolFromMeta(infix->right_operand.get());
+  llvm::Value *result = nullptr;
 
-  if (isGlobalScope && (lhsIdent || rhsIdent)) {
-    throw std::runtime_error(
-        "Executable statements are not allowed at global scope: '" +
-        infix->operat.TokenLiteral + "' at line " +
-        std::to_string(infix->operat.line));
-  }
+  if (infix->operat.type == TokenType::FULLSTOP)
+    result = handleMemberAccess(infix, leftVal, rightVal, leftSym, rightSym);
 
-  if (infix->operat.type == TokenType::FULLSTOP) {
-    // sanity check: member access only inside a function
-    if (isGlobalScope)
-      throw std::runtime_error("Member access not allowed at global scope");
-
-    llvm::Value *lhsVal = generateExpression(infix->left_operand.get());
-    auto rhsIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
-    if (!rhsIdent)
-      throw std::runtime_error("Right side of '.' must be an identifier");
-
-    std::string memberName = rhsIdent->expression.TokenLiteral;
-
-    // get metadata for the left operand
-    auto lhsMeta = semantics.metaData[infix->left_operand.get()];
-    if (!lhsMeta)
-      throw std::runtime_error("Missing metadata for struct expression");
-
-    std::string parentTypeName = lhsMeta->type.resolvedName;
-    std::string lookUpName = parentTypeName;
-
-    if (lhsMeta->type.isPointer) {
-      lookUpName = semantics.stripPtrSuffix(parentTypeName);
-    } else if (lhsMeta->type.isRef) {
-      lookUpName = semantics.stripRefSuffix(parentTypeName);
-    }
-
-    // get struct definition
-    auto parentTypeIt = semantics.customTypesTable.find(lookUpName);
-    if (parentTypeIt == semantics.customTypesTable.end())
-      throw std::runtime_error("Unknown struct type '" + lookUpName + "'");
-
-    auto &parentInfo = parentTypeIt->second;
-    auto memberIt = parentInfo->members.find(memberName);
-    if (memberIt == parentInfo->members.end())
-      throw std::runtime_error("No member '" + memberName + "' in type '" +
-                               lookUpName + "'");
-
-    // get member index + type
-    unsigned memberIndex = memberIt->second->memberIndex;
-    llvm::StructType *structTy = llvmCustomTypes[lookUpName];
-    llvm::Type *memberType = getLLVMType(memberIt->second->type);
-
-    // if lhs is struct by value, we need a pointer to use GEP
-    llvm::Value *lhsPtr = lhsVal;
-    if (auto *gv = llvm::dyn_cast<llvm::GlobalVariable>(lhsVal)) {
-      if (gv->getValueType() != structTy) {
-        lhsPtr = funcBuilder.CreateLoad(structTy->getPointerTo(), gv,
-                                        gv->getName() + "_loaded");
-      }
-    } else if (!lhsVal->getType()->isPointerTy()) {
-      llvm::Value *allocaTmp = funcBuilder.CreateAlloca(
-          lhsVal->getType(), nullptr, lookUpName + "_tmp");
-      funcBuilder.CreateStore(lhsVal, allocaTmp);
-      lhsPtr = allocaTmp;
-    }
-
-    llvm::Value *memberPtr =
-        funcBuilder.CreateStructGEP(structTy, lhsPtr, memberIndex, memberName);
-
-    // now return by-value load, not a pointer
-    llvm::Value *memberVal =
-        funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
-
-    return memberVal;
-  }
-
-  if (infix->operat.type == TokenType::SCOPE_OPERATOR) {
-
-    // "::" is only for enum access
-    auto enumName = lhsIdent->expression.TokenLiteral;
-    auto leftTypeIt = semantics.customTypesTable.find(enumName);
-    if (leftTypeIt == semantics.customTypesTable.end())
-      throw std::runtime_error("Unknown enum class '" + enumName + "'");
-
-    auto leftType = leftTypeIt->second->type;
-
-    // If the type isn't an enum reject it
-    if (leftType.kind != DataType::ENUM) {
-      throw std::runtime_error(
-          "The '::' operator is only valid for enum access");
-    }
-
-    auto &enumInfo = leftTypeIt->second;
-
-    // RHS must be an identifier (enum member)
-    auto memberIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
-    if (!memberIdent)
-      throw std::runtime_error(
-          "Right-hand of '::' must be an enum member identifier");
-
-    auto memberName = memberIdent->expression.TokenLiteral;
-
-    // Find enum member
-    auto memIt = enumInfo->members.find(memberName);
-    if (memIt == enumInfo->members.end())
-      throw std::runtime_error("Enum '" + enumName + "' has no member named '" +
-                               memberName + "'");
-
-    uint64_t memberValue = memIt->second->constantValue;
-
-    // Return constant integer
-    llvm::Type *llvmEnumTy = getLLVMType(leftType);
-    return llvm::ConstantInt::get(llvmEnumTy, memberValue);
-  }
-
-  llvm::Value *left = generateExpression(infix->left_operand.get());
-  llvm::Value *right = generateExpression(infix->right_operand.get());
-
-  if (!left || !right)
-    throw std::runtime_error("Failed to generate IR for infix expression");
-
-  auto it = semantics.metaData.find(node);
-  if (it == semantics.metaData.end())
-    throw std::runtime_error("Meta data missing for infix node");
-
-  ResolvedType resultType = it->second->type;
-  DataType leftType = semantics.metaData[infix->left_operand.get()]->type.kind;
-  DataType rightType =
-      semantics.metaData[infix->right_operand.get()]->type.kind;
+  if (infix->operat.type == TokenType::SCOPE_OPERATOR)
+    result = handleEnumAccess(infix);
 
   // Helper lambda for integer type promotion
   auto promoteInt = [&](llvm::Value *val, DataType fromType,
@@ -586,273 +459,52 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     }
   };
 
+  auto resultType = infixSym->type;
   // Promote operands to widest integer type among left, right, and result
   if (isIntegerType(resultType.kind)) {
     unsigned targetBits = getIntegerBitWidth(resultType.kind);
-    left = promoteInt(left, leftType, resultType.kind);
-    right = promoteInt(right, rightType, resultType.kind);
+    leftVal = promoteInt(leftVal, leftSym->type.kind, resultType.kind);
+    rightVal = promoteInt(rightVal, rightSym->type.kind, resultType.kind);
   }
 
-  // --- Handle Null Coalesce (??) ---
-  if (infix->operat.type == TokenType::COALESCE) {
-    // Generate LHS (The 'Box')
-    llvm::Value *leftStruct = generateExpression(infix->left_operand.get());
+  // Handle Null Coalesce (??)
+  if (infix->operat.type == TokenType::COALESCE)
+    result = handleCoalesce(infix, leftVal);
 
-    // Extract the 'is_present' flag (index 0 in our {i1, T} struct)
-    llvm::Value *isPresent =
-        funcBuilder.CreateExtractValue(leftStruct, 0, "is_present");
-
-    // Setup BasicBlocks
-    llvm::Function *theFunction = funcBuilder.GetInsertBlock()->getParent();
-
-    // We attach 'hasValueBB' immediately so it follows the current block
-    llvm::BasicBlock *hasValueBB =
-        llvm::BasicBlock::Create(context, "has_value", theFunction);
-    llvm::BasicBlock *isNullBB = llvm::BasicBlock::Create(context, "is_null");
-    llvm::BasicBlock *mergeBB =
-        llvm::BasicBlock::Create(context, "coalesce_merge");
-
-    // Branch: If true, go to value; if false, go to null handler
-    funcBuilder.CreateCondBr(isPresent, hasValueBB, isNullBB);
-
-    // ---  HAS VALUE ---
-    funcBuilder.SetInsertPoint(hasValueBB);
-    // Reach into the struct and grab the actual data (index 1)
-    llvm::Value *extractedVal =
-        funcBuilder.CreateExtractValue(leftStruct, 1, "extracted_val");
-    funcBuilder.CreateBr(mergeBB);
-    // Update pointer in case builder moved
-    hasValueBB = funcBuilder.GetInsertBlock();
-
-    // ---  IS NULL (Short-circuiting) ---
-    isNullBB->insertInto(theFunction); // The "Official Conductor" method
-    funcBuilder.SetInsertPoint(isNullBB);
-    // ONLY generate RHS here. If LHS was valid, this code never runs.
-    llvm::Value *rightVal = generateExpression(infix->right_operand.get());
-    funcBuilder.CreateBr(mergeBB);
-    isNullBB = funcBuilder.GetInsertBlock();
-
-    // --- MERGE ---
-    mergeBB->insertInto(theFunction);
-    funcBuilder.SetInsertPoint(mergeBB);
-
-    // The PHI node picks the value based on which block we arrived from
-    llvm::PHINode *phi =
-        funcBuilder.CreatePHI(rightVal->getType(), 2, "coalesce_res");
-    phi->addIncoming(extractedVal, hasValueBB);
-    phi->addIncoming(rightVal, isNullBB);
-
-    return phi;
-  }
-
-  // Handle BOOLEAN logical operators (AND, OR)
+  // Handle boolean logical operators (AND, OR)
   if (infix->operat.type == TokenType::AND ||
-      infix->operat.type == TokenType::OR) {
-    if (left->getType() != funcBuilder.getInt1Ty())
-      left = funcBuilder.CreateICmpNE(
-          left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
-    if (right->getType() != funcBuilder.getInt1Ty())
-      right = funcBuilder.CreateICmpNE(
-          right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
-
-    if (infix->operat.type == TokenType::AND)
-      return funcBuilder.CreateAnd(left, right, "andtmp");
-    else
-      return funcBuilder.CreateOr(left, right, "ortmp");
-  }
+      infix->operat.type == TokenType::OR)
+    result = handleLogical(infix, leftVal, rightVal, leftSym, rightSym);
 
   // Handle floating point conversions
   if (resultType.kind == DataType::F32) {
-    if (isIntegerType(leftType))
-      left = funcBuilder.CreateSIToFP(left, llvm::Type::getFloatTy(context),
-                                      "inttof32");
-    if (isIntegerType(rightType))
-      right = funcBuilder.CreateSIToFP(right, llvm::Type::getFloatTy(context),
-                                       "inttof32");
+    if (isIntegerType(leftSym->type.kind))
+      leftVal = funcBuilder.CreateSIToFP(
+          leftVal, llvm::Type::getFloatTy(context), "inttof32");
+    if (isIntegerType(rightSym->type.kind))
+      rightVal = funcBuilder.CreateSIToFP(
+          rightVal, llvm::Type::getFloatTy(context), "inttof32");
   } else if (resultType.kind == DataType::F64) {
-    if (isIntegerType(leftType))
-      left = funcBuilder.CreateSIToFP(left, llvm::Type::getDoubleTy(context),
-                                      "inttof64");
-    if (isIntegerType(rightType))
-      right = funcBuilder.CreateSIToFP(right, llvm::Type::getDoubleTy(context),
-                                       "inttof64");
+    if (isIntegerType(leftSym->type.kind))
+      leftVal = funcBuilder.CreateSIToFP(
+          leftVal, llvm::Type::getDoubleTy(context), "inttof64");
+    if (isIntegerType(rightSym->type.kind))
+      rightVal = funcBuilder.CreateSIToFP(
+          rightVal, llvm::Type::getDoubleTy(context), "inttof64");
   }
 
-  // Now generate code based on operator and result type
   // Comparison operators - different for signed/unsigned integers
-  if (infix->operat.type == TokenType::EQUALS ||
-      infix->operat.type == TokenType::NOT_EQUALS ||
-      infix->operat.type == TokenType::LESS_THAN ||
-      infix->operat.type == TokenType::LT_OR_EQ ||
-      infix->operat.type == TokenType::GREATER_THAN ||
-      infix->operat.type == TokenType::GT_OR_EQ) {
-    if (isIntegerType(leftType) || leftType == DataType::ENUM) {
-      if (isIntegerType(rightType) || rightType == DataType::ENUM) {
-        bool signedInt = isSignedInteger(leftType);
+  if (ComparisonOperator(infix->operat.type))
+    result = handleComparison(infix, leftVal, rightVal, leftSym, rightSym);
 
-        switch (infix->operat.type) {
-        case TokenType::EQUALS:
-          return funcBuilder.CreateICmpEQ(left, right, "cmptmp");
-        case TokenType::NOT_EQUALS:
-          return funcBuilder.CreateICmpNE(left, right, "cmptmp");
-        case TokenType::LESS_THAN:
-          return signedInt ? funcBuilder.CreateICmpSLT(left, right, "cmptmp")
-                           : funcBuilder.CreateICmpULT(left, right, "cmptmp");
-        case TokenType::LT_OR_EQ:
-          return signedInt ? funcBuilder.CreateICmpSLE(left, right, "cmptmp")
-                           : funcBuilder.CreateICmpULE(left, right, "cmptmp");
-        case TokenType::GREATER_THAN:
-          return signedInt ? funcBuilder.CreateICmpSGT(left, right, "cmptmp")
-                           : funcBuilder.CreateICmpUGT(left, right, "cmptmp");
-        case TokenType::GT_OR_EQ:
-          return signedInt ? funcBuilder.CreateICmpSGE(left, right, "cmptmp")
-                           : funcBuilder.CreateICmpUGE(left, right, "cmptmp");
-        default:
-          throw std::runtime_error("Unsupported int comparison operator");
-        }
-      }
-    } else if (leftType == DataType::F32 || leftType == DataType::F64) {
-      switch (infix->operat.type) {
-      case TokenType::EQUALS:
-        return funcBuilder.CreateFCmpOEQ(left, right, "fcmptmp");
-      case TokenType::NOT_EQUALS:
-        return funcBuilder.CreateFCmpONE(left, right, "fcmptmp");
-      case TokenType::LESS_THAN:
-        return funcBuilder.CreateFCmpOLT(left, right, "fcmptmp");
-      case TokenType::LT_OR_EQ:
-        return funcBuilder.CreateFCmpOLE(left, right, "fcmptmp");
-      case TokenType::GREATER_THAN:
-        return funcBuilder.CreateFCmpOGT(left, right, "fcmptmp");
-      case TokenType::GT_OR_EQ:
-        return funcBuilder.CreateFCmpOGE(left, right, "fcmptmp");
-      default:
-        throw std::runtime_error("Unsupported float comparison operator");
-      }
-    } else if (semantics.metaData[infix->left_operand.get()]->type.isPointer ||
-               semantics.metaData[infix->right_operand.get()]->type.isPointer) {
-
-      if (left->getType() != right->getType()) {
-        right =
-            funcBuilder.CreateBitCast(right, left->getType(), "ptr_cmp_norm");
-      }
-      // Pointers are compared as Unsigned Integers
-      switch (infix->operat.type) {
-      case TokenType::EQUALS:
-        return funcBuilder.CreateICmpEQ(left, right, "ptr_eq");
-      case TokenType::NOT_EQUALS:
-        return funcBuilder.CreateICmpNE(left, right, "ptr_ne");
-      case TokenType::LESS_THAN:
-        return funcBuilder.CreateICmpULT(left, right, "ptr_lt");
-      case TokenType::LT_OR_EQ:
-        return funcBuilder.CreateICmpULE(left, right, "ptr_le");
-      case TokenType::GREATER_THAN:
-        return funcBuilder.CreateICmpUGT(left, right, "ptr_gt");
-      case TokenType::GT_OR_EQ:
-        return funcBuilder.CreateICmpUGE(left, right, "ptr_ge");
-      default:
-        throw std::runtime_error("Unsupported pointer comparison operator");
-      }
-    } else {
-      throw std::runtime_error(
-          "Comparison not supported for types '" +
-          semantics.metaData[infix->left_operand.get()]->type.resolvedName +
-          "' and '" +
-          semantics.metaData[infix->left_operand.get()]->type.resolvedName +
-          "'");
-    }
-  }
   // Arithmetic operators
-  switch (infix->operat.type) {
-  case TokenType::PLUS: {
-    auto lhsMeta = semantics.metaData[infix->left_operand.get()];
+  if (ArithmeticOrBitwiseOperator(infix->operat.type))
+    result =
+        handleArithmeticAndBitwise(infix, leftVal, rightVal, leftSym, rightSym);
 
-    if (lhsMeta->type.isPointer) {
-      ResolvedType baseTypeInfo = lhsMeta->type;
-
-      // Strip the copy to avoid mutating the original
-      baseTypeInfo.isPointer = false;
-      baseTypeInfo.resolvedName =
-          semantics.stripPtrSuffix(lhsMeta->type.resolvedName);
-
-      llvm::Type *baseTy = getLLVMType(baseTypeInfo);
-      return funcBuilder.CreateGEP(baseTy, left, right, "ptr_addtmp");
-    }
-
-    if (isIntegerType(resultType.kind))
-      return funcBuilder.CreateAdd(left, right, "addtmp");
-    else
-      return funcBuilder.CreateFAdd(left, right, "faddtmp");
-  }
-
-  case TokenType::MINUS: {
-    auto lhsMeta = semantics.metaData[infix->left_operand.get()];
-
-    if (lhsMeta->type.isPointer) {
-      ResolvedType baseTypeInfo = lhsMeta->type;
-
-      // Strip the copy to avoid mutating the original
-      baseTypeInfo.isPointer = false;
-      baseTypeInfo.resolvedName =
-          semantics.stripPtrSuffix(lhsMeta->type.resolvedName);
-
-      llvm::Type *baseTy = getLLVMType(baseTypeInfo);
-
-      llvm::Value *negRight = funcBuilder.CreateNeg(right, "neg_offset");
-      return funcBuilder.CreateGEP(baseTy, left, negRight, "ptr_subtmp");
-    }
-
-    if (isIntegerType(resultType.kind))
-      return funcBuilder.CreateSub(left, right, "subtmp");
-    else
-      return funcBuilder.CreateFSub(left, right, "fsubtmp");
-  }
-
-  case TokenType::ASTERISK: {
-    if (isIntegerType(resultType.kind))
-      return funcBuilder.CreateMul(left, right, "multmp");
-    else
-      return funcBuilder.CreateFMul(left, right, "fmultmp");
-  }
-
-  case TokenType::DIVIDE: {
-    if (isIntegerType(resultType.kind))
-      return isSignedInteger(resultType.kind)
-                 ? funcBuilder.CreateSDiv(left, right, "divtmp")
-                 : funcBuilder.CreateUDiv(left, right, "divtmp");
-    else
-      return funcBuilder.CreateFDiv(left, right, "fdivtmp");
-  }
-
-  case TokenType::MODULUS: {
-
-    if (isIntegerType(resultType.kind))
-      return isSignedInteger(resultType.kind)
-                 ? funcBuilder.CreateSRem(left, right, "modtmp")
-                 : funcBuilder.CreateURem(left, right, "modtmp");
-    else
-      throw std::runtime_error(
-          "Modulus not supported for FLOAT or DOUBLE at line " +
-          std::to_string(infix->operat.line));
-  }
-
-  case TokenType::BITWISE_AND:
-    return funcBuilder.CreateAnd(left, right, "andtmp");
-  case TokenType::BITWISE_OR:
-    return funcBuilder.CreateOr(left, right, "ortmp");
-  case TokenType::BITWISE_XOR:
-    return funcBuilder.CreateXor(left, right, "xortmp");
-  case TokenType::SHIFT_LEFT:
-    return funcBuilder.CreateShl(left, right, "shltmp");
-  case TokenType::SHIFT_RIGHT: {
-    return isSignedInteger(resultType.kind)
-               ? funcBuilder.CreateAShr(left, right, "ashrtmp")
-               : funcBuilder.CreateLShr(left, right, "lshrtmp");
-  }
-  default:
-    throw std::runtime_error(
-        "Unsupported infix operator: " + infix->operat.TokenLiteral +
-        " at line " + std::to_string(infix->operat.line));
-  }
+  inhibitCleanUp = false;
+  emitInfixClean(infix, leftSym, rightSym);
+  return result;
 }
 
 //__________________Prefix expression______________________

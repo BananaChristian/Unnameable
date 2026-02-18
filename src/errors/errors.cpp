@@ -96,9 +96,6 @@ void ErrorHandler::loadSourceLines() {
   if (sourceLines.empty())
     std::cerr << COLOR_YELLOW << "[SOURCE LOAD WARNING]" << COLOR_RESET
               << "File has no lines: " << fileName << "\n";
-  else
-    std::cerr << "[SOURCE LOAD INFO] Loaded " << sourceLines.size()
-              << " lines from " << fileName << "\n";
 }
 
 std::string ErrorHandler::getSourceLine(int line,

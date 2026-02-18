@@ -23,6 +23,8 @@ void Auditor::registerAuditorFunctions() {
 
   auditFnsMap[typeid(BlockStatement)] = &Auditor::auditBlockStatement;
   auditFnsMap[typeid(BlockExpression)] = &Auditor::auditBlockExpression;
+  auditFnsMap[typeid(InfixExpression)] = &Auditor::auditInfix;
+  auditFnsMap[typeid(Identifier)] = &Auditor::auditIdentifier;
 
   auditFnsMap[typeid(AssignmentStatement)] = &Auditor::auditAssignmentStatement;
   auditFnsMap[typeid(ifStatement)] = &Auditor::auditIfStatement;
@@ -252,6 +254,15 @@ void Auditor::auditReturnStatement(Node *node) {
   simulateFree(retSym->ID);
 }
 
+void Auditor::auditInfix(Node *node) {
+  auto infix = dynamic_cast<InfixExpression *>(node);
+  if (!infix)
+    return;
+
+  audit(infix->left_operand.get());
+  audit(infix->right_operand.get());
+}
+
 void Auditor::auditIdentifier(Node *node) {
   auto ident = dynamic_cast<Identifier *>(node);
   if (!ident)
@@ -422,11 +433,18 @@ void Auditor::performSuperpositionSync(ifStatement *ifStmt) {
         !diesInThen || (ifStmt->elifClauses.size() > 0 && !diesInAnyElif) ||
         (ifStmt->else_result.has_value() && !diesInElse);
 
-    if (diesSomewhere && survivesSomewhere) {
-      logInternal("[SYNC] DISCREPANCY DETECTED for " + id);
+    if (diesSomewhere) {
+      if (survivesSomewhere) {
+        logInternal("[SYNC] DISCREPANCY DETECTED for " + id);
+      } else {
+        logInternal(
+            "[SYNC] " + id +
+            " dies in all paths. Materializing warrants for all branches.");
+      }
       reconcileWithSnapshots(ifStmt, id);
     } else {
-      logInternal("[SYNC] " + id + " state is consistent across all branches.");
+      logInternal("[SYNC] " + id +
+                  " survives all branches. No local deallocs needed.");
     }
   }
 }
@@ -506,7 +524,7 @@ void Auditor::reconcileWithSnapshots(ifStatement *ifStmt,
     // Create a dummy snapshot
     BatonStateSnapshot implicitSnap;
     implicitSnap.id = id;
-    implicitSnap.terminalNode = ifStmt;
+    implicitSnap.terminalNode = nullptr;
     implicitSnap.isResponsible = true;
 
     materializeDeputy(id, implicitSnap, ifStmt);
@@ -517,7 +535,7 @@ void Auditor::materializeDeputy(const std::string &id,
                                 const BatonStateSnapshot &snap,
                                 Node *branchRoot) {
   logInternal("[MATERIALIZE] Creating Death Warrant for " + id + " on node " +
-              snap.terminalNode->toString());
+              (snap.terminalNode ? snap.terminalNode->toString() : "NULL"));
 
   bool isLegalTarget = containsNode(branchRoot, snap.terminalNode);
 
@@ -541,7 +559,8 @@ void Auditor::materializeDeputy(const std::string &id,
       leakedDeputiesBag[branchRoot].push_back(std::move(deputy));
     }
   } else {
-    logInternal("Terminal node: " + snap.terminalNode->toString() +
+    logInternal("Terminal node: " +
+                (snap.terminalNode ? snap.terminalNode->toString() : "NULL") +
                 " not inside branch: " + branchRoot->toString() +
                 " vetoing to deputy leak...");
     leakedDeputiesBag[branchRoot].push_back(std::move(deputy));
@@ -560,25 +579,25 @@ bool Auditor::containsNode(Node *root, Node *target) {
         return true;
     }
 
-  } else if (auto ifStmt = dynamic_cast<ifStatement *>(root)) {
+  } // Update this section in Auditor::containsNode
+  else if (auto ifStmt = dynamic_cast<ifStatement *>(root)) {
     if (containsNode(ifStmt->condition.get(), target))
       return true;
     if (containsNode(ifStmt->if_result.get(), target))
       return true;
     for (const auto &elif : ifStmt->elifClauses) {
       if (containsNode(elif.get(), target))
-        return true;
-      continue;
+        return true; // Dig into the elif wrapper
     }
-    if (ifStmt->else_stmt.has_value()) {
+    if (ifStmt->else_result
+            .has_value()) { // Fix: use else_result, not else_stmt
       if (containsNode(ifStmt->else_result.value().get(), target))
         return true;
     }
-
-  } else if (auto infix = dynamic_cast<InfixExpression *>(root)) {
-    if (containsNode(infix->left_operand.get(), target))
+  } else if (auto elif = dynamic_cast<elifStatement *>(root)) { // ADD THIS
+    if (containsNode(elif->elif_condition.get(), target))
       return true;
-    if (containsNode(infix->right_operand.get(), target))
+    if (containsNode(elif->elif_result.get(), target))
       return true;
   }
 

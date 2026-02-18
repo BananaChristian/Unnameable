@@ -71,7 +71,8 @@ private:
   Auditor &auditor;
   size_t totalHeapSize;
   bool isVerbose;
-  llvm::Value *ghostStorage = nullptr;
+  bool inhibitCleanUp = false;
+  std::set<std::string> pathLedger;
 
   // llvm::BasicBlock *heapInitFnEntry = nullptr;
   void setupTargetLayout();
@@ -209,6 +210,29 @@ private:
   llvm::GlobalVariable *
   createGlobalArrayConstant(llvm::Constant *constantArray);
 
+  // Infix helpers
+  bool ArithmeticOrBitwiseOperator(TokenType op);
+  bool ComparisonOperator(TokenType op);
+  llvm::Value *
+  handleArithmeticAndBitwise(InfixExpression *infix, llvm::Value *left,
+                             llvm::Value *right,
+                             const std::shared_ptr<SymbolInfo> &leftSym,
+                             const std::shared_ptr<SymbolInfo> &rightSym);
+  llvm::Value *handleComparison(InfixExpression *infix, llvm::Value *left,
+                                llvm::Value *right,
+                                const std::shared_ptr<SymbolInfo> &leftSym,
+                                const std::shared_ptr<SymbolInfo> &rightSym);
+  llvm::Value *handleCoalesce(InfixExpression *infix, llvm::Value *leftStruct);
+  llvm::Value *handleLogical(InfixExpression *infix, llvm::Value *left,
+                             llvm::Value *right,
+                             const std::shared_ptr<SymbolInfo> &leftSym,
+                             const std::shared_ptr<SymbolInfo> &rightSym);
+  llvm::Value *handleMemberAccess(InfixExpression *infix, llvm::Value *left,
+                                  llvm::Value *right,
+                                  const std::shared_ptr<SymbolInfo> &leftSym,
+                                  const std::shared_ptr<SymbolInfo> &rightSym);
+  llvm::Value *handleEnumAccess(InfixExpression *infix);
+
   std::vector<llvm::Value *>
   prepareArguments(llvm::Function *func,
                    const std::vector<std::unique_ptr<Expression>> &params,
@@ -230,11 +254,12 @@ private:
   void executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym);
   void freeDynamicHeapStorage(const std::string &allocatorType,
                               llvm::Value *toFree);
-  llvm::Value *handleSnatchedMove(llvm::Value *sourceAddr,
-                                  std::shared_ptr<SymbolInfo> sym, Node *node);
   void emitCleanup(Node *contextNode,
                    const std::shared_ptr<SymbolInfo> &contextSymbol);
   void emptyLeakedDeputiesBag(Node *branchRoot);
+  void emitInfixClean(InfixExpression *infix,
+                      const std::shared_ptr<SymbolInfo> &leftSym,
+                      const std::shared_ptr<SymbolInfo> &rightSym);
   void flattenArrayLiteral(ArrayLiteral *arrLit,
                            std::vector<llvm::Constant *> &flatElems,
                            llvm::Type *&baseType);

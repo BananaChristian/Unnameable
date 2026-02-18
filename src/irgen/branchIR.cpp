@@ -4,46 +4,48 @@
 //____________If statement__________
 void IRGenerator::generateIfStatement(Node *node) {
   auto ifStmt = dynamic_cast<ifStatement *>(node);
-  if (!ifStmt) {
-    reportDevBug("Invalid if statement", node->token.line, node->token.column);
-  }
+  if (!ifStmt)
+    return;
 
-  // Generation of condition for the if
+  auto originalPathState = pathLedger;
+
+  // 1. Setup condition and Blocks
   llvm::Value *rawCond = generateExpression(ifStmt->condition.get());
   llvm::Value *condVal = coerceToBoolean(rawCond, ifStmt->condition.get());
-  if (!condVal) {
-    reportDevBug("Invalid if condition", ifStmt->condition->expression.line,
-                 ifStmt->condition->expression.column);
-  }
-
-  // Create basic blocks
   llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
+
   llvm::BasicBlock *thenBB =
       llvm::BasicBlock::Create(context, "then", function);
   llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(context, "ifmerge");
-
-  // Determine the next block (first elif, else, or merge)
   llvm::BasicBlock *nextBB = nullptr;
+
   if (!ifStmt->elifClauses.empty()) {
     nextBB = llvm::BasicBlock::Create(context, "elif0");
   } else if (ifStmt->else_result.has_value()) {
     nextBB = llvm::BasicBlock::Create(context, "else");
   } else {
-    nextBB = mergeBB;
+    nextBB = llvm::BasicBlock::Create(context, "implicit.else", function);
   }
 
-  // Conditional branch for if
   funcBuilder.CreateCondBr(condVal, thenBB, nextBB);
 
-  // Generate then branch
+  // 2. GENERATE 'THEN' BRANCH
   funcBuilder.SetInsertPoint(thenBB);
   generateStatement(ifStmt->if_result.get());
+
+  // Clean up both the internal block and the parent IF while still in this
+  // block
   emptyLeakedDeputiesBag(ifStmt->if_result.get());
+  emptyLeakedDeputiesBag(ifStmt);
+
   if (!funcBuilder.GetInsertBlock()->getTerminator()) {
     funcBuilder.CreateBr(mergeBB);
   }
 
-  // Generating elif branches
+  // RESET LEDGER for next branch
+  pathLedger = originalPathState;
+
+  // 3. GENERATE 'ELIF' BRANCHES
   for (size_t i = 0; i < ifStmt->elifClauses.size(); ++i) {
     function->insert(function->end(), nextBB);
     funcBuilder.SetInsertPoint(nextBB);
@@ -51,54 +53,74 @@ void IRGenerator::generateIfStatement(Node *node) {
     const auto &elifStmt = ifStmt->elifClauses[i];
     auto elif = dynamic_cast<elifStatement *>(elifStmt.get());
 
-    llvm::Value *rawCond = generateExpression(elif->elif_condition.get());
+    llvm::Value *elifRawCond = generateExpression(elif->elif_condition.get());
     llvm::Value *elifCondVal =
-        coerceToBoolean(rawCond, elif->elif_condition.get());
-
-    if (!elifCondVal) {
-      reportDevBug("Invalid elif condition",
-                   elif->elif_condition->expression.line,
-                   elif->elif_condition->expression.column);
-    }
-    if (!elifCondVal->getType()->isIntegerTy(1)) {
-      elifCondVal = funcBuilder.CreateICmpNE(
-          elifCondVal, llvm::ConstantInt::get(elifCondVal->getType(), 0),
-          "elifcond.bool");
-    }
-
+        coerceToBoolean(elifRawCond, elif->elif_condition.get());
     llvm::BasicBlock *elifBodyBB = llvm::BasicBlock::Create(
         context, "elif.body" + std::to_string(i), function);
-    llvm::BasicBlock *nextElifBB =
-        (i + 1 < ifStmt->elifClauses.size())
-            ? llvm::BasicBlock::Create(context, "elif" + std::to_string(i + 1))
-            : (ifStmt->else_result.has_value()
-                   ? llvm::BasicBlock::Create(context, "else")
-                   : mergeBB);
+
+    llvm::BasicBlock *nextElifBB = nullptr;
+    if (i + 1 < ifStmt->elifClauses.size()) {
+      nextElifBB =
+          llvm::BasicBlock::Create(context, "elif" + std::to_string(i + 1));
+    } else if (ifStmt->else_result.has_value()) {
+      nextElifBB = llvm::BasicBlock::Create(context, "else");
+    } else {
+      nextElifBB =
+          (nextBB->getName() == "implicit.else")
+              ? nextBB
+              : llvm::BasicBlock::Create(context, "implicit.else", function);
+    }
 
     funcBuilder.CreateCondBr(elifCondVal, elifBodyBB, nextElifBB);
 
     funcBuilder.SetInsertPoint(elifBodyBB);
     generateStatement(elif->elif_result.get());
+
+    // Clean up elif block and parent IF while still in this block
     emptyLeakedDeputiesBag(elif->elif_result.get());
+    emptyLeakedDeputiesBag(ifStmt);
+
     if (!funcBuilder.GetInsertBlock()->getTerminator()) {
       funcBuilder.CreateBr(mergeBB);
     }
 
+    pathLedger = originalPathState;
     nextBB = nextElifBB;
   }
 
-  // Generate else branch if present
+  // 4. GENERATE 'ELSE' OR 'IMPLICIT ELSE'
   if (ifStmt->else_result.has_value()) {
     function->insert(function->end(), nextBB);
     funcBuilder.SetInsertPoint(nextBB);
+
     generateStatement(ifStmt->else_result.value().get());
+
+    // Clean up else block and parent IF
     emptyLeakedDeputiesBag(ifStmt->else_result.value().get());
+    emptyLeakedDeputiesBag(ifStmt);
+
+    if (!funcBuilder.GetInsertBlock()->getTerminator()) {
+      funcBuilder.CreateBr(mergeBB);
+    }
+  } else {
+    // Implicit Else Path
+    if (nextBB->getParent() == nullptr) {
+      function->insert(function->end(), nextBB);
+    }
+    funcBuilder.SetInsertPoint(nextBB);
+
+    // Only clean up the IF (since there is no internal block)
+    emptyLeakedDeputiesBag(ifStmt);
+
     if (!funcBuilder.GetInsertBlock()->getTerminator()) {
       funcBuilder.CreateBr(mergeBB);
     }
   }
 
-  // Finalize with merge block
+  // 5. FINALIZE MERGE
+  // Restore ledger state for code after the if-else block
+  pathLedger = originalPathState;
   function->insert(function->end(), mergeBB);
   funcBuilder.SetInsertPoint(mergeBB);
 }

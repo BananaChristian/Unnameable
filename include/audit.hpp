@@ -46,6 +46,7 @@ private:
   void auditBlockExpression(Node *node);
 
   // Expression auditors
+  void auditInfix(Node *node);
   void auditIdentifier(Node *node);
 
   // Statement auditors

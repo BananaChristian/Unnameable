@@ -159,8 +159,11 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     return;
   }
 
+  inhibitCleanUp = true; // Set the inhibitor to block the child from triggering
+                         // a free before we use the value
   // targetPtr is the STACK location of the variable (e.g., the slot holding the
   // ptr to y's heap)
+
   llvm::Value *targetPtr = generateAddress(assignStmt->identifier.get());
   if (!targetPtr) {
     reportDevBug("Failed to get L-Value address for the LHS expression",
@@ -169,31 +172,10 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   }
 
   llvm::Value *initValue = nullptr;
-  llvm::Value *activeGhost = nullptr;
   auto valSym = semantics.getSymbolFromMeta(assignStmt->value.get());
 
-  // RHS Evaluation & Ghost Escrow Deployment
-  if (valSym->isHeap) {
-    Node *valHolder = semantics.queryForLifeTimeBaton(valSym->ID);
-    if (valHolder == assignStmt->value.get()) {
-      // The assign statement value is holding the baton we have to check if the
-      // responsibility lies with him as that is the only way we can know if the
-      // memory was meant to die here
-      const auto &baton = semantics.responsibilityTable[valHolder];
-      if (baton->isResponsible) {
-        logInternal(
-            "The RHS of the assignment is holding its baton - Deploying Ghost");
-        activeGhost = allocateDynamicHeapStorage(valSym, "ghost_escrow");
-        this->ghostStorage = activeGhost;
-        initValue = generateExpression(assignStmt->value.get());
-        this->ghostStorage = nullptr;
-      }
-    } else {
-      initValue = generateExpression(assignStmt->value.get());
-    }
-  } else {
-    initValue = generateExpression(assignStmt->value.get());
-  }
+  // RHS Evaluation
+  initValue = generateExpression(assignStmt->value.get());
 
   if (!initValue) {
     reportDevBug("Failed to generate R-Value for assignment",
@@ -244,12 +226,9 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     }
   }
 
-  // Ghost Decommissioning
-  if (activeGhost) {
-    freeDynamicHeapStorage(valSym->allocType, activeGhost);
-    logInternal("Ghost Box safely settled and destroyed");
-  }
-
+  inhibitCleanUp = false;
+  emitCleanup(assignStmt->value.get(), valSym);
+  emitCleanup(assignStmt, assignMeta);
   logInternal("Ended assignment generation");
 }
 
@@ -1007,6 +986,7 @@ void IRGenerator::emptyLeakedDeputiesBag(Node *branchRoot) {
               branchRoot->toString());
 
   for (auto &deputy : bag) {
+
     if (!deputy->isResponsible)
       continue;
 
@@ -1052,8 +1032,14 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   }
 
   logInternal("  [EXEC-FREE] ID: " + sym->ID +
-              " | HasLLVM: " + (sym->llvmValue ? "T" : "F") +
-              " | IsHeap: " + (sym->isHeap ? "T" : "F"));
+              " | HasLLVM: " + (sym->llvmValue ? "True" : "False") +
+              " | IsHeap: " + (sym->isHeap ? "True" : "False"));
+
+  if (pathLedger.count(sym->ID)) {
+    logInternal("[EXEC_FREE] Already physically freed for '" + sym->ID +
+                "' as it is in the path ledger");
+    return;
+  }
 
   if (!sym->llvmValue || !sym->isHeap)
     return;
@@ -1083,25 +1069,7 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
       sym->llvmValue, deallocFunc->getFunctionType()->getParamType(0));
 
   funcBuilder.CreateCall(deallocFunc, {castPtr});
-}
-
-llvm::Value *IRGenerator::handleSnatchedMove(llvm::Value *sourceAddr,
-                                             std::shared_ptr<SymbolInfo> sym,
-                                             Node *node) {
-  logInternal("Executing Snatched Move Helper");
-
-  llvm::Align align = layout->getABITypeAlign(sym->llvmType);
-  uint64_t byteSize = sym->componentSize;
-
-  // Move from source to the established Escrow
-  funcBuilder.CreateMemCpy(ghostStorage, align, sourceAddr, align,
-                           funcBuilder.getInt64(byteSize));
-
-  // The source dies now. Its duty is done.
-  emitCleanup(node, sym);
-
-  // Return the escrow address so the assignment knows where the data is
-  return ghostStorage;
+  pathLedger.insert(sym->ID);
 }
 
 void IRGenerator::emitCleanup(Node *contextNode,
