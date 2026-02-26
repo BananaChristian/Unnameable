@@ -21,7 +21,7 @@ Parser::Parser(std::vector<Token> &tokenInput, ErrorHandler &handler)
 std::vector<std::unique_ptr<Node>> Parser::parseProgram() {
   std::vector<std::unique_ptr<Node>> program;
 
-  while (currentPos < tokenInput.size()) {
+  while (currentPos < static_cast<int>(tokenInput.size())) {
     // Skip standalone semicolons between statements
     if (currentToken().type == TokenType::SEMICOLON) {
       advance();
@@ -170,7 +170,7 @@ bool Parser::isBasicType(TokenType type) {
 
 // Slider function
 void Parser::advance() {
-  if (nextPos < tokenInput.size()) {
+  if (nextPos < static_cast<int>(tokenInput.size())) {
     lastToken = currentToken();
     currentPos = nextPos;
     nextPos++;
@@ -457,20 +457,43 @@ Precedence Parser::get_precedence(TokenType type) {
 }
 
 // Current token peeking function
-Token Parser::currentToken() {
-  Token current = tokenInput[currentPos];
-  return current;
+Token &Parser::currentToken() {
+  if (currentPos < 0 || currentPos >= static_cast<int>(tokenInput.size())) {
+    static Token sentinel;
+    sentinel.type = TokenType::END;
+    sentinel.TokenLiteral = "";
+    sentinel.line = -1;
+    return sentinel;
+  }
+  return tokenInput[currentPos];
 }
 
 // Next token peeking function
-Token Parser::nextToken() {
-  Token next = tokenInput[nextPos];
-  return next;
+Token &Parser::nextToken() {
+  if (nextPos < 0 || nextPos >= static_cast<int>(tokenInput.size())) {
+    static Token sentinel;
+    sentinel.type = TokenType::END;
+    sentinel.TokenLiteral = "";
+    return sentinel;
+  }
+  return tokenInput[nextPos];
+}
+
+Token &Parser::previousToken() {
+  if (((currentPos - 1) < 0) ||
+      ((currentPos - 1) >= static_cast<int>(tokenInput.size()))) {
+    static Token sentinel;
+    sentinel.type = TokenType::END;
+    sentinel.TokenLiteral = "";
+    return sentinel;
+  }
+
+  return tokenInput[currentPos - 1];
 }
 
 Token Parser::peekToken(int peek) {
   int steps = currentPos + peek;
-  if (steps >= tokenInput.size()) {
+  if (steps >= static_cast<int>(tokenInput.size())) {
     return Token{"", TokenType::END, 0, 0}; // EOF token
   }
   return tokenInput[steps];
@@ -478,13 +501,13 @@ Token Parser::peekToken(int peek) {
 
 bool Parser::isDeclaration(Node *node) {
   bool isDecl = false;
-  if (auto letStmt = dynamic_cast<LetStatement *>(node)) {
+  if (dynamic_cast<LetStatement *>(node)) {
     isDecl = true;
-  } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(node)) {
+  } else if (dynamic_cast<PointerStatement *>(node)) {
     isDecl = true;
-  } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(node)) {
+  } else if (dynamic_cast<ArrayStatement *>(node)) {
     isDecl = true;
-  } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(node)) {
+  } else if (dynamic_cast<ReferenceStatement *>(node)) {
     isDecl = true;
   }
 

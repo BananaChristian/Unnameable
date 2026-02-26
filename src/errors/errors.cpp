@@ -28,8 +28,8 @@ void ErrorHandler::report(CompilerError &error) {
   std::string baseName = getBaseName(fileName);
 
   std::cerr << COLOR_BOLD << COLOR_RED << "[" << displayName << "] "
-            << COLOR_RESET << baseName << error.line << ":" << error.col << " "
-            << error.message << "\n";
+            << COLOR_RESET << baseName << ":" << error.line << ":" << error.col
+            << " " << error.message << "\n";
 
   // Print the source line + caret if the line exists
   if (!sourceLine.empty()) {
@@ -100,7 +100,7 @@ void ErrorHandler::loadSourceLines() {
 
 std::string ErrorHandler::getSourceLine(int line,
                                         std::vector<std::string> sourceLines) {
-  if (line - 1 < 0 || line - 1 >= sourceLines.size()) {
+  if (line - 1 < 0 || line - 1 >= static_cast<int>(sourceLines.size())) {
     return " ";
   }
 

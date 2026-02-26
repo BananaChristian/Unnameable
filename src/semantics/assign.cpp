@@ -161,8 +161,7 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
 
 void Semantics::walkAssignStatement(Node *node) {
   auto assignStmt = dynamic_cast<AssignmentStatement *>(node);
-  if (auto selfExpr =
-          dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
+  if (dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
     walkSelfExpression(assignStmt);
     return;
   }
@@ -171,6 +170,9 @@ void Semantics::walkAssignStatement(Node *node) {
 
   walker(assignStmt->identifier.get());
   auto lhsSym = getSymbolFromMeta(assignStmt->identifier.get());
+  if (!lhsSym)
+    return;
+
   if (lhsSym->hasError)
     return;
 
@@ -214,7 +216,7 @@ void Semantics::walkAssignStatement(Node *node) {
   ResolvedType lhsType = lhsSym->type;
 
   if (!lhsSym->isNullable) {
-    if (auto nullVal = dynamic_cast<NullLiteral *>(assignStmt->value.get())) {
+    if (dynamic_cast<NullLiteral *>(assignStmt->value.get())) {
       rhsDefinitelyNull = true; // literal null
     } else {
       if (rhsSym->isDefinitelyNull) {
@@ -364,8 +366,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   if (fieldAssignStmt->value) {
     walker(fieldAssignStmt->value.get());
     auto rhsInfo = metaData[fieldAssignStmt->value.get()];
-    if (auto nullVal =
-            dynamic_cast<NullLiteral *>(fieldAssignStmt->value.get())) {
+    if (dynamic_cast<NullLiteral *>(fieldAssignStmt->value.get())) {
       if (!lhsInfo->type.isNull) {
         logSemanticErrors("Cannot assign 'null' to non nullable variable '" +
                               name + "'",

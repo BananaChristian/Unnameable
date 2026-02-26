@@ -81,9 +81,6 @@ void Layout::calculateLetStatementSize(Node *node) {
   if (!letStmt)
     return;
 
-  int line = type->data_token.line;
-  int col = type->data_token.column;
-
   const std::string &name = letStmt->ident_token.TokenLiteral;
 
   uint64_t compSize = 0;
@@ -165,8 +162,7 @@ void Layout::calculateArrayStatementSize(Node *node) {
     if (auto arrLit =
             dynamic_cast<ArrayLiteral *>(arrStmt->array_content.get())) {
       totalLiteralElements = countFlattenedElements(arrLit);
-    } else if (auto nullLit =
-                   dynamic_cast<NullLiteral *>(arrStmt->array_content.get())) {
+    } else if (dynamic_cast<NullLiteral *>(arrStmt->array_content.get())) {
       totalLiteralElements = totalElements;
     } else if (auto unwrap = dynamic_cast<UnwrapExpression *>(
                    arrStmt->array_content.get())) {
@@ -359,9 +355,6 @@ void Layout::calculateInstantiateStatement(Node *node) {
   if (!instStmt)
     return;
 
-  auto line = instStmt->instantiate_token.line;
-  auto col = instStmt->instantiate_token.column;
-
   auto sym = semantics.getSymbolFromMeta(instStmt);
   if (!sym)
     return;
@@ -381,8 +374,6 @@ void Layout::calculateRecordStatement(Node *node) {
     return;
 
   auto recordName = recordStmt->recordName->expression.TokenLiteral;
-  auto line = recordStmt->recordName->expression.line;
-  auto col = recordStmt->recordName->expression.column;
 
   auto dataMeta = semantics.metaData.find(recordStmt);
   if (dataMeta == semantics.metaData.end()) {
@@ -415,8 +406,6 @@ void Layout::calculateComponentStatement(Node *node) {
     return;
 
   auto compName = compStmt->component_name->expression.TokenLiteral;
-  auto line = compStmt->component_name->expression.line;
-  auto col = compStmt->component_name->expression.column;
 
   auto compMeta = semantics.metaData.find(compStmt);
   if (compMeta == semantics.metaData.end()) {

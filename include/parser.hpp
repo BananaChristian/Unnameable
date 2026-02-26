@@ -310,9 +310,9 @@ private:
   std::vector<std::unique_ptr<Statement>> parseFunctionParameters();
 
   // HELPER FUNCTIONS
-  //  Peeking functions
-  Token currentToken();
-  Token nextToken();
+  Token &currentToken();
+  Token &nextToken();
+  Token &previousToken();
   Token peekToken(int peek);
 
   // Wrapper functions

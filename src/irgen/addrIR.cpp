@@ -291,8 +291,6 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
   llvm::Value *addr = generateAddress(current);
   std::vector<llvm::CallInst *> pendingFrees;
 
-  auto identNode = dynamic_cast<Identifier *>(current);
-
   if (!addr) {
     reportDevBug("Failed to get address to dereference ",
                  derefExpr->expression.line, derefExpr->expression.column);

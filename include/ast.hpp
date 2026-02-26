@@ -405,7 +405,7 @@ struct Char8Literal : Expression {
   Char8Literal *shallowClone() const override {
     return new Char8Literal(char8_token);
   }
-  Char8Literal(Token char8_t) : Expression(char8_t), char8_token(char8_t){};
+  Char8Literal(Token char8_tok) : Expression(char8_tok), char8_token(char8_tok){};
 };
 
 // 16 bit Char literal

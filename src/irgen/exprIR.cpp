@@ -418,21 +418,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   if (!infix)
     throw std::runtime_error("Invalid infix expression");
 
-  auto infixSym = semantics.getSymbolFromMeta(infix);
-  inhibitCleanUp = true;
+  llvm::Value *result = nullptr;
+  if (infix->operat.type == TokenType::SCOPE_OPERATOR)
+    return handleEnumAccess(infix);
 
-  llvm::Value *leftVal = generateExpression(infix->left_operand.get());
-  llvm::Value *rightVal = generateExpression(infix->right_operand.get());
+  auto infixSym = semantics.getSymbolFromMeta(infix);
 
   auto leftSym = semantics.getSymbolFromMeta(infix->left_operand.get());
   auto rightSym = semantics.getSymbolFromMeta(infix->right_operand.get());
-  llvm::Value *result = nullptr;
-
-  if (infix->operat.type == TokenType::FULLSTOP)
-    result = handleMemberAccess(infix, leftVal, rightVal, leftSym, rightSym);
-
-  if (infix->operat.type == TokenType::SCOPE_OPERATOR)
-    result = handleEnumAccess(infix);
 
   // Helper lambda for integer type promotion
   auto promoteInt = [&](llvm::Value *val, DataType fromType,
@@ -458,6 +451,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
           val, llvm::IntegerType::get(context, toBits), "trunctmp");
     }
   };
+
+  inhibitCleanUp = true;
+
+  llvm::Value *leftVal = generateExpression(infix->left_operand.get());
+  llvm::Value *rightVal = generateExpression(infix->right_operand.get());
+
+  if (infix->operat.type == TokenType::FULLSTOP)
+    result = handleMemberAccess(infix, leftVal, rightVal, leftSym, rightSym);
 
   auto resultType = infixSym->type;
   // Promote operands to widest integer type among left, right, and result
@@ -1058,8 +1059,6 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   }
 
   logInternal("Handling address expression generation");
-
-  const std::string &name = addrExpr->identifier->expression.TokenLiteral;
 
   auto metaIt = semantics.metaData.find(addrExpr);
   if (metaIt == semantics.metaData.end()) {

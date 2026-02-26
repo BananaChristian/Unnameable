@@ -1121,8 +1121,6 @@ void Semantics::walkMethodCallExpression(Node *node) {
   }
 
   const std::string instanceName = instanceIdent->identifier.TokenLiteral;
-  const int line = instanceIdent->expression.line;
-  const int col = instanceIdent->expression.column;
 
   // Get the call expression and function name
   auto funcCall = dynamic_cast<CallExpression *>(metCall->call.get());

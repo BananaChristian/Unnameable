@@ -1,6 +1,5 @@
 #include "ast.hpp"
 #include "semantics.hpp"
-#include "token.hpp"
 
 // Walking the data type literals
 void Semantics::walkBooleanLiteral(Node *node) {
@@ -285,10 +284,6 @@ void Semantics::walkArrayLiteral(Node *node) {
   if (!arrLit)
     return;
 
-  // Positional info for error logging
-  auto line = arrLit->expression.line;
-  auto col = arrLit->expression.column;
-
   bool hasError = false;
 
   ResolvedType arrType = inferNodeDataType(arrLit);
@@ -308,4 +303,3 @@ void Semantics::walkArrayLiteral(Node *node) {
 
   metaData[arrLit] = arrInfo;
 }
-

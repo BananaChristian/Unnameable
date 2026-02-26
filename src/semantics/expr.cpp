@@ -288,7 +288,10 @@ void Semantics::walkCastExpression(Node *node) {
   walker(source);
 
   // Retrieve the metaData and check if the source type is valid
-  auto sym = metaData[source];
+  auto sym = getSymbolFromMeta(source);
+  if (!sym)
+    return;
+
   ResolvedType sourceType = sym->type;
   if (sourceType.isNull) {
     logSemanticErrors("Cannot cast from a nullable type '" +
@@ -347,7 +350,7 @@ void Semantics::walkBitcastExpression(Node *node) {
     return;
 
   walker(sourceExpr); // Analyze the source expression first
-  auto sourceSym = metaData[sourceExpr];
+  auto sourceSym = getSymbolFromMeta(sourceExpr);
 
   if (!sourceSym) {
     reportDevBug("Could not resolve source expression for bitcast", sourceExpr);

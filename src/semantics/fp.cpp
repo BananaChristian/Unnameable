@@ -326,7 +326,6 @@ void Semantics::walkFunctionStatement(Node *node) {
     return;
   // Unwrapping whatever is stored in the function statement and walking it
   walker(funcStmt->funcExpr.get());
-  auto it = metaData.find(funcStmt->funcExpr.get());
 }
 
 void Semantics::walkFunctionExpression(Node *node) {
@@ -471,6 +470,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   if (!funcExpr->return_type) {
     logSemanticErrors("Function '" + funcName + "' is missing a return type",
                       funcExpr);
+    insideFunction = false;
     return; // This is a fatal error so block further analysis to prevent
             // segfaults
   }
@@ -486,6 +486,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     logSemanticErrors("Return type expression missing for function '" +
                           funcName + "'",
                       retType);
+    insideFunction = false;
     return;
   }
 
@@ -524,7 +525,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     if (it == customTypesTable.end()) {
       logSemanticErrors("Type '" + customTypeName + "' does not exist",
                         retType);
-
+      insideFunction = false;
       return;
     }
 
@@ -578,6 +579,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   // Process the function body block
   if (!funcExpr->block) {
     logSemanticErrors("Function body missing for '" + funcName + "'", funcExpr);
+    insideFunction = false;
     return;
   }
   auto block = dynamic_cast<BlockExpression *>(funcExpr->block.get());

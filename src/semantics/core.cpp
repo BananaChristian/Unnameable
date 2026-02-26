@@ -174,50 +174,50 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   if (!node)
     return ResolvedType{DataType::UNKNOWN, "unknown"};
 
-  if (auto i8Lit = dynamic_cast<I8Literal *>(node))
+  if (dynamic_cast<I8Literal *>(node))
     return ResolvedType{DataType::I8, "i8"};
-  if (auto u8Lit = dynamic_cast<U8Literal *>(node))
+  if (dynamic_cast<U8Literal *>(node))
     return ResolvedType{DataType::U8, "u8"};
-  if (auto i16Lit = dynamic_cast<I16Literal *>(node))
+  if (dynamic_cast<I16Literal *>(node))
     return ResolvedType{DataType::I16, "i16"};
-  if (auto u16Lit = dynamic_cast<U16Literal *>(node))
+  if (dynamic_cast<U16Literal *>(node))
     return ResolvedType{DataType::U16, "u16"};
-  if (auto i32Lit = dynamic_cast<I32Literal *>(node))
+  if (dynamic_cast<I32Literal *>(node))
     return ResolvedType{DataType::I32, "i32"};
-  if (auto u32Lit = dynamic_cast<U32Literal *>(node))
+  if (dynamic_cast<U32Literal *>(node))
     return ResolvedType{DataType::U32, "u32"};
-  if (auto i64Lit = dynamic_cast<I64Literal *>(node))
+  if (dynamic_cast<I64Literal *>(node))
     return ResolvedType{DataType::I64, "i64"};
-  if (auto u64Lit = dynamic_cast<U64Literal *>(node))
+  if (dynamic_cast<U64Literal *>(node))
     return ResolvedType{DataType::U64, "u64"};
-  if (auto i128Lit = dynamic_cast<I128Literal *>(node))
+  if (dynamic_cast<I128Literal *>(node))
     return ResolvedType{DataType::I128, "i128"};
-  if (auto u128Lit = dynamic_cast<U128Literal *>(node))
+  if (dynamic_cast<U128Literal *>(node))
     return ResolvedType{DataType::U128, "u128"};
-  if (auto isizeLit = dynamic_cast<ISIZELiteral *>(node))
+  if (dynamic_cast<ISIZELiteral *>(node))
     return ResolvedType{DataType::ISIZE, "isize"};
-  if (auto usizeLit = dynamic_cast<USIZELiteral *>(node))
+  if (dynamic_cast<USIZELiteral *>(node))
     return ResolvedType{DataType::USIZE, "usize"};
 
-  if (auto f32Lit = dynamic_cast<F32Literal *>(node))
+  if (dynamic_cast<F32Literal *>(node))
     return ResolvedType{DataType::F32, "f32"};
-  if (auto f64Lit = dynamic_cast<F64Literal *>(node))
+  if (dynamic_cast<F64Literal *>(node))
     return ResolvedType{DataType::F64, "f64"};
 
-  if (auto strLit = dynamic_cast<StringLiteral *>(node))
+  if (dynamic_cast<StringLiteral *>(node))
     return ResolvedType{DataType::STRING, "string"};
 
-  if (auto chrLit = dynamic_cast<Char8Literal *>(node))
+  if (dynamic_cast<Char8Literal *>(node))
     return ResolvedType{DataType::CHAR8, "char8"};
-  if (auto char16Lit = dynamic_cast<Char16Literal *>(node))
+  if (dynamic_cast<Char16Literal *>(node))
     return ResolvedType{DataType::CHAR16, "char16"};
-  if (auto char32Lit = dynamic_cast<Char32Literal *>(node))
+  if (dynamic_cast<Char32Literal *>(node))
     return ResolvedType{DataType::CHAR32, "char32"};
 
-  if (auto boolLit = dynamic_cast<BooleanLiteral *>(node))
+  if (dynamic_cast<BooleanLiteral *>(node))
     return ResolvedType{DataType::BOOLEAN, "bool"};
 
-  if (auto sizeOfExpr = dynamic_cast<SizeOfExpression *>(node))
+  if (dynamic_cast<SizeOfExpression *>(node))
     return ResolvedType{DataType::USIZE, "usize"};
 
   if (auto castExpr = dynamic_cast<CastExpression *>(node)) {
@@ -438,7 +438,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     return inferPostfixExpressionType(postfixExpr);
   }
 
-  if (auto nullLit = dynamic_cast<NullLiteral *>(node))
+  if (dynamic_cast<NullLiteral *>(node))
     return {DataType::UNKNOWN, "null"}; // Will be updated based on context
 
   if (auto ident = dynamic_cast<Identifier *>(node)) {
@@ -574,8 +574,6 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
     auto call = dynamic_cast<CallExpression *>(metCall->call.get());
     auto callName = call->function_identifier->expression.TokenLiteral;
-    auto callLine = call->function_identifier->expression.line;
-    auto callCol = call->function_identifier->expression.column;
 
     // Search using custom types table to get the members
     // Get the type
@@ -614,9 +612,6 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     }
   }
   if (auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node)) {
-    auto line = unwrapExpr->expression.line;
-    auto col = unwrapExpr->expression.column;
-
     auto exprType = inferNodeDataType(unwrapExpr->expr.get());
     exprType.isNull = false;
     auto strippedName = stripOptionalSuffix(exprType.resolvedName);
@@ -667,7 +662,7 @@ std::string Semantics::extractIdentifierName(Node *node) {
   } else if (auto ident = dynamic_cast<Identifier *>(node)) {
     identName = ident->identifier.TokenLiteral;
     return identName;
-  } else if (auto metCall = dynamic_cast<MethodCallExpression *>(node)) {
+  } else if (dynamic_cast<MethodCallExpression *>(node)) {
     identName = "<methodfuncName>"; // Place holder for now
     return identName;
   } else if (auto deref = dynamic_cast<DereferenceExpression *>(node)) {
@@ -1423,7 +1418,7 @@ bool Semantics::hasReturnPathList(
     const std::vector<std::unique_ptr<Statement>> &stmts) {
   for (const auto &stmt : stmts) {
     // If the statement is a return, we're good
-    if (auto ret = dynamic_cast<ReturnStatement *>(stmt.get()))
+    if (dynamic_cast<ReturnStatement *>(stmt.get()))
       return true;
 
     // If it's a nested if/switch, check if they are exhaustive
@@ -1588,7 +1583,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
     }
 
     // --- Nullability rule ---
-    if (auto nullLit = dynamic_cast<NullLiteral *>(param.get())) {
+    if (dynamic_cast<NullLiteral *>(param.get())) {
       if (expectedType.isNull) {
         argType = expectedType; // promote null → nullable type
       } else {
@@ -1669,7 +1664,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
     }
 
     // --- Nullability rule ---
-    if (auto nullLit = dynamic_cast<NullLiteral *>(param.get())) {
+    if (dynamic_cast<NullLiteral *>(param.get())) {
       if (expectedType.isNull) {
         argType = expectedType; // promote null → nullable type
       } else {
@@ -1975,7 +1970,6 @@ ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
     logInternal("Resolving custom type ....");
     // Extract the identifier as this how the parser is logging the correct
     // types Case 1 is for let statements
-    auto letStmt = dynamic_cast<LetStatement *>(node);
     auto type = dynamic_cast<BasicType *>(node);
     // Extract the custom data type
     auto letStmtType = type->data_token.TokenLiteral;
@@ -2145,7 +2139,7 @@ ResolvedType Semantics::peelRef(ResolvedType t) {
 }
 
 std::string Semantics::generateLifetimeID(Node *declarationNode) {
-  if (auto letStmt = dynamic_cast<LetStatement *>(declarationNode))
+  if (dynamic_cast<LetStatement *>(declarationNode))
     return "L" + std::to_string(letDeclCount++);
   else if (auto ptrStmt = dynamic_cast<PointerStatement *>(declarationNode))
     return "P" + std::to_string(ptrDeclCount++);

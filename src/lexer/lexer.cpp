@@ -362,7 +362,8 @@ bool Lexer::isIdentifierStart(char32_t ch) {
 }
 
 bool Lexer::isIdentifierContinue(char32_t ch) {
-  return isIdentifierStart(ch) || (ch >= U'0' && ch <= U'9') || (ch == U'\'');
+  return isIdentifierStart(ch) || (ch >= U'0' && ch <= U'9') || (ch == U'\'') ||
+         (ch == U'_');
 }
 
 void Lexer::readComments() {

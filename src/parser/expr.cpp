@@ -68,6 +68,9 @@ Parser::parseInfixExpression(std::unique_ptr<Expression> left) {
   Precedence prec = get_precedence(operat.type);
   advance();
   auto right = parseExpression(prec);
+  if (!right) {
+    logError("Invalid rhs expression in infix expression", previousToken());
+  }
   return std::make_unique<InfixExpression>(std::move(left), operat,
                                            std::move(right));
 }

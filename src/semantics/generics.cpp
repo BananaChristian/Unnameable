@@ -28,7 +28,7 @@ void Semantics::walkGenericStatement(Node *node) {
   }
 
   // build reverse index
-  for (int i = 0; i < bluePrint.typeParams.size(); i++)
+  for (int i = 0; i < static_cast<int>(bluePrint.typeParams.size()); i++)
     bluePrint.typeParamIndex[bluePrint.typeParams[i]] = i;
 
   // Check if the top level statements in this block are only function
@@ -112,7 +112,7 @@ void Semantics::walkInstantiateStatement(Node *node) {
   std::unordered_map<std::string, ResolvedType> paramToType;
   std::unordered_map<std::string, Token> rawTypeMap;
 
-  for (int i = 0; i < blueprint.typeParams.size(); i++) {
+  for (int i = 0; i < static_cast<int>(blueprint.typeParams.size()); i++) {
     paramToType[blueprint.typeParams[i]] = resolvedArgs[i];
     rawTypeMap[blueprint.typeParams[i]] = rawTypes[i];
   }

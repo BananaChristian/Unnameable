@@ -40,27 +40,6 @@ std::string readFileToString(const std::string &filepath) {
   return buffer.str();
 }
 
-std::string resolveImportPath(const std::string &currentFile,
-                              const std::string &importString) {
-  fs::path currentDir = fs::path(currentFile).parent_path();
-  fs::path importPath(importString);
-
-  if (importPath.extension() != ".unn")
-    importPath += ".unn";
-
-  fs::path resolved = fs::weakly_canonical(currentDir / importPath);
-  fs::path projectRoot = fs::current_path();
-
-  if (resolved.string().rfind(projectRoot.string(), 0) != 0)
-    throw std::runtime_error("[MERGE ERROR] File '" + resolved.string() +
-                             "' climbs out of project directory.");
-  if (!fs::exists(resolved))
-    throw std::runtime_error("[MERGE ERROR] Merged file not found: " +
-                             resolved.string());
-
-  return resolved.string();
-}
-
 // Locate compiler root (parent of /bin directory)
 fs::path getCompilerRoot() {
   try {
@@ -94,6 +73,7 @@ int main(int argc, char **argv) {
                 << "  -build <file>       Compile and link to executable\n"
                 << "  -stub <file>      Generate a stub file\n"
                 << "  -verbose        Enable verbose internal logs\n"
+                << "  -check <file>   Just run the front end\n"
                 << "  -help           Show this help message\n"
                 << "  -static          Generate a static library instead of an "
                    "executable\n"
@@ -141,6 +121,7 @@ int main(int argc, char **argv) {
   bool compileOnly = false;
   bool stubOnly = false;
   bool staticCompile = false; // Boolean flag for static libgen
+  bool checkOnly = false;
 
   // Parse arguments
   for (int i = 1; i < argc; ++i) {
@@ -154,6 +135,8 @@ int main(int argc, char **argv) {
       compileOnly = true;
     } else if (arg == "-static") {
       staticCompile = true;
+    } else if (arg == "-check") {
+      checkOnly = true;
     } else if (arg == "-build" && i + 1 < argc) {
       exeFile = argv[++i];
     } else if (arg == "-stub") {
@@ -263,78 +246,81 @@ int main(int argc, char **argv) {
     }
 
     // LAYOUT PASS
-    if (logOutput)
-      std::cout << COLOR_BOLD << COLOR_BLUE << "Calculating layout..."
-                << COLOR_RESET << "\n";
-    llvm::LLVMContext llvmContext;
-    Layout layout(semantics, llvmContext, errorHandler, logOutput);
-    for (const auto &node : AST)
-      layout.calculatorDriver(node.get());
-
-    if (layout.failed()) {
-      return 1;
-    }
-
-    // STUB GENERATION
-    StubGen stubGen(semantics, stubFile, logOutput);
-    if (compileOnly || stubOnly) {
+    if (!checkOnly) {
       if (logOutput)
-        std::cout << COLOR_BLUE << "Generating stub ..." << COLOR_RESET << "\n";
+        std::cout << COLOR_BOLD << COLOR_BLUE << "Calculating layout..."
+                  << COLOR_RESET << "\n";
+      llvm::LLVMContext llvmContext;
+      Layout layout(semantics, llvmContext, errorHandler, logOutput);
       for (const auto &node : AST)
-        stubGen.stubGenerator(node.get());
+        layout.calculatorDriver(node.get());
 
-      stubGen.finish();
-
-      if (stubGen.failed()) {
+      if (layout.failed()) {
         return 1;
       }
 
-      // If the user ONLY wanted a stub, we stop here
-      if (stubOnly && !compileOnly) {
+      // STUB GENERATION
+      StubGen stubGen(semantics, stubFile, logOutput);
+      if (compileOnly || stubOnly) {
+        if (logOutput)
+          std::cout << COLOR_BLUE << "Generating stub ..." << COLOR_RESET
+                    << "\n";
+        for (const auto &node : AST)
+          stubGen.stubGenerator(node.get());
+
+        stubGen.finish();
+
+        if (stubGen.failed()) {
+          return 1;
+        }
+
+        // If the user ONLY wanted a stub, we stop here
+        if (stubOnly && !compileOnly) {
+          std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
+                    << " Interface stub generated: " << stubFile << "\n";
+          return 0;
+        }
+      }
+
+      // IR GENERATION
+      if (logOutput)
+        std::cout << COLOR_BOLD << COLOR_BLUE << "Generating IR..."
+                  << COLOR_RESET << "\n";
+      IRGenerator irgen(semantics, errorHandler, auditor, layout.totalHeapSize,
+                        logOutput);
+      irgen.generate(AST);
+      if (logOutput)
+        irgen.dumpIR();
+
+      // Emit Object
+      fs::path objPath = fs::absolute(objFile);
+      std::cout << COLOR_YELLOW
+                << "\nGenerating object file: " << objPath.string()
+                << COLOR_RESET << "\n";
+      if (!irgen.emitObjectFile(objPath.string())) {
+        std::cerr << COLOR_RED << "[ERROR]" << COLOR_RESET
+                  << " Failed to generate object file: " << objPath.string()
+                  << "\n";
+        return 1;
+      }
+
+      if (compileOnly) {
         std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
-                  << " Interface stub generated: " << stubFile << "\n";
+                  << " Object file generated: " << objPath.string() << "\n";
         return 0;
       }
-    }
 
-    // IR GENERATION
-    if (logOutput)
-      std::cout << COLOR_BOLD << COLOR_BLUE << "Generating IR..." << COLOR_RESET
-                << "\n";
-    IRGenerator irgen(semantics, errorHandler, auditor, layout.totalHeapSize,
-                      logOutput);
-    irgen.generate(AST);
-    if (logOutput)
-      irgen.dumpIR();
+      // Link Executable
+      fs::path exePath = fs::absolute(exeFile);
+      std::cout << COLOR_YELLOW << "\nLinking executable: " << exePath.string()
+                << COLOR_RESET << "\n";
 
-    // Emit Object
-    fs::path objPath = fs::absolute(objFile);
-    std::cout << COLOR_YELLOW
-              << "\nGenerating object file: " << objPath.string() << COLOR_RESET
-              << "\n";
-    if (!irgen.emitObjectFile(objPath.string())) {
-      std::cerr << COLOR_RED << "[ERROR]" << COLOR_RESET
-                << " Failed to generate object file: " << objPath.string()
-                << "\n";
-      return 1;
-    }
+      Linker linker(deserial, objPath.string(), staticCompile);
+      linker.processLinks(AST, sourceFile, exePath.string());
 
-    if (compileOnly) {
       std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
-                << " Object file generated: " << objPath.string() << "\n";
-      return 0;
+                << " Executable generated: " << exePath.string() << "\n";
     }
-
-    // Link Executable
-    fs::path exePath = fs::absolute(exeFile);
-    std::cout << COLOR_YELLOW << "\nLinking executable: " << exePath.string()
-              << COLOR_RESET << "\n";
-
-    Linker linker(deserial, objPath.string(), staticCompile);
-    linker.processLinks(AST, sourceFile, exePath.string());
-
-    std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
-              << " Executable generated: " << exePath.string() << "\n";
   } catch (const std::exception &e) {
     std::cerr << COLOR_RED << "[FATAL]" << COLOR_RESET << " " << e.what()
               << "\n";
