@@ -182,8 +182,6 @@ void Semantics::walkUnwrapExpression(Node *node) {
     reportDevBug("Invalid unwrap expression", unwrapExpr->expr.get());
     return;
   }
-  int exprLine = expr->expression.line;
-  int exprCol = expr->expression.column;
 
   auto exprName = extractIdentifierName(unwrapExpr->expr.get());
 
@@ -560,7 +558,6 @@ void Semantics::walkAddressExpression(Node *node) {
     return;
   }
 
-  bool hasError = false;
   bool isSage = symbolInfo->isSage;
   bool isHeap = symbolInfo->isHeap;
 

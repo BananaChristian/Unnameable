@@ -301,7 +301,6 @@ void StubGen::generateAllocatorStatement(Node *node) {
   alloc.paramTypes = allocSym->paramTypes;
   for (const auto &paramInfo : alloc.paramTypes) {
     const std::string &paramTypeName = paramInfo.first.resolvedName;
-    const std::string &paramName = paramInfo.second;
 
     logInternal("Storedallocator '" + alloc.functionName +
                 "' with param of type '" + paramTypeName + "'");
@@ -319,8 +318,6 @@ void StubGen::generateAllocatorStatement(Node *node) {
   free.paramTypes = freeSym->paramTypes;
   for (const auto &paramInfo : free.paramTypes) {
     const std::string &paramTypeName = paramInfo.first.resolvedName;
-    const std::string &paramName = paramInfo.second;
-
     logInternal("Stored deallocation function '" + free.functionName +
                 "' with parameter of type '" + paramTypeName + "'");
   }

@@ -15,8 +15,6 @@
 #include "audit.hpp"
 #include "semantics.hpp"
 
-class Node;
-
 struct JumpTarget {
   llvm::BasicBlock *breakTarget;
   llvm::BasicBlock *continueTarget;
@@ -62,7 +60,6 @@ public:
 
 private:
   llvm::LLVMContext context;
-  // llvm::IRBuilder<> globalBuilder; // This is the global builder
   llvm::IRBuilder<> funcBuilder; // This is the builder for functions
   std::unique_ptr<llvm::Module> module;
   const llvm::DataLayout *layout;
@@ -228,7 +225,6 @@ private:
                              const std::shared_ptr<SymbolInfo> &leftSym,
                              const std::shared_ptr<SymbolInfo> &rightSym);
   llvm::Value *handleMemberAccess(InfixExpression *infix, llvm::Value *left,
-                                  llvm::Value *right,
                                   const std::shared_ptr<SymbolInfo> &leftSym,
                                   const std::shared_ptr<SymbolInfo> &rightSym);
   llvm::Value *handleEnumAccess(InfixExpression *infix);

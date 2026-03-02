@@ -28,10 +28,10 @@
 
 IRGenerator::IRGenerator(Semantics &semantics, ErrorHandler &handler,
                          Auditor &auditor, size_t totalHeap, bool isVerbose)
-    : semantics(semantics), errorHandler(handler), auditor(auditor),
-      totalHeapSize(totalHeap), isVerbose(isVerbose), context(),
-      funcBuilder(context),
-      module(std::make_unique<llvm::Module>("unnameable", context)) {
+    : context(), funcBuilder(context),
+      module(std::make_unique<llvm::Module>("unnameable", context)),
+      semantics(semantics), errorHandler(handler), auditor(auditor),
+      totalHeapSize(totalHeap), isVerbose(isVerbose) {
   setupTargetLayout();
 
   registerGeneratorFunctions();
@@ -190,7 +190,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   }
 
   // Handling Move Expressions (Pointer Takeover)
-  if (auto moveVal = dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
+  if (dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
     logInternal("Handling move assignment");
     // In a move, we DO overwrite the stack slot to point to the new memory
     funcBuilder.CreateStore(initValue, targetPtr);
@@ -1170,8 +1170,6 @@ llvm::Value *IRGenerator::generateIntegerLiteral(const std::string &literalStr,
 
 llvm::GlobalVariable *
 IRGenerator::createGlobalArrayConstant(llvm::Constant *constantArray) {
-  // The type of the constant must be a valid ArrayType (which can be nested)
-  llvm::Type *constantType = constantArray->getType();
 
   llvm::ArrayType *arrayTy =
       llvm::cast<llvm::ArrayType>(constantArray->getType());
@@ -1211,9 +1209,6 @@ void IRGenerator::generateSageInitCall() {
   // Safety check just in case
   if (isSageInitCalled)
     return;
-
-  llvm::FunctionType *funcType =
-      llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false);
 
   // --- Call sage_init upfront ---
   llvm::Function *initFunc = module->getFunction("sage_init");

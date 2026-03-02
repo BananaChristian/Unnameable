@@ -767,6 +767,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
       logSemanticErrors("Type '" + customTypeName + "' does not exist",
                         retType);
       hasError = true;
+      return;
     }
     returnType = it->second->type;
   } else if (returnType.kind == DataType::UNKNOWN) {

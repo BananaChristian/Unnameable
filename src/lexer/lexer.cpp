@@ -10,8 +10,8 @@
   int tokenColumn = column;
 
 Lexer::Lexer(const std::string &sourceCode, ErrorHandler &handler)
-    : input(sourceCode), errorHandler(handler), currentPosition(0),
-      nextPosition(1), line(1), column(0){};
+    : currentPosition(0), nextPosition(1), input(sourceCode), line(1),
+      column(0), errorHandler(handler){};
 
 size_t Lexer::getUTF8CharLength(size_t pos) {
   if (pos >= input.length())

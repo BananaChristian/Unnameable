@@ -8,7 +8,7 @@
 
 //--------------PARSER CLASS CONSTRUCTOR-------------
 Parser::Parser(std::vector<Token> &tokenInput, ErrorHandler &handler)
-    : tokenInput(tokenInput), errorHandler(handler), currentPos(0), nextPos(1) {
+    : tokenInput(tokenInput), currentPos(0), nextPos(1), errorHandler(handler) {
   lastToken = tokenInput.empty() ? Token{"", TokenType::ILLEGAL, 999, 999}
                                  : tokenInput[0];
   registerInfixFns();

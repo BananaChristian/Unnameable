@@ -12,10 +12,11 @@ LIB_DIR       = lib
 URC_X86_LINUX = $(LIB_DIR)/urc/architecture/x86_64/linux
 
 # ____Unnameable Compiler____
-UNNC = ./$(BIN_DIR)/unnc
+# I placed the compiler into my paths that is why I can just call it anyhow but normally it is inside the bin folder
+UNNC = unnc
 
 # _____Compiler Flags______
-CXXFLAGS = -std=c++17 -g -Iinclude
+CXXFLAGS = -std=c++17 -Wall -g -Iinclude
 
 # ______Runtime Flags_________
 RUNTIME_CXXFLAGS   = -std=c++17 -g -ffreestanding -nostdlib -fno-stack-protector -fno-exceptions

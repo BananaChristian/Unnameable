@@ -405,7 +405,8 @@ struct Char8Literal : Expression {
   Char8Literal *shallowClone() const override {
     return new Char8Literal(char8_token);
   }
-  Char8Literal(Token char8_tok) : Expression(char8_tok), char8_token(char8_tok){};
+  Char8Literal(Token char8_tok)
+      : Expression(char8_tok), char8_token(char8_tok){};
 };
 
 // 16 bit Char literal
@@ -657,7 +658,7 @@ struct FunctionExpression : Expression {
                      std::vector<std::unique_ptr<Statement>> c,
                      std::unique_ptr<Expression> return_t,
                      std::unique_ptr<Expression> bl)
-      : Expression(fn), func_key(fn), isExportable(exportable),
+      : Expression(fn), isExportable(exportable), func_key(fn),
         call(std::move(c)), return_type(std::move(return_t)),
         block(std::move(bl)){};
 };
@@ -1239,8 +1240,8 @@ struct LetStatement : Statement {
                std::unique_ptr<Expression> data_t, const Token &ident_t,
                const std::optional<Token> &assign_t,
                std::unique_ptr<Expression> val)
-      : isSage(sage), isHeap(heap), mutability(muta), type(std::move(data_t)),
-        ident_token(ident_t), assign_token(assign_t), Statement(ident_t),
+      : Statement(ident_t), isSage(sage), isHeap(heap), mutability(muta),
+        type(std::move(data_t)), ident_token(ident_t), assign_token(assign_t),
         value(std::move(val)){};
 };
 
@@ -1273,7 +1274,7 @@ struct FieldAssignment : Statement {
 
   FieldAssignment(std::unique_ptr<Expression> lhs, Token operat,
                   std::unique_ptr<Expression> val)
-      : Statement(lhs->expression), op(operat), lhs_chain(std::move(lhs)),
+      : Statement(lhs->expression), lhs_chain(std::move(lhs)), op(operat),
         value(std::move(val)){};
 
   std::string toString() override {
@@ -1811,7 +1812,7 @@ struct ArrayStatement : Statement {
                  std::vector<std::unique_ptr<Expression>> lens,
                  std::unique_ptr<Expression> ident,
                  std::unique_ptr<Expression> array)
-      : Statement(arrayTy->token), isSage(sage), isHeap(heap), mutability(mut),
+      : Statement(arrayTy->token), mutability(mut),isSage(sage), isHeap(heap), 
         arrayType(std::move(arrayTy)), lengths(std::move(lens)),
         identifier(std::move(ident)), array_content(std::move(array)){};
 };
@@ -1892,7 +1893,7 @@ struct TraceStatement : Statement {
     if (expr) {
       exprStr = expr->toString();
     }
-    return "Trace Statement: " + trace_keyword.TokenLiteral +" "+ exprStr;
+    return "Trace Statement: " + trace_keyword.TokenLiteral + " " + exprStr;
   }
 
   TraceStatement *shallowClone() const override {

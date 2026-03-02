@@ -76,7 +76,6 @@ void Layout::registerComponentCalculatorFns() {
 // Independent calculators
 void Layout::calculateLetStatementSize(Node *node) {
   auto letStmt = dynamic_cast<LetStatement *>(node);
-  auto type = dynamic_cast<BasicType *>(letStmt->type.get());
 
   if (!letStmt)
     return;

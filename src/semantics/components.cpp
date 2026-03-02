@@ -92,66 +92,53 @@ void Semantics::walkEnumStatement(Node *node) {
     std::int64_t memberValue = 0;
     if (enumMember->value) {
       // Check all literal types
-      Expression *literal = nullptr;
       TokenType literalType = TokenType::ILLEGAL; // Default invalid type
       std::string literalStr;
       if (auto i8Lit = dynamic_cast<I8Literal *>(enumMember->value.get())) {
-        literal = i8Lit;
         literalType = TokenType::INT8;
         literalStr = i8Lit->expression.TokenLiteral;
       } else if (auto u8Lit =
                      dynamic_cast<U8Literal *>(enumMember->value.get())) {
-        literal = u8Lit;
         literalType = TokenType::UINT8;
         literalStr = u8Lit->expression.TokenLiteral;
       } else if (auto i16Lit =
                      dynamic_cast<I16Literal *>(enumMember->value.get())) {
-        literal = i16Lit;
         literalType = TokenType::INT16;
         literalStr = i16Lit->expression.TokenLiteral;
       } else if (auto u16Lit =
                      dynamic_cast<U16Literal *>(enumMember->value.get())) {
-        literal = u16Lit;
         literalType = TokenType::UINT16;
         literalStr = u16Lit->expression.TokenLiteral;
       } else if (auto i32Lit =
                      dynamic_cast<I32Literal *>(enumMember->value.get())) {
-        literal = i32Lit;
         literalType = TokenType::INT32;
         literalStr = i32Lit->expression.TokenLiteral;
       } else if (auto u32Lit =
                      dynamic_cast<U32Literal *>(enumMember->value.get())) {
-        literal = u32Lit;
         literalType = TokenType::UINT32;
         literalStr = u32Lit->expression.TokenLiteral;
       } else if (auto i64Lit =
                      dynamic_cast<I64Literal *>(enumMember->value.get())) {
-        literal = i64Lit;
         literalType = TokenType::INT64;
         literalStr = i64Lit->expression.TokenLiteral;
       } else if (auto u64Lit =
                      dynamic_cast<U64Literal *>(enumMember->value.get())) {
-        literal = u64Lit;
         literalType = TokenType::UINT64;
         literalStr = u64Lit->expression.TokenLiteral;
       } else if (auto i128Lit =
                      dynamic_cast<I128Literal *>(enumMember->value.get())) {
-        literal = i128Lit;
         literalType = TokenType::INT128;
         literalStr = i128Lit->expression.TokenLiteral;
       } else if (auto u128Lit =
                      dynamic_cast<U128Literal *>(enumMember->value.get())) {
-        literal = u128Lit;
         literalType = TokenType::UINT128;
         literalStr = u128Lit->expression.TokenLiteral;
       } else if (auto isizeLit =
                      dynamic_cast<ISIZELiteral *>(enumMember->value.get())) {
-        literal = isizeLit;
         literalType = TokenType::INTSIZE;
         literalStr = isizeLit->expression.TokenLiteral;
       } else if (auto usizeLit =
                      dynamic_cast<USIZELiteral *>(enumMember->value.get())) {
-        literal = usizeLit;
         literalType = TokenType::UINTSIZE;
         literalStr = usizeLit->expression.TokenLiteral;
       } else {
@@ -434,7 +421,6 @@ void Semantics::walkRecordStatement(Node *node) {
       continue;
     }
 
-    bool isSage = fieldSymbol->isSage;
     bool isHeap = fieldSymbol->isHeap;
 
     // Build member info
@@ -989,6 +975,7 @@ void Semantics::walkComponentStatement(Node *node) {
   }
 
   // Register component as a symbol
+  componentSymbol->hasError = hasError;
   componentSymbol->members = members;
 
   componentTypeInfo->members = members;

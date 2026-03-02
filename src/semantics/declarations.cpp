@@ -449,7 +449,7 @@ void Semantics::walkLetStatement(Node *node) {
         declaredType = expectedType;
         metaData[nullVal]->type = expectedType;
       }
-    } else if (auto moveVal = dynamic_cast<MoveExpression *>(letStmtValue)) {
+    } else if (dynamic_cast<MoveExpression *>(letStmtValue)) {
       // SOME LOGIC ON THE MOVE GUY EMPTIED FOR NOW
     } else if (auto ident = dynamic_cast<Identifier *>(letStmtValue)) {
       auto identSym = resolveSymbolInfo(ident->identifier.TokenLiteral);

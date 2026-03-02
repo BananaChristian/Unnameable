@@ -455,15 +455,14 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   inhibitCleanUp = true;
 
   llvm::Value *leftVal = generateExpression(infix->left_operand.get());
-  llvm::Value *rightVal = generateExpression(infix->right_operand.get());
-
   if (infix->operat.type == TokenType::FULLSTOP)
-    result = handleMemberAccess(infix, leftVal, rightVal, leftSym, rightSym);
+    return handleMemberAccess(infix, leftVal, leftSym, rightSym);
+
+  llvm::Value *rightVal = generateExpression(infix->right_operand.get());
 
   auto resultType = infixSym->type;
   // Promote operands to widest integer type among left, right, and result
   if (isIntegerType(resultType.kind)) {
-    unsigned targetBits = getIntegerBitWidth(resultType.kind);
     leftVal = promoteInt(leftVal, leftSym->type.kind, resultType.kind);
     rightVal = promoteInt(rightVal, rightSym->type.kind, resultType.kind);
   }

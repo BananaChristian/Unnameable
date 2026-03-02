@@ -12,7 +12,7 @@
 
 Semantics::Semantics(Deserializer &deserial, ErrorHandler &handler,
                      bool verbose)
-    : deserializer(deserial), errorHandler(handler), verbose(verbose) {
+    : errorHandler(handler), deserializer(deserial), verbose(verbose) {
   symbolTable.push_back({});
   registerWalkerFunctions();
 
@@ -2141,7 +2141,7 @@ ResolvedType Semantics::peelRef(ResolvedType t) {
 std::string Semantics::generateLifetimeID(Node *declarationNode) {
   if (dynamic_cast<LetStatement *>(declarationNode))
     return "L" + std::to_string(letDeclCount++);
-  else if (auto ptrStmt = dynamic_cast<PointerStatement *>(declarationNode))
+  else if (dynamic_cast<PointerStatement *>(declarationNode))
     return "P" + std::to_string(ptrDeclCount++);
 
   return "NO ID";

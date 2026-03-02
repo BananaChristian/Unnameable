@@ -11,8 +11,8 @@ namespace fs = std::filesystem;
 
 Linker::Linker(Deserializer &deserializer, const std::string &currentObject,
                bool isStatic)
-    : deserializer(deserializer), currentObjectFile(currentObject),
-      isStatic(isStatic) {}
+    : deserializer(deserializer), isStatic(isStatic),
+      currentObjectFile(currentObject) {}
 
 std::string Linker::resolveLinkPath(LinkStatement *link,
                                     const std::string &currentFile) {

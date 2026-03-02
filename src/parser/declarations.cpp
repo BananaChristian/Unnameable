@@ -6,7 +6,6 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
   bool isHeap = false;
   Mutability mutability = Mutability::IMMUTABLE;
   std::unique_ptr<Expression> type;
-  bool isNullable = false;
 
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::IDENTIFIER ||
@@ -22,11 +21,6 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
                  currentToken().TokenLiteral + "'",
              currentToken());
     return nullptr;
-  }
-
-  if (currentToken().type == TokenType::QUESTION_MARK) {
-    isNullable = true;
-    advance();
   }
 
   if (currentToken().type != TokenType::IDENTIFIER) {
@@ -370,8 +364,8 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::ARRAY ||
       currentToken().type == TokenType::OPAQUE ||
-      (currentToken().type == TokenType::IDENTIFIER &&
-           nextToken().type == TokenType::IDENTIFIER ||
+      ((currentToken().type == TokenType::IDENTIFIER &&
+        nextToken().type == TokenType::IDENTIFIER) ||
        nextToken().type == TokenType::QUESTION_MARK)) {
 
     type = parseReturnType();

@@ -25,8 +25,7 @@ void Semantics::walkBlockStatement(Node *node) {
       logInternal("Triggered self heap check");
       name = extractIdentifierName(assignStmt->identifier.get());
       // Incase it is a self expression just call the walker for now
-      if (auto selfExpr =
-              dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
+      if (dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
       } else if (dynamic_cast<DereferenceExpression *>(
                      assignStmt->identifier.get())) {
       } else {

@@ -284,8 +284,6 @@ void Semantics::walkArrayLiteral(Node *node) {
   if (!arrLit)
     return;
 
-  bool hasError = false;
-
   ResolvedType arrType = inferNodeDataType(arrLit);
   for (const auto &item : arrLit->array) {
     walker(item.get()); // Calling their walkers
@@ -300,6 +298,5 @@ void Semantics::walkArrayLiteral(Node *node) {
   arrInfo->isMutable = false;
   arrInfo->isConstant = false;
   arrInfo->sizePerDimensions = sizePerDims;
-
   metaData[arrLit] = arrInfo;
 }

@@ -81,8 +81,7 @@ void IRGenerator::generateFunctionDeclaration(Node *node) {
   llvm::FunctionType *fnType =
       llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
 
-  llvm::Function *declaredFunc =
-      llvm::Function::Create(fnType, linkage, fnName, module.get());
+  llvm::Function::Create(fnType, linkage, fnName, module.get());
 }
 
 // Generator function for function expression
@@ -221,7 +220,6 @@ void IRGenerator::generateReturnStatement(Node *node) {
     retVal = generateExpression(retStmt->return_value.get());
   }
 
-  
   emitCleanup(retStmt, it->second);
 
   // Get Function Signature Info

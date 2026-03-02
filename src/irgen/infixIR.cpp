@@ -321,7 +321,6 @@ llvm::Value *IRGenerator::handleCoalesce(InfixExpression *infix,
 
 llvm::Value *
 IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
-                                llvm::Value *right,
                                 const std::shared_ptr<SymbolInfo> &leftSym,
                                 const std::shared_ptr<SymbolInfo> &rightSym) {
   std::string parentTypeName = leftSym->type.resolvedName;

@@ -93,7 +93,6 @@ void IRGenerator::generateLetStatement(Node *node) {
       initVal = llvm::Constant::getNullValue(getLLVMType(sym->type));
   }
 
-  llvm::Value *constructedPtr = nullptr;
   // If it is a component
   if (isComponent) {
     storage = generateComponentInit(
@@ -325,8 +324,6 @@ void IRGenerator::generatePointerStatement(Node *node) {
     reportDevBug("Failed to get pointer type for '" + ptrName + "'",
                  ptrStmt->statement.line, ptrStmt->statement.column);
   }
-
-  llvm::Type *ptrStorageType = ptrType->getPointerTo();
 
   llvm::Value *initVal = nullptr;
   if (ptrStmt->value) {

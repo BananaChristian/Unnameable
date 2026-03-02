@@ -328,8 +328,7 @@ void IRGenerator::generateComponentFunctionStatement(
 
   // FunctionDeclarationExpression: declaration only error out incase somehow
   // the semantics allowed them through
-  else if (auto *declExpr =
-               dynamic_cast<FunctionDeclarationExpression *>(fnExpr)) {
+  else if (dynamic_cast<FunctionDeclarationExpression *>(fnExpr)) {
     throw std::runtime_error(
         "Function declarations are prohibited inside components");
   }
@@ -535,10 +534,6 @@ void IRGenerator::generateEnumStatement(Node *node) {
   if (!enumStmt)
     return;
 
-  // Getting the enum statement name
-  const std::string &enumName =
-      enumStmt->enum_identifier->expression.TokenLiteral;
-
   // Retrieve the info from metaData
   auto enumIt = semantics.metaData.find(enumStmt);
   if (enumIt == semantics.metaData.end())
@@ -555,10 +550,6 @@ void IRGenerator::generateEnumStatement(Node *node) {
 
   std::cout << "[IRGEN LOG] Declared enum class " << enumInfo->type.resolvedName
             << " with members:\n";
-  for (auto &[memberName, member] : enumTypeInfo->members) {
-    // llvm::ConstantInt will be generated  when a member is actually used in
-    // an expression
-  }
 }
 
 void IRGenerator::generateInstantiateStatement(Node *node) {
