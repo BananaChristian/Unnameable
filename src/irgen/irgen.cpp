@@ -975,6 +975,81 @@ void IRGenerator::freeDynamicHeapStorage(const std::string &allocatorType,
   funcBuilder.CreateCall(deallocFunc, {castPtr});
 }
 
+void IRGenerator::freeForeigners(Node *parentLoop) {
+  auto &map = auditor.foreignersToFree;
+
+  logInternal(
+      "\n[CLEANUP-WHILE] >>> Entering Foreigner Cleanup for loop at line: " +
+      parentLoop->toString());
+  logInternal("[LOOP KEY] " + std::to_string((uintptr_t)parentLoop));
+
+  auto it = map.find(parentLoop);
+  if (it == map.end()) {
+    logInternal(
+        "  [SKIP] No foreigners registered for this loop. Basket is empty.");
+    return;
+  }
+
+  logInternal("  [BASKET-FOUND] Found " + std::to_string(it->second.size()) +
+              " batons to process.");
+
+  for (auto &[baton, contextSym] : it->second) {
+    if (!baton)
+      continue;
+
+    logInternal("  [INSPECTING] Baton ID: " + baton->ID);
+
+    if (!contextSym) {
+      logInternal("    [ERROR] Metadata missing for holder of " + baton->ID);
+      continue;
+    }
+
+    logInternal(
+        "    [STATE] PtrCount: " + std::to_string(contextSym->pointerCount) +
+        " | RefCount: " + std::to_string(contextSym->refCount) +
+        " | Responsible: " + (baton->isResponsible ? "YES" : "NO"));
+
+    // We only free if it's truly dead (no pointers left)
+    if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
+      logInternal(
+          "    [TERMINAL-REACHED] Commencing deallocation sequence for: " +
+          contextSym->ID);
+
+      // Clear out the family (dependents)
+      if (!baton->dependents.empty()) {
+        logInternal("    [DEPS] Freeing " +
+                    std::to_string(baton->dependents.size()) +
+                    " dependents...");
+        for (const auto &[depID, depSym] : baton->dependents) {
+          logInternal("      -> Killing Dependent: " + depID);
+          executePhysicalFree(depSym);
+        }
+      }
+
+      // Kill the leader
+      if (contextSym->isHeap) {
+        logInternal("    [LEADER] Emitting physical free for: " +
+                    contextSym->ID);
+        executePhysicalFree(contextSym);
+      }
+
+      // Mark as dead so no one else tries to kill it
+      baton->isResponsible = false;
+      baton->isAlive = false;
+      logInternal("    [SUCCESS] Baton " + baton->ID +
+                  " is now officially history.");
+    } else {
+      logInternal("    [STAY-ALIVE] Skipping dealloc: " + contextSym->ID +
+                  " still has active references.");
+    }
+  }
+
+  // Clean the map after processing to prevent double-frees if this is called
+  // twice
+  map.erase(parentLoop);
+  logInternal("[CLEANUP-WHILE] <<< Finished processing foreigners.\n");
+}
+
 void IRGenerator::emptyLeakedDeputiesBag(Node *branchRoot) {
   auto &bag = auditor.leakedDeputiesBag[branchRoot];
   if (bag.empty()) {

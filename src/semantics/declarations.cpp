@@ -99,12 +99,6 @@ void Semantics::walkArrayStatement(Node *node) {
       nullArray->isSage = isSage;
       nullArray->isHeap = isHeap;
       nullArray->sizePerDimensions = declSizePerDim;
-      // nullArray->isResponsibl = arrStmt;
-
-      if (!loopContext.empty() && loopContext.back()) {
-        nullArray->needsPostLoopFree = true;
-        nullArray->bornInLoop = true;
-      }
 
       metaData[arrStmt] = nullArray;
       symbolTable.back()[arrayName] = nullArray;
@@ -154,12 +148,6 @@ void Semantics::walkArrayStatement(Node *node) {
   arrayInfo->isHeap = isHeap;
   arrayInfo->sizePerDimensions = declSizePerDim;
   arrayInfo->isInitialized = isInitialized;
-
-  if (!loopContext.empty() && loopContext.back()) {
-    arrayInfo->needsPostLoopFree = true;
-    arrayInfo->bornInLoop = true;
-  }
-
   metaData[arrStmt] = arrayInfo;
   symbolTable.back()[arrayName] = arrayInfo;
 
@@ -546,16 +534,13 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->isHeap = isHeap;
   letInfo->pointerCount = 0;
   letInfo->hasError = hasError;
+  if (isInLoop)
+    letInfo->inLoop = true;
 
   // Since this is a normal let statement it has no target baton as its target
   // is independent to it(The compiler uses a deep copy first style so these are
   // independent)
   if (isHeap) {
-    if (!loopContext.empty() && loopContext.back()) {
-      letInfo->needsPostLoopFree = true;
-      letInfo->bornInLoop = true;
-    }
-
     auto lifetime = createLifeTimeTracker(letStmt, nullptr, letInfo);
     letInfo->ID = lifetime->ID;
     responsibilityTable[letStmt] = std::move(lifetime);

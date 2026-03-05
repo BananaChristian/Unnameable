@@ -2,8 +2,10 @@
 #include "ast.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
+#include <set>
 #include <typeindex>
 #include <unordered_map>
+#include <utility>
 
 struct TemporalInfo {
   bool insideBranch = false;
@@ -22,6 +24,10 @@ public:
 
   std::unordered_map<Node *, std::vector<std::unique_ptr<LifeTime>>>
       leakedDeputiesBag;
+  std::unordered_map<Node *,
+                     std::vector<std::pair<std::unique_ptr<LifeTime>,
+                                           std::shared_ptr<SymbolInfo>>>>
+      foreignersToFree;
 
 private:
   using auditFn = void (Auditor::*)(Node *node);
@@ -30,7 +36,9 @@ private:
   std::unordered_map<Node *, std::shared_ptr<TemporalInfo>> temporaryData;
 
   void registerAuditorFunctions();
-  bool isInsideBranch = true;
+  bool isInsideBranch = false;
+  bool isInLoop = false;
+  Node *activeLoopNode = nullptr;
 
   // Variable declaration auditors
   void auditHeapStatement(Node *node);
@@ -56,6 +64,9 @@ private:
   void auditIfStatement(Node *node);
   void auditElifStatement(Node *node);
 
+  void auditWhileStatement(Node *node);
+  void auditExpressionStatement(Node *node);
+
   // Helpers
   void transferDependent(const std::string &dependentID,
                          const std::shared_ptr<SymbolInfo> &dependentSym,
@@ -67,7 +78,7 @@ private:
                          Node *branchRoot);
   std::set<std::string> getAllActiveBatonIDs();
   bool containsNode(Node *root, Node *target);
-  void simulateFree(const std::string &contextID);
+  void simulateFree(Node *contextNode, const std::string &contextID);
 
   // Loggers and reporters
   void logAuditError(const std::string &message, Node *contextNode);

@@ -23,11 +23,14 @@ void Auditor::registerAuditorFunctions() {
 
   auditFnsMap[typeid(BlockStatement)] = &Auditor::auditBlockStatement;
   auditFnsMap[typeid(BlockExpression)] = &Auditor::auditBlockExpression;
+  auditFnsMap[typeid(ExpressionStatement)] = &Auditor::auditExpressionStatement;
   auditFnsMap[typeid(InfixExpression)] = &Auditor::auditInfix;
   auditFnsMap[typeid(Identifier)] = &Auditor::auditIdentifier;
 
   auditFnsMap[typeid(AssignmentStatement)] = &Auditor::auditAssignmentStatement;
   auditFnsMap[typeid(ifStatement)] = &Auditor::auditIfStatement;
+
+  auditFnsMap[typeid(WhileStatement)] = &Auditor::auditWhileStatement;
 }
 
 void Auditor::audit(Node *node) {
@@ -35,7 +38,13 @@ void Auditor::audit(Node *node) {
   if (auditIt == auditFnsMap.end()) {
     return;
   }
+  logInternal("[AUDITING] Node: " + node->toString());
   (this->*auditIt->second)(node);
+}
+
+void Auditor::auditExpressionStatement(Node *node) {
+  auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
+  audit(exprStmt->expression.get());
 }
 
 void Auditor::auditHeapStatement(Node *node) {
@@ -46,7 +55,23 @@ void Auditor::auditHeapStatement(Node *node) {
   audit(heapStmt->stmt.get());
 }
 
-void Auditor::auditLetStatement(Node *node) {}
+void Auditor::auditLetStatement(Node *node) {
+  auto letStmt = dynamic_cast<LetStatement *>(node);
+  if (!letStmt)
+    return;
+
+  auto letSym = semantics.getSymbolFromMeta(letStmt);
+  if (!letSym)
+    return;
+
+  if (!letSym->isHeap) {
+    logInternal("Let statement is not heap raised not tracking");
+    return;
+  }
+
+  logInternal("\n[AUDIT] >>> LetStatement: " + letSym->ID);
+  simulateFree(letStmt, letSym->ID);
+}
 
 void Auditor::auditPointerStatement(Node *node) {
   auto ptrStmt = dynamic_cast<PointerStatement *>(node);
@@ -106,7 +131,7 @@ void Auditor::auditPointerStatement(Node *node) {
   auto ptrInfo = std::make_shared<TemporalInfo>();
   ptrInfo->insideBranch = isInsideBranch;
   temporaryData[ptrStmt] = ptrInfo;
-  simulateFree(ptrSym->ID);
+  simulateFree(ptrStmt, ptrSym->ID);
 }
 
 void Auditor::auditAssignmentStatement(Node *node) {
@@ -163,7 +188,7 @@ void Auditor::auditAssignmentStatement(Node *node) {
 
   auto assignInfo = std::make_shared<TemporalInfo>();
   assignInfo->insideBranch = isInsideBranch;
-  simulateFree(assignSym->ID);
+  simulateFree(assignStmt, assignSym->ID);
 }
 
 void Auditor::auditFunctionStatement(Node *node) {
@@ -180,6 +205,18 @@ void Auditor::auditFunctionExpression(Node *node) {
     return;
 
   audit(funcExpr->block.get());
+}
+
+void Auditor::auditWhileStatement(Node *node) {
+  auto whileStmt = dynamic_cast<WhileStatement *>(node);
+  if (!whileStmt)
+    return;
+
+  isInLoop = true;
+  activeLoopNode = whileStmt;
+  audit(whileStmt->loop.get());
+  isInLoop = false;
+  activeLoopNode = nullptr;
 }
 
 void Auditor::auditElifStatement(Node *node) {
@@ -251,7 +288,7 @@ void Auditor::auditReturnStatement(Node *node) {
 
   auto retInfo = std::make_shared<TemporalInfo>();
   retInfo->insideBranch = isInsideBranch;
-  simulateFree(retSym->ID);
+  simulateFree(retStmt, retSym->ID);
 }
 
 void Auditor::auditInfix(Node *node) {
@@ -269,7 +306,7 @@ void Auditor::auditIdentifier(Node *node) {
     return;
 
   auto identSym = semantics.getSymbolFromMeta(ident);
-  simulateFree(identSym->ID);
+  simulateFree(ident, identSym->ID);
 }
 
 void Auditor::auditTraceStatement(Node *node) {
@@ -281,7 +318,7 @@ void Auditor::auditTraceStatement(Node *node) {
 
   audit(traceStmt->expr.get());
 
-  simulateFree(traceSym->ID);
+  simulateFree(traceStmt, traceSym->ID);
 }
 
 void Auditor::auditBlockStatement(Node *node) {
@@ -589,12 +626,11 @@ bool Auditor::containsNode(Node *root, Node *target) {
       if (containsNode(elif.get(), target))
         return true; // Dig into the elif wrapper
     }
-    if (ifStmt->else_result
-            .has_value()) { // Fix: use else_result, not else_stmt
+    if (ifStmt->else_result.has_value()) {
       if (containsNode(ifStmt->else_result.value().get(), target))
         return true;
     }
-  } else if (auto elif = dynamic_cast<elifStatement *>(root)) { // ADD THIS
+  } else if (auto elif = dynamic_cast<elifStatement *>(root)) {
     if (containsNode(elif->elif_condition.get(), target))
       return true;
     if (containsNode(elif->elif_result.get(), target))
@@ -604,12 +640,19 @@ bool Auditor::containsNode(Node *root, Node *target) {
   return false;
 }
 
-void Auditor::simulateFree(const std::string &contextID) {
+void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
   logInternal("\n  [SIMULATE-FREE] Target: " + contextID);
 
   Node *holderNode = semantics.queryForLifeTimeBaton(contextID);
   if (!holderNode) {
     logInternal("    [ERROR] No holder node found for " + contextID);
+    return;
+  }
+
+  // Check if the holder node is the actual contextNode
+  if (holderNode != contextNode) {
+    logInternal("The baton was moved node: " + contextNode->toString() +
+                "' is not the executor");
     return;
   }
 
@@ -624,6 +667,18 @@ void Auditor::simulateFree(const std::string &contextID) {
 
   if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
     if (baton->isResponsible && baton->isAlive) {
+      if (isInLoop) {
+        if (!baton->isNativeToLoop) {
+          logInternal("    [LOOP-DEFER] Foreigner " + contextID +
+                      " reached last use. Deferring to loop end.");
+          baton->isAlive = false;
+          logInternal("TAGGED LOOP KEY: " +
+                      std::to_string((uintptr_t)activeLoopNode));
+          foreignersToFree[activeLoopNode].push_back(
+              {std::move(baton), contextSym});
+          return;
+        }
+      }
       logInternal("    [DEATH] Condition met. Killing family: " + contextID);
       baton->isAlive = false;
 

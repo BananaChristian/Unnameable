@@ -202,7 +202,6 @@ private:
   void declareImportedComponentMethods(
       const std::string &funcName, const std::string &typeName,
       const std::shared_ptr<MemberInfo> &memberInfo);
-  void emitResidentSweep();
   llvm::Value *coerceToBoolean(llvm::Value *val, Node *expr);
   llvm::GlobalVariable *
   createGlobalArrayConstant(llvm::Constant *constantArray);
@@ -253,6 +252,7 @@ private:
   void emitCleanup(Node *contextNode,
                    const std::shared_ptr<SymbolInfo> &contextSymbol);
   void emptyLeakedDeputiesBag(Node *branchRoot);
+  void freeForeigners(Node *parentLoop);
   void emitInfixClean(InfixExpression *infix,
                       const std::shared_ptr<SymbolInfo> &leftSym,
                       const std::shared_ptr<SymbolInfo> &rightSym);

@@ -8,7 +8,6 @@
 #include <llvm/IR/Value.h>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <typeindex>
 
@@ -170,6 +169,7 @@ struct SymbolInfo {
   bool isBehavior = false;
   bool isComponent = false;
   bool isRecord = false;
+  bool inLoop = false;
   std::shared_ptr<SymbolInfo> targetSymbol;  // For the deref system
   std::shared_ptr<SymbolInfo> refereeSymbol; // Symbol being refered to
 
@@ -186,9 +186,6 @@ struct SymbolInfo {
   int refCount = 0;
   int pointerCount = 0;
   bool isInvalid = false;
-  bool needsPostLoopFree = false;
-  bool bornInLoop = false;
-
   // Error flag
   bool hasError = false;
 
@@ -214,6 +211,7 @@ struct SymbolInfo {
 struct LifeTime {
   std::string ID;
   std::string ownedBy;
+  bool isNativeToLoop = false; // Was this lifetime concieved in a loop
   bool isResponsible = false;
   bool isAlive = false;
   std::map<std::string, std::shared_ptr<SymbolInfo>> dependents;
@@ -275,8 +273,6 @@ public:
   std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
   std::vector<bool> loopContext;
   std::vector<ScopeInfo> currentTypeStack;
-  std::set<SymbolInfo *> loopDeathRow;
-  std::set<SymbolInfo *> loopResidentDeathRow;
 
   std::unordered_map<std::string, GenericBluePrint> genericMap;
   std::unordered_map<std::string, AllocatorHandle> allocatorMap;
@@ -318,6 +314,7 @@ private:
   bool insideRecord = false;
   bool insideSeal = false;
   bool insideAllocator = false;
+  bool isInLoop = false; // Are we inside a loop
 
   bool hasFailed = false;
   bool verbose = false;

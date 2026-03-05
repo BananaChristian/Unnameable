@@ -102,10 +102,12 @@ void Semantics::walkWhileStatement(Node *node) {
   walker(whileCondition);
 
   loopContext.push_back(true);
+  isInLoop = true;
   symbolTable.push_back({});
   auto whileLoop = whileStmt->loop.get();
   walker(whileLoop);
   popScope();
+  isInLoop = false;
   loopContext.pop_back();
 }
 

@@ -159,9 +159,7 @@ void IRGenerator::generateLetStatement(Node *node) {
   // Update symbol metadata with storage and type
   sym->llvmValue = storage;
   sym->llvmType = (isComponent && structTy) ? structTy : getLLVMType(sym->type);
-  if (!sym->needsPostLoopFree) {
-    emitCleanup(letStmt, sym);
-  }
+  emitCleanup(letStmt, sym);
 }
 
 //__________________________ARRAY STATEMENT GENERATION_______________________
@@ -293,10 +291,7 @@ void IRGenerator::generateArrayStatement(Node *node) {
   }
 
   sym->llvmValue = variableStorage;
-
-  if (!sym->needsPostLoopFree) {
-    emitCleanup(arrStmt, sym);
-  }
+  emitCleanup(arrStmt, sym);
 }
 
 //_________________POINTER STATEMENT____________________
@@ -381,9 +376,7 @@ void IRGenerator::generatePointerStatement(Node *node) {
   ptrSym->llvmType = ptrType;
 
   // Last use clean up for the pointer statement
-  if (!ptrSym->needsPostLoopFree) {
-    emitCleanup(ptrStmt, ptrSym);
-  }
+  emitCleanup(ptrStmt, ptrSym);
 }
 
 // Reference statement IR generator

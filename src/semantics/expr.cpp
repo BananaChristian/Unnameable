@@ -115,6 +115,7 @@ void Semantics::walkPrefixExpression(Node *node) {
   info->isNullable = false;
   info->isConstant = false;
   info->isInitialized = false;
+  
 
   metaData[prefixExpr] = info;
 }
@@ -479,20 +480,6 @@ void Semantics::walkIdentifierExpression(Node *node) {
     logSemanticErrors(" Use of undeclared identifer '" + identName + "'",
                       identExpr);
     return;
-  }
-
-  if (symbolInfo->isHeap) {
-    // Elder and resident check for loop logic
-    bool inLoop = !loopContext.empty() && loopContext.back();
-    if (inLoop && !symbolInfo->bornInLoop) {
-      // ELDERS
-      symbolInfo->needsPostLoopFree = true;
-      loopDeathRow.insert(symbolInfo.get());
-    } else if (inLoop && symbolInfo->bornInLoop) {
-      // RESIDENTS
-      // Track them so we can ensure they die before the loop repeats
-      loopResidentDeathRow.insert(symbolInfo.get());
-    }
   }
 
   if (symbolInfo->isHeap) {

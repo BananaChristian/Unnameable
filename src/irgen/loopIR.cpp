@@ -26,6 +26,7 @@ void IRGenerator::generateWhileStatement(Node *node) {
   // --- Initial jump to condition ---
   funcBuilder.CreateBr(condBB);
 
+  inhibitCleanUp = true;
   // ---  Condition block ---
   funcBuilder.SetInsertPoint(condBB);
   llvm::Value *condVal = generateExpression(whileStmt->condition.get());
@@ -47,34 +48,16 @@ void IRGenerator::generateWhileStatement(Node *node) {
 
   generateStatement(whileStmt->loop.get());
 
+  funcBuilder.CreateBr(condBB);
+
   // Pop after body generation
   jumpStack.pop_back();
-
-  // Resident sweep for locals at end of lap
-  if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-    emitResidentSweep();
-    semantics.loopResidentDeathRow.clear();
-
-    funcBuilder.CreateBr(condBB);
-  }
 
   // ---End block ---
   funcBuilder.SetInsertPoint(endBB);
 
-  // Cleanup loop-only variables
-  for (auto *sym : semantics.loopDeathRow) {
-    if (sym->needsPostLoopFree) {
-      if (sym->isHeap) {
-        auto it = semantics.allocatorMap.find(sym->allocType);
-        if (it != semantics.allocatorMap.end()) {
-          llvm::Function *freeFunc = module->getFunction(it->second.freeName);
-          if (freeFunc)
-            funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
-        }
-      }
-      sym->needsPostLoopFree = false;
-    }
-  }
+  inhibitCleanUp = false;
+  freeForeigners(whileStmt);
 }
 
 // IR code gen for a for loop
@@ -131,8 +114,6 @@ void IRGenerator::generateForStatement(Node *node) {
 
   // If body didn't already terminate, clean and jump to step
   if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-    emitResidentSweep();
-    semantics.loopResidentDeathRow.clear();
     funcBuilder.CreateBr(stepBB);
   }
 
@@ -149,21 +130,6 @@ void IRGenerator::generateForStatement(Node *node) {
   funcBuilder.SetInsertPoint(endBB);
 
   // Post-loop cleanup
-  for (auto *sym : semantics.loopDeathRow) {
-    if (!sym->needsPostLoopFree)
-      continue;
-
-    if (sym->isHeap) {
-      auto it = semantics.allocatorMap.find(sym->allocType);
-      if (it != semantics.allocatorMap.end()) {
-        llvm::Function *freeFunc = module->getFunction(it->second.freeName);
-        if (freeFunc)
-          funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
-      }
-    }
-
-    sym->needsPostLoopFree = false;
-  }
 }
 
 void IRGenerator::generateBreakStatement(Node *node) {
@@ -187,26 +153,4 @@ void IRGenerator::generateContinueStatement(Node *node) {
   }
   reportDevBug("Continue used outside a loop", node->token.line,
                node->token.column);
-}
-
-void IRGenerator::emitResidentSweep() {
-  if (semantics.loopResidentDeathRow.empty()) {
-    return;
-  }
-  logInternal("Emitting resident memory sweep");
-
-  for (auto *sym : semantics.loopResidentDeathRow) {
-    if (sym->isHeap) {
-      const std::string &allocatorTypeName = sym->allocType;
-      auto it = semantics.allocatorMap.find(allocatorTypeName);
-      if (it != semantics.allocatorMap.end()) {
-        auto handle = it->second;
-        llvm::Function *freeFunc = module->getFunction(handle.freeName);
-        if (freeFunc) {
-          // Force free the local resident (dheap)
-          funcBuilder.CreateCall(freeFunc, {sym->llvmValue});
-        }
-      }
-    }
-  }
 }

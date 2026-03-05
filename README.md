@@ -62,68 +62,15 @@ In unnameable
 ```
 
 ## Variables and type inference
+![Unnameable variables syntax](assets/unn_vars.png)
 
-```unn
-i32 a
-u32 x=8u32
-a = 2
-
-i16 y=8i16
-u16 m=8u16
-
-string name = "Iron"
-
-f32 pi = 3.14
-
-f64 pi=3.14f64
-
-auto y = 42  # Type inferred as int
-
-char8 test='A'
-
-char16 test=u'A'
-
-usize x= 10uz
-isize y=18iz
-
-
-```
-
-## Global scope and visibility rules
-Unnameable is very strict about what can be in global scope for cases like a normal variable the compiler will force you to make it a constant otherwise it shall not be allowed in the global scope.
-By default variables in the global scope are private to prevent name collisions and issues like that to make a global variable public u must use the `export` keyword this will make that variable global and as the flag implies mark it for export by the export system 
-But note that it must strictly be in the global scope and also must be a constant otherwise u will be blocked from marking it for export
-```
-const bool PRIVATE_VAL = true #This value is private by default so its local to that file only
-export const i32 PUBLIC_VAL = 200 #This value is public 
-```
 
 ## Functions
 
 Functions in unnameable are written using the func keyword,the function name and the optional parameters and the return type
-
-```unn
-func greet(string name): string {
-    return name
-}
-
-```
-
 The return type must correspond to what is being returned
 Functions can also return pointers for the concrete types but void pointers arent allowed
-
-```unn
-i32 x=100
-func test():ptr i32{
-    ptr i32 y -> addr x
-    return y
-}
-
-func main(): i32{
-    test()
-    return 0
-}
-```
+![Unnameable functions syntax](assets/unn_funcs.png)
 
 ## Seals
 
@@ -131,39 +78,7 @@ Unnameable is extremely strict on naming as it doesnt allow overloading. Seals e
 Seals create isolated scopes for functions. You cannot directly access a sealed function you must access it through its seal.
 At code generation the sealed function will get name mangled so for example add in a seal called Ops will become Ops_add.
 If a seal is exportable then every function in that seal is exportable but you can make individual functions in a seal exportable and others private to a current compilation unit.
-
-```
-seal Test{
-    #add isn't seen globally and cannot be accessed globally
-    func add(i32 x,i32 y):i32{
-        return x+y
-    }
-}
-
-export seal Food{
-    #eat will become exportable
-    func eat:string{
-        return "Eat"
-    }
-}
-
-seal AnotherTest{
-    #test is a private function
-    func test:i32{
-        return 1
-    }
-
-    #otherTest is an exportable function
-    export func otherTest:i32{
-        return 1
-    }
-}
-
-func main:i32{
-    Test.add(10,10) #To the compiler this is Test_add
-    return 0
-}
-```
+![Unnameable seals syntax](assets/unn_seals.png)
 
 ## Generic and multigenerics
 
@@ -175,80 +90,7 @@ This means when the compiler generates the generic functions after the user inst
 Note: The only top level statements allowed are function statements which means you can define or declare functions inside the generic blocks but other stuff is prohibited
 
 This system also supports multigenerics as shown below
-
-```
-generic MathOps(T){
-    func add(T a, T b): T{
-        return a+b
-    };
-
-    func subtract(T a, T b):T{
-        return a-b
-    }
-}
-
-instantiate MathOps(i32) as IntOps
-
-##
-Here the user is explicity telling the compiler the types he wants the compiler to generate
-Hence the functions generated will look something like this
-
-func IntOps_add(i32 a,i32 b): i32{
-    return a+b
-}
-
-func IntOps_subtract(i32 a,i32 b): i32{
-    return a-b
-}
-##
-
-instantiate MathOps(f32) as FloatOps
-
-##Same story here the generated functions will be
-
-func FloatOps_add(f32 a, f32 b): f32{
-    return a+b
-}
-
-func FloatOps_subtract(f32 a, f32 b): float{
-    return a-b
-}
-##
-
-#Multigeneric example
-
-generic MathMultiOps(T,M){
-    func add(T a,M b): M{
-        return a+b
-    };
-
-    func subtract(T a,M b): M{
-        return a-b
-    }
-}
-
-instantiate MathMultiOps(i32, f32) as MultiOps
-
-##Here the function generated will be
-func MultiOps_add(i32 a,f32 b): f32{
-    return a+b
-}
-
-func MultiOps_subtract(i32 a ,f32 b): f32{
-    return a-b
-}
-##
-
-func main: i32{
-    i32 first_result=IntOps_add(10,18)
-    f32 second_result=MultiOps_add(14,9.0)
-
-
-    return 0
-}`
-```
-
-## Arrays
+![Unnameable generics syntax](assets/unn_generics.png)
 
 ## Arrays in Unnameable
 
@@ -260,18 +102,7 @@ The number of square brackets following the type defines the **dimensionality** 
 
 1. **Explicit Length:** Provide the size within the brackets.
 2. **Inferred Length:** Leave the brackets empty and provide an initializer; the compiler will automatically count the elements for you.
-
-```unn
-# Explicit 2D array: 2 rows, 3 columns
-arr[i32] [2][3] matrix
-
-# Inferred 2D array: The compiler sees 2 rows of 3
-arr[i32] matrix = [
-    [10, 20, 30],
-    [40, 50, 60]
-]
-
-```
+![Unnameable arrays explicit vs implicit](assets/unn_arr.png)
 
 ### Type Resolution & Dimension Matching
 
@@ -283,20 +114,7 @@ Dimensions are strictly enforced. The number of nested levels in your literal mu
 ### Nullable Arrays and Unwrapping
 
 Arrays can be declared as **nullable** by adding a `?` to the type. This is useful for arrays that might not be initialized immediately. However, before you can use or copy a nullable array into a standard array, you must use the `unwrap` keyword.
-
-```unn
-func main: i32 {
-    # A nullable 2D array
-    arr[i32]? [2][2] x = null
-    
-    # To use it, you must unwrap it
-    # If x is still null, the program will safely crash (panic)
-    arr[i32] y = unwrap x 
-    
-    return 0
-}
-
-```
+![Unnameable Nullable array syntax ](assets/unn_nullarr.png)
 
 **Safety Warning:** Unwrapping a `null` value will cause an immediate "Illegal Instruction" (core dump). This prevents your program from running with "garbage" data or causing silent corruption.
 Indexing for now can bound check on single dimensional if you index more than the size your compiled program will generate an illegal instruction
@@ -307,29 +125,7 @@ Indexing for now can bound check on single dimensional if you index more than th
 By default, arrays are **immutable**.
 
 * **To reassign the whole array:** You must use the `mut` keyword.
-
-```unn
-func main: i32 {
-    # Declare a mutable 2D array
-    mut arr[i32] [2][3] matrix = [
-        [10, 20, 30],
-        [40, 50, 60]
-    ]
-
-    # Reassign a single element
-    matrix[1][2] = 99
-
-    # Reassign the entire array structure
-    matrix = [
-        [1, 1, 1],
-        [2, 2, 2]
-    ]
-
-    trace matrix[1][2] # Prints 2
-    return 0
-}
-
-```
+![Unnameable array mutability](assets/unn_mutarr.png)
 
 ## Null Safety & Error Handling
 By default, all variables, parameters, and function return types are **non-nullable**. The compiler treats a null value as a completely different "shape" than a standard value, preventing accidental usage through strict semantic checks and an explicit IR-level boxing system.
@@ -337,16 +133,7 @@ By default, all variables, parameters, and function return types are **non-nulla
 ### The Optional Type (`?`)
 
 To allow a variable to hold a null value, you must explicitly mark it with the `?` suffix. This tells the compiler to wrap the data in an **Optional Box**.
-
-```unn
-string? name = null
-i32? x = 8
-
-func greet(string? name): string? {
-    return name
-}
-
-```
+![Unnameable nullable function](assets/unn_nullfunc.png)
 
 ### Strict Usage Rules
 

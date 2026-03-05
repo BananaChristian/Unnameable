@@ -2154,6 +2154,10 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
   auto lifetime = std::make_unique<LifeTime>();
   lifetime->ID = generateLifetimeID(declarationNode);
   lifetime->isResponsible = true;
+  lifetime->isAlive = true;
+  // If it has been created in the loop then it is native to the loop
+  if (isInLoop)
+    lifetime->isNativeToLoop = true;
 
   if (declSym->targetSymbol && targetBaton)
     transferResponsibility(lifetime.get(), targetBaton, declSym->targetSymbol);

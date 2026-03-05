@@ -36,6 +36,8 @@ CMakeCache.txt
 *.swp
 *~
 
+assets/
+
 # Logs
 *.log
 
