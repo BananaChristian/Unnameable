@@ -33,6 +33,268 @@ void Auditor::registerAuditorFunctions() {
   auditFnsMap[typeid(WhileStatement)] = &Auditor::auditWhileStatement;
 }
 
+void Auditor::NativeAndForeignerClassifierPass(Node *node) {
+  if (!node)
+    return;
+
+  logInternal("[CLASSIFIER-RECURSION] Visiting node type: " + node->toString());
+
+  if (auto blockStmt = dynamic_cast<BlockStatement *>(node)) {
+    logInternal("[CLASSIFIER-RECURSION] Hitting BlockStatement, entering "
+                "classifyBlock");
+    classifyBlock(blockStmt);
+  } else if (auto blockExpr = dynamic_cast<BlockExpression *>(node)) {
+    logInternal("[CLASSIFIER-RECURSION] Hitting BlockExpression, entering "
+                "classifyBlock");
+    classifyBlock(blockExpr);
+  }
+
+  if (auto func = dynamic_cast<FunctionStatement *>(node)) {
+    logInternal("[CLASSIFIER-RECURSION] Drilling into FunctionStatement -> "
+                "FunctionExpression");
+    NativeAndForeignerClassifierPass(func->funcExpr.get());
+  } else if (auto funcExpr = dynamic_cast<FunctionExpression *>(node)) {
+    logInternal("[CLASSIFIER-RECURSION] Drilling into FunctionExpression -> "
+                "Body Block");
+    NativeAndForeignerClassifierPass(funcExpr->block.get());
+  } else if (auto whileStmt = dynamic_cast<WhileStatement *>(node)) {
+    logInternal(
+        "[CLASSIFIER-RECURSION] Drilling into WhileStatement -> Loop Body");
+    NativeAndForeignerClassifierPass(whileStmt->loop.get());
+  }
+}
+
+void Auditor::classifyBlock(Node *block) {
+  logInternal("[CLASSIFY BLOCK] Starting classification for block: " +
+              block->toString());
+
+  if (auto blockStmt = dynamic_cast<BlockStatement *>(block)) {
+    if (deferedFrees.find(blockStmt) == deferedFrees.end()) {
+      deferedFrees[blockStmt] = std::make_unique<BlockInfo>();
+    }
+    for (const auto &stmt : blockStmt->statements) {
+      Node *actualNode = stmt.get();
+      if (auto exprStmt = dynamic_cast<ExpressionStatement *>(actualNode)) {
+        actualNode = exprStmt->expression.get();
+      }
+      if (auto whileStmt = dynamic_cast<WhileStatement *>(actualNode)) {
+        logInternal("[CLASSIFY BLOCK] Detected nested while statement");
+        classifyBlock(whileStmt->loop.get());
+      }
+      auto sym = semantics.getSymbolFromMeta(actualNode);
+      if (!sym) {
+        logInternal("[CLASSIFY BLOCK] Skipping non-symbol statement: " +
+                    stmt->toString());
+        continue;
+      }
+
+      if (!sym->isHeap) {
+        logInternal("[CLASSIFY BLOCK] Skipping non-heap symbol: " + sym->ID);
+        continue;
+      }
+
+      bool bornHere = semantics.isBornInScope(blockStmt, sym->ID);
+      if (bornHere) {
+        logInternal("[CLASSIFY BLOCK] NATIVE FOUND: " + sym->ID +
+                    " born in this BlockStatement");
+        deferedFrees[blockStmt]->natives.push_back(sym->ID);
+      } else {
+        logInternal("[CLASSIFY BLOCK] POTENTIAL FOREIGNER: " + sym->ID +
+                    " - Calling identifyForeigners");
+        identifyForeigners(blockStmt);
+      }
+    }
+  } else if (auto blockExpr = dynamic_cast<BlockExpression *>(block)) {
+    if (deferedFrees.find(blockExpr) == deferedFrees.end()) {
+      deferedFrees[blockExpr] = std::make_unique<BlockInfo>();
+    }
+    for (const auto &stmt : blockExpr->statements) {
+      Node *actualNode = stmt.get();
+      if (auto exprStmt = dynamic_cast<ExpressionStatement *>(actualNode)) {
+        actualNode = exprStmt->expression.get();
+      }
+      if (auto whileStmt = dynamic_cast<WhileStatement *>(actualNode)) {
+        logInternal("[CLASSIFY BLOCK] Detected nested while statement");
+        classifyBlock(whileStmt->loop.get());
+      }
+      auto sym = semantics.getSymbolFromMeta(actualNode);
+      if (!sym) {
+        logInternal("[CLASSIFY BLOCK] Skipping non-symbol statement: " +
+                    stmt->toString());
+        continue;
+      }
+
+      if (!sym->isHeap) {
+        logInternal("[CLASSIFY BLOCK] Skipping non-heap symbol: " + sym->ID);
+        continue;
+      }
+
+      bool bornHere = semantics.isBornInScope(blockExpr, sym->ID);
+      if (bornHere) {
+        logInternal("[CLASSIFY BLOCK] NATIVE FOUND: " + sym->ID +
+                    " born in this BlockExpression");
+        deferedFrees[blockExpr]->natives.push_back(sym->ID);
+      } else {
+        logInternal("[CLASSIFY BLOCK] POTENTIAL FOREIGNER: " + sym->ID +
+                    " - Calling identifyForeigners");
+        identifyForeigners(blockExpr);
+      }
+    }
+  }
+}
+
+void Auditor::identifyForeigners(Node *block) {
+  logInternal("[FOREIGN CLASSIFIER] Investigating block for foreign IDs...");
+
+  if (auto blockStmt = dynamic_cast<BlockStatement *>(block)) {
+    if (deferedFrees.find(blockStmt) == deferedFrees.end()) {
+      deferedFrees[blockStmt] = std::make_unique<BlockInfo>();
+    }
+    for (const auto &stmt : blockStmt->statements) {
+      Node *target = stmt.get();
+
+      if (auto exprStmt = dynamic_cast<ExpressionStatement *>(target)) {
+        target = exprStmt->expression.get();
+      }
+
+      if (auto whileStmt = dynamic_cast<WhileStatement *>(target)) {
+        logInternal("[FOREIGN CLASSIFIER] Encountered while statement");
+        identifyForeigners(whileStmt->loop.get());
+      }
+      auto stmtSym = semantics.getSymbolFromMeta(target);
+      if (!stmtSym)
+        continue;
+
+      logInternal("[FOREIGN CLASSIFIER] Checking symbol: " + stmtSym->ID);
+
+      Node *holder = semantics.queryForLifeTimeBaton(stmtSym->ID);
+      if (!holder) {
+        logInternal("[FOREIGN CLASSIFIER] FAILED: No baton holder for " +
+                    stmtSym->ID);
+        continue;
+      }
+
+      auto &baton = semantics.responsibilityTable[holder];
+      if (!baton) {
+        logInternal("[FOREIGN CLASSIFIER] FAILED: No baton in "
+                    "responsibilityTable for ID: " +
+                    stmtSym->ID);
+        continue;
+      }
+
+      bool bornInThisScope = semantics.isBornInScope(blockStmt, stmtSym->ID);
+      bool diesInThisBlock = diesInBlock(stmtSym->ID, blockStmt);
+
+      logInternal("[FOREIGN CLASSIFIER] Evaluation for " + stmtSym->ID +
+                  " | BornHere: " + (bornInThisScope ? "YES" : "NO") +
+                  " | DiesInBlock: " + (diesInThisBlock ? "YES" : "NO"));
+
+      if (!bornInThisScope && diesInThisBlock) {
+        logInternal("[FOREIGN CLASSIFIER] SUCCESS: Adding " + stmtSym->ID +
+                    " to foreigners list");
+        deferedFrees[blockStmt]->foreigners.push_back(stmtSym->ID);
+      }
+    }
+  }
+}
+
+// This is a power function I will only call it in special cases where the baton
+// system cannot work or is compromised
+void Auditor::bunkerNatives(Node *block) {
+  auto &blockInfo = deferedFrees[block];
+  for (const auto &nativeID : blockInfo->natives) {
+    Node *holder = semantics.queryForLifeTimeBaton(nativeID);
+    if (!holder) {
+      logInternal("[NATIVE BUNKERING] Could not find the baton holder for "
+                  "lifetime ID:" +
+                  nativeID + " skipping...");
+      continue;
+    }
+
+    auto holderSym = semantics.getSymbolFromMeta(holder);
+    if (!holderSym) {
+      logInternal(
+          "[NATIVE BUNKERING] Failed to get the symbol info for holder " +
+          holder->toString() + " for lifetime ID: " + nativeID +
+          " skipping...");
+      continue;
+    }
+
+    auto &baton = semantics.responsibilityTable[holder];
+    if (!baton) {
+      logInternal("[NATIVE BUNKERING] Could not find the baton for "
+                  "lifetime ID:" +
+                  nativeID + " skipping...");
+      continue;
+    }
+
+    nativesToFree[block].push_back({std::move(baton), holderSym});
+    bunkeredIDs.insert(nativeID);
+  }
+}
+
+void Auditor::bunkerForeigners(Node *block) {
+  logInternal("[FOREIGNER BUNKERING] Starting action for block: " +
+              block->toString());
+
+  auto &blockInfo = deferedFrees[block];
+  if (!blockInfo) {
+    logInternal("[FOREIGNER BUNKERING] No BlockInfo (To-Do list) found for "
+                "this block address. Bailing.");
+    return;
+  }
+
+  logInternal("[FOREIGNER BUNKERING] Found " +
+              std::to_string(blockInfo->foreigners.size()) +
+              " foreigners to process.");
+
+  for (const auto &foreignerID : blockInfo->foreigners) {
+    logInternal("[FOREIGNER BUNKERING] Attempting to bunker: " + foreignerID);
+
+    Node *holder = semantics.queryForLifeTimeBaton(foreignerID);
+    if (!holder) {
+      logInternal("[FOREIGNER BUNKERING] FAILED: Could not find the baton "
+                  "holder for ID: " +
+                  foreignerID);
+      continue;
+    }
+
+    auto holderSym = semantics.getSymbolFromMeta(holder);
+    if (!holderSym) {
+      logInternal("[FOREIGNER BUNKERING] FAILED: No symbol info for holder " +
+                  holder->toString());
+      continue;
+    }
+
+    auto &baton = semantics.responsibilityTable[holder];
+    if (!baton) {
+      logInternal(
+          "[FOREIGNER BUNKERING] FAILED: No baton in responsibilityTable for " +
+          foreignerID);
+      continue;
+    }
+
+    // SUCCESS LOGS
+    logInternal("[FOREIGNER BUNKERING] SUCCESS: Moving baton for " +
+                foreignerID + " into bunker.");
+
+    foreignersToFree[block].push_back({std::move(baton), holderSym});
+    bunkeredIDs.insert(foreignerID);
+
+    logInternal("[FOREIGNER BUNKERING] ID " + foreignerID +
+                " is now officially bunkered.");
+  }
+}
+
+bool Auditor::isBlock(Node *node) {
+  if (dynamic_cast<WhileStatement *>(node))
+    return true;
+  if (dynamic_cast<ForStatement *>(node))
+    return true;
+
+  return false;
+}
+
 void Auditor::audit(Node *node) {
   auto auditIt = auditFnsMap.find(typeid(*node));
   if (auditIt == auditFnsMap.end()) {
@@ -212,11 +474,19 @@ void Auditor::auditWhileStatement(Node *node) {
   if (!whileStmt)
     return;
 
-  isInLoop = true;
-  activeLoopNode = whileStmt;
+  // Force a bunker on any foreigner in the while loop
+  logInternal("[DEBUG] Attempting to bunker block at address: " +
+              std::to_string((uintptr_t)whileStmt->loop.get()));
+
+  auto it = deferedFrees.find(whileStmt->loop.get());
+  if (it != deferedFrees.end() && it->second) {
+    if (!it->second->foreigners.empty()) {
+      logInternal("Triggered actual foreigner bunkering");
+      bunkerForeigners(whileStmt->loop.get());
+    }
+  }
+
   audit(whileStmt->loop.get());
-  isInLoop = false;
-  activeLoopNode = nullptr;
 }
 
 void Auditor::auditElifStatement(Node *node) {
@@ -327,6 +597,15 @@ void Auditor::auditBlockStatement(Node *node) {
     return;
 
   for (const auto &stmt : blockStmt->statements) {
+    auto breakStmt = dynamic_cast<BreakStatement *>(stmt.get());
+    auto continueStmt = dynamic_cast<ContinueStatement *>(stmt.get());
+    if (containsNode(blockStmt, breakStmt) ||
+        containsNode(blockStmt, continueStmt)) {
+      logInternal(
+          "Block contains break or continue must execute natives population");
+      bunkerNatives(blockStmt);
+    }
+
     audit(stmt.get());
   }
 }
@@ -590,9 +869,9 @@ void Auditor::materializeDeputy(const std::string &id,
                   " inside branch: " + branchRoot->toString());
       semantics.responsibilityTable[snap.terminalNode] = std::move(deputy);
     } else {
-      logInternal(
-          "[MATERIALIZE] No potential holder found in branch. Using Bag for " +
-          branchRoot->toString());
+      logInternal("[MATERIALIZE] No potential holder found in branch. Using "
+                  "Bag for " +
+                  branchRoot->toString());
       leakedDeputiesBag[branchRoot].push_back(std::move(deputy));
     }
   } else {
@@ -616,8 +895,7 @@ bool Auditor::containsNode(Node *root, Node *target) {
         return true;
     }
 
-  } // Update this section in Auditor::containsNode
-  else if (auto ifStmt = dynamic_cast<ifStatement *>(root)) {
+  } else if (auto ifStmt = dynamic_cast<ifStatement *>(root)) {
     if (containsNode(ifStmt->condition.get(), target))
       return true;
     if (containsNode(ifStmt->if_result.get(), target))
@@ -637,11 +915,30 @@ bool Auditor::containsNode(Node *root, Node *target) {
       return true;
   }
 
+  else if (auto whileStmt = dynamic_cast<WhileStatement *>(root)) {
+    if (containsNode(whileStmt->loop.get(), target))
+      return true;
+  }
+
+  else if (auto exprStmt = dynamic_cast<ExpressionStatement *>(root)) {
+    if (containsNode(exprStmt->expression.get(), target))
+      return true;
+  }
+
   return false;
+}
+
+bool Auditor::isBunkered(const std::string &id) {
+  return bunkeredIDs.find(id) != bunkeredIDs.end();
 }
 
 void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
   logInternal("\n  [SIMULATE-FREE] Target: " + contextID);
+  if (isBunkered(contextID)) {
+    logInternal("    [SIMULATE FREE] " + contextID +
+                " is bunkered. Skipping freeing simulation.");
+    return;
+  }
 
   Node *holderNode = semantics.queryForLifeTimeBaton(contextID);
   if (!holderNode) {
@@ -667,18 +964,6 @@ void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
 
   if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
     if (baton->isResponsible && baton->isAlive) {
-      if (isInLoop) {
-        if (!baton->isNativeToLoop) {
-          logInternal("    [LOOP-DEFER] Foreigner " + contextID +
-                      " reached last use. Deferring to loop end.");
-          baton->isAlive = false;
-          logInternal("TAGGED LOOP KEY: " +
-                      std::to_string((uintptr_t)activeLoopNode));
-          foreignersToFree[activeLoopNode].push_back(
-              {std::move(baton), contextSym});
-          return;
-        }
-      }
       logInternal("    [DEATH] Condition met. Killing family: " + contextID);
       baton->isAlive = false;
 
@@ -785,6 +1070,53 @@ void Auditor::transferDependent(const std::string &dependentID,
       }
     }
   }
+}
+
+bool Auditor::diesInBlock(const std::string &ID, Node *block) {
+  logInternal("[DIES-IN-BLOCK] Checking if ID: " + ID +
+              " dies in block: " + block->toString());
+
+  Node *holder = semantics.queryForLifeTimeBaton(ID);
+  if (!holder) {
+    logInternal("[DIES-IN-BLOCK] FAILED: No holder found for " + ID);
+    return false;
+  }
+
+  bool contains = containsNode(block, holder);
+  logInternal("[DIES-IN-BLOCK] Holder for " + ID + " is " + holder->toString());
+  logInternal("[DIES-IN-BLOCK] Does block contain holder? " +
+              std::string(contains ? "YES" : "NO"));
+
+  if (contains) {
+    auto &baton = semantics.responsibilityTable[holder];
+    if (!baton) {
+      logInternal("[DIES-IN-BLOCK] FAILED: No baton for holder");
+      return false;
+    }
+
+    auto holderSym = semantics.getSymbolFromMeta(holder);
+    if (!holderSym) {
+      logInternal("[DIES-IN-BLOCK] FAILED: No symbol info for holder");
+      return false;
+    }
+
+    logInternal(
+        "[DIES-IN-BLOCK] PtrCount: " + std::to_string(holderSym->pointerCount) +
+        " | RefCount: " + std::to_string(holderSym->refCount) +
+        " | Responsible: " + (baton->isResponsible ? "T" : "F"));
+
+    if (holderSym->pointerCount == 0 && holderSym->refCount == 0) {
+      if (baton->isResponsible) {
+        logInternal("[DIES-IN-BLOCK] SUCCESS: ID " + ID + " dies here.");
+        return true;
+      }
+    }
+  } else {
+    logInternal("[DIES-IN-BLOCK] Bailing because holder is outside this block. "
+                "(This is why foreigners fail!)");
+  }
+
+  return false;
 }
 
 void Auditor::logInternal(const std::string &message) {

@@ -278,6 +278,8 @@ public:
   std::unordered_map<std::string, AllocatorHandle> allocatorMap;
   std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
 
+  std::unordered_map<Node *, std::vector<std::string>> bornInBlock;
+
   // Public helpers
   std::shared_ptr<SymbolInfo> resolveSymbolInfo(const std::string &name);
   std::shared_ptr<SymbolInfo> lookUpInCurrentScope(const std::string &name);
@@ -292,6 +294,8 @@ public:
   std::string extractIdentifierName(Node *node);
   std::string extractDeclarationName(Node *node);
   ResolvedType peelRef(ResolvedType t);
+  bool isBornInScope(Node *root, const std::string &ID);
+  bool isTerminator(Node *node);
 
   bool isInteger(const ResolvedType &t);
   bool isFloat(const ResolvedType &t);
@@ -303,6 +307,7 @@ public:
   void transferResponsibility(LifeTime *currentBaton, LifeTime *targetBaton,
                               const std::shared_ptr<SymbolInfo> &tagetSym);
   Node *queryForLifeTimeBaton(const std::string &familyID);
+  const std::unique_ptr<LifeTime> &readBatonInfo(const std::string &batonID);
   ResolvedType getArrayElementType(ResolvedType &arrayType);
   bool isIntegerConstant(Node *node);
   std::vector<uint64_t> getSizePerDimesion(Node *node);
@@ -318,6 +323,8 @@ private:
 
   bool hasFailed = false;
   bool verbose = false;
+  std::vector<Node *> activeBlocks;
+  Node *activeBlock = nullptr;
 
   uint64_t letDeclCount = 0;
   uint64_t ptrDeclCount = 0;
@@ -497,6 +504,9 @@ private:
   bool isLiteral(Node *node);
   bool isConstLiteral(Node *node);
   void popScope();
+  Node *getCurrentBlock();
+  std::string getTerminatorString(Node *node);
+
   std::string generateLifetimeID(Node *declarationNode);
   std::unique_ptr<LifeTime>
   createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,

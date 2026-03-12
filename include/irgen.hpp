@@ -18,6 +18,7 @@
 struct JumpTarget {
   llvm::BasicBlock *breakTarget;
   llvm::BasicBlock *continueTarget;
+  Node *target;
 };
 
 class IRGenerator {
@@ -252,7 +253,9 @@ private:
   void emitCleanup(Node *contextNode,
                    const std::shared_ptr<SymbolInfo> &contextSymbol);
   void emptyLeakedDeputiesBag(Node *branchRoot);
-  void freeForeigners(Node *parentLoop);
+  void freeForeigners(Node *block);
+  void freeNatives(Node *block);
+  void emitBlockCleanUp(Node *block);
   void emitInfixClean(InfixExpression *infix,
                       const std::shared_ptr<SymbolInfo> &leftSym,
                       const std::shared_ptr<SymbolInfo> &rightSym);

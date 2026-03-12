@@ -1,6 +1,5 @@
 #include "ast.hpp"
 #include "semantics.hpp"
-#include <algorithm>
 #include <memory>
 
 void Semantics::walkBlockStatement(Node *node) {
@@ -9,82 +8,33 @@ void Semantics::walkBlockStatement(Node *node) {
     return;
 
   auto &stmts = blockStmt->statements;
-  // keep track of all heap-raised vars declared in this block
-  std::vector<std::string> localHeapVars;
+  activeBlocks.push_back(blockStmt);
+
+  bool gateClosed = false;
+  std::string terminatorString;
 
   for (const auto &stmt : stmts) {
-    std::string name;
-    if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
-      if (letStmt->isHeap) {
-        // remember this var as heap declared locally
-        localHeapVars.push_back(letStmt->ident_token.TokenLiteral);
-      }
-    }
-
-    if (auto assignStmt = dynamic_cast<AssignmentStatement *>(stmt.get())) {
-      logInternal("Triggered self heap check");
-      name = extractIdentifierName(assignStmt->identifier.get());
-      // Incase it is a self expression just call the walker for now
-      if (dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
-      } else if (dynamic_cast<DereferenceExpression *>(
-                     assignStmt->identifier.get())) {
-      } else {
-
-        auto assignSym = resolveSymbolInfo(name);
-        if (!assignSym) {
-          logSemanticErrors("Undeclared variable '" + name + "'",
-                            assignStmt->identifier.get());
-          return;
-        }
-        // only error if it's heap and not declared in this block
-        if (assignSym->isHeap &&
-            std::find(localHeapVars.begin(), localHeapVars.end(), name) ==
-                localHeapVars.end()) {
-          logSemanticErrors(
-              "Cannot use a variable '" + name +
-                  "' that you heap raised externally inside a loop or branch",
-              assignStmt->identifier.get());
-          return;
-        }
-      }
-    }
-
-    if (auto exprStmt = dynamic_cast<ExpressionStatement *>(stmt.get())) {
-      if (auto infix =
-              dynamic_cast<InfixExpression *>(exprStmt->expression.get())) {
-        auto checkIdent = [&](Identifier *ident) {
-          std::string n = ident->identifier.TokenLiteral;
-          auto sym = resolveSymbolInfo(n);
-          if (!sym) {
-            logSemanticErrors("Use of undeclared variable '" + n + "'", ident);
-            return false;
-          }
-          if (sym->isHeap &&
-              std::find(localHeapVars.begin(), localHeapVars.end(), n) ==
-                  localHeapVars.end()) {
-            logSemanticErrors(
-                "Cannot use a variable '" + n +
-                    "' that you heap raised externally inside a loop",
-                ident);
-            return false;
-          }
-          return true;
-        };
-
-        if (auto leftIdent =
-                dynamic_cast<Identifier *>(infix->left_operand.get()))
-          if (!checkIdent(leftIdent))
-            return;
-
-        if (auto rightIdent =
-                dynamic_cast<Identifier *>(infix->right_operand.get()))
-          if (!checkIdent(rightIdent))
-            return;
-      }
+    // Check for unreachable code
+    if (gateClosed) {
+      errorHandler.addHint(
+          "A terminator (like return, break, or continue) "
+          "is like a one-way exit. Once the computer takes that exit, it "
+          "cannot turn around to see the code that follows. This code is "
+          "considered 'dead' because no path of execution can ever reach it.");
+      logSemanticErrors("Unreachable code detected after '" + terminatorString +
+                            "'.",
+                        stmt.get());
+      break;
     }
 
     walker(stmt.get());
+
+    if (isTerminator(stmt.get())) {
+      gateClosed = true;
+      terminatorString = getTerminatorString(stmt.get());
+    }
   }
+  activeBlocks.pop_back();
 }
 
 void Semantics::walkWhileStatement(Node *node) {

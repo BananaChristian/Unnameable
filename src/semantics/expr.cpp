@@ -115,7 +115,6 @@ void Semantics::walkPrefixExpression(Node *node) {
   info->isNullable = false;
   info->isConstant = false;
   info->isInitialized = false;
-  
 
   metaData[prefixExpr] = info;
 }
@@ -239,14 +238,12 @@ void Semantics::walkBasicType(Node *node) {
   auto basicType = dynamic_cast<BasicType *>(node);
   if (!basicType)
     return;
-  ;
 }
 
 void Semantics::walkArrayType(Node *node) {
   auto arrayType = dynamic_cast<ArrayType *>(node);
   if (!arrayType)
     return;
-  ;
 }
 
 void Semantics::walkCastExpression(Node *node) {

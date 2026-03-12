@@ -8,6 +8,7 @@ void Semantics::walkBlockExpression(Node *node) {
   if (!blockExpr)
     return;
   // Analysing the statements inside the block expression
+  activeBlocks.push_back(blockExpr);
   auto &stmts = blockExpr->statements;
   for (const auto &stmt : stmts) {
     walker(stmt.get());
@@ -36,6 +37,7 @@ void Semantics::walkBlockExpression(Node *node) {
       }
     }
   }
+  activeBlocks.pop_back();
 }
 
 void Semantics::walkReturnStatement(Node *node) {
@@ -590,6 +592,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   }
   logInternal("Processing block for function '" + funcName + "'");
 
+  activeBlocks.push_back(block);
   for (const auto &stmt : block->statements) {
     std::optional<std::shared_ptr<SymbolInfo>> tempFunction =
         currentFunction; // save before statement
@@ -613,6 +616,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   funcInfo->hasError = hasError;
 
   // If there was an outer function context, restore it
+  activeBlocks.pop_back();
   insideFunction = false;
   currentFunction = std::nullopt;
   logInternal("Analysis for function '" + funcName + "'");

@@ -2162,6 +2162,18 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
   if (declSym->targetSymbol && targetBaton)
     transferResponsibility(lifetime.get(), targetBaton, declSym->targetSymbol);
 
+  Node *currentBlock = getCurrentBlock();
+  if (currentBlock) {
+    bornInBlock[currentBlock].push_back(lifetime->ID);
+  } else {
+    errorHandler.addHint(
+        "It seems you have declared a heap variable in an invalid scope the "
+        "compiler cannot carry out bunkering because it has failed to figure "
+        "out the exact block this declaration was made under");
+    logSemanticErrors("Failed to register declaration inside block",
+                      declarationNode);
+  }
+
   logInternal("Created baton: " + lifetime->ID +
               " for Node: " + declarationNode->toString());
   return lifetime;
@@ -2209,6 +2221,18 @@ void Semantics::transferResponsibility(
               (targetBaton->isResponsible ? "TRUE" : "FALSE") + " ---");
 }
 
+const std::unique_ptr<LifeTime> &
+Semantics::readBatonInfo(const std::string &batonID) {
+  for (const auto &[node, baton] : responsibilityTable) {
+    if (baton && baton->ID == batonID) {
+      return baton;
+    }
+  }
+
+  static const std::unique_ptr<LifeTime> nullBaton = nullptr;
+  return nullBaton;
+}
+
 Node *Semantics::queryForLifeTimeBaton(const std::string &familyID) {
   for (const auto &[node, baton] : responsibilityTable) {
     // If the node has the briefcase
@@ -2223,6 +2247,26 @@ Node *Semantics::queryForLifeTimeBaton(const std::string &familyID) {
     continue;
   }
   return nullptr;
+}
+
+Node *Semantics::getCurrentBlock() {
+  if (activeBlocks.empty())
+    return nullptr;
+
+  return activeBlocks.back();
+}
+
+bool Semantics::isBornInScope(Node *root, const std::string &ID) {
+  bool isBorn = false;
+  for (const std::string &id : bornInBlock[root]) {
+    if (id == ID) {
+      isBorn = true;
+    } else {
+      isBorn = false;
+    }
+  }
+
+  return isBorn;
 }
 
 void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
@@ -2250,6 +2294,29 @@ void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
       (*phonyTable)[receiver] = std::move((*phonyTable)[phonyHolder]);
     }
   }
+}
+
+bool Semantics::isTerminator(Node *stmt) {
+  if (dynamic_cast<ReturnStatement *>(stmt))
+    return true;
+  if (dynamic_cast<BreakStatement *>(stmt))
+    return true;
+  if (dynamic_cast<ContinueStatement *>(stmt))
+    return true;
+
+  return false;
+}
+
+std::string Semantics::getTerminatorString(Node *node) {
+  std::string terminatorStr;
+  if (dynamic_cast<ReturnStatement *>(node))
+    terminatorStr = "return";
+  if (dynamic_cast<BreakStatement *>(node))
+    terminatorStr = "break";
+  if (dynamic_cast<ContinueStatement *>(node))
+    terminatorStr = "continue";
+
+  return terminatorStr;
 }
 
 std::unordered_map<Node *, std::unique_ptr<LifeTime>> Semantics::cloneTable(
@@ -2427,7 +2494,6 @@ void Semantics::popScope() {
 std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {
   auto it = metaData.find(node);
   if (it == metaData.end()) {
-    reportDevBug("Could not find requested metadata", node);
     return nullptr;
   }
 

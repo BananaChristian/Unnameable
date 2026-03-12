@@ -26,7 +26,6 @@ void IRGenerator::generateWhileStatement(Node *node) {
   // --- Initial jump to condition ---
   funcBuilder.CreateBr(condBB);
 
-  inhibitCleanUp = true;
   // ---  Condition block ---
   funcBuilder.SetInsertPoint(condBB);
   llvm::Value *condVal = generateExpression(whileStmt->condition.get());
@@ -44,7 +43,7 @@ void IRGenerator::generateWhileStatement(Node *node) {
   funcBuilder.SetInsertPoint(bodyBB);
 
   // Push jump targets: break -> endBB, continue -> condBB
-  jumpStack.push_back({endBB, condBB});
+  jumpStack.push_back({endBB, condBB, whileStmt->loop.get()});
 
   generateStatement(whileStmt->loop.get());
 
@@ -55,9 +54,7 @@ void IRGenerator::generateWhileStatement(Node *node) {
 
   // ---End block ---
   funcBuilder.SetInsertPoint(endBB);
-
-  inhibitCleanUp = false;
-  freeForeigners(whileStmt);
+  emitBlockCleanUp(whileStmt->loop.get());
 }
 
 // IR code gen for a for loop
@@ -135,7 +132,19 @@ void IRGenerator::generateForStatement(Node *node) {
 void IRGenerator::generateBreakStatement(Node *node) {
   for (auto it = jumpStack.rbegin(); it != jumpStack.rend(); ++it) {
     if (it->breakTarget) {
+      if (it->target) {
+        logInternal("[BREAK-CLEANUP] Freeing foreigners before jumping out of "
+                    "loop: " +
+                    it->target->toString());
+
+        emitBlockCleanUp(it->target);
+      }
       funcBuilder.CreateBr(it->breakTarget);
+
+      auto *function = funcBuilder.GetInsertBlock()->getParent();
+      auto *deadBB =
+          llvm::BasicBlock::Create(context, "unreachable.break", function);
+      funcBuilder.SetInsertPoint(deadBB);
       return;
     }
   }
@@ -147,7 +156,19 @@ void IRGenerator::generateBreakStatement(Node *node) {
 void IRGenerator::generateContinueStatement(Node *node) {
   for (auto it = jumpStack.rbegin(); it != jumpStack.rend(); ++it) {
     if (it->continueTarget) {
+      if (it->target) {
+        logInternal("[CONTINUE-CLEANUP] Clearing iteration natives for: " +
+                    it->target->toString());
+
+        freeNatives(it->target);
+      }
       funcBuilder.CreateBr(it->continueTarget);
+
+      // Guard against unreachable code
+      auto *function = funcBuilder.GetInsertBlock()->getParent();
+      auto *deadBB =
+          llvm::BasicBlock::Create(context, "unreachable.continue", function);
+      funcBuilder.SetInsertPoint(deadBB);
       return;
     }
   }
