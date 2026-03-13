@@ -534,8 +534,6 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->isHeap = isHeap;
   letInfo->pointerCount = 0;
   letInfo->hasError = hasError;
-  if (isInLoop)
-    letInfo->inLoop = true;
 
   // Since this is a normal let statement it has no target baton as its target
   // is independent to it(The compiler uses a deep copy first style so these are

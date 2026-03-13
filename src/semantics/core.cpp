@@ -2155,9 +2155,6 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
   lifetime->ID = generateLifetimeID(declarationNode);
   lifetime->isResponsible = true;
   lifetime->isAlive = true;
-  // If it has been created in the loop then it is native to the loop
-  if (isInLoop)
-    lifetime->isNativeToLoop = true;
 
   if (declSym->targetSymbol && targetBaton)
     transferResponsibility(lifetime.get(), targetBaton, declSym->targetSymbol);
@@ -2279,21 +2276,6 @@ void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
   logInternal("Transfering baton of ID: " + familyID + " from node: " +
               holder->toString() + " to node: " + receiver->toString());
   responsibilityTable[receiver] = std::move(responsibilityTable[holder]);
-
-  // Move the phony baton too if it exists
-  if (phonyTable) {
-    Node *phonyHolder = nullptr;
-    for (auto const &[phonyNode, phonyBaton] : *phonyTable) {
-      if (phonyBaton && phonyBaton->ID == familyID) {
-        phonyHolder = phonyNode;
-        break;
-      }
-    }
-    if (phonyHolder) {
-      // Move the baton to the receiver's slot in the phony map.
-      (*phonyTable)[receiver] = std::move((*phonyTable)[phonyHolder]);
-    }
-  }
 }
 
 bool Semantics::isTerminator(Node *stmt) {
@@ -2317,149 +2299,6 @@ std::string Semantics::getTerminatorString(Node *node) {
     terminatorStr = "continue";
 
   return terminatorStr;
-}
-
-std::unordered_map<Node *, std::unique_ptr<LifeTime>> Semantics::cloneTable(
-    const std::unordered_map<Node *, std::unique_ptr<LifeTime>> &source) {
-
-  std::unordered_map<Node *, std::unique_ptr<LifeTime>> copy;
-  for (auto const &[node, baton] : source) {
-    if (baton) {
-      auto newBaton = std::make_unique<LifeTime>();
-      newBaton->ID = baton->ID;
-      newBaton->isResponsible = baton->isResponsible;
-      newBaton->isAlive = baton->isAlive;
-      newBaton->ownedBy = baton->ownedBy;
-      newBaton->dependents = baton->dependents;
-      copy[node] = std::move(newBaton);
-    }
-  }
-  return copy;
-}
-
-void Semantics::takeBranchSnapShot(Node *branch,
-                                   const LifeTimeTable &tableToScan) {
-  BranchSnapshot currentSnap;
-
-  // Capture the state of every baton currently in the table
-  for (auto const &[holderNode, baton] : tableToScan) {
-    if (!baton)
-      continue;
-
-    BatonStateSnapshot s;
-    s.id = baton->ID;
-    s.isResponsible = baton->isResponsible;
-    s.ownedBy = baton->ownedBy;
-    s.dependents = baton->dependents;
-
-    // We link this state to the 'holderNode'
-    // This is the node that currently "owns" the baton in this branch
-    s.terminalNode = holderNode;
-    if (s.terminalNode)
-      logInternal("[SNAPSHOT] Terminal node for branch: " + branch->toString() +
-                  " is: " + s.terminalNode->toString());
-    else
-      logInternal("[SNAPSHOT] No terminal node for branch: " +
-                  branch->toString());
-
-    auto sym = getSymbolFromMeta(holderNode);
-    if (sym) {
-      s.ptrCount = sym->pointerCount;
-      s.refCount = sym->refCount;
-    }
-
-    currentSnap.batonStates[s.id] = s;
-  }
-
-  // Save this "frame" to the registry
-  snapshotRegistry[branch].push_back(currentSnap);
-}
-
-void Semantics::saveAndRestorePhonyTable(Node *branch,
-                                         LifeTimeTable &snappedTable) {
-  if (!branch) {
-    logInternal("[HANDOVER_CRITICAL] ! Aborting: Branch node is NULL.");
-    return;
-  }
-
-  logInternal("[HANDOVER_CRITICAL] >>> Entering Branch Analysis: " +
-              branch->toString());
-
-  // Store the existing parent phony onto the stack
-  std::unique_ptr<LifeTimeTable> parentPhonyTable = std::move(phonyTable);
-  // Place the child phonyTable into the slot
-  phonyTable = std::make_unique<LifeTimeTable>(cloneTable(snappedTable));
-  logInternal("[HANDOVER_TRACE] PhonyTable cloned. Initial baton count: " +
-              std::to_string(phonyTable->size()));
-
-  symbolTable.push_back({});
-  walker(branch);
-  takeBranchSnapShot(branch, *phonyTable);
-  popScope();
-
-  // Update the parent to see what the child has done
-  if (parentPhonyTable) {
-    logInternal(
-        "[HANDOVER] Child branch analysis complete. Syncing back to parent...");
-    logInternal("[HANDOVER] Branch Root: " + branch->toString());
-
-    for (auto const &[childHolderNode, childBaton] : *phonyTable) {
-      if (!childBaton) {
-        logInternal("[HANDOVER_DEBUG] Skipping null baton in child table.");
-        continue;
-      }
-
-      logInternal("[HANDOVER_DEBUG] Child claims Baton(" + childBaton->ID +
-                  ") is currently held by Node: " +
-                  (childHolderNode ? childHolderNode->toString() : "NULL"));
-
-      // Find where the parent *thinks* this baton is
-      Node *parentOldHolder = nullptr;
-      for (auto const &[pNode, pBaton] : *parentPhonyTable) {
-        if (pBaton && pBaton->ID == childBaton->ID) {
-          parentOldHolder = pNode;
-          break;
-        }
-      }
-
-      if (!parentOldHolder) {
-        logInternal("[HANDOVER_WARN] Parent has no record of Baton(" +
-                    childBaton->ID + "). Was it created inside this branch?");
-        continue;
-      }
-
-      // If the child found a new terminal location, update the parent's view
-      if (parentOldHolder != childHolderNode) {
-        logInternal("  [SYNC_ATTEMPT] Baton(" + childBaton->ID +
-                    ") Migration:");
-        logInternal("    FROM (Parent's View): " + parentOldHolder->toString());
-        logInternal("    TO   (Child's View) : " +
-                    (childHolderNode ? childHolderNode->toString() : "NULL"));
-
-        if (childHolderNode == branch) {
-          logInternal("  [SYNC_FATAL_HINT] ! CONTRADICTION: Child is handing "
-                      "baton back to the BRANCH ROOT itself!");
-        }
-
-        // Move the baton in the parent's table to match the child's conclusion
-        (*parentPhonyTable)[childHolderNode] =
-            std::move((*parentPhonyTable)[parentOldHolder]);
-        parentPhonyTable->erase(parentOldHolder);
-        logInternal("  [SYNC_COMPLETE] Parent table updated for " +
-                    childBaton->ID);
-      } else {
-        logInternal("  [SYNC_SKIP] Baton(" + childBaton->ID +
-                    ") did not move in this branch.");
-      }
-    }
-  } else {
-    logInternal("[HANDOVER_CRITICAL] ! No parentPhonyTable found to update.");
-  }
-
-  // Restore the parent phony
-  phonyTable = std::move(parentPhonyTable);
-  logInternal("[HANDOVER_CRITICAL] <<< Exited Branch Analysis: " +
-              branch->toString());
 }
 
 void Semantics::popScope() {

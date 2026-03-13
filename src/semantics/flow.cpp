@@ -52,16 +52,14 @@ void Semantics::walkWhileStatement(Node *node) {
   walker(whileCondition);
 
   loopContext.push_back(true);
-  isInLoop = true;
   symbolTable.push_back({});
   auto whileLoop = whileStmt->loop.get();
   walker(whileLoop);
   popScope();
-  isInLoop = false;
   loopContext.pop_back();
 }
 
-void Semantics::walkElifStatement(Node *node, LifeTimeTable &baselineTable) {
+void Semantics::walkElifStatement(Node *node) {
   auto elifStmt = dynamic_cast<elifStatement *>(node);
   if (!elifStmt)
     return;
@@ -70,7 +68,7 @@ void Semantics::walkElifStatement(Node *node, LifeTimeTable &baselineTable) {
   walker(elifCondition);
   // Handling the elif results
   auto elifResults = elifStmt->elif_result.get();
-  saveAndRestorePhonyTable(elifResults, baselineTable);
+  walker(elifResults);
 }
 
 void Semantics::walkIfStatement(Node *node) {
@@ -82,24 +80,20 @@ void Semantics::walkIfStatement(Node *node) {
   ResolvedType ifStmtType = inferNodeDataType(ifStmtCondition);
 
   walker(ifStmtCondition);
-  auto baselineState = cloneTable(
-      responsibilityTable); // This gives us a copy of the responsibility table
-                            // before we branch anywhere
-
   // Dealing with the if result
-  saveAndRestorePhonyTable(ifStmt->if_result.get(), baselineState);
+  walker(ifStmt->if_result.get());
 
   // Dealing with the elif clauses
   auto &elifClauses = ifStmt->elifClauses;
   if (!elifClauses.empty()) {
     for (const auto &clause : elifClauses) {
-      walkElifStatement(clause.get(), baselineState);
+      walkElifStatement(clause.get());
     }
   }
 
   // Dealing with else statement result
   if (ifStmt->else_result.has_value()) {
-    saveAndRestorePhonyTable(ifStmt->else_result.value().get(), baselineState);
+    walker(ifStmt->else_result.value().get());
   }
 }
 

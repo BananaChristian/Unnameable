@@ -7,9 +7,7 @@ void IRGenerator::generateIfStatement(Node *node) {
   if (!ifStmt)
     return;
 
-  auto originalPathState = pathLedger;
-
-  // 1. Setup condition and Blocks
+  // Setup condition and Blocks
   llvm::Value *rawCond = generateExpression(ifStmt->condition.get());
   llvm::Value *condVal = coerceToBoolean(rawCond, ifStmt->condition.get());
   llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
@@ -19,33 +17,30 @@ void IRGenerator::generateIfStatement(Node *node) {
   llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(context, "ifmerge");
   llvm::BasicBlock *nextBB = nullptr;
 
+  // Track which blocks need cleanup in merge
+  std::vector<Node *> blocksNeedingCleanup;
+
+  // Determine the next block after then
   if (!ifStmt->elifClauses.empty()) {
     nextBB = llvm::BasicBlock::Create(context, "elif0");
   } else if (ifStmt->else_result.has_value()) {
     nextBB = llvm::BasicBlock::Create(context, "else");
   } else {
-    nextBB = llvm::BasicBlock::Create(context, "implicit.else", function);
+    nextBB = mergeBB;
   }
 
   funcBuilder.CreateCondBr(condVal, thenBB, nextBB);
 
-  // 2. GENERATE 'THEN' BRANCH
+  // generate'then' branch
   funcBuilder.SetInsertPoint(thenBB);
   generateStatement(ifStmt->if_result.get());
-
-  // Clean up both the internal block and the parent IF while still in this
-  // block
-  emptyLeakedDeputiesBag(ifStmt->if_result.get());
-  emptyLeakedDeputiesBag(ifStmt);
+  blocksNeedingCleanup.push_back(ifStmt->if_result.get());
 
   if (!funcBuilder.GetInsertBlock()->getTerminator()) {
     funcBuilder.CreateBr(mergeBB);
   }
 
-  // RESET LEDGER for next branch
-  pathLedger = originalPathState;
-
-  // 3. GENERATE 'ELIF' BRANCHES
+  // generate 'elif' branches
   for (size_t i = 0; i < ifStmt->elifClauses.size(); ++i) {
     function->insert(function->end(), nextBB);
     funcBuilder.SetInsertPoint(nextBB);
@@ -66,63 +61,42 @@ void IRGenerator::generateIfStatement(Node *node) {
     } else if (ifStmt->else_result.has_value()) {
       nextElifBB = llvm::BasicBlock::Create(context, "else");
     } else {
-      nextElifBB =
-          (nextBB->getName() == "implicit.else")
-              ? nextBB
-              : llvm::BasicBlock::Create(context, "implicit.else", function);
+      nextElifBB = mergeBB;
     }
 
     funcBuilder.CreateCondBr(elifCondVal, elifBodyBB, nextElifBB);
 
     funcBuilder.SetInsertPoint(elifBodyBB);
     generateStatement(elif->elif_result.get());
-
-    // Clean up elif block and parent IF while still in this block
-    emptyLeakedDeputiesBag(elif->elif_result.get());
-    emptyLeakedDeputiesBag(ifStmt);
+    blocksNeedingCleanup.push_back(elif->elif_result.get());
 
     if (!funcBuilder.GetInsertBlock()->getTerminator()) {
       funcBuilder.CreateBr(mergeBB);
     }
-
-    pathLedger = originalPathState;
     nextBB = nextElifBB;
   }
 
-  // 4. GENERATE 'ELSE' OR 'IMPLICIT ELSE'
+  // generate 'else' statement
   if (ifStmt->else_result.has_value()) {
     function->insert(function->end(), nextBB);
     funcBuilder.SetInsertPoint(nextBB);
 
     generateStatement(ifStmt->else_result.value().get());
-
-    // Clean up else block and parent IF
-    emptyLeakedDeputiesBag(ifStmt->else_result.value().get());
-    emptyLeakedDeputiesBag(ifStmt);
-
-    if (!funcBuilder.GetInsertBlock()->getTerminator()) {
-      funcBuilder.CreateBr(mergeBB);
-    }
-  } else {
-    // Implicit Else Path
-    if (nextBB->getParent() == nullptr) {
-      function->insert(function->end(), nextBB);
-    }
-    funcBuilder.SetInsertPoint(nextBB);
-
-    // Only clean up the IF (since there is no internal block)
-    emptyLeakedDeputiesBag(ifStmt);
+    blocksNeedingCleanup.push_back(ifStmt->else_result.value().get());
 
     if (!funcBuilder.GetInsertBlock()->getTerminator()) {
       funcBuilder.CreateBr(mergeBB);
     }
   }
 
-  // 5. FINALIZE MERGE
-  // Restore ledger state for code after the if-else block
-  pathLedger = originalPathState;
+  // finalise merge - NOW do all cleanup
   function->insert(function->end(), mergeBB);
   funcBuilder.SetInsertPoint(mergeBB);
+
+  // Emit all cleanups in the merge block (after all branches)
+  for (auto *block : blocksNeedingCleanup) {
+    emitBlockCleanUp(block);
+  }
 }
 
 //___________Switch statement________

@@ -7,10 +7,6 @@
 #include <unordered_map>
 #include <utility>
 
-struct TemporalInfo {
-  bool insideBranch = false;
-};
-
 struct BlockInfo {
   std::vector<std::string> natives;
   std::vector<std::string> foreigners;
@@ -24,12 +20,8 @@ class Auditor {
 
 public:
   Auditor(Semantics &semantics, ErrorHandler &handler, bool verbose);
-  void NativeAndForeignerClassifierPass(Node *node);
   void audit(Node *node);
   bool failed();
-
-  std::unordered_map<Node *, std::vector<std::unique_ptr<LifeTime>>>
-      leakedDeputiesBag;
   std::unordered_map<Node *,
                      std::vector<std::pair<std::unique_ptr<LifeTime>,
                                            std::shared_ptr<SymbolInfo>>>>
@@ -44,12 +36,9 @@ private:
   using auditFn = void (Auditor::*)(Node *node);
   std::unordered_map<std::type_index, auditFn> auditFnsMap;
   std::unordered_map<std::string, std::vector<std::string>> candidateRegistry;
-  std::unordered_map<Node *, std::shared_ptr<TemporalInfo>> temporaryData;
   std::set<std::string> bunkeredIDs;
 
   void registerAuditorFunctions();
-  bool isInsideBranch = false;
-
   // Variable declaration auditors
   void auditHeapStatement(Node *node);
   void auditLetStatement(Node *node);
@@ -78,18 +67,20 @@ private:
   void auditExpressionStatement(Node *node);
 
   // Helpers
+  void runClassifier(Node *node);
+  void classifyNode(Node *node);
+  void classifyBlock(Node *block);
+  Node *peelExpression(Node *node);
+  bool hasDisruptors(Node *block);
+  bool shouldForeignBunkerBlock(Node *block);
+  bool shouldNativeBunkerBlock(Node *block);
   void transferDependent(const std::string &dependentID,
                          const std::shared_ptr<SymbolInfo> &dependentSym,
                          bool dropCount);
-  bool containsNaturalDeath(Node *branchNode, const std::string &targetID);
-  void performSuperpositionSync(ifStatement *ifStmt);
-  void reconcileWithSnapshots(ifStatement *ifStmt, const std::string &id);
-  void materializeDeputy(const std::string &id, const BatonStateSnapshot &snap,
-                         Node *branchRoot);
   bool diesInBlock(const std::string &ID, Node *block);
   std::set<std::string> getAllActiveBatonIDs();
-  void classifyBlock(Node *block);
-  void identifyForeigners(Node *block);
+  std::vector<std::string> getAllActiveBatonIDsInBlock(Node *block);
+
   void bunkerNatives(Node *block);
   void bunkerForeigners(Node *block);
   bool isBunkered(const std::string &id);

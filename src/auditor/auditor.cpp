@@ -33,173 +33,140 @@ void Auditor::registerAuditorFunctions() {
   auditFnsMap[typeid(WhileStatement)] = &Auditor::auditWhileStatement;
 }
 
-void Auditor::NativeAndForeignerClassifierPass(Node *node) {
+void Auditor::runClassifier(Node *node) {
+  logInternal("[CLASSIFIER] Starting classification pass");
+  classifyNode(node);
+}
+
+void Auditor::classifyNode(Node *node) {
   if (!node)
     return;
 
-  logInternal("[CLASSIFIER-RECURSION] Visiting node type: " + node->toString());
-
+  // Classify this node if it's a block
   if (auto blockStmt = dynamic_cast<BlockStatement *>(node)) {
-    logInternal("[CLASSIFIER-RECURSION] Hitting BlockStatement, entering "
-                "classifyBlock");
     classifyBlock(blockStmt);
   } else if (auto blockExpr = dynamic_cast<BlockExpression *>(node)) {
-    logInternal("[CLASSIFIER-RECURSION] Hitting BlockExpression, entering "
-                "classifyBlock");
     classifyBlock(blockExpr);
   }
 
+  // Recurse into children
   if (auto func = dynamic_cast<FunctionStatement *>(node)) {
-    logInternal("[CLASSIFIER-RECURSION] Drilling into FunctionStatement -> "
-                "FunctionExpression");
-    NativeAndForeignerClassifierPass(func->funcExpr.get());
+    classifyNode(func->funcExpr.get());
   } else if (auto funcExpr = dynamic_cast<FunctionExpression *>(node)) {
-    logInternal("[CLASSIFIER-RECURSION] Drilling into FunctionExpression -> "
-                "Body Block");
-    NativeAndForeignerClassifierPass(funcExpr->block.get());
+    classifyNode(funcExpr->block.get());
   } else if (auto whileStmt = dynamic_cast<WhileStatement *>(node)) {
-    logInternal(
-        "[CLASSIFIER-RECURSION] Drilling into WhileStatement -> Loop Body");
-    NativeAndForeignerClassifierPass(whileStmt->loop.get());
+    classifyNode(whileStmt->loop.get());
+  } else if (auto ifStmt = dynamic_cast<ifStatement *>(node)) {
+    classifyNode(ifStmt->if_result.get());
+    for (const auto &elif : ifStmt->elifClauses) {
+      auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
+      classifyNode(elifStmt->elif_result.get());
+    }
+    if (ifStmt->else_result.has_value()) {
+      classifyNode(ifStmt->else_result.value().get());
+    }
   }
 }
 
 void Auditor::classifyBlock(Node *block) {
-  logInternal("[CLASSIFY BLOCK] Starting classification for block: " +
-              block->toString());
+  logInternal("[CLASSIFIER] Classifying block: " + block->toString());
 
+  // Ensure BlockInfo exists
+  if (deferedFrees.find(block) == deferedFrees.end()) {
+    deferedFrees[block] = std::make_unique<BlockInfo>();
+  }
+  auto &info = deferedFrees[block];
+
+  // Get all statements in this block
+  std::vector<Node *> statements;
   if (auto blockStmt = dynamic_cast<BlockStatement *>(block)) {
-    if (deferedFrees.find(blockStmt) == deferedFrees.end()) {
-      deferedFrees[blockStmt] = std::make_unique<BlockInfo>();
-    }
-    for (const auto &stmt : blockStmt->statements) {
-      Node *actualNode = stmt.get();
-      if (auto exprStmt = dynamic_cast<ExpressionStatement *>(actualNode)) {
-        actualNode = exprStmt->expression.get();
-      }
-      if (auto whileStmt = dynamic_cast<WhileStatement *>(actualNode)) {
-        logInternal("[CLASSIFY BLOCK] Detected nested while statement");
-        classifyBlock(whileStmt->loop.get());
-      }
-      auto sym = semantics.getSymbolFromMeta(actualNode);
-      if (!sym) {
-        logInternal("[CLASSIFY BLOCK] Skipping non-symbol statement: " +
-                    stmt->toString());
-        continue;
-      }
-
-      if (!sym->isHeap) {
-        logInternal("[CLASSIFY BLOCK] Skipping non-heap symbol: " + sym->ID);
-        continue;
-      }
-
-      bool bornHere = semantics.isBornInScope(blockStmt, sym->ID);
-      if (bornHere) {
-        logInternal("[CLASSIFY BLOCK] NATIVE FOUND: " + sym->ID +
-                    " born in this BlockStatement");
-        deferedFrees[blockStmt]->natives.push_back(sym->ID);
-      } else {
-        logInternal("[CLASSIFY BLOCK] POTENTIAL FOREIGNER: " + sym->ID +
-                    " - Calling identifyForeigners");
-        identifyForeigners(blockStmt);
-      }
+    for (auto &stmt : blockStmt->statements) {
+      statements.push_back(stmt.get());
     }
   } else if (auto blockExpr = dynamic_cast<BlockExpression *>(block)) {
-    if (deferedFrees.find(blockExpr) == deferedFrees.end()) {
-      deferedFrees[blockExpr] = std::make_unique<BlockInfo>();
+    for (auto &stmt : blockExpr->statements) {
+      statements.push_back(stmt.get());
     }
-    for (const auto &stmt : blockExpr->statements) {
-      Node *actualNode = stmt.get();
-      if (auto exprStmt = dynamic_cast<ExpressionStatement *>(actualNode)) {
-        actualNode = exprStmt->expression.get();
-      }
-      if (auto whileStmt = dynamic_cast<WhileStatement *>(actualNode)) {
-        logInternal("[CLASSIFY BLOCK] Detected nested while statement");
-        classifyBlock(whileStmt->loop.get());
-      }
-      auto sym = semantics.getSymbolFromMeta(actualNode);
-      if (!sym) {
-        logInternal("[CLASSIFY BLOCK] Skipping non-symbol statement: " +
-                    stmt->toString());
-        continue;
-      }
+  }
 
-      if (!sym->isHeap) {
-        logInternal("[CLASSIFY BLOCK] Skipping non-heap symbol: " + sym->ID);
-        continue;
-      }
+  // Classify each statement
+  for (Node *stmt : statements) {
+    Node *actualNode = peelExpression(stmt);
 
-      bool bornHere = semantics.isBornInScope(blockExpr, sym->ID);
-      if (bornHere) {
-        logInternal("[CLASSIFY BLOCK] NATIVE FOUND: " + sym->ID +
-                    " born in this BlockExpression");
-        deferedFrees[blockExpr]->natives.push_back(sym->ID);
-      } else {
-        logInternal("[CLASSIFY BLOCK] POTENTIAL FOREIGNER: " + sym->ID +
-                    " - Calling identifyForeigners");
-        identifyForeigners(blockExpr);
+    // Recurse into nested blocks
+    if (auto whileStmt = dynamic_cast<WhileStatement *>(actualNode)) {
+      classifyNode(whileStmt->loop.get());
+    } else if (auto ifStmt = dynamic_cast<ifStatement *>(actualNode)) {
+      classifyNode(ifStmt->if_result.get());
+      for (const auto &elif : ifStmt->elifClauses) {
+        auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
+        classifyNode(elifStmt->elif_result.get());
+      }
+      if (ifStmt->else_result.has_value()) {
+        classifyNode(ifStmt->else_result.value().get());
+      }
+    }
+
+    // Get symbol
+    auto sym = semantics.getSymbolFromMeta(actualNode);
+    if (!sym || !sym->isHeap)
+      continue;
+
+    // Determine if native (born here) or foreigner
+    bool bornHere = semantics.isBornInScope(block, sym->ID);
+
+    if (bornHere) {
+      logInternal("[CLASSIFIER] NATIVE: " + sym->ID + " in " +
+                  block->toString());
+      info->natives.push_back(sym->ID);
+    } else {
+      // Check if it's a true foreigner (dies in this block)
+      if (diesInBlock(sym->ID, block)) {
+        logInternal("[CLASSIFIER] FOREIGNER: " + sym->ID + " in " +
+                    block->toString());
+        info->foreigners.push_back(sym->ID);
       }
     }
   }
 }
 
-void Auditor::identifyForeigners(Node *block) {
-  logInternal("[FOREIGN CLASSIFIER] Investigating block for foreign IDs...");
+Node *Auditor::peelExpression(Node *node) {
+  if (auto exprStmt = dynamic_cast<ExpressionStatement *>(node)) {
+    return exprStmt->expression.get();
+  }
+  return node;
+}
 
+bool Auditor::hasDisruptors(Node *block) {
   if (auto blockStmt = dynamic_cast<BlockStatement *>(block)) {
-    if (deferedFrees.find(blockStmt) == deferedFrees.end()) {
-      deferedFrees[blockStmt] = std::make_unique<BlockInfo>();
-    }
-    for (const auto &stmt : blockStmt->statements) {
-      Node *target = stmt.get();
-
-      if (auto exprStmt = dynamic_cast<ExpressionStatement *>(target)) {
-        target = exprStmt->expression.get();
-      }
-
-      if (auto whileStmt = dynamic_cast<WhileStatement *>(target)) {
-        logInternal("[FOREIGN CLASSIFIER] Encountered while statement");
-        identifyForeigners(whileStmt->loop.get());
-      }
-      auto stmtSym = semantics.getSymbolFromMeta(target);
-      if (!stmtSym)
-        continue;
-
-      logInternal("[FOREIGN CLASSIFIER] Checking symbol: " + stmtSym->ID);
-
-      Node *holder = semantics.queryForLifeTimeBaton(stmtSym->ID);
-      if (!holder) {
-        logInternal("[FOREIGN CLASSIFIER] FAILED: No baton holder for " +
-                    stmtSym->ID);
-        continue;
-      }
-
-      auto &baton = semantics.responsibilityTable[holder];
-      if (!baton) {
-        logInternal("[FOREIGN CLASSIFIER] FAILED: No baton in "
-                    "responsibilityTable for ID: " +
-                    stmtSym->ID);
-        continue;
-      }
-
-      bool bornInThisScope = semantics.isBornInScope(blockStmt, stmtSym->ID);
-      bool diesInThisBlock = diesInBlock(stmtSym->ID, blockStmt);
-
-      logInternal("[FOREIGN CLASSIFIER] Evaluation for " + stmtSym->ID +
-                  " | BornHere: " + (bornInThisScope ? "YES" : "NO") +
-                  " | DiesInBlock: " + (diesInThisBlock ? "YES" : "NO"));
-
-      if (!bornInThisScope && diesInThisBlock) {
-        logInternal("[FOREIGN CLASSIFIER] SUCCESS: Adding " + stmtSym->ID +
-                    " to foreigners list");
-        deferedFrees[blockStmt]->foreigners.push_back(stmtSym->ID);
+    for (auto &stmt : blockStmt->statements) {
+      if (dynamic_cast<BreakStatement *>(stmt.get()) ||
+          dynamic_cast<ContinueStatement *>(stmt.get())) {
+        return true;
       }
     }
   }
+  return false;
 }
 
-// This is a power function I will only call it in special cases where the baton
-// system cannot work or is compromised
+bool Auditor::shouldForeignBunkerBlock(Node *block) {
+  auto it = deferedFrees.find(block);
+  if (it == deferedFrees.end() || !it->second)
+    return false;
+
+  // A block needs bunkering if it has any foreigners
+  return !it->second->foreigners.empty();
+}
+
+bool Auditor::shouldNativeBunkerBlock(Node *block) {
+  auto it = deferedFrees.find(block);
+  if (it == deferedFrees.end() || !it->second)
+    return false;
+
+  // A block needs bunkering if it has any foreigners
+  return !it->second->natives.empty();
+}
+
 void Auditor::bunkerNatives(Node *block) {
   auto &blockInfo = deferedFrees[block];
   for (const auto &nativeID : blockInfo->natives) {
@@ -296,6 +263,12 @@ bool Auditor::isBlock(Node *node) {
 }
 
 void Auditor::audit(Node *node) {
+  static bool classifierRun = false;
+  if (!classifierRun) {
+    runClassifier(node);
+    classifierRun = true;
+  }
+
   auto auditIt = auditFnsMap.find(typeid(*node));
   if (auditIt == auditFnsMap.end()) {
     return;
@@ -389,10 +362,6 @@ void Auditor::auditPointerStatement(Node *node) {
     }
   }
 
-  logInternal("  [FINISHING] Calling simulateFree for: " + ptrSym->ID);
-  auto ptrInfo = std::make_shared<TemporalInfo>();
-  ptrInfo->insideBranch = isInsideBranch;
-  temporaryData[ptrStmt] = ptrInfo;
   simulateFree(ptrStmt, ptrSym->ID);
 }
 
@@ -447,9 +416,6 @@ void Auditor::auditAssignmentStatement(Node *node) {
       }
     }
   }
-
-  auto assignInfo = std::make_shared<TemporalInfo>();
-  assignInfo->insideBranch = isInsideBranch;
   simulateFree(assignStmt, assignSym->ID);
 }
 
@@ -474,16 +440,9 @@ void Auditor::auditWhileStatement(Node *node) {
   if (!whileStmt)
     return;
 
-  // Force a bunker on any foreigner in the while loop
-  logInternal("[DEBUG] Attempting to bunker block at address: " +
-              std::to_string((uintptr_t)whileStmt->loop.get()));
-
-  auto it = deferedFrees.find(whileStmt->loop.get());
-  if (it != deferedFrees.end() && it->second) {
-    if (!it->second->foreigners.empty()) {
-      logInternal("Triggered actual foreigner bunkering");
-      bunkerForeigners(whileStmt->loop.get());
-    }
+  if (shouldForeignBunkerBlock(whileStmt->loop.get())) {
+    logInternal("[TRIGGER] Loop with foreigners - bunkering");
+    bunkerForeigners(whileStmt->loop.get());
   }
 
   audit(whileStmt->loop.get());
@@ -493,6 +452,8 @@ void Auditor::auditElifStatement(Node *node) {
   auto elifStmt = dynamic_cast<elifStatement *>(node);
   if (!elifStmt)
     return;
+
+  audit(elifStmt->elif_result.get());
 }
 
 void Auditor::auditIfStatement(Node *node) {
@@ -500,15 +461,35 @@ void Auditor::auditIfStatement(Node *node) {
   if (!ifStmt)
     return;
 
-  // The superposition pass
-  performSuperpositionSync(ifStmt);
+  // Check then block
+  if (shouldForeignBunkerBlock(ifStmt->if_result.get())) {
+    logInternal("[TRIGGER] Then block has foreigners - bunkering");
+    bunkerForeigners(ifStmt->if_result.get());
+  }
 
-  // The normal standard pass
+  // Check elif blocks
+  for (auto &elif : ifStmt->elifClauses) {
+    auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
+    if (shouldForeignBunkerBlock(elifStmt->elif_result.get())) {
+      logInternal("[TRIGGER] Elif block has foreigners - bunkering");
+      bunkerForeigners(elifStmt->elif_result.get());
+    }
+  }
+
+  // Check else block (if it exists)
+  if (ifStmt->else_result.has_value()) {
+    if (shouldForeignBunkerBlock(ifStmt->else_result.value().get())) {
+      logInternal("[TRIGGER] Else block has foreigners - bunkering");
+      bunkerForeigners(ifStmt->else_result.value().get());
+    }
+  }
+
+  // Audit all blocks normally
   audit(ifStmt->if_result.get());
-  for (const auto &elif : ifStmt->elifClauses) {
+  for (auto &elif : ifStmt->elifClauses) {
     audit(elif.get());
   }
-  if (ifStmt->else_result.has_value() && ifStmt->else_result.value()) {
+  if (ifStmt->else_result.has_value()) {
     audit(ifStmt->else_result.value().get());
   }
 }
@@ -556,8 +537,6 @@ void Auditor::auditReturnStatement(Node *node) {
     }
   }
 
-  auto retInfo = std::make_shared<TemporalInfo>();
-  retInfo->insideBranch = isInsideBranch;
   simulateFree(retStmt, retSym->ID);
 }
 
@@ -596,16 +575,10 @@ void Auditor::auditBlockStatement(Node *node) {
   if (!blockStmt)
     return;
 
-  for (const auto &stmt : blockStmt->statements) {
-    auto breakStmt = dynamic_cast<BreakStatement *>(stmt.get());
-    auto continueStmt = dynamic_cast<ContinueStatement *>(stmt.get());
-    if (containsNode(blockStmt, breakStmt) ||
-        containsNode(blockStmt, continueStmt)) {
-      logInternal(
-          "Block contains break or continue must execute natives population");
-      bunkerNatives(blockStmt);
-    }
+  if (hasDisruptors(blockStmt) && shouldNativeBunkerBlock(blockStmt))
+    bunkerNatives(blockStmt);
 
+  for (const auto &stmt : blockStmt->statements) {
     audit(stmt.get());
   }
 }
@@ -627,44 +600,55 @@ void Auditor::auditBlockExpression(Node *node) {
 }
 
 // Helpers
-bool Auditor::containsNaturalDeath(Node *branchRoot,
-                                   const std::string &targetID) {
-  if (!branchRoot)
-    return false;
+std::vector<std::string> Auditor::getAllActiveBatonIDsInBlock(Node *block) {
+  logInternal("[SELECTED_SCAN] Identifying all live batons in "
+              "responsibilityTable for this block " +
+              block->toString());
 
-  logInternal("[SCOUT] Investigating branch: " + branchRoot->toString());
+  std::vector<std::string> activeIDs;
 
-  // Get the Snapshot for THIS specific branch root.
-  auto it = semantics.snapshotRegistry.find(branchRoot);
-  if (it == semantics.snapshotRegistry.end() || it->second.empty()) {
-    logInternal("[SCOUT] No snapshot found for branch. Skipping...");
-    return false;
+  for (const auto &[node, baton] : semantics.responsibilityTable) {
+    if (!baton) {
+      logInternal("[SELECTED_SCAN] Skipping since there is no baton...");
+      continue;
+    }
+
+    logInternal("[SELECTED_SCAN] Inspecting Table Entry: Node(" +
+                node->toString() + ") -> BatonID(" + baton->ID + ")");
+
+    if (baton->isResponsible) {
+      Node *holder = semantics.queryForLifeTimeBaton(baton->ID);
+      if (!holder) {
+        logInternal("[SELECTED_SCAN] ! ERROR: No holder found for ID: " +
+                    baton->ID);
+        continue;
+      }
+
+      if (!containsNode(block, holder)) {
+        logInternal("[SELECTED_SCAN] Lieftime ID: " + baton->ID +
+                    " dies outside this statement skiping...'");
+        continue;
+      }
+
+      auto holderSym = semantics.getSymbolFromMeta(holder);
+      if (!holderSym) {
+        logInternal(
+            "[SELECTED_SCAN] ! ERROR: No symbol metadata for holder of: " +
+            baton->ID);
+        continue;
+      }
+
+      logInternal("[SELECTED_SCAN] Checking Stats for " + baton->ID +
+                  ": isResponsible(" + std::to_string(baton->isResponsible) +
+                  ") refCount(" + std::to_string(holderSym->refCount) +
+                  ") ptrCount(" + std::to_string(holderSym->pointerCount) +
+                  ")");
+
+      logInternal("[SELECTED_SCAN] Found LIVE baton: " + baton->ID);
+      activeIDs.push_back(baton->ID);
+    }
   }
-
-  // We take the last frame of the branch (the exit state)
-  const auto &exitSnapshot = it->second.back();
-
-  // Find the baton's status in this specific timeline
-  auto snapIt = exitSnapshot.batonStates.find(targetID);
-  if (snapIt == exitSnapshot.batonStates.end()) {
-    logInternal("[SCOUT] Baton " + targetID + " not found in branch snapshot.");
-    return false;
-  }
-
-  Node *branchTerminalNode = snapIt->second.terminalNode;
-
-  logInternal("[SCOUT] Snapshot terminal node for " + targetID + " is: " +
-              (branchTerminalNode ? branchTerminalNode->toString() : "NULL"));
-
-  if (containsNode(branchRoot, branchTerminalNode)) {
-    logInternal("[SCOUT] Found NATURAL DEATH for " + targetID +
-                " inside branch at: " + branchTerminalNode->toString());
-    return true;
-  }
-
-  logInternal("[SCOUT] Baton " + targetID +
-              " survives this branch (Terminal node is outside).");
-  return false;
+  return activeIDs;
 }
 
 std::set<std::string> Auditor::getAllActiveBatonIDs() {
@@ -715,172 +699,6 @@ std::set<std::string> Auditor::getAllActiveBatonIDs() {
   }
 
   return activeIDs;
-}
-
-void Auditor::performSuperpositionSync(ifStatement *ifStmt) {
-  logInternal("[SYNC] Starting Superposition Check for IfStatement: " +
-              ifStmt->toString());
-  std::set<std::string> allActiveIDs = getAllActiveBatonIDs();
-
-  if (allActiveIDs.empty())
-    logInternal("Active ID list is empty");
-
-  for (const std::string &id : allActiveIDs) {
-    logInternal("[SYNC] Investigating Baton: " + id);
-    bool diesInThen = containsNaturalDeath(ifStmt->if_result.get(), id);
-
-    bool diesInAnyElif = false;
-    for (auto &elifs : ifStmt->elifClauses) {
-      auto elifStmt = dynamic_cast<elifStatement *>(elifs.get());
-      if (containsNaturalDeath(elifStmt->elif_result.get(), id)) {
-        diesInAnyElif = true;
-        break;
-      }
-    }
-
-    // Does it die in the 'Else' block?
-    bool diesInElse = false;
-    if (ifStmt->else_result.has_value()) {
-      diesInElse = containsNaturalDeath(ifStmt->else_result.value().get(), id);
-    }
-
-    bool diesSomewhere = diesInThen || diesInAnyElif || diesInElse;
-    bool survivesSomewhere =
-        !diesInThen || (ifStmt->elifClauses.size() > 0 && !diesInAnyElif) ||
-        (ifStmt->else_result.has_value() && !diesInElse);
-
-    if (diesSomewhere) {
-      if (survivesSomewhere) {
-        logInternal("[SYNC] DISCREPANCY DETECTED for " + id);
-      } else {
-        logInternal(
-            "[SYNC] " + id +
-            " dies in all paths. Materializing warrants for all branches.");
-      }
-      reconcileWithSnapshots(ifStmt, id);
-    } else {
-      logInternal("[SYNC] " + id +
-                  " survives all branches. No local deallocs needed.");
-    }
-  }
-}
-
-void Auditor::reconcileWithSnapshots(ifStatement *ifStmt,
-                                     const std::string &id) {
-
-  logInternal("[RECONCILE] Investigating timelines for baton: " + id);
-
-  // Find where the baton ended up in the Global Reality
-  Node *globalHolder = semantics.queryForLifeTimeBaton(id);
-  if (!globalHolder) {
-    logInternal("[RECONCILE] Baton " + id +
-                " is not in the live table. Likely already dead.");
-    return;
-  }
-
-  logInternal("[RECONCILE] The baton holder for id '" + id +
-              "' is: " + globalHolder->toString());
-
-  // Helper to process a specific branch node
-  auto reconcileBranch = [&](Node *branchRoot) {
-    if (!branchRoot)
-      return;
-
-    auto it = semantics.snapshotRegistry.find(branchRoot);
-    if (it == semantics.snapshotRegistry.end()) {
-      // If no snapshot exists for an existing branch, it's a gap.
-      logInternal("[RECONCILE] No snapshot for branch: " +
-                  branchRoot->toString());
-      return;
-    }
-
-    // We take the last snapshot (the "Exit Frame" from the end of the branch)
-    const auto &snapshot = it->second.back();
-    auto snapIt = snapshot.batonStates.find(id);
-
-    if (snapIt != snapshot.batonStates.end()) {
-      Node *branchTerminal = snapIt->second.terminalNode;
-      if (!branchTerminal) {
-        logInternal("[RECONCILE] No terminal node found for branch: " +
-                    branchRoot->toString());
-        return;
-      }
-
-      logInternal(
-          "[RECONCILE] Terminal node for branch: " + branchRoot->toString() +
-          " is: " + branchTerminal->toString());
-
-      if (branchTerminal != globalHolder) {
-        logInternal("[RECONCILE] Branch " + branchRoot->toString() +
-                    " is passive for " + id);
-        materializeDeputy(id, snapIt->second, branchRoot);
-      } else {
-        logInternal("[RECONCILE] Branch " + branchRoot->toString() +
-                    " is the active for " + id);
-      }
-    }
-  };
-
-  // Handling the then block
-  reconcileBranch(ifStmt->if_result.get());
-
-  // Handle the elifs
-  for (const auto &elif : ifStmt->elifClauses) {
-    if (elif) {
-      auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
-      reconcileBranch(elifStmt->elif_result.get());
-    }
-  }
-
-  // Handle else
-  if (ifStmt->else_result.has_value() && ifStmt->else_result.value()) {
-    reconcileBranch(ifStmt->else_result.value().get());
-  } else {
-    logInternal("[RECONCILE] Handling implicit 'else' leak for " + id);
-    // Create a dummy snapshot
-    BatonStateSnapshot implicitSnap;
-    implicitSnap.id = id;
-    implicitSnap.terminalNode = nullptr;
-    implicitSnap.isResponsible = true;
-
-    materializeDeputy(id, implicitSnap, ifStmt);
-  }
-}
-
-void Auditor::materializeDeputy(const std::string &id,
-                                const BatonStateSnapshot &snap,
-                                Node *branchRoot) {
-  logInternal("[MATERIALIZE] Creating Death Warrant for " + id + " on node " +
-              (snap.terminalNode ? snap.terminalNode->toString() : "NULL"));
-
-  bool isLegalTarget = containsNode(branchRoot, snap.terminalNode);
-
-  auto deputy = std::make_unique<LifeTime>();
-  deputy->ID = id;
-  deputy->isResponsible = true;
-  deputy->isAlive = false;
-  deputy->dependents = snap.dependents;
-  deputy->ownedBy = snap.ownedBy;
-
-  if (isLegalTarget) {
-    if (snap.terminalNode) {
-      logInternal("[MATERIALIZE] Restoring baton to holder: " +
-                  snap.terminalNode->toString() +
-                  " inside branch: " + branchRoot->toString());
-      semantics.responsibilityTable[snap.terminalNode] = std::move(deputy);
-    } else {
-      logInternal("[MATERIALIZE] No potential holder found in branch. Using "
-                  "Bag for " +
-                  branchRoot->toString());
-      leakedDeputiesBag[branchRoot].push_back(std::move(deputy));
-    }
-  } else {
-    logInternal("Terminal node: " +
-                (snap.terminalNode ? snap.terminalNode->toString() : "NULL") +
-                " not inside branch: " + branchRoot->toString() +
-                " vetoing to deputy leak...");
-    leakedDeputiesBag[branchRoot].push_back(std::move(deputy));
-  }
 }
 
 bool Auditor::containsNode(Node *root, Node *target) {
@@ -1112,8 +930,8 @@ bool Auditor::diesInBlock(const std::string &ID, Node *block) {
       }
     }
   } else {
-    logInternal("[DIES-IN-BLOCK] Bailing because holder is outside this block. "
-                "(This is why foreigners fail!)");
+    logInternal(
+        "[DIES-IN-BLOCK] Bailing because holder is outside this block. ");
   }
 
   return false;

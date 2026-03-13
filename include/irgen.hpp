@@ -70,7 +70,6 @@ private:
   size_t totalHeapSize;
   bool isVerbose;
   bool inhibitCleanUp = false;
-  std::set<std::string> pathLedger;
 
   // llvm::BasicBlock *heapInitFnEntry = nullptr;
   void setupTargetLayout();
@@ -252,7 +251,6 @@ private:
                               llvm::Value *toFree);
   void emitCleanup(Node *contextNode,
                    const std::shared_ptr<SymbolInfo> &contextSymbol);
-  void emptyLeakedDeputiesBag(Node *branchRoot);
   void freeForeigners(Node *block);
   void freeNatives(Node *block);
   void emitBlockCleanUp(Node *block);

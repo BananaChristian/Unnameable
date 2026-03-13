@@ -1134,55 +1134,6 @@ void IRGenerator::emitBlockCleanUp(Node *block) {
   freeForeigners(block);
 }
 
-void IRGenerator::emptyLeakedDeputiesBag(Node *branchRoot) {
-  auto &bag = auditor.leakedDeputiesBag[branchRoot];
-  if (bag.empty()) {
-    logInternal("Deputy bag is empty");
-    return;
-  }
-
-  logInternal("[IR-BAG] Emptying Deputy Bag for branch: " +
-              branchRoot->toString());
-
-  for (auto &deputy : bag) {
-
-    if (!deputy->isResponsible)
-      continue;
-
-    // This will allow us to get the actual holder no matter the branch and just
-    // ask for his symbolInfo
-    Node *actualHolder = semantics.queryForLifeTimeBaton(deputy->ID);
-    auto sym = semantics.getSymbolFromMeta(actualHolder);
-
-    if (!sym) {
-      logInternal("  [BAG-FAIL] Could not find SymbolInfo for ID: " +
-                  deputy->ID);
-      continue;
-    }
-
-    logInternal("  [BAG-CLEANUP] Processing Deputy: " + sym->ID);
-
-    if (sym->pointerCount == 0 && sym->refCount == 0) {
-
-      // Free dependents (the children of the baton)
-      for (const auto &[depID, depSym] : deputy->dependents) {
-        logInternal("    [Bag-Dep-Free] ID: " + depID);
-        executePhysicalFree(depSym);
-      }
-
-      // Free the leader (the heap variable itself)
-      if (sym->isHeap) {
-        executePhysicalFree(sym);
-      }
-      // Revoke responsibility to be safe
-      deputy->isResponsible = false;
-    }
-  }
-
-  // Clear the bag so it's not processed again
-  bag.clear();
-}
-
 void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   if (!sym) {
     logInternal("  [EXEC-FREE-FAIL] Symbol is null.");
@@ -1192,12 +1143,6 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   logInternal("  [EXEC-FREE] ID: " + sym->ID +
               " | HasLLVM: " + (sym->llvmValue ? "True" : "False") +
               " | IsHeap: " + (sym->isHeap ? "True" : "False"));
-
-  if (pathLedger.count(sym->ID)) {
-    logInternal("[EXEC_FREE] Already physically freed for '" + sym->ID +
-                "' as it is in the path ledger");
-    return;
-  }
 
   if (!sym->llvmValue || !sym->isHeap)
     return;
@@ -1227,7 +1172,6 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
       sym->llvmValue, deallocFunc->getFunctionType()->getParamType(0));
 
   funcBuilder.CreateCall(deallocFunc, {castPtr});
-  pathLedger.insert(sym->ID);
 }
 
 void IRGenerator::emitCleanup(Node *contextNode,
