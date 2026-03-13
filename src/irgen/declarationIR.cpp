@@ -12,7 +12,6 @@ void IRGenerator::generateHeapStatement(Node *node) {
 
 //______________LET STATEMENT GENERATION_____________
 void IRGenerator::generateLetStatement(Node *node) {
-  // VALIDATION AND EXTRACTION
   auto *letStmt = dynamic_cast<LetStatement *>(node);
   if (!letStmt) {
     reportDevBug("Invalid variable declaration", node->token.line,
@@ -111,6 +110,7 @@ void IRGenerator::generateLetStatement(Node *node) {
     // Create a map on the stack that holds the pointer to the heap memory
     storage = allocateDynamicHeapStorage(sym, letName);
     funcBuilder.CreateStore(initVal, storage);
+    sym->isAddress = true;
   } else // If it isnt a component or a heap raised value
   {
 
@@ -357,6 +357,7 @@ void IRGenerator::generatePointerStatement(Node *node) {
   } else if (ptrSym->isHeap) {
     storagePtr = allocateDynamicHeapStorage(ptrSym, ptrName);
     funcBuilder.CreateStore(initVal, storagePtr);
+    ptrSym->isAddress = true;
   } else if (!funcBuilder.GetInsertBlock()) {
     llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
     if (!globalInit) {

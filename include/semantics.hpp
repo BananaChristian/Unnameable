@@ -160,6 +160,8 @@ struct SymbolInfo {
 
   bool isRef = false;     // Reference flag
   bool isPointer = false; // Pointer flag
+  bool isAddress =
+      false; // This is a special flag for the generation of heap variables
 
   bool needsImplicitAddress = false;
 

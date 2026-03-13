@@ -215,11 +215,13 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   } else {
     // SCALAR CASE
     if (assignMeta->isHeap) {
-      llvm::Value *actualData = funcBuilder.CreateLoad(
-          getLLVMType(assignMeta->type), initValue, "snatched_val");
-
+      llvm::Value *valueToStore = initValue;
+      if (valSym->isAddress) {
+        valueToStore = funcBuilder.CreateLoad(getLLVMType(assignMeta->type),
+                                              initValue, "loaded_val");
+      }
       // Store the value into y's existing heap space
-      funcBuilder.CreateStore(actualData, targetPtr);
+      funcBuilder.CreateStore(valueToStore, targetPtr);
     } else {
       // Standard stack-to-stack assignment
       funcBuilder.CreateStore(initValue, targetPtr);
