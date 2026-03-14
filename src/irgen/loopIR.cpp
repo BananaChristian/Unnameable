@@ -102,7 +102,7 @@ void IRGenerator::generateForStatement(Node *node) {
   funcBuilder.SetInsertPoint(bodyBB);
 
   // Push break / continue targets
-  jumpStack.push_back({endBB, stepBB});
+  jumpStack.push_back({endBB, stepBB, forStmt->body.get()});
 
   generateStatement(forStmt->body.get());
 
@@ -125,8 +125,7 @@ void IRGenerator::generateForStatement(Node *node) {
 
   // End block
   funcBuilder.SetInsertPoint(endBB);
-
-  // Post-loop cleanup
+  emitBlockCleanUp(forStmt->body.get());
 }
 
 void IRGenerator::generateBreakStatement(Node *node) {
@@ -137,7 +136,7 @@ void IRGenerator::generateBreakStatement(Node *node) {
                     "loop: " +
                     it->target->toString());
 
-        emitBlockCleanUp(it->target);
+        freeNatives(it->target);
       }
       funcBuilder.CreateBr(it->breakTarget);
 

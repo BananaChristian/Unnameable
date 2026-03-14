@@ -64,6 +64,7 @@ private:
   void auditElifStatement(Node *node);
 
   void auditWhileStatement(Node *node);
+  void auditForStatement(Node *node);
   void auditExpressionStatement(Node *node);
 
   // Helpers

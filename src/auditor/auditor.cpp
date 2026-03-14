@@ -31,6 +31,7 @@ void Auditor::registerAuditorFunctions() {
   auditFnsMap[typeid(ifStatement)] = &Auditor::auditIfStatement;
 
   auditFnsMap[typeid(WhileStatement)] = &Auditor::auditWhileStatement;
+  auditFnsMap[typeid(ForStatement)] = &Auditor::auditForStatement;
 }
 
 void Auditor::runClassifier(Node *node) {
@@ -56,6 +57,8 @@ void Auditor::classifyNode(Node *node) {
     classifyNode(funcExpr->block.get());
   } else if (auto whileStmt = dynamic_cast<WhileStatement *>(node)) {
     classifyNode(whileStmt->loop.get());
+  } else if (auto forStmt = dynamic_cast<ForStatement *>(node)) {
+    classifyNode(forStmt->body.get());
   } else if (auto ifStmt = dynamic_cast<ifStatement *>(node)) {
     classifyNode(ifStmt->if_result.get());
     for (const auto &elif : ifStmt->elifClauses) {
@@ -96,6 +99,8 @@ void Auditor::classifyBlock(Node *block) {
     // Recurse into nested blocks
     if (auto whileStmt = dynamic_cast<WhileStatement *>(actualNode)) {
       classifyNode(whileStmt->loop.get());
+    } else if (auto forStmt = dynamic_cast<ForStatement *>(actualNode)) {
+      classifyNode(forStmt->body.get());
     } else if (auto ifStmt = dynamic_cast<ifStatement *>(actualNode)) {
       classifyNode(ifStmt->if_result.get());
       for (const auto &elif : ifStmt->elifClauses) {
@@ -435,6 +440,19 @@ void Auditor::auditFunctionExpression(Node *node) {
   audit(funcExpr->block.get());
 }
 
+void Auditor::auditForStatement(Node *node) {
+  auto forStmt = dynamic_cast<ForStatement *>(node);
+  if (!forStmt)
+    return;
+
+  if (shouldForeignBunkerBlock(forStmt->body.get())) {
+    logInternal("[TRIGGER] For Loop with foreigners - bunkering");
+    bunkerForeigners(forStmt->body.get());
+  }
+
+  audit(forStmt->body.get());
+}
+
 void Auditor::auditWhileStatement(Node *node) {
   auto whileStmt = dynamic_cast<WhileStatement *>(node);
   if (!whileStmt)
@@ -709,10 +727,10 @@ bool Auditor::containsNode(Node *root, Node *target) {
 
   if (auto block = dynamic_cast<BlockStatement *>(root)) {
     for (auto &stmt : block->statements) {
-      if (containsNode(stmt.get(), target))
+      Node *peeled = peelExpression(stmt.get());
+      if (containsNode(peeled, target))
         return true;
     }
-
   } else if (auto ifStmt = dynamic_cast<ifStatement *>(root)) {
     if (containsNode(ifStmt->condition.get(), target))
       return true;
@@ -734,7 +752,23 @@ bool Auditor::containsNode(Node *root, Node *target) {
   }
 
   else if (auto whileStmt = dynamic_cast<WhileStatement *>(root)) {
+    if (containsNode(whileStmt->condition.get(), target))
+      return true;
     if (containsNode(whileStmt->loop.get(), target))
+      return true;
+  } else if (auto forStmt = dynamic_cast<ForStatement *>(root)) {
+    if (containsNode(forStmt->initializer.get(), target))
+      return true;
+    if (containsNode(forStmt->condition.get(), target))
+      return true;
+    if (containsNode(forStmt->step.get(), target))
+      return true;
+    if (containsNode(forStmt->body.get(), target))
+      return true;
+  } else if (auto infix = dynamic_cast<InfixExpression *>(root)) {
+    if (containsNode(infix->left_operand.get(), target))
+      return true;
+    if (containsNode(infix->right_operand.get(), target))
       return true;
   }
 
