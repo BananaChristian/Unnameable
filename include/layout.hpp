@@ -60,7 +60,7 @@ private:
   uint64_t countFlattenedElements(Node *node);
 
   // Loggers
-  void logLayoutError(const std::string &message, int line, int col);
+  void logLayoutError(const std::string &message, Node *contextNode);
   void reportDevBug(const std::string &message);
   void logInternal(const std::string &message);
 

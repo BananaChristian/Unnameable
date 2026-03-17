@@ -1441,6 +1441,7 @@ void Auditor::logAuditError(const std::string &message, Node *contextNode) {
   error.line = line;
   error.col = col;
   error.message = message;
+  error.tokenLength = errorHandler.getTokenLength(contextNode);
   error.hints = {};
 
   errorHandler.report(error);
@@ -1459,6 +1460,7 @@ void Auditor::reportDevBug(const std::string &message, Node *contextNode) {
   error.line = line;
   error.col = col;
   error.message = message;
+  error.tokenLength = errorHandler.getTokenLength(contextNode);
   error.hints = {};
 
   errorHandler.report(error);

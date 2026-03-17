@@ -196,8 +196,7 @@ void Layout::calculateArrayStatementSize(Node *node) {
                            "' elements and declared size '" +
                            std::to_string(totalLiteralElements) +
                            "' elements for array '" + name + "'",
-                       arrStmt->identifier->expression.line,
-                       arrStmt->identifier->expression.column);
+                       arrStmt->identifier.get());
       }
     } else {
       totalElements = totalLiteralElements;
@@ -693,14 +692,20 @@ uint64_t Layout::countFlattenedElements(Node *node) {
   return 1;
 }
 
-void Layout::logLayoutError(const std::string &message, int line, int col) {
+void Layout::logLayoutError(const std::string &message, Node *contextNode) {
+  auto tokenLine = 0;
+  auto tokenColumn = 0;
+  if (contextNode) {
+    tokenLine = contextNode->token.line;
+    tokenColumn = contextNode->token.column;
+  }
   hasFailed = true;
-
   CompilerError error;
-  error.level = ErrorLevel::LAYOUT;
-  error.line = line;
-  error.col = col;
+  error.level = ErrorLevel::SEMANTIC;
+  error.line = tokenLine;
+  error.col = tokenColumn;
   error.message = message;
+  error.tokenLength = errorHandler.getTokenLength(contextNode);
   error.hints = {};
 
   errorHandler.report(error);
@@ -710,6 +715,7 @@ void Layout::reportDevBug(const std::string &message) {
   hasFailed = true;
   std::cerr << COLOR_RED << "[INTERNAL COMPILER ERROR]: " << COLOR_RESET
             << message << "\n";
+  std::abort();
 }
 
 void Layout::logInternal(const std::string &message) {

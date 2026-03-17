@@ -523,6 +523,7 @@ void Parser::logError(const std::string &message, const Token &token) {
   error.line = token.line;
   error.col = token.column;
   error.message = message;
+  error.tokenLength = token.TokenLiteral.length();
   error.hints = {};
 
   errorHandler.report(error);
@@ -534,6 +535,7 @@ void Parser::reportDevBug(const std::string &message, const Token &token) {
   error.line = token.line;
   error.col = token.column;
   error.message = message;
+  error.tokenLength = token.TokenLiteral.length();
   error.hints = {};
 
   errorHandler.report(error);

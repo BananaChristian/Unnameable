@@ -2386,6 +2386,7 @@ void Semantics::logSemanticErrors(const std::string &message,
   error.line = tokenLine;
   error.col = tokenColumn;
   error.message = message;
+  error.tokenLength = errorHandler.getTokenLength(contextNode);
   error.hints = {};
 
   errorHandler.report(error);
@@ -2404,6 +2405,7 @@ void Semantics::reportDevBug(const std::string &message, Node *contextNode) {
   error.line = line;
   error.col = col;
   error.message = message;
+  error.tokenLength = errorHandler.getTokenLength(contextNode);
   error.hints = {};
 
   errorHandler.report(error);

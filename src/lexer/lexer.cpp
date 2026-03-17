@@ -79,10 +79,10 @@ void Lexer::advance() {
   // Decode the character at the currentPosition before we advance
   char32_t ch = decodeUTF8(currentPosition);
 
-  // If the character we are leaving is a newline, move to next line
+  // If the character left is a newline, move to next line
   if (ch == U'\n') {
     line++;
-    column = 1; // Start first char of next line at column 1
+    column = 1;
   } else {
     column++;
   }
@@ -95,9 +95,13 @@ void Lexer::advance() {
   // Handle invalid UTF-8
   if (charLength == 0 || currentPosition + charLength > input.length()) {
     if (currentPosition < input.length()) {
-      logError("Invalid UTF-8 character", line, column);
+      // Create a token for the invalid character
+      std::string invalidChar;
+      appendUTF8(invalidChar, input[currentPosition]);
+      Token errorToken{invalidChar, TokenType::ILLEGAL, line, column};
+      logError("Invalid UTF-8 character sequence", errorToken);
     }
-    charLength = 1;
+    charLength = 1; // Skip one byte and hope for the best
   }
 
   // Update next position
@@ -391,6 +395,8 @@ void Lexer::readComments() {
 Token Lexer::readString() {
   std::string value;
   CAPTURE_POS;
+  Token errorToken{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
+
   advance(); // Skip opening quote
 
   while (currentChar() != U'\0' && currentChar() != U'\n') {
@@ -402,6 +408,7 @@ Token Lexer::readString() {
     if (currentChar() == U'\\') {
       advance(); // Skip backslash
       char32_t escapedChar = currentChar();
+
       switch (escapedChar) {
       case U'n':
         value += '\n';
@@ -424,21 +431,25 @@ Token Lexer::readString() {
       case U'0':
         value += '\0';
         break;
-      default:
-        logError("Invalid escape sequence", tokenLine, tokenColumn);
-        return Token{"Invalid escape sequence", TokenType::ILLEGAL, tokenLine,
-                     tokenColumn};
+      default: {
+        // Build the invalid escape sequence for the error message
+        std::string invalidEscape = "\\";
+        invalidEscape += static_cast<char>(escapedChar);
+        errorToken.TokenLiteral = invalidEscape;
+        logError("Invalid escape sequence", errorToken);
+        return errorToken;
       }
-
-      advance();
+      }
+      advance(); // Move past the escaped character
     } else {
       appendUTF8(value, currentChar());
+      advance();
     }
-    advance(); // Single advance point for all paths
   }
 
-  logError("Unterminated string", tokenLine, tokenColumn);
-  return Token{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
+  errorToken.TokenLiteral = value.empty() ? "\"" : value;
+  logError("Unterminated string literal", errorToken);
+  return errorToken;
 }
 
 void Lexer::appendUTF8(std::string &str, char32_t ch) {
@@ -474,25 +485,26 @@ char32_t Lexer::readHexEscape(int digits) {
 
 Token Lexer::readChar() {
   CAPTURE_POS;
+  Token errorToken{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
 
-  // Step 1: Check for prefix
+  // I Check for prefix
   char32_t prefix = 0;
   if (currentChar() == U'u' || currentChar() == U'U') {
     prefix = currentChar();
     advance();
   }
 
-  // Step 2: Expect opening single quote
+  // Expect opening single quote
   if (currentChar() != U'\'') {
-    logError("Expected opening single quote for char literal", tokenLine,
-             tokenColumn);
-    return Token{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
+    errorToken.TokenLiteral = std::string(1, static_cast<char>(currentChar()));
+    logError("Expected opening single quote for char literal", errorToken);
+    return errorToken;
   }
   advance(); // Skip opening quote
 
   std::string charValue; // UTF-8 encoded char
 
-  // Step 3: Read char or escape sequence
+  // Read char or escape sequence
   if (currentChar() == U'\\') {
     advance(); // Skip backslash
     char32_t escapedChar = currentChar();
@@ -528,9 +540,12 @@ Token Lexer::readChar() {
       advance(); // move past 'U'
       unescapedChar = readHexEscape(8);
       break;
-    default:
-      logError("Invalid escape sequence", tokenLine, tokenColumn);
-      return Token{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
+    default: {
+      errorToken.TokenLiteral =
+          "\\" + std::string(1, static_cast<char>(escapedChar));
+      logError("Invalid escape sequence", errorToken);
+      return errorToken;
+    }
     }
 
     appendUTF8(charValue, unescapedChar);
@@ -538,23 +553,25 @@ Token Lexer::readChar() {
   } else {
     if (currentChar() == U'\'' || currentChar() == U'\n' ||
         currentChar() == U'\0') {
-      logError("Empty or invalid character", tokenLine, tokenColumn);
-      return Token{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
+      errorToken.TokenLiteral = "";
+      logError("Empty character literal", errorToken);
+      return errorToken;
     }
 
     appendUTF8(charValue, currentChar());
     advance();
   }
 
-  // Step 4: Expect closing quote
+  // Expect closing quote
   if (currentChar() != U'\'') {
-    logError("Missing closing quote", tokenLine, tokenColumn);
-    return Token{"", TokenType::ILLEGAL, tokenLine, tokenColumn};
+    errorToken.TokenLiteral = charValue;
+    logError("Missing closing quote for character literal", errorToken);
+    return errorToken;
   }
   advance(); // Skip closing quote
 
-  // Step 5: Determine token type based on prefix
-  TokenType type = TokenType::CHAR8; // default 8-bit char
+  // Determine token type based on prefix
+  TokenType type = TokenType::CHAR8;
   switch (prefix) {
   case U'u':
     type = TokenType::CHAR16;
@@ -791,12 +808,22 @@ Token Lexer::tokenize() {
   }
   default: {
     CAPTURE_POS;
-    std::string charStr;
-    appendUTF8(charStr, character);
-    errorHandler.addHint("This character is not supported");
-    logError("Unexpected character: ", tokenLine, tokenColumn);
-    advance();
-    return Token{charStr, TokenType::ILLEGAL, tokenLine, tokenColumn};
+    std::string invalidSequence;
+
+    // Collect the entire invalid run
+    while (!isValidTokenStart(currentChar()) && currentChar() != U'\0') {
+      appendUTF8(invalidSequence, currentChar());
+      advance();
+    }
+
+    // Create a token for the error
+    Token invalidToken{invalidSequence, TokenType::ILLEGAL, tokenLine,
+                       tokenColumn};
+
+    // Single error for the whole mess
+    logError("Invalid token: '" + invalidSequence + "'", invalidToken);
+
+    return invalidToken;
   }
   }
 };
@@ -818,13 +845,25 @@ void Lexer::updateTokenList() {
   throw std::runtime_error("Lexer safety limit exceeded");
 }
 
-void Lexer::logError(const std::string &message, int line, int column) {
+bool Lexer::isValidTokenStart(char32_t ch) {
+  return isIdentifierStart(ch) || isDigit(ch) || ch == U'"' || ch == U'\'' ||
+         ch == U'#' || ch == U'+' || ch == U'-' || ch == U'*' || ch == U'/' ||
+         ch == U'=' || ch == U'!' || ch == U'<' || ch == U'>' || ch == U'&' ||
+         ch == U'|' || ch == U'^' || ch == U'~' || ch == U'?' || ch == U'@' ||
+         ch == U'.' || ch == U',' || ch == U';' || ch == U':' || ch == U'(' ||
+         ch == U')' || ch == U'{' || ch == U'}' || ch == U'[' || ch == U']' ||
+         ch == U'\0' || ch == U'\n';
+}
+
+void Lexer::logError(const std::string &message, const Token &token) {
   hasFailed = true;
+
   CompilerError error;
   error.level = ErrorLevel::LEXER;
-  error.line = line;
-  error.col = column;
+  error.line = token.line;
+  error.col = token.column;
   error.message = message;
+  error.tokenLength = token.TokenLiteral.length();
   error.hints = {};
 
   errorHandler.report(error);

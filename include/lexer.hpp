@@ -142,5 +142,6 @@ private:
   void appendUTF8(std::string &str, char32_t ch);
   char32_t readHexEscape(int digits);
   Token readChar();
-  void logError(const std::string &message, int line, int column);
+  bool isValidTokenStart(char32_t ch);
+  void logError(const std::string &message, const Token &token);
 };

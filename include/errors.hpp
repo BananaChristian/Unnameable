@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include "ast.hpp"
 
 enum class ErrorLevel {
   LEXER,
@@ -16,6 +17,7 @@ struct CompilerError {
   ErrorLevel level;
   int line;
   int col;
+  int tokenLength;
   std::string message;
   std::vector<std::string> hints;
 };
@@ -28,6 +30,7 @@ public:
   ErrorHandler(const std::string &fileName);
   void report(CompilerError &compilerError);
   ErrorHandler &addHint(const std::string &hint);
+  int getTokenLength(Node *contextNode);
 
 private:
   std::vector<std::string> sourceLines;
