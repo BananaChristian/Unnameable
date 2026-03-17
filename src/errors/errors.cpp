@@ -23,44 +23,55 @@ void ErrorHandler::report(CompilerError &error) {
   }
 
   std::string displayName = getLevelDisplayName(error.level);
-  std::string sourceLine = getSourceLine(error.line, sourceLines);
-
   std::string baseName = getBaseName(fileName);
 
+  // Header
   std::cerr << COLOR_BOLD << COLOR_RED << "[" << displayName << "] "
             << COLOR_RESET << baseName << ":" << error.line << ":" << error.col
             << " " << error.message << "\n";
 
-  // Print the source line + caret if the line exists
-  if (!sourceLine.empty()) {
-    std::cerr << sourceLine << "\n" << std::string(error.col, ' ') << "^\n";
+  // Print 2 lines context
+  int startLine = std::max(1, error.line - 2);
+  int endLine = std::min((int)sourceLines.size(), error.line + 2);
+
+  for (int i = startLine; i <= endLine; i++) {
+    // Line number and source
+    std::cerr << " " << i << " | " << sourceLines[i - 1] << "\n";
+
+    // Caret line for error line
+    if (i == error.line) {
+      std::cerr << "   | ";
+      for (int j = 0; j < error.col - 1; j++) {
+        std::cerr << (sourceLines[i - 1][j] == '\t' ? "\t" : " ");
+      }
+      std::cerr << COLOR_RED << "^" << COLOR_RESET << "\n";
+    }
   }
 
-  // Optional hints
+  // Hints
   if (!error.hints.empty()) {
-    std::cerr << COLOR_BOLD << COLOR_YELLOW << "[HINT]" << COLOR_RESET << "\n";
-  }
-  for (const auto &hint : error.hints) {
-    std::cerr << COLOR_YELLOW << hint << COLOR_RESET << "\n";
+    for (const auto &hint : error.hints) {
+      std::cerr << COLOR_YELLOW << "note: " << COLOR_RESET << hint << "\n";
+    }
   }
 }
 
 std::string ErrorHandler::getLevelDisplayName(ErrorLevel level) {
   switch (level) {
   case ErrorLevel::LEXER:
-    return "Lexer issue";
+    return "Lexer error";
   case ErrorLevel::PARSER:
-    return "Parsing issue";
+    return "Parsing error";
   case ErrorLevel::SEMANTIC:
-    return "Semantic issue";
+    return "Semantic error";
   case ErrorLevel::AUDITOR:
-    return "Auditor issue";
+    return "Auditor error";
   case ErrorLevel::LAYOUT:
-    return "Layout issue";
+    return "Layout error";
   case ErrorLevel::INTERNAL:
     return "INTERNAL COMPILER ERROR";
   case ErrorLevel::IMPORT:
-    return "Import issue";
+    return "Import error";
   }
 
   return "Unknown issue";
