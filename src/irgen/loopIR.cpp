@@ -132,7 +132,7 @@ void IRGenerator::generateBreakStatement(Node *node) {
   for (auto it = jumpStack.rbegin(); it != jumpStack.rend(); ++it) {
     if (it->breakTarget) {
       if (it->target) {
-        logInternal("[BREAK-CLEANUP] Freeing foreigners before jumping out of "
+        logInternal("[BREAK-CLEANUP] Freeing before jumping out of "
                     "loop: " +
                     it->target->toString());
 

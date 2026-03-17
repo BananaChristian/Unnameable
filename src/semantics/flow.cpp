@@ -140,10 +140,12 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   }
 
   symbolTable.push_back({}); // Pushing a new clause scope
+  caseContext.push_back(true);
   for (const auto &stmt : caseStmt->body) {
     walker(stmt.get());
   }
   popScope();
+  caseContext.pop_back();
   auto caseInfo = std::make_shared<SymbolInfo>();
   caseInfo->hasError = hasError;
 
@@ -178,11 +180,13 @@ void Semantics::walkSwitchStatement(Node *node) {
 
   // For the default case
   if (!switchStmt->default_statements.empty()) {
+    caseContext.push_back(true);
     symbolTable.push_back({}); // Push the scope for the default statements
     for (const auto &stmt : switchStmt->default_statements) {
       walker(stmt.get());
     }
     popScope();
+    caseContext.pop_back();
   } else {
     logSemanticErrors("Switch statement is missing default case", switchStmt);
     hasError = true;
@@ -224,8 +228,8 @@ void Semantics::walkBreakStatement(Node *node) {
   if (!breakStmt)
     return;
 
-  if (loopContext.empty()) {
-    logSemanticErrors(" 'break' used outside a loop ", breakStmt);
+  if (loopContext.empty() && caseContext.empty()) {
+    logSemanticErrors(" 'break' used outside a loop or switch", breakStmt);
   }
 }
 
@@ -234,7 +238,7 @@ void Semantics::walkContinueStatement(Node *node) {
   if (!continueStmt)
     return;
 
-  if (loopContext.empty() || !loopContext.back()) {
+  if (loopContext.empty()) {
     logSemanticErrors("'continue' used outside a loop", continueStmt);
   }
 }

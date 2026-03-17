@@ -258,6 +258,7 @@ public:
   std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> importedInits;
   std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
   std::vector<bool> loopContext;
+  std::vector<bool> caseContext;
   std::vector<ScopeInfo> currentTypeStack;
 
   std::unordered_map<std::string, GenericBluePrint> genericMap;
@@ -271,7 +272,10 @@ public:
   std::shared_ptr<SymbolInfo> lookUpInCurrentScope(const std::string &name);
   ResolvedType resolvedDataType(Token token, Node *node);
   bool hasReturnPath(Node *node);
-  bool switchReturns(SwitchStatement *sw);
+  bool switchReturnsInAllPaths(SwitchStatement *sw);
+  bool ifReturnsInAllPaths(ifStatement *ifStmt);
+  bool hasReturnPathInBlock(
+      const std::vector<std::unique_ptr<Statement>> &statements);
   bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>> &stmts);
   ResolvedType inferNodeDataType(Node *node);
   std::string stripPtrSuffix(const std::string &typeName);

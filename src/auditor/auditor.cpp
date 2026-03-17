@@ -29,6 +29,8 @@ void Auditor::registerAuditorFunctions() {
 
   auditFnsMap[typeid(AssignmentStatement)] = &Auditor::auditAssignmentStatement;
   auditFnsMap[typeid(ifStatement)] = &Auditor::auditIfStatement;
+  auditFnsMap[typeid(CaseClause)] = &Auditor::auditCaseStatement;
+  auditFnsMap[typeid(SwitchStatement)] = &Auditor::auditSwitchStatement;
 
   auditFnsMap[typeid(WhileStatement)] = &Auditor::auditWhileStatement;
   auditFnsMap[typeid(ForStatement)] = &Auditor::auditForStatement;
@@ -68,6 +70,8 @@ void Auditor::classifyNode(Node *node) {
     if (ifStmt->else_result.has_value()) {
       classifyNode(ifStmt->else_result.value().get());
     }
+  } else if (auto switchStmt = dynamic_cast<SwitchStatement *>(node)) {
+    classifySwitch(switchStmt);
   }
 }
 
@@ -79,6 +83,9 @@ void Auditor::classifyBlock(Node *block) {
     deferedFrees[block] = std::make_unique<BlockInfo>();
   }
   auto &info = deferedFrees[block];
+
+  info->natives.clear();
+  info->foreigners.clear();
 
   // Get all statements in this block
   std::vector<Node *> statements;
@@ -94,7 +101,7 @@ void Auditor::classifyBlock(Node *block) {
 
   // Classify each statement
   for (Node *stmt : statements) {
-    Node *actualNode = peelExpression(stmt);
+    Node *actualNode = peelNode(stmt);
 
     // Recurse into nested blocks
     if (auto whileStmt = dynamic_cast<WhileStatement *>(actualNode)) {
@@ -110,6 +117,8 @@ void Auditor::classifyBlock(Node *block) {
       if (ifStmt->else_result.has_value()) {
         classifyNode(ifStmt->else_result.value().get());
       }
+    } else if (auto switchStmt = dynamic_cast<SwitchStatement *>(actualNode)) {
+      classifySwitch(switchStmt);
     }
 
     // Get symbol
@@ -121,24 +130,168 @@ void Auditor::classifyBlock(Node *block) {
     bool bornHere = semantics.isBornInScope(block, sym->ID);
 
     if (bornHere) {
-      logInternal("[CLASSIFIER] NATIVE: " + sym->ID + " in " +
-                  block->toString());
-      info->natives.push_back(sym->ID);
+      if (!isAlreadyClassified(sym->ID, info)) {
+        logInternal("[CLASSIFIER] NATIVE: " + sym->ID + " in " +
+                    block->toString());
+        info->natives.push_back(sym->ID);
+      } else {
+        logInternal("[CLASSIFIER] NATIVE (DUPLICATE SKIPPED): " + sym->ID +
+                    " in " + block->toString());
+      }
     } else {
       // Check if it's a true foreigner (dies in this block)
       if (diesInBlock(sym->ID, block)) {
-        logInternal("[CLASSIFIER] FOREIGNER: " + sym->ID + " in " +
-                    block->toString());
-        info->foreigners.push_back(sym->ID);
+        if (!isAlreadyClassified(sym->ID, info)) {
+          logInternal("[CLASSIFIER] FOREIGNER: " + sym->ID + " in " +
+                      block->toString());
+          info->foreigners.push_back(sym->ID);
+        } else {
+          logInternal("[CLASSIFIER] FOREIGNER (DUPLICATE SKIPPED): " + sym->ID +
+                      " in " + block->toString());
+        }
       }
     }
   }
 }
 
-Node *Auditor::peelExpression(Node *node) {
+void Auditor::classifyClause(
+    SwitchStatement *sw, Node *stmt,
+    const std::vector<std::unique_ptr<Statement>> &clause,
+    const std::unique_ptr<BlockInfo> &blockInfo) {
+
+  logInternal("\n========== CLAUSE CLASSIFIER START ==========");
+  logInternal("[CLAUSE-CLASSIFIER] Processing statement in switch: " +
+              (stmt ? stmt->toString() : "NULL"));
+  logInternal("[CLAUSE-CLASSIFIER] Switch being classified: " +
+              (sw ? sw->toString() : "NULL"));
+  logInternal("[CLAUSE-CLASSIFIER] Clause vector size: " +
+              std::to_string(clause.size()));
+
+  Node *actual = peelNode(stmt);
+  logInternal("[CLAUSE-CLASSIFIER] After peelNode:");
+  logInternal("  - Original node: " + (stmt ? stmt->toString() : "NULL"));
+  logInternal("  - Peeled node: " + (actual ? actual->toString() : "NULL"));
+  logInternal("  - Original node type: " +
+              (stmt ? std::string(typeid(*stmt).name()) : "NULL"));
+  logInternal("  - Peeled node type: " +
+              (actual ? std::string(typeid(*actual).name()) : "NULL"));
+  logInternal("  - Are they the same? " +
+              std::string((stmt == actual) ? "YES" : "NO"));
+
+  // If the statement is a block call the normal block classifier
+  if (isBlock(actual)) {
+    logInternal(
+        "[CLAUSE-CLASSIFIER] Node is a block - delegating to classifyNode");
+    logInternal("  - Block type detected, recursing...");
+    classifyNode(actual);
+    logInternal("[CLAUSE-CLASSIFIER] Block classification complete");
+  } else {
+    logInternal(
+        "[CLAUSE-CLASSIFIER] Node is not a block - treating as floater");
+
+    // If it is among the floaters
+    logInternal("[CLAUSE-CLASSIFIER] Attempting to get symbol from node");
+    auto sym = semantics.getSymbolFromMeta(actual);
+
+    if (!sym) {
+      logInternal("[CLAUSE-CLASSIFIER] No symbol found for node");
+      logInternal("  - Possible reasons:");
+      logInternal("    * Node has no metadata attached");
+      logInternal("    * Node type not tracked by semantics");
+      logInternal("    * Node is not a heap variable usage");
+      logInternal("[CLAUSE-CLASSIFIER] Returning early");
+      logInternal("========== CLAUSE CLASSIFIER END (NO SYMBOL) ==========\n");
+      return;
+    }
+
+    logInternal("[CLAUSE-CLASSIFIER] Symbol found:");
+    logInternal("  - ID: " + sym->ID);
+    logInternal("  - Is heap: " + std::string(sym->isHeap ? "YES" : "NO"));
+    logInternal("  - Is pointer: " +
+                std::string(sym->isPointer ? "YES" : "NO"));
+    logInternal("  - Pointer count: " + std::to_string(sym->pointerCount));
+    logInternal("  - Ref count: " + std::to_string(sym->refCount));
+
+    if (!sym->isHeap) {
+      logInternal("[CLAUSE-CLASSIFIER] Symbol is not heap - skipping");
+      logInternal("========== CLAUSE CLASSIFIER END (NOT HEAP) ==========\n");
+      return;
+    }
+
+    logInternal(
+        "[CLAUSE-CLASSIFIER] Checking if symbol was born in this clause");
+    bool bornHere = checkBirth(sym->ID, clause);
+    logInternal("  - Born here? " + std::string(bornHere ? "YES" : "NO"));
+
+    if (bornHere) {
+      logInternal("[CLAUSE-CLASSIFIER] NATIVE DETECTED: " + sym->ID);
+      logInternal("  - Adding to natives list for switch: " + sw->toString());
+      blockInfo->natives.push_back(sym->ID);
+      logInternal("  - Natives count now: " +
+                  std::to_string(blockInfo->natives.size()));
+    } else {
+      logInternal(
+          "[CLAUSE-CLASSIFIER] Not born here - checking if it dies in switch");
+      logInternal("  - Calling doesSymbolDieInSwitch for ID: " + sym->ID);
+
+      bool diesHere = doesSymbolDieInSwitch(sym->ID, clause);
+      logInternal("  - Dies in switch? " +
+                  std::string(diesHere ? "YES" : "NO"));
+
+      if (diesHere) {
+        logInternal("[CLAUSE-CLASSIFIER] FOREIGNER DETECTED: " + sym->ID);
+        logInternal("  - Adding to foreigners list for switch: " +
+                    sw->toString());
+        blockInfo->foreigners.push_back(sym->ID);
+        logInternal("  - Foreigners count now: " +
+                    std::to_string(blockInfo->foreigners.size()));
+      } else {
+        logInternal("[CLAUSE-CLASSIFIER] Symbol neither native nor foreigner "
+                    "in this switch");
+        logInternal("  - Not born here, doesn't die here - ignoring");
+      }
+    }
+  }
+
+  logInternal("[CLAUSE-CLASSIFIER] Clause classification complete");
+  logInternal("  - Current natives in switch: " +
+              std::to_string(blockInfo->natives.size()));
+  logInternal("  - Current foreigners in switch: " +
+              std::to_string(blockInfo->foreigners.size()));
+  logInternal("========== CLAUSE CLASSIFIER END ==========\n");
+}
+
+void Auditor::classifySwitch(SwitchStatement *sw) {
+  if (deferedFrees.find(sw) == deferedFrees.end()) {
+    deferedFrees[sw] = std::make_unique<BlockInfo>();
+  }
+  auto &info = deferedFrees[sw];
+  logInternal("[SWICTH CLASSIFIER] Classifying switch");
+
+  for (const auto &caseClause : sw->case_clauses) {
+    auto caseNode = dynamic_cast<CaseClause *>(caseClause.get());
+    if (!caseNode)
+      continue;
+
+    for (auto &stmt : caseNode->body) {
+      classifyClause(sw, stmt.get(), caseNode->body, info);
+    }
+  }
+
+  // Process default with its OWN body
+  for (auto &stmt : sw->default_statements) {
+    classifyClause(sw, stmt.get(), sw->default_statements, info);
+  }
+}
+
+Node *Auditor::peelNode(Node *node) {
   if (auto exprStmt = dynamic_cast<ExpressionStatement *>(node)) {
     return exprStmt->expression.get();
   }
+
+  if (auto heapStmt = dynamic_cast<HeapStatement *>(node))
+    return heapStmt->stmt.get();
+
   return node;
 }
 
@@ -175,8 +328,15 @@ bool Auditor::shouldNativeBunkerBlock(Node *block) {
 void Auditor::bunkerNatives(Node *block) {
   auto &blockInfo = deferedFrees[block];
   for (const auto &nativeID : blockInfo->natives) {
+    if (isBunkered(nativeID)) {
+      logInternal("[NATIVE BUNKERING] Baton " + nativeID +
+                  " already bunkered, skipping");
+      continue;
+    }
+
     Node *holder = semantics.queryForLifeTimeBaton(nativeID);
     if (!holder) {
+      scanForBaton(nativeID);
       logInternal("[NATIVE BUNKERING] Could not find the baton holder for "
                   "lifetime ID:" +
                   nativeID + " skipping...");
@@ -194,6 +354,7 @@ void Auditor::bunkerNatives(Node *block) {
 
     auto &baton = semantics.responsibilityTable[holder];
     if (!baton) {
+      scanForBaton(nativeID);
       logInternal("[NATIVE BUNKERING] Could not find the baton for "
                   "lifetime ID:" +
                   nativeID + " skipping...");
@@ -222,9 +383,15 @@ void Auditor::bunkerForeigners(Node *block) {
 
   for (const auto &foreignerID : blockInfo->foreigners) {
     logInternal("[FOREIGNER BUNKERING] Attempting to bunker: " + foreignerID);
+    if (isBunkered(foreignerID)) {
+      logInternal("[FOREIGNER BUNKERING] Baton " + foreignerID +
+                  " already bunkered, skipping");
+      continue;
+    }
 
     Node *holder = semantics.queryForLifeTimeBaton(foreignerID);
     if (!holder) {
+      scanForBaton(foreignerID);
       logInternal("[FOREIGNER BUNKERING] FAILED: Could not find the baton "
                   "holder for ID: " +
                   foreignerID);
@@ -240,6 +407,7 @@ void Auditor::bunkerForeigners(Node *block) {
 
     auto &baton = semantics.responsibilityTable[holder];
     if (!baton) {
+      scanForBaton(foreignerID);
       logInternal(
           "[FOREIGNER BUNKERING] FAILED: No baton in responsibilityTable for " +
           foreignerID);
@@ -263,6 +431,45 @@ bool Auditor::isBlock(Node *node) {
     return true;
   if (dynamic_cast<ForStatement *>(node))
     return true;
+  if (dynamic_cast<ifStatement *>(node))
+    return true;
+  if (dynamic_cast<BlockStatement *>(node))
+    return true;
+
+  return false;
+}
+
+bool Auditor::isDeclaration(Node *node) {
+  if (dynamic_cast<LetStatement *>(node))
+    return true;
+  if (dynamic_cast<PointerStatement *>(node))
+    return true;
+  if (dynamic_cast<ArrayStatement *>(node))
+    return true;
+
+  return false;
+}
+
+bool Auditor::checkBirth(
+    const std::string &id,
+    const std::vector<std::unique_ptr<Statement>> &clause) {
+  logInternal("[CHECKING BIRTH] Checking heap statement birth in clause");
+  for (const auto &stmt : clause) {
+    Node *actual = peelNode(stmt.get());
+    if (isDeclaration(actual)) {
+      auto declSym = semantics.getSymbolFromMeta(actual);
+      if (!declSym) {
+        logInternal("[CHEKCING BIRTH] Failed to find declaration symbol info "
+                    "skipping...");
+        continue;
+      }
+
+      if (id == declSym->ID) {
+        logInternal("[CHECKING BIRTH] Found heap birth for id: " + id);
+        return true;
+      }
+    }
+  }
 
   return false;
 }
@@ -466,6 +673,41 @@ void Auditor::auditWhileStatement(Node *node) {
   audit(whileStmt->loop.get());
 }
 
+void Auditor::auditCaseStatement(Node *node) {
+  auto caseClause = dynamic_cast<CaseClause *>(node);
+  if (!caseClause)
+    return;
+
+  for (auto &stmt : caseClause->body) {
+    audit(stmt.get());
+  }
+}
+
+void Auditor::auditSwitchStatement(Node *node) {
+  auto switchStmt = dynamic_cast<SwitchStatement *>(node);
+  if (!switchStmt)
+    return;
+
+  logInternal("[AUDIT] SwitchStatement");
+
+  if (deferedFrees.find(switchStmt) == deferedFrees.end()) {
+    deferedFrees[switchStmt] = std::make_unique<BlockInfo>();
+  }
+
+  if (shouldForeignBunkerBlock(switchStmt)) {
+    logInternal("[TRIGGER] Switch with foreigners - bunkering");
+    bunkerForeigners(switchStmt);
+  }
+
+  // Now audit everything normally
+  for (auto &caseClause : switchStmt->case_clauses) {
+    audit(caseClause.get());
+  }
+  for (auto &stmt : switchStmt->default_statements) {
+    audit(stmt.get());
+  }
+}
+
 void Auditor::auditElifStatement(Node *node) {
   auto elifStmt = dynamic_cast<elifStatement *>(node);
   if (!elifStmt)
@@ -593,8 +835,12 @@ void Auditor::auditBlockStatement(Node *node) {
   if (!blockStmt)
     return;
 
-  if (hasDisruptors(blockStmt) && shouldNativeBunkerBlock(blockStmt))
+  if (hasDisruptors(blockStmt) && shouldNativeBunkerBlock(blockStmt)) {
+    logInternal(
+        "[TRIGGER] Block disruptor detected bunkering natives for block: " +
+        blockStmt->toString());
     bunkerNatives(blockStmt);
+  }
 
   for (const auto &stmt : blockStmt->statements) {
     audit(stmt.get());
@@ -727,7 +973,7 @@ bool Auditor::containsNode(Node *root, Node *target) {
 
   if (auto block = dynamic_cast<BlockStatement *>(root)) {
     for (auto &stmt : block->statements) {
-      Node *peeled = peelExpression(stmt.get());
+      Node *peeled = peelNode(stmt.get());
       if (containsNode(peeled, target))
         return true;
     }
@@ -966,6 +1212,209 @@ bool Auditor::diesInBlock(const std::string &ID, Node *block) {
   } else {
     logInternal(
         "[DIES-IN-BLOCK] Bailing because holder is outside this block. ");
+  }
+
+  return false;
+}
+
+bool Auditor::doesSymbolDieInSwitch(
+    const std::string &id,
+    const std::vector<std::unique_ptr<Statement>> &clause) {
+  logInternal("[DIES IN CLAUSE] Checking if ID: " + id + " dies in clause");
+
+  for (const auto &stmt : clause) {
+    Node *stmtPtr = stmt.get();
+
+    // If the statement we hit is some sort of block call the block detector
+    if (isBlock(stmtPtr)) {
+      if (diesInBlock(id, stmtPtr)) {
+        logInternal("[DIES-IN-CLAUSE] SUCCESS: ID " + id + " dies in block");
+        return true;
+      }
+      continue;
+    }
+
+    // For non-block statements, check if the holder is directly in this clause
+    Node *holder = semantics.queryForLifeTimeBaton(id);
+    if (!holder) {
+      logInternal("[DIES-IN-CLAUSE] FAILED: No holder found for " + id);
+      continue;
+    }
+
+    // Check if the holder is among the statements in this clause
+    bool contains =
+        std::find_if(clause.begin(), clause.end(), [holder](const auto &ptr) {
+          return ptr.get() == holder;
+        }) != clause.end();
+
+    logInternal("[DIES-IN-CLAUSE] Holder for " + id + " is " +
+                holder->toString());
+    logInternal("[DIES-IN-CLAUSE] Does clause contain holder? " +
+                std::string(contains ? "YES" : "NO"));
+
+    if (!contains) {
+      logInternal(
+          "[DIES-IN-CLAUSE] Bailing because holder is outside this clause");
+      continue;
+    }
+
+    auto &baton = semantics.responsibilityTable[holder];
+    if (!baton) {
+      logInternal("[DIES-IN-CLAUSE] FAILED: No baton for holder");
+      continue;
+    }
+
+    auto holderSym = semantics.getSymbolFromMeta(holder);
+    if (!holderSym) {
+      logInternal("[DIES-IN-CLAUSE] FAILED: No symbol info for holder");
+      continue;
+    }
+
+    logInternal("[DIES-IN-CLAUSE] PtrCount: " +
+                std::to_string(holderSym->pointerCount) +
+                " | RefCount: " + std::to_string(holderSym->refCount) +
+                " | Responsible: " + (baton->isResponsible ? "T" : "F"));
+
+    if (holderSym->pointerCount == 0 && holderSym->refCount == 0 &&
+        baton->isResponsible) {
+      logInternal("[DIES-IN-CLAUSE] SUCCESS: ID " + id + " dies here.");
+      return true;
+    }
+  }
+
+  logInternal("[DIES-IN-CLAUSE] ID " + id + " does not die in this clause");
+  return false;
+}
+
+void Auditor::scanForBaton(const std::string &id) {
+  logInternal("\n========== GLOBAL BATON SCANNER ==========");
+  logInternal("[SCANNER] Performing global baton scan for lifetime ID: " + id);
+
+  //===========================================================================
+  // LAYER 1: Responsibility Table (Active Batons)
+  //===========================================================================
+  logInternal("\n--- LAYER 1: Responsibility Table (Active Batons) ---");
+  Node *holder = semantics.queryForLifeTimeBaton(id);
+  if (!holder) {
+    logInternal("[SCANNER] LAYER 1: ❌ Baton " + id +
+                " NOT FOUND in responsibility table");
+  } else {
+    logInternal("[SCANNER] LAYER 1: Found baton " + id +
+                " in responsibility table");
+    logInternal("  Holder node: " + holder->toString());
+
+    auto &baton = semantics.responsibilityTable[holder];
+    if (baton) {
+      logInternal("  Baton state:");
+      logInternal("    - isResponsible: " +
+                  std::string(baton->isResponsible ? "YES" : "NO"));
+      logInternal("    - isAlive: " +
+                  std::string(baton->isAlive ? "YES" : "NO"));
+      logInternal("    - ownedBy: " + baton->ownedBy);
+      logInternal("    - Dependents count: " +
+                  std::to_string(baton->dependents.size()));
+    } else {
+      logInternal("  [ERROR] Baton object is null despite having holder!");
+    }
+  }
+
+  //===========================================================================
+  // LAYER 2: Natives To Free (Bunkered Natives)
+  //===========================================================================
+  logInternal("\n--- LAYER 2: Natives To Free (Bunkered Natives) ---");
+  bool foundInNatives = false;
+  for (const auto &[block, batonList] : nativesToFree) {
+    for (size_t i = 0; i < batonList.size(); ++i) {
+      const auto &[baton, sym] = batonList[i];
+      if (baton && baton->ID == id) {
+        foundInNatives = true;
+        logInternal("[SCANNER] LAYER 2: Found baton " + id +
+                    " in nativesToFree");
+        logInternal("  Block: " + block->toString());
+        logInternal("  Position in list: " + std::to_string(i));
+        logInternal("  Symbol info: " + (sym ? sym->ID : "null"));
+        logInternal("  Baton state:");
+        logInternal("    - isResponsible: " +
+                    std::string(baton->isResponsible ? "YES" : "NO"));
+        logInternal("    - isAlive: " +
+                    std::string(baton->isAlive ? "YES" : "NO"));
+        logInternal("    - ownedBy: " + baton->ownedBy);
+      }
+    }
+  }
+  if (!foundInNatives) {
+    logInternal("[SCANNER] LAYER 2: ❌ Baton " + id +
+                " NOT FOUND in nativesToFree");
+  }
+
+  //===========================================================================
+  // LAYER 3: Foreigners To Free (Bunkered Foreigners)
+  //===========================================================================
+  logInternal("\n--- LAYER 3: Foreigners To Free (Bunkered Foreigners) ---");
+  bool foundInForeigners = false;
+  for (const auto &[block, batonList] : foreignersToFree) {
+    for (size_t i = 0; i < batonList.size(); ++i) {
+      const auto &[baton, sym] = batonList[i];
+      if (baton && baton->ID == id) {
+        foundInForeigners = true;
+        logInternal("[SCANNER] LAYER 3: Found baton " + id +
+                    " in foreignersToFree");
+        logInternal("  Block: " + block->toString());
+        logInternal("  Position in list: " + std::to_string(i));
+        logInternal("  Symbol info: " + (sym ? sym->ID : "null"));
+        logInternal("  Baton state:");
+        logInternal("    - isResponsible: " +
+                    std::string(baton->isResponsible ? "YES" : "NO"));
+        logInternal("    - isAlive: " +
+                    std::string(baton->isAlive ? "YES" : "NO"));
+        logInternal("    - ownedBy: " + baton->ownedBy);
+      }
+    }
+  }
+  if (!foundInForeigners) {
+    logInternal("[SCANNER] LAYER 3: ❌ Baton " + id +
+                " NOT FOUND in foreignersToFree");
+  }
+
+  //===========================================================================
+  // SUMMARY
+  //===========================================================================
+  logInternal("\n--- SCAN SUMMARY ---");
+  logInternal("Baton ID: " + id);
+  logInternal("Layer 1 (Responsibility Table): " +
+              std::string(holder ? "FOUND" : "NOT FOUND"));
+  logInternal("Layer 2 (Natives To Free): " +
+              std::string(foundInNatives ? "FOUND" : "NOT FOUND"));
+  logInternal("Layer 3 (Foreigners To Free): " +
+              std::string(foundInForeigners ? "FOUND" : "NOT FOUND"));
+
+  if (!holder && !foundInNatives && !foundInForeigners) {
+    logInternal("[SCANNER] WARNING: Baton " + id +
+                " not found in ANY layer! It may have been destroyed.");
+  } else if (holder && (foundInNatives || foundInForeigners)) {
+    logInternal("[SCANNER]  WARNING: Baton " + id +
+                " appears in MULTIPLE layers!");
+  }
+
+  logInternal("========== GLOBAL BATON SCANNER END ==========\n");
+}
+
+bool Auditor::isAlreadyClassified(const std::string &id,
+                                  const std::unique_ptr<BlockInfo> &blockInfo) {
+  // Check natives list
+  if (std::find(blockInfo->natives.begin(), blockInfo->natives.end(), id) !=
+      blockInfo->natives.end()) {
+    logInternal("[CLASSIFIER CHECK] ID: " + id +
+                " is already native classified");
+    return true;
+  }
+
+  // Check foreigners list
+  if (std::find(blockInfo->foreigners.begin(), blockInfo->foreigners.end(),
+                id) != blockInfo->foreigners.end()) {
+    logInternal("[CLASSIFIER CHECK] ID: " + id +
+                " is already foreign classified");
+    return true;
   }
 
   return false;

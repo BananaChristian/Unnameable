@@ -980,15 +980,15 @@ void IRGenerator::freeDynamicHeapStorage(const std::string &allocatorType,
 void IRGenerator::freeForeigners(Node *block) {
   auto &map = auditor.foreignersToFree;
 
-  logInternal("\n[FOREINER-LOOP-CLEANUP] >>> Entering Foreigner Cleanup for "
-              "loop at line: " +
+  logInternal("\n[FOREINER-CLEANUP] >>> Entering Foreigner Cleanup for "
+              "block at line: " +
               block->toString());
   logInternal("[LOOP KEY] " + std::to_string((uintptr_t)block));
 
   auto it = map.find(block);
   if (it == map.end()) {
     logInternal(
-        "  [SKIP] No foreigners registered for this loop. Basket is empty.");
+        "  [SKIP] No foreigners registered for this block. Basket is empty.");
     return;
   }
 
@@ -1048,13 +1048,13 @@ void IRGenerator::freeForeigners(Node *block) {
   // Clean the map after processing to prevent double-frees if this is called
   // twice
   map.erase(block);
-  logInternal("[FOREINER-LOOP-CLEANUP] <<< Finished processing foreigners.\n");
+  logInternal("[FOREINER-CLEANUP] <<< Finished processing foreigners.\n");
 }
 
 void IRGenerator::freeNatives(Node *block) {
   auto &map = auditor.nativesToFree;
 
-  logInternal("\n[NATIVE-LOOP-CLEANUP] >>> Entering Native Cleanup for loop "
+  logInternal("\n[NATIVE-CLEANUP] >>> Entering Native Cleanup for block "
               "at line: " +
               block->toString());
   logInternal("[LOOP KEY] " + std::to_string((uintptr_t)block));
@@ -1120,10 +1120,8 @@ void IRGenerator::freeNatives(Node *block) {
     }
   }
 
-  // Clean the map after processing to prevent double-frees if this is called
-  // twice
   map.erase(block);
-  logInternal("[NATIVE-LOOP-CLEANUP] <<< Finished processing foreigners.\n");
+  logInternal("[NATIVE-CLEANUP] <<< Finished processing natives.\n");
 }
 
 void IRGenerator::emitBlockCleanUp(Node *block) {

@@ -34,9 +34,11 @@ void IRGenerator::generateIfStatement(Node *node) {
   // generate'then' branch
   funcBuilder.SetInsertPoint(thenBB);
   generateStatement(ifStmt->if_result.get());
-  blocksNeedingCleanup.push_back(ifStmt->if_result.get());
 
-  if (!funcBuilder.GetInsertBlock()->getTerminator()) {
+  if (funcBuilder.GetInsertBlock()->getTerminator()) {
+    freeNatives(ifStmt->if_result.get());
+  } else {
+    blocksNeedingCleanup.push_back(ifStmt->if_result.get());
     funcBuilder.CreateBr(mergeBB);
   }
 
@@ -68,11 +70,13 @@ void IRGenerator::generateIfStatement(Node *node) {
 
     funcBuilder.SetInsertPoint(elifBodyBB);
     generateStatement(elif->elif_result.get());
-    blocksNeedingCleanup.push_back(elif->elif_result.get());
-
-    if (!funcBuilder.GetInsertBlock()->getTerminator()) {
+    if (funcBuilder.GetInsertBlock()->getTerminator()) {
+      freeNatives(elif->elif_result.get());
+    } else {
+      blocksNeedingCleanup.push_back(elif->elif_result.get());
       funcBuilder.CreateBr(mergeBB);
     }
+
     nextBB = nextElifBB;
   }
 
@@ -82,9 +86,10 @@ void IRGenerator::generateIfStatement(Node *node) {
     funcBuilder.SetInsertPoint(nextBB);
 
     generateStatement(ifStmt->else_result.value().get());
-    blocksNeedingCleanup.push_back(ifStmt->else_result.value().get());
-
-    if (!funcBuilder.GetInsertBlock()->getTerminator()) {
+    if (funcBuilder.GetInsertBlock()->getTerminator()) {
+      freeNatives(ifStmt->else_result.value().get());
+    } else {
+      blocksNeedingCleanup.push_back(ifStmt->else_result.value().get());
       funcBuilder.CreateBr(mergeBB);
     }
   }
@@ -94,9 +99,8 @@ void IRGenerator::generateIfStatement(Node *node) {
   funcBuilder.SetInsertPoint(mergeBB);
 
   // Emit all cleanups in the merge block (after all branches)
-  for (auto *block : blocksNeedingCleanup) {
-    emitBlockCleanUp(block);
-  }
+  for (auto *block : blocksNeedingCleanup)
+    freeForeigners(block);
 }
 
 //___________Switch statement________
@@ -171,4 +175,5 @@ void IRGenerator::generateSwitchStatement(Node *node) {
 
   parentFunc->insert(parentFunc->end(), mergeBB);
   funcBuilder.SetInsertPoint(mergeBB);
+  emitBlockCleanUp(switchStmt);
 }

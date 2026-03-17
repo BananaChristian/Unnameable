@@ -62,6 +62,8 @@ private:
   void auditTraceStatement(Node *node);
   void auditIfStatement(Node *node);
   void auditElifStatement(Node *node);
+  void auditCaseStatement(Node *node);
+  void auditSwitchStatement(Node *node);
 
   void auditWhileStatement(Node *node);
   void auditForStatement(Node *node);
@@ -71,7 +73,11 @@ private:
   void runClassifier(Node *node);
   void classifyNode(Node *node);
   void classifyBlock(Node *block);
-  Node *peelExpression(Node *node);
+  void classifySwitch(SwitchStatement *sw);
+  void classifyClause(SwitchStatement *sw, Node *stmt,
+                      const std::vector<std::unique_ptr<Statement>> &clause,
+                      const std::unique_ptr<BlockInfo> &blockInfo);
+  Node *peelNode(Node *node);
   bool hasDisruptors(Node *block);
   bool shouldForeignBunkerBlock(Node *block);
   bool shouldNativeBunkerBlock(Node *block);
@@ -79,13 +85,22 @@ private:
                          const std::shared_ptr<SymbolInfo> &dependentSym,
                          bool dropCount);
   bool diesInBlock(const std::string &ID, Node *block);
+  bool
+  doesSymbolDieInSwitch(const std::string &id,
+                        const std::vector<std::unique_ptr<Statement>> &clause);
   std::set<std::string> getAllActiveBatonIDs();
   std::vector<std::string> getAllActiveBatonIDsInBlock(Node *block);
+  void scanForBaton(const std::string &id);
 
   void bunkerNatives(Node *block);
   void bunkerForeigners(Node *block);
   bool isBunkered(const std::string &id);
+  bool isAlreadyClassified(const std::string &id,
+                           const std::unique_ptr<BlockInfo> &blockInfo);
   bool isBlock(Node *node);
+  bool checkBirth(const std::string &id,
+                  const std::vector<std::unique_ptr<Statement>> &clause);
+  bool isDeclaration(Node *node);
 
   bool containsNode(Node *root, Node *target);
   void simulateFree(Node *contextNode, const std::string &contextID);

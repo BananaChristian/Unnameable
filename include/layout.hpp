@@ -41,6 +41,8 @@ private:
   void calculateForStatementSize(Node *node);
   void calculateIfStatementSize(Node *node);
   void calculateElifStatementSize(Node *node);
+  void calculateCaseClause(Node *node);
+  void calculateSwitchStatement(Node *node);
   void calculateBlockStatementMembersSize(Node *node);
   void calculateFunctionStatement(Node *node);
   void calculateFunctionExpression(Node *node);

@@ -1281,79 +1281,12 @@ bool Semantics::hasReturnPath(Node *node) {
   }
 
   if (auto blockStmt = dynamic_cast<BlockStatement *>(node)) {
-    for (const auto &stmt : blockStmt->statements) {
-      if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
-        if (retStmt->return_value ||
-            (currentFunction.value()->isNullable && !retStmt->return_value)) {
-          return true; // value, or null return
-        }
-      }
-      if (auto ifStmt = dynamic_cast<ifStatement *>(stmt.get())) {
-        auto thenBlock =
-            dynamic_cast<BlockStatement *>(ifStmt->if_result.get());
-        bool hasThenReturn = thenBlock && hasReturnPath(thenBlock);
-        bool hasElseReturn = ifStmt->else_result.has_value() &&
-                             hasReturnPath(dynamic_cast<BlockStatement *>(
-                                 ifStmt->else_result.value().get()));
-        if (hasThenReturn && hasElseReturn) {
-          return true;
-        }
-        bool hasElifReturn = true;
-        for (const auto &elif : ifStmt->elifClauses) {
-          auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
-          if (elifStmt) {
-            auto elifBlock =
-                dynamic_cast<BlockStatement *>(elifStmt->elif_result.get());
-            hasElifReturn &= elifBlock && hasReturnPath(elifBlock);
-          }
-        }
-        if (hasThenReturn && hasElifReturn && hasElseReturn) {
-          return true;
-        }
-      }
-
-      if (auto switchStmt = dynamic_cast<SwitchStatement *>(stmt.get())) {
-        return switchReturns(switchStmt);
-      }
-    }
-    return false; // BlockStatement has no finalexpr
+    return hasReturnPathInBlock(blockStmt->statements);
   }
 
   if (auto blockExpr = dynamic_cast<BlockExpression *>(node)) {
-    for (const auto &stmt : blockExpr->statements) {
-      if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
-        if (retStmt->return_value ||
-            (currentFunction.value()->isNullable && !retStmt->return_value)) {
-          return true; // Error, value, or null return
-        }
-      }
-      if (auto ifStmt = dynamic_cast<ifStatement *>(stmt.get())) {
-        auto thenBlock =
-            dynamic_cast<BlockStatement *>(ifStmt->if_result.get());
-        bool hasThenReturn = thenBlock && hasReturnPath(thenBlock);
-        bool hasElseReturn = ifStmt->else_result.has_value() &&
-                             hasReturnPath(dynamic_cast<BlockStatement *>(
-                                 ifStmt->else_result.value().get()));
-        if (hasThenReturn && hasElseReturn) {
-          return true;
-        }
-        bool hasElifReturn = true;
-        for (const auto &elif : ifStmt->elifClauses) {
-          auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
-          if (elifStmt) {
-            auto elifBlock =
-                dynamic_cast<BlockStatement *>(elifStmt->elif_result.get());
-            hasElifReturn &= elifBlock && hasReturnPath(elifBlock);
-          }
-        }
-        if (hasThenReturn && hasElifReturn && hasElseReturn) {
-          return true;
-        }
-      }
-
-      if (auto switchStmt = dynamic_cast<SwitchStatement *>(stmt.get())) {
-        return switchReturns(switchStmt);
-      }
+    if (hasReturnPathInBlock(blockExpr->statements)) {
+      return true;
     }
 
     if (blockExpr->finalexpr.has_value()) {
@@ -1374,12 +1307,100 @@ bool Semantics::hasReturnPath(Node *node) {
   return false;
 }
 
-bool Semantics::switchReturns(SwitchStatement *sw) {
+bool Semantics::hasReturnPathInBlock(
+    const std::vector<std::unique_ptr<Statement>> &statements) {
+
+  for (size_t i = 0; i < statements.size(); ++i) {
+    const auto &stmt = statements[i];
+
+    // Check if this statement itself is a return
+    if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
+      if (retStmt->return_value ||
+          (currentFunction.value()->isNullable && !retStmt->return_value)) {
+        return true; // Found a return
+      }
+    }
+
+    // Check if there's a return after this statement
+    bool hasReturnAfter = false;
+    for (size_t j = i + 1; j < statements.size(); ++j) {
+      if (dynamic_cast<ReturnStatement *>(statements[j].get())) {
+        hasReturnAfter = true;
+        break;
+      }
+    }
+
+    // Handle if statements
+    if (auto ifStmt = dynamic_cast<ifStatement *>(stmt.get())) {
+      // If there's a return after this if, we don't need returns inside it
+      if (hasReturnAfter) {
+        continue;
+      }
+
+      // Otherwise, check if all branches return
+      if (!ifReturnsInAllPaths(ifStmt)) {
+        return false;
+      }
+      // If all branches return, we're good for this path
+      continue;
+    }
+
+    // Handle switch statements
+    if (auto switchStmt = dynamic_cast<SwitchStatement *>(stmt.get())) {
+      // If there's a return after this switch, we don't need returns inside it
+      if (hasReturnAfter) {
+        continue;
+      }
+
+      // Otherwise, check if all paths through switch return
+      if (!switchReturnsInAllPaths(switchStmt)) {
+        return false;
+      }
+      // If all paths return, we're good
+      continue;
+    }
+  }
+
+  return false; // No return found in this block
+}
+
+// Helper to check if ALL paths through an if statement return
+bool Semantics::ifReturnsInAllPaths(ifStatement *ifStmt) {
+  // Check then block
+  auto thenBlock = dynamic_cast<BlockStatement *>(ifStmt->if_result.get());
+  bool hasThenReturn = thenBlock && hasReturnPath(thenBlock);
+
+  // Check elif blocks
+  bool hasElifReturn = true;
+  for (const auto &elif : ifStmt->elifClauses) {
+    auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
+    if (elifStmt) {
+      auto elifBlock =
+          dynamic_cast<BlockStatement *>(elifStmt->elif_result.get());
+      hasElifReturn &= elifBlock && hasReturnPath(elifBlock);
+    }
+  }
+
+  // Check else block (if exists)
+  bool hasElseReturn = true;
+  if (ifStmt->else_result.has_value()) {
+    auto elseBlock =
+        dynamic_cast<BlockStatement *>(ifStmt->else_result.value().get());
+    hasElseReturn = elseBlock && hasReturnPath(elseBlock);
+  } else {
+    // No else means there's a path that doesn't return
+    hasElseReturn = false;
+  }
+
+  return hasThenReturn && hasElifReturn && hasElseReturn;
+}
+
+// Helper to check if ALL paths through a switch statement return
+bool Semantics::switchReturnsInAllPaths(SwitchStatement *sw) {
+  // Default must exist and return in all its paths
   if (sw->default_statements.empty())
     return false;
-
-  bool defaultReturns = hasReturnPathList(sw->default_statements);
-  if (!defaultReturns)
+  if (!hasReturnPathInBlock(sw->default_statements))
     return false;
 
   // Check every case clause
@@ -1387,25 +1408,24 @@ bool Semantics::switchReturns(SwitchStatement *sw) {
     auto caseClause = dynamic_cast<CaseClause *>(sw->case_clauses[i].get());
 
     if (caseClause->body.empty()) {
-      // Look ahead for the next body
-      bool safelyFallsThrough = false;
+      // Empty body means fall-through - find the next non-empty body
+      bool foundReturn = false;
       for (size_t j = i + 1; j < sw->case_clauses.size(); ++j) {
         auto nextClause = dynamic_cast<CaseClause *>(sw->case_clauses[j].get());
         if (!nextClause->body.empty()) {
-          if (hasReturnPathList(nextClause->body)) {
-            safelyFallsThrough = true;
+          if (hasReturnPathInBlock(nextClause->body)) {
+            foundReturn = true;
           }
           break;
         }
       }
-      // If we didn't find a returning body in later cases, check default
-      if (!safelyFallsThrough && !defaultReturns) {
+      // If no non-empty body found, fall through to default
+      if (!foundReturn && !hasReturnPathInBlock(sw->default_statements)) {
         return false;
       }
-      // If it falls through to a valid return, this specific 'i' is safe.
     } else {
-      // Normal body check
-      if (!hasReturnPathList(caseClause->body)) {
+      // Non-empty body must return in all its paths
+      if (!hasReturnPathInBlock(caseClause->body)) {
         return false;
       }
     }

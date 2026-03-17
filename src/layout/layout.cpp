@@ -4,6 +4,7 @@
 #include "semantics.hpp"
 #include <cstdint>
 #include <llvm-18/llvm/IR/DerivedTypes.h>
+#include <memory>
 #include <string>
 
 #define COLOR_RESET "\033[0m"
@@ -71,6 +72,8 @@ void Layout::registerComponentCalculatorFns() {
   calculatorFnsMap[typeid(SealStatement)] = &Layout::calculateSealStatement;
   calculatorFnsMap[typeid(AllocatorStatement)] =
       &Layout::calculateAllocatorInterfaceSize;
+  calculatorFnsMap[typeid(CaseClause)] = &Layout::calculateCaseClause;
+  calculatorFnsMap[typeid(SwitchStatement)] = &Layout::calculateSwitchStatement;
 }
 
 // Independent calculators
@@ -314,6 +317,27 @@ void Layout::calculateElifStatementSize(Node *node) {
     return;
 
   calculatorDriver(elifStmt->elif_result.get());
+}
+
+void Layout::calculateSwitchStatement(Node *node) {
+  auto switchStmt = dynamic_cast<SwitchStatement *>(node);
+  if (!switchStmt)
+    return;
+
+  for (const auto &clause : switchStmt->case_clauses)
+    calculatorDriver(clause.get());
+
+  for (const auto &defs : switchStmt->default_statements)
+    calculatorDriver(defs.get());
+}
+
+void Layout::calculateCaseClause(Node *node) {
+  auto caseClause = dynamic_cast<CaseClause *>(node);
+  if (!caseClause)
+    return;
+
+  for (const auto &stmt : caseClause->body)
+    calculatorDriver(stmt.get());
 }
 
 void Layout::calculateFunctionStatement(Node *node) {
