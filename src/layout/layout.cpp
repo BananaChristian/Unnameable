@@ -144,9 +144,9 @@ void Layout::calculateArrayStatementSize(Node *node) {
 
   // If the user provided the length
   bool isConstantLength = true;
-  if (!arrStmt->lengths.empty()) {
+  if (!arrStmt->dimensions.empty()) {
     totalElements = 1; // Start at 1 for multiplication
-    for (const auto &sizeNode : arrStmt->lengths) {
+    for (const auto &sizeNode : arrStmt->dimensions) {
       if (semantics.isIntegerConstant(sizeNode.get())) {
         uint64_t dimSize = semantics.getIntegerConstant(sizeNode.get());
         totalElements *= dimSize;
@@ -189,7 +189,7 @@ void Layout::calculateArrayStatementSize(Node *node) {
     }
 
     // If the length was also added check compatibility
-    if (!arrStmt->lengths.empty() && isConstantLength) {
+    if (!arrStmt->dimensions.empty() && isConstantLength) {
       if (totalElements != totalLiteralElements) {
         logLayoutError("Size mismatch between expected size '" +
                            std::to_string(totalElements) +

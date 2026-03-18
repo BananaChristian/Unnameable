@@ -417,8 +417,8 @@ void Parser::registerStatementParseFns() {
       &Parser::parseLetStatement;
   StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] =
       &Parser::parseLetStatement;
-  StatementParseFunctionsMap[TokenType::CONST] = &Parser::parseConstStatement;
-  StatementParseFunctionsMap[TokenType::MUT] = &Parser::parseMutStatement;
+  StatementParseFunctionsMap[TokenType::CONST] = &Parser::parseDeclaration;
+  StatementParseFunctionsMap[TokenType::MUT] = &Parser::parseDeclaration;
   StatementParseFunctionsMap[TokenType::FUNCTION] =
       &Parser::parseFunctionStatement;
   StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatement;
@@ -437,8 +437,12 @@ void Parser::registerStatementParseFns() {
       &Parser::parseInstantiateStatement;
 
   StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatement;
-  StatementParseFunctionsMap[TokenType::SAGE] = &Parser::parseSageStatement;
-  StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseHeapStatement;
+  StatementParseFunctionsMap[TokenType::SAGE] = &Parser::parseDeclaration;
+  StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseDeclaration;
+
+  StatementParseFunctionsMap[TokenType::VOLATILE] = &Parser::parseDeclaration;
+  StatementParseFunctionsMap[TokenType::RESTRICT] = &Parser::parseDeclaration;
+
   StatementParseFunctionsMap[TokenType::ALLOCATOR] =
       &Parser::parseAllocatorStatement;
   StatementParseFunctionsMap[TokenType::SEAL] = &Parser::parseSealStatement;

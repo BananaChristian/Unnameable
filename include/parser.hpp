@@ -98,23 +98,19 @@ private:
   //---------------PARSING STATEMENTS--------------------
   // General statement parsing function
   std::unique_ptr<Statement> parseStatement();
+  std::unique_ptr<Statement> parseDeclaration();
   // Parsing let statements
   std::unique_ptr<Statement> parseLetStatement();
-  std::unique_ptr<Statement> parseMutStatement();
-  std::unique_ptr<Statement> parseConstStatement();
+  // Parsing reference and pointer statement
+  std::unique_ptr<Statement> parseReferenceStatement();
+  std::unique_ptr<Statement> parsePointerStatement();
   // Parsing assignment statements
   std::unique_ptr<Statement> parseAssignmentStatement();
   std::unique_ptr<Statement> parseDereferenceAssignment();
-  // Parsing heap statements
-  std::unique_ptr<Statement> parseSageStatement();
-  std::unique_ptr<Statement> parseHeapStatement();
   // Parsing allocator statement
   std::unique_ptr<Statement> parseAllocatorStatement();
   // Parsing field assignment such as b.item=10
   std::unique_ptr<Statement> parseFieldAssignment();
-  // Parsing reference and pointer statement
-  std::unique_ptr<Statement> parseReferenceStatement();
-  std::unique_ptr<Statement> parsePointerStatement();
   // Parsing seal statement
   std::unique_ptr<Statement> parseSealStatement();
   // Shout statement parser
@@ -314,9 +310,6 @@ private:
   Token &nextToken();
   Token &previousToken();
   Token peekToken(int peek);
-
-  // Wrapper functions
-  std::unique_ptr<Statement> parseLetStatementWithTypeWrapper();
 
   // Declaration checker
   bool isDeclaration(Node *node);

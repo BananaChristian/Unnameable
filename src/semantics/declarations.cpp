@@ -36,7 +36,7 @@ void Semantics::walkArrayStatement(Node *node) {
     hasError = true;
   }
 
-  if (!arrStmt->array_content && arrStmt->lengths.empty()) {
+  if (!arrStmt->array_content && arrStmt->dimensions.empty()) {
     logSemanticErrors("Uninitialized array '" + arrayName +
                           "' is missing length declaration",
                       arrStmt);
@@ -44,8 +44,8 @@ void Semantics::walkArrayStatement(Node *node) {
   }
 
   std::vector<uint64_t> declSizePerDim;
-  if (!arrStmt->lengths.empty()) {
-    for (const auto &len : arrStmt->lengths) {
+  if (!arrStmt->dimensions.empty()) {
+    for (const auto &len : arrStmt->dimensions) {
       walker(len.get());
       if (isIntegerConstant(len.get())) {
         auto size = getIntegerConstant(len.get());
@@ -81,7 +81,7 @@ void Semantics::walkArrayStatement(Node *node) {
         hasError = true;
       }
 
-      if (arrStmt->lengths.empty()) {
+      if (arrStmt->dimensions.empty()) {
         logSemanticErrors("Cannot assign null to an array'" + arrayName +
                               "' whose dimensions you have not specified",
                           arrStmt->identifier.get());
@@ -113,7 +113,7 @@ void Semantics::walkArrayStatement(Node *node) {
     auto literalDimensionSizePerDim =
         metaData[arrStmt->array_content.get()]->sizePerDimensions;
     // Only check if the user provided lengths
-    if (!arrStmt->lengths.empty()) {
+    if (!arrStmt->dimensions.empty()) {
       if (declSizePerDim.size() != literalDimensionSizePerDim.size()) {
         logSemanticErrors(
             "Dimension count misatch expected '" +

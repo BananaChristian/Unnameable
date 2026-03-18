@@ -81,6 +81,10 @@ std::string TokenTypeToLiteral(TokenType type) {
   case TokenType::ENUM:
     return "Token Type:ENUM";
 
+  case TokenType::VOLATILE:
+    return "Token Type: VOLATILE";
+  case TokenType::RESTRICT:
+    return "Token Type: RESTRICT";
   case TokenType::CONST:
     return "Token Type: CONST";
   case TokenType::COMPONENT:

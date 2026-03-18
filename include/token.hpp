@@ -63,8 +63,10 @@ enum class TokenType {
 
   ENUM,
 
-  SAGE, // Sage keyword that allows a user to manually tell the compiler to
-        // allocate on the SAGE heap
+  VOLATILE,  // Volatile keyword
+  RESTRICT,  // restrict keyword
+  SAGE,      // Sage keyword that allows a user to manually tell the compiler to
+             // allocate on the SAGE heap
   HEAP,      // heap keword that allows a user to use a dynamic heap
   ALLOCATOR, // Allocator keyword
 

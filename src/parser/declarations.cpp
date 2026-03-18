@@ -1,10 +1,149 @@
+#include "ast.hpp"
 #include "parser.hpp"
 #include "token.hpp"
+#include <memory>
 
-std::unique_ptr<Statement> Parser::parseLetStatement() {
+std::unique_ptr<Statement> Parser::parseDeclaration() {
+  // Collect all modifiers
   bool isSage = false;
   bool isHeap = false;
+  bool isMut = false;
+  bool isConst = false;
+  bool isVolatile = false;
+  bool isRestrict = false;
+
+  Token heap_token;
+  std::unique_ptr<Expression> allocType = nullptr; // For heap<allocator>
+  bool dynamicHeapDecl = false;
+
+  while (true) {
+    if (currentToken().type == TokenType::SAGE) {
+      if (isSage || isHeap) {
+        logError("Multiple storage class specifiers", currentToken());
+        return nullptr;
+      }
+      isSage = true;
+      advance();
+    } else if (currentToken().type == TokenType::HEAP) {
+      if (isSage || isHeap) {
+        logError("Multiple storage class specifiers", currentToken());
+        return nullptr;
+      }
+      heap_token = currentToken();
+
+      isHeap = true;
+      dynamicHeapDecl = true;
+
+      // Check for optional allocator <Type>
+      if (nextToken().type == TokenType::LESS_THAN) {
+        advance(); // consume HEAP
+        advance(); // consume <
+        allocType = parseIdentifier();
+        if (currentToken().type != TokenType::GREATER_THAN) {
+          logError("Expected '>' after allocator type", currentToken());
+          return nullptr;
+        }
+        advance(); // consume >
+      } else {
+        advance(); // just consume HEAP
+      }
+    } else if (currentToken().type == TokenType::MUT) {
+      if (isMut || isConst) {
+        logError("Multiple mutability specifiers", currentToken());
+        return nullptr;
+      }
+      isMut = true;
+      advance();
+    } else if (currentToken().type == TokenType::CONST) {
+      if (isMut || isConst) {
+        logError("Multiple mutability specifiers", currentToken());
+        return nullptr;
+      }
+      isConst = true;
+      advance();
+    } else if (currentToken().type == TokenType::VOLATILE) {
+      isVolatile = true;
+      advance();
+    } else if (currentToken().type == TokenType::RESTRICT) {
+      isRestrict = true;
+      advance();
+    } else {
+      break; // No more modifiers
+    }
+  }
+
+  // Determine mutability enum from collected flags
   Mutability mutability = Mutability::IMMUTABLE;
+  if (isMut && isConst) {
+    logError("Variable cannot be both 'mut' and 'const'", currentToken());
+    return nullptr;
+  }
+  if (isMut)
+    mutability = Mutability::MUTABLE;
+  if (isConst)
+    mutability = Mutability::CONSTANT;
+
+  // Now parse the actual declaration based on what's next
+  std::unique_ptr<Statement> stmt;
+
+  if (currentToken().type == TokenType::PTR) {
+    stmt = parsePointerStatement();
+  } else if (currentToken().type == TokenType::REF) {
+    stmt = parseReferenceStatement();
+  } else if (currentToken().type == TokenType::ARRAY) {
+    stmt = parseArrayStatement();
+  } else if (isBasicType(currentToken().type) ||
+             currentToken().type == TokenType::IDENTIFIER ||
+             currentToken().type == TokenType::AUTO) {
+    stmt = parseLetStatement();
+  } else {
+    logError("Expected declaration after modifiers", currentToken());
+    return nullptr;
+  }
+
+  if (!stmt)
+    return nullptr;
+
+  // Apply collected modifiers to the statement
+  if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
+    letStmt->isSage = isSage;
+    letStmt->isHeap = isHeap;
+    letStmt->isVolatile = isVolatile;
+    letStmt->isRestrict = isRestrict;
+    letStmt->mutability = mutability;
+  } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get())) {
+    ptrStmt->isSage = isSage;
+    ptrStmt->isHeap = isHeap;
+    ptrStmt->isVolatile = isVolatile;
+    ptrStmt->isRestrict = isRestrict;
+    ptrStmt->mutability = mutability;
+  } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get())) {
+    refStmt->isSage = isSage;
+    refStmt->isHeap = isHeap;
+    refStmt->isVolatile = isVolatile;
+    refStmt->isRestrict = isRestrict;
+    refStmt->mutability = mutability;
+  } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get())) {
+    arrStmt->isSage = isSage;
+    arrStmt->isHeap = isHeap;
+    arrStmt->isVolatile = isVolatile;
+    arrStmt->isRestrict = isRestrict;
+    arrStmt->mutability = mutability;
+  } else {
+    logError("Cannot apply modifiers to this statement type", currentToken());
+    return nullptr;
+  }
+
+  if (dynamicHeapDecl) {
+    return std::make_unique<HeapStatement>(heap_token, std::move(allocType),
+                                           std::move(stmt));
+  }
+
+  return stmt;
+}
+
+std::unique_ptr<Statement> Parser::parseLetStatement() {
+  // Parse type
   std::unique_ptr<Expression> type;
 
   if (isBasicType(currentToken().type) ||
@@ -23,6 +162,7 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
     return nullptr;
   }
 
+  // Parse name
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected variable name after data type but got '" +
                  currentToken().TokenLiteral + "'",
@@ -33,11 +173,12 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
   Token ident_token = currentToken();
   advance();
 
+  // Parse optional initializer
   std::optional<Token> assign_token;
   std::unique_ptr<Expression> value = nullptr;
 
   if (currentToken().type == TokenType::ARROW) {
-    logError("Inavlid assignment operator for variable declaration expected "
+    logError("Invalid assignment operator for variable declaration expected "
              "'=' but got '" +
                  currentToken().TokenLiteral + "'",
              currentToken());
@@ -50,186 +191,23 @@ std::unique_ptr<Statement> Parser::parseLetStatement() {
     value = parseExpression(Precedence::PREC_NONE);
   }
 
-  return std::make_unique<LetStatement>(isSage, isHeap, mutability,
-                                        std::move(type), ident_token,
-                                        assign_token, std::move(value));
-}
-
-std::unique_ptr<Statement> Parser::parseMutStatement() {
-  advance(); // Consume the mut
-  auto stmt = parseStatement();
-  if (!stmt)
-    return nullptr;
-
-  if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get()))
-    letStmt->mutability = Mutability::MUTABLE;
-  else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get()))
-    arrStmt->mutability = Mutability::MUTABLE;
-  else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get()))
-    ptrStmt->mutability = Mutability::MUTABLE;
-  else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get()))
-    refStmt->mutability = Mutability::MUTABLE;
-  else if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get()))
-    recordStmt->mutability = Mutability::MUTABLE;
-  else {
-    logError("Applied 'mut' to unsupported statement", currentToken());
-    return nullptr;
-  }
-
-  return stmt;
-}
-
-std::unique_ptr<Statement> Parser::parseConstStatement() {
-  advance(); // Consume the const token
-  auto stmt = parseStatement();
-  if (!stmt)
-    return nullptr;
-
-  if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get()))
-    letStmt->mutability = Mutability::CONSTANT;
-  else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get()))
-    arrStmt->mutability = Mutability::CONSTANT;
-  else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get()))
-    ptrStmt->mutability = Mutability::CONSTANT;
-  else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get()))
-    refStmt->mutability = Mutability::CONSTANT;
-  else {
-    logError("Applied 'const' to unsupported statement", currentToken());
-    return nullptr;
-  }
-
-  return stmt;
-}
-
-// Parse heap statement
-std::unique_ptr<Statement> Parser::parseSageStatement() {
-  advance(); // consume 'sage'
-
-  if (currentToken().type == TokenType::RECORD) {
-    logError("Cannot use 'heap' before a record", currentToken());
-    return nullptr;
-  }
-
-  auto stmt = parseStatement();
-  if (!stmt)
-    return nullptr;
-
-  if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
-    if (letStmt->isHeap) {
-      logError("Cannot sage raise an already dynamically heap raised "
-               "variable declaration",
-               currentToken());
-      return nullptr;
-    }
-    letStmt->isSage = true;
-  } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get())) {
-    if (arrStmt->isHeap) {
-      logError("Cannot sage raise an already dynamically heap raised "
-               "array declaration",
-               currentToken());
-      return nullptr;
-    }
-    arrStmt->isSage = true;
-  } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get())) {
-    if (ptrStmt->isHeap) {
-      logError("Cannot sage raise an already dynamically heap raised "
-               "pointer declaration",
-               currentToken());
-      return nullptr;
-    }
-    ptrStmt->isSage = true;
-  } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get())) {
-    if (refStmt->isHeap) {
-      logError("Cannot sage raise an already dynamically heap raised "
-               "reference declaration",
-               currentToken());
-      return nullptr;
-    }
-    refStmt->isSage = true;
-  } else {
-    logError("'sage' applied to non supported statement", currentToken());
-    return nullptr;
-  }
-
-  return stmt;
-}
-
-// Parse heap statement
-std::unique_ptr<Statement> Parser::parseHeapStatement() {
-  Token heap_token = currentToken();
-  advance(); // Consume the 'heap' token
-
-  std::unique_ptr<Expression> allocType;
-
-  if (currentToken().type == TokenType::LESS_THAN) {
-    advance(); // Consume < token
-    allocType = parseIdentifier();
-    if (currentToken().type != TokenType::GREATER_THAN) {
-      logError("Expected '>' but got '" + currentToken().TokenLiteral + "'",
-               currentToken());
-      advance(); // Consume the wrong token
-    } else {
-      advance(); // Just consume the correct token
-    }
-  }
-
-  std::unique_ptr<Statement> stmt = parseStatement();
-
-  if (auto letStmt = dynamic_cast<LetStatement *>(stmt.get())) {
-    if (letStmt->isSage) {
-      logError("Cannot dynamic heap raise an already sage raised "
-               "variable declaration",
-               currentToken());
-      return nullptr;
-    }
-    letStmt->isHeap = true;
-  } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(stmt.get())) {
-    if (arrStmt->isSage) {
-      logError("Cannot dynamic heap raise an already sage raised "
-               "array declaration",
-               currentToken());
-      return nullptr;
-    }
-    arrStmt->isHeap = true;
-  } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(stmt.get())) {
-    if (ptrStmt->isSage) {
-      logError("Cannot dynamic heap raise an already sage raised "
-               "pointer statement",
-               currentToken());
-      return nullptr;
-    }
-    ptrStmt->isHeap = true;
-  } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(stmt.get())) {
-    if (refStmt->isSage) {
-      logError("Cannot dynamic heap raise an already sage raised "
-               "variable declaration",
-               currentToken());
-      return nullptr;
-    }
-    refStmt->isHeap = true;
-  } else {
-    logError("'heap' applied to non supported statement", currentToken());
-    return nullptr;
-  }
-
-  return std::make_unique<HeapStatement>(heap_token, std::move(allocType),
-                                         std::move(stmt));
+  return std::make_unique<LetStatement>(
+      false,                 // isSage
+      false,                 // isHeap
+      false,                 // isVolatile
+      false,                 // isRestrict
+      Mutability::IMMUTABLE, // mutability (default)
+      std::move(type), ident_token, assign_token, std::move(value));
 }
 
 // Array statement parser
 std::unique_ptr<Statement> Parser::parseArrayStatement() {
-  bool isSage = false;
-  bool isHeap = false;
-  Mutability mutability = Mutability::IMMUTABLE;
-
   // Parse the array type (arr[...] with basic or custom type inside)
   auto arrTypeNode = parseArrayType();
   if (!arrTypeNode)
     return nullptr;
 
-  // Parse the lengths
-  // Optional single dimension [size]
-  std::unique_ptr<Expression> lengthExpr = nullptr;
+  // Parse the dimensions (optional)
   std::vector<std::unique_ptr<Expression>> lengths;
 
   while (currentToken().type == TokenType::LBRACKET) {
@@ -252,16 +230,16 @@ std::unique_ptr<Statement> Parser::parseArrayStatement() {
     lengths.push_back(std::move(lengthExpr));
   }
 
-  // Expect identifier
+  // Parse array name
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError("Expected array name but got '" + currentToken().TokenLiteral +
                  "'",
              currentToken());
     return nullptr;
   }
-  auto ident = parseIdentifier(); // this consumes the IDENTIFIER
+  auto ident = parseIdentifier(); // consumes the IDENTIFIER
 
-  // Optional initializer
+  // Parse optional initializer
   std::unique_ptr<Expression> items = nullptr;
   if (currentToken().type == TokenType::ASSIGN) {
     advance(); // consume '='
@@ -271,28 +249,19 @@ std::unique_ptr<Statement> Parser::parseArrayStatement() {
   }
 
   return std::make_unique<ArrayStatement>(
-      isSage, isHeap, mutability, std::move(arrTypeNode), std::move(lengths),
-      std::move(ident), std::move(items));
+      false,                 // isSage
+      false,                 // isHeap
+      Mutability::IMMUTABLE, // mutability (default)
+      false,                 // isVolatile
+      false, std::move(arrTypeNode), std::move(lengths), std::move(ident),
+      std::move(items));
 }
 
 // Reference statement parser
 std::unique_ptr<Statement> Parser::parseReferenceStatement() {
-  bool isSage = false;
-  bool isHeap = false;
-  Mutability mut = Mutability::IMMUTABLE;
   std::unique_ptr<Expression> type;
-
   Token ref_token = currentToken();
   advance(); // Consume 'ref'
-
-  // Check mutability
-  if (currentToken().type == TokenType::MUT) {
-    mut = Mutability::MUTABLE;
-    advance();
-  } else if (currentToken().type == TokenType::CONST) {
-    mut = Mutability::CONSTANT;
-    advance();
-  }
 
   if (currentToken().type == TokenType::AUTO) {
     logError("Do not use 'auto' if u want to infer the type just dont include "
@@ -302,7 +271,7 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement() {
   }
 
   // Parse optional type
-  // Only treat as type if followed by another identifier (like "int x")
+  // Only treat as type if followed by another identifier (like "i32 x")
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::ARRAY ||
       (currentToken().type == TokenType::IDENTIFIER &&
@@ -328,29 +297,20 @@ std::unique_ptr<Statement> Parser::parseReferenceStatement() {
       return nullptr;
   }
 
-  return std::make_unique<ReferenceStatement>(isSage, isHeap, ref_token, mut,
-                                              std::move(type), std::move(ident),
-                                              std::move(value));
+  return std::make_unique<ReferenceStatement>(
+      false,                 // isSage
+      false,                 // isHeap
+      Mutability::IMMUTABLE, // mutability (default)
+      false,                 // isVolatile
+      false,                 // isRestrict
+      ref_token, std::move(type), std::move(ident), std::move(value));
 }
 
 // Pointer statement parser
 std::unique_ptr<Statement> Parser::parsePointerStatement() {
-  bool isSage = false;
-  bool isHeap = false;
-  Mutability mut = Mutability::IMMUTABLE;
   std::unique_ptr<Expression> type;
-
   Token ptr_token = currentToken();
   advance(); // Consume 'ptr'
-
-  // Check mutability
-  if (currentToken().type == TokenType::MUT) {
-    mut = Mutability::MUTABLE;
-    advance();
-  } else if (currentToken().type == TokenType::CONST) {
-    mut = Mutability::CONSTANT;
-    advance();
-  }
 
   if (currentToken().type == TokenType::AUTO) {
     logError("Do not use 'auto' if u want to infer the type just dont include "
@@ -360,7 +320,7 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
   }
 
   // Parse optional type
-  // Only treat as type if followed by another identifier (like "int x")
+  // Only treat as type if followed by another identifier (like "i32 x")
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::ARRAY ||
       currentToken().type == TokenType::OPAQUE ||
@@ -389,7 +349,11 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
       return nullptr;
   }
 
-  return std::make_unique<PointerStatement>(isSage, isHeap, ptr_token, mut,
-                                            std::move(type), std::move(ident),
-                                            std::move(value));
+  return std::make_unique<PointerStatement>(
+      false,                 // isSage
+      false,                 // isHeap
+      Mutability::IMMUTABLE, // mutability (default)
+      false,                 // isVolatile
+      false,                 // isRestrict
+      ptr_token, std::move(type), std::move(ident), std::move(value));
 }

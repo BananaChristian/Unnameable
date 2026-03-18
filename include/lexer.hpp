@@ -85,6 +85,8 @@ class Lexer {
 
       {"const", TokenType::CONST},
       {"mut", TokenType::MUT},
+      {"volatile", TokenType::VOLATILE},
+      {"restrict", TokenType::RESTRICT},
       {"ref", TokenType::REF},
       {"ptr", TokenType::PTR},
       {"addr", TokenType::ADDR},

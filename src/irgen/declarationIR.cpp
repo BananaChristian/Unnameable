@@ -180,11 +180,11 @@ void IRGenerator::generateArrayStatement(Node *node) {
   llvm::Type *elemTy = getLLVMType(semantics.getArrayElementType(sym->type));
   llvm::Value *allocationCount = nullptr;
 
-  if (!arrStmt->lengths.empty()) {
+  if (!arrStmt->dimensions.empty()) {
     allocationCount = funcBuilder.getInt64(1);
     bool isConstant = true;
 
-    for (const auto &lenExpr : arrStmt->lengths) {
+    for (const auto &lenExpr : arrStmt->dimensions) {
       llvm::Value *dimSize = generateExpression(lenExpr.get());
       dimSize =
           funcBuilder.CreateIntCast(dimSize, funcBuilder.getInt64Ty(), false);
