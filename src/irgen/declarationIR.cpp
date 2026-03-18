@@ -51,9 +51,7 @@ void IRGenerator::generateLetStatement(Node *node) {
     } else if (isSage) {
       reportDevBug("Cannot sage raise in global scope ",
                    letStmt->ident_token.line, letStmt->ident_token.column);
-    }
-
-    else {
+    } else {
       auto valExpr = dynamic_cast<Expression *>(letStmt->value.get());
       generateGlobalScalarLet(sym, letName, valExpr);
     }
@@ -67,7 +65,7 @@ void IRGenerator::generateLetStatement(Node *node) {
   // heap
   llvm::Value *initVal = nullptr;
 
-  // Intercept the valiue if it is a move
+  // Intercept the value if it is a move
   if (auto moveExpr = dynamic_cast<MoveExpression *>(letStmt->value.get())) {
     logInternal("Handling Move-Initialization for " + letName);
 
@@ -79,12 +77,16 @@ void IRGenerator::generateLetStatement(Node *node) {
         funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, letName);
 
     // Adopt the baton
-    funcBuilder.CreateStore(initVal, storage);
+    auto *storeInst = funcBuilder.CreateStore(initVal, storage);
+    if (sym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
 
     sym->llvmValue = storage;
     sym->llvmType = funcBuilder.getPtrTy();
     return;
   }
+
   if (!isComponent) {
     if (letStmt->value)
       initVal = generateExpression(letStmt->value.get());
@@ -100,20 +102,31 @@ void IRGenerator::generateLetStatement(Node *node) {
       reportDevBug("Component allocation failed for '" + letName + "'",
                    letStmt->ident_token.line, letStmt->ident_token.column);
     }
+
+    // Component init handles its own stores internally
+    // Make sure those stores respect volatile if needed
+
   } else if (isSage) // Incase the value is sage raised
   {
     // Generate the sage_alloc and allocate the value on the heap
     storage = allocateSageStorage(sym, letName, nullptr);
-    funcBuilder.CreateStore(initVal, storage);
+    auto *storeInst = funcBuilder.CreateStore(initVal, storage);
+    if (sym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
+
   } else if (isHeap) // If it is dynamic heap raise value
   {
     // Create a map on the stack that holds the pointer to the heap memory
     storage = allocateDynamicHeapStorage(sym, letName);
-    funcBuilder.CreateStore(initVal, storage);
+    auto *storeInst = funcBuilder.CreateStore(initVal, storage);
+    if (sym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
     sym->isAddress = true;
+
   } else // If it isnt a component or a heap raised value
   {
-
     // scalar / normal type
     llvm::Type *varTy = getLLVMType(sym->type);
     llvm::Align varAlign = layout->getABITypeAlign(varTy);
@@ -143,11 +156,18 @@ void IRGenerator::generateLetStatement(Node *node) {
 
       auto *storeInst = funcBuilder.CreateStore(initVal, storage);
       storeInst->setAlignment(varAlign);
+      if (sym->isVolatile) {
+        storeInst->setVolatile(true);
+      }
+
     } else {
       // If no value, initialize the whole struct to zero (flag=0, value=0)
       auto *storeInst =
           funcBuilder.CreateStore(llvm::Constant::getNullValue(varTy), storage);
       storeInst->setAlignment(varAlign);
+      if (sym->isVolatile) {
+        storeInst->setVolatile(true);
+      }
     }
   }
 
@@ -255,12 +275,19 @@ void IRGenerator::generateArrayStatement(Node *node) {
     boxVal = funcBuilder.CreateInsertValue(boxVal, isPresent, 0);
     boxVal = funcBuilder.CreateInsertValue(boxVal, dataPtr, 1);
 
-    funcBuilder.CreateStore(boxVal, variableStorage);
+    auto *storeInst = funcBuilder.CreateStore(boxVal, variableStorage);
+    if (sym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
+
   } else {
     // Non-nullable: The variable is just the pointer itself
     variableStorage =
         funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, arrName);
-    funcBuilder.CreateStore(dataPtr, variableStorage);
+    auto *storeInst = funcBuilder.CreateStore(dataPtr, variableStorage);
+    if (sym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
   }
 
   if (arrStmt->array_content &&
@@ -283,7 +310,8 @@ void IRGenerator::generateArrayStatement(Node *node) {
                                          funcBuilder.getInt64(elementSize));
     }
 
-    // Emit the MemCpy
+    // Emit the MemCpy (MemCpy doesn't have volatile flag in LLVM C++ API)
+    // Memory copies are not volatile operations
     funcBuilder.CreateMemCpy(dataPtr, // Dst: %x_data (or heap ptr)
                              finalAlign,
                              srcData, // Src: @flat_array_literal
@@ -353,11 +381,19 @@ void IRGenerator::generatePointerStatement(Node *node) {
   llvm::Value *storagePtr = nullptr;
   if (ptrSym->isSage) {
     storagePtr = allocateSageStorage(ptrSym, ptrName, nullptr);
-    funcBuilder.CreateStore(initVal, storagePtr);
+    auto *storeInst = funcBuilder.CreateStore(initVal, storagePtr);
+    if (ptrSym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
+
   } else if (ptrSym->isHeap) {
     storagePtr = allocateDynamicHeapStorage(ptrSym, ptrName);
-    funcBuilder.CreateStore(initVal, storagePtr);
+    auto *storeInst = funcBuilder.CreateStore(initVal, storagePtr);
+    if (ptrSym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
     ptrSym->isAddress = true;
+
   } else if (!funcBuilder.GetInsertBlock()) {
     llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
     if (!globalInit) {
@@ -368,9 +404,15 @@ void IRGenerator::generatePointerStatement(Node *node) {
     storagePtr = new llvm::GlobalVariable(*module, ptrType, false,
                                           llvm::GlobalValue::InternalLinkage,
                                           globalInit, ptrName);
+    // Global variables don't have volatile stores at initialization
+    // They're in static memory, not MMIO
+
   } else {
     storagePtr = funcBuilder.CreateAlloca(ptrType, nullptr, ptrName);
-    funcBuilder.CreateStore(initVal, storagePtr);
+    auto *storeInst = funcBuilder.CreateStore(initVal, storagePtr);
+    if (ptrSym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
   }
 
   ptrSym->llvmValue = storagePtr;
@@ -417,7 +459,11 @@ void IRGenerator::generateReferenceStatement(Node *node) {
       // For scalars, take their address
       targetAddress = funcBuilder.CreateAlloca(targetSym->llvmValue->getType(),
                                                nullptr, refereeName + "_addr");
-      funcBuilder.CreateStore(targetSym->llvmValue, targetAddress);
+      auto *storeInst =
+          funcBuilder.CreateStore(targetSym->llvmValue, targetAddress);
+      if (targetSym->isVolatile) {
+        storeInst->setVolatile(true);
+      }
     }
   } else {
     // If LLVM value not yet generated, compute the address via generateAddress

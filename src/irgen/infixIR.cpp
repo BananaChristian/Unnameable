@@ -366,8 +366,17 @@ IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
       funcBuilder.CreateStructGEP(structTy, lhsPtr, memberIndex, memberName);
 
   // now return by-value load, not a pointer
-  llvm::Value *memberVal =
+  llvm::LoadInst *memberVal =
       funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
+
+  // Check if the member itself is volatile
+  if (memberIt->second->isVolatile) {
+    memberVal->setVolatile(true);
+  }
+  // Also check if the parent is volatile (volatile propagates to members)
+  else if (leftSym->isVolatile) {
+    memberVal->setVolatile(true);
+  }
 
   return memberVal;
 }

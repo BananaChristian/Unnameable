@@ -551,6 +551,7 @@ void Semantics::walkAddressExpression(Node *node) {
   addrInfo->isHeap = isHeap;
   addrInfo->allocType = symbolInfo->allocType;
   addrInfo->targetSymbol = symbolInfo;
+  addrInfo->isVolatile = symbolInfo->isVolatile;
   addrInfo->type = inferNodeDataType(addrExpr);
 
   // Ths syncs the pointerCount with that of the original identifier
@@ -688,6 +689,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
   derefInfo->isHeap = derefSym->isHeap;
   derefInfo->isInitialized = derefSym->isInitialized;
   derefInfo->allocType = derefSym->allocType;
+  derefInfo->isVolatile = derefSym->isVolatile;
 
   if (derefSym->targetSymbol != nullptr) {
     derefInfo->targetSymbol = derefSym->targetSymbol;

@@ -141,7 +141,11 @@ void IRGenerator::generatePointerAssignmentStatement(
 
   llvm::Value *targetPtr = generateAddress(assignStmt->identifier.get());
   llvm::Value *newAddr = generateExpression(assignStmt->value.get());
-  funcBuilder.CreateStore(newAddr, targetPtr);
+
+  auto *storeInst = funcBuilder.CreateStore(newAddr, targetPtr);
+  if (assignSym->isVolatile) {
+    storeInst->setVolatile(true);
+  }
 
   emitCleanup(assignStmt, assignSym);
 }
@@ -193,7 +197,13 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   if (dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
     logInternal("Handling move assignment");
     // In a move, we DO overwrite the stack slot to point to the new memory
-    funcBuilder.CreateStore(initValue, targetPtr);
+    auto *storeInst = funcBuilder.CreateStore(initValue, targetPtr);
+    if (assignSym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
+    inhibitCleanUp = false;
+    emitCleanup(assignStmt->value.get(), valSym);
+    emitCleanup(assignStmt, assignMeta);
     return;
   }
 
@@ -212,19 +222,33 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
 
     funcBuilder.CreateMemCpy(targetPtr, align, initValue, align,
                              funcBuilder.getInt64(byteSize));
+    // MemCpy is not a volatile operation
   } else {
     // SCALAR CASE
+    llvm::StoreInst *storeInst = nullptr;
+
     if (assignMeta->isHeap) {
       llvm::Value *valueToStore = initValue;
       if (valSym->isAddress) {
         valueToStore = funcBuilder.CreateLoad(getLLVMType(assignMeta->type),
                                               initValue, "loaded_val");
+        // The load itself might need to be volatile if reading from volatile
+        if (valSym->isVolatile) {
+          if (auto *load = llvm::dyn_cast<llvm::LoadInst>(valueToStore)) {
+            load->setVolatile(true);
+          }
+        }
       }
       // Store the value into y's existing heap space
-      funcBuilder.CreateStore(valueToStore, targetPtr);
+      storeInst = funcBuilder.CreateStore(valueToStore, targetPtr);
     } else {
       // Standard stack-to-stack assignment
-      funcBuilder.CreateStore(initValue, targetPtr);
+      storeInst = funcBuilder.CreateStore(initValue, targetPtr);
+    }
+
+    // Mark store as volatile if LHS is volatile
+    if (assignSym->isVolatile && storeInst) {
+      storeInst->setVolatile(true);
     }
   }
 
@@ -242,6 +266,8 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   llvm::Value *rhsVal = generateExpression(fieldStmt->value.get());
 
   auto meta = semantics.metaData[fieldStmt];
+  auto lhsMeta = semantics.getSymbolFromMeta(fieldStmt->lhs_chain.get());
+
   if (meta->type.isArray) {
     auto elementType = semantics.getArrayElementType(meta->type);
     llvm::Type *elemLLVMType = getLLVMType(elementType);
@@ -250,10 +276,21 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
     llvm::Value *destSlab = funcBuilder.CreateLoad(
         funcBuilder.getPtrTy(), lhsAddress, "field_slab_ptr");
 
+    // If the field itself is volatile, the load above should be too
+    if (meta->isVolatile) {
+      if (auto *load = llvm::dyn_cast<llvm::LoadInst>(destSlab)) {
+        load->setVolatile(true);
+      }
+    }
+
     funcBuilder.CreateMemCpy(destSlab, align, rhsVal, align,
                              funcBuilder.getInt64(meta->componentSize));
   } else {
-    funcBuilder.CreateStore(rhsVal, lhsAddress);
+    auto *storeInst = funcBuilder.CreateStore(rhsVal, lhsAddress);
+    // Check if the field being assigned is volatile
+    if (meta->isVolatile || (lhsMeta && lhsMeta->isVolatile)) {
+      storeInst->setVolatile(true);
+    }
   }
 
   // A free was happening here pause it as I study the system

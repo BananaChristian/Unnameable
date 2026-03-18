@@ -79,6 +79,7 @@ struct MemberInfo {
   llvm::Type *llvmType = nullptr;
   int memberIndex = -1;
 
+  bool isVolatile = false;
   // Export flag
   bool isExportable = false;
 
@@ -157,6 +158,7 @@ struct SymbolInfo {
   bool isSage = false;   // Sage heap flag
   bool isHeap = false;   // Dynamic heap flag
   std::string allocType; // The name of the allocator the heap will use
+  bool isVolatile = true;
 
   bool isRef = false;     // Reference flag
   bool isPointer = false; // Pointer flag

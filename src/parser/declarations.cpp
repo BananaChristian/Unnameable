@@ -313,7 +313,7 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
   advance(); // Consume 'ptr'
 
   if (currentToken().type == TokenType::AUTO) {
-    logError("Do not use 'auto' if u want to infer the type just dont include "
+    logError("Do not use 'auto' if you want to infer the type just dont include "
              "the type",
              currentToken());
     advance(); // Consume auto

@@ -432,6 +432,7 @@ void Semantics::walkRecordStatement(Node *node) {
     memInfo->isInitialised = fieldSymbol->isInitialized;
     memInfo->isPointer = fieldSymbol->isPointer;
     memInfo->isNullable = fieldSymbol->isNullable;
+    memInfo->isVolatile = fieldSymbol->isVolatile;
     memInfo->isHeap = isHeap;
     memInfo->typeNode = recordStmt;
     memInfo->node = field.get();
@@ -777,6 +778,7 @@ void Semantics::walkComponentStatement(Node *node) {
         memberCopy->isNullable = info->isNullable;
         memberCopy->isMutable = info->isMutable;
         memberCopy->isConstant = info->isConstant;
+        memberCopy->isVolatile = info->isVolatile;
         memberCopy->isInitialised = info->isInitialised;
 
         memberCopy->node = info->node;
@@ -790,6 +792,7 @@ void Semantics::walkComponentStatement(Node *node) {
         memSym->isNullable = info->isNullable;
         memSym->isMutable = info->isMutable;
         memSym->isConstant = info->isConstant;
+        memSym->isVolatile = info->isVolatile;
         memSym->isInitialized = info->isInitialised;
         memSym->memberIndex = memberCopy->memberIndex;
         currentScope[name] = memSym;
@@ -844,6 +847,7 @@ void Semantics::walkComponentStatement(Node *node) {
           memSym->isMutable = memIt->second->isMutable;
           memSym->isConstant = memIt->second->isConstant;
           memSym->isInitialized = memIt->second->isInitialised;
+          memSym->isVolatile = memIt->second->isVolatile;
           memSym->memberIndex = memberCopy->memberIndex;
           symbolTable.back()[memberName] = memSym;
 
@@ -888,6 +892,7 @@ void Semantics::walkComponentStatement(Node *node) {
       memInfo->isInitialised = declSym->isInitialized;
       memInfo->node = data.get();
       memInfo->typeNode = componentStmt;
+      memInfo->isVolatile = declSym->isVolatile;
       memInfo->memberIndex = currentMemberIndex++;
 
       members[declName] = memInfo;
@@ -946,6 +951,7 @@ void Semantics::walkComponentStatement(Node *node) {
         memInfo->isMutable = metSym->isMutable;
         memInfo->isExportable = metSym->isExportable;
         memInfo->returnType = metSym->returnType;
+        memInfo->isVolatile = metSym->isVolatile;
         memInfo->isFunction = true;
         memInfo->isDefined = true;
         memInfo->isDeclared = true;

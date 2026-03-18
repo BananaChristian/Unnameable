@@ -73,6 +73,10 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
     }
   }
 
+  // Get overall instance volatility
+  auto instanceSym = semantics.getSymbolFromMeta(instExpr);
+  bool isInstanceVolatile = instanceSym && instanceSym->isVolatile;
+
   // We iterate through the definition of the struct to ensure total coverage
   for (auto const &[memberName, info] : typeInfo->members) {
     llvm::Value *memberPtr = funcBuilder.CreateStructGEP(
@@ -82,8 +86,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
     // Check if the user provided a value for this field
     auto it = userInits.find(memberName);
     if (it != userInits.end()) {
-      // Generate the specific value provided (like 'null' or
-      // '7')
+      // Generate the specific value provided (like 'null' or '7')
       finalVal = generateExpression(it->second->value.get());
     } else {
       // Fallback to the declaration default or a zero/null value
@@ -106,11 +109,26 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
                                memberName);
 
     // Perform exactly one store per field
-    funcBuilder.CreateStore(finalVal, memberPtr);
+    auto *storeInst = funcBuilder.CreateStore(finalVal, memberPtr);
+
+    // Mark store as volatile if either:
+    //  The instance itself is volatile
+    // This specific field is declared volatile
+    if (isInstanceVolatile || info->isVolatile) {
+      storeInst->setVolatile(true);
+    }
   }
 
   // Return the loaded struct value
-  return funcBuilder.CreateLoad(structTy, instancePtr, instName + "_val");
+  auto *finalLoad =
+      funcBuilder.CreateLoad(structTy, instancePtr, instName + "_val");
+
+  // If the instance is volatile, the final load should be too
+  if (isInstanceVolatile) {
+    finalLoad->setVolatile(true);
+  }
+
+  return finalLoad;
 }
 
 void IRGenerator::generateInitFunction(Node *node,
@@ -371,7 +389,6 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node) {
   std::string callName = call->function_identifier->expression.TokenLiteral;
 
   if (sealIt != semantics.sealTable.end()) {
-    std::cout << "SEAL PATH\n";
     // Retrive the function we wish to call
     auto sealFnMap = sealIt->second;
     auto sealFnIt = sealFnMap.find(callName);
@@ -388,7 +405,6 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node) {
 
     result = generateCallExpression(call);
   } else {
-    std::cout << "METHOD ACCESS PATH\n";
     // Getting the metaData for the instance
     auto instanceIt = semantics.metaData.find(instance);
     if (instanceIt == semantics.metaData.end()) {

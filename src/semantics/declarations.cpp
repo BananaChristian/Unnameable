@@ -98,6 +98,7 @@ void Semantics::walkArrayStatement(Node *node) {
       nullArray->isInitialized = isInitialized;
       nullArray->isSage = isSage;
       nullArray->isHeap = isHeap;
+      nullArray->isVolatile = arrStmt->isVolatile;
       nullArray->sizePerDimensions = declSizePerDim;
 
       metaData[arrStmt] = nullArray;
@@ -148,6 +149,7 @@ void Semantics::walkArrayStatement(Node *node) {
   arrayInfo->isHeap = isHeap;
   arrayInfo->sizePerDimensions = declSizePerDim;
   arrayInfo->isInitialized = isInitialized;
+  arrayInfo->isVolatile = arrStmt->isVolatile;
   metaData[arrStmt] = arrayInfo;
   symbolTable.back()[arrayName] = arrayInfo;
 
@@ -234,6 +236,7 @@ void Semantics::walkPointerStatement(Node *node) {
     ptrInfo->isMutable = isMutable;
     ptrInfo->isConstant = isConstant;
     ptrInfo->isInitialized = true;
+    ptrInfo->isVolatile = ptrStmt->isVolatile;
     ptrInfo->isNullable = isNullable;
 
     metaData[ptrStmt] = ptrInfo;
@@ -306,6 +309,7 @@ void Semantics::walkPointerStatement(Node *node) {
   ptrInfo->isMutable = isMutable;
   ptrInfo->isConstant = isConstant;
   ptrInfo->isInitialized = true;
+  ptrInfo->isVolatile = ptrStmt->isVolatile;
   ptrInfo->isNullable = isNullable;
 
   // Get the target baton
@@ -413,7 +417,8 @@ void Semantics::walkLetStatement(Node *node) {
   if (isConstant && isNullable) {
     logSemanticErrors("Constant variable '" + letName +
                           "' cannot be nullable. " +
-                          "Constants must hold a concrete literal value.",
+                          "Constants must hold a coarrayInfo->isVolatile = "
+                          "arrStmt->isVolatile;ncrete literal value.",
                       letStmt);
     hasError = true;
   }
@@ -533,6 +538,7 @@ void Semantics::walkLetStatement(Node *node) {
   letInfo->isSage = isSage;
   letInfo->isHeap = isHeap;
   letInfo->pointerCount = 0;
+  letInfo->isVolatile = letStmt->isVolatile;
   letInfo->hasError = hasError;
 
   // Since this is a normal let statement it has no target baton as its target
@@ -583,6 +589,7 @@ void Semantics::walkReferenceStatement(Node *node) {
       auto refInfo = std::make_shared<SymbolInfo>();
       refInfo->type = refType;
       refInfo->isInitialized = false;
+      refInfo->isVolatile = refStmt->isVolatile;
       refInfo->isRef = true;
 
       metaData[refStmt] = refInfo;
@@ -693,6 +700,7 @@ void Semantics::walkReferenceStatement(Node *node) {
   refInfo->isConstant = isConstant;
   refInfo->refereeSymbol = refereeSymbol;
   refInfo->hasError = hasError;
+  refInfo->isVolatile = refStmt->isVolatile;
   refInfo->isRef = true;
 
   metaData[refStmt] = refInfo;

@@ -29,8 +29,11 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
 
   if (sym->isRef) {
     llvm::Type *ptrType = llvm::PointerType::get(funcBuilder.getContext(), 0);
-    variablePtr =
-        funcBuilder.CreateLoad(ptrType, variablePtr, identName + "_ref_addr");
+    auto *load = funcBuilder.CreateLoad(ptrType, variablePtr, identName + "_ref_addr");
+    if (sym->isVolatile) {
+      load->setVolatile(true);
+    }
+    variablePtr = load;
   }
 
   // Component instance -> pointer to struct
@@ -80,7 +83,11 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
 
     if (lhsMeta->type.isPointer || lhsMeta->type.isRef) {
       llvm::Type *ptrTy = llvm::PointerType::get(funcBuilder.getContext(), 0);
-      address = funcBuilder.CreateLoad(ptrTy, address, "ptr_deref");
+      auto *load = funcBuilder.CreateLoad(ptrTy, address, "ptr_deref");
+      if (lhsMeta->isVolatile) {
+        load->setVolatile(true);
+      }
+      address = load;
     }
 
     std::string lookUpName = lhsMeta->type.resolvedName;
@@ -135,8 +142,11 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
                  selfExpr->expression.line, selfExpr->expression.column);
   }
 
-  llvm::Value *currentPtr = funcBuilder.CreateLoad(
+  auto *selfLoad = funcBuilder.CreateLoad(
       currentStructTy->getPointerTo(), selfAlloca, "self_load");
+  // Self is never volatile (it's just a pointer to the component)
+  
+  llvm::Value *currentPtr = selfLoad;
 
   // --- Semantic chain walk ---
   auto ctIt = semantics.customTypesTable.find(compName);
@@ -225,12 +235,15 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
   auto baseSym = arrIt->second;
 
   llvm::Value *allocaPtr = generateIdentifierAddress(arrExpr->identifier.get());
-  llvm::Value *dataPtr =
-      funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "raw_data_ptr");
+  auto *dataLoad = funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "raw_data_ptr");
+  if (baseSym->isVolatile) {
+    dataLoad->setVolatile(true);
+  }
+  llvm::Value *dataPtr = dataLoad;
 
   const auto &dims = baseSym->sizePerDimensions;
 
-  // 3. Calculate the Flat Linear Offset
+  // Calculate the Flat Linear Offset
   llvm::Value *totalOffset = funcBuilder.getInt64(0);
 
   for (size_t i = 0; i < arrExpr->index_exprs.size(); ++i) {
@@ -298,10 +311,21 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
 
   auto ptrType = llvm::PointerType::getUnqual(context);
 
-  addr = funcBuilder.CreateLoad(ptrType, addr, "base_lift");
+  auto *baseLoad = funcBuilder.CreateLoad(ptrType, addr, "base_lift");
+  // Get symbol for the pointer being dereferenced
+  auto sym = semantics.getSymbolFromMeta(current);
+  if (sym && sym->isVolatile) {
+    baseLoad->setVolatile(true);
+  }
+  addr = baseLoad;
 
   for (int i = 0; i < derefCount - 1; i++) {
-    addr = funcBuilder.CreateLoad(ptrType, addr, "deref_hop_addr");
+    auto *hopLoad = funcBuilder.CreateLoad(ptrType, addr, "deref_hop_addr");
+    // Intermediate loads also need to be volatile if the pointer is volatile
+    if (sym && sym->isVolatile) {
+      hopLoad->setVolatile(true);
+    }
+    addr = hopLoad;
   }
 
   for (const auto pendingFree : pendingFrees)

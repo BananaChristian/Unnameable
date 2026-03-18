@@ -299,11 +299,15 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
                                           identName + "_ptr_typed");
 
     // Load the value
-    llvm::Value *loadedVal =
+    llvm::LoadInst *loadedVal =
         funcBuilder.CreateLoad(elemTy, address, identName + "_val");
+    if (sym->isVolatile) {
+      loadedVal->setVolatile(true);
+    }
 
     return loadedVal;
   }
+
   if (sym->isHeap) {
     llvm::Type *elemTy = sym->llvmType;
     llvm::Value *actualHeapAddr = address;
@@ -314,8 +318,11 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     }
 
     // Grab the value from the heap address
-    llvm::Value *loadedVal =
+    llvm::LoadInst *loadedVal =
         funcBuilder.CreateLoad(elemTy, actualHeapAddr, identName + "_val");
+    if (sym->isVolatile) {
+      loadedVal->setVolatile(true);
+    }
 
     // If the inhibitor is on that means there is a parent who wants this dude
     // to relax but if he is off proceed to shoot
@@ -339,8 +346,11 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   }
 
   // variableAddr should already be a pointer, load from it
-  llvm::Value *val =
+  llvm::LoadInst *val =
       funcBuilder.CreateLoad(loadedType, address, identName + "_val");
+  if (sym->isVolatile) {
+    val->setVolatile(true);
+  }
 
   return val;
 }
@@ -918,6 +928,8 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
 
   llvm::Value *currentPtr = funcBuilder.CreateLoad(
       currentStructTy->getPointerTo(), selfAlloca, "self_load");
+  // self pointer itself is never volatile (it's just a pointer to the
+  // component)
 
   // --- Semantic chain walk ---
   auto ctIt = semantics.customTypesTable.find(compName);
@@ -982,8 +994,15 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
 
   // --- Final load ---
   llvm::Type *finalTy = getLLVMType(lastMemberInfo->type);
-  return funcBuilder.CreateLoad(finalTy, currentPtr,
-                                selfExpr->fields.back()->toString() + "_val");
+  auto *finalLoad = funcBuilder.CreateLoad(
+      finalTy, currentPtr, selfExpr->fields.back()->toString() + "_val");
+
+  // Check if the field itself is volatile
+  if (lastMemberInfo->isVolatile) {
+    finalLoad->setVolatile(true);
+  }
+
+  return finalLoad;
 }
 
 llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
@@ -1009,7 +1028,11 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
   // Load the actual address stored in the variable.
   // This MUST be a pointer type if we intend to dereference it further.
   llvm::Type *ptrTy = llvm::PointerType::getUnqual(context);
-  addr = funcBuilder.CreateLoad(ptrTy, addr, "base_address");
+  auto *baseLoad = funcBuilder.CreateLoad(ptrTy, addr, "base_address");
+  if (meta && meta->isVolatile) {
+    baseLoad->setVolatile(true);
+  }
+  addr = baseLoad;
 
   // Perform the dereference hops
   for (int i = 0; i < derefCount; i++) {
@@ -1022,8 +1045,12 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
     // Create the load.
     // If it's the last hop, this returns the value (i32).
     // Otherwise, it returns the next address in the chain.
-    addr = funcBuilder.CreateLoad(loadTy, addr,
-                                  isLastHop ? "deref_val" : "ptr_hop");
+    auto *hopLoad = funcBuilder.CreateLoad(loadTy, addr,
+                                           isLastHop ? "deref_val" : "ptr_hop");
+    if (meta && meta->isVolatile) {
+      hopLoad->setVolatile(true);
+    }
+    addr = hopLoad;
   }
 
   emitCleanup(derefExpr, meta);
