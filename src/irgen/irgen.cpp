@@ -27,8 +27,9 @@
 #include <string>
 
 IRGenerator::IRGenerator(Semantics &semantics, ErrorHandler &handler,
-                         Auditor &auditor, size_t totalHeap, bool isVerbose)
-    : context(), funcBuilder(context),
+                         Auditor &auditor, size_t totalHeap, bool isVerbose,
+                         OptLevel optLevel)
+    : optLevel(optLevel), context(), funcBuilder(context),
       module(std::make_unique<llvm::Module>("unnameable", context)),
       semantics(semantics), errorHandler(handler), auditor(auditor),
       totalHeapSize(totalHeap), isVerbose(isVerbose) {
@@ -1398,9 +1399,40 @@ void IRGenerator::setupTargetLayout() {
   if (!target)
     throw std::runtime_error("Target not found");
 
+  // Convert OptLevel for layout (though layout mostly uses it for ABI
+  // decisions)
+  llvm::CodeGenOptLevel llvmOptLevel;
+  switch (optLevel) {
+  case OptLevel::NONE:
+    llvmOptLevel = llvm::CodeGenOptLevel::None;
+    break;
+  case OptLevel::BASIC:
+    llvmOptLevel = llvm::CodeGenOptLevel::Less;
+    break;
+  case OptLevel::STANDARD:
+    llvmOptLevel = llvm::CodeGenOptLevel::Default;
+    break;
+  case OptLevel::AGGRESSIVE:
+    llvmOptLevel = llvm::CodeGenOptLevel::Aggressive;
+    break;
+  default:
+    llvmOptLevel = llvm::CodeGenOptLevel::None;
+    break;
+  }
+
   llvm::TargetOptions opt;
-  auto targetMachine = target->createTargetMachine(targetTripleStr, "generic",
-                                                   "", opt, llvm::Reloc::PIC_);
+
+  // Create target machine WITH optimization level
+  std::optional<llvm::Reloc::Model> relocModel = llvm::Reloc::PIC_;
+  std::optional<llvm::CodeModel::Model> codeModel = std::nullopt;
+
+  auto targetMachine = target->createTargetMachine(
+      targetTripleStr, "generic", "", opt, relocModel, codeModel,
+      llvmOptLevel, // Optimization level passed here
+      false);       //  Optional unique suffix
+
+  if (!targetMachine)
+    throw std::runtime_error("Failed to create TargetMachine");
 
   module->setDataLayout(targetMachine->createDataLayout());
   this->layout = &module->getDataLayout();
@@ -1408,12 +1440,14 @@ void IRGenerator::setupTargetLayout() {
 
 bool IRGenerator::emitObjectFile(const std::string &filename) {
   // Initialization
+  llvm::InitializeAllTargetInfos();
+  llvm::InitializeAllTargets();
+  llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmParsers();
   llvm::InitializeAllAsmPrinters();
 
   // Target Setup
   std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
-
   module->setTargetTriple(targetTripleStr);
 
   std::string error;
@@ -1425,36 +1459,71 @@ bool IRGenerator::emitObjectFile(const std::string &filename) {
 
   llvm::TargetOptions opt;
 
-  std::optional<llvm::Reloc::Model> RM = llvm::Reloc::PIC_;
+  // Convert our OptLevel to LLVM optimization level
+  llvm::CodeGenOptLevel llvmOptLevel;
+  switch (optLevel) {
+  case OptLevel::NONE:
+    llvmOptLevel = llvm::CodeGenOptLevel::None;
+    break;
+  case OptLevel::BASIC:
+    llvmOptLevel = llvm::CodeGenOptLevel::Less;
+    break;
+  case OptLevel::STANDARD:
+    llvmOptLevel = llvm::CodeGenOptLevel::Default;
+    break;
+  case OptLevel::AGGRESSIVE:
+    llvmOptLevel = llvm::CodeGenOptLevel::Aggressive;
+    break;
+  default:
+    llvmOptLevel = llvm::CodeGenOptLevel::None;
+    break;
+  }
 
-  auto targetMachine = target->createTargetMachine(targetTripleStr,
-                                                   "generic", // CPU name
-                                                   "",        // Features string
-                                                   opt, RM);
+  // CPU and features using generic for now
+  std::string cpu = "generic";
+  std::string features = "";
+
+  // Create target machine with optimization level
+  std::optional<llvm::Reloc::Model> relocModel = llvm::Reloc::PIC_;
+  std::optional<llvm::CodeModel::Model> codeModel = std::nullopt;
+
+  auto targetMachine = target->createTargetMachine(
+      targetTripleStr, cpu, features, opt, relocModel, codeModel,
+      llvmOptLevel, // Optimization level
+      false);       // Optional unique suffix
 
   if (!targetMachine) {
     llvm::errs() << "Failed to create TargetMachine\n";
     return false;
   }
 
+  // Set data layout from target machine
+  module->setDataLayout(targetMachine->createDataLayout());
+
+  // Open output file
   std::error_code EC;
-
-  const auto FileType = llvm::CodeGenFileType::ObjectFile;
-
   llvm::raw_fd_ostream dest(filename, EC, llvm::sys::fs::OF_None);
   if (EC) {
     llvm::errs() << "Could not open file: " << EC.message() << "\n";
     return false;
   }
 
+  // Create pass manager
   llvm::legacy::PassManager pass;
 
-  if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
+  // Set file type to object file
+  llvm::CodeGenFileType fileType = llvm::CodeGenFileType::ObjectFile;
+
+  // Add passes to emit object file
+  if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
     llvm::errs() << "TargetMachine can't emit object file\n";
     return false;
   }
 
+  // Run the passes
   pass.run(*module);
+
+  // Flush output
   dest.flush();
 
   return true;

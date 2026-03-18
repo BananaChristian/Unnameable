@@ -30,6 +30,8 @@ namespace fs = std::filesystem;
 
 bool logOutput = false;
 
+OptLevel currentOptLevel = OptLevel::NONE; // Default to no optimizations
+
 std::string readFileToString(const std::string &filepath) {
   std::ifstream file(filepath);
   if (!file.is_open())
@@ -70,16 +72,28 @@ int main(int argc, char **argv) {
                 << COLOR_BOLD << "Options:\n"
                 << COLOR_RESET
                 << "  -compile <file>       Compile to object file only\n"
-                << "  -build <file>       Compile and link to executable\n"
-                << "  -stub <file>      Generate a stub file\n"
-                << "  -verbose        Enable verbose internal logs\n"
-                << "  -check <file>   Just run the front end\n"
-                << "  -help           Show this help message\n"
-                << "  -static          Generate a static library instead of an "
-                   "executable\n"
-                << "  --version       Show compiler version\n\n"
+                << "  -build <file>         Compile and link to executable\n"
+                << "  -stub <file>          Generate a stub file\n"
+                << "  -verbose              Enable verbose internal logs\n"
+                << "  -check <file>         Just run the front end\n"
+                << "  -help                 Show this help message\n"
+                << "  -static               Generate a static library instead "
+                   "of an executable\n"
+                << "\n"
+                << COLOR_BOLD << "Optimization Options:\n"
+                << COLOR_RESET
+                << "  --debug               No optimizations (fastest compile, "
+                   "best for debugging)\n"
+                << "  --basic               Basic optimizations\n"
+                << "  --release             Standard optimizations "
+                   "(recommended for release)\n"
+                << "  --aggressive          Aggressive optimizations (may "
+                   "increase compile time)\n"
+                << "  --size                Optimize for binary size\n"
+                << "\n"
                 << COLOR_YELLOW << "Example:\n"
                 << COLOR_RESET << "  unnc main.unn -build app\n"
+                << "  unnc main.unn --release -build app\n"
                 << "  unnc main.unn -compile main.o\n\n";
       return 0;
     }
@@ -148,6 +162,19 @@ int main(int argc, char **argv) {
       stubOnly = true;
     } else if (arg == "-verbose") {
       logOutput = true;
+    }
+    // Optimization flags
+    else if (arg == "--debug") {
+      currentOptLevel = OptLevel::NONE;
+    } else if (arg == "--basic") {
+      currentOptLevel = OptLevel::BASIC;
+    } else if (arg == "--release") {
+      currentOptLevel = OptLevel::STANDARD;
+    } else if (arg == "--aggressive") {
+      currentOptLevel = OptLevel::AGGRESSIVE;
+    } else if (arg == "--size") {
+      currentOptLevel =
+          OptLevel::AGGRESSIVE; // Will add size-specific flags later
     } else if (arg[0] != '-') {
       sourceFile = arg;
     } else {
@@ -170,6 +197,26 @@ int main(int argc, char **argv) {
     exeFile = srcPath.stem().string();
   if (stubFile.empty())
     stubFile = srcPath.stem().string() + ".stub";
+
+  // Print optimization level if verbose
+  if (logOutput) {
+    std::cout << COLOR_BOLD << COLOR_BLUE << "Optimization level: ";
+    switch (currentOptLevel) {
+    case OptLevel::NONE:
+      std::cout << "NONE (--debug)";
+      break;
+    case OptLevel::BASIC:
+      std::cout << "BASIC (--basic)";
+      break;
+    case OptLevel::STANDARD:
+      std::cout << "STANDARD (--release)";
+      break;
+    case OptLevel::AGGRESSIVE:
+      std::cout << "AGGRESSIVE (--aggressive/--size)";
+      break;
+    }
+    std::cout << COLOR_RESET << "\n";
+  }
 
   ErrorHandler errorHandler(sourceFile);
 
@@ -287,7 +334,7 @@ int main(int argc, char **argv) {
         std::cout << COLOR_BOLD << COLOR_BLUE << "Generating IR..."
                   << COLOR_RESET << "\n";
       IRGenerator irgen(semantics, errorHandler, auditor, layout.totalHeapSize,
-                        logOutput);
+                        logOutput, currentOptLevel);
       irgen.generate(AST);
       if (logOutput)
         irgen.dumpIR();

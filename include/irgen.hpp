@@ -21,10 +21,20 @@ struct JumpTarget {
   Node *target;
 };
 
+// Optimization levels
+enum class OptLevel {
+  NONE,      // --debug    (-O0)
+  BASIC,     // --basic    (-O1)
+  STANDARD,  // --release  (-O2)
+  AGGRESSIVE // --aggressive (-O3)
+};
+
 class IRGenerator {
+  OptLevel optLevel;
+
 public:
   IRGenerator(Semantics &semantics, ErrorHandler &handler, Auditor &auditor,
-              size_t totalHeapSize, bool isVerbose);
+              size_t totalHeapSize, bool isVerbose, OptLevel optLevel);
 
   using generatorFunctions = void (IRGenerator::*)(Node *node);
   using expressionGenerators = llvm::Value *(IRGenerator::*)(Node *node);
