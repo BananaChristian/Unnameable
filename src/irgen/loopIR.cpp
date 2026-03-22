@@ -4,13 +4,11 @@
 void IRGenerator::generateWhileStatement(Node *node) {
   auto whileStmt = dynamic_cast<WhileStatement *>(node);
   if (!whileStmt) {
-    reportDevBug("Invalid while statement ", node->token.line,
-                 node->token.line);
+    reportDevBug("Invalid while statement ", node);
   }
 
   if (isGlobalScope) {
-    reportDevBug("Cannot use a while loop in a global scope",
-                 whileStmt->statement.line, whileStmt->statement.column);
+    reportDevBug("Cannot use a while loop in a global scope", whileStmt);
   }
 
   llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
@@ -61,7 +59,7 @@ void IRGenerator::generateWhileStatement(Node *node) {
 void IRGenerator::generateForStatement(Node *node) {
   auto forStmt = dynamic_cast<ForStatement *>(node);
   if (!forStmt) {
-    reportDevBug("Invalid for statement", node->token.line, node->token.column);
+    reportDevBug("Invalid for statement", node);
   }
 
   llvm::Function *function = funcBuilder.GetInsertBlock()->getParent();
@@ -148,8 +146,7 @@ void IRGenerator::generateBreakStatement(Node *node) {
     }
   }
 
-  reportDevBug("Break used outside a loop or switch", node->token.line,
-               node->token.column);
+  reportDevBug("Break used outside a loop or switch", node);
 }
 
 void IRGenerator::generateContinueStatement(Node *node) {
@@ -171,6 +168,5 @@ void IRGenerator::generateContinueStatement(Node *node) {
       return;
     }
   }
-  reportDevBug("Continue used outside a loop", node->token.line,
-               node->token.column);
+  reportDevBug("Continue used outside a loop", node);
 }

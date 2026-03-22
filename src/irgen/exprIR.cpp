@@ -8,19 +8,16 @@
 llvm::Value *IRGenerator::generateStringLiteral(Node *node) {
   auto strLit = dynamic_cast<StringLiteral *>(node);
   if (!strLit) {
-    reportDevBug("Invalid string literal", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid string literal", node);
   }
   auto it = semantics.metaData.find(strLit);
   if (it == semantics.metaData.end()) {
-    reportDevBug("String literal not found in metaData",
-                 strLit->expression.line, strLit->expression.column);
+    reportDevBug("String literal not found in metaData", strLit);
   }
   DataType dt = it->second->type.kind;
 
   if (dt != DataType::STRING) {
-    reportDevBug("Invalid type expected 'string'", strLit->expression.line,
-                 strLit->expression.column);
+    reportDevBug("Invalid type expected 'string'", strLit);
   }
   std::string raw = strLit->string_token.TokenLiteral;
   llvm::Constant *strConst =
@@ -255,8 +252,7 @@ llvm::Value *IRGenerator::generateF64Literal(Node *node) {
 llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   auto identExpr = dynamic_cast<Identifier *>(node);
   if (!identExpr) {
-    reportDevBug("Invalid identifier node", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid identifier node", node);
   }
 
   const std::string &identName = identExpr->identifier.TokenLiteral;
@@ -264,8 +260,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   // Lookup symbol
   auto metaIt = semantics.metaData.find(identExpr);
   if (metaIt == semantics.metaData.end()) {
-    reportDevBug("Unidentified identifier '" + identName + "'",
-                 identExpr->identifier.line, identExpr->identifier.column);
+    reportDevBug("Unidentified identifier '" + identName + "'", identExpr);
   }
 
   auto sym = metaIt->second;
@@ -273,8 +268,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   // Get address and possible pending free
   llvm::Value *address = generateIdentifierAddress(identExpr);
   if (!address) {
-    reportDevBug("No address for '" + identName + "'",
-                 identExpr->identifier.line, identExpr->identifier.column);
+    reportDevBug("No address for '" + identName + "'", identExpr);
   }
 
   // Component instance -> return pointer to the struct instance (address is
@@ -288,8 +282,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   if (sym->isSage) {
     llvm::Type *elemTy = sym->llvmType;
     if (!elemTy) {
-      reportDevBug("No type for sage scalar '" + identName + "'",
-                   identExpr->identifier.line, identExpr->identifier.column);
+      reportDevBug("No type for sage scalar '" + identName + "'", identExpr);
     }
 
     // variableAddr should be T* (address of object). If not, bitcast it.
@@ -313,8 +306,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     llvm::Value *actualHeapAddr = address;
 
     if (!elemTy) {
-      reportDevBug("No type for heap scalar '" + identName + "'",
-                   identExpr->identifier.line, identExpr->identifier.column);
+      reportDevBug("No type for heap scalar '" + identName + "'", identExpr);
     }
 
     // Grab the value from the heap address
@@ -324,10 +316,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
       loadedVal->setVolatile(true);
     }
 
-    // If the inhibitor is on that means there is a parent who wants this dude
-    // to relax but if he is off proceed to shoot
-    if (!inhibitCleanUp)
-      emitCleanup(identExpr, sym);
+    emitCleanup(identExpr);
 
     return loadedVal;
   }
@@ -342,7 +331,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
 
   if (!loadedType) {
     reportDevBug("Type mapper failed for scalar '" + identName + "'",
-                 identExpr->identifier.line, identExpr->identifier.column);
+                 identExpr);
   }
 
   // variableAddr should already be a pointer, load from it
@@ -513,7 +502,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
         handleArithmeticAndBitwise(infix, leftVal, rightVal, leftSym, rightSym);
 
   inhibitCleanUp = false;
-  emitInfixClean(infix, leftSym, rightSym);
+  emitCleanup(infix);
   return result;
 }
 
@@ -574,14 +563,10 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
       throw std::runtime_error("Udefined variable '" + name + "'");
     }
     llvm::Value *address = generateIdentifierAddress(ident);
-    // Inject the free checker
-    emitCleanup(ident, identIt->second);
-
     if (!address)
       throw std::runtime_error("Null variable pointer for: " +
                                ident->identifier.TokenLiteral);
 
-    // Get the type from resultType instead of getPointerElementType
     llvm::Type *varType = getLLVMType(resultType);
     if (!varType)
       throw std::runtime_error("Invalid type for variable: " +
@@ -615,10 +600,6 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
               : funcBuilder.CreateSub(loaded, delta, llvm::Twine("predectmp"));
 
     funcBuilder.CreateStore(updated, address);
-
-    /*{for (const auto pendingFree : addrAndFree.pendingFrees)
-    funcBuilder.Insert(pendingFree);}*/
-
     return updated;
   }
 
@@ -639,11 +620,7 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
   if (!identifier)
     throw std::runtime_error("Postfix operand must be a variable");
   auto identName = identifier->identifier.TokenLiteral;
-  auto identIt = semantics.metaData.find(identifier);
-
   llvm::Value *address = generateIdentifierAddress(identifier);
-
-  emitCleanup(identifier, identIt->second);
 
   if (!address)
     throw std::runtime_error("Null variable pointer for: " +
@@ -694,9 +671,6 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
                              std::to_string(postfix->operator_token.line));
 
   funcBuilder.CreateStore(updatedValue, address);
-
-  /*{for (const auto &pendingFree : addrAndFree.pendingFrees)
-  funcBuilder.Insert(pendingFree);}*/
 
   // Return original value since postfix
   return originalValue;
@@ -875,13 +849,13 @@ llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
   if (arrSym->hasError) {
     throw std::runtime_error("Semantic error was detected in array subscript");
   }
-
+  inhibitCleanUp = true;
   llvm::Value *ptr = generateArraySubscriptAddress(node);
 
   llvm::Type *elemTy = getLLVMType(arrSym->type);
   auto loadedVal = funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
-
-  emitCleanup(arrExpr, arrSym);
+  inhibitCleanUp = false;
+  emitCleanup(arrExpr);
 
   return loadedVal;
 }
@@ -1011,7 +985,7 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
     return nullptr;
 
   auto derefSym = semantics.getSymbolFromMeta(derefExpr);
-
+  inhibitCleanUp = true;
   Node *current = node;
   int derefCount = 0;
   while (auto nested = dynamic_cast<DereferenceExpression *>(current)) {
@@ -1052,8 +1026,8 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
     }
     addr = hopLoad;
   }
-
-  emitCleanup(derefExpr, meta);
+  inhibitCleanUp = false;
+  emitCleanup(derefExpr);
 
   return addr;
 }
@@ -1080,17 +1054,15 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   auto addrExpr = dynamic_cast<AddressExpression *>(node);
   if (!addrExpr) {
     errorHandler.addHint("Sent the wrong node to the address generator");
-    reportDevBug("Invalid address expression", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid address expression", node);
   }
 
   logInternal("Handling address expression generation");
-
+  inhibitCleanUp = true;
   auto metaIt = semantics.metaData.find(addrExpr);
   if (metaIt == semantics.metaData.end()) {
     errorHandler.addHint("Semantics failed to register the address metaData");
-    reportDevBug("Could not find address metadata", addrExpr->expression.line,
-                 addrExpr->expression.column);
+    reportDevBug("Could not find address metadata", addrExpr);
   }
 
   auto sym = metaIt->second;
@@ -1099,11 +1071,11 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   llvm::Value *variablePtr = targetSym->llvmValue;
   if (!variablePtr) {
     reportDevBug("No value was assigned to the target",
-                 addrExpr->expression.line, addrExpr->expression.column);
+                 addrExpr);
   }
   sym->llvmValue = variablePtr;
-
-  emitCleanup(addrExpr, sym);
+  inhibitCleanUp = false;
+  emitCleanup(addrExpr);
 
   return variablePtr;
 }

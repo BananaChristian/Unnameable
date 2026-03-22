@@ -259,14 +259,10 @@ private:
   void executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym);
   void freeDynamicHeapStorage(const std::string &allocatorType,
                               llvm::Value *toFree);
-  void emitCleanup(Node *contextNode,
-                   const std::shared_ptr<SymbolInfo> &contextSymbol);
+  void emitCleanup(Node *contextNode);
   void freeForeigners(Node *block);
   void freeNatives(Node *block);
   void emitBlockCleanUp(Node *block);
-  void emitInfixClean(InfixExpression *infix,
-                      const std::shared_ptr<SymbolInfo> &leftSym,
-                      const std::shared_ptr<SymbolInfo> &rightSym);
   void flattenArrayLiteral(ArrayLiteral *arrLit,
                            std::vector<llvm::Constant *> &flatElems,
                            llvm::Type *&baseType);
@@ -276,7 +272,7 @@ private:
   llvm::Value *generateIntegerLiteral(const std::string &literalStr,
                                       uint32_t bitWidth, bool isSigned);
 
-  void reportDevBug(const std::string &message, int line, int col);
+  void reportDevBug(const std::string &message, Node *contextNode);
   void logInternal(const std::string &message);
 };
 

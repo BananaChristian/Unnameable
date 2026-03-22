@@ -12,6 +12,12 @@ struct BlockInfo {
   std::vector<std::string> foreigners;
 };
 
+struct CycleGroup {
+  std::vector<std::string> ids;
+  bool hasNative = false;
+  bool hasForeigner = false;
+};
+
 class Auditor {
   Semantics &semantics;
   ErrorHandler &errorHandler;
@@ -21,6 +27,7 @@ class Auditor {
 public:
   Auditor(Semantics &semantics, ErrorHandler &handler, bool verbose);
   void audit(Node *node);
+  void runClassifier(Node *node);
   bool failed();
   std::unordered_map<Node *,
                      std::vector<std::pair<std::unique_ptr<LifeTime>,
@@ -37,6 +44,9 @@ private:
   std::unordered_map<std::type_index, auditFn> auditFnsMap;
   std::unordered_map<std::string, std::vector<std::string>> candidateRegistry;
   std::set<std::string> bunkeredIDs;
+  std::vector<Node *> activeBlocks;
+  std::vector<std::string> cycle;
+  bool inhibit = false;
 
   void registerAuditorFunctions();
   // Variable declaration auditors
@@ -58,6 +68,7 @@ private:
 
   // Statement auditors
   void auditAssignmentStatement(Node *node);
+  void auditFieldAssignmentStatement(Node *node);
   void auditReturnStatement(Node *node);
   void auditTraceStatement(Node *node);
   void auditIfStatement(Node *node);
@@ -68,9 +79,10 @@ private:
   void auditWhileStatement(Node *node);
   void auditForStatement(Node *node);
   void auditExpressionStatement(Node *node);
+  void auditAddressExpression(Node *node);
+  void auditDereferenceExpression(Node *node);
 
   // Helpers
-  void runClassifier(Node *node);
   void classifyNode(Node *node);
   void classifyBlock(Node *block);
   void classifySwitch(SwitchStatement *sw);
@@ -84,16 +96,28 @@ private:
   void transferDependent(const std::string &dependentID,
                          const std::shared_ptr<SymbolInfo> &dependentSym,
                          bool dropCount);
+  void assignmentRob(Node *contextAssign,
+                     const std::shared_ptr<SymbolInfo> &assignSym);
+  bool isCycle(LifeTime *baton);
+  bool followDependents(LifeTime *current, const std::string &originalID,
+                        std::set<std::string> &visited);
   bool diesInBlock(const std::string &ID, Node *block);
   bool
   doesSymbolDieInSwitch(const std::string &id,
                         const std::vector<std::unique_ptr<Statement>> &clause);
   std::set<std::string> getAllActiveBatonIDs();
+  Node *getCurrentBlock();
   std::vector<std::string> getAllActiveBatonIDsInBlock(Node *block);
   void scanForBaton(const std::string &id);
+  const CycleGroup findCycleGroup(const std::unique_ptr<BlockInfo> &blockInfo);
+  void checkCycleSafety(const std::unique_ptr<BlockInfo> &blockInfo,
+                        Node *contextNode);
+  std::string getIDsString(const std::vector<std::string> &ids,
+                           const std::vector<std::string> &filter);
 
   void bunkerNatives(Node *block);
   void bunkerForeigners(Node *block);
+  void bunkerCycles(Node *block);
   bool isBunkered(const std::string &id);
   bool isAlreadyClassified(const std::string &id,
                            const std::unique_ptr<BlockInfo> &blockInfo);

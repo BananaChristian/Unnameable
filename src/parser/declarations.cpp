@@ -96,8 +96,10 @@ std::unique_ptr<Statement> Parser::parseDeclaration() {
              currentToken().type == TokenType::IDENTIFIER ||
              currentToken().type == TokenType::AUTO) {
     stmt = parseLetStatement();
+  } else if (currentToken().type == TokenType::RECORD) {
+    stmt = parseRecordStatement();
   } else {
-    logError("Expected declaration after modifiers", currentToken());
+    logError("Expected declaration after modifiers but got ", currentToken());
     return nullptr;
   }
 
@@ -129,6 +131,9 @@ std::unique_ptr<Statement> Parser::parseDeclaration() {
     arrStmt->isVolatile = isVolatile;
     arrStmt->isRestrict = isRestrict;
     arrStmt->mutability = mutability;
+  } else if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get())) {
+    recordStmt->isVolatile = isVolatile;
+    recordStmt->mutability = mutability;
   } else {
     logError("Cannot apply modifiers to this statement type", currentToken());
     return nullptr;
@@ -313,9 +318,10 @@ std::unique_ptr<Statement> Parser::parsePointerStatement() {
   advance(); // Consume 'ptr'
 
   if (currentToken().type == TokenType::AUTO) {
-    logError("Do not use 'auto' if you want to infer the type just dont include "
-             "the type",
-             currentToken());
+    logError(
+        "Do not use 'auto' if you want to infer the type just dont include "
+        "the type",
+        currentToken());
     advance(); // Consume auto
   }
 

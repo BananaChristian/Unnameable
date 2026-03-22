@@ -508,16 +508,7 @@ std::unique_ptr<Statement> Parser::parseInjectStatement() {
 //______________________RECORDS____________________
 // Parsing record statement
 std::unique_ptr<Statement> Parser::parseRecordStatement() {
-  bool isExportable = false;
-  Mutability mutability = Mutability::IMMUTABLE;
   std::vector<std::unique_ptr<Statement>> fields;
-  if (currentToken().type == TokenType::MUT) {
-    mutability = Mutability::MUTABLE;
-    advance(); // Consuming the mut keyword token
-  } else if (currentToken().type == TokenType::CONST) {
-    mutability = Mutability::CONSTANT;
-    advance(); // Comsume the const keyword
-  }
   Token record_token = currentToken();
   advance(); // Consuming the data keyword token
   if (currentToken().type != TokenType::IDENTIFIER) {
@@ -525,7 +516,7 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
                  "'",
              currentToken());
   }
-  auto dataBlockName = parseIdentifier();
+  auto recordName = parseIdentifier();
   if (currentToken().type != TokenType::LBRACE) {
     logError("Expected { to start record block but got '" +
                  currentToken().TokenLiteral + "'",
@@ -555,9 +546,9 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
   }
   advance();
 
-  return std::make_unique<RecordStatement>(
-      isExportable, mutability, record_token, std::move(dataBlockName),
-      std::move(fields));
+  return std::make_unique<RecordStatement>(false, false, Mutability::IMMUTABLE,
+                                           record_token, std::move(recordName),
+                                           std::move(fields));
 }
 
 // Parsing instance expression

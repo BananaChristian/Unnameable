@@ -2182,6 +2182,8 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
   Node *currentBlock = getCurrentBlock();
   if (currentBlock) {
     bornInBlock[currentBlock].push_back(lifetime->ID);
+    logInternal("[BORN] Baton " + lifetime->ID +
+                " born in block: " + currentBlock->toString());
   } else {
     errorHandler.addHint(
         "It seems you have declared a heap variable in an invalid scope the "
@@ -2196,18 +2198,66 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
   return lifetime;
 }
 
+LifeTime *Semantics::getBaton(const std::string &ID) {
+  logInternal("\n[BATON GETTER] =========================================");
+  logInternal("[BATON GETTER] Looking for baton with ID: " + ID);
+
+  // First, try queryForLifeTimeBaton
+  Node *holder = queryForLifeTimeBaton(ID);
+  if (!holder) {
+    logInternal("[BATON GETTER] queryForLifeTimeBaton returned NULL for ID: " +
+                ID);
+
+    // DEBUG: Dump all batons in responsibilityTable to see what we have
+    logInternal("[BATON GETTER] Dumping all batons in responsibilityTable:");
+    int batonCount = 0;
+    for (const auto &[node, baton] : responsibilityTable) {
+      if (baton) {
+        logInternal("[BATON GETTER]   Baton " + std::to_string(batonCount++) +
+                    ": ID=" + baton->ID + ", Node=" + node->toString());
+      }
+    }
+    logInternal("[BATON GETTER] Total batons in table: " +
+                std::to_string(batonCount));
+
+    return nullptr;
+  }
+
+  logInternal("[BATON GETTER] queryForLifeTimeBaton returned holder node: " +
+              holder->toString());
+
+  auto it = responsibilityTable.find(holder);
+  if (it == responsibilityTable.end()) {
+    logInternal("[BATON GETTER] Holder node found but no baton in "
+                "responsibilityTable!");
+    return nullptr;
+  }
+
+  auto &baton = it->second;
+  if (!baton) {
+    logInternal("[BATON GETTER] Baton is null for holder: " +
+                holder->toString());
+    return nullptr;
+  }
+
+  logInternal("[BATON GETTER] ✓ Found baton: ID=" + baton->ID +
+              ", isResponsible=" + (baton->isResponsible ? "true" : "false"));
+  logInternal("[BATON GETTER] =========================================\n");
+
+  return baton.get();
+}
+
 void Semantics::transferResponsibility(
     LifeTime *currentBaton, LifeTime *targetBaton,
     const std::shared_ptr<SymbolInfo> &targetSym) {
 
-  logInternal("--- HEIST START ---");
-  logInternal("Robber (Current): " + currentBaton->ID);
-  logInternal("Victim (Target): " + targetBaton->ID);
-  logInternal("Target Pointer Count: " +
+  logInternal("[HEIST] Robber (Current): " + currentBaton->ID);
+  logInternal("[HEIST] Victim (Target): " + targetBaton->ID);
+  logInternal("[HEIST] Target Pointer Count: " +
               std::to_string(targetSym->pointerCount));
 
   if (!targetSym->isHeap) {
-    logInternal("The victim is not heap raised dont bother");
+    logInternal("[HEIST] The victim is not heap raised dont bother");
     return;
   }
 
@@ -2215,7 +2265,8 @@ void Semantics::transferResponsibility(
 
   // The moment of truth: Can we rob it?
   if (targetPointerCount <= 2) {
-    logInternal("SUCCESS: Robbery approved. Disarming " + targetBaton->ID);
+    logInternal("[HEIST] SUCCESS: Robbery approved. Disarming " +
+                targetBaton->ID);
 
     targetBaton->isResponsible = false;      // The Victim is now impotent
     targetBaton->ownedBy = currentBaton->ID; // The Master-Slave link
@@ -2225,16 +2276,16 @@ void Semantics::transferResponsibility(
 
     // THE LOOT: Robber takes all the victim's existing dependents too
     for (auto const &[id, sym] : targetBaton->dependents) {
-      logInternal("COLLECTING LOOT: Robber " + currentBaton->ID + " now owns " +
-                  id);
+      logInternal("[HEIST] COLLECTING LOOT: Robber " + currentBaton->ID +
+                  " now owns " + id);
       currentBaton->dependents[id] = sym;
     }
   } else {
-    logInternal("FAILURE: Robbery vetoed. Pointer count (" +
+    logInternal("[HEIST] FAILURE: Robbery vetoed. Pointer count (" +
                 std::to_string(targetPointerCount) + ") is too high.");
   }
 
-  logInternal("--- HEIST END: Victim " + targetBaton->ID + " isResponsible = " +
+  logInternal("[HEIST] Victim " + targetBaton->ID + " isResponsible = " +
               (targetBaton->isResponsible ? "TRUE" : "FALSE") + " ---");
 }
 
@@ -2274,16 +2325,17 @@ Node *Semantics::getCurrentBlock() {
 }
 
 bool Semantics::isBornInScope(Node *root, const std::string &ID) {
-  bool isBorn = false;
-  for (const std::string &id : bornInBlock[root]) {
-    if (id == ID) {
-      isBorn = true;
-    } else {
-      isBorn = false;
-    }
+  auto it = bornInBlock.find(root);
+  if (it == bornInBlock.end()) {
+    return false;
   }
 
-  return isBorn;
+  for (const std::string &id : it->second) {
+    if (id == ID) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
@@ -2291,11 +2343,31 @@ void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
   if (!holder) {
     reportDevBug("Could not find the baton holder for lifetime ID: " + familyID,
                  receiver);
-    return;
   }
-  logInternal("Transfering baton of ID: " + familyID + " from node: " +
-              holder->toString() + " to node: " + receiver->toString());
-  responsibilityTable[receiver] = std::move(responsibilityTable[holder]);
+  std::string identName = "<no name>";
+  auto identifiers = digIdentifiers(receiver);
+  for (const auto &identifier : identifiers) {
+    identName = extractIdentifierName(identifier);
+    auto identSym = getSymbolFromMeta(identifier);
+    if (!identSym) {
+      reportDevBug("Failed to get symbol info for identifer node during baton "
+                   "transfer '" +
+                       identName + "'",
+                   identifier);
+    }
+
+    if (!identSym->isHeap) {
+      logInternal("[BATON TRANSFER] The identifier '" + identName +
+                  "' is not heap allocated skipping..");
+    }
+    // Ensure we give the baton to the correct identifier
+    if (familyID == identSym->ID) {
+      logInternal("[BATON TRANSFER] Transfering baton of ID: " + familyID +
+                  " from node: " + holder->toString() + " to composite node: " +
+                  receiver->toString() + " ident: " + identifier->toString());
+      responsibilityTable[identifier] = std::move(responsibilityTable[holder]);
+    }
+  }
 }
 
 bool Semantics::isTerminator(Node *stmt) {
@@ -2357,6 +2429,190 @@ std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {
   }
 
   return it->second;
+}
+
+std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
+  std::vector<Identifier *> results;
+
+  if (!node)
+    return results;
+
+  // Base case: node is already an identifier
+  if (auto *ident = dynamic_cast<Identifier *>(node)) {
+    results.push_back(ident);
+    return results;
+  }
+
+  // AddressExpression (addr b)
+  if (auto *addr = dynamic_cast<AddressExpression *>(node)) {
+    return digIdentifiers(addr->identifier.get());
+  }
+
+  // DereferenceExpression (deref p)
+  if (auto *deref = dynamic_cast<DereferenceExpression *>(node)) {
+    return digIdentifiers(deref->identifier.get());
+  }
+
+  // MoveExpression (move x)
+  if (auto *move = dynamic_cast<MoveExpression *>(node)) {
+    return digIdentifiers(move->expr.get());
+  }
+
+  // SelfExpression (self.field)
+  if (auto *self = dynamic_cast<SelfExpression *>(node)) {
+    for (auto &field : self->fields) {
+      auto fieldIds = digIdentifiers(field.get());
+      results.insert(results.end(), fieldIds.begin(), fieldIds.end());
+    }
+    return results;
+  }
+
+  // NewComponentExpression (new Player(args))
+  if (auto *newComp = dynamic_cast<NewComponentExpression *>(node)) {
+    for (auto &arg : newComp->arguments) {
+      auto argIds = digIdentifiers(arg.get());
+      results.insert(results.end(), argIds.begin(), argIds.end());
+    }
+    return results;
+  }
+
+  // CallExpression (func(x, y))
+  if (auto *call = dynamic_cast<CallExpression *>(node)) {
+    auto funcIds = digIdentifiers(call->function_identifier.get());
+    results.insert(results.end(), funcIds.begin(), funcIds.end());
+
+    for (auto &arg : call->parameters) {
+      auto argIds = digIdentifiers(arg.get());
+      results.insert(results.end(), argIds.begin(), argIds.end());
+    }
+    return results;
+  }
+
+  // UnwrapExpression (unwrap x)
+  if (auto *unwrap = dynamic_cast<UnwrapExpression *>(node)) {
+    return digIdentifiers(unwrap->expr.get());
+  }
+
+  // MethodCallExpression (instance.method())
+  if (auto *method = dynamic_cast<MethodCallExpression *>(node)) {
+    auto instanceIds = digIdentifiers(method->instance.get());
+    auto callIds = digIdentifiers(method->call.get());
+    results.insert(results.end(), instanceIds.begin(), instanceIds.end());
+    results.insert(results.end(), callIds.begin(), callIds.end());
+    return results;
+  }
+
+  // InstanceExpression (Type { fields })
+  if (auto *instance = dynamic_cast<InstanceExpression *>(node)) {
+    if (instance->blockIdent) {
+      auto blockIds = digIdentifiers(instance->blockIdent.get());
+      results.insert(results.end(), blockIds.begin(), blockIds.end());
+    }
+    for (auto &field : instance->fields) {
+      auto fieldIds = digIdentifiers(field.get());
+      results.insert(results.end(), fieldIds.begin(), fieldIds.end());
+    }
+    return results;
+  }
+
+  // CastExpression (cast<i32>(x))
+  if (auto *cast = dynamic_cast<CastExpression *>(node)) {
+    if (cast->expr) {
+      auto exprIds = digIdentifiers(cast->expr.get());
+      results.insert(results.end(), exprIds.begin(), exprIds.end());
+    }
+    return results;
+  }
+
+  // BitcastExpression (bitcast<ptr>(x))
+  if (auto *bitcast = dynamic_cast<BitcastExpression *>(node)) {
+    if (bitcast->expr) {
+      auto exprIds = digIdentifiers(bitcast->expr.get());
+      results.insert(results.end(), exprIds.begin(), exprIds.end());
+    }
+    return results;
+  }
+
+  // PrefixExpression (!x, -y)
+  if (auto *prefix = dynamic_cast<PrefixExpression *>(node)) {
+    return digIdentifiers(prefix->operand.get());
+  }
+
+  // PostfixExpression (i++, j--)
+  if (auto *postfix = dynamic_cast<PostfixExpression *>(node)) {
+    return digIdentifiers(postfix->operand.get());
+  }
+
+  // InfixExpression (x + y, a.next, b.prev)
+  if (auto *infix = dynamic_cast<InfixExpression *>(node)) {
+    auto leftIds = digIdentifiers(infix->left_operand.get());
+    auto rightIds = digIdentifiers(infix->right_operand.get());
+    results.insert(results.end(), leftIds.begin(), leftIds.end());
+    results.insert(results.end(), rightIds.begin(), rightIds.end());
+    return results;
+  }
+
+  // ArrayLiteral ([1, 2, 3])
+  if (auto *arrayLit = dynamic_cast<ArrayLiteral *>(node)) {
+    for (auto &item : arrayLit->array) {
+      auto itemIds = digIdentifiers(item.get());
+      results.insert(results.end(), itemIds.begin(), itemIds.end());
+    }
+    return results;
+  }
+
+  // ArraySubscript (arr[5])
+  if (auto *subscript = dynamic_cast<ArraySubscript *>(node)) {
+    if (subscript->identifier) {
+      auto identIds = digIdentifiers(subscript->identifier.get());
+      results.insert(results.end(), identIds.begin(), identIds.end());
+    }
+    for (auto &index : subscript->index_exprs) {
+      auto indexIds = digIdentifiers(index.get());
+      results.insert(results.end(), indexIds.begin(), indexIds.end());
+    }
+    return results;
+  }
+
+  // STATEMENTS
+  // ExpressionStatement
+  if (auto *exprStmt = dynamic_cast<ExpressionStatement *>(node)) {
+    return digIdentifiers(exprStmt->expression.get());
+  }
+
+  // AssignmentStatement (x = y)
+  if (auto *assign = dynamic_cast<AssignmentStatement *>(node)) {
+    auto identIds = digIdentifiers(assign->identifier.get());
+    auto valueIds = digIdentifiers(assign->value.get());
+    results.insert(results.end(), identIds.begin(), identIds.end());
+    results.insert(results.end(), valueIds.begin(), valueIds.end());
+    return results;
+  }
+
+  // FieldAssignment (a.next = addr b)
+  if (auto *fieldAssign = dynamic_cast<FieldAssignment *>(node)) {
+    auto lhsIds = digIdentifiers(fieldAssign->lhs_chain.get());
+    auto valueIds = digIdentifiers(fieldAssign->value.get());
+    results.insert(results.end(), lhsIds.begin(), lhsIds.end());
+    results.insert(results.end(), valueIds.begin(), valueIds.end());
+    return results;
+  }
+
+  // ReturnStatement
+  if (auto *ret = dynamic_cast<ReturnStatement *>(node)) {
+    if (ret->return_value) {
+      return digIdentifiers(ret->return_value.get());
+    }
+    return results;
+  }
+
+  // TraceStatement
+  if (auto *trace = dynamic_cast<TraceStatement *>(node)) {
+    return digIdentifiers(trace->expr.get());
+  }
+  // If we get here, either the node has no identifiers or we need to add a new
+  // case
+  return results;
 }
 
 void Semantics::logSpecialErrors(const std::string &message, int line,

@@ -50,7 +50,7 @@ void IRGenerator::finalizeTypeBody(
     errorHandler
         .addHint("Type '" + typeName + "' missing from llvmCustomTypes.")
         .addHint("Ensure Phase 1 (declareCustomTypes) ran for this module.");
-    reportDevBug("Internal IRGen Error: Type stub not found", 0, 0);
+    reportDevBug("Internal IRGen Error: Type stub not found", nullptr);
     return;
   }
 
@@ -75,7 +75,7 @@ void IRGenerator::finalizeTypeBody(
       errorHandler.addHint("Failed to resolve type for member: " + mName)
           .addHint("Check if custom type '" + mInfo->type.resolvedName +
                    "' is fully declared.");
-      reportDevBug("Type Resolution Failure", 0, 0);
+      reportDevBug("Type Resolution Failure", nullptr);
     }
 
     layoutMap[mInfo->memberIndex] = std::make_pair(mName, ty);
@@ -142,7 +142,7 @@ void IRGenerator::declareImportedComponentMethods(
   if (typeIt == llvmCustomTypes.end()) {
     reportDevBug("Could not find base type '" + typeName +
                      "' for method declaration",
-                 0, 0);
+                 nullptr);
   }
 
   llvm::Type *thisPtrType = typeIt->second->getPointerTo();

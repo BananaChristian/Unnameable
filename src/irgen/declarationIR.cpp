@@ -14,8 +14,7 @@ void IRGenerator::generateHeapStatement(Node *node) {
 void IRGenerator::generateLetStatement(Node *node) {
   auto *letStmt = dynamic_cast<LetStatement *>(node);
   if (!letStmt) {
-    reportDevBug("Invalid variable declaration", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid variable declaration", node);
   }
 
   const std::string letName = letStmt->ident_token.TokenLiteral;
@@ -25,7 +24,7 @@ void IRGenerator::generateLetStatement(Node *node) {
     errorHandler.addHint("Semantics did not register the metaData for '" +
                          letName + "'");
     reportDevBug("No variable declaration metaData for '" + letName + "",
-                 letStmt->ident_token.line, letStmt->ident_token.column);
+                 letStmt);
   }
 
   auto sym = metaIt->second;
@@ -46,11 +45,9 @@ void IRGenerator::generateLetStatement(Node *node) {
   // If there's no current insert block, handle global(GLOBAL SCOPE)
   if (isGlobalScope) {
     if (isComponent && isSage) {
-      reportDevBug("Cannot sage raise a component in global scope",
-                   letStmt->ident_token.line, letStmt->ident_token.column);
+      reportDevBug("Cannot sage raise a component in global scope", letStmt);
     } else if (isSage) {
-      reportDevBug("Cannot sage raise in global scope ",
-                   letStmt->ident_token.line, letStmt->ident_token.column);
+      reportDevBug("Cannot sage raise in global scope ", letStmt);
     } else {
       auto valExpr = dynamic_cast<Expression *>(letStmt->value.get());
       generateGlobalScalarLet(sym, letName, valExpr);
@@ -100,7 +97,7 @@ void IRGenerator::generateLetStatement(Node *node) {
         letStmt, sym, structTy, isHeap); // It will handle its own heap business
     if (!storage) {
       reportDevBug("Component allocation failed for '" + letName + "'",
-                   letStmt->ident_token.line, letStmt->ident_token.column);
+                   letStmt);
     }
 
     // Component init handles its own stores internally
@@ -172,14 +169,13 @@ void IRGenerator::generateLetStatement(Node *node) {
   }
 
   if (!storage) {
-    reportDevBug("No storage allocated for '" + letName + "'",
-                 letStmt->ident_token.line, letStmt->ident_token.column);
+    reportDevBug("No storage allocated for '" + letName + "'", letStmt);
   }
 
   // Update symbol metadata with storage and type
   sym->llvmValue = storage;
   sym->llvmType = (isComponent && structTy) ? structTy : getLLVMType(sym->type);
-  emitCleanup(letStmt, sym);
+  emitCleanup(letStmt);
 }
 
 //__________________________ARRAY STATEMENT GENERATION_______________________
@@ -190,8 +186,7 @@ void IRGenerator::generateArrayStatement(Node *node) {
 
   auto arrIt = semantics.metaData.find(arrStmt);
   if (arrIt == semantics.metaData.end()) {
-    reportDevBug("Failed to find array statement metaData",
-                 arrStmt->statement.line, arrStmt->statement.column);
+    reportDevBug("Failed to find array statement metaData", arrStmt);
   }
 
   auto arrName = arrStmt->identifier->expression.TokenLiteral;
@@ -228,8 +223,7 @@ void IRGenerator::generateArrayStatement(Node *node) {
         sym->componentSize / layout->getTypeAllocSize(elemTy);
     allocationCount = funcBuilder.getInt64(totalElements);
   } else {
-    reportDevBug("Array '" + arrName + "' has no length or literal",
-                 arrStmt->statement.line, arrStmt->statement.column);
+    reportDevBug("Array '" + arrName + "' has no length or literal", arrStmt);
   }
 
   llvm::Type *finalVarType = funcBuilder.getPtrTy();
@@ -319,15 +313,14 @@ void IRGenerator::generateArrayStatement(Node *node) {
   }
 
   sym->llvmValue = variableStorage;
-  emitCleanup(arrStmt, sym);
+  emitCleanup(arrStmt);
 }
 
 //_________________POINTER STATEMENT____________________
 void IRGenerator::generatePointerStatement(Node *node) {
   auto ptrStmt = dynamic_cast<PointerStatement *>(node);
   if (!ptrStmt) {
-    reportDevBug("Invalid pointer statement", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid pointer statement", node);
   }
 
   auto ptrName = ptrStmt->name->expression.TokenLiteral;
@@ -336,7 +329,7 @@ void IRGenerator::generatePointerStatement(Node *node) {
   auto metaIt = semantics.metaData.find(ptrStmt);
   if (metaIt == semantics.metaData.end()) {
     reportDevBug("Missing pointer statement metaData for '" + ptrName + "'",
-                 ptrStmt->statement.line, ptrStmt->statement.column);
+                 ptrStmt);
   }
 
   auto ptrSym = metaIt->second;
@@ -344,8 +337,7 @@ void IRGenerator::generatePointerStatement(Node *node) {
   // Getting the pointer llvm type
   llvm::Type *ptrType = getLLVMType(ptrSym->type);
   if (!ptrType) {
-    reportDevBug("Failed to get pointer type for '" + ptrName + "'",
-                 ptrStmt->statement.line, ptrStmt->statement.column);
+    reportDevBug("Failed to get pointer type for '" + ptrName + "'", ptrStmt);
   }
 
   llvm::Value *initVal = nullptr;
@@ -374,8 +366,7 @@ void IRGenerator::generatePointerStatement(Node *node) {
   }
 
   if (!initVal) {
-    reportDevBug("No initial value for pointer '" + ptrName + "'",
-                 ptrStmt->statement.line, ptrStmt->statement.column);
+    reportDevBug("No initial value for pointer '" + ptrName + "'", ptrStmt);
   }
 
   llvm::Value *storagePtr = nullptr;
@@ -397,8 +388,7 @@ void IRGenerator::generatePointerStatement(Node *node) {
   } else if (!funcBuilder.GetInsertBlock()) {
     llvm::Constant *globalInit = llvm::dyn_cast<llvm::Constant>(initVal);
     if (!globalInit) {
-      reportDevBug("Global pointer must be constant", ptrStmt->statement.line,
-                   ptrStmt->statement.column);
+      reportDevBug("Global pointer must be constant", ptrStmt);
     }
 
     storagePtr = new llvm::GlobalVariable(*module, ptrType, false,
@@ -419,15 +409,14 @@ void IRGenerator::generatePointerStatement(Node *node) {
   ptrSym->llvmType = ptrType;
 
   // Last use clean up for the pointer statement
-  emitCleanup(ptrStmt, ptrSym);
+  emitCleanup(ptrStmt);
 }
 
 // Reference statement IR generator
 void IRGenerator::generateReferenceStatement(Node *node) {
   auto refStmt = dynamic_cast<ReferenceStatement *>(node);
   if (!refStmt) {
-    reportDevBug("Invalid reference statemnt", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid reference statemnt", node);
   }
 
   const auto &refName = refStmt->name->expression.TokenLiteral;
@@ -438,14 +427,13 @@ void IRGenerator::generateReferenceStatement(Node *node) {
   auto metaIt = semantics.metaData.find(refStmt);
   if (metaIt == semantics.metaData.end()) {
     reportDevBug("Failed to find reference metaData for '" + refName + "'",
-                 refStmt->statement.line, refStmt->statement.column);
+                 refStmt);
   }
 
   auto refSym = metaIt->second;
   auto targetSym = refSym->refereeSymbol;
   if (!targetSym) {
-    reportDevBug("Reference '" + refName + "' has no target symbol",
-                 refStmt->statement.line, refStmt->statement.column);
+    reportDevBug("Reference '" + refName + "' has no target symbol", refStmt);
   }
 
   // Generate the LLVM pointer to the actual value, not the pointer variable
@@ -472,7 +460,7 @@ void IRGenerator::generateReferenceStatement(Node *node) {
 
   if (!targetAddress || !targetAddress->getType()->isPointerTy()) {
     reportDevBug("Failed to resolve address for reference '" + refName + "'",
-                 refStmt->statement.line, refStmt->statement.column);
+                 refStmt);
   }
 
   // The reference itself holds the pointer to the target
@@ -494,7 +482,7 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
     if (!init) {
       reportDevBug("Global '" + letName +
                        "' must be initialized with a constant expression",
-                   value->expression.line, value->expression.column);
+                   value);
     }
   } else if (semantics.customTypesTable.count(sym->type.resolvedName)) {
     init = generateGlobalRecordDefaults(sym->type.resolvedName);
@@ -645,7 +633,7 @@ IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
 
   auto it = semantics.allocatorMap.find(allocatorTypeName);
   if (it == semantics.allocatorMap.end()) {
-    reportDevBug("Unknown allocator type '" + allocatorTypeName + "'", 0, 0);
+    reportDevBug("Unknown allocator type '" + allocatorTypeName + "'", nullptr);
   }
 
   auto handle = it->second;
@@ -654,8 +642,8 @@ IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
   // Find the function in the module(it was created in registerAllocators)
   llvm::Function *allocFunc = module->getFunction(allocatorName);
   if (!allocFunc) {
-    reportDevBug("Function not found for allocator '" + allocatorName + "'", 0,
-                 0);
+    reportDevBug("Function not found for allocator '" + allocatorName + "'",
+                 nullptr);
   }
 
   size_t allocSize = sym->componentSize; // Get the size for the allocation

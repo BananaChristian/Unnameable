@@ -7,9 +7,7 @@ void IRGenerator::generateRecordStatement(Node *node) {
 
   auto it = semantics.metaData.find(recordStmt);
   if (it == semantics.metaData.end()) {
-    reportDevBug("Miising record metaData",
-                 recordStmt->recordName->expression.line,
-                 recordStmt->recordName->expression.line);
+    reportDevBug("Miising record metaData", recordStmt->recordName.get());
   }
 
   auto &meta = *it->second;
@@ -51,18 +49,21 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
   std::string instName = instExpr->blockIdent->expression.TokenLiteral;
   llvm::StructType *structTy = llvmCustomTypes[instName];
   if (!structTy)
-    throw std::runtime_error("Unknown record type: " + instName);
+    reportDevBug("Unknown record type: " + instName,
+                 instExpr->blockIdent.get());
 
   if (!funcBuilder.GetInsertBlock())
-    throw std::runtime_error("Cannot create an instance for '" + instName +
-                             "' in the global scope");
+    reportDevBug("Cannot create an instance for '" + instName +
+                     "' in the global scope",
+                 instExpr->blockIdent.get());
 
   llvm::Value *instancePtr =
       funcBuilder.CreateAlloca(structTy, nullptr, instName + "inst");
 
   auto typeInfoIt = semantics.customTypesTable.find(instName);
   if (typeInfoIt == semantics.customTypesTable.end())
-    throw std::runtime_error("Missing custom type info for " + instName);
+    reportDevBug("Missing custom type info for " + instName,
+                 instExpr->blockIdent.get());
   auto &typeInfo = typeInfoIt->second;
 
   // We create a map of field names to their specific assignment nodes
@@ -105,8 +106,8 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
     }
 
     if (!finalVal)
-      throw std::runtime_error("Failed to resolve value for field: " +
-                               memberName);
+      reportDevBug("Failed to resolve value for field: " + memberName,
+                   info->node);
 
     // Perform exactly one store per field
     auto *storeInst = funcBuilder.CreateStore(finalVal, memberPtr);

@@ -966,23 +966,30 @@ struct InjectStatement : Statement {
 
 // Record statement struct
 struct RecordStatement : Statement {
+  // Modifiers
+  bool isVolatile; // Every member in the record is volatile
   bool isExportable;
-  Mutability mutability;
+  Mutability mutability; 
+
+  // Core structure
   Token record_token;
   std::unique_ptr<Expression> recordName;
   std::vector<std::unique_ptr<Statement>> fields;
 
   std::string toString() override {
-    std::string mutStr;
-    if (mutability == Mutability::MUTABLE) {
-      mutStr += "mut ";
-    } else if (mutability == Mutability::CONSTANT) {
-      mutStr += "const ";
-    }
-    std::string exportStr = isExportable ? "export " : "";
-    std::string result = exportStr + mutStr +
-                         " Record statement: " + recordName->toString() +
-                         " {\n";
+    std::string prefix;
+    if (isExportable)
+      prefix += "export ";
+    if (isVolatile)
+      prefix += "volatile ";
+
+    if (mutability == Mutability::MUTABLE)
+      prefix += "mut ";
+    if (mutability == Mutability::CONSTANT)
+      prefix += "const ";
+
+    std::string result =
+        prefix + " Record statement: " + recordName->toString() + " {\n";
     for (const auto &field : fields) {
       result += "  " + field->toString() + "\n";
     }
@@ -990,12 +997,12 @@ struct RecordStatement : Statement {
     return result;
   }
 
-  RecordStatement(bool exportable, Mutability mut, Token record,
+  RecordStatement(bool volatile_, bool exportable, Mutability mut, Token record,
                   std::unique_ptr<Expression> block_name,
                   std::vector<std::unique_ptr<Statement>> record_fields)
-      : Statement(record), isExportable(exportable), mutability(mut),
-        record_token(record), recordName(std::move(block_name)),
-        fields(std::move(record_fields)){};
+      : Statement(record), isVolatile(volatile_), isExportable(exportable),
+        mutability(mut), record_token(record),
+        recordName(std::move(block_name)), fields(std::move(record_fields)){};
 };
 
 // Init statement

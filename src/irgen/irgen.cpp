@@ -3,6 +3,7 @@
 #include <llvm-18/llvm/IR/DataLayout.h>
 #include <llvm-18/llvm/IR/DerivedTypes.h>
 #include <llvm-18/llvm/IR/Instruction.h>
+#include <llvm-18/llvm/IR/Type.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/FileSystem.h>
@@ -89,7 +90,7 @@ llvm::Value *IRGenerator::generateExpression(Node *node) {
   if (exprIt == expressionGeneratorsMap.end()) {
     reportDevBug("Could not find expression type IR generator for: " +
                      node->toString(),
-                 node->token.line, node->token.column);
+                 node);
   }
 
   return (this->*exprIt->second)(node);
@@ -108,7 +109,7 @@ llvm::Value *IRGenerator::generateAddress(Node *node) {
         "The address generator(L-value) for this node does not exist "
         "in the address generator functions map");
     reportDevBug("Could not find address generator for " + node->toString(),
-                 node->token.line, node->token.column);
+                 node);
   }
 
   return (this->*addrIt->second)(node);
@@ -139,7 +140,7 @@ void IRGenerator::generatePointerAssignmentStatement(
     return;
 
   logInternal("Inside the pointer reassignment");
-
+  inhibitCleanUp = true;
   llvm::Value *targetPtr = generateAddress(assignStmt->identifier.get());
   llvm::Value *newAddr = generateExpression(assignStmt->value.get());
 
@@ -147,8 +148,9 @@ void IRGenerator::generatePointerAssignmentStatement(
   if (assignSym->isVolatile) {
     storeInst->setVolatile(true);
   }
+  inhibitCleanUp = false;
 
-  emitCleanup(assignStmt, assignSym);
+  emitCleanup(assignStmt);
 }
 
 // Assignment statement IR generator function
@@ -172,8 +174,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   llvm::Value *targetPtr = generateAddress(assignStmt->identifier.get());
   if (!targetPtr) {
     reportDevBug("Failed to get L-Value address for the LHS expression",
-                 assignStmt->identifier->expression.line,
-                 assignStmt->identifier->expression.column);
+                 assignStmt);
   }
 
   llvm::Value *initValue = nullptr;
@@ -183,15 +184,12 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   initValue = generateExpression(assignStmt->value.get());
 
   if (!initValue) {
-    reportDevBug("Failed to generate R-Value for assignment",
-                 assignStmt->value->expression.line,
-                 assignStmt->value->expression.column);
+    reportDevBug("Failed to generate R-Value for assignment", assignStmt);
   }
 
   auto assignMeta = semantics.metaData[assignStmt];
   if (!assignMeta) {
-    reportDevBug("Failed to get assignment statement metaData",
-                 assignStmt->statement.line, assignStmt->statement.column);
+    reportDevBug("Failed to get assignment statement metaData", assignStmt);
   }
 
   // Handling Move Expressions (Pointer Takeover)
@@ -203,8 +201,8 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
       storeInst->setVolatile(true);
     }
     inhibitCleanUp = false;
-    emitCleanup(assignStmt->value.get(), valSym);
-    emitCleanup(assignStmt, assignMeta);
+
+    emitCleanup(assignStmt);
     return;
   }
 
@@ -254,57 +252,139 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   }
 
   inhibitCleanUp = false;
-  emitCleanup(assignStmt->value.get(), valSym);
-  emitCleanup(assignStmt, assignMeta);
+  emitCleanup(assignStmt);
   logInternal("Ended assignment generation");
 }
 
 void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   auto *fieldStmt = dynamic_cast<FieldAssignment *>(node);
+  if (!fieldStmt)
+    return;
 
-  llvm::Value *lhsAddress = generateInfixAddress(fieldStmt->lhs_chain.get());
+  // Get all the symbols we need
+  auto fieldSym = semantics.getSymbolFromMeta(fieldStmt);
+  auto lhsSym = semantics.getSymbolFromMeta(fieldStmt->lhs_chain.get());
+  auto valSym = semantics.getSymbolFromMeta(fieldStmt->value.get());
 
-  llvm::Value *rhsVal = generateExpression(fieldStmt->value.get());
-
-  auto meta = semantics.metaData[fieldStmt];
-  auto lhsMeta = semantics.getSymbolFromMeta(fieldStmt->lhs_chain.get());
-
-  if (meta->type.isArray) {
-    auto elementType = semantics.getArrayElementType(meta->type);
-    llvm::Type *elemLLVMType = getLLVMType(elementType);
-    llvm::Align align = layout->getABITypeAlign(elemLLVMType);
-
-    llvm::Value *destSlab = funcBuilder.CreateLoad(
-        funcBuilder.getPtrTy(), lhsAddress, "field_slab_ptr");
-
-    // If the field itself is volatile, the load above should be too
-    if (meta->isVolatile) {
-      if (auto *load = llvm::dyn_cast<llvm::LoadInst>(destSlab)) {
-        load->setVolatile(true);
-      }
-    }
-
-    funcBuilder.CreateMemCpy(destSlab, align, rhsVal, align,
-                             funcBuilder.getInt64(meta->componentSize));
-  } else {
-    auto *storeInst = funcBuilder.CreateStore(rhsVal, lhsAddress);
-    // Check if the field being assigned is volatile
-    if (meta->isVolatile || (lhsMeta && lhsMeta->isVolatile)) {
-      storeInst->setVolatile(true);
-    }
+  if (!fieldSym || !lhsSym || !valSym) {
+    reportDevBug("Missing symbols in field assignment", node);
+    return;
   }
 
-  // A free was happening here pause it as I study the system
-  /*{for (auto pendingFree : lhs.pendingFrees)
-      funcBuilder.Insert(pendingFree); // This finally puts the free into the
-     IR}*/
+  logInternal("Generating field assignment");
+
+  // INHIBIT cleanup during RHS evaluation
+  inhibitCleanUp = true;
+
+  // Get the address of the field (LHS)
+  llvm::Value *fieldAddress = generateInfixAddress(fieldStmt->lhs_chain.get());
+  if (!fieldAddress) {
+    reportDevBug("Failed to get field address", fieldStmt);
+    return;
+  }
+
+  // POINTER ASSIGNMENT (ptr field = addr something)
+  if (fieldSym->isPointer) {
+    llvm::Value *newAddr = generateExpression(fieldStmt->value.get());
+    auto *storeInst = funcBuilder.CreateStore(newAddr, fieldAddress);
+    if (fieldSym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
+
+    inhibitCleanUp = false;
+    emitCleanup(fieldStmt);
+
+    return;
+  }
+
+  // Generate RHS value (could be complex)
+  llvm::Value *rhsValue = generateExpression(fieldStmt->value.get());
+
+  // CASE 2: MOVE EXPRESSION (field = move something)
+  if (dynamic_cast<MoveExpression *>(fieldStmt->value.get())) {
+    logInternal("Handling move assignment to field");
+    auto *storeInst = funcBuilder.CreateStore(rhsValue, fieldAddress);
+    if (fieldSym->isVolatile) {
+      storeInst->setVolatile(true);
+    }
+
+    inhibitCleanUp = false;
+    emitCleanup(fieldStmt);
+    return;
+  }
+
+  //  DEEP COPY (large structs/arrays)
+  bool isHuge = (fieldSym->type.kind == DataType::COMPONENT ||
+                 fieldSym->type.kind == DataType::RECORD) &&
+                (!fieldSym->type.isPointer);
+
+  if (fieldSym->type.isArray || isHuge) {
+    logInternal("Handling deep copy to field");
+    uint64_t byteSize = fieldSym->componentSize;
+    llvm::Type *elemLLVMTy = getLLVMType(
+        fieldSym->type.isArray ? semantics.getArrayElementType(fieldSym->type)
+                               : fieldSym->type);
+    llvm::Align align = layout->getABITypeAlign(elemLLVMTy);
+
+    // For array fields, we might need to load the field's address differently
+    if (fieldSym->type.isArray) {
+      llvm::Value *fieldBasePtr = funcBuilder.CreateLoad(
+          funcBuilder.getPtrTy(), fieldAddress, "field_array_base");
+      if (fieldSym->isVolatile) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(fieldBasePtr)) {
+          load->setVolatile(true);
+        }
+      }
+      funcBuilder.CreateMemCpy(fieldBasePtr, align, rhsValue, align,
+                               funcBuilder.getInt64(byteSize));
+    } else {
+      // Regular struct copy
+      funcBuilder.CreateMemCpy(fieldAddress, align, rhsValue, align,
+                               funcBuilder.getInt64(byteSize));
+    }
+
+    inhibitCleanUp = false;
+    emitCleanup(fieldStmt);
+    return;
+  }
+
+  // SCALAR ASSIGNMENT (normal case)
+  llvm::StoreInst *storeInst = nullptr;
+
+  if (fieldSym->isHeap) {
+    // Field points to heap memory
+    llvm::Value *valueToStore = rhsValue;
+    if (valSym->isAddress) {
+      // Need to load the actual value from the address
+      valueToStore = funcBuilder.CreateLoad(getLLVMType(fieldSym->type),
+                                            rhsValue, "loaded_field_val");
+      if (valSym->isVolatile) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(valueToStore)) {
+          load->setVolatile(true);
+        }
+      }
+    }
+    storeInst = funcBuilder.CreateStore(valueToStore, fieldAddress);
+  } else {
+    // Regular stack assignment
+    storeInst = funcBuilder.CreateStore(rhsValue, fieldAddress);
+  }
+
+  if (fieldSym->isVolatile && storeInst) {
+    storeInst->setVolatile(true);
+  }
+
+  // RELEASE inhibitor and CLEANUP
+  inhibitCleanUp = false;
+  emitCleanup(fieldStmt);
+
+  logInternal("Ended field assignment generation");
 }
 
 void IRGenerator::generateBlockStatement(Node *node) {
   auto blockStmt = dynamic_cast<BlockStatement *>(node);
   if (!blockStmt) {
-    reportDevBug("Invalid block statement", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid block statement", node);
   }
 
   logInternal("Generating block statement with '" +
@@ -328,8 +408,7 @@ void IRGenerator::generateTraceStatement(Node *node) {
   auto traceStmt = dynamic_cast<TraceStatement *>(node);
 
   if (!traceStmt) {
-    reportDevBug("Invalid trace statement node", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid trace statement node", node);
   }
 
   auto traceSym = semantics.getSymbolFromMeta(traceStmt);
@@ -337,20 +416,19 @@ void IRGenerator::generateTraceStatement(Node *node) {
   // Getting the type
   ResolvedType type = traceSym->type;
 
+  inhibitCleanUp = true;
   // Call the expression generation n the expression
   auto val = generateExpression(traceStmt->expr.get());
   if (!val) {
     errorHandler.addHint("The expression generator failed");
-    reportDevBug("Failed to get value for the trace expression",
-                 traceStmt->expr->expression.line,
-                 traceStmt->expr->expression.column);
+    reportDevBug("Failed to get value for the trace expression", traceStmt);
   }
 
   // Call the traceRuntime this is the one who actually prints
   traceRuntime(val, type);
-  // Emit the free if we were holding some memory hostage and this is the
-  // lastUse
-  emitCleanup(traceStmt, traceSym);
+
+  inhibitCleanUp = false;
+  emitCleanup(traceStmt);
 }
 
 llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
@@ -358,8 +436,7 @@ llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
   if (!blockExpr) {
     errorHandler.addHint("Sent a wrong node to the block expression generator "
                          "could be a malformed AST");
-    reportDevBug("Invalid block expression", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid block expression", blockExpr);
   }
 
   for (const auto &stmts : blockExpr->statements) {
@@ -369,6 +446,31 @@ llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
       break;
     }
     generateStatement(stmts.get());
+  }
+
+  // After generating all statements, check if we have a terminator
+  llvm::BasicBlock *currentBlock = funcBuilder.GetInsertBlock();
+  llvm::Instruction *terminator = currentBlock ? currentBlock->getTerminator() : nullptr;
+  
+  if (terminator) {
+    // Save the terminator (return) position
+    llvm::ReturnInst *ret = llvm::dyn_cast<llvm::ReturnInst>(terminator);
+    if (ret) {
+      // Remove the terminator temporarily
+      terminator->removeFromParent();
+      
+      // Insert cleanup at the current insertion point (which is before where the return was)
+      emitBlockCleanUp(blockExpr);
+      
+      // Re-insert the return
+      funcBuilder.Insert(ret);
+    } else {
+      // Other terminator (branch, etc.) - just add cleanup before it
+      emitBlockCleanUp(blockExpr);
+    }
+  } else {
+    // No terminator, just add cleanup
+    emitBlockCleanUp(blockExpr);
   }
 
   // A block expression should not return an llvm::Value directly.
@@ -473,8 +575,8 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
     if (type.resolvedName.empty()) {
       errorHandler.addHint(
           "The semantics probably stored a type whose type name is empty");
-      reportDevBug("Custom type requested but the resolved name is empty", 0,
-                   0);
+      reportDevBug("Custom type requested but the resolved name is empty",
+                   nullptr);
     }
 
     std::string lookUpName = type.resolvedName;
@@ -491,8 +593,9 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
       errorHandler.addHint(
           "The type '" + lookUpName +
           "' was not stoed in the custom type map used by the IRGenerator");
-      reportDevBug(
-          "IRgenerator requested for unknown type '" + lookUpName + "'", 0, 0);
+      reportDevBug("IRgenerator requested for unknown type '" + lookUpName +
+                       "'",
+                   nullptr);
     }
     break;
   }
@@ -508,7 +611,7 @@ llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
   case DataType::UNKNOWN: {
     errorHandler.addHint(
         "Semantics failed to guard against unknown error leaks");
-    reportDevBug("Type '" + type.resolvedName + "' is unknown", 0, 0);
+    reportDevBug("Type '" + type.resolvedName + "' is unknown", nullptr);
   }
   }
 
@@ -738,8 +841,7 @@ llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
   auto it = semantics.metaData.find(exprNode);
   if (it == semantics.metaData.end()) {
     errorHandler.addHint("Semantics did not register the condition metadata");
-    reportDevBug("Could not find condition expression metadata",
-                 exprNode->token.line, exprNode->token.column);
+    reportDevBug("Could not find condition expression metadata", exprNode);
     return nullptr;
   }
 
@@ -778,7 +880,7 @@ llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
   }
 
   reportDevBug("Attempted to coerce a non-nullable aggregate to boolean",
-               exprNode->token.line, exprNode->token.column);
+               exprNode);
   return funcBuilder.getInt1(false);
 }
 bool IRGenerator::isIntegerType(DataType dt) {
@@ -889,7 +991,7 @@ char *IRGenerator::const_unnitoa(__int128 val, char *buf) {
 
 void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
   if (!val) {
-    reportDevBug("shout! called with a null value", 0, 0);
+    reportDevBug("shout! called with a null value", nullptr);
   }
 
   auto &ctx = module->getContext();
@@ -912,7 +1014,7 @@ void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
 
   auto printString = [&](llvm::Value *strVal) {
     if (!strVal) {
-      reportDevBug("printString received value", 0, 0);
+      reportDevBug("printString received value", nullptr);
     }
 
     // Ensure 'write' exists
@@ -970,7 +1072,7 @@ void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
     }
 
     else {
-      reportDevBug("Unsupported integer value in shout! ", 0, 0);
+      reportDevBug("Unsupported integer value in shout! ", nullptr);
     }
   };
 
@@ -1033,9 +1135,16 @@ void IRGenerator::freeForeigners(Node *block) {
   logInternal("  [BASKET-FOUND] Found " + std::to_string(it->second.size()) +
               " batons to process.");
 
+  std::set<std::string> freedBatons;
+
   for (auto &[baton, contextSym] : it->second) {
     if (!baton)
       continue;
+
+    if (freedBatons.count(baton->ID)) {
+      logInternal("  [SKIP] Already freed: " + baton->ID);
+      continue;
+    }
 
     logInternal("  [INSPECTING] Baton ID: " + baton->ID);
 
@@ -1045,46 +1154,38 @@ void IRGenerator::freeForeigners(Node *block) {
     }
 
     logInternal(
-        "    [STATE] PtrCount: " + std::to_string(contextSym->pointerCount) +
-        " | RefCount: " + std::to_string(contextSym->refCount) +
-        " | Responsible: " + (baton->isResponsible ? "YES" : "NO"));
+        "    [TERMINAL-REACHED] Commencing deallocation sequence for: " +
+        contextSym->ID);
 
-    // We only free if it's truly dead (no pointers left)
-    if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
-      logInternal(
-          "    [TERMINAL-REACHED] Commencing deallocation sequence for: " +
-          contextSym->ID);
-
-      // Clear out the family (dependents)
-      if (!baton->dependents.empty()) {
-        logInternal("    [DEPS] Freeing " +
-                    std::to_string(baton->dependents.size()) +
-                    " dependents...");
-        for (const auto &[depID, depSym] : baton->dependents) {
-          logInternal("      -> Killing Dependent: " + depID);
-          executePhysicalFree(depSym);
+    // Clear out dependents (skip if already freed)
+    if (!baton->dependents.empty()) {
+      logInternal("    [DEPS] Freeing " +
+                  std::to_string(baton->dependents.size()) + " dependents...");
+      for (const auto &[depID, depSym] : baton->dependents) {
+        if (freedBatons.count(depID)) {
+          logInternal("      -> Skipping (already freed): " + depID);
+          continue;
         }
+        logInternal("      -> Killing Dependent: " + depID);
+        executePhysicalFree(depSym);
+        freedBatons.insert(depID);
       }
-
-      // Kill the leader
-      if (contextSym->isHeap) {
-        logInternal("    [LEADER] Emitting physical free for: " +
-                    contextSym->ID);
-        executePhysicalFree(contextSym);
-      }
-
-      // Mark as dead so no one else tries to kill it
-      baton->isResponsible = false;
-      baton->isAlive = false;
-      logInternal("    [SUCCESS] Baton " + baton->ID +
-                  " is now officially history.");
-    } else {
-      logInternal("    [STAY-ALIVE] Skipping dealloc: " + contextSym->ID +
-                  " still has active references.");
     }
+
+    // Kill the leader
+    if (contextSym->isHeap) {
+      logInternal("    [LEADER] Emitting physical free for: " + contextSym->ID);
+      executePhysicalFree(contextSym);
+    }
+
+    // Mark as dead
+    baton->isResponsible = false;
+    baton->isAlive = false;
+    freedBatons.insert(baton->ID);
+    logInternal("    [SUCCESS] Baton " + baton->ID +
+                " is now officially history.");
   }
-  // Clean the map after processing to prevent double-frees if this is called
-  // twice
+
   map.erase(block);
   logInternal("[FOREINER-CLEANUP] <<< Finished processing foreigners.\n");
 }
@@ -1107,9 +1208,16 @@ void IRGenerator::freeNatives(Node *block) {
   logInternal("  [BASKET-FOUND] Found " + std::to_string(it->second.size()) +
               " batons to process.");
 
+  std::set<std::string> freedBatons;
+
   for (auto &[baton, contextSym] : it->second) {
     if (!baton)
       continue;
+
+    if (freedBatons.count(baton->ID)) {
+      logInternal("  [SKIP] Already freed: " + baton->ID);
+      continue;
+    }
 
     logInternal("  [INSPECTING] Baton ID: " + baton->ID);
 
@@ -1119,43 +1227,36 @@ void IRGenerator::freeNatives(Node *block) {
     }
 
     logInternal(
-        "    [STATE] PtrCount: " + std::to_string(contextSym->pointerCount) +
-        " | RefCount: " + std::to_string(contextSym->refCount) +
-        " | Responsible: " + (baton->isResponsible ? "YES" : "NO"));
+        "    [TERMINAL-REACHED] Commencing deallocation sequence for: " +
+        contextSym->ID);
 
-    // We only free if it's truly dead (no pointers left)
-    if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
-      logInternal(
-          "    [TERMINAL-REACHED] Commencing deallocation sequence for: " +
-          contextSym->ID);
-
-      // Clear out the family (dependents)
-      if (!baton->dependents.empty()) {
-        logInternal("    [DEPS] Freeing " +
-                    std::to_string(baton->dependents.size()) +
-                    " dependents...");
-        for (const auto &[depID, depSym] : baton->dependents) {
-          logInternal("      -> Killing Dependent: " + depID);
-          executePhysicalFree(depSym);
+    // Clear out dependents (skip if they're already freed)
+    if (!baton->dependents.empty()) {
+      logInternal("    [DEPS] Freeing " +
+                  std::to_string(baton->dependents.size()) + " dependents...");
+      for (const auto &[depID, depSym] : baton->dependents) {
+        if (freedBatons.count(depID)) {
+          logInternal("      -> Skipping (already freed): " + depID);
+          continue;
         }
+        logInternal("      -> Killing Dependent: " + depID);
+        executePhysicalFree(depSym);
+        freedBatons.insert(depID);
       }
-
-      // Kill the leader
-      if (contextSym->isHeap) {
-        logInternal("    [LEADER] Emitting physical free for: " +
-                    contextSym->ID);
-        executePhysicalFree(contextSym);
-      }
-
-      // Mark as dead so no one else tries to kill it
-      baton->isResponsible = false;
-      baton->isAlive = false;
-      logInternal("    [SUCCESS] Baton " + baton->ID +
-                  " is now officially history.");
-    } else {
-      logInternal("    [STAY-ALIVE] Skipping dealloc: " + contextSym->ID +
-                  " still has active references.");
     }
+
+    // Kill the leader
+    if (contextSym->isHeap) {
+      logInternal("    [LEADER] Emitting physical free for: " + contextSym->ID);
+      executePhysicalFree(contextSym);
+    }
+
+    // Mark as dead
+    baton->isResponsible = false;
+    baton->isAlive = false;
+    freedBatons.insert(baton->ID);
+    logInternal("    [SUCCESS] Baton " + baton->ID +
+                " is now officially history.");
   }
 
   map.erase(block);
@@ -1212,55 +1313,71 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   funcBuilder.CreateCall(deallocFunc, {castPtr});
 }
 
-void IRGenerator::emitCleanup(Node *contextNode,
-                              const std::shared_ptr<SymbolInfo> &contextSym) {
+void IRGenerator::emitCleanup(Node *contextNode) {
+  if (inhibitCleanUp) {
+    logInternal("[CLEANUP-CHECK] Cleanup inhibited");
+    return;
+  }
   logInternal("[CLEANUP-CHECK] Node: " + contextNode->toString());
-  auto it = semantics.responsibilityTable.find(contextNode);
-  if (it == semantics.responsibilityTable.end()) {
-    logInternal("  [SKIP] No baton associated with this node: " +
-                contextNode->toString());
-    return;
-  }
+  if (dynamic_cast<Identifier *>(contextNode) != contextNode)
+    logInternal("[CLEANUP-CHECK] Composite node detected");
 
-  auto &baton = it->second;
-  if (!baton) {
-    logInternal("  [SKIP] Baton pointer is null.");
-    return;
-  }
-
-  logInternal("  [BATON-STATE] ID: " + contextSym->ID +
-              " | Responsible: " + (baton->isResponsible ? "T" : "F") +
-              " | PtrCount: " + std::to_string(contextSym->pointerCount) +
-              " | RefCount: " + std::to_string(contextSym->refCount));
-
-  if (!baton->isResponsible) {
-    logInternal("  [SKIP] Baton is not responsible for memory.");
-    return;
-  }
-
-  // Trigger Logic (Counts)
-  if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
-    logInternal("  [TRIGGER] Last use detected. Commencing physical free.");
-    // Free the depenedents first
-    logInternal("  [Dependents] Size: " +
-                std::to_string(baton->dependents.size()));
-    for (const auto &[id, depSym] : baton->dependents) {
-      logInternal("    [Dep-Free] ID: " + id);
-      executePhysicalFree(depSym);
+  auto identifiers = semantics.digIdentifiers(contextNode);
+  for (const auto &identifier : identifiers) {
+    auto it = semantics.responsibilityTable.find(identifier);
+    if (it == semantics.responsibilityTable.end()) {
+      logInternal("  [SKIP] No baton associated with this node: " +
+                  identifier->toString());
+      continue;
     }
 
-    // Free the leader
-    if (contextSym->isHeap) {
-      logInternal("  [Leader] ID: " + contextSym->ID);
-      executePhysicalFree(contextSym);
+    auto &baton = it->second;
+    if (!baton) {
+      logInternal("  [SKIP] Baton pointer is null.");
+      return;
     }
 
-    // Defuse to avoid issues
-    baton->isResponsible = false;
-    logInternal("  [BATON-DEFUSED] Responsibility revoked for: " +
-                contextSym->ID);
-  } else {
-    logInternal("  [HOLD] Baton still has active references/pointers.");
+    auto identSym = semantics.getSymbolFromMeta(identifier);
+    if (!identSym)
+      reportDevBug("Failed to get identifier symbol info for '" +
+                       semantics.extractIdentifierName(identifier) +
+                       "' in node: " + contextNode->toString(),
+                   identifier);
+
+    logInternal("  [BATON-STATE] ID: " + identSym->ID +
+                " | Responsible: " + (baton->isResponsible ? "T" : "F") +
+                " | PtrCount: " + std::to_string(identSym->pointerCount) +
+                " | RefCount: " + std::to_string(identSym->refCount));
+
+    if (!baton->isResponsible) {
+      logInternal("  [SKIP] Baton is not responsible for memory.");
+      return;
+    }
+
+    // Trigger Logic (Counts)
+    if (identSym->pointerCount == 0 && identSym->refCount == 0) {
+      logInternal("  [TRIGGER] Last use detected. Commencing physical free.");
+      // Free the depenedents first
+      logInternal("  [Dependents] Size: " +
+                  std::to_string(baton->dependents.size()));
+      for (const auto &[id, depSym] : baton->dependents) {
+        logInternal("    [Dep-Free] ID: " + id);
+        executePhysicalFree(depSym);
+      }
+
+      // Free the leader
+      if (identSym->isHeap) {
+        logInternal("  [Leader] ID: " + identSym->ID);
+        executePhysicalFree(identSym);
+      }
+
+      // Defuse to avoid issues
+      baton->isResponsible = false;
+      logInternal("  [BATON-DEFUSED] Responsibility revoked for: " +
+                  identSym->ID);
+    } else {
+      logInternal("  [HOLD] Baton still has active references/pointers.");
+    }
   }
 }
 
@@ -1529,13 +1646,20 @@ bool IRGenerator::emitObjectFile(const std::string &filename) {
   return true;
 }
 
-void IRGenerator::reportDevBug(const std::string &message, int line, int col) {
-  CompilerError error;
+void IRGenerator::reportDevBug(const std::string &message, Node *contextNode) {
+  int line = 0;
+  int col = 0;
+  if (contextNode) {
+    line = contextNode->token.line;
+    col = contextNode->token.column;
+  }
 
+  CompilerError error;
   error.level = ErrorLevel::INTERNAL;
   error.line = line;
   error.col = col;
   error.message = message;
+  error.tokenLength = errorHandler.getTokenLength(contextNode);
   error.hints = {};
 
   errorHandler.report(error);

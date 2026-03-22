@@ -285,6 +285,10 @@ int main(int argc, char **argv) {
       std::cout << COLOR_BOLD << COLOR_BLUE << "Auditing baton state..."
                 << COLOR_RESET << "\n";
     Auditor auditor(semantics, errorHandler, logOutput);
+    // Classifier pass
+    for (const auto &node : AST)
+      auditor.runClassifier(node.get());
+    // Audit pass
     for (const auto &node : AST)
       auditor.audit(node.get());
 

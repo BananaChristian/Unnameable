@@ -11,7 +11,7 @@ void Semantics::walkInfixExpression(Node *node) {
   auto left = infixExpr->left_operand.get();
   walker(left);
 
-  auto leftSym = metaData[left];
+  auto leftSym = getSymbolFromMeta(left);
 
   // Retrieve the symbol info of the left side
   if (!leftSym) {
@@ -41,6 +41,8 @@ void Semantics::walkInfixExpression(Node *node) {
 
     if (!memberInfo)
       return;
+
+    logInternal("Member ID: " + memberInfo->ID);
 
     logInternal("Infix Type for member access :" +
                 memberInfo->type.resolvedName);
@@ -479,11 +481,10 @@ void Semantics::walkIdentifierExpression(Node *node) {
     return;
   }
 
+  metaData[identExpr] = symbolInfo;
   if (symbolInfo->isHeap) {
     transferBaton(identExpr, symbolInfo->ID);
   }
-
-  metaData[identExpr] = symbolInfo;
 }
 
 // Walking address expression

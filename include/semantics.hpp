@@ -158,7 +158,7 @@ struct SymbolInfo {
   bool isSage = false;   // Sage heap flag
   bool isHeap = false;   // Dynamic heap flag
   std::string allocType; // The name of the allocator the heap will use
-  bool isVolatile = true;
+  bool isVolatile = false;
 
   bool isRef = false;     // Reference flag
   bool isPointer = false; // Pointer flag
@@ -213,11 +213,13 @@ struct SymbolInfo {
 };
 
 struct LifeTime {
-  std::string ID;
-  std::string ownedBy;
-  bool isResponsible = false;
-  bool isAlive = false;
-  std::map<std::string, std::shared_ptr<SymbolInfo>> dependents;
+  std::string ID;      // Main lifetime family ID
+  std::string ownedBy; // Who robbed this baton and now owns it
+  bool isResponsible =
+      false; // Is this baton responsible for the actual memory it respresents
+  bool isAlive = false; // Auditor liveness simulation flag
+  std::map<std::string, std::shared_ptr<SymbolInfo>>
+      dependents; // Dependents map for batons that have been robbed
 
   LifeTime() = default;
   LifeTime(const LifeTime &other) = default;
@@ -295,6 +297,8 @@ public:
   bool isString(const ResolvedType &t);
   bool isChar(const ResolvedType &t);
 
+  LifeTime *getBaton(const std::string &ID);
+  std::vector<Identifier *> digIdentifiers(Node *node);
   std::shared_ptr<SymbolInfo> getSymbolFromMeta(Node *node);
   void transferResponsibility(LifeTime *currentBaton, LifeTime *targetBaton,
                               const std::shared_ptr<SymbolInfo> &tagetSym);
@@ -489,7 +493,6 @@ private:
   bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
   bool isMethodCallCompatible(const MemberInfo &memFuncInfo,
                               CallExpression *callExpr);
-
   bool isLiteral(Node *node);
   bool isConstLiteral(Node *node);
   void popScope();

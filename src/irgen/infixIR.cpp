@@ -36,13 +36,6 @@ bool IRGenerator::ComparisonOperator(TokenType op) {
   }
 }
 
-void IRGenerator::emitInfixClean(InfixExpression *infix,
-                                 const std::shared_ptr<SymbolInfo> &leftSym,
-                                 const std::shared_ptr<SymbolInfo> &rightSym) {
-  emitCleanup(infix->left_operand.get(), leftSym);
-  emitCleanup(infix->right_operand.get(), rightSym);
-}
-
 llvm::Value *IRGenerator::handleArithmeticAndBitwise(
     InfixExpression *infix, llvm::Value *left, llvm::Value *right,
     const std::shared_ptr<SymbolInfo> &leftSym,
@@ -127,7 +120,6 @@ llvm::Value *IRGenerator::handleArithmeticAndBitwise(
       result = isSignedInteger(resultType.kind)
                    ? funcBuilder.CreateSRem(left, right, "modtmp")
                    : funcBuilder.CreateURem(left, right, "modtmp");
-      emitInfixClean(infix, leftSym, rightSym);
       return result;
     } else
       throw std::runtime_error(

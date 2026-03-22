@@ -332,6 +332,7 @@ void Semantics::walkRecordStatement(Node *node) {
   // Setup mutability
   bool isBlockMutable = (recordStmt->mutability == Mutability::MUTABLE);
   bool isBlockConstant = (recordStmt->mutability == Mutability::CONSTANT);
+  bool isBlockVolatile = recordStmt->isVolatile;
 
   // Build the record symbol
   auto recordSym = std::make_shared<SymbolInfo>();
@@ -405,6 +406,18 @@ void Semantics::walkRecordStatement(Node *node) {
         refStmt->mutability = Mutability::CONSTANT;
       else if (arrStmt)
         arrStmt->mutability = Mutability::CONSTANT;
+    }
+
+    // Apply volatility to the entire block if the user marked it
+    if (isBlockVolatile) {
+      if (letStmt)
+        letStmt->isVolatile = isBlockVolatile;
+      else if (ptrStmt)
+        ptrStmt->isVolatile = isBlockVolatile;
+      else if (refStmt)
+        refStmt->isVolatile = isBlockVolatile;
+      else if (arrStmt)
+        arrStmt->isVolatile = isBlockVolatile;
     }
 
     // Walk the let statement to register it in the scope

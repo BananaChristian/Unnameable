@@ -15,16 +15,9 @@ void IRGenerator::generateFunctionStatement(Node *node) {
   if (auto expr = dynamic_cast<FunctionExpression *>(fnExpr)) {
     generateFunctionExpression(expr);
   }
-  // Case where it is a function declaration expression(this is the special
-  // case)
-  if (auto declrExpr = dynamic_cast<FunctionDeclarationExpression *>(fnExpr)) {
-    /*This is actually supposed to behave like a statement dispatcher
-    That is because it doesnt actually produce a value it is a wrapper and
-    doesnt evaluate to anything But with the  way I built the AST for my
-    function declaration I have to do it like this kinda shady though But it
-    will work*/
+
+  if (auto declrExpr = dynamic_cast<FunctionDeclarationExpression *>(fnExpr))
     generateFunctionDeclarationExpression(declrExpr);
-  }
 
   if (oldInsertPoint)
     funcBuilder.SetInsertPoint(oldInsertPoint);
@@ -158,7 +151,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
     // Getting the statement data type
     auto pIt = semantics.metaData.find(p.get());
     if (pIt == semantics.metaData.end()) {
-      throw std::runtime_error("Failed to find paremeter meta data");
+      reportDevBug("Failed to find paremeter meta data", p.get());
     }
     llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(
         getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
@@ -174,11 +167,10 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   generateExpression(fnExpr->block.get());
 
   llvm::BasicBlock *finalBlock = funcBuilder.GetInsertBlock();
-
   // If the function is void
   bool isVoidFunction = funcIt->second->returnType.kind == DataType::VOID;
 
-  // CRITICAL CHECK: Does the current block exist and is it not terminated?
+  // Does the current block exist and is it not terminated?
   if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator())) {
     if (isVoidFunction) {
       // Inject 'ret void' for void functions that fell off the end.
@@ -210,17 +202,17 @@ void IRGenerator::generateReturnStatement(Node *node) {
   // Fetch Semantic Metadata
   auto it = semantics.metaData.find(retStmt);
   if (it == semantics.metaData.end()) {
-    reportDevBug("Could not find return statement metaData",
-                 retStmt->return_stmt.line, retStmt->return_stmt.column);
+    reportDevBug("Could not find return statement metaData", retStmt);
   }
-
+  inhibitCleanUp = true;
   // Generate the value being returned
   llvm::Value *retVal = nullptr;
   if (retStmt->return_value) {
     retVal = generateExpression(retStmt->return_value.get());
   }
 
-  emitCleanup(retStmt, it->second);
+  inhibitCleanUp = false;
+  emitCleanup(retStmt);
 
   // Get Function Signature Info
   llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
@@ -310,11 +302,8 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
 
   auto callIt = semantics.metaData.find(callExpr);
   if (callIt == semantics.metaData.end()) {
-    throw std::runtime_error("Call expression does not exist");
+    reportDevBug("Call expression does not exist", callExpr);
   }
-  if (callIt->second->hasError)
-    throw std::runtime_error("Semantic error detected in '" + fnName +
-                             "' call");
 
   // Getting the function I want to call
   llvm::Function *calledFunc = module->getFunction(fnName);
@@ -334,7 +323,7 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
     return nullptr;
   }
 
-  emitCleanup(callExpr, callIt->second);
+  emitCleanup(callExpr);
   return call;
 }
 

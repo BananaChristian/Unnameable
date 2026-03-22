@@ -318,7 +318,6 @@ void Semantics::walkPointerStatement(Node *node) {
 
     auto lifetime = createLifeTimeTracker(ptrStmt, targetBaton, ptrInfo);
     ptrInfo->ID = lifetime->ID;
-
     responsibilityTable[ptrStmt] = std::move(lifetime);
   }
   metaData[ptrStmt] = ptrInfo;

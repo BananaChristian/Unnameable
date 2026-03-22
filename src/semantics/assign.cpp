@@ -326,8 +326,12 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
 
   walker(fieldAssignStmt->lhs_chain.get());
 
-  auto lhsInfo = metaData[fieldAssignStmt->lhs_chain.get()];
-  if (!lhsInfo || lhsInfo->hasError) {
+  auto lhsInfo = getSymbolFromMeta(fieldAssignStmt->lhs_chain.get());
+  if (!lhsInfo)
+    reportDevBug("Failed to get lhs symbolInfo",
+                 fieldAssignStmt->lhs_chain.get());
+
+  if (lhsInfo->hasError) {
     return;
   }
 

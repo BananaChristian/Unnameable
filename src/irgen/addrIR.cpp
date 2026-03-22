@@ -8,28 +8,26 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
 
   auto identExpr = dynamic_cast<Identifier *>(node);
   if (!identExpr) {
-    reportDevBug("Invalid identifier expression", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid identifier expression", node);
   }
 
   const std::string &identName = identExpr->identifier.TokenLiteral;
   auto metaIt = semantics.metaData.find(identExpr);
   if (metaIt == semantics.metaData.end()) {
     errorHandler.addHint("Semantics did not register the identifier metadata");
-    reportDevBug("Could not find identifier metadata",
-                 identExpr->identifier.line, identExpr->identifier.column);
+    reportDevBug("Could not find identifier metadata", identExpr);
   }
 
   auto sym = metaIt->second;
 
   llvm::Value *variablePtr = sym->llvmValue;
   if (!variablePtr)
-    reportDevBug("No value for '" + identName + "'", identExpr->identifier.line,
-                 identExpr->identifier.column);
+    reportDevBug("No value for '" + identName + "'", identExpr);
 
   if (sym->isRef) {
     llvm::Type *ptrType = llvm::PointerType::get(funcBuilder.getContext(), 0);
-    auto *load = funcBuilder.CreateLoad(ptrType, variablePtr, identName + "_ref_addr");
+    auto *load =
+        funcBuilder.CreateLoad(ptrType, variablePtr, identName + "_ref_addr");
     if (sym->isVolatile) {
       load->setVolatile(true);
     }
@@ -45,8 +43,7 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
     if (sym->isSage || sym->isHeap) {
       llvm::Type *elemTy = sym->llvmType;
       if (!elemTy) {
-        reportDevBug("No type for '" + identName + "'",
-                     identExpr->identifier.line, identExpr->identifier.column);
+        reportDevBug("No type for '" + identName + "'", identExpr);
       }
 
       llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
@@ -60,7 +57,7 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
         address = variablePtr;
       } else {
         reportDevBug("Identifier '" + identName + "' doesnt have a value",
-                     identExpr->identifier.line, identExpr->identifier.column);
+                     identExpr);
       }
     }
   }
@@ -73,9 +70,7 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
   auto infix = dynamic_cast<InfixExpression *>(node);
   llvm::Value *address = generateAddress(infix->left_operand.get());
   if (!address)
-    reportDevBug("Failed to generate L-Value",
-                 infix->left_operand->expression.line,
-                 infix->left_operand->expression.column);
+    reportDevBug("Failed to generate L-Value", infix->left_operand.get());
 
   if (infix->operat.type == TokenType::FULLSTOP) {
     auto lhsMeta = semantics.metaData[infix->left_operand.get()];
@@ -115,8 +110,7 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
 llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   auto selfExpr = dynamic_cast<SelfExpression *>(node);
   if (!selfExpr) {
-    reportDevBug("Invalid self expression", node->token.line,
-                 node->token.column);
+    reportDevBug("Invalid self expression", node);
   }
 
   const std::string &compName =
@@ -129,8 +123,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     errorHandler.addHint("Component '" + compName +
                          "' was not added into the componentTypes table");
     reportDevBug("Component '" + compName + "' not found in componentTypes",
-                 currentComponent->component_name->expression.line,
-                 currentComponent->component_name->expression.column);
+                 currentComponent->component_name.get());
   }
 
   currentStructTy = it->second;
@@ -138,14 +131,13 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   // --- Load 'self' pointer ---
   llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
   if (!selfAlloca) {
-    reportDevBug("'self' access outside component method",
-                 selfExpr->expression.line, selfExpr->expression.column);
+    reportDevBug("'self' access outside component method", selfExpr);
   }
 
-  auto *selfLoad = funcBuilder.CreateLoad(
-      currentStructTy->getPointerTo(), selfAlloca, "self_load");
+  auto *selfLoad = funcBuilder.CreateLoad(currentStructTy->getPointerTo(),
+                                          selfAlloca, "self_load");
   // Self is never volatile (it's just a pointer to the component)
-  
+
   llvm::Value *currentPtr = selfLoad;
 
   // --- Semantic chain walk ---
@@ -154,8 +146,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     errorHandler.addHint(
         "The type was never registered by the semantic analyzer");
     reportDevBug("Component not found in customTypeTable",
-                 currentComponent->component_name->expression.line,
-                 currentComponent->component_name->expression.column);
+                 currentComponent->component_name.get());
   }
 
   auto currentTypeInfo = ctIt->second;
@@ -164,8 +155,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   for (size_t i = 0; i < selfExpr->fields.size(); ++i) {
     auto ident = dynamic_cast<Identifier *>(selfExpr->fields[i].get());
     if (!ident) {
-      reportDevBug("Invalid node in the self chain", selfExpr->expression.line,
-                   selfExpr->expression.column);
+      reportDevBug("Invalid node in the self chain", selfExpr);
     }
 
     std::string currentTypeName = currentTypeInfo->type.resolvedName;
@@ -180,8 +170,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
 
     auto memIt = currentTypeInfo->members.find(fieldName);
     if (memIt == currentTypeInfo->members.end()) {
-      reportDevBug("Field not found in '" + currentTypeName + "'",
-                   selfExpr->expression.line, selfExpr->expression.column);
+      reportDevBug("Field not found in '" + currentTypeName + "'", selfExpr);
     }
 
     lastMemberInfo = memIt->second;
@@ -191,8 +180,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     if (llvmIt == llvmCustomTypes.end()) {
       errorHandler.addHint("Could not find the type '" + currentTypeName +
                            "' in the type table");
-      reportDevBug("Unrecognised type '" + currentTypeName + "'",
-                   selfExpr->expression.line, selfExpr->expression.column);
+      reportDevBug("Unrecognised type '" + currentTypeName + "'", selfExpr);
     }
 
     llvm::StructType *structTy = llvmIt->second;
@@ -214,8 +202,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
       if (nestedIt == semantics.customTypesTable.end()) {
         errorHandler.addHint("Type '" + lookUpName +
                              "' was not registered by the semantic analyzer");
-        reportDevBug("Nested type '" + lookUpName + "' not found",
-                     selfExpr->expression.line, selfExpr->expression.column);
+        reportDevBug("Nested type '" + lookUpName + "' not found", selfExpr);
       }
 
       currentTypeInfo = nestedIt->second;
@@ -235,7 +222,8 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
   auto baseSym = arrIt->second;
 
   llvm::Value *allocaPtr = generateIdentifierAddress(arrExpr->identifier.get());
-  auto *dataLoad = funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "raw_data_ptr");
+  auto *dataLoad =
+      funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "raw_data_ptr");
   if (baseSym->isVolatile) {
     dataLoad->setVolatile(true);
   }
@@ -305,8 +293,7 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
   std::vector<llvm::CallInst *> pendingFrees;
 
   if (!addr) {
-    reportDevBug("Failed to get address to dereference ",
-                 derefExpr->expression.line, derefExpr->expression.column);
+    reportDevBug("Failed to get address to dereference ", derefExpr);
   }
 
   auto ptrType = llvm::PointerType::getUnqual(context);
