@@ -359,8 +359,6 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
         advance(); // skip the unexpected token
       }
       break;
-    case TokenType::PTR:
-      stmt = parsePointerStatement();
     case TokenType::EXPORT: {
       auto exportStmt = parseExportStatement();
       auto fnStmt = dynamic_cast<FunctionStatement *>(exportStmt.get());
@@ -532,7 +530,7 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
       continue;
     }
     auto recordStmt = parseStatement();
-    if (isDeclaration(recordStmt.get())) {
+    if (dynamic_cast<VariableDeclaration *>(recordStmt.get())) {
       fields.push_back(std::move(recordStmt));
     } else {
       logError("Unsupported statement inside record", currentToken());

@@ -919,12 +919,10 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
       throw std::runtime_error("Expected identifier in self chain");
 
     std::string currentTypeName = currentTypeInfo->type.resolvedName;
-    if (currentTypeInfo->type.isPointer)
+    if (currentTypeInfo->type.isPointer()||currentTypeInfo->type.isRef())
       currentTypeName =
-          semantics.stripPtrSuffix(currentTypeInfo->type.resolvedName);
-    else if (currentTypeInfo->type.isRef)
-      currentTypeName =
-          semantics.stripRefSuffix(currentTypeInfo->type.resolvedName);
+          semantics.getBaseTypeName(currentTypeInfo->type);
+
 
     std::string fieldName = ident->identifier.TokenLiteral;
 
@@ -949,12 +947,9 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
     if (lastMemberInfo->type.kind == DataType::COMPONENT ||
         lastMemberInfo->type.kind == DataType::RECORD) {
       std::string lookUpName = lastMemberInfo->type.resolvedName;
-      if (lastMemberInfo->type.isPointer) {
-        lookUpName =
-            semantics.stripPtrSuffix(lastMemberInfo->type.resolvedName);
-      } else if (lastMemberInfo->type.isRef)
-        lookUpName =
-            semantics.stripRefSuffix(lastMemberInfo->type.resolvedName);
+      if (lastMemberInfo->type.isPointer() || lastMemberInfo->type.isRef())
+        lookUpName = semantics.getBaseTypeName(lastMemberInfo->type);
+
       auto nestedIt = semantics.customTypesTable.find(lookUpName);
       if (nestedIt == semantics.customTypesTable.end())
         throw std::runtime_error("Nested type '" + lookUpName + "'not found");
@@ -1070,8 +1065,7 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   auto targetSym = sym->targetSymbol;
   llvm::Value *variablePtr = targetSym->llvmValue;
   if (!variablePtr) {
-    reportDevBug("No value was assigned to the target",
-                 addrExpr);
+    reportDevBug("No value was assigned to the target", addrExpr);
   }
   sym->llvmValue = variablePtr;
   inhibitCleanUp = false;

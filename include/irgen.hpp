@@ -44,7 +44,7 @@ public:
   void dumpIR();
 
   llvm::Module &getLLVMModule();
-  llvm::Type *getLLVMType(ResolvedType type);
+  llvm::Type *getLLVMType(const ResolvedType &type);
 
   std::unordered_map<std::type_index, generatorFunctions> generatorFunctionsMap;
   std::unordered_map<std::type_index, expressionGenerators>
@@ -81,14 +81,10 @@ private:
   bool isVerbose;
   bool inhibitCleanUp = false;
 
-  // llvm::BasicBlock *heapInitFnEntry = nullptr;
   void setupTargetLayout();
 
   // GENERATOR FUNCTIONS FOR STATEMENTS
-  void generateLetStatement(Node *node);
-  void generateHeapStatement(Node *node);
-  void generateReferenceStatement(Node *node);
-  void generatePointerStatement(Node *node);
+  void generateVariableDeclaration(Node *node);
   void generateExpressionStatement(Node *node);
 
   void generateAssignmentStatement(Node *node);
@@ -117,8 +113,7 @@ private:
 
   void generateInstantiateStatement(Node *node);
   void generateSealStatement(Node *node);
-  // Array statement generator
-  void generateArrayStatement(Node *node);
+
   // Enum class system
   void generateEnumStatement(Node *node);
   // Trace statement generator
@@ -244,13 +239,26 @@ private:
                    size_t offset);
   // For normal variables
   void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
-                               const std::string &letName, Expression *value);
+                               const std::string &name, Node *value);
+  llvm::Value *generateScalarStorage(VariableDeclaration *decl,
+                                     std::shared_ptr<SymbolInfo> sym,
+                                     const std::string &name);
+  llvm::Value *generateArrayStorage(VariableDeclaration *decl,
+                                    std::shared_ptr<SymbolInfo> sym,
+                                    const std::string &name);
+  llvm::Value *generateReferenceStorage(VariableDeclaration *decl,
+                                        std::shared_ptr<SymbolInfo> sym,
+                                        const std::string &name);
+  llvm::Value *generateComponentStorage(VariableDeclaration *decl,
+                                        std::shared_ptr<SymbolInfo> sym,
+                                        const std::string &name);
   llvm::Constant *generateGlobalRecordDefaults(const std::string &typeName);
   // For components
-  llvm::Value *generateComponentInit(LetStatement *letStmt,
+  llvm::Value *generateComponentInit(VariableDeclaration *declaration,
                                      std::shared_ptr<SymbolInfo> sym,
                                      llvm::StructType *structTy, bool isHeap);
-  // Helper for allocating dheap storage
+  bool isComponentType(const std::string &name);
+  // Helper for allocating heap storage
   llvm::Value *allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName);
   llvm::Value *allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
@@ -260,15 +268,13 @@ private:
   void freeDynamicHeapStorage(const std::string &allocatorType,
                               llvm::Value *toFree);
   void emitCleanup(Node *contextNode);
+  void emitDeclarationClean(Node *contextNode);
   void freeForeigners(Node *block);
   void freeNatives(Node *block);
   void emitBlockCleanUp(Node *block);
   void flattenArrayLiteral(ArrayLiteral *arrLit,
                            std::vector<llvm::Constant *> &flatElems,
                            llvm::Type *&baseType);
-  llvm::Value *allocateSageStorage(std::shared_ptr<SymbolInfo> sym,
-                                   const std::string &varName,
-                                   llvm::StructType *structTy);
   llvm::Value *generateIntegerLiteral(const std::string &literalStr,
                                       uint32_t bitWidth, bool isSigned);
 

@@ -83,6 +83,7 @@ class Lexer {
       {"bool", TokenType::BOOL_KEYWORD},
       {"arr", TokenType::ARRAY},
 
+      {"persist", TokenType::PERSIST},
       {"const", TokenType::CONST},
       {"mut", TokenType::MUT},
       {"volatile", TokenType::VOLATILE},
@@ -93,7 +94,6 @@ class Lexer {
       {"deref", TokenType::DEREF},
       {"move", TokenType::MOVE},
 
-      {"sage", TokenType::SAGE},
       {"heap", TokenType::HEAP},
       {"allocator", TokenType::ALLOCATOR},
 

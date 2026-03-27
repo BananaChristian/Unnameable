@@ -13,9 +13,7 @@ Auditor::Auditor(Semantics &semantics, ErrorHandler &errorHandler,
 
 // Registration of the mini auditors
 void Auditor::registerAuditorFunctions() {
-  auditFnsMap[typeid(HeapStatement)] = &Auditor::auditHeapStatement;
-  auditFnsMap[typeid(LetStatement)] = &Auditor::auditLetStatement;
-  auditFnsMap[typeid(PointerStatement)] = &Auditor::auditPointerStatement;
+  auditFnsMap[typeid(VariableDeclaration)] = &Auditor::auditVariableDeclaration;
 
   auditFnsMap[typeid(FunctionStatement)] = &Auditor::auditFunctionStatement;
   auditFnsMap[typeid(FunctionExpression)] = &Auditor::auditFunctionExpression;
@@ -344,10 +342,6 @@ Node *Auditor::peelNode(Node *node) {
   if (auto exprStmt = dynamic_cast<ExpressionStatement *>(node)) {
     return exprStmt->expression.get();
   }
-
-  if (auto heapStmt = dynamic_cast<HeapStatement *>(node))
-    return heapStmt->stmt.get();
-
   return node;
 }
 
@@ -906,10 +900,8 @@ bool Auditor::containsNode(Node *root, Node *target) {
       return true;
   }
 
-  if (auto *let = dynamic_cast<LetStatement *>(root)) {
-    if (let->type && containsNode(let->type.get(), target))
-      return true;
-    if (let->value && containsNode(let->value.get(), target))
+  if (auto *decl = dynamic_cast<VariableDeclaration *>(root)) {
+    if (decl->initializer && containsNode(decl->initializer.get(), target))
       return true;
   }
 
@@ -1104,6 +1096,66 @@ bool Auditor::containsNode(Node *root, Node *target) {
 }
 bool Auditor::isBunkered(const std::string &id) {
   return bunkeredIDs.find(id) != bunkeredIDs.end();
+}
+
+void Auditor::simulateDeclFree(Node *contextNode,
+                               const std::string &contextID) {
+  logInternal("\n  [SIMULATE-FREE] Target: " + contextID);
+  if (inhibit) {
+    logInternal("Inhibiting freeing simulation");
+    return;
+  }
+  if (isBunkered(contextID)) {
+    logInternal("    [SIMULATE FREE] " + contextID +
+                " is bunkered. Skipping freeing simulation.");
+    return;
+  }
+
+  Node *holderNode = semantics.queryForLifeTimeBaton(contextID);
+  if (!holderNode) {
+    logInternal("    [DECL-SIMULATE FREE] No holder node found for " +
+                contextID);
+    return;
+  }
+
+  // Check if the holder node is the actual contextNode
+  if (holderNode != contextNode) {
+    logInternal("[DECL-SIMULATE FREE] The baton was moved node: " +
+                contextNode->toString() + "' is not the executor");
+    return;
+  }
+
+  auto &baton = semantics.responsibilityTable[holderNode];
+  auto contextSym = semantics.getSymbolFromMeta(holderNode);
+
+  logInternal("   [DECL-SIMULATE FREE] Baton ID: " + baton->ID);
+  logInternal("   [DECL-SIMULATE FREE] State: isResponsible=" +
+              std::string(baton->isResponsible ? "T" : "F") +
+              ", isAlive=" + std::string(baton->isAlive ? "T" : "F") +
+              ", ptrCount=" + std::to_string(contextSym->pointerCount));
+
+  if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
+    if (baton->isResponsible && baton->isAlive) {
+      logInternal("    [DEATH] Condition met. Killing family: " + contextID);
+      baton->isAlive = false;
+
+      bool dropCount = (contextSym->isPointer && contextSym->isHeap);
+      logInternal("    Dependents to process: " +
+                  std::to_string(baton->dependents.size()));
+
+      for (const auto &[id, depSym] : baton->dependents) {
+        logInternal("    [TRANSFER] Dependent " + id +
+                    " (dropCount=" + (dropCount ? "T" : "F") + ")");
+        transferDependent(id, depSym, dropCount);
+      }
+    } else {
+      logInternal(
+          "    [STAY-ALIVE] Family is already dead or not responsible.");
+    }
+  } else {
+    logInternal("    [STAY-ALIVE] References/Pointers still exist (" +
+                std::to_string(contextSym->pointerCount) + ")");
+  }
 }
 
 void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {

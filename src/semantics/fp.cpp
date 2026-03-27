@@ -42,93 +42,115 @@ void Semantics::walkBlockExpression(Node *node) {
 
 void Semantics::walkReturnStatement(Node *node) {
   auto retStmt = dynamic_cast<ReturnStatement *>(node);
-  bool hasError = false;
   if (!retStmt) {
     reportDevBug("Invalid return statement node", node);
     return;
   }
-  // Block if the return statement isnt inside a function
+
+  bool hasError = false;
+
+  // Must be inside a function
   if (!currentFunction) {
-    logSemanticErrors("Invalid return statement as not in the current function",
-                      retStmt);
+    errorHandler.addHint("Return statements must be inside a function body")
+        .addHint("Move this return statement inside a function");
+    logSemanticErrors("Return statement outside of function", retStmt);
     hasError = true;
   }
 
-  // If we dont have a return value then check if the current function is void
+  const ResolvedType &expectedReturn = currentFunction.value()->returnType;
+
   if (!retStmt->return_value) {
-    if (currentFunction.value()->returnType.kind != DataType::VOID) {
-      logSemanticErrors("Function of return type '" +
-                            currentFunction.value()->returnType.resolvedName +
-                            "' must return a value of type '" +
-                            currentFunction.value()->returnType.resolvedName +
-                            "'",
+    if (expectedReturn.base().kind != DataType::VOID) {
+      errorHandler
+          .addHint("Function must return a value of type '" +
+                   expectedReturn.resolvedName + "'")
+          .addHint("Add a return value or change the return type to void");
+      logSemanticErrors("Non-void function '" +
+                            currentFunction.value()->funcname +
+                            "' missing return value",
                         retStmt);
       hasError = true;
     }
-    auto voidInfo = std::make_shared<SymbolInfo>();
-    voidInfo->type = currentFunction.value()->returnType;
-    voidInfo->hasError = hasError;
 
+    auto voidInfo = std::make_shared<SymbolInfo>();
+    voidInfo->type = expectedReturn;
+    voidInfo->hasError = hasError;
     metaData[retStmt] = voidInfo;
     return;
   }
+
   walker(retStmt->return_value.get());
 
-  ResolvedType valueType = ResolvedType{DataType::UNKNOWN, "unknown"};
-  bool isValueNullable = false;
+  ResolvedType valueType = ResolvedType::unknown();
+
   if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get())) {
     auto paramInfo =
         std::find_if(metaData.begin(), metaData.end(), [&](const auto &pair) {
-          if (auto letStmt = dynamic_cast<LetStatement *>(pair.first)) {
-            return letStmt->ident_token.TokenLiteral ==
+          if (auto varDecl = dynamic_cast<VariableDeclaration *>(pair.first)) {
+            return varDecl->var_name->expression.TokenLiteral ==
                    ident->identifier.TokenLiteral;
           }
           return false;
         });
+
     if (paramInfo != metaData.end()) {
       valueType = paramInfo->second->type;
-      isValueNullable = paramInfo->second->isNullable;
       logInternal("Found parameter '" + ident->identifier.TokenLiteral +
-                  "' with type :" + valueType.resolvedName);
+                  "' with type: " + valueType.resolvedName);
     } else {
       auto symbol = resolveSymbolInfo(ident->identifier.TokenLiteral);
       if (symbol) {
         valueType = symbol->type;
-        isValueNullable = symbol->isNullable;
         logInternal("Found symbol '" + ident->identifier.TokenLiteral +
                     "' with type: " + valueType.resolvedName);
-      } else {
-        logInternal("No symbol found for '" + ident->identifier.TokenLiteral +
-                    "'");
       }
     }
   }
 
-  if (valueType.kind == DataType::UNKNOWN) {
+  // Fallback to inference
+  if (valueType.base().kind == DataType::UNKNOWN)
     valueType = inferNodeDataType(retStmt->return_value.get());
-    logInternal("Infered type for return value '" + valueType.resolvedName +
-                "'");
-  }
 
-  if (auto nullLit = dynamic_cast<NullLiteral *>(retStmt->return_value.get())) {
-    if (!currentFunction.value()->isNullable) {
-      logSemanticErrors("Cannot return 'null' for non-nullable type '" +
-                            currentFunction.value()->returnType.resolvedName +
-                            "'",
-                        node);
+  logInternal("Return value type: " + valueType.resolvedName);
+
+  if (dynamic_cast<NullLiteral *>(retStmt->return_value.get())) {
+    if (!expectedReturn.isNull) {
+      errorHandler.addHint("The function return type is not nullable")
+          .addHint("Add '?' to the return type to allow null returns")
+          .addHint("Example: func foo: i32? { return null }");
+      logSemanticErrors("Cannot return 'null' for non-nullable return type '" +
+                            expectedReturn.resolvedName + "'",
+                        retStmt);
       hasError = true;
     } else {
-      // If the return value is a null literal give it context
-      metaData[nullLit]->type = currentFunction.value()->returnType;
+      // Give null literal the return type context
+      if (metaData.count(retStmt->return_value.get()))
+        metaData[retStmt->return_value.get()]->type = expectedReturn;
     }
-  } else if (!isTypeCompatible(currentFunction.value()->returnType,
-                               valueType)) {
-    logSemanticErrors("Return value type '" + valueType.resolvedName +
-                          "' does not match function return type of  '" +
-                          currentFunction.value()->returnType.resolvedName +
-                          "'",
+  } else if (!isTypeCompatible(expectedReturn, valueType)) {
+    errorHandler.addHint("Expected return type: " + expectedReturn.resolvedName)
+        .addHint("Got return type: " + valueType.resolvedName)
+        .addHint("Check the function signature or the return expression");
+    logSemanticErrors("Return type mismatch in function '" +
+                          currentFunction.value()->funcname + "'",
                       retStmt);
-    hasError = true;
+  }
+
+  if (valueType.isRef()) {
+    auto valSym = metaData[retStmt->return_value.get()];
+    if (valSym && !valSym->isParam) {
+      if (!valSym->refereeSymbol) {
+        errorHandler
+            .addHint("Returning a reference to a local variable is unsafe")
+            .addHint("The memory will be invalid after the function returns")
+            .addHint("Return the value directly or allocate on heap instead");
+        logSemanticErrors(
+            "Cannot return dangling reference '" +
+                extractIdentifierName(retStmt->return_value.get()) + "'",
+            retStmt);
+        return;
+      }
+    }
   }
 
   auto valSym = metaData[retStmt->return_value.get()];
@@ -136,44 +158,13 @@ void Semantics::walkReturnStatement(Node *node) {
     reportDevBug("Could not find return value metadata", retStmt);
     return;
   }
-  auto valName = extractIdentifierName(retStmt->return_value.get());
 
-  /*{// Safety guard to prevent unsafe returns for pointers
-  if (valueType.isPointer) {
-    // Identify what the pointer
-    // If it isnt a parameter
-    if (!valSym->isParam) {
-      // Get the target symbol
-      auto targetSym = valSym->targetSymbol;
-      if (!targetSym && valueType.kind != DataType::OPAQUE) {
-        logSemanticErrors("Target of pointer '" + valName + "' does not exist",
-                          retStmt);
-        return;
-      }
-    }
-    }}*/
-
-  // Safety guard against dangling references
-  if (valueType.isRef) {
-    if (!valSym->isParam) {
-      // Get the storage type for the target
-      auto targetSym = valSym->refereeSymbol;
-      if (!targetSym) {
-        logSemanticErrors(
-            "Target of reference '" + valName + "' does not exist", retStmt);
-        return;
-      }
-    }
-  }
-
-  // Also give the current function the ID of whatever we are returning this is
-  // to allow the baton retriever to find this return using the familyID
+  // Transfer baton to function for retrieval
   currentFunction->get()->ID = valSym->ID;
 
   auto info = std::make_shared<SymbolInfo>();
-  info->type = currentFunction.value()->returnType;
+  info->type = expectedReturn;
   info->hasError = hasError;
-  info->isNullable = isValueNullable;
   info->ID = valSym->ID;
 
   Node *holder = queryForLifeTimeBaton(info->ID);
@@ -182,144 +173,92 @@ void Semantics::walkReturnStatement(Node *node) {
 }
 
 void Semantics::walkFunctionParameters(Node *node) {
-  if (auto param = dynamic_cast<LetStatement *>(node)) {
-    logInternal("Analyzing variable declaration parameter");
-    auto paramTypeNode = dynamic_cast<BasicType *>(param->type.get());
-    // Extract parameter name
-    auto paramName = param->ident_token.TokenLiteral;
-
-    // Ensure parameter name not already declared in this parameter scope
-    auto existingLocal = lookUpInCurrentScope(paramName);
-    if (existingLocal) {
-      logSemanticErrors("Duplicate parameter name '" + paramName + "'", param);
-      return;
-    }
-
-    // Resolve declared type (must NOT be auto)
-    if (paramTypeNode->data_token.type == TokenType::AUTO) {
-      logSemanticErrors("Function parameter '" + paramName +
-                            "' cannot use inferred (auto) type",
-                        paramTypeNode);
-      return;
-    }
-
-    ResolvedType resolvedType = inferNodeDataType(paramTypeNode);
-
-    bool isNullable = resolvedType.isNull;
-    bool isMutable = (param->mutability == Mutability::MUTABLE);
-
-    // Create symbol entry
-    auto info = std::make_shared<SymbolInfo>();
-    info->type = resolvedType;
-    info->isNullable = isNullable;
-    info->isMutable = isMutable;
-    info->isConstant = false;   // Parameters are never compile-time constants
-    info->isInitialized = true; // Parameters are always "initialized" as inputs
-    info->isDefinitelyNull = false;
-    info->isHeap = false; // Parameters never start on heap
-    info->isParam = true;
-    info->hasError = false;
-
-    // Store metadata + register symbol
-    metaData[param] = info;
-    symbolTable.back()[paramName] = info;
-
-    logInternal("Param Data Type: " + resolvedType.resolvedName);
-  } else if (auto param = dynamic_cast<PointerStatement *>(node)) {
-    logInternal("Registering pointer parameter");
-
-    auto ptrName = param->name->expression.TokenLiteral;
-
-    // Check for duplicate parameter name
-    if (lookUpInCurrentScope(ptrName)) {
-      logSemanticErrors("Duplicate parameter name '" + ptrName + "'",
-                        param->name.get());
-      return;
-    }
-
-    // Parameters must not infer type; they require explicit type
-    if (!param->type) {
-      logSemanticErrors("Pointer parameter '" + ptrName +
-                            "' must explicitly declare its type",
-                        param->name.get());
-      return;
-    }
-
-    // Resolve declared pointer type directly
-    ResolvedType ptrType = inferNodeDataType(param);
-    if (!ptrType.isPointer) {
-      logSemanticErrors("Parameter '" + ptrName +
-                            "' is declared as a pointer but lacks pointer type",
-                        param->name.get());
-      return;
-    }
-
-    bool isMutable = (param->mutability == Mutability::MUTABLE);
-
-    auto ptrInfo = std::make_shared<SymbolInfo>();
-    ptrInfo->type = ptrType;
-    ptrInfo->isPointer = true;
-    ptrInfo->isMutable = isMutable;
-    ptrInfo->isConstant = false;
-    ptrInfo->isHeap = false;
-    ptrInfo->isInitialized = true; // parameters start initialized
-    ptrInfo->isNullable = ptrType.isNull;
-    ptrInfo->isDefinitelyNull = false;
-    ptrInfo->isParam = true;
-    ptrInfo->hasError = false;
-
-    metaData[param] = ptrInfo;
-    symbolTable.back()[ptrName] = ptrInfo;
-
-    logInternal("Pointer Param Type :" + ptrType.resolvedName);
-  } else if (auto param = dynamic_cast<ReferenceStatement *>(node)) {
-    logInternal("Analyzing reference parameter ...");
-
-    auto refName = param->name->expression.TokenLiteral;
-
-    // Check for duplicate parameter name
-    if (lookUpInCurrentScope(refName)) {
-      logSemanticErrors("Duplicate parameter name '" + refName + "'", param);
-      return;
-    }
-
-    // Parameters MUST declare type (no inference from referenced expression)
-    if (!param->type) {
-      logSemanticErrors("Reference parameter '" + refName +
-                            "' must explicitly declare its type",
-                        param);
-      return;
-    }
-
-    // Resolve the declared type
-    ResolvedType refType = inferNodeDataType(param);
-
-    // Reference parameters are never nullable by design:
-    if (refType.isNull) {
-      logSemanticErrors(
-          "Reference parameter '" + refName + "' cannot be nullable", param);
-      return;
-    }
-
-    bool isMutable = (param->mutability == Mutability::MUTABLE);
-
-    auto refInfo = std::make_shared<SymbolInfo>();
-    refInfo->type = refType;
-    refInfo->isRef = true;
-    refInfo->isMutable = isMutable;
-    refInfo->isConstant = false;
-    refInfo->isInitialized = true; // parameters are always initialized
-    refInfo->isNullable = false;   // references are never nullable
-    refInfo->isDefinitelyNull = false;
-    refInfo->isParam = true;
-    refInfo->isHeap = false;
-    refInfo->hasError = false;
-
-    metaData[param] = refInfo;
-    symbolTable.back()[refName] = refInfo;
-
-    logInternal("Reference param Type: " + refType.resolvedName);
+  auto param = dynamic_cast<VariableDeclaration *>(node);
+  if (!param) {
+    reportDevBug("Function parameter is not a VariableDeclaration", node);
+    return;
   }
+
+  logInternal("Analyzing function parameter...");
+
+  const std::string &paramName = param->var_name->expression.TokenLiteral;
+
+  // No duplicate parameter names
+  if (lookUpInCurrentScope(paramName)) {
+    errorHandler.addHint("Each parameter must have a unique name")
+        .addHint("Rename one of the '" + paramName + "' parameters");
+    logSemanticErrors("Duplicate parameter name '" + paramName + "'", param);
+    return;
+  }
+
+  // Parameters cannot use auto — type must be explicit
+  auto baseType = dynamic_cast<BasicType *>(param->base_type.get());
+  if (baseType && baseType->data_token.type == TokenType::AUTO) {
+    errorHandler.addHint("Parameter types must be explicitly declared")
+        .addHint("Replace 'auto' with a concrete type like 'i32' or 'ptr i32'")
+        .addHint("Example: func foo(i32 x, ptr i32 p):i32 { ... }");
+    logSemanticErrors(
+        "Parameter '" + paramName + "' cannot use inferred (auto) type", param);
+    return;
+  }
+
+  // Resolve full type through unified system
+  ResolvedType base = inferDeclarationBaseType(param);
+  ResolvedType resolvedType =
+      resolveTypeWithModifier(param->modified_type.get(), base);
+
+  // Parameters cannot be heap allocated
+  if (param->isHeap) {
+    errorHandler
+        .addHint(
+            "Parameters are caller-managed, heap allocation is invalid here")
+        .addHint("Remove 'heap' from the parameter declaration")
+        .addHint("If you need heap data, pass a pointer instead: ptr i32 p");
+    logSemanticErrors("Parameter '" + paramName + "' cannot be heap allocated",
+                      param);
+    return;
+  }
+
+  // References cannot be nullable
+  if (resolvedType.isRef() && resolvedType.isNull) {
+    errorHandler
+        .addHint("References always point to valid memory — nullable is "
+                 "contradictory")
+        .addHint("Remove '?' from the reference type")
+        .addHint(
+            "If nullable is needed, use a nullable pointer instead: ptr i32?");
+    logSemanticErrors(
+        "Reference parameter '" + paramName + "' cannot be nullable", param);
+    return;
+  }
+
+  // persist makes no sense on a parameter
+  if (param->isPersist) {
+    errorHandler
+        .addHint("'persist' only applies to heap variables in function bodies")
+        .addHint("Remove 'persist' from the parameter declaration");
+    logSemanticErrors(
+        "Parameter '" + paramName + "' cannot be marked 'persist'", param);
+    return;
+  }
+
+  bool isMutable = (param->mutability == Mutability::MUTABLE);
+
+  auto info = std::make_shared<SymbolInfo>();
+  info->type = resolvedType;
+  info->isMutable = isMutable;
+  info->isConstant = false;   // parameters are never compile time constants
+  info->isInitialized = true; // parameters are always initialized as inputs
+  info->isHeap = false;       // parameters never start on heap
+  info->isParam = true;
+  info->isDefinitelyNull = false;
+  info->hasError = false;
+
+  metaData[param] = info;
+  symbolTable.back()[paramName] = info;
+
+  logInternal("Parameter '" + paramName +
+              "' type: " + resolvedType.resolvedName);
 }
 
 void Semantics::walkFunctionStatement(Node *node) {
@@ -332,294 +271,230 @@ void Semantics::walkFunctionStatement(Node *node) {
 
 void Semantics::walkFunctionExpression(Node *node) {
   auto funcExpr = dynamic_cast<FunctionExpression *>(node);
-  // Semantic error flag
-  bool hasError = false;
-
   if (!funcExpr) {
     reportDevBug("Invalid function expression", node);
     return;
   }
 
   std::string funcName = funcExpr->func_key.TokenLiteral;
-
   bool isExportable = funcExpr->isExportable;
 
+  // No nested functions
   if (insideFunction) {
+    errorHandler.addHint("Move the inner function to the top level")
+        .addHint("Unnameable does not support nested function definitions");
     logSemanticErrors("Nested function definitions are prohibited", funcExpr);
     return;
   }
 
   insideFunction = true;
 
-  // Checking for duplicates in the same scope
   auto symbol = lookUpInCurrentScope(funcName);
-
-  // Only accessing symbol if it exists
   if (symbol) {
     if (symbol->isFunction) {
       if (symbol->isDefined) {
-        logSemanticErrors("Function name '" + funcName + "' already in use",
+        errorHandler.addHint("Function names must be unique within their scope")
+            .addHint("Rename one of the '" + funcName + "' functions");
+        logSemanticErrors("Function '" + funcName + "' is already defined",
                           funcExpr);
         insideFunction = false;
-        hasError = true;
         return;
-      }
-
-      else if (symbol->isDeclaration) {
+      } else if (symbol->isDeclaration) {
         if (!areSignaturesCompatible(*symbol, funcExpr)) {
-          logSemanticErrors(
-              "Function definition for '" + funcName +
-                  "' does not match prior declaration in global scope",
-              funcExpr);
-          hasError = true;
+          errorHandler
+              .addHint("The definition must match the earlier declaration")
+              .addHint("Check parameter types and return type");
+          logSemanticErrors("Function definition for '" + funcName +
+                                "' does not match prior declaration",
+                            funcExpr);
         }
       }
     } else {
-      logSemanticErrors("Function name '" + funcName + "' already in use",
-                        funcExpr);
-      hasError = true;
+      errorHandler
+          .addHint("'" + funcName + "' is already used as a variable name")
+          .addHint("Choose a different name for the function");
+      logSemanticErrors("Name '" + funcName + "' already in use", funcExpr);
     }
   }
 
-  // Creating the initial funcInfo with minimal info for recursion
   auto funcInfo = std::make_shared<SymbolInfo>();
   funcInfo->hasError = hasError;
-  funcInfo->isDeclaration = true; // Mark as declared early for recursion
+  funcInfo->isDeclaration = true;
   funcInfo->isDefined = false;
   funcInfo->isExportable = isExportable;
-  funcInfo->isFunction = true; // It is a function after all
-  funcInfo->returnType = ResolvedType{
-      DataType::UNKNOWN, "unknown"}; // Initially unknown return type
+  funcInfo->isFunction = true;
+  funcInfo->returnType = ResolvedType::unknown();
+  funcInfo->funcname = funcName;
 
-  // Inserting function symbol into current scope early for recursion
   bool insideMemberContext = insideComponent || insideSeal || insideAllocator;
   if (!insideMemberContext) {
     logInternal("Inserting Function '" + funcName + "' into Global Scope");
     symbolTable[0][funcName] = funcInfo;
-  } else // If we are in a behavior, component or whatever insert in that scope
-  {
+  } else {
     logInternal("Inserting Function '" + funcName + "' into Local Scope");
     symbolTable.back()[funcName] = funcInfo;
   }
 
   currentFunction = funcInfo;
-  logInternal("Set current function for '" + funcName +
-              "' with returnt type '" + funcInfo->returnType.resolvedName +
-              "'");
+  logInternal("Set current function for '" + funcName + "'");
 
-  // Pushing new scope for function parameters and body
   symbolTable.push_back({});
 
-  // Walking parameters and storing their info
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
   for (const auto &param : funcExpr->call) {
     if (!param)
       continue;
 
-    auto letStmt = dynamic_cast<LetStatement *>(param.get());
-    auto ptrStmt = dynamic_cast<PointerStatement *>(param.get());
-    auto refStmt = dynamic_cast<ReferenceStatement *>(param.get());
-    std::string paramName = "blank";
-    if (!letStmt && !ptrStmt && !refStmt) {
-      logSemanticErrors("Invalid statement in '" + funcName + "' parameters",
+    auto varDecl = dynamic_cast<VariableDeclaration *>(param.get());
+    if (!varDecl) {
+      errorHandler
+          .addHint("Parameters must follow the unified declaration syntax")
+          .addHint("Example: ptr i32 x, mut i32 y, ref i32 z");
+      logSemanticErrors("Invalid parameter in function '" + funcName + "'",
                         param.get());
-      hasError = true;
       continue;
     }
 
-    if (letStmt) {
-      paramName = letStmt->ident_token.TokenLiteral;
-    } else if (ptrStmt) {
-      paramName = ptrStmt->name->expression.TokenLiteral;
-    } else if (refStmt) {
-      paramName = refStmt->name->expression.TokenLiteral;
-    }
+    const std::string &paramName = varDecl->var_name->expression.TokenLiteral;
 
     walkFunctionParameters(param.get());
-    auto paramInfo = metaData.find(param.get());
-    if (paramInfo == metaData.end()) {
-      logSemanticErrors("Parameter '" + paramName + "' not analyzed",
-                        param.get());
-      hasError = true;
-      continue;
+
+    auto paramInfo = getSymbolFromMeta(param.get());
+    if (!paramInfo) {
+      reportDevBug("Parameter '" + paramName + "' not analyzed", param.get());
     }
 
-    // Extract the paramInfo type
-    auto paramTypeName = paramInfo->second->type.resolvedName;
-    // Check the custom types table
-    auto typeIt = customTypesTable.find(paramTypeName);
+    // Exportable function using non-exportable custom type
+    const std::string baseTypeName = getBaseTypeName(paramInfo->type);
+    auto typeIt = customTypesTable.find(baseTypeName);
     if (typeIt != customTypesTable.end()) {
-      if (isExportable) {
-        if (!typeIt->second->isExportable) {
-          logSemanticErrors("Exportable function '" + funcName +
-                                "' is using a non exportable type '" +
-                                paramTypeName + "' for its parameter '" +
-                                paramName + "'",
-                            param.get());
-          hasError = true;
-        }
+      if (isExportable && !typeIt->second->isExportable) {
+        errorHandler
+            .addHint("Mark the type '" + baseTypeName +
+                     "' as exportable or remove it from the signature")
+            .addHint("Exportable functions must only use exportable types");
+        logSemanticErrors("Exportable function '" + funcName +
+                              "' uses non-exportable type '" + baseTypeName +
+                              "' for parameter '" + paramName + "'",
+                          param.get());
+        hasError = true;
       }
     }
 
-    symbolTable.back()[paramName] = paramInfo->second;
-    paramTypes.emplace_back(paramInfo->second->type, paramName);
-
-    logInternal("Parameter '" + paramName + "' stored with type '" +
-                paramInfo->second->type.resolvedName + "'");
+    symbolTable.back()[paramName] = paramInfo;
+    paramTypes.emplace_back(paramInfo->type, paramName);
+    logInternal("Parameter '" + paramName +
+                "' type: " + paramInfo->type.resolvedName);
   }
 
-  // Processing return type expression
   if (!funcExpr->return_type) {
-    logSemanticErrors("Function '" + funcName + "' is missing a return type",
+    errorHandler.addHint("All functions must declare a return type")
+        .addHint("Use 'void' if the function returns nothing")
+        .addHint("Example: func foo: void { ... }");
+    logSemanticErrors("Function '" + funcName + "' missing return type",
                       funcExpr);
     insideFunction = false;
-    return; // This is a fatal error so block further analysis to prevent
-            // segfaults
+    return;
   }
 
   auto retType = dynamic_cast<ReturnType *>(funcExpr->return_type.get());
   if (!retType) {
-    logSemanticErrors("Unexpected function return type",
-                      funcExpr->return_type.get());
-    hasError = true;
-  }
-
-  if (!retType->returnExpr) {
-    logSemanticErrors("Return type expression missing for function '" +
-                          funcName + "'",
-                      retType);
+    reportDevBug("Invalid return type node for '" + funcName + "'",
+                 funcExpr->return_type.get());
     insideFunction = false;
     return;
   }
 
-  // Getting the nullability from the return type
-  bool isNullable = false;
-  auto basicRet = dynamic_cast<BasicType *>(retType->returnExpr.get());
-  auto arrayRet = dynamic_cast<ArrayType *>(retType->returnExpr.get());
-  auto ptrRet = dynamic_cast<PointerType *>(retType->returnExpr.get());
-  auto refRet = dynamic_cast<RefType *>(retType->returnExpr.get());
-  if (basicRet) {
-    isNullable = basicRet->isNullable;
-  } else if (arrayRet) {
-    isNullable = arrayRet->isNullable;
-  } else if (ptrRet) {
-    auto basicRetPtr = dynamic_cast<BasicType *>(ptrRet->underlyingType.get());
-    auto arrayRetPtr = dynamic_cast<ArrayType *>(ptrRet->underlyingType.get());
-    if (basicRetPtr) {
-      isNullable = basicRetPtr->isNullable;
-    } else if (arrayRetPtr) {
-      isNullable = arrayRetPtr->isNullable;
-    }
-  } else if (refRet) {
-    auto basicRetPtr = dynamic_cast<BasicType *>(refRet->underLyingType.get());
-    auto arrayRetPtr = dynamic_cast<ArrayType *>(refRet->underLyingType.get());
-    if (basicRetPtr) {
-      isNullable = basicRetPtr->isNullable;
-    } else if (arrayRetPtr) {
-      isNullable = arrayRetPtr->isNullable;
-    }
+  ResolvedType returnType = inferNodeDataType(retType);
+
+  if (returnType.base().kind == DataType::UNKNOWN) {
+    errorHandler
+        .addHint("Use a valid return type: i32, ptr i32, arr[N] i32, void etc")
+        .addHint("For custom types make sure they are declared before use");
+    logSemanticErrors("Invalid return type for function '" + funcName + "'",
+                      retType);
   }
-  ResolvedType returnType = inferNodeDataType(funcExpr->return_type.get());
-  std::string customTypeName = retType->returnExpr->expression.TokenLiteral;
-  if (retType->returnExpr->expression.type == TokenType::IDENTIFIER) {
 
-    auto it = customTypesTable.find(customTypeName);
-    if (it == customTypesTable.end()) {
-      logSemanticErrors("Type '" + customTypeName + "' does not exist",
-                        retType);
-      insideFunction = false;
-      return;
-    }
-
-    if (isExportable) {
-      if (!it->second->isExportable) {
+  // Exportable function using non-exportable custom return type
+  if (!retType->isVoid) {
+    std::string retBaseName = getBaseTypeName(returnType);
+    auto retTypeIt = customTypesTable.find(retBaseName);
+    if (retTypeIt != customTypesTable.end()) {
+      if (isExportable && !retTypeIt->second->isExportable) {
+        errorHandler
+            .addHint("Mark the return type '" + retBaseName +
+                     "' as exportable or change the return type")
+            .addHint("Exportable functions must only use exportable types");
         logSemanticErrors("Exportable function '" + funcName +
-                              "' is using non exportable type '" +
-                              customTypeName + "'",
+                              "' uses non-exportable return type '" +
+                              retBaseName + "'",
                           retType);
-        hasError = true;
       }
     }
-    returnType = it->second->type;
-  } else if (returnType.kind == DataType::UNKNOWN) {
-    logSemanticErrors("Invalid return type '" +
-                          retType->expression.TokenLiteral + "'",
-                      retType);
-    hasError = true;
   }
 
-  // Updating funcInfo with full signature info
   funcInfo->hasError = hasError;
-  funcInfo->isNullable = isNullable;
   funcInfo->isExportable = isExportable;
   funcInfo->type = returnType;
   funcInfo->returnType = returnType;
   funcInfo->paramTypes = paramTypes;
-
-  // Updating the symbol table with final function info
   funcInfo->isDefined = true;
-  if (!insideComponent && !insideSeal &&
-      !insideAllocator) // If we arent inside a behavior,component or seal we
-                        // place in the global scope
-  {
-    logInternal("Fully inserting the function '" + funcName +
-                "' into Global Scope with Updated info");
+
+  if (!insideMemberContext) {
+    logInternal("Fully inserting '" + funcName + "' into Global Scope");
     symbolTable[0][funcName] = funcInfo;
-  } else // If we are in a behavior or component insert in that scope
-  {
-    logInternal("Fully inserting the function '" + funcName +
-                "' into Local Scope with Updated info");
+  } else {
+    logInternal("Fully inserting '" + funcName + "' into Local Scope");
     symbolTable.back()[funcName] = funcInfo;
   }
 
   metaData[funcExpr] = funcInfo;
+  currentFunction = funcInfo;
+  logInternal("Updated current function '" + funcName +
+              "' return type: " + returnType.resolvedName);
 
-  currentFunction = funcInfo; // updating currentFunction with final info
-  logInternal("Updated current function for '" + funcName +
-              "' with return type '" + funcInfo->returnType.resolvedName + "'");
-
-  // Process the function body block
   if (!funcExpr->block) {
-    logSemanticErrors("Function body missing for '" + funcName + "'", funcExpr);
+    errorHandler.addHint("Add a function body enclosed in '{}'")
+        .addHint("Example: func foo: void { ... }");
+    logSemanticErrors("Function '" + funcName + "' missing body", funcExpr);
     insideFunction = false;
     return;
   }
+
   auto block = dynamic_cast<BlockExpression *>(funcExpr->block.get());
   if (!block) {
     reportDevBug("Invalid function body for '" + funcName + "'",
                  funcExpr->block.get());
-    hasError = true;
+    insideFunction = false;
+    return;
   }
+
   logInternal("Processing block for function '" + funcName + "'");
-
   activeBlocks.push_back(block);
+
   for (const auto &stmt : block->statements) {
-    std::optional<std::shared_ptr<SymbolInfo>> tempFunction =
-        currentFunction; // save before statement
+    std::optional<std::shared_ptr<SymbolInfo>> tempFunction = currentFunction;
     walker(stmt.get());
-    currentFunction = tempFunction; // restore after statement
+    currentFunction = tempFunction;
   }
 
-  // Check if non-void functions have return paths
-  if (returnType.kind != DataType::VOID && !hasReturnPath(block)) {
-    logSemanticErrors("Non-void function '" + funcName +
-                          "' must have a return value of type '" +
-                          returnType.resolvedName + "'",
-                      funcExpr);
+  // Non-void functions must have a return path
+  if (returnType.base().kind != DataType::VOID && !hasReturnPath(block)) {
+    errorHandler.addHint("Add a return statement at the end of the function")
+        .addHint("Every code path must return a value of type '" +
+                 returnType.resolvedName + "'");
+    logSemanticErrors(
+        "Non-void function '" + funcName + "' missing return value", funcExpr);
     hasError = true;
   }
 
-  // Pop function scope
   popScope();
-
-  // Updating incase some error fall through
-  funcInfo->hasError = hasError;
-
-  // If there was an outer function context, restore it
   activeBlocks.pop_back();
+  funcInfo->hasError = hasError;
+  hasError = true;
   insideFunction = false;
   currentFunction = std::nullopt;
-  logInternal("Analysis for function '" + funcName + "'");
+  logInternal("Analysis complete for function '" + funcName + "'");
 }
 
 void Semantics::walkFunctionDeclarationExpression(Node *node) {
@@ -633,81 +508,79 @@ void Semantics::walkFunctionDeclarationExpression(Node *node) {
 
 void Semantics::walkFunctionDeclarationStatement(Node *node) {
   auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(node);
-  bool hasError = false;
   if (!funcDeclrStmt) {
     reportDevBug("Invalid function declaration statement", node);
     return;
   }
 
-  // Getting the function name
+  bool hasError = false;
   std::string funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
-
   bool isExportable = funcDeclrStmt->isExportable;
 
+  // No nested declarations
   if (insideFunction) {
+    errorHandler.addHint("Move the declaration to the top level scope")
+        .addHint("Function declarations cannot be nested");
     logSemanticErrors("Nested function declarations are prohibited",
                       funcDeclrStmt);
     return;
   }
 
-  // Checking if the declaration already exists
+  // Duplicate check
   auto symbol = resolveSymbolInfo(funcName);
   if (symbol) {
-    logSemanticErrors("Already used the name '" + funcName + "'",
-                      funcDeclrStmt);
     if (symbol->isDeclaration) {
-      logSemanticErrors("Function '" + funcName + " has already been declared",
+      errorHandler
+          .addHint("A declaration for '" + funcName +
+                   "' already exists in this scope")
+          .addHint("Remove the duplicate declaration");
+      logSemanticErrors("Function '" + funcName + "' has already been declared",
                         funcDeclrStmt);
-      hasError = true;
-    }
-
-    if (symbol->isDefined) {
+    } else if (symbol->isDefined) {
+      errorHandler
+          .addHint("Function '" + funcName + "' already has a definition")
+          .addHint("Remove the declaration, the definition is sufficient");
       logSemanticErrors("Function '" + funcName + "' has already been defined",
                         funcDeclrStmt);
-      hasError = true;
+    } else {
+      errorHandler.addHint("Choose a different name for this function");
+      logSemanticErrors("Name '" + funcName + "' already in use",
+                        funcDeclrStmt);
     }
     return;
   }
 
-  // Constructing the function signature
+  // Build initial funcInfo
   auto funcInfo = std::make_shared<SymbolInfo>();
-  funcInfo->isNullable = funcDeclrStmt->isNullable;
   funcInfo->hasError = hasError;
   funcInfo->isExportable = isExportable;
   funcInfo->isDeclaration = true;
   funcInfo->isFunction = true;
   funcInfo->isDefined = false;
-  std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+  funcInfo->returnType = ResolvedType::unknown();
 
   currentFunction = funcInfo;
-
   symbolTable.push_back({});
 
-  // Dealing with parameters
+  std::vector<std::pair<ResolvedType, std::string>> paramTypes;
   for (const auto &param : funcDeclrStmt->parameters) {
     if (!param)
       continue;
 
-    auto letStmt = dynamic_cast<LetStatement *>(param.get());
-    auto ptrStmt = dynamic_cast<PointerStatement *>(param.get());
-    auto refStmt = dynamic_cast<ReferenceStatement *>(param.get());
-    std::string paramName = "blank";
-    if (!letStmt && !ptrStmt && !refStmt) {
-      logSemanticErrors("Invalid statement in '" + funcName + "' parameters",
+    auto varDecl = dynamic_cast<VariableDeclaration *>(param.get());
+    if (!varDecl) {
+      errorHandler.addHint("Parameters must use the unified declaration syntax")
+          .addHint("Example: ptr i32 x, mut i32 y, ref i32 z");
+      logSemanticErrors("Invalid parameter in declaration '" + funcName + "'",
                         param.get());
       hasError = true;
       continue;
     }
 
-    if (letStmt) {
-      paramName = letStmt->ident_token.TokenLiteral;
-    } else if (ptrStmt) {
-      paramName = ptrStmt->name->expression.TokenLiteral;
-    } else if (refStmt) {
-      paramName = refStmt->name->expression.TokenLiteral;
-    }
+    const std::string &paramName = varDecl->var_name->expression.TokenLiteral;
 
     walkFunctionParameters(param.get());
+
     auto paramInfo = metaData.find(param.get());
     if (paramInfo == metaData.end()) {
       logSemanticErrors("Parameter '" + paramName + "' not analyzed",
@@ -716,20 +589,20 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
       continue;
     }
 
-    // Extract the paramInfo type
-    auto paramTypeName = paramInfo->second->type.resolvedName;
-    // Check the custom types table
-    auto typeIt = customTypesTable.find(paramTypeName);
+    // Exportable check
+    std::string baseTypeName = getBaseTypeName(paramInfo->second->type);
+    auto typeIt = customTypesTable.find(baseTypeName);
     if (typeIt != customTypesTable.end()) {
-      if (isExportable) {
-        if (!typeIt->second->isExportable) {
-          logSemanticErrors("Exportable function declaration'" + funcName +
-                                "' is using a non exportable type '" +
-                                paramTypeName + "' for its parameter '" +
-                                paramName + "'",
-                            param.get());
-          hasError = true;
-        }
+      if (isExportable && !typeIt->second->isExportable) {
+        errorHandler
+            .addHint("Mark '" + baseTypeName +
+                     "' as exportable or use a different type")
+            .addHint("Exportable functions must only use exportable types");
+        logSemanticErrors("Exportable declaration '" + funcName +
+                              "' uses non-exportable type '" + baseTypeName +
+                              "' for parameter '" + paramName + "'",
+                          param.get());
+        hasError = true;
       }
     }
 
@@ -737,68 +610,61 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
                             paramInfo->second->genericName);
   }
 
-  // Processing the return type
   auto retType = dynamic_cast<ReturnType *>(funcDeclrStmt->return_type.get());
   if (!retType) {
-    logSemanticErrors("Unexpected function return type",
-                      funcDeclrStmt->return_type.get());
-    hasError = true;
+    errorHandler.addHint("All function declarations must have a return type")
+        .addHint("Use 'void' if the function returns nothing");
+    logSemanticErrors("Missing return type for declaration '" + funcName + "'",
+                      funcDeclrStmt);
+    symbolTable.pop_back();
+    currentFunction = std::nullopt;
+    return;
   }
 
-  ResolvedType returnType = inferNodeDataType(retType->returnExpr.get());
-  // Getting nullabitlity from the retType
-  bool isNullable = false;
-  if (auto basicType = dynamic_cast<BasicType *>(retType->returnExpr.get())) {
-    isNullable = basicType->isNullable;
-  } else if (auto arrType =
-                 dynamic_cast<ArrayType *>(retType->returnExpr.get())) {
-    isNullable = arrType->isNullable;
-  } else if (auto ptrRet =
-                 dynamic_cast<PointerType *>(retType->returnExpr.get())) {
-    auto basicRetPtr = dynamic_cast<BasicType *>(ptrRet->underlyingType.get());
-    auto arrayRetPtr = dynamic_cast<ArrayType *>(ptrRet->underlyingType.get());
-    if (basicRetPtr) {
-      isNullable = basicRetPtr->isNullable;
-    } else if (arrayRetPtr) {
-      isNullable = arrayRetPtr->isNullable;
-    }
-  }
-  std::string customTypeName = retType->expression.TokenLiteral;
+  ResolvedType returnType = inferNodeDataType(retType);
 
-  if (retType->expression.type == TokenType::IDENTIFIER) {
-    auto it = customTypesTable.find(customTypeName);
-    if (it == customTypesTable.end()) {
-      logSemanticErrors("Type '" + customTypeName + "' does not exist",
-                        retType);
-      hasError = true;
-      return;
-    }
-    returnType = it->second->type;
-  } else if (returnType.kind == DataType::UNKNOWN) {
-    logSemanticErrors("Invalid return type '" +
-                          retType->expression.TokenLiteral + "'",
+  if (returnType.base().kind == DataType::UNKNOWN) {
+    errorHandler
+        .addHint("Use a valid return type: i32, ptr i32, arr[N] i32, void etc")
+        .addHint("For custom types make sure they are declared before use");
+    logSemanticErrors("Invalid return type for declaration '" + funcName + "'",
                       retType);
     hasError = true;
   }
 
-  funcInfo->isNullable = isNullable;
+  // Exportable return type check
+  if (!retType->isVoid) {
+    std::string retBaseName = getBaseTypeName(returnType);
+    auto retTypeIt = customTypesTable.find(retBaseName);
+    if (retTypeIt != customTypesTable.end()) {
+      if (isExportable && !retTypeIt->second->isExportable) {
+        errorHandler
+            .addHint("Mark '" + retBaseName +
+                     "' as exportable or change the return type")
+            .addHint("Exportable functions must only use exportable types");
+        logSemanticErrors("Exportable declaration '" + funcName +
+                              "' uses non-exportable return type '" +
+                              retBaseName + "'",
+                          retType);
+      }
+    }
+  }
+
   funcInfo->type = returnType;
-  funcInfo->hasError = hasError;
   funcInfo->returnType = returnType;
-  funcInfo->isExportable = isExportable;
   funcInfo->paramTypes = paramTypes;
+  funcInfo->hasError = hasError;
+  funcInfo->isExportable = isExportable;
 
-  currentFunction = funcInfo;
   symbolTable.pop_back();
+  currentFunction = std::nullopt;
 
-  // Store in current scope
   symbolTable.back()[funcName] = funcInfo;
   metaData[funcDeclrStmt] = funcInfo;
+  hasError = false;
 
-  logInternal("Stored function declaration for '" + funcName +
-              "' with return type '" + funcInfo->returnType.resolvedName + "");
-
-  currentFunction = std::nullopt;
+  logInternal("Stored declaration '" + funcName +
+              "' return type: " + returnType.resolvedName);
 }
 
 void Semantics::walkFunctionCallExpression(Node *node) {

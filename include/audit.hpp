@@ -50,9 +50,7 @@ private:
 
   void registerAuditorFunctions();
   // Variable declaration auditors
-  void auditHeapStatement(Node *node);
-  void auditLetStatement(Node *node);
-  void auditPointerStatement(Node *node);
+  void auditVariableDeclaration(Node *node);
 
   // Function auditors
   void auditFunctionStatement(Node *node);
@@ -127,6 +125,7 @@ private:
   bool isDeclaration(Node *node);
 
   bool containsNode(Node *root, Node *target);
+  void simulateDeclFree(Node *contextNode, const std::string &contextID);
   void simulateFree(Node *contextNode, const std::string &contextID);
 
   // Loggers and reporters

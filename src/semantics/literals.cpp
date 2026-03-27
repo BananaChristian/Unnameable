@@ -9,7 +9,7 @@ void Semantics::walkBooleanLiteral(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::BOOLEAN, "bool"};
+  info->type = ResolvedType::makeBase(DataType::BOOLEAN, "bool");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -23,7 +23,7 @@ void Semantics::walkStringLiteral(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::STRING, "string"};
+  info->type = ResolvedType::makeBase(DataType::STRING, "string");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -37,7 +37,7 @@ void Semantics::walkChar8Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::CHAR8, "char8"};
+  info->type = ResolvedType::makeBase(DataType::CHAR8, "char8");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -51,7 +51,7 @@ void Semantics::walkChar16Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::CHAR16, "char16"};
+  info->type = ResolvedType::makeBase(DataType::CHAR16, "char16");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -64,7 +64,7 @@ void Semantics::walkChar32Literal(Node *node) {
     return;
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::CHAR32, "char32"};
+  info->type = ResolvedType::makeBase(DataType::CHAR32, "char32");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -78,7 +78,7 @@ void Semantics::walkI8Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::I8, "i8"};
+  info->type = ResolvedType::makeBase(DataType::I8, "i8");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -92,7 +92,7 @@ void Semantics::walkU8Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::U8, "u8"};
+  info->type = ResolvedType::makeBase(DataType::U8, "u8");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -106,7 +106,7 @@ void Semantics::walkI16Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::I16, "i16"};
+  info->type = ResolvedType::makeBase(DataType::I16, "i16");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -120,7 +120,7 @@ void Semantics::walkU16Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::U16, "u16"};
+  info->type = ResolvedType::makeBase(DataType::U16, "u16");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -134,7 +134,7 @@ void Semantics::walkI32Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::I32, "i32"};
+  info->type = ResolvedType::makeBase(DataType::I32, "i32");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -148,7 +148,7 @@ void Semantics::walkU32Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::U32, "u32"};
+  info->type = ResolvedType::makeBase(DataType::U32, "u32");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -162,7 +162,7 @@ void Semantics::walkI64Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::I64, "i64"};
+  info->type = ResolvedType::makeBase(DataType::I64, "i64");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -176,7 +176,7 @@ void Semantics::walkU64Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::U64, "u64"};
+  info->type = ResolvedType::makeBase(DataType::U64, "u64");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -190,7 +190,7 @@ void Semantics::walkI128Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::I128, "i128"};
+  info->type = ResolvedType::makeBase(DataType::I128, "i128");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -204,7 +204,7 @@ void Semantics::walkU128Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::U128, "u128"};
+  info->type = ResolvedType::makeBase(DataType::U128, "u128");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -218,7 +218,7 @@ void Semantics::walkISIZELiteral(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::ISIZE, "isize"};
+  info->type = ResolvedType::makeBase(DataType::ISIZE, "isize");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -232,7 +232,7 @@ void Semantics::walkUSIZELiteral(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::USIZE, "usize"};
+  info->type = ResolvedType::makeBase(DataType::USIZE, "usize");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -246,7 +246,7 @@ void Semantics::walkF32Literal(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::F32, "f32"};
+  info->type = ResolvedType::makeBase(DataType::F32, "f32");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -259,7 +259,7 @@ void Semantics::walkF64Literal(Node *node) {
     return;
   auto info = std::make_shared<SymbolInfo>();
 
-  info->type = ResolvedType{DataType::F64, "f64"};
+  info->type = ResolvedType::makeBase(DataType::F64, "f64");
   info->isNullable = false;
   info->isMutable = false;
   info->isConstant = false;
@@ -273,8 +273,8 @@ void Semantics::walkNullLiteral(Node *node) {
     return;
 
   auto symbol = std::make_shared<SymbolInfo>();
-  symbol->type =
-      ResolvedType{DataType::UNKNOWN, "null"}; // Unknown data type for now
+  symbol->type = ResolvedType::makeBase(DataType::UNKNOWN,
+                                        "null"); // Unknown data type for now
   metaData[nullLit] = symbol;
 }
 

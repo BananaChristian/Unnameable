@@ -663,28 +663,8 @@ struct FunctionExpression : Expression {
         block(std::move(bl)){};
 };
 
-struct ArrayType : Expression {
-  Token arr_token; // 'arr' keyword
-  std::unique_ptr<Expression>
-      innerType;   // Could be BasicReturnType or another ArrayReturnType
-  bool isNullable; // Toggle if we see ?
-
-  std::string toString() override {
-    return "Array Type: " + arr_token.TokenLiteral + "[" +
-           innerType->toString() + "]" + (isNullable ? "?" : "");
-  }
-
-  ArrayType *shallowClone() const override {
-    return new ArrayType(arr_token, clonePtr(innerType), isNullable);
-  }
-
-  ArrayType(Token arr, std::unique_ptr<Expression> inner, bool isNull)
-      : Expression(arr), arr_token(arr), innerType(std::move(inner)),
-        isNullable(isNull) {}
-};
-
 struct BasicType : Expression {
-  Token data_token;        // Basic token like int
+  Token data_token;        // Basic token like i32
   bool isNullable = false; // If we see ? we toggle
   std::string toString() override {
     return "Basic Type: " + data_token.TokenLiteral + (isNullable ? "?" : "");
@@ -698,52 +678,34 @@ struct BasicType : Expression {
       : Expression(data), data_token(data), isNullable(isNull){};
 };
 
-struct PointerType : Expression {
-  Token ptr_token;
-  std::unique_ptr<Expression> underlyingType;
-
-  std::string toString() override {
-    return "Pointer Type: " + underlyingType->toString() + "_ptr";
-  }
-
-  PointerType *shallowClone() const override {
-    return new PointerType(ptr_token, clonePtr(underlyingType));
-  }
-
-  PointerType(Token ptr, std::unique_ptr<Expression> type)
-      : Expression(ptr), ptr_token(ptr), underlyingType(std::move(type)){};
-};
-
-struct RefType : Expression {
-  Token ref_token;
-  std::unique_ptr<Expression> underLyingType;
-
-  std::string toString() override {
-    return "Ref type: " + underLyingType->toString() +
-           "_ptr"; // A reference is a pointer dressed in fancy dance clothes
-  }
-
-  RefType *shallowClone() const override {
-    return new RefType(ref_token, clonePtr(underLyingType));
-  }
-
-  RefType(Token ref, std::unique_ptr<Expression> type)
-      : Expression(ref), ref_token(ref), underLyingType(std::move(type)){};
-};
-
-// Return type expression
 struct ReturnType : Expression {
-  std::unique_ptr<Expression> returnExpr;
+  std::unique_ptr<Expression> modified_type; // TypeModifier or nullptr
+  std::unique_ptr<Expression> base_type;     // BasicType always
+  bool isVoid = false;
+
   std::string toString() override {
-    return "Return Type: " + returnExpr->toString();
+    if (isVoid)
+      return "Return Type: void";
+    std::string result = "Return Type: ";
+    if (modified_type)
+      result += modified_type->toString();
+    result += base_type->toString();
+    return result;
   }
 
   ReturnType *shallowClone() const override {
-    return new ReturnType(clonePtr(returnExpr));
+    return new ReturnType(clonePtr(modified_type), clonePtr(base_type), isVoid);
   }
 
-  ReturnType(std::unique_ptr<Expression> retExpr)
-      : Expression(retExpr->expression), returnExpr(std::move(retExpr)){};
+  // Void constructor
+  ReturnType() : Expression(Token{}), isVoid(true) {}
+
+  // Normal constructor
+  ReturnType(std::unique_ptr<Expression> mod, std::unique_ptr<Expression> base,
+             bool void_ = false)
+      : Expression(base ? base->expression : Token{}),
+        modified_type(std::move(mod)), base_type(std::move(base)),
+        isVoid(void_) {}
 };
 
 // Prefix expression node for syntax like !true;
@@ -969,7 +931,7 @@ struct RecordStatement : Statement {
   // Modifiers
   bool isVolatile; // Every member in the record is volatile
   bool isExportable;
-  Mutability mutability; 
+  Mutability mutability;
 
   // Core structure
   Token record_token;
@@ -1090,191 +1052,152 @@ struct ComponentStatement : Statement {
         initConstructor(std::move(init)) {}
 };
 
-// Reference Statament node
-struct ReferenceStatement : Statement {
-  // Modifiers
-  bool isHeap;           // Allocated on heap
-  bool isSage;           // Allocated on SAGE heap
-  Mutability mutability; // For stuff like const,mut or default immutable
-  bool isVolatile;       // `volatile` keyword (reference to volatile data)
-  bool isRestrict;       // `restrict` keyword (restrict reference)
+struct TypeModifier : Expression {
+  bool isArray = false;
+  bool isPointer = false;
+  bool isReference = false;
 
-  // The core declaration
-  Token ref_token;                   // The 'ref' keyword
-  std::unique_ptr<Expression> type;  // The type being referenced
-  std::unique_ptr<Expression> name;  // The reference variable name
-  std::unique_ptr<Expression> value; // The target being referenced
+  std::vector<std::unique_ptr<Expression>> dimensions;
+  std::unique_ptr<Expression>
+      inner_modifier; // For nested modifiers like ptr inside arr
 
   std::string toString() override {
-    std::string result = "Reference Statement: ";
+    std::string result;
 
-    if (isSage)
-      result += "sage ";
-    if (isHeap)
-      result += "heap ";
-    if (mutability == Mutability::MUTABLE)
-      result += "mut ";
-    if (mutability == Mutability::CONSTANT)
-      result += "const ";
-    if (isVolatile)
-      result += "volatile ";
-    if (isRestrict)
-      result += "restrict ";
-
-    // Core declaration
-    result += ref_token.TokenLiteral + " ";
-    result += (type ? type->toString() : "<unknown>") + " ";
-    result += (name ? name->toString() : "<unnamed>");
-
-    // Optional target
-    if (value) {
-      result += " -> " + value->toString();
+    if (isPointer) {
+      result += "ptr";
+      if (inner_modifier) {
+        result += "<" + inner_modifier->toString() + ">";
+      }
+      result += " ";
+    } else if (isReference) {
+      result += "ref";
+      if (inner_modifier) {
+        result += "<" + inner_modifier->toString() + ">";
+      }
+      result += " ";
+    } else if (isArray) {
+      result += "arr";
+      for (const auto &dim : dimensions) {
+        result += "[" + dim->toString() + "]";
+      }
+      if (inner_modifier) {
+        result += "<" + inner_modifier->toString() + ">";
+      }
+      result += " ";
     }
 
     return result;
   }
 
-  ReferenceStatement *shallowClone() const override {
-    return new ReferenceStatement(isHeap, isSage, mutability, isVolatile,
-                                  isRestrict, ref_token, clonePtr(type),
-                                  clonePtr(name), clonePtr(value));
+  TypeModifier *shallowClone() const override {
+    auto *clone = new TypeModifier();
+    clone->isArray = isArray;
+    clone->isPointer = isPointer;
+    clone->isReference = isReference;
+    clone->dimensions = clonePtrVector(dimensions);
+    clone->inner_modifier = clonePtr(inner_modifier);
+    return clone;
   }
 
-  ReferenceStatement(bool heap, bool sage, Mutability mut, bool volatile_,
-                     bool restrict_, Token ref,
-                     std::unique_ptr<Expression> data_type,
-                     std::unique_ptr<Expression> identifier,
-                     std::unique_ptr<Expression> val)
-      : Statement(ref), isHeap(heap), isSage(sage), mutability(mut),
-        isVolatile(volatile_), isRestrict(restrict_), ref_token(ref),
-        type(std::move(data_type)), name(std::move(identifier)),
-        value(std::move(val)) {}
+  TypeModifier() : Expression(Token{}) {}
+
+  TypeModifier(bool isArr, bool isPtr, bool isRef,
+               std::vector<std::unique_ptr<Expression>> dims = {},
+               std::unique_ptr<Expression> inner = nullptr)
+      : Expression(Token{}), isArray(isArr), isPointer(isPtr),
+        isReference(isRef), dimensions(std::move(dims)),
+        inner_modifier(std::move(inner)) {}
 };
 
-// Pointer statement node
-struct PointerStatement : Statement {
-  // Modifiers
-  bool isHeap;           // Allocated on heap
-  bool isSage;           // Allocated on SAGE heap
-  Mutability mutability; // For stuff like const,mut or default immutable
-  bool isVolatile;       // `volatile` keyword
-  bool isRestrict;       // `restrict` keyword
+struct VariableDeclaration : Statement {
+  // Storage & mutability
+  bool isPersist = false;
+  bool isHeap = false;
+  bool isVolatile = false;
+  bool isRestrict = false;
+  Mutability mutability = Mutability::IMMUTABLE;
 
-  // The core declaration
-  Token ptr_token;                   // The 'ptr' keyword
-  std::unique_ptr<Expression> type;  // The type being pointed to (e.g., i32)
-  std::unique_ptr<Expression> name;  // The pointer variable name
-  std::unique_ptr<Expression> value; // Optional initializer
+  // Custom allocator for heap variables (e.g., heap<MyAlloc>)
+  std::unique_ptr<Expression> allocator; // nullptr means default allocator
 
-  std::string toString() override {
-    std::string result = "Pointer Statement: ";
+  // Type modifier (ptr, ref, arr)
+  std::unique_ptr<Expression> modified_type;
 
-    if (isSage)
-      result += "sage ";
-    if (isHeap)
-      result += "heap ";
-    if (mutability == Mutability::CONSTANT)
-      result += "const ";
-    if (mutability == Mutability::MUTABLE)
-      result += "mut ";
-    if (isVolatile)
-      result += "volatile ";
-    if (isRestrict)
-      result += "restrict ";
-
-    // Core declaration
-    result += ptr_token.TokenLiteral + " ";
-    result += (type ? type->toString() : "<unknown>") + " ";
-    result += (name ? name->toString() : "<unnamed>");
-
-    // Optional initializer
-    if (value) {
-      result += " -> " + value->toString();
-    }
-
-    return result;
-  }
-
-  PointerStatement *shallowClone() const override {
-    return new PointerStatement(isHeap, isSage, mutability, isVolatile,
-                                isRestrict, ptr_token, clonePtr(type),
-                                clonePtr(name), clonePtr(value));
-  }
-
-  PointerStatement(bool heap, bool sage, Mutability mut, bool volatile_,
-                   bool restrict_, Token ptr,
-                   std::unique_ptr<Expression> data_type,
-                   std::unique_ptr<Expression> identifier,
-                   std::unique_ptr<Expression> val)
-      : Statement(ptr), isHeap(heap), isSage(sage), mutability(mut),
-        isVolatile(volatile_), isRestrict(restrict_), ptr_token(ptr),
-        type(std::move(data_type)), name(std::move(identifier)),
-        value(std::move(val)) {}
-};
-
-// Let statement node
-struct LetStatement : Statement {
-  // Modifiers
-  bool isSage;           // SAGE heap
-  bool isHeap;           // Dynamic heap
-  bool isVolatile;       // Volatility flag
-  bool isRestrict;       // For pointer aliasing hints
-  Mutability mutability; // For const,mut or default immutable
+  // Base type (i32, Node, etc.)
+  std::unique_ptr<Expression> base_type;
 
   // Core declaration
-  std::unique_ptr<Expression> type;
-  Token ident_token;
+  std::unique_ptr<Expression> var_name;
   std::optional<Token> assign_token;
-  std::unique_ptr<Expression> value;
+  std::unique_ptr<Expression> initializer;
 
   std::string toString() override {
-    std::string prefix;
+    std::string result;
 
-    // Storage class
-    if (isSage)
-      prefix += "sage ";
-    else if (isHeap)
-      prefix += "heap ";
-
-    // Type qualifiers
-    if (isVolatile)
-      prefix += "volatile ";
-    if (isRestrict)
-      prefix += "restrict ";
-    if (mutability == Mutability::CONSTANT)
-      prefix += "const ";
-    if (mutability == Mutability::MUTABLE)
-      prefix += "mut ";
-
-    // Type
-    std::string typeStr = type ? type->toString() : "Failed";
-
-    std::string result = "Let Statement: (" + prefix + "Data Type: " + typeStr +
-                         " Variable name: " + ident_token.TokenLiteral;
-
-    if (value) {
-      result += " Value: " + value->toString();
-    } else {
-      result += " Value: <uninitialized>";
+    // Storage with optional allocator
+    if (isHeap) {
+      result += "heap";
+      if (allocator) {
+        result += "<" + allocator->toString() + ">";
+      }
+      result += " ";
     }
 
-    result += ")";
-    return result;
+    // Type qualifiers
+    if (isPersist)
+      result += "persist ";
+    if (isVolatile)
+      result += "volatile ";
+    if (isRestrict)
+      result += "restrict ";
+    if (mutability == Mutability::CONSTANT)
+      result += "const ";
+    if (mutability == Mutability::MUTABLE)
+      result += "mut ";
+
+    // Type modifiers (ptr, arr, ref)
+    if (modified_type) {
+      result += modified_type->toString();
+    }
+
+    // Base type
+    result += base_type ? base_type->toString() : "<unknown>";
+    result += " ";
+
+    // name
+    result += var_name ? var_name->toString() : "<unnamed>";
+
+    // Initializer
+    if (initializer) {
+      result += " = " + initializer->toString();
+    } else {
+      result += " <uninitialized>";
+    }
+
+    return "Variable Declaration: (" + result + ")";
   }
 
-  LetStatement *shallowClone() const override {
-    return new LetStatement(isSage, isHeap, isVolatile, isRestrict, mutability,
-                            clonePtr(type), ident_token, assign_token,
-                            clonePtr(value));
+  VariableDeclaration *shallowClone() const override {
+    return new VariableDeclaration(
+        isPersist, isHeap, isVolatile, isRestrict, mutability,
+        clonePtr(allocator), clonePtr(modified_type), clonePtr(base_type),
+        clonePtr(var_name), assign_token, clonePtr(initializer));
   }
 
-  LetStatement(bool sage, bool heap, bool volatile_, bool restrict_,
-               Mutability mut, std::unique_ptr<Expression> data_t,
-               const Token &ident_t, const std::optional<Token> &assign_t,
-               std::unique_ptr<Expression> val)
-      : Statement(ident_t), isSage(sage), isHeap(heap), isVolatile(volatile_),
-        isRestrict(restrict_), mutability(mut), type(std::move(data_t)),
-        ident_token(ident_t), assign_token(assign_t), value(std::move(val)) {}
+  VariableDeclaration(bool persist, bool heap, bool volatile_, bool restrict_,
+                      Mutability mut, std::unique_ptr<Expression> alloc,
+                      std::unique_ptr<Expression> mod_type,
+                      std::unique_ptr<Expression> base,
+                      std::unique_ptr<Expression> name,
+                      const std::optional<Token> &assign,
+                      std::unique_ptr<Expression> init)
+      : Statement(name ? name->token : Token{}), isPersist(persist),
+        isHeap(heap), isVolatile(volatile_), isRestrict(restrict_),
+        mutability(mut), allocator(std::move(alloc)),
+        modified_type(std::move(mod_type)), base_type(std::move(base)),
+        var_name(std::move(name)), assign_token(assign),
+        initializer(std::move(init)) {}
 };
 
 struct AssignmentStatement : Statement {
@@ -1782,77 +1705,6 @@ struct ArrayLiteral : Expression {
 
   ArrayLiteral(Token arr_tok, std::vector<std::unique_ptr<Expression>> arr)
       : Expression(arr_tok), arr_token(arr_tok), array(std::move(arr)){};
-};
-
-// Array statement
-struct ArrayStatement : Statement {
-  // Modifiers
-  bool isHeap;           // Allocated on heap
-  bool isSage;           // Allocated on SAGE heap
-  Mutability mutability; // for stuff like const,mut
-  bool isVolatile;       // `volatile` keyword (array elements are volatile)
-  bool isRestrict;       // `restrict` keyword (for array pointers)
-
-  // The core array declaration
-  std::unique_ptr<Expression> arrayType; // The type inside arr[type]
-  std::vector<std::unique_ptr<Expression>> dimensions; // [1][2][3] etc.
-  std::unique_ptr<Expression> identifier;              // Array name
-  std::unique_ptr<Expression> array_content;           // Optional initializer
-
-  std::string toString() override {
-    std::string result = "Array Statement: ";
-
-    if (isSage)
-      result += "sage ";
-    if (isHeap)
-      result += "heap ";
-    if (mutability == Mutability::MUTABLE)
-      result += "mut ";
-    if (mutability == Mutability::CONSTANT)
-      result += "const ";
-    if (isVolatile)
-      result += "volatile ";
-    if (isRestrict)
-      result += "restrict ";
-
-    // Core array declaration
-    std::string arrayTypeStr = arrayType ? arrayType->toString() : "<no type>";
-    result += "arr[" + arrayTypeStr + "]";
-
-    // Dimensions
-    for (const auto &dim : dimensions) {
-      result += "[" + dim->toString() + "]";
-    }
-
-    // Name
-    if (identifier) {
-      result += " " + identifier->toString();
-    }
-
-    // Optional initializer
-    if (array_content) {
-      result += " = " + array_content->toString();
-    }
-
-    return result;
-  }
-
-  ArrayStatement *shallowClone() const override {
-    return new ArrayStatement(isHeap, isSage, mutability, isVolatile,
-                              isRestrict, clonePtr(arrayType),
-                              clonePtrVector(dimensions), clonePtr(identifier),
-                              clonePtr(array_content));
-  }
-
-  ArrayStatement(bool heap, bool sage, Mutability mut, bool volatile_,
-                 bool restrict_, std::unique_ptr<Expression> arrayTy,
-                 std::vector<std::unique_ptr<Expression>> dims,
-                 std::unique_ptr<Expression> ident,
-                 std::unique_ptr<Expression> array)
-      : Statement(arrayTy->token), isHeap(heap), isSage(sage), mutability(mut),
-        isVolatile(volatile_), isRestrict(restrict_),
-        arrayType(std::move(arrayTy)), dimensions(std::move(dims)),
-        identifier(std::move(ident)), array_content(std::move(array)) {}
 };
 
 // Array Subscript expression

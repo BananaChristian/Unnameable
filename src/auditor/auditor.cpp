@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "audit.hpp"
 
 void Auditor::auditExpressionStatement(Node *node) {
@@ -5,72 +6,41 @@ void Auditor::auditExpressionStatement(Node *node) {
   audit(exprStmt->expression.get());
 }
 
-void Auditor::auditHeapStatement(Node *node) {
-  auto heapStmt = dynamic_cast<HeapStatement *>(node);
-  if (!heapStmt)
+void Auditor::auditVariableDeclaration(Node *node) {
+  auto declaration = dynamic_cast<VariableDeclaration *>(node);
+  if (!declaration)
     return;
 
-  audit(heapStmt->stmt.get());
-}
-
-void Auditor::auditLetStatement(Node *node) {
-  auto letStmt = dynamic_cast<LetStatement *>(node);
-  if (!letStmt)
+  auto sym = semantics.getSymbolFromMeta(declaration);
+  if (!sym)
     return;
 
-  auto letSym = semantics.getSymbolFromMeta(letStmt);
-  if (!letSym)
+  if (!sym->isHeap)
     return;
 
-  if (!letSym->isHeap) {
-    logInternal("Let statement is not heap raised not tracking");
-    return;
-  }
-
-  simulateFree(letStmt, letSym->ID);
-}
-
-void Auditor::auditPointerStatement(Node *node) {
-  auto ptrStmt = dynamic_cast<PointerStatement *>(node);
-  if (!ptrStmt)
-    return;
-
-  auto ptrSym = semantics.getSymbolFromMeta(ptrStmt);
-  if (!ptrSym)
-    return;
-
-  if (!ptrSym->isHeap) {
-    logInternal("Pointer statement is not heap raised not tracking");
-    return;
-  }
-
-  if (ptrStmt->value) {
-    auto valSym = semantics.getSymbolFromMeta(ptrStmt->value.get());
+  auto initializer = declaration->initializer.get();
+  if (sym->isPointer && initializer) {
+    auto valSym = semantics.getSymbolFromMeta(initializer);
     if (!valSym)
       return;
 
     Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->ID);
-    Node *ptrBatonHolder = semantics.queryForLifeTimeBaton(ptrSym->ID);
+    Node *ptrBatonHolder = semantics.queryForLifeTimeBaton(sym->ID);
 
-    logInternal("  [VALUE] ID: " + valSym->ID +
-                " | Holder Node: " + (valBatonHolder ? "VALID" : "NULL"));
-    logInternal("  [POINTER] ID: " + ptrSym->ID +
-                " | Holder Node: " + (ptrBatonHolder ? "VALID" : "NULL"));
-
-    if (valBatonHolder && valBatonHolder != ptrStmt->value.get()) {
+    if (valBatonHolder && valBatonHolder != initializer) {
       auto &valBaton = semantics.responsibilityTable[valBatonHolder];
       auto &ptrBaton = semantics.responsibilityTable[ptrBatonHolder];
 
       logInternal("  [REVERSE-LOGIC] Detected non-death use. Correcting baton "
                   "states...");
-      logInternal("    Before: Ptr(" + ptrSym->ID +
+      logInternal("    Before: Ptr(" + sym->ID +
                   ") Deps: " + std::to_string(ptrBaton->dependents.size()));
 
       // The "Undo"
       if (ptrBaton->dependents.count(valSym->ID)) {
         ptrBaton->dependents.erase(valSym->ID);
         logInternal("    Action: Erased " + valSym->ID + " from Ptr " +
-                    ptrSym->ID);
+                    sym->ID);
       } else {
         logInternal("    Warning: " + valSym->ID +
                     " was NOT in Ptr dependents. Exclusivity might be broken.");
@@ -82,7 +52,7 @@ void Auditor::auditPointerStatement(Node *node) {
     }
   }
 
-  simulateFree(ptrStmt, ptrSym->ID);
+  simulateDeclFree(declaration, sym->ID);
 }
 
 void Auditor::auditFieldAssignmentStatement(Node *node) {

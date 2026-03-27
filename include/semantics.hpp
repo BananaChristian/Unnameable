@@ -47,12 +47,82 @@ enum class DataType {
 enum class AllocatorRole { ALLOCATE, FREE, NONE };
 
 struct ResolvedType {
-  DataType kind; // For the custom inbuilt types
+  // What modifier am I at this level
+  enum class Modifier {
+    NONE,      // base type, I32, F32, custom etc
+    POINTER,   // ptr
+    REFERENCE, // ref
+    ARRAY      // arr
+  };
+
+  Modifier modifier = Modifier::NONE;
+
+  // Only meaningful if modifier == NONE
+  DataType kind = DataType::UNKNOWN;
   std::string resolvedName = "unknown";
-  bool isPointer = false;
-  bool isRef = false;
+
+  // Only meaningful if modifier == ARRAY
+  uint64_t arraySize = 0; // 0 means dynamic
+  bool isConstantSize = false;
+
+  // The thing I point to / contain / reference
+  // nullptr means I am the base
+  std::shared_ptr<ResolvedType> innerType = nullptr;
+
+  // Nullable applies at any level
   bool isNull = false;
-  bool isArray = false;
+
+  bool isPointer() const { return modifier == Modifier::POINTER; }
+  bool isRef() const { return modifier == Modifier::REFERENCE; }
+  bool isArray() const { return modifier == Modifier::ARRAY; }
+  bool isBase() const { return modifier == Modifier::NONE; }
+
+  // Walk to the bottom of the chain
+  const ResolvedType &base() const {
+    if (innerType)
+      return innerType->base();
+    return *this;
+  }
+
+  // How deep is the nesting
+  int depth() const {
+    if (!innerType)
+      return 0;
+    return 1 + innerType->depth();
+  }
+
+  std::string toString() const {
+    switch (modifier) {
+    case Modifier::POINTER:
+      return "ptr<" + (innerType ? innerType->toString() : "?") + ">";
+    case Modifier::REFERENCE:
+      return "ref<" + (innerType ? innerType->toString() : "?") + ">";
+    case Modifier::ARRAY:
+      return "arr[" + (arraySize ? std::to_string(arraySize) : "?") + "]<" +
+             (innerType ? innerType->toString() : "?") + ">";
+    case Modifier::NONE:
+      return resolvedName + (isNull ? "?" : "");
+    }
+    return "unknown";
+  }
+
+  ResolvedType() = default;
+
+  static ResolvedType makeBase(DataType k, const std::string &name,
+                               bool null = false) {
+    ResolvedType t;
+    t.modifier = Modifier::NONE;
+    t.kind = k;
+    t.resolvedName = name;
+    t.isNull = null;
+    return t;
+  }
+
+  static ResolvedType error() { return makeBase(DataType::ERROR, "error"); }
+  static ResolvedType unknown() {
+    return makeBase(DataType::UNKNOWN, "unknown");
+  }
+  static ResolvedType null() { return makeBase(DataType::UNKNOWN, "null"); }
 };
 
 struct MemberInfo {
@@ -140,6 +210,7 @@ struct SymbolInfo {
   bool isConstant = false;
   bool isInitialized = false;
   int64_t constIntVal;
+  std::string funcname;
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
   ResolvedType returnType;
   std::vector<ResolvedType> initArgs;
@@ -159,9 +230,12 @@ struct SymbolInfo {
   bool isHeap = false;   // Dynamic heap flag
   std::string allocType; // The name of the allocator the heap will use
   bool isVolatile = false;
+  bool isRestrict = false;
+  bool isPersist = false;
 
   bool isRef = false;     // Reference flag
   bool isPointer = false; // Pointer flag
+  bool isArray = false;
   bool isAddress =
       false; // This is a special flag for the generation of heap variables
 
@@ -215,6 +289,7 @@ struct SymbolInfo {
 struct LifeTime {
   std::string ID;      // Main lifetime family ID
   std::string ownedBy; // Who robbed this baton and now owns it
+  bool persist = false;
   bool isResponsible =
       false; // Is this baton responsible for the actual memory it respresents
   bool isAlive = false; // Auditor liveness simulation flag
@@ -274,7 +349,7 @@ public:
   // Public helpers
   std::shared_ptr<SymbolInfo> resolveSymbolInfo(const std::string &name);
   std::shared_ptr<SymbolInfo> lookUpInCurrentScope(const std::string &name);
-  ResolvedType resolvedDataType(Token token, Node *node);
+  ResolvedType inferDeclarationBaseType(VariableDeclaration *declaration);
   bool hasReturnPath(Node *node);
   bool switchReturnsInAllPaths(SwitchStatement *sw);
   bool ifReturnsInAllPaths(ifStatement *ifStmt);
@@ -282,12 +357,9 @@ public:
       const std::vector<std::unique_ptr<Statement>> &statements);
   bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>> &stmts);
   ResolvedType inferNodeDataType(Node *node);
-  std::string stripPtrSuffix(const std::string &typeName);
-  std::string stripRefSuffix(const std::string &typeName);
-  std::string stripOptionalSuffix(const std::string &typeName);
   std::string extractIdentifierName(Node *node);
   std::string extractDeclarationName(Node *node);
-  ResolvedType peelRef(ResolvedType t);
+  ResolvedType peelRef(const ResolvedType &t);
   bool isBornInScope(Node *root, const std::string &ID);
   bool isTerminator(Node *node);
 
@@ -304,9 +376,10 @@ public:
                               const std::shared_ptr<SymbolInfo> &tagetSym);
   Node *queryForLifeTimeBaton(const std::string &familyID);
   const std::unique_ptr<LifeTime> &readBatonInfo(const std::string &batonID);
-  ResolvedType getArrayElementType(ResolvedType &arrayType);
+  ResolvedType getArrayElementType(const ResolvedType &arrayType);
   bool isIntegerConstant(Node *node);
   std::vector<uint64_t> getSizePerDimesion(Node *node);
+  std::string getBaseTypeName(const ResolvedType &type);
   uint64_t getIntegerConstant(Node *node);
 
 private:
@@ -317,11 +390,13 @@ private:
   bool insideAllocator = false;
 
   bool hasFailed = false;
+  bool hasError = false;
   bool verbose = false;
   std::vector<Node *> activeBlocks;
 
-  uint64_t letDeclCount = 0;
+  uint64_t normalDeclCount = 0;
   uint64_t ptrDeclCount = 0;
+  uint64_t arrDeclCount = 0;
 
   // Walking the data type literals
   void walkI8Literal(Node *node);
@@ -375,14 +450,10 @@ private:
   void walkExpressionStatement(Node *node);
 
   // Walking the let statements and assignment statements
-  void walkLetStatement(Node *node);
+  void walkVariableDeclaration(Node *node);
   void walkSelfAssignment(AssignmentStatement *assignStmt);
   void walkAssignStatement(Node *node);
   void walkFieldAssignmentStatement(Node *node);
-
-  // Walking reference and pointer statement
-  void walkReferenceStatement(Node *node);
-  void walkPointerStatement(Node *node);
 
   // Walking the loop disruption statements
   void walkBreakStatement(Node *node);
@@ -407,20 +478,16 @@ private:
 
   // Walking type expressions
   void walkBasicType(Node *node);
-  void walkArrayType(Node *node);
-
   // Walking blocks
   void walkBlockStatement(Node *node);
   void walkBlockExpression(Node *node);
 
   // Walking arrays
   void walkArrayLiteral(Node *node);
-  void walkArrayStatement(Node *node);
   void walkArraySubscriptExpression(Node *node);
 
   // Walking allocator interface
   void walkAllocatorInterface(Node *node);
-  void walkHeapStatement(Node *node);
 
   // Walking generics
   void walkGenericStatement(Node *node);
@@ -441,6 +508,11 @@ private:
 
   // HELPER FUNCTIONS
   void registerWalkerFunctions();
+  void enforceDeclarationRules(VariableDeclaration *declaration,
+                               const std::shared_ptr<SymbolInfo> &declInfo);
+  void handleNullInitializers(VariableDeclaration *declaration,
+                              const std::shared_ptr<SymbolInfo> &declInfo,
+                              const std::shared_ptr<SymbolInfo> &nullInfo);
   ResolvedType inferInfixExpressionType(Node *node);
   ResolvedType inferPrefixExpressionType(Node *node);
   ResolvedType inferPostfixExpressionType(Node *node);
@@ -453,8 +525,12 @@ private:
                                                  const ResolvedType &parentType,
                                                  const std::string &childName,
                                                  InfixExpression *infix);
-  ResolvedType isPointerType(ResolvedType t);
-  ResolvedType isRefType(ResolvedType t);
+  ResolvedType resolveTypeWithModifier(Node *modifier,
+                                       const ResolvedType &base);
+  ResolvedType makePointerType(const ResolvedType &inner, bool isNull);
+  ResolvedType makeRefType(const ResolvedType &inner, bool isNull);
+  ResolvedType makeArrayType(const ResolvedType &inner, uint64_t size,
+                             bool isNull);
   ResolvedType *resolveSelfChain(SelfExpression *selfExpr,
                                  const std::string &componentName);
   ResolvedType
@@ -490,6 +566,10 @@ private:
   bool signaturesMatchBehaviorDeclaration(
       const std::shared_ptr<MemberInfo> &declMember,
       FunctionExpression *funcExpr);
+  bool checkParamListCompatibility(
+      const std::vector<std::pair<ResolvedType, std::string>> &expectedParams,
+      const std::vector<std::unique_ptr<Statement>> &actualParams);
+
   bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
   bool isMethodCallCompatible(const MemberInfo &memFuncInfo,
                               CallExpression *callExpr);
@@ -498,8 +578,7 @@ private:
   void popScope();
   Node *getCurrentBlock();
   std::string getTerminatorString(Node *node);
-
-  std::string generateLifetimeID(Node *declarationNode);
+  std::string generateLifetimeID(const std::shared_ptr<SymbolInfo> &sym);
   std::unique_ptr<LifeTime>
   createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
                         const std::shared_ptr<SymbolInfo> &declSym);

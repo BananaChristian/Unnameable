@@ -12,13 +12,13 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
   }
 
   const std::string &identName = identExpr->identifier.TokenLiteral;
-  auto metaIt = semantics.metaData.find(identExpr);
-  if (metaIt == semantics.metaData.end()) {
-    errorHandler.addHint("Semantics did not register the identifier metadata");
+
+  auto sym = semantics.getSymbolFromMeta(identExpr);
+  if (!sym) {
+    errorHandler.addHint(
+        "Semantics did not register the identifier symbol info");
     reportDevBug("Could not find identifier metadata", identExpr);
   }
-
-  auto sym = metaIt->second;
 
   llvm::Value *variablePtr = sym->llvmValue;
   if (!variablePtr)
@@ -40,7 +40,7 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
     address = variablePtr;
   } else {
     // scalar/heap -> ensure typed pointer
-    if (sym->isSage || sym->isHeap) {
+    if (sym->isHeap) {
       llvm::Type *elemTy = sym->llvmType;
       if (!elemTy) {
         reportDevBug("No type for '" + identName + "'", identExpr);
@@ -76,7 +76,7 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
     auto lhsMeta = semantics.metaData[infix->left_operand.get()];
     auto rhsIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
 
-    if (lhsMeta->type.isPointer || lhsMeta->type.isRef) {
+    if (lhsMeta->type.isPointer() || lhsMeta->type.isRef()) {
       llvm::Type *ptrTy = llvm::PointerType::get(funcBuilder.getContext(), 0);
       auto *load = funcBuilder.CreateLoad(ptrTy, address, "ptr_deref");
       if (lhsMeta->isVolatile) {
@@ -86,11 +86,8 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
     }
 
     std::string lookUpName = lhsMeta->type.resolvedName;
-    if (lhsMeta->type.isPointer) {
-      lookUpName = semantics.stripPtrSuffix(lhsMeta->type.resolvedName);
-    } else if (lhsMeta->type.isRef) {
-      lookUpName = semantics.stripRefSuffix(lhsMeta->type.resolvedName);
-    }
+    if (lhsMeta->type.isPointer() || lhsMeta->type.isRef())
+      lookUpName = semantics.getBaseTypeName(lhsMeta->type);
 
     llvm::StructType *structTy = llvmCustomTypes[lookUpName];
 
@@ -128,7 +125,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
 
   currentStructTy = it->second;
 
-  // --- Load 'self' pointer ---
+  // Load 'self' pointer
   llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
   if (!selfAlloca) {
     reportDevBug("'self' access outside component method", selfExpr);
@@ -140,7 +137,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
 
   llvm::Value *currentPtr = selfLoad;
 
-  // --- Semantic chain walk ---
+  // Semantic chain walk
   auto ctIt = semantics.customTypesTable.find(compName);
   if (ctIt == semantics.customTypesTable.end()) {
     errorHandler.addHint(
@@ -159,12 +156,8 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     }
 
     std::string currentTypeName = currentTypeInfo->type.resolvedName;
-    if (currentTypeInfo->type.isPointer)
-      currentTypeName =
-          semantics.stripPtrSuffix(currentTypeInfo->type.resolvedName);
-    else if (currentTypeInfo->type.isRef)
-      currentTypeName =
-          semantics.stripRefSuffix(currentTypeInfo->type.resolvedName);
+    if (currentTypeInfo->type.isPointer() || currentTypeInfo->type.isRef())
+      currentTypeName = semantics.getBaseTypeName(currentTypeInfo->type);
 
     std::string fieldName = ident->identifier.TokenLiteral;
 
@@ -192,12 +185,9 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     if (lastMemberInfo->type.kind == DataType::COMPONENT ||
         lastMemberInfo->type.kind == DataType::RECORD) {
       std::string lookUpName = lastMemberInfo->type.resolvedName;
-      if (lastMemberInfo->type.isPointer) {
-        lookUpName =
-            semantics.stripPtrSuffix(lastMemberInfo->type.resolvedName);
-      } else if (lastMemberInfo->type.isRef)
-        lookUpName =
-            semantics.stripRefSuffix(lastMemberInfo->type.resolvedName);
+      if (lastMemberInfo->type.isPointer() || lastMemberInfo->type.isRef())
+        lookUpName = semantics.getBaseTypeName(lastMemberInfo->type);
+
       auto nestedIt = semantics.customTypesTable.find(lookUpName);
       if (nestedIt == semantics.customTypesTable.end()) {
         errorHandler.addHint("Type '" + lookUpName +

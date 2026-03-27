@@ -160,96 +160,79 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     return;
 
   auto assignSym = semantics.getSymbolFromMeta(assignStmt);
+  if (!assignSym)
+    return;
 
-  if (assignSym->isPointer) {
+  // Pointer reassignment has its own path
+  if (assignSym->type.isPointer()) {
     generatePointerAssignmentStatement(assignStmt);
     return;
   }
 
-  inhibitCleanUp = true; // Set the inhibitor to block the child from triggering
-                         // a free before we use the value
-  // targetPtr is the STACK location of the variable (e.g., the slot holding the
-  // ptr to y's heap)
+  inhibitCleanUp = true;
 
   llvm::Value *targetPtr = generateAddress(assignStmt->identifier.get());
-  if (!targetPtr) {
-    reportDevBug("Failed to get L-Value address for the LHS expression",
-                 assignStmt);
-  }
+  if (!targetPtr)
+    reportDevBug("Failed to get L-Value address for LHS", assignStmt);
 
-  llvm::Value *initValue = nullptr;
-  auto valSym = semantics.getSymbolFromMeta(assignStmt->value.get());
-
-  // RHS Evaluation
-  initValue = generateExpression(assignStmt->value.get());
-
-  if (!initValue) {
+  llvm::Value *initValue = generateExpression(assignStmt->value.get());
+  if (!initValue)
     reportDevBug("Failed to generate R-Value for assignment", assignStmt);
-  }
 
+  auto valSym = semantics.getSymbolFromMeta(assignStmt->value.get());
   auto assignMeta = semantics.metaData[assignStmt];
-  if (!assignMeta) {
-    reportDevBug("Failed to get assignment statement metaData", assignStmt);
-  }
+  if (!assignMeta)
+    reportDevBug("Failed to get assignment metaData", assignStmt);
 
-  // Handling Move Expressions (Pointer Takeover)
+  // Move expression, pointer takeover
   if (dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
     logInternal("Handling move assignment");
-    // In a move, we DO overwrite the stack slot to point to the new memory
     auto *storeInst = funcBuilder.CreateStore(initValue, targetPtr);
-    if (assignSym->isVolatile) {
+    if (assignSym->isVolatile)
       storeInst->setVolatile(true);
-    }
     inhibitCleanUp = false;
-
     emitCleanup(assignStmt);
     return;
   }
 
-  // Handling Deep Copy (Value Migration)
-  bool isHuge = (assignMeta->type.kind == DataType::COMPONENT ||
-                 assignMeta->type.kind == DataType::RECORD) &&
-                (!assignMeta->type.isPointer);
+  // Deep copy, arrays and large structs
+  bool isHuge = assignMeta->type.isBase() &&
+                (assignMeta->type.kind == DataType::COMPONENT ||
+                 assignMeta->type.kind == DataType::RECORD);
 
-  if (assignMeta->type.isArray || isHuge) {
+  if (assignMeta->type.isArray() || isHuge) {
     uint64_t byteSize = assignMeta->componentSize;
     llvm::Type *elemLLVMTy =
-        getLLVMType(assignMeta->type.isArray
+        getLLVMType(assignMeta->type.isArray()
                         ? semantics.getArrayElementType(assignMeta->type)
                         : assignMeta->type);
     llvm::Align align = layout->getABITypeAlign(elemLLVMTy);
-
     funcBuilder.CreateMemCpy(targetPtr, align, initValue, align,
                              funcBuilder.getInt64(byteSize));
-    // MemCpy is not a volatile operation
-  } else {
-    // SCALAR CASE
-    llvm::StoreInst *storeInst = nullptr;
-
-    if (assignMeta->isHeap) {
-      llvm::Value *valueToStore = initValue;
-      if (valSym->isAddress) {
-        valueToStore = funcBuilder.CreateLoad(getLLVMType(assignMeta->type),
-                                              initValue, "loaded_val");
-        // The load itself might need to be volatile if reading from volatile
-        if (valSym->isVolatile) {
-          if (auto *load = llvm::dyn_cast<llvm::LoadInst>(valueToStore)) {
-            load->setVolatile(true);
-          }
-        }
-      }
-      // Store the value into y's existing heap space
-      storeInst = funcBuilder.CreateStore(valueToStore, targetPtr);
-    } else {
-      // Standard stack-to-stack assignment
-      storeInst = funcBuilder.CreateStore(initValue, targetPtr);
-    }
-
-    // Mark store as volatile if LHS is volatile
-    if (assignSym->isVolatile && storeInst) {
-      storeInst->setVolatile(true);
-    }
+    inhibitCleanUp = false;
+    emitCleanup(assignStmt);
+    return;
   }
+
+  // Scalar assignment
+  llvm::StoreInst *storeInst = nullptr;
+  if (assignMeta->isHeap) {
+    llvm::Value *valueToStore = initValue;
+    if (valSym && valSym->isAddress) {
+      valueToStore = funcBuilder.CreateLoad(getLLVMType(assignMeta->type),
+                                            initValue, "loaded_val");
+      if (valSym->isVolatile) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(valueToStore))
+          load->setVolatile(true);
+      }
+    }
+    storeInst = funcBuilder.CreateStore(valueToStore, targetPtr);
+  } else {
+    storeInst = funcBuilder.CreateStore(initValue, targetPtr);
+  }
+
+  if (assignSym->isVolatile && storeInst)
+    storeInst->setVolatile(true);
 
   inhibitCleanUp = false;
   emitCleanup(assignStmt);
@@ -261,7 +244,6 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   if (!fieldStmt)
     return;
 
-  // Get all the symbols we need
   auto fieldSym = semantics.getSymbolFromMeta(fieldStmt);
   auto lhsSym = semantics.getSymbolFromMeta(fieldStmt->lhs_chain.get());
   auto valSym = semantics.getSymbolFromMeta(fieldStmt->value.get());
@@ -272,73 +254,59 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   }
 
   logInternal("Generating field assignment");
-
-  // INHIBIT cleanup during RHS evaluation
   inhibitCleanUp = true;
 
-  // Get the address of the field (LHS)
   llvm::Value *fieldAddress = generateInfixAddress(fieldStmt->lhs_chain.get());
-  if (!fieldAddress) {
+  if (!fieldAddress)
     reportDevBug("Failed to get field address", fieldStmt);
-    return;
-  }
 
-  // POINTER ASSIGNMENT (ptr field = addr something)
-  if (fieldSym->isPointer) {
+  // Pointer field reassignment
+  if (fieldSym->type.isPointer()) {
     llvm::Value *newAddr = generateExpression(fieldStmt->value.get());
     auto *storeInst = funcBuilder.CreateStore(newAddr, fieldAddress);
-    if (fieldSym->isVolatile) {
+    if (fieldSym->isVolatile)
       storeInst->setVolatile(true);
-    }
-
     inhibitCleanUp = false;
     emitCleanup(fieldStmt);
-
     return;
   }
 
-  // Generate RHS value (could be complex)
   llvm::Value *rhsValue = generateExpression(fieldStmt->value.get());
 
-  // CASE 2: MOVE EXPRESSION (field = move something)
+  // Move expression
   if (dynamic_cast<MoveExpression *>(fieldStmt->value.get())) {
     logInternal("Handling move assignment to field");
     auto *storeInst = funcBuilder.CreateStore(rhsValue, fieldAddress);
-    if (fieldSym->isVolatile) {
+    if (fieldSym->isVolatile)
       storeInst->setVolatile(true);
-    }
-
     inhibitCleanUp = false;
     emitCleanup(fieldStmt);
     return;
   }
 
-  //  DEEP COPY (large structs/arrays)
-  bool isHuge = (fieldSym->type.kind == DataType::COMPONENT ||
-                 fieldSym->type.kind == DataType::RECORD) &&
-                (!fieldSym->type.isPointer);
+  // Deep copy, arrays and large structs not behind a pointer
+  bool isHuge =
+      fieldSym->type.isBase() && (fieldSym->type.kind == DataType::COMPONENT ||
+                                  fieldSym->type.kind == DataType::RECORD);
 
-  if (fieldSym->type.isArray || isHuge) {
+  if (fieldSym->type.isArray() || isHuge) {
     logInternal("Handling deep copy to field");
     uint64_t byteSize = fieldSym->componentSize;
     llvm::Type *elemLLVMTy = getLLVMType(
-        fieldSym->type.isArray ? semantics.getArrayElementType(fieldSym->type)
-                               : fieldSym->type);
+        fieldSym->type.isArray() ? semantics.getArrayElementType(fieldSym->type)
+                                 : fieldSym->type);
     llvm::Align align = layout->getABITypeAlign(elemLLVMTy);
 
-    // For array fields, we might need to load the field's address differently
-    if (fieldSym->type.isArray) {
+    if (fieldSym->type.isArray()) {
       llvm::Value *fieldBasePtr = funcBuilder.CreateLoad(
           funcBuilder.getPtrTy(), fieldAddress, "field_array_base");
       if (fieldSym->isVolatile) {
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(fieldBasePtr)) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(fieldBasePtr))
           load->setVolatile(true);
-        }
       }
       funcBuilder.CreateMemCpy(fieldBasePtr, align, rhsValue, align,
                                funcBuilder.getInt64(byteSize));
     } else {
-      // Regular struct copy
       funcBuilder.CreateMemCpy(fieldAddress, align, rhsValue, align,
                                funcBuilder.getInt64(byteSize));
     }
@@ -348,36 +316,28 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
     return;
   }
 
-  // SCALAR ASSIGNMENT (normal case)
+  // Scalar assignment
   llvm::StoreInst *storeInst = nullptr;
-
   if (fieldSym->isHeap) {
-    // Field points to heap memory
     llvm::Value *valueToStore = rhsValue;
     if (valSym->isAddress) {
-      // Need to load the actual value from the address
       valueToStore = funcBuilder.CreateLoad(getLLVMType(fieldSym->type),
                                             rhsValue, "loaded_field_val");
       if (valSym->isVolatile) {
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(valueToStore)) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(valueToStore))
           load->setVolatile(true);
-        }
       }
     }
     storeInst = funcBuilder.CreateStore(valueToStore, fieldAddress);
   } else {
-    // Regular stack assignment
     storeInst = funcBuilder.CreateStore(rhsValue, fieldAddress);
   }
 
-  if (fieldSym->isVolatile && storeInst) {
+  if (fieldSym->isVolatile && storeInst)
     storeInst->setVolatile(true);
-  }
 
-  // RELEASE inhibitor and CLEANUP
   inhibitCleanUp = false;
   emitCleanup(fieldStmt);
-
   logInternal("Ended field assignment generation");
 }
 
@@ -450,18 +410,20 @@ llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
 
   // After generating all statements, check if we have a terminator
   llvm::BasicBlock *currentBlock = funcBuilder.GetInsertBlock();
-  llvm::Instruction *terminator = currentBlock ? currentBlock->getTerminator() : nullptr;
-  
+  llvm::Instruction *terminator =
+      currentBlock ? currentBlock->getTerminator() : nullptr;
+
   if (terminator) {
     // Save the terminator (return) position
     llvm::ReturnInst *ret = llvm::dyn_cast<llvm::ReturnInst>(terminator);
     if (ret) {
       // Remove the terminator temporarily
       terminator->removeFromParent();
-      
-      // Insert cleanup at the current insertion point (which is before where the return was)
+
+      // Insert cleanup at the current insertion point (which is before where
+      // the return was)
       emitBlockCleanUp(blockExpr);
-      
+
       // Re-insert the return
       funcBuilder.Insert(ret);
     } else {
@@ -478,178 +440,141 @@ llvm::Value *IRGenerator::generateBlockExpression(Node *node) {
 }
 
 // HELPER FUNCTIONS
-llvm::Type *IRGenerator::getLLVMType(ResolvedType type) {
+llvm::Type *IRGenerator::getLLVMType(const ResolvedType &type) {
+
+  // ── Modifier cases — recurse first ───────────────────
+  if (type.isPointer() || type.isRef()) {
+    llvm::Type *ptrTy = llvm::PointerType::get(context, 0);
+    if (type.isNull) {
+      return llvm::StructType::get(context,
+                                   {llvm::Type::getInt1Ty(context), ptrTy});
+    }
+    return ptrTy;
+  }
+
+  if (type.isArray()) {
+    if (!type.innerType)
+      reportDevBug("Array type has no inner element type", nullptr);
+    llvm::Type *elemTy = getLLVMType(*type.innerType);
+    llvm::Type *arrTy = llvm::PointerType::get(elemTy, 0);
+    if (type.isNull) {
+      return llvm::StructType::get(context,
+                                   {llvm::Type::getInt1Ty(context), arrTy});
+    }
+    return arrTy;
+  }
+
+  // ── Base case ─────────────────────────────────────────
   llvm::Type *baseType = nullptr;
-
   switch (type.kind) {
-  case DataType::I8: {
+  case DataType::I8:
+  case DataType::U8:
+  case DataType::CHAR8:
     baseType = llvm::Type::getInt8Ty(context);
     break;
-  }
-  case DataType::U8: {
-    baseType = llvm::Type::getInt8Ty(context);
-    break;
-  }
-  case DataType::I16: {
-    baseType = llvm::Type::getInt16Ty(context);
-    break;
-  }
-  case DataType::U16: {
-    baseType = llvm::Type::getInt16Ty(context);
-    break;
-  }
-  case DataType::I32: {
-    baseType = llvm::Type::getInt32Ty(context);
-    break;
-  }
-  case DataType::U32: {
-    baseType = llvm::Type::getInt32Ty(context);
-    break;
-  }
-  case DataType::I64: {
-    baseType = llvm::Type::getInt64Ty(context);
-    break;
-  }
-  case DataType::U64: {
-    baseType = llvm::Type::getInt64Ty(context);
-    break;
-  }
-  case DataType::I128: {
-    baseType = llvm::Type::getInt128Ty(context);
-    break;
-  }
 
-  case DataType::U128: {
+  case DataType::I16:
+  case DataType::U16:
+  case DataType::CHAR16:
+    baseType = llvm::Type::getInt16Ty(context);
+    break;
+
+  case DataType::I32:
+  case DataType::U32:
+  case DataType::CHAR32:
+    baseType = llvm::Type::getInt32Ty(context);
+    break;
+
+  case DataType::I64:
+  case DataType::U64:
+    baseType = llvm::Type::getInt64Ty(context);
+    break;
+
+  case DataType::I128:
+  case DataType::U128:
     baseType = llvm::Type::getInt128Ty(context);
     break;
-  }
 
   case DataType::ISIZE:
-  case DataType::USIZE: {
+  case DataType::USIZE:
     baseType = module->getDataLayout().getIntPtrType(context);
     break;
-  }
 
-  case DataType::BOOLEAN: {
+  case DataType::BOOLEAN:
     baseType = llvm::Type::getInt1Ty(context);
     break;
-  }
-  case DataType::CHAR8: {
-    baseType = llvm::Type::getInt8Ty(context);
-    break;
-  }
-  case DataType::CHAR16: {
-    baseType = llvm::Type::getInt16Ty(context);
-    break;
-  }
-  case DataType::CHAR32: {
-    baseType = llvm::Type::getInt32Ty(context);
-    break;
-  }
-  case DataType::F32: {
+
+  case DataType::F32:
     baseType = llvm::Type::getFloatTy(context);
     break;
-  }
-  case DataType::F64: {
+
+  case DataType::F64:
     baseType = llvm::Type::getDoubleTy(context);
     break;
-  }
 
-  case DataType::STRING: {
+  case DataType::STRING:
+  case DataType::OPAQUE:
     baseType = llvm::PointerType::get(context, 0);
     break;
-  }
 
-  case DataType::VOID: {
+  case DataType::VOID:
     baseType = llvm::Type::getVoidTy(context);
     break;
-  }
-
-  case DataType::OPAQUE: {
-    baseType = llvm::PointerType::get(context, 0);
-    break;
-  }
 
   case DataType::RECORD:
   case DataType::COMPONENT: {
     if (type.resolvedName.empty()) {
-      errorHandler.addHint(
-          "The semantics probably stored a type whose type name is empty");
-      reportDevBug("Custom type requested but the resolved name is empty",
-                   nullptr);
+      errorHandler.addHint("Semantics probably stored a type with empty name");
+      reportDevBug("Custom type requested but resolvedName is empty", nullptr);
     }
-
-    std::string lookUpName = type.resolvedName;
-    if (type.isPointer) {
-      lookUpName = semantics.stripPtrSuffix(lookUpName);
-    } else {
-      lookUpName = semantics.stripRefSuffix(lookUpName);
-    }
-
-    auto it = llvmCustomTypes.find(lookUpName);
-    if (it != llvmCustomTypes.end())
-      baseType = it->second;
-    else {
+    // No suffix stripping needed, modifiers handled above
+    // resolvedName is always clean at this point
+    auto it = llvmCustomTypes.find(type.resolvedName);
+    if (it == llvmCustomTypes.end()) {
       errorHandler.addHint(
-          "The type '" + lookUpName +
-          "' was not stoed in the custom type map used by the IRGenerator");
-      reportDevBug("IRgenerator requested for unknown type '" + lookUpName +
+          "Type '" + type.resolvedName +
+          "' was not stored in the IRGenerator custom type map");
+      reportDevBug("IRGenerator requested unknown type '" + type.resolvedName +
                        "'",
                    nullptr);
     }
+    baseType = it->second;
     break;
   }
 
   case DataType::ENUM: {
-    auto enumInfo = semantics.customTypesTable[type.resolvedName];
-    baseType = getLLVMType({enumInfo->underLyingType, ""});
+    auto enumIt = semantics.customTypesTable.find(type.resolvedName);
+    if (enumIt == semantics.customTypesTable.end()) {
+      reportDevBug("IRGenerator requested unknown enum '" + type.resolvedName +
+                       "'",
+                   nullptr);
+    }
+    baseType = getLLVMType(ResolvedType::makeBase(
+        enumIt->second->underLyingType, type.resolvedName));
     break;
   }
 
   case DataType::ERROR:
   case DataType::GENERIC:
-  case DataType::UNKNOWN: {
+  case DataType::UNKNOWN:
     errorHandler.addHint(
-        "Semantics failed to guard against unknown error leaks");
-    reportDevBug("Type '" + type.resolvedName + "' is unknown", nullptr);
-  }
-  }
-
-  llvm::Type *finalType = baseType;
-
-  if (type.isArray) {
-    finalType = llvm::PointerType::get(baseType, 0);
-  }
-
-  // If the data type aint opaque (I dont want ptr ptr)
-  if (type.kind != DataType::OPAQUE) {
-    if (type.isPointer || type.isRef) {
-      finalType = llvm::PointerType::get(baseType, 0);
-    }
+        "Semantics failed to guard against unknown type leaks");
+    reportDevBug("Unknown type '" + type.resolvedName + "' reached IRGenerator",
+                 nullptr);
   }
 
   if (type.isNull) {
-    // This creates { i1, ptr } or { i1, i32 }
-    std::vector<llvm::Type *> fields = {
-        llvm::Type::getInt1Ty(context), // Flag
-        finalType                       // Payload (could be i32 OR ptr)
-    };
-    return llvm::StructType::get(context, fields);
+    return llvm::StructType::get(context,
+                                 {llvm::Type::getInt1Ty(context), baseType});
   }
 
-  return finalType;
+  return baseType;
 }
 
 // Registering generator functions for statements
 void IRGenerator::registerGeneratorFunctions() {
-  generatorFunctionsMap[typeid(LetStatement)] =
-      &IRGenerator::generateLetStatement;
-  generatorFunctionsMap[typeid(HeapStatement)] =
-      &IRGenerator::generateHeapStatement;
-  generatorFunctionsMap[typeid(ReferenceStatement)] =
-      &IRGenerator::generateReferenceStatement;
-  generatorFunctionsMap[typeid(PointerStatement)] =
-      &IRGenerator::generatePointerStatement;
+  generatorFunctionsMap[typeid(VariableDeclaration)] =
+      &IRGenerator::generateVariableDeclaration;
   generatorFunctionsMap[typeid(ExpressionStatement)] =
       &IRGenerator::generateExpressionStatement;
   generatorFunctionsMap[typeid(AssignmentStatement)] =
@@ -686,9 +611,6 @@ void IRGenerator::registerGeneratorFunctions() {
       &IRGenerator::generateComponentStatement;
   generatorFunctionsMap[typeid(EnumStatement)] =
       &IRGenerator::generateEnumStatement;
-
-  generatorFunctionsMap[typeid(ArrayStatement)] =
-      &IRGenerator::generateArrayStatement;
   generatorFunctionsMap[typeid(TraceStatement)] =
       &IRGenerator::generateTraceStatement;
   generatorFunctionsMap[typeid(InstantiateStatement)] =
@@ -1088,7 +1010,7 @@ void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
   };
 
   // If the expression is a pointer
-  if (type.isPointer) {
+  if (type.isPointer()) {
     printPointer(val);
     return;
   }
@@ -1313,27 +1235,84 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   funcBuilder.CreateCall(deallocFunc, {castPtr});
 }
 
-void IRGenerator::emitCleanup(Node *contextNode) {
-  if (inhibitCleanUp) {
-    logInternal("[CLEANUP-CHECK] Cleanup inhibited");
+void IRGenerator::emitDeclarationClean(Node *contextNode) {
+  logInternal("[DECL-CLEAN] Node: " + contextNode->toString());
+
+  auto it = semantics.responsibilityTable.find(contextNode);
+  if (it == semantics.responsibilityTable.end()) {
+    logInternal("  [DECL-CLEAN] No baton associated with this node: " +
+                contextNode->toString());
     return;
   }
-  logInternal("[CLEANUP-CHECK] Node: " + contextNode->toString());
+
+  auto &baton = it->second;
+  if (!baton) {
+    logInternal("  [DECL-CLEAN] Baton pointer is null.");
+    return;
+  }
+
+  auto sym = semantics.getSymbolFromMeta(contextNode);
+  if (!sym)
+    reportDevBug("Failed to get identifier symbol info for node: " +
+                     contextNode->toString(),
+                 contextNode);
+
+  logInternal("  [DECL-CLEAN] ID: " + sym->ID +
+              " | Responsible: " + (baton->isResponsible ? "T" : "F") +
+              " | PtrCount: " + std::to_string(sym->pointerCount) +
+              " | RefCount: " + std::to_string(sym->refCount));
+
+  if (!baton->isResponsible) {
+    logInternal("  [DECL-CLEAN] Baton is not responsible for memory.");
+    return;
+  }
+
+  // Trigger Logic (Counts)
+  if (sym->pointerCount == 0 && sym->refCount == 0) {
+    logInternal("  [DECL-CLEAN] Last use detected. Commencing physical free.");
+    // Free the depenedents first
+    logInternal("  [Dependents] Size: " +
+                std::to_string(baton->dependents.size()));
+    for (const auto &[id, depSym] : baton->dependents) {
+      logInternal("    [Dep-Free] ID: " + id);
+      executePhysicalFree(depSym);
+    }
+
+    // Free the leader
+    if (sym->isHeap) {
+      logInternal("  [Leader] ID: " + sym->ID);
+      executePhysicalFree(sym);
+    }
+
+    // Defuse to avoid issues
+    baton->isResponsible = false;
+    logInternal("  [DECL-CLEAN] Responsibility revoked for: " + sym->ID);
+  } else {
+    logInternal("  [DECL-CLEAN] Baton still has active references/pointers.");
+  }
+}
+
+void IRGenerator::emitCleanup(Node *contextNode) {
+  if (inhibitCleanUp) {
+    logInternal("[NORMAL-CLEAN] Cleanup inhibited");
+    return;
+  }
+  logInternal("[NORMAL-CLEAN] Node: " + contextNode->toString());
   if (dynamic_cast<Identifier *>(contextNode) != contextNode)
-    logInternal("[CLEANUP-CHECK] Composite node detected");
+    logInternal("[NORMAL-CLEAN] Composite node detected");
 
   auto identifiers = semantics.digIdentifiers(contextNode);
   for (const auto &identifier : identifiers) {
     auto it = semantics.responsibilityTable.find(identifier);
     if (it == semantics.responsibilityTable.end()) {
-      logInternal("  [SKIP] No baton associated with this node: " +
+      logInternal("  [NORMAL-CLEAN] No baton associated with this node: " +
                   identifier->toString());
       continue;
     }
 
     auto &baton = it->second;
     if (!baton) {
-      logInternal("  [SKIP] Baton pointer is null.");
+      logInternal("  [NORMAL-CLEAN] Baton pointer is null.");
       return;
     }
 
@@ -1344,19 +1323,20 @@ void IRGenerator::emitCleanup(Node *contextNode) {
                        "' in node: " + contextNode->toString(),
                    identifier);
 
-    logInternal("  [BATON-STATE] ID: " + identSym->ID +
+    logInternal("  [NORMAL-CLEAN] ID: " + identSym->ID +
                 " | Responsible: " + (baton->isResponsible ? "T" : "F") +
                 " | PtrCount: " + std::to_string(identSym->pointerCount) +
                 " | RefCount: " + std::to_string(identSym->refCount));
 
     if (!baton->isResponsible) {
-      logInternal("  [SKIP] Baton is not responsible for memory.");
+      logInternal("  [NORMAL-CLEAN] Baton is not responsible for memory.");
       return;
     }
 
     // Trigger Logic (Counts)
     if (identSym->pointerCount == 0 && identSym->refCount == 0) {
-      logInternal("  [TRIGGER] Last use detected. Commencing physical free.");
+      logInternal(
+          "  [NORMAL-CLEAN] Last use detected. Commencing physical free.");
       // Free the depenedents first
       logInternal("  [Dependents] Size: " +
                   std::to_string(baton->dependents.size()));
@@ -1373,10 +1353,11 @@ void IRGenerator::emitCleanup(Node *contextNode) {
 
       // Defuse to avoid issues
       baton->isResponsible = false;
-      logInternal("  [BATON-DEFUSED] Responsibility revoked for: " +
+      logInternal("  [NORMAL-CLEAN] Responsibility revoked for: " +
                   identSym->ID);
     } else {
-      logInternal("  [HOLD] Baton still has active references/pointers.");
+      logInternal(
+          "  [NORMAL-CLEAN] Baton still has active references/pointers.");
     }
   }
 }

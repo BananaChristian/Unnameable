@@ -40,119 +40,85 @@ llvm::Value *IRGenerator::handleArithmeticAndBitwise(
     InfixExpression *infix, llvm::Value *left, llvm::Value *right,
     const std::shared_ptr<SymbolInfo> &leftSym,
     const std::shared_ptr<SymbolInfo> &rightSym) {
+
   auto infixSym = semantics.getSymbolFromMeta(infix);
   auto resultType = infixSym->type;
-  llvm::Value *result = nullptr;
 
   switch (infix->operat.type) {
   case TokenType::PLUS: {
-    if (leftSym->type.isPointer) {
-      ResolvedType baseTypeInfo = leftSym->type;
-
-      // Strip the copy to avoid mutating the original
-      baseTypeInfo.isPointer = false;
-      baseTypeInfo.resolvedName =
-          semantics.stripPtrSuffix(leftSym->type.resolvedName);
-
-      llvm::Type *baseTy = getLLVMType(baseTypeInfo);
-      result = funcBuilder.CreateGEP(baseTy, left, right, "ptr_addtmp");
-      return result;
+    // Pointer arithmetic, GEP into what the pointer points to
+    if (leftSym->type.isPointer()) {
+      if (!leftSym->type.innerType)
+        reportDevBug("Pointer has no inner type for arithmetic", infix);
+      llvm::Type *baseTy = getLLVMType(*leftSym->type.innerType);
+      return funcBuilder.CreateGEP(baseTy, left, right, "ptr_addtmp");
     }
-
-    if (isIntegerType(resultType.kind)) {
-      result = funcBuilder.CreateAdd(left, right, "addtmp");
-      return result;
-    } else {
-      result = funcBuilder.CreateFAdd(left, right, "faddtmp");
-      return result;
-    }
+    if (isIntegerType(resultType.base().kind))
+      return funcBuilder.CreateAdd(left, right, "addtmp");
+    return funcBuilder.CreateFAdd(left, right, "faddtmp");
   }
 
   case TokenType::MINUS: {
-    if (leftSym->type.isPointer) {
-      ResolvedType baseTypeInfo = leftSym->type;
-      // Strip the copy to avoid mutating the original
-      baseTypeInfo.isPointer = false;
-      baseTypeInfo.resolvedName =
-          semantics.stripPtrSuffix(leftSym->type.resolvedName);
-
-      llvm::Type *baseTy = getLLVMType(baseTypeInfo);
-
+    // Pointer arithmetic,negative GEP
+    if (leftSym->type.isPointer()) {
+      if (!leftSym->type.innerType)
+        reportDevBug("Pointer has no inner type for arithmetic", infix);
+      llvm::Type *baseTy = getLLVMType(*leftSym->type.innerType);
       llvm::Value *negRight = funcBuilder.CreateNeg(right, "neg_offset");
-      result = funcBuilder.CreateGEP(baseTy, left, negRight, "ptr_subtmp");
-      return result;
+      return funcBuilder.CreateGEP(baseTy, left, negRight, "ptr_subtmp");
     }
-
-    if (isIntegerType(resultType.kind)) {
-      result = funcBuilder.CreateSub(left, right, "subtmp");
-      return result;
-    } else {
-      result = funcBuilder.CreateFSub(left, right, "fsubtmp");
-      return result;
-    }
+    if (isIntegerType(resultType.base().kind))
+      return funcBuilder.CreateSub(left, right, "subtmp");
+    return funcBuilder.CreateFSub(left, right, "fsubtmp");
   }
 
   case TokenType::ASTERISK: {
-    if (isIntegerType(resultType.kind)) {
-      result = funcBuilder.CreateMul(left, right, "multmp");
-      return result;
-    } else {
-      result = funcBuilder.CreateFMul(left, right, "fmultmp");
-      return result;
-    }
+    if (isIntegerType(resultType.base().kind))
+      return funcBuilder.CreateMul(left, right, "multmp");
+    return funcBuilder.CreateFMul(left, right, "fmultmp");
   }
 
   case TokenType::DIVIDE: {
-    if (isIntegerType(resultType.kind)) {
-      result = isSignedInteger(resultType.kind)
-                   ? funcBuilder.CreateSDiv(left, right, "divtmp")
-                   : funcBuilder.CreateUDiv(left, right, "divtmp");
-      return result;
-    } else {
-      result = funcBuilder.CreateFDiv(left, right, "fdivtmp");
-      return result;
+    if (isIntegerType(resultType.base().kind)) {
+      return isSignedInteger(resultType.base().kind)
+                 ? funcBuilder.CreateSDiv(left, right, "divtmp")
+                 : funcBuilder.CreateUDiv(left, right, "divtmp");
     }
+    return funcBuilder.CreateFDiv(left, right, "fdivtmp");
   }
 
   case TokenType::MODULUS: {
-
-    if (isIntegerType(resultType.kind)) {
-      result = isSignedInteger(resultType.kind)
-                   ? funcBuilder.CreateSRem(left, right, "modtmp")
-                   : funcBuilder.CreateURem(left, right, "modtmp");
-      return result;
-    } else
+    if (!isIntegerType(resultType.base().kind))
       throw std::runtime_error(
-          "Modulus not supported for FLOAT or DOUBLE at line " +
+          "Modulus not supported for float types at line " +
           std::to_string(infix->operat.line));
+    return isSignedInteger(resultType.base().kind)
+               ? funcBuilder.CreateSRem(left, right, "modtmp")
+               : funcBuilder.CreateURem(left, right, "modtmp");
   }
 
-  case TokenType::BITWISE_AND: {
-    result = funcBuilder.CreateAnd(left, right, "andtmp");
+  case TokenType::BITWISE_AND:
     return funcBuilder.CreateAnd(left, right, "andtmp");
-  }
-  case TokenType::BITWISE_OR: {
-    result = funcBuilder.CreateOr(left, right, "ortmp");
-    return result;
-  }
-  case TokenType::BITWISE_XOR: {
-    result = funcBuilder.CreateXor(left, right, "xortmp");
-    return result;
-  }
-  case TokenType::SHIFT_LEFT: {
-    result = funcBuilder.CreateShl(left, right, "shltmp");
-    return result;
-  }
-  case TokenType::SHIFT_RIGHT: {
-    result = isSignedInteger(resultType.kind)
-                 ? funcBuilder.CreateAShr(left, right, "ashrtmp")
-                 : funcBuilder.CreateLShr(left, right, "lshrtmp");
-    return result;
-  }
+
+  case TokenType::BITWISE_OR:
+    return funcBuilder.CreateOr(left, right, "ortmp");
+
+  case TokenType::BITWISE_XOR:
+    return funcBuilder.CreateXor(left, right, "xortmp");
+
+  case TokenType::SHIFT_LEFT:
+    return funcBuilder.CreateShl(left, right, "shltmp");
+
+  case TokenType::SHIFT_RIGHT:
+    return isSignedInteger(resultType.base().kind)
+               ? funcBuilder.CreateAShr(left, right, "ashrtmp")
+               : funcBuilder.CreateLShr(left, right, "lshrtmp");
+
   default:
-    throw std::runtime_error(
-        "Unsupported infix operator: " + infix->operat.TokenLiteral +
-        " at line " + std::to_string(infix->operat.line));
+    reportDevBug("Unsupported infix operator: " + infix->operat.TokenLiteral +
+                     " at line " + std::to_string(infix->operat.line),
+                 infix);
+    return nullptr;
   }
 }
 
@@ -219,11 +185,12 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
       cmpRes = funcBuilder.CreateFCmpOGE(left, right, "fcmptmp");
       break;
     default:
-      throw std::runtime_error("Unsupported float comparison operator");
+      reportDevBug("Unsupported float comparison operator", infix);
+      break;
     }
 
     return cmpRes;
-  } else if (leftSym->type.isPointer || rightSym->type.isPointer) {
+  } else if (leftSym->type.isPointer() || rightSym->type.isPointer()) {
 
     if (left->getType() != right->getType()) {
       right = funcBuilder.CreateBitCast(right, left->getType(), "ptr_cmp_norm");
@@ -250,14 +217,16 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
       cmpRes = funcBuilder.CreateICmpUGE(left, right, "ptr_ge");
       break;
     default:
-      throw std::runtime_error("Unsupported pointer comparison operator");
+      reportDevBug("Unsupported pointer comparison operator", infix);
+      break;
     }
 
     return cmpRes;
   } else {
-    throw std::runtime_error("Comparison not supported for types '" +
-                             leftSym->type.resolvedName + "' and '" +
-                             rightSym->type.resolvedName + "'");
+    reportDevBug("Comparison not supported for types '" +
+                     leftSym->type.resolvedName + "' and '" +
+                     rightSym->type.resolvedName + "'",
+                 infix);
   }
   return cmpRes;
 }
@@ -320,10 +289,8 @@ IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
   std::string memberName =
       semantics.extractIdentifierName(infix->right_operand.get());
 
-  if (leftSym->type.isPointer)
-    lookUpName = semantics.stripPtrSuffix(parentTypeName);
-  else if (leftSym->type.isRef)
-    lookUpName = semantics.stripRefSuffix(parentTypeName);
+  if (leftSym->type.isPointer() || leftSym->type.isRef())
+    lookUpName = semantics.getBaseTypeName(leftSym->type);
 
   auto parentTypeIt = semantics.customTypesTable.find(lookUpName);
   if (parentTypeIt == semantics.customTypesTable.end())

@@ -159,8 +159,8 @@ AllocatorRole Semantics::getFunctionRole(
   ResolvedType retType = inferNodeDataType(returnType);
 
   // ALLOCATE function
-  if (retType.isPointer) {
-    if (paramType.kind != DataType::USIZE || paramType.isPointer) {
+  if (retType.isPointer()) {
+    if (paramType.kind != DataType::USIZE || paramType.isPointer()) {
       logSemanticErrors(
           "Allocation function '" + funcName +
               "' must take a size parameter of type 'usize' but got '" +
@@ -177,7 +177,7 @@ AllocatorRole Semantics::getFunctionRole(
       return AllocatorRole::NONE;
     }
 
-    if (retType.isArray || retType.isRef) {
+    if (retType.isArray() || retType.isRef()) {
       logSemanticErrors("Allocation function '" + funcName +
                             "' cannot return arrays or references",
                         returnType);
@@ -189,7 +189,7 @@ AllocatorRole Semantics::getFunctionRole(
 
   // FREE function
   if (retType.kind == DataType::VOID) {
-    if (!paramType.isPointer || !(paramType.kind == DataType::OPAQUE)) {
+    if (!paramType.isPointer() || !(paramType.kind == DataType::OPAQUE)) {
       logSemanticErrors(
           "Free function '" + funcName +
               "' must take a parameter of 'ptr opaque' but got '" +
@@ -210,93 +210,33 @@ AllocatorRole Semantics::getFunctionRole(
   return AllocatorRole::NONE;
 }
 
-void Semantics::walkHeapStatement(Node *node) {
-  auto heapStmt = dynamic_cast<HeapStatement *>(node);
-  if (!heapStmt)
-    return;
-
-  bool hasError = false;
-
-  std::string allocType;
-  // Check if it has the allocator type
-  if (heapStmt->allocType) {
-    auto allocIdent = dynamic_cast<Identifier *>(heapStmt->allocType.get());
-    const std::string &allocName = allocIdent->identifier.TokenLiteral;
-    // Check if the allocator exists in the allocatorMap
-    auto allocIt = allocatorMap.find(allocName);
-    if (allocIt == allocatorMap.end()) {
-      logSemanticErrors("Unknown allocator type '" + allocName + "'",
-                        allocIdent);
-      return;
-    }
-
-    allocType = allocIt->first;
-  } else {
-    allocType = "GPA"; // The default GPA type
-  }
-
-  // If it has the stmt
-  auto stmt = heapStmt->stmt.get();
-  walker(stmt);
-
-  // Get the symbol info of the stmt using metaData search
-  auto it = metaData.find(heapStmt->stmt.get());
-  if (it == metaData.end()) {
-    reportDevBug("Could not find statement metaData for declaration in "
-                 "the heap statement ",
-                 heapStmt->stmt.get());
-    return;
-  }
-
-  auto stmtSym = it->second;
-  // Toggle the heap flag, and other flags
-  stmtSym->isHeap = true;
-  stmtSym->allocType = allocType;
-
-  // If the walked stmt has an error then so does the overall dheap statement
-  hasError = stmtSym->hasError;
-
-  auto heapSym = std::make_shared<SymbolInfo>();
-  heapSym->hasError = hasError;
-
-  metaData[heapStmt] =
-      heapSym; // Only store in the metaData table since the initial stmt walk
-               // already registered in the semantic symbol table
-}
-
 void Semantics::registerInbuiltAllocatorTypes() {
-  // alloc for the GPA
   AllocatorHandle stdHandle;
   stdHandle.allocateName = "unn_alloc";
   stdHandle.freeName = "unn_dealloc";
 
-  // Create handle symbol for alloc
-  std::vector<std::pair<ResolvedType, std::string>> allocParams;
-  allocParams.emplace_back(ResolvedType{DataType::USIZE, "usize", false},
-                           "size");
+  // Base types for reuse
+  auto opaqueBase = ResolvedType::makeBase(DataType::OPAQUE, "opaque");
+  auto usizeBase = ResolvedType::makeBase(DataType::USIZE, "usize");
+  auto voidBase = ResolvedType::makeBase(DataType::VOID, "void");
+
+  // alloc: (usize) -> ptr<opaque>
   auto allocSym = std::make_shared<SymbolInfo>();
   allocSym->isFunction = true;
   allocSym->isDeclaration = true;
-  allocSym->returnType = ResolvedType{DataType::OPAQUE, "opaque_ptr",
-                                      true}; // The ptr opaque return type
-  allocSym->paramTypes = allocParams;
   allocSym->isDefined = false;
-
+  allocSym->returnType = makePointerType(opaqueBase, false); // ptr<opaque>
+  allocSym->paramTypes.emplace_back(usizeBase, "size");
   stdHandle.allocatorSymbol = allocSym;
 
-  // Create handle symbol for free
-  std::vector<std::pair<ResolvedType, std::string>> freeParams;
-  freeParams.emplace_back(ResolvedType{DataType::OPAQUE, "opaque_ptr", true},
-                          "p");
+  // free: (ptr<opaque>) -> void
   auto freeSym = std::make_shared<SymbolInfo>();
   freeSym->isFunction = true;
   freeSym->isDeclaration = true;
-  freeSym->returnType =
-      ResolvedType{DataType::VOID, "void"}; // The void return type
-  freeSym->paramTypes = freeParams;
   freeSym->isDefined = false;
-
+  freeSym->returnType = voidBase;
+  freeSym->paramTypes.emplace_back(makePointerType(opaqueBase, false), "p");
   stdHandle.freeSymbol = freeSym;
 
-  allocatorMap["GPA"] = stdHandle; // Register GPA allocator type
+  allocatorMap["GPA"] = stdHandle;
 }

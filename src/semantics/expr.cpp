@@ -215,7 +215,7 @@ void Semantics::walkUnwrapExpression(Node *node) {
 
   // Stripping the type
   exprType.isNull = false;
-  auto strippedName = stripOptionalSuffix(exprType.resolvedName);
+  auto strippedName = getBaseTypeName(exprType);
   exprType.resolvedName = strippedName;
 
   auto unwrapSym = std::make_shared<SymbolInfo>();
@@ -242,12 +242,6 @@ void Semantics::walkBasicType(Node *node) {
     return;
 }
 
-void Semantics::walkArrayType(Node *node) {
-  auto arrayType = dynamic_cast<ArrayType *>(node);
-  if (!arrayType)
-    return;
-}
-
 void Semantics::walkCastExpression(Node *node) {
   auto castExpr = dynamic_cast<CastExpression *>(node);
   if (!castExpr)
@@ -255,115 +249,34 @@ void Semantics::walkCastExpression(Node *node) {
 
   bool hasError = false;
 
-  // Resolve Destination Type (The type in the < >)
-  auto type = castExpr->type.get();
-  if (!type)
+  auto destNode = castExpr->type.get();
+  if (!destNode)
     return;
 
-  ResolvedType destinationType = inferNodeDataType(type);
+  ResolvedType destinationType = inferNodeDataType(destNode);
+
+  // Cast destination must be a plain scalar, no modifiers
+  if (!destinationType.isBase()) {
+    errorHandler.addHint("'cast' only converts between scalar numeric types")
+        .addHint("For pointer conversions use 'bitcast'")
+        .addHint("Example: cast<i32>(myFloat)");
+    logSemanticErrors("Cast destination '" + destinationType.resolvedName +
+                          "' must be a scalar type",
+                      destNode);
+  }
+
   if (destinationType.isNull) {
-    logSemanticErrors("Cannot cast to a nullable type '" +
+    errorHandler.addHint("Unwrap the nullable before casting")
+        .addHint("Use '?''?' or 'unwrap' to get the non-nullable value first");
+    logSemanticErrors("Cannot cast to nullable type '" +
                           destinationType.resolvedName + "'",
-                      type);
-    hasError = true;
-  }
-  // Check if the destination type is a scalar otherwise block it
-  bool isDestinationValid = isInteger(destinationType) ||
-                            isBoolean(destinationType) ||
-                            isFloat(destinationType);
-  if (!isDestinationValid) {
-    logSemanticErrors("Invalid cast destination type '" +
-                          destinationType.resolvedName + "'",
-                      type);
-    hasError = true;
+                      destNode);
   }
 
-  // Resolve Source Type (The expression in the ( ))
-  auto source = castExpr->expr.get();
-  if (!source)
-    return;
-
-  walker(source);
-
-  // Retrieve the metaData and check if the source type is valid
-  auto sym = getSymbolFromMeta(source);
-  if (!sym)
-    return;
-
-  ResolvedType sourceType = sym->type;
-  if (sourceType.isNull) {
-    logSemanticErrors("Cannot cast from a nullable type '" +
-                          sourceType.resolvedName + "'",
-                      source);
-    hasError = true;
-  }
-
-  if (sourceType.isPointer) {
-    logSemanticErrors("Cannot cast from a pointer type '" +
-                          sourceType.resolvedName + "' try using a bitcast ",
-                      source);
-    hasError = true;
-  }
-
-  if (sourceType.isRef) {
-    logSemanticErrors("Cannot cast from a reference type '" +
-                          sourceType.resolvedName + "'",
-                      source);
-    hasError = true;
-  }
-
-  bool isSourceValid =
-      isInteger(sourceType) || isFloat(sourceType) || isBoolean(sourceType);
-
-  if (!isSourceValid) {
-    logSemanticErrors(
-        "Invalid source cast type '" + sourceType.resolvedName + "'", source);
-    hasError = true;
-  }
-
-  auto castInfo = std::make_shared<SymbolInfo>();
-
-  castInfo->hasError = hasError;
-  castInfo->type = destinationType;
-
-  metaData[castExpr] = castInfo;
-}
-
-void Semantics::walkBitcastExpression(Node *node) {
-  auto bitcastExpr = dynamic_cast<BitcastExpression *>(node);
-  if (!bitcastExpr)
-    return;
-
-  bool hasError = false;
-
-  // Resolve Destination Type (The type inside < >)
-  auto destTypeNode = bitcastExpr->type.get();
-  if (!destTypeNode)
-    return;
-  ResolvedType destinationType = inferNodeDataType(destTypeNode);
-
-  // Resolve Source Type (The expression inside ( ))
-  auto sourceExpr = bitcastExpr->expr.get();
-  if (!sourceExpr)
-    return;
-
-  walker(sourceExpr); // Analyze the source expression first
-  auto sourceSym = getSymbolFromMeta(sourceExpr);
-
-  if (!sourceSym) {
-    reportDevBug("Could not resolve source expression for bitcast", sourceExpr);
-    return;
-  }
-  ResolvedType sourceType = sourceSym->type;
-
-  // Bitcastable is any type that fits in a general-purpose
-  //  register.
-  auto isBitcastable = [](ResolvedType type) {
-    bool isPtr = type.isPointer;
-    auto kind = type.kind;
-    if (isPtr)
-      return true;
-    switch (kind) {
+  auto isCastable = [](const ResolvedType &t) -> bool {
+    if (!t.isBase())
+      return false; // no pointers, refs, arrays
+    switch (t.base().kind) {
     case DataType::I8:
     case DataType::U8:
     case DataType::I16:
@@ -374,39 +287,182 @@ void Semantics::walkBitcastExpression(Node *node) {
     case DataType::U64:
     case DataType::I128:
     case DataType::U128:
-    case DataType::USIZE:
     case DataType::ISIZE:
+    case DataType::USIZE:
     case DataType::F32:
     case DataType::F64:
-    case DataType::OPAQUE:
+    case DataType::BOOLEAN:
       return true;
     default:
       return false;
     }
   };
 
-  if (!isBitcastable(sourceType)) {
-    logSemanticErrors(
-        "bitcast source must be a pointer or integer type, got '" +
-            sourceType.resolvedName + "'",
-        sourceExpr);
+  if (!isCastable(destinationType)) {
+    errorHandler.addHint("Valid cast destinations: integers, floats, bool")
+        .addHint("For pointer conversions use 'bitcast'")
+        .addHint("For custom types consider implementing a conversion method");
+    logSemanticErrors("Invalid cast destination type '" +
+                          destinationType.resolvedName + "'",
+                      destNode);
     hasError = true;
+  }
+
+  auto sourceExpr = castExpr->expr.get();
+  if (!sourceExpr)
+    return;
+
+  walker(sourceExpr);
+  auto sym = getSymbolFromMeta(sourceExpr);
+  if (!sym)
+    return;
+
+  ResolvedType sourceType = sym->type;
+
+  if (sourceType.isNull) {
+    errorHandler.addHint("Unwrap the nullable before casting")
+        .addHint("Use '?''?' or 'unwrap' to get the non-nullable value first");
+    logSemanticErrors("Cannot cast from nullable type '" +
+                          sourceType.resolvedName + "'",
+                      sourceExpr);
+  }
+
+  if (sourceType.isPointer()) {
+    errorHandler.addHint("Pointers cannot be cast — use 'bitcast' instead")
+        .addHint(
+            "Example: bitcast<usize>(myPtr) to get the address as integer");
+    logSemanticErrors("Cannot cast from pointer type '" +
+                          sourceType.resolvedName + "'",
+                      sourceExpr);
+    hasError = true;
+  }
+
+  if (sourceType.isRef()) {
+    errorHandler
+        .addHint("References are aliases, cast the target variable directly")
+        .addHint(
+            "Example: cast<i32>(targetVar) instead of casting the reference");
+    logSemanticErrors("Cannot cast from reference type '" +
+                          sourceType.resolvedName + "'",
+                      sourceExpr);
+    hasError = true;
+  }
+
+  if (sourceType.isArray()) {
+    errorHandler
+        .addHint("Arrays cannot be cast, cast individual elements instead")
+        .addHint("Example: cast<i32>(myArr[0])");
+    logSemanticErrors("Cannot cast from array type '" +
+                          sourceType.resolvedName + "'",
+                      sourceExpr);
+    hasError = true;
+  }
+
+  if (!isCastable(sourceType)) {
+    errorHandler.addHint("Valid cast sources: integers, floats, bool")
+        .addHint(
+            "Custom types cannot be cast, use a conversion method instead");
+    logSemanticErrors("Invalid cast source type '" + sourceType.resolvedName +
+                          "'",
+                      sourceExpr);
+  }
+
+  auto castInfo = std::make_shared<SymbolInfo>();
+  castInfo->hasError = hasError;
+  castInfo->type = destinationType;
+  metaData[castExpr] = castInfo;
+}
+
+void Semantics::walkBitcastExpression(Node *node) {
+  auto bitcastExpr = dynamic_cast<BitcastExpression *>(node);
+  if (!bitcastExpr)
+    return;
+
+  auto destNode = bitcastExpr->type.get();
+  if (!destNode)
+    return;
+
+  ResolvedType destinationType = inferNodeDataType(destNode);
+
+  auto sourceExpr = bitcastExpr->expr.get();
+  if (!sourceExpr)
+    return;
+
+  walker(sourceExpr);
+  auto sourceSym = getSymbolFromMeta(sourceExpr);
+  if (!sourceSym) {
+    reportDevBug("Could not resolve source for bitcast", sourceExpr);
+    return;
+  }
+
+  ResolvedType sourceType = sourceSym->type;
+
+  // Bitcastable — pointer (any inner type) or scalar numeric
+  // Blocks: refs, arrays, bare custom types, nullable
+  auto isBitcastable = [](const ResolvedType &t) -> bool {
+    // Nullable is never bitcastable — unwrap first
+    if (t.isNull)
+      return false;
+
+    // References are aliases — no bit representation
+    if (t.isRef())
+      return false;
+
+    // Arrays are memory regions not values
+    if (t.isArray())
+      return false;
+
+    if (t.isPointer())
+      return true;
+
+    if (!t.isBase())
+      return false;
+    switch (t.base().kind) {
+    case DataType::COMPONENT:
+    case DataType::RECORD:
+    case DataType::ENUM:
+    case DataType::VOID:
+    case DataType::ERROR:
+    case DataType::UNKNOWN:
+    case DataType::STRING:
+      return false;
+    default:
+      return true; // all scalars and opaque
+    }
+  };
+
+  if (destinationType.isNull) {
+    errorHandler.addHint("Bitcast destination cannot be nullable")
+        .addHint("Remove the '?' from the destination type");
+    logSemanticErrors("Cannot bitcast to nullable type '" +
+                          destinationType.resolvedName + "'",
+                      destNode);
+  }
+
+  if (!isBitcastable(sourceType)) {
+    errorHandler
+        .addHint("Bitcastable types: pointers, integers, floats, opaque")
+        .addHint("References and arrays cannot be bitcast")
+        .addHint("Bare custom types cannot be bitcast, use ptr MyType instead");
+    logSemanticErrors("Cannot bitcast from type '" + sourceType.resolvedName +
+                          "'",
+                      sourceExpr);
   }
 
   if (!isBitcastable(destinationType)) {
-    logSemanticErrors(
-        "bitcast destination must be a pointer or integer type, got '" +
-            destinationType.resolvedName + "'",
-        destTypeNode);
-    hasError = true;
+    errorHandler
+        .addHint("Bitcastable destinations: pointers, integers, floats, opaque")
+        .addHint("References and arrays cannot be bitcast targets")
+        .addHint("Bare custom types cannot be bitcast, use ptr MyType instead");
+    logSemanticErrors("Cannot bitcast to type '" +
+                          destinationType.resolvedName + "'",
+                      destNode);
   }
 
-  // Build the Resulting Symbol
   auto bitcastInfo = std::make_shared<SymbolInfo>();
   bitcastInfo->type = destinationType;
   bitcastInfo->hasError = hasError;
-  bitcastInfo->isPointer = destinationType.isPointer;
-  bitcastInfo->isNullable = destinationType.isNull;
+  hasError = false;
   metaData[bitcastExpr] = bitcastInfo;
 
   logInternal("Bitcast validated: " + sourceType.resolvedName + " -> " +
@@ -437,7 +493,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   ResolvedType arrType = arrSymbol->type;
   logInternal("Array Type '" + arrType.resolvedName + "'");
 
-  if (!arrType.isArray) {
+  if (!arrType.isArray()) {
     logSemanticErrors("Cannot index a non array '" + arrName + "of type '" +
                           arrType.resolvedName + "'",
                       arrExpr);
@@ -543,12 +599,10 @@ void Semantics::walkAddressExpression(Node *node) {
     return;
   }
 
-  bool isSage = symbolInfo->isSage;
   bool isHeap = symbolInfo->isHeap;
 
   auto addrInfo = std::make_shared<SymbolInfo>();
   addrInfo->isPointer = true;
-  addrInfo->isSage = isSage;
   addrInfo->isHeap = isHeap;
   addrInfo->allocType = symbolInfo->allocType;
   addrInfo->targetSymbol = symbolInfo;
@@ -612,6 +666,7 @@ void Semantics::walkMoveExpression(Node *node) {
 
   if (!symbolInfo) {
     logSemanticErrors("Unidentified variable '" + exprName + "'", innerExpr);
+    return;
   }
 
   if (!symbolInfo->isHeap && !symbolInfo->isSage) {
@@ -620,7 +675,7 @@ void Semantics::walkMoveExpression(Node *node) {
                       innerExpr);
   }
 
-  if (symbolInfo->type.isPointer || symbolInfo->type.isRef) {
+  if (symbolInfo->type.isPointer() || symbolInfo->type.isRef()) {
     logSemanticErrors("Cannot move variable '" + exprName +
                           "' as it is of a type '" +
                           symbolInfo->type.resolvedName + "'",
@@ -633,6 +688,7 @@ void Semantics::walkMoveExpression(Node *node) {
   }
 
   metaData[moveExpr] = symbolInfo;
+  hasError = false;
 }
 
 void Semantics::walkDereferenceExpression(Node *node) {
@@ -647,6 +703,8 @@ void Semantics::walkDereferenceExpression(Node *node) {
 
   auto derefSym = resolveSymbolInfo(derefName);
   if (!derefSym) {
+    errorHandler.addHint("Check spelling or declaration order")
+        .addHint("Variables must be declared before use");
     logSemanticErrors("Use of undeclared identifier '" + derefName + "'",
                       derefExpr);
     return;
@@ -655,49 +713,60 @@ void Semantics::walkDereferenceExpression(Node *node) {
   if (derefSym->hasError)
     return;
 
-  // Block dereferencing non pointer
-  if (!derefSym->type.isPointer) {
-    logSemanticErrors("Cannot dereference non pointer type '" +
+  // Must be a pointer to dereference
+  if (!derefSym->type.isPointer()) {
+    errorHandler.addHint("Only pointer types can be dereferenced")
+        .addHint("Declare as: ptr i32 " + derefName + " -> addr target")
+        .addHint("Then dereference with: deref " + derefName);
+    logSemanticErrors("Cannot dereference non-pointer type '" +
                           derefSym->type.resolvedName + "'",
                       derefExpr);
-    return; // Dont bother
-  }
-
-  // Block dereferencing opaque pointer
-  if (derefSym->type.kind == DataType::OPAQUE) {
-    logSemanticErrors(
-        "Cannot dereference an opaque pointer '" + derefName + "'", derefExpr);
     return;
   }
 
-  // Block dereferencing nullable types
+  // Block nullable, must unwrap first
   if (derefSym->type.isNull) {
-    logSemanticErrors("Cannot dereference nullable pointer type '" +
-                          derefSym->type.resolvedName + "'",
+    errorHandler.addHint("Unwrap the nullable pointer before dereferencing")
+        .addHint("Use '?''?' or 'unwrap' to get the non-nullable pointer first")
+        .addHint("Example: deref (myPtr ?? defaultPtr)");
+    logSemanticErrors("Cannot dereference nullable pointer '" + derefName + "'",
                       derefExpr);
     return;
   }
 
-  ResolvedType peeledType = derefSym->type;
-  peeledType.isPointer = false;
-  ResolvedType finalType = isPointerType(peeledType);
+  // Block opaque pointer,no type info to dereference into
+  // With chains opaque lives in innerType not at the top level
+  if (!derefSym->type.innerType) {
+    errorHandler.addHint("Pointer has no inner type information")
+        .addHint("Use bitcast to convert to a typed pointer first")
+        .addHint("Example: bitcast<ptr i32>(myOpaquePtr)");
+    logSemanticErrors("Cannot dereference untyped pointer '" + derefName + "'",
+                      derefExpr);
+    return;
+  }
+
+  if (derefSym->type.innerType->base().kind == DataType::OPAQUE) {
+    errorHandler
+        .addHint("Opaque pointers have no concrete type to dereference into")
+        .addHint("Use bitcast to convert to a typed pointer first")
+        .addHint("Example: bitcast<ptr i32>(myOpaquePtr)");
+    logSemanticErrors("Cannot dereference opaque pointer '" + derefName + "'",
+                      derefExpr);
+    return;
+  }
+
+  // Peel one pointer level, just return what it points to
+  ResolvedType finalType = *derefSym->type.innerType;
 
   auto derefInfo = std::make_shared<SymbolInfo>();
-
-  derefInfo->isPointer = finalType.isPointer;
-  derefInfo->type = finalType; // Setting the final 'i32' type here
+  derefInfo->type = finalType;
   derefInfo->isMutable = derefSym->isMutable;
   derefInfo->isHeap = derefSym->isHeap;
-  derefInfo->isInitialized = derefSym->isInitialized;
-  derefInfo->allocType = derefSym->allocType;
   derefInfo->isVolatile = derefSym->isVolatile;
+  derefInfo->allocType = derefSym->allocType;
+  derefInfo->targetSymbol = derefSym->targetSymbol;
 
-  if (derefSym->targetSymbol != nullptr) {
-    derefInfo->targetSymbol = derefSym->targetSymbol;
-  } else {
-    derefInfo->targetSymbol = nullptr;
-  }
-
+  // Transfer baton if heap
   if (derefSym->isHeap) {
     derefInfo->ID = derefSym->ID;
     transferBaton(derefExpr, derefInfo->ID);
@@ -710,8 +779,6 @@ void Semantics::walkSizeOfExpression(Node *node) {
   auto sizeExpr = dynamic_cast<SizeOfExpression *>(node);
   if (!sizeExpr)
     return;
-
-  bool hasError = false;
 
   Expression *typeNode = sizeExpr->type.get();
   if (!typeNode)
@@ -728,13 +795,14 @@ void Semantics::walkSizeOfExpression(Node *node) {
     auto typeIt = customTypesTable.find(typeName);
     if (typeIt == customTypesTable.end()) {
       logSemanticErrors("Unknown type '" + typeName + "' in sizeof", typeNode);
-      hasError = true;
     }
   }
 
   auto sizeInfo = std::make_shared<SymbolInfo>();
-  sizeInfo->type = ResolvedType{DataType::USIZE, "usize"};
+  sizeInfo->type = ResolvedType::makeBase(DataType::USIZE, "usize");
   sizeInfo->hasError = hasError;
+
+  hasError = false;
 
   metaData[sizeExpr] = sizeInfo;
 }

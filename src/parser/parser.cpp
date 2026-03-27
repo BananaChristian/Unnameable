@@ -162,6 +162,7 @@ bool Parser::isBasicType(TokenType type) {
   case TokenType::CHAR32_KEYWORD:
   case TokenType::STRING_KEYWORD:
   case TokenType::BOOL_KEYWORD:
+  case TokenType::OPAQUE:
     return true;
   default:
     return false;
@@ -314,7 +315,7 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   Token peek1 = peekToken(1);
 
   if (peek1.type == TokenType::IDENTIFIER) {
-    return parseLetStatement();
+    return parseVariableDeclaration();
   }
 
   if (peek1.type == TokenType::LPAREN) {
@@ -374,54 +375,57 @@ void Parser::registerStatementParseFns() {
 
   // For basic types
   StatementParseFunctionsMap[TokenType::I8_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::U8_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::I16_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::U16_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::I32_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::U32_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::I64_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::U64_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::I128_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::U128_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::USIZE_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::ISIZE_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
 
   StatementParseFunctionsMap[TokenType::CHAR8_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::CHAR16_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::CHAR32_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   // For custom types
   StatementParseFunctionsMap[TokenType::IDENTIFIER] =
       &Parser::parseIdentifierStatement;
   StatementParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfAssignment;
 
   StatementParseFunctionsMap[TokenType::F32_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::F64_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::STRING_KEYWORD] =
-      &Parser::parseLetStatement;
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] =
-      &Parser::parseLetStatement;
-  StatementParseFunctionsMap[TokenType::CONST] = &Parser::parseDeclaration;
-  StatementParseFunctionsMap[TokenType::MUT] = &Parser::parseDeclaration;
+      &Parser::parseVariableDeclaration;
+  StatementParseFunctionsMap[TokenType::CONST] = &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::MUT] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::FUNCTION] =
       &Parser::parseFunctionStatement;
-  StatementParseFunctionsMap[TokenType::AUTO] = &Parser::parseLetStatement;
+  StatementParseFunctionsMap[TokenType::AUTO] =
+      &Parser::parseVariableDeclaration;
+  StatementParseFunctionsMap[TokenType::OPAQUE] =
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::COMPONENT] =
       &Parser::parseComponentStatement;
   StatementParseFunctionsMap[TokenType::RECORD] = &Parser::parseRecordStatement;
@@ -436,19 +440,22 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::INSTANTIATE] =
       &Parser::parseInstantiateStatement;
 
-  StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseArrayStatement;
-  StatementParseFunctionsMap[TokenType::SAGE] = &Parser::parseDeclaration;
-  StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseDeclaration;
+  StatementParseFunctionsMap[TokenType::ARRAY] = &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::PERSIST] =
+      &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseVariableModifier;
 
-  StatementParseFunctionsMap[TokenType::VOLATILE] = &Parser::parseDeclaration;
-  StatementParseFunctionsMap[TokenType::RESTRICT] = &Parser::parseDeclaration;
+  StatementParseFunctionsMap[TokenType::VOLATILE] =
+      &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::RESTRICT] =
+      &Parser::parseVariableModifier;
 
   StatementParseFunctionsMap[TokenType::ALLOCATOR] =
       &Parser::parseAllocatorStatement;
   StatementParseFunctionsMap[TokenType::SEAL] = &Parser::parseSealStatement;
   StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseExportStatement;
-  StatementParseFunctionsMap[TokenType::REF] = &Parser::parseReferenceStatement;
-  StatementParseFunctionsMap[TokenType::PTR] = &Parser::parsePointerStatement;
+  StatementParseFunctionsMap[TokenType::REF] = &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::PTR] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::DEREF] =
       &Parser::parseDereferenceAssignment;
 }
@@ -503,18 +510,16 @@ Token Parser::peekToken(int peek) {
   return tokenInput[steps];
 }
 
+void Parser::replaceCurrentToken(const Token &replacement) {
+  currentToken().type = replacement.type;
+  currentToken().TokenLiteral = replacement.TokenLiteral;
+}
+
 bool Parser::isDeclaration(Node *node) {
   bool isDecl = false;
-  if (dynamic_cast<LetStatement *>(node)) {
-    isDecl = true;
-  } else if (dynamic_cast<PointerStatement *>(node)) {
-    isDecl = true;
-  } else if (dynamic_cast<ArrayStatement *>(node)) {
-    isDecl = true;
-  } else if (dynamic_cast<ReferenceStatement *>(node)) {
+  if (dynamic_cast<VariableDeclaration *>(node)) {
     isDecl = true;
   }
-
   return isDecl;
 }
 

@@ -148,40 +148,31 @@ void Semantics::walkInstantiateStatement(Node *node) {
 
 void Semantics::substituteTypes(
     Node *node, std::unordered_map<std::string, Token> &subMap) {
+
   if (auto basic = dynamic_cast<BasicType *>(node)) {
-    // Retrieve the current name(The one in generic)
     std::string genericName = basic->data_token.TokenLiteral;
-    // Check the subMap and find the corresponding type token
     if (subMap.count(genericName)) {
-      logInternal("Subbing Type :" + basic->token.TokenLiteral + " to " +
-                  subMap.at(genericName).TokenLiteral + "");
+      logInternal("Subbing Type: " + basic->token.TokenLiteral + " to " +
+                  subMap.at(genericName).TokenLiteral);
       basic->data_token = subMap.at(genericName);
       basic->token = subMap.at(genericName);
       basic->expression = subMap.at(genericName);
-      logInternal("New Type: " + basic->token.TokenLiteral);
     }
-  } else if (auto array = dynamic_cast<ArrayType *>(node)) {
-    substituteTypes(array->innerType.get(), subMap);
-  } else if (auto ptr = dynamic_cast<PointerType *>(node)) {
-    substituteTypes(ptr->underlyingType.get(), subMap);
-  } else if (auto ref = dynamic_cast<RefType *>(node)) {
-    substituteTypes(ref->underLyingType.get(), subMap);
+  } else if (auto tyMod = dynamic_cast<TypeModifier *>(node)) {
+    if (tyMod->inner_modifier)
+      substituteTypes(tyMod->inner_modifier.get(), subMap);
   } else if (auto ret = dynamic_cast<ReturnType *>(node)) {
-    substituteTypes(ret->returnExpr.get(), subMap);
+    if (ret->base_type)
+      substituteTypes(ret->base_type.get(), subMap);
   }
 
   // Functions
   if (auto fnStmt = dynamic_cast<FunctionStatement *>(node)) {
     if (auto fnExpr =
             dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get())) {
-      // Call type sub on the parameters
-      for (const auto &param : fnExpr->call) {
+      for (const auto &param : fnExpr->call)
         substituteTypes(param.get(), subMap);
-      }
-      // Call type subbing on the return type
       substituteTypes(fnExpr->return_type.get(), subMap);
-
-      // Call type subbing on the body
       substituteTypes(fnExpr->block.get(), subMap);
     }
 
@@ -189,31 +180,26 @@ void Semantics::substituteTypes(
             fnStmt->funcExpr.get())) {
       if (auto fnDeclr = dynamic_cast<FunctionDeclaration *>(
               fnDeclrExpr->funcDeclrStmt.get())) {
-        // Call type subbing on the parameters
-        for (const auto &param : fnDeclr->parameters) {
+        for (const auto &param : fnDeclr->parameters)
           substituteTypes(param.get(), subMap);
-        }
-        // Call type subbing on the return type
         substituteTypes(fnDeclr->return_type.get(), subMap);
       }
     }
   }
 
   if (auto blockExpr = dynamic_cast<BlockExpression *>(node)) {
-    for (const auto &stmt : blockExpr->statements) {
+    for (const auto &stmt : blockExpr->statements)
       substituteTypes(stmt.get(), subMap);
-    }
   }
 
   if (auto blockStmt = dynamic_cast<BlockStatement *>(node)) {
-    for (const auto &stmt : blockStmt->statements) {
+    for (const auto &stmt : blockStmt->statements)
       substituteTypes(stmt.get(), subMap);
-    }
   }
 
-  // Declarations
-  if (auto letStmt = dynamic_cast<LetStatement *>(node)) {
-    substituteTypes(letStmt->type.get(), subMap);
+  if (auto varDecl = dynamic_cast<VariableDeclaration *>(node)) {
+    if (varDecl->base_type)
+      substituteTypes(varDecl->base_type.get(), subMap);
   }
 }
 

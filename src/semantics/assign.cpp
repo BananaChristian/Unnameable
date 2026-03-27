@@ -121,7 +121,7 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
                               assignName + "'",
                           assignStmt);
         hasError = true;
-      } else if (!rhsType.isPointer) {
+      } else if (!rhsType.isPointer()) {
         logSemanticErrors("Cannot assign non-pointer type '" +
                               rhsType.resolvedName + "' to opaque pointer '" +
                               assignName + "'",
@@ -244,7 +244,7 @@ void Semantics::walkAssignStatement(Node *node) {
                             "'",
                         assignStmt);
       hasError = true;
-    } else if (!rhsType.isPointer) {
+    } else if (!rhsType.isPointer()) {
       logSemanticErrors("Cannot assign non-pointer type '" +
                             rhsType.resolvedName + "' to opaque pointer '" +
                             name + "'",
@@ -385,7 +385,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
 
     if (rhsInfo) {
       if (lhsInfo->type.kind == DataType::OPAQUE) {
-        if (!rhsInfo->type.isPointer) {
+        if (!rhsInfo->type.isPointer()) {
           logSemanticErrors("Cannot reassign non pointer type '" +
                                 rhsInfo->type.resolvedName +
                                 "' to an opaque pointer",

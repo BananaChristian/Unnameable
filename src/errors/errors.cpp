@@ -217,20 +217,10 @@ int ErrorHandler::getTokenLength(Node *contextNode) {
   if (auto fnDecl = dynamic_cast<FunctionDeclaration *>(contextNode))
     return getTokenLength(fnDecl->function_name.get());
 
-  if (auto fnRetType = dynamic_cast<ReturnType *>(contextNode))
-    return getTokenLength(fnRetType->returnExpr.get());
 
   if (auto basicType = dynamic_cast<BasicType *>(contextNode))
     return basicType->data_token.TokenLiteral.length();
 
-  if (auto ptrType = dynamic_cast<PointerType *>(contextNode))
-    return getTokenLength(ptrType->underlyingType.get());
-
-  if (auto refType = dynamic_cast<RefType *>(contextNode))
-    return getTokenLength(refType->underLyingType.get());
-
-  if (auto arrType = dynamic_cast<ArrayType *>(contextNode))
-    return getTokenLength(arrType->innerType.get());
 
   if (auto fnCall = dynamic_cast<CallExpression *>(contextNode))
     return getTokenLength(fnCall->function_identifier.get());
@@ -267,66 +257,13 @@ int ErrorHandler::getTokenLength(Node *contextNode) {
     auto exprLen = getTokenLength(bitcastExpr->expr.get());
     return bitcastKeyLen + typeLen + exprLen + 4;
   }
-
-  if (auto letStmt = dynamic_cast<LetStatement *>(contextNode)) {
-    auto typeLen = getTokenLength(letStmt->type.get());
-    auto nameLen = letStmt->ident_token.TokenLiteral.length();
-    int assignTokenLen = 0;
-    if (letStmt->assign_token.has_value())
-      assignTokenLen = letStmt->assign_token.value().TokenLiteral.length();
-
-    int valueLen = 0;
-    if (letStmt->value)
-      valueLen = getTokenLength(letStmt->value.get());
-
-    return typeLen + nameLen + assignTokenLen + valueLen;
+  
+  if(auto type_mod=dynamic_cast<TypeModifier*>(contextNode)){
+      
   }
 
-  if (auto ptrStmt = dynamic_cast<PointerStatement *>(contextNode)) {
-    auto typeLen = getTokenLength(ptrStmt->type.get());
-    auto nameLen = getTokenLength(ptrStmt->name.get());
-    int assignTokenLen = 0;
-    int valueLen = 0;
-    if (ptrStmt->value) {
-      assignTokenLen = 1;
-      valueLen = getTokenLength(ptrStmt->value.get());
-    }
-
-    return ptrStmt->ptr_token.TokenLiteral.length() + typeLen + nameLen +
-           assignTokenLen + valueLen;
-  }
-
-  if (auto refStmt = dynamic_cast<ReferenceStatement *>(contextNode)) {
-    auto typeLen = getTokenLength(refStmt->type.get());
-    auto nameLen = getTokenLength(refStmt->name.get());
-    int assignTokenLen = 0;
-    int valueLen = 0;
-    if (refStmt->value) {
-      assignTokenLen = 1;
-      valueLen = getTokenLength(refStmt->value.get());
-    }
-
-    return refStmt->ref_token.TokenLiteral.length() + typeLen + nameLen +
-           assignTokenLen + valueLen;
-  }
-
-  if (auto arrStmt = dynamic_cast<ArrayStatement *>(contextNode)) {
-    auto typeLen = getTokenLength(arrStmt->arrayType.get());
-    int dimensionCount = 0;
-    if (!arrStmt->dimensions.empty()) {
-      for (const auto &expr : arrStmt->dimensions)
-        dimensionCount += (2 + getTokenLength(expr.get()));
-    }
-
-    auto nameLen = getTokenLength(arrStmt->identifier.get());
-    int assignTokenLen = 0;
-    int valueLen = 0;
-    if (arrStmt->array_content) {
-      assignTokenLen = 1;
-      valueLen = getTokenLength(arrStmt->array_content.get());
-    }
-
-    return typeLen + nameLen + dimensionCount + assignTokenLen + valueLen;
+  if(auto declaration=dynamic_cast<VariableDeclaration*>(contextNode)){
+      
   }
 
   // Default to 1 if u dont know

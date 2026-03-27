@@ -98,12 +98,8 @@ private:
   //---------------PARSING STATEMENTS--------------------
   // General statement parsing function
   std::unique_ptr<Statement> parseStatement();
-  std::unique_ptr<Statement> parseDeclaration();
-  // Parsing let statements
-  std::unique_ptr<Statement> parseLetStatement();
-  // Parsing reference and pointer statement
-  std::unique_ptr<Statement> parseReferenceStatement();
-  std::unique_ptr<Statement> parsePointerStatement();
+  std::unique_ptr<Statement> parseVariableModifier();
+  std::unique_ptr<Statement> parseVariableDeclaration();
   // Parsing assignment statements
   std::unique_ptr<Statement> parseAssignmentStatement();
   std::unique_ptr<Statement> parseDereferenceAssignment();
@@ -176,9 +172,6 @@ private:
   // Parsing instantiate statement
   std::unique_ptr<Statement> parseInstantiateStatement();
 
-  // Parsing array statements
-  std::unique_ptr<Statement> parseArrayStatement();
-
   // Parsing the merge statement
   std::unique_ptr<Statement> parseMergeStatement();
 
@@ -229,12 +222,10 @@ private:
 
   // Parsing for expression
   std::unique_ptr<Expression> parseFunctionExpression();
+
+  std::unique_ptr<Expression> parseTypeModifier();
   // Parsing for basic return type
   std::unique_ptr<Expression> parseBasicType();
-  // Parsing for pointer return type
-  std::unique_ptr<Expression> parsePointerType();
-  // Parsing for reference type
-  std::unique_ptr<Expression> parseRefType();
   // Parsing the return type expression
   std::unique_ptr<Expression> parseReturnType();
   // Parsing block expressions
@@ -291,8 +282,6 @@ private:
   std::unique_ptr<Expression> parseBitcastExpression();
   // Array literal
   std::unique_ptr<Expression> parseArrayLiteral();
-  // Array type parse function
-  std::unique_ptr<Expression> parseArrayType();
   // Call expression parse function
   std::unique_ptr<Expression> parseCallExpression();
 
@@ -311,15 +300,14 @@ private:
   Token &previousToken();
   Token peekToken(int peek);
 
+  void replaceCurrentToken(const Token &replacement);
+
   // Declaration checker
   bool isDeclaration(Node *node);
-
   // Checker for basic types
   bool isBasicType(TokenType type);
-
   // Checker for integer types
   bool isIntegerType(TokenType type);
-
   // Checker for integer literals
   bool isIntegerLiteralType(TokenType type);
 

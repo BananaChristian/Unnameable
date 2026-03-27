@@ -5,16 +5,13 @@ void IRGenerator::generateRecordStatement(Node *node) {
   if (!recordStmt)
     return;
 
-  auto it = semantics.metaData.find(recordStmt);
-  if (it == semantics.metaData.end()) {
-    reportDevBug("Miising record metaData", recordStmt->recordName.get());
-  }
+  auto sym = semantics.getSymbolFromMeta(recordStmt);
+  if (!sym)
+    reportDevBug("Miising record symbol info", recordStmt->recordName.get());
 
-  auto &meta = *it->second;
+  std::string blockName = recordStmt->recordName->expression.TokenLiteral;
 
-  std::string blockName = meta.type.resolvedName;
-
-  // Get the struct (Should already be created by declareCustomTypes)
+  // Get the struct
   llvm::StructType *structTy = llvmCustomTypes[blockName];
   if (!structTy) {
     // Fallback if not pre-declared
@@ -26,9 +23,9 @@ void IRGenerator::generateRecordStatement(Node *node) {
     std::vector<llvm::Type *> memberTypes;
 
     // Create a temporary vector to hold types in the correct order
-    memberTypes.resize(meta.members.size());
+    memberTypes.resize(sym->members.size());
 
-    for (auto &pair : meta.members) {
+    for (auto &pair : sym->members) {
       std::shared_ptr<MemberInfo> info = pair.second;
       llvm::Type *ty = info->isHeap ? getLLVMType(info->type)->getPointerTo()
                                     : getLLVMType(info->type);
@@ -36,7 +33,7 @@ void IRGenerator::generateRecordStatement(Node *node) {
     }
     structTy->setBody(memberTypes);
   }
-  meta.llvmType = structTy;
+  sym->llvmType = structTy;
 
   logInternal("Defined Type Body for: " + blockName);
 }
@@ -47,54 +44,57 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
     return nullptr;
 
   std::string instName = instExpr->blockIdent->expression.TokenLiteral;
+
   llvm::StructType *structTy = llvmCustomTypes[instName];
   if (!structTy)
     reportDevBug("Unknown record type: " + instName,
                  instExpr->blockIdent.get());
 
   if (!funcBuilder.GetInsertBlock())
-    reportDevBug("Cannot create an instance for '" + instName +
-                     "' in the global scope",
+    reportDevBug("Cannot create instance for '" + instName +
+                     "' in global scope",
                  instExpr->blockIdent.get());
 
   llvm::Value *instancePtr =
-      funcBuilder.CreateAlloca(structTy, nullptr, instName + "inst");
+      funcBuilder.CreateAlloca(structTy, nullptr, instName + "_inst");
 
   auto typeInfoIt = semantics.customTypesTable.find(instName);
   if (typeInfoIt == semantics.customTypesTable.end())
-    reportDevBug("Missing custom type info for " + instName,
+    reportDevBug("Missing custom type info for '" + instName + "'",
                  instExpr->blockIdent.get());
+
   auto &typeInfo = typeInfoIt->second;
 
-  // We create a map of field names to their specific assignment nodes
+  // Map user provided field assignments by name
   std::unordered_map<std::string, AssignmentStatement *> userInits;
   for (auto &fieldStmt : instExpr->fields) {
-    if (auto assign = dynamic_cast<AssignmentStatement *>(fieldStmt.get())) {
+    if (auto assign = dynamic_cast<AssignmentStatement *>(fieldStmt.get()))
       userInits[assign->identifier->expression.TokenLiteral] = assign;
-    }
   }
 
-  // Get overall instance volatility
   auto instanceSym = semantics.getSymbolFromMeta(instExpr);
   bool isInstanceVolatile = instanceSym && instanceSym->isVolatile;
 
-  // We iterate through the definition of the struct to ensure total coverage
+  // Iterate through definition to ensure total field coverage
   for (auto const &[memberName, info] : typeInfo->members) {
     llvm::Value *memberPtr = funcBuilder.CreateStructGEP(
         structTy, instancePtr, info->memberIndex, memberName);
+
     llvm::Value *finalVal = nullptr;
 
-    // Check if the user provided a value for this field
+    // User provided a value for this field
     auto it = userInits.find(memberName);
     if (it != userInits.end()) {
-      // Generate the specific value provided (like 'null' or '7')
       finalVal = generateExpression(it->second->value.get());
     } else {
-      // Fallback to the declaration default or a zero/null value
-      auto letStmt = dynamic_cast<LetStatement *>(info->node);
-      if (letStmt && letStmt->value) {
-        finalVal = generateExpression(letStmt->value.get());
+      // Fallback to declaration default or zero
+      // LetStatement is dead — fields are VariableDeclaration now
+      auto varDecl = dynamic_cast<VariableDeclaration *>(info->node);
+      if (varDecl && varDecl->initializer) {
+        finalVal = generateExpression(varDecl->initializer.get());
       } else {
+        // Zero initialize, heap fields get null pointer
+        // non heap fields get zero value
         if (info->isHeap) {
           finalVal =
               llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(
@@ -106,28 +106,19 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
     }
 
     if (!finalVal)
-      reportDevBug("Failed to resolve value for field: " + memberName,
+      reportDevBug("Failed to resolve value for field '" + memberName + "'",
                    info->node);
 
-    // Perform exactly one store per field
     auto *storeInst = funcBuilder.CreateStore(finalVal, memberPtr);
-
-    // Mark store as volatile if either:
-    //  The instance itself is volatile
-    // This specific field is declared volatile
-    if (isInstanceVolatile || info->isVolatile) {
+    if (isInstanceVolatile || info->isVolatile)
       storeInst->setVolatile(true);
-    }
   }
 
   // Return the loaded struct value
   auto *finalLoad =
       funcBuilder.CreateLoad(structTy, instancePtr, instName + "_val");
-
-  // If the instance is volatile, the final load should be too
-  if (isInstanceVolatile) {
+  if (isInstanceVolatile)
     finalLoad->setVolatile(true);
-  }
 
   return finalLoad;
 }
@@ -184,15 +175,13 @@ void IRGenerator::generateInitFunction(Node *node,
     ;
 
   // METADATA REGISTRATION
-  auto compIt = semantics.metaData.find(component);
-  if (compIt == semantics.metaData.end())
-    throw std::runtime_error("Missing component metaData for: " +
-                             componentName);
+  auto sym = semantics.getSymbolFromMeta(component);
+  if (!sym)
+    reportDevBug("Failed to get component symbol info", component);
 
   // Store the ALLOCA address as the canonical self pointer for this function
-  llvm::Value *prevInstance = compIt->second->llvmValue;
-  compIt->second->llvmValue =
-      selfAlloca; // Use selfAlloca (the ptr* to the self ptr)
+  llvm::Value *prevInstance = sym->llvmValue;
+  sym->llvmValue = selfAlloca; // Use selfAlloca (the ptr* to the self ptr)
 
   currentComponent = component;
   currentComponentInstance = selfAlloca; // Use selfAlloca
@@ -212,12 +201,11 @@ void IRGenerator::generateInitFunction(Node *node,
         funcBuilder.CreateAlloca(argVal->getType(), nullptr, argName);
     funcBuilder.CreateStore(argVal, alloca);
 
-    auto metaIt = semantics.metaData.find(arg.get());
-    if (metaIt == semantics.metaData.end())
-      throw std::runtime_error("Missing metaData for ctor argument: " +
-                               argName);
+    auto argSym = semantics.getSymbolFromMeta(arg.get());
+    if (!argSym)
+      reportDevBug("Missing ctor argument symbol info", arg.get());
 
-    metaIt->second->llvmValue = alloca;
+    argSym->llvmValue = alloca;
   }
 
   // Body Gen
@@ -232,7 +220,7 @@ void IRGenerator::generateInitFunction(Node *node,
   }
 
   // Cleanup
-  compIt->second->llvmValue = prevInstance;
+  sym->llvmValue = prevInstance;
   currentComponentInstance = nullptr;
   currentComponent = nullptr;
   isGlobalScope = true;
@@ -307,15 +295,15 @@ void IRGenerator::generateComponentFunctionStatement(
     auto argIter = std::next(fn->arg_begin()); // skip %this
     for (auto &p : expr->call) {
       auto paramNode = p.get();
-      auto pIt = semantics.metaData.find(paramNode);
-      if (pIt == semantics.metaData.end())
-        throw std::runtime_error("Missing parameter metaData");
+      auto paramSym = semantics.getSymbolFromMeta(paramNode);
+      if (!paramSym)
+        reportDevBug("Failed to find param symbol info", paramNode);
 
-      llvm::Type *paramTy = getLLVMType(pIt->second->type);
+      llvm::Type *paramTy = getLLVMType(paramSym->type);
       llvm::AllocaInst *alloca =
           funcBuilder.CreateAlloca(paramTy, nullptr, p->statement.TokenLiteral);
       funcBuilder.CreateStore(&(*argIter), alloca);
-      pIt->second->llvmValue = alloca;
+      paramSym->llvmValue = alloca;
 
       ++argIter;
     }
@@ -448,20 +436,6 @@ llvm::Value *IRGenerator::generateMethodCallExpression(Node *node) {
 
     // Call the function
     result = funcBuilder.CreateCall(targetFunc, args);
-
-    /*if (instanceSym->isHeap && instanceSym->refCount == 0 &&
-        instanceSym->lastUseNode == metCall) {
-      llvm::FunctionCallee sageFree = module->getOrInsertFunction(
-          "sage_free", llvm::Type::getVoidTy(context),
-          llvm::Type::getInt64Ty(context));
-
-      llvm::Value *sizeVal = llvm::ConstantInt::get(
-          llvm::Type::getInt64Ty(context), instanceSym->componentSize);
-
-      funcBuilder.CreateCall(sageFree, {sizeVal},
-                             instance->identifier.TokenLiteral + "_sage_free");
-    }
-    }*/
   }
   return result;
 }

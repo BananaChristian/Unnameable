@@ -438,15 +438,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
   }
 
   advance();
-  if (isBasicType(currentToken().type)) {
-    type = parseBasicType();
-  } else if (currentToken().type == TokenType::PTR) {
-    type = parsePointerType();
-  } else {
-    logError("Invalid bitcast type '" + currentToken().TokenLiteral + "'",
-             currentToken());
-    advance();
-  }
+  type = parseReturnType();
 
   if (currentToken().type != TokenType::GREATER_THAN) {
     logError("Expected '>' but got '" + currentToken().TokenLiteral + "'",

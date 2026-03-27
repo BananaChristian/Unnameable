@@ -78,24 +78,17 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(BitcastExpression)] =
       &Semantics::walkBitcastExpression;
 
-  // Walker registration for array walker
-  walkerFunctionsMap[typeid(ArrayStatement)] = &Semantics::walkArrayStatement;
   walkerFunctionsMap[typeid(ArrayLiteral)] = &Semantics::walkArrayLiteral;
   walkerFunctionsMap[typeid(ArraySubscript)] =
       &Semantics::walkArraySubscriptExpression;
 
   // Walker registration for let statement and assignment statements
-  walkerFunctionsMap[typeid(LetStatement)] = &Semantics::walkLetStatement;
+  walkerFunctionsMap[typeid(VariableDeclaration)] =
+      &Semantics::walkVariableDeclaration;
   walkerFunctionsMap[typeid(AssignmentStatement)] =
       &Semantics::walkAssignStatement;
   walkerFunctionsMap[typeid(FieldAssignment)] =
       &Semantics::walkFieldAssignmentStatement;
-
-  // Walker registration for reference statement and pointer statement
-  walkerFunctionsMap[typeid(ReferenceStatement)] =
-      &Semantics::walkReferenceStatement;
-  walkerFunctionsMap[typeid(PointerStatement)] =
-      &Semantics::walkPointerStatement;
 
   // Walker registration for control flow
   walkerFunctionsMap[typeid(ifStatement)] = &Semantics::walkIfStatement;
@@ -123,8 +116,6 @@ void Semantics::registerWalkerFunctions() {
 
   // Walker registration for type expressions
   walkerFunctionsMap[typeid(BasicType)] = &Semantics::walkBasicType;
-  walkerFunctionsMap[typeid(ArrayType)] = &Semantics::walkArrayType;
-
   // Walker registration for loops
   walkerFunctionsMap[typeid(WhileStatement)] = &Semantics::walkWhileStatement;
   walkerFunctionsMap[typeid(ForStatement)] = &Semantics::walkForStatement;
@@ -158,7 +149,6 @@ void Semantics::registerWalkerFunctions() {
 
   walkerFunctionsMap[typeid(AllocatorStatement)] =
       &Semantics::walkAllocatorInterface;
-  walkerFunctionsMap[typeid(HeapStatement)] = &Semantics::walkHeapStatement;
   walkerFunctionsMap[typeid(SealStatement)] = &Semantics::walkSealStatement;
 
   // Walker registration for the trace system
@@ -171,54 +161,57 @@ void Semantics::registerWalkerFunctions() {
 }
 
 ResolvedType Semantics::inferNodeDataType(Node *node) {
+  auto errorType = ResolvedType::error();
+  auto unknownType = ResolvedType::unknown();
+
   if (!node)
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return unknownType;
 
   if (dynamic_cast<I8Literal *>(node))
-    return ResolvedType{DataType::I8, "i8"};
+    return ResolvedType::makeBase(DataType::I8, "i8");
   if (dynamic_cast<U8Literal *>(node))
-    return ResolvedType{DataType::U8, "u8"};
+    return ResolvedType::makeBase(DataType::U8, "u8");
   if (dynamic_cast<I16Literal *>(node))
-    return ResolvedType{DataType::I16, "i16"};
+    return ResolvedType::makeBase(DataType::I16, "i16");
   if (dynamic_cast<U16Literal *>(node))
-    return ResolvedType{DataType::U16, "u16"};
+    return ResolvedType::makeBase(DataType::U16, "u16");
   if (dynamic_cast<I32Literal *>(node))
-    return ResolvedType{DataType::I32, "i32"};
+    return ResolvedType::makeBase(DataType::I32, "i32");
   if (dynamic_cast<U32Literal *>(node))
-    return ResolvedType{DataType::U32, "u32"};
+    return ResolvedType::makeBase(DataType::U32, "u32");
   if (dynamic_cast<I64Literal *>(node))
-    return ResolvedType{DataType::I64, "i64"};
+    return ResolvedType::makeBase(DataType::I64, "i64");
   if (dynamic_cast<U64Literal *>(node))
-    return ResolvedType{DataType::U64, "u64"};
+    return ResolvedType::makeBase(DataType::U64, "u64");
   if (dynamic_cast<I128Literal *>(node))
-    return ResolvedType{DataType::I128, "i128"};
+    return ResolvedType::makeBase(DataType::I128, "i128");
   if (dynamic_cast<U128Literal *>(node))
-    return ResolvedType{DataType::U128, "u128"};
+    return ResolvedType::makeBase(DataType::U128, "u128");
   if (dynamic_cast<ISIZELiteral *>(node))
-    return ResolvedType{DataType::ISIZE, "isize"};
+    return ResolvedType::makeBase(DataType::ISIZE, "isize");
   if (dynamic_cast<USIZELiteral *>(node))
-    return ResolvedType{DataType::USIZE, "usize"};
+    return ResolvedType::makeBase(DataType::USIZE, "usize");
 
   if (dynamic_cast<F32Literal *>(node))
-    return ResolvedType{DataType::F32, "f32"};
+    return ResolvedType::makeBase(DataType::F32, "f32");
   if (dynamic_cast<F64Literal *>(node))
-    return ResolvedType{DataType::F64, "f64"};
+    return ResolvedType::makeBase(DataType::F64, "f64");
 
   if (dynamic_cast<StringLiteral *>(node))
-    return ResolvedType{DataType::STRING, "string"};
+    return ResolvedType::makeBase(DataType::STRING, "string");
 
   if (dynamic_cast<Char8Literal *>(node))
-    return ResolvedType{DataType::CHAR8, "char8"};
+    return ResolvedType::makeBase(DataType::CHAR8, "char8");
   if (dynamic_cast<Char16Literal *>(node))
-    return ResolvedType{DataType::CHAR16, "char16"};
+    return ResolvedType::makeBase(DataType::CHAR16, "char16");
   if (dynamic_cast<Char32Literal *>(node))
-    return ResolvedType{DataType::CHAR32, "char32"};
+    return ResolvedType::makeBase(DataType::CHAR32, "char32");
 
   if (dynamic_cast<BooleanLiteral *>(node))
-    return ResolvedType{DataType::BOOLEAN, "bool"};
+    return ResolvedType::makeBase(DataType::BOOLEAN, "bool");
 
   if (dynamic_cast<SizeOfExpression *>(node))
-    return ResolvedType{DataType::USIZE, "usize"};
+    return ResolvedType::makeBase(DataType::USIZE, "usize");
 
   if (auto castExpr = dynamic_cast<CastExpression *>(node)) {
     auto type = castExpr->type.get();
@@ -226,7 +219,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       auto destinationType = inferNodeDataType(type);
       return destinationType;
     }
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return unknownType;
   }
 
   if (auto bitcastExpr = dynamic_cast<BitcastExpression *>(node)) {
@@ -236,91 +229,71 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       return destinationType;
     }
 
-    return ResolvedType{DataType::ERROR, "error"};
+    return errorType;
   }
 
   if (auto arrLit = dynamic_cast<ArrayLiteral *>(node)) {
     if (arrLit->array.empty()) {
-      ResolvedType empty;
-      empty.isArray = true;
-      empty.resolvedName = "[error]";
-      empty.kind = DataType::ERROR;
-      empty.isNull = false;
-      empty.isPointer = false;
-      empty.isRef = false;
-
-      return empty;
+      return makeArrayType(errorType, 0, false);
     }
 
-    // Infer type of first element
     ResolvedType firstType = inferNodeDataType(arrLit->array[0].get());
 
-    // Now verify compatibility of all elements
     for (size_t i = 1; i < arrLit->array.size(); ++i) {
       ResolvedType elemType = inferNodeDataType(arrLit->array[i].get());
-
       if (!isTypeCompatible(firstType, elemType)) {
+        errorHandler.addHint("All array elements must be the same type")
+            .addHint("Expected type: " + firstType.resolvedName)
+            .addHint("Got type: " + elemType.resolvedName);
         logSemanticErrors("Type mismatch of array member at index '" +
-                              std::to_string(i) + "' expected '" +
-                              firstType.resolvedName + "' but got '" +
-                              elemType.resolvedName + "'",
+                              std::to_string(i) + "'",
                           arrLit);
-
-        return ResolvedType{DataType::ERROR, "error", false,
-                            false,           false,   false};
+        return errorType;
       }
     }
 
-    // Build the final array type
-    ResolvedType finalType;
-    finalType.kind = firstType.kind;
-    finalType.isArray = true;
-    finalType.isPointer = firstType.isPointer;
-    finalType.isRef = firstType.isRef;
-
-    if (firstType.isArray) {
-      finalType.resolvedName = firstType.resolvedName;
-    } else {
-      finalType.resolvedName = "arr[" + firstType.resolvedName + "]";
-    }
-
-    return finalType;
+    return makeArrayType(firstType, arrLit->array.size(), false);
   }
 
   if (auto arrAccess = dynamic_cast<ArraySubscript *>(node)) {
-    // Extract the name of the array
     auto arrayName = arrAccess->identifier->expression.TokenLiteral;
-
-    // Check for its symbolInfo
     auto arrSym = resolveSymbolInfo(arrayName);
+
     if (!arrSym) {
       logSemanticErrors("Unidentified variable '" + arrayName + "'",
                         arrAccess->identifier.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
 
-    if (!arrSym->type.isArray) {
-      logSemanticErrors("Cannot index into non array type '" +
+    if (!arrSym->type.isArray()) {
+      errorHandler.addHint("Only array types can be subscripted with '[]'")
+          .addHint("Declare as: arr[N] i32 " + arrayName)
+          .addHint("Or initialize with an array literal");
+      logSemanticErrors("Cannot index into non-array type '" +
                             arrSym->type.resolvedName + "'",
                         arrAccess->identifier.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
 
     if (arrSym->type.isNull) {
-      logSemanticErrors("Cannot index into a nullable array '" + arrayName +
-                            "' of type '" + arrSym->type.resolvedName + "'",
+      errorHandler.addHint("Unwrap the nullable array before indexing")
+          .addHint("Use '?''?' or 'unwrap' to get the non-nullable value");
+      logSemanticErrors("Cannot index into nullable array '" + arrayName + "'",
                         arrAccess->identifier.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
 
-    return arrSym->type;
+    // Return the element type — unwrap one array level
+    if (!arrSym->type.innerType)
+      return errorType;
+    return *arrSym->type.innerType;
   }
 
   if (auto selfExpr = dynamic_cast<SelfExpression *>(node)) {
     // Start: find the type of the component containing this method
     if (currentTypeStack.empty() ||
         currentTypeStack.back().type.kind != DataType::COMPONENT)
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+      return unknownType;
 
     std::string currentTypeName = currentTypeStack.back().typeName;
 
@@ -328,20 +301,20 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     for (const auto &field : selfExpr->fields) {
       auto ident = dynamic_cast<Identifier *>(field.get());
       if (!ident)
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
+        return unknownType;
 
       const std::string fieldName = ident->identifier.TokenLiteral;
 
       // Look up this type's custom definition
       auto ctIt = customTypesTable.find(currentTypeName);
       if (ctIt == customTypesTable.end())
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
+        return unknownType;
 
       // Find member in this component
       auto &members = ctIt->second->members;
       auto memIt = members.find(fieldName);
       if (memIt == members.end())
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
+        return unknownType;
 
       // Get the member type
       const auto &memberInfo = memIt->second;
@@ -352,7 +325,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
         return memberInfo->type;
     }
 
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return unknownType;
   }
 
   if (auto instExpr = dynamic_cast<InstanceExpression *>(node)) {
@@ -363,17 +336,16 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       logSemanticErrors("Failed to infer type for unidentified identifier '" +
                             instName + "'",
                         instExpr->blockIdent.get());
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+      return errorType;
     }
 
     return sym->type;
   }
 
-  // Dealing with the let statement node type
-  if (auto letStmt = dynamic_cast<LetStatement *>(node)) {
-    auto type = dynamic_cast<BasicType *>(letStmt->type.get());
-    auto letStmtDataType = type->data_token;
-    return resolvedDataType(letStmtDataType, letStmt);
+  // Dealing with the variable declaration
+  if (auto varDecl = dynamic_cast<VariableDeclaration *>(node)) {
+    auto baseType = inferDeclarationBaseType(varDecl);
+    return resolveTypeWithModifier(varDecl->modified_type.get(), baseType);
   }
 
   if (auto assignStmt = dynamic_cast<AssignmentStatement *>(node)) {
@@ -384,7 +356,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       if (selfExpr->fields.empty()) {
         logSemanticErrors("Invalid 'self' access in assignment",
                           assignStmt->identifier.get());
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
+        return errorType;
       }
 
       // Grab the LAST field in the chain
@@ -393,7 +365,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       if (!ident) {
         logSemanticErrors("Expected identifier in 'self' field chain",
                           assignStmt->identifier.get());
-        return ResolvedType{DataType::UNKNOWN, "unknown"};
+        return errorType;
       }
 
       nameToResolve = ident->identifier.TokenLiteral;
@@ -421,7 +393,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     if (componentIt == customTypesTable.end()) {
       logSemanticErrors("Component '" + componentName + "' does not exist",
                         newExpr);
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
     return componentIt->second->type;
   }
@@ -439,7 +411,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   }
 
   if (dynamic_cast<NullLiteral *>(node))
-    return {DataType::UNKNOWN, "null"}; // Will be updated based on context
+    return ResolvedType::null(); // Will be updated based on context
 
   if (auto ident = dynamic_cast<Identifier *>(node)) {
     std::string name = ident->identifier.TokenLiteral;
@@ -450,26 +422,34 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       return symbol->type;
     } else {
       logSemanticErrors("Undefined variable '" + name + "'", ident);
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
   }
 
   if (auto derefExpr = dynamic_cast<DereferenceExpression *>(node)) {
     std::string name = extractIdentifierName(derefExpr->identifier.get());
-    logInternal("Derefence name given during type resolution");
     auto derefSym = resolveSymbolInfo(name);
-
     if (!derefSym) {
       logSemanticErrors("Undefined variable '" + name + "'",
                         derefExpr->identifier.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
-    // Get the ptr_type
-    auto ptrType = derefSym->type;
-    // Toggle the isPointer boolean
-    ptrType.isPointer = false;
-    return isPointerType(ptrType);
+    // Must actually be a pointer to deref
+    if (!derefSym->type.isPointer()) {
+      errorHandler.addHint("Only pointer types can be dereferenced")
+          .addHint("Use 'addr' to get a pointer first")
+          .addHint("Example: ptr i32 p -> addr x, then deref p");
+      logSemanticErrors("Cannot dereference non-pointer variable '" + name +
+                            "'",
+                        derefExpr->identifier.get());
+      return errorType;
+    }
+    // Unwrap one pointer level return what it points to
+    if (!derefSym->type.innerType)
+      return errorType;
+    return *derefSym->type.innerType;
   }
+
   if (auto moveExpr = dynamic_cast<MoveExpression *>(node)) {
     auto innerExpr = moveExpr->expr.get();
     auto type = inferNodeDataType(innerExpr);
@@ -478,73 +458,20 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   }
 
   if (auto addrExpr = dynamic_cast<AddressExpression *>(node)) {
-    auto innerExpr = addrExpr->identifier.get();
-    auto identType = inferNodeDataType(innerExpr);
-    identType.isPointer = true;
-    return isPointerType(identType);
+    auto innerType = inferNodeDataType(addrExpr->identifier.get());
+    return makePointerType(innerType, false);
   }
 
   if (auto basicType = dynamic_cast<BasicType *>(node))
     return tokenTypeToResolvedType(basicType->data_token,
                                    basicType->isNullable);
 
-  if (auto arrRetType = dynamic_cast<ArrayType *>(node)) {
-    // Resolve the inner type first like if I have arr[i32] the inner type is
-    // i32
-    ResolvedType inner = inferNodeDataType(arrRetType->innerType.get());
-    // Block void
-    if (inner.kind == DataType::VOID) {
-      logSemanticErrors("Cannot have a void array type", arrRetType);
-      return ResolvedType{DataType::ERROR, "error", false, false, false, false};
-    }
+  if (auto retType = dynamic_cast<ReturnType *>(node)) {
+    if (retType->isVoid)
+      return ResolvedType::makeBase(DataType::VOID, "void");
 
-    // Block the inner type from being nullable for example i32?
-    if (inner.isNull) {
-      logSemanticErrors(
-          "The inner type of an array cannot be a nullable type '" +
-              inner.resolvedName + "'",
-          arrRetType);
-      return ResolvedType{DataType::ERROR, "error", false, false, false, false};
-    }
-
-    bool isNullType = false;
-    if (arrRetType->isNullable) {
-      isNullType = true;
-    }
-
-    std::string typeName = "arr[" + inner.resolvedName + "]";
-    inner.isArray = true;
-    inner.isNull = isNullType;
-    inner.resolvedName = typeName;
-
-    return inner;
-  }
-
-  if (auto ptrType = dynamic_cast<PointerType *>(node)) {
-    ResolvedType inner = inferNodeDataType(ptrType->underlyingType.get());
-    if (inner.kind == DataType::VOID) {
-      logSemanticErrors("Cannot have a void pointer return type", ptrType);
-      return ResolvedType{DataType::ERROR, "error", false, false};
-    }
-    inner.isPointer = true;
-    return isPointerType(inner);
-  }
-
-  if (auto refType = dynamic_cast<RefType *>(node)) {
-    ResolvedType inner = inferNodeDataType(refType->underLyingType.get());
-    if (inner.kind == DataType::VOID) {
-      logSemanticErrors("Cannot have a void reference return type", refType);
-      return ResolvedType{DataType::ERROR, "error", false, false, false, false};
-      ;
-    }
-    inner.isRef = true;
-    return isRefType(inner);
-  }
-
-  if (auto retTypeExpr = dynamic_cast<ReturnType *>(node)) {
-    // Just recursively call the inferer for whatever is being nested in
-    // here(Basic Type or whatever)
-    return inferNodeDataType(retTypeExpr->returnExpr.get());
+    auto baseType = inferNodeDataType(retType->base_type.get());
+    return resolveTypeWithModifier(retType->modified_type.get(), baseType);
   }
 
   if (auto callExpr = dynamic_cast<CallExpression *>(node)) {
@@ -557,7 +484,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
           "Undefined function name '" +
               callExpr->function_identifier->expression.TokenLiteral + "'",
           callExpr->function_identifier.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
   }
 
@@ -569,7 +496,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     if (!instanceSym) {
       logSemanticErrors("Undefined instance name '" + instanceName + "' ",
                         metCall->instance.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
 
     auto call = dynamic_cast<CallExpression *>(metCall->call.get());
@@ -588,7 +515,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
         logSemanticErrors("Function '" + callName + "' doesnt exist in type '" +
                               type.resolvedName + "'",
                           call->function_identifier.get());
-        return ResolvedType{DataType::ERROR, "error"};
+        return errorType;
       }
 
       auto memInfo = it->second;
@@ -600,7 +527,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
         logSemanticErrors("Function '" + callName + "' doesnt exist in seal '" +
                               instanceName + "'",
                           call->function_identifier.get());
-        return ResolvedType{DataType::ERROR, "error"};
+        return errorType;
       }
 
       auto sealInfo = sealFnIt->second;
@@ -608,46 +535,65 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     } else {
       logSemanticErrors("Unknown type or seal '" + instanceName + "'",
                         call->function_identifier.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return errorType;
     }
   }
   if (auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node)) {
     auto exprType = inferNodeDataType(unwrapExpr->expr.get());
     exprType.isNull = false;
-    auto strippedName = stripOptionalSuffix(exprType.resolvedName);
+    auto strippedName = getBaseTypeName(exprType);
     exprType.resolvedName = strippedName;
 
     return exprType;
   }
 
-  if (auto ptrStmt = dynamic_cast<PointerStatement *>(node)) {
-    ResolvedType ptrType = inferNodeDataType(ptrStmt->type.get());
-    // Update the is pointer flag to true
-    ptrType.isPointer = true;
-    return isPointerType(ptrType);
+  return unknownType;
+}
+
+ResolvedType Semantics::resolveTypeWithModifier(Node *modifier,
+                                                const ResolvedType &base) {
+  if (!modifier)
+    return base;
+
+  auto tyMod = dynamic_cast<TypeModifier *>(modifier);
+  if (!tyMod)
+    return base;
+
+  // Recursively resolve inner first
+  ResolvedType inner = base;
+  if (tyMod->inner_modifier)
+    inner = resolveTypeWithModifier(tyMod->inner_modifier.get(), base);
+
+  // Build outer layer wrapping inner
+  ResolvedType outer;
+  outer.isNull = base.isNull;
+  outer.innerType = std::make_shared<ResolvedType>(inner);
+
+  if (tyMod->isPointer) {
+    outer.modifier = ResolvedType::Modifier::POINTER;
+    outer.resolvedName = "ptr<" + inner.resolvedName + ">";
+  } else if (tyMod->isReference) {
+    outer.modifier = ResolvedType::Modifier::REFERENCE;
+    outer.resolvedName = "ref<" + inner.resolvedName + ">";
+  } else if (tyMod->isArray) {
+    outer.modifier = ResolvedType::Modifier::ARRAY;
+    // Grab dimension if constant
+    if (!tyMod->dimensions.empty()) {
+      if (isIntegerConstant(tyMod->dimensions[0].get()))
+        outer.arraySize = getIntegerConstant(tyMod->dimensions[0].get());
+    }
+    outer.resolvedName =
+        "arr[" + (outer.arraySize ? std::to_string(outer.arraySize) : "?") +
+        "]<" + inner.resolvedName + ">";
   }
 
-  if (auto refStmt = dynamic_cast<ReferenceStatement *>(node)) {
-    ResolvedType refType = inferNodeDataType(refStmt->type.get());
-    // Update the reference flag to true
-    refType.isRef = true;
-    return isRefType(refType);
-  }
-
-  return {DataType::UNKNOWN, "unknown"};
+  return outer;
 }
 
 std::string Semantics::extractDeclarationName(Node *node) {
   std::string declName = "<Unknown name>";
-  if (auto letStmt = dynamic_cast<LetStatement *>(node)) {
-    declName = letStmt->ident_token.TokenLiteral;
-  } else if (auto ptrStmt = dynamic_cast<PointerStatement *>(node)) {
-    declName = ptrStmt->name->expression.TokenLiteral;
-  } else if (auto refStmt = dynamic_cast<ReferenceStatement *>(node)) {
-    declName = refStmt->name->expression.TokenLiteral;
-  } else if (auto arrStmt = dynamic_cast<ArrayStatement *>(node)) {
-    declName = arrStmt->identifier->expression.TokenLiteral;
-  }
+  if (auto decl = dynamic_cast<VariableDeclaration *>(node))
+    declName = decl->var_name->expression.TokenLiteral;
 
   return declName;
 }
@@ -693,7 +639,7 @@ std::string Semantics::extractIdentifierName(Node *node) {
 ResolvedType Semantics::inferInfixExpressionType(Node *node) {
   auto infixNode = dynamic_cast<InfixExpression *>(node);
   if (!infixNode)
-    return {DataType::UNKNOWN, "unknown"};
+    return ResolvedType::unknown();
 
   // Incase the left side is an identifier
   auto ident = dynamic_cast<Identifier *>(infixNode->left_operand.get());
@@ -715,7 +661,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
     if (result) {
       return result->type;
     } else {
-      return ResolvedType{DataType::ERROR, "error"};
+      return ResolvedType::error();
     }
   }
 
@@ -728,14 +674,14 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
     if (!leftType.isNull) {
       logSemanticErrors("Left-hand side of coalesce must be nullable",
                         infixNode->left_operand.get());
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+      return ResolvedType::error();
     }
 
     // Right-hand side type
     rightType = inferNodeDataType(infixNode->right_operand.get());
     ResolvedType baseType = leftType;
     baseType.isNull = false;
-    auto strippedName = stripOptionalSuffix(baseType.resolvedName);
+    auto strippedName = getBaseTypeName(baseType);
     baseType.resolvedName = strippedName;
 
     if (!isTypeCompatible(baseType, rightType)) {
@@ -744,7 +690,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
               baseType.resolvedName + "' must match '" +
               rightType.resolvedName + "'",
           ident);
-      return ResolvedType{DataType::ERROR, "error"};
+      return ResolvedType::error();
     }
 
     // Result is the underlying type
@@ -756,14 +702,14 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
     if (!symbol) {
       logSemanticErrors(
           "Undefined variable '" + ident->identifier.TokenLiteral + "'", ident);
-      return {DataType::ERROR, "error"};
+      return ResolvedType::error();
     }
     if (symbol->isDefinitelyNull) {
       logSemanticErrors("Cannot use definitely-null variable '" +
                             ident->identifier.TokenLiteral + "' in operations",
                         ident);
       symbol->hasError = true;
-      return {DataType::ERROR, "error"};
+      return ResolvedType::error();
     }
   }
 
@@ -778,7 +724,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
 ResolvedType Semantics::inferPrefixExpressionType(Node *node) {
   auto prefixNode = dynamic_cast<PrefixExpression *>(node);
   if (!prefixNode)
-    return {DataType::ERROR, "error"};
+    return ResolvedType::error();
   auto prefixOperator = prefixNode->operat.type;
   ResolvedType operandType = inferNodeDataType(prefixNode->operand.get());
   return resultOfUnary(prefixOperator, operandType, prefixNode);
@@ -787,7 +733,7 @@ ResolvedType Semantics::inferPrefixExpressionType(Node *node) {
 ResolvedType Semantics::inferPostfixExpressionType(Node *node) {
   auto postfixNode = dynamic_cast<PostfixExpression *>(node);
   if (!postfixNode)
-    return {DataType::ERROR, "error"};
+    return ResolvedType::error();
   ResolvedType operandType = inferNodeDataType(postfixNode->operand.get());
   auto postfixOperator = postfixNode->operator_token.type;
   return resultOfUnary(postfixOperator, operandType, postfixNode);
@@ -801,13 +747,7 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     return nullptr;
 
   // If the type is a pointer strip the name and allow for access
-  std::string lookUpName = parentType.resolvedName;
-
-  if (parentType.isPointer) {
-    lookUpName = stripPtrSuffix(lookUpName);
-  } else if (parentType.isRef) {
-    lookUpName = stripRefSuffix(lookUpName);
-  }
+  std::string lookUpName = getBaseTypeName(parentType);
 
   // Block nullable access
   if (parentType.isNull) {
@@ -899,9 +839,9 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
   // Logical operators: &&, ||
   if (operatorType == TokenType::AND || operatorType == TokenType::OR) {
     if (isBoolean(leftType) && isBoolean(rightType))
-      return ResolvedType{DataType::BOOLEAN, "boolean"};
+      return ResolvedType::makeBase(DataType::BOOLEAN, "boolean");
     else
-      return ResolvedType{DataType::ERROR, "error"};
+      return ResolvedType::error();
   }
 
   // The odds of this happening are low unless the parser messed up
@@ -910,7 +850,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
         "Cannot use '" + operatorStr +
             "'in binary operations. It is reserved for assignments",
         infix->left_operand.get());
-    return ResolvedType{DataType::ERROR, "error"};
+    return ResolvedType::error();
   }
 
   // Comparison operators
@@ -928,21 +868,21 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                             rightType.resolvedName +
                             "' as one of them is nullable",
                         infix->left_operand.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return ResolvedType::error();
     }
 
     if (leftType.kind == rightType.kind)
-      return ResolvedType{DataType::BOOLEAN, "boolean"};
+      return ResolvedType::makeBase(DataType::BOOLEAN, "boolean");
     logSemanticErrors("Cannot compare '" + leftType.resolvedName + "' to '" +
                           rightType.resolvedName + "'",
                       infix->left_operand.get());
-    return ResolvedType{DataType::ERROR, "error"};
+    return ResolvedType::error();
   }
 
   // String concatenation(Not complete but I will work on this)
   if (operatorType == TokenType::PLUS && isString(leftType) &&
       isString(rightType)) {
-    return ResolvedType{DataType::STRING, "string"};
+    return ResolvedType::makeBase(DataType::STRING, "string");
   }
 
   // Arithmetic operators: +, -, %, /, *
@@ -959,39 +899,39 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                             rightType.resolvedName +
                             "' as one of them is nullable",
                         infix->left_operand.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return ResolvedType::error();
     }
-    if (leftType.isPointer && isInteger(rightType)) {
+    if (leftType.isPointer() && isInteger(rightType)) {
       if (operatorType == TokenType::PLUS || operatorType == TokenType::MINUS) {
         return leftType; // Location +/- Distance = Location
       }
     }
 
     // Integer + Pointer = Pointer (Commutative Addition)
-    if (isInteger(leftType) && rightType.isPointer) {
+    if (isInteger(leftType) && rightType.isPointer()) {
       if (operatorType == TokenType::PLUS) {
         return rightType;
       }
     }
 
     //  Pointer - Pointer = USIZE (Distance between two points)
-    if (leftType.isPointer && rightType.isPointer &&
+    if (leftType.isPointer() && rightType.isPointer() &&
         operatorType == TokenType::MINUS) {
-      return ResolvedType{DataType::USIZE, "usize"};
+      return ResolvedType::makeBase(DataType::USIZE, "usize");
     }
-    // Promote mixed int/float combinations
+    // Promote mixed integer/float combinations
     if ((isInteger(leftType) && isFloat(rightType)) ||
         (isFloat(leftType) && isInteger(rightType))) {
-      return ResolvedType{DataType::F32, "f32"};
+      return ResolvedType::makeBase(DataType::F32, "f32");
     }
     // Promote int/double or float/double to double
     if ((isInteger(leftType) && rightType.kind == DataType::F64) ||
         (leftType.kind == DataType::F64 && isInteger(rightType))) {
-      return ResolvedType{DataType::F64, "f64"};
+      return ResolvedType::makeBase(DataType::F64, "f64");
     }
     if ((leftType.kind == DataType::F32 && rightType.kind == DataType::F64) ||
         (leftType.kind == DataType::F64 && rightType.kind == DataType::F32)) {
-      return ResolvedType{DataType::F64, "f64"};
+      return ResolvedType::makeBase(DataType::F64, "f64");
     }
 
     if (leftType.kind == rightType.kind) {
@@ -1005,7 +945,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     logSemanticErrors("Type mismatch '" + leftType.resolvedName +
                           "' does not match '" + rightType.resolvedName + "'",
                       infix->left_operand.get());
-    return ResolvedType{DataType::ERROR, "error"};
+    return ResolvedType::error();
   }
 
   bool isBitwise = (operatorType == TokenType::BITWISE_AND ||
@@ -1023,14 +963,14 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
                             leftType.resolvedName + "' and '" +
                             rightType.resolvedName + "'",
                         infix->left_operand.get());
-      return ResolvedType{DataType::ERROR, "error"};
+      return ResolvedType::error();
     }
 
     logSemanticErrors("Bitwise operations cannot be performed on '" +
                           leftType.resolvedName + "' and '" +
                           rightType.resolvedName + "'",
                       infix->left_operand.get());
-    return ResolvedType{DataType::ERROR, "error"};
+    return ResolvedType::error();
   }
 
   bool isShift = (operatorType == TokenType::SHIFT_RIGHT ||
@@ -1044,12 +984,12 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
         "Shift operators require integers on both sides  but got '" +
             leftType.resolvedName + "' and '" + rightType.resolvedName + "'",
         infix->left_operand.get());
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return ResolvedType::unknown();
   }
 
   logSemanticErrors("Unknown binary operator '" + operatorStr + "'",
                     infix->left_operand.get());
-  return ResolvedType{DataType::ERROR, "error"};
+  return ResolvedType::error();
 }
 
 ResolvedType Semantics::resultOfUnary(TokenType operatorType,
@@ -1063,13 +1003,13 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
 
   switch (operatorType) {
   case TokenType::BANG: {
-    if (isBoolean(operandType) || operandType.isPointer) {
-      return ResolvedType{DataType::BOOLEAN, "bool"};
+    if (isBoolean(operandType) || operandType.isPointer()) {
+      return ResolvedType::makeBase(DataType::BOOLEAN, "bool");
     }
     logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
                           operandType.resolvedName + "'",
                       node);
-    return ResolvedType{DataType::ERROR, "error"};
+    return ResolvedType::error();
   }
   case TokenType::MINUS:
   case TokenType::PLUS:
@@ -1082,7 +1022,7 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
     logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
                           operandType.resolvedName + "'",
                       node);
-    return ResolvedType{DataType::ERROR, "error"};
+    return ResolvedType::error();
   }
   case TokenType::BITWISE_NOT: {
     if (isInteger(operandType)) {
@@ -1094,10 +1034,10 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
             "' can only be applied to integer types you provided '" +
             operandType.resolvedName + "'",
         node);
-    return ResolvedType{DataType::ERROR, "error"};
+    return ResolvedType::error();
   }
   default:
-    return ResolvedType{DataType::ERROR, "error"};
+    return ResolvedType::unknown();
   }
 }
 
@@ -1159,7 +1099,7 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
       t.isNull = isNullable;
       return t;
     } else
-      return ResolvedType{nonNull, baseName};
+      return ResolvedType::makeBase(nonNull, baseName);
   };
 
   switch (token.type) {
@@ -1209,7 +1149,7 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
     return makeType(DataType::OPAQUE, "opaque");
 
   case TokenType::VOID:
-    return {DataType::VOID, "void"};
+    return ResolvedType::makeBase(DataType::VOID, "void");
 
   case TokenType::IDENTIFIER: {
     auto parentIt = customTypesTable.find(token.TokenLiteral);
@@ -1221,55 +1161,72 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
 
     logSpecialErrors("Unknown type '" + token.TokenLiteral + "'", token.line,
                      token.column);
-    return {DataType::UNKNOWN, "unknown"};
+    return ResolvedType::unknown();
   }
   default:
-    return {DataType::UNKNOWN, "unknown", false, false};
+    return ResolvedType::unknown();
   }
 }
 
 bool Semantics::isTypeCompatible(const ResolvedType &expected,
                                  const ResolvedType &actual) {
+  // Error type always fails, don't silently pass broken types through
+  if (actual.kind == DataType::ERROR || expected.kind == DataType::ERROR)
+    return false;
 
-  // Opaque pointer check
-  if (expected.kind == DataType::OPAQUE && expected.isPointer &&
-      actual.isPointer) {
+  // Opaque pointer,accepts any pointer
+  if (expected.isBase() && expected.kind == DataType::OPAQUE) {
+    if (!actual.isPointer())
+      return false;
     if (!expected.isNull && actual.isNull)
       return false;
     return true;
   }
 
-  // Pointers must match
-  if (expected.isPointer != actual.isPointer)
-    return false;
-
-  if (expected.isArray != actual.isArray)
-    return false;
-
-  // References must match
-  if (expected.isRef != actual.isRef)
-    return false;
-
-  // Error type can always pass through
-  if (actual.kind == DataType::ERROR)
-    return false;
-
-  // If kinds differ, types differ.
-  if (expected.kind != actual.kind)
-    return false;
-
-  // === Nullability Rules ===
-  // Assigning nullable to non-nullable is unsafe -> BLOCK
+  // Nullability rules
+  // Non-nullable cannot accept nullable
   if (!expected.isNull && actual.isNull)
     return false;
+  // Nullable can accept non-nullable, safe widening
+  // Both matching is fine too, handled by falling through
 
-  // Assigning non-nullable to nullable is safe -> ALLOW
-  if (expected.isNull && !actual.isNull)
-    return true;
+  // Modifier must match at this level
+  if (expected.modifier != actual.modifier)
+    return false;
 
-  // If both match exactly (both nullable or both non-null)
-  if (expected.isNull == actual.isNull)
+  // Base case, both are concrete types
+  if (expected.isBase() && actual.isBase()) {
+    if (expected.kind != actual.kind)
+      return false;
+    // Custom types — compare by name
+    if (expected.kind == DataType::COMPONENT ||
+        expected.kind == DataType::RECORD || expected.kind == DataType::ENUM) {
+      return expected.resolvedName == actual.resolvedName;
+    }
     return true;
+  }
+
+  // Array check size compatibility then recurse
+  if (expected.isArray() && actual.isArray()) {
+    // If expected has a fixed size, actual must match
+    // 0 means dynamic — dynamic is compatible with anything
+    if (expected.arraySize != 0 && actual.arraySize != 0) {
+      if (expected.arraySize != actual.arraySize)
+        return false;
+    }
+    // Recurse into element type
+    if (!expected.innerType || !actual.innerType)
+      return false;
+    return isTypeCompatible(*expected.innerType, *actual.innerType);
+  }
+
+  // Pointer or Reference, recurse into what they point to
+  if ((expected.isPointer() && actual.isPointer()) ||
+      (expected.isRef() && actual.isRef())) {
+    if (!expected.innerType || !actual.innerType)
+      return false;
+    return isTypeCompatible(*expected.innerType, *actual.innerType);
+  }
 
   return false;
 }
@@ -1347,7 +1304,8 @@ bool Semantics::hasReturnPathInBlock(
 
     // Handle switch statements
     if (auto switchStmt = dynamic_cast<SwitchStatement *>(stmt.get())) {
-      // If there's a return after this switch, we don't need returns inside it
+      // If there's a return after this switch, we don't need returns inside
+      // it
       if (hasReturnAfter) {
         continue;
       }
@@ -1448,109 +1406,59 @@ bool Semantics::hasReturnPathList(
   return false;
 }
 
+bool Semantics::checkParamListCompatibility(
+    const std::vector<std::pair<ResolvedType, std::string>> &expectedParams,
+    const std::vector<std::unique_ptr<Statement>> &actualParams) {
+
+  if (expectedParams.size() != actualParams.size())
+    return false;
+
+  for (size_t i = 0; i < expectedParams.size(); ++i) {
+    auto param = dynamic_cast<VariableDeclaration *>(actualParams[i].get());
+    if (!param)
+      return false;
+
+    auto baseType = inferDeclarationBaseType(param);
+    ResolvedType paramType =
+        resolveTypeWithModifier(param->modified_type.get(), baseType);
+
+    const ResolvedType &expectedType = expectedParams[i].first;
+    const std::string &expectedGeneric = expectedParams[i].second;
+
+    if (!expectedGeneric.empty()) {
+      auto base = dynamic_cast<BasicType *>(param->base_type.get());
+      if (!base)
+        return false;
+      std::string actualGeneric = base->data_token.type == TokenType::IDENTIFIER
+                                      ? base->data_token.TokenLiteral
+                                      : "";
+      if (actualGeneric != expectedGeneric)
+        return false;
+    }
+
+    if (!isTypeCompatible(expectedType, paramType))
+      return false;
+  }
+  return true;
+}
+
 bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo,
                                         FunctionExpression *funcExpr) {
-
-  if (declInfo.paramTypes.size() != funcExpr->call.size()) {
+  if (!checkParamListCompatibility(declInfo.paramTypes, funcExpr->call))
     return false;
-  }
-  for (size_t i = 0; i < declInfo.paramTypes.size(); ++i) {
-    auto letStmt = dynamic_cast<LetStatement *>(funcExpr->call[i].get());
-    if (!letStmt)
-      return false;
-    auto type = dynamic_cast<BasicType *>(letStmt->type.get());
-    ResolvedType paramType = inferNodeDataType(type);
-    std::string paramGenericName =
-        type->data_token.type == TokenType::IDENTIFIER
-            ? type->data_token.TokenLiteral
-            : "";
-    // Find declaration's parameter metadata
-    bool declParamNullable = false;
-    bool isLetNullable = type->isNullable;
-    for (const auto &pair : metaData) {
-      if (auto declLetStmt = dynamic_cast<LetStatement *>(pair.first)) {
-        if (declLetStmt->ident_token.TokenLiteral ==
-                letStmt->ident_token.TokenLiteral &&
-            pair.second->type.kind == declInfo.paramTypes[i].first.kind &&
-            pair.second->genericName == declInfo.paramTypes[i].second) {
-          declParamNullable = pair.second->isNullable;
-          break;
-        }
-      }
-    }
-    if (paramType.kind != declInfo.paramTypes[i].first.kind ||
-        paramGenericName != declInfo.paramTypes[i].second ||
-        isLetNullable != declParamNullable) {
-      return false;
-    }
-  }
-
-  // Check return type
-  auto retType = dynamic_cast<ReturnType *>(funcExpr->return_type.get());
-  if (!retType)
-    return false;
-  ResolvedType returnType = inferNodeDataType(retType->returnExpr.get());
-  std::string returnGenericName =
-      retType->expression.type == TokenType::IDENTIFIER
-          ? retType->expression.TokenLiteral
-          : "";
-  return returnType.kind == declInfo.returnType.kind;
+  ResolvedType actualReturn = inferNodeDataType(funcExpr->return_type.get());
+  return isTypeCompatible(declInfo.returnType, actualReturn);
 }
 
 bool Semantics::signaturesMatchBehaviorDeclaration(
     const std::shared_ptr<MemberInfo> &declMember,
     FunctionExpression *funcExpr) {
-  if (!declMember)
+  if (!declMember || !funcExpr)
     return false;
-
-  if (!funcExpr)
+  if (!checkParamListCompatibility(declMember->paramTypes, funcExpr->call))
     return false;
-
-  const auto &declParams = declMember->paramTypes;
-  if (declParams.size() != funcExpr->call.size())
-    return false;
-
-  for (size_t i = 0; i < declMember->paramTypes.size(); ++i) {
-    auto letStmt = dynamic_cast<LetStatement *>(funcExpr->call[i].get());
-    if (!letStmt)
-      return false;
-    auto type = dynamic_cast<BasicType *>(letStmt->type.get());
-    ResolvedType paramType = inferNodeDataType(type);
-    std::string paramGenericName =
-        type->data_token.type == TokenType::IDENTIFIER
-            ? type->data_token.TokenLiteral
-            : "";
-    // Find declaration's parameter metadata
-    bool declParamNullable = false;
-    bool isLetNullable = type->isNullable;
-    for (const auto &pair : metaData) {
-      if (auto declLetStmt = dynamic_cast<LetStatement *>(pair.first)) {
-        if (declLetStmt->ident_token.TokenLiteral ==
-                letStmt->ident_token.TokenLiteral &&
-            pair.second->type.kind == declMember->paramTypes[i].first.kind &&
-            pair.second->genericName == declMember->paramTypes[i].second) {
-          declParamNullable = pair.second->isNullable;
-          break;
-        }
-      }
-    }
-    if (paramType.kind != declMember->paramTypes[i].first.kind ||
-        paramGenericName != declMember->paramTypes[i].second ||
-        isLetNullable != declParamNullable) {
-      return false;
-    }
-  }
-
-  // Check return type
-  auto retType = dynamic_cast<ReturnType *>(funcExpr->return_type.get());
-  if (!retType)
-    return false;
-  ResolvedType returnType = inferNodeDataType(retType->returnExpr.get());
-  std::string returnGenericName =
-      retType->expression.type == TokenType::IDENTIFIER
-          ? retType->expression.TokenLiteral
-          : "";
-  return returnType.kind == declMember->returnType.kind;
+  ResolvedType actualReturn = inferNodeDataType(funcExpr->return_type.get());
+  return isTypeCompatible(declMember->returnType, actualReturn);
 }
 
 bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
@@ -1578,7 +1486,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
     ResolvedType argType = argInfo->type;
 
     bool isCompatible = isTypeCompatible(expectedType, argType);
-    if (!isCompatible && expectedType.isRef && !argType.isRef) {
+    if (!isCompatible && expectedType.isRef() && !argType.isRef()) {
       auto ident = dynamic_cast<Identifier *>(param.get());
       auto deref = dynamic_cast<DereferenceExpression *>(param.get());
 
@@ -1659,7 +1567,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
     bool isCompatible = isTypeCompatible(expectedType, argType);
 
     // If the type is a reference
-    if (!isCompatible && expectedType.isRef && !argType.isRef) {
+    if (!isCompatible && expectedType.isRef() && !argType.isRef()) {
       auto ident = dynamic_cast<Identifier *>(param.get());
       auto deref = dynamic_cast<DereferenceExpression *>(param.get());
 
@@ -1683,10 +1591,9 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
       continue;
     }
 
-    // --- Nullability rule ---
     if (dynamic_cast<NullLiteral *>(param.get())) {
       if (expectedType.isNull) {
-        argType = expectedType; // promote null → nullable type
+        argType = expectedType;
       } else {
         logSemanticErrors("Cannot pass null to non-nullable parameter " +
                               std::to_string(i + 1) + ": expected " +
@@ -1919,250 +1826,159 @@ bool Semantics::isIntegerConstant(Node *node) {
   return isIntLit;
 }
 
-ResolvedType Semantics::resolvedDataType(Token token, Node *node) {
-  logInternal("Resolving Type ....");
+ResolvedType
+Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
+  logInternal("Resolving Variable declaration Base Type ....");
 
-  TokenType type = token.type;
+  auto baseType = dynamic_cast<BasicType *>(declaration->base_type.get());
+  TokenType basetype_tokentype = baseType->data_token.type;
 
-  switch (type) {
+  switch (basetype_tokentype) {
   case TokenType::I8_KEYWORD:
-    return ResolvedType{DataType::I8, "i8"};
+    return ResolvedType::makeBase(DataType::I8, "i8");
   case TokenType::U8_KEYWORD:
-    return ResolvedType{DataType::U8, "u8"};
+    return ResolvedType::makeBase(DataType::U8, "u8");
 
   case TokenType::I16_KEYWORD:
-    return ResolvedType{DataType::I16, "i16"};
+    return ResolvedType::makeBase(DataType::I16, "i16");
   case TokenType::U16_KEYWORD:
-    return ResolvedType{DataType::U16, "u16"};
+    return ResolvedType::makeBase(DataType::U16, "u16");
 
   case TokenType::I32_KEYWORD:
-    return ResolvedType{DataType::I32, "i32"};
+    return ResolvedType::makeBase(DataType::I32, "i32");
   case TokenType::U32_KEYWORD:
-    return ResolvedType{DataType::U32, "u32"};
+    return ResolvedType::makeBase(DataType::U32, "u32");
 
   case TokenType::I64_KEYWORD:
-    return ResolvedType{DataType::I64, "i64"};
+    return ResolvedType::makeBase(DataType::I64, "i64");
   case TokenType::U64_KEYWORD:
-    return ResolvedType{DataType::U64, "u64"};
+    return ResolvedType::makeBase(DataType::U64, "u64");
 
   case TokenType::I128_KEYWORD:
-    return ResolvedType{DataType::I128, "i128"};
+    return ResolvedType::makeBase(DataType::I128, "i128");
   case TokenType::U128_KEYWORD:
-    return ResolvedType{DataType::U128, "u128"};
+    return ResolvedType::makeBase(DataType::U128, "u128");
 
   case TokenType::ISIZE_KEYWORD:
-    return ResolvedType{DataType::ISIZE, "isize"};
+    return ResolvedType::makeBase(DataType::ISIZE, "isize");
   case TokenType::USIZE_KEYWORD:
-    return ResolvedType{DataType::USIZE, "usize"};
+    return ResolvedType::makeBase(DataType::USIZE, "usize");
 
   case TokenType::F32_KEYWORD:
-    return ResolvedType{DataType::F32, "f32"};
+    return ResolvedType::makeBase(DataType::F32, "f32");
   case TokenType::F64_KEYWORD:
-    return ResolvedType{DataType::F64, "f64"};
+    return ResolvedType::makeBase(DataType::F64, "f64");
 
   case TokenType::STRING_KEYWORD:
-    return ResolvedType{DataType::STRING, "string"};
+    return ResolvedType::makeBase(DataType::STRING, "string");
 
   case TokenType::CHAR8_KEYWORD:
-    return ResolvedType{DataType::CHAR8, "char8"};
+    return ResolvedType::makeBase(DataType::CHAR8, "char8");
   case TokenType::CHAR16_KEYWORD:
-    return ResolvedType{DataType::CHAR16, "char16"};
+    return ResolvedType::makeBase(DataType::CHAR16, "char16");
   case TokenType::CHAR32_KEYWORD:
-    return ResolvedType{DataType::CHAR32, "char32"};
+    return ResolvedType::makeBase(DataType::CHAR32, "char32");
+  case TokenType::OPAQUE:
+    return ResolvedType::makeBase(DataType::OPAQUE, "opaque");
 
   case TokenType::BOOL_KEYWORD:
-    return ResolvedType{DataType::BOOLEAN, "bool"};
+    return ResolvedType::makeBase(DataType::BOOLEAN, "bool");
 
   case TokenType::AUTO: {
-    auto letStmt = dynamic_cast<LetStatement *>(node);
-    auto type = dynamic_cast<BasicType *>(node);
-    auto letStmtValue = letStmt->value.get();
-    if (!letStmtValue) {
-      logSemanticErrors("Cannot infer without a value", type);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+    auto value = declaration->initializer.get();
+    if (!value) {
+      logSemanticErrors("Cannot infer without a value", declaration);
+      return ResolvedType::unknown();
     }
-    auto inferred = inferNodeDataType(letStmtValue);
-    return ResolvedType{inferred.kind, inferred.resolvedName};
+    auto inferred = inferNodeDataType(value);
+    return inferred;
   }
 
   // Dealing with custom types now
   case TokenType::IDENTIFIER: {
-    logInternal("Resolving custom type ....");
-    // Extract the identifier as this how the parser is logging the correct
-    // types Case 1 is for let statements
-    auto type = dynamic_cast<BasicType *>(node);
-    // Extract the custom data type
-    auto letStmtType = type->data_token.TokenLiteral;
-
+    auto typeName = baseType->data_token.TokenLiteral;
     // Search for the name in the custom types table
-    auto typeIt = customTypesTable.find(letStmtType);
+    auto typeIt = customTypesTable.find(typeName);
     if (typeIt == customTypesTable.end()) {
-      logSemanticErrors("Type '" + letStmtType + "' is unknown", type);
-      return ResolvedType{DataType::UNKNOWN, "unknown"};
+      logSemanticErrors("Type '" + typeName + "' is unknown", baseType);
+      return ResolvedType::error();
     }
 
-    return ResolvedType{typeIt->second->type.kind, typeIt->second->typeName};
+    return ResolvedType::makeBase(typeIt->second->type.kind,
+                                  typeIt->second->typeName);
   }
 
   default:
-    return ResolvedType{DataType::UNKNOWN, "unknown"};
+    return ResolvedType::unknown();
   }
 }
 
-std::string Semantics::stripOptionalSuffix(const std::string &type) {
-  std::string result = type;
-
-  // Find the '?' anywhere in the name
-  size_t qPos = result.find('?');
-  if (qPos != std::string::npos) {
-    // Erase just that one character
-    result.erase(qPos, 1);
-  }
-
-  return result;
+std::string Semantics::getBaseTypeName(const ResolvedType &type) {
+  return type.base().resolvedName;
 }
 
-std::string Semantics::stripPtrSuffix(const std::string &type) {
-  // Inline lambda to check if a string ends with a suffix
-  auto endsWith = [](const std::string &str,
-                     const std::string &suffix) -> bool {
-    if (str.length() < suffix.length())
-      return false;
-    return str.compare(str.length() - suffix.length(), suffix.length(),
-                       suffix) == 0;
-  };
-
-  auto ptrName = [&](std::string typeName) {
-    if (endsWith(typeName, "_ptr"))
-      typeName = typeName.substr(0, typeName.size() - 4);
-
-    return typeName;
-  };
-
-  return ptrName(type);
-}
-
-std::string Semantics::stripRefSuffix(const std::string &type) {
-  auto endsWith = [](const std::string &str,
-                     const std::string &suffix) -> bool {
-    if (str.length() < suffix.length())
-      return false;
-    return str.compare(str.length() - suffix.length(), suffix.length(),
-                       suffix) == 0;
-  };
-
-  auto refName = [&](std::string typeName) {
-    if (endsWith(typeName, "_ref"))
-      typeName = typeName.substr(0, typeName.size() - 4);
-
-    return typeName;
-  };
-
-  return refName(type);
-}
-
-ResolvedType Semantics::getArrayElementType(ResolvedType &type) {
-  auto stripBrackets = [](const std::string &str) -> std::string {
-    size_t firstBracket = str.find('[');
-    size_t lastBracket = str.rfind(']');
-
-    // Only slice if both brackets exist and there is content between them
-    if (firstBracket != std::string::npos && lastBracket != std::string::npos &&
-        lastBracket > firstBracket + 1) {
-      return str.substr(firstBracket + 1, lastBracket - firstBracket - 1);
-    }
-    return str; // Fallback to original if it's not actually an array string
-  };
-
-  ResolvedType elementType;
-  elementType.resolvedName = stripBrackets(type.resolvedName);
-  logInternal("Stripped array name: " + elementType.resolvedName);
-  elementType.kind = type.kind;
-  elementType.isArray = false;
-
-  return elementType;
-}
-
-ResolvedType Semantics::isPointerType(ResolvedType t) {
-  // Inline lambda to check if a string ends with a suffix
-  auto endsWith = [](const std::string &str,
-                     const std::string &suffix) -> bool {
-    if (str.length() < suffix.length())
-      return false;
-    return str.compare(str.length() - suffix.length(), suffix.length(),
-                       suffix) == 0;
-  };
-
-  auto ptrType = [&](DataType baseType, bool isPtr, std::string baseName) {
-    if (isPtr) {
-      if (!endsWith(baseName, "_ptr"))
-        baseName += "_ptr";
-    } else {
-      if (endsWith(baseName, "_ptr"))
-        baseName = baseName.substr(0, baseName.size() - 4);
-    }
-
-    ResolvedType type;
-    type.resolvedName = baseName;
-    type.kind = baseType;
-    type.isArray = t.isArray;
-    type.isPointer = isPtr;
-    type.isNull = t.isNull;
-    type.isRef = false; // A pointer cannot be a pointer
-
+ResolvedType Semantics::getArrayElementType(const ResolvedType &type) {
+  if (!type.isArray()) {
+    logInternal(
+        "getArrayElementType called on non-array type — returning as-is");
     return type;
-  };
-
-  return ptrType(t.kind, t.isPointer, t.resolvedName);
-}
-
-ResolvedType Semantics::isRefType(ResolvedType t) {
-  // Inline lambda to check if a string ends with a suffix
-  auto endsWith = [](const std::string &str,
-                     const std::string &suffix) -> bool {
-    if (str.length() < suffix.length())
-      return false;
-    return str.compare(str.length() - suffix.length(), suffix.length(),
-                       suffix) == 0;
-  };
-
-  auto refType = [&](DataType baseType, bool isRef, std::string baseName) {
-    if (isRef) {
-      if (!endsWith(baseName, "_ref"))
-        baseName += "_ref";
-    } else {
-      if (endsWith(baseName, "_ref"))
-        baseName = baseName.substr(0, baseName.size() - 4);
-    }
-
-    ResolvedType type;
-    type.kind = baseType;
-    type.isRef = isRef;
-    type.resolvedName = baseName;
-    type.isArray = t.isArray;
-    type.isPointer = false; // A reference cannot be a pointer
-
-    return type;
-
-    return ResolvedType{baseType, baseName, false, isRef};
-  };
-
-  return refType(t.kind, t.isRef, t.resolvedName);
-}
-
-ResolvedType Semantics::peelRef(ResolvedType t) {
-  if (t.isRef) {
-    t.isRef = false;
-    t.resolvedName = stripRefSuffix(t.resolvedName);
   }
-  return t;
+  if (!type.innerType) {
+    logInternal("Array has no inner type — returning unknown");
+    return ResolvedType::unknown();
+  }
+  logInternal("Array element type: " + type.innerType->resolvedName);
+  return *type.innerType;
 }
 
-std::string Semantics::generateLifetimeID(Node *declarationNode) {
-  if (dynamic_cast<LetStatement *>(declarationNode))
-    return "L" + std::to_string(letDeclCount++);
-  else if (dynamic_cast<PointerStatement *>(declarationNode))
+ResolvedType Semantics::makePointerType(const ResolvedType &inner,
+                                        bool isNull) {
+  ResolvedType outer;
+  outer.modifier = ResolvedType::Modifier::POINTER;
+  outer.innerType = std::make_shared<ResolvedType>(inner);
+  outer.isNull = isNull;
+  outer.resolvedName = "ptr<" + inner.resolvedName + ">";
+  return outer;
+}
+
+ResolvedType Semantics::makeRefType(const ResolvedType &inner, bool isNull) {
+  ResolvedType outer;
+  outer.modifier = ResolvedType::Modifier::REFERENCE;
+  outer.innerType = std::make_shared<ResolvedType>(inner);
+  outer.isNull = isNull;
+  outer.resolvedName = "ref<" + inner.resolvedName + ">";
+  return outer;
+}
+
+ResolvedType Semantics::makeArrayType(const ResolvedType &inner, uint64_t size,
+                                      bool isNull) {
+  ResolvedType outer;
+  outer.modifier = ResolvedType::Modifier::ARRAY;
+  outer.innerType = std::make_shared<ResolvedType>(inner);
+  outer.arraySize = size;
+  outer.isNull = isNull;
+  outer.resolvedName = "arr[" + (size ? std::to_string(size) : "?") + "]<" +
+                       inner.resolvedName + ">";
+  return outer;
+}
+
+ResolvedType Semantics::peelRef(const ResolvedType &t) {
+  if (!t.isRef())
+    return t;
+  if (!t.innerType)
+    return ResolvedType::unknown();
+  return *t.innerType;
+}
+
+std::string
+Semantics::generateLifetimeID(const std::shared_ptr<SymbolInfo> &sym) {
+
+  if (sym->isPointer)
     return "P" + std::to_string(ptrDeclCount++);
+  else if (sym->isArray)
+    return "A" + std::to_string(arrDeclCount++);
+  else
+    return "N" + std::to_string(normalDeclCount++);
 
   return "NO ID";
 }
@@ -2172,9 +1988,10 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
                                  const std::shared_ptr<SymbolInfo> &declSym) {
   logInternal("Creating lifetime baton...");
   auto lifetime = std::make_unique<LifeTime>();
-  lifetime->ID = generateLifetimeID(declarationNode);
+  lifetime->ID = generateLifetimeID(declSym);
   lifetime->isResponsible = true;
   lifetime->isAlive = true;
+  lifetime->persist = declSym->isPersist;
 
   if (declSym->targetSymbol && targetBaton)
     transferResponsibility(lifetime.get(), targetBaton, declSym->targetSymbol);
@@ -2199,7 +2016,6 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
 }
 
 LifeTime *Semantics::getBaton(const std::string &ID) {
-  logInternal("\n[BATON GETTER] =========================================");
   logInternal("[BATON GETTER] Looking for baton with ID: " + ID);
 
   // First, try queryForLifeTimeBaton
@@ -2242,7 +2058,6 @@ LifeTime *Semantics::getBaton(const std::string &ID) {
 
   logInternal("[BATON GETTER] ✓ Found baton: ID=" + baton->ID +
               ", isResponsible=" + (baton->isResponsible ? "true" : "false"));
-  logInternal("[BATON GETTER] =========================================\n");
 
   return baton.get();
 }
@@ -2610,8 +2425,8 @@ std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
   if (auto *trace = dynamic_cast<TraceStatement *>(node)) {
     return digIdentifiers(trace->expr.get());
   }
-  // If we get here, either the node has no identifiers or we need to add a new
-  // case
+  // If we get here, either the node has no identifiers or we need to add a
+  // new case
   return results;
 }
 
@@ -2637,6 +2452,7 @@ void Semantics::logSemanticErrors(const std::string &message,
     tokenColumn = contextNode->token.column;
   }
   hasFailed = true;
+  hasError = true;
   CompilerError error;
   error.level = ErrorLevel::SEMANTIC;
   error.line = tokenLine;

@@ -33,10 +33,7 @@ private:
 
   const llvm::DataLayout *layout;
   // Component calculators
-  void calculateLetStatementSize(Node *node);
-  void calculateArrayStatementSize(Node *node);
-  void calculateHeapStatementSize(Node *node);
-  void calculatePointerStatementSize(Node *node);
+  void calculateVariableDeclarationSize(Node *node);
   void calculateWhileStatementSize(Node *node);
   void calculateForStatementSize(Node *node);
   void calculateIfStatementSize(Node *node);
@@ -64,5 +61,5 @@ private:
   void reportDevBug(const std::string &message);
   void logInternal(const std::string &message);
 
-  llvm::Type *getLLVMType(ResolvedType type);
+  llvm::Type *getLLVMType(const ResolvedType &type);
 };

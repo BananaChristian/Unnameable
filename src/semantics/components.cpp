@@ -19,42 +19,42 @@ void Semantics::walkEnumStatement(Node *node) {
   }
 
   // Set underlying type (default = i32)
-  ResolvedType underLyingType{DataType::I32, "i32"};
+  ResolvedType underLyingType = ResolvedType::makeBase(DataType::I32, "i32");
   if (enumStmt->int_type.has_value()) {
     switch (enumStmt->int_type.value().type) {
     case TokenType::I8_KEYWORD:
-      underLyingType = ResolvedType{DataType::I8, "i8"};
+      underLyingType = ResolvedType::makeBase(DataType::I8, "i8");
     case TokenType::U8_KEYWORD:
-      underLyingType = ResolvedType{DataType::U8, "u8"};
+      underLyingType = ResolvedType::makeBase(DataType::U8, "u8");
     case TokenType::I16_KEYWORD:
-      underLyingType = ResolvedType{DataType::I16, "i16"};
+      underLyingType = ResolvedType::makeBase(DataType::I16, "i16");
       break;
     case TokenType::U16_KEYWORD:
-      underLyingType = ResolvedType{DataType::U16, "u16"};
+      underLyingType = ResolvedType::makeBase(DataType::U16, "u16");
       break;
     case TokenType::I32_KEYWORD:
-      underLyingType = ResolvedType{DataType::I32, "i32"};
+      underLyingType = ResolvedType::makeBase(DataType::I32, "i32");
       break;
     case TokenType::U32_KEYWORD:
-      underLyingType = ResolvedType{DataType::U32, "u32"};
+      underLyingType = ResolvedType::makeBase(DataType::U32, "u32");
       break;
     case TokenType::I64_KEYWORD:
-      underLyingType = ResolvedType{DataType::I64, "i64"};
+      underLyingType = ResolvedType::makeBase(DataType::I64, "i64");
       break;
     case TokenType::U64_KEYWORD:
-      underLyingType = ResolvedType{DataType::U64, "u64"};
+      underLyingType = ResolvedType::makeBase(DataType::U64, "u64");
       break;
     case TokenType::I128_KEYWORD:
-      underLyingType = ResolvedType{DataType::I128, "i128"};
+      underLyingType = ResolvedType::makeBase(DataType::I128, "i128");
       break;
     case TokenType::U128_KEYWORD:
-      underLyingType = ResolvedType{DataType::U128, "u128"};
+      underLyingType = ResolvedType::makeBase(DataType::U128, "u128");
       break;
     case TokenType::USIZE_KEYWORD:
-      underLyingType = ResolvedType{DataType::USIZE, "usize"};
+      underLyingType = ResolvedType::makeBase(DataType::ISIZE, "isize");
       break;
     default:
-      underLyingType = ResolvedType{DataType::I32, "i32"};
+      underLyingType = ResolvedType::makeBase(DataType::USIZE, "usize");
       break;
     }
   }
@@ -276,7 +276,7 @@ void Semantics::walkEnumStatement(Node *node) {
     info->isExportable = isExportable;
     info->node = enumMember.get();
     info->constantValue = static_cast<int64_t>(memberValue);
-    info->parentType = ResolvedType{DataType::ENUM, enumStmtName};
+    info->parentType = ResolvedType::makeBase(DataType::ENUM, enumStmtName);
     members[memberName] = info;
 
     // Add member to local scope
@@ -293,7 +293,7 @@ void Semantics::walkEnumStatement(Node *node) {
   auto typeInfo = std::make_shared<CustomTypeInfo>();
 
   typeInfo->typeName = enumStmtName;
-  typeInfo->type = ResolvedType{DataType::ENUM, enumStmtName};
+  typeInfo->type = ResolvedType::makeBase(DataType::ENUM, enumStmtName);
   typeInfo->underLyingType = underLyingType.kind;
   typeInfo->members = members;
   typeInfo->isExportable = isExportable;
@@ -301,7 +301,7 @@ void Semantics::walkEnumStatement(Node *node) {
 
   // Add enum type to parent scope
   auto generalInfo = std::make_shared<SymbolInfo>();
-  generalInfo->type = ResolvedType{DataType::ENUM, enumStmtName};
+  generalInfo->type = ResolvedType::makeBase(DataType::ENUM, enumStmtName);
   generalInfo->isConstant = false;
   generalInfo->isInitialized = true;
   generalInfo->isExportable = isExportable;
@@ -340,13 +340,13 @@ void Semantics::walkRecordStatement(Node *node) {
   recordSym->isMutable = isBlockMutable;
   recordSym->isConstant = isBlockConstant;
   recordSym->isExportable = isExportable;
-  recordSym->type = {DataType::RECORD, recordName};
+  recordSym->type = ResolvedType::makeBase(DataType::RECORD, recordName);
   recordSym->isRecord = true;
 
   // Build customtype info
   auto typeInfo = std::make_shared<CustomTypeInfo>();
   typeInfo->typeName = recordName;
-  typeInfo->type = ResolvedType{DataType::RECORD, recordName},
+  typeInfo->type = ResolvedType::makeBase(DataType::RECORD, recordName),
   typeInfo->isExportable = isExportable;
 
   // Early registration
@@ -362,25 +362,10 @@ void Semantics::walkRecordStatement(Node *node) {
 
   // Analyze each field
   for (const auto &field : recordStmt->fields) {
-    auto letStmt = dynamic_cast<LetStatement *>(field.get());
-    auto ptrStmt = dynamic_cast<PointerStatement *>(field.get());
-    auto refStmt = dynamic_cast<ReferenceStatement *>(field.get());
-    auto arrStmt = dynamic_cast<ArrayStatement *>(field.get());
-
-    // Special error handle in case a user tries to use a reference inside a
-    // record
-    if (refStmt) {
-      logSemanticErrors("Cannot use references inside record '" + recordName +
-                            "'",
-                        field.get());
-      hasError = true;
-      continue;
-    }
-
-    bool isDecl = letStmt || ptrStmt || arrStmt;
+    auto declaration = dynamic_cast<VariableDeclaration *>(field.get());
 
     // Double check incase the parser messed up and leaked wrong statements
-    if (!isDecl) {
+    if (!declaration) {
       logSemanticErrors("Invalid statement inside record '" + recordName + "'",
                         field.get());
       hasError = true;
@@ -388,36 +373,14 @@ void Semantics::walkRecordStatement(Node *node) {
     }
 
     // Apply block mutability if set
-    if (isBlockMutable) {
-      if (letStmt)
-        letStmt->mutability = Mutability::MUTABLE;
-      else if (ptrStmt)
-        ptrStmt->mutability = Mutability::MUTABLE;
-      else if (refStmt)
-        refStmt->mutability = Mutability::MUTABLE;
-      else if (arrStmt)
-        arrStmt->mutability = Mutability::MUTABLE;
-    } else if (isBlockConstant) {
-      if (letStmt)
-        letStmt->mutability = Mutability::CONSTANT;
-      else if (ptrStmt)
-        ptrStmt->mutability = Mutability::CONSTANT;
-      else if (refStmt)
-        refStmt->mutability = Mutability::CONSTANT;
-      else if (arrStmt)
-        arrStmt->mutability = Mutability::CONSTANT;
-    }
+    if (isBlockMutable)
+      declaration->mutability = Mutability::MUTABLE;
+    else if (isBlockConstant)
+      declaration->mutability = Mutability::CONSTANT;
 
     // Apply volatility to the entire block if the user marked it
     if (isBlockVolatile) {
-      if (letStmt)
-        letStmt->isVolatile = isBlockVolatile;
-      else if (ptrStmt)
-        ptrStmt->isVolatile = isBlockVolatile;
-      else if (refStmt)
-        refStmt->isVolatile = isBlockVolatile;
-      else if (arrStmt)
-        arrStmt->isVolatile = isBlockVolatile;
+      declaration->isVolatile = true;
     }
 
     // Walk the let statement to register it in the scope
@@ -583,8 +546,8 @@ void Semantics::walkInitConstructor(Node *node) {
 
   // init constructor is always void-returning
   auto initInfo = std::make_shared<SymbolInfo>();
-  initInfo->type = ResolvedType{DataType::VOID, "void"};
-  initInfo->returnType = ResolvedType{DataType::VOID, "void"};
+  initInfo->type = ResolvedType::makeBase(DataType::VOID, "void");
+  initInfo->returnType = ResolvedType::makeBase(DataType::VOID, "void");
   initInfo->isDeclaration = true;
   initInfo->isDefined = true;
 
@@ -651,10 +614,8 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
     bool isCustom = currentResolvedType->kind == DataType::RECORD ||
                     currentResolvedType->kind == DataType::COMPONENT ||
                     currentResolvedType->kind == DataType::ENUM;
-    std::string lookUpName = currentResolvedType->resolvedName;
-    if (currentResolvedType->isPointer) {
-      lookUpName = stripPtrSuffix(currentResolvedType->resolvedName);
-    }
+    std::string lookUpName = getBaseTypeName(currentTypeInfo->type);
+
     if (isCustom) {
       auto ctiIt = customTypesTable.find(lookUpName);
       if (ctiIt == customTypesTable.end()) {
@@ -735,8 +696,10 @@ void Semantics::walkComponentStatement(Node *node) {
   componentSymbol->isComponent = true;
   auto componentTypeInfo = std::make_shared<CustomTypeInfo>();
 
-  componentSymbol->type = ResolvedType{DataType::COMPONENT, componentName};
-  componentTypeInfo->type = ResolvedType{DataType::COMPONENT, componentName};
+  componentSymbol->type =
+      ResolvedType::makeBase(DataType::COMPONENT, componentName);
+  componentTypeInfo->type =
+      ResolvedType::makeBase(DataType::COMPONENT, componentName);
 
   symbolTable[0][componentName] = componentSymbol;
   customTypesTable[componentName] = componentTypeInfo;
@@ -748,7 +711,7 @@ void Semantics::walkComponentStatement(Node *node) {
   // Enter a new component scope
   symbolTable.push_back({});
   currentTypeStack.push_back(
-      {.type = ResolvedType{DataType::COMPONENT, componentName},
+      {.type = ResolvedType::makeBase(DataType::COMPONENT, componentName),
        .typeName = componentName,
        .hasInitConstructor = false,
        .members = members,
@@ -871,24 +834,10 @@ void Semantics::walkComponentStatement(Node *node) {
   }
 
   for (const auto &data : componentStmt->fields) {
-    auto letStmt = dynamic_cast<LetStatement *>(data.get());
-    auto refStmt = dynamic_cast<ReferenceStatement *>(data.get());
-    auto arrStmt = dynamic_cast<ArrayStatement *>(data.get());
-    auto ptrStmt = dynamic_cast<PointerStatement *>(data.get());
-
+    auto declaration = dynamic_cast<VariableDeclaration *>(data.get());
     std::string declName = extractDeclarationName(data.get());
-    // Block references
-    if (refStmt) {
-      logSemanticErrors("Cannot use references inside component '" +
-                            componentName + "'",
-                        data.get());
-      hasError = true;
-      continue;
-    }
 
-    bool isValidDecl = letStmt || ptrStmt || arrStmt;
-
-    if (isValidDecl) {
+    if (declaration) {
       walker(data.get());
       std::shared_ptr<SymbolInfo> declSym = resolveSymbolInfo(declName);
       if (!declSym) {
@@ -911,7 +860,7 @@ void Semantics::walkComponentStatement(Node *node) {
       members[declName] = memInfo;
       declSym->memberIndex = memInfo->memberIndex;
 
-      metaData[letStmt] = declSym;
+      metaData[declaration] = declSym;
       componentTypeInfo->members = members;
     } else {
       logSemanticErrors("Invalid statement found in component '" +
@@ -1000,7 +949,8 @@ void Semantics::walkComponentStatement(Node *node) {
   componentTypeInfo->members = members;
   componentTypeInfo->typeName = componentName;
   componentTypeInfo->isExportable = isExportable;
-  componentTypeInfo->type = ResolvedType{DataType::COMPONENT, componentName};
+  componentTypeInfo->type =
+      ResolvedType::makeBase(DataType::COMPONENT, componentName);
 
   customTypesTable[componentName] = componentTypeInfo;
 
