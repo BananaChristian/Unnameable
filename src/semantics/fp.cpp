@@ -1,6 +1,5 @@
 #include "ast.hpp"
 #include "semantics.hpp"
-#include <algorithm>
 #include <memory>
 
 void Semantics::walkBlockExpression(Node *node) {
@@ -83,42 +82,22 @@ void Semantics::walkReturnStatement(Node *node) {
 
   ResolvedType valueType = ResolvedType::unknown();
 
-  if (auto ident = dynamic_cast<Identifier *>(retStmt->return_value.get())) {
-    auto paramInfo =
-        std::find_if(metaData.begin(), metaData.end(), [&](const auto &pair) {
-          if (auto varDecl = dynamic_cast<VariableDeclaration *>(pair.first)) {
-            return varDecl->var_name->expression.TokenLiteral ==
-                   ident->identifier.TokenLiteral;
-          }
-          return false;
-        });
-
-    if (paramInfo != metaData.end()) {
-      valueType = paramInfo->second->type;
-      logInternal("Found parameter '" + ident->identifier.TokenLiteral +
-                  "' with type: " + valueType.resolvedName);
-    } else {
-      auto symbol = resolveSymbolInfo(ident->identifier.TokenLiteral);
-      if (symbol) {
-        valueType = symbol->type;
-        logInternal("Found symbol '" + ident->identifier.TokenLiteral +
-                    "' with type: " + valueType.resolvedName);
-      }
-    }
+  auto valSym = getSymbolFromMeta(retStmt->return_value.get());
+  if (!valSym) {
+    reportDevBug("Could not find return value symbol info", retStmt);
+    return;
   }
+  
+  giveGenericIntegerContext(retStmt->return_value.get(),
+                            currentFunction.value(), valSym);
+  
+  valueType=valSym->type;
 
   // Fallback to inference
   if (valueType.base().kind == DataType::UNKNOWN)
     valueType = inferNodeDataType(retStmt->return_value.get());
 
   logInternal("Return value type: " + valueType.resolvedName);
-  auto valSym = getSymbolFromMeta(retStmt->return_value.get());
-  if (!valSym) {
-    reportDevBug("Could not find return value symbol info", retStmt);
-    return;
-  }
-  giveGenericIntegerContext(retStmt->return_value.get(),
-                            currentFunction.value(), valSym);
 
   if (dynamic_cast<NullLiteral *>(retStmt->return_value.get())) {
     if (!expectedReturn.isNull) {
