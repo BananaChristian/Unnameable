@@ -3,6 +3,15 @@
 #include "token.hpp"
 #include <string>
 
+void Semantics::giveGenericIntegerContext(
+    Node *literal, const std::shared_ptr<SymbolInfo> &contextSym,
+    const std::shared_ptr<SymbolInfo> &litSym) {
+  if (dynamic_cast<INTLiteral *>(literal)) {
+    if (isInteger(contextSym->type))
+      litSym->type = contextSym->type;
+  }
+}
+
 void Semantics::enforceDeclarationRules(
     VariableDeclaration *declaration,
     const std::shared_ptr<SymbolInfo> &declInfo) {
@@ -245,42 +254,6 @@ void Semantics::enforceDeclarationRules(
     }
   }
 
-  // Basic Type checks
-  auto errorType = ResolvedType::error();
-  ResolvedType declaredType = inferNodeDataType(declaration);
-
-  logInternal("Declared variable type: " + declaredType.resolvedName);
-  if (declaredType.kind == DataType::OPAQUE && !isPointer) {
-    errorHandler.addHint("'opaque' can only be used with pointer types")
-        .addHint("Example: ptr opaque p")
-        .addHint("Remove 'opaque' for non-pointer types");
-    logSemanticErrors("'opaque' only applies to pointer declarations",
-                      declaration);
-    return;
-  }
-
-  if (initializer) {
-    ResolvedType initType = inferNodeDataType(initializer);
-    if (declaredType.kind == DataType::OPAQUE) {
-      if (!initType.isPointer()) {
-        errorHandler.addHint("Opaque pointers can only point to other pointers")
-            .addHint("Use: ptr opaque p -> addr x")
-            .addHint("Make sure the target is a pointer type");
-        logSemanticErrors(
-            "Cannot initialize opaque pointer with non-pointer type",
-            declaration);
-      }
-    } else if (!isTypeCompatible(declaredType, initType)) {
-      std::string errorMsg = "Type mismatch in variable declaration";
-      errorHandler.addHint("Expected type: " + declaredType.resolvedName)
-          .addHint("Got type: " + initType.resolvedName)
-          .addHint("Check if types match or convert using cast or bitcast");
-
-      logSemanticErrors(errorMsg, declaration);
-      return;
-    }
-  }
-
   // Create initial info I will collect it later
   declInfo->isMutable = isMutable;
   declInfo->isConstant = isConstant;
@@ -289,10 +262,10 @@ void Semantics::enforceDeclarationRules(
   declInfo->isRestrict = isRestrict;
   declInfo->isPersist = isPersist;
   declInfo->isRef = isRef;
+  declInfo->isPointer = isPointer;
   declInfo->isHeap = isHeap;
   declInfo->isArray = isArray;
   declInfo->isNullable = isNullable;
-  declInfo->type = declaredType;
 }
 
 void Semantics::handleNullInitializers(
@@ -397,10 +370,52 @@ void Semantics::walkVariableDeclaration(Node *node) {
     if (initSym->hasError)
       return;
 
+    ResolvedType declaredType = inferNodeDataType(declaration);
+    declInfo->type = declaredType;
+
     // Null checks and giving the null literals context
     if (dynamic_cast<NullLiteral *>(initializer)) {
       handleNullInitializers(declaration, declInfo, initSym);
       return;
+    }
+
+    // Give generic int context
+    giveGenericIntegerContext(initializer, declInfo, initSym);
+
+    // Basic Type checks
+    auto errorType = ResolvedType::error();
+
+    logInternal("Declared variable type: " + declaredType.resolvedName);
+    if (declaredType.kind == DataType::OPAQUE && !declInfo->isPointer) {
+      errorHandler.addHint("'opaque' can only be used with pointer types")
+          .addHint("Example: ptr opaque p")
+          .addHint("Remove 'opaque' for non-pointer types");
+      logSemanticErrors("'opaque' only applies to pointer declarations",
+                        declaration);
+      return;
+    }
+
+    // Type check
+    if (initializer) {
+      if (declaredType.kind == DataType::OPAQUE) {
+        if (!initSym->type.isPointer()) {
+          errorHandler
+              .addHint("Opaque pointers can only point to other pointers")
+              .addHint("Use: ptr opaque p -> addr x")
+              .addHint("Make sure the target is a pointer type");
+          logSemanticErrors(
+              "Cannot initialize opaque pointer with non-pointer type",
+              declaration);
+        }
+      } else if (!isTypeCompatible(declaredType, initSym->type)) {
+        std::string errorMsg = "Type mismatch in variable declaration";
+        errorHandler.addHint("Expected type: " + declaredType.resolvedName)
+            .addHint("Got type: " + initSym->type.resolvedName)
+            .addHint("Check if types match or convert using cast or bitcast");
+
+        logSemanticErrors(errorMsg, declaration);
+        return;
+      }
     }
 
     //  Reference rules

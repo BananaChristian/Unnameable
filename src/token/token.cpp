@@ -207,6 +207,9 @@ std::string TokenTypeToLiteral(TokenType type) {
   case TokenType::F64_KEYWORD:
     return "Token Type: F64 KEYWORD";
 
+  case TokenType::INT:
+    return "Token Type: GENERIC INT";
+
   case TokenType::STRING:
     return "Token Type: STRING";
   case TokenType::STRING_KEYWORD:

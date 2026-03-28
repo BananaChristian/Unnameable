@@ -142,6 +142,8 @@ enum class TokenType {
   UINTSIZE, // Unsigned native register width bit
   USIZE_KEYWORD,
 
+  INT, // Generic integer
+
   STRING,
 
   CHAR8, // 8 bit char

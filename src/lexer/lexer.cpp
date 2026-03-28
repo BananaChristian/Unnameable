@@ -222,6 +222,8 @@ Token Lexer::parseSuffix(const std::string &value, int tokenLine,
     return Token{value, TokenType::INT128, tokenLine, tokenColumn};
   if (suffix == "u128")
     return Token{value, TokenType::UINT128, tokenLine, tokenColumn};
+  if (suffix == "i32")
+    return Token{value, TokenType::INT32, tokenLine, tokenColumn};
   if (suffix == "u32")
     return Token{value, TokenType::UINT32, tokenLine, tokenColumn};
   if (suffix == "i8")
@@ -233,8 +235,8 @@ Token Lexer::parseSuffix(const std::string &value, int tokenLine,
   if (suffix == "uz")
     return Token{value, TokenType::UINTSIZE, tokenLine, tokenColumn};
 
-  // Fallback if no suffix is provided
-  return Token{value, TokenType::INT32, tokenLine, tokenColumn};
+  // Fallback to the generic int if no suffix is provided
+  return Token{value, TokenType::INT, tokenLine, tokenColumn};
 }
 
 Token Lexer::readNumbers() {

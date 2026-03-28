@@ -112,6 +112,13 @@ void Semantics::walkReturnStatement(Node *node) {
     valueType = inferNodeDataType(retStmt->return_value.get());
 
   logInternal("Return value type: " + valueType.resolvedName);
+  auto valSym = getSymbolFromMeta(retStmt->return_value.get());
+  if (!valSym) {
+    reportDevBug("Could not find return value symbol info", retStmt);
+    return;
+  }
+  giveGenericIntegerContext(retStmt->return_value.get(),
+                            currentFunction.value(), valSym);
 
   if (dynamic_cast<NullLiteral *>(retStmt->return_value.get())) {
     if (!expectedReturn.isNull) {
@@ -123,9 +130,7 @@ void Semantics::walkReturnStatement(Node *node) {
                         retStmt);
       hasError = true;
     } else {
-      // Give null literal the return type context
-      if (metaData.count(retStmt->return_value.get()))
-        metaData[retStmt->return_value.get()]->type = expectedReturn;
+      valSym->type = expectedReturn;
     }
   } else if (!isTypeCompatible(expectedReturn, valueType)) {
     errorHandler.addHint("Expected return type: " + expectedReturn.resolvedName)
@@ -137,7 +142,6 @@ void Semantics::walkReturnStatement(Node *node) {
   }
 
   if (valueType.isRef()) {
-    auto valSym = metaData[retStmt->return_value.get()];
     if (valSym && !valSym->isParam) {
       if (!valSym->refereeSymbol) {
         errorHandler
@@ -151,12 +155,6 @@ void Semantics::walkReturnStatement(Node *node) {
         return;
       }
     }
-  }
-
-  auto valSym = metaData[retStmt->return_value.get()];
-  if (!valSym) {
-    reportDevBug("Could not find return value metadata", retStmt);
-    return;
   }
 
   // Transfer baton to function for retrieval

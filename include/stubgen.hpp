@@ -145,6 +145,7 @@ private:
   inline void write_s64(std::ostream &out, int64_t v);
   inline void write_u16(std::ostream &out, uint16_t v);
   inline void write_u32(std::ostream &out, uint32_t v);
+  inline void write_u64(std::ostream &out, uint64_t v);
   void serializeResolvedType(std::ostream &out, const ResolvedType &t);
   void serializeParamTypes(
       std::ostream &out,

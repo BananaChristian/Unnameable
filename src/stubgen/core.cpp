@@ -83,18 +83,31 @@ void StubGen::write_u32(std::ostream &out, uint32_t v) {
   out.write(reinterpret_cast<const char *>(&v), sizeof(v));
 }
 
+void StubGen::write_u64(std::ostream &out, uint64_t v) {
+  out.write(reinterpret_cast<const char *>(&v), sizeof(v));
+}
+
 void StubGen::serializeResolvedType(std::ostream &out, const ResolvedType &t) {
+  bool hasInner = (t.innerType != nullptr);
+  write_u8(out, hasInner);
+
+  // Modifier
+  write_u32(out, static_cast<uint32_t>(t.modifier));
   // DataType
   write_u32(out, static_cast<uint32_t>(t.kind));
-
   // resolvedName
   writeString(out, t.resolvedName);
+  // Array size
+  write_u64(out, t.arraySize);
+  // IsConstantSize
+  write_u8(out, t.isConstantSize);
 
-  // Flags
-  write_u8(out, t.isPointer ? 1 : 0);
-  write_u8(out, t.isRef ? 1 : 0);
-  write_u8(out, t.isNull ? 1 : 0);
-  write_u8(out, t.isArray ? 1 : 0);
+  // Inner type
+  if (hasInner)
+    serializeResolvedType(out, *t.innerType.get());
+
+  // Nullability flag
+  write_u8(out, t.isNull);
 }
 
 void StubGen::serializeParamTypes(

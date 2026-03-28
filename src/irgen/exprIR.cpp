@@ -193,6 +193,22 @@ llvm::Value *IRGenerator::generateU128Literal(Node *node) {
   return generateIntegerLiteral(u128Lit->u128_token.TokenLiteral, 128, false);
 }
 
+llvm::Value *IRGenerator::generateINTLiteral(Node *node) {
+  auto intLit = dynamic_cast<INTLiteral *>(node);
+  if (!intLit)
+    reportDevBug("Invalid int literal", node);
+
+  auto litSym = semantics.getSymbolFromMeta(intLit);
+  if (!litSym)
+    reportDevBug("Failed to get literal symbol info", intLit);
+
+  bool isSigned = isSignedInteger(litSym->type.kind);
+  uint32_t bitWidth = convertIntTypeToWidth(litSym->type.kind);
+
+  return generateIntegerLiteral(intLit->int_token.TokenLiteral, bitWidth,
+                                isSigned);
+}
+
 llvm::Value *IRGenerator::generateISIZELiteral(Node *node) {
   auto lit = dynamic_cast<ISIZELiteral *>(node);
   unsigned int ptrWidth = layout->getPointerSizeInBits();
@@ -209,38 +225,18 @@ llvm::Value *IRGenerator::generateUSIZELiteral(Node *node) {
 
 llvm::Value *IRGenerator::generateF32Literal(Node *node) {
   auto f32Lit = dynamic_cast<F32Literal *>(node);
-  if (!f32Lit) {
-    throw std::runtime_error("Invalid f32 literal");
-  }
-  auto it = semantics.metaData.find(f32Lit);
-  if (it == semantics.metaData.end()) {
-    throw std::runtime_error("F32 literal not found in metadata");
-  }
-  DataType dt = it->second->type.kind;
-  if (dt != DataType::F32) {
-    throw std::runtime_error("Type error: Expected F32 for F32Literal ");
-  }
+  if (!f32Lit)
+    reportDevBug("Invalid f32 literal", node);
+
   float value = std::stof(f32Lit->f32_token.TokenLiteral);
   return llvm::ConstantFP::get(llvm::Type::getFloatTy(context), value);
 }
 
 llvm::Value *IRGenerator::generateF64Literal(Node *node) {
   auto f64Lit = dynamic_cast<F64Literal *>(node);
-  if (!f64Lit) {
-    throw std::runtime_error("Invalid f64 literal");
-  }
-  auto it =
-      semantics.metaData.find(f64Lit); // Creating an iterator to find specific
-                                       // meta data about the double literal
-  if (it == semantics.metaData.end()) {
-    throw std::runtime_error("f64 literal not found in metadata");
-  }
-  DataType dt = it->second->type.kind;
-  if (dt != DataType::F64) {
-    throw std::runtime_error("Type error: Expected f64 for f64Literal");
-  }
-  // Checking if we have metaData about the double literal and if so we check to
-  // see if the data type is double
+  if (!f64Lit)
+    reportDevBug("Invalid f64 literal", node);
+
   double value = std::stod(
       f64Lit->f64_token.TokenLiteral); // Converting the double literal from a
                                        // string to a double
@@ -919,10 +915,8 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
       throw std::runtime_error("Expected identifier in self chain");
 
     std::string currentTypeName = currentTypeInfo->type.resolvedName;
-    if (currentTypeInfo->type.isPointer()||currentTypeInfo->type.isRef())
-      currentTypeName =
-          semantics.getBaseTypeName(currentTypeInfo->type);
-
+    if (currentTypeInfo->type.isPointer() || currentTypeInfo->type.isRef())
+      currentTypeName = semantics.getBaseTypeName(currentTypeInfo->type);
 
     std::string fieldName = ident->identifier.TokenLiteral;
 

@@ -239,6 +239,20 @@ void Semantics::walkUSIZELiteral(Node *node) {
   metaData[lit] = info;
 }
 
+void Semantics::walkINTLiteral(Node *node) {
+  auto lit = dynamic_cast<INTLiteral *>(node);
+  if (!lit)
+    return;
+
+  auto info = std::make_shared<SymbolInfo>();
+
+  info->type = ResolvedType::makeBase(DataType::I32, "i32");
+  info->isNullable = false;
+  info->isMutable = false;
+  info->isConstant = false;
+  metaData[lit] = info;
+}
+
 void Semantics::walkF32Literal(Node *node) {
   auto f32Literal = dynamic_cast<F32Literal *>(node);
   if (!f32Literal)

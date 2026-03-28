@@ -622,11 +622,7 @@ bool Auditor::isBlock(Node *node) {
 }
 
 bool Auditor::isDeclaration(Node *node) {
-  if (dynamic_cast<LetStatement *>(node))
-    return true;
-  if (dynamic_cast<PointerStatement *>(node))
-    return true;
-  if (dynamic_cast<ArrayStatement *>(node))
+  if (dynamic_cast<VariableDeclaration *>(node))
     return true;
 
   return false;
@@ -1040,22 +1036,6 @@ bool Auditor::containsNode(Node *root, Node *target) {
       return true;
   }
 
-  if (auto *arrayStmt = dynamic_cast<ArrayStatement *>(root)) {
-    if (arrayStmt->arrayType &&
-        containsNode(arrayStmt->arrayType.get(), target))
-      return true;
-    for (auto &dim : arrayStmt->dimensions) {
-      if (containsNode(dim.get(), target))
-        return true;
-    }
-    if (arrayStmt->identifier &&
-        containsNode(arrayStmt->identifier.get(), target))
-      return true;
-    if (arrayStmt->array_content &&
-        containsNode(arrayStmt->array_content.get(), target))
-      return true;
-  }
-
   if (auto *comp = dynamic_cast<ComponentStatement *>(root)) {
     for (auto &method : comp->methods) {
       if (containsNode(method.get(), target))
@@ -1094,6 +1074,7 @@ bool Auditor::containsNode(Node *root, Node *target) {
 
   return false;
 }
+
 bool Auditor::isBunkered(const std::string &id) {
   return bunkeredIDs.find(id) != bunkeredIDs.end();
 }

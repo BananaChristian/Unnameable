@@ -217,10 +217,8 @@ int ErrorHandler::getTokenLength(Node *contextNode) {
   if (auto fnDecl = dynamic_cast<FunctionDeclaration *>(contextNode))
     return getTokenLength(fnDecl->function_name.get());
 
-
   if (auto basicType = dynamic_cast<BasicType *>(contextNode))
     return basicType->data_token.TokenLiteral.length();
-
 
   if (auto fnCall = dynamic_cast<CallExpression *>(contextNode))
     return getTokenLength(fnCall->function_identifier.get());
@@ -256,14 +254,6 @@ int ErrorHandler::getTokenLength(Node *contextNode) {
     auto typeLen = getTokenLength(bitcastExpr->type.get());
     auto exprLen = getTokenLength(bitcastExpr->expr.get());
     return bitcastKeyLen + typeLen + exprLen + 4;
-  }
-  
-  if(auto type_mod=dynamic_cast<TypeModifier*>(contextNode)){
-      
-  }
-
-  if(auto declaration=dynamic_cast<VariableDeclaration*>(contextNode)){
-      
   }
 
   // Default to 1 if u dont know

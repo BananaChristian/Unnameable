@@ -7,12 +7,17 @@
 ResolvedType
 Semantics::convertImportedTypetoResolvedType(const ImportedType &importType) {
   ResolvedType type;
+  type.modifier =
+      convertImportedModifierToResolvedModifier(importType.modifier);
   type.kind = convertImportedDataTypetoResolvedDataType(importType.kind);
   type.resolvedName = importType.resolvedName;
-  type.isPointer = importType.isPointer;
-  type.isRef = importType.isRef;
+  type.arraySize = importType.arraySize;
+  type.isConstantSize = importType.isConstantSize;
+  if (importType.innerType)
+    type.innerType = std::make_shared<ResolvedType>(
+        convertImportedTypetoResolvedType(*importType.innerType.get()));
+
   type.isNull = importType.isNull;
-  type.isArray = importType.isArray;
 
   return type;
 }
@@ -32,6 +37,22 @@ Semantics::convertImportedParamstoResolvedParams(
   }
 
   return resolvedParams;
+}
+
+Modifier Semantics::convertImportedModifierToResolvedModifier(
+    const ImportedModifier &mod) {
+  switch (mod) {
+  case ImportedModifier::POINTER:
+    return Modifier::POINTER;
+  case ImportedModifier::REFERENCE:
+    return Modifier::REFERENCE;
+  case ImportedModifier::ARRAY:
+    return Modifier::ARRAY;
+  case ImportedModifier::NONE:
+    return Modifier::NONE;
+  default:
+    return Modifier::NONE;
+  }
 }
 
 DataType Semantics::convertImportedDataTypetoResolvedDataType(
@@ -121,7 +142,7 @@ void Semantics::importSeals() {
       sym->type = convertImportedTypetoResolvedType(info.returnType);
       sym->returnType = convertImportedTypetoResolvedType(info.returnType);
       sym->paramTypes = convertImportedParamstoResolvedParams(info.paramTypes);
-      sym->isExportable=true;
+      sym->isExportable = true;
 
       sealMap[funcName] = sym;
     }
@@ -146,7 +167,7 @@ void Semantics::importComponents() {
     auto typeInfo = std::make_shared<CustomTypeInfo>();
 
     typeInfo->typeName = compName;
-    typeInfo->type = ResolvedType{DataType::COMPONENT, compName};
+    typeInfo->type = ResolvedType::makeBase(DataType::COMPONENT, compName);
 
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> symMembers;
     auto &memberMap = compPair.second;
@@ -187,7 +208,7 @@ void Semantics::importComponents() {
     auto compSym = std::make_shared<SymbolInfo>();
     compSym->isExportable = true;
     compSym->members = symMembers;
-    compSym->type = ResolvedType{DataType::COMPONENT, compName};
+    compSym->type = ResolvedType::makeBase(DataType::COMPONENT, compName);
 
     symbolTable[0][compName] = compSym;
   }
@@ -223,7 +244,7 @@ void Semantics::importRecords() {
     auto typeInfo = std::make_shared<CustomTypeInfo>();
 
     typeInfo->typeName = recordName;
-    typeInfo->type = ResolvedType{DataType::RECORD, recordName};
+    typeInfo->type = ResolvedType::makeBase(DataType::RECORD, recordName);
 
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> symMembers;
     auto &memberMap = recordPair.second;
@@ -259,11 +280,7 @@ void Semantics::importRecords() {
     auto recordSym = std::make_shared<SymbolInfo>();
     recordSym->isExportable = true;
     recordSym->members = symMembers;
-    recordSym->type = ResolvedType{DataType::RECORD, recordName};
-    if (recordName == "Attributes") {
-      std::cout << "[DEBUG] Attributes Symbol Type isNull: "
-                << recordSym->type.isNull << "\n";
-    }
+    recordSym->type = ResolvedType::makeBase(DataType::RECORD, recordName);
 
     symbolTable[0][recordName] = recordSym;
   }
@@ -279,7 +296,7 @@ void Semantics::importEnums() {
 
     auto typeInfo = std::make_shared<CustomTypeInfo>();
     typeInfo->typeName = enumName;
-    typeInfo->type = ResolvedType{DataType::ENUM, enumName};
+    typeInfo->type = ResolvedType::makeBase(DataType::ENUM, enumName);
 
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> enumMembers;
     auto &memberMap = enumPair.second;
@@ -309,7 +326,7 @@ void Semantics::importEnums() {
     auto enumSym = std::make_shared<SymbolInfo>();
     enumSym->isExportable = true;
     enumSym->members = enumMembers;
-    enumSym->type = ResolvedType{DataType::ENUM, enumName};
+    enumSym->type = ResolvedType::makeBase(DataType::ENUM, enumName);
 
     symbolTable[0][enumName] = enumSym;
   }

@@ -356,6 +356,19 @@ struct USIZELiteral : Expression {
   USIZELiteral(Token usize_t) : Expression(usize_t), usize_token(usize_t){};
 };
 
+struct INTLiteral : Expression {
+  Token int_token;
+  std::string toString() override {
+    return "INT Literal: " + int_token.TokenLiteral;
+  };
+
+  INTLiteral *shallowClone() const override {
+    return new INTLiteral(int_token);
+  }
+
+  INTLiteral(Token int_t) : Expression(int_t), int_token(int_t){};
+};
+
 // Boolean literal
 struct BooleanLiteral : Expression {
   Token boolean_token;

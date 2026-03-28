@@ -146,6 +146,7 @@ private:
   llvm::Value *generateU128Literal(Node *node);
   llvm::Value *generateISIZELiteral(Node *node);
   llvm::Value *generateUSIZELiteral(Node *node);
+  llvm::Value *generateINTLiteral(Node *node);
   llvm::Value *generateNullLiteral(Node *node);
 
   llvm::Value *generateIdentifierExpression(Node *node);
@@ -195,8 +196,9 @@ private:
   void generateSageInitCall();
   uint16_t decodeChar16Literal(const std::string &literal);
   uint32_t decodeChar32Literal(const std::string &literal);
-  bool isIntegerType(DataType dt);
-  bool isSignedInteger(DataType dt);
+  uint32_t convertIntTypeToWidth(const DataType &dt);
+  bool isIntegerType(const DataType &dt);
+  bool isSignedInteger(const DataType &dt);
   bool currentBlockIsTerminated();
   bool isUnsigned(const ResolvedType &type);
   unsigned getIntegerBitWidth(DataType dt);

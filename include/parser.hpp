@@ -258,6 +258,8 @@ private:
   std::unique_ptr<Expression> parseISIZELiteral();
   // Unsigned CPU native width integer
   std::unique_ptr<Expression> parseUSIZELiteral();
+  // Generic integer
+  std::unique_ptr<Expression> parseINTLiteral();
   // Boolean
   std::unique_ptr<Expression> parseBooleanLiteral();
   // 32 bit Float

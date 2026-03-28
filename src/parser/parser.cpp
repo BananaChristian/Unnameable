@@ -226,6 +226,7 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::UINT128] = &Parser::parseU128Literal;
   PrefixParseFunctionsMap[TokenType::INTSIZE] = &Parser::parseISIZELiteral;
   PrefixParseFunctionsMap[TokenType::UINTSIZE] = &Parser::parseUSIZELiteral;
+  PrefixParseFunctionsMap[TokenType::INT] = &Parser::parseINTLiteral;
 
   PrefixParseFunctionsMap[TokenType::CHAR8] = &Parser::parseChar8Literal;
   PrefixParseFunctionsMap[TokenType::CHAR16] = &Parser::parseChar16Literal;

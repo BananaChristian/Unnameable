@@ -55,6 +55,7 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(U128Literal)] = &Semantics::walkU128Literal;
   walkerFunctionsMap[typeid(ISIZELiteral)] = &Semantics::walkISIZELiteral;
   walkerFunctionsMap[typeid(USIZELiteral)] = &Semantics::walkUSIZELiteral;
+  walkerFunctionsMap[typeid(INTLiteral)] = &Semantics::walkINTLiteral;
   walkerFunctionsMap[typeid(F32Literal)] = &Semantics::walkF32Literal;
   walkerFunctionsMap[typeid(F64Literal)] = &Semantics::walkF64Literal;
   walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
@@ -191,6 +192,10 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     return ResolvedType::makeBase(DataType::ISIZE, "isize");
   if (dynamic_cast<USIZELiteral *>(node))
     return ResolvedType::makeBase(DataType::USIZE, "usize");
+  if (dynamic_cast<INTLiteral *>(node)) {
+    // Make it default to i32 but it can be changed based off integer context
+    return ResolvedType::makeBase(DataType::I32, "i32");
+  }
 
   if (dynamic_cast<F32Literal *>(node))
     return ResolvedType::makeBase(DataType::F32, "f32");
@@ -570,13 +575,13 @@ ResolvedType Semantics::resolveTypeWithModifier(Node *modifier,
   outer.innerType = std::make_shared<ResolvedType>(inner);
 
   if (tyMod->isPointer) {
-    outer.modifier = ResolvedType::Modifier::POINTER;
+    outer.modifier = Modifier::POINTER;
     outer.resolvedName = "ptr<" + inner.resolvedName + ">";
   } else if (tyMod->isReference) {
-    outer.modifier = ResolvedType::Modifier::REFERENCE;
+    outer.modifier = Modifier::REFERENCE;
     outer.resolvedName = "ref<" + inner.resolvedName + ">";
   } else if (tyMod->isArray) {
-    outer.modifier = ResolvedType::Modifier::ARRAY;
+    outer.modifier = Modifier::ARRAY;
     // Grab dimension if constant
     if (!tyMod->dimensions.empty()) {
       if (isIntegerConstant(tyMod->dimensions[0].get()))
@@ -1705,25 +1710,27 @@ bool Semantics::isInteger(const ResolvedType &t) {
       DataType::I8,   DataType::U8,   DataType::I16,   DataType::U16,
       DataType::I32,  DataType::U32,  DataType::I64,   DataType::U64,
       DataType::I128, DataType::U128, DataType::ISIZE, DataType::USIZE};
-  return intTypes.count(t.kind) > 0;
+  // The modifiers must be off
+  bool isInt = t.isBase() && (intTypes.count(t.kind) > 0);
+  return isInt;
 }
 
 bool Semantics::isFloat(const ResolvedType &t) {
-  return t.kind == DataType::F32 || t.kind == DataType::F64;
+  return (t.kind == DataType::F32 || t.kind == DataType::F64) && t.isBase();
 }
 
 bool Semantics::isBoolean(const ResolvedType &t) {
-  return t.kind == DataType::BOOLEAN;
+  return t.kind == DataType::BOOLEAN && t.isBase();
 }
 
 bool Semantics::isString(const ResolvedType &t) {
-  return t.kind == DataType::STRING;
+  return t.kind == DataType::STRING && t.isBase();
 }
 
 bool Semantics::isChar(const ResolvedType &t) {
   static const std::unordered_set<DataType> charTypes = {
       DataType::CHAR8, DataType::CHAR16, DataType::CHAR32};
-  return charTypes.count(t.kind) > 0;
+  return t.isBase() && charTypes.count(t.kind) > 0;
 }
 
 bool Semantics::isLiteral(Node *node) {
@@ -1738,8 +1745,9 @@ bool Semantics::isLiteral(Node *node) {
   auto u64Lit = dynamic_cast<U64Literal *>(node);
   auto i128Lit = dynamic_cast<I128Literal *>(node);
   auto u128Lit = dynamic_cast<U128Literal *>(node);
+  auto intLit = dynamic_cast<INTLiteral *>(node);
   bool isIntLit = (i8Lit || u8Lit || i16Lit || u16Lit || i32Lit || u32Lit ||
-                   i64Lit || u64Lit || i128Lit || u128Lit);
+                   i64Lit || u64Lit || i128Lit || u128Lit || intLit);
 
   // Float and double literals;
   auto f32Lit = dynamic_cast<F32Literal *>(node);
@@ -1934,7 +1942,7 @@ ResolvedType Semantics::getArrayElementType(const ResolvedType &type) {
 ResolvedType Semantics::makePointerType(const ResolvedType &inner,
                                         bool isNull) {
   ResolvedType outer;
-  outer.modifier = ResolvedType::Modifier::POINTER;
+  outer.modifier = Modifier::POINTER;
   outer.innerType = std::make_shared<ResolvedType>(inner);
   outer.isNull = isNull;
   outer.resolvedName = "ptr<" + inner.resolvedName + ">";
@@ -1943,7 +1951,7 @@ ResolvedType Semantics::makePointerType(const ResolvedType &inner,
 
 ResolvedType Semantics::makeRefType(const ResolvedType &inner, bool isNull) {
   ResolvedType outer;
-  outer.modifier = ResolvedType::Modifier::REFERENCE;
+  outer.modifier = Modifier::REFERENCE;
   outer.innerType = std::make_shared<ResolvedType>(inner);
   outer.isNull = isNull;
   outer.resolvedName = "ref<" + inner.resolvedName + ">";
@@ -1953,7 +1961,7 @@ ResolvedType Semantics::makeRefType(const ResolvedType &inner, bool isNull) {
 ResolvedType Semantics::makeArrayType(const ResolvedType &inner, uint64_t size,
                                       bool isNull) {
   ResolvedType outer;
-  outer.modifier = ResolvedType::Modifier::ARRAY;
+  outer.modifier = Modifier::ARRAY;
   outer.innerType = std::make_shared<ResolvedType>(inner);
   outer.arraySize = size;
   outer.isNull = isNull;

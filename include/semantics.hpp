@@ -46,15 +46,15 @@ enum class DataType {
 
 enum class AllocatorRole { ALLOCATE, FREE, NONE };
 
+enum class Modifier {
+  NONE,      // base type, I32, F32, custom etc
+  POINTER,   // ptr
+  REFERENCE, // ref
+  ARRAY      // arr
+};
+
 struct ResolvedType {
   // What modifier am I at this level
-  enum class Modifier {
-    NONE,      // base type, I32, F32, custom etc
-    POINTER,   // ptr
-    REFERENCE, // ref
-    ARRAY      // arr
-  };
-
   Modifier modifier = Modifier::NONE;
 
   // Only meaningful if modifier == NONE
@@ -411,6 +411,7 @@ private:
   void walkU128Literal(Node *node);
   void walkISIZELiteral(Node *node);
   void walkUSIZELiteral(Node *node);
+  void walkINTLiteral(Node *node);
 
   void walkStringLiteral(Node *node);
   void walkBooleanLiteral(Node *node);
@@ -537,6 +538,8 @@ private:
   convertImportedTypetoResolvedType(const ImportedType &importType);
   DataType
   convertImportedDataTypetoResolvedDataType(const ImportedDataType &dataType);
+  Modifier
+  convertImportedModifierToResolvedModifier(const ImportedModifier &mod);
   std::vector<std::pair<ResolvedType, std::string>>
   convertImportedParamstoResolvedParams(
       const std::vector<std::pair<ImportedType, std::string>> &params);
@@ -547,6 +550,18 @@ private:
   void substituteTypes(Node *node,
                        std::unordered_map<std::string, Token> &subMap);
   void mangleGenericName(Node *node, std::string aliasName);
+  void checkOperatorStyle(TokenType op, bool isPointer, const std::string &name,
+                          Node *site);
+  void checkMutability(const SymbolInfo &sym, const std::string &name,
+                       Node *site);
+  bool checkTypeCompatible(ResolvedType lhs, ResolvedType rhs, bool rhsIsNull,
+                           const std::string &name, Node *site);
+  bool handleNullRhs(NullLiteral *nullLit,
+                     const std::shared_ptr<SymbolInfo> &lhsSym,
+                     const std::string &name, AssignmentStatement *assignStmt);
+  void giveGenericIntegerContext(Node *literal,
+                                 const std::shared_ptr<SymbolInfo> &contextSym,
+                                 const std::shared_ptr<SymbolInfo> &litSym);
 
   void importSeals();
   void importComponents();

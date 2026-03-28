@@ -329,6 +329,18 @@ uint32_t Deserializer::read_u32(std::istream &in, const std::string &context) {
   return v;
 }
 
+uint64_t Deserializer::read_u64(std::istream &in, const std::string &context) {
+  uint32_t v;
+  std::streampos pos = in.tellg();
+  readOrFail(in, &v, sizeof(v), context);
+  if (isVerbose) {
+    std::cout << COLOR_CYAN << "[TRACE] " << COLOR_RESET << "Pos: " << std::hex
+              << std::setw(4) << std::setfill('0') << pos << std::dec
+              << " | Read u64: " << v << "\t| Context: " << context << "\n";
+  }
+  return v;
+}
+
 int32_t Deserializer::read_s32(std::istream &in, const std::string &context) {
   int32_t v;
   std::streampos pos = in.tellg();
@@ -380,13 +392,22 @@ ImportedType Deserializer::readImportedType(std::istream &in) {
   ImportedType t;
   logInternal("Starting ImportedType read");
 
+  bool hasInner = read_u8(in, "Has Inner Type");
+
+  t.modifier = static_cast<ImportedModifier>(read_u32(in, "Modifier"));
   t.kind = static_cast<ImportedDataType>(read_u32(in, "Type Kind"));
   t.resolvedName = readString(in, "Type Resolved Name");
 
-  t.isPointer = read_u8(in, "Type Flag: isPointer");
-  t.isRef = read_u8(in, "Type Flag: isRef");
-  t.isNull = read_u8(in, "Type Flag: isNull");
-  t.isArray = read_u8(in, "Type Flag: isArray");
+  t.arraySize = read_u64(in, "Array size");
+  t.isConstantSize = read_u8(in, "Constant size");
+
+  if (hasInner) {
+    t.innerType = std::make_shared<ImportedType>(readImportedType(in));
+  } else {
+    t.innerType = nullptr;
+  }
+
+  t.isNull = read_u8(in, "is Null");
 
   logInternal("Finished ImportedType read");
 

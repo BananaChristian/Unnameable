@@ -52,13 +52,27 @@ enum class ImportedDataType {
   UNKNOWN
 };
 
+enum class ImportedModifier {
+  NONE,      // base type, I32, F32, custom etc
+  POINTER,   // ptr
+  REFERENCE, // ref
+  ARRAY      // arr
+};
+
 struct ImportedType {
-  ImportedDataType kind; // For the custom inbuilt types
+
+  ImportedModifier modifier = ImportedModifier::NONE;
+
+  ImportedDataType kind =
+      ImportedDataType::UNKNOWN; // For the custom inbuilt types
   std::string resolvedName = "unknown";
-  bool isPointer = false;
-  bool isRef = false;
+
+  uint64_t arraySize = 0; // 0 means dynamic
+  bool isConstantSize = false;
+
+  std::shared_ptr<ImportedType> innerType = nullptr;
+
   bool isNull = false;
-  bool isArray = false;
 };
 
 // Minimal symbol info holder shall late be used to populate the semantics
@@ -226,6 +240,7 @@ private:
   uint8_t read_u8(std::istream &in, const std::string &context);
   uint16_t read_u16(std::istream &in, const std::string &context);
   uint32_t read_u32(std::istream &in, const std::string &context);
+  uint64_t read_u64(std::istream &in, const std::string &context);
   int32_t read_s32(std::istream &in, const std::string &context);
   int64_t read_s64(std::istream &in, const std::string &context);
   std::string readString(std::istream &in, const std::string &context);

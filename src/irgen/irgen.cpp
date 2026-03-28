@@ -675,6 +675,8 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
       &IRGenerator::generateISIZELiteral;
   expressionGeneratorsMap[typeid(USIZELiteral)] =
       &IRGenerator::generateUSIZELiteral;
+  expressionGeneratorsMap[typeid(INTLiteral)] =
+      &IRGenerator::generateINTLiteral;
   expressionGeneratorsMap[typeid(F32Literal)] =
       &IRGenerator::generateF32Literal;
   expressionGeneratorsMap[typeid(F64Literal)] =
@@ -805,7 +807,33 @@ llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
                exprNode);
   return funcBuilder.getInt1(false);
 }
-bool IRGenerator::isIntegerType(DataType dt) {
+
+uint32_t IRGenerator::convertIntTypeToWidth(const DataType &dt) {
+  switch (dt) {
+  case DataType::I8:
+  case DataType::U8:
+    return 8;
+  case DataType::I16:
+  case DataType::U16:
+    return 16;
+  case DataType::I32:
+  case DataType::U32:
+    return 32;
+  case DataType::I64:
+  case DataType::U64:
+    return 64;
+  case DataType::I128:
+  case DataType::U128:
+    return 128;
+  case DataType::ISIZE:
+  case DataType::USIZE:
+    return layout->getPointerSizeInBits();
+  default:
+    return 32;
+  }
+}
+
+bool IRGenerator::isIntegerType(const DataType &dt) {
   switch (dt) {
   case DataType::I8:
   case DataType::U8:
@@ -825,7 +853,7 @@ bool IRGenerator::isIntegerType(DataType dt) {
   }
 }
 
-bool IRGenerator::isSignedInteger(DataType dt) {
+bool IRGenerator::isSignedInteger(const DataType &dt) {
   switch (dt) {
   case DataType::I8:
   case DataType::I16:

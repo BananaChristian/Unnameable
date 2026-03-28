@@ -91,6 +91,13 @@ std::unique_ptr<Expression> Parser::parseUSIZELiteral() {
   return ident;
 }
 
+// Generic integer literal
+std::unique_ptr<Expression> Parser::parseINTLiteral() {
+  auto ident = std::make_unique<INTLiteral>(currentToken());
+  advance();
+  return ident;
+}
+
 // Boolean literal parse function
 std::unique_ptr<Expression> Parser::parseBooleanLiteral() {
   Token bool_tok = currentToken();
