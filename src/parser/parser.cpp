@@ -237,6 +237,8 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::FALSE] = &Parser::parseBooleanLiteral;
   PrefixParseFunctionsMap[TokenType::F32] = &Parser::parseF32Literal;
   PrefixParseFunctionsMap[TokenType::F64] = &Parser::parseF64Literal;
+  PrefixParseFunctionsMap[TokenType::FLOAT] = &Parser::parseFloatLiteral;
+
   PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
   PrefixParseFunctionsMap[TokenType::SIZEOF] = &Parser::parseSizeOfExpression;
 
@@ -459,6 +461,14 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::PTR] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::DEREF] =
       &Parser::parseDereferenceAssignment;
+  StatementParseFunctionsMap[TokenType::UNION] =
+      &Parser::parseStructureModifier;
+  StatementParseFunctionsMap[TokenType::BITFIELD] =
+      &Parser::parseStructureModifier;
+  StatementParseFunctionsMap[TokenType::PACKED] =
+      &Parser::parseStructureModifier;
+  StatementParseFunctionsMap[TokenType::ALIGN] =
+      &Parser::parseStructureModifier;
 }
 
 // Precedence getting function

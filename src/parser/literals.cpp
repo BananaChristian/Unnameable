@@ -119,6 +119,13 @@ std::unique_ptr<Expression> Parser::parseF64Literal() {
   return std::make_unique<F64Literal>(f64_tok);
 }
 
+// Generic float parse function
+std::unique_ptr<Expression> Parser::parseFloatLiteral() {
+  Token float_tok = currentToken();
+  advance();
+  return std::make_unique<FloatLiteral>(float_tok);
+}
+
 // 8 bit Char literal parse function
 std::unique_ptr<Expression> Parser::parseChar8Literal() {
   Token char8_tok = currentToken();

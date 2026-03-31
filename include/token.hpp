@@ -69,6 +69,11 @@ enum class TokenType {
   HEAP,      // heap keword that allows a user to use a dynamic heap
   ALLOCATOR, // Allocator keyword
 
+  BITFIELD,
+  UNION,
+  PACKED,
+  ALIGN,
+
   COMPONENT, // component key word for classes
   SELF,      // self keyword for a component instance
   RECORD,    // record keyword token for record blocks
@@ -142,7 +147,8 @@ enum class TokenType {
   UINTSIZE, // Unsigned native register width bit
   USIZE_KEYWORD,
 
-  INT, // Generic integer
+  INT,   // Generic integer
+  FLOAT, // Generic float
 
   STRING,
 

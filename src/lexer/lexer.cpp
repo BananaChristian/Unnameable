@@ -197,7 +197,7 @@ Token Lexer::parseFloatSuffix(const std::string &value, int tokenLine,
     return Token{value, TokenType::F32, tokenLine, tokenColumn};
 
   // If no suffix was given default to f32
-  return Token{value, TokenType::F32, tokenLine, tokenColumn};
+  return Token{value, TokenType::FLOAT, tokenLine, tokenColumn};
 }
 
 Token Lexer::parseSuffix(const std::string &value, int tokenLine,

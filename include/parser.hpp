@@ -163,6 +163,8 @@ private:
   // Parsing use statements
   std::unique_ptr<Statement> parseInjectStatement();
 
+  // Parsing structure modifier
+  std::unique_ptr<Statement> parseStructureModifier();
   // Parsing record statements
   std::unique_ptr<Statement> parseRecordStatement();
 
@@ -266,6 +268,8 @@ private:
   std::unique_ptr<Expression> parseF32Literal();
   // 64 bit Float
   std::unique_ptr<Expression> parseF64Literal();
+  // Generic Float
+  std::unique_ptr<Expression> parseFloatLiteral();
   // 8 bit Char
   std::unique_ptr<Expression> parseChar8Literal();
   // 16 bit Char

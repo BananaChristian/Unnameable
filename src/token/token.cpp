@@ -85,6 +85,14 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: VOLATILE";
   case TokenType::RESTRICT:
     return "Token Type: RESTRICT";
+  case TokenType::PACKED:
+    return "Token Type: PACKED";
+  case TokenType::UNION:
+    return "Token Type: UNION";
+  case TokenType::ALIGN:
+    return "Token Type: ALIGN";
+  case TokenType::BITFIELD:
+    return "Token Type: BITFIELD";
   case TokenType::CONST:
     return "Token Type: CONST";
   case TokenType::COMPONENT:
@@ -209,6 +217,8 @@ std::string TokenTypeToLiteral(TokenType type) {
 
   case TokenType::INT:
     return "Token Type: GENERIC INT";
+  case TokenType::FLOAT:
+    return "Token Type: GENERIC FLOAT";
 
   case TokenType::STRING:
     return "Token Type: STRING";

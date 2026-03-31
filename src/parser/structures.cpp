@@ -2,6 +2,75 @@
 #include "parser.hpp"
 #include "token.hpp"
 
+std::unique_ptr<Statement> Parser::parseStructureModifier() {
+  bool isPacked = false;
+  bool isBitField = false;
+  bool isUnion = false;
+
+  Token alignToken;
+  bool alignModded = false;
+  std::unique_ptr<Expression> alignExpr;
+  while (true) {
+    if (currentToken().type == TokenType::ALIGN) {
+      logInternal("align");
+      alignToken = currentToken();
+      alignModded = true;
+      if (nextToken().type == TokenType::LPAREN) {
+        advance(); // Consume align
+        advance(); // Consume (
+        alignExpr = parseExpression(get_precedence(currentToken().type));
+        if (currentToken().type != TokenType::RPAREN) {
+          logError("Expected ')' after align expression", currentToken());
+          return nullptr;
+        }
+        advance(); // Consume )
+      } else {
+        advance();
+      }
+    } else if (currentToken().type == TokenType::PACKED) {
+      logInternal("packed");
+      isPacked = true;
+      advance();
+    } else if (currentToken().type == TokenType::UNION) {
+      logInternal("union");
+      isUnion = true;
+      advance();
+    } else if (currentToken().type == TokenType::BITFIELD) {
+      logInternal("bitfield");
+      isBitField = true;
+      advance();
+    } else {
+      break;
+    }
+  }
+
+  // For now only record statements
+  std::unique_ptr<Statement> stmt = parseRecordStatement();
+
+  if (!stmt)
+    return nullptr;
+
+  auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get());
+  if (!recordStmt->modifiers)
+    recordStmt->modifiers =
+        std::make_unique<StructureModifier>(false, false, false, nullptr);
+  
+  if (recordStmt) {
+    recordStmt->modifiers->isBitfield = isBitField;
+    recordStmt->modifiers->isUnion = isUnion;
+    recordStmt->modifiers->isPacked = isPacked;
+  } else {
+    logError("Cannot apply modifiers to this statement type", currentToken());
+    return nullptr;
+  }
+
+  if (alignModded) {
+    recordStmt->modifiers->_align = std::move(alignExpr);
+  }
+
+  return stmt;
+}
+
 //_____________Allocator statement_________________
 std::unique_ptr<Statement> Parser::parseAllocatorStatement() {
   bool isExportable = false;
@@ -320,6 +389,27 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
              currentToken());
   }
   auto component_name = parseIdentifier();
+  std::vector<std::unique_ptr<Expression>> type_params;
+  if (currentToken().type == TokenType::LESS_THAN) {
+    advance();
+    while (currentToken().type != TokenType::GREATER_THAN &&
+           currentToken().type != TokenType::END) {
+      if (currentToken().type == TokenType::COMMA) {
+        advance();
+        continue;
+      }
+
+      auto type = parseIdentifier();
+      if (!type)
+        reportDevBug("Failed to parse identifier", currentToken());
+
+      type_params.push_back(std::move(type));
+    }
+
+    if (currentToken().type == TokenType::GREATER_THAN)
+      advance();
+  }
+
   if (currentToken().type != TokenType::LBRACE) {
     logError("Expected { but got '" + currentToken().TokenLiteral + "'",
              currentToken());
@@ -404,8 +494,8 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
 
   return std::make_unique<ComponentStatement>(
       isExportable, component_token, std::move(component_name),
-      std::move(fields), std::move(methods), std::move(injectedfields),
-      std::move(initConstructor));
+      std::move(type_params), std::move(fields), std::move(methods),
+      std::move(injectedfields), std::move(initConstructor));
 }
 
 std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
@@ -515,13 +605,33 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
              currentToken());
   }
   auto recordName = parseIdentifier();
+  std::vector<std::unique_ptr<Expression>> type_params;
+  if (currentToken().type == TokenType::LESS_THAN) {
+    advance();
+    while (currentToken().type != TokenType::GREATER_THAN &&
+           currentToken().type != TokenType::END) {
+      if (currentToken().type == TokenType::COMMA) {
+        advance();
+        continue;
+      }
+      auto type = parseIdentifier();
+      if (!type)
+        reportDevBug("Failed to parse identifier", currentToken());
+
+      type_params.push_back(std::move(type));
+    }
+
+    if (currentToken().type == TokenType::GREATER_THAN)
+      advance();
+  }
+
   if (currentToken().type != TokenType::LBRACE) {
     logError("Expected { to start record block but got '" +
                  currentToken().TokenLiteral + "'",
              currentToken());
   }
 
-  advance(); // Consuming the LPAREN
+  advance(); // Consuming the LBRACE
 
   while (currentToken().type != TokenType::RBRACE &&
          currentToken().type != TokenType::END) {
@@ -529,9 +639,9 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
       advance();
       continue;
     }
-    auto recordStmt = parseStatement();
-    if (dynamic_cast<VariableDeclaration *>(recordStmt.get())) {
-      fields.push_back(std::move(recordStmt));
+    auto field = parseStatement();
+    if (dynamic_cast<VariableDeclaration *>(field.get())) {
+      fields.push_back(std::move(field));
     } else {
       logError("Unsupported statement inside record", currentToken());
     }
@@ -544,9 +654,9 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
   }
   advance();
 
-  return std::make_unique<RecordStatement>(false, false, Mutability::IMMUTABLE,
-                                           record_token, std::move(recordName),
-                                           std::move(fields));
+  return std::make_unique<RecordStatement>(
+      record_token, false, false, Mutability::IMMUTABLE, nullptr,
+      std::move(recordName), std::move(type_params), std::move(fields));
 }
 
 // Parsing instance expression

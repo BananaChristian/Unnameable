@@ -88,6 +88,11 @@ class Lexer {
       {"mut", TokenType::MUT},
       {"volatile", TokenType::VOLATILE},
       {"restrict", TokenType::RESTRICT},
+      {"packed", TokenType::PACKED},
+      {"align", TokenType::ALIGN},
+      {"union", TokenType::UNION},
+      {"bitfield", TokenType::BITFIELD},
+      
       {"ref", TokenType::REF},
       {"ptr", TokenType::PTR},
       {"addr", TokenType::ADDR},
