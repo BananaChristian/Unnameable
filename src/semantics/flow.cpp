@@ -6,6 +6,7 @@ void Semantics::walkBlockStatement(Node *node) {
   auto blockStmt = dynamic_cast<BlockStatement *>(node);
   if (!blockStmt)
     return;
+  hasError = false;
 
   auto &stmts = blockStmt->statements;
   activeBlocks.push_back(blockStmt);
@@ -114,14 +115,11 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   }
 
   walker(caseCondition);
+  auto caseSym = getSymbolFromMeta(caseCondition);
+  if (!caseSym)
+    reportDevBug("Could not find case symbol info", caseCondition);
 
-  // Checking if the case type matches the type of the entire switch
-  if (!metaData[caseCondition]) {
-    reportDevBug("Could not find case metaData", caseCondition);
-    return;
-  }
-
-  auto caseType = metaData[caseCondition]->type;
+  auto caseType = caseSym->type().type;
   bool isValid = isInteger(targetType) || isChar(targetType) ||
                  (targetType.kind == DataType::ENUM);
   if (!isValid) {
@@ -136,7 +134,6 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
                           "' doesnt match switch expression type '" +
                           targetType.resolvedName + "'",
                       caseCondition);
-    hasError = true;
   }
 
   symbolTable.push_back({}); // Pushing a new clause scope
@@ -157,20 +154,24 @@ void Semantics::walkSwitchStatement(Node *node) {
   if (!switchStmt)
     return;
 
-  bool hasError = false;
+  hasError = false;
 
   symbolTable.push_back({}); // Push a new scope for the switch
 
   // The switch's init
   walker(switchStmt->switch_init.get());
-  ResolvedType targetType = metaData[switchStmt->switch_init.get()]->type;
+  auto initSym = getSymbolFromMeta(switchStmt->switch_init.get());
+  if (!initSym)
+    reportDevBug("Failed to get switch initiliazer symbol info",
+                 switchStmt->switch_init.get());
+
+  ResolvedType targetType = initSym->type().type;
   bool isValid = isInteger(targetType) || isChar(targetType) ||
                  (targetType.kind == DataType::ENUM);
   if (!isValid) {
     logSemanticErrors(
         "Invalid switch target expected only integers, chars, and enumarations",
         switchStmt);
-    hasError = true;
   }
 
   for (const auto &caseClause : switchStmt->case_clauses) {
@@ -189,7 +190,6 @@ void Semantics::walkSwitchStatement(Node *node) {
     caseContext.pop_back();
   } else {
     logSemanticErrors("Switch statement is missing default case", switchStmt);
-    hasError = true;
   }
 
   popScope();
@@ -203,6 +203,7 @@ void Semantics::walkForStatement(Node *node) {
   auto forStmt = dynamic_cast<ForStatement *>(node);
   if (!forStmt)
     return;
+  hasError = true;
 
   symbolTable.push_back({});
   // Handling the initializer

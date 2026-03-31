@@ -244,6 +244,24 @@ llvm::Value *IRGenerator::generateF64Literal(Node *node) {
                                value); // Returning double value
 }
 
+llvm::Value *IRGenerator::generateFloatLiteral(Node *node) {
+  auto fltLit = dynamic_cast<FloatLiteral *>(node);
+  if (!fltLit)
+    reportDevBug("Invalid generic float literal", node);
+
+  auto sym = semantics.getSymbolFromMeta(fltLit);
+  if (!sym)
+    reportDevBug("Failed to get literal symbol info", fltLit);
+
+  if (sym->type.kind == DataType::F64) {
+    double value = std::stod(fltLit->float_token.TokenLiteral);
+    return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), value);
+  }
+
+  float value = std::stof(fltLit->float_token.TokenLiteral);
+  return llvm::ConstantFP::get(llvm::Type::getFloatTy(context), value);
+}
+
 // Generator function for identifier expression
 llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   auto identExpr = dynamic_cast<Identifier *>(node);

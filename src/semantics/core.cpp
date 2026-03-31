@@ -58,6 +58,7 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(INTLiteral)] = &Semantics::walkINTLiteral;
   walkerFunctionsMap[typeid(F32Literal)] = &Semantics::walkF32Literal;
   walkerFunctionsMap[typeid(F64Literal)] = &Semantics::walkF64Literal;
+  walkerFunctionsMap[typeid(FloatLiteral)] = &Semantics::walkFloatLiteral;
   walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
 
   walkerFunctionsMap[typeid(Char8Literal)] = &Semantics::walkChar8Literal;
@@ -201,6 +202,8 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     return ResolvedType::makeBase(DataType::F32, "f32");
   if (dynamic_cast<F64Literal *>(node))
     return ResolvedType::makeBase(DataType::F64, "f64");
+  if (dynamic_cast<FloatLiteral *>(node))
+    return ResolvedType::makeBase(DataType::F32, "f32");
 
   if (dynamic_cast<StringLiteral *>(node))
     return ResolvedType::makeBase(DataType::STRING, "string");
@@ -270,17 +273,17 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       return errorType;
     }
 
-    if (!arrSym->type.isArray()) {
+    if (!arrSym->type().type.isArray()) {
       errorHandler.addHint("Only array types can be subscripted with '[]'")
           .addHint("Declare as: arr[N] i32 " + arrayName)
           .addHint("Or initialize with an array literal");
       logSemanticErrors("Cannot index into non-array type '" +
-                            arrSym->type.resolvedName + "'",
+                            arrSym->type().type.resolvedName + "'",
                         arrAccess->identifier.get());
       return errorType;
     }
 
-    if (arrSym->type.isNull) {
+    if (arrSym->type().type.isNull) {
       errorHandler.addHint("Unwrap the nullable array before indexing")
           .addHint("Use '?''?' or 'unwrap' to get the non-nullable value");
       logSemanticErrors("Cannot index into nullable array '" + arrayName + "'",
@@ -289,9 +292,9 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     }
 
     // Return the element type — unwrap one array level
-    if (!arrSym->type.innerType)
+    if (!arrSym->type().type.innerType)
       return errorType;
-    return *arrSym->type.innerType;
+    return *arrSym->type().type.innerType;
   }
 
   if (auto selfExpr = dynamic_cast<SelfExpression *>(node)) {
@@ -344,7 +347,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       return errorType;
     }
 
-    return sym->type;
+    return sym->type().type;
   }
 
   // Dealing with the variable declaration
@@ -382,13 +385,13 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     auto assignSymbol = resolveSymbolInfo(nameToResolve);
     auto assignStmtVal = assignStmt->value.get();
     ResolvedType assignStmtValType = inferNodeDataType(assignStmtVal);
-    if (!isTypeCompatible(assignSymbol->type, assignStmtValType)) {
+    if (!isTypeCompatible(assignSymbol->type().type, assignStmtValType)) {
       logSemanticErrors("Type mismatch expected '" +
                             assignStmtValType.resolvedName + "' but got '" +
-                            assignSymbol->type.resolvedName + "'",
+                            assignSymbol->type().type.resolvedName + "'",
                         assignStmt->identifier.get());
     } else {
-      return assignSymbol->type;
+      return assignSymbol->type().type;
     }
   }
 
@@ -423,8 +426,9 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     logInternal("Identifier name in the inferer '" + name + "'");
     auto symbol = resolveSymbolInfo(name);
     if (symbol) {
-      logInternal("Identifier Data Type '" + symbol->type.resolvedName + "'");
-      return symbol->type;
+      logInternal("Identifier Data Type '" + symbol->type().type.resolvedName +
+                  "'");
+      return symbol->type().type;
     } else {
       logSemanticErrors("Undefined variable '" + name + "'", ident);
       return errorType;
@@ -440,7 +444,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       return errorType;
     }
     // Must actually be a pointer to deref
-    if (!derefSym->type.isPointer()) {
+    if (!derefSym->type().type.isPointer()) {
       errorHandler.addHint("Only pointer types can be dereferenced")
           .addHint("Use 'addr' to get a pointer first")
           .addHint("Example: ptr i32 p -> addr x, then deref p");
@@ -450,9 +454,9 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       return errorType;
     }
     // Unwrap one pointer level return what it points to
-    if (!derefSym->type.innerType)
+    if (!derefSym->type().type.innerType)
       return errorType;
-    return *derefSym->type.innerType;
+    return *derefSym->type().type.innerType;
   }
 
   if (auto moveExpr = dynamic_cast<MoveExpression *>(node)) {
@@ -483,7 +487,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     auto symbol = resolveSymbolInfo(
         callExpr->function_identifier->expression.TokenLiteral);
     if (symbol) {
-      return symbol->type;
+      return symbol->type().type;
     } else {
       logSemanticErrors(
           "Undefined function name '" +
@@ -509,7 +513,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
     // Search using custom types table to get the members
     // Get the type
-    auto type = instanceSym->type;
+    auto type = instanceSym->type().type;
     // Check the customTypes table
     auto typeIt = customTypesTable.find(type.resolvedName);
     auto sealIt = sealTable.find(instanceName);
@@ -536,7 +540,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       }
 
       auto sealInfo = sealFnIt->second;
-      return sealInfo->type;
+      return sealInfo->type().type;
     } else {
       logSemanticErrors("Unknown type or seal '" + instanceName + "'",
                         call->function_identifier.get());
@@ -664,7 +668,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
     auto result =
         resultOfScopeOrDot(operatorType, parentType, childName, infixNode);
     if (result) {
-      return result->type;
+      return result->type().type;
     } else {
       return ResolvedType::error();
     }
@@ -709,7 +713,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
           "Undefined variable '" + ident->identifier.TokenLiteral + "'", ident);
       return ResolvedType::error();
     }
-    if (symbol->isDefinitelyNull) {
+    if (symbol->type().isDefinitelyNull) {
       logSemanticErrors("Cannot use definitely-null variable '" +
                             ident->identifier.TokenLiteral + "' in operations",
                         ident);
@@ -787,13 +791,13 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
 
     auto memberInfo = memberIt->second;
     auto dotResult = std::make_shared<SymbolInfo>();
-    dotResult->type = memberInfo->type;
-    dotResult->isConstant = memberInfo->isConstant;
-    dotResult->isMutable = memberInfo->isMutable;
-    dotResult->isInitialized = memberInfo->isInitialised;
-    dotResult->isNullable = memberInfo->isNullable;
-    dotResult->isPointer = memberInfo->isPointer;
-    dotResult->memberIndex = memberInfo->memberIndex;
+    dotResult->type().type = memberInfo->type;
+    dotResult->storage().isConstant = memberInfo->isConstant;
+    dotResult->storage().isMutable = memberInfo->isMutable;
+    dotResult->storage().isInitialized = memberInfo->isInitialised;
+    dotResult->type().isNullable = memberInfo->isNullable;
+    dotResult->type().isPointer = memberInfo->isPointer;
+    dotResult->type().memberIndex = memberInfo->memberIndex;
 
     return dotResult;
 
@@ -823,11 +827,11 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
 
     auto memInfo = memIt->second;
     auto scopeInfo = std::make_shared<SymbolInfo>();
-    scopeInfo->type = memInfo->parentType; // This is the actual enum
-    scopeInfo->isConstant = memInfo->isConstant;
-    scopeInfo->isMutable = memInfo->isMutable;
-    scopeInfo->isNullable = memInfo->isNullable;
-    scopeInfo->memberIndex = memInfo->memberIndex;
+    scopeInfo->type().type = memInfo->parentType; // This is the actual enum
+    scopeInfo->storage().isConstant = memInfo->isConstant;
+    scopeInfo->storage().isMutable = memInfo->isMutable;
+    scopeInfo->type().isNullable = memInfo->isNullable;
+    scopeInfo->type().memberIndex = memInfo->memberIndex;
 
     return scopeInfo;
   }
@@ -1238,7 +1242,7 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected,
 
 bool Semantics::hasReturnPath(Node *node) {
   if (currentFunction &&
-      currentFunction.value()->returnType.kind == DataType::VOID) {
+      currentFunction.value()->func().returnType.kind == DataType::VOID) {
     return true; // Void functions don't need returns
   }
 
@@ -1255,9 +1259,10 @@ bool Semantics::hasReturnPath(Node *node) {
       ResolvedType exprType =
           inferNodeDataType(blockExpr->finalexpr.value().get());
       return exprType.kind == DataType::ERROR ||
-             isTypeCompatible(currentFunction.value()->returnType, exprType) ||
+             isTypeCompatible(currentFunction.value()->func().returnType,
+                              exprType) ||
              (dynamic_cast<NullLiteral *>(blockExpr->finalexpr.value().get()) &&
-              currentFunction.value()->isNullable);
+              currentFunction.value()->type().isNullable);
     }
     return false;
   }
@@ -1278,7 +1283,8 @@ bool Semantics::hasReturnPathInBlock(
     // Check if this statement itself is a return
     if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
       if (retStmt->return_value ||
-          (currentFunction.value()->isNullable && !retStmt->return_value)) {
+          (currentFunction.value()->type().isNullable &&
+           !retStmt->return_value)) {
         return true; // Found a return
       }
     }
@@ -1449,10 +1455,10 @@ bool Semantics::checkParamListCompatibility(
 
 bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo,
                                         FunctionExpression *funcExpr) {
-  if (!checkParamListCompatibility(declInfo.paramTypes, funcExpr->call))
+  if (!checkParamListCompatibility(declInfo.func().paramTypes, funcExpr->call))
     return false;
   ResolvedType actualReturn = inferNodeDataType(funcExpr->return_type.get());
-  return isTypeCompatible(declInfo.returnType, actualReturn);
+  return isTypeCompatible(declInfo.func().returnType, actualReturn);
 }
 
 bool Semantics::signaturesMatchBehaviorDeclaration(
@@ -1488,7 +1494,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
     if (!argInfo)
       continue;
 
-    ResolvedType argType = argInfo->type;
+    ResolvedType argType = argInfo->type().type;
 
     bool isCompatible = isTypeCompatible(expectedType, argType);
     if (!isCompatible && expectedType.isRef() && !argType.isRef()) {
@@ -1503,7 +1509,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
 
       if (expectedType.kind == argType.kind) {
         isCompatible = true;
-        argInfo->needsImplicitAddress = true;
+        argInfo->type().needsImplicitAddress = true;
       }
     }
 
@@ -1515,10 +1521,9 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
       continue;
     }
 
-    // --- Nullability rule ---
     if (dynamic_cast<NullLiteral *>(param.get())) {
       if (expectedType.isNull) {
-        argType = expectedType; // promote null → nullable type
+        argType = expectedType; // promote null, nullable type
       } else {
         logSemanticErrors("Cannot pass null to non-nullable parameter " +
                               std::to_string(i + 1) + ": expected " +
@@ -1551,23 +1556,23 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
   auto funcName = callExpr->function_identifier->expression.TokenLiteral;
 
   // Check parameter count
-  if (funcInfo.paramTypes.size() != callExpr->parameters.size()) {
+  if (funcInfo.func().paramTypes.size() != callExpr->parameters.size()) {
     logSemanticErrors("Function '" + funcName + "' call has " +
                           std::to_string(callExpr->parameters.size()) +
                           " arguments, but expected " +
-                          std::to_string(funcInfo.paramTypes.size()),
+                          std::to_string(funcInfo.func().paramTypes.size()),
                       callExpr);
     return false;
   }
 
   for (size_t i = 0; i < callExpr->parameters.size(); ++i) {
     auto &param = callExpr->parameters[i];
-    const auto &expectedType = funcInfo.paramTypes[i].first;
+    const auto &expectedType = funcInfo.func().paramTypes[i].first;
     auto argInfo = metaData[param.get()];
     if (!argInfo)
       continue;
 
-    ResolvedType argType = argInfo->type;
+    ResolvedType argType = argInfo->type().type;
 
     bool isCompatible = isTypeCompatible(expectedType, argType);
 
@@ -1584,7 +1589,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
 
       if (expectedType.kind == argType.kind) {
         isCompatible = true;
-        argInfo->needsImplicitAddress = true;
+        argInfo->type().needsImplicitAddress = true;
       }
     }
 
@@ -1981,9 +1986,9 @@ ResolvedType Semantics::peelRef(const ResolvedType &t) {
 std::string
 Semantics::generateLifetimeID(const std::shared_ptr<SymbolInfo> &sym) {
 
-  if (sym->isPointer)
+  if (sym->type().isPointer)
     return "P" + std::to_string(ptrDeclCount++);
-  else if (sym->isArray)
+  else if (sym->type().isArray)
     return "A" + std::to_string(arrDeclCount++);
   else
     return "N" + std::to_string(normalDeclCount++);
@@ -1999,10 +2004,11 @@ Semantics::createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
   lifetime->ID = generateLifetimeID(declSym);
   lifetime->isResponsible = true;
   lifetime->isAlive = true;
-  lifetime->persist = declSym->isPersist;
+  lifetime->persist = declSym->storage().isPersist;
 
-  if (declSym->targetSymbol && targetBaton)
-    transferResponsibility(lifetime.get(), targetBaton, declSym->targetSymbol);
+  if (declSym->relations().targetSymbol && targetBaton)
+    transferResponsibility(lifetime.get(), targetBaton,
+                           declSym->relations().targetSymbol);
 
   Node *currentBlock = getCurrentBlock();
   if (currentBlock) {
@@ -2077,14 +2083,14 @@ void Semantics::transferResponsibility(
   logInternal("[HEIST] Robber (Current): " + currentBaton->ID);
   logInternal("[HEIST] Victim (Target): " + targetBaton->ID);
   logInternal("[HEIST] Target Pointer Count: " +
-              std::to_string(targetSym->pointerCount));
+              std::to_string(targetSym->storage().pointerCount));
 
-  if (!targetSym->isHeap) {
+  if (!targetSym->storage().isHeap) {
     logInternal("[HEIST] The victim is not heap raised dont bother");
     return;
   }
 
-  auto targetPointerCount = targetSym->pointerCount;
+  auto targetPointerCount = targetSym->storage().pointerCount;
 
   // The moment of truth: Can we rob it?
   if (targetPointerCount <= 2) {
@@ -2179,12 +2185,12 @@ void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
                    identifier);
     }
 
-    if (!identSym->isHeap) {
+    if (!identSym->storage().isHeap) {
       logInternal("[BATON TRANSFER] The identifier '" + identName +
                   "' is not heap allocated skipping..");
     }
     // Ensure we give the baton to the correct identifier
-    if (familyID == identSym->ID) {
+    if (familyID == identSym->codegen().ID) {
       logInternal("[BATON TRANSFER] Transfering baton of ID: " + familyID +
                   " from node: " + holder->toString() + " to composite node: " +
                   receiver->toString() + " ident: " + identifier->toString());
@@ -2221,24 +2227,27 @@ void Semantics::popScope() {
   for (auto &[name, sym] : scope) {
     // If the symbol we come across is a reference and it is referencing
     // validly
-    if (sym->isRef && sym->refereeSymbol) {
-      logInternal("Initial refCount :" +
-                  std::to_string(sym->refereeSymbol->refCount));
-      if (sym->refereeSymbol->refCount > 0) {
-        sym->refereeSymbol->refCount -= 1;
-        logInternal("Ref '" + name +
-                    "' relseased its target the refCount now " +
-                    std::to_string(sym->refereeSymbol->refCount));
+    if (sym->type().isRef && sym->relations().refereeSymbol) {
+      logInternal(
+          "Initial refCount :" +
+          std::to_string(sym->relations().refereeSymbol->storage().refCount));
+      if (sym->relations().refereeSymbol->storage().refCount > 0) {
+        sym->relations().refereeSymbol->storage().refCount -= 1;
+        logInternal(
+            "Ref '" + name + "' relseased its target the refCount now " +
+            std::to_string(sym->relations().refereeSymbol->storage().refCount));
       }
-    } else if (sym->isPointer && sym->targetSymbol && !sym->isHeap &&
-               !sym->isSage) {
+    } else if (sym->type().isPointer && sym->relations().targetSymbol &&
+               !sym->storage().isHeap) {
       logInternal("Initial pointer count: " +
-                  std::to_string(sym->targetSymbol->pointerCount));
-      if (sym->targetSymbol->pointerCount > 0) {
-        sym->targetSymbol->pointerCount -= 1;
+                  std::to_string(
+                      sym->relations().targetSymbol->storage().pointerCount));
+      if (sym->relations().targetSymbol->storage().pointerCount > 0) {
+        sym->relations().targetSymbol->storage().pointerCount -= 1;
         logInternal("Stack Pointer '" + name +
                     "' realeased its target the pointer count is now " +
-                    std::to_string(sym->targetSymbol->pointerCount));
+                    std::to_string(
+                        sym->relations().targetSymbol->storage().pointerCount));
       }
     }
   }

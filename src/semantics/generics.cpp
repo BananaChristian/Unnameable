@@ -4,6 +4,7 @@ void Semantics::walkGenericStatement(Node *node) {
   auto genericStmt = dynamic_cast<GenericStatement *>(node);
   if (!genericStmt)
     return;
+  hasError = false;
 
   std::string blockName = genericStmt->block_name->expression.TokenLiteral;
   bool hasError = false;
@@ -14,7 +15,6 @@ void Semantics::walkGenericStatement(Node *node) {
   if (existing) {
     logSemanticErrors("Generic block name '" + blockName + "' already in use",
                       genericStmt->block_name.get());
-    hasError = true;
   }
 
   GenericBluePrint bluePrint;
@@ -51,7 +51,7 @@ void Semantics::walkGenericStatement(Node *node) {
 
   auto genInfo = std::make_shared<SymbolInfo>();
   genInfo->hasError = hasError;
-  genInfo->isGeneric = true;
+  genInfo->generic().isGeneric = true;
 
   symbolTable.back()[blockName] = genInfo;
 }
@@ -138,9 +138,9 @@ void Semantics::walkInstantiateStatement(Node *node) {
   instantiationInfo.instantiatedAST = std::move(clonedSubTree);
 
   auto info = std::make_shared<SymbolInfo>();
-  info->isInstantiation = true;
+  info->generic().isInstantiation = true;
   info->hasError = hasError;
-  info->instTable = std::move(instantiationInfo);
+  info->generic().instTable = std::move(instantiationInfo);
 
   symbolTable.back()[aliasName] = info;
   metaData[instStmt] = info;

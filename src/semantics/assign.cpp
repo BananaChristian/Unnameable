@@ -184,7 +184,7 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
     return;
   }
 
-  giveGenericIntegerContext(assignStmt->value.get(), selfSymbol, valSym);
+  giveGenericLiteralContext(assignStmt->value.get(), selfSymbol, valSym);
 
   ResolvedType lhsType =
       selfSymbol->isRef ? peelRef(selfSymbol->type) : selfSymbol->type;
@@ -239,7 +239,7 @@ void Semantics::walkAssignStatement(Node *node) {
     return;
   }
 
-  giveGenericIntegerContext(assignStmt->value.get(), lhsSym, rhsSym);
+  giveGenericLiteralContext(assignStmt->value.get(), lhsSym, rhsSym);
 
   if (rhsSym->hasError)
     return;
@@ -363,7 +363,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     if (isInteger(lhsInfo->type))
       rhsInfo->type = lhsInfo->type;
   }
-  giveGenericIntegerContext(fieldAssignStmt->value.get(), lhsInfo, rhsInfo);
+  giveGenericLiteralContext(fieldAssignStmt->value.get(), lhsInfo, rhsInfo);
 
   checkTypeCompatible(lhsInfo->type, rhsInfo->type, /*rhsIsNull=*/false, name,
                       fieldAssignStmt);

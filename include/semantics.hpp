@@ -11,6 +11,9 @@
 #include <string>
 #include <typeindex>
 
+struct SymbolInfo;
+struct MemberInfo;
+
 // Type system tracker
 enum class DataType {
   I8,    // 8 BIT signed integer
@@ -125,49 +128,159 @@ struct ResolvedType {
   static ResolvedType null() { return makeBase(DataType::UNKNOWN, "null"); }
 };
 
-struct MemberInfo {
-  std::string memberName;
-  ResolvedType type; // Type of the member
+struct TypeInfo {
+  ResolvedType type;         // The full resolved type
+  ResolvedType derefPtrType; // Type after one pointer dereference
+
+  bool isNullable = false;       // Can hold null
+  bool isDefinitelyNull = false; // Statically proven to be null right now
+
+  // Indirection flags — these mirror what ResolvedType already encodes at the
+  // top level, but are kept here for fast access during semantic checks.
+  bool isRef = false;
+  bool isPointer = false;
+  bool isArray = false;
+
+  // Heap address flag — set when the variable needs an implicit address-of
+  // during codegen (e.g. heap-allocated structs passed by pointer).
+  bool isAddress = false;
+  bool needsImplicitAddress = false;
+
+  int memberIndex = -1;
+  std::vector<uint64_t> sizePerDimensions; // per-dimension sizes for arrays
+};
+
+// StorageInfo,where and how is this symbol allocated?
+struct StorageInfo {
+  bool isHeap = false;   // Explicit dynamic heap allocation
+  std::string allocType; // Name of the allocator to use
+
+  bool isVolatile = false; // volatile qualifier
+  bool isRestrict = false; // restrict qualifier (no aliasing)
+  bool isPersist = false;  // Survives the current scope
+
+  bool isMutable = false;  // Declared with 'var'
+  bool isConstant = false; // Declared with 'const'
+  bool isInitialized = false;
+  int64_t constIntVal = 0; // Compile-time integer value (when isConstant)
+
+  int pointerCount = 0;
+  int refCount = 0;       // Number of live references to this symbol
+  bool isInvalid = false; // Consumed by a move, no longer usable
+};
+
+// FunctionInfo, only populated when the symbol represents a callable
+struct FunctionInfo {
+  std::string funcName;
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
   ResolvedType returnType;
+  std::vector<ResolvedType> initArgs;
+
+  bool isDeclaration = false; // Forward-declared but not yet defined
+  bool isDefined = false;
+  bool isBehavior = false; // Component method / behaviour block
+};
+
+// GenericInfo, only populated for generic symbols and their instantiations
+struct GenericBluePrint {
+  std::string name;
+  std::vector<std::string> typeParams;
+  std::unordered_map<std::string, int> typeParamIndex;
+  std::unique_ptr<Node> blockAST;
+};
+
+struct GenericInstantiationInfo {
+  std::string aliasName;
+  std::string blueprintName;
+  std::unordered_map<std::string, ResolvedType> paramToType;
+  std::unordered_map<std::string, Token> rawTypeMap;
+  std::unique_ptr<Node> instantiatedAST;
+
+  GenericInstantiationInfo() = default;
+  GenericInstantiationInfo(const GenericInstantiationInfo &) = delete;
+  GenericInstantiationInfo &
+  operator=(const GenericInstantiationInfo &) = delete;
+  GenericInstantiationInfo(GenericInstantiationInfo &&) = default;
+  GenericInstantiationInfo &operator=(GenericInstantiationInfo &&) = default;
+};
+
+struct GenericInfo {
+  std::string genericName;
+  bool isGeneric = false;
+  bool isInstantiation = false;
+  std::optional<GenericInstantiationInfo> instTable;
+};
+
+// RelationshipInfo, links between related symbols
+struct RelationshipInfo {
+  // Pointer / reference targets
+  std::shared_ptr<SymbolInfo> targetSymbol;  // What this pointer points to
+  std::shared_ptr<SymbolInfo> refereeSymbol; // What this reference refers to
+
+  // Field access: 'p.health' → baseSymbol = p, fieldSymbol = health
+  std::shared_ptr<SymbolInfo> baseSymbol;
+  std::shared_ptr<SymbolInfo> fieldSymbol;
+
+  // Component instantiation
+  std::shared_ptr<SymbolInfo> componentSymbol;
+};
+
+// CodegenInfo,populated during IR generation, invisible to semantic passes
+struct CodegenInfo {
+  llvm::Value *llvmValue = nullptr;
+  llvm::Type *llvmType = nullptr;
+  llvm::Align alignment;
+  std::string ID; // Unique symbol ID used by ownership tracking
+  size_t componentSize = 0;
+};
+
+// MemberInfo — describes a field or method inside a component / record / enum
+
+struct MemberInfo {
+  std::string memberName;
+  ResolvedType type;
+  ResolvedType parentType; // Parent type (meaningful for enum members)
+  ResolvedType returnType; // Return type  (meaningful for function members)
+  std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+
   bool isNullable = false;
   bool isMutable = false;
   bool isConstant = false;
   bool isInitialised = false;
-  // Function flags
+  bool isVolatile = false;
+  bool isExportable = false;
+
+  // Indirection
+  bool isRef = false;
+  bool isPointer = false;
+
+  // Function / method flags
   bool isFunction = false;
   bool isDeclared = false;
   bool isDefined = false;
 
-  // Info for enum members
-  std::int64_t constantValue = 0;
-  ResolvedType parentType; // Parent type for enum members
+  // Enum member
+  int64_t constantValue = 0;
 
+  int memberIndex = -1;
   Node *node = nullptr;
   Node *typeNode = nullptr;
+  Node *lastUseNode = nullptr;
+
   llvm::Value *llvmValue = nullptr;
   llvm::Type *llvmType = nullptr;
-  int memberIndex = -1;
-
-  bool isVolatile = false;
-  // Export flag
-  bool isExportable = false;
-
-  bool isHeap = false;    // TODO: REVISIT THIS
-  bool isRef = false;     // Reference flag
-  bool isPointer = false; // Pointer flag
-  Node *lastUseNode = nullptr;
 };
 
+// CustomTypeInfo
 struct CustomTypeInfo {
   std::string typeName;
   ResolvedType type;
-  // Special for enum class
-  DataType underLyingType = DataType::I32; // Defaulting to 32 bit integer
+  DataType underLyingType = DataType::I32; // enum backing type
   std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
   bool isExportable = false;
 };
 
+// ScopeInfo
 struct ScopeInfo {
   ResolvedType type;
   std::string typeName;
@@ -176,114 +289,110 @@ struct ScopeInfo {
   Node *node = nullptr;
 };
 
-struct GenericBluePrint {
-  std::string name;                    // Block name
-  std::vector<std::string> typeParams; // The type parameters
-  std::unordered_map<std::string, int> typeParamIndex;
-  std::unique_ptr<Node> blockAST; // original AST subtree for the generic block
-};
-
-struct GenericInstantiationInfo {
-  std::string aliasName;
-  std::string blueprintName;
-  std::unordered_map<std::string, ResolvedType> paramToType; // T -> int
-  std::unordered_map<std::string, Token> rawTypeMap;         // T -> int token
-  std::unique_ptr<Node> instantiatedAST; // cloned + substituted AST
-
-  GenericInstantiationInfo() = default;
-
-  GenericInstantiationInfo(const GenericInstantiationInfo &) = delete;
-  GenericInstantiationInfo &
-  operator=(const GenericInstantiationInfo &) = delete;
-
-  GenericInstantiationInfo(GenericInstantiationInfo &&) = default;
-  GenericInstantiationInfo &operator=(GenericInstantiationInfo &&) = default;
-};
-
-// Information about the symbol(variable or object, whatever)
+// SymbolInfo,the central symbol descriptor
 struct SymbolInfo {
-  ResolvedType type;
-  std::string genericName;
-  bool isNullable = false;
-  bool isDefinitelyNull = false;
-  bool isMutable = false;
-  bool isConstant = false;
-  bool isInitialized = false;
-  int64_t constIntVal;
-  std::string funcname;
-  std::vector<std::pair<ResolvedType, std::string>> paramTypes;
-  ResolvedType returnType;
-  std::vector<ResolvedType> initArgs;
-  // Function flags
-  bool isDeclaration = false;
-  bool isDefined = false;
-
-  std::vector<uint64_t> sizePerDimensions;
-
-  std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
-  llvm::Value *llvmValue = nullptr;
-  llvm::Type *llvmType = nullptr;
-  ResolvedType derefPtrType;
-  int memberIndex = -1;
-
-  bool isSage = false;   // Sage heap flag
-  bool isHeap = false;   // Dynamic heap flag
-  std::string allocType; // The name of the allocator the heap will use
-  bool isVolatile = false;
-  bool isRestrict = false;
-  bool isPersist = false;
-
-  bool isRef = false;     // Reference flag
-  bool isPointer = false; // Pointer flag
-  bool isArray = false;
-  bool isAddress =
-      false; // This is a special flag for the generation of heap variables
-
-  bool needsImplicitAddress = false;
-
-  bool isParam = false;
-
   bool isFunction = false;
   bool isBehavior = false;
   bool isComponent = false;
   bool isRecord = false;
-  bool inLoop = false;
-  std::shared_ptr<SymbolInfo> targetSymbol;  // For the deref system
-  std::shared_ptr<SymbolInfo> refereeSymbol; // Symbol being refered to
 
-  std::shared_ptr<SymbolInfo>
-      componentSymbol; // Symbol of the component being instantiated
+  // Members map,only populated for component/record symbols
+  std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
 
-  std::shared_ptr<SymbolInfo> baseSymbol; // The owner (e.g., p in p.health)
-  std::shared_ptr<SymbolInfo>
-      fieldSymbol; // The actual member accessed (health)
-
-  size_t componentSize;
-  llvm::Align alignment;
-  std::string ID;
-  int refCount = 0;
-  int pointerCount = 0;
-  bool isInvalid = false;
-  // Error flag
+  bool isParam = false;
+  bool isExportable = false;
   bool hasError = false;
 
-  // Generic flag
-  bool isGeneric = false;
-  bool isInstantiation = false;
-  std::optional<GenericInstantiationInfo> instTable;
+  TypeInfo &type() {
+    ensureTypeInfo();
+    return *_typeInfo;
+  }
+  StorageInfo &storage() {
+    ensureStorageInfo();
+    return *_storageInfo;
+  }
+  FunctionInfo &func() {
+    ensureFuncInfo();
+    return *_functionInfo;
+  }
+  GenericInfo &generic() {
+    ensureGenericInfo();
+    return *_genericInfo;
+  }
+  RelationshipInfo &relations() {
+    ensureRelationInfo();
+    return *_relationInfo;
+  }
+  CodegenInfo &codegen() {
+    ensureCodegenInfo();
+    return *_codegenInfo;
+  }
 
-  // Export flag
-  bool isExportable = false;
+  const TypeInfo &type() const {
+    ensureTypeInfo();
+    return *_typeInfo;
+  }
+  const StorageInfo &storage() const {
+    ensureStorageInfo();
+    return *_storageInfo;
+  }
+  const FunctionInfo &func() const {
+    ensureFuncInfo();
+    return *_functionInfo;
+  }
+  const GenericInfo &generic() const {
+    ensureGenericInfo();
+    return *_genericInfo;
+  }
+  const RelationshipInfo &relations() const {
+    ensureRelationInfo();
+    return *_relationInfo;
+  }
+  const CodegenInfo &codegen() const {
+    ensureCodegenInfo();
+    return *_codegenInfo;
+  }
 
   SymbolInfo() = default;
 
-  // No copying
   SymbolInfo(const SymbolInfo &) = delete;
   SymbolInfo &operator=(const SymbolInfo &) = delete;
 
-  // Movable
   SymbolInfo(SymbolInfo &&) = default;
   SymbolInfo &operator=(SymbolInfo &&) = default;
+
+private:
+  mutable std::shared_ptr<TypeInfo> _typeInfo;
+  mutable std::shared_ptr<StorageInfo> _storageInfo;
+  mutable std::shared_ptr<FunctionInfo> _functionInfo;
+  mutable std::shared_ptr<GenericInfo> _genericInfo;
+  mutable std::shared_ptr<RelationshipInfo> _relationInfo;
+  mutable std::shared_ptr<CodegenInfo> _codegenInfo;
+
+  void ensureTypeInfo() const {
+    if (!_typeInfo)
+      _typeInfo = std::make_shared<TypeInfo>();
+  }
+  void ensureStorageInfo() const {
+    if (!_storageInfo)
+      _storageInfo = std::make_shared<StorageInfo>();
+  }
+  void ensureFuncInfo() const {
+    if (!_functionInfo)
+      _functionInfo = std::make_shared<FunctionInfo>();
+  }
+  void ensureGenericInfo() const {
+    if (!_genericInfo)
+      _genericInfo = std::make_shared<GenericInfo>();
+  }
+  void ensureRelationInfo() const {
+    if (!_relationInfo)
+      _relationInfo = std::make_shared<RelationshipInfo>();
+  }
+  void ensureCodegenInfo() const {
+    if (!_codegenInfo)
+      _codegenInfo = std::make_shared<CodegenInfo>();
+  }
 };
 
 struct LifeTime {
@@ -422,6 +531,7 @@ private:
 
   void walkF64Literal(Node *node);
   void walkF32Literal(Node *node);
+  void walkFloatLiteral(Node *node);
 
   void walkSizeOfExpression(Node *node);
 
@@ -559,7 +669,7 @@ private:
   bool handleNullRhs(NullLiteral *nullLit,
                      const std::shared_ptr<SymbolInfo> &lhsSym,
                      const std::string &name, AssignmentStatement *assignStmt);
-  void giveGenericIntegerContext(Node *literal,
+  void giveGenericLiteralContext(Node *literal,
                                  const std::shared_ptr<SymbolInfo> &contextSym,
                                  const std::shared_ptr<SymbolInfo> &litSym);
 
@@ -591,6 +701,7 @@ private:
   bool isLiteral(Node *node);
   bool isConstLiteral(Node *node);
   void popScope();
+  void registerLiteral(Node *literal, const ResolvedType &type);
   Node *getCurrentBlock();
   std::string getTerminatorString(Node *node);
   std::string generateLifetimeID(const std::shared_ptr<SymbolInfo> &sym);

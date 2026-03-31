@@ -223,19 +223,21 @@ void Semantics::registerInbuiltAllocatorTypes() {
   // alloc: (usize) -> ptr<opaque>
   auto allocSym = std::make_shared<SymbolInfo>();
   allocSym->isFunction = true;
-  allocSym->isDeclaration = true;
-  allocSym->isDefined = false;
-  allocSym->returnType = makePointerType(opaqueBase, false); // ptr<opaque>
-  allocSym->paramTypes.emplace_back(usizeBase, "size");
+  allocSym->func().isDeclaration = true;
+  allocSym->func().isDefined = false;
+  allocSym->func().returnType =
+      makePointerType(opaqueBase, false); // ptr<opaque>
+  allocSym->func().paramTypes.emplace_back(usizeBase, "size");
   stdHandle.allocatorSymbol = allocSym;
 
   // free: (ptr<opaque>) -> void
   auto freeSym = std::make_shared<SymbolInfo>();
   freeSym->isFunction = true;
-  freeSym->isDeclaration = true;
-  freeSym->isDefined = false;
-  freeSym->returnType = voidBase;
-  freeSym->paramTypes.emplace_back(makePointerType(opaqueBase, false), "p");
+  freeSym->func().isDeclaration = true;
+  freeSym->func().isDefined = false;
+  freeSym->func().returnType = voidBase;
+  freeSym->func().paramTypes.emplace_back(makePointerType(opaqueBase, false),
+                                          "p");
   stdHandle.freeSymbol = freeSym;
 
   allocatorMap["GPA"] = stdHandle;

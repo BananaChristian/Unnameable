@@ -131,6 +131,7 @@ private:
   llvm::Value *generateBooleanLiteral(Node *node);
   llvm::Value *generateF32Literal(Node *node);
   llvm::Value *generateF64Literal(Node *node);
+  llvm::Value *generateFloatLiteral(Node *node);
   llvm::Value *generateArrayLiteral(Node *node);
   llvm::Value *generateSizeOfExpression(Node *node);
 

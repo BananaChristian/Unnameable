@@ -16,11 +16,10 @@ void Semantics::walkInfixExpression(Node *node) {
   // Retrieve the symbol info of the left side
   if (!leftSym) {
     logSemanticErrors("Unresolved expression in infix left side", left);
-    hasError = true;
     return;
   }
 
-  auto lhsType = leftSym->type;
+  auto lhsType = leftSym->type().type;
 
   // Access operators
   if (infixExpr->operat.type == TokenType::FULLSTOP ||
@@ -42,10 +41,10 @@ void Semantics::walkInfixExpression(Node *node) {
     if (!memberInfo)
       return;
 
-    logInternal("Member ID: " + memberInfo->ID);
+    logInternal("Member ID: " + memberInfo->codegen().ID);
 
     logInternal("Infix Type for member access :" +
-                memberInfo->type.resolvedName);
+                memberInfo->type().type.resolvedName);
 
     // Store metadata for RHS identifier
     metaData[rhsIdent] = memberInfo;
@@ -60,16 +59,16 @@ void Semantics::walkInfixExpression(Node *node) {
   if (infixType.kind == DataType::UNKNOWN) {
     logSemanticErrors("Infix cannot be of unknown type",
                       infixExpr->left_operand.get());
-    hasError = true;
   }
 
   auto info = std::make_shared<SymbolInfo>();
-  info->type = infixType;
-  info->isNullable = false;
-  info->isConstant = false;
+  info->type().type = infixType;
+  info->type().isNullable = false;
+  info->storage().isConstant = false;
   info->hasError = hasError;
-  info->isInitialized = false;
+  info->storage().isInitialized = false;
 
+  hasError = false;
   metaData[infixExpr] = info;
 }
 
@@ -90,14 +89,14 @@ void Semantics::walkPrefixExpression(Node *node) {
                           prefixExpr);
         return;
       }
-      if (!symbol->isMutable) {
+      if (!symbol->storage().isMutable) {
         logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral +
                               "' to immutable variable '" +
                               ident->expression.TokenLiteral + "'",
                           prefixExpr);
         return;
       }
-      if (!symbol->isInitialized) {
+      if (!symbol->storage().isInitialized) {
         logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral +
                               "' to uninitialized variable '" +
                               ident->expression.TokenLiteral + "'",
@@ -113,10 +112,10 @@ void Semantics::walkPrefixExpression(Node *node) {
   }
   walker(prefixExprOperand);
   auto info = std::make_shared<SymbolInfo>();
-  info->type = prefixType;
-  info->isNullable = false;
-  info->isConstant = false;
-  info->isInitialized = false;
+  info->type().type = prefixType;
+  info->type().isNullable = false;
+  info->storage().isConstant = false;
+  info->storage().isInitialized = false;
 
   metaData[prefixExpr] = info;
 }
@@ -138,7 +137,7 @@ void Semantics::walkPostfixExpression(Node *node) {
                           postfixExpr);
         return;
       }
-      if (symbol->isMutable == false) {
+      if (symbol->storage().isMutable == false) {
         logSemanticErrors("Cannot apply '" +
                               postfixExpr->operator_token.TokenLiteral +
                               "' to immutable variable '" +
@@ -146,7 +145,7 @@ void Semantics::walkPostfixExpression(Node *node) {
                           postfixExpr);
         return;
       }
-      if (!symbol->isInitialized) {
+      if (!symbol->storage().isInitialized) {
         logSemanticErrors("Cannot apply '" +
                               postfixExpr->operator_token.TokenLiteral +
                               "' to uninitialized variable '" +
@@ -164,10 +163,10 @@ void Semantics::walkPostfixExpression(Node *node) {
   }
   walker(postfixOperand);
   auto info = std::make_shared<SymbolInfo>();
-  info->type = postfixType;
-  info->isNullable = false;
-  info->isMutable = false;
-  info->isInitialized = false;
+  info->type().type = postfixType;
+  info->type().isNullable = false;
+  info->storage().isMutable = false;
+  info->storage().isInitialized = false;
 
   metaData[postfixExpr] = info;
 }
@@ -196,7 +195,7 @@ void Semantics::walkUnwrapExpression(Node *node) {
     return;
   }
 
-  ResolvedType exprType = exprSym->type;
+  ResolvedType exprType = exprSym->type().type;
 
   if (!exprType.isNull) {
     logSemanticErrors("Cannot unwrap a concrete type '" +
@@ -219,10 +218,10 @@ void Semantics::walkUnwrapExpression(Node *node) {
   exprType.resolvedName = strippedName;
 
   auto unwrapSym = std::make_shared<SymbolInfo>();
-  unwrapSym->type = exprType;
+  unwrapSym->type().type = exprType;
   unwrapSym->hasError = hasError;
-  unwrapSym->sizePerDimensions = exprSym->sizePerDimensions;
-  unwrapSym->componentSize = exprSym->componentSize;
+  unwrapSym->type().sizePerDimensions = exprSym->type().sizePerDimensions;
+  unwrapSym->codegen().componentSize = exprSym->codegen().componentSize;
 
   logInternal("Unwrapped Type: " + exprType.resolvedName);
 
@@ -317,7 +316,7 @@ void Semantics::walkCastExpression(Node *node) {
   if (!sym)
     return;
 
-  ResolvedType sourceType = sym->type;
+  ResolvedType sourceType = sym->type().type;
 
   if (sourceType.isNull) {
     errorHandler.addHint("Unwrap the nullable before casting")
@@ -369,7 +368,7 @@ void Semantics::walkCastExpression(Node *node) {
 
   auto castInfo = std::make_shared<SymbolInfo>();
   castInfo->hasError = hasError;
-  castInfo->type = destinationType;
+  castInfo->type().type = destinationType;
   metaData[castExpr] = castInfo;
 }
 
@@ -395,7 +394,7 @@ void Semantics::walkBitcastExpression(Node *node) {
     return;
   }
 
-  ResolvedType sourceType = sourceSym->type;
+  ResolvedType sourceType = sourceSym->type().type;
 
   // Bitcastable — pointer (any inner type) or scalar numeric
   // Blocks: refs, arrays, bare custom types, nullable
@@ -460,7 +459,7 @@ void Semantics::walkBitcastExpression(Node *node) {
   }
 
   auto bitcastInfo = std::make_shared<SymbolInfo>();
-  bitcastInfo->type = destinationType;
+  bitcastInfo->type().type = destinationType;
   bitcastInfo->hasError = hasError;
   hasError = false;
   metaData[bitcastExpr] = bitcastInfo;
@@ -490,7 +489,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   walker(arrExpr->identifier.get());
 
   // Get the full array type
-  ResolvedType arrType = arrSymbol->type;
+  ResolvedType arrType = arrSymbol->type().type;
   logInternal("Array Type '" + arrType.resolvedName + "'");
 
   if (!arrType.isArray()) {
@@ -514,11 +513,10 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
 
   // Optionally store info for further analysis
   auto arrAccessInfo = std::make_shared<SymbolInfo>();
-  arrAccessInfo->type = elementType;
+  arrAccessInfo->type().type = elementType;
   arrAccessInfo->hasError = hasError;
-  arrAccessInfo->isSage = arrSymbol->isSage;
-  arrAccessInfo->isHeap = arrSymbol->isHeap;
-  arrAccessInfo->sizePerDimensions = arrSymbol->sizePerDimensions;
+  arrAccessInfo->storage().isHeap = arrSymbol->storage().isHeap;
+  arrAccessInfo->type().sizePerDimensions = arrSymbol->type().sizePerDimensions;
 
   metaData[arrExpr] = arrAccessInfo;
 }
@@ -538,8 +536,8 @@ void Semantics::walkIdentifierExpression(Node *node) {
   }
 
   metaData[identExpr] = symbolInfo;
-  if (symbolInfo->isHeap) {
-    transferBaton(identExpr, symbolInfo->ID);
+  if (symbolInfo->storage().isHeap) {
+    transferBaton(identExpr, symbolInfo->codegen().ID);
   }
 }
 
@@ -599,22 +597,22 @@ void Semantics::walkAddressExpression(Node *node) {
     return;
   }
 
-  bool isHeap = symbolInfo->isHeap;
+  bool isHeap = symbolInfo->storage().isHeap;
 
   auto addrInfo = std::make_shared<SymbolInfo>();
-  addrInfo->isPointer = true;
-  addrInfo->isHeap = isHeap;
-  addrInfo->allocType = symbolInfo->allocType;
-  addrInfo->targetSymbol = symbolInfo;
-  addrInfo->isVolatile = symbolInfo->isVolatile;
-  addrInfo->type = inferNodeDataType(addrExpr);
+  addrInfo->type().isPointer = true;
+  addrInfo->storage().isHeap = isHeap;
+  addrInfo->storage().allocType = symbolInfo->storage().allocType;
+  addrInfo->relations().targetSymbol = symbolInfo;
+  addrInfo->storage().isVolatile = symbolInfo->storage().isVolatile;
+  addrInfo->type().type = inferNodeDataType(addrExpr);
 
   // Ths syncs the pointerCount with that of the original identifier
-  symbolInfo->pointerCount = addrInfo->pointerCount;
+  symbolInfo->storage().pointerCount = addrInfo->storage().pointerCount;
 
   if (isHeap) {
-    addrInfo->ID = symbolInfo->ID;
-    transferBaton(addrExpr, addrInfo->ID);
+    addrInfo->codegen().ID = symbolInfo->codegen().ID;
+    transferBaton(addrExpr, addrInfo->codegen().ID);
   }
   metaData[addrExpr] = addrInfo;
 }
@@ -669,20 +667,20 @@ void Semantics::walkMoveExpression(Node *node) {
     return;
   }
 
-  if (!symbolInfo->isHeap && !symbolInfo->isSage) {
+  if (!symbolInfo->storage().isHeap) {
     logSemanticErrors("Cannot move variable '" + exprName +
                           "' as it is stored on the stack",
                       innerExpr);
   }
 
-  if (symbolInfo->type.isPointer() || symbolInfo->type.isRef()) {
+  if (symbolInfo->type().type.isPointer() || symbolInfo->type().type.isRef()) {
     logSemanticErrors("Cannot move variable '" + exprName +
                           "' as it is of a type '" +
-                          symbolInfo->type.resolvedName + "'",
+                          symbolInfo->type().type.resolvedName + "'",
                       innerExpr);
   }
 
-  if (symbolInfo->isInvalid) {
+  if (symbolInfo->storage().isInvalid) {
     logSemanticErrors("Variable '" + exprName + "' was already moved",
                       innerExpr);
   }
@@ -714,29 +712,30 @@ void Semantics::walkDereferenceExpression(Node *node) {
     return;
 
   // Must be a pointer to dereference
-  if (!derefSym->type.isPointer()) {
+  if (!derefSym->type().type.isPointer()) {
     errorHandler.addHint("Only pointer types can be dereferenced")
         .addHint("Declare as: ptr i32 " + derefName + " -> addr target")
         .addHint("Then dereference with: deref " + derefName);
     logSemanticErrors("Cannot dereference non-pointer type '" +
-                          derefSym->type.resolvedName + "'",
+                          derefSym->type().type.resolvedName + "'",
                       derefExpr);
     return;
   }
 
   // Block nullable, must unwrap first
-  if (derefSym->type.isNull) {
+  if (derefSym->type().type.isNull) {
     errorHandler.addHint("Unwrap the nullable pointer before dereferencing")
         .addHint("Use '?''?' or 'unwrap' to get the non-nullable pointer first")
         .addHint("Example: deref (myPtr ?? defaultPtr)");
     logSemanticErrors("Cannot dereference nullable pointer '" + derefName + "'",
                       derefExpr);
+    hasError = false;
     return;
   }
 
   // Block opaque pointer,no type info to dereference into
   // With chains opaque lives in innerType not at the top level
-  if (!derefSym->type.innerType) {
+  if (!derefSym->type().type.innerType) {
     errorHandler.addHint("Pointer has no inner type information")
         .addHint("Use bitcast to convert to a typed pointer first")
         .addHint("Example: bitcast<ptr i32>(myOpaquePtr)");
@@ -745,7 +744,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
     return;
   }
 
-  if (derefSym->type.innerType->base().kind == DataType::OPAQUE) {
+  if (derefSym->type().type.innerType->base().kind == DataType::OPAQUE) {
     errorHandler
         .addHint("Opaque pointers have no concrete type to dereference into")
         .addHint("Use bitcast to convert to a typed pointer first")
@@ -756,20 +755,20 @@ void Semantics::walkDereferenceExpression(Node *node) {
   }
 
   // Peel one pointer level, just return what it points to
-  ResolvedType finalType = *derefSym->type.innerType;
+  ResolvedType finalType = *derefSym->type().type.innerType;
 
   auto derefInfo = std::make_shared<SymbolInfo>();
-  derefInfo->type = finalType;
-  derefInfo->isMutable = derefSym->isMutable;
-  derefInfo->isHeap = derefSym->isHeap;
-  derefInfo->isVolatile = derefSym->isVolatile;
-  derefInfo->allocType = derefSym->allocType;
-  derefInfo->targetSymbol = derefSym->targetSymbol;
+  derefInfo->type().type = finalType;
+  derefInfo->storage().isMutable = derefSym->storage().isMutable;
+  derefInfo->storage().isHeap = derefSym->storage().isHeap;
+  derefInfo->storage().isVolatile = derefSym->storage().isVolatile;
+  derefInfo->storage().allocType = derefSym->storage().allocType;
+  derefInfo->relations().targetSymbol = derefSym->relations().targetSymbol;
 
   // Transfer baton if heap
-  if (derefSym->isHeap) {
-    derefInfo->ID = derefSym->ID;
-    transferBaton(derefExpr, derefInfo->ID);
+  if (derefSym->storage().isHeap) {
+    derefInfo->codegen().ID = derefSym->codegen().ID;
+    transferBaton(derefExpr, derefInfo->codegen().ID);
   }
 
   metaData[derefExpr] = derefInfo;
@@ -799,7 +798,7 @@ void Semantics::walkSizeOfExpression(Node *node) {
   }
 
   auto sizeInfo = std::make_shared<SymbolInfo>();
-  sizeInfo->type = ResolvedType::makeBase(DataType::USIZE, "usize");
+  sizeInfo->type().type = ResolvedType::makeBase(DataType::USIZE, "usize");
   sizeInfo->hasError = hasError;
 
   hasError = false;

@@ -3,12 +3,17 @@
 #include "token.hpp"
 #include <string>
 
-void Semantics::giveGenericIntegerContext(
+void Semantics::giveGenericLiteralContext(
     Node *literal, const std::shared_ptr<SymbolInfo> &contextSym,
     const std::shared_ptr<SymbolInfo> &litSym) {
   if (dynamic_cast<INTLiteral *>(literal)) {
-    if (isInteger(contextSym->type))
-      litSym->type = contextSym->type;
+    if (isInteger(contextSym->type().type))
+      litSym->type().type = contextSym->type().type;
+  }
+
+  if (dynamic_cast<FloatLiteral *>(literal)) {
+    if (isFloat(contextSym->type().type))
+      litSym->type().type = contextSym->type().type;
   }
 }
 
@@ -255,17 +260,17 @@ void Semantics::enforceDeclarationRules(
   }
 
   // Create initial info I will collect it later
-  declInfo->isMutable = isMutable;
-  declInfo->isConstant = isConstant;
+  declInfo->storage().isMutable = isMutable;
+  declInfo->storage().isConstant = isConstant;
   declInfo->hasError = hasError;
-  declInfo->isVolatile = isVolatile;
-  declInfo->isRestrict = isRestrict;
-  declInfo->isPersist = isPersist;
-  declInfo->isRef = isRef;
-  declInfo->isPointer = isPointer;
-  declInfo->isHeap = isHeap;
-  declInfo->isArray = isArray;
-  declInfo->isNullable = isNullable;
+  declInfo->storage().isVolatile = isVolatile;
+  declInfo->storage().isRestrict = isRestrict;
+  declInfo->storage().isPersist = isPersist;
+  declInfo->type().isRef = isRef;
+  declInfo->type().isPointer = isPointer;
+  declInfo->storage().isHeap = isHeap;
+  declInfo->type().isArray = isArray;
+  declInfo->type().isNullable = isNullable;
 }
 
 void Semantics::handleNullInitializers(
@@ -275,9 +280,9 @@ void Semantics::handleNullInitializers(
   const std::string &declName = declaration->var_name->expression.TokenLiteral;
   auto type_modifier =
       dynamic_cast<TypeModifier *>(declaration->modified_type.get());
-  const auto &type = declInfo->type;
+  const auto &type = declInfo->type().type;
 
-  if (!declInfo->isNullable) {
+  if (!declInfo->type().isNullable) {
     errorHandler.addHint("Nullable types use '?' suffix: i32?")
         .addHint("Make the type nullable: " + type.resolvedName + "?")
         .addHint("Or initialize with a non-null value");
@@ -287,7 +292,7 @@ void Semantics::handleNullInitializers(
     return;
   }
 
-  if (declInfo->isArray) {
+  if (declInfo->type().isArray) {
     if (type_modifier->dimensions.empty()) {
       errorHandler.addHint("Arrays need dimensions: arr[10] i32 x")
           .addHint("Or initialize with array literal: arr i32 x = [1, 2, 3]");
@@ -297,7 +302,7 @@ void Semantics::handleNullInitializers(
     return;
   }
 
-  if (declInfo->isRef) {
+  if (declInfo->type().isRef) {
     logSemanticErrors(
         "Cannot assign null to a reference variable declaration '" + declName +
             "' of type '" + type.resolvedName + "'",
@@ -305,11 +310,11 @@ void Semantics::handleNullInitializers(
   }
 
   // Give the null context
-  nullInfo->type = declInfo->type;
+  nullInfo->type().type = declInfo->type().type;
 
-  if (declInfo->isHeap) {
+  if (declInfo->storage().isHeap) {
     auto lifetime = createLifeTimeTracker(declaration, nullptr, declInfo);
-    declInfo->ID = lifetime->ID;
+    declInfo->codegen().ID = lifetime->ID;
     responsibilityTable[declaration] = std::move(lifetime);
   }
   declInfo->hasError = hasError;
@@ -349,9 +354,9 @@ void Semantics::walkVariableDeclaration(Node *node) {
   } else {
     allocType = "GPA"; // The default GPA type
   }
-  declInfo->allocType = allocType;
+  declInfo->storage().allocType = allocType;
 
-  auto declType = declInfo->type.resolvedName;
+  auto declType = declInfo->type().type.resolvedName;
 
   if (initializer) {
     walker(initializer);
@@ -371,7 +376,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
       return;
 
     ResolvedType declaredType = inferNodeDataType(declaration);
-    declInfo->type = declaredType;
+    declInfo->type().type = declaredType;
 
     // Null checks and giving the null literals context
     if (dynamic_cast<NullLiteral *>(initializer)) {
@@ -379,14 +384,14 @@ void Semantics::walkVariableDeclaration(Node *node) {
       return;
     }
 
-    // Give generic int context
-    giveGenericIntegerContext(initializer, declInfo, initSym);
+    // Give generic lits context
+    giveGenericLiteralContext(initializer, declInfo, initSym);
 
     // Basic Type checks
     auto errorType = ResolvedType::error();
 
     logInternal("Declared variable type: " + declaredType.resolvedName);
-    if (declaredType.kind == DataType::OPAQUE && !declInfo->isPointer) {
+    if (declaredType.kind == DataType::OPAQUE && !declInfo->type().isPointer) {
       errorHandler.addHint("'opaque' can only be used with pointer types")
           .addHint("Example: ptr opaque p")
           .addHint("Remove 'opaque' for non-pointer types");
@@ -398,7 +403,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
     // Type check
     if (initializer) {
       if (declaredType.kind == DataType::OPAQUE) {
-        if (!initSym->type.isPointer()) {
+        if (!initSym->type().type.isPointer()) {
           errorHandler
               .addHint("Opaque pointers can only point to other pointers")
               .addHint("Use: ptr opaque p -> addr x")
@@ -407,10 +412,10 @@ void Semantics::walkVariableDeclaration(Node *node) {
               "Cannot initialize opaque pointer with non-pointer type",
               declaration);
         }
-      } else if (!isTypeCompatible(declaredType, initSym->type)) {
+      } else if (!isTypeCompatible(declaredType, initSym->type().type)) {
         std::string errorMsg = "Type mismatch in variable declaration";
         errorHandler.addHint("Expected type: " + declaredType.resolvedName)
-            .addHint("Got type: " + initSym->type.resolvedName)
+            .addHint("Got type: " + initSym->type().type.resolvedName)
             .addHint("Check if types match or convert using cast or bitcast");
 
         logSemanticErrors(errorMsg, declaration);
@@ -419,8 +424,8 @@ void Semantics::walkVariableDeclaration(Node *node) {
     }
 
     //  Reference rules
-    if (declInfo->isRef) {
-      if (initSym->isNullable) {
+    if (declInfo->type().isRef) {
+      if (initSym->type().isNullable) {
         errorHandler.addHint("References cannot point to nullable values")
             .addHint("Use 'unwrap' or '?''?' to get the non-nullable value");
         logSemanticErrors("Reference cannot reference nullable value",
@@ -428,7 +433,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
         return;
       }
 
-      if (!initSym->isHeap) {
+      if (!initSym->storage().isHeap) {
         errorHandler
             .addHint("References only work with heap or global variables")
             .addHint("Allocate on heap: heap i32 x = 10")
@@ -439,7 +444,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
         return;
       }
 
-      if (declInfo->isMutable && !initSym->isMutable) {
+      if (declInfo->storage().isMutable && !initSym->storage().isMutable) {
         errorHandler.addHint("Mutable reference requires mutable target")
             .addHint("Make target mutable: mut i32 x = 10");
         logSemanticErrors(
@@ -447,18 +452,18 @@ void Semantics::walkVariableDeclaration(Node *node) {
             declaration);
       }
 
-      declInfo->refereeSymbol = initSym;
-      initSym->refCount += 1;
+      declInfo->relations().refereeSymbol = initSym;
+      initSym->storage().refCount += 1;
     }
 
     // Pointer rules
-    if (declInfo->isPointer) {
-      declInfo->targetSymbol = initSym;
-      initSym->pointerCount += 1;
+    if (declInfo->type().isPointer) {
+      declInfo->relations().targetSymbol = initSym;
+      initSym->storage().pointerCount += 1;
     }
 
     // Array rules
-    if (declInfo->isArray && type_modifier &&
+    if (declInfo->type().isArray && type_modifier &&
         !type_modifier->dimensions.empty()) {
       std::vector<uint64_t> declSizePerDim;
       for (const auto &len : type_modifier->dimensions) {
@@ -472,35 +477,37 @@ void Semantics::walkVariableDeclaration(Node *node) {
       }
 
       // Check dimension mismatch
-      if (!initSym->sizePerDimensions.empty()) {
-        if (declSizePerDim.size() != initSym->sizePerDimensions.size()) {
+      if (!initSym->type().sizePerDimensions.empty()) {
+        if (declSizePerDim.size() != initSym->type().sizePerDimensions.size()) {
           errorHandler
               .addHint("Expected " + std::to_string(declSizePerDim.size()) +
                        " dimensions")
-              .addHint("Got " +
-                       std::to_string(initSym->sizePerDimensions.size()) +
-                       " dimensions");
+              .addHint(
+                  "Got " +
+                  std::to_string(initSym->type().sizePerDimensions.size()) +
+                  " dimensions");
           logSemanticErrors("Dimension count mismatch", declaration);
           return;
         }
-        declSizePerDim = initSym->sizePerDimensions;
+        declSizePerDim = initSym->type().sizePerDimensions;
       }
-      declInfo->sizePerDimensions = declSizePerDim;
+      declInfo->type().sizePerDimensions = declSizePerDim;
     }
   }
 
   // Creating the baton
-  if (declInfo->isHeap) {
+  if (declInfo->storage().isHeap) {
     LifeTime *targetBaton =
         initializer ? responsibilityTable[initializer].get() : nullptr;
     auto lifetime = createLifeTimeTracker(declaration, targetBaton, declInfo);
-    declInfo->ID = lifetime->ID;
+    declInfo->codegen().ID = lifetime->ID;
     responsibilityTable[declaration] = std::move(lifetime);
   }
 
   metaData[declaration] = declInfo;
-  logInternal("[DEBUG] Stored metadata for " + declName + " | isHeap = " +
-              std::to_string(declInfo->isHeap) + " | ID = " + declInfo->ID);
+  logInternal("[DEBUG] Stored metadata for " + declName +
+              " | isHeap = " + std::to_string(declInfo->storage().isHeap) +
+              " | ID = " + declInfo->codegen().ID);
   hasError = false;
   symbolTable.back()[declName] = declInfo;
 }

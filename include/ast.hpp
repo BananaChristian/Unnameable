@@ -408,6 +408,20 @@ struct F64Literal : Expression {
   F64Literal(Token f64_t) : Expression(f64_t), f64_token(f64_t){};
 };
 
+// Generic Float literal
+struct FloatLiteral : Expression {
+  Token float_token;
+  std::string toString() override {
+    return "Float Literal: " + float_token.TokenLiteral;
+  }
+
+  FloatLiteral *shallowClone() const override {
+    return new FloatLiteral(float_token);
+  }
+
+  FloatLiteral(Token flot_tok) : Expression(flot_tok), float_token(flot_tok){};
+};
+
 // 8 bit Char literal
 struct Char8Literal : Expression {
   Token char8_token;
@@ -939,45 +953,105 @@ struct InjectStatement : Statement {
         expr(std::move(name)) {}
 };
 
-// Record statement struct
-struct RecordStatement : Statement {
-  // Modifiers
-  bool isVolatile; // Every member in the record is volatile
-  bool isExportable;
-  Mutability mutability;
+// Structure modifier
+struct StructureModifier : Expression {
+  bool isPacked = false;
+  bool isBitfield = false;
+  bool isUnion = false;
+  std::unique_ptr<Expression> _align;
 
-  // Core structure
-  Token record_token;
-  std::unique_ptr<Expression> recordName;
-  std::vector<std::unique_ptr<Statement>> fields;
-
-  std::string toString() override {
-    std::string prefix;
-    if (isExportable)
-      prefix += "export ";
-    if (isVolatile)
-      prefix += "volatile ";
-
-    if (mutability == Mutability::MUTABLE)
-      prefix += "mut ";
-    if (mutability == Mutability::CONSTANT)
-      prefix += "const ";
-
-    std::string result =
-        prefix + " Record statement: " + recordName->toString() + " {\n";
-    for (const auto &field : fields) {
-      result += "  " + field->toString() + "\n";
-    }
-    result += "}";
-    return result;
+  StructureModifier *shallowClone() const override {
+    return new StructureModifier(isPacked, isBitfield, isUnion,
+                                 clonePtr(_align));
   }
 
-  RecordStatement(bool volatile_, bool exportable, Mutability mut, Token record,
-                  std::unique_ptr<Expression> block_name,
+  StructureModifier() : Expression(Token{}) {}
+
+  StructureModifier(bool packed, bool bitfield, bool union_,
+                    std::unique_ptr<Expression> align = nullptr)
+      : Expression(Token{}), isPacked(packed), isBitfield(bitfield),
+        isUnion(union_), _align(std::move(align)) {}
+
+  std::string toString() override {
+    std::string result;
+    if (isPacked)
+      result += "packed ";
+    if (isBitfield)
+      result += "bitfield ";
+    if (isUnion)
+      result += "union ";
+
+    if (_align)
+      result += "align(" + _align->toString() + ") ";
+    return result;
+  }
+};
+
+// Record statement struct
+struct RecordStatement : Statement {
+  bool isVolatile = false; // Every field in the structure is volatile
+  bool isExportable = false;
+  Mutability mutability = Mutability::IMMUTABLE;
+
+  std::unique_ptr<StructureModifier> modifiers;
+  Token record_token;
+  std::unique_ptr<Expression> recordName;
+  std::vector<std::unique_ptr<Expression>> typeParams;
+  std::vector<std::unique_ptr<Statement>> fields;
+
+  RecordStatement *shallowClone() const override {
+    return new RecordStatement(record_token, isVolatile, isExportable,
+                               mutability, clonePtr(modifiers),
+                               clonePtr(recordName), clonePtrVector(typeParams),
+                               clonePtrVector(fields));
+  };
+
+  RecordStatement(Token record, bool _volatile, bool _exportable,
+                  Mutability mut, std::unique_ptr<StructureModifier> mods,
+                  std::unique_ptr<Expression> name,
+                  std::vector<std::unique_ptr<Expression>> type_params,
                   std::vector<std::unique_ptr<Statement>> record_fields)
-      : Statement(record), isVolatile(volatile_), isExportable(exportable),
-        mutability(mut), record_token(record),
-        recordName(std::move(block_name)), fields(std::move(record_fields)){};
+      : Statement(record), isVolatile(_volatile), isExportable(_exportable),
+        mutability(mut), modifiers(std::move(mods)), record_token(record),
+        recordName(std::move(name)), typeParams(std::move(type_params)),
+        fields(std::move(record_fields)) {}
+
+  std::string toString() override {
+    std::string result;
+    if (isVolatile)
+      result += "volatile ";
+
+    if (isExportable)
+      result += "export ";
+
+    if (mutability == Mutability::MUTABLE)
+      result += "mut ";
+    if (mutability == Mutability::CONSTANT)
+      result += "const ";
+
+    if (modifiers)
+      result += modifiers->toString();
+
+    result += "record " + recordName->toString();
+
+    // Generic type params  <T, M>
+    if (!typeParams.empty()) {
+      result += "<";
+      for (size_t i = 0; i < typeParams.size(); ++i) {
+        if (i > 0)
+          result += ", ";
+        result += typeParams[i]->toString();
+      }
+      result += ">";
+    }
+
+    result += " {\n";
+    for (const auto &field : fields)
+      result += "  " + field->toString() + "\n";
+    result += "}";
+
+    return result;
+  }
 };
 
 // Init statement
@@ -1007,64 +1081,77 @@ struct ComponentStatement : Statement {
   Token component_token;
   std::unique_ptr<Expression> component_name;
 
+  std::vector<std::unique_ptr<Expression>> typeParams;
+
   std::vector<std::unique_ptr<Statement>> fields;
   std::vector<std::unique_ptr<Statement>> methods;
-
   std::vector<std::unique_ptr<Statement>> injectedFields;
-
   std::optional<std::unique_ptr<Statement>> initConstructor;
 
+  ComponentStatement *shallowClone() const override {
+    return new ComponentStatement(
+        isExportable, component_token, clonePtr(component_name),
+        clonePtrVector(typeParams), clonePtrVector(fields),
+        clonePtrVector(methods), clonePtrVector(injectedFields),
+        clonePtr(initConstructor.value()));
+  };
+
+  ComponentStatement(bool exportable, Token component,
+                     std::unique_ptr<Expression> name,
+                     std::vector<std::unique_ptr<Expression>> type_params,
+                     std::vector<std::unique_ptr<Statement>> private_fields,
+                     std::vector<std::unique_ptr<Statement>> private_methods,
+                     std::vector<std::unique_ptr<Statement>> injected_fields,
+                     std::optional<std::unique_ptr<Statement>> init)
+      : Statement(component), isExportable(exportable),
+        component_token(component), component_name(std::move(name)),
+        typeParams(std::move(type_params)), fields(std::move(private_fields)),
+        methods(std::move(private_methods)),
+        injectedFields(std::move(injected_fields)),
+        initConstructor(std::move(init)) {}
+
   std::string toString() override {
-    std::string exportStr = isExportable ? "export " : "";
-    std::string result = exportStr +
-                         "Component Statement: " + component_name->toString() +
-                         " {\n";
-    // Private data
+    std::string result = isExportable ? "export " : "";
+
+    result += "component " + component_name->toString();
+
+    // Generic type params <T, M>
+    if (!typeParams.empty()) {
+      result += "<";
+      for (size_t i = 0; i < typeParams.size(); ++i) {
+        if (i > 0)
+          result += ", ";
+        result += typeParams[i]->toString();
+      }
+      result += ">";
+    }
+
+    result += " {\n";
+
     for (const auto &field : fields) {
-      if (!field) {
+      if (!field)
         std::cout << "Encountered null field\n";
-      } else {
-        result += " " + field->toString() + "\n";
-      }
+      else
+        result += "  " + field->toString() + "\n";
     }
 
-    // Private methods
     for (const auto &method : methods) {
-      if (!method) {
+      if (!method)
         std::cout << "Encountered null method\n";
-      } else {
+      else
         result += "  " + method->toString() + "\n";
-      }
     }
 
-    // Used data blocks
-    for (const auto &field : injectedFields) {
-      result += "  " + field->toString() + "\n";
-    }
+    for (const auto &injected : injectedFields)
+      result += "  " + injected->toString() + "\n";
 
-    // Init constructor
-    if (initConstructor.has_value()) {
-      result += " " + (*initConstructor)->toString();
-    }
+    if (initConstructor.has_value())
+      result += "  " + (*initConstructor)->toString() + "\n";
 
     result += "}";
     return result;
   }
-
-  ComponentStatement(bool exportable, Token component,
-                     std::unique_ptr<Expression> name,
-                     std::vector<std::unique_ptr<Statement>> private_fields,
-                     std::vector<std::unique_ptr<Statement>> private_methods,
-                     std::vector<std::unique_ptr<Statement>> injected_fields,
-
-                     std::optional<std::unique_ptr<Statement>> init)
-      : Statement(component), isExportable(exportable),
-        component_token(component), component_name(std::move(name)),
-        fields(std::move(private_fields)), methods(std::move(private_methods)),
-        injectedFields(std::move(injected_fields)),
-        initConstructor(std::move(init)) {}
 };
-
 struct TypeModifier : Expression {
   bool isArray = false;
   bool isPointer = false;

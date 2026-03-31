@@ -681,6 +681,8 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
       &IRGenerator::generateF32Literal;
   expressionGeneratorsMap[typeid(F64Literal)] =
       &IRGenerator::generateF64Literal;
+  expressionGeneratorsMap[typeid(FloatLiteral)] =
+      &IRGenerator::generateFloatLiteral;
   expressionGeneratorsMap[typeid(ArrayLiteral)] =
       &IRGenerator::generateArrayLiteral;
   expressionGeneratorsMap[typeid(NullLiteral)] =
