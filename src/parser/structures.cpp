@@ -389,31 +389,6 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
              currentToken());
   }
   auto component_name = parseIdentifier();
-  std::vector<std::unique_ptr<Expression>> type_params;
-  if (currentToken().type == TokenType::LESS_THAN) {
-    advance();
-    while (currentToken().type != TokenType::GREATER_THAN &&
-           currentToken().type != TokenType::END) {
-      if (currentToken().type == TokenType::COMMA) {
-        advance();
-        continue;
-      }
-
-      auto type = parseIdentifier();
-      if (!type)
-        reportDevBug("Failed to parse identifier", currentToken());
-
-      type_params.push_back(std::move(type));
-    }
-
-    if (currentToken().type == TokenType::GREATER_THAN)
-      advance();
-  }
-
-  if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected { but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
-  }
   advance(); // Consuming the LPAREN
   // Now here we are inside the block so we have to parse the stuff inside
 
@@ -494,7 +469,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
 
   return std::make_unique<ComponentStatement>(
       isExportable, component_token, std::move(component_name),
-      std::move(type_params), std::move(fields), std::move(methods),
+      std::move(fields), std::move(methods),
       std::move(injectedfields), std::move(initConstructor));
 }
 
@@ -605,26 +580,6 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
              currentToken());
   }
   auto recordName = parseIdentifier();
-  std::vector<std::unique_ptr<Expression>> type_params;
-  if (currentToken().type == TokenType::LESS_THAN) {
-    advance();
-    while (currentToken().type != TokenType::GREATER_THAN &&
-           currentToken().type != TokenType::END) {
-      if (currentToken().type == TokenType::COMMA) {
-        advance();
-        continue;
-      }
-      auto type = parseIdentifier();
-      if (!type)
-        reportDevBug("Failed to parse identifier", currentToken());
-
-      type_params.push_back(std::move(type));
-    }
-
-    if (currentToken().type == TokenType::GREATER_THAN)
-      advance();
-  }
-
   if (currentToken().type != TokenType::LBRACE) {
     logError("Expected { to start record block but got '" +
                  currentToken().TokenLiteral + "'",
@@ -656,7 +611,7 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
 
   return std::make_unique<RecordStatement>(
       record_token, false, false, Mutability::IMMUTABLE, nullptr,
-      std::move(recordName), std::move(type_params), std::move(fields));
+      std::move(recordName), std::move(fields));
 }
 
 // Parsing instance expression

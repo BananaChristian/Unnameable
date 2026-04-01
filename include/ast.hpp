@@ -996,24 +996,22 @@ struct RecordStatement : Statement {
   std::unique_ptr<StructureModifier> modifiers;
   Token record_token;
   std::unique_ptr<Expression> recordName;
-  std::vector<std::unique_ptr<Expression>> typeParams;
   std::vector<std::unique_ptr<Statement>> fields;
 
   RecordStatement *shallowClone() const override {
     return new RecordStatement(record_token, isVolatile, isExportable,
                                mutability, clonePtr(modifiers),
-                               clonePtr(recordName), clonePtrVector(typeParams),
+                               clonePtr(recordName), 
                                clonePtrVector(fields));
   };
 
   RecordStatement(Token record, bool _volatile, bool _exportable,
                   Mutability mut, std::unique_ptr<StructureModifier> mods,
                   std::unique_ptr<Expression> name,
-                  std::vector<std::unique_ptr<Expression>> type_params,
                   std::vector<std::unique_ptr<Statement>> record_fields)
       : Statement(record), isVolatile(_volatile), isExportable(_exportable),
         mutability(mut), modifiers(std::move(mods)), record_token(record),
-        recordName(std::move(name)), typeParams(std::move(type_params)),
+        recordName(std::move(name)),
         fields(std::move(record_fields)) {}
 
   std::string toString() override {
@@ -1033,17 +1031,6 @@ struct RecordStatement : Statement {
       result += modifiers->toString();
 
     result += "record " + recordName->toString();
-
-    // Generic type params  <T, M>
-    if (!typeParams.empty()) {
-      result += "<";
-      for (size_t i = 0; i < typeParams.size(); ++i) {
-        if (i > 0)
-          result += ", ";
-        result += typeParams[i]->toString();
-      }
-      result += ">";
-    }
 
     result += " {\n";
     for (const auto &field : fields)
@@ -1081,7 +1068,6 @@ struct ComponentStatement : Statement {
   Token component_token;
   std::unique_ptr<Expression> component_name;
 
-  std::vector<std::unique_ptr<Expression>> typeParams;
 
   std::vector<std::unique_ptr<Statement>> fields;
   std::vector<std::unique_ptr<Statement>> methods;
@@ -1091,21 +1077,20 @@ struct ComponentStatement : Statement {
   ComponentStatement *shallowClone() const override {
     return new ComponentStatement(
         isExportable, component_token, clonePtr(component_name),
-        clonePtrVector(typeParams), clonePtrVector(fields),
+        clonePtrVector(fields),
         clonePtrVector(methods), clonePtrVector(injectedFields),
         clonePtr(initConstructor.value()));
   };
 
   ComponentStatement(bool exportable, Token component,
                      std::unique_ptr<Expression> name,
-                     std::vector<std::unique_ptr<Expression>> type_params,
                      std::vector<std::unique_ptr<Statement>> private_fields,
                      std::vector<std::unique_ptr<Statement>> private_methods,
                      std::vector<std::unique_ptr<Statement>> injected_fields,
                      std::optional<std::unique_ptr<Statement>> init)
       : Statement(component), isExportable(exportable),
         component_token(component), component_name(std::move(name)),
-        typeParams(std::move(type_params)), fields(std::move(private_fields)),
+        fields(std::move(private_fields)),
         methods(std::move(private_methods)),
         injectedFields(std::move(injected_fields)),
         initConstructor(std::move(init)) {}
@@ -1114,17 +1099,6 @@ struct ComponentStatement : Statement {
     std::string result = isExportable ? "export " : "";
 
     result += "component " + component_name->toString();
-
-    // Generic type params <T, M>
-    if (!typeParams.empty()) {
-      result += "<";
-      for (size_t i = 0; i < typeParams.size(); ++i) {
-        if (i > 0)
-          result += ", ";
-        result += typeParams[i]->toString();
-      }
-      result += ">";
-    }
 
     result += " {\n";
 
