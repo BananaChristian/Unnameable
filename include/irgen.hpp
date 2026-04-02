@@ -189,6 +189,7 @@ private:
   void declareImportedSeals();
   void declareImportedTypes();
   void declareCustomTypes();
+  void declareImportedGenerics();
   void registerAllocators();
   void declareImportedInit(const std::string &typeName);
   char *const_unnitoa(__int128 val, char *buf);

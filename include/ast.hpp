@@ -1726,19 +1726,23 @@ struct GenericStatement : Statement {
 
 // Instatiate statement
 struct InstantiateStatement : Statement {
+  bool isExportable;
   Token instantiate_token;
   std::unique_ptr<Expression> generic_call;
   Token as_token;
   Token alias;
 
   std::string toString() override {
-    return "Instantiate statement: " + generic_call->toString() + " as " +
+    std::string prefix;
+    if(isExportable)
+     prefix+="export "; 
+    return prefix +"Instantiate statement: " + generic_call->toString() + " as " +
            alias.TokenLiteral;
   }
 
-  InstantiateStatement(Token inst, std::unique_ptr<Expression> call, Token as,
+  InstantiateStatement(bool _export,Token inst, std::unique_ptr<Expression> call, Token as,
                        Token name)
-      : Statement(inst), instantiate_token(inst), generic_call(std::move(call)),
+      : Statement(inst), isExportable(_export),instantiate_token(inst), generic_call(std::move(call)),
         as_token(as), alias(name){};
 };
 

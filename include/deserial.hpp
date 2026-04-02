@@ -1,266 +1,94 @@
 #pragma once
 
-#include "ast.hpp"
-#include "errors.hpp"
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "ast.hpp"
+#include "defs.hpp"
+#include "errors.hpp"
+
 enum class LinkOrigin { NATIVE_IMPORT, MANUAL_LINK };
 
 struct RegistryEntry {
-  std::string path;
-  LinkOrigin origin;
-};
-
-enum class ImportedStubSection : uint8_t {
-  SEALS,
-  COMPONENTS,
-  RECORDS,
-  ENUMS,
-  ALLOCATORS
-};
-
-enum class ImportedDataType {
-  I8,    // 8 BIT signed integer
-  U8,    // 8 bit unsigned integer
-  I16,   // 16 BIT signed integer
-  U16,   // 16 BUT unsigned integer
-  I32,   // 32 BIT signed integer
-  U32,   // 32 BIT unsigned integer
-  I64,   // 64 BIT signed integer
-  U64,   // 64 BIT unsigned integer
-  I128,  // 128 BIT signed integer
-  U128,  // 128 BIT unsigned integer
-  ISIZE, // CPU native width signed integer
-  USIZE, // CPU native width unsigned integer
-  BOOLEAN,
-  STRING,
-  F32,
-  F64,
-  CHAR8,  // 8 BIT Char
-  CHAR16, // 16 BIT Char
-  CHAR32, // 32 BIT Char
-  OPAQUE,
-  ENUM,
-  RECORD,
-  COMPONENT,
-  ERROR,
-  VOID,
-  GENERIC,
-  UNKNOWN
-};
-
-enum class ImportedModifier {
-  NONE,      // base type, I32, F32, custom etc
-  POINTER,   // ptr
-  REFERENCE, // ref
-  ARRAY      // arr
-};
-
-struct ImportedType {
-
-  ImportedModifier modifier = ImportedModifier::NONE;
-
-  ImportedDataType kind =
-      ImportedDataType::UNKNOWN; // For the custom inbuilt types
-  std::string resolvedName = "unknown";
-
-  uint64_t arraySize = 0; // 0 means dynamic
-  bool isConstantSize = false;
-
-  std::shared_ptr<ImportedType> innerType = nullptr;
-
-  bool isNull = false;
-};
-
-// Minimal symbol info holder shall late be used to populate the semantics
-// symbolInfo
-struct ImportedSymbolInfo {
-  ImportedType returnType;
-  std::vector<std::pair<ImportedType, std::string>> paramTypes;
-  std::vector<ImportedType> initArgs;
-  ImportedType type;
-  ImportedType enumType;
-  int64_t constantValue;
-  int memberIndex = -1;
-  bool isNullable = false;
-  bool isMutable = false;
-  bool isConstant = false;
-  bool isRef = false;
-  bool isPointer = false;
-  bool isFunction = false;
-};
-
-struct ImportedAllocatorHandle {
-  std::string allocateName;
-  std::shared_ptr<ImportedSymbolInfo> allocatorSymbol;
-  std::string freeName;
-  std::shared_ptr<ImportedSymbolInfo> freeSymbol;
-};
-
-struct RawSealFunction {
-  std::string funcName;
-  ImportedType returnType;
-  std::vector<std::pair<ImportedType, std::string>> paramTypes;
-};
-
-struct RawSealTable {
-  std::string sealName;
-  std::vector<RawSealFunction> sealFns;
-};
-
-struct RawComponentMember {
-  std::string memberName;
-  ImportedType type;
-  int memberIndex = -1;
-  bool isNullable = false; // Is the member nullable
-  bool isMutable = false;
-  bool isConstant = false;
-  bool isRef = false;
-  bool isPointer = false;
-};
-
-struct RawComponentMethod {
-  std::string methodName;
-  ImportedType returnType;
-  std::vector<std::pair<ImportedType, std::string>> paramTypes;
-  bool isFunction = false;
-};
-
-struct RawComponentInit {
-  std::vector<ImportedType> initArgs;
-  ImportedType returnType;
-  ImportedType type;
-};
-
-struct RawComponentTable {
-  std::string componentName;
-  std::vector<RawComponentMember> members;
-  std::vector<RawComponentMethod> methods;
-  bool hasInit = false;
-  RawComponentInit init;
-};
-
-struct RawRecordMember {
-  std::string memberName;
-  ImportedType type;
-  int memberIndex = -1;
-  bool isNullable = false; // Is the member nullable
-  bool isMutable = false;
-  bool isConstant = false;
-  bool isRef = false;
-  bool isPointer = false;
-};
-
-struct RawRecordTable {
-  std::string recordName;
-  std::vector<RawRecordMember> members;
-};
-
-struct RawEnumMembers {
-  std::string memberName;
-  ImportedType type;
-  ImportedType enumType;
-  int64_t constantValue;
-};
-
-struct RawEnumTable {
-  std::string enumName;
-  ImportedType underLyingType;
-  std::vector<RawEnumMembers> members;
-};
-
-struct RawAlloctorFunction {
-  std::string funcName;
-  ImportedType returnType;
-  std::vector<std::pair<ImportedType, std::string>> paramTypes;
-};
-
-struct RawAllocatorTable {
-  std::string allocatorName;
-  RawAlloctorFunction allocationFunc;
-  RawAlloctorFunction freeFunc;
-};
-
-struct RawStubTable {
-  std::vector<RawSealTable> seals;
-  std::vector<RawComponentTable> components;
-  std::vector<RawRecordTable> records;
-  std::vector<RawEnumTable> enums;
-  std::vector<RawAllocatorTable> allocators;
+    std::string path;
+    LinkOrigin origin;
 };
 
 class Deserializer {
-  ErrorHandler &errorHandler;
+   public:
+    Deserializer(ErrorHandler &handler, bool isVerbose);
 
-public:
-  Deserializer(ErrorHandler &handler, bool isVerbose);
-  void processImports(const std::vector<std::unique_ptr<Node>> &nodes,
-                      const std::string &currentFile);
-  bool failed();
+    // Entry point, processes all import statements in the AST
+    void processImports(const std::vector<std::unique_ptr<Node>> &nodes,
+                        const std::string &currentFile);
 
-  std::vector<RegistryEntry> linkerRegistery;
+    bool failed();
 
-  std::unordered_map<std::string, std::string> loadedStubs;
+    // Fully deserialized stub data,semantics converts this into live symbols
+    StubTable stub;
 
-  std::unordered_map<std::string,
-                     std::unordered_map<std::string, ImportedSymbolInfo>>
-      importedSealTable;
-  std::unordered_map<std::string,
-                     std::unordered_map<std::string, ImportedSymbolInfo>>
-      importedComponentTable;
-  std::unordered_map<std::string,
-                     std::unordered_map<std::string, ImportedSymbolInfo>>
-      importedRecordsTable;
-  std::unordered_map<std::string,
-                     std::unordered_map<std::string, ImportedSymbolInfo>>
-      importedEnumsTable;
-  std::unordered_map<std::string, ImportedAllocatorHandle>
-      importedAllocatorsTable;
+    // Paths that need to be handed to the linker
+    std::vector<RegistryEntry> linkerRegistry;
 
-  // Maps ComponentName to Constructor Metadata
-  std::unordered_map<std::string, ImportedSymbolInfo> importedInitTable;
+    // Tracks already,loaded stubs to avoid double-loading (path -> path)
+    std::unordered_map<std::string, std::string> loadedStubs;
 
-  RawStubTable stub;
+   private:
+    ErrorHandler &errorHandler;
+    bool isVerbose = false;
+    bool hasFailed = false;
 
-private:
-  uint32_t STUB_MAGIC = 0x53545542;
-  uint16_t STUB_VERSION = 1;
-  bool isVerbose = false;
-  bool hasFailed = false;
+    static constexpr uint32_t STUB_MAGIC = 0x53545542;  // "STUB"
+    static constexpr uint16_t STUB_VERSION = 1;
 
-  std::string resolveImportPath(ImportStatement *import,
-                                const std::string &currentFile);
-  void recordLink(const std::string &path);
-  void loadStub(const std::string &resolved);
-  void readOrFail(std::istream &in, void *dst, size_t size,
-                  const std::string &context);
-  uint8_t read_u8(std::istream &in, const std::string &context);
-  uint16_t read_u16(std::istream &in, const std::string &context);
-  uint32_t read_u32(std::istream &in, const std::string &context);
-  uint64_t read_u64(std::istream &in, const std::string &context);
-  int32_t read_s32(std::istream &in, const std::string &context);
-  int64_t read_s64(std::istream &in, const std::string &context);
-  std::string readString(std::istream &in, const std::string &context);
-  ImportedType readImportedType(std::istream &in);
-  std::vector<std::pair<ImportedType, std::string>>
-  readParamTypes(std::istream &in);
+    // Import resolution
+    std::string resolveImportPath(ImportStatement *import, const std::string &currentFile);
+    void recordLink(const std::string &path);
+    void loadStub(const std::string &resolved);
 
-  RawComponentMember readComponentMember(std::istream &in);
-  RawComponentMethod readComponentMethod(std::istream &in);
-  RawComponentInit readComponentInit(std::istream &in);
+    // Binary read primitives
+    void readOrFail(std::istream &in, void *dst, size_t size, const std::string &context);
+    uint8_t read_u8(std::istream &in, const std::string &context);
+    uint16_t read_u16(std::istream &in, const std::string &context);
+    uint32_t read_u32(std::istream &in, const std::string &context);
+    uint64_t read_u64(std::istream &in, const std::string &context);
+    int32_t read_s32(std::istream &in, const std::string &context);
+    int64_t read_s64(std::istream &in, const std::string &context);
+    std::string readString(std::istream &in, const std::string &context);
 
-  RawRecordMember readRecordMember(std::istream &in);
+    // Type deserialization
+    ResolvedType readResolvedType(std::istream &in);
+    std::vector<std::pair<ResolvedType, std::string>> readParamTypes(std::istream &in);
 
-  RawEnumMembers readEnumMember(std::istream &in);
+    // Section readers
+    SealFunction readSealFunction(std::istream &in);
+    SealTable readSealTable(std::istream &in);
 
-  RawAlloctorFunction readAllocatorFunction(std::istream &in);
+    ComponentMember readComponentMember(std::istream &in);
+    ComponentMethod readComponentMethod(std::istream &in);
+    ComponentInit readComponentInit(std::istream &in);
+    ComponentTable readComponentTable(std::istream &in);
 
-  RawStubTable readStubTable(std::istream &in);
+    RecordMember readRecordMember(std::istream &in);
+    RecordTable readRecordTable(std::istream &in);
 
-  void reportDevBug(const std::string &message);
-  void logImportError(const std::string &message, int line, int col);
-  void logInternal(const std::string &message);
+    EnumMembers readEnumMember(std::istream &in);
+    EnumTable readEnumTable(std::istream &in);
+
+    AllocatorFunction readAllocatorFunction(std::istream &in);
+    Allocator readAllocator(std::istream &in);
+
+    FunctionEntry readFunctionEntry(std::istream &in);
+
+    Generics readGenerics(std::istream &in);
+
+    //  Top-level stub reader
+    void readStubTable(std::istream &in);
+
+    //  Logging
+    void reportDevBug(const std::string &message);
+    void logImportError(const std::string &message, int line, int col);
+    void logInternal(const std::string &message);
 };

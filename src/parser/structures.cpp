@@ -238,7 +238,7 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
   advance();
 
   return std::make_unique<InstantiateStatement>(
-      instantiate, std::move(generic_call), as, alias);
+      false,instantiate, std::move(generic_call), as, alias);
 }
 
 //__________________________ENUMS__________________________
@@ -518,7 +518,7 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
 
   // Parse the block statement
   if (currentToken().type != TokenType::LBRACE) {
-    logError("[ERROR] Expected '{' to start init block but got '" +
+    logError("Expected '{' to start init block but got '" +
                  currentToken().TokenLiteral + "'",
              currentToken());
     return nullptr;
@@ -690,7 +690,10 @@ std::unique_ptr<Statement> Parser::parseExportStatement() {
     allocStmt->isExportable = true;
   } else if (auto sealStmt = dynamic_cast<SealStatement *>(stmt.get())) {
     sealStmt->isExportable = true;
-  } else {
+  }else if(auto instStmt=dynamic_cast<InstantiateStatement*>(stmt.get())){
+    instStmt->isExportable=true;
+  } 
+  else {
     logError("'export' can only be applied to functions, and custom types",
              currentToken());
     return nullptr;
