@@ -47,15 +47,10 @@ void IRGenerator::generateFunctionDeclaration(Node *node) {
     return;
   }
 
-  // Registering the function and its type
-  auto declrIt = semantics.metaData.find(fnDeclr);
-  if (declrIt == semantics.metaData.end()) {
-    throw std::runtime_error("Missing function declaration meta data");
-  }
-
-  auto sym = declrIt->second;
-  if (sym->hasError)
-    throw std::runtime_error("Error detected");
+  auto sym = semantics.getSymbolFromMeta(fnDeclr);
+  if(!sym)
+    reportDevBug("Failed to get function declaration symbol info",fnDeclr);
+  
 
   llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
   if (sym->isExportable)
@@ -63,14 +58,14 @@ void IRGenerator::generateFunctionDeclaration(Node *node) {
 
   std::vector<llvm::Type *> paramTypes;
   for (const auto &param : fnDeclr->parameters) {
-    auto paramIt = semantics.metaData.find(param.get());
-    if (paramIt == semantics.metaData.end()) {
-      throw std::runtime_error(
-          "Missing function declaration parameter meta data");
+    auto paramSym = semantics.getSymbolFromMeta(param.get());
+    if (!paramSym) {
+      reportDevBug(
+          "Missing function declaration parameter symbol info",param.get());
     }
-    paramTypes.push_back(getLLVMType(paramIt->second->type));
+    paramTypes.push_back(getLLVMType(paramSym->type().type));
   }
-  auto retType = declrIt->second->returnType;
+  auto retType = sym->func().returnType;
   llvm::FunctionType *fnType =
       llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
 
@@ -81,20 +76,11 @@ void IRGenerator::generateFunctionDeclaration(Node *node) {
 llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   auto fnExpr = dynamic_cast<FunctionExpression *>(node);
   if (!fnExpr)
-    throw std::runtime_error("Invalid function expression");
-
-  // If node has an error we wont generate IR
-  auto funcIt = semantics.metaData.find(fnExpr);
-  if (funcIt == semantics.metaData.end()) {
-    throw std::runtime_error("Function expression does not exist");
-  }
-  if (funcIt->second->hasError) {
-    throw std::runtime_error("Error detected");
-  }
+    reportDevBug("Invalid function expression",fnExpr);
 
   // Getting the function signature
   auto fnName = fnExpr->func_key.TokenLiteral;
-  auto funcSym = funcIt->second;
+  auto funcSym = semantics.getSymbolFromMeta(fnExpr);
 
   isGlobalScope = false;
 
@@ -103,12 +89,12 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
 
   for (auto &p : fnExpr->call) {
     // Getting the data type to push it into getLLVMType
-    auto paramIt = semantics.metaData.find(p.get());
-    if (paramIt == semantics.metaData.end()) {
-      throw std::runtime_error("Missing parameter meta data");
+    auto paramSym = semantics.getSymbolFromMeta(p.get());
+    if (!paramSym) {
+      reportDevBug("Missing parameter symbol info",p.get());
     }
-    paramIt->second->llvmType = getLLVMType(paramIt->second->type);
-    llvmParamTypes.push_back(getLLVMType(paramIt->second->type));
+    paramSym->codegen().llvmType = getLLVMType(paramSym->type().type);
+    llvmParamTypes.push_back(getLLVMType(paramSym->type().type));
   }
 
   // Getting the function return type
@@ -134,8 +120,8 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   } else {
     // If the function was declared checking if the return types match
     if (fn->getFunctionType() != funcType) {
-      throw std::runtime_error("Function redefinition for '" + fnName +
-                               "' with different signature ");
+      reportDevBug("Function redefinition for '" + fnName +
+                               "' with different signature ",fnExpr);
     }
   }
 
@@ -154,9 +140,9 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
       reportDevBug("Failed to find paremeter meta data", p.get());
     }
     llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(
-        getLLVMType(pIt->second->type), nullptr, p->statement.TokenLiteral);
+        getLLVMType(pIt->second->type().type), nullptr, p->statement.TokenLiteral);
     funcBuilder.CreateStore(&(*argIter), alloca);
-    pIt->second->llvmValue = alloca;
+    pIt->second->codegen().llvmValue = alloca;
 
     argIter++;
   }
@@ -168,7 +154,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
 
   llvm::BasicBlock *finalBlock = funcBuilder.GetInsertBlock();
   // If the function is void
-  bool isVoidFunction = funcIt->second->returnType.kind == DataType::VOID;
+  bool isVoidFunction = funcSym->func().returnType.kind == DataType::VOID;
 
   // Does the current block exist and is it not terminated?
   if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator())) {
@@ -231,7 +217,7 @@ void IRGenerator::generateReturnStatement(Node *node) {
     return;
   }
 
-  if (it->second->type.isNull) {
+  if (it->second->type().type.isNull) {
     if (!retVal->getType()->isStructTy()) {
 
       llvm::Value *boxed = llvm::UndefValue::get(retTy);
@@ -389,7 +375,7 @@ std::vector<llvm::Value *> IRGenerator::prepareArguments(
 
     auto metaIt = semantics.metaData.find(params[i].get());
     if (metaIt != semantics.metaData.end() &&
-        metaIt->second->needsImplicitAddress) {
+        metaIt->second->type().needsImplicitAddress) {
       // Instead of loading the value, we grab the raw address
       argVal = generateIdentifierAddress(params[i].get());
     } else {

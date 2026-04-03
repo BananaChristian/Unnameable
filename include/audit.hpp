@@ -1,11 +1,11 @@
 #pragma once
 #include "ast.hpp"
 #include "errors.hpp"
-#include "semantics.hpp"
 #include <set>
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
+#include "semantics.hpp"
 
 struct BlockInfo {
   std::vector<std::string> natives;

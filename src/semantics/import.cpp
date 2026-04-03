@@ -1,384 +1,327 @@
-#include "deserial.hpp"
 #include "semantics.hpp"
-#include <memory>
-#include <string>
-#include <unordered_map>
 
-ResolvedType
-Semantics::convertImportedTypetoResolvedType(const ImportedType &importType) {
-  ResolvedType type;
-  type.modifier =
-      convertImportedModifierToResolvedModifier(importType.modifier);
-  type.kind = convertImportedDataTypetoResolvedDataType(importType.kind);
-  type.resolvedName = importType.resolvedName;
-  type.arraySize = importType.arraySize;
-  type.isConstantSize = importType.isConstantSize;
-  if (importType.innerType)
-    type.innerType = std::make_shared<ResolvedType>(
-        convertImportedTypetoResolvedType(*importType.innerType.get()));
-
-  type.isNull = importType.isNull;
-
-  return type;
+/// Build a MemberInfo from a ComponentMember.
+static std::shared_ptr<MemberInfo> memberInfoFromComponentMember(const ComponentMember &m) {
+    auto info = std::make_shared<MemberInfo>();
+    info->memberName = m.memberName;
+    info->type = m.type;
+    info->memberIndex = m.memberIndex;
+    info->isNullable = m.isNullable;
+    info->isMutable = m.isMutable;
+    info->isConstant = m.isConstant;
+    info->isPointer = m.isPointer;
+    info->isRef = m.isRef;
+    info->isExportable = true;
+    info->isDeclared = true;
+    return info;
 }
 
-std::vector<std::pair<ResolvedType, std::string>>
-Semantics::convertImportedParamstoResolvedParams(
-    const std::vector<std::pair<ImportedType, std::string>> &params) {
-  std::vector<std::pair<ResolvedType, std::string>> resolvedParams;
-  resolvedParams.reserve(params.size());
-
-  for (const auto &p : params) {
-    const ImportedType &importedType = p.first;
-    const std::string &paramName = p.second;
-
-    ResolvedType resolvedType = convertImportedTypetoResolvedType(importedType);
-    resolvedParams.emplace_back(resolvedType, paramName);
-  }
-
-  return resolvedParams;
+/// Build a MemberInfo from a RecordMember.
+static std::shared_ptr<MemberInfo> memberInfoFromRecordMember(const RecordMember &m) {
+    auto info = std::make_shared<MemberInfo>();
+    info->memberName = m.memberName;
+    info->type = m.type;
+    info->memberIndex = m.memberIndex;
+    info->isNullable = m.isNullable;
+    info->isMutable = m.isMutable;
+    info->isConstant = m.isConstant;
+    info->isPointer = m.isPointer;
+    info->isRef = m.isRef;
+    info->isExportable = true;
+    info->isDeclared = true;
+    return info;
 }
 
-Modifier Semantics::convertImportedModifierToResolvedModifier(
-    const ImportedModifier &mod) {
-  switch (mod) {
-  case ImportedModifier::POINTER:
-    return Modifier::POINTER;
-  case ImportedModifier::REFERENCE:
-    return Modifier::REFERENCE;
-  case ImportedModifier::ARRAY:
-    return Modifier::ARRAY;
-  case ImportedModifier::NONE:
-    return Modifier::NONE;
-  default:
-    return Modifier::NONE;
-  }
+/// Build a MemberInfo from a ComponentMethod.
+static std::shared_ptr<MemberInfo> memberInfoFromComponentMethod(const ComponentMethod &m) {
+    auto info = std::make_shared<MemberInfo>();
+    info->memberName = m.methodName;
+    info->returnType = m.returnType;
+    info->paramTypes = m.paramTypes;
+    info->isFunction = true;
+    info->isDeclared = true;
+    info->isExportable = true;
+    return info;
 }
 
-DataType Semantics::convertImportedDataTypetoResolvedDataType(
-    const ImportedDataType &dataType) {
-  switch (dataType) {
-  case ImportedDataType::I8:
-    return DataType::I8;
-  case ImportedDataType::I16:
-    return DataType::I16;
-  case ImportedDataType::U16:
-    return DataType::U16;
-  case ImportedDataType::I32:
-    return DataType::I32;
-  case ImportedDataType::U32:
-    return DataType::U32;
-  case ImportedDataType::I64:
-    return DataType::I64;
-  case ImportedDataType::U64:
-    return DataType::U64;
-  case ImportedDataType::I128:
-    return DataType::I128;
-  case ImportedDataType::U128:
-    return DataType::U128;
-  case ImportedDataType::ISIZE:
-    return DataType::ISIZE;
-  case ImportedDataType::USIZE:
-    return DataType::USIZE;
-  case ImportedDataType::BOOLEAN:
-    return DataType::BOOLEAN;
-  case ImportedDataType::STRING:
-    return DataType::STRING;
-  case ImportedDataType::F32:
-    return DataType::F32;
-  case ImportedDataType::F64:
-    return DataType::F64;
-  case ImportedDataType::CHAR8:
-    return DataType::CHAR8;
-  case ImportedDataType::CHAR16:
-    return DataType::CHAR16;
-  case ImportedDataType::CHAR32:
-    return DataType::CHAR32;
-  case ImportedDataType::ENUM:
-    return DataType::ENUM;
-  case ImportedDataType::RECORD:
-    return DataType::RECORD;
-  case ImportedDataType::COMPONENT:
-    return DataType::COMPONENT;
-  case ImportedDataType::OPAQUE:
-    return DataType::OPAQUE;
-  case ImportedDataType::ERROR:
-    return DataType::ERROR;
-  case ImportedDataType::VOID:
-    return DataType::VOID;
-  case ImportedDataType::GENERIC:
-    return DataType::GENERIC;
-  case ImportedDataType::UNKNOWN:
-    return DataType::UNKNOWN;
-  default:
-    return DataType::UNKNOWN;
-  }
+/// Build a SymbolInfo for a standalone or generic imported function.
+static std::shared_ptr<SymbolInfo> symInfoFromFunctionEntry(const FunctionEntry &fn) {
+    auto sym = std::make_shared<SymbolInfo>();
+    sym->isFunction = true;
+    sym->isExportable = true;
+    sym->func().isDeclaration = true;
+    sym->func().isDefined = true;
+    sym->func().funcName = fn.funcName;
+    sym->func().returnType = fn.returnType;
+    sym->func().paramTypes = fn.paramTypes;
+    sym->type().type = fn.returnType;
+    return sym;
+}
+
+/// Build a SymbolInfo for an imported init constructor.
+static std::shared_ptr<SymbolInfo> symInfoFromComponentInit(const ComponentInit &init) {
+    auto sym = std::make_shared<SymbolInfo>();
+    sym->func().isDeclaration = true;
+    sym->func().isDefined = true;
+    sym->func().returnType = init.returnType;
+    sym->type().type = init.type;
+    for (const auto &arg : init.initArgs) sym->func().initArgs.push_back(arg);
+    return sym;
+}
+
+
+static void registerTypeSymbol(
+    const std::string &name, DataType kind,
+    const std::unordered_map<std::string, std::shared_ptr<MemberInfo>> &members,
+    std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> &customTypesTable,
+    std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> &phantomTable,
+    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &globalScope) {
+    auto typeInfo = std::make_shared<CustomTypeInfo>();
+    typeInfo->typeName = name;
+    typeInfo->type = ResolvedType::makeBase(kind, name);
+    typeInfo->members = members;
+    typeInfo->isExportable = true;
+
+    customTypesTable[name] = typeInfo;
+    phantomTable[name] = typeInfo;
+
+    auto sym = std::make_shared<SymbolInfo>();
+    sym->isExportable = true;
+    sym->members = members;
+    sym->type().type = ResolvedType::makeBase(kind, name);
+    globalScope[name] = sym;
+
+}
+
+//Special to register imported functions from standalone and from generics
+static void registerFunctionSymbol(const FunctionEntry &funcEntry,std::unordered_map<std::string,std::shared_ptr<SymbolInfo>> &importTable,std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &globalScope){
+   auto funcInfo=std::make_shared<SymbolInfo>();
+   funcInfo=symInfoFromFunctionEntry(funcEntry);
+   //Register into the imported functions table
+   importTable[funcEntry.funcName]=funcInfo;
+   //Register into global scope
+   globalScope[funcEntry.funcName]=funcInfo;
 }
 
 void Semantics::importSeals() {
-  logInternal("Imported seals count: " +
-              std::to_string(deserializer.importedSealTable.size()));
+    logInternal("Importing seals: " + std::to_string(deserializer.stub.seals.size()));
 
-  // Iterate over all seals
-  for (auto &sealPair : deserializer.importedSealTable) {
-    const std::string &sealName = sealPair.first;
-    logInternal("Imported Seal Name :" + sealName);
+    for (const auto &seal : deserializer.stub.seals) {
+        logInternal("Importing seal '" + seal.sealName + "'");
 
-    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> sealMap;
+        std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> sealMap;
 
-    auto &funcMap = sealPair.second;
+        for (const auto &fn : seal.sealFns) {
+            logInternal("  function '" + fn.funcName + "'");
+            // Reuse FunctionEntry adapter — SealFunction has the same shape
+            FunctionEntry fe;
+            fe.funcName = fn.funcName;
+            fe.returnType = fn.returnType;
+            fe.paramTypes = fn.paramTypes;
+            sealMap[fn.funcName] = symInfoFromFunctionEntry(fe);
+        }
 
-    // Iterate over all functions in the seal
-    for (auto &funcPair : funcMap) {
-      const std::string &funcName = funcPair.first;
-      logInternal("Imported Function Name: " + funcName);
-      ImportedSymbolInfo &info = funcPair.second;
+        sealTable[seal.sealName] = std::move(sealMap);
 
-      // Create symbolInfo for the function from the imported info
-      auto sym = std::make_shared<SymbolInfo>();
-      sym->isFunction = true;
-      sym->isDeclaration =
-          true; // Assume it exists in some form in the external module
-      sym->type = convertImportedTypetoResolvedType(info.returnType);
-      sym->returnType = convertImportedTypetoResolvedType(info.returnType);
-      sym->paramTypes = convertImportedParamstoResolvedParams(info.paramTypes);
-      sym->isExportable = true;
+        auto sealSym = std::make_shared<SymbolInfo>();
+        sealSym->isExportable = true;
+        symbolTable[0][seal.sealName] = sealSym;
 
-      sealMap[funcName] = sym;
+        logInternal("Finished importing seal '" + seal.sealName + "'");
     }
-
-    sealTable[sealName] = std::move(sealMap);
-    auto sealSym = std::make_shared<SymbolInfo>();
-    sealSym->isExportable = true;
-
-    symbolTable[0][sealName] =
-        sealSym; // Inject the seal symbol into the semantics symbols
-  }
 }
 
 void Semantics::importComponents() {
-  logInternal("Imported components count: " +
-              std::to_string(deserializer.importedComponentTable.size()));
+    logInternal("Importing components: " + std::to_string(deserializer.stub.components.size()));
 
-  for (auto &compPair : deserializer.importedComponentTable) {
-    const std::string &compName = compPair.first;
-    logInternal("Imported Component Name: " + compName);
+    for (const auto &comp : deserializer.stub.components) {
+        logInternal("Importing component '" + comp.componentName + "'");
 
-    auto typeInfo = std::make_shared<CustomTypeInfo>();
+        std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
 
-    typeInfo->typeName = compName;
-    typeInfo->type = ResolvedType::makeBase(DataType::COMPONENT, compName);
+        for (const auto &m : comp.members) {
+            logInternal("  member '" + m.memberName + "'");
+            members[m.memberName] = memberInfoFromComponentMember(m);
+        }
+        for (const auto &m : comp.methods) {
+            logInternal("  method '" + m.methodName + "'");
+            members[m.methodName] = memberInfoFromComponentMethod(m);
+        }
 
-    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> symMembers;
-    auto &memberMap = compPair.second;
+        // Register into customTypesTable, ImportedComponentTable and symbolTable[0]
+        registerTypeSymbol(comp.componentName, DataType::COMPONENT, members, customTypesTable,
+                           ImportedComponentTable, symbolTable[0]);
 
-    // Iterate over all members in component
-    for (auto &memPair : memberMap) {
-      const std::string &memberName = memPair.first;
-      logInternal("Imported Component Member Name: " + memberName);
-      ImportedSymbolInfo &info = memPair.second;
+        if (comp.hasInit) {
+            importedInits[comp.componentName] = symInfoFromComponentInit(comp.init);
+            logInternal("  init registered for '" + comp.componentName + "'");
+        }
 
-      // Create member info for the member
-      auto memInfo = std::make_shared<MemberInfo>();
-      memInfo->type = convertImportedTypetoResolvedType(info.type);
-      memInfo->returnType = convertImportedTypetoResolvedType(info.returnType);
-      memInfo->paramTypes =
-          convertImportedParamstoResolvedParams(info.paramTypes);
-      memInfo->memberName = memberName;
-      memInfo->isNullable = info.isNullable;
-      memInfo->isExportable = true;
-      memInfo->memberIndex = info.memberIndex;
-      memInfo->isDeclared = true;
-      memInfo->isConstant = info.isConstant;
-      memInfo->isPointer = info.isPointer;
-      memInfo->isRef = info.isRef;
-      memInfo->isMutable = info.isMutable;
-      memInfo->isFunction = info.isFunction;
-      if (info.isFunction) {
-        memInfo->isDeclared = true; // By default if it is a function and it has
-                                    // made it this far then it was declared
-      }
-
-      typeInfo->members[memberName] = memInfo;
-      symMembers[memberName] = memInfo;
+        logInternal("Finished importing component '" + comp.componentName + "'");
     }
-
-    customTypesTable[compName] = typeInfo;
-    ImportedComponentTable[compName] = typeInfo;
-    auto compSym = std::make_shared<SymbolInfo>();
-    compSym->isExportable = true;
-    compSym->members = symMembers;
-    compSym->type = ResolvedType::makeBase(DataType::COMPONENT, compName);
-
-    symbolTable[0][compName] = compSym;
-  }
-}
-
-void Semantics::importComponentInits() {
-  for (const auto &initPair : deserializer.importedInitTable) {
-    const std::string componentName = initPair.first;
-
-    auto initSym = std::make_shared<SymbolInfo>();
-    auto initInfo = initPair.second;
-    // Begin the conversions
-    for (const auto &type : initInfo.initArgs) {
-      auto resolvedType = convertImportedTypetoResolvedType(type);
-      initSym->initArgs.push_back(resolvedType);
-    }
-    initSym->returnType =
-        convertImportedTypetoResolvedType(initInfo.returnType);
-    initSym->isDeclaration = true;
-
-    importedInits[componentName] = initSym;
-  }
 }
 
 void Semantics::importRecords() {
-  logInternal("Imported records count: " +
-              std::to_string(deserializer.importedRecordsTable.size()));
+    logInternal("Importing records: " + std::to_string(deserializer.stub.records.size()));
 
-  for (const auto &recordPair : deserializer.importedRecordsTable) {
-    const std::string &recordName = recordPair.first;
-    logInternal("Imported Record Name :" + recordName);
+    for (const auto &record : deserializer.stub.records) {
+        logInternal("Importing record '" + record.recordName + "'");
 
-    auto typeInfo = std::make_shared<CustomTypeInfo>();
+        std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
 
-    typeInfo->typeName = recordName;
-    typeInfo->type = ResolvedType::makeBase(DataType::RECORD, recordName);
+        for (const auto &m : record.members) {
+            logInternal("  member '" + m.memberName + "'");
+            members[m.memberName] = memberInfoFromRecordMember(m);
+        }
 
-    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> symMembers;
-    auto &memberMap = recordPair.second;
+        // Register into customTypesTable, ImportedRecordTable and symbolTable[0]
+        registerTypeSymbol(record.recordName, DataType::RECORD, members, customTypesTable,
+                           ImportedRecordTable, symbolTable[0]);
 
-    for (const auto &memPair : memberMap) {
-      const std::string &memberName = memPair.first;
-      logInternal("Imported Record Member Name: " + memberName);
-
-      const ImportedSymbolInfo &info = memPair.second;
-
-      // Create the member inside the member info
-      auto memInfo = std::make_shared<MemberInfo>();
-      memInfo->type = convertImportedTypetoResolvedType(info.type);
-      memInfo->returnType = convertImportedTypetoResolvedType(info.returnType);
-      memInfo->paramTypes =
-          convertImportedParamstoResolvedParams(info.paramTypes);
-      memInfo->memberName = memberName;
-      memInfo->isNullable = info.isNullable;
-      memInfo->isExportable = true;
-      memInfo->memberIndex = info.memberIndex;
-      memInfo->isDeclared = true;
-      memInfo->isConstant = info.isConstant;
-      memInfo->isPointer = info.isPointer;
-      memInfo->isRef = info.isRef;
-      memInfo->isMutable = info.isMutable;
-
-      typeInfo->members[memberName] = memInfo;
-      symMembers[memberName] = memInfo;
+        logInternal("Finished importing record '" + record.recordName + "'");
     }
-
-    customTypesTable[recordName] = typeInfo;
-    ImportedRecordTable[recordName] = typeInfo;
-    auto recordSym = std::make_shared<SymbolInfo>();
-    recordSym->isExportable = true;
-    recordSym->members = symMembers;
-    recordSym->type = ResolvedType::makeBase(DataType::RECORD, recordName);
-
-    symbolTable[0][recordName] = recordSym;
-  }
 }
 
 void Semantics::importEnums() {
-  logInternal("Imported enums count: " +
-              std::to_string(deserializer.importedEnumsTable.size()));
+    logInternal("Importing enums: " + std::to_string(deserializer.stub.enums.size()));
 
-  for (const auto &enumPair : deserializer.importedEnumsTable) {
-    const std::string &enumName = enumPair.first;
-    logInternal("Imported enum name: " + enumName);
+    for (const auto &en : deserializer.stub.enums) {
+        logInternal("Importing enum '" + en.enumName + "'");
 
-    auto typeInfo = std::make_shared<CustomTypeInfo>();
-    typeInfo->typeName = enumName;
-    typeInfo->type = ResolvedType::makeBase(DataType::ENUM, enumName);
+        auto typeInfo = std::make_shared<CustomTypeInfo>();
+        typeInfo->typeName = en.enumName;
+        typeInfo->type = ResolvedType::makeBase(DataType::ENUM, en.enumName);
+        typeInfo->underLyingType = en.underlyingType.kind;
+        typeInfo->isExportable = true;
 
-    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> enumMembers;
-    auto &memberMap = enumPair.second;
+        std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
 
-    for (const auto &memPair : memberMap) {
-      const std::string &memberName = memPair.first;
-      logInternal("Imported enum member name: " + memberName);
+        for (const auto &m : en.members) {
+            logInternal("  member '" + m.memberName + "'");
 
-      const ImportedSymbolInfo &info = memPair.second;
-      auto memInfo = std::make_shared<MemberInfo>();
-      memInfo->type = convertImportedTypetoResolvedType(info.type);
-      memInfo->memberName = memberName;
-      memInfo->constantValue = info.constantValue;
-      memInfo->parentType = convertImportedTypetoResolvedType(info.enumType);
-      memInfo->isConstant = true;
-      memInfo->isInitialised = true;
-      memInfo->isExportable = true;
+            auto memInfo = std::make_shared<MemberInfo>();
+            memInfo->memberName = m.memberName;
+            memInfo->type = m.type;
+            memInfo->constantValue = m.constantValue;
+            memInfo->parentType = m.enumType;
+            memInfo->isConstant = true;
+            memInfo->isInitialised = true;
+            memInfo->isExportable = true;
 
-      typeInfo->members[memberName] = memInfo;
-      typeInfo->underLyingType =
-          convertImportedDataTypetoResolvedDataType(info.type.kind);
-      enumMembers[memberName] = memInfo;
+            typeInfo->members[m.memberName] = memInfo;
+            members[m.memberName] = memInfo;
+        }
+
+        customTypesTable[en.enumName] = typeInfo;
+
+        auto sym = std::make_shared<SymbolInfo>();
+        sym->isExportable = true;
+        sym->members = members;
+        sym->type().type = ResolvedType::makeBase(DataType::ENUM, en.enumName);
+        symbolTable[0][en.enumName] = sym;
+
+        logInternal("Finished importing enum '" + en.enumName + "'");
     }
-
-    customTypesTable[enumName] = typeInfo;
-
-    auto enumSym = std::make_shared<SymbolInfo>();
-    enumSym->isExportable = true;
-    enumSym->members = enumMembers;
-    enumSym->type = ResolvedType::makeBase(DataType::ENUM, enumName);
-
-    symbolTable[0][enumName] = enumSym;
-  }
 }
 
 void Semantics::importAllocators() {
-  logInternal("Imported allocators count: " +
-              std::to_string(deserializer.importedAllocatorsTable.size()));
-  for (const auto &allocPair : deserializer.importedAllocatorsTable) {
-    const std::string &allocatorName = allocPair.first;
-    logInternal("Import allocator name: " + allocatorName);
-    auto allocateMembers = allocPair.second;
-    AllocatorHandle importedHandle;
+    logInternal("Importing allocators: " + std::to_string(deserializer.stub.allocators.size()));
 
-    // Dealing the allocator function
-    importedHandle.allocateName = allocateMembers.allocateName;
-    // Convert the allocator symbol from imported to concrete
-    auto allocatorSymbol = std::make_shared<SymbolInfo>();
-    auto importedAllocatorSymbol = allocateMembers.allocatorSymbol;
-    allocatorSymbol->returnType =
-        convertImportedTypetoResolvedType(importedAllocatorSymbol->returnType);
-    allocatorSymbol->paramTypes = convertImportedParamstoResolvedParams(
-        importedAllocatorSymbol->paramTypes);
+    for (const auto &alloc : deserializer.stub.allocators) {
+        logInternal("Importing allocator '" + alloc.allocatorName + "'");
 
-    importedHandle.allocatorSymbol = allocatorSymbol;
+        AllocatorHandle handle;
 
-    // Dealing with the free function
-    importedHandle.freeName = allocateMembers.freeName;
-    // Convert the free symbol from imported to concrete
-    auto freeSymbol = std::make_shared<SymbolInfo>();
-    auto importedFreeSymbol = allocateMembers.freeSymbol;
-    freeSymbol->returnType =
-        convertImportedTypetoResolvedType(importedFreeSymbol->returnType);
-    freeSymbol->paramTypes =
-        convertImportedParamstoResolvedParams(importedFreeSymbol->paramTypes);
+        handle.allocateName = alloc.allocator.functionName;
+        auto allocSym = std::make_shared<SymbolInfo>();
+        allocSym->func().returnType = alloc.allocator.returnType;
+        allocSym->func().paramTypes = alloc.allocator.paramTypes;
+        allocSym->type().type = alloc.allocator.returnType;
+        handle.allocatorSymbol = allocSym;
+        logInternal("  allocate '" + handle.allocateName + "'");
 
-    importedHandle.freeSymbol = freeSymbol;
+        handle.freeName = alloc.free.functionName;
+        auto freeSym = std::make_shared<SymbolInfo>();
+        freeSym->func().returnType = alloc.free.returnType;
+        freeSym->func().paramTypes = alloc.free.paramTypes;
+        freeSym->type().type = alloc.free.returnType;
+        handle.freeSymbol = freeSym;
+        logInternal("  free '" + handle.freeName + "'");
 
-    // Write some basic allocator interface symbol
-    auto interfaceSym = std::make_shared<SymbolInfo>();
-    interfaceSym->isExportable = true;
+        allocatorMap[alloc.allocatorName] = handle;
 
-    allocatorMap[allocatorName] = importedHandle;
-    symbolTable[0][allocatorName] = interfaceSym;
-  }
+        auto interfaceSym = std::make_shared<SymbolInfo>();
+        interfaceSym->isExportable = true;
+        symbolTable[0][alloc.allocatorName] = interfaceSym;
+
+        logInternal("Finished importing allocator '" + alloc.allocatorName + "'");
+    }
 }
 
+void Semantics::importFunctions() {
+    logInternal("Importing standalone functions: " +
+                std::to_string(deserializer.stub.functions.size()));
+
+    for (const auto &fn : deserializer.stub.functions) {
+        logInternal("Importing function '" + fn.funcName + "'");
+        registerFunctionSymbol(fn,ImportedFunctionsTable,symbolTable[0]);
+        logInternal("Finished importing function '" + fn.funcName + "'");
+    }
+}
+
+
+void Semantics::importGenerics() {
+    logInternal("Importing generic instantiations: " +
+                std::to_string(deserializer.stub.generics.size()));
+
+    for (const auto &gen : deserializer.stub.generics) {
+        logInternal("Importing instantiation '" + gen.aliasName + "'");
+
+        for (const auto &comp : gen.components) {
+            logInternal("  generic component '" + comp.componentName + "'");
+
+            std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
+            for (const auto &m : comp.members)
+                members[m.memberName] = memberInfoFromComponentMember(m);
+            for (const auto &m : comp.methods)
+                members[m.methodName] = memberInfoFromComponentMethod(m);
+
+            registerTypeSymbol(comp.componentName, DataType::COMPONENT, members, customTypesTable,
+                               ImportedComponentTable, symbolTable[0]);
+
+            if (comp.hasInit) {
+                importedInits[comp.componentName] = symInfoFromComponentInit(comp.init);
+                logInternal("  init registered for '" + comp.componentName + "'");
+            }
+        }
+
+        for (const auto &record : gen.records) {
+            logInternal("  generic record '" + record.recordName + "'");
+
+            std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
+            for (const auto &m : record.members)
+                members[m.memberName] = memberInfoFromRecordMember(m);
+
+            registerTypeSymbol(record.recordName, DataType::RECORD, members, customTypesTable,
+                               ImportedRecordTable, symbolTable[0]);
+        }
+
+        for (const auto &fn : gen.functions) {
+            logInternal("  generic function '" + fn.funcName + "'");
+            registerFunctionSymbol(fn,ImportedFunctionsTable,symbolTable[0]);
+        }
+
+        logInternal("Finished importing instantiation '" + gen.aliasName + "'");
+    }
+}
+
+
 void Semantics::import() {
-  importSeals();          // Import seals
-  importComponents();     // Import components
-  importComponentInits(); // Import component inits
-  importRecords();        // Import records
-  importEnums();          // Import enums
-  importAllocators();     // ImportAllocators
+    importSeals();
+    importComponents();
+    importRecords();
+    importEnums();
+    importAllocators();
+    importFunctions();
+    importGenerics();
 }

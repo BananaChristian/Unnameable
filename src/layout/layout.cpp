@@ -35,6 +35,8 @@ void Layout::calculatorDriver(Node *node) {
     return;
   }
 
+  logInternal("CALCULATOR DRIVER ENCOUNTERED: "+node->toString());
+
   auto it = calculatorFnsMap.find(typeid(*node));
   if (it == calculatorFnsMap.end()) {
     logInternal("No calculator found for node '" + node->toString() +
@@ -88,15 +90,15 @@ void Layout::calculateVariableDeclarationSize(Node *node) {
   if (!sym)
     reportDevBug("Failed to find declaration '" + name + "' symbol info");
 
-  if (!sym->isHeap)
+  if (!sym->storage().isHeap)
     return;
 
   llvm::Type *type = nullptr;
-  if (sym->isArray) {
+  if (sym->type().isArray) {
     uint64_t totalElements = 0;
     uint64_t totalLiteralElements = 0;
     uint64_t totalByteSize = 0;
-    auto elementType = semantics.getArrayElementType(sym->type);
+    auto elementType = semantics.getArrayElementType(sym->type().type);
     auto elemLLVMty = getLLVMType(elementType);
     uint64_t elementSize = layout->getTypeAllocSize(elemLLVMty);
     llvm::Align elementAlign = layout->getABITypeAlign(elemLLVMty);
@@ -133,7 +135,7 @@ void Layout::calculateVariableDeclarationSize(Node *node) {
         if (!initSym)
           reportDevBug("Could not find initializer symbol info");
 
-        totalLiteralElements = initSym->componentSize / elementSize;
+        totalLiteralElements = initSym->codegen().componentSize / elementSize;
       }
     }
 
@@ -155,22 +157,22 @@ void Layout::calculateVariableDeclarationSize(Node *node) {
     logInternal("Total Array Byte size :" + std::to_string(totalByteSize) +
                 " bytes");
 
-    sym->componentSize = totalByteSize;
-    sym->alignment = elementAlign;
+    sym->codegen().componentSize = totalByteSize;
+    sym->codegen().alignment = elementAlign;
     return;
   }
 
-  if (sym->isPointer || sym->isRef)
+  if (sym->type().isPointer || sym->type().isRef)
     type = llvm::PointerType::get(context, 0);
   else
-    type = getLLVMType(sym->type);
+    type = getLLVMType(sym->type().type);
 
   compSize = layout->getTypeAllocSize(type);
   compAlignment = layout->getABITypeAlign(type);
 
   logInternal("Allocation size :" + std::to_string(compSize) + " bytes");
-  sym->alignment = compAlignment;
-  sym->componentSize = compSize;
+  sym->codegen().alignment = compAlignment;
+  sym->codegen().componentSize = compSize;
 }
 
 void Layout::calculateBlockStatementMembersSize(Node *node) {
@@ -289,7 +291,7 @@ void Layout::calculateInstantiateStatement(Node *node) {
     return;
 
   // Get the instantiation info
-  const auto &instTable = sym->instTable;
+  const auto &instTable = sym->generic().instTable;
 
   if (instTable.has_value()) {
     // Call the calculator driver on the cloned AST

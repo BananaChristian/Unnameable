@@ -15,7 +15,7 @@ void IRGenerator::generateVariableDeclaration(Node *node) {
 
   // Global scope, only scalars, no heap
   if (isGlobalScope) {
-    if (sym->isHeap)
+    if (sym->storage().isHeap)
       reportDevBug("Cannot heap raise in global scope", declaration);
     generateGlobalScalarLet(sym, name, declaration->initializer.get());
     return;
@@ -23,11 +23,11 @@ void IRGenerator::generateVariableDeclaration(Node *node) {
 
   llvm::Value *storage = nullptr;
 
-  if (sym->isArray)
+  if (sym->type().isArray)
     storage = generateArrayStorage(declaration, sym, name);
-  else if (sym->isRef)
+  else if (sym->type().isRef)
     storage = generateReferenceStorage(declaration, sym, name);
-  else if (isComponentType(sym->type.resolvedName))
+  else if (isComponentType(sym->type().type.resolvedName))
     storage = generateComponentStorage(declaration, sym, name);
   else
     storage = generateScalarStorage(declaration, sym, name);
@@ -35,8 +35,8 @@ void IRGenerator::generateVariableDeclaration(Node *node) {
   if (!storage)
     reportDevBug("No storage allocated for '" + name + "'", declaration);
 
-  sym->llvmValue = storage;
-  sym->llvmType = getLLVMType(sym->type);
+  sym->codegen().llvmValue = storage;
+  sym->codegen().llvmType = getLLVMType(sym->type().type);
   emitDeclarationClean(declaration);
 }
 
@@ -48,20 +48,20 @@ llvm::Value *IRGenerator::generateScalarStorage(VariableDeclaration *decl,
   if (decl->initializer)
     initVal = generateExpression(decl->initializer.get());
 
-  if (sym->isHeap) {
+  if (sym->storage().isHeap) {
     // heap scalar
     llvm::Value *storage = allocateDynamicHeapStorage(sym, name);
     if (!initVal)
-      initVal = llvm::Constant::getNullValue(getLLVMType(sym->type));
+      initVal = llvm::Constant::getNullValue(getLLVMType(sym->type().type));
     auto *store = funcBuilder.CreateStore(initVal, storage);
-    if (sym->isVolatile)
+    if (sym->storage().isVolatile)
       store->setVolatile(true);
-    sym->isAddress = true;
+    sym->type().isAddress = true;
     return storage;
   }
 
   // stack scalar
-  llvm::Type *varTy = getLLVMType(sym->type);
+  llvm::Type *varTy = getLLVMType(sym->type().type);
   llvm::Align align = layout->getABITypeAlign(varTy);
   auto *storage = funcBuilder.CreateAlloca(varTy, nullptr, name);
   llvm::cast<llvm::AllocaInst>(storage)->setAlignment(align);
@@ -70,7 +70,7 @@ llvm::Value *IRGenerator::generateScalarStorage(VariableDeclaration *decl,
     initVal = llvm::Constant::getNullValue(varTy);
 
   // Nullable boxing
-  if (sym->type.isNull && !llvm::isa<llvm::StructType>(varTy)) {
+  if (sym->type().type.isNull && !llvm::isa<llvm::StructType>(varTy)) {
     llvm::StructType *stTy = llvm::cast<llvm::StructType>(varTy);
     llvm::Value *boxed = llvm::UndefValue::get(stTy);
     boxed = funcBuilder.CreateInsertValue(
@@ -81,7 +81,7 @@ llvm::Value *IRGenerator::generateScalarStorage(VariableDeclaration *decl,
 
   auto *store = funcBuilder.CreateStore(initVal, storage);
   store->setAlignment(align);
-  if (sym->isVolatile)
+  if (sym->storage().isVolatile)
     store->setVolatile(true);
   return storage;
 }
@@ -92,7 +92,7 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
 
   auto type_modifier = dynamic_cast<TypeModifier *>(decl->modified_type.get());
 
-  llvm::Type *elemTy = getLLVMType(semantics.getArrayElementType(sym->type));
+  llvm::Type *elemTy = getLLVMType(semantics.getArrayElementType(sym->type().type));
   llvm::Value *allocationCount = nullptr;
 
   if (type_modifier && !type_modifier->dimensions.empty()) {
@@ -104,13 +104,13 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
           funcBuilder.CreateMul(allocationCount, dim, "total_elements");
     }
     // If constant dimensions, layout already has the answer
-    if (sym->componentSize > 0) {
+    if (sym->codegen().componentSize > 0) {
       uint64_t totalElems =
-          sym->componentSize / layout->getTypeAllocSize(elemTy);
+          sym->codegen().componentSize / layout->getTypeAllocSize(elemTy);
       allocationCount = funcBuilder.getInt64(totalElems);
     }
   } else if (decl->initializer) {
-    uint64_t totalElems = sym->componentSize / layout->getTypeAllocSize(elemTy);
+    uint64_t totalElems = sym->codegen().componentSize / layout->getTypeAllocSize(elemTy);
     allocationCount = funcBuilder.getInt64(totalElems);
   } else {
     reportDevBug("Array '" + name + "' has no dimensions or initializer", decl);
@@ -118,19 +118,19 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
 
   // Allocate
   llvm::Value *dataPtr = nullptr;
-  if (sym->isHeap) {
+  if (sym->storage().isHeap) {
     llvm::Value *byteSize = funcBuilder.CreateMul(
         allocationCount,
         funcBuilder.getInt64(layout->getTypeAllocSize(elemTy)));
     dataPtr = allocateRuntimeHeap(sym, byteSize, name);
-    sym->llvmType = elemTy;
+    sym->codegen().llvmType = elemTy;
   } else {
     dataPtr = funcBuilder.CreateAlloca(elemTy, allocationCount, name + "_data");
   }
 
   // Wrap in pointer slot (or nullable box)
   llvm::Value *storage = nullptr;
-  if (sym->type.isNull) {
+  if (sym->type().type.isNull) {
     llvm::StructType *boxTy = llvm::StructType::get(
         context, {funcBuilder.getInt1Ty(), funcBuilder.getPtrTy()});
     storage = funcBuilder.CreateAlloca(boxTy, nullptr, name + "_box");
@@ -141,12 +141,12 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
                                            funcBuilder.getInt1(hasContent), 0);
     boxVal = funcBuilder.CreateInsertValue(boxVal, dataPtr, 1);
     auto *store = funcBuilder.CreateStore(boxVal, storage);
-    if (sym->isVolatile)
+    if (sym->storage().isVolatile)
       store->setVolatile(true);
   } else {
     storage = funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, name);
     auto *store = funcBuilder.CreateStore(dataPtr, storage);
-    if (sym->isVolatile)
+    if (sym->storage().isVolatile)
       store->setVolatile(true);
   }
 
@@ -156,8 +156,8 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
     llvm::Value *srcData = generateExpression(decl->initializer.get());
     llvm::Align finalAlign = layout->getABITypeAlign(elemTy);
     llvm::Value *totalBytes =
-        sym->componentSize > 0
-            ? funcBuilder.getInt64(sym->componentSize)
+        sym->codegen().componentSize > 0
+            ? funcBuilder.getInt64(sym->codegen().componentSize)
             : funcBuilder.CreateMul(
                   allocationCount,
                   funcBuilder.getInt64(layout->getTypeAllocSize(elemTy)));
@@ -173,12 +173,12 @@ IRGenerator::generateReferenceStorage(VariableDeclaration *decl,
                                       std::shared_ptr<SymbolInfo> sym,
                                       const std::string &name) {
 
-  auto targetSym = sym->refereeSymbol;
+  auto targetSym = sym->relations().refereeSymbol;
   if (!targetSym)
     reportDevBug("Reference '" + name + "' has no target symbol", decl);
 
-  if (targetSym->llvmValue && targetSym->llvmValue->getType()->isPointerTy())
-    return targetSym->llvmValue;
+  if (targetSym->codegen().llvmValue && targetSym->codegen().llvmValue->getType()->isPointerTy())
+    return targetSym->codegen().llvmValue;
 
   // Target not yet materialized
   return generateAddress(decl->initializer.get());
@@ -190,18 +190,18 @@ IRGenerator::generateComponentStorage(VariableDeclaration *decl,
                                       const std::string &name) {
 
   auto *structTy =
-      llvm::dyn_cast<llvm::StructType>(componentTypes[sym->type.resolvedName]);
-  return generateComponentInit(decl, sym, structTy, sym->isHeap);
+      llvm::dyn_cast<llvm::StructType>(componentTypes[sym->type().type.resolvedName]);
+  return generateComponentInit(decl, sym, structTy, sym->storage().isHeap);
 }
 
 //_______________________HELPERS______________________________________
 void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName,
                                           Node *value) {
-  llvm::Type *varType = getLLVMType(sym->type);
+  llvm::Type *varType = getLLVMType(sym->type().type);
 
   llvm::Constant *init = nullptr;
-  if (sym->isInitialized && value) {
+  if (sym->storage().isInitialized && value) {
     llvm::Value *val = generateExpression(value);
     init = llvm::dyn_cast<llvm::Constant>(val);
 
@@ -210,19 +210,19 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                        "' must be initialized with a constant expression",
                    value);
     }
-  } else if (semantics.customTypesTable.count(sym->type.resolvedName)) {
-    init = generateGlobalRecordDefaults(sym->type.resolvedName);
+  } else if (semantics.customTypesTable.count(sym->type().type.resolvedName)) {
+    init = generateGlobalRecordDefaults(sym->type().type.resolvedName);
   } else {
     init = llvm::Constant::getNullValue(varType);
   }
 
   auto *g = new llvm::GlobalVariable(
       *module, varType,
-      sym->isConstant, // should be true unless semantics has screwed me
+      sym->storage().isConstant, // should be true unless semantics has screwed me
       llvm::GlobalValue::InternalLinkage, init, letName);
 
-  sym->llvmValue = g;
-  sym->llvmType = varType;
+  sym->codegen().llvmValue = g;
+  sym->codegen().llvmType = varType;
 }
 
 llvm::Constant *
@@ -276,7 +276,7 @@ IRGenerator::generateComponentInit(VariableDeclaration *declaration,
   }
 
   auto compTypeIt =
-      semantics.customTypesTable.find(semantics.getBaseTypeName(sym->type));
+      semantics.customTypesTable.find(semantics.getBaseTypeName(sym->type().type));
   if (compTypeIt != semantics.customTypesTable.end()) {
     for (const auto &[fieldName, memInfo] : compTypeIt->second->members) {
       auto varDecl = dynamic_cast<VariableDeclaration *>(memInfo->node);
@@ -296,7 +296,7 @@ IRGenerator::generateComponentInit(VariableDeclaration *declaration,
                      : nullptr;
 
   if (newExpr) {
-    std::string initFnName = semantics.getBaseTypeName(sym->type) + "_init";
+    std::string initFnName = semantics.getBaseTypeName(sym->type().type) + "_init";
     if (llvm::Function *initFn = module->getFunction(initFnName)) {
       std::vector<llvm::Value *> initArgs;
       initArgs.push_back(instancePtr);
@@ -314,7 +314,7 @@ llvm::Value *
 IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                         const std::string &varName) {
 
-  const std::string &allocatorTypeName = sym->allocType;
+  const std::string &allocatorTypeName = sym->storage().allocType;
 
   auto it = semantics.allocatorMap.find(allocatorTypeName);
   if (it == semantics.allocatorMap.end()) {
@@ -331,14 +331,14 @@ IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                  nullptr);
   }
 
-  size_t allocSize = sym->componentSize; // Get the size for the allocation
+  size_t allocSize = sym->codegen().componentSize; // Get the size for the allocation
   llvm::Value *sizeArg =
       llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), allocSize);
 
   llvm::Value *rawPtr =
       funcBuilder.CreateCall(allocFunc, {sizeArg}, varName + "_heap_raw");
 
-  llvm::Type *baseType = getLLVMType(sym->type);
+  llvm::Type *baseType = getLLVMType(sym->type().type);
 
   return funcBuilder.CreateBitCast(rawPtr, baseType->getPointerTo(),
                                    varName + "_ptr");
@@ -347,7 +347,7 @@ IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
 llvm::Value *IRGenerator::allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
                                               llvm::Value *runtimeSize,
                                               const std::string &varName) {
-  const std::string &allocatorTypeName = sym->allocType;
+  const std::string &allocatorTypeName = sym->storage().allocType;
   auto it = semantics.allocatorMap.find(allocatorTypeName);
   auto handle = it->second;
 
@@ -357,7 +357,7 @@ llvm::Value *IRGenerator::allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
   llvm::Value *rawPtr =
       funcBuilder.CreateCall(allocFunc, {runtimeSize}, varName + "_heap_raw");
 
-  llvm::Type *baseType = getLLVMType(sym->type);
+  llvm::Type *baseType = getLLVMType(sym->type().type);
   return funcBuilder.CreateBitCast(rawPtr, baseType->getPointerTo(),
                                    varName + "_ptr");
 }

@@ -20,7 +20,6 @@
 #include "audit.hpp"
 #include "errors.hpp"
 #include "irgen.hpp"
-#include "semantics.hpp"
 
 #include <iostream>
 #include <memory>
@@ -43,32 +42,9 @@ IRGenerator::IRGenerator(Semantics &semantics, ErrorHandler &handler,
   declareCustomTypes();
   declareImportedTypes();
   declareImportedSeals();
+  declareImportedFunctions();
   registerAllocators();
 
-  // Declare external allocator functions so IR can call them
-  llvm::FunctionType *initType = llvm::FunctionType::get(
-      llvm::Type::getVoidTy(context),    // returns void
-      {llvm::Type::getInt64Ty(context)}, // takes size_t (64-bit int)
-      false);
-
-  llvm::PointerType *i8PtrTy =
-      llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
-
-  llvm::FunctionType *allocType = llvm::FunctionType::get(
-      i8PtrTy, // returns void*
-      {
-          llvm::Type::getInt64Ty(context), // takes size_t for component size
-          llvm::Type::getInt64Ty(context)  // takes size_t for alignment
-      },
-      false);
-
-  llvm::FunctionType *destroyType = llvm::FunctionType::get(
-      llvm::Type::getVoidTy(context), {}, false); // void()
-
-  // Add them to the module
-  module->getOrInsertFunction("sage_init", initType);
-  module->getOrInsertFunction("sage_alloc", allocType);
-  module->getOrInsertFunction("sage_destroy", destroyType);
 }
 
 // MAIN GENERATOR FUNCTION
@@ -145,7 +121,7 @@ void IRGenerator::generatePointerAssignmentStatement(
   llvm::Value *newAddr = generateExpression(assignStmt->value.get());
 
   auto *storeInst = funcBuilder.CreateStore(newAddr, targetPtr);
-  if (assignSym->isVolatile) {
+  if (assignSym->storage().isVolatile) {
     storeInst->setVolatile(true);
   }
   inhibitCleanUp = false;
@@ -164,7 +140,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     return;
 
   // Pointer reassignment has its own path
-  if (assignSym->type.isPointer()) {
+  if (assignSym->type().type.isPointer()) {
     generatePointerAssignmentStatement(assignStmt);
     return;
   }
@@ -186,9 +162,8 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
 
   // Move expression, pointer takeover
   if (dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
-    logInternal("Handling move assignment");
     auto *storeInst = funcBuilder.CreateStore(initValue, targetPtr);
-    if (assignSym->isVolatile)
+    if (assignSym->storage().isVolatile)
       storeInst->setVolatile(true);
     inhibitCleanUp = false;
     emitCleanup(assignStmt);
@@ -196,16 +171,16 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
   }
 
   // Deep copy, arrays and large structs
-  bool isHuge = assignMeta->type.isBase() &&
-                (assignMeta->type.kind == DataType::COMPONENT ||
-                 assignMeta->type.kind == DataType::RECORD);
+  bool isHuge = assignMeta->type().type.isBase() &&
+                (assignMeta->type().type.kind == DataType::COMPONENT ||
+                 assignMeta->type().type.kind == DataType::RECORD);
 
-  if (assignMeta->type.isArray() || isHuge) {
-    uint64_t byteSize = assignMeta->componentSize;
+  if (assignMeta->type().type.isArray() || isHuge) {
+    uint64_t byteSize = assignMeta->codegen().componentSize;
     llvm::Type *elemLLVMTy =
-        getLLVMType(assignMeta->type.isArray()
-                        ? semantics.getArrayElementType(assignMeta->type)
-                        : assignMeta->type);
+        getLLVMType(assignMeta->type().type.isArray()
+                        ? semantics.getArrayElementType(assignMeta->type().type)
+                        : assignMeta->type().type);
     llvm::Align align = layout->getABITypeAlign(elemLLVMTy);
     funcBuilder.CreateMemCpy(targetPtr, align, initValue, align,
                              funcBuilder.getInt64(byteSize));
@@ -216,12 +191,12 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
 
   // Scalar assignment
   llvm::StoreInst *storeInst = nullptr;
-  if (assignMeta->isHeap) {
+  if (assignMeta->storage().isHeap) {
     llvm::Value *valueToStore = initValue;
-    if (valSym && valSym->isAddress) {
-      valueToStore = funcBuilder.CreateLoad(getLLVMType(assignMeta->type),
+    if (valSym && valSym->type().isAddress) {
+      valueToStore = funcBuilder.CreateLoad(getLLVMType(assignMeta->type().type),
                                             initValue, "loaded_val");
-      if (valSym->isVolatile) {
+      if (valSym->storage().isVolatile) {
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(valueToStore))
           load->setVolatile(true);
       }
@@ -231,7 +206,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     storeInst = funcBuilder.CreateStore(initValue, targetPtr);
   }
 
-  if (assignSym->isVolatile && storeInst)
+  if (assignSym->storage().isVolatile && storeInst)
     storeInst->setVolatile(true);
 
   inhibitCleanUp = false;
@@ -261,10 +236,10 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
     reportDevBug("Failed to get field address", fieldStmt);
 
   // Pointer field reassignment
-  if (fieldSym->type.isPointer()) {
+  if (fieldSym->type().type.isPointer()) {
     llvm::Value *newAddr = generateExpression(fieldStmt->value.get());
     auto *storeInst = funcBuilder.CreateStore(newAddr, fieldAddress);
-    if (fieldSym->isVolatile)
+    if (fieldSym->storage().isVolatile)
       storeInst->setVolatile(true);
     inhibitCleanUp = false;
     emitCleanup(fieldStmt);
@@ -277,7 +252,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   if (dynamic_cast<MoveExpression *>(fieldStmt->value.get())) {
     logInternal("Handling move assignment to field");
     auto *storeInst = funcBuilder.CreateStore(rhsValue, fieldAddress);
-    if (fieldSym->isVolatile)
+    if (fieldSym->storage().isVolatile)
       storeInst->setVolatile(true);
     inhibitCleanUp = false;
     emitCleanup(fieldStmt);
@@ -286,21 +261,21 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
 
   // Deep copy, arrays and large structs not behind a pointer
   bool isHuge =
-      fieldSym->type.isBase() && (fieldSym->type.kind == DataType::COMPONENT ||
-                                  fieldSym->type.kind == DataType::RECORD);
+      fieldSym->type().type.isBase() && (fieldSym->type().type.kind == DataType::COMPONENT ||
+                                  fieldSym->type().type.kind == DataType::RECORD);
 
-  if (fieldSym->type.isArray() || isHuge) {
+  if (fieldSym->type().type.isArray() || isHuge) {
     logInternal("Handling deep copy to field");
-    uint64_t byteSize = fieldSym->componentSize;
+    uint64_t byteSize = fieldSym->codegen().componentSize;
     llvm::Type *elemLLVMTy = getLLVMType(
-        fieldSym->type.isArray() ? semantics.getArrayElementType(fieldSym->type)
-                                 : fieldSym->type);
+        fieldSym->type().type.isArray() ? semantics.getArrayElementType(fieldSym->type().type)
+                                 : fieldSym->type().type);
     llvm::Align align = layout->getABITypeAlign(elemLLVMTy);
 
-    if (fieldSym->type.isArray()) {
+    if (fieldSym->type().type.isArray()) {
       llvm::Value *fieldBasePtr = funcBuilder.CreateLoad(
           funcBuilder.getPtrTy(), fieldAddress, "field_array_base");
-      if (fieldSym->isVolatile) {
+      if (fieldSym->storage().isVolatile) {
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(fieldBasePtr))
           load->setVolatile(true);
       }
@@ -318,12 +293,12 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
 
   // Scalar assignment
   llvm::StoreInst *storeInst = nullptr;
-  if (fieldSym->isHeap) {
+  if (fieldSym->storage().isHeap) {
     llvm::Value *valueToStore = rhsValue;
-    if (valSym->isAddress) {
-      valueToStore = funcBuilder.CreateLoad(getLLVMType(fieldSym->type),
+    if (valSym->type().isAddress) {
+      valueToStore = funcBuilder.CreateLoad(getLLVMType(fieldSym->type().type),
                                             rhsValue, "loaded_field_val");
-      if (valSym->isVolatile) {
+      if (valSym->storage().isVolatile) {
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(valueToStore))
           load->setVolatile(true);
       }
@@ -333,7 +308,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
     storeInst = funcBuilder.CreateStore(rhsValue, fieldAddress);
   }
 
-  if (fieldSym->isVolatile && storeInst)
+  if (fieldSym->storage().isVolatile && storeInst)
     storeInst->setVolatile(true);
 
   inhibitCleanUp = false;
@@ -374,7 +349,7 @@ void IRGenerator::generateTraceStatement(Node *node) {
   auto traceSym = semantics.getSymbolFromMeta(traceStmt);
 
   // Getting the type
-  ResolvedType type = traceSym->type;
+  ResolvedType type = traceSym->type().type;
 
   inhibitCleanUp = true;
   // Call the expression generation n the expression
@@ -774,12 +749,12 @@ llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
   auto sym = it->second;
 
   // Handle Nullable Boxes {i1, T}
-  if (sym->isNullable) {
+  if (sym->type().isNullable) {
     // If we have a pointer to the box (from an alloca or global), load the
     // struct first
     if (val->getType()->isPointerTy()) {
       // Check if it's a pointer to a struct, not just any pointer
-      llvm::Type *boxType = getLLVMType(sym->type);
+      llvm::Type *boxType = getLLVMType(sym->type().type);
       val = funcBuilder.CreateLoad(boxType, val, "nullable.load");
     }
     // The boolean 'is_present' is always at index 0
@@ -943,7 +918,7 @@ char *IRGenerator::const_unnitoa(__int128 val, char *buf) {
 
 void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
   if (!val) {
-    reportDevBug("shout! called with a null value", nullptr);
+    reportDevBug("trace called with a null value", nullptr);
   }
 
   auto &ctx = module->getContext();
@@ -1107,7 +1082,7 @@ void IRGenerator::freeForeigners(Node *block) {
 
     logInternal(
         "    [TERMINAL-REACHED] Commencing deallocation sequence for: " +
-        contextSym->ID);
+        contextSym->codegen().ID);
 
     // Clear out dependents (skip if already freed)
     if (!baton->dependents.empty()) {
@@ -1125,8 +1100,8 @@ void IRGenerator::freeForeigners(Node *block) {
     }
 
     // Kill the leader
-    if (contextSym->isHeap) {
-      logInternal("    [LEADER] Emitting physical free for: " + contextSym->ID);
+    if (contextSym->storage().isHeap) {
+      logInternal("    [LEADER] Emitting physical free for: " + contextSym->codegen().ID);
       executePhysicalFree(contextSym);
     }
 
@@ -1180,7 +1155,7 @@ void IRGenerator::freeNatives(Node *block) {
 
     logInternal(
         "    [TERMINAL-REACHED] Commencing deallocation sequence for: " +
-        contextSym->ID);
+        contextSym->codegen().ID);
 
     // Clear out dependents (skip if they're already freed)
     if (!baton->dependents.empty()) {
@@ -1198,8 +1173,8 @@ void IRGenerator::freeNatives(Node *block) {
     }
 
     // Kill the leader
-    if (contextSym->isHeap) {
-      logInternal("    [LEADER] Emitting physical free for: " + contextSym->ID);
+    if (contextSym->storage().isHeap) {
+      logInternal("    [LEADER] Emitting physical free for: " + contextSym->codegen().ID);
       executePhysicalFree(contextSym);
     }
 
@@ -1231,20 +1206,20 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
     return;
   }
 
-  logInternal("  [EXEC-FREE] ID: " + sym->ID +
-              " | HasLLVM: " + (sym->llvmValue ? "True" : "False") +
-              " | IsHeap: " + (sym->isHeap ? "True" : "False"));
+  logInternal("  [EXEC-FREE] ID: " + sym->codegen().ID +
+              " | HasLLVM: " + (sym->codegen().llvmValue ? "True" : "False") +
+              " | IsHeap: " + (sym->storage().isHeap ? "True" : "False"));
 
-  if (!sym->llvmValue || !sym->isHeap)
+  if (!sym->codegen().llvmValue || !sym->storage().isHeap)
     return;
 
-  logInternal("  [Deallocating] Generating  deallocation for: " + sym->ID);
+  logInternal("  [Deallocating] Generating  deallocation for: " + sym->codegen().ID);
 
-  auto it = semantics.allocatorMap.find(sym->allocType);
+  auto it = semantics.allocatorMap.find(sym->storage().allocType);
   if (it == semantics.allocatorMap.end()) {
     logInternal(
         "  [EXEC-FREE-FAIL] No allocator mapping for type allocator type '" +
-        sym->allocType + "'");
+        sym->storage().allocType + "'");
     return;
   }
 
@@ -1257,10 +1232,10 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
     return;
   }
 
-  logInternal("  [EMITTING-CALL] @ " + deallocatorName + " for " + sym->ID);
+  logInternal("  [EMITTING-CALL] @ " + deallocatorName + " for " + sym->codegen().ID);
 
   llvm::Value *castPtr = funcBuilder.CreatePointerCast(
-      sym->llvmValue, deallocFunc->getFunctionType()->getParamType(0));
+      sym->codegen().llvmValue, deallocFunc->getFunctionType()->getParamType(0));
 
   funcBuilder.CreateCall(deallocFunc, {castPtr});
 }
@@ -1287,10 +1262,10 @@ void IRGenerator::emitDeclarationClean(Node *contextNode) {
                      contextNode->toString(),
                  contextNode);
 
-  logInternal("  [DECL-CLEAN] ID: " + sym->ID +
+  logInternal("  [DECL-CLEAN] ID: " + sym->codegen().ID +
               " | Responsible: " + (baton->isResponsible ? "T" : "F") +
-              " | PtrCount: " + std::to_string(sym->pointerCount) +
-              " | RefCount: " + std::to_string(sym->refCount));
+              " | PtrCount: " + std::to_string(sym->storage().pointerCount) +
+              " | RefCount: " + std::to_string(sym->storage().refCount));
 
   if (!baton->isResponsible) {
     logInternal("  [DECL-CLEAN] Baton is not responsible for memory.");
@@ -1298,7 +1273,7 @@ void IRGenerator::emitDeclarationClean(Node *contextNode) {
   }
 
   // Trigger Logic (Counts)
-  if (sym->pointerCount == 0 && sym->refCount == 0) {
+  if (sym->storage().pointerCount == 0 && sym->storage().refCount == 0) {
     logInternal("  [DECL-CLEAN] Last use detected. Commencing physical free.");
     // Free the depenedents first
     logInternal("  [Dependents] Size: " +
@@ -1309,14 +1284,14 @@ void IRGenerator::emitDeclarationClean(Node *contextNode) {
     }
 
     // Free the leader
-    if (sym->isHeap) {
-      logInternal("  [Leader] ID: " + sym->ID);
+    if (sym->storage().isHeap) {
+      logInternal("  [Leader] ID: " + sym->codegen().ID);
       executePhysicalFree(sym);
     }
 
     // Defuse to avoid issues
     baton->isResponsible = false;
-    logInternal("  [DECL-CLEAN] Responsibility revoked for: " + sym->ID);
+    logInternal("  [DECL-CLEAN] Responsibility revoked for: " + sym->codegen().ID);
   } else {
     logInternal("  [DECL-CLEAN] Baton still has active references/pointers.");
   }
@@ -1353,10 +1328,10 @@ void IRGenerator::emitCleanup(Node *contextNode) {
                        "' in node: " + contextNode->toString(),
                    identifier);
 
-    logInternal("  [NORMAL-CLEAN] ID: " + identSym->ID +
+    logInternal("  [NORMAL-CLEAN] ID: " + identSym->codegen().ID +
                 " | Responsible: " + (baton->isResponsible ? "T" : "F") +
-                " | PtrCount: " + std::to_string(identSym->pointerCount) +
-                " | RefCount: " + std::to_string(identSym->refCount));
+                " | PtrCount: " + std::to_string(identSym->storage().pointerCount) +
+                " | RefCount: " + std::to_string(identSym->storage().refCount));
 
     if (!baton->isResponsible) {
       logInternal("  [NORMAL-CLEAN] Baton is not responsible for memory.");
@@ -1364,7 +1339,7 @@ void IRGenerator::emitCleanup(Node *contextNode) {
     }
 
     // Trigger Logic (Counts)
-    if (identSym->pointerCount == 0 && identSym->refCount == 0) {
+    if (identSym->storage().pointerCount == 0 && identSym->storage().refCount == 0) {
       logInternal(
           "  [NORMAL-CLEAN] Last use detected. Commencing physical free.");
       // Free the depenedents first
@@ -1376,15 +1351,15 @@ void IRGenerator::emitCleanup(Node *contextNode) {
       }
 
       // Free the leader
-      if (identSym->isHeap) {
-        logInternal("  [Leader] ID: " + identSym->ID);
+      if (identSym->storage().isHeap) {
+        logInternal("  [Leader] ID: " + identSym->codegen().ID);
         executePhysicalFree(identSym);
       }
 
       // Defuse to avoid issues
       baton->isResponsible = false;
       logInternal("  [NORMAL-CLEAN] Responsibility revoked for: " +
-                  identSym->ID);
+                  identSym->codegen().ID);
     } else {
       logInternal(
           "  [NORMAL-CLEAN] Baton still has active references/pointers.");
@@ -1473,46 +1448,6 @@ bool IRGenerator::currentBlockIsTerminated() {
 
 llvm::Module &IRGenerator::getLLVMModule() { return *module; }
 
-void IRGenerator::generateSageInitCall() {
-  // Safety check just in case
-  if (isSageInitCalled)
-    return;
-
-  // --- Call sage_init upfront ---
-  llvm::Function *initFunc = module->getFunction("sage_init");
-  if (!initFunc) {
-    llvm::FunctionType *initType =
-        llvm::FunctionType::get(llvm::Type::getVoidTy(context),
-                                {llvm::Type::getInt64Ty(context)}, false);
-
-    initFunc = llvm::Function::Create(initType, llvm::Function::ExternalLinkage,
-                                      "sage_init", module.get());
-  }
-
-  funcBuilder.CreateCall(
-      initFunc,
-      {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), totalHeapSize)});
-  logInternal("Initializing sage");
-  isSageInitCalled =
-      true; // Toggle this to true to mark that sage init was called
-}
-
-void IRGenerator::generateSageDestroyCall() {
-  llvm::Function *destroyFunc = module->getFunction("sage_destroy");
-  if (!destroyFunc) {
-    llvm::FunctionType *destroyType =
-        llvm::FunctionType::get(llvm::Type::getVoidTy(context), {}, false);
-
-    destroyFunc =
-        llvm::Function::Create(destroyType, llvm::Function::ExternalLinkage,
-                               "sage_destroy", module.get());
-  }
-
-  funcBuilder.CreateCall(destroyFunc, {});
-  logInternal("Destroying sage");
-  isSageDestroyCalled =
-      true; // Toggle this to true to mark that sage destroy was called
-}
 
 void IRGenerator::setupTargetLayout() {
   llvm::InitializeAllTargetInfos();

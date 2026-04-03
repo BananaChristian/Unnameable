@@ -1,7 +1,6 @@
 #include "ast.hpp"
 #include "audit.hpp"
 #include "errors.hpp"
-#include "semantics.hpp"
 
 #include <memory>
 #include <string>
@@ -168,40 +167,40 @@ void Auditor::classifyBlock(Node *block) {
 
     // Get symbol
     auto sym = semantics.getSymbolFromMeta(actualNode);
-    if (!sym || !sym->isHeap) {
+    if (!sym || !sym->storage().isHeap) {
       logInternal("[CLASSIFY-BLOCK] No heap symbol for node, skipping");
       continue;
     }
 
-    logInternal("[CLASSIFY-BLOCK] Found heap symbol: " + sym->ID);
+    logInternal("[CLASSIFY-BLOCK] Found heap symbol: " + sym->codegen().ID);
 
     // Determine if native (born here) or foreigner
-    bool bornHere = semantics.isBornInScope(block, sym->ID);
+    bool bornHere = semantics.isBornInScope(block, sym->codegen().ID);
     logInternal("[CLASSIFY-BLOCK] bornHere = " +
                 std::string(bornHere ? "true" : "false"));
 
     if (bornHere) {
-      if (!isAlreadyClassified(sym->ID, info)) {
-        logInternal("[CLASSIFIER] NATIVE: " + sym->ID + " in " +
+      if (!isAlreadyClassified(sym->codegen().ID, info)) {
+        logInternal("[CLASSIFIER] NATIVE: " + sym->codegen().ID + " in " +
                     block->toString());
-        info->natives.push_back(sym->ID);
+        info->natives.push_back(sym->codegen().ID);
       } else {
-        logInternal("[CLASSIFIER] NATIVE (DUPLICATE SKIPPED): " + sym->ID +
+        logInternal("[CLASSIFIER] NATIVE (DUPLICATE SKIPPED): " + sym->codegen().ID +
                     " in " + block->toString());
       }
     } else {
       // Check if it's a true foreigner (dies in this block)
-      if (diesInBlock(sym->ID, block)) {
-        if (!isAlreadyClassified(sym->ID, info)) {
-          logInternal("[CLASSIFIER] FOREIGNER: " + sym->ID + " in " +
+      if (diesInBlock(sym->codegen().ID, block)) {
+        if (!isAlreadyClassified(sym->codegen().ID, info)) {
+          logInternal("[CLASSIFIER] FOREIGNER: " + sym->codegen().ID + " in " +
                       block->toString());
-          info->foreigners.push_back(sym->ID);
+          info->foreigners.push_back(sym->codegen().ID);
         } else {
-          logInternal("[CLASSIFIER] FOREIGNER (DUPLICATE SKIPPED): " + sym->ID +
+          logInternal("[CLASSIFIER] FOREIGNER (DUPLICATE SKIPPED): " + sym->codegen().ID +
                       " in " + block->toString());
         }
       } else {
-        logInternal("[CLASSIFIER] " + sym->ID +
+        logInternal("[CLASSIFIER] " + sym->codegen().ID +
                     " does not die in this block, skipping");
       }
     }
@@ -261,43 +260,47 @@ void Auditor::classifyClause(
     }
 
     logInternal("[CLAUSE-CLASSIFIER] Symbol found:");
-    logInternal("  - ID: " + sym->ID);
-    logInternal("  - Is heap: " + std::string(sym->isHeap ? "YES" : "NO"));
+    logInternal("  - ID: " + sym->codegen().ID);
+    logInternal("  - Is heap: " + std::string(sym->storage().isHeap ? "YES" : "NO"));
     logInternal("  - Is pointer: " +
-                std::string(sym->isPointer ? "YES" : "NO"));
-    logInternal("  - Pointer count: " + std::to_string(sym->pointerCount));
-    logInternal("  - Ref count: " + std::to_string(sym->refCount));
+                std::string(sym->type().isPointer ? "YES" : "NO"));
+    logInternal("  - Pointer count: " + std::to_string(sym->storage().pointerCount));
+    logInternal("  - Ref count: " + std::to_string(sym->storage().refCount));
 
-    if (!sym->isHeap) {
+    if (!sym->storage().isHeap) {
       logInternal("[CLAUSE-CLASSIFIER] Symbol is not heap - skipping");
       return;
     }
 
     logInternal(
         "[CLAUSE-CLASSIFIER] Checking if symbol was born in this clause");
-    bool bornHere = checkBirth(sym->ID, clause);
+    bool bornHere = checkBirth(sym->codegen().ID, clause);
     logInternal("  - Born here? " + std::string(bornHere ? "YES" : "NO"));
 
     if (bornHere) {
-      logInternal("[CLAUSE-CLASSIFIER] NATIVE DETECTED: " + sym->ID);
+      logInternal("[CLAUSE-CLASSIFIER] NATIVE DETECTED: " + sym->codegen().ID );
       logInternal("  - Adding to natives list for switch: " + sw->toString());
-      blockInfo->natives.push_back(sym->ID);
+      blockInfo->natives.push_back(sym->codegen().ID);
+      logInternal("[CLAUSE-CLASSIFIER] NATIVE DETECTED: " + sym->codegen().ID );
+      logInternal("  - Adding to natives list for switch: " + sw->toString());
+      logInternal("[CLAUSE-CLASSIFIER] NATIVE DETECTED: " + sym->codegen().ID );
+      logInternal("  - Adding to natives list for switch: " + sw->toString());
       logInternal("  - Natives count now: " +
                   std::to_string(blockInfo->natives.size()));
     } else {
       logInternal(
           "[CLAUSE-CLASSIFIER] Not born here - checking if it dies in switch");
-      logInternal("  - Calling doesSymbolDieInSwitch for ID: " + sym->ID);
+      logInternal("  - Calling doesSymbolDieInSwitch for ID: " + sym->codegen().ID);
 
-      bool diesHere = doesSymbolDieInSwitch(sym->ID, clause);
+      bool diesHere = doesSymbolDieInSwitch(sym->codegen().ID, clause);
       logInternal("  - Dies in switch? " +
                   std::string(diesHere ? "YES" : "NO"));
 
       if (diesHere) {
-        logInternal("[CLAUSE-CLASSIFIER] FOREIGNER DETECTED: " + sym->ID);
+        logInternal("[CLAUSE-CLASSIFIER] FOREIGNER DETECTED: " + sym->codegen().ID);
         logInternal("  - Adding to foreigners list for switch: " +
                     sw->toString());
-        blockInfo->foreigners.push_back(sym->ID);
+        blockInfo->foreigners.push_back(sym->codegen().ID);
         logInternal("  - Foreigners count now: " +
                     std::to_string(blockInfo->foreigners.size()));
       } else {
@@ -575,7 +578,7 @@ void Auditor::bunkerCycles(Node *block) {
           holder->toString() + " for lifetime ID: " + validID + " skipping...");
       continue;
     }
-    logInternal("[BUNKER-CYCLES] holderSym ID: " + holderSym->ID);
+    logInternal("[BUNKER-CYCLES] holderSym ID: " + holderSym->codegen().ID);
 
     auto &baton = semantics.responsibilityTable[holder];
     if (!baton) {
@@ -642,7 +645,7 @@ bool Auditor::checkBirth(
         continue;
       }
 
-      if (id == declSym->ID) {
+      if (id == declSym->codegen().ID) {
         logInternal("[CHECKING BIRTH] Found heap birth for id: " + id);
         return true;
       }
@@ -702,8 +705,8 @@ std::vector<std::string> Auditor::getAllActiveBatonIDsInBlock(Node *block) {
 
       logInternal("[SELECTED_SCAN] Checking Stats for " + baton->ID +
                   ": isResponsible(" + std::to_string(baton->isResponsible) +
-                  ") refCount(" + std::to_string(holderSym->refCount) +
-                  ") ptrCount(" + std::to_string(holderSym->pointerCount) +
+                  ") refCount(" + std::to_string(holderSym->storage().refCount) +
+                  ") ptrCount(" + std::to_string(holderSym->storage().pointerCount) +
                   ")");
 
       logInternal("[SELECTED_SCAN] Found LIVE baton: " + baton->ID);
@@ -744,8 +747,8 @@ std::set<std::string> Auditor::getAllActiveBatonIDs() {
 
       logInternal("[ACTIVE_SCAN] Checking Stats for " + baton->ID +
                   ": isResponsible(" + std::to_string(baton->isResponsible) +
-                  ") refCount(" + std::to_string(holderSym->refCount) +
-                  ") ptrCount(" + std::to_string(holderSym->pointerCount) +
+                  ") refCount(" + std::to_string(holderSym->storage().refCount) +
+                  ") ptrCount(" + std::to_string(holderSym->storage().pointerCount) +
                   ")");
 
       logInternal("[ACTIVE_SCAN] Found LIVE baton: " + baton->ID);
@@ -1113,14 +1116,14 @@ void Auditor::simulateDeclFree(Node *contextNode,
   logInternal("   [DECL-SIMULATE FREE] State: isResponsible=" +
               std::string(baton->isResponsible ? "T" : "F") +
               ", isAlive=" + std::string(baton->isAlive ? "T" : "F") +
-              ", ptrCount=" + std::to_string(contextSym->pointerCount));
+              ", ptrCount=" + std::to_string(contextSym->storage().pointerCount));
 
-  if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
+  if (contextSym->storage().pointerCount == 0 && contextSym->storage().refCount == 0) {
     if (baton->isResponsible && baton->isAlive) {
       logInternal("    [DEATH] Condition met. Killing family: " + contextID);
       baton->isAlive = false;
 
-      bool dropCount = (contextSym->isPointer && contextSym->isHeap);
+      bool dropCount = (contextSym->type().isPointer && contextSym->storage().isHeap);
       logInternal("    Dependents to process: " +
                   std::to_string(baton->dependents.size()));
 
@@ -1135,7 +1138,7 @@ void Auditor::simulateDeclFree(Node *contextNode,
     }
   } else {
     logInternal("    [STAY-ALIVE] References/Pointers still exist (" +
-                std::to_string(contextSym->pointerCount) + ")");
+                std::to_string(contextSym->storage().pointerCount) + ")");
   }
 }
 
@@ -1173,14 +1176,14 @@ void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
     logInternal("   [SIMULATE FREE] State: isResponsible=" +
                 std::string(baton->isResponsible ? "T" : "F") +
                 ", isAlive=" + std::string(baton->isAlive ? "T" : "F") +
-                ", ptrCount=" + std::to_string(contextSym->pointerCount));
+                ", ptrCount=" + std::to_string(contextSym->storage().pointerCount));
 
-    if (contextSym->pointerCount == 0 && contextSym->refCount == 0) {
+    if (contextSym->storage().pointerCount == 0 && contextSym->storage().refCount == 0) {
       if (baton->isResponsible && baton->isAlive) {
         logInternal("    [DEATH] Condition met. Killing family: " + contextID);
         baton->isAlive = false;
 
-        bool dropCount = (contextSym->isPointer && contextSym->isHeap);
+        bool dropCount = (contextSym->type().isPointer && contextSym->storage().isHeap);
         logInternal("    Dependents to process: " +
                     std::to_string(baton->dependents.size()));
 
@@ -1195,7 +1198,7 @@ void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
       }
     } else {
       logInternal("    [STAY-ALIVE] References/Pointers still exist (" +
-                  std::to_string(contextSym->pointerCount) + ")");
+                  std::to_string(contextSym->storage().pointerCount) + ")");
     }
   }
 }
@@ -1235,9 +1238,9 @@ void Auditor::assignmentRob(Node *contextAssign,
   }
 
   // Get the robber baton (L0 or L1)
-  Node *robberHolder = semantics.queryForLifeTimeBaton(lhsSym->ID);
+  Node *robberHolder = semantics.queryForLifeTimeBaton(lhsSym->codegen().ID);
   if (!robberHolder) {
-    logInternal("[ASSIGNMENT HEIST] No robber baton found for " + lhsSym->ID);
+    logInternal("[ASSIGNMENT HEIST] No robber baton found for " + lhsSym->codegen().ID);
     return;
   }
 
@@ -1258,14 +1261,14 @@ void Auditor::assignmentRob(Node *contextAssign,
       reportDevBug("Failed to get value assignment node", identifier);
     }
 
-    if (assignSym->isPointer) {
-      valSym->pointerCount++;
+    if (assignSym->type().isPointer) {
+      valSym->storage().pointerCount++;
       logInternal("  [ASSIGNMENT HEIST] Incrementing pointerCount for " +
-                  valSym->ID + " to " + std::to_string(valSym->pointerCount));
+                  valSym->codegen().ID + " to " + std::to_string(valSym->storage().pointerCount));
     }
 
-    if (valSym->isHeap) {
-      Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->ID);
+    if (valSym->storage().isHeap) {
+      Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->codegen().ID);
       auto &valBaton = semantics.responsibilityTable[valBatonHolder];
       if (valBatonHolder == identifier) {
         logInternal(
@@ -1279,8 +1282,8 @@ void Auditor::assignmentRob(Node *contextAssign,
                                            valSym);
         } else {
           logInternal("  [ASSIGNMENT HEIST] Already robbed. Registering " +
-                      assignSym->ID + " as candidate for " + valSym->ID);
-          candidateRegistry[valBaton->ID].push_back(assignSym->ID);
+                      assignSym->codegen().ID + " as candidate for " + valSym->codegen().ID);
+          candidateRegistry[valBaton->ID].push_back(assignSym->codegen().ID);
         }
       } else {
         // Force a robbery
@@ -1325,10 +1328,10 @@ void Auditor::transferDependent(const std::string &dependentID,
     logInternal("      [STATUS] Victim " + dependentID +
                 " not in Candidate Registry.");
     if (dropCount) {
-      dependentSym->pointerCount--;
+      dependentSym->storage().pointerCount--;
       logInternal("      [ACTION] dropCount=TRUE. PointerCount for " +
                   dependentID +
-                  " is now: " + std::to_string(dependentSym->pointerCount));
+                  " is now: " + std::to_string(dependentSym->storage().pointerCount));
     }
     return;
   }
@@ -1389,11 +1392,11 @@ void Auditor::transferDependent(const std::string &dependentID,
     logInternal("      [FINAL-JUDGMENT] No living heirs found for " +
                 dependentID);
     if (dropCount) {
-      dependentSym->pointerCount--;
+      dependentSym->storage().pointerCount--;
       logInternal("      [ACTION] dropCount=TRUE. Final PointerCount for " +
                   dependentID + ": " +
-                  std::to_string(dependentSym->pointerCount));
-      if (dependentSym->pointerCount == 0) {
+                  std::to_string(dependentSym->storage().pointerCount));
+      if (dependentSym->storage().pointerCount == 0) {
         logInternal("      [TERMINAL] " + dependentID +
                     " is now eligible for physical deallocation.");
       }
@@ -1430,11 +1433,11 @@ bool Auditor::diesInBlock(const std::string &ID, Node *block) {
     }
 
     logInternal(
-        "[DIES-IN-BLOCK] PtrCount: " + std::to_string(holderSym->pointerCount) +
-        " | RefCount: " + std::to_string(holderSym->refCount) +
+        "[DIES-IN-BLOCK] PtrCount: " + std::to_string(holderSym->storage().pointerCount) +
+        " | RefCount: " + std::to_string(holderSym->storage().refCount) +
         " | Responsible: " + (baton->isResponsible ? "T" : "F"));
 
-    if (holderSym->pointerCount == 0 && holderSym->refCount == 0) {
+    if (holderSym->storage().pointerCount == 0 && holderSym->storage().refCount == 0) {
       if (baton->isResponsible) {
         logInternal("[DIES-IN-BLOCK] SUCCESS: ID " + ID + " dies here.");
         return true;
@@ -1502,11 +1505,11 @@ bool Auditor::doesSymbolDieInSwitch(
     }
 
     logInternal("[DIES-IN-CLAUSE] PtrCount: " +
-                std::to_string(holderSym->pointerCount) +
-                " | RefCount: " + std::to_string(holderSym->refCount) +
+                std::to_string(holderSym->storage().pointerCount) +
+                " | RefCount: " + std::to_string(holderSym->storage().refCount) +
                 " | Responsible: " + (baton->isResponsible ? "T" : "F"));
 
-    if (holderSym->pointerCount == 0 && holderSym->refCount == 0 &&
+    if (holderSym->storage().pointerCount == 0 && holderSym->storage().refCount == 0 &&
         baton->isResponsible) {
       logInternal("[DIES-IN-CLAUSE] SUCCESS: ID " + id + " dies here.");
       return true;
@@ -1523,7 +1526,7 @@ void Auditor::scanForBaton(const std::string &id) {
   logInternal("\n--- LAYER 1: Responsibility Table (Active Batons) ---");
   Node *holder = semantics.queryForLifeTimeBaton(id);
   if (!holder) {
-    logInternal("[SCANNER] LAYER 1: ❌ Baton " + id +
+    logInternal("[SCANNER] LAYER 1:  Baton " + id +
                 " NOT FOUND in responsibility table");
   } else {
     logInternal("[SCANNER] LAYER 1: Found baton " + id +
@@ -1555,7 +1558,7 @@ void Auditor::scanForBaton(const std::string &id) {
                     " in nativesToFree");
         logInternal("  Block: " + block->toString());
         logInternal("  Position in list: " + std::to_string(i));
-        logInternal("  Symbol info: " + (sym ? sym->ID : "null"));
+        logInternal("  Symbol info: " + (sym ? sym->codegen().ID : "null"));
         logInternal("  Baton state:");
         logInternal("    - isResponsible: " +
                     std::string(baton->isResponsible ? "YES" : "NO"));
@@ -1580,7 +1583,7 @@ void Auditor::scanForBaton(const std::string &id) {
                     " in foreignersToFree");
         logInternal("  Block: " + block->toString());
         logInternal("  Position in list: " + std::to_string(i));
-        logInternal("  Symbol info: " + (sym ? sym->ID : "null"));
+        logInternal("  Symbol info: " + (sym ? sym->codegen().ID : "null"));
         logInternal("  Baton state:");
         logInternal("    - isResponsible: " +
                     std::string(baton->isResponsible ? "YES" : "NO"));
@@ -1591,7 +1594,7 @@ void Auditor::scanForBaton(const std::string &id) {
     }
   }
   if (!foundInForeigners) {
-    logInternal("[SCANNER] LAYER 3: ❌ Baton " + id +
+    logInternal("[SCANNER] LAYER 3: Baton " + id +
                 " NOT FOUND in foreignersToFree");
   }
 

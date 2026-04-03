@@ -1,9 +1,11 @@
+#pragma once
 #include <llvm/IR/Value.h>
 
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <typeindex>
+#include <unordered_map>
 
 #include "ast.hpp"
 #include "defs.hpp"
@@ -26,7 +28,7 @@ class Semantics {
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> customTypesTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedComponentTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedRecordTable;
-    std::unordered_map<std::string, std::shared_ptr<ImportedGeneric>> ImportedGenericsTable;
+    std::unordered_map<std::string,std::shared_ptr<SymbolInfo>> ImportedFunctionsTable;
     std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
 
     using LifeTimeTable = std::unordered_map<Node *, std::unique_ptr<LifeTime>>;

@@ -126,7 +126,7 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
   filesToLink.push_back(currentObjectFile);
 
   // Link what the deserializer gave us
-  for (const auto &entry : deserializer.linkerRegistery) {
+  for (const auto &entry : deserializer.linkerRegistry) {
     if (entry.origin == LinkOrigin::NATIVE_IMPORT) {
       fs::path objPath(entry.path);
 

@@ -9,11 +9,11 @@ void IRGenerator::registerAllocators() {
     auto allocateSym = handle.allocatorSymbol;
 
     std::vector<llvm::Type *> allocParams;
-    for (const auto &param : allocateSym->paramTypes) {
+    for (const auto &param : allocateSym->func().paramTypes) {
       allocParams.push_back(getLLVMType(param.first));
     }
 
-    llvm::Type *allocateRetType = getLLVMType(allocateSym->returnType);
+    llvm::Type *allocateRetType = getLLVMType(allocateSym->func().returnType);
 
     llvm::FunctionType *allocfnType =
         llvm::FunctionType::get(allocateRetType, allocParams, false);
@@ -26,11 +26,11 @@ void IRGenerator::registerAllocators() {
     auto freeSym = handle.freeSymbol;
 
     std::vector<llvm::Type *> freeParams;
-    for (const auto &param : freeSym->paramTypes) {
+    for (const auto &param : freeSym->func().paramTypes) {
       freeParams.push_back(getLLVMType(param.first));
     }
 
-    llvm::Type *freeRetType = getLLVMType(freeSym->returnType);
+    llvm::Type *freeRetType = getLLVMType(freeSym->func().returnType);
 
     llvm::FunctionType *freefnType =
         llvm::FunctionType::get(freeRetType, freeParams, false);

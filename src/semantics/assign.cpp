@@ -22,7 +22,7 @@ void Semantics::checkOperatorStyle(TokenType op, bool isPointer,
 /// Enforces that a variable is not constant or already-initialised immutable.
 void Semantics::checkMutability(const SymbolInfo &sym, const std::string &name,
                                 Node *site) {
-  if (sym.isConstant) {
+  if (sym.storage().isConstant) {
     logSemanticErrors(
         "'" + name +
             "' is declared as 'const' and cannot be reassigned. "
@@ -30,7 +30,7 @@ void Semantics::checkMutability(const SymbolInfo &sym, const std::string &name,
         site);
     return;
   }
-  if (!sym.isMutable && sym.isInitialized) {
+  if (!sym.storage().isMutable && sym.storage().isInitialized) {
     logSemanticErrors("'" + name +
                           "' is immutable and has already been initialised. "
                           "Declare it with 'var' if you intend to reassign it.",
@@ -76,7 +76,7 @@ bool Semantics::handleNullRhs(NullLiteral *nullLit,
   if (!nullLit)
     return false;
 
-  if (!lhsSym->isNullable) {
+  if (!lhsSym->type().isNullable) {
     logSemanticErrors(
         "Cannot assign 'null' to '" + name +
             "' because it is not nullable. "
@@ -90,9 +90,9 @@ bool Semantics::handleNullRhs(NullLiteral *nullLit,
   // Give the null literal the LHS type so downstream passes have context.
   auto nullSym = getSymbolFromMeta(nullLit);
   if (nullSym)
-    nullSym->type = lhsSym->type;
+    nullSym->type().type = lhsSym->type().type;
 
-  lhsSym->isInitialized = true;
+  lhsSym->storage().isInitialized = true;
   metaData[assignStmt] = lhsSym;
   hasError = false;
   return true;
@@ -154,15 +154,15 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
 
   // Build a SymbolInfo from the resolved field.
   auto selfSymbol = std::make_shared<SymbolInfo>();
-  selfSymbol->type = fieldInfo->type;
-  selfSymbol->isNullable = fieldInfo->isNullable;
-  selfSymbol->isMutable = fieldInfo->isMutable;
-  selfSymbol->isConstant = fieldInfo->isConstant;
-  selfSymbol->isPointer = fieldInfo->isPointer;
-  selfSymbol->isInitialized = fieldInfo->isInitialised;
-  selfSymbol->memberIndex = fieldInfo->memberIndex;
+  selfSymbol->type().type = fieldInfo->type;
+  selfSymbol->type().isNullable = fieldInfo->isNullable;
+  selfSymbol->storage().isMutable = fieldInfo->isMutable;
+  selfSymbol->storage().isConstant = fieldInfo->isConstant;
+  selfSymbol->type().isPointer = fieldInfo->isPointer;
+  selfSymbol->storage().isInitialized = fieldInfo->isInitialised;
+  selfSymbol->type().memberIndex = fieldInfo->memberIndex;
 
-  checkOperatorStyle(assignStmt->op.type, selfSymbol->isPointer, assignName,
+  checkOperatorStyle(assignStmt->op.type, selfSymbol->type().isPointer, assignName,
                      assignStmt);
 
   if (!assignStmt->value)
@@ -187,14 +187,14 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
   giveGenericLiteralContext(assignStmt->value.get(), selfSymbol, valSym);
 
   ResolvedType lhsType =
-      selfSymbol->isRef ? peelRef(selfSymbol->type) : selfSymbol->type;
+      selfSymbol->type().isRef ? peelRef(selfSymbol->type().type) : selfSymbol->type().type;
 
-  checkTypeCompatible(lhsType, valSym->type, /*rhsIsNull=*/false, assignName,
+  checkTypeCompatible(lhsType, valSym->type().type, /*rhsIsNull=*/false, assignName,
                       assignStmt->identifier.get());
 
   checkMutability(*selfSymbol, assignName, assignStmt->identifier.get());
 
-  selfSymbol->isInitialized = true;
+  selfSymbol->storage().isInitialized = true;
   selfSymbol->hasError = false;
   metaData[assignStmt] = selfSymbol;
 }
@@ -217,14 +217,14 @@ void Semantics::walkAssignStatement(Node *node) {
   if (!lhsSym || lhsSym->hasError)
     return;
 
-  checkOperatorStyle(assignStmt->op.type, lhsSym->isPointer, name, assignStmt);
+  checkOperatorStyle(assignStmt->op.type, lhsSym->type().isPointer, name, assignStmt);
 
   walker(assignStmt->value.get());
   auto rhsSym = getSymbolFromMeta(assignStmt->value.get());
 
-  // Null literal — give it context and bail early.
+  // Null literal,give it context and bail early.
   if (dynamic_cast<NullLiteral *>(assignStmt->value.get())) {
-    if (!lhsSym->isNullable) {
+    if (!lhsSym->type().isNullable) {
       logSemanticErrors(
           "Cannot assign 'null' to '" + name +
               "' because it is not nullable. "
@@ -233,7 +233,7 @@ void Semantics::walkAssignStatement(Node *node) {
           assignStmt->identifier.get());
       return;
     }
-    rhsSym->type = lhsSym->type;
+    rhsSym->type().type = lhsSym->type().type;
     hasError = false;
     metaData[assignStmt] = lhsSym;
     return;
@@ -244,7 +244,7 @@ void Semantics::walkAssignStatement(Node *node) {
   if (rhsSym->hasError)
     return;
 
-  if (!lhsSym->isNullable && rhsSym->isDefinitelyNull) {
+  if (!lhsSym->type().isNullable && rhsSym->type().isDefinitelyNull) {
     logSemanticErrors(
         "Cannot assign a null value to '" + name +
             "' because it is not "
@@ -254,16 +254,16 @@ void Semantics::walkAssignStatement(Node *node) {
         assignStmt->identifier.get());
   }
 
-  ResolvedType lhsType = lhsSym->isRef ? peelRef(lhsSym->type) : lhsSym->type;
+  ResolvedType lhsType = lhsSym->type().isRef ? peelRef(lhsSym->type().type) : lhsSym->type().type;
 
-  checkTypeCompatible(lhsType, rhsSym->type, /*rhsIsNull=*/false, name,
+  checkTypeCompatible(lhsType, rhsSym->type().type, /*rhsIsNull=*/false, name,
                       assignStmt->identifier.get());
 
   checkMutability(*lhsSym, name, assignStmt->identifier.get());
 
   if (auto *arrLit = dynamic_cast<ArrayLiteral *>(assignStmt->value.get())) {
     auto litDims = getSizePerDimesion(arrLit);
-    auto varDims = rhsSym->sizePerDimensions;
+    auto varDims = rhsSym->type().sizePerDimensions;
     if (varDims.size() != litDims.size()) {
       logSemanticErrors("Array shape mismatch: '" + name +
                             "' was declared with " +
@@ -275,7 +275,7 @@ void Semantics::walkAssignStatement(Node *node) {
     }
   } else if (auto *moveExpr =
                  dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
-    if (!rhsSym->isHeap && lhsSym->isHeap) {
+    if (!rhsSym->storage().isHeap && lhsSym->storage().isHeap) {
       errorHandler.addHint("'" + name +
                            "' was declared as 'heap', which enforces a strict "
                            "ownership contract: only heap-allocated values may "
@@ -288,13 +288,13 @@ void Semantics::walkAssignStatement(Node *node) {
           "Cannot move a non-heap value into the heap variable '" + name + "'.",
           moveExpr->expr.get());
     }
-    rhsSym->isInvalid = true; // source variable is consumed by the move
+    rhsSym->storage().isInvalid = true; // source variable is consumed by the move
   }
 
-  lhsSym->isInitialized = true;
+  lhsSym->storage().isInitialized = true;
 
-  if (lhsSym->isHeap && rhsSym->isHeap)
-    transferBaton(assignStmt, lhsSym->ID);
+  if (lhsSym->storage().isHeap && rhsSym->storage().isHeap)
+    transferBaton(assignStmt, lhsSym->codegen().ID);
 
   hasError = false;
   metaData[assignStmt] = lhsSym;
@@ -320,7 +320,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
 
   checkMutability(*lhsInfo, name, fieldAssignStmt);
 
-  checkOperatorStyle(fieldAssignStmt->op.type, lhsInfo->isPointer, name,
+  checkOperatorStyle(fieldAssignStmt->op.type, lhsInfo->type().isPointer, name,
                      fieldAssignStmt);
 
   if (!fieldAssignStmt->value) {
@@ -341,7 +341,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
 
   // Null literal, validate nullability and bail early.
   if (dynamic_cast<NullLiteral *>(fieldAssignStmt->value.get())) {
-    if (!lhsInfo->type.isNull) {
+    if (!lhsInfo->type().type.isNull) {
       logSemanticErrors(
           "Cannot assign 'null' to field '" + name +
               "' because it is not "
@@ -351,21 +351,21 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
       hasError = false;
       return;
     }
-    rhsInfo->type = lhsInfo->type;
-    rhsInfo->isInitialized = true;
-    rhsInfo->isDefinitelyNull = true;
+    rhsInfo->type().type = lhsInfo->type().type;
+    rhsInfo->storage().isInitialized = true;
+    rhsInfo->type().isDefinitelyNull = true;
     metaData[fieldAssignStmt] = lhsInfo;
     hasError = false;
     return;
   }
 
   if (dynamic_cast<INTLiteral *>(fieldAssignStmt->value.get())) {
-    if (isInteger(lhsInfo->type))
-      rhsInfo->type = lhsInfo->type;
+    if (isInteger(lhsInfo->type().type))
+      rhsInfo->type().type = lhsInfo->type().type;
   }
   giveGenericLiteralContext(fieldAssignStmt->value.get(), lhsInfo, rhsInfo);
 
-  checkTypeCompatible(lhsInfo->type, rhsInfo->type, /*rhsIsNull=*/false, name,
+  checkTypeCompatible(lhsInfo->type().type, rhsInfo->type().type, /*rhsIsNull=*/false, name,
                       fieldAssignStmt);
 
   hasError = false;

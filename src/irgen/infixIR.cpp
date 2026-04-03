@@ -42,15 +42,15 @@ llvm::Value *IRGenerator::handleArithmeticAndBitwise(
     const std::shared_ptr<SymbolInfo> &rightSym) {
 
   auto infixSym = semantics.getSymbolFromMeta(infix);
-  auto resultType = infixSym->type;
+  auto resultType = infixSym->type().type;
 
   switch (infix->operat.type) {
   case TokenType::PLUS: {
     // Pointer arithmetic, GEP into what the pointer points to
-    if (leftSym->type.isPointer()) {
-      if (!leftSym->type.innerType)
+    if (leftSym->type().type.isPointer()) {
+      if (!leftSym->type().type.innerType)
         reportDevBug("Pointer has no inner type for arithmetic", infix);
-      llvm::Type *baseTy = getLLVMType(*leftSym->type.innerType);
+      llvm::Type *baseTy = getLLVMType(*leftSym->type().type.innerType);
       return funcBuilder.CreateGEP(baseTy, left, right, "ptr_addtmp");
     }
     if (isIntegerType(resultType.base().kind))
@@ -60,10 +60,10 @@ llvm::Value *IRGenerator::handleArithmeticAndBitwise(
 
   case TokenType::MINUS: {
     // Pointer arithmetic,negative GEP
-    if (leftSym->type.isPointer()) {
-      if (!leftSym->type.innerType)
+    if (leftSym->type().type.isPointer()) {
+      if (!leftSym->type().type.innerType)
         reportDevBug("Pointer has no inner type for arithmetic", infix);
-      llvm::Type *baseTy = getLLVMType(*leftSym->type.innerType);
+      llvm::Type *baseTy = getLLVMType(*leftSym->type().type.innerType);
       llvm::Value *negRight = funcBuilder.CreateNeg(right, "neg_offset");
       return funcBuilder.CreateGEP(baseTy, left, negRight, "ptr_subtmp");
     }
@@ -128,8 +128,8 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
                               const std::shared_ptr<SymbolInfo> &leftSym,
                               const std::shared_ptr<SymbolInfo> &rightSym) {
 
-  DataType leftType = leftSym->type.kind;
-  DataType rightType = rightSym->type.kind;
+  DataType leftType = leftSym->type().type.kind;
+  DataType rightType = rightSym->type().type.kind;
   llvm::Value *cmpRes = nullptr;
 
   if (isIntegerType(leftType) || leftType == DataType::ENUM) {
@@ -190,7 +190,7 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
     }
 
     return cmpRes;
-  } else if (leftSym->type.isPointer() || rightSym->type.isPointer()) {
+  } else if (leftSym->type().type.isPointer() || rightSym->type().type.isPointer()) {
 
     if (left->getType() != right->getType()) {
       right = funcBuilder.CreateBitCast(right, left->getType(), "ptr_cmp_norm");
@@ -224,8 +224,8 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
     return cmpRes;
   } else {
     reportDevBug("Comparison not supported for types '" +
-                     leftSym->type.resolvedName + "' and '" +
-                     rightSym->type.resolvedName + "'",
+                     leftSym->type().type.resolvedName + "' and '" +
+                     rightSym->type().type.resolvedName + "'",
                  infix);
   }
   return cmpRes;
@@ -284,13 +284,13 @@ llvm::Value *
 IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
                                 const std::shared_ptr<SymbolInfo> &leftSym,
                                 const std::shared_ptr<SymbolInfo> &rightSym) {
-  std::string parentTypeName = leftSym->type.resolvedName;
+  std::string parentTypeName = leftSym->type().type.resolvedName;
   std::string lookUpName = parentTypeName;
   std::string memberName =
       semantics.extractIdentifierName(infix->right_operand.get());
 
-  if (leftSym->type.isPointer() || leftSym->type.isRef())
-    lookUpName = semantics.getBaseTypeName(leftSym->type);
+  if (leftSym->type().type.isPointer() || leftSym->type().type.isRef())
+    lookUpName = semantics.getBaseTypeName(leftSym->type().type);
 
   auto parentTypeIt = semantics.customTypesTable.find(lookUpName);
   if (parentTypeIt == semantics.customTypesTable.end())
@@ -333,7 +333,7 @@ IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
     memberVal->setVolatile(true);
   }
   // Also check if the parent is volatile (volatile propagates to members)
-  else if (leftSym->isVolatile) {
+  else if (leftSym->storage().isVolatile) {
     memberVal->setVolatile(true);
   }
 

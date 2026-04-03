@@ -1,5 +1,6 @@
 #include "ast.hpp"
 #include "irgen.hpp"
+#include "semantics.hpp"
 #include <cstdint>
 #include <llvm-18/llvm/IR/Constants.h>
 #include <stdexcept>
@@ -7,18 +8,10 @@
 //___________________Literals generator_____________________
 llvm::Value *IRGenerator::generateStringLiteral(Node *node) {
   auto strLit = dynamic_cast<StringLiteral *>(node);
-  if (!strLit) {
+  if (!strLit) 
     reportDevBug("Invalid string literal", node);
-  }
-  auto it = semantics.metaData.find(strLit);
-  if (it == semantics.metaData.end()) {
-    reportDevBug("String literal not found in metaData", strLit);
-  }
-  DataType dt = it->second->type.kind;
+  
 
-  if (dt != DataType::STRING) {
-    reportDevBug("Invalid type expected 'string'", strLit);
-  }
   std::string raw = strLit->string_token.TokenLiteral;
   llvm::Constant *strConst =
       llvm::ConstantDataArray::getString(context, raw, true);
@@ -39,17 +32,10 @@ llvm::Value *IRGenerator::generateStringLiteral(Node *node) {
 
 llvm::Value *IRGenerator::generateChar8Literal(Node *node) {
   auto charLit = dynamic_cast<Char8Literal *>(node);
-  if (!charLit) {
-    throw std::runtime_error("Invalid char literal");
-  }
-  auto it = semantics.metaData.find(charLit);
-  if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Char8 literal not found in metadata");
-  }
-  DataType dt = it->second->type.kind;
-  if (dt != DataType::CHAR8) {
-    throw std::runtime_error("Type error: Expected CHAR for CharLiteral");
-  }
+  if (!charLit) 
+    reportDevBug("Invalid char literal",node);
+  
+ 
   std::string tokenLiteral = charLit->char8_token.TokenLiteral;
 
   char c = decodeCharLiteral(tokenLiteral);
@@ -59,17 +45,10 @@ llvm::Value *IRGenerator::generateChar8Literal(Node *node) {
 
 llvm::Value *IRGenerator::generateChar16Literal(Node *node) {
   auto char16Lit = dynamic_cast<Char16Literal *>(node);
-  if (!char16Lit) {
-    throw std::runtime_error("Invalid char 16 literal");
-  }
-  auto it = semantics.metaData.find(char16Lit);
-  if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Char16 literal not found in metadata");
-  }
-  DataType dt = it->second->type.kind;
-  if (dt != DataType::CHAR16) {
-    throw std::runtime_error("Type error: Expected CHAR16 for Char16Literal");
-  }
+  if (!char16Lit) 
+    reportDevBug("Invalid char 16 literal",node);
+  
+  
   std::string tokenLiteral = char16Lit->char16_token.TokenLiteral;
   uint16_t c = decodeCharLiteral(tokenLiteral);
   return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), c, false);
@@ -77,17 +56,10 @@ llvm::Value *IRGenerator::generateChar16Literal(Node *node) {
 
 llvm::Value *IRGenerator::generateChar32Literal(Node *node) {
   auto char32Lit = dynamic_cast<Char32Literal *>(node);
-  if (!char32Lit) {
-    throw std::runtime_error("Invalid char32 literal");
-  }
-  auto it = semantics.metaData.find(char32Lit);
-  if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Char32 literal not found in metadata");
-  }
-  DataType dt = it->second->type.kind;
-  if (dt != DataType::CHAR32) {
-    throw std::runtime_error("Type error: Expected CHAR32 for Char32Literal");
-  }
+  if (!char32Lit) 
+    reportDevBug("Invalid char32 literal",node);
+  
+  
   std::string tokenLiteral = char32Lit->char32_token.TokenLiteral;
   uint32_t c = decodeChar32Literal(tokenLiteral);
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), c, false);
@@ -95,17 +67,9 @@ llvm::Value *IRGenerator::generateChar32Literal(Node *node) {
 
 llvm::Value *IRGenerator::generateBooleanLiteral(Node *node) {
   auto boolLit = dynamic_cast<BooleanLiteral *>(node);
-  if (!boolLit) {
-    throw std::runtime_error("Invalid boolean type");
-  }
-  auto it = semantics.metaData.find(boolLit);
-  if (it == semantics.metaData.end()) {
-    throw std::runtime_error("Boolean literal not found in metadata");
-  }
-  DataType dt = it->second->type.kind;
-  if (dt != DataType::BOOLEAN) {
-    throw std::runtime_error("Type error: Expected BOOLEAN for BooleanLiteral");
-  }
+  if (!boolLit) 
+    reportDevBug("Invalid boolean type",node);
+  
 
   bool value = (boolLit->boolean_token.TokenLiteral == "true");
 
@@ -115,7 +79,7 @@ llvm::Value *IRGenerator::generateBooleanLiteral(Node *node) {
 llvm::Value *IRGenerator::generateI8Literal(Node *node) {
   auto i8Lit = dynamic_cast<I8Literal *>(node);
   if (!i8Lit)
-    throw std::runtime_error("Invalid i8 literal");
+    reportDevBug("Invalid i8 literal",node);
 
   return generateIntegerLiteral(i8Lit->i8_token.TokenLiteral, 8, true);
 }
@@ -123,7 +87,7 @@ llvm::Value *IRGenerator::generateI8Literal(Node *node) {
 llvm::Value *IRGenerator::generateU8Literal(Node *node) {
   auto u8Lit = dynamic_cast<U8Literal *>(node);
   if (!u8Lit)
-    throw std::runtime_error("Invalid u8 literal");
+    reportDevBug("Invalid u8 literal",node);
 
   return generateIntegerLiteral(u8Lit->u8_token.TokenLiteral, 8, false);
 }
@@ -131,7 +95,7 @@ llvm::Value *IRGenerator::generateU8Literal(Node *node) {
 llvm::Value *IRGenerator::generateI16Literal(Node *node) {
   auto i16Lit = dynamic_cast<I16Literal *>(node);
   if (!i16Lit)
-    throw std::runtime_error("Invalid i16 literal");
+    reportDevBug("Invalid i16 literal",node);
 
   return generateIntegerLiteral(i16Lit->i16_token.TokenLiteral, 16, true);
 }
@@ -139,16 +103,16 @@ llvm::Value *IRGenerator::generateI16Literal(Node *node) {
 llvm::Value *IRGenerator::generateU16Literal(Node *node) {
   auto u16Lit = dynamic_cast<U16Literal *>(node);
   if (!u16Lit)
-    throw std::runtime_error("Invalid u16 literal");
+    reportDevBug("Invalid u16 literal",node);
 
   return generateIntegerLiteral(u16Lit->u16_token.TokenLiteral, 16, false);
 }
 
 llvm::Value *IRGenerator::generateI32Literal(Node *node) {
   auto i32Lit = dynamic_cast<I32Literal *>(node);
-  if (!i32Lit) {
-    throw std::runtime_error("Invalid i32 literal");
-  }
+  if (!i32Lit) 
+    reportDevBug("Invalid i32 literal",node);
+  
 
   return generateIntegerLiteral(i32Lit->i32_token.TokenLiteral, 32, true);
 }
@@ -156,7 +120,7 @@ llvm::Value *IRGenerator::generateI32Literal(Node *node) {
 llvm::Value *IRGenerator::generateU32Literal(Node *node) {
   auto u32Lit = dynamic_cast<U32Literal *>(node);
   if (!u32Lit)
-    throw std::runtime_error("Invalid u32 literal");
+    reportDevBug("Invalid u32 literal",node);
 
   return generateIntegerLiteral(u32Lit->u32_token.TokenLiteral, 32, false);
 }
@@ -164,7 +128,7 @@ llvm::Value *IRGenerator::generateU32Literal(Node *node) {
 llvm::Value *IRGenerator::generateI64Literal(Node *node) {
   auto i64Lit = dynamic_cast<I64Literal *>(node);
   if (!i64Lit)
-    throw std::runtime_error("Invalid i64 literal");
+    reportDevBug("Invalid i64 literal",node);
 
   return generateIntegerLiteral(i64Lit->i64_token.TokenLiteral, 64, true);
 }
@@ -172,7 +136,7 @@ llvm::Value *IRGenerator::generateI64Literal(Node *node) {
 llvm::Value *IRGenerator::generateU64Literal(Node *node) {
   auto u64Lit = dynamic_cast<U64Literal *>(node);
   if (!u64Lit)
-    throw std::runtime_error("Invalid u64 literal");
+    reportDevBug("Invalid u64 literal",node);
 
   return generateIntegerLiteral(u64Lit->u64_token.TokenLiteral, 64, false);
 }
@@ -180,7 +144,7 @@ llvm::Value *IRGenerator::generateU64Literal(Node *node) {
 llvm::Value *IRGenerator::generateI128Literal(Node *node) {
   auto i128Lit = dynamic_cast<I128Literal *>(node);
   if (!i128Lit)
-    throw std::runtime_error("Invalid i128 literal");
+    reportDevBug("Invalid i128 literal",node);
 
   return generateIntegerLiteral(i128Lit->i128_token.TokenLiteral, 128, true);
 }
@@ -202,8 +166,8 @@ llvm::Value *IRGenerator::generateINTLiteral(Node *node) {
   if (!litSym)
     reportDevBug("Failed to get literal symbol info", intLit);
 
-  bool isSigned = isSignedInteger(litSym->type.kind);
-  uint32_t bitWidth = convertIntTypeToWidth(litSym->type.kind);
+  bool isSigned = isSignedInteger(litSym->type().type.kind);
+  uint32_t bitWidth = convertIntTypeToWidth(litSym->type().type.kind);
 
   return generateIntegerLiteral(intLit->int_token.TokenLiteral, bitWidth,
                                 isSigned);
@@ -253,7 +217,7 @@ llvm::Value *IRGenerator::generateFloatLiteral(Node *node) {
   if (!sym)
     reportDevBug("Failed to get literal symbol info", fltLit);
 
-  if (sym->type.kind == DataType::F64) {
+  if (sym->type().type.kind == DataType::F64) {
     double value = std::stod(fltLit->float_token.TokenLiteral);
     return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), value);
   }
@@ -287,36 +251,14 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
 
   // Component instance -> return pointer to the struct instance (address is
   // already correct)
-  auto compIt = componentTypes.find(sym->type.resolvedName);
+  auto compIt = componentTypes.find(sym->type().type.resolvedName);
   if (compIt != componentTypes.end()) {
     return address;
   }
 
-  // Heap scalar: variableAddr is a T* (runtime pointer). Load T from it.
-  if (sym->isSage) {
-    llvm::Type *elemTy = sym->llvmType;
-    if (!elemTy) {
-      reportDevBug("No type for sage scalar '" + identName + "'", identExpr);
-    }
 
-    // variableAddr should be T* (address of object). If not, bitcast it.
-    llvm::PointerType *expectedPtrTy = elemTy->getPointerTo();
-    if (address->getType() != expectedPtrTy)
-      address = funcBuilder.CreateBitCast(address, expectedPtrTy,
-                                          identName + "_ptr_typed");
-
-    // Load the value
-    llvm::LoadInst *loadedVal =
-        funcBuilder.CreateLoad(elemTy, address, identName + "_val");
-    if (sym->isVolatile) {
-      loadedVal->setVolatile(true);
-    }
-
-    return loadedVal;
-  }
-
-  if (sym->isHeap) {
-    llvm::Type *elemTy = sym->llvmType;
+  if (sym->storage().isHeap) {
+    llvm::Type *elemTy = sym->codegen().llvmType;
     llvm::Value *actualHeapAddr = address;
 
     if (!elemTy) {
@@ -326,7 +268,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     // Grab the value from the heap address
     llvm::LoadInst *loadedVal =
         funcBuilder.CreateLoad(elemTy, actualHeapAddr, identName + "_val");
-    if (sym->isVolatile) {
+    if (sym->storage().isVolatile) {
       loadedVal->setVolatile(true);
     }
 
@@ -337,10 +279,10 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
 
   // Non-heap scalar: variableAddr is a pointer to T, just load
   llvm::Type *loadedType;
-  if (sym->isRef) {
-    loadedType = getLLVMType(semantics.peelRef(sym->type));
+  if (sym->type().isRef) {
+    loadedType = getLLVMType(semantics.peelRef(sym->type().type));
   } else {
-    loadedType = getLLVMType(sym->type);
+    loadedType = getLLVMType(sym->type().type);
   }
 
   if (!loadedType) {
@@ -351,7 +293,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
   // variableAddr should already be a pointer, load from it
   llvm::LoadInst *val =
       funcBuilder.CreateLoad(loadedType, address, identName + "_val");
-  if (sym->isVolatile) {
+  if (sym->storage().isVolatile) {
     val->setVolatile(true);
   }
 
@@ -413,14 +355,13 @@ llvm::Value *IRGenerator::generateArrayLiteral(Node *node) {
 llvm::Value *IRGenerator::generateNullLiteral(Node *node) {
   auto nullLit = dynamic_cast<NullLiteral *>(node);
   if (!nullLit)
-    throw std::runtime_error("Invalid null literal");
+    reportDevBug("Invalid null literal",node);
 
-  auto nullMeta = semantics.metaData[nullLit];
-  if (!nullMeta)
-    throw std::runtime_error("Could not find null metaData");
+  auto nullSym=semantics.getSymbolFromMeta(nullLit);
+  if(!nullSym)
+    reportDevBug("Failed to get null symbol info",nullLit);
 
-  ResolvedType stampedType = semantics.metaData[nullLit]->type;
-  llvm::Type *llvmType = getLLVMType(stampedType);
+  llvm::Type *llvmType = getLLVMType(nullSym->type().type);
 
   return llvm::ConstantAggregateZero::get(llvmType);
 }
@@ -429,7 +370,7 @@ llvm::Value *IRGenerator::generateNullLiteral(Node *node) {
 llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   auto infix = dynamic_cast<InfixExpression *>(node);
   if (!infix)
-    throw std::runtime_error("Invalid infix expression");
+    reportDevBug("Invalid infix expression",node);
 
   llvm::Value *result = nullptr;
   if (infix->operat.type == TokenType::SCOPE_OPERATOR)
@@ -473,11 +414,11 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
 
   llvm::Value *rightVal = generateExpression(infix->right_operand.get());
 
-  auto resultType = infixSym->type;
+  auto resultType = infixSym->type().type;
   // Promote operands to widest integer type among left, right, and result
   if (isIntegerType(resultType.kind)) {
-    leftVal = promoteInt(leftVal, leftSym->type.kind, resultType.kind);
-    rightVal = promoteInt(rightVal, rightSym->type.kind, resultType.kind);
+    leftVal = promoteInt(leftVal, leftSym->type().type.kind, resultType.kind);
+    rightVal = promoteInt(rightVal, rightSym->type().type.kind, resultType.kind);
   }
 
   // Handle Null Coalesce (??)
@@ -491,17 +432,17 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
 
   // Handle floating point conversions
   if (resultType.kind == DataType::F32) {
-    if (isIntegerType(leftSym->type.kind))
+    if (isIntegerType(leftSym->type().type.kind))
       leftVal = funcBuilder.CreateSIToFP(
           leftVal, llvm::Type::getFloatTy(context), "inttof32");
-    if (isIntegerType(rightSym->type.kind))
+    if (isIntegerType(rightSym->type().type.kind))
       rightVal = funcBuilder.CreateSIToFP(
           rightVal, llvm::Type::getFloatTy(context), "inttof32");
   } else if (resultType.kind == DataType::F64) {
-    if (isIntegerType(leftSym->type.kind))
+    if (isIntegerType(leftSym->type().type.kind))
       leftVal = funcBuilder.CreateSIToFP(
           leftVal, llvm::Type::getDoubleTy(context), "inttof64");
-    if (isIntegerType(rightSym->type.kind))
+    if (isIntegerType(rightSym->type().type.kind))
       rightVal = funcBuilder.CreateSIToFP(
           rightVal, llvm::Type::getDoubleTy(context), "inttof64");
   }
@@ -524,11 +465,11 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
 llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
   auto prefix = dynamic_cast<PrefixExpression *>(node);
   if (!prefix)
-    throw std::runtime_error("Invalid prefix expression");
+    reportDevBug("Invalid prefix expression",node);
 
   if (isGlobalScope)
-    throw std::runtime_error(
-        "Executable statements arent allowed in the global scope");
+    reportDevBug(
+        "Executable statements arent allowed in the global scope",prefix);
 
   llvm::Value *operand = generateExpression(prefix->operand.get());
 
@@ -536,12 +477,12 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
     throw std::runtime_error("Failed to generate IR for prefix operand");
 
   const std::string &name = prefix->operand->expression.TokenLiteral;
-  auto prefixIt = semantics.metaData.find(prefix);
-  if (prefixIt == semantics.metaData.end()) {
-    throw std::runtime_error("Unknown variable '" + name + "' in prefix");
-  }
+  auto prefixSym = semantics.getSymbolFromMeta(prefix);
+  if (!prefixSym) 
+    reportDevBug("Unknown variable '" + name + "' in prefix",prefix);
+  
 
-  ResolvedType resultType = prefixIt->second->type;
+  ResolvedType resultType = prefixSym->type().type;
 
   switch (prefix->operat.type) {
   case TokenType::MINUS: {
@@ -628,11 +569,11 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
 llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
   auto postfix = dynamic_cast<PostfixExpression *>(node);
   if (!postfix)
-    throw std::runtime_error("Invalid postfix expression");
+    reportDevBug("Invalid postfix expression",node);
 
   auto identifier = dynamic_cast<Identifier *>(postfix->operand.get());
   if (!identifier)
-    throw std::runtime_error("Postfix operand must be a variable");
+    reportDevBug("Postfix operand must be a variable",identifier);
   auto identName = identifier->identifier.TokenLiteral;
   llvm::Value *address = generateIdentifierAddress(identifier);
 
@@ -640,18 +581,18 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
     throw std::runtime_error("Null variable pointer for: " +
                              identifier->identifier.TokenLiteral);
 
-  auto postfixIt = semantics.metaData.find(postfix);
-  if (postfixIt == semantics.metaData.end()) {
-    throw std::runtime_error("Variable '" + identName + "' does not exist");
+  auto postfixSym = semantics.getSymbolFromMeta(postfix);
+  if (postfixSym) {
+    reportDevBug("Variable '" + identName + "' does not exist",postfix);
   }
 
-  ResolvedType resultType = postfixIt->second->type;
+  ResolvedType resultType = postfixSym->type().type;
 
   // Get the type from resultType for CreateLoad
   llvm::Type *varType = getLLVMType(resultType);
   if (!varType)
-    throw std::runtime_error("Invalid type for variable: " +
-                             identifier->identifier.TokenLiteral);
+    reportDevBug("Invalid type for variable: " +
+                             identifier->identifier.TokenLiteral,postfix);
 
   llvm::Value *originalValue =
       funcBuilder.CreateLoad(varType, address, llvm::Twine("loadtmp"));
@@ -693,17 +634,11 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
 llvm::Value *IRGenerator::generateUnwrapExpression(Node *node) {
   auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node);
   if (!unwrapExpr)
-    throw std::runtime_error("Invalid unwrap expression call");
+    reportDevBug("Invalid unwrap expression",node);
 
-  auto unIt = semantics.metaData.find(unwrapExpr);
-  if (unIt == semantics.metaData.end())
-    throw std::runtime_error("Missing unwrap metaData");
-
-  if (unIt->second->hasError)
-    throw std::runtime_error("Error detected");
 
   if (isGlobalScope)
-    throw std::runtime_error("Cannot unwrap in global scope");
+    reportDevBug("Cannot unwrap in global scope",unwrapExpr);
 
   llvm::Value *box = generateExpression(unwrapExpr->expr.get());
 
@@ -741,22 +676,19 @@ llvm::Value *IRGenerator::generateUnwrapExpression(Node *node) {
 llvm::Value *IRGenerator::generateCastExpression(Node *node) {
   auto castExpr = dynamic_cast<CastExpression *>(node);
   if (!castExpr)
-    throw std::runtime_error("Invalid cast expression");
+    reportDevBug("Invalid cast expression",node);
 
-  auto it = semantics.metaData.find(castExpr);
-  if (it == semantics.metaData.end())
-    throw std::runtime_error("Failed to find cast metaData");
 
-  auto castSym = it->second;
-  if (castSym->hasError)
-    throw std::runtime_error("Error detected in cast");
+  auto castSym = semantics.getSymbolFromMeta(castExpr);
+  if (!castSym)
+    reportDevBug("Failed to get cast symbol info",castExpr);
 
   llvm::Value *sourceVal = generateExpression(castExpr->expr.get());
   if (!sourceVal)
     throw std::runtime_error("Failed to generate source value");
 
   llvm::Type *srcType = sourceVal->getType();
-  llvm::Type *dstType = getLLVMType(castSym->type);
+  llvm::Type *dstType = getLLVMType(castSym->type().type);
 
   if (srcType == dstType)
     return sourceVal;
@@ -768,7 +700,7 @@ llvm::Value *IRGenerator::generateCastExpression(Node *node) {
     if (dstBits < srcBits) {
       return funcBuilder.CreateTrunc(sourceVal, dstType, "cast_trunc");
     } else {
-      if (isUnsigned(semantics.metaData[castExpr->expr.get()]->type)) {
+      if (isUnsigned(semantics.metaData[castExpr->expr.get()]->type().type)) {
         return funcBuilder.CreateZExt(sourceVal, dstType, "cast_zext");
       } else {
         return funcBuilder.CreateSExt(sourceVal, dstType, "cast_sext");
@@ -794,30 +726,25 @@ llvm::Value *IRGenerator::generateCastExpression(Node *node) {
       return funcBuilder.CreateFPTrunc(sourceVal, dstType, "cast_fptrunc");
   }
 
-  throw std::runtime_error("Unhandled cast from " + castSym->type.resolvedName);
+  throw std::runtime_error("Unhandled cast from " + castSym->type().type.resolvedName);
 }
 
 llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
   auto bitcastExpr = dynamic_cast<BitcastExpression *>(node);
   if (!bitcastExpr)
-    throw std::runtime_error("Invalid bitcast expression");
+    reportDevBug("Invalid bitcast expression",node);
 
-  // 1. Retrieve the Semantic Metadata we fixed earlier
-  auto it = semantics.metaData.find(bitcastExpr);
-  if (it == semantics.metaData.end())
-    throw std::runtime_error("Failed to find bitcast metaData");
-
-  auto bitcastSym = it->second;
-  if (bitcastSym->hasError)
-    throw std::runtime_error("Error detected in bitcast: skipping generation");
+  auto bitcastSym = semantics.getSymbolFromMeta(bitcastExpr);
+  if(!bitcastSym)
+    reportDevBug("Failed to get bitcast symbol info",bitcastExpr);
 
   // Generate the source value (the bits we are reinterpreting)
   llvm::Value *sourceVal = generateExpression(bitcastExpr->expr.get());
   if (!sourceVal)
-    throw std::runtime_error("Failed to generate source value");
+    reportDevBug("Failed to generate source value",bitcastExpr->expr.get());
 
   llvm::Type *srcType = sourceVal->getType();
-  llvm::Type *dstType = getLLVMType(bitcastSym->type);
+  llvm::Type *dstType = getLLVMType(bitcastSym->type().type);
 
   // If types are already identical, just return the value
   if (srcType == dstType)
@@ -852,21 +779,16 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
 llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
   auto arrExpr = dynamic_cast<ArraySubscript *>(node);
   if (!arrExpr)
-    throw std::runtime_error("Invalid array access expression");
+    reportDevBug("Invalid array access expression",node);
 
-  auto arrMetaIt = semantics.metaData.find(arrExpr);
-  if (arrMetaIt == semantics.metaData.end()) {
-    throw std::runtime_error("Could not find array subscript metaData");
-  }
-  auto arrSym = arrMetaIt->second;
+  auto arrSym = semantics.getSymbolFromMeta(arrExpr);
+  if(!arrSym)
+    reportDevBug("Failed to get array subscript symbol info",arrExpr);
 
-  if (arrSym->hasError) {
-    throw std::runtime_error("Semantic error was detected in array subscript");
-  }
   inhibitCleanUp = true;
   llvm::Value *ptr = generateArraySubscriptAddress(node);
 
-  llvm::Type *elemTy = getLLVMType(arrSym->type);
+  llvm::Type *elemTy = getLLVMType(arrSym->type().type);
   auto loadedVal = funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
   inhibitCleanUp = false;
   emitCleanup(arrExpr);
@@ -877,7 +799,7 @@ llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
 llvm::Value *IRGenerator::generateSizeOfExpression(Node *node) {
   auto sizeOf = dynamic_cast<SizeOfExpression *>(node);
   if (!sizeOf)
-    throw std::runtime_error("Invalid sizeof expression");
+    reportDevBug("Invalid sizeof expression",node);
 
   Expression *typeExpr = sizeOf->type.get();
   ResolvedType type = semantics.inferNodeDataType(typeExpr);
@@ -892,10 +814,8 @@ llvm::Value *IRGenerator::generateSizeOfExpression(Node *node) {
 llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
   auto selfExpr = dynamic_cast<SelfExpression *>(node);
   if (!selfExpr)
-    throw std::runtime_error("Invalid self expression");
+    reportDevBug("Invalid self expression",node);
 
-  std::cout << "[IR] Generating IR for self expression: "
-            << selfExpr->toString() << "\n";
 
   const std::string &compName =
       currentComponent->component_name->expression.TokenLiteral;
@@ -909,7 +829,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
 
   currentStructTy = it->second;
 
-  // --- Load 'self' pointer ---
+  //  Load 'self' pointer
   llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
   if (!selfAlloca)
     throw std::runtime_error("'self' access outside component method");
@@ -919,7 +839,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
   // self pointer itself is never volatile (it's just a pointer to the
   // component)
 
-  // --- Semantic chain walk ---
+  // Semantic chain walk 
   auto ctIt = semantics.customTypesTable.find(compName);
   if (ctIt == semantics.customTypesTable.end())
     throw std::runtime_error("Unknown component '" + compName + "'");
@@ -1003,14 +923,14 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
 
   // Get the address of the variable (e.g., the alloca on the stack)
   llvm::Value *addr = generateIdentifierAddress(identNode);
-  derefSym->llvmValue = addr;
+  derefSym->codegen().llvmValue = addr;
   auto meta = semantics.getSymbolFromMeta(node);
 
   // Load the actual address stored in the variable.
   // This MUST be a pointer type if we intend to dereference it further.
   llvm::Type *ptrTy = llvm::PointerType::getUnqual(context);
   auto *baseLoad = funcBuilder.CreateLoad(ptrTy, addr, "base_address");
-  if (meta && meta->isVolatile) {
+  if (meta && meta->storage().isVolatile) {
     baseLoad->setVolatile(true);
   }
   addr = baseLoad;
@@ -1021,14 +941,14 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
     // If this is the LAST hop, we load the actual data (e.g., i32)
     bool isLastHop = (i == derefCount - 1);
 
-    llvm::Type *loadTy = isLastHop ? getLLVMType(meta->type) : ptrTy;
+    llvm::Type *loadTy = isLastHop ? getLLVMType(meta->type().type) : ptrTy;
 
     // Create the load.
     // If it's the last hop, this returns the value (i32).
     // Otherwise, it returns the next address in the chain.
     auto *hopLoad = funcBuilder.CreateLoad(loadTy, addr,
                                            isLastHop ? "deref_val" : "ptr_hop");
-    if (meta && meta->isVolatile) {
+    if (meta && meta->storage().isVolatile) {
       hopLoad->setVolatile(true);
     }
     addr = hopLoad;
@@ -1066,20 +986,17 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
 
   logInternal("Handling address expression generation");
   inhibitCleanUp = true;
-  auto metaIt = semantics.metaData.find(addrExpr);
-  if (metaIt == semantics.metaData.end()) {
-    errorHandler.addHint("Semantics failed to register the address metaData");
-    reportDevBug("Could not find address metadata", addrExpr);
-  }
+  
+  auto sym = semantics.getSymbolFromMeta(addrExpr);
+  if(!sym)
+    reportDevBug("Failed to find address symbol info",addrExpr);
 
-  auto sym = metaIt->second;
-
-  auto targetSym = sym->targetSymbol;
-  llvm::Value *variablePtr = targetSym->llvmValue;
+  auto targetSym = sym->relations().targetSymbol;
+  llvm::Value *variablePtr = targetSym->codegen().llvmValue;
   if (!variablePtr) {
     reportDevBug("No value was assigned to the target", addrExpr);
   }
-  sym->llvmValue = variablePtr;
+  sym->codegen().llvmValue = variablePtr;
   inhibitCleanUp = false;
   emitCleanup(addrExpr);
 

@@ -1,5 +1,4 @@
-#ifndef DEFS_HPP
-#define DEFS_HPP
+#pragma once
 #include <llvm/IR/Value.h>
 
 #include <cstdint>
@@ -525,11 +524,3 @@ struct StubTable {
     std::vector<Generics> generics;
 };
 
-struct ImportedGeneric{
-    std::string aliasName;
-    std::vector<ComponentTable> genericComponents;
-    std::vector<RecordTable> genericRecords;
-    std::vector<FunctionEntry> genericFunctions;
-};
-
-#endif

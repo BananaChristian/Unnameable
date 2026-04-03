@@ -20,28 +20,28 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
     reportDevBug("Could not find identifier metadata", identExpr);
   }
 
-  llvm::Value *variablePtr = sym->llvmValue;
+  llvm::Value *variablePtr = sym->codegen().llvmValue;
   if (!variablePtr)
     reportDevBug("No value for '" + identName + "'", identExpr);
 
-  if (sym->isRef) {
+  if (sym->type().isRef) {
     llvm::Type *ptrType = llvm::PointerType::get(funcBuilder.getContext(), 0);
     auto *load =
         funcBuilder.CreateLoad(ptrType, variablePtr, identName + "_ref_addr");
-    if (sym->isVolatile) {
+    if (sym->storage().isVolatile) {
       load->setVolatile(true);
     }
     variablePtr = load;
   }
 
   // Component instance -> pointer to struct
-  auto compIt = componentTypes.find(sym->type.resolvedName);
+  auto compIt = componentTypes.find(sym->type().type.resolvedName);
   if (compIt != componentTypes.end()) {
     address = variablePtr;
   } else {
     // scalar/heap -> ensure typed pointer
-    if (sym->isHeap) {
-      llvm::Type *elemTy = sym->llvmType;
+    if (sym->storage().isHeap) {
+      llvm::Type *elemTy = sym->codegen().llvmType;
       if (!elemTy) {
         reportDevBug("No type for '" + identName + "'", identExpr);
       }
@@ -76,23 +76,22 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
     auto lhsMeta = semantics.metaData[infix->left_operand.get()];
     auto rhsIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
 
-    if (lhsMeta->type.isPointer() || lhsMeta->type.isRef()) {
+    if (lhsMeta->type().type.isPointer() || lhsMeta->type().type.isRef()) {
       llvm::Type *ptrTy = llvm::PointerType::get(funcBuilder.getContext(), 0);
       auto *load = funcBuilder.CreateLoad(ptrTy, address, "ptr_deref");
-      if (lhsMeta->isVolatile) {
+      if (lhsMeta->storage().isVolatile) {
         load->setVolatile(true);
       }
       address = load;
     }
 
-    std::string lookUpName = lhsMeta->type.resolvedName;
-    if (lhsMeta->type.isPointer() || lhsMeta->type.isRef())
-      lookUpName = semantics.getBaseTypeName(lhsMeta->type);
-
+    std::string lookUpName = lhsMeta->type().type.resolvedName;
+    if (lhsMeta->type().type.isPointer() || lhsMeta->type().type.isRef())
+      lookUpName = semantics.getBaseTypeName(lhsMeta->type().type);
     llvm::StructType *structTy = llvmCustomTypes[lookUpName];
 
     auto memberInfo = semantics.metaData[infix];
-    unsigned memberIndex = memberInfo->memberIndex;
+    unsigned memberIndex = memberInfo->type().memberIndex;
 
     address = funcBuilder.CreateStructGEP(structTy, address, memberIndex,
                                           rhsIdent->identifier.TokenLiteral);
@@ -214,12 +213,12 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
   llvm::Value *allocaPtr = generateIdentifierAddress(arrExpr->identifier.get());
   auto *dataLoad =
       funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "raw_data_ptr");
-  if (baseSym->isVolatile) {
+  if (baseSym->storage().isVolatile) {
     dataLoad->setVolatile(true);
   }
   llvm::Value *dataPtr = dataLoad;
 
-  const auto &dims = baseSym->sizePerDimensions;
+  const auto &dims = baseSym->type().sizePerDimensions;
 
   // Calculate the Flat Linear Offset
   llvm::Value *totalOffset = funcBuilder.getInt64(0);
@@ -265,7 +264,7 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
   }
 
   // We treat dataPtr as a pointer to the final element type (e.g., i32)
-  llvm::Type *elemTy = getLLVMType(baseSym->type);
+  llvm::Type *elemTy = getLLVMType(baseSym->type().type);
   return funcBuilder.CreateGEP(elemTy, dataPtr, {totalOffset}, "element_ptr");
 }
 
@@ -291,7 +290,7 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
   auto *baseLoad = funcBuilder.CreateLoad(ptrType, addr, "base_lift");
   // Get symbol for the pointer being dereferenced
   auto sym = semantics.getSymbolFromMeta(current);
-  if (sym && sym->isVolatile) {
+  if (sym && sym->storage().isVolatile) {
     baseLoad->setVolatile(true);
   }
   addr = baseLoad;
@@ -299,7 +298,7 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
   for (int i = 0; i < derefCount - 1; i++) {
     auto *hopLoad = funcBuilder.CreateLoad(ptrType, addr, "deref_hop_addr");
     // Intermediate loads also need to be volatile if the pointer is volatile
-    if (sym && sym->isVolatile) {
+    if (sym && sym->storage().isVolatile) {
       hopLoad->setVolatile(true);
     }
     addr = hopLoad;

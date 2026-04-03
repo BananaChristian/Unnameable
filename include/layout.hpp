@@ -1,10 +1,11 @@
+#pragma once
 #include "ast.hpp"
 #include "errors.hpp"
 #include "irgen.hpp"
-#include "semantics.hpp"
 #include <llvm-18/llvm/IR/DataLayout.h>
 #include <typeindex>
 #include <unordered_map>
+#include "semantics.hpp"
 
 class Layout {
 public:

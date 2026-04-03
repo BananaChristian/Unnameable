@@ -15,17 +15,17 @@ void Auditor::auditVariableDeclaration(Node *node) {
   if (!sym)
     return;
 
-  if (!sym->isHeap)
+  if (!sym->storage().isHeap)
     return;
 
   auto initializer = declaration->initializer.get();
-  if (sym->isPointer && initializer) {
+  if (sym->type().isPointer && initializer) {
     auto valSym = semantics.getSymbolFromMeta(initializer);
     if (!valSym)
       return;
 
-    Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->ID);
-    Node *ptrBatonHolder = semantics.queryForLifeTimeBaton(sym->ID);
+    Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->codegen().ID);
+    Node *ptrBatonHolder = semantics.queryForLifeTimeBaton(sym->codegen().ID);
 
     if (valBatonHolder && valBatonHolder != initializer) {
       auto &valBaton = semantics.responsibilityTable[valBatonHolder];
@@ -33,16 +33,16 @@ void Auditor::auditVariableDeclaration(Node *node) {
 
       logInternal("  [REVERSE-LOGIC] Detected non-death use. Correcting baton "
                   "states...");
-      logInternal("    Before: Ptr(" + sym->ID +
+      logInternal("    Before: Ptr(" + sym->codegen().ID +
                   ") Deps: " + std::to_string(ptrBaton->dependents.size()));
 
       // The "Undo"
-      if (ptrBaton->dependents.count(valSym->ID)) {
-        ptrBaton->dependents.erase(valSym->ID);
-        logInternal("    Action: Erased " + valSym->ID + " from Ptr " +
-                    sym->ID);
+      if (ptrBaton->dependents.count(valSym->codegen().ID)) {
+        ptrBaton->dependents.erase(valSym->codegen().ID);
+        logInternal("    Action: Erased " + valSym->codegen().ID + " from Ptr " +
+                    sym->codegen().ID);
       } else {
-        logInternal("    Warning: " + valSym->ID +
+        logInternal("    Warning: " + valSym->codegen().ID +
                     " was NOT in Ptr dependents. Exclusivity might be broken.");
       }
 
@@ -52,7 +52,7 @@ void Auditor::auditVariableDeclaration(Node *node) {
     }
   }
 
-  simulateDeclFree(declaration, sym->ID);
+  simulateDeclFree(declaration, sym->codegen().ID);
 }
 
 void Auditor::auditFieldAssignmentStatement(Node *node) {
@@ -75,7 +75,7 @@ void Auditor::auditFieldAssignmentStatement(Node *node) {
 
   assignmentRob(fieldAssign, sym);
   inhibit = false;
-  simulateFree(fieldAssign, sym->ID);
+  simulateFree(fieldAssign, sym->codegen().ID);
 }
 
 void Auditor::auditAssignmentStatement(Node *node) {
@@ -86,7 +86,7 @@ void Auditor::auditAssignmentStatement(Node *node) {
   auto assignSym = semantics.getSymbolFromMeta(assignStmt);
   if (!assignSym)
     reportDevBug("Failed to get assignment symbol info", assignStmt);
-  if (!assignSym->isHeap)
+  if (!assignSym->storage().isHeap)
     return;
 
   auto valSym = semantics.getSymbolFromMeta(assignStmt->value.get());
@@ -98,7 +98,7 @@ void Auditor::auditAssignmentStatement(Node *node) {
   audit(assignStmt->value.get());
   assignmentRob(assignStmt, assignSym);
   inhibit = false;
-  simulateFree(assignStmt, assignSym->ID);
+  simulateFree(assignStmt, assignSym->codegen().ID);
 }
 
 void Auditor::auditFunctionStatement(Node *node) {
@@ -228,15 +228,15 @@ void Auditor::auditReturnStatement(Node *node) {
     return;
 
   auto retSym = semantics.getSymbolFromMeta(retStmt);
-  if (!retSym->isHeap)
+  if (!retSym->storage().isHeap)
     return;
 
-  logInternal("Return statement ID: " + retSym->ID);
+  logInternal("Return statement ID: " + retSym->codegen().ID);
 
   const auto &valName =
       semantics.extractIdentifierName(retStmt->return_value.get());
 
-  Node *batonHolder = semantics.queryForLifeTimeBaton(retSym->ID);
+  Node *batonHolder = semantics.queryForLifeTimeBaton(retSym->codegen().ID);
   if (!batonHolder) {
     logInternal("Failed to get baton holder");
     return;
@@ -268,7 +268,7 @@ void Auditor::auditReturnStatement(Node *node) {
     }
   }
 
-  simulateFree(retStmt, retSym->ID);
+  simulateFree(retStmt, retSym->codegen().ID);
 }
 
 void Auditor::auditInfix(Node *node) {
@@ -284,7 +284,7 @@ void Auditor::auditInfix(Node *node) {
   audit(infix->left_operand.get());
   audit(infix->right_operand.get());
   inhibit = false;
-  simulateFree(infix, infixSym->ID);
+  simulateFree(infix, infixSym->codegen().ID);
 }
 
 void Auditor::auditIdentifier(Node *node) {
@@ -293,7 +293,7 @@ void Auditor::auditIdentifier(Node *node) {
     return;
 
   auto identSym = semantics.getSymbolFromMeta(ident);
-  simulateFree(ident, identSym->ID);
+  simulateFree(ident, identSym->codegen().ID);
 }
 
 void Auditor::auditTraceStatement(Node *node) {
@@ -305,7 +305,7 @@ void Auditor::auditTraceStatement(Node *node) {
   inhibit = true;
   audit(traceStmt->expr.get());
   inhibit = false;
-  simulateFree(traceStmt, traceSym->ID);
+  simulateFree(traceStmt, traceSym->codegen().ID);
 }
 
 void Auditor::auditAddressExpression(Node *node) {
@@ -317,7 +317,7 @@ void Auditor::auditAddressExpression(Node *node) {
   inhibit = true;
   audit(addrExpr->identifier.get());
   inhibit = false;
-  simulateFree(addrExpr, addrSym->ID);
+  simulateFree(addrExpr, addrSym->codegen().ID);
 }
 
 void Auditor::auditDereferenceExpression(Node *node) {
@@ -329,7 +329,7 @@ void Auditor::auditDereferenceExpression(Node *node) {
   inhibit = true;
   audit(derefExpr->identifier.get());
   inhibit = false;
-  simulateFree(derefExpr, derefSym->ID);
+  simulateFree(derefExpr, derefSym->codegen().ID);
 }
 
 void Auditor::auditBlockStatement(Node *node) {

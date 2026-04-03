@@ -1,7 +1,7 @@
+#pragma once
 #include <ostream>
 
 #include "ast.hpp"
-#include "defs.hpp"
 #include "semantics.hpp"
 #include "typeindex"
 

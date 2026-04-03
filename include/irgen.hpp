@@ -1,5 +1,4 @@
-#ifndef IRGENERATOR_HPP
-#define IRGENERATOR_HPP
+#pragma once
 
 #include <llvm-18/llvm/IR/BasicBlock.h>
 #include <memory>
@@ -13,7 +12,6 @@
 
 #include "ast.hpp"
 #include "audit.hpp"
-#include "semantics.hpp"
 
 struct JumpTarget {
   llvm::BasicBlock *breakTarget;
@@ -61,13 +59,9 @@ public:
   llvm::Function *currentFunction;
   std::vector<JumpTarget> jumpStack;
 
-  bool isSageInitCalled = false;
-  bool isSageDestroyCalled = false;
-
   bool isGlobalScope = true;
 
   bool emitObjectFile(const std::string &outPath);
-  void generateSageDestroyCall();
 
 private:
   llvm::LLVMContext context;
@@ -188,14 +182,13 @@ private:
   void traceRuntime(llvm::Value *val, ResolvedType type);
   void declareImportedSeals();
   void declareImportedTypes();
+  void declareImportedFunctions();
   void declareCustomTypes();
-  void declareImportedGenerics();
   void registerAllocators();
   void declareImportedInit(const std::string &typeName);
   char *const_unnitoa(__int128 val, char *buf);
   char decodeCharLiteral(const std::string &literal);
   uint32_t decodeUTF8ToCodePoint(const std::string &literal);
-  void generateSageInitCall();
   uint16_t decodeChar16Literal(const std::string &literal);
   uint32_t decodeChar32Literal(const std::string &literal);
   uint32_t convertIntTypeToWidth(const DataType &dt);
@@ -286,4 +279,3 @@ private:
   void logInternal(const std::string &message);
 };
 
-#endif
