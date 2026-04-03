@@ -64,7 +64,7 @@ void Semantics::walkInstantiateStatement(Node *node) {
     return;
 
   hasError = false;
-
+  bool isExportable=instStmt->isExportable;
   // Get the name of the generic we want to instantiate
   auto genericCall = dynamic_cast<GenericCall *>(instStmt->generic_call.get());
   std::string genericName = genericCall->ident->expression.TokenLiteral;
@@ -124,10 +124,24 @@ void Semantics::walkInstantiateStatement(Node *node) {
   logInternal("Mangling name ...");
   mangleGenericName(clonedSubTree.get(), aliasName);
 
+  //Cascade the export flag
+  auto blockStmt=dynamic_cast<BlockStatement*>(clonedSubTree.get());
+  for(const auto &stmt:blockStmt->statements){
+    if(auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get())){
+      auto fnExpr=dynamic_cast<FunctionExpression*>(fnStmt->funcExpr.get());
+      fnExpr->isExportable=isExportable;
+    }
+    if(auto recordStmt=dynamic_cast<RecordStatement*>(stmt.get()))
+      recordStmt->isExportable=isExportable;
+
+    if(auto componentStmt=dynamic_cast<ComponentStatement*>(stmt.get()))
+      componentStmt->isExportable=isExportable;
+     }
+
   // Walk the generated subtree
   logInternal("Analyzing cloned sub tree ...");
   walker(clonedSubTree.get());
-
+ 
   // Build the instantion info
   GenericInstantiationInfo instantiationInfo;
   instantiationInfo.aliasName = aliasName;

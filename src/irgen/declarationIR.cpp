@@ -1,4 +1,4 @@
-#include "ast.hpp"
+#include "ast.hpp" 
 #include "irgen.hpp"
 #include <llvm-18/llvm/IR/Attributes.h>
 
@@ -70,6 +70,7 @@ llvm::Value *IRGenerator::generateScalarStorage(VariableDeclaration *decl,
     initVal = llvm::Constant::getNullValue(varTy);
 
   // Nullable boxing
+  logInternal("Is the type nullable: "+std::to_string(sym->type().type.isNull));
   if (sym->type().type.isNull && !llvm::isa<llvm::StructType>(varTy)) {
     llvm::StructType *stTy = llvm::cast<llvm::StructType>(varTy);
     llvm::Value *boxed = llvm::UndefValue::get(stTy);

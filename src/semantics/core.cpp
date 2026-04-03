@@ -1845,57 +1845,60 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
 
   auto baseType = dynamic_cast<BasicType *>(declaration->base_type.get());
   TokenType basetype_tokentype = baseType->data_token.type;
+  auto makeType=[&](const ResolvedType &type){
+    return ResolvedType::makeBase(type.kind,type.resolvedName,baseType->isNullable);
+  };
 
   switch (basetype_tokentype) {
   case TokenType::I8_KEYWORD:
-    return ResolvedType::makeBase(DataType::I8, "i8");
+    return makeType(ResolvedType::makeBase(DataType::I8, "i8"));
   case TokenType::U8_KEYWORD:
-    return ResolvedType::makeBase(DataType::U8, "u8");
+    return makeType(ResolvedType::makeBase(DataType::U8, "u8"));
 
   case TokenType::I16_KEYWORD:
-    return ResolvedType::makeBase(DataType::I16, "i16");
+    return makeType(ResolvedType::makeBase(DataType::I16, "i16"));
   case TokenType::U16_KEYWORD:
-    return ResolvedType::makeBase(DataType::U16, "u16");
+    return makeType(ResolvedType::makeBase(DataType::U16, "u16"));
 
   case TokenType::I32_KEYWORD:
-    return ResolvedType::makeBase(DataType::I32, "i32");
+    return makeType(ResolvedType::makeBase(DataType::I32, "i32"));
   case TokenType::U32_KEYWORD:
-    return ResolvedType::makeBase(DataType::U32, "u32");
+    return makeType(ResolvedType::makeBase(DataType::U32, "u32"));
 
   case TokenType::I64_KEYWORD:
-    return ResolvedType::makeBase(DataType::I64, "i64");
+    return makeType(ResolvedType::makeBase(DataType::I64, "i64"));
   case TokenType::U64_KEYWORD:
-    return ResolvedType::makeBase(DataType::U64, "u64");
+    return makeType(ResolvedType::makeBase(DataType::U64, "u64"));
 
   case TokenType::I128_KEYWORD:
-    return ResolvedType::makeBase(DataType::I128, "i128");
+    return makeType(ResolvedType::makeBase(DataType::I128, "i128"));
   case TokenType::U128_KEYWORD:
-    return ResolvedType::makeBase(DataType::U128, "u128");
+    return makeType(ResolvedType::makeBase(DataType::U128, "u128"));
 
   case TokenType::ISIZE_KEYWORD:
-    return ResolvedType::makeBase(DataType::ISIZE, "isize");
+    return makeType(ResolvedType::makeBase(DataType::ISIZE, "isize"));
   case TokenType::USIZE_KEYWORD:
-    return ResolvedType::makeBase(DataType::USIZE, "usize");
+    return makeType(ResolvedType::makeBase(DataType::USIZE, "usize"));
 
   case TokenType::F32_KEYWORD:
-    return ResolvedType::makeBase(DataType::F32, "f32");
+    return makeType(ResolvedType::makeBase(DataType::F32, "f32"));
   case TokenType::F64_KEYWORD:
-    return ResolvedType::makeBase(DataType::F64, "f64");
+    return makeType(ResolvedType::makeBase(DataType::F64, "f64"));
 
   case TokenType::STRING_KEYWORD:
-    return ResolvedType::makeBase(DataType::STRING, "string");
+    return makeType(ResolvedType::makeBase(DataType::STRING, "string"));
 
   case TokenType::CHAR8_KEYWORD:
-    return ResolvedType::makeBase(DataType::CHAR8, "char8");
+    return makeType(ResolvedType::makeBase(DataType::CHAR8, "char8"));
   case TokenType::CHAR16_KEYWORD:
     return ResolvedType::makeBase(DataType::CHAR16, "char16");
   case TokenType::CHAR32_KEYWORD:
-    return ResolvedType::makeBase(DataType::CHAR32, "char32");
+    return makeType(ResolvedType::makeBase(DataType::CHAR32, "char32"));
   case TokenType::OPAQUE:
-    return ResolvedType::makeBase(DataType::OPAQUE, "opaque");
+    return makeType(ResolvedType::makeBase(DataType::OPAQUE, "opaque"));
 
   case TokenType::BOOL_KEYWORD:
-    return ResolvedType::makeBase(DataType::BOOLEAN, "bool");
+    return makeType(ResolvedType::makeBase(DataType::BOOLEAN, "bool"));
 
   case TokenType::AUTO: {
     auto value = declaration->initializer.get();
@@ -1917,8 +1920,8 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
       return ResolvedType::error();
     }
 
-    return ResolvedType::makeBase(typeIt->second->type.kind,
-                                  typeIt->second->typeName);
+    return makeType(ResolvedType::makeBase(typeIt->second->type.kind,
+                                  typeIt->second->typeName));
   }
 
   default:
