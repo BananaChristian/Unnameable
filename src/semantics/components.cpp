@@ -345,7 +345,9 @@ void Semantics::walkRecordStatement(Node* node) {
     symbolTable.push_back({});
 
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> recordMembers;
+    
 
+    int currentMemberIndex = 0;
     // Analyze each field
     for (const auto& field : recordStmt->fields) {
         auto declaration = dynamic_cast<VariableDeclaration*>(field.get());
@@ -390,6 +392,7 @@ void Semantics::walkRecordStatement(Node* node) {
         memInfo->isVolatile = fieldSymbol->storage().isVolatile;
         memInfo->typeNode = recordStmt;
         memInfo->node = field.get();
+        memInfo->memberIndex=currentMemberIndex++;
 
         // Insert into members map
         recordMembers[fieldName] = memInfo;
@@ -397,28 +400,13 @@ void Semantics::walkRecordStatement(Node* node) {
         logInternal("Added field '" + fieldName + "' to record '" + recordName + "'");
     }
 
-    int currentMemberIndex = 0;
-    for (auto& kv : recordMembers) {
-        kv.second->memberIndex = currentMemberIndex++;
-    }
 
     // Build symbol info for the block
     recordSym->members = recordMembers;
     recordSym->hasError = hasError;
 
-    for (auto& kv : recordSym->members) {
-        auto it = recordMembers.find(kv.first);
-        if (it != recordMembers.end()) kv.second->memberIndex = it->second->memberIndex;
-    }
-
     typeInfo->members = recordMembers;
-
-    // Propagate indices to customTypesTable
-    for (auto& kv : typeInfo->members) {
-        auto it = recordMembers.find(kv.first);
-        if (it != recordMembers.end()) kv.second->memberIndex = it->second->memberIndex;
-    }
-
+    
     customTypesTable[recordName] = typeInfo;
     // Pop local scope
     insideRecord = false;
@@ -646,7 +634,7 @@ void Semantics::walkComponentStatement(Node* node) {
     auto componentName = componentStmt->component_name->expression.TokenLiteral;
     bool isExportable = componentStmt->isExportable;
 
-    bool hasError = false;
+    hasError = false;
     insideComponent = true;
 
     if (symbolTable[0].find(componentName) != symbolTable[0].end()) {
@@ -704,7 +692,17 @@ void Semantics::walkComponentStatement(Node* node) {
 
             auto& importedMembers = typeIt->second->members;
             auto& currentScope = symbolTable.back();
-            for (auto& [name, info] : importedMembers) {
+
+            std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>> sortedMembers(
+    importedMembers.begin(), importedMembers.end());
+
+    std::sort(sortedMembers.begin(), sortedMembers.end(),
+    [](const auto &a, const auto &b) {
+        return a.second->memberIndex < b.second->memberIndex;
+    });
+
+
+            for (auto& [name, info] : sortedMembers) {
                 auto memberCopy = std::make_shared<MemberInfo>();
                 memberCopy->memberName = info->memberName;
                 memberCopy->type = info->type;
@@ -1114,6 +1112,8 @@ void Semantics::walkMethodCallExpression(Node* node) {
     for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
         const auto& arg = funcCall->parameters[i];
         walker(arg.get());
+        auto argSym=getSymbolFromMeta(arg.get());
+        giveGenericLiteralContext(arg.get(),memInfo->paramTypes[i].first,argSym);
 
         if (auto nullLit = dynamic_cast<NullLiteral*>(arg.get())) {
             if (i < memInfo->paramTypes.size()) {

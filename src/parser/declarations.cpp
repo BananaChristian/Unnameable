@@ -169,7 +169,8 @@ std::unique_ptr<Statement> Parser::parseVariableDeclaration() {
   }
 
   return std::make_unique<VariableDeclaration>(
-      false, false, false, false, Mutability::IMMUTABLE, std::move(allocator),
-      std::move(modified_type), std::move(base_type), std::move(identifier),
-      assign_token, std::move(value));
+        std::move(allocator),std::move(modified_type),std::move(base_type),
+        std::move(identifier),std::move(value),assign_token,Mutability::IMMUTABLE,
+        false,false,false,false
+     );
 }

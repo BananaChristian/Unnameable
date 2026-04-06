@@ -151,7 +151,7 @@ struct StorageInfo {
 
     bool isVolatile = false;  // volatile qualifier
     bool isRestrict = false;  // restrict qualifier (no aliasing)
-    bool isPersist = false;   // Survives the current scope
+    bool isPersist = false;   // Baton will only free at scope end
 
     bool isMutable = false;   // Declared with 'var'
     bool isConstant = false;  // Declared with 'const'

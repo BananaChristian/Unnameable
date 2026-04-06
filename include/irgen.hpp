@@ -222,7 +222,6 @@ private:
                                 const std::shared_ptr<SymbolInfo> &rightSym);
   llvm::Value *handleCoalesce(InfixExpression *infix, llvm::Value *leftStruct);
   llvm::Value *handleLogical(InfixExpression *infix, llvm::Value *left,
-                             llvm::Value *right,
                              const std::shared_ptr<SymbolInfo> &leftSym,
                              const std::shared_ptr<SymbolInfo> &rightSym);
   llvm::Value *handleMemberAccess(InfixExpression *infix, llvm::Value *left,

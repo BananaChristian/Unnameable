@@ -243,7 +243,7 @@ class Semantics {
                              const std::string &name, Node *site);
     bool handleNullRhs(NullLiteral *nullLit, const std::shared_ptr<SymbolInfo> &lhsSym,
                        const std::string &name, AssignmentStatement *assignStmt);
-    void giveGenericLiteralContext(Node *literal, const std::shared_ptr<SymbolInfo> &contextSym,
+    void giveGenericLiteralContext(Node *literal, const ResolvedType &contextType,
                                    const std::shared_ptr<SymbolInfo> &litSym);
 
     void importSeals();

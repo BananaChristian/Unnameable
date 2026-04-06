@@ -611,6 +611,41 @@ void Auditor::bunkerCycles(Node *block) {
               std::to_string(nativesToFree[block].size()));
 }
 
+void Auditor::bunkerPersists(Node *block){  
+  auto &blockInfo=deferedFrees[block];
+  for(const auto &persistID:blockInfo->natives){
+    
+    if(isBunkered(persistID)){
+      logInternal("[BUNKER-PERSIST] Baton "+persistID+" is already bunkered");
+      continue;
+    }
+
+    Node *holder=semantics.queryForLifeTimeBaton(persistID);
+    if(!holder){
+      scanForBaton(persistID);
+      reportDevBug("Failed to get baton holder for ID: "+persistID,block );
+    }
+
+    auto sym=semantics.getSymbolFromMeta(holder);
+    if(!sym)
+      reportDevBug("Failed to get holder symbol info",holder);
+
+    if(sym->storage().isPersist){
+      auto &baton=semantics.responsibilityTable[holder];  
+      if(!baton){
+        scanForBaton(persistID);
+        logInternal("[BUNKER-PERSIST] Could not find baton for ID: "+persistID);
+        continue;
+      }
+      nativesToFree[block].push_back({std::move(baton),sym});
+      bunkeredIDs.insert(persistID);
+    }else{
+      logInternal("[BUNKER-PERSIST] Lifetime ID: "+persistID+" is not persist skipping now...");
+      continue;
+    }
+  }
+}
+
 bool Auditor::isBlock(Node *node) {
   if (dynamic_cast<WhileStatement *>(node))
     return true;

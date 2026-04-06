@@ -202,7 +202,7 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
   llvm::Type *varType = getLLVMType(sym->type().type);
 
   llvm::Constant *init = nullptr;
-  if (sym->storage().isInitialized && value) {
+  if (value) {
     llvm::Value *val = generateExpression(value);
     init = llvm::dyn_cast<llvm::Constant>(val);
 

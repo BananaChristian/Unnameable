@@ -246,7 +246,7 @@ void Semantics::walkCastExpression(Node *node) {
   if (!castExpr)
     return;
 
-  bool hasError = false;
+  hasError = false;
 
   auto destNode = castExpr->type.get();
   if (!destNode)
@@ -304,7 +304,6 @@ void Semantics::walkCastExpression(Node *node) {
     logSemanticErrors("Invalid cast destination type '" +
                           destinationType.resolvedName + "'",
                       destNode);
-    hasError = true;
   }
 
   auto sourceExpr = castExpr->expr.get();
@@ -333,7 +332,6 @@ void Semantics::walkCastExpression(Node *node) {
     logSemanticErrors("Cannot cast from pointer type '" +
                           sourceType.resolvedName + "'",
                       sourceExpr);
-    hasError = true;
   }
 
   if (sourceType.isRef()) {
@@ -344,7 +342,6 @@ void Semantics::walkCastExpression(Node *node) {
     logSemanticErrors("Cannot cast from reference type '" +
                           sourceType.resolvedName + "'",
                       sourceExpr);
-    hasError = true;
   }
 
   if (sourceType.isArray()) {
@@ -354,7 +351,6 @@ void Semantics::walkCastExpression(Node *node) {
     logSemanticErrors("Cannot cast from array type '" +
                           sourceType.resolvedName + "'",
                       sourceExpr);
-    hasError = true;
   }
 
   if (!isCastable(sourceType)) {
@@ -377,6 +373,8 @@ void Semantics::walkBitcastExpression(Node *node) {
   if (!bitcastExpr)
     return;
 
+  hasError=false;
+    
   auto destNode = bitcastExpr->type.get();
   if (!destNode)
     return;
@@ -385,14 +383,14 @@ void Semantics::walkBitcastExpression(Node *node) {
 
   auto sourceExpr = bitcastExpr->expr.get();
   if (!sourceExpr)
-    return;
+    reportDevBug("Failed to get bitcast source",bitcastExpr);
+    
 
   walker(sourceExpr);
   auto sourceSym = getSymbolFromMeta(sourceExpr);
-  if (!sourceSym) {
-    reportDevBug("Could not resolve source for bitcast", sourceExpr);
-    return;
-  }
+  if (!sourceSym) 
+    reportDevBug("Could not get source symbol for bitcast", sourceExpr);
+  
 
   ResolvedType sourceType = sourceSym->type().type;
 
@@ -461,7 +459,6 @@ void Semantics::walkBitcastExpression(Node *node) {
   auto bitcastInfo = std::make_shared<SymbolInfo>();
   bitcastInfo->type().type = destinationType;
   bitcastInfo->hasError = hasError;
-  hasError = false;
   metaData[bitcastExpr] = bitcastInfo;
 
   logInternal("Bitcast validated: " + sourceType.resolvedName + " -> " +
@@ -686,7 +683,6 @@ void Semantics::walkMoveExpression(Node *node) {
   }
 
   metaData[moveExpr] = symbolInfo;
-  hasError = false;
 }
 
 void Semantics::walkDereferenceExpression(Node *node) {
@@ -709,7 +705,10 @@ void Semantics::walkDereferenceExpression(Node *node) {
   }
 
   if (derefSym->hasError)
-    return;
+    {
+        logSemanticErrors("The dexpression that is getting dereference is erronious",derefExpr);
+        return;
+    }
 
   // Must be a pointer to dereference
   if (!derefSym->type().type.isPointer()) {
@@ -729,7 +728,6 @@ void Semantics::walkDereferenceExpression(Node *node) {
         .addHint("Example: deref (myPtr ?? defaultPtr)");
     logSemanticErrors("Cannot dereference nullable pointer '" + derefName + "'",
                       derefExpr);
-    hasError = false;
     return;
   }
 

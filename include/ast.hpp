@@ -1185,26 +1185,22 @@ struct TypeModifier : Expression {
 };
 
 struct VariableDeclaration : Statement {
-  // Storage & mutability
+  // Pointers first (8-byte aligned)
+  std::unique_ptr<Expression> allocator;
+  std::unique_ptr<Expression> modified_type;
+  std::unique_ptr<Expression> base_type;
+  std::unique_ptr<Expression> var_name;
+  std::unique_ptr<Expression> initializer;
+  
+  // Large objects next
+  std::optional<Token> assign_token; 
+
+  // Small primitives last
+  Mutability mutability = Mutability::IMMUTABLE;
   bool isPersist = false;
   bool isHeap = false;
   bool isVolatile = false;
   bool isRestrict = false;
-  Mutability mutability = Mutability::IMMUTABLE;
-
-  // Custom allocator for heap variables (e.g., heap<MyAlloc>)
-  std::unique_ptr<Expression> allocator; // nullptr means default allocator
-
-  // Type modifier (ptr, ref, arr)
-  std::unique_ptr<Expression> modified_type;
-
-  // Base type (i32, Node, etc.)
-  std::unique_ptr<Expression> base_type;
-
-  // Core declaration
-  std::unique_ptr<Expression> var_name;
-  std::optional<Token> assign_token;
-  std::unique_ptr<Expression> initializer;
 
   std::string toString() override {
     std::string result;
@@ -1254,25 +1250,23 @@ struct VariableDeclaration : Statement {
 
   VariableDeclaration *shallowClone() const override {
     return new VariableDeclaration(
-        isPersist, isHeap, isVolatile, isRestrict, mutability,
-        clonePtr(allocator), clonePtr(modified_type), clonePtr(base_type),
-        clonePtr(var_name), assign_token, clonePtr(initializer));
+      clonePtr(allocator),clonePtr(modified_type),clonePtr(base_type),
+      clonePtr(var_name),clonePtr(initializer),assign_token,mutability,
+      isPersist,isHeap,isVolatile,isRestrict
+       );
   }
 
-  VariableDeclaration(bool persist, bool heap, bool volatile_, bool restrict_,
-                      Mutability mut, std::unique_ptr<Expression> alloc,
-                      std::unique_ptr<Expression> mod_type,
+  VariableDeclaration(std::unique_ptr<Expression> _allocator,
+                      std::unique_ptr<Expression> _modifier,
                       std::unique_ptr<Expression> base,
                       std::unique_ptr<Expression> name,
-                      const std::optional<Token> &assign,
-                      std::unique_ptr<Expression> init)
-      : Statement(name ? name->token : Token{}), isPersist(persist),
-        isHeap(heap), isVolatile(volatile_), isRestrict(restrict_),
-        mutability(mut), allocator(std::move(alloc)),
-        modified_type(std::move(mod_type)), base_type(std::move(base)),
-        var_name(std::move(name)), assign_token(assign),
-        initializer(std::move(init)) {}
-};
+                      std::unique_ptr<Expression> init,
+                      std::optional<Token> _assign, Mutability mut,
+                      bool _persist,bool _heap,bool _volatile,bool _restrict)
+      : Statement(name ? name->token : Token{}),allocator(std::move(_allocator)),modified_type(std::move(_modifier)),
+      base_type(std::move(base)),var_name(std::move(name)),initializer(std::move(init)),
+      assign_token(_assign),mutability(mut),isPersist(_persist),isHeap(_heap),isVolatile(_volatile),isRestrict(_restrict){} 
+}; 
 
 struct AssignmentStatement : Statement {
   std::unique_ptr<Expression> identifier;

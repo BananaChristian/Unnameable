@@ -412,6 +412,15 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   if (infix->operat.type == TokenType::FULLSTOP)
     return handleMemberAccess(infix, leftVal, leftSym, rightSym);
 
+  // Handle boolean logical operators (AND, OR)
+  if (infix->operat.type == TokenType::AND ||
+      infix->operat.type == TokenType::OR)
+    return  handleLogical(infix, leftVal, leftSym, rightSym);
+
+  // Handle Null Coalesce (??)
+  if (infix->operat.type == TokenType::COALESCE)
+    result = handleCoalesce(infix, leftVal);
+
   llvm::Value *rightVal = generateExpression(infix->right_operand.get());
 
   auto resultType = infixSym->type().type;
@@ -421,14 +430,6 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     rightVal = promoteInt(rightVal, rightSym->type().type.kind, resultType.kind);
   }
 
-  // Handle Null Coalesce (??)
-  if (infix->operat.type == TokenType::COALESCE)
-    result = handleCoalesce(infix, leftVal);
-
-  // Handle boolean logical operators (AND, OR)
-  if (infix->operat.type == TokenType::AND ||
-      infix->operat.type == TokenType::OR)
-    result = handleLogical(infix, leftVal, rightVal, leftSym, rightSym);
 
   // Handle floating point conversions
   if (resultType.kind == DataType::F32) {

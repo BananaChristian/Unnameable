@@ -184,7 +184,7 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
     return;
   }
 
-  giveGenericLiteralContext(assignStmt->value.get(), selfSymbol, valSym);
+  giveGenericLiteralContext(assignStmt->value.get(), selfSymbol->type().type, valSym);
 
   ResolvedType lhsType =
       selfSymbol->type().isRef ? peelRef(selfSymbol->type().type) : selfSymbol->type().type;
@@ -239,7 +239,7 @@ void Semantics::walkAssignStatement(Node *node) {
     return;
   }
 
-  giveGenericLiteralContext(assignStmt->value.get(), lhsSym, rhsSym);
+  giveGenericLiteralContext(assignStmt->value.get(), lhsSym->type().type, rhsSym);
 
   if (rhsSym->hasError)
     return;
@@ -304,6 +304,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   auto *fieldAssignStmt = dynamic_cast<FieldAssignment *>(node);
   if (!fieldAssignStmt)
     return;
+  hasError=false;
 
   std::string name = extractIdentifierName(fieldAssignStmt->lhs_chain.get());
 
@@ -316,7 +317,10 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   }
 
   if (lhsInfo->hasError)
-    return;
+  {
+      logSemanticErrors("LHS is erronious",fieldAssignStmt->lhs_chain.get());
+      return;
+  }
 
   checkMutability(*lhsInfo, name, fieldAssignStmt);
 
@@ -324,7 +328,6 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
                      fieldAssignStmt);
 
   if (!fieldAssignStmt->value) {
-    hasError = false;
     metaData[fieldAssignStmt] = lhsInfo;
     return;
   }
@@ -335,7 +338,6 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     logSemanticErrors("The right-hand side of the assignment to '" + name +
                           "' refers to an undefined symbol.",
                       fieldAssignStmt->value.get());
-    hasError = false;
     return;
   }
 
@@ -355,7 +357,6 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     rhsInfo->storage().isInitialized = true;
     rhsInfo->type().isDefinitelyNull = true;
     metaData[fieldAssignStmt] = lhsInfo;
-    hasError = false;
     return;
   }
 
@@ -363,11 +364,10 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     if (isInteger(lhsInfo->type().type))
       rhsInfo->type().type = lhsInfo->type().type;
   }
-  giveGenericLiteralContext(fieldAssignStmt->value.get(), lhsInfo, rhsInfo);
+  giveGenericLiteralContext(fieldAssignStmt->value.get(), lhsInfo->type().type, rhsInfo);
 
   checkTypeCompatible(lhsInfo->type().type, rhsInfo->type().type, /*rhsIsNull=*/false, name,
                       fieldAssignStmt);
 
-  hasError = false;
   metaData[fieldAssignStmt] = lhsInfo;
 }

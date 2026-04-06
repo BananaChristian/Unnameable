@@ -141,6 +141,7 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
         break;
       case TokenType::NOT_EQUALS:
         cmpRes = funcBuilder.CreateICmpNE(left, right, "cmptmp");
+        break;
       case TokenType::LESS_THAN:
         cmpRes = signedInt ? funcBuilder.CreateICmpSLT(left, right, "cmptmp")
                            : funcBuilder.CreateICmpULT(left, right, "cmptmp");
@@ -366,24 +367,63 @@ llvm::Value *IRGenerator::handleEnumAccess(InfixExpression *infix) {
   return llvm::ConstantInt::get(llvmEnumTy, memberValue);
 }
 
-llvm::Value *
-IRGenerator::handleLogical(InfixExpression *infix, llvm::Value *left,
-                           llvm::Value *right,
-                           const std::shared_ptr<SymbolInfo> &leftSym,
-                           const std::shared_ptr<SymbolInfo> &rightSym) {
-  llvm::Value *result = nullptr;
-  if (left->getType() != funcBuilder.getInt1Ty())
-    left = funcBuilder.CreateICmpNE(
-        left, llvm::ConstantInt::get(left->getType(), 0), "boolcastl");
-  if (right->getType() != funcBuilder.getInt1Ty())
-    right = funcBuilder.CreateICmpNE(
-        right, llvm::ConstantInt::get(right->getType(), 0), "boolcastr");
+llvm::Value *IRGenerator::handleLogical(InfixExpression *infix,
+                                         llvm::Value *left,
+                                         const std::shared_ptr<SymbolInfo> &leftSym,
+                                         const std::shared_ptr<SymbolInfo> &rightSym) {
+    // Ensure left is i1
+    if (left->getType() != funcBuilder.getInt1Ty())
+        left = funcBuilder.CreateICmpNE(
+            left, llvm::Constant::getNullValue(left->getType()), "boolcastl");
 
-  if (infix->operat.type == TokenType::AND) {
-    result = funcBuilder.CreateAnd(left, right, "andtmp");
-    return result;
-  } else {
-    result = funcBuilder.CreateOr(left, right, "ortmp");
-    return result;
-  }
+    llvm::Function *fn = funcBuilder.GetInsertBlock()->getParent();
+
+    if (infix->operat.type == TokenType::AND) {
+        // Short circuit AND:
+        // if left is false, skip right and return false
+        llvm::BasicBlock *evalRight = llvm::BasicBlock::Create(context, "and.rhs", fn);
+        llvm::BasicBlock *merge    = llvm::BasicBlock::Create(context, "and.merge", fn);
+
+        llvm::BasicBlock *leftBlock = funcBuilder.GetInsertBlock();
+        funcBuilder.CreateCondBr(left, evalRight, merge);
+
+        // Evaluate right only if left was true
+        funcBuilder.SetInsertPoint(evalRight);
+        llvm::Value *right = generateExpression(infix->right_operand.get());
+        if (right->getType() != funcBuilder.getInt1Ty())
+            right = funcBuilder.CreateICmpNE(
+                right, llvm::Constant::getNullValue(right->getType()), "boolcastr");
+        llvm::BasicBlock *rightBlock = funcBuilder.GetInsertBlock();
+        funcBuilder.CreateBr(merge);
+
+        funcBuilder.SetInsertPoint(merge);
+        llvm::PHINode *phi = funcBuilder.CreatePHI(funcBuilder.getInt1Ty(), 2, "andtmp");
+        phi->addIncoming(funcBuilder.getFalse(), leftBlock);
+        phi->addIncoming(right, rightBlock);
+        return phi;
+
+    } else {
+        // Short circuit OR:
+        // if left is true, skip right and return true
+        llvm::BasicBlock *evalRight = llvm::BasicBlock::Create(context, "or.rhs", fn);
+        llvm::BasicBlock *merge    = llvm::BasicBlock::Create(context, "or.merge", fn);
+
+        llvm::BasicBlock *leftBlock = funcBuilder.GetInsertBlock();
+        funcBuilder.CreateCondBr(left, merge, evalRight);
+
+        // Evaluate right only if left was false
+        funcBuilder.SetInsertPoint(evalRight);
+        llvm::Value *right = generateExpression(infix->right_operand.get());
+        if (right->getType() != funcBuilder.getInt1Ty())
+            right = funcBuilder.CreateICmpNE(
+                right, llvm::Constant::getNullValue(right->getType()), "boolcastr");
+        llvm::BasicBlock *rightBlock = funcBuilder.GetInsertBlock();
+        funcBuilder.CreateBr(merge);
+
+        funcBuilder.SetInsertPoint(merge);
+        llvm::PHINode *phi = funcBuilder.CreatePHI(funcBuilder.getInt1Ty(), 2, "ortmp");
+        phi->addIncoming(funcBuilder.getTrue(), leftBlock);
+        phi->addIncoming(right, rightBlock);
+        return phi;
+    }
 }

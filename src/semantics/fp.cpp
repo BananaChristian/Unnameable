@@ -58,8 +58,7 @@ void Semantics::walkBlockExpression(Node *node) {
 void Semantics::walkReturnStatement(Node *node) {
   auto *retStmt = dynamic_cast<ReturnStatement *>(node);
   if (!retStmt) {
-    reportDevBug("Invalid return statement node", node);
-    return;
+        reportDevBug("Invalid return statement node", node);
   }
 
   bool hasError = false;
@@ -69,7 +68,6 @@ void Semantics::walkReturnStatement(Node *node) {
         .addHint("Move this return statement into a function.");
     logSemanticErrors("Return statement found outside of a function body",
                       retStmt);
-    hasError = true;
   }
 
   const ResolvedType &expectedReturn =
@@ -85,7 +83,6 @@ void Semantics::walkReturnStatement(Node *node) {
                             currentFunction.value()->func().funcName +
                             "' has a return statement with no value.",
                         retStmt);
-      hasError = true;
     }
 
     auto voidSym = std::make_shared<SymbolInfo>();
@@ -100,11 +97,10 @@ void Semantics::walkReturnStatement(Node *node) {
   auto valSym = getSymbolFromMeta(retStmt->return_value.get());
   if (!valSym) {
     reportDevBug("Could not resolve return value symbol", retStmt);
-    return;
   }
 
   giveGenericLiteralContext(retStmt->return_value.get(),
-                            currentFunction.value(), valSym);
+                            currentFunction.value()->type().type, valSym);
 
   ResolvedType valueType = valSym->type().type;
   if (valueType.base().kind == DataType::UNKNOWN)
@@ -123,7 +119,6 @@ void Semantics::walkReturnStatement(Node *node) {
           "Cannot return 'null' from a function whose return type '" +
               expectedReturn.resolvedName + "' is not nullable.",
           retStmt);
-      hasError = true;
     } else {
       valSym->type().type = expectedReturn;
     }
@@ -140,7 +135,7 @@ void Semantics::walkReturnStatement(Node *node) {
     if (valSym && !valSym->isParam) {
       if (!valSym->relations().refereeSymbol) {
         errorHandler
-            .addHint("Returning a reference to a local variable is unsafe — "
+            .addHint("Returning a reference to a local variable is unsafe "
                      "the memory is freed when the function returns.")
             .addHint("Return the value directly, or heap-allocate it first.");
         logSemanticErrors(
@@ -169,8 +164,8 @@ void Semantics::walkFunctionParameters(Node *node) {
   auto *param = dynamic_cast<VariableDeclaration *>(node);
   if (!param) {
     reportDevBug("Function parameter is not a VariableDeclaration", node);
-    return;
   }
+  hasError=false;
 
   logInternal("Analyzing function parameter...");
   const std::string &paramName = param->var_name->expression.TokenLiteral;
@@ -189,7 +184,7 @@ void Semantics::walkFunctionParameters(Node *node) {
             "Replace 'auto' with a concrete type such as 'i32' or 'ptr i32'.")
         .addHint("Example: func foo(i32 x, ptr i32 p): i32 { ... }");
     logSemanticErrors("Parameter '" + paramName +
-                          "' cannot use 'auto' — "
+                          "' cannot use 'auto' "
                           "the type must be explicit.",
                       param);
     return;
@@ -243,7 +238,7 @@ void Semantics::walkFunctionParameters(Node *node) {
   info->storage().isHeap = false;
   info->type().isDefinitelyNull = false;
   info->isParam = true;
-  info->hasError = false;
+  info->hasError = hasError;
 
   metaData[param] = info;
   symbolTable.back()[paramName] = info;
@@ -251,6 +246,7 @@ void Semantics::walkFunctionParameters(Node *node) {
   logInternal("Parameter '" + paramName +
               "' resolved type: " + resolvedType.resolvedName);
 }
+
 void Semantics::walkFunctionStatement(Node *node) {
   auto *funcStmt = dynamic_cast<FunctionStatement *>(node);
   if (!funcStmt)
@@ -262,6 +258,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   auto *funcExpr = dynamic_cast<FunctionExpression *>(node);
   if (!funcExpr)
     reportDevBug("Invalid function expression", node);
+  hasError=true;
 
   const std::string funcName = funcExpr->func_key.TokenLiteral;
   const bool isExportable = funcExpr->isExportable;
@@ -359,7 +356,6 @@ void Semantics::walkFunctionExpression(Node *node) {
                             "' uses non-exportable type '" + baseTypeName +
                             "' for parameter '" + paramName + "'.",
                         param.get());
-      hasError = true;
     }
 
     symbolTable.back()[paramName] = paramInfo;
@@ -462,13 +458,11 @@ void Semantics::walkFunctionExpression(Node *node) {
                  returnType.resolvedName + "'.");
     logSemanticErrors(
         "Non-void function '" + funcName + "' has no return value.", funcExpr);
-    hasError = true;
   }
 
   popScope();
   activeBlocks.pop_back();
   funcInfo->hasError = hasError;
-  hasError = true;
   insideFunction = false;
   currentFunction = std::nullopt;
   logInternal("Finished analysing '" + funcName + "'");
@@ -543,7 +537,6 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
           .addHint("Example: ptr i32 x, mut i32 y, ref i32 z");
       logSemanticErrors("Invalid parameter in declaration '" + funcName + "'.",
                         param.get());
-      hasError = true;
       continue;
     }
 
@@ -554,7 +547,6 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     if (paramIt == metaData.end()) {
       logSemanticErrors("Parameter '" + paramName + "' could not be analysed.",
                         param.get());
-      hasError = true;
       continue;
     }
 
@@ -571,7 +563,6 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
                             "' uses non-exportable type '" + baseTypeName +
                             "' for parameter '" + paramName + "'.",
                         param.get());
-      hasError = true;
     }
 
     // genericName is stored on TypeInfo in the new layout
@@ -599,7 +590,6 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
                  "function.");
     logSemanticErrors(
         "Declaration '" + funcName + "' has an invalid return type.", retType);
-    hasError = true;
   }
 
   if (!retType->isVoid) {
@@ -629,7 +619,6 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
   symbolTable.back()[funcName] = funcInfo;
   metaData[funcDeclrStmt] = funcInfo;
-  hasError = false;
 
   logInternal("Stored declaration '" + funcName +
               "' return type: " + returnType.resolvedName);
@@ -639,10 +628,9 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   auto *funcCall = dynamic_cast<CallExpression *>(node);
   if (!funcCall) {
     reportDevBug("Invalid function call expression", node);
-    return;
   }
 
-  bool hasError = false;
+  hasError = false;
   const std::string callName =
       funcCall->function_identifier->expression.TokenLiteral;
 
@@ -669,12 +657,15 @@ void Semantics::walkFunctionCallExpression(Node *node) {
                           "' has not been defined anywhere. "
                           "Add a definition or a forward declaration.",
                       funcCall);
-    hasError = true;
   }
 
   for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
     const auto &arg = funcCall->parameters[i];
     walker(arg.get());
+    auto argSym=getSymbolFromMeta(arg.get());
+    if(!argSym)
+        reportDevBug("Failed to get argument symbol info",arg.get());
+    giveGenericLiteralContext(arg.get(),callSymbolInfo->func().paramTypes[i].first,argSym);
 
     if (auto *nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
       if (i < callSymbolInfo->func().paramTypes.size()) {
@@ -686,7 +677,6 @@ void Semantics::walkFunctionCallExpression(Node *node) {
                                 std::to_string(i + 1) + " of '" + callName +
                                 "' — it is not nullable.",
                             arg.get());
-          hasError = true;
         }
       }
     }
@@ -749,7 +739,6 @@ void Semantics::walkSealCallExpression(Node *node,
             "' does not exist. "
             "Check the seal name or make sure it has been declared.",
         funcCall);
-    hasError = false;
     return;
   }
 
@@ -761,7 +750,6 @@ void Semantics::walkSealCallExpression(Node *node,
                           "'. "
                           "Check the seal definition for a typo.",
                       funcCall);
-    hasError = false;
     return;
   }
 
@@ -792,6 +780,10 @@ void Semantics::walkSealCallExpression(Node *node,
   for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
     const auto &arg = funcCall->parameters[i];
     walker(arg.get());
+    auto argSym=getSymbolFromMeta(arg.get());
+    if(!argSym)
+        reportDevBug("Failed to get argument symbol info",arg.get());
+    giveGenericLiteralContext(arg.get(),callSymbolInfo->func().paramTypes[i].first,argSym);
 
     if (auto *nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
       if (i < callSymbolInfo->func().paramTypes.size()) {

@@ -5,14 +5,14 @@
 #include "token.hpp"
 
 void Semantics::giveGenericLiteralContext(Node* literal,
-                                          const std::shared_ptr<SymbolInfo>& contextSym,
+                                          const ResolvedType& contextType,
                                           const std::shared_ptr<SymbolInfo>& litSym) {
     if (dynamic_cast<INTLiteral*>(literal)) {
-        if (isInteger(contextSym->type().type)) litSym->type().type = contextSym->type().type;
+        if (isInteger(contextType)) litSym->type().type = contextType;
     }
 
     if (dynamic_cast<FloatLiteral*>(literal)) {
-        if (isFloat(contextSym->type().type)) litSym->type().type = contextSym->type().type;
+        if (isFloat(contextType)) litSym->type().type = contextType;
     }
 }
 
@@ -332,7 +332,10 @@ void Semantics::walkVariableDeclaration(Node* node) {
         }
 
         // If the initializer is erronious dont proceed
-        if (initSym->hasError) return;
+        if (initSym->hasError){
+            logSemanticErrors("The initializer is erronious",initializer);
+            return;
+        }
 
         // Null checks and giving the null literals context
         if (dynamic_cast<NullLiteral*>(initializer)) {
@@ -341,7 +344,7 @@ void Semantics::walkVariableDeclaration(Node* node) {
         }
 
         // Give generic lits context
-        giveGenericLiteralContext(initializer, declInfo, initSym);
+        giveGenericLiteralContext(initializer, declInfo->type().type, initSym);
 
         // Basic Type checks
         auto errorType = ResolvedType::error();

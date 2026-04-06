@@ -1025,7 +1025,7 @@ void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
   } else if (type.kind == DataType::STRING) {
     printString(val);
   } else {
-    throw std::runtime_error("shout! only supports i32 and string for now");
+    throw std::runtime_error("trace only supports i32 and string for now");
   }
 }
 

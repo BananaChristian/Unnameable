@@ -8,7 +8,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
   const std::string allocName =
       allocStmt->allocator_name->expression.TokenLiteral;
 
-  bool hasError = false;
+  hasError = false;
 
   // allocator name must be unique
   auto existing = resolveSymbolInfo(allocName);
@@ -39,7 +39,6 @@ void Semantics::walkAllocatorInterface(Node *node) {
                           "' must define exactly two functions (allocation "
                           "function and freeing function)",
                       block);
-    hasError = true;
   }
 
   int allocateCount = 0;
@@ -169,9 +168,10 @@ AllocatorRole Semantics::getFunctionRole(
       return AllocatorRole::NONE;
     }
 
+    logInternal("Return type :"+retType.resolvedName);
     if (!(retType.kind == DataType::OPAQUE)) {
       logSemanticErrors("Allocation function '" + funcName +
-                            "' must return 'opaque_ptr' but got '" +
+                            "' must return 'ptr<opaque>' but got '" +
                             retType.resolvedName + "'",
                         returnType);
       return AllocatorRole::NONE;

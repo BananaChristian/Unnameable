@@ -116,6 +116,7 @@ private:
   void bunkerNatives(Node *block);
   void bunkerForeigners(Node *block);
   void bunkerCycles(Node *block);
+  void bunkerPersists(Node *block);
   bool isBunkered(const std::string &id);
   bool isAlreadyClassified(const std::string &id,
                            const std::unique_ptr<BlockInfo> &blockInfo);

@@ -1,373 +1,355 @@
 #include "ast.hpp"
 #include "audit.hpp"
 
-void Auditor::auditExpressionStatement(Node *node) {
-  auto exprStmt = dynamic_cast<ExpressionStatement *>(node);
-  audit(exprStmt->expression.get());
+void Auditor::auditExpressionStatement(Node* node) {
+    auto exprStmt = dynamic_cast<ExpressionStatement*>(node);
+    audit(exprStmt->expression.get());
 }
 
-void Auditor::auditVariableDeclaration(Node *node) {
-  auto declaration = dynamic_cast<VariableDeclaration *>(node);
-  if (!declaration)
-    return;
+void Auditor::auditVariableDeclaration(Node* node) {
+    auto declaration = dynamic_cast<VariableDeclaration*>(node);
+    if (!declaration) return;
 
-  auto sym = semantics.getSymbolFromMeta(declaration);
-  if (!sym)
-    return;
+    auto sym = semantics.getSymbolFromMeta(declaration);
 
-  if (!sym->storage().isHeap)
-    return;
+    if (!sym) return;
 
-  auto initializer = declaration->initializer.get();
-  if (sym->type().isPointer && initializer) {
-    auto valSym = semantics.getSymbolFromMeta(initializer);
-    if (!valSym)
-      return;
+    if (!sym->storage().isHeap) return;
 
-    Node *valBatonHolder = semantics.queryForLifeTimeBaton(valSym->codegen().ID);
-    Node *ptrBatonHolder = semantics.queryForLifeTimeBaton(sym->codegen().ID);
 
-    if (valBatonHolder && valBatonHolder != initializer) {
-      auto &valBaton = semantics.responsibilityTable[valBatonHolder];
-      auto &ptrBaton = semantics.responsibilityTable[ptrBatonHolder];
+    auto initializer = declaration->initializer.get();
+    if (sym->type().isPointer && initializer) {
+        auto valSym = semantics.getSymbolFromMeta(initializer);
+        if (!valSym) {
+            reportDevBug("Failed to find symbol info for initializer", initializer);
+        }
 
-      logInternal("  [REVERSE-LOGIC] Detected non-death use. Correcting baton "
-                  "states...");
-      logInternal("    Before: Ptr(" + sym->codegen().ID +
-                  ") Deps: " + std::to_string(ptrBaton->dependents.size()));
+        Node* valBatonHolder = semantics.queryForLifeTimeBaton(valSym->codegen().ID);
+        Node* ptrBatonHolder = semantics.queryForLifeTimeBaton(sym->codegen().ID);
 
-      // The "Undo"
-      if (ptrBaton->dependents.count(valSym->codegen().ID)) {
-        ptrBaton->dependents.erase(valSym->codegen().ID);
-        logInternal("    Action: Erased " + valSym->codegen().ID + " from Ptr " +
-                    sym->codegen().ID);
-      } else {
-        logInternal("    Warning: " + valSym->codegen().ID +
-                    " was NOT in Ptr dependents. Exclusivity might be broken.");
-      }
+        if (valBatonHolder && valBatonHolder != initializer) {
+            auto& valBaton = semantics.responsibilityTable[valBatonHolder];
+            auto& ptrBaton = semantics.responsibilityTable[ptrBatonHolder];
 
-      valBaton->isResponsible = true;
-      logInternal("    Action: Rearmed ValBaton " + valBaton->ID +
-                  " (isResponsible = TRUE)");
+            logInternal(
+                "  [REVERSE-LOGIC] Detected non-death use. Correcting baton "
+                "states...");
+            logInternal("    Before: Ptr(" + sym->codegen().ID +
+                        ") Deps: " + std::to_string(ptrBaton->dependents.size()));
+
+            // The "Undo"
+            if (ptrBaton->dependents.count(valSym->codegen().ID)) {
+                ptrBaton->dependents.erase(valSym->codegen().ID);
+                logInternal("    Action: Erased " + valSym->codegen().ID + " from Ptr " +
+                            sym->codegen().ID);
+            } else {
+                logInternal("    Warning: " + valSym->codegen().ID +
+                            " was NOT in Ptr dependents. Exclusivity might be broken.");
+            }
+
+            valBaton->isResponsible = true;
+            logInternal("    Action: Rearmed ValBaton " + valBaton->ID + " (isResponsible = TRUE)");
+        }
     }
-  }
 
-  simulateDeclFree(declaration, sym->codegen().ID);
+    simulateDeclFree(declaration, sym->codegen().ID);
 }
 
-void Auditor::auditFieldAssignmentStatement(Node *node) {
-  auto fieldAssign = dynamic_cast<FieldAssignment *>(node);
-  if (!fieldAssign)
-    return;
+void Auditor::auditFieldAssignmentStatement(Node* node) {
+    auto fieldAssign = dynamic_cast<FieldAssignment*>(node);
+    if (!fieldAssign) return;
 
-  auto sym = semantics.getSymbolFromMeta(fieldAssign);
-  if (!sym)
-    reportDevBug("Failed to get field assignment symbol info", fieldAssign);
+    auto sym = semantics.getSymbolFromMeta(fieldAssign);
+    if (!sym) reportDevBug("Failed to get field assignment symbol info", fieldAssign);
 
-  auto valSym = semantics.getSymbolFromMeta(fieldAssign->value.get());
-  if (!valSym)
-    reportDevBug("Failed to get field assignment value symbol info",
-                 fieldAssign);
+    auto valSym = semantics.getSymbolFromMeta(fieldAssign->value.get());
+    if (!valSym) reportDevBug("Failed to get field assignment value symbol info", fieldAssign);
 
-  inhibit = true;
-  audit(fieldAssign->lhs_chain.get());
-  audit(fieldAssign->value.get());
+    inhibit = true;
+    audit(fieldAssign->lhs_chain.get());
+    audit(fieldAssign->value.get());
 
-  assignmentRob(fieldAssign, sym);
-  inhibit = false;
-  simulateFree(fieldAssign, sym->codegen().ID);
+    assignmentRob(fieldAssign, sym);
+    inhibit = false;
+    simulateFree(fieldAssign, sym->codegen().ID);
 }
 
-void Auditor::auditAssignmentStatement(Node *node) {
-  auto assignStmt = dynamic_cast<AssignmentStatement *>(node);
-  if (!assignStmt)
-    return;
+void Auditor::auditAssignmentStatement(Node* node) {
+    auto assignStmt = dynamic_cast<AssignmentStatement*>(node);
+    if (!assignStmt) return;
 
-  auto assignSym = semantics.getSymbolFromMeta(assignStmt);
-  if (!assignSym)
-    reportDevBug("Failed to get assignment symbol info", assignStmt);
-  if (!assignSym->storage().isHeap)
-    return;
+    auto assignSym = semantics.getSymbolFromMeta(assignStmt);
+    if (!assignSym) reportDevBug("Failed to get assignment symbol info", assignStmt);
+    if (!assignSym->storage().isHeap) return;
 
-  auto valSym = semantics.getSymbolFromMeta(assignStmt->value.get());
-  if (!valSym)
-    reportDevBug("Failed to get assignment value symbol info", assignStmt);
+    auto valSym = semantics.getSymbolFromMeta(assignStmt->value.get());
+    if (!valSym) reportDevBug("Failed to get assignment value symbol info", assignStmt);
 
-  inhibit = true;
-  audit(assignStmt->identifier.get());
-  audit(assignStmt->value.get());
-  assignmentRob(assignStmt, assignSym);
-  inhibit = false;
-  simulateFree(assignStmt, assignSym->codegen().ID);
+    inhibit = true;
+    audit(assignStmt->identifier.get());
+    audit(assignStmt->value.get());
+    assignmentRob(assignStmt, assignSym);
+    inhibit = false;
+    simulateFree(assignStmt, assignSym->codegen().ID);
 }
 
-void Auditor::auditFunctionStatement(Node *node) {
-  auto funcStmt = dynamic_cast<FunctionStatement *>(node);
-  if (!funcStmt)
-    return;
+void Auditor::auditFunctionStatement(Node* node) {
+    auto funcStmt = dynamic_cast<FunctionStatement*>(node);
+    if (!funcStmt) return;
 
-  audit(funcStmt->funcExpr.get());
+    audit(funcStmt->funcExpr.get());
 }
 
-void Auditor::auditFunctionExpression(Node *node) {
-  auto funcExpr = dynamic_cast<FunctionExpression *>(node);
-  if (!funcExpr)
-    return;
+void Auditor::auditFunctionExpression(Node* node) {
+    auto funcExpr = dynamic_cast<FunctionExpression*>(node);
+    if (!funcExpr) return;
 
-  audit(funcExpr->block.get());
+    audit(funcExpr->block.get());
 }
 
-void Auditor::auditForStatement(Node *node) {
-  auto forStmt = dynamic_cast<ForStatement *>(node);
-  if (!forStmt)
-    return;
+void Auditor::auditForStatement(Node* node) {
+    auto forStmt = dynamic_cast<ForStatement*>(node);
+    if (!forStmt) return;
 
-  if (shouldForeignBunkerBlock(forStmt->body.get())) {
-    logInternal("[TRIGGER] For Loop with foreigners - bunkering");
-    bunkerForeigners(forStmt->body.get());
-  }
-
-  audit(forStmt->body.get());
-}
-
-void Auditor::auditWhileStatement(Node *node) {
-  auto whileStmt = dynamic_cast<WhileStatement *>(node);
-  if (!whileStmt)
-    return;
-
-  if (shouldForeignBunkerBlock(whileStmt->loop.get())) {
-    logInternal("[TRIGGER] Loop with foreigners - bunkering");
-    bunkerForeigners(whileStmt->loop.get());
-  }
-
-  audit(whileStmt->loop.get());
-}
-
-void Auditor::auditCaseStatement(Node *node) {
-  auto caseClause = dynamic_cast<CaseClause *>(node);
-  if (!caseClause)
-    return;
-
-  for (auto &stmt : caseClause->body) {
-    audit(stmt.get());
-  }
-}
-
-void Auditor::auditSwitchStatement(Node *node) {
-  auto switchStmt = dynamic_cast<SwitchStatement *>(node);
-  if (!switchStmt)
-    return;
-
-  if (deferedFrees.find(switchStmt) == deferedFrees.end()) {
-    deferedFrees[switchStmt] = std::make_unique<BlockInfo>();
-  }
-
-  if (shouldForeignBunkerBlock(switchStmt)) {
-    logInternal("[TRIGGER] Switch with foreigners - bunkering");
-    bunkerForeigners(switchStmt);
-  }
-
-  // Now audit everything normally
-  for (auto &caseClause : switchStmt->case_clauses) {
-    audit(caseClause.get());
-  }
-  for (auto &stmt : switchStmt->default_statements) {
-    audit(stmt.get());
-  }
-}
-
-void Auditor::auditElifStatement(Node *node) {
-  auto elifStmt = dynamic_cast<elifStatement *>(node);
-  if (!elifStmt)
-    return;
-
-  audit(elifStmt->elif_result.get());
-}
-
-void Auditor::auditIfStatement(Node *node) {
-  auto ifStmt = dynamic_cast<ifStatement *>(node);
-  if (!ifStmt)
-    return;
-
-  // Check then block
-  if (shouldForeignBunkerBlock(ifStmt->if_result.get())) {
-    logInternal("[TRIGGER] Then block has foreigners - bunkering");
-    bunkerForeigners(ifStmt->if_result.get());
-  }
-
-  // Check elif blocks
-  for (auto &elif : ifStmt->elifClauses) {
-    auto elifStmt = dynamic_cast<elifStatement *>(elif.get());
-    if (shouldForeignBunkerBlock(elifStmt->elif_result.get())) {
-      logInternal("[TRIGGER] Elif block has foreigners - bunkering");
-      bunkerForeigners(elifStmt->elif_result.get());
+    if (shouldForeignBunkerBlock(forStmt->body.get())) {
+        logInternal("[TRIGGER] For Loop with foreigners - bunkering");
+        bunkerForeigners(forStmt->body.get());
     }
-  }
 
-  // Check else block (if it exists)
-  if (ifStmt->else_result.has_value()) {
-    if (shouldForeignBunkerBlock(ifStmt->else_result.value().get())) {
-      logInternal("[TRIGGER] Else block has foreigners - bunkering");
-      bunkerForeigners(ifStmt->else_result.value().get());
-    }
-  }
-
-  // Audit all blocks normally
-  audit(ifStmt->if_result.get());
-  for (auto &elif : ifStmt->elifClauses) {
-    audit(elif.get());
-  }
-  if (ifStmt->else_result.has_value()) {
-    audit(ifStmt->else_result.value().get());
-  }
+    audit(forStmt->body.get());
 }
 
-void Auditor::auditReturnStatement(Node *node) {
-  auto retStmt = dynamic_cast<ReturnStatement *>(node);
-  if (!retStmt)
-    return;
+void Auditor::auditWhileStatement(Node* node) {
+    auto whileStmt = dynamic_cast<WhileStatement*>(node);
+    if (!whileStmt) return;
 
-  auto retSym = semantics.getSymbolFromMeta(retStmt);
-  if (!retSym->storage().isHeap)
-    return;
+    if (shouldForeignBunkerBlock(whileStmt->loop.get())) {
+        logInternal("[TRIGGER] Loop with foreigners - bunkering");
+        bunkerForeigners(whileStmt->loop.get());
+    }
 
-  logInternal("Return statement ID: " + retSym->codegen().ID);
+    audit(whileStmt->loop.get());
+}
 
-  const auto &valName =
-      semantics.extractIdentifierName(retStmt->return_value.get());
+void Auditor::auditCaseStatement(Node* node) {
+    auto caseClause = dynamic_cast<CaseClause*>(node);
+    if (!caseClause) return;
 
-  Node *batonHolder = semantics.queryForLifeTimeBaton(retSym->codegen().ID);
-  if (!batonHolder) {
-    logInternal("Failed to get baton holder");
-    return;
-  }
-  auto identifiers = semantics.digIdentifiers(retStmt);
-  for (const auto &identifier : identifiers) {
-    // If the return statement isnt the baton holder this is an escape
-    if (batonHolder != identifier) {
-      logInternal("The baton escaped");
-      auto &baton = semantics.responsibilityTable[batonHolder];
-      if (!baton) {
-        logInternal("Failed to get baton yet holder exists");
+    for (auto& stmt : caseClause->body) {
+        audit(stmt.get());
+    }
+}
+
+void Auditor::auditSwitchStatement(Node* node) {
+    auto switchStmt = dynamic_cast<SwitchStatement*>(node);
+    if (!switchStmt) return;
+
+    if (deferedFrees.find(switchStmt) == deferedFrees.end()) {
+        deferedFrees[switchStmt] = std::make_unique<BlockInfo>();
+    }
+
+    if (shouldForeignBunkerBlock(switchStmt)) {
+        logInternal("[TRIGGER] Switch with foreigners - bunkering");
+        bunkerForeigners(switchStmt);
+    }
+
+    // Now audit everything normally
+    for (auto& caseClause : switchStmt->case_clauses) {
+        audit(caseClause.get());
+    }
+    for (auto& stmt : switchStmt->default_statements) {
+        audit(stmt.get());
+    }
+}
+
+void Auditor::auditElifStatement(Node* node) {
+    auto elifStmt = dynamic_cast<elifStatement*>(node);
+    if (!elifStmt) return;
+
+    audit(elifStmt->elif_result.get());
+}
+
+void Auditor::auditIfStatement(Node* node) {
+    auto ifStmt = dynamic_cast<ifStatement*>(node);
+    if (!ifStmt) return;
+
+    // Check then block
+    if (shouldForeignBunkerBlock(ifStmt->if_result.get())) {
+        logInternal("[TRIGGER] Then block has foreigners - bunkering");
+        bunkerForeigners(ifStmt->if_result.get());
+    }
+
+    // Check elif blocks
+    for (auto& elif : ifStmt->elifClauses) {
+        auto elifStmt = dynamic_cast<elifStatement*>(elif.get());
+        if (shouldForeignBunkerBlock(elifStmt->elif_result.get())) {
+            logInternal("[TRIGGER] Elif block has foreigners - bunkering");
+            bunkerForeigners(elifStmt->elif_result.get());
+        }
+    }
+
+    // Check else block (if it exists)
+    if (ifStmt->else_result.has_value()) {
+        if (shouldForeignBunkerBlock(ifStmt->else_result.value().get())) {
+            logInternal("[TRIGGER] Else block has foreigners - bunkering");
+            bunkerForeigners(ifStmt->else_result.value().get());
+        }
+    }
+
+    // Audit all blocks normally
+    audit(ifStmt->if_result.get());
+    for (auto& elif : ifStmt->elifClauses) {
+        audit(elif.get());
+    }
+    if (ifStmt->else_result.has_value()) {
+        audit(ifStmt->else_result.value().get());
+    }
+}
+
+void Auditor::auditReturnStatement(Node* node) {
+    auto retStmt = dynamic_cast<ReturnStatement*>(node);
+    if (!retStmt) return;
+
+    auto retSym = semantics.getSymbolFromMeta(retStmt);
+    if (!retSym->storage().isHeap) return;
+
+    logInternal("Return statement ID: " + retSym->codegen().ID);
+
+    const auto& valName = semantics.extractIdentifierName(retStmt->return_value.get());
+
+    Node* batonHolder = semantics.queryForLifeTimeBaton(retSym->codegen().ID);
+    if (!batonHolder) {
+        logInternal("Failed to get baton holder");
         return;
-      }
-
-      logInternal("The baton has '" + std::to_string(baton->dependents.size()) +
-                  "' dependents");
-      if (baton && !baton->dependents.empty()) {
-        logInternal("The dependents exist attempting to block this return");
-        errorHandler.addHint(
-            "The compiler cannot allow the escape of a variable that is "
-            "extending the lifetime of other variables as if it frees them and "
-            "allows your pointer to escape then you will have a dangling "
-            "pointer");
-        logAuditError("The return value '" + valName +
-                          "' cannot escape with hidden dependecies",
-                      retStmt->return_value.get());
-      }
     }
-  }
+    auto identifiers = semantics.digIdentifiers(retStmt);
+    for (const auto& identifier : identifiers) {
+        // If the return statement isnt the baton holder this is an escape
+        if (batonHolder != identifier) {
+            logInternal("The baton escaped");
+            auto& baton = semantics.responsibilityTable[batonHolder];
+            if (!baton) {
+                logInternal("Failed to get baton yet holder exists");
+                return;
+            }
 
-  simulateFree(retStmt, retSym->codegen().ID);
-}
-
-void Auditor::auditInfix(Node *node) {
-  auto infix = dynamic_cast<InfixExpression *>(node);
-  if (!infix)
-    return;
-
-  auto infixSym = semantics.getSymbolFromMeta(infix);
-  if (!infixSym) {
-    reportDevBug("Failed to get symbol info for infix", infix);
-  }
-  inhibit = true;
-  audit(infix->left_operand.get());
-  audit(infix->right_operand.get());
-  inhibit = false;
-  simulateFree(infix, infixSym->codegen().ID);
-}
-
-void Auditor::auditIdentifier(Node *node) {
-  auto ident = dynamic_cast<Identifier *>(node);
-  if (!ident)
-    return;
-
-  auto identSym = semantics.getSymbolFromMeta(ident);
-  simulateFree(ident, identSym->codegen().ID);
-}
-
-void Auditor::auditTraceStatement(Node *node) {
-  auto traceStmt = dynamic_cast<TraceStatement *>(node);
-  if (!traceStmt)
-    return;
-
-  auto traceSym = semantics.getSymbolFromMeta(traceStmt);
-  inhibit = true;
-  audit(traceStmt->expr.get());
-  inhibit = false;
-  simulateFree(traceStmt, traceSym->codegen().ID);
-}
-
-void Auditor::auditAddressExpression(Node *node) {
-  auto addrExpr = dynamic_cast<AddressExpression *>(node);
-  if (!addrExpr)
-    return;
-
-  auto addrSym = semantics.getSymbolFromMeta(addrExpr);
-  inhibit = true;
-  audit(addrExpr->identifier.get());
-  inhibit = false;
-  simulateFree(addrExpr, addrSym->codegen().ID);
-}
-
-void Auditor::auditDereferenceExpression(Node *node) {
-  auto derefExpr = dynamic_cast<DereferenceExpression *>(node);
-  if (!derefExpr)
-    return;
-
-  auto derefSym = semantics.getSymbolFromMeta(derefExpr);
-  inhibit = true;
-  audit(derefExpr->identifier.get());
-  inhibit = false;
-  simulateFree(derefExpr, derefSym->codegen().ID);
-}
-
-void Auditor::auditBlockStatement(Node *node) {
-  auto blockStmt = dynamic_cast<BlockStatement *>(node);
-  if (!blockStmt)
-    return;
-
-  activeBlocks.push_back(blockStmt);
-  if (hasDisruptors(blockStmt) && shouldNativeBunkerBlock(blockStmt)) {
-    logInternal(
-        "[TRIGGER] Block disruptor detected bunkering natives for block: " +
-        blockStmt->toString());
-    bunkerNatives(blockStmt);
-  }
-
-  for (const auto &stmt : blockStmt->statements) {
-    audit(stmt.get());
-  }
-  activeBlocks.pop_back();
-}
-
-void Auditor::auditBlockExpression(Node *node) {
-  auto blockExpr = dynamic_cast<BlockExpression *>(node);
-  if (!blockExpr)
-    return;
-
-  logInternal("[AUDIT-BLOCK] Block pointer: " +
-              std::to_string(reinterpret_cast<uintptr_t>(blockExpr)));
-
-  activeBlocks.push_back(blockExpr);
-  if (!blockExpr->statements.empty()) {
-    for (const auto &stmt : blockExpr->statements) {
-      audit(stmt.get());
+            logInternal("The baton has '" + std::to_string(baton->dependents.size()) +
+                        "' dependents");
+            if (baton && !baton->dependents.empty()) {
+                logInternal("The dependents exist attempting to block this return");
+                errorHandler.addHint(
+                    "The compiler cannot allow the escape of a variable that is "
+                    "extending the lifetime of other variables as if it frees them and "
+                    "allows your pointer to escape then you will have a dangling "
+                    "pointer");
+                logAuditError(
+                    "The return value '" + valName + "' cannot escape with hidden dependecies",
+                    retStmt->return_value.get());
+            }
+        }
     }
-  }
 
-  if (blockExpr->finalexpr.has_value()) {
-    audit(blockExpr->finalexpr.value().get());
-  }
-  activeBlocks.pop_back();
+    simulateFree(retStmt, retSym->codegen().ID);
+}
+
+void Auditor::auditInfix(Node* node) {
+    auto infix = dynamic_cast<InfixExpression*>(node);
+    if (!infix) return;
+
+    auto infixSym = semantics.getSymbolFromMeta(infix);
+    if (!infixSym) {
+        reportDevBug("Failed to get symbol info for infix", infix);
+    }
+    inhibit = true;
+    audit(infix->left_operand.get());
+    audit(infix->right_operand.get());
+    inhibit = false;
+    simulateFree(infix, infixSym->codegen().ID);
+}
+
+void Auditor::auditIdentifier(Node* node) {
+    auto ident = dynamic_cast<Identifier*>(node);
+    if (!ident) return;
+
+    auto identSym = semantics.getSymbolFromMeta(ident);
+    simulateFree(ident, identSym->codegen().ID);
+}
+
+void Auditor::auditTraceStatement(Node* node) {
+    auto traceStmt = dynamic_cast<TraceStatement*>(node);
+    if (!traceStmt) return;
+
+    auto traceSym = semantics.getSymbolFromMeta(traceStmt);
+    inhibit = true;
+    audit(traceStmt->expr.get());
+    inhibit = false;
+    simulateFree(traceStmt, traceSym->codegen().ID);
+}
+
+void Auditor::auditAddressExpression(Node* node) {
+    auto addrExpr = dynamic_cast<AddressExpression*>(node);
+    if (!addrExpr) return;
+
+    auto addrSym = semantics.getSymbolFromMeta(addrExpr);
+    inhibit = true;
+    audit(addrExpr->identifier.get());
+    inhibit = false;
+    simulateFree(addrExpr, addrSym->codegen().ID);
+}
+
+void Auditor::auditDereferenceExpression(Node* node) {
+    auto derefExpr = dynamic_cast<DereferenceExpression*>(node);
+    if (!derefExpr) return;
+
+    auto derefSym = semantics.getSymbolFromMeta(derefExpr);
+    inhibit = true;
+    audit(derefExpr->identifier.get());
+    inhibit = false;
+    simulateFree(derefExpr, derefSym->codegen().ID);
+}
+
+void Auditor::auditBlockStatement(Node* node) {
+    auto blockStmt = dynamic_cast<BlockStatement*>(node);
+    if (!blockStmt) return;
+
+    activeBlocks.push_back(blockStmt);
+    if (shouldNativeBunkerBlock(blockStmt)) {
+        bunkerPersists(blockStmt);
+        if (hasDisruptors(blockStmt)) {
+            logInternal("[TRIGGER] Block disruptor detected bunkering natives for block: " +
+                        blockStmt->toString());
+            bunkerNatives(blockStmt);
+        }
+    }
+
+    for (const auto& stmt : blockStmt->statements) {
+        audit(stmt.get());
+    }
+    activeBlocks.pop_back();
+}
+
+void Auditor::auditBlockExpression(Node* node) {
+    auto blockExpr = dynamic_cast<BlockExpression*>(node);
+    if (!blockExpr) return;
+
+    logInternal("[AUDIT-BLOCK] Block pointer: " +
+                std::to_string(reinterpret_cast<uintptr_t>(blockExpr)));
+
+    activeBlocks.push_back(blockExpr);
+
+    if (!blockExpr->statements.empty()) {
+        for (const auto& stmt : blockExpr->statements) {
+            audit(stmt.get());
+        }
+    }
+
+    if (blockExpr->finalexpr.has_value()) {
+        audit(blockExpr->finalexpr.value().get());
+    }
+
+    if (shouldNativeBunkerBlock(blockExpr)) {
+        bunkerPersists(blockExpr);
+    }
+
+    activeBlocks.pop_back();
 }
