@@ -390,6 +390,8 @@ struct LifeTime {
     bool isAlive = false;        // Auditor liveness simulation flag
     std::map<std::string, std::shared_ptr<SymbolInfo>>
         dependents;  // Dependents map for batons that have been robbed
+    int ptrCount;
+    int refCount;
 
     LifeTime() = default;
     LifeTime(const LifeTime &other) = default;

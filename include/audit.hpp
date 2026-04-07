@@ -43,9 +43,11 @@ private:
   using auditFn = void (Auditor::*)(Node *node);
   std::unordered_map<std::type_index, auditFn> auditFnsMap;
   std::unordered_map<std::string, std::vector<std::string>> candidateRegistry;
+  std::unordered_map<std::string,int> usageMap;
   std::set<std::string> bunkeredIDs;
   std::vector<Node *> activeBlocks;
   std::vector<std::string> cycle;
+  int currentStmtIdx=0;
   bool inhibit = false;
 
   void registerAuditorFunctions();
@@ -126,7 +128,10 @@ private:
   bool isDeclaration(Node *node);
 
   bool containsNode(Node *root, Node *target);
-  void simulateDeclFree(Node *contextNode, const std::string &contextID);
+  void buildUsageMap(BlockExpression *block);
+  bool isUsedDownwards(const std::string &ID);
+  void rearmBaton(const std::string &ID,Node *robber);
+  void simulateDeclFree(VariableDeclaration *declaration, const std::string &contextID);
   void simulateFree(Node *contextNode, const std::string &contextID);
 
   // Loggers and reporters

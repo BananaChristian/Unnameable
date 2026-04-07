@@ -446,7 +446,12 @@ void Semantics::walkVariableDeclaration(Node* node) {
 
     // Creating the baton
     if (declInfo->storage().isHeap) {
-        LifeTime* targetBaton = initializer ? responsibilityTable[initializer].get() : nullptr;
+        LifeTime* targetBaton = nullptr;
+        if (initializer && declInfo->relations().targetSymbol) {
+            // Look up the baton by the ID of the variable we are actually pointing to
+             targetBaton = getBaton(declInfo->relations().targetSymbol->codegen().ID);
+        }
+
         auto lifetime = createLifeTimeTracker(declaration, targetBaton, declInfo);
         declInfo->codegen().ID = lifetime->ID;
         responsibilityTable[declaration] = std::move(lifetime);
@@ -456,6 +461,5 @@ void Semantics::walkVariableDeclaration(Node* node) {
     logInternal("[DEBUG] Stored metadata for " + declName + " | isHeap: " +
                 std::to_string(declInfo->storage().isHeap) + " | ID: " + declInfo->codegen().ID +
                 " | type :" + declInfo->type().type.resolvedName);
-    hasError = false;
     symbolTable.back()[declName] = declInfo;
 }

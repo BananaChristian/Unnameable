@@ -1264,8 +1264,8 @@ void IRGenerator::emitDeclarationClean(Node *contextNode) {
 
   logInternal("  [DECL-CLEAN] ID: " + sym->codegen().ID +
               " | Responsible: " + (baton->isResponsible ? "T" : "F") +
-              " | PtrCount: " + std::to_string(sym->storage().pointerCount) +
-              " | RefCount: " + std::to_string(sym->storage().refCount));
+              " | PtrCount: " + std::to_string(baton->ptrCount) +
+              " | RefCount: " + std::to_string(baton->refCount));
 
   if (!baton->isResponsible) {
     logInternal("  [DECL-CLEAN] Baton is not responsible for memory.");
@@ -1273,7 +1273,7 @@ void IRGenerator::emitDeclarationClean(Node *contextNode) {
   }
 
   // Trigger Logic (Counts)
-  if (sym->storage().pointerCount == 0 && sym->storage().refCount == 0) {
+  if (baton->ptrCount == 0 && baton->refCount == 0) {
     logInternal("  [DECL-CLEAN] Last use detected. Commencing physical free.");
     // Free the depenedents first
     logInternal("  [Dependents] Size: " +
@@ -1330,8 +1330,8 @@ void IRGenerator::emitCleanup(Node *contextNode) {
 
     logInternal("  [NORMAL-CLEAN] ID: " + identSym->codegen().ID +
                 " | Responsible: " + (baton->isResponsible ? "T" : "F") +
-                " | PtrCount: " + std::to_string(identSym->storage().pointerCount) +
-                " | RefCount: " + std::to_string(identSym->storage().refCount));
+                " | PtrCount: " + std::to_string(baton->ptrCount) +
+                " | RefCount: " + std::to_string(baton->refCount));
 
     if (!baton->isResponsible) {
       logInternal("  [NORMAL-CLEAN] Baton is not responsible for memory.");
@@ -1339,7 +1339,7 @@ void IRGenerator::emitCleanup(Node *contextNode) {
     }
 
     // Trigger Logic (Counts)
-    if (identSym->storage().pointerCount == 0 && identSym->storage().refCount == 0) {
+    if (baton->ptrCount == 0 && baton->refCount == 0) {
       logInternal(
           "  [NORMAL-CLEAN] Last use detected. Commencing physical free.");
       // Free the depenedents first

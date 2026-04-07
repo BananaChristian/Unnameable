@@ -1850,8 +1850,9 @@ std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
     lifetime->isAlive = true;
     lifetime->persist = declSym->storage().isPersist;
 
-    if (declSym->relations().targetSymbol && targetBaton)
+    if (declSym->relations().targetSymbol && targetBaton){
         transferResponsibility(lifetime.get(), targetBaton, declSym->relations().targetSymbol);
+    }
 
     Node* currentBlock = getCurrentBlock();
     if (currentBlock) {
@@ -1870,51 +1871,36 @@ std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
 }
 
 LifeTime* Semantics::getBaton(const std::string& ID) {
-    logInternal("[BATON GETTER] Looking for baton with ID: " + ID);
-
-    // First, try queryForLifeTimeBaton
+    // Primary Attempt: Use the ID to find the ORIGINAL holder node
     Node* holder = queryForLifeTimeBaton(ID);
-    if (!holder) {
-        logInternal("[BATON GETTER] queryForLifeTimeBaton returned NULL for ID: " + ID);
-
-        // DEBUG: Dump all batons in responsibilityTable to see what we have
-        logInternal("[BATON GETTER] Dumping all batons in responsibilityTable:");
-        int batonCount = 0;
-        for (const auto& [node, baton] : responsibilityTable) {
-            if (baton) {
-                logInternal("[BATON GETTER]   Baton " + std::to_string(batonCount++) +
-                            ": ID=" + baton->ID + ", Node=" + node->toString());
-            }
+    
+    if (holder) {
+        auto it = responsibilityTable.find(holder);
+        if (it != responsibilityTable.end()) {
+            return it->second.get();
         }
-        logInternal("[BATON GETTER] Total batons in table: " + std::to_string(batonCount));
-
-        return nullptr;
     }
 
-    logInternal("[BATON GETTER] queryForLifeTimeBaton returned holder node: " + holder->toString());
-
-    auto it = responsibilityTable.find(holder);
-    if (it == responsibilityTable.end()) {
-        logInternal(
-            "[BATON GETTER] Holder node found but no baton in "
-            "responsibilityTable!");
-        return nullptr;
+    // Fallback: Deep Search by ID
+    // If the 'holder' is just an Identifier or AddressExpression, 
+    // it might not be the key in responsibilityTable.
+    for (auto const& [node, baton] : responsibilityTable) {
+        if (baton && baton->ID == ID) {
+            logInternal("[BATON GETTER] Found via Deep Search for ID: " + ID);
+            return baton.get();
+        }
     }
 
-    auto& baton = it->second;
-    if (!baton) {
-        logInternal("[BATON GETTER] Baton is null for holder: " + holder->toString());
-        return nullptr;
-    }
-
-    logInternal("[BATON GETTER] ✓ Found baton: ID=" + baton->ID +
-                ", isResponsible=" + (baton->isResponsible ? "true" : "false"));
-
-    return baton.get();
+    logInternal("[BATON GETTER] Total Failure: ID " + ID + " exists nowhere.");
+    return nullptr;
 }
 
 void Semantics::transferResponsibility(LifeTime* currentBaton, LifeTime* targetBaton,
                                        const std::shared_ptr<SymbolInfo>& targetSym) {
+    if(!targetBaton){
+        logInternal("[HEIST] Failed to carry out heist due to lack of target baton");
+        return;
+    }
     logInternal("[HEIST] Robber (Current): " + currentBaton->ID);
     logInternal("[HEIST] Victim (Target): " + targetBaton->ID);
     logInternal("[HEIST] Target Pointer Count: " +
@@ -1925,7 +1911,10 @@ void Semantics::transferResponsibility(LifeTime* currentBaton, LifeTime* targetB
         return;
     }
 
-    auto targetPointerCount = targetSym->storage().pointerCount;
+    //Assign the baton pointer count
+    targetBaton->ptrCount=targetSym->storage().pointerCount;
+
+    auto targetPointerCount = targetBaton->ptrCount;
 
     // The moment of truth: Can we rob it?
     if (targetPointerCount <= 2) {

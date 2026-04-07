@@ -16,42 +16,6 @@ void Auditor::auditVariableDeclaration(Node* node) {
 
     if (!sym->storage().isHeap) return;
 
-
-    auto initializer = declaration->initializer.get();
-    if (sym->type().isPointer && initializer) {
-        auto valSym = semantics.getSymbolFromMeta(initializer);
-        if (!valSym) {
-            reportDevBug("Failed to find symbol info for initializer", initializer);
-        }
-
-        Node* valBatonHolder = semantics.queryForLifeTimeBaton(valSym->codegen().ID);
-        Node* ptrBatonHolder = semantics.queryForLifeTimeBaton(sym->codegen().ID);
-
-        if (valBatonHolder && valBatonHolder != initializer) {
-            auto& valBaton = semantics.responsibilityTable[valBatonHolder];
-            auto& ptrBaton = semantics.responsibilityTable[ptrBatonHolder];
-
-            logInternal(
-                "  [REVERSE-LOGIC] Detected non-death use. Correcting baton "
-                "states...");
-            logInternal("    Before: Ptr(" + sym->codegen().ID +
-                        ") Deps: " + std::to_string(ptrBaton->dependents.size()));
-
-            // The "Undo"
-            if (ptrBaton->dependents.count(valSym->codegen().ID)) {
-                ptrBaton->dependents.erase(valSym->codegen().ID);
-                logInternal("    Action: Erased " + valSym->codegen().ID + " from Ptr " +
-                            sym->codegen().ID);
-            } else {
-                logInternal("    Warning: " + valSym->codegen().ID +
-                            " was NOT in Ptr dependents. Exclusivity might be broken.");
-            }
-
-            valBaton->isResponsible = true;
-            logInternal("    Action: Rearmed ValBaton " + valBaton->ID + " (isResponsible = TRUE)");
-        }
-    }
-
     simulateDeclFree(declaration, sym->codegen().ID);
 }
 
@@ -336,14 +300,17 @@ void Auditor::auditBlockExpression(Node* node) {
                 std::to_string(reinterpret_cast<uintptr_t>(blockExpr)));
 
     activeBlocks.push_back(blockExpr);
+    buildUsageMap(blockExpr);
+    int n=blockExpr->statements.size();
 
-    if (!blockExpr->statements.empty()) {
-        for (const auto& stmt : blockExpr->statements) {
-            audit(stmt.get());
-        }
+    for (int i =0 ;i<n;++i) {
+        currentStmtIdx=i;
+        auto &stmt=blockExpr->statements[i];
+        audit(stmt.get());
     }
 
     if (blockExpr->finalexpr.has_value()) {
+        currentStmtIdx=n;
         audit(blockExpr->finalexpr.value().get());
     }
 

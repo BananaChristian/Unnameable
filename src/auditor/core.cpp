@@ -38,6 +38,42 @@ void Auditor::registerAuditorFunctions() {
   auditFnsMap[typeid(ForStatement)] = &Auditor::auditForStatement;
 }
 
+void Auditor::buildUsageMap(BlockExpression* block) {
+    usageMap.clear();
+    int n = block->statements.size();
+
+    auto recordUsage = [&](Node* node, int index) {
+        auto ids = semantics.digIdentifiers(node);
+        for (const auto& idNode : ids) {
+            // Get the actual Baton ID (e.g., "N0") instead of the string "Identifier: x"
+            auto sym=semantics.getSymbolFromMeta(idNode);
+            if(!sym)
+              reportDevBug("Failed to get symbol info for '"+idNode->toString(),idNode);
+
+            auto baton = semantics.queryForLifeTimeBaton(sym->codegen().ID); 
+            if (baton) {
+                auto &batonMeta = semantics.responsibilityTable[baton];
+                usageMap[batonMeta->ID] = index;
+            }
+        }
+    };
+
+    for (int i = 0; i < n; ++i) {
+        recordUsage(block->statements[i].get(), i);
+    }
+
+    if (block->finalexpr.has_value() && block->finalexpr.value()) {
+        recordUsage(block->finalexpr.value().get(), n);
+    }
+}
+
+bool Auditor::isUsedDownwards(const std::string &ID){
+    if(usageMap.find(ID)==usageMap.end())
+        return false;
+
+    return usageMap[ID]>= currentStmtIdx;
+}
+
 void Auditor::runClassifier(Node *node) {
   logInternal("[CLASSIFIER] Starting classification pass");
   classifyNode(node);
@@ -354,6 +390,7 @@ bool Auditor::hasDisruptors(Node *block) {
       if (dynamic_cast<BreakStatement *>(stmt.get()) ||
           dynamic_cast<ContinueStatement *>(stmt.get())) {
         return true;
+
       }
     }
   }
@@ -1117,7 +1154,7 @@ bool Auditor::isBunkered(const std::string &id) {
   return bunkeredIDs.find(id) != bunkeredIDs.end();
 }
 
-void Auditor::simulateDeclFree(Node *contextNode,
+void Auditor::simulateDeclFree(VariableDeclaration *declaration,
                                const std::string &contextID) {
   logInternal("\n  [SIMULATE-FREE] Target: " + contextID);
   if (inhibit) {
@@ -1138,22 +1175,25 @@ void Auditor::simulateDeclFree(Node *contextNode,
   }
 
   // Check if the holder node is the actual contextNode
-  if (holderNode != contextNode) {
+  if (holderNode != declaration) {
     logInternal("[DECL-SIMULATE FREE] The baton was moved node: " +
-                contextNode->toString() + "' is not the executor");
+                declaration->toString() + "' is not the executor");
     return;
   }
 
   auto &baton = semantics.responsibilityTable[holderNode];
   auto contextSym = semantics.getSymbolFromMeta(holderNode);
+  if(!contextSym)
+      reportDevBug("Failed to context symbol info",holderNode);
+
 
   logInternal("   [DECL-SIMULATE FREE] Baton ID: " + baton->ID);
   logInternal("   [DECL-SIMULATE FREE] State: isResponsible=" +
               std::string(baton->isResponsible ? "T" : "F") +
               ", isAlive=" + std::string(baton->isAlive ? "T" : "F") +
-              ", ptrCount=" + std::to_string(contextSym->storage().pointerCount));
+              ", ptrCount=" + std::to_string(baton->ptrCount));
 
-  if (contextSym->storage().pointerCount == 0 && contextSym->storage().refCount == 0) {
+  if (baton->ptrCount == 0 && baton->refCount == 0) {
     if (baton->isResponsible && baton->isAlive) {
       logInternal("    [DEATH] Condition met. Killing family: " + contextID);
       baton->isAlive = false;
@@ -1162,10 +1202,18 @@ void Auditor::simulateDeclFree(Node *contextNode,
       logInternal("    Dependents to process: " +
                   std::to_string(baton->dependents.size()));
 
+      std::vector<std::string> toRearm;
       for (const auto &[id, depSym] : baton->dependents) {
+          if(isUsedDownwards(id)){
+              toRearm.push_back(id);
+          }else{
         logInternal("    [TRANSFER] Dependent " + id +
                     " (dropCount=" + (dropCount ? "T" : "F") + ")");
-        transferDependent(id, depSym, dropCount);
+        transferDependent(id, depSym, dropCount);}
+      }
+
+      for(const auto &id:toRearm){
+          rearmBaton(id,holderNode);
       }
     } else {
       logInternal(
@@ -1173,7 +1221,7 @@ void Auditor::simulateDeclFree(Node *contextNode,
     }
   } else {
     logInternal("    [STAY-ALIVE] References/Pointers still exist (" +
-                std::to_string(contextSym->storage().pointerCount) + ")");
+                std::to_string(baton->ptrCount) + ")");
   }
 }
 
@@ -1211,9 +1259,9 @@ void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
     logInternal("   [SIMULATE FREE] State: isResponsible=" +
                 std::string(baton->isResponsible ? "T" : "F") +
                 ", isAlive=" + std::string(baton->isAlive ? "T" : "F") +
-                ", ptrCount=" + std::to_string(contextSym->storage().pointerCount));
+                ", ptrCount=" + std::to_string(baton->ptrCount));
 
-    if (contextSym->storage().pointerCount == 0 && contextSym->storage().refCount == 0) {
+    if (baton->ptrCount == 0 && baton->refCount == 0) {
       if (baton->isResponsible && baton->isAlive) {
         logInternal("    [DEATH] Condition met. Killing family: " + contextID);
         baton->isAlive = false;
@@ -1222,10 +1270,19 @@ void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
         logInternal("    Dependents to process: " +
                     std::to_string(baton->dependents.size()));
 
+        std::vector<std::string> toRearm;
         for (const auto &[id, depSym] : baton->dependents) {
-          logInternal("    [TRANSFER] Dependent " + id +
+            if(isUsedDownwards(id)){
+                toRearm.push_back(id);
+            }else{
+               logInternal("    [TRANSFER] Dependent " + id +
                       " (dropCount=" + (dropCount ? "T" : "F") + ")");
-          transferDependent(id, depSym, dropCount);
+               transferDependent(id, depSym, dropCount); 
+            }
+            
+            for(const auto &id:toRearm){
+                rearmBaton(id,holderNode);
+            }
         }
       } else {
         logInternal(
@@ -1233,9 +1290,27 @@ void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
       }
     } else {
       logInternal("    [STAY-ALIVE] References/Pointers still exist (" +
-                  std::to_string(contextSym->storage().pointerCount) + ")");
+                  std::to_string(baton->ptrCount) + ")");
     }
   }
+}
+
+void Auditor::rearmBaton(const std::string &victimID,Node *robber){
+    auto victimNode=semantics.queryForLifeTimeBaton(victimID);
+    auto &victimBaton=semantics.responsibilityTable[victimNode];
+    auto &robberBaton=semantics.responsibilityTable[robber];
+    logInternal("[REARM] Rearming "+victimID+" from "+robber->toString());
+    //Start restoration
+    victimBaton->isResponsible=true;
+    logInternal("[REARM] Erasing "+victimID+" from dependents of "+robberBaton->ID);
+    robberBaton->dependents.erase(victimID);
+
+    if(victimBaton->ptrCount>0){
+        victimBaton->ptrCount--;
+        logInternal("[REARM] Decremented ptrCount for "+victimID+" to "+std::to_string(victimBaton->ptrCount));
+    }
+
+    logInternal("[REARM] Success "+victimID+" is now a free agent");
 }
 
 void Auditor::assignmentRob(Node *contextAssign,
@@ -1309,6 +1384,11 @@ void Auditor::assignmentRob(Node *contextAssign,
         logInternal(
             "  [ASSIGNMENT HEIST] ValBaton " + valBaton->ID +
             " isResponsible: " + (valBaton->isResponsible ? "YES" : "NO"));
+
+        if(assignSym->type().isPointer){
+            valBaton->ptrCount++;
+            logInternal("[ASSIGNMENT HEIST] Incrementing pointerCount for "+valBaton->ID+" to "+std::to_string(valBaton->ptrCount));
+        }
 
         if (valBaton->isResponsible) {
           logInternal("  [ASSIGNMENT HEIST] Attempting Robbery: " +
