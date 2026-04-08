@@ -220,6 +220,8 @@ std::string TokenTypeToLiteral(TokenType type) {
   case TokenType::FLOAT:
     return "Token Type: GENERIC FLOAT";
 
+  case TokenType::F_STRING:
+    return "Token Type: F_STRING";
   case TokenType::STRING:
     return "Token Type: STRING";
   case TokenType::STRING_KEYWORD:

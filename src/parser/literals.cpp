@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "parser.hpp"
 
 // Null literal parse function
@@ -152,6 +153,76 @@ std::unique_ptr<Expression> Parser::parseStringLiteral() {
   Token string_tok = currentToken();
   advance();
   return std::make_unique<StringLiteral>(string_tok);
+}
+
+std::unique_ptr<Expression> Parser::parseFStringLiteral() {
+    Token f_token = currentToken();
+    std::string content = f_token.TokenLiteral;
+    advance(); 
+
+    std::vector<FStringSegment> segments;
+    size_t pos = 0;
+
+    while (pos < content.length()) {
+        size_t nextBrace = content.find_first_of("{}", pos);
+
+        // No more braces capture remaining text
+        if (nextBrace == std::string::npos) {
+            std::string trailing = content.substr(pos);
+            if (!trailing.empty()) {
+                segments.push_back({std::make_unique<StringLiteral>(
+                    Token{trailing, TokenType::STRING, f_token.line, f_token.column}), {}
+                });
+            }
+            break;
+        }
+
+        // Handle escaped braces like {{ or }}
+        if (nextBrace + 1 < content.length() && content[nextBrace] == content[nextBrace + 1]) {
+            // It's an escape! We treat the first brace and everything before it as a StringLiteral
+            std::string literalPart = content.substr(pos, nextBrace - pos + 1); 
+            segments.push_back({std::make_unique<StringLiteral>(
+                Token{literalPart, TokenType::STRING, f_token.line, f_token.column}), {}
+            });
+            pos = nextBrace + 2; // Skip both braces
+            continue;
+        }
+
+        // Handle a real hole {expression}
+        if (content[nextBrace] == '{') {
+            FStringSegment currentSeg;
+            
+            // Capture text leading up to the hole
+            std::string leadingText = content.substr(pos, nextBrace - pos);
+            currentSeg.string_part = std::make_unique<StringLiteral>(
+                Token{leadingText, TokenType::STRING, f_token.line, f_token.column}
+            );
+
+            size_t endBrace = content.find('}', nextBrace);
+            if (endBrace != std::string::npos) {
+                std::string exprCode = content.substr(nextBrace + 1, endBrace - nextBrace - 1);
+                
+                if (!exprCode.empty()) {
+                    currentSeg.values.push_back(std::make_unique<Identifier>(
+                        Token{exprCode, TokenType::IDENTIFIER, f_token.line, f_token.column}
+                    ));
+                }
+                segments.push_back(std::move(currentSeg));
+                pos = endBrace + 1;
+            } else {
+                logError("Missing '}' in f-string", f_token);
+                break;
+            }
+        } else {
+            // Handle stray '}' (Treat as literal text)
+            segments.push_back({std::make_unique<StringLiteral>(
+                Token{content.substr(pos, nextBrace - pos + 1), TokenType::STRING, f_token.line, f_token.column}), {}
+            });
+            pos = nextBrace + 1;
+        }
+    }
+
+    return std::make_unique<FStringLiteral>(f_token, std::move(segments));
 }
 
 // Array literal parse function

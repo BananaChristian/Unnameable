@@ -68,16 +68,16 @@ struct Statement : Node {
 // Identifier statement node
 struct Identifier : Expression {
   Token identifier;
-  bool isKiller;
   std::string toString() override {
     return "Identifier: " + identifier.TokenLiteral;
   }
 
   Identifier *shallowClone() const override {
-    return new Identifier(identifier, isKiller);
+    return new Identifier(identifier);
   }
-  Identifier(Token ident, bool isKill)
-      : Expression(ident), identifier(ident), isKiller(isKill){};
+  
+  Identifier(Token ident)
+      : Expression(ident), identifier(ident){};
 };
 
 // Address expression node
@@ -474,6 +474,59 @@ struct StringLiteral : Expression {
   }
   StringLiteral(Token string_t)
       : Expression(string_t), string_token(string_t){};
+};
+
+struct FStringSegment {
+    std::unique_ptr<Expression> string_part; 
+    std::vector<std::unique_ptr<Expression>> values; 
+};
+
+struct FStringLiteral : Expression {
+    Token f_token;
+    std::vector<FStringSegment> segments;
+
+    std::string toString() override {
+    std::string res = "F-String Literal: \"";
+    
+    for (const auto& seg : segments) {
+        // Handle the String part (The text context)
+        if (seg.string_part) {
+            res += seg.string_part->toString(); 
+        }
+
+        // Handle the Expression Payload (The { } stuff)
+        if (!seg.values.empty()) {
+            res += "{";
+            for (size_t i = 0; i < seg.values.size(); ++i) {
+                res += seg.values[i]->toString();
+                if (i < seg.values.size() - 1) {
+                    res += ", ";
+                }
+            }
+            res += "}";
+        }
+    }
+    
+    res += "\"";
+    return res;
+}
+    FStringLiteral *shallowClone() const override {
+        std::vector<FStringSegment> clonedSegs;
+        for (const auto& seg : segments) {
+            FStringSegment newSeg;
+            if (seg.string_part) 
+                newSeg.string_part = std::unique_ptr<Expression>(seg.string_part->shallowClone());
+            
+            for (const auto& val : seg.values) {
+                newSeg.values.push_back(std::unique_ptr<Expression>(val->shallowClone()));
+            }
+            clonedSegs.push_back(std::move(newSeg));
+        }
+        return new FStringLiteral(token, std::move(clonedSegs));
+    }
+
+    FStringLiteral(Token t,std::vector<FStringSegment> segs)
+        : Expression(t), segments(std::move(segs)) {}
 };
 
 // Size of expression
@@ -1848,22 +1901,23 @@ struct LinkStatement : Statement {
 // Trace statement
 struct TraceStatement : Statement {
   Token trace_keyword;
-  std::unique_ptr<Expression> expr;
+  std::vector<std::unique_ptr<Expression>> arguments;
 
-  std::string exprStr = "No expression";
   std::string toString() override {
-    if (expr) {
-      exprStr = expr->toString();
+    std::string argsStr;
+    for (size_t i = 0; i < arguments.size(); ++i) {
+        argsStr += arguments[i]->toString();
+        if (i < arguments.size() - 1) argsStr += ", ";
     }
-    return "Trace Statement: " + trace_keyword.TokenLiteral + " " + exprStr;
+    return "Trace Statement: " + trace_keyword.TokenLiteral + " (" + argsStr + ")";
   }
 
   TraceStatement *shallowClone() const override {
-    return new TraceStatement(trace_keyword, clonePtr(expr));
+    return new TraceStatement(trace_keyword, clonePtrVector(arguments));
   }
 
-  TraceStatement(Token trace, std::unique_ptr<Expression> expression)
-      : Statement(trace), trace_keyword(trace), expr(std::move(expression)){};
+  TraceStatement(Token trace, std::vector<std::unique_ptr<Expression>> args)
+      : Statement(trace), trace_keyword(trace), arguments(std::move(args)) {}
 };
 
 // BLOCKS

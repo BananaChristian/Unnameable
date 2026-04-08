@@ -94,9 +94,17 @@ std::unique_ptr<Statement> Parser::parseTraceStatement() {
   Token trace = currentToken();
   advance(); // Consume the trace token
 
-  auto expr = parseExpression(Precedence::PREC_NONE);
+    std::vector<std::unique_ptr<Expression>> args;
 
-  return std::make_unique<TraceStatement>(trace, std::move(expr));
+    //Grab the first guy
+    args.push_back(parseExpression(Precedence::PREC_NONE));
+
+    while(currentToken().type==TokenType::COMMA){
+        advance();//Consume the ,
+        args.push_back(parseExpression(Precedence::PREC_NONE));
+    }
+
+  return std::make_unique<TraceStatement>(trace, std::move(args));
 }
 
 //----------HELPER FUNCTIONS---------------
@@ -240,6 +248,7 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::FLOAT] = &Parser::parseFloatLiteral;
 
   PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
+  PrefixParseFunctionsMap[TokenType::F_STRING]=&Parser::parseFStringLiteral;
   PrefixParseFunctionsMap[TokenType::SIZEOF] = &Parser::parseSizeOfExpression;
 
   PrefixParseFunctionsMap[TokenType::IDENTIFIER] =

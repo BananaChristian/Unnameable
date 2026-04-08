@@ -281,6 +281,8 @@ private:
   std::unique_ptr<Expression> parseNullLiteral();
   // String
   std::unique_ptr<Expression> parseStringLiteral();
+  //F-String
+  std::unique_ptr<Expression> parseFStringLiteral();
   // Sizeof
   std::unique_ptr<Expression> parseSizeOfExpression();
 

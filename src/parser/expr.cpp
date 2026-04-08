@@ -125,8 +125,7 @@ std::unique_ptr<Expression> Parser::parseDereferenceExpression() {
 
 // Parsing identifier expression
 std::unique_ptr<Expression> Parser::parseIdentifier() {
-  bool isKiller = false;
-  auto ident = std::make_unique<Identifier>(currentToken(), isKiller);
+  auto ident = std::make_unique<Identifier>(currentToken());
   if (!ident) {
     logError("Failed to parse identifier '" + currentToken().TokenLiteral + "'",
              currentToken());
@@ -187,7 +186,7 @@ std::unique_ptr<Expression> Parser::parseSelfExpression() {
       return nullptr;
     }
 
-    auto fieldIdent = std::make_unique<Identifier>(currentToken(), false);
+    auto fieldIdent = std::make_unique<Identifier>(currentToken());
     fields.push_back(std::move(fieldIdent));
 
     advance(); // move past the identifier

@@ -65,6 +65,7 @@ private:
   // Expression auditors
   void auditInfix(Node *node);
   void auditIdentifier(Node *node);
+  void auditFStringLiteral(Node *node);
 
   // Statement auditors
   void auditAssignmentStatement(Node *node);

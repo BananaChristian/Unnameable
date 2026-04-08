@@ -394,6 +394,43 @@ void Lexer::readComments() {
   }
 }
 
+Token Lexer::readFString() {
+    std::string value;
+    CAPTURE_POS;
+
+    advance(); // Skip opening quote '"'
+
+    while (currentChar() != U'\0' && currentChar() != U'\n') {
+        char32_t ch = currentChar();
+
+        if (ch == U'"') {
+            advance(); // Skip closing quote
+            return Token{value, TokenType::F_STRING, tokenLine, tokenColumn};
+        }
+
+        // Standard Backslash Escapes
+        if (ch == U'\\') {
+            advance(); 
+            char32_t escapedChar = currentChar();
+            switch (escapedChar) {
+                case U'n':  value += '\n'; break;
+                case U't':  value += '\t'; break;
+                case U'\"': value += '\"'; break;
+                case U'\\': value += '\\'; break;
+                default:    value += (char)escapedChar; break; 
+            }
+            advance();
+            continue;
+        }
+
+        appendUTF8(value, ch);
+        advance();
+    }
+
+    logError("Unterminated f-string", Token{value, TokenType::ILLEGAL, tokenLine, tokenColumn});
+    return Token{value, TokenType::ILLEGAL, tokenLine, tokenColumn};
+}
+
 Token Lexer::readString() {
   std::string value;
   CAPTURE_POS;
@@ -598,6 +635,10 @@ Token Lexer::tokenize() {
   } else if (isIdentifierStart(character)) {
     if ((character == U'u' || character == U'U') && peekChar() == U'\'') {
       return readChar();
+    }
+    if(character== U'f'&& peekChar()=='"'){
+        advance();//Skip the 'f'
+        return readFString();
     }
     return readIdentifiers();
   }

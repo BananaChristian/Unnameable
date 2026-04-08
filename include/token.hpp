@@ -150,7 +150,8 @@ enum class TokenType {
   INT,   // Generic integer
   FLOAT, // Generic float
 
-  STRING,
+  STRING,//For normal strings ""
+  F_STRING,//For stuff like f""
 
   CHAR8, // 8 bit char
   CHAR8_KEYWORD,

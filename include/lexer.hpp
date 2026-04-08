@@ -146,6 +146,7 @@ private:
   bool isIdentifierStart(char32_t ch);
   bool isIdentifierContinue(char32_t ch);
   Token readString();
+  Token readFString();
   void appendUTF8(std::string &str, char32_t ch);
   char32_t readHexEscape(int digits);
   Token readChar();

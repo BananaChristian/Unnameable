@@ -708,19 +708,16 @@ void Semantics::walkTraceStatement(Node *node) {
     return;
   }
 
-  auto *innerExpr = traceStmt->expr.get();
-  if (!innerExpr)
-    return;
+  for(const auto &expr:traceStmt->arguments){
+      walker(expr.get());
+      auto argInfo=getSymbolFromMeta(expr.get());
+      if(!argInfo)
+          reportDevBug("Failed to get argument info",expr.get());
 
-  walker(innerExpr);
-  auto exprInfo = metaData[innerExpr];
-  if (!exprInfo)
-    return;
+      if(argInfo->storage().isHeap)
+          transferBaton(traceStmt,argInfo->codegen().ID);
+  }
 
-  if (exprInfo->storage().isHeap)
-    transferBaton(traceStmt, exprInfo->codegen().ID);
-
-  metaData[traceStmt] = exprInfo;
 }
 
 void Semantics::walkSealCallExpression(Node *node,

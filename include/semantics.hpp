@@ -115,6 +115,7 @@ class Semantics {
     void walkINTLiteral(Node *node);
 
     void walkStringLiteral(Node *node);
+    void walkFStringLiteral(Node *node);
     void walkBooleanLiteral(Node *node);
 
     void walkChar8Literal(Node *node);

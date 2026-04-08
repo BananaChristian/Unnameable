@@ -32,6 +32,27 @@ void Semantics::walkStringLiteral(Node *node) {
                   ResolvedType::makeBase(DataType::STRING, "string"));
 }
 
+void Semantics::walkFStringLiteral(Node *node){
+    auto fStr= dynamic_cast<FStringLiteral*>(node);
+    if(!fStr)
+        return;
+    
+    //Call the walker on the crap inside bro
+    auto segments=fStr->segments;
+    for(const auto &seg:segments){
+        if(seg.string_part)
+            walker(seg.string_part.get());
+
+        if(!seg.values.empty()){
+            for(const auto &val:seg.values){
+                walker(val.get());
+            }
+        }
+    }
+
+    registerLiteral(fStr,ResolvedType::makeBase(DataType::STRING,"string"));
+}
+
 void Semantics::walkChar8Literal(Node *node) {
   auto char8Literal = dynamic_cast<Char8Literal *>(node);
   if (!char8Literal)

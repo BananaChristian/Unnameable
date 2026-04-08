@@ -243,11 +243,30 @@ void Auditor::auditTraceStatement(Node* node) {
     auto traceStmt = dynamic_cast<TraceStatement*>(node);
     if (!traceStmt) return;
 
-    auto traceSym = semantics.getSymbolFromMeta(traceStmt);
-    inhibit = true;
-    audit(traceStmt->expr.get());
+    inhibit = true; 
+
+    for(const auto &expr : traceStmt->arguments) {
+        audit(expr.get()); 
+    }
+
     inhibit = false;
-    simulateFree(traceStmt, traceSym->codegen().ID);
+
+    for(const auto &expr : traceStmt->arguments) {
+        auto argSym = semantics.getSymbolFromMeta(expr.get());
+        if(argSym) {
+            simulateFree(expr.get(), argSym->codegen().ID);
+        }
+    }
+}
+
+void Auditor::auditFStringLiteral(Node* node) {
+    auto fstr = dynamic_cast<FStringLiteral*>(node);
+    // The inhibitor is already 'true' from the TraceStmt
+    for (auto &seg : fstr->segments) {
+        for (auto &valExpr : seg.values) {
+            audit(valExpr.get()); // Audit the 'x' inside {x}
+        }
+    }
 }
 
 void Auditor::auditAddressExpression(Node* node) {

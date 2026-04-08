@@ -61,6 +61,7 @@ void Semantics::registerWalkerFunctions() {
     walkerFunctionsMap[typeid(F64Literal)] = &Semantics::walkF64Literal;
     walkerFunctionsMap[typeid(FloatLiteral)] = &Semantics::walkFloatLiteral;
     walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
+    walkerFunctionsMap[typeid(FStringLiteral)]=&Semantics::walkFStringLiteral;
 
     walkerFunctionsMap[typeid(Char8Literal)] = &Semantics::walkChar8Literal;
     walkerFunctionsMap[typeid(Char16Literal)] = &Semantics::walkChar16Literal;
@@ -168,6 +169,8 @@ ResolvedType Semantics::inferNodeDataType(Node* node) {
 
     if (dynamic_cast<StringLiteral*>(node))
         return ResolvedType::makeBase(DataType::STRING, "string");
+    if(dynamic_cast<FStringLiteral*>(node))
+        return ResolvedType::makeBase(DataType::STRING,"string");
 
     if (dynamic_cast<Char8Literal*>(node)) return ResolvedType::makeBase(DataType::CHAR8, "char8");
     if (dynamic_cast<Char16Literal*>(node))
@@ -2184,6 +2187,17 @@ std::vector<Identifier*> Semantics::digIdentifiers(Node* node) {
         return digIdentifiers(postfix->operand.get());
     }
 
+    //FString literal
+    if (auto* fStr = dynamic_cast<FStringLiteral*>(node)) {
+         for (const auto& seg : fStr->segments) {
+             for (const auto& value : seg.values) {
+                 auto ids = digIdentifiers(value.get());
+                 results.insert(results.end(), ids.begin(), ids.end());
+             }
+         }
+         return results; 
+    }   
+
     // InfixExpression (x + y, a.next, b.prev)
     if (auto* infix = dynamic_cast<InfixExpression*>(node)) {
         auto leftIds = digIdentifiers(infix->left_operand.get());
@@ -2249,10 +2263,12 @@ std::vector<Identifier*> Semantics::digIdentifiers(Node* node) {
 
     // TraceStatement
     if (auto* trace = dynamic_cast<TraceStatement*>(node)) {
-        return digIdentifiers(trace->expr.get());
+        for(const auto &expr:trace->arguments){
+            auto idents= digIdentifiers(expr.get());
+            results.insert(results.end(),idents.begin(),idents.end());
+        }
+        return results;
     }
-    // If we get here, either the node has no identifiers or we need to add a
-    // new case
     return results;
 }
 
