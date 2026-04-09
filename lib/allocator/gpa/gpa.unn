@@ -3,7 +3,7 @@ const i32 UCR_PROT_WRITE= 0x2
 const i32 UCR_MAP_PRIVATE= 0x02
 const i32 UCR_MAP_ANONYMOUS= 0x20
 
-const usize PAGE_SIZE=4096uz
+const usize PAGE_SIZE=4096
 
 export func mmap(ptr opaque address, usize len, i32 prot, i32 flags, i32 fd, isize offset): ptr opaque
 export func munmap(ptr opaque address,usize len):i32
