@@ -119,6 +119,7 @@ private:
   llvm::Value *generatePrefixExpression(Node *node);
   llvm::Value *generatePostfixExpression(Node *node);
   llvm::Value *generateStringLiteral(Node *node);
+  llvm::Value *generateFStringLiteral(Node *node);
   llvm::Value *generateChar8Literal(Node *node);
   llvm::Value *generateChar16Literal(Node *node);
   llvm::Value *generateChar32Literal(Node *node);
@@ -273,7 +274,14 @@ private:
                            llvm::Type *&baseType);
   llvm::Value *generateIntegerLiteral(const std::string &literalStr,
                                       uint32_t bitWidth, bool isSigned);
-
+  llvm::Value *stringizeValue(llvm::Value *val,const ResolvedType &type);
+  llvm::Function *getOrDeclareStrlen();
+  llvm::Function *getOrDeclareWrite();
+  llvm::Function *getOrDeclareUnnitoa();
+  llvm::Function *getOrDeclareUnnftoa();
+  llvm::Function* getOrDeclareStrcat();
+  llvm::Function *getOrDeclareUnniptoa();
+  llvm::Value *calculateFStringSize(FStringLiteral *fStr);
   void reportDevBug(const std::string &message, Node *contextNode);
   void logInternal(const std::string &message);
 };

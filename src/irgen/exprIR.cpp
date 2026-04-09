@@ -3,6 +3,7 @@
 #include "semantics.hpp"
 #include <cstdint>
 #include <llvm-18/llvm/IR/Constants.h>
+#include <llvm-18/llvm/Support/Alignment.h>
 #include <stdexcept>
 
 //___________________Literals generator_____________________
@@ -28,6 +29,70 @@ llvm::Value *IRGenerator::generateStringLiteral(Node *node) {
       strConst->getType(), globalStr, indices);
 
   return strPtr;
+}
+
+llvm::Value *IRGenerator::generateFStringLiteral(Node *node){
+    auto fStr=dynamic_cast<FStringLiteral*>(node);
+    if(!fStr)
+        reportDevBug("Invalid f-string literal",node);
+    
+    auto i8Ty = llvm::Type::getInt8Ty(context);
+    auto i64Ty=llvm::Type::getInt64Ty(context);
+    
+    llvm::Value *requiredSize=calculateFStringSize(fStr);
+
+    llvm::Value* buffer = funcBuilder.CreateAlloca(i8Ty, 0, requiredSize, "fstr_tmp");
+    
+    llvm::Value* cursor = funcBuilder.getInt64(0);
+    
+    inhibitCleanUp=true;
+    
+    for(const auto &seg:fStr->segments){
+        //The literal part
+        if(seg.string_part){
+            auto str=dynamic_cast<StringLiteral*>(seg.string_part.get());
+            uint64_t len =str->string_token.TokenLiteral.length();
+            llvm::Value *litPtr=generateExpression(str);
+            llvm::Value *writePos=funcBuilder.CreateGEP(i8Ty,buffer,cursor);
+            
+            funcBuilder.CreateMemCpy(writePos,llvm::MaybeAlign(1),litPtr,llvm::MaybeAlign(1),len);
+            cursor=funcBuilder.CreateAdd(cursor,llvm::ConstantInt::get(i64Ty,len));
+        }
+        
+        //Add the hole placeholder
+        for(auto &valExpr:seg.values){
+            llvm::Value *val=generateExpression(valExpr.get());
+            if(!val)
+                reportDevBug("Failed to generate value ",valExpr.get());
+            
+            auto sym=semantics.getSymbolFromMeta(valExpr.get());
+            if(!sym)
+                reportDevBug("Failed to get value symbol info",valExpr.get());
+            
+            llvm::Value *strVal=stringizeValue(val,sym->type().type);
+            llvm::Value *strLen=funcBuilder.CreateCall(getOrDeclareStrlen(),{strVal});
+            
+            llvm::Value *writePos=funcBuilder.CreateGEP(i8Ty,buffer,cursor);
+            funcBuilder.CreateMemCpy(writePos,llvm::MaybeAlign(1),strVal,llvm::MaybeAlign(1),strLen);
+            
+            cursor=funcBuilder.CreateAdd(cursor,strLen);
+        }
+    }
+    
+    //Final null terminator
+    llvm::Value *finalPos=funcBuilder.CreateGEP(i8Ty,buffer,cursor);
+    funcBuilder.CreateStore(llvm::ConstantInt::get(i8Ty,0),finalPos);
+    inhibitCleanUp=false;
+    
+    for(const auto &seg:fStr->segments){
+        for(const auto &valExpr:seg.values){
+            auto sym=semantics.getSymbolFromMeta(valExpr.get());            
+            emitCleanup(valExpr.get());
+        }
+    }
+    
+    return buffer;
+
 }
 
 llvm::Value *IRGenerator::generateChar8Literal(Node *node) {

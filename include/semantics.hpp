@@ -89,6 +89,7 @@ class Semantics {
     bool insideRecord = false;
     bool insideSeal = false;
     bool insideAllocator = false;
+    bool insideTrace=false;
 
     bool hasFailed = false;
     bool hasError = false;

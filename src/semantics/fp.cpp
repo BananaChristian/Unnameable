@@ -707,6 +707,8 @@ void Semantics::walkTraceStatement(Node *node) {
                       traceStmt);
     return;
   }
+  
+  insideTrace=true;
 
   for(const auto &expr:traceStmt->arguments){
       walker(expr.get());
@@ -717,6 +719,8 @@ void Semantics::walkTraceStatement(Node *node) {
       if(argInfo->storage().isHeap)
           transferBaton(traceStmt,argInfo->codegen().ID);
   }
+  
+  insideTrace=false;
 
 }
 

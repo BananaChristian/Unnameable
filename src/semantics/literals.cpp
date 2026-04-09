@@ -37,9 +37,14 @@ void Semantics::walkFStringLiteral(Node *node){
     if(!fStr)
         return;
     
+    if(!insideTrace)
+    {
+        logSemanticErrors("f-strings are only valid when used with a trace statement", fStr);
+        return;
+    }
+    
     //Call the walker on the crap inside bro
-    auto segments=fStr->segments;
-    for(const auto &seg:segments){
+    for(const auto &seg:fStr->segments){
         if(seg.string_part)
             walker(seg.string_part.get());
 

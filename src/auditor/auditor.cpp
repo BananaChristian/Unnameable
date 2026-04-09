@@ -261,10 +261,10 @@ void Auditor::auditTraceStatement(Node* node) {
 
 void Auditor::auditFStringLiteral(Node* node) {
     auto fstr = dynamic_cast<FStringLiteral*>(node);
-    // The inhibitor is already 'true' from the TraceStmt
+    
     for (auto &seg : fstr->segments) {
         for (auto &valExpr : seg.values) {
-            audit(valExpr.get()); // Audit the 'x' inside {x}
+            audit(valExpr.get()); 
         }
     }
 }

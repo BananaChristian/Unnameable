@@ -954,6 +954,15 @@ bool Auditor::containsNode(Node *root, Node *target) {
         return true;
     }
   }
+  
+  if(auto *fStr=dynamic_cast<FStringLiteral*>(root)){
+      for(const auto &seg:fStr->segments){
+          for(const auto &val:seg.values){
+              if(containsNode(val.get(),target))
+                  return true;
+          }
+      }
+  }
 
   if (auto *subscript = dynamic_cast<ArraySubscript *>(root)) {
     if (subscript->identifier &&
@@ -996,8 +1005,9 @@ bool Auditor::containsNode(Node *root, Node *target) {
   }
 
   if (auto *trace = dynamic_cast<TraceStatement *>(root)) {
-    if (containsNode(trace->expr.get(), target))
-      return true;
+      for(const auto &arg:trace->arguments)
+        if (containsNode(arg.get(), target))
+        return true;
   }
 
   if (auto *ifStmt = dynamic_cast<ifStatement *>(root)) {
