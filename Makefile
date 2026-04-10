@@ -12,8 +12,7 @@ LIB_DIR       = lib
 URC_X86_LINUX = $(LIB_DIR)/urc/architecture/x86_64/linux
 
 # ____Unnameable Compiler____
-# I placed the compiler into my paths that is why I can just call it anyhow but normally it is inside the bin folder
-UNNC = unnc
+UNNC = ./$(OUT)
 
 # _____Compiler Flags______
 CXXFLAGS = -std=c++17 -Wall -g -Iinclude
@@ -45,8 +44,7 @@ URC_LIB = $(CORE_DIR)/urc.a
 # List only the objects that should be inside the "Toolbox"
 LIB_OBJS = $(CORE_DIR)/syscalls.o \
            $(CORE_DIR)/gpa.o \
-           $(CORE_DIR)/sage.o \
-           $(CORE_DIR)/unnitoa.o
+           $(CORE_DIR)/runtime.o
 
 # TARGETS
 all: $(OUT) core
@@ -78,17 +76,12 @@ $(CORE_DIR)/syscalls.o: $(URC_X86_LINUX)/syscalls.asm
 	$(NASM) $(ASFLAGS) $< -o $@
 
 # (GPA)
-$(CORE_DIR)/gpa.o: $(LIB_DIR)/allocator/gpa/gpa.unn
+$(CORE_DIR)/gpa.o: $(LIB_DIR)/allocator/gpa/gpa.unn $(OUT)
 	@mkdir -p $(CORE_DIR)
 	$(UNNC) $< -compile $@
 
-# (SAGE Allocator)
-$(CORE_DIR)/sage.o: $(LIB_DIR)/allocator/sage/sage.unn
-	@mkdir -p $(CORE_DIR)
-	$(UNNC) $< -compile $< $@
-
-# (Unnitoa)
-$(CORE_DIR)/unnitoa.o: $(LIB_DIR)/tools/unnitoa.cpp
+# (Runtime)
+$(CORE_DIR)/runtime.o: $(LIB_DIR)/tools/runtime.cpp
 	@mkdir -p $(CORE_DIR)
 	$(CXX) $(RUNTIME_CXXFLAGS) -c $< -o $@
 
