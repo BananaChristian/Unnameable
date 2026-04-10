@@ -28,7 +28,7 @@ class Semantics {
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> customTypesTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedComponentTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedRecordTable;
-    std::unordered_map<std::string,std::shared_ptr<SymbolInfo>> ImportedFunctionsTable;
+    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> ImportedFunctionsTable;
     std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
 
     using LifeTimeTable = std::unordered_map<Node *, std::unique_ptr<LifeTime>>;
@@ -78,6 +78,8 @@ class Semantics {
     Node *queryForLifeTimeBaton(const std::string &familyID);
     const std::unique_ptr<LifeTime> &readBatonInfo(const std::string &batonID);
     ResolvedType getArrayElementType(const ResolvedType &arrayType);
+    void collectDimensions(TypeModifier *modifier, std::vector<uint64_t> &staticDims,
+                           std::vector<Node *> &dynamicDims);
     bool isIntegerConstant(Node *node);
     std::vector<uint64_t> getSizePerDimesion(Node *node);
     std::string getBaseTypeName(const ResolvedType &type);
@@ -89,7 +91,7 @@ class Semantics {
     bool insideRecord = false;
     bool insideSeal = false;
     bool insideAllocator = false;
-    bool insideTrace=false;
+    bool insideTrace = false;
 
     bool hasFailed = false;
     bool hasError = false;

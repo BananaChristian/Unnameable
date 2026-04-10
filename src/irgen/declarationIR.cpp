@@ -111,12 +111,14 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
       allocationCount = funcBuilder.getInt64(totalElems);
     }
   } else if (decl->initializer) {
-    uint64_t totalElems = sym->codegen().componentSize / layout->getTypeAllocSize(elemTy);
-    allocationCount = funcBuilder.getInt64(totalElems);
-  } else {
-    reportDevBug("Array '" + name + "' has no dimensions or initializer", decl);
+      auto* arrLit = dynamic_cast<ArrayLiteral*>(decl->initializer.get());
+      if (arrLit) {
+          allocationCount = funcBuilder.getInt64(arrLit->array.size());
+      } else {
+          uint64_t totalElems = sym->codegen().componentSize / layout->getTypeAllocSize(elemTy);
+          allocationCount = funcBuilder.getInt64(totalElems);
+      }
   }
-
   // Allocate
   llvm::Value *dataPtr = nullptr;
   if (sym->storage().isHeap) {
@@ -144,11 +146,14 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
     auto *store = funcBuilder.CreateStore(boxVal, storage);
     if (sym->storage().isVolatile)
       store->setVolatile(true);
-  } else {
-    storage = funcBuilder.CreateAlloca(funcBuilder.getPtrTy(), nullptr, name);
-    auto *store = funcBuilder.CreateStore(dataPtr, storage);
-    if (sym->storage().isVolatile)
-      store->setVolatile(true);
+  } else if (sym->storage().isHeap) {
+      llvm::Value *byteSize = funcBuilder.CreateMul(
+             allocationCount,
+             funcBuilder.getInt64(layout->getTypeAllocSize(elemTy)));
+         dataPtr = allocateRuntimeHeap(sym, byteSize, name);
+         sym->codegen().llvmType = elemTy;
+  }else {
+    storage = dataPtr;
   }
 
   // Copy initializer content if present

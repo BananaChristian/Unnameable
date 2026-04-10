@@ -4,8 +4,7 @@
 #include "semantics.hpp"
 #include "token.hpp"
 
-void Semantics::giveGenericLiteralContext(Node* literal,
-                                          const ResolvedType& contextType,
+void Semantics::giveGenericLiteralContext(Node* literal, const ResolvedType& contextType,
                                           const std::shared_ptr<SymbolInfo>& litSym) {
     if (dynamic_cast<INTLiteral*>(literal)) {
         if (isInteger(contextType)) litSym->type().type = contextType;
@@ -319,7 +318,18 @@ void Semantics::walkVariableDeclaration(Node* node) {
     ResolvedType declaredType = inferNodeDataType(declaration);
     declInfo->type().type = declaredType;
 
+    std::vector<uint64_t> declSizePerDim;
+    std::vector<Node*> dynSizePerDim;
+    if (declInfo->type().isArray) {
+        if (type_modifier) {
+            collectDimensions(type_modifier, declSizePerDim, dynSizePerDim);
+        }
+        declInfo->type().sizePerDimensions = declSizePerDim;
+        declInfo->type().dynSizePerDimensions = dynSizePerDim;
+    }
+
     if (initializer) {
+        declInfo->storage().isInitialized = true;
         walker(initializer);
         auto initName = extractIdentifierName(initializer);
         auto initSym = getSymbolFromMeta(initializer);
@@ -332,8 +342,8 @@ void Semantics::walkVariableDeclaration(Node* node) {
         }
 
         // If the initializer is erronious dont proceed
-        if (initSym->hasError){
-            logSemanticErrors("The initializer is erronious",initializer);
+        if (initSym->hasError) {
+            logSemanticErrors("The initializer is erronious", initializer);
             return;
         }
 
@@ -415,32 +425,22 @@ void Semantics::walkVariableDeclaration(Node* node) {
         }
 
         // Array rules
-        if (declInfo->type().isArray && type_modifier && !type_modifier->dimensions.empty()) {
-            std::vector<uint64_t> declSizePerDim;
-            for (const auto& len : type_modifier->dimensions) {
-                walker(len.get());
-                if (isIntegerConstant(len.get())) {
-                    declSizePerDim.push_back(getIntegerConstant(len.get()));
-                } else {
-                    declSizePerDim.push_back(0);
-                    logInternal("Dynamic dimension for '" + declName + "'");
-                }
-            }
-
-            // Check dimension mismatch
+        if (declInfo->type().isArray) {
             if (!initSym->type().sizePerDimensions.empty()) {
                 if (declSizePerDim.size() != initSym->type().sizePerDimensions.size()) {
-                    errorHandler
-                        .addHint("Expected " + std::to_string(declSizePerDim.size()) +
-                                 " dimensions")
-                        .addHint("Got " + std::to_string(initSym->type().sizePerDimensions.size()) +
-                                 " dimensions");
-                    logSemanticErrors("Dimension count mismatch", declaration);
+                    logSemanticErrors("Dimension count mismatch expected '" +
+                                          std::to_string(declSizePerDim.size()) + "' but got '" +
+                                          std::to_string(initSym->type().sizePerDimensions.size()) +
+                                          "'",
+                                      declaration);
                     return;
                 }
                 declSizePerDim = initSym->type().sizePerDimensions;
+                declInfo->type().sizePerDimensions = declSizePerDim;
+            } else if (!initSym->type().sizePerDimensions.empty()) {
+                // No explicit dimensions, inherit from the literal
+                declInfo->type().sizePerDimensions = initSym->type().sizePerDimensions;
             }
-            declInfo->type().sizePerDimensions = declSizePerDim;
         }
     }
 
@@ -449,7 +449,7 @@ void Semantics::walkVariableDeclaration(Node* node) {
         LifeTime* targetBaton = nullptr;
         if (initializer && declInfo->relations().targetSymbol) {
             // Look up the baton by the ID of the variable we are actually pointing to
-             targetBaton = getBaton(declInfo->relations().targetSymbol->codegen().ID);
+            targetBaton = getBaton(declInfo->relations().targetSymbol->codegen().ID);
         }
 
         auto lifetime = createLifeTimeTracker(declaration, targetBaton, declInfo);

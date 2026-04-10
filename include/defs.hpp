@@ -142,6 +142,7 @@ struct TypeInfo {
 
     int memberIndex = -1;
     std::vector<uint64_t> sizePerDimensions;  // per-dimension sizes for arrays
+    std::vector<Node *> dynSizePerDimensions;//If the size isnt known at compile time we store that node's symbol info here
 };
 
 // StorageInfo,where and how is this symbol allocated?

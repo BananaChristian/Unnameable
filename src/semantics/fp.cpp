@@ -717,7 +717,7 @@ void Semantics::walkTraceStatement(Node *node) {
           reportDevBug("Failed to get argument info",expr.get());
 
       if(argInfo->storage().isHeap)
-          transferBaton(traceStmt,argInfo->codegen().ID);
+          transferBaton(expr.get(),argInfo->codegen().ID);
   }
   
   insideTrace=false;

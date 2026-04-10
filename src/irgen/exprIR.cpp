@@ -300,13 +300,9 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
 
   const std::string &identName = identExpr->identifier.TokenLiteral;
 
-  // Lookup symbol
-  auto metaIt = semantics.metaData.find(identExpr);
-  if (metaIt == semantics.metaData.end()) {
-    reportDevBug("Unidentified identifier '" + identName + "'", identExpr);
-  }
-
-  auto sym = metaIt->second;
+  auto sym = semantics.getSymbolFromMeta(identExpr);
+  if(!sym)
+      reportDevBug("Failed to get identifier symbol info",identExpr);
 
   // Get address and possible pending free
   llvm::Value *address = generateIdentifierAddress(identExpr);
@@ -600,10 +596,9 @@ llvm::Value *IRGenerator::generatePrefixExpression(Node *node) {
     if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64) {
       delta = llvm::ConstantFP::get(varType, 1.0);
     } else if (isIntegerType(resultType.kind)) {
-      unsigned bits = getIntegerBitWidth(resultType.kind);
-      delta = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, bits), 1);
+        delta = llvm::ConstantInt::get(varType, 1);
     } else {
-      throw std::runtime_error("Unsupported type for ++/--");
+      reportDevBug("Unsupported type for ++/--",prefix);
     }
 
     llvm::Value *updated = nullptr;
@@ -648,7 +643,7 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
                              identifier->identifier.TokenLiteral);
 
   auto postfixSym = semantics.getSymbolFromMeta(postfix);
-  if (postfixSym) {
+  if (!postfixSym) {
     reportDevBug("Variable '" + identName + "' does not exist",postfix);
   }
 
@@ -667,10 +662,9 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
   if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64) {
     delta = llvm::ConstantFP::get(varType, 1.0);
   } else if (isIntegerType(resultType.kind)) {
-    unsigned bits = getIntegerBitWidth(resultType.kind);
-    delta = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, bits), 1);
+      delta = llvm::ConstantInt::get(varType, 1);
   } else {
-    throw std::runtime_error("Unsupported type for ++/--");
+    reportDevBug("Unsupported type for ++/--",postfix);
   }
 
   llvm::Value *updatedValue = nullptr;
@@ -844,21 +838,30 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
 
 llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
   auto arrExpr = dynamic_cast<ArraySubscript *>(node);
-  if (!arrExpr)
-    reportDevBug("Invalid array access expression",node);
+  if (!arrExpr) reportDevBug("Invalid array access expression", node);
 
   auto arrSym = semantics.getSymbolFromMeta(arrExpr);
-  if(!arrSym)
-    reportDevBug("Failed to get array subscript symbol info",arrExpr);
+  if(!arrSym) reportDevBug("Failed to get array subscript symbol info", arrExpr);
 
   inhibitCleanUp = true;
+  // Get the address of the element/sub-array
   llvm::Value *ptr = generateArraySubscriptAddress(node);
+  inhibitCleanUp = false;
 
+  // KEEN CHECK: Are we looking at a final scalar/pointer, or a sub-array?
+  if (arrSym->type().type.isArray()) {
+      // If the result is still an array (partial indexing), 
+      // return the pointer to the start of this sub-dimension.
+      return ptr; 
+  }
+
+  // If it's a base type (i32, f64, ptr, etc.), load the value from memory.
   llvm::Type *elemTy = getLLVMType(arrSym->type().type);
   auto loadedVal = funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
-  inhibitCleanUp = false;
-  emitCleanup(arrExpr);
+  if(arrSym->storage().isVolatile)
+      loadedVal->setVolatile(true);
 
+  emitCleanup(arrExpr);
   return loadedVal;
 }
 

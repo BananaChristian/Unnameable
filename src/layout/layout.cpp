@@ -87,7 +87,7 @@ void Layout::calculateVariableDeclarationSize(Node* node) {
         uint64_t totalElements = 0;
         uint64_t totalLiteralElements = 0;
         uint64_t totalByteSize = 0;
-        auto elementType = semantics.getArrayElementType(sym->type().type);
+        auto elementType = *sym->type().type.innerType;
         auto elemLLVMty = getLLVMType(elementType);
         uint64_t elementSize = layout->getTypeAllocSize(elemLLVMty);
         llvm::Align elementAlign = layout->getABITypeAlign(elemLLVMty);

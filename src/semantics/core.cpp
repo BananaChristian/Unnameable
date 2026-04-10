@@ -32,7 +32,7 @@ void Semantics::walker(Node* node) {
 
     if (walkerIt != walkerFunctionsMap.end()) {
         logInternal("Reset walker error state flag");
-        hasError=false;
+        hasError = false;
         (this->*walkerIt->second)(node);
     } else {
         logInternal("Failed to find analyzer for :" + node->toString());
@@ -61,7 +61,7 @@ void Semantics::registerWalkerFunctions() {
     walkerFunctionsMap[typeid(F64Literal)] = &Semantics::walkF64Literal;
     walkerFunctionsMap[typeid(FloatLiteral)] = &Semantics::walkFloatLiteral;
     walkerFunctionsMap[typeid(StringLiteral)] = &Semantics::walkStringLiteral;
-    walkerFunctionsMap[typeid(FStringLiteral)]=&Semantics::walkFStringLiteral;
+    walkerFunctionsMap[typeid(FStringLiteral)] = &Semantics::walkFStringLiteral;
 
     walkerFunctionsMap[typeid(Char8Literal)] = &Semantics::walkChar8Literal;
     walkerFunctionsMap[typeid(Char16Literal)] = &Semantics::walkChar16Literal;
@@ -169,8 +169,8 @@ ResolvedType Semantics::inferNodeDataType(Node* node) {
 
     if (dynamic_cast<StringLiteral*>(node))
         return ResolvedType::makeBase(DataType::STRING, "string");
-    if(dynamic_cast<FStringLiteral*>(node))
-        return ResolvedType::makeBase(DataType::STRING,"string");
+    if (dynamic_cast<FStringLiteral*>(node))
+        return ResolvedType::makeBase(DataType::STRING, "string");
 
     if (dynamic_cast<Char8Literal*>(node)) return ResolvedType::makeBase(DataType::CHAR8, "char8");
     if (dynamic_cast<Char16Literal*>(node))
@@ -521,7 +521,7 @@ ResolvedType Semantics::resolveTypeWithModifier(Node* modifier, const ResolvedTy
     // Build outer layer wrapping inner
     ResolvedType outer;
     outer.isNull = base.isNull;
-    outer.kind=base.kind;
+    outer.kind = base.kind;
     outer.innerType = std::make_shared<ResolvedType>(inner);
 
     if (tyMod->isPointer) {
@@ -583,6 +583,15 @@ std::string Semantics::extractIdentifierName(Node* node) {
         return identName;
     } else if (auto unwrapExpr = dynamic_cast<UnwrapExpression*>(node)) {
         identName = extractIdentifierName(unwrapExpr->expr.get());
+        return identName;
+    } else if (auto arrIndex = dynamic_cast<ArraySubscript*>(node)) {
+        identName = extractIdentifierName(arrIndex->identifier.get());
+        return identName;
+    }else if(auto prefix=dynamic_cast<PrefixExpression*>(node)){
+        identName=extractIdentifierName(prefix->operand.get());
+        return identName;
+    }else if(auto postfix=dynamic_cast<PostfixExpression*>(node)){
+        identName=extractIdentifierName(postfix->operand.get());
         return identName;
     }
 
@@ -1786,16 +1795,42 @@ std::string Semantics::getBaseTypeName(const ResolvedType& type) {
 }
 
 ResolvedType Semantics::getArrayElementType(const ResolvedType& type) {
-    if (!type.isArray()) {
-        logInternal("getArrayElementType called on non-array type — returning as-is");
-        return type;
+    if (type.isArray() || type.isPointer()) {
+        if (!type.innerType) {
+            logInternal("ERROR: Found nested type with no innerType record.");
+            return ResolvedType::unknown();
+        }
+
+        logInternal("Digging deeper: " + type.resolvedName + " -> " + type.innerType->resolvedName);
+
+        return getArrayElementType(*type.innerType);
     }
-    if (!type.innerType) {
-        logInternal("Array has no inner type — returning unknown");
-        return ResolvedType::unknown();
+
+    logInternal("Base type found: " + type.resolvedName);
+    return type;
+}
+
+void Semantics::collectDimensions(TypeModifier* modifier, std::vector<uint64_t>& staticDims,
+                                  std::vector<Node*>& dynamicDims) {
+    if (!modifier) return;
+
+    // Get dimension for current level (e.g., the '3' in arr[3])
+    if (!modifier->dimensions.empty()) {
+        for (const auto& len : modifier->dimensions) {
+            walker(len.get());
+            if (isIntegerConstant(len.get())) {
+                logInternal("[COLLECTING STATIC DIMS]");
+                staticDims.push_back(getIntegerConstant(len.get()));
+            } else {
+                logInternal("[COLLECTING DYNAMIC DIMS]");
+                dynamicDims.push_back(len.get());  // Now it is really dynamic}
+            }
+        }
+
+        // Recurse into the inner type
+        auto innerModifier = dynamic_cast<TypeModifier*>(modifier->inner_modifier.get());
+        collectDimensions(innerModifier, staticDims, dynamicDims);
     }
-    logInternal("Array element type: " + type.innerType->resolvedName);
-    return *type.innerType;
 }
 
 ResolvedType Semantics::makePointerType(const ResolvedType& inner, bool isNull) {
@@ -1853,7 +1888,7 @@ std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
     lifetime->isAlive = true;
     lifetime->persist = declSym->storage().isPersist;
 
-    if (declSym->relations().targetSymbol && targetBaton){
+    if (declSym->relations().targetSymbol && targetBaton) {
         transferResponsibility(lifetime.get(), targetBaton, declSym->relations().targetSymbol);
     }
 
@@ -1876,7 +1911,7 @@ std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
 LifeTime* Semantics::getBaton(const std::string& ID) {
     // Primary Attempt: Use the ID to find the ORIGINAL holder node
     Node* holder = queryForLifeTimeBaton(ID);
-    
+
     if (holder) {
         auto it = responsibilityTable.find(holder);
         if (it != responsibilityTable.end()) {
@@ -1885,7 +1920,7 @@ LifeTime* Semantics::getBaton(const std::string& ID) {
     }
 
     // Fallback: Deep Search by ID
-    // If the 'holder' is just an Identifier or AddressExpression, 
+    // If the 'holder' is just an Identifier or AddressExpression,
     // it might not be the key in responsibilityTable.
     for (auto const& [node, baton] : responsibilityTable) {
         if (baton && baton->ID == ID) {
@@ -1900,7 +1935,7 @@ LifeTime* Semantics::getBaton(const std::string& ID) {
 
 void Semantics::transferResponsibility(LifeTime* currentBaton, LifeTime* targetBaton,
                                        const std::shared_ptr<SymbolInfo>& targetSym) {
-    if(!targetBaton){
+    if (!targetBaton) {
         logInternal("[HEIST] Failed to carry out heist due to lack of target baton");
         return;
     }
@@ -1914,8 +1949,8 @@ void Semantics::transferResponsibility(LifeTime* currentBaton, LifeTime* targetB
         return;
     }
 
-    //Assign the baton pointer count
-    targetBaton->ptrCount=targetSym->storage().pointerCount;
+    // Assign the baton pointer count
+    targetBaton->ptrCount = targetSym->storage().pointerCount;
 
     auto targetPointerCount = targetBaton->ptrCount;
 
@@ -2187,16 +2222,16 @@ std::vector<Identifier*> Semantics::digIdentifiers(Node* node) {
         return digIdentifiers(postfix->operand.get());
     }
 
-    //FString literal
+    // FString literal
     if (auto* fStr = dynamic_cast<FStringLiteral*>(node)) {
-         for (const auto& seg : fStr->segments) {
-             for (const auto& value : seg.values) {
-                 auto ids = digIdentifiers(value.get());
-                 results.insert(results.end(), ids.begin(), ids.end());
-             }
-         }
-         return results; 
-    }   
+        for (const auto& seg : fStr->segments) {
+            for (const auto& value : seg.values) {
+                auto ids = digIdentifiers(value.get());
+                results.insert(results.end(), ids.begin(), ids.end());
+            }
+        }
+        return results;
+    }
 
     // InfixExpression (x + y, a.next, b.prev)
     if (auto* infix = dynamic_cast<InfixExpression*>(node)) {
@@ -2263,9 +2298,9 @@ std::vector<Identifier*> Semantics::digIdentifiers(Node* node) {
 
     // TraceStatement
     if (auto* trace = dynamic_cast<TraceStatement*>(node)) {
-        for(const auto &expr:trace->arguments){
-            auto idents= digIdentifiers(expr.get());
-            results.insert(results.end(),idents.begin(),idents.end());
+        for (const auto& expr : trace->arguments) {
+            auto idents = digIdentifiers(expr.get());
+            results.insert(results.end(), idents.begin(), idents.end());
         }
         return results;
     }
