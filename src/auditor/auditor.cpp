@@ -221,9 +221,9 @@ void Auditor::auditInfix(Node* node) {
     if (!infix) return;
 
     auto infixSym = semantics.getSymbolFromMeta(infix);
-    if (!infixSym) {
+    if (!infixSym) 
         reportDevBug("Failed to get symbol info for infix", infix);
-    }
+    
     inhibit = true;
     audit(infix->left_operand.get());
     audit(infix->right_operand.get());
@@ -236,6 +236,9 @@ void Auditor::auditIdentifier(Node* node) {
     if (!ident) return;
 
     auto identSym = semantics.getSymbolFromMeta(ident);
+    if(!identSym)
+        reportDevBug("Failed to get identifier symbol info",ident);
+    
     simulateFree(ident, identSym->codegen().ID);
 }
 
@@ -274,10 +277,30 @@ void Auditor::auditAddressExpression(Node* node) {
     if (!addrExpr) return;
 
     auto addrSym = semantics.getSymbolFromMeta(addrExpr);
+    if(!addrSym)
+        reportDevBug("Failed to get address expression symbol info",addrExpr);
+    
     inhibit = true;
     audit(addrExpr->identifier.get());
     inhibit = false;
     simulateFree(addrExpr, addrSym->codegen().ID);
+}
+
+void Auditor::auditArraySubscriptExpression(Node *node){
+    auto arrSub=dynamic_cast<ArraySubscript*>(node);
+    if(!arrSub) return;
+    
+    auto arrSubSym=semantics.getSymbolFromMeta(arrSub);
+    if(!arrSubSym)
+        reportDevBug("Failed to get array subscript symbol info",arrSub);
+    
+    inhibit=true;
+    audit(arrSub->identifier.get());
+    for(const auto &len:arrSub->index_exprs)
+        audit(len.get());
+        
+    inhibit=false;
+    simulateFree(arrSub,arrSubSym->codegen().ID);
 }
 
 void Auditor::auditDereferenceExpression(Node* node) {
@@ -285,9 +308,13 @@ void Auditor::auditDereferenceExpression(Node* node) {
     if (!derefExpr) return;
 
     auto derefSym = semantics.getSymbolFromMeta(derefExpr);
+    if(!derefSym)
+        reportDevBug("Failed to get dereference expression symbol info",derefExpr);
+    
     inhibit = true;
     audit(derefExpr->identifier.get());
     inhibit = false;
+    
     simulateFree(derefExpr, derefSym->codegen().ID);
 }
 
@@ -314,9 +341,6 @@ void Auditor::auditBlockStatement(Node* node) {
 void Auditor::auditBlockExpression(Node* node) {
     auto blockExpr = dynamic_cast<BlockExpression*>(node);
     if (!blockExpr) return;
-
-    logInternal("[AUDIT-BLOCK] Block pointer: " +
-                std::to_string(reinterpret_cast<uintptr_t>(blockExpr)));
 
     activeBlocks.push_back(blockExpr);
     buildUsageMap(blockExpr);

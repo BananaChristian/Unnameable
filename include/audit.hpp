@@ -82,6 +82,7 @@ private:
   void auditExpressionStatement(Node *node);
   void auditAddressExpression(Node *node);
   void auditDereferenceExpression(Node *node);
+  void auditArraySubscriptExpression(Node *node);
 
   // Helpers
   void classifyNode(Node *node);
@@ -90,6 +91,7 @@ private:
   void classifyClause(SwitchStatement *sw, Node *stmt,
                       const std::vector<std::unique_ptr<Statement>> &clause,
                       const std::unique_ptr<BlockInfo> &blockInfo);
+  void classifySymbol(Node *node,Node *block,BlockInfo *info);
   Node *peelNode(Node *node);
   bool hasDisruptors(Node *block);
   bool shouldForeignBunkerBlock(Node *block);
@@ -122,7 +124,7 @@ private:
   void bunkerPersists(Node *block);
   bool isBunkered(const std::string &id);
   bool isAlreadyClassified(const std::string &id,
-                           const std::unique_ptr<BlockInfo> &blockInfo);
+                          BlockInfo *blockInfo);
   bool isBlock(Node *node);
   bool checkBirth(const std::string &id,
                   const std::vector<std::unique_ptr<Statement>> &clause);

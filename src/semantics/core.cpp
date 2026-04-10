@@ -579,11 +579,11 @@ std::string Semantics::extractIdentifierName(Node* node) {
     } else if (auto arrIndex = dynamic_cast<ArraySubscript*>(node)) {
         identName = extractIdentifierName(arrIndex->identifier.get());
         return identName;
-    }else if(auto prefix=dynamic_cast<PrefixExpression*>(node)){
-        identName=extractIdentifierName(prefix->operand.get());
+    } else if (auto prefix = dynamic_cast<PrefixExpression*>(node)) {
+        identName = extractIdentifierName(prefix->operand.get());
         return identName;
-    }else if(auto postfix=dynamic_cast<PostfixExpression*>(node)){
-        identName=extractIdentifierName(postfix->operand.get());
+    } else if (auto postfix = dynamic_cast<PostfixExpression*>(node)) {
+        identName = extractIdentifierName(postfix->operand.get());
         return identName;
     }
 
@@ -1562,6 +1562,7 @@ uint64_t Semantics::getIntegerConstant(Node* node) {
     if (auto l = dynamic_cast<U64Literal*>(node)) return tryParse(l);
     if (auto l = dynamic_cast<I128Literal*>(node)) return tryParse(l);
     if (auto l = dynamic_cast<U128Literal*>(node)) return tryParse(l);
+    if (auto l = dynamic_cast<INTLiteral*>(node)) return tryParse(l);
 
     return 0;
 }
@@ -1611,7 +1612,8 @@ bool Semantics::isLiteral(Node* node) {
     // Float and double literals;
     auto f32Lit = dynamic_cast<F32Literal*>(node);
     auto f64Lit = dynamic_cast<F64Literal*>(node);
-    bool isDecLit = (f32Lit || f64Lit);
+    auto fltLit = dynamic_cast<FloatLiteral*>(node);
+    bool isDecLit = (f32Lit || f64Lit || fltLit);
 
     // Char literal
     auto char8Lit = dynamic_cast<Char8Literal*>(node);
@@ -1687,8 +1689,9 @@ bool Semantics::isIntegerConstant(Node* node) {
     auto u128Lit = dynamic_cast<U128Literal*>(node);
     auto isizeLit = dynamic_cast<ISIZELiteral*>(node);
     auto usizeLit = dynamic_cast<USIZELiteral*>(node);
+    auto intLit = dynamic_cast<INTLiteral*>(node);
     bool isIntLit = (i8Lit || u8Lit || i16Lit || u16Lit || i32Lit || u32Lit || i64Lit || u64Lit ||
-                     i128Lit || u128Lit || isizeLit || usizeLit);
+                     i128Lit || u128Lit || isizeLit || usizeLit || intLit);
 
     return isIntLit;
 }
@@ -1815,7 +1818,7 @@ void Semantics::collectDimensions(TypeModifier* modifier, std::vector<uint64_t>&
                 staticDims.push_back(getIntegerConstant(len.get()));
             } else {
                 logInternal("[COLLECTING DYNAMIC DIMS]");
-                dynamicDims.push_back(len.get());  // Now it is really dynamic}
+                dynamicDims.push_back(len.get());
             }
         }
 
@@ -2129,6 +2132,18 @@ std::vector<Identifier*> Semantics::digIdentifiers(Node* node) {
         for (auto& field : self->fields) {
             auto fieldIds = digIdentifiers(field.get());
             results.insert(results.end(), fieldIds.begin(), fieldIds.end());
+        }
+        return results;
+    }
+
+    // Subscript expression
+    if (auto* arrSub = dynamic_cast<ArraySubscript*>(node)) {
+        if (auto* ident = dynamic_cast<Identifier*>(arrSub->identifier.get()))
+            results.push_back(ident);
+
+        for (auto& lens : arrSub->index_exprs) {
+            auto lenIds = digIdentifiers(lens.get());
+            results.insert(results.end(), lenIds.begin(), lenIds.end());
         }
         return results;
     }
