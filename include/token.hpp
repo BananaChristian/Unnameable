@@ -93,7 +93,6 @@ enum class TokenType {
   DEREF,  // Dereference keyword
   ADDR,   // addr keyword
   UNWRAP, // Unwrap keyword
-  MOVE,   // move keyword
 
   EXPORT, // Export keyword
 

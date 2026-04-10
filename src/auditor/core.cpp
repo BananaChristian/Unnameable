@@ -855,11 +855,6 @@ bool Auditor::containsNode(Node *root, Node *target) {
       return true;
   }
 
-  if (auto *move = dynamic_cast<MoveExpression *>(root)) {
-    if (containsNode(move->expr.get(), target))
-      return true;
-  }
-
   if (auto *self = dynamic_cast<SelfExpression *>(root)) {
     for (auto &field : self->fields) {
       if (containsNode(field.get(), target))

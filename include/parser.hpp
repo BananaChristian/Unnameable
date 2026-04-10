@@ -40,7 +40,6 @@ class Parser {
       {TokenType::PLUS_PLUS, Precedence::PREC_UNARY},
       {TokenType::ADDR, Precedence::PREC_UNARY},
       {TokenType::DEREF, Precedence::PREC_UNARY},
-      {TokenType::MOVE, Precedence::PREC_UNARY},
       {TokenType::UNWRAP, Precedence::PREC_UNARY},
       {TokenType::BITWISE_NOT, Precedence::PREC_UNARY},
       {TokenType::FULLSTOP, Precedence::PREC_CALL},
@@ -213,7 +212,6 @@ private:
   std::unique_ptr<Expression> parseUnwrapExpression();
   std::unique_ptr<Expression> parseIdentifier();
   std::unique_ptr<Expression> parseAddressExpression();
-  std::unique_ptr<Expression> parseMoveExpression();
   std::unique_ptr<Expression> parseDereferenceExpression();
 
   // Parsing array subscript expression

@@ -151,7 +151,6 @@ class Semantics {
     void walkIdentifierExpression(Node *node);
     void walkAddressExpression(Node *node);
     void walkDereferenceExpression(Node *node);
-    void walkMoveExpression(Node *node);
 
     // Walking expression statement
     void walkExpressionStatement(Node *node);

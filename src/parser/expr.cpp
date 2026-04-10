@@ -103,16 +103,6 @@ std::unique_ptr<Expression> Parser::parseAddressExpression() {
   return std::make_unique<AddressExpression>(addr_token, std::move(ident));
 }
 
-// Parsing move expression
-std::unique_ptr<Expression> Parser::parseMoveExpression() {
-  Token move_token = currentToken();
-  Precedence opPrecedence = get_precedence(move_token.type);
-  advance(); // Consume the move token
-
-  auto expr = parseExpression(opPrecedence);
-  return std::make_unique<MoveExpression>(move_token, std::move(expr));
-}
-
 // Parsing dereference expression
 std::unique_ptr<Expression> Parser::parseDereferenceExpression() {
   Token deref_token = currentToken();

@@ -810,7 +810,7 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
   if (srcType == dstType)
     return sourceVal;
 
-  // Handle Pointer <-> Integer Reinterpretation
+  // Handle Pointer <- -> Integer Reinterpretation
   // LLVM does not allow 'BitCast' between different address spaces or
   // between the Integer and Pointer register classes.
 
@@ -1026,24 +1026,6 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
   emitCleanup(derefExpr);
 
   return addr;
-}
-
-llvm::Value *IRGenerator::generateMoveExpression(Node *node) {
-  auto moveExpr = dynamic_cast<MoveExpression *>(node);
-  if (!moveExpr)
-    return nullptr;
-
-  llvm::Value *sourceAddr = generateAddress(moveExpr->expr.get());
-
-  llvm::Value *baton =
-      funcBuilder.CreateLoad(funcBuilder.getPtrTy(), sourceAddr, "move_tmp");
-
-  auto nullPtr = llvm::ConstantPointerNull::get(funcBuilder.getPtrTy());
-  if (sourceAddr) {
-    funcBuilder.CreateStore(nullPtr, sourceAddr);
-  }
-
-  return baton;
 }
 
 llvm::Value *IRGenerator::generateAddressExpression(Node *node) {

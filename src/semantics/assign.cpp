@@ -273,22 +273,6 @@ void Semantics::walkAssignStatement(Node *node) {
                             std::to_string(litDims.size()) + " dimension(s).",
                         assignStmt->identifier.get());
     }
-  } else if (auto *moveExpr =
-                 dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
-    if (!rhsSym->storage().isHeap && lhsSym->storage().isHeap) {
-      errorHandler.addHint("'" + name +
-                           "' was declared as 'heap', which enforces a strict "
-                           "ownership contract: only heap-allocated values may "
-                           "be moved into it. "
-                           "Either remove the 'heap' qualifier from '" +
-                           name +
-                           "', or allocate "
-                           "the source value on the heap before moving.");
-      logSemanticErrors(
-          "Cannot move a non-heap value into the heap variable '" + name + "'.",
-          moveExpr->expr.get());
-    }
-    rhsSym->storage().isInvalid = true; // source variable is consumed by the move
   }
 
   lhsSym->storage().isInitialized = true;
@@ -296,7 +280,6 @@ void Semantics::walkAssignStatement(Node *node) {
   if (lhsSym->storage().isHeap && rhsSym->storage().isHeap)
     transferBaton(assignStmt, lhsSym->codegen().ID);
 
-  hasError = false;
   metaData[assignStmt] = lhsSym;
 }
 
@@ -304,7 +287,6 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
   auto *fieldAssignStmt = dynamic_cast<FieldAssignment *>(node);
   if (!fieldAssignStmt)
     return;
-  hasError=false;
 
   std::string name = extractIdentifierName(fieldAssignStmt->lhs_chain.get());
 

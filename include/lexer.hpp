@@ -97,7 +97,6 @@ class Lexer {
       {"ptr", TokenType::PTR},
       {"addr", TokenType::ADDR},
       {"deref", TokenType::DEREF},
-      {"move", TokenType::MOVE},
 
       {"heap", TokenType::HEAP},
       {"allocator", TokenType::ALLOCATOR},

@@ -70,7 +70,6 @@ void Semantics::registerWalkerFunctions() {
     walkerFunctionsMap[typeid(BooleanLiteral)] = &Semantics::walkBooleanLiteral;
     walkerFunctionsMap[typeid(Identifier)] = &Semantics::walkIdentifierExpression;
     walkerFunctionsMap[typeid(AddressExpression)] = &Semantics::walkAddressExpression;
-    walkerFunctionsMap[typeid(MoveExpression)] = &Semantics::walkMoveExpression;
     walkerFunctionsMap[typeid(DereferenceExpression)] = &Semantics::walkDereferenceExpression;
     walkerFunctionsMap[typeid(SizeOfExpression)] = &Semantics::walkSizeOfExpression;
 
@@ -410,13 +409,6 @@ ResolvedType Semantics::inferNodeDataType(Node* node) {
         // Unwrap one pointer level return what it points to
         if (!derefSym->type().type.innerType) return errorType;
         return *derefSym->type().type.innerType;
-    }
-
-    if (auto moveExpr = dynamic_cast<MoveExpression*>(node)) {
-        auto innerExpr = moveExpr->expr.get();
-        auto type = inferNodeDataType(innerExpr);
-
-        return type;
     }
 
     if (auto addrExpr = dynamic_cast<AddressExpression*>(node)) {
@@ -2130,11 +2122,6 @@ std::vector<Identifier*> Semantics::digIdentifiers(Node* node) {
     // DereferenceExpression (deref p)
     if (auto* deref = dynamic_cast<DereferenceExpression*>(node)) {
         return digIdentifiers(deref->identifier.get());
-    }
-
-    // MoveExpression (move x)
-    if (auto* move = dynamic_cast<MoveExpression*>(node)) {
-        return digIdentifiers(move->expr.get());
     }
 
     // SelfExpression (self.field)

@@ -151,15 +151,6 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     auto assignMeta = semantics.metaData[assignStmt];
     if (!assignMeta) reportDevBug("Failed to get assignment metaData", assignStmt);
 
-    // Move expression, pointer takeover
-    if (dynamic_cast<MoveExpression *>(assignStmt->value.get())) {
-        auto *storeInst = funcBuilder.CreateStore(initValue, targetPtr);
-        if (assignSym->storage().isVolatile) storeInst->setVolatile(true);
-        inhibitCleanUp = false;
-        emitCleanup(assignStmt);
-        return;
-    }
-
     // Deep copy, arrays and large structs
     bool isHuge =
         assignMeta->type().type.isBase() && (assignMeta->type().type.kind == DataType::COMPONENT ||
@@ -233,17 +224,6 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
     }
 
     llvm::Value *rhsValue = generateExpression(fieldStmt->value.get());
-
-    // Move expression
-    if (dynamic_cast<MoveExpression *>(fieldStmt->value.get())) {
-        logInternal("Handling move assignment to field");
-        auto *storeInst = funcBuilder.CreateStore(rhsValue, fieldAddress);
-        if (fieldSym->storage().isVolatile) storeInst->setVolatile(true);
-        inhibitCleanUp = false;
-        emitCleanup(fieldStmt);
-        return;
-    }
-
     // Deep copy, arrays and large structs not behind a pointer
     bool isHuge =
         fieldSym->type().type.isBase() && (fieldSym->type().type.kind == DataType::COMPONENT ||
@@ -478,8 +458,6 @@ llvm::Type *IRGenerator::getLLVMType(const ResolvedType &type) {
                 errorHandler.addHint("Semantics probably stored a type with empty name");
                 reportDevBug("Custom type requested but resolvedName is empty", nullptr);
             }
-            // No suffix stripping needed, modifiers handled above
-            // resolvedName is always clean at this point
             auto it = llvmCustomTypes.find(type.resolvedName);
             if (it == llvmCustomTypes.end()) {
                 errorHandler.addHint("Type '" + type.resolvedName +
@@ -590,7 +568,6 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
     expressionGeneratorsMap[typeid(AddressExpression)] = &IRGenerator::generateAddressExpression;
     expressionGeneratorsMap[typeid(DereferenceExpression)] =
         &IRGenerator::generateDereferenceExpression;
-    expressionGeneratorsMap[typeid(MoveExpression)] = &IRGenerator::generateMoveExpression;
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
     expressionGeneratorsMap[typeid(UnwrapExpression)] = &IRGenerator::generateUnwrapExpression;
