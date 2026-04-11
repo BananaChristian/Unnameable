@@ -75,7 +75,7 @@ llvm::Value *IRGenerator::generateExpression(Node *node) {
 // Main L-value generator helper functions
 llvm::Value *IRGenerator::generateAddress(Node *node) {
     if (!node) {
-        throw std::runtime_error("Null node sent to the address generator dispatcher");
+        reportDevBug("Null node sent to the address generator dispatcher",node);
     }
 
     auto addrIt = addressGeneratorsMap.find(typeid(*node));
@@ -621,12 +621,13 @@ llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
 
     auto it = semantics.metaData.find(exprNode);
     if (it == semantics.metaData.end()) {
-        errorHandler.addHint("Semantics did not register the condition metadata");
-        reportDevBug("Could not find condition expression metadata", exprNode);
-        return nullptr;
     }
 
-    auto sym = it->second;
+    auto sym = semantics.getSymbolFromMeta(exprNode);
+    if (!sym) {
+        reportDevBug("Could not find condition expression symbol info", exprNode);
+        return nullptr;
+    }
 
     // Handle Nullable Boxes {i1, T}
     if (sym->type().isNullable) {
@@ -662,6 +663,63 @@ llvm::Value *IRGenerator::coerceToBoolean(llvm::Value *val, Node *exprNode) {
 
     reportDevBug("Attempted to coerce a non-nullable aggregate to boolean", exprNode);
     return funcBuilder.getInt1(false);
+}
+
+bool IRGenerator::isDynamicArrayLiteral(ArrayLiteral *literal) {
+    for (const auto &element : literal->array) {
+        if (auto nested = dynamic_cast<ArrayLiteral *>(element.get())) {
+            if (isDynamicArrayLiteral(nested)) return true;
+
+            continue;
+        }
+
+        if (!semantics.isConstLiteral(element.get())) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+llvm::Type *IRGenerator::getArrayBaseType(const ResolvedType &type) {
+    // If it's an array, keep digging.
+    if (type.isArray() && type.innerType) {
+        return getArrayBaseType(*type.innerType);
+    }
+
+    logInternal("ARRAY LITERAL ELEMENT TYPE: " + type.resolvedName);
+
+    return getLLVMType(type);
+}
+
+void IRGenerator::emitDynamicInitialization(ArrayLiteral *arrLit, llvm::Value *ptr,
+                                            llvm::Type *baseTy, int &index) {
+    for (auto &element : arrLit->array) {
+        if (auto nested = dynamic_cast<ArrayLiteral *>(element.get())) {
+            emitDynamicInitialization(nested, ptr, baseTy, index);
+        } else {
+            // This call generates the Load/Instruction for 'x'
+            llvm::Value *val = generateExpression(element.get());
+
+            // Calculate my_arr[index]
+            auto *slotPtr = funcBuilder.CreateGEP(baseTy, ptr, funcBuilder.getInt64(index++));
+
+            // The Baton sees this Store and says: "Inhibit dealloc for the source ID!"
+            funcBuilder.CreateStore(val, slotPtr);
+        }
+    }
+}
+
+size_t IRGenerator::getFlatCount(ArrayLiteral *arrLit) {
+    size_t count = 0;
+    for (auto &el : arrLit->array) {
+        if (auto nested = dynamic_cast<ArrayLiteral *>(el.get())) {
+            count += getFlatCount(nested);
+        } else {
+            count++;
+        }
+    }
+    return count;
 }
 
 uint32_t IRGenerator::convertIntTypeToWidth(const DataType &dt) {

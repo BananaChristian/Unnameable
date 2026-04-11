@@ -5,8 +5,6 @@ void Semantics::walkInfixExpression(Node *node) {
     auto infixExpr = dynamic_cast<InfixExpression *>(node);
     if (!infixExpr) return;
 
-    bool hasError = false;
-
     auto left = infixExpr->left_operand.get();
     walker(left);
 
@@ -62,7 +60,6 @@ void Semantics::walkInfixExpression(Node *node) {
     info->hasError = hasError;
     info->storage().isInitialized = false;
 
-    hasError = false;
     metaData[infixExpr] = info;
 }
 
@@ -571,7 +568,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
 
     walker(innerNode);
 
-    auto derefSym = resolveSymbolInfo(derefName);
+    auto derefSym = getSymbolFromMeta(innerNode);
     if (!derefSym) {
         errorHandler.addHint("Check spelling or declaration order")
             .addHint("Variables must be declared before use");
@@ -580,7 +577,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
     }
 
     if (derefSym->hasError) {
-        logSemanticErrors("The dexpression that is getting dereference is erronious", derefExpr);
+        logSemanticErrors("The dereference expression that is getting dereference is erronious", derefExpr);
         return;
     }
 

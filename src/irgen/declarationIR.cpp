@@ -84,14 +84,21 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
     auto type_modifier = dynamic_cast<TypeModifier *>(decl->modified_type.get());
     llvm::Type *elemTy = getLLVMType(semantics.getArrayElementType(sym->type().type));
 
+
     // Determine Allocation Count (Total Elements)
     llvm::Value *allocationCount = nullptr;
     if (type_modifier && !type_modifier->dimensions.empty()) {
         allocationCount = funcBuilder.getInt64(1);
-        for (const auto &lenExpr : type_modifier->dimensions) {
-            llvm::Value *dim = generateExpression(lenExpr.get());
-            dim = funcBuilder.CreateIntCast(dim, funcBuilder.getInt64Ty(), false);
-            allocationCount = funcBuilder.CreateMul(allocationCount, dim, "total_elements");
+        TypeModifier *currentModifier = type_modifier;
+
+        while (currentModifier) {
+            for (const auto &lenExpr : currentModifier->dimensions) {
+                llvm::Value *dim = generateExpression(lenExpr.get());
+                dim = funcBuilder.CreateIntCast(dim, funcBuilder.getInt64Ty(), false);
+                allocationCount = funcBuilder.CreateMul(allocationCount, dim, "total_elements");
+            }
+            // Dig into the next layer
+            currentModifier = dynamic_cast<TypeModifier *>(currentModifier->inner_modifier.get());
         }
 
         // Override with Layout info if constant (to ensure consistency)
@@ -102,13 +109,13 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
     } else if (decl->initializer) {
         auto *arrLit = dynamic_cast<ArrayLiteral *>(decl->initializer.get());
         if (arrLit) {
-            allocationCount = funcBuilder.getInt64(arrLit->array.size());
+            size_t flat = getFlatCount(arrLit);
+            allocationCount = funcBuilder.getInt64(flat);
         } else {
             uint64_t totalElems = sym->codegen().componentSize / layout->getTypeAllocSize(elemTy);
             allocationCount = funcBuilder.getInt64(totalElems);
         }
     } else {
-        // Fallback for empty declarations
         allocationCount = funcBuilder.getInt64(0);
     }
 
@@ -126,7 +133,6 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
     // Wrap in storage handle (Pointer slot or Nullable Box)
     llvm::Value *storage = nullptr;
     if (sym->type().type.isNull) {
-        // Nullable handling: Wrap dataPtr in a {bool, ptr} struct
         llvm::StructType *boxTy =
             llvm::StructType::get(context, {funcBuilder.getInt1Ty(), funcBuilder.getPtrTy()});
         storage = funcBuilder.CreateAlloca(boxTy, nullptr, name + "_box");
@@ -141,7 +147,6 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
         auto *store = funcBuilder.CreateStore(boxVal, storage);
         if (sym->storage().isVolatile) store->setVolatile(true);
     } else {
-        // Standard handling: storage is just the pointer to the data
         storage = dataPtr;
     }
 
@@ -151,16 +156,18 @@ llvm::Value *IRGenerator::generateArrayStorage(VariableDeclaration *decl,
         llvm::Align finalAlign = layout->getABITypeAlign(elemTy);
 
         // Determine byte count for memcpy
-        llvm::Value *totalBytes =
-            (sym->codegen().componentSize > 0)
-                ? funcBuilder.getInt64(sym->codegen().componentSize)
-                : funcBuilder.CreateMul(allocationCount,
-                                        funcBuilder.getInt64(layout->getTypeAllocSize(elemTy)));
+        llvm::Value *totalBytes = nullptr;
+        if (sym->codegen().componentSize > 0) {
+            totalBytes = funcBuilder.getInt64(sym->codegen().componentSize);
+        } else {
+            totalBytes = funcBuilder.CreateMul(
+                allocationCount, funcBuilder.getInt64(layout->getTypeAllocSize(elemTy)));
+        }
 
         funcBuilder.CreateMemCpy(dataPtr, finalAlign, srcData, finalAlign, totalBytes);
     }
 
-    return storage;  // Guaranteed not to be null now
+    return storage;
 }
 
 llvm::Value *IRGenerator::generateReferenceStorage(VariableDeclaration *decl,

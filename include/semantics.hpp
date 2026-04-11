@@ -69,6 +69,7 @@ class Semantics {
     bool isBoolean(const ResolvedType &t);
     bool isString(const ResolvedType &t);
     bool isChar(const ResolvedType &t);
+    bool isConstLiteral(Node *node);
 
     LifeTime *getBaton(const std::string &ID);
     std::vector<Identifier *> digIdentifiers(Node *node);
@@ -273,7 +274,6 @@ class Semantics {
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpression *callExpr);
     bool isLiteral(Node *node);
-    bool isConstLiteral(Node *node);
     void popScope();
     void registerLiteral(Node *literal, const ResolvedType &type);
     Node *getCurrentBlock();
