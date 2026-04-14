@@ -656,6 +656,45 @@ void Auditor::bunkerPersists(Node *block) {
     }
 }
 
+void Auditor::bunkerHeists(Node *block) {
+    auto &blockInfo = deferedFrees[block];
+    for (const auto &heistID : sortedHeists(blockInfo)) {
+        if (isBunkered(heistID)) {
+            logInternal("[BUNKER-HEIST] Baton " + heistID + " is already bunkered");
+            continue;
+        }
+
+        Node *holder = semantics.queryForLifeTimeBaton(heistID);
+        if (!holder) reportDevBug("Failed to get baton holder for ID: " + heistID, block);
+
+        auto sym = semantics.getSymbolFromMeta(holder);
+        if (!sym) reportDevBug("Failed to get holder symbol info for ID:" + heistID, block);
+
+        auto &baton = semantics.responsibilityTable[holder];
+        if (!baton) {
+            scanForBaton(heistID);
+            reportDevBug("No baton in responsibilityTable for " + heistID, block);
+        }
+
+        // SUCCESS LOGS
+        logInternal("[HEIST BUNKERING] SUCCESS: Moving baton for " + heistID + " into bunker.");
+
+        nativesToFree[block].push_back({std::move(baton), sym});
+        bunkeredIDs.insert(heistID);
+    }
+}
+
+std::vector<std::string> Auditor::sortedHeists(const std::unique_ptr<BlockInfo> &info) {
+    std::vector<std::string> cleanList;
+    
+    for (const std::string& nativeID : info->natives) {
+        if (semantics.heistIDs.count(nativeID)) {
+            cleanList.push_back(nativeID);
+        }
+    }
+    return cleanList;
+}
+
 bool Auditor::isBlock(Node *node) {
     if (dynamic_cast<WhileStatement *>(node)) return true;
     if (dynamic_cast<ForStatement *>(node)) return true;
@@ -667,7 +706,6 @@ bool Auditor::isBlock(Node *node) {
 
 bool Auditor::isDeclaration(Node *node) {
     if (dynamic_cast<VariableDeclaration *>(node)) return true;
-
     return false;
 }
 

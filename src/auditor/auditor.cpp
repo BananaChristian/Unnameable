@@ -325,6 +325,7 @@ void Auditor::auditBlockStatement(Node* node) {
     activeBlocks.push_back(blockStmt);
     if (shouldNativeBunkerBlock(blockStmt)) {
         bunkerPersists(blockStmt);
+        bunkerHeists(blockStmt);
         if (hasDisruptors(blockStmt)) {
             logInternal("[TRIGGER] Block disruptor detected bunkering natives for block: " +
                         blockStmt->toString());
@@ -359,6 +360,7 @@ void Auditor::auditBlockExpression(Node* node) {
 
     if (shouldNativeBunkerBlock(blockExpr)) {
         bunkerPersists(blockExpr);
+        bunkerHeists(blockExpr);
     }
 
     activeBlocks.pop_back();

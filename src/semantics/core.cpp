@@ -1875,7 +1875,7 @@ std::string Semantics::generateLifetimeID(const std::shared_ptr<SymbolInfo>& sym
 }
 
 std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
-    Node* declarationNode, LifeTime* targetBaton, const std::shared_ptr<SymbolInfo>& declSym) {
+    Node* declarationNode, Node* initializer, const std::shared_ptr<SymbolInfo>& declSym) {
     logInternal("Creating lifetime baton...");
     auto lifetime = std::make_unique<LifeTime>();
     lifetime->ID = generateLifetimeID(declSym);
@@ -1883,9 +1883,27 @@ std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
     lifetime->isAlive = true;
     lifetime->persist = declSym->storage().isPersist;
 
-    if (declSym->relations().targetSymbol && targetBaton) {
-        transferResponsibility(lifetime.get(), targetBaton, declSym->relations().targetSymbol);
+    auto idents=digIdentifiers(initializer);
+    for(const auto &identifier:idents){
+        auto identSym=getSymbolFromMeta(identifier);
+        if(!identSym)
+            reportDevBug("Failed to get identifier symbol info", identifier);
+        
+        if(!identSym->storage().isHeap){
+            logInternal("Encountered non heap ident skipping...");
+            continue;
+        }
+        
+        auto targetBaton=getBaton(identSym->codegen().ID);
+        if(!targetBaton)
+            reportDevBug("Failed to get lifetime baton for ident of lifetime ID: "+identSym->codegen().ID,identifier);
+        
+        transferResponsibility(lifetime.get(), targetBaton, identSym);
     }
+
+    /*if (declSym->relations().targetSymbol && targetBaton) {
+        transferResponsibility(lifetime.get(), targetBaton, declSym->relations().targetSymbol);
+        }*/
 
     Node* currentBlock = getCurrentBlock();
     if (currentBlock) {
@@ -1914,9 +1932,7 @@ LifeTime* Semantics::getBaton(const std::string& ID) {
         }
     }
 
-    // Fallback: Deep Search by ID
-    // If the 'holder' is just an Identifier or AddressExpression,
-    // it might not be the key in responsibilityTable.
+    // Fallback, Deep Search by ID
     for (auto const& [node, baton] : responsibilityTable) {
         if (baton && baton->ID == ID) {
             logInternal("[BATON GETTER] Found via Deep Search for ID: " + ID);
@@ -1931,9 +1947,21 @@ LifeTime* Semantics::getBaton(const std::string& ID) {
 void Semantics::transferResponsibility(LifeTime* currentBaton, LifeTime* targetBaton,
                                        const std::shared_ptr<SymbolInfo>& targetSym) {
     if (!targetBaton) {
-        logInternal("[HEIST] Failed to carry out heist due to lack of target baton");
+        logInternal("[HEIST] Failed to carry out heist due to missing target baton");
         return;
     }
+
+    if (!currentBaton) {
+        logInternal(
+            "[HEIST] Failed to carry out normal heist a non heap variable might have been "
+            "encountered");
+        if (targetSym->storage().isHeap) {
+            logInternal("[HEIST] Carrying out heist registration");
+            heistIDs.insert(targetSym->codegen().ID);
+        }
+        return;
+    }
+
     logInternal("[HEIST] Robber (Current): " + currentBaton->ID);
     logInternal("[HEIST] Victim (Target): " + targetBaton->ID);
     logInternal("[HEIST] Target Pointer Count: " +

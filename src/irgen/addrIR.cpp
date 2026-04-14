@@ -210,7 +210,7 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
 
     llvm::Value *allocaPtr = generateIdentifierAddress(arrExpr->identifier.get());
     llvm::Value *dataPtr = allocaPtr;
-    
+
     if (identSym->type().isPointer) {
         logInternal("  -> Identifier is a raw pointer, loading base address...");
         dataPtr = funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "ptr_base");
@@ -230,7 +230,7 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
         llvm::Value *idx = generateExpression(arrExpr->index_exprs[i].get());
         idx = funcBuilder.CreateIntCast(idx, funcBuilder.getInt64Ty(), false);
 
-        //Limit Resolution
+        // Limit Resolution
         llvm::Value *limit = nullptr;
         if (i < dims.size() && dims[i] > 0) {
             logInternal("  -> Found static limit: " + std::to_string(dims[i]));
@@ -265,7 +265,7 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
             logInternal("  -> Skipping bounds check (No limit found for this level).");
         }
 
-        // Stride Calculation 
+        // Stride Calculation
         llvm::Value *currentStride = funcBuilder.getInt64(1);
         size_t maxDims = std::max(dims.size(), dynDims.size());
 

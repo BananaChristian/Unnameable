@@ -328,11 +328,12 @@ void Semantics::walkVariableDeclaration(Node* node) {
         declInfo->type().dynSizePerDimensions = dynSizePerDim;
     }
 
+    std::shared_ptr<SymbolInfo> initSym=nullptr;
     if (initializer) {
         declInfo->storage().isInitialized = true;
         walker(initializer);
         auto initName = extractIdentifierName(initializer);
-        auto initSym = getSymbolFromMeta(initializer);
+        initSym = getSymbolFromMeta(initializer);
 
         if (!initSym) {
             errorHandler.addHint("Check spelling or declaration order")
@@ -444,18 +445,18 @@ void Semantics::walkVariableDeclaration(Node* node) {
         }
     }
 
+    LifeTime* targetBaton = nullptr;
+    
     // Creating the baton
     if (declInfo->storage().isHeap) {
-        LifeTime* targetBaton = nullptr;
-        if (initializer && declInfo->relations().targetSymbol) {
-            // Look up the baton by the ID of the variable we are actually pointing to
-            targetBaton = getBaton(declInfo->relations().targetSymbol->codegen().ID);
-        }
-
-        auto lifetime = createLifeTimeTracker(declaration, targetBaton, declInfo);
+        auto lifetime = createLifeTimeTracker(declaration, initializer, declInfo);
         declInfo->codegen().ID = lifetime->ID;
         responsibilityTable[declaration] = std::move(lifetime);
+    }else if (initSym) {
+        targetBaton=getBaton(initSym->codegen().ID);
+        transferResponsibility(nullptr, targetBaton, initSym);
     }
+
 
     metaData[declaration] = declInfo;
     logInternal("[DEBUG] Stored metadata for " + declName + " | isHeap: " +

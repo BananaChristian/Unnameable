@@ -6,6 +6,7 @@
 #include <string>
 #include <typeindex>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "ast.hpp"
 #include "defs.hpp"
@@ -41,6 +42,7 @@ class Semantics {
     std::vector<bool> loopContext;
     std::vector<bool> caseContext;
     std::vector<ScopeInfo> currentTypeStack;
+    std::unordered_set<std::string> heistIDs;
 
     std::unordered_map<std::string, GenericBluePrint> genericMap;
     std::unordered_map<std::string, AllocatorHandle> allocatorMap;
@@ -279,7 +281,7 @@ class Semantics {
     Node *getCurrentBlock();
     std::string getTerminatorString(Node *node);
     std::string generateLifetimeID(const std::shared_ptr<SymbolInfo> &sym);
-    std::unique_ptr<LifeTime> createLifeTimeTracker(Node *declarationNode, LifeTime *targetBaton,
+    std::unique_ptr<LifeTime> createLifeTimeTracker(Node *declarationNode, Node *initializer,
                                                     const std::shared_ptr<SymbolInfo> &declSym);
     void transferBaton(Node *receiver, const std::string &familyID);
     void logSemanticErrors(const std::string &message, Node *contextNode);
