@@ -61,8 +61,6 @@ void Semantics::walkReturnStatement(Node *node) {
         reportDevBug("Invalid return statement node", node);
   }
 
-  bool hasError = false;
-
   if (!currentFunction) {
     errorHandler.addHint("Return statements must live inside a function body.")
         .addHint("Move this return statement into a function.");
@@ -165,7 +163,6 @@ void Semantics::walkFunctionParameters(Node *node) {
   if (!param) {
     reportDevBug("Function parameter is not a VariableDeclaration", node);
   }
-  hasError=false;
 
   logInternal("Analyzing function parameter...");
   const std::string &paramName = param->var_name->expression.TokenLiteral;
@@ -258,7 +255,6 @@ void Semantics::walkFunctionExpression(Node *node) {
   auto *funcExpr = dynamic_cast<FunctionExpression *>(node);
   if (!funcExpr)
     reportDevBug("Invalid function expression", node);
-  hasError=true;
 
   const std::string funcName = funcExpr->func_key.TokenLiteral;
   const bool isExportable = funcExpr->isExportable;
@@ -477,12 +473,10 @@ void Semantics::walkFunctionDeclarationExpression(Node *node) {
 
 void Semantics::walkFunctionDeclarationStatement(Node *node) {
   auto *funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(node);
-  if (!funcDeclrStmt) {
+  if (!funcDeclrStmt) 
     reportDevBug("Invalid function declaration statement", node);
-    return;
-  }
+  
 
-  bool hasError = false;
   const std::string funcName =
       funcDeclrStmt->function_name->expression.TokenLiteral;
   const bool isExportable = funcDeclrStmt->isExportable;
@@ -630,7 +624,6 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     reportDevBug("Invalid function call expression", node);
   }
 
-  hasError = false;
   const std::string callName =
       funcCall->function_identifier->expression.TokenLiteral;
 
@@ -683,7 +676,10 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   }
 
   if (!isCallCompatible(*callSymbolInfo, funcCall))
-    hasError = true;
+  {
+      logSemanticErrors("Incompatible call", funcCall);
+      return;
+  }
 
   auto callSym = std::make_shared<SymbolInfo>();
   callSym->hasError = hasError;
@@ -759,7 +755,6 @@ void Semantics::walkSealCallExpression(Node *node,
     logSemanticErrors("'" + callName + "' in seal '" + sealName +
                           "' has not been declared or defined.",
                       funcCall);
-    hasError = false;
     return;
   }
 
@@ -768,7 +763,6 @@ void Semantics::walkSealCallExpression(Node *node,
         "'" + callName + "' in seal '" + sealName +
             "' is not a function. Did you mean to call a different name?",
         funcCall);
-    hasError = false;
     return;
   }
 
@@ -802,8 +796,10 @@ void Semantics::walkSealCallExpression(Node *node,
     }
   }
 
-  if (!isCallCompatible(*callSymbolInfo, funcCall))
-    hasError = true;
+  if (!isCallCompatible(*callSymbolInfo, funcCall)){
+      logSemanticErrors("Incompatible call", funcCall);
+      return;
+  }
 
   auto callSym = std::make_shared<SymbolInfo>();
   callSym->hasError = hasError;
@@ -829,7 +825,6 @@ void Semantics::walkSealStatement(Node *node) {
                           "' is already defined in this scope. "
                           "Choose a different name for the seal.",
                       sealStmt->sealName.get());
-    hasError = true;
   }
 
   std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> sealMap;
@@ -852,7 +847,6 @@ void Semantics::walkSealStatement(Node *node) {
       logSemanticErrors("Only function definitions are allowed inside a seal. "
                         "Remove the non-function statement.",
                         stmt.get());
-      hasError = true;
       return;
     }
 
@@ -878,7 +872,6 @@ void Semantics::walkSealStatement(Node *node) {
       logSemanticErrors("Function declarations cannot appear inside a seal. "
                         "Provide a full function definition instead.",
                         funcStmt->funcExpr.get());
-      hasError = true;
       return;
     }
 

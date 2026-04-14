@@ -328,7 +328,7 @@ void Semantics::walkVariableDeclaration(Node* node) {
         declInfo->type().dynSizePerDimensions = dynSizePerDim;
     }
 
-    std::shared_ptr<SymbolInfo> initSym=nullptr;
+    std::shared_ptr<SymbolInfo> initSym = nullptr;
     if (initializer) {
         declInfo->storage().isInitialized = true;
         walker(initializer);
@@ -446,17 +446,36 @@ void Semantics::walkVariableDeclaration(Node* node) {
     }
 
     LifeTime* targetBaton = nullptr;
-    
+
     // Creating the baton
     if (declInfo->storage().isHeap) {
         auto lifetime = createLifeTimeTracker(declaration, initializer, declInfo);
         declInfo->codegen().ID = lifetime->ID;
         responsibilityTable[declaration] = std::move(lifetime);
-    }else if (initSym) {
-        targetBaton=getBaton(initSym->codegen().ID);
-        transferResponsibility(nullptr, targetBaton, initSym);
-    }
+    } else if (initializer) {
+        auto idents = digIdentifiers(initializer);
+        for (const auto& identifier : idents) {
+            auto identSym = getSymbolFromMeta(identifier);
+            if (!identSym) {
+                identSym = resolveSymbolInfo(extractIdentifierName(identifier));
+                if (!identSym) {
+                    reportDevBug("Failed to get identifier symbol info", identifier);
+                }
+            }
 
+            if (!identSym->storage().isHeap) {
+                logInternal("Skipping non heap ident transfer");
+                continue;
+            }
+
+            targetBaton = getBaton(identSym->codegen().ID);
+            if (!targetBaton)
+                reportDevBug("Failed to get target baton for lifetime ID: " + identSym->codegen().ID,
+                             identifier);
+            
+            transferResponsibility(nullptr, targetBaton, identSym);
+        }
+    }
 
     metaData[declaration] = declInfo;
     logInternal("[DEBUG] Stored metadata for " + declName + " | isHeap: " +

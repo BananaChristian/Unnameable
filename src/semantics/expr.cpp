@@ -491,7 +491,8 @@ void Semantics::walkAddressExpression(Node *node) {
     if (!addrExpr) return;
 
     auto innerExpr = addrExpr->identifier.get();
-    if (!innerExpr) return;
+    if (!innerExpr)
+        reportDevBug("Failed to get addr operand", addrExpr);
 
     auto addrName = extractIdentifierName(innerExpr);
 
@@ -532,8 +533,7 @@ void Semantics::walkAddressExpression(Node *node) {
     }
 
     walker(innerExpr);
-    auto symbolInfo = metaData[innerExpr];
-
+    auto symbolInfo = getSymbolFromMeta(innerExpr);
     if (!symbolInfo) {
         logSemanticErrors("Unidentified variable '" + addrName + "'", innerExpr);
         return;
