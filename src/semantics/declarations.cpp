@@ -371,6 +371,13 @@ void Semantics::walkVariableDeclaration(Node* node) {
 
         // Type check
         if (initializer) {
+            bool ignoreCheck = false;
+            // References are a special case if I wrote ref i32 x -> y I am guaranteed to type
+            // mismatch so we are gonna do a simple dodge
+            if (declaredType.isRef()) {
+                logInternal("Encountered reference gonna skip a type check");
+                ignoreCheck = true;
+            }
             if (declaredType.kind == DataType::OPAQUE) {
                 if (!initSym->type().type.isPointer()) {
                     errorHandler.addHint("Opaque pointers can only point to other pointers")
@@ -379,14 +386,15 @@ void Semantics::walkVariableDeclaration(Node* node) {
                     logSemanticErrors("Cannot initialize opaque pointer with non-pointer type",
                                       declaration);
                 }
-            } else if (!isTypeCompatible(declaredType, initSym->type().type)) {
-                std::string errorMsg = "Type mismatch in variable declaration";
-                errorHandler.addHint("Expected type: " + declaredType.resolvedName)
-                    .addHint("Got type: " + initSym->type().type.resolvedName)
-                    .addHint("Check if types match or convert using cast or bitcast");
-
-                logSemanticErrors(errorMsg, declaration);
-                return;
+            } else if (!ignoreCheck) {
+                if (!isTypeCompatible(declaredType, initSym->type().type)) {
+                    std::string errorMsg = "Type mismatch in variable declaration";
+                    errorHandler.addHint("Expected type: " + declaredType.resolvedName)
+                        .addHint("Got type: " + initSym->type().type.resolvedName)
+                        .addHint("Check if types match or convert using cast or bitcast");
+                    logSemanticErrors(errorMsg, declaration);
+                    return;
+                }
             }
         }
 
@@ -414,6 +422,10 @@ void Semantics::walkVariableDeclaration(Node* node) {
                 logSemanticErrors("Cannot create mutable reference to immutable variable",
                                   declaration);
             }
+
+            // A reference is an alias so it inherits the properties of the guy he is bound to
+            declInfo->storage().isMutable = initSym->storage().isMutable;
+            declInfo->storage().isConstant = initSym->storage().isConstant;
 
             declInfo->relations().refereeSymbol = initSym;
             initSym->storage().refCount += 1;
@@ -456,12 +468,12 @@ void Semantics::walkVariableDeclaration(Node* node) {
         auto idents = digIdentifiers(initializer);
         for (const auto& identifier : idents) {
             auto identSym = getSymbolFromMeta(identifier);
-            if (!identSym) {
-                identSym = resolveSymbolInfo(extractIdentifierName(identifier));
-                if (!identSym) {
-                    reportDevBug("Failed to get identifier symbol info", identifier);
-                }
+            if (!identSym) 
+            {
+                logInternal("Failed to get identifier symbol info for '"+extractIdentifierName(identifier)+"' skipping...");
+                continue;
             }
+            
 
             if (!identSym->storage().isHeap) {
                 logInternal("Skipping non heap ident transfer");
@@ -470,9 +482,10 @@ void Semantics::walkVariableDeclaration(Node* node) {
 
             targetBaton = getBaton(identSym->codegen().ID);
             if (!targetBaton)
-                reportDevBug("Failed to get target baton for lifetime ID: " + identSym->codegen().ID,
-                             identifier);
-            
+                reportDevBug(
+                    "Failed to get target baton for lifetime ID: " + identSym->codegen().ID,
+                    identifier);
+
             transferResponsibility(nullptr, targetBaton, identSym);
         }
     }

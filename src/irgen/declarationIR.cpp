@@ -176,11 +176,24 @@ llvm::Value *IRGenerator::generateReferenceStorage(VariableDeclaration *decl,
     auto targetSym = sym->relations().refereeSymbol;
     if (!targetSym) reportDevBug("Reference '" + name + "' has no target symbol", decl);
 
-    if (targetSym->codegen().llvmValue && targetSym->codegen().llvmValue->getType()->isPointerTy())
-        return targetSym->codegen().llvmValue;
+    // Get the address of the target
+    llvm::Value *targetAddr = nullptr;
+    
+    if (targetSym->codegen().llvmValue) {
+        // For heap scalars, llvmValue is already the pointer to the data
+        // For stack variables, llvmValue is the alloca pointer
+        targetAddr = targetSym->codegen().llvmValue;
+    } else {
+        // Target not yet materialized, generate address from initializer
+        targetAddr = generateAddress(decl->initializer.get());
+    }
+    
+    // Store the target address directly as the reference's value
+    // No extra allocation needed - the reference is just an alias
+    sym->codegen().llvmValue = targetAddr;
 
-    // Target not yet materialized
-    return generateAddress(decl->initializer.get());
+    
+    return targetAddr;
 }
 
 llvm::Value *IRGenerator::generateComponentStorage(VariableDeclaration *decl,

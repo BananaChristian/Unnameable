@@ -75,7 +75,7 @@ llvm::Value *IRGenerator::generateExpression(Node *node) {
 // Main L-value generator helper functions
 llvm::Value *IRGenerator::generateAddress(Node *node) {
     if (!node) {
-        reportDevBug("Null node sent to the address generator dispatcher",node);
+        reportDevBug("Null node sent to the address generator dispatcher", node);
     }
 
     auto addrIt = addressGeneratorsMap.find(typeid(*node));
@@ -1248,10 +1248,14 @@ llvm::Value *IRGenerator::stringizeValue(llvm::Value *val, const ResolvedType &t
     auto i8Ty = llvm::Type::getInt8Ty(context);
     auto i128Ty = llvm::Type::getInt128Ty(context);
     auto f64Ty = llvm::Type::getDoubleTy(context);
-    // auto ptrTy = llvm::PointerType::getUnqual(context);
+
+    if (type.isRef()) {
+        ResolvedType targetType = semantics.peelRef(type);
+        return stringizeValue(val,targetType);
+    }
 
     // POINTERS & OPAQUE (The "Address" handler)
-    if (type.isPointer() || type.isRef() || type.kind == DataType::OPAQUE) {
+    if (type.isPointer() || type.kind == DataType::OPAQUE) {
         llvm::Value *addrInt = funcBuilder.CreatePtrToInt(val, llvm::Type::getInt64Ty(context));
         llvm::Value *buf = funcBuilder.CreateAlloca(i8Ty, 0, funcBuilder.getInt64(32), "ptr_buf");
         funcBuilder.CreateCall(getOrDeclareUnniptoa(), {addrInt, buf});

@@ -1135,8 +1135,14 @@ bool Semantics::isTypeCompatible(const ResolvedType& expected, const ResolvedTyp
         return isTypeCompatible(*expected.innerType, *actual.innerType);
     }
 
-    // Pointer or Reference, recurse into what they point to
+    // Pointer, recurse into what they point to
     if ((expected.isPointer() && actual.isPointer())) {
+        if (!expected.innerType || !actual.innerType) return false;
+        return isTypeCompatible(*expected.innerType, *actual.innerType);
+    }
+    
+    // Handle references they should be compatible if their targets are compatible
+    if (expected.isRef() && actual.isRef()) {
         if (!expected.innerType || !actual.innerType) return false;
         return isTypeCompatible(*expected.innerType, *actual.innerType);
     }
@@ -1372,21 +1378,6 @@ bool Semantics::isMethodCallCompatible(const MemberInfo& memFuncInfo, CallExpres
         ResolvedType argType = argInfo->type().type;
 
         bool isCompatible = isTypeCompatible(expectedType, argType);
-        if (!isCompatible && expectedType.isRef() && !argType.isRef()) {
-            auto ident = dynamic_cast<Identifier*>(param.get());
-            auto deref = dynamic_cast<DereferenceExpression*>(param.get());
-
-            if (!(ident || deref)) {
-                logSemanticErrors("Cannot pass an expression to a reference parameter",
-                                  param.get());
-                return false;
-            }
-
-            if (expectedType.kind == argType.kind) {
-                isCompatible = true;
-                argInfo->type().needsImplicitAddress = true;
-            }
-        }
 
         if (argType.kind == DataType::UNKNOWN) {
             logSemanticErrors("Could not infer type for argument " + std::to_string(i + 1),
@@ -1447,23 +1438,6 @@ bool Semantics::isCallCompatible(const SymbolInfo& funcInfo, CallExpression* cal
         ResolvedType argType = argInfo->type().type;
 
         bool isCompatible = isTypeCompatible(expectedType, argType);
-
-        // If the type is a reference
-        if (!isCompatible && expectedType.isRef() && !argType.isRef()) {
-            auto ident = dynamic_cast<Identifier*>(param.get());
-            auto deref = dynamic_cast<DereferenceExpression*>(param.get());
-
-            if (!(ident || deref)) {
-                logSemanticErrors("Cannot pass an expression to a reference parameter",
-                                  param.get());
-                return false;
-            }
-
-            if (expectedType.kind == argType.kind) {
-                isCompatible = true;
-                argInfo->type().needsImplicitAddress = true;
-            }
-        }
 
         if (argType.kind == DataType::UNKNOWN) {
             logSemanticErrors("Could not infer type for argument " + std::to_string(i + 1),
@@ -2187,9 +2161,6 @@ std::vector<Identifier*> Semantics::digIdentifiers(Node* node) {
 
     // CallExpression (func(x, y))
     if (auto* call = dynamic_cast<CallExpression*>(node)) {
-        auto funcIds = digIdentifiers(call->function_identifier.get());
-        results.insert(results.end(), funcIds.begin(), funcIds.end());
-
         for (auto& arg : call->parameters) {
             auto argIds = digIdentifiers(arg.get());
             results.insert(results.end(), argIds.begin(), argIds.end());

@@ -261,9 +261,9 @@ llvm::Value *IRGenerator::generateFloatLiteral(Node *node) {
 // Generator function for identifier expression
 llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     auto identExpr = dynamic_cast<Identifier *>(node);
-    if (!identExpr) {
+    if (!identExpr) 
         reportDevBug("Invalid identifier node", node);
-    }
+    
 
     const std::string &identName = identExpr->identifier.TokenLiteral;
 

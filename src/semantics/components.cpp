@@ -1029,27 +1029,18 @@ void Semantics::walkMethodCallExpression(Node* node) {
             logSemanticErrors(
                 "Function '" + funcName + "' does not exist in seal '" + instanceName + "'",
                 funcCall->function_identifier.get());
-            hasError = true;
             return;
         }
 
         // Walk the seal call
         walkSealCallExpression(funcCall, instanceName);
 
-        // Retrieve the function call metaData
-        auto fnIt = metaData.find(funcCall);
-        if (fnIt == metaData.end()) {
-            logSemanticErrors("Function '" + funcName + "' metaData does not exist ",
-                              funcCall->function_identifier.get());
-            return;
-        }
-
-        auto fnInfo = fnIt->second;
+        auto fnInfo = getSymbolFromMeta(funcCall);
 
         // Fill the method-call metaData for the whole expression
         auto fnCallSym = std::make_shared<SymbolInfo>();
         fnCallSym->hasError = hasError;
-        fnCallSym->type().type = fnInfo->func().returnType;
+        fnCallSym->type().type = fnInfo->type().type;
         fnCallSym->type().isNullable = fnInfo->type().isNullable;
 
         metaData[metCall] = fnCallSym;
@@ -1077,11 +1068,10 @@ void Semantics::walkMethodCallExpression(Node* node) {
 
     // Check if the instance is the type itself and block such as it is leading to
     // issues in LLVM
-    if (type.resolvedName == instanceName) {
+    if (type.resolvedName == instanceName) 
         logSemanticErrors("Cannot use the actual type as the instance itself",
                           funcCall->function_identifier.get());
-        hasError = true;
-    }
+    
 
     // Now check members on the component type
     auto& members = typeIt->second->members;

@@ -44,7 +44,11 @@ void Auditor::buildUsageMap(BlockExpression *block) {
         for (const auto &idNode : ids) {
             // Get the actual Baton ID (e.g., "N0") instead of the string "Identifier: x"
             auto sym = semantics.getSymbolFromMeta(idNode);
-            if (!sym) reportDevBug("Failed to get symbol info for '" + idNode->toString(), idNode);
+            if (!sym) {
+                logInternal("Failed to get symbol into for ident node skipping...'" +
+                            semantics.extractIdentifierName(idNode) + "'");
+                continue;
+            }
 
             auto baton = semantics.queryForLifeTimeBaton(sym->codegen().ID);
             if (baton) {
@@ -686,8 +690,8 @@ void Auditor::bunkerHeists(Node *block) {
 
 std::vector<std::string> Auditor::sortedHeists(const std::unique_ptr<BlockInfo> &info) {
     std::vector<std::string> cleanList;
-    
-    for (const std::string& nativeID : info->natives) {
+
+    for (const std::string &nativeID : info->natives) {
         if (semantics.heistIDs.count(nativeID)) {
             cleanList.push_back(nativeID);
         }

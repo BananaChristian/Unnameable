@@ -23,15 +23,6 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
     llvm::Value *variablePtr = sym->codegen().llvmValue;
     if (!variablePtr) reportDevBug("No value for '" + identName + "'", identExpr);
 
-    if (sym->type().isRef) {
-        llvm::Type *ptrType = llvm::PointerType::get(funcBuilder.getContext(), 0);
-        auto *load = funcBuilder.CreateLoad(ptrType, variablePtr, identName + "_ref_addr");
-        if (sym->storage().isVolatile) {
-            load->setVolatile(true);
-        }
-        variablePtr = load;
-    }
-
     // Component instance -> pointer to struct
     auto compIt = componentTypes.find(sym->type().type.resolvedName);
     if (compIt != componentTypes.end()) {

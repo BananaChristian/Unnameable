@@ -620,9 +620,9 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
 void Semantics::walkFunctionCallExpression(Node *node) {
   auto *funcCall = dynamic_cast<CallExpression *>(node);
-  if (!funcCall) {
+  if (!funcCall) 
     reportDevBug("Invalid function call expression", node);
-  }
+  
 
   const std::string callName =
       funcCall->function_identifier->expression.TokenLiteral;
@@ -789,7 +789,7 @@ void Semantics::walkSealCallExpression(Node *node,
           logSemanticErrors("Cannot pass 'null' to parameter " +
                                 std::to_string(i + 1) + " of '" + callName +
                                 "' in seal '" + sealName +
-                                "' — it is not nullable.",
+                                "' it is not nullable.",
                             arg.get());
         }
       }
