@@ -216,6 +216,7 @@ FunctionEntry Deserializer::readFunctionEntry(std::istream& in) {
     fn.funcName = readString(in, "fn/name");
     fn.returnType = readResolvedType(in);
     fn.paramTypes = readParamTypes(in);
+    fn.isDeclaration = read_u8(in, "fn/IsDeclaration");
     return fn;
 }
 

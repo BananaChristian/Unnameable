@@ -21,6 +21,7 @@ void StubGen::registerStubGeneratorFns() {
     stubGenFnsMap[typeid(EnumStatement)] = &StubGen::generateEnumStatement;
     stubGenFnsMap[typeid(AllocatorStatement)] = &StubGen::generateAllocatorStatement;
     stubGenFnsMap[typeid(InstantiateStatement)] = &StubGen::generateInstantiateStatement;
+    stubGenFnsMap[typeid(FunctionStatement)] = &StubGen::generateFunctionStatement;
 }
 
 void StubGen::finish() {
@@ -144,8 +145,8 @@ void StubGen::serializeComponentMember(std::ostream& out, const ComponentMember&
 }
 
 void StubGen::serializeComponentInit(std::ostream& out, const ComponentInit& init) {
-    serializeResolvedType(out, init.returnType);     // returnType first
-    serializeResolvedType(out, init.type);           // type second
+    serializeResolvedType(out, init.returnType);                  // returnType first
+    serializeResolvedType(out, init.type);                        // type second
     write_u32(out, static_cast<uint32_t>(init.initArgs.size()));  // count third
     for (const auto& type : init.initArgs) serializeResolvedType(out, type);
 }
@@ -228,6 +229,7 @@ void StubGen::serializeFunctionEntry(std::ostream& out, const FunctionEntry& ent
     writeString(out, entry.funcName);
     serializeResolvedType(out, entry.returnType);
     serializeParamTypes(out, entry.paramTypes);
+    write_u8(out, entry.isDeclaration);
 }
 
 //__________GENERICS SERIALIZATION______________________

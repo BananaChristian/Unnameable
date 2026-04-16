@@ -31,6 +31,10 @@ class StubGen {
     void generateEnumStatement(Node *node);
     void generateAllocatorStatement(Node *node);
     void generateInstantiateStatement(Node *node);
+    void generateFunctionStatement(Node *node);
+
+    void generateFunctionExpression(FunctionExpression *fnExpr);
+    void generateFunctionDeclaration(FunctionDeclarationExpression  *fnEclrExpr);
 
     // Helper functions
     void registerStubGeneratorFns();

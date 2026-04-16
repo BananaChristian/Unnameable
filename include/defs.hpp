@@ -141,14 +141,15 @@ struct TypeInfo {
     bool needsImplicitAddress = false;
 
     int memberIndex = -1;
-    std::vector<uint64_t> sizePerDimensions;  // per-dimension sizes for arrays
-    std::vector<Node *> dynSizePerDimensions;//If the size isnt known at compile time we store that node's symbol info here
+    std::vector<uint64_t> sizePerDimensions;   // per-dimension sizes for arrays
+    std::vector<Node *> dynSizePerDimensions;  // If the size isnt known at compile time we store
+                                               // that node's symbol info here
 };
 
 // StorageInfo,where and how is this symbol allocated?
 struct StorageInfo {
     bool isHeap = false;    // Explicit dynamic heap allocation
-    bool isGlobal=false;    //Was this variable born in global scope
+    bool isGlobal = false;  // Was this variable born in global scope
     std::string allocType;  // Name of the allocator to use
 
     bool isVolatile = false;  // volatile qualifier
@@ -406,8 +407,7 @@ struct AllocatorHandle {
     std::shared_ptr<SymbolInfo> freeSymbol;
 };
 
-
-//Stub generation structs
+// Stub generation structs
 enum class StubSection : uint8_t {
     SEALS,
     COMPONENTS,
@@ -509,6 +509,7 @@ struct FunctionEntry {
     std::string funcName;
     ResolvedType returnType;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+    bool isDeclaration;
 };
 
 struct Generics {
@@ -527,4 +528,3 @@ struct StubTable {
     std::vector<FunctionEntry> functions;
     std::vector<Generics> generics;
 };
-
