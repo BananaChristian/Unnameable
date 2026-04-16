@@ -116,10 +116,24 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
     }
 
     // Global scope rules
-    if (isGlobal && isHeap) {
-        logSemanticErrors("Cannot declare a heap variable '" + declName + "' in global scope",
-                          declaration);
-        return;
+    if (isGlobal) {
+        if (isHeap) {
+            logSemanticErrors("Cannot declare a heap variable '" + declName + "' in global scope",
+                              declaration);
+            return;
+        }
+
+        if (isArray) {
+            // Check array size is constant
+            if (type_modifier && !type_modifier->dimensions.empty()) {
+                for (auto& dim : type_modifier->dimensions) {
+                    if (!isConstLiteral(dim.get())) {
+                        logSemanticErrors("Array size must be constant in global scope", dim.get());
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     // Assignment sign rule for pointers and references
@@ -442,7 +456,7 @@ void Semantics::walkVariableDeclaration(Node* node) {
 
         // Array rules
         if (declInfo->type().isArray) {
-            if (!initSym->type().sizePerDimensions.empty()) {
+            if (!initSym->type().sizePerDimensions.empty() && !type_modifier->dimensions.empty()) {
                 if (declSizePerDim.size() != initSym->type().sizePerDimensions.size()) {
                     logSemanticErrors("Dimension count mismatch expected '" +
                                           std::to_string(declSizePerDim.size()) + "' but got '" +

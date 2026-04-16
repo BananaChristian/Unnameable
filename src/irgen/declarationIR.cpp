@@ -209,14 +209,72 @@ llvm::Value *IRGenerator::generateComponentStorage(VariableDeclaration *decl,
 //_______________________HELPERS______________________________________
 void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName, Node *value) {
+    // Handle arrays specially
+    if (sym->type().isArray) {
+        llvm::Type *elemTy = getLLVMType(semantics.getArrayElementType(sym->type().type));
+        
+        // Calculate total array size
+        uint64_t totalSize = 1;
+        for (auto dim : sym->type().sizePerDimensions) {
+            totalSize *= dim;
+        }
+        
+        llvm::ArrayType *arrayTy = llvm::ArrayType::get(elemTy, totalSize);
+        llvm::Constant *init = nullptr;
+        
+        if (value) {
+            if (auto *arrLit = dynamic_cast<ArrayLiteral*>(value)) {
+                // Flatten the array literal and collect constant elements
+                std::vector<llvm::Constant*> elements;
+                std::function<void(ArrayLiteral*)> flatten = [&](ArrayLiteral* lit) {
+                    for (auto& elem : lit->array) {
+                        if (auto *subArr = dynamic_cast<ArrayLiteral*>(elem.get())) {
+                            flatten(subArr);
+                        } else {
+                            llvm::Value *elemVal = generateExpression(elem.get());
+                            if (auto *constElem = llvm::dyn_cast<llvm::Constant>(elemVal)) {
+                                elements.push_back(constElem);
+                            } else {
+                                reportDevBug("Array element must be constant in global scope", elem.get());
+                            }
+                        }
+                    }
+                };
+                flatten(arrLit);
+                
+                if (elements.size() != totalSize) {
+                    reportDevBug("Array initializer size mismatch", value);
+                }
+                
+                init = llvm::ConstantArray::get(arrayTy, elements);
+            } else {
+                reportDevBug("Array initializer must be array literal", value);
+            }
+        } else {
+            init = llvm::Constant::getNullValue(arrayTy);
+        }
+        
+        auto *g = new llvm::GlobalVariable(
+            *module, arrayTy,
+            sym->storage().isConstant,
+            llvm::GlobalValue::InternalLinkage, init, letName);
+        
+        sym->codegen().llvmValue = g;
+        sym->codegen().llvmType = arrayTy;
+        return;
+    }
+    
+    // Handle scalars 
     llvm::Type *varType = getLLVMType(sym->type().type);
-
     llvm::Constant *init = nullptr;
+    
     if (value) {
         llvm::Value *val = generateExpression(value);
         init = llvm::dyn_cast<llvm::Constant>(val);
-
-        if (!init) {
+        
+        // Special case if we're referencing another global, get its initializer
+        if (!init && !isGlobalScope) {
+            // Not in global scope, but we need constant
             reportDevBug("Global '" + letName + "' must be initialized with a constant expression",
                          value);
         }
@@ -225,12 +283,17 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
     } else {
         init = llvm::Constant::getNullValue(varType);
     }
-
+    
+    if (!init) {
+        reportDevBug("Global '" + letName + "' must be initialized with a constant expression",
+                     value);
+    }
+    
     auto *g = new llvm::GlobalVariable(
         *module, varType,
-        sym->storage().isConstant,  // should be true unless semantics has screwed me
+        sym->storage().isConstant,
         llvm::GlobalValue::InternalLinkage, init, letName);
-
+    
     sym->codegen().llvmValue = g;
     sym->codegen().llvmType = varType;
 }
