@@ -275,6 +275,14 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     if (!address) {
         reportDevBug("No address for '" + identName + "'", identExpr);
     }
+    
+    if (isGlobalScope) {
+        auto *globalVar = llvm::dyn_cast<llvm::GlobalVariable>(sym->codegen().llvmValue);
+        if (globalVar && globalVar->hasInitializer()) {
+            return globalVar->getInitializer();
+        }
+        reportDevBug("Cannot load global '" + identName + "' in constant initializer", identExpr);
+    }
 
     // Component instance -> return pointer to the struct instance (address is
     // already correct)

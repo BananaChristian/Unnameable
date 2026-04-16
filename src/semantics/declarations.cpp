@@ -27,6 +27,7 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
     bool isPointer = false;
     bool isRef = false;
     bool isArray = false;
+    bool isGlobal = isGlobalScope();
 
     auto initializer = declaration->initializer.get();
 
@@ -114,7 +115,8 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
         return;
     }
 
-    if (isGlobalScope() && isHeap) {
+    // Global scope rules
+    if (isGlobal && isHeap) {
         logSemanticErrors("Cannot declare a heap variable '" + declName + "' in global scope",
                           declaration);
         return;
@@ -234,6 +236,7 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
     declInfo->type().isRef = isRef;
     declInfo->type().isPointer = isPointer;
     declInfo->storage().isHeap = isHeap;
+    declInfo->storage().isGlobal = isGlobal;
     declInfo->type().isArray = isArray;
     declInfo->type().isNullable = isNullable;
 }
@@ -407,7 +410,7 @@ void Semantics::walkVariableDeclaration(Node* node) {
                 return;
             }
 
-            if (!initSym->storage().isHeap) {
+            if (!initSym->storage().isHeap && !initSym->storage().isGlobal) {
                 errorHandler.addHint("References only work with heap or global variables")
                     .addHint("Allocate on heap: heap i32 x = 10")
                     .addHint("Or use global scope");
@@ -468,12 +471,11 @@ void Semantics::walkVariableDeclaration(Node* node) {
         auto idents = digIdentifiers(initializer);
         for (const auto& identifier : idents) {
             auto identSym = getSymbolFromMeta(identifier);
-            if (!identSym) 
-            {
-                logInternal("Failed to get identifier symbol info for '"+extractIdentifierName(identifier)+"' skipping...");
+            if (!identSym) {
+                logInternal("Failed to get identifier symbol info for '" +
+                            extractIdentifierName(identifier) + "' skipping...");
                 continue;
             }
-            
 
             if (!identSym->storage().isHeap) {
                 logInternal("Skipping non heap ident transfer");

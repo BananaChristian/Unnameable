@@ -148,6 +148,7 @@ struct TypeInfo {
 // StorageInfo,where and how is this symbol allocated?
 struct StorageInfo {
     bool isHeap = false;    // Explicit dynamic heap allocation
+    bool isGlobal=false;    //Was this variable born in global scope
     std::string allocType;  // Name of the allocator to use
 
     bool isVolatile = false;  // volatile qualifier

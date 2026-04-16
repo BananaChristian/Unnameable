@@ -101,7 +101,8 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
         return address;
     }
 
-    throw std::runtime_error("Infix operator cannot be treated as an address");
+    reportDevBug("Infix operator cannot be treated as an address",infix);
+    return nullptr;
 }
 
 // Self L-Value  generator
