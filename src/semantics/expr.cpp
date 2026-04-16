@@ -458,7 +458,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
     arrAccessInfo->hasError = hasError;
     arrAccessInfo->storage().isHeap = arrSymbol->storage().isHeap;
     arrAccessInfo->type().sizePerDimensions = arrSymbol->type().sizePerDimensions;
-    arrAccessInfo->type().dynSizePerDimensions=arrSymbol->type().dynSizePerDimensions;
+    arrAccessInfo->type().dynSizePerDimensions = arrSymbol->type().dynSizePerDimensions;
 
     metaData[arrExpr] = arrAccessInfo;
     if (arrSymbol->storage().isHeap) {
@@ -491,8 +491,7 @@ void Semantics::walkAddressExpression(Node *node) {
     if (!addrExpr) return;
 
     auto innerExpr = addrExpr->identifier.get();
-    if (!innerExpr)
-        reportDevBug("Failed to get addr operand", addrExpr);
+    if (!innerExpr) reportDevBug("Failed to get addr operand", addrExpr);
 
     auto addrName = extractIdentifierName(innerExpr);
 
@@ -577,7 +576,8 @@ void Semantics::walkDereferenceExpression(Node *node) {
     }
 
     if (derefSym->hasError) {
-        logSemanticErrors("The dereference expression that is getting dereference is erronious", derefExpr);
+        logSemanticErrors("The dereference expression that is getting dereference is erronious",
+                          derefExpr);
         return;
     }
 

@@ -239,6 +239,7 @@ class Semantics {
     ResolvedType makeArrayType(const ResolvedType &inner, uint64_t size, bool isNull);
     ResolvedType *resolveSelfChain(SelfExpression *selfExpr, const std::string &componentName);
     bool isTypeCompatible(const ResolvedType &expected, const ResolvedType &actual);
+    bool isIdentInSelf(SelfExpression *selfExpr,Identifier *target);
     int inferLiteralDimensions(ArrayLiteral *arrLit);
     void inferSizePerDimension(ArrayLiteral *lit, std::vector<int64_t> &sizes);
     void substituteTypes(Node *node, std::unordered_map<std::string, Token> &subMap);

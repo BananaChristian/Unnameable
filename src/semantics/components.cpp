@@ -8,7 +8,6 @@
 void Semantics::walkEnumStatement(Node* node) {
     auto enumStmt = dynamic_cast<EnumStatement*>(node);
     if (!enumStmt) return;
-    hasError = false;
 
     std::string enumStmtName = enumStmt->enum_identifier->expression.TokenLiteral;
     bool isExportable = enumStmt->isExportable;
@@ -19,14 +18,16 @@ void Semantics::walkEnumStatement(Node* node) {
         return;
     }
 
-    // Set underlying type (default = i32)
+    // Set underlying type (default = usize)
     ResolvedType underLyingType = ResolvedType::makeBase(DataType::I32, "i32");
     if (enumStmt->int_type.has_value()) {
         switch (enumStmt->int_type.value().type) {
             case TokenType::I8_KEYWORD:
                 underLyingType = ResolvedType::makeBase(DataType::I8, "i8");
+                break;
             case TokenType::U8_KEYWORD:
                 underLyingType = ResolvedType::makeBase(DataType::U8, "u8");
+                break;
             case TokenType::I16_KEYWORD:
                 underLyingType = ResolvedType::makeBase(DataType::I16, "i16");
                 break;
@@ -130,7 +131,10 @@ void Semantics::walkEnumStatement(Node* node) {
             } else if (auto usizeLit = dynamic_cast<USIZELiteral*>(enumMember->value.get())) {
                 literalType = TokenType::UINTSIZE;
                 literalStr = usizeLit->expression.TokenLiteral;
-            } else {
+            } else if(auto intLit=dynamic_cast<INTLiteral*>(enumMember->value.get())){
+                literalType=TokenType::INT;
+                literalStr=intLit->expression.TokenLiteral;
+            }else {
                 logSemanticErrors(
                     "Enum member value must be a i8,u8, i16, u16, i32, "
                     "u32, i64, u63, i128, u128 or isize, usize literal",
@@ -143,38 +147,19 @@ void Semantics::walkEnumStatement(Node* node) {
             bool isUnsignedLiteral;
             switch (literalType) {
                 case TokenType::INT8:
+                case TokenType::INT16:
+                case TokenType::INT32:
+                case TokenType::INT64:
+                case TokenType::INT128:
+                case TokenType::INTSIZE:
+                case TokenType::INT://Generic int is i32
                     isUnsignedLiteral = false;
                     break;
                 case TokenType::UINT8:
-                    isUnsignedLiteral = false;
-                    break;
-                case TokenType::INT16:
-                    isUnsignedLiteral = false;
-                    break;
                 case TokenType::UINT16:
-                    isUnsignedLiteral = true;
-                    break;
-                case TokenType::INT32:
-                    isUnsignedLiteral = false;
-                    break;
                 case TokenType::UINT32:
-                    isUnsignedLiteral = true;
-                    break;
-                case TokenType::INT64:
-                    isUnsignedLiteral = false;
-                    break;
                 case TokenType::UINT64:
-                    isUnsignedLiteral = true;
-                    break;
-                case TokenType::INT128:
-                    isUnsignedLiteral = false;
-                    break;
                 case TokenType::UINT128:
-                    isUnsignedLiteral = true;
-                    break;
-                case TokenType::INTSIZE:
-                    isUnsignedLiteral = false;
-                    break;
                 case TokenType::UINTSIZE:
                     isUnsignedLiteral = true;
                     break;
@@ -266,12 +251,13 @@ void Semantics::walkEnumStatement(Node* node) {
         info->parentType = ResolvedType::makeBase(DataType::ENUM, enumStmtName);
         members[memberName] = info;
 
-        // Add member to local scope
-        enumInfo->type().type = underLyingType;
-        enumInfo->storage().isConstant = true;
-        enumInfo->storage().isInitialized = true;
-        enumInfo->isExportable = isExportable;
-        symbolTable.back()[memberName] = enumInfo;
+        //Add it to local scope
+        auto memberInfo = std::make_shared<SymbolInfo>();
+        memberInfo->type().type = underLyingType;
+        memberInfo->storage().isConstant = true;
+        memberInfo->storage().isInitialized = true;
+        memberInfo->isExportable = isExportable;
+        symbolTable.back()[memberName] = memberInfo;  
 
         currentValue = memberValue + 1;
     }
@@ -703,6 +689,22 @@ void Semantics::walkComponentStatement(Node* node) {
 
 
             for (auto& [name, info] : sortedMembers) {
+                // CHECK FOR COLLISION FIRST!
+                if (members.find(name) != members.end()) {
+                    logSemanticErrors("Field '" + name + "' from record '" + identName + 
+                                      "' collides with existing field in component '" + componentName + "'",
+                                      ident);
+                    return;  
+                }
+                
+                // Also check in current scope (fields already defined in component)
+                if (symbolTable.back().find(name) != symbolTable.back().end()) {
+                    logSemanticErrors("Field '" + name + "' from record '" + identName + 
+                                      "' collides with existing member in component '" + componentName + "'",
+                                      ident);
+                    return;
+                }
+                
                 auto memberCopy = std::make_shared<MemberInfo>();
                 memberCopy->memberName = info->memberName;
                 memberCopy->type = info->type;
@@ -762,6 +764,23 @@ void Semantics::walkComponentStatement(Node* node) {
                 auto& importedMembers = importedTypeIt->second->members;
                 auto memIt = importedMembers.find(memberName);
                 if (memIt != importedMembers.end()) {
+                    if (members.find(memberName) != members.end()) {
+                        logSemanticErrors("Explicit injection of field '" + memberName + 
+                                          "' from record '" + dataName + 
+                                          "' collides with existing field in component '" + componentName + "'",
+                                          infixExpr);
+                        hasError = true;
+                        return;
+                    }
+                    
+                    if (symbolTable.back().find(memberName) != symbolTable.back().end()) {
+                        logSemanticErrors("Explicit injection of field '" + memberName + 
+                                          "' collides with existing member in component '" + componentName + "'",
+                                          infixExpr);
+                        hasError = true;
+                        return;
+                    }
+                    
                     // Copy only the requested member
                     std::shared_ptr<MemberInfo> memberCopy = memIt->second;
                     memberCopy->memberIndex = currentMemberIndex++;

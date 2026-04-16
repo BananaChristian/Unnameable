@@ -20,6 +20,21 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
         reportDevBug("Could not find identifier metadata", identExpr);
     }
 
+    if (!sym->codegen().llvmValue && currentComponent) {
+        // Check if this identifier is a field of the current component
+        auto compSym = semantics.getSymbolFromMeta(currentComponent);
+        if (compSym && compSym->members.count(identName)) {
+            // Treat as self.field , create a SelfExpression
+            Token selfToken("self",TokenType::SELF, identExpr->identifier.line, 
+                           identExpr->identifier.column);
+            std::vector<std::unique_ptr<Expression>> fields;
+            fields.push_back(std::make_unique<Identifier>(identExpr->identifier));
+            
+            auto selfExpr = std::make_unique<SelfExpression>(selfToken, std::move(fields));
+            return generateSelfAddress(selfExpr.get());
+        }
+    }
+
     llvm::Value *variablePtr = sym->codegen().llvmValue;
     if (!variablePtr) reportDevBug("No value for '" + identName + "'", identExpr);
 
@@ -161,6 +176,11 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
         }
 
         llvm::StructType *structTy = llvmIt->second;
+        if (structTy->isOpaque()) {
+            std::string msg = "Struct type '" + currentTypeName + "' is still opaque when accessing field '" + 
+                              fieldName + "'. Make sure component/record bodies are defined before generating methods that use them.";
+            reportDevBug(msg, selfExpr);
+        }
 
         currentPtr = funcBuilder.CreateStructGEP(structTy, currentPtr, lastMemberInfo->memberIndex,
                                                  fieldName + "_ptr");

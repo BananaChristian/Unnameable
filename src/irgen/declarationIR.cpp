@@ -63,7 +63,9 @@ llvm::Value *IRGenerator::generateScalarStorage(VariableDeclaration *decl,
 
     // Nullable boxing
     logInternal("Is the type nullable: " + std::to_string(sym->type().type.isNull));
-    if (sym->type().type.isNull && !llvm::isa<llvm::StructType>(varTy)) {
+
+   if (sym->type().type.isNull && !dynamic_cast<NullLiteral*>(decl->initializer.get())) {
+        // Box non-null values only
         llvm::StructType *stTy = llvm::cast<llvm::StructType>(varTy);
         llvm::Value *boxed = llvm::UndefValue::get(stTy);
         boxed = funcBuilder.CreateInsertValue(

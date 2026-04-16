@@ -414,6 +414,8 @@ void IRGenerator::generateComponentStatement(Node* node) {
     memberTypes.resize(dataMemberCount);
 
     for (const auto& [memberName, info] : sym->members) {
+        logInternal("Member '" + memberName + "' isFunction: " + std::to_string(info->isFunction) +
+                    " index: " + std::to_string(info->memberIndex));
         if (!info->node) continue;
 
         if (auto* funcExpr = dynamic_cast<FunctionExpression*>(info->node)) {
@@ -424,7 +426,7 @@ void IRGenerator::generateComponentStatement(Node* node) {
         // Handle data member
         llvm::Type* memberTy = getLLVMType(info->type);
         if (!memberTy)
-            throw std::runtime_error("Unknown LLVM type for member '" + memberName + "'");
+            reportDevBug("Unknown LLVM type for member '" + memberName + "'",info->node);
 
         // Use the semantic index to place it correctly in the struct
         memberTypes[info->memberIndex] = memberTy;

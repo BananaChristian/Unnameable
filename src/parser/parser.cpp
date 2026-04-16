@@ -142,6 +142,7 @@ bool Parser::isIntegerLiteralType(TokenType type) {
   case TokenType::UINT128:
   case TokenType::INTSIZE:
   case TokenType::UINTSIZE:
+  case TokenType::INT:
     return true;
   default:
     return false;

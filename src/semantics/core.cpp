@@ -1140,7 +1140,7 @@ bool Semantics::isTypeCompatible(const ResolvedType& expected, const ResolvedTyp
         if (!expected.innerType || !actual.innerType) return false;
         return isTypeCompatible(*expected.innerType, *actual.innerType);
     }
-    
+
     // Handle references they should be compatible if their targets are compatible
     if (expected.isRef() && actual.isRef()) {
         if (!expected.innerType || !actual.innerType) return false;
@@ -1837,6 +1837,16 @@ ResolvedType Semantics::peelRef(const ResolvedType& t) {
     return *t.innerType;
 }
 
+bool Semantics::isIdentInSelf(SelfExpression* self, Identifier* target) {
+    for (const auto& ident : self->fields) {
+        if (ident.get() == target) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 std::string Semantics::generateLifetimeID(const std::shared_ptr<SymbolInfo>& sym) {
     if (sym->type().isPointer)
         return "P" + std::to_string(ptrDeclCount++);
@@ -1857,21 +1867,22 @@ std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
     lifetime->isAlive = true;
     lifetime->persist = declSym->storage().isPersist;
 
-    auto idents=digIdentifiers(initializer);
-    for(const auto &identifier:idents){
-        auto identSym=getSymbolFromMeta(identifier);
-        if(!identSym)
-            reportDevBug("Failed to get identifier symbol info", identifier);
-        
-        if(!identSym->storage().isHeap){
+    auto idents = digIdentifiers(initializer);
+    for (const auto& identifier : idents) {
+        auto identSym = getSymbolFromMeta(identifier);
+        if (!identSym) reportDevBug("Failed to get identifier symbol info", identifier);
+
+        if (!identSym->storage().isHeap) {
             logInternal("Encountered non heap ident skipping...");
             continue;
         }
-        
-        auto targetBaton=getBaton(identSym->codegen().ID);
-        if(!targetBaton)
-            reportDevBug("Failed to get lifetime baton for ident of lifetime ID: "+identSym->codegen().ID,identifier);
-        
+
+        auto targetBaton = getBaton(identSym->codegen().ID);
+        if (!targetBaton)
+            reportDevBug(
+                "Failed to get lifetime baton for ident of lifetime ID: " + identSym->codegen().ID,
+                identifier);
+
         transferResponsibility(lifetime.get(), targetBaton, identSym);
     }
 
