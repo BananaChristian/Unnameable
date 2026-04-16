@@ -1217,10 +1217,9 @@ void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
                                     " (dropCount=" + (dropCount ? "T" : "F") + ")");
                         transferDependent(id, depSym, dropCount);
                     }
-
-                    for (const auto &id : toRearm) {
-                        rearmBaton(id, holderNode);
-                    }
+                }
+                for (const auto &id : toRearm) {
+                    rearmBaton(id, holderNode);
                 }
             } else {
                 logInternal("    [STAY-ALIVE] Family is already dead or not responsible.");
