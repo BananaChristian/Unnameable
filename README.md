@@ -7,7 +7,7 @@ A procedural, statically compiled programming language for Linux x86-64.
 
 ## Overview
 
-Unnameable is a procedural language with a C-like feel. It compiles directly to native binaries via an LLVM backend with no dependency on the C runtime — the language ships its own minimal runtime instead. This is intentional, but it is also why the compiler currently only targets Linux x86-64.
+Unnameable is a procedural language with a C-like feel. It compiles directly to native binaries via an LLVM backend with no dependency on the C runtime the language ships its own minimal runtime instead. This is intentional, but it is also why the compiler currently only targets Linux x86-64.
 
 Source files use the `.unn` extension. The compiler binary is `unnc` (Unnameable Compiler).
 
