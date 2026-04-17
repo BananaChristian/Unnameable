@@ -58,6 +58,15 @@ static std::shared_ptr<SymbolInfo> symInfoFromFunctionEntry(const FunctionEntry 
     return sym;
 }
 
+static std::shared_ptr<SymbolInfo> symInfoFromVariableEntry(const VariableEntry &var){
+    auto sym=std::make_shared<SymbolInfo>();
+    sym->type().type=var.declaredType;
+    sym->storage().isMutable=var.isMutable;
+    sym->storage().isInitialized=var.isInitialized;
+
+    return sym;
+}
+
 /// Build a SymbolInfo for an imported init constructor.
 static std::shared_ptr<SymbolInfo> symInfoFromComponentInit(const ComponentInit &init) {
     auto sym = std::make_shared<SymbolInfo>();
@@ -101,6 +110,15 @@ static void registerFunctionSymbol(const FunctionEntry &funcEntry,std::unordered
    importTable[funcEntry.funcName]=funcInfo;
    //Register into global scope
    globalScope[funcEntry.funcName]=funcInfo;
+}
+
+static void registerVariableSymbol(const VariableEntry &varEntry, std::unordered_map<std::string,std::shared_ptr<SymbolInfo>> &importTable,std::unordered_map<std::string,std::shared_ptr<SymbolInfo>>&globalScope){
+    auto varInfo=std::make_shared<SymbolInfo>();
+    varInfo=symInfoFromVariableEntry(varEntry);
+    //Register into imported vars table
+    importTable[varEntry.var_name]=varInfo;
+    //Register into global scope
+    globalScope[varEntry.var_name]=varInfo;
 }
 
 void Semantics::importSeals() {
@@ -269,6 +287,15 @@ void Semantics::importFunctions() {
     }
 }
 
+void Semantics::importVariables(){
+    logInternal("Importing standalone variables: "+std::to_string(deserializer.stub.variables.size()));
+    for(const auto &var:deserializer.stub.variables){
+        logInternal("Importing variable '"+var.var_name+"'");
+        registerVariableSymbol(var,ImportedVariablesTable,symbolTable[0]);
+        logInternal("Finished importing variable '"+var.var_name+"'");
+    }
+}
+
 
 void Semantics::importGenerics() {
     logInternal("Importing generic instantiations: " +
@@ -323,5 +350,6 @@ void Semantics::import() {
     importEnums();
     importAllocators();
     importFunctions();
+    importVariables();
     importGenerics();
 }

@@ -209,6 +209,10 @@ llvm::Value *IRGenerator::generateComponentStorage(VariableDeclaration *decl,
 //_______________________HELPERS______________________________________
 void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName, Node *value) {
+    llvm::GlobalValue::LinkageTypes linkage=llvm::GlobalValue::InternalLinkage;
+    if(sym->isExportable)
+        linkage=llvm::GlobalValue::ExternalLinkage;
+
     // Handle arrays specially
     if (sym->type().isArray) {
         llvm::Type *elemTy = getLLVMType(semantics.getArrayElementType(sym->type().type));
@@ -257,7 +261,7 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
         auto *g = new llvm::GlobalVariable(
             *module, arrayTy,
             sym->storage().isConstant,
-            llvm::GlobalValue::InternalLinkage, init, letName);
+            linkage, init, letName);
         
         sym->codegen().llvmValue = g;
         sym->codegen().llvmType = arrayTy;
@@ -292,7 +296,7 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
     auto *g = new llvm::GlobalVariable(
         *module, varType,
         sym->storage().isConstant,
-        llvm::GlobalValue::InternalLinkage, init, letName);
+        linkage, init, letName);
     
     sym->codegen().llvmValue = g;
     sym->codegen().llvmType = varType;

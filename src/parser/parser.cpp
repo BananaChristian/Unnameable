@@ -465,7 +465,7 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::ALLOCATOR] =
       &Parser::parseAllocatorStatement;
   StatementParseFunctionsMap[TokenType::SEAL] = &Parser::parseSealStatement;
-  StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseExportStatement;
+  StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::REF] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::PTR] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::DEREF] =

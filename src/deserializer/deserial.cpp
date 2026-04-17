@@ -5,6 +5,7 @@
 #include <iostream>
 #include <istream>
 #include <stdexcept>
+#include "defs.hpp"
 namespace fs = std::filesystem;
 
 Deserializer::Deserializer(ErrorHandler& handler, bool verbose)
@@ -220,6 +221,17 @@ FunctionEntry Deserializer::readFunctionEntry(std::istream& in) {
     return fn;
 }
 
+VariableEntry Deserializer::readVariableEntry(std::istream &in){
+    VariableEntry var;
+    var.var_name=readString(in,"var/var_name");
+    var.declaredType=readResolvedType(in);
+    var.isConstant=read_u8(in,"var/isConstant");
+    var.isMutable=read_u8(in,"var/isMutable");
+    var.isInitialized=read_u8(in,"var/isInitialized");
+
+    return var;
+}
+
 Generics Deserializer::readGenerics(std::istream& in) {
     Generics gen;
     gen.aliasName = readString(in, "generics/alias");
@@ -304,6 +316,15 @@ void Deserializer::readStubTable(std::istream& in) {
                 for (uint32_t i = 0; i < count; ++i)
                     stub.functions.push_back(readFunctionEntry(in));
                 logInternal("Read " + std::to_string(count) + " function(s)");
+                break;
+            }
+                                         
+            case StubSection::VARIABLES:{
+                uint32_t count= read_u32(in,"variables/count");
+                stub.variables.reserve(count);
+                for(uint32_t i=0;i<count;++i)
+                    stub.variables.push_back(readVariableEntry(in));
+                logInternal("Read "+std::to_string(count)+" variable(s)");
                 break;
             }
 

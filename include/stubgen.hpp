@@ -32,6 +32,7 @@ class StubGen {
     void generateAllocatorStatement(Node *node);
     void generateInstantiateStatement(Node *node);
     void generateFunctionStatement(Node *node);
+    void generateVariableDeclaration(Node *node);
 
     void generateFunctionExpression(FunctionExpression *fnExpr);
     void generateFunctionDeclaration(FunctionDeclarationExpression  *fnEclrExpr);
@@ -67,6 +68,7 @@ class StubGen {
     void serializeEnumTable(std::ostream &out, const EnumTable &enumTable);
 
     void serializeFunctionEntry(std::ostream &out, const FunctionEntry &entry);
+    void serializeVariableEntry(std::ostream &out, const VariableEntry &entry);
 
     void serializeAllocatorFunction(std::ostream &out, const AllocatorFunction &function);
     void serializeAllocator(std::ostream &out, const Allocator &allocator);

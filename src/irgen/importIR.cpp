@@ -228,3 +228,33 @@ void IRGenerator::declareImportedFunctions(){
         llvm::Function::Create(fnType,linkage,funcName,module.get());
     }
 }
+
+void IRGenerator::declareImportedVariables(){
+    for(const auto &varPair:semantics.ImportedVariablesTable){
+        const auto &varName=varPair.first;
+        auto varSym=varPair.second;
+
+        llvm::Type *varType=getLLVMType(varSym->type().type);
+        if(!varType)
+            reportDevBug("Failed to get LLVM type for variable '"+varName+"'",nullptr);
+
+        if(module->getGlobalVariable(varName)){
+            logInternal("Variable '"+varName+"' was already declared, skipping...");
+            continue;
+        }
+
+        //Create external global declaration
+        llvm::GlobalVariable *globalVar= new llvm::GlobalVariable(
+                *module,
+                varType,
+                varSym->storage().isConstant,
+                llvm::GlobalValue::ExternalLinkage,
+                nullptr,
+                varName
+                );
+
+        varSym->codegen().llvmValue=globalVar;
+        varSym->codegen().llvmType=varType; 
+        logInternal("Declared imported variable: "+varName);
+    }
+}

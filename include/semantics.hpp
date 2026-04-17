@@ -30,6 +30,7 @@ class Semantics {
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedComponentTable;
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>> ImportedRecordTable;
     std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> ImportedFunctionsTable;
+    std::unordered_map<std::string,std::shared_ptr<SymbolInfo>> ImportedVariablesTable;
     std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
 
     using LifeTimeTable = std::unordered_map<Node *, std::unique_ptr<LifeTime>>;
@@ -260,6 +261,7 @@ class Semantics {
     void importEnums();
     void importAllocators();
     void importFunctions();
+    void importVariables();
     void importGenerics();
     void import();
 

@@ -1233,6 +1233,7 @@ struct VariableDeclaration : Statement {
   bool isHeap = false;
   bool isVolatile = false;
   bool isRestrict = false;
+  bool isExportable=false;
 
   std::string toString() override {
     std::string result;
@@ -1253,6 +1254,8 @@ struct VariableDeclaration : Statement {
       result += "volatile ";
     if (isRestrict)
       result += "restrict ";
+    if(isExportable)
+        result+="export ";
     if (mutability == Mutability::CONSTANT)
       result += "const ";
     if (mutability == Mutability::MUTABLE)
@@ -1284,7 +1287,7 @@ struct VariableDeclaration : Statement {
     return new VariableDeclaration(
       clonePtr(allocator),clonePtr(modified_type),clonePtr(base_type),
       clonePtr(var_name),clonePtr(initializer),assign_token,mutability,
-      isPersist,isHeap,isVolatile,isRestrict
+      isPersist,isHeap,isVolatile,isRestrict,isExportable
        );
   }
 
@@ -1294,10 +1297,10 @@ struct VariableDeclaration : Statement {
                       std::unique_ptr<Expression> name,
                       std::unique_ptr<Expression> init,
                       std::optional<Token> _assign, Mutability mut,
-                      bool _persist,bool _heap,bool _volatile,bool _restrict)
+                      bool _persist,bool _heap,bool _volatile,bool _restrict,bool _export)
       : Statement(name ? name->token : Token{}),allocator(std::move(_allocator)),modified_type(std::move(_modifier)),
       base_type(std::move(base)),var_name(std::move(name)),initializer(std::move(init)),
-      assign_token(_assign),mutability(mut),isPersist(_persist),isHeap(_heap),isVolatile(_volatile),isRestrict(_restrict){} 
+      assign_token(_assign),mutability(mut),isPersist(_persist),isHeap(_heap),isVolatile(_volatile),isRestrict(_restrict),isExportable(_export){} 
 }; 
 
 struct AssignmentStatement : Statement {

@@ -20,6 +20,7 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
         reportDevBug("Could not find identifier metadata", identExpr);
     }
 
+
     if (!sym->codegen().llvmValue && currentComponent) {
         // Check if this identifier is a field of the current component
         auto compSym = semantics.getSymbolFromMeta(currentComponent);

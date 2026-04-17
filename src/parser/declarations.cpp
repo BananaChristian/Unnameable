@@ -11,6 +11,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
   bool isConst = false;
   bool isVolatile = false;
   bool isRestrict = false;
+  bool isExportable=false;
+
 
   Token heap_token;
   std::unique_ptr<Expression> allocType = nullptr;     // For heap<allocator>
@@ -60,7 +62,11 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     } else if (currentToken().type == TokenType::RESTRICT) {
       isRestrict = true;
       advance();
-    } else if (currentToken().type == TokenType::PTR ||
+    } else if(currentToken().type==TokenType::EXPORT){
+        isExportable=true;
+        advance();
+    }
+    else if (currentToken().type == TokenType::PTR ||
                currentToken().type == TokenType::REF ||
                currentToken().type == TokenType::ARRAY) {
       isTypeModified = true;
@@ -85,12 +91,18 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
   std::unique_ptr<Statement> stmt;
   if (currentToken().type == TokenType::RECORD)
     stmt = parseRecordStatement();
+  else if(currentToken().type==TokenType::COMPONENT)
+      stmt=parseComponentStatement();
+  else if(currentToken().type==TokenType::FUNCTION)
+      stmt=parseFunctionStatement();
+  else if(currentToken().type==TokenType::ALLOCATOR)
+      stmt=parseAllocatorStatement();
   else if (isBasicType(currentToken().type) ||
            currentToken().type == TokenType::IDENTIFIER ||
            currentToken().type == TokenType::AUTO)
     stmt = parseVariableDeclaration();
   else {
-    logError("Expected variable declaration after modifiers", currentToken());
+    logError("Expected variable declaration,components,records,allocatos or function after modifiers", currentToken());
     return nullptr;
   }
 
@@ -104,11 +116,29 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     varDecl->isHeap = isHeap;
     varDecl->isVolatile = isVolatile;
     varDecl->isRestrict = isRestrict;
+    varDecl->isExportable=isExportable;
     varDecl->mutability = mutability;
   } else if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get())) {
     recordStmt->isVolatile = isVolatile;
+    recordStmt->isExportable=isExportable;
     recordStmt->mutability = mutability;
-  } else {
+  } else if(auto compStmt=dynamic_cast<ComponentStatement*>(stmt.get())){
+      compStmt->isExportable=isExportable;
+  }else if(auto allocStmt=dynamic_cast<AllocatorStatement*>(stmt.get())){
+      allocStmt->isExportable=isExportable;
+  }
+  else if(auto fnStmt=dynamic_cast<FunctionStatement*>(stmt.get())){
+      auto fnExpr=dynamic_cast<FunctionExpression*>(fnStmt->funcExpr.get());
+      auto fnDeclrExpr=dynamic_cast<FunctionDeclarationExpression*>(fnStmt->funcExpr.get());
+      if(fnExpr)
+          fnExpr->isExportable=isExportable;
+      if(fnDeclrExpr){
+          if(auto fnDeclStmt=dynamic_cast<FunctionDeclaration*>(fnDeclrExpr->funcDeclrStmt.get())){
+              fnDeclStmt->isExportable=isExportable;
+          }
+      }
+  }
+  else {
     logError("Cannot apply modifiers to this statement type", currentToken());
     return nullptr;
   }
@@ -171,6 +201,6 @@ std::unique_ptr<Statement> Parser::parseVariableDeclaration() {
   return std::make_unique<VariableDeclaration>(
         std::move(allocator),std::move(modified_type),std::move(base_type),
         std::move(identifier),std::move(value),assign_token,Mutability::IMMUTABLE,
-        false,false,false,false
+        false,false,false,false,false
      );
 }

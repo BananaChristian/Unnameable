@@ -22,6 +22,7 @@ void StubGen::registerStubGeneratorFns() {
     stubGenFnsMap[typeid(AllocatorStatement)] = &StubGen::generateAllocatorStatement;
     stubGenFnsMap[typeid(InstantiateStatement)] = &StubGen::generateInstantiateStatement;
     stubGenFnsMap[typeid(FunctionStatement)] = &StubGen::generateFunctionStatement;
+    stubGenFnsMap[typeid(VariableDeclaration)]= &StubGen::generateVariableDeclaration;
 }
 
 void StubGen::finish() {
@@ -232,6 +233,15 @@ void StubGen::serializeFunctionEntry(std::ostream& out, const FunctionEntry& ent
     write_u8(out, entry.isDeclaration);
 }
 
+//____________VARIABLE ENTRY SERIALIZATION ______________
+void StubGen::serializeVariableEntry(std::ostream &out,const VariableEntry &entry){
+    writeString(out,entry.var_name);
+    serializeResolvedType(out,entry.declaredType);
+    write_u8(out,entry.isConstant);
+    write_u8(out,entry.isMutable);
+    write_u8(out,entry.isInitialized);
+}
+
 //__________GENERICS SERIALIZATION______________________
 void StubGen::serializeGenerics(std::ostream& out, const Generics& generic) {
     writeString(out, generic.aliasName);
@@ -255,7 +265,7 @@ void StubGen::serializeFullStubTable(const StubTable& table, const std::string& 
     // HEADER
     write_u32(out, 0x53545542);  // STUB
     write_u32(out, 1);           // Version
-    write_u16(out, 7);           // Section count (7 for now)
+    write_u16(out, 8);           // Section count (7 for now)
 
     // SEALS
     write_u8(out, static_cast<uint8_t>(StubSection::SEALS));
@@ -298,6 +308,13 @@ void StubGen::serializeFullStubTable(const StubTable& table, const std::string& 
     write_u32(out, static_cast<uint32_t>(table.functions.size()));
     for (const auto& func : table.functions) {
         serializeFunctionEntry(out, func);
+    }
+
+    //VARIABLES
+    write_u8(out,static_cast<uint8_t>(StubSection::VARIABLES));
+    write_u32(out,static_cast<uint32_t>(table.variables.size()));
+    for(const auto &var:table.variables){
+        serializeVariableEntry(out,var);
     }
 
     // GENERICS

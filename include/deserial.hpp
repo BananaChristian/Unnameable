@@ -81,6 +81,7 @@ class Deserializer {
     Allocator readAllocator(std::istream &in);
 
     FunctionEntry readFunctionEntry(std::istream &in);
+    VariableEntry readVariableEntry(std::istream &in);
 
     Generics readGenerics(std::istream &in);
 

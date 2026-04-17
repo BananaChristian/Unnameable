@@ -415,6 +415,7 @@ enum class StubSection : uint8_t {
     ENUMS,
     ALLOCATORS,
     FUNCTIONS,
+    VARIABLES,
     GENERICS
 };
 
@@ -512,6 +513,14 @@ struct FunctionEntry {
     bool isDeclaration;
 };
 
+struct VariableEntry{
+    std::string var_name;
+    ResolvedType declaredType;
+    bool isConstant;
+    bool isMutable;
+    bool isInitialized;
+};
+
 struct Generics {
     std::string aliasName;
     std::vector<RecordTable> records;
@@ -526,5 +535,6 @@ struct StubTable {
     std::vector<EnumTable> enums;
     std::vector<Allocator> allocators;
     std::vector<FunctionEntry> functions;
+    std::vector<VariableEntry> variables;
     std::vector<Generics> generics;
 };

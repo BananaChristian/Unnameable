@@ -24,6 +24,7 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
     bool isPersist = declaration->isPersist;
     bool isRestrict = declaration->isRestrict;
     bool isVolatile = declaration->isVolatile;
+    bool isExportable=declaration->isExportable;
     bool isPointer = false;
     bool isRef = false;
     bool isArray = false;
@@ -112,6 +113,11 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
         errorHandler.addHint("'persist' flag only applies to heap allocations")
             .addHint("For example  'persist heap i32 x = 10'");
         logSemanticErrors("Variable '" + declName + "' uses 'persist' without 'heap'", declaration);
+        return;
+    }
+    //Rule on exportables
+    if(isExportable && !isGlobal){
+        logSemanticErrors("Exportable declarations must exist only in global scope",declaration);
         return;
     }
 
@@ -252,7 +258,8 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
     declInfo->storage().isHeap = isHeap;
     declInfo->storage().isGlobal = isGlobal;
     declInfo->type().isArray = isArray;
-    declInfo->type().isNullable = isNullable;
+    declInfo->type().isNullable = isNullable; 
+    declInfo->isExportable=isExportable;
 }
 
 void Semantics::handleNullInitializers(VariableDeclaration* declaration,

@@ -425,7 +425,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       }
       break;
     case TokenType::EXPORT: {
-      auto exportStmt = parseExportStatement();
+      auto exportStmt = parseVariableModifier();
       auto fnStmt = dynamic_cast<FunctionStatement *>(exportStmt.get());
       if (!fnStmt) {
         logError("Only function exports are allowed in component statement",
@@ -659,48 +659,6 @@ Parser::parseInstanceExpression(std::unique_ptr<Expression> left) {
   return std::make_unique<InstanceExpression>(std::move(left), std::move(args));
 }
 
-// EXPORT STATEMENT
-std::unique_ptr<Statement> Parser::parseExportStatement() {
-  advance(); // Consume export token
-  auto stmt = parseStatement();
-
-  if (!stmt)
-    return nullptr;
-
-  if (auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get())) {
-    if (auto fnExpr =
-            dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get())) {
-      fnExpr->isExportable = true;
-    }
-
-    if (auto fnDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(
-            fnStmt->funcExpr.get())) {
-      if (auto fnDeclr = dynamic_cast<FunctionDeclaration *>(
-              fnDeclrExpr->funcDeclrStmt.get())) {
-        fnDeclr->isExportable = true;
-      }
-    }
-  } else if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get())) {
-    recordStmt->isExportable = true;
-  } else if (auto compStmt = dynamic_cast<ComponentStatement *>(stmt.get())) {
-    compStmt->isExportable = true;
-  } else if (auto enumStmt = dynamic_cast<EnumStatement *>(stmt.get())) {
-    enumStmt->isExportable = true;
-  } else if (auto allocStmt = dynamic_cast<AllocatorStatement *>(stmt.get())) {
-    allocStmt->isExportable = true;
-  } else if (auto sealStmt = dynamic_cast<SealStatement *>(stmt.get())) {
-    sealStmt->isExportable = true;
-  }else if(auto instStmt=dynamic_cast<InstantiateStatement*>(stmt.get())){
-    instStmt->isExportable=true;
-  } 
-  else {
-    logError("'export' can only be applied to functions, and custom types",
-             currentToken());
-    return nullptr;
-  }
-
-  return stmt;
-}
 
 // Parsing block statements
 std::unique_ptr<Statement> Parser::parseBlockStatement() {

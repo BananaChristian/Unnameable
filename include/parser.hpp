@@ -130,9 +130,6 @@ private:
   // Parsing case clause
   std::unique_ptr<Statement> parseCaseClause();
 
-  // Parsing export statement
-  std::unique_ptr<Statement> parseExportStatement();
-
   // Parsing the function statement
   std::unique_ptr<Statement> parseFunctionStatement();
 

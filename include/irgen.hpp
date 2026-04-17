@@ -180,6 +180,7 @@ class IRGenerator {
     void declareImportedSeals();
     void declareImportedTypes();
     void declareImportedFunctions();
+    void declareImportedVariables();
     void declareCustomTypes();
     void registerAllocators();
     void declareImportedInit(const std::string &typeName);

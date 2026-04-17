@@ -300,6 +300,9 @@ void StubGen::generateInstantiateStatement(Node *node) {
     auto sym = semantics.getSymbolFromMeta(instStmt);
     if (!sym) reportDevBug("Failed to get the instantiation symbol info");
 
+    if(!sym->isExportable)
+        return;
+
     // The instTable must exist — if it doesn't the semantic pass failed
     if (!sym->generic().instTable.has_value()) {
         reportDevBug("Instantiation symbol has no instTable");
@@ -456,6 +459,9 @@ void StubGen::generateFunctionStatement(Node *node) {
 }
 
 void StubGen::generateFunctionExpression(FunctionExpression *fnExpr) {
+    if(!fnExpr->isExportable)
+        return;
+
     auto fnSym = semantics.getSymbolFromMeta(fnExpr);
     if (!fnSym) reportDevBug("Failed to get symbol info for function");
 
@@ -472,6 +478,9 @@ void StubGen::generateFunctionDeclaration(FunctionDeclarationExpression *fnDeclr
     auto fnDeclr = dynamic_cast<FunctionDeclaration *>(fnDeclrExpr->funcDeclrStmt.get());
     if (!fnDeclr) reportDevBug("Fialed to get function declaration");
 
+    if(!fnDeclr->isExportable)
+        return;
+
     auto fnDeclSym = semantics.getSymbolFromMeta(fnDeclr);
     if (!fnDeclSym) reportDevBug("Failed to get function declaration symbol info");
 
@@ -482,4 +491,27 @@ void StubGen::generateFunctionDeclaration(FunctionDeclarationExpression *fnDeclr
     fn.isDeclaration = true;
 
     stubTable.functions.push_back(fn);
+}
+
+void StubGen::generateVariableDeclaration(Node *node){
+    auto declaration=dynamic_cast<VariableDeclaration*>(node);
+    if(!declaration)
+        return;
+    
+    if(!declaration->isExportable)
+        return;
+
+    auto sym=semantics.getSymbolFromMeta(declaration);
+    if(!sym)
+        reportDevBug("Failed to get variable symbol info");
+
+    auto declName=semantics.extractDeclarationName(declaration);
+    VariableEntry entry;
+    entry.var_name=declName;
+    entry.declaredType=sym->type().type;
+    entry.isMutable=sym->storage().isMutable;
+    entry.isConstant=sym->storage().isConstant;
+    entry.isInitialized=sym->storage().isInitialized;
+
+    stubTable.variables.push_back(entry);
 }

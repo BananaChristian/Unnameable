@@ -41,6 +41,7 @@ llvm::Value *IRGenerator::generateFStringLiteral(Node *node) {
 
     llvm::Value *cursor = funcBuilder.getInt64(0);
 
+    bool wasInhibited=inhibitCleanUp;
     inhibitCleanUp = true;
 
     for (const auto &seg : fStr->segments) {
@@ -78,7 +79,7 @@ llvm::Value *IRGenerator::generateFStringLiteral(Node *node) {
     // Final null terminator
     llvm::Value *finalPos = funcBuilder.CreateGEP(i8Ty, buffer, cursor);
     funcBuilder.CreateStore(llvm::ConstantInt::get(i8Ty, 0), finalPos);
-    inhibitCleanUp = false;
+    inhibitCleanUp = wasInhibited;
 
     for (const auto &seg : fStr->segments) {
         for (const auto &valExpr : seg.values) {
@@ -261,9 +262,10 @@ llvm::Value *IRGenerator::generateFloatLiteral(Node *node) {
 // Generator function for identifier expression
 llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     auto identExpr = dynamic_cast<Identifier *>(node);
-    if (!identExpr) 
-        reportDevBug("Invalid identifier node", node);
-    
+    if (!identExpr) reportDevBug("Invalid identifier node", node);
+
+    bool wasInhibited = inhibitCleanUp;
+    inhibitCleanUp = true;
 
     const std::string &identName = identExpr->identifier.TokenLiteral;
 
@@ -275,7 +277,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     if (!address) {
         reportDevBug("No address for '" + identName + "'", identExpr);
     }
-    
+
     if (isGlobalScope) {
         auto *globalVar = llvm::dyn_cast<llvm::GlobalVariable>(sym->codegen().llvmValue);
         if (globalVar && globalVar->hasInitializer()) {
@@ -306,6 +308,8 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
             loadedVal->setVolatile(true);
         }
 
+        // Restore state and cleanup heap variable
+        inhibitCleanUp = wasInhibited;
         emitCleanup(identExpr);
 
         return loadedVal;
@@ -329,6 +333,7 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
         val->setVolatile(true);
     }
 
+    inhibitCleanUp = wasInhibited;
     return val;
 }
 
@@ -384,7 +389,7 @@ llvm::Value *IRGenerator::generateArrayLiteral(Node *node) {
 
     if (!isDynamicArrayLiteral(arrLit)) return generateStaticArray(arrLit);
 
-    inhibitCleanUp=true;
+    inhibitCleanUp = true;
     // Determine size and base type
     size_t totalElements = getFlatCount(arrLit);
     llvm::Type *baseTy = getArrayBaseType(litSym->type().type);
@@ -394,8 +399,8 @@ llvm::Value *IRGenerator::generateArrayLiteral(Node *node) {
 
     int index = 0;
     emitDynamicInitialization(arrLit, arrayPtr, baseTy, index);
-    inhibitCleanUp=false;
-    
+    inhibitCleanUp = false;
+
     emitCleanup(arrLit);
     return arrayPtr;
 }
@@ -447,6 +452,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
         }
     };
 
+    bool wasInhibited = inhibitCleanUp;  // Save previous state
     inhibitCleanUp = true;
 
     llvm::Value *leftVal = generateExpression(infix->left_operand.get());
@@ -494,7 +500,7 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
     if (ArithmeticOrBitwiseOperator(infix->operat.type))
         result = handleArithmeticAndBitwise(infix, leftVal, rightVal, leftSym, rightSym);
 
-    inhibitCleanUp = false;
+    inhibitCleanUp = wasInhibited;
     emitCleanup(infix);
     return result;
 }
@@ -784,10 +790,10 @@ llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
     auto arrSym = semantics.getSymbolFromMeta(arrExpr);
     if (!arrSym) reportDevBug("Failed to get array subscript symbol info", arrExpr);
 
+    bool wasInhibited = inhibitCleanUp;
     inhibitCleanUp = true;
     // Get the address of the element/sub-array
     llvm::Value *ptr = generateArraySubscriptAddress(node);
-    inhibitCleanUp = false;
 
     // KEEN CHECK: Are we looking at a final scalar/pointer, or a sub-array?
     if (arrSym->type().type.isArray()) {
@@ -801,6 +807,7 @@ llvm::Value *IRGenerator::generateArraySubscriptExpression(Node *node) {
     auto loadedVal = funcBuilder.CreateLoad(elemTy, ptr, "arr_elem_load");
     if (arrSym->storage().isVolatile) loadedVal->setVolatile(true);
 
+    inhibitCleanUp = wasInhibited;
     emitCleanup(arrExpr);
     return loadedVal;
 }
@@ -912,14 +919,16 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
     if (!derefExpr) return nullptr;
 
     auto derefSym = semantics.getSymbolFromMeta(derefExpr);
+
+    bool wasInhibited = inhibitCleanUp;
     inhibitCleanUp = true;
+
     Node *current = node;
     int derefCount = 0;
     while (auto nested = dynamic_cast<DereferenceExpression *>(current)) {
         derefCount++;
         current = nested->identifier.get();
     }
-
 
     // Get the address of the variable (e.g., the alloca on the stack)
     llvm::Value *addr = generateAddress(current);
@@ -952,7 +961,7 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
         }
         addr = hopLoad;
     }
-    inhibitCleanUp = false;
+    inhibitCleanUp = wasInhibited;
     emitCleanup(derefExpr);
 
     return addr;
@@ -966,6 +975,7 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
     }
 
     logInternal("Handling address expression generation");
+    bool wasInhibited = inhibitCleanUp;
     inhibitCleanUp = true;
 
     auto sym = semantics.getSymbolFromMeta(addrExpr);
@@ -977,7 +987,8 @@ llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
         reportDevBug("No value was assigned to the target", addrExpr);
     }
     sym->codegen().llvmValue = variablePtr;
-    inhibitCleanUp = false;
+
+    inhibitCleanUp = wasInhibited;
     emitCleanup(addrExpr);
 
     return variablePtr;

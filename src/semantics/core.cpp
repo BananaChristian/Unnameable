@@ -1951,6 +1951,11 @@ void Semantics::transferResponsibility(LifeTime* currentBaton, LifeTime* targetB
     logInternal("[HEIST] Victim (Target): " + targetBaton->ID);
     logInternal("[HEIST] Target Pointer Count: " +
                 std::to_string(targetSym->storage().pointerCount));
+    
+    if (currentBaton->ID == targetBaton->ID) {
+        logInternal("[HEIST] SKIPPED: Cannot create self-dependency");
+        return;
+    }
 
     if (!targetSym->storage().isHeap) {
         logInternal("[HEIST] The victim is not heap raised dont bother");

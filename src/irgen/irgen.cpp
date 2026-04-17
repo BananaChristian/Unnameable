@@ -47,6 +47,7 @@ IRGenerator::IRGenerator(Semantics &semantics, ErrorHandler &handler, Auditor &a
     declareImportedTypes();
     declareImportedSeals();
     declareImportedFunctions();
+    declareImportedVariables();
     registerAllocators();
 }
 
@@ -190,6 +191,7 @@ void IRGenerator::generateAssignmentStatement(Node *node) {
     if (assignSym->storage().isVolatile && storeInst) storeInst->setVolatile(true);
 
     inhibitCleanUp = false;
+    logInternal("[DEBUG] inhibitCleanUp before emitCleanup: " + std::to_string(inhibitCleanUp));
     emitCleanup(assignStmt);
     logInternal("Ended assignment generation");
 }
@@ -1136,6 +1138,9 @@ void IRGenerator::emitDeclarationClean(Node *contextNode) {
 }
 
 void IRGenerator::emitCleanup(Node *contextNode) {
+    logInternal("[DEBUG] inhibitCleanUp during emitCleanup: " + std::to_string(inhibitCleanUp) +
+                "for contextNode: " + contextNode->toString());
+    
     if (inhibitCleanUp) {
         logInternal("[NORMAL-CLEAN] Cleanup inhibited");
         return;
@@ -1251,7 +1256,7 @@ llvm::Value *IRGenerator::stringizeValue(llvm::Value *val, const ResolvedType &t
 
     if (type.isRef()) {
         ResolvedType targetType = semantics.peelRef(type);
-        return stringizeValue(val,targetType);
+        return stringizeValue(val, targetType);
     }
 
     // POINTERS & OPAQUE (The "Address" handler)
