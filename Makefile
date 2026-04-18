@@ -44,6 +44,7 @@ URC_LIB = $(CORE_DIR)/urc.a
 # List only the objects that should be inside the "Toolbox"
 LIB_OBJS = $(CORE_DIR)/syscalls.o \
            $(CORE_DIR)/gpa.o \
+           $(CORE_DIR)/interp.o\
            $(CORE_DIR)/runtime.o
 
 # TARGETS
@@ -72,6 +73,10 @@ $(CORE_DIR)/entry.o: $(URC_X86_LINUX)/entry.asm
 	$(NASM) $(ASFLAGS) $< -o $@
 
 $(CORE_DIR)/syscalls.o: $(URC_X86_LINUX)/syscalls.asm
+	@mkdir -p $(CORE_DIR)
+	$(NASM) $(ASFLAGS) $< -o $@
+
+$(CORE_DIR)/interp.o: $(URC_X86_LINUX)/interp.asm
 	@mkdir -p $(CORE_DIR)
 	$(NASM) $(ASFLAGS) $< -o $@
 
