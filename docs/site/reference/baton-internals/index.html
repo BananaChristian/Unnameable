@@ -1,0 +1,1123 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the Unnameable programming language">
+      
+      
+      
+      
+        <link rel="prev" href="../memory-management/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Baton Internals - Unnameable</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#baton-system-internals" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Unnameable" class="md-header__button md-logo" aria-label="Unnameable" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Unnameable
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Baton Internals
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Unnameable" class="md-nav__button md-logo" aria-label="Unnameable" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Unnameable
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Language Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../basics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../control-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Control Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../functions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Functions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../records-enums-components/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Records, Enums and Components
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operators-nullability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operators and Nullability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../comments-globals-casting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comments, Globals and Casting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Baton Internals
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Baton Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-responsibility-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The responsibility table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-baton" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The baton
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The three phases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 — Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-the-auditor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — The auditor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-ir-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3 — IR generation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atomicity-of-identifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atomicity of identifiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inhibitors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inhibitors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#robbery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Robbery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#baton-rearm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baton rearm
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#candidate-transfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Candidate transfer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assignment-heist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assignment heist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bunkering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bunkering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#native-and-foreigner-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native and foreigner cleanup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        persist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-responsibility-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The responsibility table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-baton" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The baton
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The three phases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 — Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-the-auditor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — The auditor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-ir-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3 — IR generation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atomicity-of-identifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atomicity of identifiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inhibitors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inhibitors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#robbery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Robbery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#baton-rearm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baton rearm
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#candidate-transfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Candidate transfer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assignment-heist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assignment heist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bunkering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bunkering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#native-and-foreigner-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native and foreigner cleanup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        persist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="baton-system-internals">Baton system internals</h1>
+<p>This page documents how the baton memory management system works internally. You do not need to understand this to write Unnameable programs — see <a href="../memory-management/">Memory management</a> for the user-facing guide.</p>
+<blockquote>
+<p><strong>Stability notice:</strong> The baton system is under active development. The design described here is correct but some cases have known bugs including double frees and leaks. This document reflects current design intent, not a guarantee of behavior in all cases.</p>
+</blockquote>
+<h2 id="overview">Overview</h2>
+<p>The baton system is a last-use deterministic memory manager. It tracks heap variables through three coordinated phases — semantics, auditor, and IR generation — and inserts frees at the correct points without any runtime overhead.</p>
+<p>The system is built around a single concept: the <strong>baton</strong>. Only one node in the program can hold the baton for a given variable at any time. Whoever holds the baton at the end of analysis is responsible for freeing the memory.</p>
+<h2 id="the-responsibility-table">The responsibility table</h2>
+<p>When a <code>heap</code> variable is declared the compiler registers it in a <strong>responsibility table</strong> separate from the AST. Each entry is assigned a <strong>lifetime ID</strong> — a unique key that identifies the variable throughout the system.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>heap i32 x    →    N0 born, registered in responsibility table
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>heap ptr i32 p    →    P0 born, registered in responsibility table
+</code></pre></div>
+<p>Integer variables get IDs prefixed <code>N</code>. Pointer variables get IDs prefixed <code>P</code>.</p>
+<h2 id="the-baton">The baton</h2>
+<p>A baton is a data structure attached to each lifetime ID. It carries:</p>
+<ul>
+<li>The lifetime ID</li>
+<li>Whether it is currently responsible for freeing (<code>isResponsible</code>)</li>
+<li>A list of dependents — other IDs this baton is responsible for freeing</li>
+<li>A pointer count — how many pointers currently hold this baton</li>
+<li>Alive status</li>
+</ul>
+<h2 id="the-three-phases">The three phases</h2>
+<h3 id="phase-1-semantics">Phase 1 — Semantics</h3>
+<p>The semantics phase walks the AST and moves batons as it encounters identifiers. Every time a heap variable is used the baton transfers to that node. By the end of semantics the baton sits on the last encountered use of each variable.</p>
+<p>Only two node types can hold a baton — a <strong>declaration node</strong> and an <strong>identifier node</strong>. No other node type is a valid baton holder.</p>
+<p>Because semantics walks the AST linearly it is <strong>myopic</strong> — it sees uses in order but cannot reason about branches, loops, or complex ownership patterns. The positions it produces are a starting point, not a final answer.</p>
+<h3 id="phase-2-the-auditor">Phase 2 — The auditor</h3>
+<p>The auditor corrects what semantics got wrong. It runs two sub-passes:</p>
+<p><strong>Classification pass</strong> — every heap variable is classified as either a <strong>native</strong> or a <strong>foreigner</strong> relative to each block it appears in. A native was born in that block. A foreigner was born outside it.</p>
+<p><strong>Audit pass</strong> — the auditor walks the AST again, simulates frees, detects robberies, resolves ownership transfers, and decides what gets bunkered.</p>
+<h3 id="phase-3-ir-generation">Phase 3 — IR generation</h3>
+<p>When the IR generator encounters a node holding a baton it emits the deallocation call. The actual free is a call to <code>unn_dealloc</code> — the runtime's deallocation function.</p>
+<h2 id="atomicity-of-identifiers">Atomicity of identifiers</h2>
+<p>The baton system always resolves down to the atomic identifier level regardless of how complex the containing expression is. A composite node like <code>trace x, y, z</code> does not hold batons — the system drills into it and attaches batons to <code>x</code>, <code>y</code>, and <code>z</code> individually.</p>
+<p>This means no matter how deeply nested an identifier is, the baton will find it.</p>
+<h2 id="inhibitors">Inhibitors</h2>
+<p>The IR generator is greedy — when it sees a baton it wants to emit a free immediately. This causes problems mid-operation. For example in <code>y = x + 1</code> the system must not free <code>x</code> or <code>y</code> before the assignment completes.</p>
+<p>Inhibitors suppress the free signal during composite node processing. A composite node raises an inhibitor before processing its children and lowers it when done. The IR generator checks for inhibitors before emitting any free.</p>
+<h2 id="robbery">Robbery</h2>
+<p>When a pointer is bound to a heap variable a <strong>robbery</strong> occurs. The pointer (robber) takes the baton from the variable (victim). The victim's <code>isResponsible</code> is set to false — it can no longer free itself. The robber's baton records the victim as a dependent.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>heap i32 x        →    N0 born, isResponsible = true
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>heap ptr i32 p -&gt; addr x    →    P0 robs N0
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>                               N0 isResponsible = false
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>                               P0 dependents = [N0]
+</code></pre></div>
+<p>When the robber dies it frees its dependents first, then itself.</p>
+<h2 id="baton-rearm">Baton rearm</h2>
+<p>If the robber dies but the victim is still alive and outliving the robber, the auditor <strong>rearms</strong> the victim — restoring its <code>isResponsible</code> flag so it can free itself independently:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>[REARM] Rearming N0
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>[REARM] Success N0 is now a free agent
+</code></pre></div>
+<h2 id="candidate-transfer">Candidate transfer</h2>
+<p>When a robber dies the auditor checks a <strong>candidate registry</strong> — a list of IDs that attempted to rob the same baton. If a living candidate exists it becomes the new responsible party. </p>
+<p>If the candidate was itself robbed, ownership climbs the chain to the candidate's master — not the candidate directly. The system respects master-slave dynamics.</p>
+<h2 id="assignment-heist">Assignment heist</h2>
+<p>An assignment like <code>y = x + 1</code> triggers a special robbery called an <strong>assignment heist</strong>. The left-hand side (<code>y</code>) attempts to rob the right-hand side value baton (<code>x</code>). If approved, <code>y</code> takes responsibility for <code>x</code>'s memory.</p>
+<p>If the heist creates a circular dependency the auditor detects the cycle and bunkers the involved IDs to scope end.</p>
+<h2 id="bunkering">Bunkering</h2>
+<p>Bunkering is the safe fallback. A baton is bunkered when:</p>
+<ul>
+<li>The analysis detects a cycle that cannot be safely resolved</li>
+<li>A stack variable interacts with a heap variable (<strong>heist bunkering</strong>) — the compiler cannot reason about the stack variable's usage so it holds the heap variable to scope end</li>
+<li>A foreigner would otherwise be freed inside a branch or loop</li>
+</ul>
+<p>Bunkered batons are collected in a basket per block and freed during the block's cleanup phase in IR generation.</p>
+<h2 id="native-and-foreigner-cleanup">Native and foreigner cleanup</h2>
+<p>At the end of each block the IR generator runs two cleanup passes:</p>
+<p><strong>Native cleanup</strong> — processes any bunkered natives registered for this block and emits their frees.</p>
+<p><strong>Foreigner cleanup</strong> — processes any foreigners that were used in this block and emits their frees at the merge point.</p>
+<p>Variables freed earlier at their last use do not appear in either cleanup pass — their basket entry is already empty.</p>
+<h2 id="persist">persist</h2>
+<p>The <code>persist</code> modifier bypasses last-use analysis entirely. A persisted baton is forcibly bunkered to scope end regardless of where its last use is. The IR generator holds it until the block's native cleanup phase.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

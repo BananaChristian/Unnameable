@@ -1,0 +1,30 @@
+site_name: Unnameable
+site_description: Documentation for the Unnameable programming language
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: deep purple
+    accent: deep purple
+  features:
+    - navigation.sections
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Language Reference:
+      - Basics: reference/basics.md
+      - Control Flow: reference/control-flow.md
+      - Functions: reference/functions.md
+      - Records, Enums and Components: reference/records-enums-components.md
+      - Operators and Nullability: reference/operators-nullability.md
+      - Comments, Globals and Casting: reference/comments-globals-casting.md
+      - Memory Management: reference/memory-management.md
+      - Baton Internals: reference/baton-internals.md
+
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
