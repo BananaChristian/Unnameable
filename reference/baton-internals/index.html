@@ -11,10 +11,8 @@
       
       
       
-        <link rel="prev" href="../operators-nullability/">
+        <link rel="prev" href="../memory-management/">
       
-      
-        <link rel="next" href="../memory-management/">
       
       
         
@@ -25,7 +23,7 @@
     
     
       
-        <title>Comments, Globals and Casting - Unnameable</title>
+        <title>Baton Internals - Unnameable</title>
       
     
     
@@ -74,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#comments-globals-and-casting" class="md-skip">
+        <a href="#baton-system-internals" class="md-skip">
           Skip to content
         </a>
       
@@ -110,7 +108,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Comments, Globals and Casting
+              Baton Internals
             
           </span>
         </div>
@@ -451,37 +449,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Comments, Globals and Casting
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../comments-globals-casting/" class="md-nav__link">
         
   
   
@@ -497,170 +468,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#comments" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Comments
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#globals" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Globals
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Globals">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#basic-globals" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Basic globals
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pointers-and-references-at-global-scope" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pointers and references at global scope
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#arrays-at-global-scope" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Arrays at global scope
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#record-globals" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Record globals
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#initializers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Initializers
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#export" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Export
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#rules-and-restrictions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Rules and restrictions
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#type-casting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Type casting
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Type casting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#cast" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        cast
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#bitcast" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        bitcast
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -698,10 +505,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../baton-internals/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Baton Internals
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -717,6 +551,208 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-responsibility-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The responsibility table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-baton" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The baton
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The three phases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 — Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-the-auditor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — The auditor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-ir-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3 — IR generation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atomicity-of-identifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atomicity of identifiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inhibitors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inhibitors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#robbery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Robbery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#baton-rearm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baton rearm
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#candidate-transfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Candidate transfer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assignment-heist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assignment heist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bunkering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bunkering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#native-and-foreigner-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native and foreigner cleanup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        persist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -756,10 +792,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#comments" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Comments
+        Overview
       
     </span>
   </a>
@@ -767,22 +803,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#globals" class="md-nav__link">
+  <a href="#the-responsibility-table" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Globals
+        The responsibility table
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Globals">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-baton" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The baton
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The three phases">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#basic-globals" class="md-nav__link">
+  <a href="#phase-1-semantics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Basic globals
+        Phase 1 — Semantics
       
     </span>
   </a>
@@ -790,10 +848,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#pointers-and-references-at-global-scope" class="md-nav__link">
+  <a href="#phase-2-the-auditor" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pointers and references at global scope
+        Phase 2 — The auditor
       
     </span>
   </a>
@@ -801,54 +859,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#arrays-at-global-scope" class="md-nav__link">
+  <a href="#phase-3-ir-generation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Arrays at global scope
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#record-globals" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Record globals
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#initializers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Initializers
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#export" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Export
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#rules-and-restrictions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Rules and restrictions
+        Phase 3 — IR generation
       
     </span>
   </a>
@@ -861,41 +875,101 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#type-casting" class="md-nav__link">
+  <a href="#atomicity-of-identifiers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Type casting
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Type casting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#cast" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        cast
+        Atomicity of identifiers
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#bitcast" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#inhibitors" class="md-nav__link">
     <span class="md-ellipsis">
       
-        bitcast
+        Inhibitors
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#robbery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Robbery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#baton-rearm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baton rearm
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#candidate-transfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Candidate transfer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assignment-heist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assignment heist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bunkering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bunkering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#native-and-foreigner-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native and foreigner cleanup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        persist
+      
+    </span>
+  </a>
   
 </li>
       
@@ -916,96 +990,80 @@
 
 
 
-<h1 id="comments-globals-and-casting">Comments, globals and casting</h1>
-<h2 id="comments">Comments</h2>
-<p>Single line comments use <code>#</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a># This is a single line comment
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>i32 x = 10  # Inline comment
+<h1 id="baton-system-internals">Baton system internals</h1>
+<p>This page documents how the baton memory management system works internally. You do not need to understand this to write Unnameable programs — see <a href="../memory-management/">Memory management</a> for the user-facing guide.</p>
+<blockquote>
+<p><strong>Stability notice:</strong> The baton system is under active development. The design described here is correct but some cases have known bugs including double frees and leaks. This document reflects current design intent, not a guarantee of behavior in all cases.</p>
+</blockquote>
+<h2 id="overview">Overview</h2>
+<p>The baton system is a last-use deterministic memory manager. It tracks heap variables through three coordinated phases — semantics, auditor, and IR generation — and inserts frees at the correct points without any runtime overhead.</p>
+<p>The system is built around a single concept: the <strong>baton</strong>. Only one node in the program can hold the baton for a given variable at any time. Whoever holds the baton at the end of analysis is responsible for freeing the memory.</p>
+<h2 id="the-responsibility-table">The responsibility table</h2>
+<p>When a <code>heap</code> variable is declared the compiler registers it in a <strong>responsibility table</strong> separate from the AST. Each entry is assigned a <strong>lifetime ID</strong> — a unique key that identifies the variable throughout the system.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>heap i32 x    →    N0 born, registered in responsibility table
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>heap ptr i32 p    →    P0 born, registered in responsibility table
 </code></pre></div>
-<p>Multiline comments are wrapped in <code>##</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>## 
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>This is a 
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>multiline comment 
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>##
-</code></pre></div>
-<hr />
-<h2 id="globals">Globals</h2>
-<p>Variables declared outside any function are global. They follow the same declaration syntax as local variables with a few restrictions.</p>
-<h3 id="basic-globals">Basic globals</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>const i32 MAX_VALUE = 100
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>i32 my_var = 88
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>mut i32 another_var = 87
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>i32 uninit
-</code></pre></div>
-<p>Uninitialized globals are zero-initialized by the compiler. <code>const</code> globals must be compile-time literals.</p>
-<h3 id="pointers-and-references-at-global-scope">Pointers and references at global scope</h3>
-<p>Globals can be pointers or references bound to other globals:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>i32 x = 188
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>ptr i32 px -&gt; addr x
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>ref i32 rx -&gt; x
-</code></pre></div>
-<h3 id="arrays-at-global-scope">Arrays at global scope</h3>
-<p>Arrays are allowed at global scope. The size must be a compile-time constant or inferred from an initializer:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>arr[3] i32 nums
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>arr i32 primes = [2, 3, 5, 7]
-</code></pre></div>
-<h3 id="record-globals">Record globals</h3>
-<p>Record types can be instantiated at global scope using the <code>Record{field=val}</code> syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>record Color {
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    i32 r
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    i32 g
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    i32 b
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    i32 a
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>}
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>Color WHITE = Color{r=255, g=255, b=255, a=255}
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>Color BLACK = Color{r=0, g=0, b=0, a=255}
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>Color RED   = Color{r=255, g=0, b=0, a=255}
-</code></pre></div>
-<p>Field values follow the same rules as all global initializers — compile-time literals or references to other globals only.</p>
-<h3 id="initializers">Initializers</h3>
-<p>Global initializers must be compile-time literals or other globals. Runtime expressions are not valid at global scope:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>i32 x = 100
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>i32 y = x        
-</code></pre></div>
-<h3 id="export">Export</h3>
-<p>Globals can be marked <code>export</code> to expose them to external linkage and the stub system. There are two distinct behaviors depending on whether an initializer is provided:</p>
-<p><strong>With initializer</strong> — the compiler initializes the value and exposes it externally:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>export i32 MAX = 100
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>export Color WHITE = Color{r=255, g=255, b=255, a=255}
-</code></pre></div>
-<p><strong>Without initializer</strong> — the compiler does not zero-initialize. It assumes the linker will satisfy the symbol from another translation unit. This is effectively an external global declaration:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>export i32 MAX
-</code></pre></div>
-<p>If nothing satisfies the symbol the linker will complain. This mirrors the behavior of <code>extern</code> declarations in C.</p>
-<p><code>export</code> on a global variable behaves the same as <code>export</code> on functions — external linkage, stub system exposure, and modular availability.</p>
-<h3 id="rules-and-restrictions">Rules and restrictions</h3>
+<p>Integer variables get IDs prefixed <code>N</code>. Pointer variables get IDs prefixed <code>P</code>.</p>
+<h2 id="the-baton">The baton</h2>
+<p>A baton is a data structure attached to each lifetime ID. It carries:</p>
 <ul>
-<li>Assignments are not allowed at global scope — only inside functions</li>
-<li><code>heap</code> declarations are not allowed at global scope</li>
-<li>Function calls are not allowed at global scope</li>
-<li>Only record types can be instantiated at global scope — components are not allowed</li>
-<li><code>export</code> without an initializer hands the symbol to the linker — make sure something satisfies it</li>
+<li>The lifetime ID</li>
+<li>Whether it is currently responsible for freeing (<code>isResponsible</code>)</li>
+<li>A list of dependents — other IDs this baton is responsible for freeing</li>
+<li>A pointer count — how many pointers currently hold this baton</li>
+<li>Alive status</li>
 </ul>
-<hr />
-<h2 id="type-casting">Type casting</h2>
-<p>Unnameable has two casting operators — <code>cast</code> and <code>bitcast</code>. Both use the same syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>operator&lt;dest_type&gt;(src)
+<h2 id="the-three-phases">The three phases</h2>
+<h3 id="phase-1-semantics">Phase 1 — Semantics</h3>
+<p>The semantics phase walks the AST and moves batons as it encounters identifiers. Every time a heap variable is used the baton transfers to that node. By the end of semantics the baton sits on the last encountered use of each variable.</p>
+<p>Only two node types can hold a baton — a <strong>declaration node</strong> and an <strong>identifier node</strong>. No other node type is a valid baton holder.</p>
+<p>Because semantics walks the AST linearly it is <strong>myopic</strong> — it sees uses in order but cannot reason about branches, loops, or complex ownership patterns. The positions it produces are a starting point, not a final answer.</p>
+<h3 id="phase-2-the-auditor">Phase 2 — The auditor</h3>
+<p>The auditor corrects what semantics got wrong. It runs two sub-passes:</p>
+<p><strong>Classification pass</strong> — every heap variable is classified as either a <strong>native</strong> or a <strong>foreigner</strong> relative to each block it appears in. A native was born in that block. A foreigner was born outside it.</p>
+<p><strong>Audit pass</strong> — the auditor walks the AST again, simulates frees, detects robberies, resolves ownership transfers, and decides what gets bunkered.</p>
+<h3 id="phase-3-ir-generation">Phase 3 — IR generation</h3>
+<p>When the IR generator encounters a node holding a baton it emits the deallocation call. The actual free is a call to <code>unn_dealloc</code> — the runtime's deallocation function.</p>
+<h2 id="atomicity-of-identifiers">Atomicity of identifiers</h2>
+<p>The baton system always resolves down to the atomic identifier level regardless of how complex the containing expression is. A composite node like <code>trace x, y, z</code> does not hold batons — the system drills into it and attaches batons to <code>x</code>, <code>y</code>, and <code>z</code> individually.</p>
+<p>This means no matter how deeply nested an identifier is, the baton will find it.</p>
+<h2 id="inhibitors">Inhibitors</h2>
+<p>The IR generator is greedy — when it sees a baton it wants to emit a free immediately. This causes problems mid-operation. For example in <code>y = x + 1</code> the system must not free <code>x</code> or <code>y</code> before the assignment completes.</p>
+<p>Inhibitors suppress the free signal during composite node processing. A composite node raises an inhibitor before processing its children and lowers it when done. The IR generator checks for inhibitors before emitting any free.</p>
+<h2 id="robbery">Robbery</h2>
+<p>When a pointer is bound to a heap variable a <strong>robbery</strong> occurs. The pointer (robber) takes the baton from the variable (victim). The victim's <code>isResponsible</code> is set to false — it can no longer free itself. The robber's baton records the victim as a dependent.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>heap i32 x        →    N0 born, isResponsible = true
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>heap ptr i32 p -&gt; addr x    →    P0 robs N0
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>                               N0 isResponsible = false
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>                               P0 dependents = [N0]
 </code></pre></div>
-<h3 id="cast">cast</h3>
-<p><code>cast</code> is the safe casting operator. It works on scalar types only:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>cast&lt;i32&gt;(x)
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>cast&lt;f64&gt;(x)
+<p>When the robber dies it frees its dependents first, then itself.</p>
+<h2 id="baton-rearm">Baton rearm</h2>
+<p>If the robber dies but the victim is still alive and outliving the robber, the auditor <strong>rearms</strong> the victim — restoring its <code>isResponsible</code> flag so it can free itself independently:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>[REARM] Rearming N0
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>[REARM] Success N0 is now a free agent
 </code></pre></div>
-<p>Custom types are not valid destinations for <code>cast</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>cast&lt;MyType&gt;(x)    
-</code></pre></div>
-<h3 id="bitcast">bitcast</h3>
-<p><code>bitcast</code> is a raw reinterpretation of the underlying bits. It is more powerful than <code>cast</code> and works on pointers and custom types behind a pointer:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>bitcast&lt;ptr i32&gt;(x)
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>bitcast&lt;ptr MyType&gt;(x)
-</code></pre></div>
-<p>Use <code>bitcast</code> carefully — it bypasses type safety entirely and reinterprets memory as-is.</p>
+<h2 id="candidate-transfer">Candidate transfer</h2>
+<p>When a robber dies the auditor checks a <strong>candidate registry</strong> — a list of IDs that attempted to rob the same baton. If a living candidate exists it becomes the new responsible party. </p>
+<p>If the candidate was itself robbed, ownership climbs the chain to the candidate's master — not the candidate directly. The system respects master-slave dynamics.</p>
+<h2 id="assignment-heist">Assignment heist</h2>
+<p>An assignment like <code>y = x + 1</code> triggers a special robbery called an <strong>assignment heist</strong>. The left-hand side (<code>y</code>) attempts to rob the right-hand side value baton (<code>x</code>). If approved, <code>y</code> takes responsibility for <code>x</code>'s memory.</p>
+<p>If the heist creates a circular dependency the auditor detects the cycle and bunkers the involved IDs to scope end.</p>
+<h2 id="bunkering">Bunkering</h2>
+<p>Bunkering is the safe fallback. A baton is bunkered when:</p>
+<ul>
+<li>The analysis detects a cycle that cannot be safely resolved</li>
+<li>A stack variable interacts with a heap variable (<strong>heist bunkering</strong>) — the compiler cannot reason about the stack variable's usage so it holds the heap variable to scope end</li>
+<li>A foreigner would otherwise be freed inside a branch or loop</li>
+</ul>
+<p>Bunkered batons are collected in a basket per block and freed during the block's cleanup phase in IR generation.</p>
+<h2 id="native-and-foreigner-cleanup">Native and foreigner cleanup</h2>
+<p>At the end of each block the IR generator runs two cleanup passes:</p>
+<p><strong>Native cleanup</strong> — processes any bunkered natives registered for this block and emits their frees.</p>
+<p><strong>Foreigner cleanup</strong> — processes any foreigners that were used in this block and emits their frees at the merge point.</p>
+<p>Variables freed earlier at their last use do not appear in either cleanup pass — their basket entry is already empty.</p>
+<h2 id="persist">persist</h2>
+<p>The <code>persist</code> modifier bypasses last-use analysis entirely. A persisted baton is forcibly bunkered to scope end regardless of where its last use is. The IR generator holds it until the block's native cleanup phase.</p>
 
 
 
