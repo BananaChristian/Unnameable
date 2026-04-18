@@ -405,15 +405,8 @@ void Semantics::walkInstanceExpression(Node* node) {
 
     auto instName = instExpr->blockIdent->expression.TokenLiteral;
 
-    bool hasError = false;
 
     auto instSym = resolveSymbolInfo(instName);
-
-    if (isGlobalScope()) {
-        logSemanticErrors("Cannot create an instance in the global scope",
-                          instExpr->blockIdent.get());
-        return;
-    }
 
     if (!instSym) {
         logSemanticErrors("Undefined identifier '" + instName + "'", instExpr->blockIdent.get());
@@ -434,20 +427,23 @@ void Semantics::walkInstanceExpression(Node* node) {
             if (it == members.end()) {
                 logSemanticErrors("Field '" + fieldName + "' does not exist in '" + instName + "'",
                                   instExpr->blockIdent.get());
-                hasError = true;
                 continue;
             }
 
             auto expectedFieldType = it->second->type;
 
-            if (auto* nullLit = dynamic_cast<NullLiteral*>(fieldNode->value.get())) {
-                auto nullSym = std::make_shared<SymbolInfo>();
-                nullSym->type().type = expectedFieldType;
-                nullSym->type().isDefinitelyNull = true;
+            walker(fieldNode->value.get());
+            auto litSym=getSymbolFromMeta(fieldNode->value.get());
+            if(!litSym)
+                reportDevBug("Failed to get field value symbol info",fieldNode->value.get());
 
-                metaData[nullLit] = nullSym;
+            if (auto* nullLit = dynamic_cast<NullLiteral*>(fieldNode->value.get())) {
+                litSym->type().type = expectedFieldType;
+                litSym->type().isDefinitelyNull = true;
+
+                metaData[nullLit] = litSym;
             } else {
-                walker(fieldNode->value.get());
+                giveGenericLiteralContext(fieldNode->value.get(),expectedFieldType,litSym);
             }
         }
     }
@@ -465,7 +461,6 @@ void Semantics::walkInstanceExpression(Node* node) {
 void Semantics::walkInitConstructor(Node* node) {
     auto initStmt = dynamic_cast<InitStatement*>(node);
     if (!initStmt) return;
-    hasError = false;
 
     // Must be inside a component
     if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT) {

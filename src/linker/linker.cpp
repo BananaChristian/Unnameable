@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <sys/types.h>
 #include <unistd.h>
+#include <regex>
+#include <array>
 
 namespace fs = std::filesystem;
 
@@ -13,6 +15,76 @@ Linker::Linker(Deserializer &deserializer, const std::string &currentObject,
                bool isStatic)
     : deserializer(deserializer), isStatic(isStatic),
       currentObjectFile(currentObject) {}
+
+
+std::string Linker::findLibraryPath(const std::string& libName) {
+    // Build command to query ldconfig for a specific library
+    std::string cmd = "ldconfig -p 2>/dev/null | grep -E '" + libName + "\\.so' | head -1";
+    
+    std::array<char, 256> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    
+    if (!pipe) {
+        return "";
+    }
+    
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    
+    // Parse output like: "libm.so.6 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libm.so.6"
+    std::regex path_regex(R"(=>\s+([^\s]+\.so[^\s]*))");
+    std::smatch match;
+    
+    if (std::regex_search(result, match, path_regex)) {
+        fs::path fullPath(match[1].str());
+        return fullPath.parent_path().string();
+    }
+    
+    return "";
+}
+
+std::vector<std::string> Linker::getSystemLibraryPaths() {
+    static std::vector<std::string> cachedPaths;
+    if(!cachedPaths.empty())
+        return cachedPaths;
+
+    std::vector<std::string> paths;
+    std::vector<std::string> requiredLibs = {"libm", "libdl", "libpthread"};
+    
+    for (const auto& lib : requiredLibs) {
+        std::string libPath = findLibraryPath(lib);
+        if (!libPath.empty()) {
+            // Add if not already in the list
+            if (std::find(paths.begin(), paths.end(), libPath) == paths.end()) {
+                paths.push_back(libPath);
+                std::cout << "[LINKER] Found " << lib << " at: " << libPath << "\n";
+            }
+        } else {
+            std::cerr << "[LINKER] Warning: Could not find " << lib << "\n";
+        }
+    }
+    
+    // Fallback to standard paths if ldconfig failed
+    if (paths.empty()) {
+        std::cerr << "[LINKER] ldconfig failed, using fallback paths\n";
+        const char* fallbackPaths[] = {
+            "/usr/lib/x86_64-linux-gnu",
+            "/lib/x86_64-linux-gnu",
+            "/usr/lib",
+            "/lib"
+        };
+        for (const char* p : fallbackPaths) {
+            if (fs::exists(p)) {
+                paths.push_back(p);
+            }
+        }
+    }
+    
+    cachedPaths=paths;
+    return cachedPaths;
+}
 
 std::string Linker::resolveLinkPath(LinkStatement *link,
                                     const std::string &currentFile) {
@@ -174,6 +246,14 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
   std::string cmd = "ld.lld -T " + scriptPath.string() + " --gc-sections -o " +
                     outputExecutable;
 
+  std::vector<std::string>libPaths=getSystemLibraryPaths(); 
+  
+  //Add -L flags for each path(For the system libs)
+  for(const auto &libPath: libPaths){
+      cmd += " -L\"" + libPath + "\"";
+  }
+
+  //Add the other files to link
   for (auto &f : filesToLink) {
     if (f[0] == '-') { // Don't quote flags like -lSDL2
       cmd += " " + f;

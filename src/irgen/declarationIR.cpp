@@ -209,9 +209,9 @@ llvm::Value *IRGenerator::generateComponentStorage(VariableDeclaration *decl,
 //_______________________HELPERS______________________________________
 void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName, Node *value) {
-    llvm::GlobalValue::LinkageTypes linkage=llvm::GlobalValue::InternalLinkage;
-    if(sym->isExportable)
-        linkage=llvm::GlobalValue::ExternalLinkage;
+    llvm::GlobalValue::LinkageTypes linkage = llvm::GlobalValue::InternalLinkage;
+    if (sym->isExportable)
+        linkage = llvm::GlobalValue::ExternalLinkage;
 
     // Handle arrays specially
     if (sym->type().isArray) {
@@ -263,8 +263,49 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
             sym->storage().isConstant,
             linkage, init, letName);
         
+        g->setAlignment(layout->getABITypeAlign(g->getValueType()));
         sym->codegen().llvmValue = g;
         sym->codegen().llvmType = arrayTy;
+        return;
+    }
+
+    if (isRecordType(sym->type().type.resolvedName)) {
+        llvm::Constant *init = nullptr;
+        
+        if (value) {
+            llvm::Value *val = generateExpression(value);
+            init = llvm::dyn_cast<llvm::Constant>(val);
+            if (!init) {
+                reportDevBug("Record initializer must be constant in global scope", value);
+            }
+        }else if(sym->isExportable){
+         auto *g = new llvm::GlobalVariable(
+            *module,
+            getLLVMType(sym->type().type),
+            sym->storage().isConstant,
+            llvm::GlobalValue::ExternalLinkage,
+            nullptr,  // NO INITIALIZER
+            letName
+        );
+            g->setAlignment(layout->getABITypeAlign(g->getValueType()));
+            sym->codegen().llvmValue=g;
+            sym->codegen().llvmType=getLLVMType(sym->type().type);
+            return;
+        } else {
+            init = generateGlobalRecordDefaults(sym->type().type.resolvedName);
+        }
+        
+        auto *g = new llvm::GlobalVariable(
+            *module,
+            init->getType(),
+            sym->storage().isConstant,
+            linkage,
+            init,
+            letName
+        );
+        g->setAlignment(layout->getABITypeAlign(g->getValueType()));
+        sym->codegen().llvmValue = g;
+        sym->codegen().llvmType = init->getType();
         return;
     }
     
@@ -298,6 +339,7 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
         sym->storage().isConstant,
         linkage, init, letName);
     
+    g->setAlignment(layout->getABITypeAlign(g->getValueType()));
     sym->codegen().llvmValue = g;
     sym->codegen().llvmType = varType;
 }
@@ -306,9 +348,20 @@ llvm::Constant *IRGenerator::generateGlobalRecordDefaults(const std::string &typ
     auto *structTy = llvm::cast<llvm::StructType>(llvmCustomTypes[typeName]);
     auto compInfo = semantics.customTypesTable[typeName];
 
+    std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>> orderedMembers;
+    
+    for (const auto& [name, info] : compInfo->members) {
+            orderedMembers.push_back({name, info});
+    }
+    
+    std::sort(orderedMembers.begin(), orderedMembers.end(),
+            [](const auto& a, const auto& b) {
+                return a.second->memberIndex < b.second->memberIndex;
+    });
+        
     std::vector<llvm::Constant *> fieldConstants(compInfo->members.size());
 
-    for (const auto &[name, memInfo] : compInfo->members) {
+    for (const auto &[name, memInfo] : orderedMembers) {
         auto varDecl = dynamic_cast<VariableDeclaration *>(memInfo->node);
         llvm::Constant *fieldInit = nullptr;
 
@@ -425,3 +478,7 @@ llvm::Value *IRGenerator::allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
 }
 
 bool IRGenerator::isComponentType(const std::string &name) { return componentTypes.count(name); }
+
+bool IRGenerator::isRecordType(const std::string &name){
+    return recordTypes.count(name);
+}

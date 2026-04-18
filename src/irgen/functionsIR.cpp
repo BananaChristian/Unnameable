@@ -36,367 +36,500 @@ void IRGenerator::generateFunctionDeclarationExpression(Node *node) {
 }
 
 void IRGenerator::generateFunctionDeclaration(Node *node) {
-  auto fnDeclr = dynamic_cast<FunctionDeclaration *>(node);
-  if (!fnDeclr)
-    return;
-  // Getting the function name
-  const std::string &fnName = fnDeclr->function_name->expression.TokenLiteral;
-
-  // If the declaration exists just chill my guy
-  if (module->getFunction(fnName)) {
-    return;
-  }
-
-  auto sym = semantics.getSymbolFromMeta(fnDeclr);
-  if(!sym)
-    reportDevBug("Failed to get function declaration symbol info",fnDeclr);
-  
-
-  llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
-  if (sym->isExportable)
-    linkage = llvm::Function::ExternalLinkage;
-
-  std::vector<llvm::Type *> paramTypes;
-  for (const auto &param : fnDeclr->parameters) {
-    auto paramSym = semantics.getSymbolFromMeta(param.get());
-    if (!paramSym) {
-      reportDevBug(
-          "Missing function declaration parameter symbol info",param.get());
+    auto fnDeclr = dynamic_cast<FunctionDeclaration *>(node);
+    if (!fnDeclr) return;
+    
+    const std::string &fnName = fnDeclr->function_name->expression.TokenLiteral;
+    
+    if (module->getFunction(fnName)) return;
+    
+    auto sym = semantics.getSymbolFromMeta(fnDeclr);
+    if(!sym) reportDevBug("Failed to get function declaration symbol info", fnDeclr);
+    
+    llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
+    if (sym->isExportable) linkage = llvm::Function::ExternalLinkage;
+    
+    // Store coercion info for this function
+    FunctionCoercion coercion;
+    
+    // Coerce parameters
+    for (const auto &param : fnDeclr->parameters) {
+        auto paramSym = semantics.getSymbolFromMeta(param.get());
+        if (!paramSym) {
+            reportDevBug("Missing function declaration parameter symbol info", param.get());
+        }
+        
+        llvm::Type *originalTy = getLLVMType(paramSym->type().type);
+        coercion.originalParamTypes.push_back(originalTy);
+        
+        llvm::Type *coercedTy = originalTy;
+        CoercionInfo paramInfo;
+        paramInfo.isMemory = false;
+        paramInfo.coercedType = originalTy;
+        
+        if (auto* structTy = llvm::dyn_cast<llvm::StructType>(originalTy)) {
+            paramInfo = classifyStruct(structTy);
+            if (paramInfo.isMemory) {
+                // Large struct (>16 bytes) - pass by pointer with 'byval'
+                coercedTy = structTy->getPointerTo();
+                paramInfo.coercedType = coercedTy;
+            } else if (paramInfo.coercedType) {
+                coercedTy = paramInfo.coercedType;
+            }
+        }
+        
+        coercion.coercedParamTypes.push_back(coercedTy);
+        coercion.paramCoercion.push_back(paramInfo);
     }
-    paramTypes.push_back(getLLVMType(paramSym->type().type));
-  }
-  auto retType = sym->func().returnType;
-  llvm::FunctionType *fnType =
-      llvm::FunctionType::get(getLLVMType(retType), paramTypes, false);
-
-  llvm::Function::Create(fnType, linkage, fnName, module.get());
+    
+    // Coerce return type
+    auto retType = sym->func().returnType;
+    llvm::Type *originalRetTy = getLLVMType(retType);
+    llvm::Type *coercedRetTy = originalRetTy;
+    coercion.returnCoercion.isMemory = false;
+    coercion.returnCoercion.coercedType = originalRetTy;
+    
+    if (auto* structTy = llvm::dyn_cast<llvm::StructType>(originalRetTy)) {
+        coercion.returnCoercion = classifyStruct(structTy);
+        if (coercion.returnCoercion.isMemory) {
+            // Large struct return add hidden sret parameter
+            // This modifies the function type to have an extra pointer parameter
+            coercedRetTy = llvm::Type::getVoidTy(context);
+            // Add pointer to coercedParamTypes at beginning
+            coercion.coercedParamTypes.insert(coercion.coercedParamTypes.begin(), 
+                                               structTy->getPointerTo());
+            // Add coercion info for the sret parameter
+            CoercionInfo sretInfo;
+            sretInfo.isMemory = true;
+            sretInfo.coercedType = structTy->getPointerTo();
+            coercion.paramCoercion.insert(coercion.paramCoercion.begin(), sretInfo);
+            coercion.originalParamTypes.insert(coercion.originalParamTypes.begin(), structTy);
+        } else if (coercion.returnCoercion.coercedType) {
+            coercedRetTy = coercion.returnCoercion.coercedType;
+        }
+    }
+    
+    // Create function type with coerced parameters
+    llvm::FunctionType *fnType = llvm::FunctionType::get(coercedRetTy, coercion.coercedParamTypes, false);
+    llvm::Function *fn = llvm::Function::Create(fnType, linkage, fnName, module.get());
+    
+    // Add attributes to parameters
+    for (size_t i = 0; i < coercion.paramCoercion.size(); i++) {
+        if (coercion.paramCoercion[i].isMemory) {
+            fn->addParamAttr(i, llvm::Attribute::ByVal);
+        }
+    }
+    
+    // Store coercion info for call sites
+    functionCoercionMap[fn] = coercion;
 }
 
 // Generator function for function expression
 llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
-  auto fnExpr = dynamic_cast<FunctionExpression *>(node);
-  if (!fnExpr)
-    reportDevBug("Invalid function expression",fnExpr);
+    auto fnExpr = dynamic_cast<FunctionExpression *>(node);
+    if (!fnExpr) reportDevBug("Invalid function expression", fnExpr);
 
-  // Getting the function signature
-  auto fnName = fnExpr->func_key.TokenLiteral;
-  auto funcSym = semantics.getSymbolFromMeta(fnExpr);
+    auto fnName = fnExpr->func_key.TokenLiteral;
+    auto funcSym = semantics.getSymbolFromMeta(fnExpr);
 
-  isGlobalScope = false;
+    isGlobalScope = false;
 
-  // Building the function type
-  std::vector<llvm::Type *> llvmParamTypes;
+    // Store original parameter types and build coercion
+    std::vector<llvm::Type*> originalParamTypes;
+    std::vector<CoercionInfo> paramCoercion;
+    std::vector<llvm::Type*> coercedParamTypes;
 
-  for (auto &p : fnExpr->call) {
-    // Getting the data type to push it into getLLVMType
-    auto paramSym = semantics.getSymbolFromMeta(p.get());
-    if (!paramSym) {
-      reportDevBug("Missing parameter symbol info",p.get());
+    for (auto &p : fnExpr->call) {
+        auto paramSym = semantics.getSymbolFromMeta(p.get());
+        if (!paramSym) reportDevBug("Missing parameter symbol info", p.get());
+        
+        llvm::Type* originalTy = getLLVMType(paramSym->type().type);
+        originalParamTypes.push_back(originalTy);
+        
+        llvm::Type* coercedTy = originalTy;
+        CoercionInfo info;
+        info.isMemory = false;
+        info.coercedType = originalTy;
+        
+        if (auto* structTy = llvm::dyn_cast<llvm::StructType>(originalTy)) {
+            info = classifyStruct(structTy);
+            if (info.isMemory) {
+                coercedTy = structTy->getPointerTo();
+                info.coercedType = coercedTy;
+            } else if (info.coercedType) {
+                coercedTy = info.coercedType;
+            }
+        }
+        
+        paramCoercion.push_back(info);
+        coercedParamTypes.push_back(coercedTy);
     }
-    paramSym->codegen().llvmType = getLLVMType(paramSym->type().type);
-    llvmParamTypes.push_back(getLLVMType(paramSym->type().type));
-  }
 
-  // Getting the function return type
-  auto fnRetType = fnExpr->return_type.get();
-
-  // Get the linkage type(internal by default)
-  llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
-
-  // If it is the main function or a function marked as exportable make it
-  // public
-  if (fnName == "main" || funcSym->isExportable)
-    linkage = llvm::Function::ExternalLinkage;
-
-  auto retType = semantics.inferNodeDataType(fnRetType);
-  llvm::FunctionType *funcType =
-      llvm::FunctionType::get(getLLVMType(retType), llvmParamTypes, false);
-
-  // Look up if the function declaration exists
-  llvm::Function *fn = module->getFunction(fnName);
-  // If the function declaration exists
-  if (!fn) {
-    fn = llvm::Function::Create(funcType, linkage, fnName, module.get());
-  } else {
-    // If the function was declared checking if the return types match
-    if (fn->getFunctionType() != funcType) {
-      reportDevBug("Function redefinition for '" + fnName +
-                               "' with different signature ",fnExpr);
+    // Get return type and coerce it
+    auto fnRetType = fnExpr->return_type.get();
+    auto retType = semantics.inferNodeDataType(fnRetType);
+    llvm::Type* originalRetTy = getLLVMType(retType);
+    
+    CoercionInfo returnCoercion;
+    returnCoercion.isMemory = false;
+    returnCoercion.coercedType = originalRetTy;
+    llvm::Type* coercedRetTy = originalRetTy;
+    bool hasSRet = false;
+    
+    if (auto* structTy = llvm::dyn_cast<llvm::StructType>(originalRetTy)) {
+        returnCoercion = classifyStruct(structTy);
+        if (returnCoercion.isMemory) {
+            // Large struct return: add hidden sret parameter
+            coercedRetTy = llvm::Type::getVoidTy(context);
+            hasSRet = true;
+            // Insert pointer parameter at beginning
+            coercedParamTypes.insert(coercedParamTypes.begin(), structTy->getPointerTo());
+            // Add coercion info for sret
+            CoercionInfo sretInfo;
+            sretInfo.isMemory = true;
+            sretInfo.coercedType = structTy->getPointerTo();
+            paramCoercion.insert(paramCoercion.begin(), sretInfo);
+        } else if (returnCoercion.coercedType) {
+            coercedRetTy = returnCoercion.coercedType;
+        }
     }
-  }
 
-  currentFunction = fn; // Updating the currentFunction pointer
+    llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
+    if (fnName == "main" || funcSym->isExportable)
+        linkage = llvm::Function::ExternalLinkage;
 
-  // Creating the entry block
-  llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
-  funcBuilder.SetInsertPoint(entry);
-
-  // Binding parameters to namedValues
-  auto argIter = fn->arg_begin();
-  for (auto &p : fnExpr->call) {
-    // Getting the statement data type
-    auto pIt = semantics.metaData.find(p.get());
-    if (pIt == semantics.metaData.end()) {
-      reportDevBug("Failed to find paremeter meta data", p.get());
+    llvm::FunctionType *funcType = llvm::FunctionType::get(coercedRetTy, coercedParamTypes, false);
+    llvm::Function *fn = module->getFunction(fnName);
+    
+    if (!fn) {
+        fn = llvm::Function::Create(funcType, linkage, fnName, module.get());
+    } else if (fn->getFunctionType() != funcType) {
+        reportDevBug("Function redefinition for '" + fnName + "' with different signature", fnExpr);
     }
-    llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(
-        getLLVMType(pIt->second->type().type), nullptr, p->statement.TokenLiteral);
-    funcBuilder.CreateStore(&(*argIter), alloca);
-    pIt->second->codegen().llvmValue = alloca;
 
-    argIter++;
-  }
+    // Store coercion info
+    FunctionCoercion coercion;
+    coercion.originalParamTypes = originalParamTypes;
+    coercion.coercedParamTypes = coercedParamTypes;
+    coercion.paramCoercion = paramCoercion;
+    coercion.returnCoercion = returnCoercion;
+    coercion.hasSRet = hasSRet;
+    functionCoercionMap[fn] = coercion;
 
-  llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
+    currentFunction = fn;
 
-  // This will handle whatever is inside the block including the return value
-  generateExpression(fnExpr->block.get());
+    llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
+    funcBuilder.SetInsertPoint(entry);
 
-  llvm::BasicBlock *finalBlock = funcBuilder.GetInsertBlock();
-  // If the function is void
-  bool isVoidFunction = funcSym->func().returnType.kind == DataType::VOID;
+    // Bind parameters with original types (not coerced)
+    auto argIter = fn->arg_begin();
+    size_t paramIdx = 0;
+    
+    for (auto &p : fnExpr->call) {
+        auto pIt = semantics.metaData.find(p.get());
+        if (pIt == semantics.metaData.end()) {
+            reportDevBug("Failed to find parameter meta data", p.get());
+        }
+        
+        llvm::Type* originalTy = originalParamTypes[paramIdx];
+        llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(originalTy, nullptr, p->statement.TokenLiteral);
+        
+        llvm::Value* paramValue = &(*argIter);
+        
+        // If parameter was coerced, bitcast back to original type
+        if (paramCoercion[paramIdx].coercedType && 
+            paramCoercion[paramIdx].coercedType != originalTy) {
+            paramValue = funcBuilder.CreateBitCast(paramValue, originalTy->getPointerTo());
+            paramValue = funcBuilder.CreateLoad(originalTy, paramValue);
+        }
+        
+        funcBuilder.CreateStore(paramValue, alloca);
+        pIt->second->codegen().llvmValue = alloca;
+        
+        argIter++;
+        paramIdx++;
+    }
 
-  // Does the current block exist and is it not terminated?
-  if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator())) {
-    if (isVoidFunction) {
-      // Inject 'ret void' for void functions that fell off the end.
-      funcBuilder.CreateRetVoid();
-      logInternal("Injected missing ret void terminator");
+    llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
+    generateExpression(fnExpr->block.get());
+
+    llvm::BasicBlock *finalBlock = funcBuilder.GetInsertBlock();
+    bool isVoidFunction = funcSym->func().returnType.kind == DataType::VOID;
+
+    if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator())) {
+        if (isVoidFunction) {
+            funcBuilder.CreateRetVoid();
+        } else {
+            funcBuilder.CreateUnreachable();
+        }
+    }
+
+    if (oldInsertPoint) {
+        funcBuilder.SetInsertPoint(oldInsertPoint);
     } else {
-      // Non-void function finished without a return.
-      // This is a semantic failure, but we terminate for LLVM stability.
-      funcBuilder.CreateUnreachable();
+        funcBuilder.ClearInsertionPoint();
     }
-  }
 
-  if (oldInsertPoint) {
-    funcBuilder.SetInsertPoint(oldInsertPoint);
-  } else {
-    funcBuilder.ClearInsertionPoint();
-  }
-
-  isGlobalScope = true;      // Reset the flag
-  currentFunction = nullptr; // Set it back to a null pointer
-  return fn;
+    isGlobalScope = true;
+    currentFunction = nullptr;
+    return fn;
 }
 
 void IRGenerator::generateReturnStatement(Node *node) {
-  auto retStmt = dynamic_cast<ReturnStatement *>(node);
-  if (!retStmt)
-    return;
+    auto retStmt = dynamic_cast<ReturnStatement *>(node);
+    if (!retStmt) return;
 
-  // Fetch Semantic Metadata
-  auto it = semantics.metaData.find(retStmt);
-  if (it == semantics.metaData.end()) {
-    reportDevBug("Could not find return statement metaData", retStmt);
-  }
-  inhibitCleanUp = true;
-  // Generate the value being returned
-  llvm::Value *retVal = nullptr;
-  if (retStmt->return_value) {
-    retVal = generateExpression(retStmt->return_value.get());
-  }
-
-  inhibitCleanUp = false;
-  emitCleanup(retStmt);
-
-  // Get Function Signature Info
-  llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
-  llvm::Type *retTy = currentFunction->getReturnType();
-
-  // Handle Void Returns
-  if (retTy->isVoidTy()) {
-    funcBuilder.CreateRetVoid();
-    return;
-  }
-
-  // Safety check: if function expects a value but we have none
-  if (!retVal) {
-    llvm::errs() << "Error: Non-void function missing return value.\n";
-    funcBuilder.CreateUnreachable();
-    return;
-  }
-
-  if (it->second->type().type.isNull) {
-    if (!retVal->getType()->isStructTy()) {
-
-      llvm::Value *boxed = llvm::UndefValue::get(retTy);
-
-      // Check if we are returning 'null' literal
-      bool isNullLiteral =
-          (dynamic_cast<NullLiteral *>(retStmt->return_value.get()) != nullptr);
-
-      llvm::Value *presentFlag = llvm::ConstantInt::get(
-          llvm::Type::getInt1Ty(context), isNullLiteral ? 0 : 1);
-      boxed = funcBuilder.CreateInsertValue(boxed, presentFlag, 0);
-
-      llvm::Type *innerTy = retTy->getStructElementType(1);
-      llvm::Value *payload = nullptr;
-
-      if (isNullLiteral) {
-        payload = llvm::Constant::getNullValue(innerTy);
-      } else {
-        payload = retVal;
-        if (payload->getType() != innerTy &&
-            payload->getType()->isIntegerTy()) {
-          payload = funcBuilder.CreateZExtOrTrunc(payload, innerTy);
-        }
-      }
-
-      boxed = funcBuilder.CreateInsertValue(boxed, payload, 1);
-      funcBuilder.CreateRet(boxed);
-      return;
+    auto it = semantics.metaData.find(retStmt);
+    if (it == semantics.metaData.end()) {
+        reportDevBug("Could not find return statement metaData", retStmt);
     }
-  }
+    
+    inhibitCleanUp = true;
+    llvm::Value *retVal = nullptr;
+    if (retStmt->return_value) {
+        retVal = generateExpression(retStmt->return_value.get());
+    }
+    inhibitCleanUp = false;
+    emitCleanup(retStmt);
 
-  llvm::Type *valTy = retVal->getType();
+    llvm::Function *currentFunc = funcBuilder.GetInsertBlock()->getParent();
+    llvm::Type *retTy = currentFunc->getReturnType();
 
-  if (valTy == retTy) {
-    funcBuilder.CreateRet(retVal);
-    return;
-  }
+    if (retTy->isVoidTy()) {
+        funcBuilder.CreateRetVoid();
+        return;
+    }
 
-  // Pointer Bitcasting
-  if (valTy->isPointerTy() && retTy->isPointerTy()) {
-    funcBuilder.CreateRet(funcBuilder.CreateBitCast(retVal, retTy));
-    return;
-  }
+    if (!retVal) {
+        llvm::errs() << "Error: Non-void function missing return value.\n";
+        funcBuilder.CreateUnreachable();
+        return;
+    }
 
-  // Integer Width Adaptation
-  if (valTy->isIntegerTy() && retTy->isIntegerTy()) {
-    funcBuilder.CreateRet(funcBuilder.CreateZExtOrTrunc(retVal, retTy));
-    return;
-  }
+    // Get coercion info for this function
+    FunctionCoercion coercion;
+    auto coercionIt = functionCoercionMap.find(currentFunc);
+    if (coercionIt != functionCoercionMap.end()) {
+        coercion = coercionIt->second;
+    }
 
-  llvm::errs() << "IRGen Error: Return type mismatch. Cannot adapt " << *valTy
-               << " to " << *retTy << "\n";
-  funcBuilder.CreateUnreachable();
+    // Handle nullable types (existing logic)
+    if (it->second->type().type.isNull) {
+        if (!retVal->getType()->isStructTy()) {
+            llvm::Value *boxed = llvm::UndefValue::get(retTy);
+            bool isNullLiteral = (dynamic_cast<NullLiteral *>(retStmt->return_value.get()) != nullptr);
+            llvm::Value *presentFlag = llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), isNullLiteral ? 0 : 1);
+            boxed = funcBuilder.CreateInsertValue(boxed, presentFlag, 0);
+            llvm::Type *innerTy = retTy->getStructElementType(1);
+            llvm::Value *payload = nullptr;
+            if (isNullLiteral) {
+                payload = llvm::Constant::getNullValue(innerTy);
+            } else {
+                payload = retVal;
+                if (payload->getType() != innerTy && payload->getType()->isIntegerTy()) {
+                    payload = funcBuilder.CreateZExtOrTrunc(payload, innerTy);
+                }
+            }
+            boxed = funcBuilder.CreateInsertValue(boxed, payload, 1);
+            funcBuilder.CreateRet(boxed);
+            return;
+        }
+    }
+
+    // Apply return coercion if needed
+    if (coercion.returnCoercion.coercedType && 
+        coercion.returnCoercion.coercedType != retVal->getType()) {
+        retVal = funcBuilder.CreateBitCast(retVal, coercion.returnCoercion.coercedType);
+    }
+
+    llvm::Type *valTy = retVal->getType();
+
+    if (valTy == retTy) {
+        funcBuilder.CreateRet(retVal);
+        return;
+    }
+
+    if (valTy->isPointerTy() && retTy->isPointerTy()) {
+        funcBuilder.CreateRet(funcBuilder.CreateBitCast(retVal, retTy));
+        return;
+    }
+
+    if (valTy->isIntegerTy() && retTy->isIntegerTy()) {
+        funcBuilder.CreateRet(funcBuilder.CreateZExtOrTrunc(retVal, retTy));
+        return;
+    }
+
+    llvm::errs() << "IRGen Error: Return type mismatch. Cannot adapt " << *valTy
+                 << " to " << *retTy << "\n";
+    funcBuilder.CreateUnreachable();
 }
 
 llvm::Value *IRGenerator::generateCallExpression(Node *node) {
-  auto callExpr = dynamic_cast<CallExpression *>(node);
-  if (!callExpr) {
-    throw std::runtime_error("Invalid call expression");
-  }
+    auto callExpr = dynamic_cast<CallExpression *>(node);
+    if (!callExpr) 
+        reportDevBug("Invalid call expression", node);
+    
 
-  if (isGlobalScope)
-    throw std::runtime_error("Function calls are not allowed at global scope");
+    if (isGlobalScope)
+        reportDevBug("Function calls are not allowed at global scope", callExpr);
 
-  // Getting the function name
-  const std::string &fnName =
-      callExpr->function_identifier->expression.TokenLiteral;
+    const std::string &fnName = callExpr->function_identifier->expression.TokenLiteral;
 
-  auto callIt = semantics.metaData.find(callExpr);
-  if (callIt == semantics.metaData.end()) {
-    reportDevBug("Call expression does not exist", callExpr);
-  }
+    auto callSym=semantics.getSymbolFromMeta(callExpr);
+    if (!callSym) 
+        reportDevBug("Call expression symbol info does not exist", callExpr);
+    
 
-  // Getting the function I want to call
-  llvm::Function *calledFunc = module->getFunction(fnName);
+    llvm::Function *calledFunc = module->getFunction(fnName);
+    if (!calledFunc) {
+        reportDevBug("Unknown function '" + fnName + "' referenced", callExpr);
+    }
 
-  if (!calledFunc) {
-    throw std::runtime_error("Unknown function '" + fnName + "'referenced");
-  }
+    // Get coercion info for this function
+    FunctionCoercion coercion;
+    auto coercionIt = functionCoercionMap.find(calledFunc);
+    if (coercionIt != functionCoercionMap.end()) {
+        coercion = coercionIt->second;
+    }
 
-  std::vector<llvm::Value *> argsV =
-      prepareArguments(calledFunc, callExpr->parameters, 0);
+    std::vector<llvm::Value *> argsV = prepareArguments(calledFunc, callExpr->parameters, 0, coercion);
 
-  // Emitting the function call itself
-  llvm::Value *call = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
+    // Emit the function call
+    llvm::Value *call = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
 
-  // Check if the function return type is void
-  if (calledFunc->getReturnType()->isVoidTy()) {
-    return nullptr;
-  }
+    // Coerce return value back to original type if needed
+    if (coercion.returnCoercion.coercedType && 
+        coercion.returnCoercion.coercedType != calledFunc->getReturnType()) {
+        // If the return was coerced to a different type, bitcast back
+        // We need the original expected type from the call expression
+        llvm::Type* expectedRetTy = getLLVMType(callSym->type().type);
+        if (call->getType() != expectedRetTy) {
+            call = funcBuilder.CreateBitCast(call, expectedRetTy);
+        }
+    }
 
-  emitCleanup(callExpr);
-  return call;
+    if (calledFunc->getReturnType()->isVoidTy()) {
+        return nullptr;
+    }
+
+    emitCleanup(callExpr);
+    return call;
 }
 
 llvm::Value *IRGenerator::generateCallAddress(Node *node) {
-  auto callExpr = dynamic_cast<CallExpression *>(node);
-  if (!callExpr)
-    throw std::runtime_error(
-        "Invalid call expression inside address generator");
+    auto callExpr = dynamic_cast<CallExpression *>(node);
+    if (!callExpr)
+        reportDevBug("Invalid call expression inside address generator", node);
 
-  if (isGlobalScope)
-    throw std::runtime_error("Function calls are not allowed in global scope");
+    if (isGlobalScope)
+        reportDevBug("Function calls are not allowed in global scope", callExpr);
 
-  const std::string &funcName =
-      callExpr->function_identifier->expression.TokenLiteral;
+    const std::string &funcName = callExpr->function_identifier->expression.TokenLiteral;
 
-  auto callIt = semantics.metaData.find(callExpr);
-  if (callIt == semantics.metaData.end())
-    throw std::runtime_error("Call expression metaData not found");
+    auto callSym=semantics.getSymbolFromMeta(callExpr);
+    if (!callSym)
+        reportDevBug("Call expression symbol info not found",callExpr);
 
-  if (callIt->second->hasError)
-    throw std::runtime_error("Semantic error detected in call for '" +
-                             funcName + "'");
+    llvm::Function *calledFunc = module->getFunction(funcName);
+    if (!calledFunc)
+        reportDevBug("Unknown function '" + funcName + "' referenced", callExpr);
 
-  llvm::Function *calledFunc = module->getFunction(funcName);
-  if (!calledFunc)
-    throw std::runtime_error("Unknown function '" + funcName + "' referenced");
+    // Get coercion info
+    FunctionCoercion coercion;
+    auto coercionIt = functionCoercionMap.find(calledFunc);
+    if (coercionIt != functionCoercionMap.end()) {
+        coercion = coercionIt->second;
+    }
 
-  // Generate IR for each argument
-  std::vector<llvm::Value *> argsV =
-      prepareArguments(calledFunc, callExpr->parameters, 0);
+    std::vector<llvm::Value *> argsV = prepareArguments(calledFunc, callExpr->parameters, 0, coercion);
 
-  llvm::Type *retTy = calledFunc->getReturnType();
-  if (retTy->isVoidTy())
-    throw std::runtime_error("Attempted to take address of a void call result");
+    llvm::Type *retTy = calledFunc->getReturnType();
+    if (retTy->isVoidTy())
+        reportDevBug("Attempted to take address of a void call result", callExpr);
 
-  // Ensure the temporary alloca is created in the entry block of the current
-  // function.
-  llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
-  llvm::IRBuilder<> tmpBuilder(&currentFunction->getEntryBlock(),
-                               currentFunction->getEntryBlock().begin());
-  llvm::AllocaInst *tmpAlloca =
-      tmpBuilder.CreateAlloca(retTy, nullptr, "calltmp.addr");
+    // Ensure the temporary alloca is created in the entry block
+    llvm::Function *currentFunction = funcBuilder.GetInsertBlock()->getParent();
+    llvm::IRBuilder<> tmpBuilder(&currentFunction->getEntryBlock(),
+                                 currentFunction->getEntryBlock().begin());
+    
+    // Coerced return type might be different from original
+    llvm::Type* actualRetTy = retTy;
+    if (coercion.returnCoercion.coercedType && 
+        coercion.returnCoercion.coercedType != retTy) {
+        actualRetTy = coercion.returnCoercion.coercedType;
+    }
+    
+    llvm::AllocaInst *tmpAlloca = tmpBuilder.CreateAlloca(actualRetTy, nullptr, "calltmp.addr");
 
-  // Emit the call (value returned into caller)
-  llvm::Value *callVal = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
+    llvm::Value *callVal = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
 
-  // Store the returned value into the caller-owned temporary and return its
-  // address.
-  funcBuilder.CreateStore(callVal, tmpAlloca);
+    // Coerce return value if needed before storing
+    if (callVal->getType() != actualRetTy) {
+        callVal = funcBuilder.CreateBitCast(callVal, actualRetTy);
+    }
+    
+    funcBuilder.CreateStore(callVal, tmpAlloca);
 
-  return tmpAlloca; // pointer to caller-allocated storage containing the call
-                    // result
+    return tmpAlloca;
 }
 
 std::vector<llvm::Value *> IRGenerator::prepareArguments(
     llvm::Function *func,
-    const std::vector<std::unique_ptr<Expression>> &params, size_t offset) {
-  std::vector<llvm::Value *> argsV;
-  auto funcTy = func->getFunctionType();
+    const std::vector<std::unique_ptr<Expression>> &params,
+    size_t offset,
+    const FunctionCoercion& coercion) {
+    
+    std::vector<llvm::Value *> argsV;
+    auto funcTy = func->getFunctionType();
 
-  for (size_t i = 0; i < params.size(); ++i) {
-    llvm::Value *argVal = nullptr;
+    for (size_t i = 0; i < params.size(); ++i) {
+        llvm::Value *argVal = nullptr;
 
-    auto metaIt = semantics.metaData.find(params[i].get());
-    if (metaIt != semantics.metaData.end() &&
-        metaIt->second->type().needsImplicitAddress) {
-      // Instead of loading the value, we grab the raw address
-      argVal = generateIdentifierAddress(params[i].get());
-    } else {
-      // Normal behavior like load a 10
-      argVal = generateExpression(params[i].get());
+        auto metaIt = semantics.metaData.find(params[i].get());
+        if (metaIt != semantics.metaData.end() &&
+            metaIt->second->type().needsImplicitAddress) {
+            argVal = generateIdentifierAddress(params[i].get());
+        } else {
+            argVal = generateExpression(params[i].get());
+        }
+
+        if (!argVal)
+            throw std::runtime_error("Failed to generate argument IR");
+
+        llvm::Type *expectedTy = funcTy->getParamType(i + offset);
+        
+        // Apply ABI coercion if this parameter has coercion info
+        if (i < coercion.paramCoercion.size()) {
+            const auto& paramInfo = coercion.paramCoercion[i];
+            
+            if (paramInfo.isMemory) {
+                // Pass large struct by pointer
+                // Allocate a temporary and store the value
+                llvm::AllocaInst *tempAlloca = funcBuilder.CreateAlloca(argVal->getType(), nullptr, "byval.tmp");
+                funcBuilder.CreateStore(argVal, tempAlloca);
+                argVal = tempAlloca;
+            } else if (paramInfo.coercedType && paramInfo.coercedType != argVal->getType()) {
+                // Coerce to the expected type (e.g., struct -> integer)
+                if (argVal->getType()->isStructTy() && paramInfo.coercedType->isIntegerTy()) {
+                    argVal = funcBuilder.CreateBitCast(argVal, paramInfo.coercedType);
+                } else if (argVal->getType()->isIntegerTy() && paramInfo.coercedType->isStructTy()) {
+                    argVal = funcBuilder.CreateBitCast(argVal, paramInfo.coercedType);
+                } else if (argVal->getType()->isStructTy() && 
+                          (paramInfo.coercedType->isFloatTy() || paramInfo.coercedType->isDoubleTy())) {
+                    argVal = funcBuilder.CreateBitCast(argVal, paramInfo.coercedType);
+                }
+            }
+        }
+
+        // Implicit Promotion: T -> T? (nullable wrapper)
+        if (expectedTy->isStructTy() && !argVal->getType()->isStructTy()) {
+            llvm::Value *wrapped = llvm::UndefValue::get(expectedTy);
+            wrapped = funcBuilder.CreateInsertValue(wrapped, funcBuilder.getInt1(true), 0);
+            wrapped = funcBuilder.CreateInsertValue(wrapped, argVal, 1);
+            argVal = wrapped;
+        }
+        
+        argsV.push_back(argVal);
     }
-
-    if (!argVal)
-      throw std::runtime_error("Failed to generate argument IR");
-
-    llvm::Type *expectedTy = funcTy->getParamType(i + offset);
-
-    // Implicit Promotion: T -> T?
-    if (expectedTy->isStructTy() && !argVal->getType()->isStructTy()) {
-      llvm::Value *wrapped = llvm::UndefValue::get(expectedTy);
-      wrapped =
-          funcBuilder.CreateInsertValue(wrapped, funcBuilder.getInt1(true), 0);
-      wrapped = funcBuilder.CreateInsertValue(wrapped, argVal, 1);
-      argVal = wrapped;
-    }
-    argsV.push_back(argVal);
-  }
-  return argsV;
+    return argsV;
 }

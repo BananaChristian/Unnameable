@@ -16,6 +16,8 @@ void IRGenerator::generateRecordStatement(Node* node) {
         structTy = llvm::StructType::create(context, blockName);
         llvmCustomTypes[blockName] = structTy;
     }
+    recordTypes[blockName]=structTy;
+    
 
     if (structTy->isOpaque()) {
         std::vector<llvm::Type*> memberTypes;
@@ -44,12 +46,6 @@ llvm::Value* IRGenerator::generateInstanceExpression(Node* node) {
     llvm::StructType* structTy = llvmCustomTypes[instName];
     if (!structTy) reportDevBug("Unknown record type: " + instName, instExpr->blockIdent.get());
 
-    if (!funcBuilder.GetInsertBlock())
-        reportDevBug("Cannot create instance for '" + instName + "' in global scope",
-                     instExpr->blockIdent.get());
-
-    llvm::Value* instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, instName + "_inst");
-
     auto typeInfoIt = semantics.customTypesTable.find(instName);
     if (typeInfoIt == semantics.customTypesTable.end())
         reportDevBug("Missing custom type info for '" + instName + "'", instExpr->blockIdent.get());
@@ -62,24 +58,68 @@ llvm::Value* IRGenerator::generateInstanceExpression(Node* node) {
         if (auto assign = dynamic_cast<AssignmentStatement*>(fieldStmt.get()))
             userInits[assign->identifier->expression.TokenLiteral] = assign;
     }
+    
+    //Sort the members
+    std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>> orderedMembers;
+    for (const auto& [name, info] : typeInfo->members) {
+            orderedMembers.push_back({name, info});
+    }
+    
+    std::sort(orderedMembers.begin(), orderedMembers.end(),
+            [](const auto& a, const auto& b) {
+                return a.second->memberIndex < b.second->memberIndex;
+    });
+        
 
-    auto instanceSym = semantics.getSymbolFromMeta(instExpr);
-    bool isInstanceVolatile = instanceSym && instanceSym->storage().isVolatile;
+    if (isGlobalScope) {        
+        std::vector<llvm::Constant*> constantFields;
+        
+        for (const auto& [memberName, info] : orderedMembers) {
+            llvm::Constant* constField = nullptr;
+            
+            auto it = userInits.find(memberName);
+            if (it != userInits.end()) {
+                llvm::Value* val = generateExpression(it->second->value.get());
+                constField = llvm::dyn_cast<llvm::Constant>(val);
+                if (!constField) {
+                    reportDevBug("Field '" + memberName + "' in global record '" + instName + 
+                                 "' must be a compile-time constant", instExpr->blockIdent.get());
+                }
+            } else {
+                auto varDecl = dynamic_cast<VariableDeclaration*>(info->node);
+                if (varDecl && varDecl->initializer) {
+                    llvm::Value* defaultVal = generateExpression(varDecl->initializer.get());
+                    constField = llvm::dyn_cast<llvm::Constant>(defaultVal);
+                    if (!constField) {
+                        reportDevBug("Default value for field '" + memberName + "' is not constant",
+                                     info->node);
+                    }
+                } else {
+                    constField = llvm::Constant::getNullValue(getLLVMType(info->type));
+                }
+            }
+            constantFields.push_back(constField);
+        }
+        
+        return llvm::ConstantStruct::get(structTy, constantFields);
+    }
 
-    // Iterate through definition to ensure total field coverage
-    for (auto const& [memberName, info] : typeInfo->members) {
-        llvm::Value* memberPtr =
-            funcBuilder.CreateStructGEP(structTy, instancePtr, info->memberIndex, memberName);
+    if (!funcBuilder.GetInsertBlock())
+        reportDevBug("Cannot create instance for '" + instName + "' outside function scope",
+                     instExpr->blockIdent.get());
 
+    llvm::Value* instancePtr = funcBuilder.CreateAlloca(structTy, nullptr, instName + "_inst");
+
+    // Store each field
+    for (auto const& [memberName, info] : orderedMembers) {
+        llvm::Value* memberPtr = funcBuilder.CreateStructGEP(structTy, instancePtr, info->memberIndex, memberName);
+        
         llvm::Value* finalVal = nullptr;
-
-        // User provided a value for this field
+        
         auto it = userInits.find(memberName);
         if (it != userInits.end()) {
             finalVal = generateExpression(it->second->value.get());
         } else {
-            // Fallback to declaration default or zero
-            // LetStatement is dead — fields are VariableDeclaration now
             auto varDecl = dynamic_cast<VariableDeclaration*>(info->node);
             if (varDecl && varDecl->initializer) {
                 finalVal = generateExpression(varDecl->initializer.get());
@@ -87,18 +127,24 @@ llvm::Value* IRGenerator::generateInstanceExpression(Node* node) {
                 finalVal = llvm::Constant::getNullValue(getLLVMType(info->type));
             }
         }
-
+        
         if (!finalVal)
             reportDevBug("Failed to resolve value for field '" + memberName + "'", info->node);
-
+        
         auto* storeInst = funcBuilder.CreateStore(finalVal, memberPtr);
+        
+        auto sym = semantics.getSymbolFromMeta(instExpr);
+        bool isInstanceVolatile = sym && sym->storage().isVolatile;
         if (isInstanceVolatile || info->isVolatile) storeInst->setVolatile(true);
     }
-
+    
     // Return the loaded struct value
     auto* finalLoad = funcBuilder.CreateLoad(structTy, instancePtr, instName + "_val");
+    
+    auto sym = semantics.getSymbolFromMeta(instExpr);
+    bool isInstanceVolatile = sym && sym->storage().isVolatile;
     if (isInstanceVolatile) finalLoad->setVolatile(true);
-
+    
     return finalLoad;
 }
 
@@ -322,7 +368,7 @@ llvm::Value* IRGenerator::generateMethodCallExpression(Node* node) {
     std::string callName = call->function_identifier->expression.TokenLiteral;
 
     if (sealIt != semantics.sealTable.end()) {
-        // Retrive the function we wish to call
+        // Retrieve the function we wish to call
         auto sealFnMap = sealIt->second;
         auto sealFnIt = sealFnMap.find(callName);
         if (sealFnIt == sealFnMap.end()) {
@@ -334,15 +380,12 @@ llvm::Value* IRGenerator::generateMethodCallExpression(Node* node) {
         call->function_identifier->expression.TokenLiteral = instanceName + "_" + callName;
         call->function_identifier->token.TokenLiteral = instanceName + "_" + callName;
 
+        // generateCallExpression already handles coercion
         result = generateCallExpression(call);
     } else {
-        // Getting the metaData for the instance
-        auto instanceIt = semantics.metaData.find(instance);
-        if (instanceIt == semantics.metaData.end()) {
-            throw std::runtime_error("Could not find instance metaData");
-        }
-
-        auto instanceSym = instanceIt->second;
+        auto instanceSym = semantics.getSymbolFromMeta(instance);
+        if(!instanceSym)
+            reportDevBug("Failed to get instance symbol info",instance);
 
         llvm::Value* objectPtr = nullptr;
         // Get the llvm value for the instance
@@ -361,22 +404,40 @@ llvm::Value* IRGenerator::generateMethodCallExpression(Node* node) {
         // Fetch the function from the module
         llvm::Function* targetFunc = module->getFunction(funcName);
         if (!targetFunc) {
-            throw std::runtime_error("Undefined method '" + callName + "' from component '" +
-                                     compName + "'");
+            reportDevBug("Undefined method '" + callName + "' from component '" +
+                                     compName + "'",instance);
         }
 
-        // Prepare the arguments
-        std::vector<llvm::Value*> args;
-        args.push_back(objectPtr);  // The implicit self
+        // Get coercion info for this function
+        FunctionCoercion coercion;
+        auto coercionIt = functionCoercionMap.find(targetFunc);
+        if (coercionIt != functionCoercionMap.end()) {
+            coercion = coercionIt->second;
+        }
 
-        // Offset of 1 is passed inorder to ignore the self paremeter getting
-        // injected
-        std::vector<llvm::Value*> userArgs = prepareArguments(targetFunc, call->parameters, 1);
+        // Prepare the arguments with coercion (offset 1 to skip 'self' parameter)
+        std::vector<llvm::Value*> args;
+        
+        // 'self' pointer (objectPtr) - no coercion needed for pointer
+        args.push_back(objectPtr);
+
+        // User arguments with coercion (starting from parameter index 1)
+        std::vector<llvm::Value*> userArgs = prepareArguments(targetFunc, call->parameters, 1, coercion);
 
         args.insert(args.end(), userArgs.begin(), userArgs.end());
 
         // Call the function
-        result = funcBuilder.CreateCall(targetFunc, args);
+        result = funcBuilder.CreateCall(targetFunc, args, "methodtmp");
+        
+        // Coerce return value back if needed
+        if (coercion.returnCoercion.coercedType && 
+            coercion.returnCoercion.coercedType != targetFunc->getReturnType()) {
+            // Get the expected return type from the method call symbol
+            auto expectedRetTy = getLLVMType(metSym->type().type);
+            if (result->getType() != expectedRetTy) {
+                result = funcBuilder.CreateBitCast(result, expectedRetTy);
+            }
+        }
     }
     return result;
 }

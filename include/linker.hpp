@@ -21,6 +21,8 @@ private:
   std::string currentObjectFile;
 
   bool checkLLD();
+  std::vector<std::string> getSystemLibraryPaths();
+  std::string findLibraryPath(const std::string &libName);
 
   // Resolves internal lib mapping or returns user-provided string
   std::string resolveLinkPath(LinkStatement *link,

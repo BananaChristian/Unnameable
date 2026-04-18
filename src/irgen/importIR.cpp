@@ -212,20 +212,68 @@ void IRGenerator::declareImportedInit(const std::string &typeName) {
     logInternal("Declared imported init '" + initName + "'");
 }
 
-void IRGenerator::declareImportedFunctions(){
-    for(const auto &funcPair:semantics.ImportedFunctionsTable){
-        const auto &funcName=funcPair.first;
-        auto funcSym=funcPair.second;
-
-        llvm::Function::LinkageTypes linkage=llvm::Function::ExternalLinkage;
-
-        llvm::Type * retType=getLLVMType(funcSym->func().returnType);
-        std::vector<llvm::Type*> llvmParamTypes;
-        for(const auto &param:funcSym->func().paramTypes){
-            llvmParamTypes.push_back(getLLVMType(param.first));
+void IRGenerator::declareImportedFunctions() {
+    for (const auto& funcPair : semantics.ImportedFunctionsTable) {
+        const auto& funcName = funcPair.first;
+        auto funcSym = funcPair.second;
+        
+        FunctionCoercion coercion;
+        
+        // Coerce parameters
+        for (const auto& param : funcSym->func().paramTypes) {
+            llvm::Type* originalTy = getLLVMType(param.first);
+            coercion.originalParamTypes.push_back(originalTy);
+            
+            llvm::Type* coercedTy = originalTy;
+            CoercionInfo paramInfo;
+            paramInfo.isMemory = false;
+            paramInfo.coercedType = originalTy;
+            
+            if (auto* structTy = llvm::dyn_cast<llvm::StructType>(originalTy)) {
+                paramInfo = classifyStruct(structTy);
+                if (paramInfo.isMemory) {
+                    // Pass large structs by pointer with 'byval'
+                    coercedTy = structTy->getPointerTo();
+                    paramInfo.coercedType = coercedTy;
+                } else if (paramInfo.coercedType) {
+                    coercedTy = paramInfo.coercedType;
+                }
+            }
+            
+            coercion.coercedParamTypes.push_back(coercedTy);
+            coercion.paramCoercion.push_back(paramInfo);
         }
-        llvm::FunctionType *fnType=llvm::FunctionType::get(retType,llvmParamTypes,false);
-        llvm::Function::Create(fnType,linkage,funcName,module.get());
+        
+        // Coerce return type
+        llvm::Type* retType = getLLVMType(funcSym->func().returnType);
+        coercion.returnCoercion.isMemory = false;
+        coercion.returnCoercion.coercedType = retType;
+        
+        if (auto* structTy = llvm::dyn_cast<llvm::StructType>(retType)) {
+            coercion.returnCoercion = classifyStruct(structTy);
+            if (coercion.returnCoercion.isMemory) {
+                // Return large structs by reference add hidden sret parameter
+                // This requires modifying the function type to add a pointer parameter
+                // For now, just use integer coercion
+                retType = coercion.returnCoercion.coercedType;
+                if (!retType) retType = llvm::Type::getVoidTy(context);
+            } else if (coercion.returnCoercion.coercedType) {
+                retType = coercion.returnCoercion.coercedType;
+            }
+        }
+        
+        // Create function type with coerced parameters
+        llvm::FunctionType* fnType = llvm::FunctionType::get(retType, coercion.coercedParamTypes, false);
+        llvm::Function* fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, funcName, module.get());
+        
+        // Add 'byval' attribute for large struct parameters
+        for (size_t i = 0; i < coercion.paramCoercion.size(); i++) {
+            if (coercion.paramCoercion[i].isMemory) {
+                fn->addParamAttr(i, llvm::Attribute::ByVal);
+            }
+        }
+        
+        functionCoercionMap[fn] = coercion;
     }
 }
 

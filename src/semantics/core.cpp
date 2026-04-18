@@ -1092,6 +1092,23 @@ bool Semantics::isTypeCompatible(const ResolvedType& expected, const ResolvedTyp
     // Error type always fails, don't silently pass broken types through
     if (actual.kind == DataType::ERROR || expected.kind == DataType::ERROR) return false;
 
+    //Special case (a string, ptr<u8> and ptr<char8> are the same so just let it slide)
+    if (actual.isBase() && actual.kind == DataType::STRING && 
+        expected.isPointer() && expected.innerType) {
+        if (expected.innerType->isBase() && 
+            (expected.innerType->kind == DataType::U8 || 
+             expected.innerType->kind == DataType::CHAR8)) {
+            return true;
+        }
+    }
+    
+    // string -> ptr<char8> (if you have CHAR8 type)
+    if (actual.isBase() && actual.kind == DataType::STRING && 
+        expected.isPointer() && expected.innerType &&
+        expected.innerType->isBase() && expected.innerType->kind == DataType::CHAR8) {
+        return true;
+    }
+
     // Opaque pointer,accepts any pointer
     if (expected.isBase() && expected.kind == DataType::OPAQUE) {
         // Only applies when expected is a bare opaque — not when recursing

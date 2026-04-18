@@ -8,10 +8,25 @@
 
 #include <memory>
 #include <typeindex>
-
 #include "ast.hpp"
 #include "audit.hpp"
 #include "llvm/IR/Type.h"
+
+enum class Classification{
+    INTEGER,//Pass in integer registers(GPR)
+    SSE, //Pass in SSE registers
+    SSEUP, //Pass in upper half of SSE register
+    X87, //Pass in x87 FPU stack(rare)
+    COMPLEX_X87, //Complex numbers
+    MEMORY, //Pass by reference (>16 bytes or complex)
+    NO_CLASS
+};
+
+struct CoercionInfo{
+    llvm::Type *coercedType;
+    std::vector<Classification> classes;//Classification for each 8-byte word
+    bool isMemory;
+};
 
 struct JumpTarget {
     llvm::BasicBlock *breakTarget;
@@ -48,6 +63,7 @@ class IRGenerator {
     std::unordered_map<std::type_index, expressionGenerators> expressionGeneratorsMap;
     std::unordered_map<std::type_index, addressGenerators> addressGeneratorsMap;
     std::unordered_map<std::string, llvm::StructType *> componentTypes;
+    std::unordered_map<std::string,llvm::StructType*> recordTypes;
     std::unordered_map<std::string, llvm::StructType *> llvmCustomTypes;
     std::unordered_map<std::string, unsigned> llvmStructIndices;
     std::unordered_map<llvm::Function *, llvm::AllocaInst *> currentFunctionSelfMap;
@@ -72,6 +88,24 @@ class IRGenerator {
     size_t totalHeapSize;
     bool isVerbose;
     bool inhibitCleanUp = false;
+
+    CoercionInfo classifyStruct(llvm::StructType *structTy);
+    void classifyWord(uint64_t offset, uint64_t size, llvm::Type* type, std::vector<Classification>& classes);
+    Classification mergeClassifications(Classification c1,Classification c2);
+    llvm::Type *createCoercedType(const std::vector<Classification>&classes,uint64_t size);
+
+    struct FunctionCoercion{
+        std::vector<llvm::Type*>originalParamTypes;
+        std::vector<llvm::Type*>coercedParamTypes;
+        std::vector<CoercionInfo> paramCoercion;
+        bool hasSRet;
+        CoercionInfo returnCoercion;
+    };
+    std::unordered_map<llvm::Function*,FunctionCoercion> functionCoercionMap;
+
+    //Coercion helper
+    llvm::Value *coerceArgument(llvm::Value *arg,const CoercionInfo &info);
+    llvm::Value *coerceReturn(llvm::Value *retVal,const CoercionInfo &info);
 
     void setupTargetLayout();
 
@@ -230,7 +264,7 @@ class IRGenerator {
 
     std::vector<llvm::Value *> prepareArguments(
         llvm::Function *func, const std::vector<std::unique_ptr<Expression>> &params,
-        size_t offset);
+        size_t offset,const FunctionCoercion& coercion);
     // For normal variables
     void generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym, const std::string &name,
                                  Node *value);
@@ -248,6 +282,7 @@ class IRGenerator {
                                        std::shared_ptr<SymbolInfo> sym, llvm::StructType *structTy,
                                        bool isHeap);
     bool isComponentType(const std::string &name);
+    bool isRecordType(const std::string &name);
     // Helper for allocating heap storage
     llvm::Value *allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                             const std::string &letName);
