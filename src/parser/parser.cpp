@@ -178,6 +178,17 @@ bool Parser::isBasicType(TokenType type) {
   }
 }
 
+bool Parser::isTypeModifier(TokenType type){
+    switch(type){
+        case TokenType::ARRAY:
+        case TokenType::PTR:
+        case TokenType::REF:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // Slider function
 void Parser::advance() {
   if (nextPos < static_cast<int>(tokenInput.size())) {
@@ -420,12 +431,12 @@ void Parser::registerStatementParseFns() {
   // For custom types
   StatementParseFunctionsMap[TokenType::IDENTIFIER] =
       &Parser::parseIdentifierStatement;
-  StatementParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfAssignment;
+  StatementParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfStatement;
 
   StatementParseFunctionsMap[TokenType::F32_KEYWORD] =
       &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::F64_KEYWORD] =
-      &Parser::parseVariableDeclaration;
+   &Parser::parseVariableDeclaration; 
   StatementParseFunctionsMap[TokenType::STRING_KEYWORD] =
       &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] =

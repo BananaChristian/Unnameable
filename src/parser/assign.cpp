@@ -45,8 +45,25 @@ std::unique_ptr<Statement> Parser::parseAssignmentStatement() {
                                                std::move(value));
 }
 
-std::unique_ptr<Statement> Parser::parseSelfAssignment() {
-  return parseAssignmentStatement();
+std::unique_ptr<Statement> Parser::parseSelfStatement() {
+    Token self_token=currentToken();
+    auto lhs=parseExpression(Precedence::PREC_NONE);
+    if(!lhs)
+        return nullptr;
+    
+    auto assignToken = currentToken();
+    if(assignToken.type==TokenType::ASSIGN||assignToken.type==TokenType::ARROW){
+        advance();
+        
+        std::unique_ptr<Expression> value = parseExpression(Precedence::PREC_NONE);
+        if(!value)
+            return nullptr;
+        
+        return std::make_unique<AssignmentStatement>(std::move(lhs), assignToken,
+                                                     std::move(value));
+    }
+    
+    return std::make_unique<ExpressionStatement>(self_token,std::move(lhs));
 }
 
 std::unique_ptr<Statement> Parser::parseDereferenceAssignment() {

@@ -168,18 +168,8 @@ std::unique_ptr<Expression> Parser::parseSelfExpression() {
 
   while (currentToken().type == TokenType::FULLSTOP) {
     advance(); // skip '.'
-
-    if (currentToken().type != TokenType::IDENTIFIER) {
-      logError("Expected identifier after '.' in self expression but got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
-      return nullptr;
-    }
-
-    auto fieldIdent = std::make_unique<Identifier>(currentToken());
+    auto fieldIdent = parseExpression(Precedence::PREC_NONE);
     fields.push_back(std::move(fieldIdent));
-
-    advance(); // move past the identifier
   }
 
   return std::make_unique<SelfExpression>(self_token, std::move(fields));
@@ -341,9 +331,8 @@ std::unique_ptr<Expression> Parser::parseSizeOfExpression() {
 
   std::unique_ptr<Expression> type = nullptr;
 
-  if (isBasicType(currentToken().type) ||
-      currentToken().type == TokenType::IDENTIFIER) {
-    type = parseBasicType();
+  if (isBasicType(currentToken().type) ||isTypeModifier(currentToken().type)||currentToken().type == TokenType::IDENTIFIER) {
+    type = parseReturnType();
   } else {
     logError("Expected a type but got '" + currentToken().TokenLiteral + "'",
              currentToken());
