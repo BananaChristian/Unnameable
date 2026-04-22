@@ -112,7 +112,7 @@ private:
   // Shout statement parser
   std::unique_ptr<Statement> parseTraceStatement();
 
-  std::unique_ptr<Statement> parseSelfAssignment();
+  std::unique_ptr<Statement> parseSelfStatement();
   // Identifer starting statements function
   std::unique_ptr<Statement> parseIdentifierStatement();
   // Parsing if statement
@@ -314,6 +314,8 @@ private:
   bool isIntegerType(TokenType type);
   // Checker for integer literals
   bool isIntegerLiteralType(TokenType type);
+  //Checker for type modifier
+  bool isTypeModifier(TokenType type);
 
   // Logging
   void logError(const std::string &message, const Token &token);

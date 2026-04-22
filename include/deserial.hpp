@@ -23,6 +23,10 @@ class Deserializer {
     // Entry point, processes all import statements in the AST
     void processImports(const std::vector<std::unique_ptr<Node>> &nodes,
                         const std::string &currentFile);
+    void setBuildDirectory(const std::string &dir){
+        buildDirectory=dir;
+    }
+    std::string buildDirectory;
 
     bool failed();
 

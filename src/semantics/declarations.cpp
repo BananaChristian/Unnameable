@@ -13,6 +13,19 @@ void Semantics::giveGenericLiteralContext(Node* literal, const ResolvedType& con
     if (dynamic_cast<FloatLiteral*>(literal)) {
         if (isFloat(contextType)) litSym->type().type = contextType;
     }
+
+    // Special case for infix(for stuff like 2*2 or 4*3)
+    if (auto infix = dynamic_cast<InfixExpression*>(literal)) {
+        if (isIntegerConstant(infix->left_operand.get()) &&
+            isIntegerConstant(infix->right_operand.get())) {
+            if (isInteger(contextType)) {
+                litSym->type().type = contextType;
+            }
+        } else if (isFloatConstant(infix->left_operand.get()) &&
+                   isFloatConstant(infix->right_operand.get())) {
+            if (isFloat(contextType)) litSym->type().type = contextType;
+        }
+    }
 }
 
 void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
@@ -24,7 +37,7 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
     bool isPersist = declaration->isPersist;
     bool isRestrict = declaration->isRestrict;
     bool isVolatile = declaration->isVolatile;
-    bool isExportable=declaration->isExportable;
+    bool isExportable = declaration->isExportable;
     bool isPointer = false;
     bool isRef = false;
     bool isArray = false;
@@ -115,9 +128,9 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
         logSemanticErrors("Variable '" + declName + "' uses 'persist' without 'heap'", declaration);
         return;
     }
-    //Rule on exportables
-    if(isExportable && !isGlobal){
-        logSemanticErrors("Exportable declarations must exist only in global scope",declaration);
+    // Rule on exportables
+    if (isExportable && !isGlobal) {
+        logSemanticErrors("Exportable declarations must exist only in global scope", declaration);
         return;
     }
 
@@ -144,19 +157,24 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
 
     // Assignment sign rule for pointers and references
     if (isPointer || isRef) {
-        if (!declaration->assign_token.has_value() ||
-            declaration->assign_token->type != TokenType::ARROW) {
-            std::string kind = isPointer ? "pointer" : "reference";
+        if (initializer) {
+            if (!insideComponent && !insideRecord) {
+                if (declaration->assign_token.has_value() &&
+                    declaration->assign_token->type != TokenType::ARROW) {
+                    std::string kind = isPointer ? "ptr" : "ref";
 
-            errorHandler
-                .addHint(kind + " variables must be initialized with the arrow operator '->'")
-                .addHint("Example: " + kind + " i32 p -> addr x")
-                .addHint("The arrow indicates the " + kind + " is being bound to a target")
-                .addHint("For regular assignment, use '='");
+                    errorHandler
+                        .addHint(kind +
+                                 " variables must be initialized with the arrow operator '->'")
+                        .addHint("Example: " + kind + " i32 p -> addr x")
+                        .addHint("The arrow indicates the " + kind + " is being bound to a target")
+                        .addHint("For regular assignment, use '='");
 
-            logSemanticErrors(
-                kind + " variable '" + declName + "' requires '->' for initialization, not '='",
-                declaration);
+                    logSemanticErrors(kind + " variable '" + declName +
+                                          "' requires '->' for initialization, not '='",
+                                      declaration);
+                }
+            }
         }
     }
 
@@ -171,14 +189,20 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
 
     // Pointer rules
     if (isPointer && !initializer) {
-        errorHandler.addHint("Pointers must point to something, even if it's null")
-            .addHint(
-                "Initialize with: 'addr variable', 'bitcast<ptr "
-                "T>(0)', or another pointer")
-            .addHint("Example: ptr i32 p -> addr x")
-            .addHint("Example: ptr i32 p -> bitcast<ptr i32>(0)  # null pointer");
+        if (!insideComponent && !insideRecord) {
+            errorHandler
+                .addHint(
+                    "Pointers that arent inside record or components must point to something, even "
+                    "if it's null")
+                .addHint(
+                    "Initialize with: 'addr variable', 'bitcast<ptr "
+                    "T>(0)', or another pointer")
+                .addHint("Example: ptr i32 p -> addr x")
+                .addHint("Example: ptr i32 p -> bitcast<ptr i32>(0)  # null pointer");
 
-        logSemanticErrors("Pointer variable '" + declName + "' must be initialized", declaration);
+            logSemanticErrors("Pointer variable '" + declName + "' must be initialized",
+                              declaration);
+        }
     }
 
     if (isRestrict && !isPointer) {
@@ -258,8 +282,8 @@ void Semantics::enforceDeclarationRules(VariableDeclaration* declaration,
     declInfo->storage().isHeap = isHeap;
     declInfo->storage().isGlobal = isGlobal;
     declInfo->type().isArray = isArray;
-    declInfo->type().isNullable = isNullable; 
-    declInfo->isExportable=isExportable;
+    declInfo->type().isNullable = isNullable;
+    declInfo->isExportable = isExportable;
 }
 
 void Semantics::handleNullInitializers(VariableDeclaration* declaration,

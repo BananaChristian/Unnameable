@@ -358,6 +358,13 @@ void IRGenerator::generateReturnStatement(Node *node) {
         funcBuilder.CreateRet(funcBuilder.CreateZExtOrTrunc(retVal, retTy));
         return;
     }
+    
+    if (!valTy) {
+        llvm::errs() << "IRGen Error: retVal->getType() is null!\n";
+        retVal->dump();
+        funcBuilder.CreateUnreachable();
+        return;
+    }
 
     llvm::errs() << "IRGen Error: Return type mismatch. Cannot adapt " << *valTy
                  << " to " << *retTy << "\n";

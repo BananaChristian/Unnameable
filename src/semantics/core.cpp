@@ -632,6 +632,10 @@ ResolvedType Semantics::inferInfixExpressionType(Node* node) {
         baseType.isNull = false;
         auto strippedName = getBaseTypeName(baseType);
         baseType.resolvedName = strippedName;
+        //If the right operand is a generic int or float give it context
+        if(dynamic_cast<INTLiteral*>(infixNode->right_operand.get())||dynamic_cast<FloatLiteral*>(infixNode->right_operand.get())){
+            rightType=baseType;
+        }
 
         if (!isTypeCompatible(baseType, rightType)) {
             logSemanticErrors("Type of fallback in coalesce does not match nullable type '" +
@@ -1685,6 +1689,15 @@ bool Semantics::isIntegerConstant(Node* node) {
                      i128Lit || u128Lit || isizeLit || usizeLit || intLit);
 
     return isIntLit;
+}
+
+bool Semantics::isFloatConstant(Node *node){
+    auto f32Lit=dynamic_cast<F32Literal*>(node);
+    auto f64Lit=dynamic_cast<F64Literal*>(node);
+    auto fltLit=dynamic_cast<FloatLiteral*>(node);
+
+    bool isFlt=(f32Lit||f64Lit||fltLit);
+    return isFlt;
 }
 
 ResolvedType Semantics::inferDeclarationBaseType(VariableDeclaration* declaration) {

@@ -20,17 +20,16 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
         reportDevBug("Could not find identifier metadata", identExpr);
     }
 
-
     if (!sym->codegen().llvmValue && currentComponent) {
         // Check if this identifier is a field of the current component
         auto compSym = semantics.getSymbolFromMeta(currentComponent);
         if (compSym && compSym->members.count(identName)) {
             // Treat as self.field , create a SelfExpression
-            Token selfToken("self",TokenType::SELF, identExpr->identifier.line, 
-                           identExpr->identifier.column);
+            Token selfToken("self", TokenType::SELF, identExpr->identifier.line,
+                            identExpr->identifier.column);
             std::vector<std::unique_ptr<Expression>> fields;
             fields.push_back(std::make_unique<Identifier>(identExpr->identifier));
-            
+
             auto selfExpr = std::make_unique<SelfExpression>(selfToken, std::move(fields));
             return generateSelfAddress(selfExpr.get());
         }
@@ -102,7 +101,7 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
         return address;
     }
 
-    reportDevBug("Infix operator cannot be treated as an address",infix);
+    reportDevBug("Infix operator cannot be treated as an address", infix);
     return nullptr;
 }
 
@@ -168,8 +167,11 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
         }
 
         lastMemberInfo = memIt->second;
+        if (lastMemberInfo->isFunction) 
+            reportDevBug("Cannot assign to a method call 'self." + fieldName + "'", selfExpr);
+        
 
-        // --- GEP for this field ---
+        //GEP for this field 
         auto llvmIt = llvmCustomTypes.find(currentTypeName);
         if (llvmIt == llvmCustomTypes.end()) {
             errorHandler.addHint("Could not find the type '" + currentTypeName +
@@ -179,15 +181,17 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
 
         llvm::StructType *structTy = llvmIt->second;
         if (structTy->isOpaque()) {
-            std::string msg = "Struct type '" + currentTypeName + "' is still opaque when accessing field '" + 
-                              fieldName + "'. Make sure component/record bodies are defined before generating methods that use them.";
+            std::string msg = "Struct type '" + currentTypeName +
+                              "' is still opaque when accessing field '" + fieldName +
+                              "'. Make sure component/record bodies are defined before generating "
+                              "methods that use them.";
             reportDevBug(msg, selfExpr);
         }
 
         currentPtr = funcBuilder.CreateStructGEP(structTy, currentPtr, lastMemberInfo->memberIndex,
                                                  fieldName + "_ptr");
 
-        // --- Drill into nested type if needed ---
+        // Drill into nested type if needed
         if (lastMemberInfo->type.kind == DataType::COMPONENT ||
             lastMemberInfo->type.kind == DataType::RECORD) {
             std::string lookUpName = lastMemberInfo->type.resolvedName;
@@ -301,7 +305,12 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
         totalOffset = funcBuilder.CreateAdd(totalOffset, scaledIdx, "accum_offset");
     }
 
-    llvm::Type *elemTy = getLLVMType(semantics.getArrayElementType(baseSym->type().type));
+    ResolvedType currentType = baseSym->type().type;
+    for (size_t i = 0; i < arrExpr->index_exprs.size(); ++i) {
+        if (!currentType.innerType) break;
+        currentType = *currentType.innerType;
+    }
+    llvm::Type *elemTy = getLLVMType(currentType);
     logInternal("[SUBSCRIPT] Final GEP with element type size: " +
                 std::to_string(layout->getTypeAllocSize(elemTy)));
 

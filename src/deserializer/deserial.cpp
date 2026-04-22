@@ -380,15 +380,27 @@ std::string Deserializer::resolveImportPath(ImportStatement* import,
     auto strLit = dynamic_cast<StringLiteral*>(import->stringExpr.get());
     std::string raw = strLit->string_token.TokenLiteral;
 
-    // Normalize paths to absolute to prevent "Relative vs Absolute" comparison
-    // bugs
+    // Normalize paths to absolute to prevent "Relative vs Absolute" comparison bugs
     fs::path absCurrentFile = fs::absolute(currentFile);
     fs::path currentDir = absCurrentFile.parent_path();
 
-    fs::path stubPath = currentDir / (raw + ".stub");
+    // Determine where to put stub and object files
+    fs::path stubPath;
     fs::path unnPath = currentDir / (raw + ".unn");
-    fs::path binaryPath = currentDir / (raw + ".o");  // For now use .o
-    recordLink(binaryPath);
+    fs::path binaryPath;
+    
+    if (!buildDirectory.empty()) {
+        // Use build directory for outputs
+        stubPath = fs::path(buildDirectory) / (raw + ".stub");
+        binaryPath = fs::path(buildDirectory) / (raw + ".o");
+    } else {
+        // Use source directory
+        stubPath = currentDir / (raw + ".stub");
+        binaryPath = currentDir / (raw + ".o");
+    }
+    
+    // Record the link (always, regardless of build directory)
+    recordLink(binaryPath.string());
 
     // Auto-Generation Logic
     if (!fs::exists(stubPath)) {
@@ -396,8 +408,7 @@ std::string Deserializer::resolveImportPath(ImportStatement* import,
             logInternal("[AUTO-STUB] Missing interface for '" + raw +
                         "'. Spawning sub-compiler...");
 
-            // Recursion Guard: Pass the absolute path of the current file to the
-            // child
+            // Recursion Guard: Pass the absolute path of the current file to the child
             const char* env_stack = std::getenv("UNNC_IMPORT_STACK");
             std::string newStack =
                 (env_stack ? std::string(env_stack) + "," : "") + absCurrentFile.string();
@@ -408,6 +419,11 @@ std::string Deserializer::resolveImportPath(ImportStatement* import,
             setenv("UNNC_IMPORT_STACK", newStack.c_str(), 1);
 #endif
 
+            // Also pass build directory to child
+            if (!buildDirectory.empty()) {
+                setenv("UNNC_BUILD_DIR", buildDirectory.c_str(), 1);
+            }
+
             // Find the absolute path of THIS compiler executable
             std::string compilerExe;
             try {
@@ -417,8 +433,10 @@ std::string Deserializer::resolveImportPath(ImportStatement* import,
                 compilerExe = "./unnc";
             }
 
-            // Explicitly tell the child where to put the stub
-            std::string cmd = compilerExe + " " + unnPath.string() + " -stub " + stubPath.string();
+            // Explicitly tell the child where to put the stub and object
+            std::string cmd = compilerExe + " " + unnPath.string() + 
+                              " -stub " + stubPath.string() +
+                              " -compile " + binaryPath.string();
 
             logInternal("[EXEC] " + cmd);
             int result = std::system(cmd.c_str());
@@ -431,8 +449,7 @@ std::string Deserializer::resolveImportPath(ImportStatement* import,
                 throw std::runtime_error(errorMsg);
             }
         } else {
-            std::string errorMsg = "Module Not Found: Checked for '" + stubPath.string() +
-                                   "' and '" + unnPath.string() + "'";
+            std::string errorMsg = "Module Not Found: Checked for '" + unnPath.string() + "'";
             logImportError(errorMsg, strLit->expression.line, strLit->expression.column);
             throw std::runtime_error(errorMsg);
         }

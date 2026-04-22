@@ -455,6 +455,9 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
     // Optionally store info for further analysis
     auto arrAccessInfo = std::make_shared<SymbolInfo>();
     arrAccessInfo->type().type = *elementType;
+    arrAccessInfo->type().isPointer = elementType->isPointer();
+    arrAccessInfo->type().isRef = elementType->isRef();
+    arrAccessInfo->type().isArray = elementType->isArray();
     arrAccessInfo->hasError = hasError;
     arrAccessInfo->storage().isHeap = arrSymbol->storage().isHeap;
     arrAccessInfo->type().sizePerDimensions = arrSymbol->type().sizePerDimensions;
@@ -648,7 +651,7 @@ void Semantics::walkSizeOfExpression(Node *node) {
 
     ResolvedType type = inferNodeDataType(typeNode);
     bool isInbuilt =
-        isInteger(type) || isBoolean(type) || isChar(type) || isString(type) || isFloat(type);
+        isInteger(type) || isBoolean(type) || isChar(type) || isString(type) || isFloat(type) ||type.kind==DataType::OPAQUE;
 
     auto typeName = sizeExpr->type->expression.TokenLiteral;
 
@@ -663,8 +666,6 @@ void Semantics::walkSizeOfExpression(Node *node) {
     auto sizeInfo = std::make_shared<SymbolInfo>();
     sizeInfo->type().type = ResolvedType::makeBase(DataType::USIZE, "usize");
     sizeInfo->hasError = hasError;
-
-    hasError = false;
 
     metaData[sizeExpr] = sizeInfo;
 }

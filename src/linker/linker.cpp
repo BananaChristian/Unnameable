@@ -272,6 +272,13 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
 
 void Linker::compileNativeModule(const std::string &source,
                                  const std::string &output) {
+    fs::path outputPath(output);
+    fs::path parentDir=outputPath.parent_path();
+    if (!parentDir.empty() && !fs::exists(parentDir)) {
+        fs::create_directories(parentDir);
+        std::cout << "[AUTO-COMPILE] Created directory: " << parentDir << "\n";
+  }
+
   // Get the absolute path to this compiler binary
   char buf[4096];
   ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);

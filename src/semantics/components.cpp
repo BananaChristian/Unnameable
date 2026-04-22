@@ -523,13 +523,7 @@ ResolvedType* Semantics::resolveSelfChain(SelfExpression* selfExpr,
     ResolvedType* currentResolvedType = &currentTypeInfo->type;
 
     for (const auto& fieldNode : selfExpr->fields) {
-        auto ident = dynamic_cast<Identifier*>(fieldNode.get());
-        if (!ident) {
-            logSemanticErrors("Expected identifier in 'self' field chain", selfExpr);
-            return nullptr;
-        }
-
-        const std::string& fieldName = ident->identifier.TokenLiteral;
+        const std::string& fieldName = extractIdentifierName(fieldNode.get());
         logInternal("Name received from self expression '" + fieldName + "'");
 
         // Look in the current type's members
@@ -537,7 +531,7 @@ ResolvedType* Semantics::resolveSelfChain(SelfExpression* selfExpr,
         if (memIt == currentTypeInfo->members.end()) {
             logSemanticErrors("'" + fieldName + "' does not exist in type '" +
                                   currentTypeInfo->type.resolvedName + "'",
-                              ident);
+                                  fieldNode.get());
             return nullptr;
         }
 
@@ -554,7 +548,7 @@ ResolvedType* Semantics::resolveSelfChain(SelfExpression* selfExpr,
         if (isCustom) {
             auto ctiIt = customTypesTable.find(lookUpName);
             if (ctiIt == customTypesTable.end()) {
-                logSemanticErrors("Type info for '" + lookUpName + "' not found", ident);
+                logSemanticErrors("Type info for '" + lookUpName + "' not found", fieldNode.get());
                 return nullptr;
             }
             currentTypeInfo = ctiIt->second;
@@ -570,8 +564,6 @@ ResolvedType* Semantics::resolveSelfChain(SelfExpression* selfExpr,
 void Semantics::walkSelfExpression(Node* node) {
     auto selfExpr = dynamic_cast<SelfExpression*>(node);
     if (!selfExpr) return;
-    hasError = false;
-
     // Must be inside a component
     if (currentTypeStack.empty() || currentTypeStack.back().type.kind != DataType::COMPONENT) {
         logSemanticErrors("'self' cannot be used outside a component", selfExpr);
@@ -588,12 +580,12 @@ void Semantics::walkSelfExpression(Node* node) {
     info->type().isNullable = finalType->isNull;
 
     // Mutability etc only available if the last member is a custom member
-    auto lastIdent = dynamic_cast<Identifier*>(selfExpr->fields.back().get());
-    if (lastIdent) {
+    auto lastNode = selfExpr->fields.back().get();
+    if (lastNode) {
         auto ctIt = customTypesTable.find(componentName);
         if (ctIt != customTypesTable.end()) {
             auto& members = ctIt->second->members;
-            auto memIt = members.find(lastIdent->identifier.TokenLiteral);
+            auto memIt = members.find(extractIdentifierName(lastNode));
             if (memIt != members.end()) {
                 auto m = memIt->second;
                 info->storage().isMutable = m->isMutable;

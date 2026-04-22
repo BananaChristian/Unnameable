@@ -41,7 +41,7 @@ llvm::Value *IRGenerator::generateFStringLiteral(Node *node) {
 
     llvm::Value *cursor = funcBuilder.getInt64(0);
 
-    bool wasInhibited=inhibitCleanUp;
+    bool wasInhibited = inhibitCleanUp;
     inhibitCleanUp = true;
 
     for (const auto &seg : fStr->segments) {
@@ -836,13 +836,13 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
     llvm::StructType *currentStructTy = nullptr;
     auto it = componentTypes.find(compName);
     if (it == componentTypes.end())
-        throw std::runtime_error("Component '" + compName + "' not found in componentTypes");
+        reportDevBug("Component '" + compName + "' not found in componentTypes", selfExpr);
 
     currentStructTy = it->second;
 
     //  Load 'self' pointer
     llvm::AllocaInst *selfAlloca = currentFunctionSelfMap[currentFunction];
-    if (!selfAlloca) throw std::runtime_error("'self' access outside component method");
+    if (!selfAlloca) reportDevBug("'self' access outside component method", selfExpr);
 
     llvm::Value *currentPtr =
         funcBuilder.CreateLoad(currentStructTy->getPointerTo(), selfAlloca, "self_load");
@@ -852,38 +852,37 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
     // Semantic chain walk
     auto ctIt = semantics.customTypesTable.find(compName);
     if (ctIt == semantics.customTypesTable.end())
-        throw std::runtime_error("Unknown component '" + compName + "'");
+        reportDevBug("Unknown component '" + compName + "'", selfExpr);
 
     auto currentTypeInfo = ctIt->second;
     std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
 
     for (size_t i = 0; i < selfExpr->fields.size(); ++i) {
-        auto ident = dynamic_cast<Identifier *>(selfExpr->fields[i].get());
-        if (!ident) throw std::runtime_error("Expected identifier in self chain");
-
         std::string currentTypeName = currentTypeInfo->type.resolvedName;
         if (currentTypeInfo->type.isPointer() || currentTypeInfo->type.isRef())
             currentTypeName = semantics.getBaseTypeName(currentTypeInfo->type);
 
-        std::string fieldName = ident->identifier.TokenLiteral;
+        std::string fieldName = semantics.extractIdentifierName(selfExpr->fields[i].get());
 
         auto memIt = currentTypeInfo->members.find(fieldName);
         if (memIt == currentTypeInfo->members.end())
-            throw std::runtime_error("Field not found in '" + currentTypeName + "'");
+            reportDevBug("Field not found in '" + currentTypeName + "'", selfExpr);
 
         lastMemberInfo = memIt->second;
+        
+        if(lastMemberInfo->isFunction) break;
 
-        // --- GEP for this field ---
+        // GEP for this field
         auto llvmIt = llvmCustomTypes.find(currentTypeName);
         if (llvmIt == llvmCustomTypes.end())
-            throw std::runtime_error("LLVM struct missing for type '" + currentTypeName + "'");
+            reportDevBug("LLVM struct missing for type '" + currentTypeName + "'", selfExpr);
 
         llvm::StructType *structTy = llvmIt->second;
 
         currentPtr = funcBuilder.CreateStructGEP(structTy, currentPtr, lastMemberInfo->memberIndex,
                                                  fieldName + "_ptr");
 
-        // --- Drill into nested type if needed ---
+        //  Drill into nested type if needed
         if (lastMemberInfo->type.kind == DataType::COMPONENT ||
             lastMemberInfo->type.kind == DataType::RECORD) {
             std::string lookUpName = lastMemberInfo->type.resolvedName;
@@ -892,7 +891,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
 
             auto nestedIt = semantics.customTypesTable.find(lookUpName);
             if (nestedIt == semantics.customTypesTable.end())
-                throw std::runtime_error("Nested type '" + lookUpName + "'not found");
+                reportDevBug("Nested type '" + lookUpName + "'not found", selfExpr);
 
             currentTypeInfo = nestedIt->second;
         } else {
@@ -900,18 +899,43 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
             currentTypeInfo = nullptr;
         }
     }
+    
+    // Final emit
+    // Check if the last field is actually a call expression
+    bool lastFieldIsCall = dynamic_cast<CallExpression*>(selfExpr->fields.back().get()) != nullptr;
+    
+    if (lastFieldIsCall) {
+        std::string methodName = semantics.extractIdentifierName(selfExpr->fields.back().get());
+        std::string mangledName = compName + "_" + methodName;
+    
+        llvm::Function* targetFunc = module->getFunction(mangledName);
+        if (!targetFunc)
+            reportDevBug("Self method '" + methodName + "' not found in module", selfExpr);
+    
 
-    // --- Final load ---
-    llvm::Type *finalTy = getLLVMType(lastMemberInfo->type);
-    auto *finalLoad =
-        funcBuilder.CreateLoad(finalTy, currentPtr, selfExpr->fields.back()->toString() + "_val");
-
-    // Check if the field itself is volatile
-    if (lastMemberInfo->isVolatile) {
-        finalLoad->setVolatile(true);
+        // Collect any call arguments from the CallExpression node
+        auto callNode = dynamic_cast<CallExpression*>(selfExpr->fields.back().get());
+        std::vector<llvm::Value*> args;
+        args.push_back(currentPtr); // 'self' is always first
+    
+        FunctionCoercion coercion;
+        auto coercionIt = functionCoercionMap.find(targetFunc);
+        if (coercionIt != functionCoercionMap.end())
+            coercion = coercionIt->second;
+    
+        std::vector<llvm::Value*> userArgs = prepareArguments(targetFunc, callNode->parameters, 1, coercion);
+        args.insert(args.end(), userArgs.begin(), userArgs.end());
+    
+        return funcBuilder.CreateCall(targetFunc, args, methodName + "_self_call");
+    } else {
+        // Original field load path
+        llvm::Type *finalTy = getLLVMType(lastMemberInfo->type);
+        auto *finalLoad = funcBuilder.CreateLoad(
+            finalTy, currentPtr, selfExpr->fields.back()->toString() + "_val");
+        if (lastMemberInfo->isVolatile)
+            finalLoad->setVolatile(true);
+        return finalLoad;
     }
-
-    return finalLoad;
 }
 
 llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {

@@ -53,6 +53,16 @@ fs::path getCompilerRoot() {
   }
 }
 
+void ensureParentDirectoryExists(const fs::path &filePath,const std::string &logMessage){
+    fs::path parentDir= filePath.parent_path();
+    if(!parentDir.empty()&& !fs::exists(parentDir)){
+        fs::create_directories(parentDir);
+        if(logOutput&&!logMessage.empty()){
+            std::cout<<COLOR_CYAN<<"[INFO]"<<logMessage<<": "<<parentDir.string()<<COLOR_RESET<<"\n";
+        }
+    }
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) {
     std::cerr << COLOR_YELLOW << "Usage:" << COLOR_RESET
@@ -191,6 +201,20 @@ int main(int argc, char **argv) {
   }
 
   fs::path srcPath(sourceFile);
+  if (!exeFile.empty()) {
+        fs::path exePath(exeFile);
+        fs::path buildDir = exePath.parent_path();
+    // If objFile wasn't explicitly set, put it in the build directory
+        if (objFile.empty() || objFile == srcPath.stem().string() + ".o") {
+            objFile = (buildDir / srcPath.stem()).string() + ".o";
+        }
+    
+    // If stubFile wasn't explicitly set, put it in the build directory
+        if (stubFile.empty() || stubFile == srcPath.stem().string() + ".stub") {
+        stubFile = (buildDir / srcPath.stem()).string() + ".stub";
+        }
+    }
+
   if (objFile.empty())
     objFile = srcPath.stem().string() + ".o";
   if (exeFile.empty())
@@ -313,6 +337,7 @@ int main(int argc, char **argv) {
       // STUB GENERATION
       StubGen stubGen(semantics, stubFile, logOutput);
       if (compileOnly || stubOnly) {
+          ensureParentDirectoryExists(stubFile,"Creating stub directory");
         if (logOutput)
           std::cout << COLOR_BLUE << "Generating stub ..." << COLOR_RESET
                     << "\n";
@@ -348,6 +373,7 @@ int main(int argc, char **argv) {
       std::cout << COLOR_YELLOW
                 << "\nGenerating object file: " << objPath.string()
                 << COLOR_RESET << "\n";
+      ensureParentDirectoryExists(objPath,"Creating object directory");
       if (!irgen.emitObjectFile(objPath.string())) {
         std::cerr << COLOR_RED << "[ERROR]" << COLOR_RESET
                   << " Failed to generate object file: " << objPath.string()
@@ -365,6 +391,7 @@ int main(int argc, char **argv) {
       fs::path exePath = fs::absolute(exeFile);
       std::cout << COLOR_YELLOW << "\nLinking executable: " << exePath.string()
                 << COLOR_RESET << "\n";
+      ensureParentDirectoryExists(exePath,"Creating executable directory");
 
       Linker linker(deserial, objPath.string(), staticCompile);
       linker.processLinks(AST, sourceFile, exePath.string());

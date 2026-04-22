@@ -85,6 +85,7 @@ class Semantics {
     void collectDimensions(TypeModifier *modifier, std::vector<uint64_t> &staticDims,
                            std::vector<Node *> &dynamicDims);
     bool isIntegerConstant(Node *node);
+    bool isFloatConstant(Node *node);
     std::vector<uint64_t> getSizePerDimesion(Node *node);
     std::string getBaseTypeName(const ResolvedType &type);
     uint64_t getIntegerConstant(Node *node);
