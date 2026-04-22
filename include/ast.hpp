@@ -913,32 +913,6 @@ struct AllocatorStatement : Statement {
         allocator_name(std::move(name)), block(std::move(blk)){};
 };
 
-struct HeapStatement : Statement {
-  Token heap_token;
-  std::unique_ptr<Expression> allocType;
-  std::unique_ptr<Statement> stmt;
-
-  std::string toString() override {
-    std::string allocName = "";
-    std::string stmtStr = "";
-
-    if (allocType) {
-      allocName = " <" + allocType->toString() + ">";
-    }
-
-    if (stmt) {
-      stmtStr = stmt->toString();
-    }
-
-    return "Heap Statement: " + heap_token.TokenLiteral + allocName + " " +
-           stmtStr;
-  }
-
-  HeapStatement(Token heap, std::unique_ptr<Expression> alloc,
-                std::unique_ptr<Statement> st)
-      : Statement(heap), allocType(std::move(alloc)), stmt(std::move(st)){};
-};
-
 // Seal block statement
 struct SealStatement : Statement {
   bool isExportable;
