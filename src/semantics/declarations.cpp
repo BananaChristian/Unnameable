@@ -8,23 +8,26 @@ void Semantics::giveGenericLiteralContext(Node* literal, const ResolvedType& con
                                           const std::shared_ptr<SymbolInfo>& litSym) {
     if (dynamic_cast<INTLiteral*>(literal)) {
         if (isInteger(contextType)) litSym->type().type = contextType;
+        return;
     }
-
     if (dynamic_cast<FloatLiteral*>(literal)) {
         if (isFloat(contextType)) litSym->type().type = contextType;
+        return;
     }
-
-    // Special case for infix(for stuff like 2*2 or 4*3)
     if (auto infix = dynamic_cast<InfixExpression*>(literal)) {
-        if (isIntegerConstant(infix->left_operand.get()) &&
-            isIntegerConstant(infix->right_operand.get())) {
-            if (isInteger(contextType)) {
-                litSym->type().type = contextType;
-            }
-        } else if (isFloatConstant(infix->left_operand.get()) &&
-                   isFloatConstant(infix->right_operand.get())) {
-            if (isFloat(contextType)) litSym->type().type = contextType;
+        bool leftIsGeneric = isGenericIntOrFloat(infix->left_operand.get());
+        bool rightIsGeneric = isGenericIntOrFloat(infix->right_operand.get());
+
+        if (leftIsGeneric) {
+            auto leftSym = getSymbolFromMeta(infix->left_operand.get());
+            if (leftSym) giveGenericLiteralContext(infix->left_operand.get(), contextType, leftSym);
         }
+        if (rightIsGeneric) {
+            auto rightSym = getSymbolFromMeta(infix->right_operand.get());
+            if (rightSym)
+                giveGenericLiteralContext(infix->right_operand.get(), contextType, rightSym);
+        }
+        if (litSym) litSym->type().type = contextType;
     }
 }
 

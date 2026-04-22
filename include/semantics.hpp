@@ -280,6 +280,7 @@ class Semantics {
     bool isCallCompatible(const SymbolInfo &funcInfo, CallExpression *callExpr);
     bool isMethodCallCompatible(const MemberInfo &memFuncInfo, CallExpression *callExpr);
     bool isLiteral(Node *node);
+    bool isGenericIntOrFloat(Node *node);
     void popScope();
     void registerLiteral(Node *literal, const ResolvedType &type);
     Node *getCurrentBlock();

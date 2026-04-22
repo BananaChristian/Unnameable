@@ -615,7 +615,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node* node) {
         }
     }
 
-    // --- Regular binary operator ---
+    // Regular binary operator
     ResolvedType leftType = inferNodeDataType(infixNode->left_operand.get());
     ResolvedType rightType = inferNodeDataType(infixNode->right_operand.get());
 
@@ -632,10 +632,6 @@ ResolvedType Semantics::inferInfixExpressionType(Node* node) {
         baseType.isNull = false;
         auto strippedName = getBaseTypeName(baseType);
         baseType.resolvedName = strippedName;
-        //If the right operand is a generic int or float give it context
-        if(dynamic_cast<INTLiteral*>(infixNode->right_operand.get())||dynamic_cast<FloatLiteral*>(infixNode->right_operand.get())){
-            rightType=baseType;
-        }
 
         if (!isTypeCompatible(baseType, rightType)) {
             logSemanticErrors("Type of fallback in coalesce does not match nullable type '" +
@@ -663,9 +659,22 @@ ResolvedType Semantics::inferInfixExpressionType(Node* node) {
             return ResolvedType::error();
         }
     }
+    
+    bool leftIsGeneric  = isGenericIntOrFloat(infixNode->left_operand.get());
+    bool rightIsGeneric = isGenericIntOrFloat(infixNode->right_operand.get());
 
     ResolvedType peeledLeft = peelRef(leftType);
     ResolvedType peeledRight = peelRef(rightType);
+    
+    if (!leftIsGeneric && rightIsGeneric) {
+        auto rightSym = getSymbolFromMeta(infixNode->right_operand.get());
+        if (rightSym) giveGenericLiteralContext(infixNode->right_operand.get(), peeledLeft, rightSym);
+        peeledRight = peeledLeft; // now they match
+    } else if (leftIsGeneric && !rightIsGeneric) {
+        auto leftSym = getSymbolFromMeta(infixNode->left_operand.get());
+        if (leftSym) giveGenericLiteralContext(infixNode->left_operand.get(), peeledRight, leftSym);
+        peeledLeft = peeledRight;
+    }
 
     auto infixType = resultOfBinary(operatorType, peeledLeft, peeledRight, infixNode);
     return infixType;  // Return the correct type
@@ -1096,20 +1105,19 @@ bool Semantics::isTypeCompatible(const ResolvedType& expected, const ResolvedTyp
     // Error type always fails, don't silently pass broken types through
     if (actual.kind == DataType::ERROR || expected.kind == DataType::ERROR) return false;
 
-    //Special case (a string, ptr<u8> and ptr<char8> are the same so just let it slide)
-    if (actual.isBase() && actual.kind == DataType::STRING && 
-        expected.isPointer() && expected.innerType) {
-        if (expected.innerType->isBase() && 
-            (expected.innerType->kind == DataType::U8 || 
-             expected.innerType->kind == DataType::CHAR8)) {
+    // Special case (a string, ptr<u8> and ptr<char8> are the same so just let it slide)
+    if (actual.isBase() && actual.kind == DataType::STRING && expected.isPointer() &&
+        expected.innerType) {
+        if (expected.innerType->isBase() && (expected.innerType->kind == DataType::U8 ||
+                                             expected.innerType->kind == DataType::CHAR8)) {
             return true;
         }
     }
-    
+
     // string -> ptr<char8> (if you have CHAR8 type)
-    if (actual.isBase() && actual.kind == DataType::STRING && 
-        expected.isPointer() && expected.innerType &&
-        expected.innerType->isBase() && expected.innerType->kind == DataType::CHAR8) {
+    if (actual.isBase() && actual.kind == DataType::STRING && expected.isPointer() &&
+        expected.innerType && expected.innerType->isBase() &&
+        expected.innerType->kind == DataType::CHAR8) {
         return true;
     }
 
@@ -1135,13 +1143,24 @@ bool Semantics::isTypeCompatible(const ResolvedType& expected, const ResolvedTyp
 
     // Base case, both are concrete types
     if (expected.isBase() && actual.isBase()) {
-        if (expected.kind != actual.kind) return false;
-        // Custom types — compare by name
-        if (expected.kind == DataType::COMPONENT || expected.kind == DataType::RECORD ||
-            expected.kind == DataType::ENUM) {
-            return expected.resolvedName == actual.resolvedName;
+        if (expected.kind == actual.kind) {
+            // Custom types — compare by name
+            if (expected.kind == DataType::COMPONENT || expected.kind == DataType::RECORD ||
+                expected.kind == DataType::ENUM) {
+                return expected.resolvedName == actual.resolvedName;
+            }
+            return true;
         }
-        return true;
+
+        auto isCharUintPair = [](DataType a, DataType b) {
+            return (a == DataType::CHAR8 && b == DataType::U8) ||
+                   (a == DataType::CHAR16 && b == DataType::U16) ||
+                   (a == DataType::CHAR32 && b == DataType::U32);
+        };
+
+        // char -> uint: allowed (u8 x = 'A')
+        if (isCharUintPair(actual.kind, expected.kind)) return true;
+        return false;
     }
 
     // Array check size compatibility then recurse
@@ -1580,6 +1599,16 @@ bool Semantics::isBoolean(const ResolvedType& t) {
     return t.kind == DataType::BOOLEAN && t.isBase();
 }
 
+bool Semantics::isGenericIntOrFloat(Node* node) {
+    if (dynamic_cast<INTLiteral*>(node)) return true;
+    if (dynamic_cast<FloatLiteral*>(node)) return true;
+    if (auto infix = dynamic_cast<InfixExpression*>(node)) {
+        return isGenericIntOrFloat(infix->left_operand.get()) &&
+               isGenericIntOrFloat(infix->right_operand.get());
+    }
+    return false;
+}
+
 bool Semantics::isString(const ResolvedType& t) { return t.kind == DataType::STRING && t.isBase(); }
 
 bool Semantics::isChar(const ResolvedType& t) {
@@ -1691,12 +1720,12 @@ bool Semantics::isIntegerConstant(Node* node) {
     return isIntLit;
 }
 
-bool Semantics::isFloatConstant(Node *node){
-    auto f32Lit=dynamic_cast<F32Literal*>(node);
-    auto f64Lit=dynamic_cast<F64Literal*>(node);
-    auto fltLit=dynamic_cast<FloatLiteral*>(node);
+bool Semantics::isFloatConstant(Node* node) {
+    auto f32Lit = dynamic_cast<F32Literal*>(node);
+    auto f64Lit = dynamic_cast<F64Literal*>(node);
+    auto fltLit = dynamic_cast<FloatLiteral*>(node);
 
-    bool isFlt=(f32Lit||f64Lit||fltLit);
+    bool isFlt = (f32Lit || f64Lit || fltLit);
     return isFlt;
 }
 
@@ -1981,7 +2010,7 @@ void Semantics::transferResponsibility(LifeTime* currentBaton, LifeTime* targetB
     logInternal("[HEIST] Victim (Target): " + targetBaton->ID);
     logInternal("[HEIST] Target Pointer Count: " +
                 std::to_string(targetSym->storage().pointerCount));
-    
+
     if (currentBaton->ID == targetBaton->ID) {
         logInternal("[HEIST] SKIPPED: Cannot create self-dependency");
         return;
