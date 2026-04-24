@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
                 << COLOR_RESET
                 << "  -compile <file>       Compile to object file only\n"
                 << "  -build <file>         Compile and link to executable\n"
-                << "  -stub <file>          Generate a stub file\n"
+                << "  -stub <file>          Generate a stub file only\n"
                 << "  -verbose              Enable verbose internal logs\n"
                 << "  -check <file>         Just run the front end\n"
                 << "  -help                 Show this help message\n"
@@ -204,12 +204,12 @@ int main(int argc, char **argv) {
   if (!exeFile.empty()) {
         fs::path exePath(exeFile);
         fs::path buildDir = exePath.parent_path();
-    // If objFile wasn't explicitly set, put it in the build directory
+        // If objFile wasn't explicitly set, put it in the build directory
         if (objFile.empty() || objFile == srcPath.stem().string() + ".o") {
             objFile = (buildDir / srcPath.stem()).string() + ".o";
         }
     
-    // If stubFile wasn't explicitly set, put it in the build directory
+        // If stubFile wasn't explicitly set, put it in the build directory
         if (stubFile.empty() || stubFile == srcPath.stem().string() + ".stub") {
         stubFile = (buildDir / srcPath.stem()).string() + ".stub";
         }
@@ -336,7 +336,7 @@ int main(int argc, char **argv) {
 
       // STUB GENERATION
       StubGen stubGen(semantics, stubFile, logOutput);
-      if (compileOnly || stubOnly) {
+      if (stubOnly) {
           ensureParentDirectoryExists(stubFile,"Creating stub directory");
         if (logOutput)
           std::cout << COLOR_BLUE << "Generating stub ..." << COLOR_RESET
@@ -351,7 +351,7 @@ int main(int argc, char **argv) {
         }
 
         // If the user ONLY wanted a stub, we stop here
-        if (stubOnly && !compileOnly) {
+        if (stubOnly) {
           std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
                     << " Interface stub generated: " << stubFile << "\n";
           return 0;

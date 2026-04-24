@@ -6,19 +6,19 @@ enum HttpStatus{
 
 func get_http_code(HttpStatus status):i32{
     if(status==HttpStatus::OK){
-        return 200;
+        return 200
     }elif(status==HttpStatus::NotFound){
-        return 404;
+        return 404
     }elif(status==HttpStatus::InternalServerError){
-        return 500;
+        return 500
     }
 
-    return 0;
+    return 0
 }
 
 func main:i32{
     auto code =HttpStatus::OK;
     i32 raw_code=get_http_code(code);
-    shout! raw_code; #Should print 200
-    return 0;
+    trace raw_code #Should print 200
+    return 0
 }

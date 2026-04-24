@@ -1,20 +1,20 @@
 record Bounds{
-    i32 width;
-    i32 height;
+    i32 width
+    i32 height
 }
 
 record Rect{
-    i32 x;
-    i32 y;
+    i32 x
+    i32 y
 }
 
 func dimensions(Rect r): Bounds{
-    shout! r.x;
-    return Bounds{width=r.x,height=r.y};
+    trace r.x;
+    return Bounds{width=r.x,height=r.y}
 }
 
 func main:i32{
-    Rect rectangle=Rect{x=100,y=50};
-    dimensions(rectangle);
-    return 0;
+    Rect rectangle=Rect{x=100,y=50}
+    dimensions(rectangle)
+    return 0
 }

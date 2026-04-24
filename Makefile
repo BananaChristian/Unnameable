@@ -94,9 +94,9 @@ $(CORE_DIR)/runtime.o: $(LIB_DIR)/tools/runtime.cpp
 
 run: $(OUT) core
 ifeq ($(OS),Windows_NT)
-	$(OUT) compiler_test/test.unn -verbose
+	$(OUT) tests/test.unn -verbose
 else
-	./$(OUT) compiler_test/test.unn -verbose
+	./$(OUT) tests/test.unn -verbose
 endif
 
 clean:

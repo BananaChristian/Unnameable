@@ -180,6 +180,7 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
   std::vector<std::string> filesToLink;
   std::string exeDir = getExecutableDir();
   fs::path coreDir = fs::path(exeDir).parent_path() / "core";
+  fs::path scriptDir=fs::path(exeDir).parent_path()/ "scripts";
 
   if (needsDynamic) {
     fs::path interpPath = coreDir / "interp.o";
@@ -236,7 +237,7 @@ void Linker::processLinks(const std::vector<std::unique_ptr<Node>> &nodes,
   // ---CHOOSE THE SCRIPT AND EXECUTE ---
   std::string scriptName =
       needsDynamic ? "linker_dynamic.ld" : "linker_static.ld";
-  fs::path scriptPath = coreDir / scriptName;
+  fs::path scriptPath = scriptDir / scriptName;
 
   if (!fs::exists(scriptPath))
     throw std::runtime_error("Linker Error: Missing script " + scriptName);
