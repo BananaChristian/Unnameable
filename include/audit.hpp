@@ -132,6 +132,7 @@ class Auditor {
     void rearmBaton(const std::string &ID, Node *robber);
     void simulateDeclFree(VariableDeclaration *declaration, const std::string &contextID);
     void simulateFree(Node *contextNode, const std::string &contextID);
+    void freeCore(LifeTime *baton,const std::shared_ptr<SymbolInfo> &contextSym,Node *holderNode);
     void interceptHeist(Node *contextNode);
 
     // Loggers and reporters

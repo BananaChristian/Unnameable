@@ -38,11 +38,11 @@ void Auditor::registerAuditorFunctions() {
 void Auditor::buildUsageMap(BlockExpression *block) {
     usageMap.clear();
     int n = block->statements.size();
+    logInternal("[USAGE_MAP_BUILD] Current block has "+std::to_string(n));
 
     auto recordUsage = [&](Node *node, int index) {
         auto ids = semantics.digIdentifiers(node);
         for (const auto &idNode : ids) {
-            // Get the actual Baton ID (e.g., "N0") instead of the string "Identifier: x"
             auto sym = semantics.getSymbolFromMeta(idNode);
             if (!sym) {
                 logInternal("Failed to get symbol into for ident node skipping...'" +
@@ -53,6 +53,7 @@ void Auditor::buildUsageMap(BlockExpression *block) {
             auto baton = semantics.queryForLifeTimeBaton(sym->codegen().ID);
             if (baton) {
                 auto &batonMeta = semantics.responsibilityTable[baton];
+                logInternal("[USAGE_MAP_BUILD] Storing "+batonMeta->ID+" at usage index "+std::to_string(index));
                 usageMap[batonMeta->ID] = index;
             }
         }
@@ -70,7 +71,10 @@ void Auditor::buildUsageMap(BlockExpression *block) {
 bool Auditor::isUsedDownwards(const std::string &ID) {
     if (usageMap.find(ID) == usageMap.end()) return false;
 
-    return usageMap[ID] >= currentStmtIdx;
+    logInternal("[DOWNWARD_USAGE_CHECKER] Current statement index is :"+std::to_string(currentStmtIdx));
+    bool isUsageValid=usageMap[ID]>currentStmtIdx;
+    logInternal("[DOWNWARD_USAGE_CHECKER] Is being used downwards: "+std::to_string(isUsageValid));
+    return isUsageValid;
 }
 
 void Auditor::runClassifier(Node *node) {
@@ -1097,6 +1101,42 @@ bool Auditor::isBunkered(const std::string &id) {
     return bunkeredIDs.find(id) != bunkeredIDs.end();
 }
 
+void Auditor::freeCore(LifeTime *baton,const std::shared_ptr<SymbolInfo> &contextSym,Node *holderNode){
+    if(!baton)
+        reportDevBug("[AUDIT-FREE] Failed to get baton ",holderNode);
+    if(!contextSym)
+        reportDevBug("Failed to get the holder'ssymbol info",holderNode);
+    logInternal("[AUDIT-FREE] Baton ID: "+baton->ID); 
+       
+    logInternal("   [AUDIT-FREE] State: isResponsible=" +
+                    std::string(baton->isResponsible ? "T" : "F") +", isAlive=" + std::string(baton->isAlive ? "T" : "F") +", ptrCount=" + std::to_string(baton->ptrCount));
+
+    if(baton->ptrCount==0&&baton->refCount==0){
+       if(baton->isResponsible&&baton->isAlive){
+           logInternal("[AUDIT-FREE] Death condition met ,Simulating death for lifetime family: "+baton->ID);
+           baton->isAlive=false;
+
+            bool dropCount = (contextSym->type().isPointer && contextSym->storage().isHeap); 
+            logInternal("[AUDIT-FREE]    Dependents to process: " +std::to_string(baton->dependents.size()));
+            std::vector<std::string> toRearm;
+            for(const auto &[id,depSym]:baton->dependents){
+                if(isUsedDownwards(id)){
+                    toRearm.push_back(id);
+                }else{
+                    transferDependent(id,depSym,dropCount);
+                }
+            }
+            for(const auto &id:toRearm){
+                rearmBaton(id,holderNode);
+            }
+       }else{
+           logInternal(" [AUDIT-FREE] Family is already dead or not even responsible for its own memory");
+       } 
+    }else{
+        logInternal("[AUDIT-FREE ] Something is still holding this memory pointers or references still exist Ptrs("+std::to_string(baton->ptrCount)+") Refs("+std::to_string(baton->refCount)+")");
+    }
+}
+
 void Auditor::simulateDeclFree(VariableDeclaration *declaration, const std::string &contextID) {
     logInternal("\n  [SIMULATE-FREE] Target: " + contextID);
     if (inhibit) {
@@ -1122,45 +1162,9 @@ void Auditor::simulateDeclFree(VariableDeclaration *declaration, const std::stri
         return;
     }
 
-    auto &baton = semantics.responsibilityTable[holderNode];
+    LifeTime *baton = semantics.responsibilityTable[holderNode].get();
     auto contextSym = semantics.getSymbolFromMeta(holderNode);
-    if (!contextSym) reportDevBug("Failed to context symbol info", holderNode);
-
-    logInternal("   [DECL-SIMULATE FREE] Baton ID: " + baton->ID);
-    logInternal("   [DECL-SIMULATE FREE] State: isResponsible=" +
-                std::string(baton->isResponsible ? "T" : "F") +
-                ", isAlive=" + std::string(baton->isAlive ? "T" : "F") +
-                ", ptrCount=" + std::to_string(baton->ptrCount));
-
-    if (baton->ptrCount == 0 && baton->refCount == 0) {
-        if (baton->isResponsible && baton->isAlive) {
-            logInternal("    [DEATH] Condition met. Killing family: " + contextID);
-            baton->isAlive = false;
-
-            bool dropCount = (contextSym->type().isPointer && contextSym->storage().isHeap);
-            logInternal("    Dependents to process: " + std::to_string(baton->dependents.size()));
-
-            std::vector<std::string> toRearm;
-            for (const auto &[id, depSym] : baton->dependents) {
-                if (isUsedDownwards(id)) {
-                    toRearm.push_back(id);
-                } else {
-                    logInternal("    [TRANSFER] Dependent " + id +
-                                " (dropCount=" + (dropCount ? "T" : "F") + ")");
-                    transferDependent(id, depSym, dropCount);
-                }
-            }
-
-            for (const auto &id : toRearm) {
-                rearmBaton(id, holderNode);
-            }
-        } else {
-            logInternal("    [STAY-ALIVE] Family is already dead or not responsible.");
-        }
-    } else {
-        logInternal("    [STAY-ALIVE] References/Pointers still exist (" +
-                    std::to_string(baton->ptrCount) + ")");
-    }
+    freeCore(baton,contextSym,holderNode);
 }
 
 void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
@@ -1190,44 +1194,9 @@ void Auditor::simulateFree(Node *contextNode, const std::string &contextID) {
             return;
         }
 
-        auto &baton = semantics.responsibilityTable[holderNode];
+        LifeTime *baton = semantics.responsibilityTable[holderNode].get();
         auto contextSym = semantics.getSymbolFromMeta(holderNode);
-
-        logInternal("   [SIMULATE FREE] Baton ID: " + baton->ID);
-        logInternal("   [SIMULATE FREE] State: isResponsible=" +
-                    std::string(baton->isResponsible ? "T" : "F") +
-                    ", isAlive=" + std::string(baton->isAlive ? "T" : "F") +
-                    ", ptrCount=" + std::to_string(baton->ptrCount));
-
-        if (baton->ptrCount == 0 && baton->refCount == 0) {
-            if (baton->isResponsible && baton->isAlive) {
-                logInternal("    [DEATH] Condition met. Killing family: " + contextID);
-                baton->isAlive = false;
-
-                bool dropCount = (contextSym->type().isPointer && contextSym->storage().isHeap);
-                logInternal("    Dependents to process: " +
-                            std::to_string(baton->dependents.size()));
-
-                std::vector<std::string> toRearm;
-                for (const auto &[id, depSym] : baton->dependents) {
-                    if (isUsedDownwards(id)) {
-                        toRearm.push_back(id);
-                    } else {
-                        logInternal("    [TRANSFER] Dependent " + id +
-                                    " (dropCount=" + (dropCount ? "T" : "F") + ")");
-                        transferDependent(id, depSym, dropCount);
-                    }
-                }
-                for (const auto &id : toRearm) {
-                    rearmBaton(id, holderNode);
-                }
-            } else {
-                logInternal("    [STAY-ALIVE] Family is already dead or not responsible.");
-            }
-        } else {
-            logInternal("    [STAY-ALIVE] References/Pointers still exist (" +
-                        std::to_string(baton->ptrCount) + ")");
-        }
+        freeCore(baton,contextSym,holderNode);
     }
 }
 

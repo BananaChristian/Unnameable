@@ -183,7 +183,7 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
     checkMutability(*selfSymbol, assignName, assignStmt->identifier.get());
 
     selfSymbol->storage().isInitialized = true;
-    selfSymbol->hasError = false;
+    selfSymbol->hasError = hasError;
     metaData[assignStmt] = selfSymbol;
 }
 
@@ -259,7 +259,7 @@ void Semantics::walkAssignStatement(Node *node) {
 
     lhsSym->storage().isInitialized = true;
 
-    if (lhsSym->storage().isHeap && rhsSym->storage().isHeap)
+    if (lhsSym->storage().isHeap && rhsIsHeap(assignStmt->value.get()))
         transferBaton(assignStmt, lhsSym->codegen().ID);
 
     metaData[assignStmt] = lhsSym;

@@ -1,3 +1,8 @@
 func main:i32{
+    heap i32 x=100
+    heap i32 y=88
+    mut heap ptr i32 p -> addr x
+    p -> addr y
+    trace deref p 
     return 0
 }

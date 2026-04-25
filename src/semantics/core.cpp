@@ -2097,11 +2097,24 @@ bool Semantics::isBornInScope(Node* root, const std::string& ID) {
     return false;
 }
 
+bool Semantics::rhsIsHeap(Node *node){
+    auto identifiers=digIdentifiers(node);
+    for(const auto &ident:identifiers){
+        auto sym=getSymbolFromMeta(ident);
+        if(sym && sym->storage().isHeap)
+            return true;
+    }
+    return false;
+}
+
 void Semantics::transferBaton(Node* receiver, const std::string& familyID) {
     Node* holder = queryForLifeTimeBaton(familyID);
     if (!holder) {
         reportDevBug("Could not find the baton holder for lifetime ID: " + familyID, receiver);
     }
+   if(!dynamic_cast<Identifier*>(receiver)){
+        logInternal("[BATON TRANSFER] Transfering baton of ID: " + familyID + " from node: " +holder->toString() + " to composite node: " + receiver->toString());
+   } 
     std::string identName = "<no name>";
     auto identifiers = digIdentifiers(receiver);
     for (const auto& identifier : identifiers) {
@@ -2121,9 +2134,6 @@ void Semantics::transferBaton(Node* receiver, const std::string& familyID) {
         }
         // Ensure we give the baton to the correct identifier
         if (familyID == identSym->codegen().ID) {
-            logInternal("[BATON TRANSFER] Transfering baton of ID: " + familyID + " from node: " +
-                        holder->toString() + " to composite node: " + receiver->toString() +
-                        " ident: " + identifier->toString());
             responsibilityTable[identifier] = std::move(responsibilityTable[holder]);
         }
     }
