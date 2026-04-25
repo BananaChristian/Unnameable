@@ -279,10 +279,9 @@ void IRGenerator::generateReturnStatement(Node *node) {
     auto retStmt = dynamic_cast<ReturnStatement *>(node);
     if (!retStmt) return;
 
-    auto it = semantics.metaData.find(retStmt);
-    if (it == semantics.metaData.end()) {
-        reportDevBug("Could not find return statement metaData", retStmt);
-    }
+    auto sym=semantics.getSymbolFromMeta(retStmt);
+    if(!sym)
+        reportDevBug("Failed to get return statement symbol info",retStmt);
     
     inhibitCleanUp = true;
     llvm::Value *retVal = nullptr;
@@ -314,7 +313,7 @@ void IRGenerator::generateReturnStatement(Node *node) {
     }
 
     // Handle nullable types (existing logic)
-    if (it->second->type().type.isNull) {
+    if (sym->type().type.isNull) {
         if (!retVal->getType()->isStructTy()) {
             llvm::Value *boxed = llvm::UndefValue::get(retTy);
             bool isNullLiteral = (dynamic_cast<NullLiteral *>(retStmt->return_value.get()) != nullptr);
@@ -361,7 +360,6 @@ void IRGenerator::generateReturnStatement(Node *node) {
     
     if (!valTy) {
         llvm::errs() << "IRGen Error: retVal->getType() is null!\n";
-        retVal->dump();
         funcBuilder.CreateUnreachable();
         return;
     }
