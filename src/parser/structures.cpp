@@ -71,6 +71,75 @@ std::unique_ptr<Statement> Parser::parseStructureModifier() {
   return stmt;
 }
 
+//Parse Asm instructions
+std::unique_ptr<Statement> Parser::parseASMInstruction() {
+    std::string mnemonic = currentToken().TokenLiteral;
+    advance();
+    
+    std::vector<std::string> operands;
+    
+    auto parseOneOperand = [&]() -> std::string {
+        std::string operand;
+        if (currentToken().type == TokenType::LBRACKET) {
+            operand += "[";
+            advance();
+            while (currentToken().type != TokenType::RBRACKET &&
+                   currentToken().type != TokenType::RBRACE &&
+                   currentToken().type != TokenType::END) {
+                operand += currentToken().TokenLiteral;
+                advance();
+            }
+            operand += "]";
+            advance(); // consume ']'
+        } else {
+            operand = currentToken().TokenLiteral;
+            advance();
+        }
+        return operand;
+    };
+    
+    // First operand, no comma
+    if (currentToken().type != TokenType::RBRACE &&
+        currentToken().type != TokenType::END &&
+        currentToken().type != TokenType::COMMA) {
+        operands.push_back(parseOneOperand());
+    }
+    
+    // Subsequent operands, comma separated
+    while (currentToken().type == TokenType::COMMA) {
+        advance(); // consume comma
+        operands.push_back(parseOneOperand());
+    }
+    
+    return std::make_unique<ASMInstruction>(mnemonic, std::move(operands));
+}
+
+//____________ASM Statement ___________________
+std::unique_ptr<Statement> Parser::parseASMStatement() {
+    Token asm_token = currentToken();
+    advance(); // consume 'asm'
+    
+    if (currentToken().type != TokenType::LBRACE) {
+        logError("Expected '{' after 'asm'", currentToken());
+        return nullptr;
+    }
+    advance(); // consume '{'
+    
+    std::vector<std::unique_ptr<Statement>> instructions;
+    
+    while (currentToken().type != TokenType::RBRACE && 
+           currentToken().type != TokenType::END) {
+        auto instruction = parseASMInstruction();
+        if (instruction)
+            instructions.push_back(std::move(instruction));
+    }
+    
+    if (currentToken().type == TokenType::RBRACE)
+        advance(); // consume '}'
+    
+    return std::make_unique<ASMStatement>(false, asm_token, std::move(instructions));
+}
+
 //_____________Allocator statement_________________
 std::unique_ptr<Statement> Parser::parseAllocatorStatement() {
   bool isExportable = false;

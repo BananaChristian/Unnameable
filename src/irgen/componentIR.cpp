@@ -1,4 +1,5 @@
 #include "irgen.hpp"
+#include <llvm/IR/InlineAsm.h>
 
 void IRGenerator::generateRecordStatement(Node* node) {
     auto recordStmt = dynamic_cast<RecordStatement*>(node);
@@ -556,4 +557,29 @@ void IRGenerator::generateSealStatement(Node* node) {
         std::cout << "Looping through seal stmts :" + stmt->toString() << "\n";
         generateStatement(stmt.get());
     }
+}
+
+void IRGenerator::generateASMStatement(Node *node) {
+    auto asmStmt = dynamic_cast<ASMStatement*>(node);
+    if (!asmStmt) return;
+
+    std::string asmStr = asmStmt->toASMString();
+    
+    // LLVM inline asm type no inputs, no outputs, just side effects
+    llvm::FunctionType* asmFuncType = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(context), 
+        {}, 
+        false
+    );
+    
+    llvm::InlineAsm* inlineAsm = llvm::InlineAsm::get(
+        asmFuncType,
+        asmStr,
+        "",
+        asmStmt->isVolatile,
+        false,                          
+        llvm::InlineAsm::AD_Intel       // Intel dialect
+    );
+    
+    funcBuilder.CreateCall(asmFuncType,inlineAsm,{});
 }

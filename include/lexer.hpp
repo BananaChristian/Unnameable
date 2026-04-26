@@ -92,6 +92,8 @@ class Lexer {
       {"align", TokenType::ALIGN},
       {"union", TokenType::UNION},
       {"bitfield", TokenType::BITFIELD},
+      {"alias",TokenType::ALIAS},
+      {"asm",TokenType::ASM},
       
       {"ref", TokenType::REF},
       {"ptr", TokenType::PTR},

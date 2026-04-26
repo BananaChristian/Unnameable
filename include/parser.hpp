@@ -180,6 +180,10 @@ private:
   // Parsing the link statement
   std::unique_ptr<Statement> parseLinkStatement();
 
+  //Parsing the asm statement
+  std::unique_ptr<Statement> parseASMInstruction();
+  std::unique_ptr<Statement> parseASMStatement();
+
   //--------------PARSING EXPRESSIONS--------------------
   // Main expression parsing function
   std::unique_ptr<Expression> parseExpression(Precedence precedence);

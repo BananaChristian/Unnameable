@@ -93,6 +93,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     stmt = parseRecordStatement();
   else if(currentToken().type==TokenType::COMPONENT)
       stmt=parseComponentStatement();
+  else if(currentToken().type==TokenType::ASM)
+      stmt=parseASMStatement();
   else if(currentToken().type==TokenType::FUNCTION)
       stmt=parseFunctionStatement();
   else if(currentToken().type==TokenType::ALLOCATOR)
@@ -137,6 +139,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
               fnDeclStmt->isExportable=isExportable;
           }
       }
+  }else if(auto asmStmt=dynamic_cast<ASMStatement*>(stmt.get())){
+      asmStmt->isVolatile=isVolatile;
   }
   else {
     logError("Cannot apply modifiers to this statement type", currentToken());

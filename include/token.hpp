@@ -84,6 +84,7 @@ enum class TokenType {
   GENERIC, // Generic block keyword
   INSTANTIATE,
   AS,
+  ALIAS,
 
   NEW,    // new keyword for a new instance of a component
   CONST,  // constant keyword
@@ -101,7 +102,8 @@ enum class TokenType {
 
   SEAL, // Scope seal keyword
 
-  TRACE, // trace keyword
+  TRACE,//trace keyword 
+  ASM, //asm keyword
 
   // Control flow
   IF,

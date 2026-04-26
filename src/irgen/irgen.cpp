@@ -524,6 +524,7 @@ void IRGenerator::registerGeneratorFunctions() {
         &IRGenerator::generateInstantiateStatement;
     generatorFunctionsMap[typeid(SealStatement)] = &IRGenerator::generateSealStatement;
     generatorFunctionsMap[typeid(AllocatorStatement)] = &IRGenerator::generateAllocatorInterface;
+    generatorFunctionsMap[typeid(ASMStatement)]=&IRGenerator::generateASMStatement;
 }
 
 void IRGenerator::registerAddressGeneratorFunctions() {

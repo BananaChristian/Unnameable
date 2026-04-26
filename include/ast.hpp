@@ -1876,6 +1876,64 @@ struct TraceStatement : Statement {
       : Statement(trace), trace_keyword(trace), arguments(std::move(args)) {}
 };
 
+struct ASMInstruction : Statement {
+    std::string mnemonic;
+    std::vector<std::string> operands;
+    
+    std::string toString() override {
+        std::string result = mnemonic;
+        if (!operands.empty()) {
+            result += " ";
+            for (size_t i = 0; i < operands.size(); i++) {
+                result += operands[i];
+                if (i < operands.size() - 1)
+                    result += ", ";
+            }
+        }
+        return result;
+    }
+    
+    ASMInstruction(std::string _mnemonic, std::vector<std::string> _operands)
+        : Statement(Token{}),
+          mnemonic(std::move(_mnemonic)),
+          operands(std::move(_operands)) {}
+};
+
+struct ASMStatement : Statement {
+    bool isVolatile;
+    Token asm_token;
+    std::vector<std::unique_ptr<Statement>> instructions;
+    
+    // The money function this is what IR gen calls to get the string
+    std::string toASMString() {
+        std::string result;
+        for (size_t i = 0; i < instructions.size(); i++) {
+            result += instructions[i]->toString();
+            if (i < instructions.size() - 1)
+                result += "\n";
+        }
+        return result;
+    }
+    
+    std::string toString() override {
+        std::string result;
+        if(isVolatile)
+            result+="volatile ";
+
+        result += "asm {\n";
+        for (const auto& instr : instructions)
+            result += "    " + instr->toString() + "\n";
+        result += "}";
+        return result;
+    }
+    
+    ASMStatement(bool _volatile, Token asm_t,
+                 std::vector<std::unique_ptr<Statement>> _instructions)
+        : Statement(asm_t),
+          isVolatile(_volatile),
+          instructions(std::move(_instructions)) {}
+};
+
 // BLOCKS
 //  Block expression
 struct BlockExpression : Expression {

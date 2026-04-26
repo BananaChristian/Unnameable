@@ -144,6 +144,7 @@ class IRGenerator {
     // Trace statement generator
     void generateTraceStatement(Node *node);
     void generateAllocatorInterface(Node *node);
+    void generateASMStatement(Node *node);
 
     // GENERATOR FUNCTIONS FOR EXPRESSIONS
     llvm::Value *generateInfixExpression(Node *node);
