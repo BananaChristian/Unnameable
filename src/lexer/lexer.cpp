@@ -759,6 +759,11 @@ Token Lexer::tokenize() {
     advance();
     return Token{"~", TokenType::BITWISE_NOT, tokenLine, tokenColumn};
   }
+  case '$':{
+    CAPTURE_POS;
+    advance();
+    return Token{"$",TokenType::DOLLAR,tokenLine,tokenColumn};
+    }
   case '>': {
     CAPTURE_POS;
     if (peekChar() == U'>') {

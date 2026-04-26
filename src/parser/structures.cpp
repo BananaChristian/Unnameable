@@ -71,6 +71,27 @@ std::unique_ptr<Statement> Parser::parseStructureModifier() {
   return stmt;
 }
 
+std::unique_ptr<ASMConstraint> Parser::parseASMConstraint() {
+    Token colon_token = currentToken();
+    advance(); // consume ':'
+    
+    // Parse direction "in" or "out"
+    std::string direction = currentToken().TokenLiteral;
+    if (direction != "in" && direction != "out") {
+        logError("Expected 'in' or 'out' after ':' but got '" + direction + "'", currentToken());
+        return nullptr;
+    }
+    advance(); // consume direction
+    
+    // Parse constraint "r", "m", "rm"
+    std::string constraint = currentToken().TokenLiteral;
+    advance(); // consume constraint
+    
+    auto variable = parseIdentifier();
+    
+    return std::make_unique<ASMConstraint>(colon_token, direction, constraint, std::move(variable));
+}
+
 //Parse Asm instructions
 std::unique_ptr<Statement> Parser::parseASMInstruction() {
     std::string mnemonic = currentToken().TokenLiteral;
@@ -78,8 +99,18 @@ std::unique_ptr<Statement> Parser::parseASMInstruction() {
     
     std::vector<std::string> operands;
     
+    auto isOperandTerminator = [&]() -> bool {
+        auto t = currentToken().type;
+        return t == TokenType::COMMA ||
+               t == TokenType::COLON ||
+               t == TokenType::RBRACE ||
+               t == TokenType::SEMICOLON ||
+               t == TokenType::END;
+    };
+
     auto parseOneOperand = [&]() -> std::string {
         std::string operand;
+        
         if (currentToken().type == TokenType::LBRACKET) {
             operand += "[";
             advance();
@@ -90,55 +121,91 @@ std::unique_ptr<Statement> Parser::parseASMInstruction() {
                 advance();
             }
             operand += "]";
-            advance(); // consume ']'
-        } else {
-            operand = currentToken().TokenLiteral;
             advance();
+            return operand;
+        }
+
+        while (!isOperandTerminator()) {
+            if (currentToken().type == TokenType::DOLLAR) {
+                if (!operand.empty()) operand += " ";
+                operand += "$";
+                advance();
+                operand += currentToken().TokenLiteral;
+                advance();
+            } else {
+                if (!operand.empty()) operand += " ";
+                operand += currentToken().TokenLiteral;
+                advance();
+            }
         }
         return operand;
     };
-    
+
     // First operand, no comma
-    if (currentToken().type != TokenType::RBRACE &&
-        currentToken().type != TokenType::END &&
-        currentToken().type != TokenType::COMMA) {
+    if (!isOperandTerminator()) {
         operands.push_back(parseOneOperand());
     }
     
     // Subsequent operands, comma separated
     while (currentToken().type == TokenType::COMMA) {
-        advance(); // consume comma
+        advance();
         operands.push_back(parseOneOperand());
     }
-    
-    return std::make_unique<ASMInstruction>(mnemonic, std::move(operands));
+
+    // Constraints
+    std::vector<std::unique_ptr<ASMConstraint>> constraints;
+    while (currentToken().type == TokenType::COLON) {
+        auto constraint = parseASMConstraint();
+        if (constraint)
+            constraints.push_back(std::move(constraint));
+    }
+
+    return std::make_unique<ASMInstruction>(mnemonic, std::move(operands), std::move(constraints));
 }
 
-//____________ASM Statement ___________________
 std::unique_ptr<Statement> Parser::parseASMStatement() {
     Token asm_token = currentToken();
     advance(); // consume 'asm'
-    
+
+    // Parse optional dialect <intel> or <att>
+    std::string dialect = "intel";
+    if (currentToken().type == TokenType::LESS_THAN) {
+        advance(); // consume '<'
+        dialect = currentToken().TokenLiteral;
+        advance(); // consume dialect name
+        if (currentToken().type != TokenType::GREATER_THAN) {
+            logError("Expected '>' to close dialect specifier", currentToken());
+            return nullptr;
+        }
+        advance(); // consume '>'
+    }
+
     if (currentToken().type != TokenType::LBRACE) {
         logError("Expected '{' after 'asm'", currentToken());
         return nullptr;
     }
     advance(); // consume '{'
-    
+
     std::vector<std::unique_ptr<Statement>> instructions;
-    
-    while (currentToken().type != TokenType::RBRACE && 
+
+    while (currentToken().type != TokenType::RBRACE &&
            currentToken().type != TokenType::END) {
+        // Skip semicolons between instructions
+        if (currentToken().type == TokenType::SEMICOLON) {
+            advance();
+            continue;
+        }
         auto instruction = parseASMInstruction();
         if (instruction)
             instructions.push_back(std::move(instruction));
     }
-    
+
     if (currentToken().type == TokenType::RBRACE)
         advance(); // consume '}'
-    
-    return std::make_unique<ASMStatement>(false, asm_token, std::move(instructions));
+
+    return std::make_unique<ASMStatement>(false, asm_token, dialect, std::move(instructions));
 }
+
 
 //_____________Allocator statement_________________
 std::unique_ptr<Statement> Parser::parseAllocatorStatement() {

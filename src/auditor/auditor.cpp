@@ -365,3 +365,31 @@ void Auditor::auditBlockExpression(Node* node) {
 
     activeBlocks.pop_back();
 }
+
+void Auditor::auditASMStatement(Node *node){
+    auto asmStmt=dynamic_cast<ASMStatement*>(node);
+    if(!asmStmt)
+        return;
+
+    std::vector<Expression*> tofree;
+    inhibit=true;
+    for(const auto &instruction:asmStmt->instructions){
+        auto asmInst=dynamic_cast<ASMInstruction*>(instruction.get());
+        if(!asmInst)
+            reportDevBug("Invalid assembly instruction",instruction.get());
+        
+        for(const auto &constraint:asmInst->constraints){
+            audit(constraint->variable.get());
+            tofree.push_back(constraint->variable.get());
+        }
+            
+    }
+    inhibit=false;
+    for(const auto &node:tofree){
+        auto sym=semantics.getSymbolFromMeta(node);
+        if(!sym)
+            reportDevBug("Failed to get constraint symbol info",node);
+
+        simulateFree(node,sym->codegen().ID);
+    }
+}

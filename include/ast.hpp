@@ -1876,9 +1876,20 @@ struct TraceStatement : Statement {
       : Statement(trace), trace_keyword(trace), arguments(std::move(args)) {}
 };
 
+struct ASMConstraint: Expression{
+    Token colon_token;
+    std::string direction;
+    std::string constraint;
+    std::unique_ptr<Expression> variable; //I cant use a string semantics wants a node to tag symbol info
+
+    ASMConstraint(Token colon_t,std::string _dir,std::string _constraint,std::unique_ptr<Expression> var):Expression(colon_t),colon_token(colon_t),direction(_dir),constraint(_constraint),variable(std::move(var)){};
+};
+
+
 struct ASMInstruction : Statement {
     std::string mnemonic;
     std::vector<std::string> operands;
+    std::vector<std::unique_ptr<ASMConstraint>> constraints;
     
     std::string toString() override {
         std::string result = mnemonic;
@@ -1892,19 +1903,22 @@ struct ASMInstruction : Statement {
         }
         return result;
     }
-    
-    ASMInstruction(std::string _mnemonic, std::vector<std::string> _operands)
+
+    ASMInstruction(std::string _mnemonic, 
+                   std::vector<std::string> _operands,
+                   std::vector<std::unique_ptr<ASMConstraint>> _constraints)
         : Statement(Token{}),
           mnemonic(std::move(_mnemonic)),
-          operands(std::move(_operands)) {}
+          operands(std::move(_operands)),
+          constraints(std::move(_constraints)) {}
 };
 
 struct ASMStatement : Statement {
     bool isVolatile;
     Token asm_token;
+    std::string dialect;  // "intel", "att", default "intel"
     std::vector<std::unique_ptr<Statement>> instructions;
     
-    // The money function this is what IR gen calls to get the string
     std::string toASMString() {
         std::string result;
         for (size_t i = 0; i < instructions.size(); i++) {
@@ -1917,20 +1931,20 @@ struct ASMStatement : Statement {
     
     std::string toString() override {
         std::string result;
-        if(isVolatile)
-            result+="volatile ";
-
-        result += "asm {\n";
+        if (isVolatile) result += "volatile ";
+        result += "asm<" + dialect + "> {\n";
         for (const auto& instr : instructions)
             result += "    " + instr->toString() + "\n";
         result += "}";
         return result;
     }
     
-    ASMStatement(bool _volatile, Token asm_t,
+    ASMStatement(bool _volatile, Token asm_t, std::string _dialect,
                  std::vector<std::unique_ptr<Statement>> _instructions)
         : Statement(asm_t),
           isVolatile(_volatile),
+          asm_token(asm_t),
+          dialect(std::move(_dialect)),
           instructions(std::move(_instructions)) {}
 };
 

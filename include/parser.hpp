@@ -181,6 +181,7 @@ private:
   std::unique_ptr<Statement> parseLinkStatement();
 
   //Parsing the asm statement
+  std::unique_ptr<ASMConstraint> parseASMConstraint();
   std::unique_ptr<Statement> parseASMInstruction();
   std::unique_ptr<Statement> parseASMStatement();
 

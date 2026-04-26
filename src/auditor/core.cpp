@@ -33,6 +33,7 @@ void Auditor::registerAuditorFunctions() {
 
     auditFnsMap[typeid(WhileStatement)] = &Auditor::auditWhileStatement;
     auditFnsMap[typeid(ForStatement)] = &Auditor::auditForStatement;
+    auditFnsMap[typeid(ASMStatement)]=&Auditor::auditASMStatement;
 }
 
 void Auditor::buildUsageMap(BlockExpression *block) {

@@ -204,6 +204,9 @@ class Semantics {
     void walkGenericStatement(Node *node);
     void walkInstantiateStatement(Node *node);
 
+    //Walking ASM statement
+    void walkASMStatement(Node *node);
+
     // Walking casts
     void walkCastExpression(Node *node);
     void walkBitcastExpression(Node *node);

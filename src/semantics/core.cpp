@@ -137,6 +137,7 @@ void Semantics::registerWalkerFunctions() {
     // Walker registrartion for generic system
     walkerFunctionsMap[typeid(GenericStatement)] = &Semantics::walkGenericStatement;
     walkerFunctionsMap[typeid(InstantiateStatement)] = &Semantics::walkInstantiateStatement;
+    walkerFunctionsMap[typeid(ASMStatement)]=&Semantics::walkASMStatement;
 }
 
 ResolvedType Semantics::inferNodeDataType(Node* node) {

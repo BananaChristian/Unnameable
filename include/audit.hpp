@@ -75,6 +75,7 @@ class Auditor {
     void auditElifStatement(Node *node);
     void auditCaseStatement(Node *node);
     void auditSwitchStatement(Node *node);
+    void auditASMStatement(Node *node);
 
     void auditWhileStatement(Node *node);
     void auditForStatement(Node *node);

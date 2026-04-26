@@ -564,22 +564,59 @@ void IRGenerator::generateASMStatement(Node *node) {
     if (!asmStmt) return;
 
     std::string asmStr = asmStmt->toASMString();
-    
-    // LLVM inline asm type no inputs, no outputs, just side effects
+    std::string constraintStr = "";
+    std::vector<llvm::Value*> args;
+    std::vector<llvm::Type*> argTypes;
+
+    bool wasInhibited=inhibitCleanUp; 
+    inhibitCleanUp=true;
+    std::vector<Expression*> tofree;
+
+    for (auto& instr : asmStmt->instructions) {
+        auto* asmInstr = dynamic_cast<ASMInstruction*>(instr.get());
+        if (!asmInstr) continue;
+
+        for (auto& constraint : asmInstr->constraints) {
+            if (!constraintStr.empty())
+                constraintStr += ",";
+
+            if (constraint->direction == "out") {
+                constraintStr += "=*m";
+                llvm::Value* ptr = generateAddress(constraint->variable.get());
+                args.push_back(ptr);
+                argTypes.push_back(ptr->getType());
+            }else {
+                constraintStr += constraint->constraint;
+                llvm::Value* val = generateExpression(constraint->variable.get());
+                args.push_back(val);
+                argTypes.push_back(val->getType());
+            }
+            tofree.push_back(constraint->variable.get());
+        }
+    }
+
+    // Build function type based on actual arguments
     llvm::FunctionType* asmFuncType = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(context), 
-        {}, 
+        llvm::Type::getVoidTy(context),
+        argTypes,
         false
     );
-    
+
+    auto dialect = llvm::InlineAsm::AD_Intel;
+    if (asmStmt->dialect == "att")
+        dialect = llvm::InlineAsm::AD_ATT;
+
     llvm::InlineAsm* inlineAsm = llvm::InlineAsm::get(
         asmFuncType,
         asmStr,
-        "",
+        constraintStr,
         asmStmt->isVolatile,
-        false,                          
-        llvm::InlineAsm::AD_Intel       // Intel dialect
+        false,
+        dialect
     );
-    
-    funcBuilder.CreateCall(asmFuncType,inlineAsm,{});
+    inhibitCleanUp=wasInhibited;
+        
+    funcBuilder.CreateCall(asmFuncType, inlineAsm, args);
+    for(const auto &node:tofree)
+        emitCleanup(node);
 }

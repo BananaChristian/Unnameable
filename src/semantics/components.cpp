@@ -1143,3 +1143,24 @@ void Semantics::walkMethodCallExpression(Node* node) {
 
     metaData[metCall] = metCallSym;
 }
+
+void Semantics::walkASMStatement(Node *node){
+    auto asmStmt=dynamic_cast<ASMStatement*>(node);
+    if(!asmStmt)
+        return;
+    
+    for(const auto &instruction:asmStmt->instructions){
+        auto asmInst=dynamic_cast<ASMInstruction*>(instruction.get());
+        if(!asmInst)
+            reportDevBug("Expected an assembly instruction ",instruction.get());
+
+        for(const auto &constraint:asmInst->constraints){
+            auto asmConstraint=dynamic_cast<ASMConstraint*>(constraint.get());
+            if(!asmConstraint)
+                reportDevBug("Expected an assembly constraint",constraint.get());
+
+            walker(asmConstraint->variable.get());
+        }
+    }
+
+}
