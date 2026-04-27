@@ -1930,7 +1930,10 @@ std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
     auto idents = digIdentifiers(initializer);
     for (const auto& identifier : idents) {
         auto identSym = getSymbolFromMeta(identifier);
-        if (!identSym) reportDevBug("Failed to get identifier symbol info", identifier);
+        if (!identSym) {
+            logInternal("Failed to get identifier symbol info during lifetime creation skipping....");
+            continue;
+        }
 
         if (!identSym->storage().isHeap) {
             logInternal("Encountered non heap ident skipping...");
@@ -1945,10 +1948,6 @@ std::unique_ptr<LifeTime> Semantics::createLifeTimeTracker(
 
         transferResponsibility(lifetime.get(), targetBaton, identSym);
     }
-
-    /*if (declSym->relations().targetSymbol && targetBaton) {
-        transferResponsibility(lifetime.get(), targetBaton, declSym->relations().targetSymbol);
-        }*/
 
     Node* currentBlock = getCurrentBlock();
     if (currentBlock) {
@@ -2247,6 +2246,9 @@ std::vector<Identifier*> Semantics::digIdentifiers(Node* node) {
 
     // CallExpression (func(x, y))
     if (auto* call = dynamic_cast<CallExpression*>(node)) {
+        if(auto callIdent=dynamic_cast<Identifier*>(call->function_identifier.get()))
+            results.push_back(callIdent);
+
         for (auto& arg : call->parameters) {
             auto argIds = digIdentifiers(arg.get());
             results.insert(results.end(), argIds.begin(), argIds.end());

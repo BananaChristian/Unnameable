@@ -1055,8 +1055,15 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
     logInternal("  [EXEC-FREE] ID: " + sym->codegen().ID +
                 " | HasLLVM: " + (sym->codegen().llvmValue ? "True" : "False") +
                 " | IsHeap: " + (sym->storage().isHeap ? "True" : "False"));
+    if(!sym->storage().isHeap){
+        logInternal("[EXEC-FREE-FAIL] Not a heap variable");
+        return;
+    }
 
-    if (!sym->codegen().llvmValue || !sym->storage().isHeap) return;
+    if (!sym->codegen().llvmValue){
+        logInternal("[EXEC-FREE-FAIL] Lacking llvmValue");
+        return;
+    }
 
     logInternal("  [Deallocating] Generating  deallocation for: " + sym->codegen().ID);
 
@@ -1148,7 +1155,7 @@ void IRGenerator::emitCleanup(Node *contextNode) {
     }
     logInternal("[NORMAL-CLEAN] Node: " + contextNode->toString());
     if (dynamic_cast<Identifier *>(contextNode) != contextNode)
-        logInternal("[NORMAL-CLEAN] Composite node detected");
+        logInternal("[NORMAL-CLEAN] Composite node: "+contextNode->toString()+" detected");
 
     auto identifiers = semantics.digIdentifiers(contextNode);
     for (const auto &identifier : identifiers) {

@@ -83,6 +83,7 @@ class Auditor {
     void auditAddressExpression(Node *node);
     void auditDereferenceExpression(Node *node);
     void auditArraySubscriptExpression(Node *node);
+    void auditCallExpression(Node *node);
 
     // Helpers
     void classifyNode(Node *node);

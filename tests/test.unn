@@ -1,9 +1,9 @@
-func asm_test:ptr i32 {
-    heap ptr i32 x -> bitcast<ptr i32>(0)
-    return x
+func test: ptr i32 {
+    heap i32 x
+    return addr x
 }
 
 func main:i32{
-    auto lemmesee=asm_test()
+    heap ptr i32 result -> test()
     return 0
 }

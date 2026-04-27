@@ -24,6 +24,7 @@ void Auditor::registerAuditorFunctions() {
     auditFnsMap[typeid(Identifier)] = &Auditor::auditIdentifier;
     auditFnsMap[typeid(AddressExpression)] = &Auditor::auditAddressExpression;
     auditFnsMap[typeid(DereferenceExpression)] = &Auditor::auditDereferenceExpression;
+    auditFnsMap[typeid(CallExpression)]=&Auditor::auditCallExpression;
 
     auditFnsMap[typeid(AssignmentStatement)] = &Auditor::auditAssignmentStatement;
     auditFnsMap[typeid(FieldAssignment)] = &Auditor::auditFieldAssignmentStatement;
