@@ -417,7 +417,18 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
         return nullptr;
     }
 
-    emitCleanup(callExpr);
+    callSym->codegen().llvmType=call->getType();
+    callSym->codegen().llvmValue=call;
+
+    //If the return type is a pointer call the emitter on the entire thing but if it isnt only target the parameters
+    if(callSym->type().isPointer){
+        emitCleanup(callExpr);
+    }else{
+        for(const auto &arg:callExpr->parameters){
+            emitCleanup(arg.get());
+        }
+    }
+
     return call;
 }
 

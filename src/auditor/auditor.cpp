@@ -318,6 +318,34 @@ void Auditor::auditDereferenceExpression(Node* node) {
     simulateFree(derefExpr, derefSym->codegen().ID);
 }
 
+void Auditor::auditCallExpression(Node *node){
+    auto callExpr=dynamic_cast<CallExpression*>(node);
+    if(!callExpr)
+        return;
+
+    auto callSym=semantics.getSymbolFromMeta(callExpr);
+    if(!callSym)
+        reportDevBug("Failed to get call expression symbol info",callExpr);
+
+    inhibit=true;
+    std::vector<Node *> tofree;
+    for(const auto &arg:callExpr->parameters){
+        audit(arg.get());
+        tofree.push_back(arg.get());
+    }
+    inhibit=false;
+    
+    for(const auto &arg:tofree){
+        auto argSym=semantics.getSymbolFromMeta(arg);
+        if(!argSym)
+            reportDevBug("Failed to get argument symbol info ",arg);
+        simulateFree(arg,argSym->codegen().ID);
+    }
+
+    if(callSym->storage().isHeap)
+        simulateFree(callExpr,callSym->codegen().ID);
+}
+
 void Auditor::auditBlockStatement(Node* node) {
     auto blockStmt = dynamic_cast<BlockStatement*>(node);
     if (!blockStmt) return;

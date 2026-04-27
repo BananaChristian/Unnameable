@@ -147,14 +147,19 @@ void Semantics::walkReturnStatement(Node *node) {
 
   // Transfer ownership baton to the caller.
   currentFunction->get()->codegen().ID = valSym->codegen().ID;
+  //This doesnt mean the function is heap raised  it means the return value is heap raised
+  currentFunction->get()->storage().isHeap=valSym->storage().isHeap;
+  currentFunction->get()->storage().allocType=valSym->storage().allocType;
 
   auto retSym = std::make_shared<SymbolInfo>();
   retSym->type().type = expectedReturn;
   retSym->hasError = hasError;
   retSym->codegen().ID = valSym->codegen().ID;
 
-  Node *holder = queryForLifeTimeBaton(retSym->codegen().ID);
-  responsibilityTable[retStmt] = std::move(responsibilityTable[holder]);
+  if(valSym->storage().isHeap){
+      retSym->storage().allocType=valSym->storage().allocType;
+     transferBaton(retStmt,retSym->codegen().ID); 
+  }
   metaData[retStmt] = retSym;
 }
 
@@ -652,6 +657,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
                       funcCall);
   }
 
+  std::vector<Node *> toTransfer;
   for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
     const auto &arg = funcCall->parameters[i];
     walker(arg.get());
@@ -673,6 +679,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
         }
       }
     }
+    toTransfer.push_back(arg.get());
   }
 
   if (!isCallCompatible(*callSymbolInfo, funcCall))
@@ -686,9 +693,26 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   callSym->type().type = callSymbolInfo->func().returnType;
   callSym->type().isNullable = callSymbolInfo->type().isNullable;
   callSym->codegen().ID = callSymbolInfo->codegen().ID;
+  //This means the return value was heap raised
+  callSym->storage().isHeap=callSymbolInfo->storage().isHeap;
+  callSym->storage().allocType=callSymbolInfo->storage().allocType;
+  
+  /* I am doing this because there are two issues I am combatting I dont want the baton to escape its scope if 
+   the return type is not a pointer at the same time I dont wanna block heap variables that are being passed into the call*/
+  if(callSym->type().isPointer){
+      metaData[funcCall->function_identifier.get()]=callSym;
+      transferBaton(funcCall,callSym->codegen().ID);
+  }else{
+        for(const auto &arg:toTransfer){
+            auto argSym=getSymbolFromMeta(arg);
+            if(!argSym)
+                reportDevBug("Failed to get argument symbol info",arg);
 
-  Node *holder = queryForLifeTimeBaton(callSym->codegen().ID);
-  responsibilityTable[funcCall] = std::move(responsibilityTable[holder]);
+            if(argSym->storage().isHeap)
+                transferBaton(arg,argSym->codegen().ID);
+        }
+  }
+
   metaData[funcCall] = callSym;
 }
 
