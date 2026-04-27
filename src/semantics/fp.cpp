@@ -413,6 +413,10 @@ void Semantics::walkFunctionExpression(Node *node) {
   funcInfo->hasError = hasError;
   funcInfo->isExportable = isExportable;
   funcInfo->type().type = returnType;
+  funcInfo->type().type = returnType;
+  funcInfo->type().isPointer=returnType.isPointer();
+  funcInfo->type().isArray=returnType.isArray();
+  funcInfo->type().isRef=returnType.isRef();
   funcInfo->func().returnType = returnType;
   funcInfo->func().paramTypes = paramTypes;
   funcInfo->func().isDefined = true;
@@ -608,6 +612,9 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   }
 
   funcInfo->type().type = returnType;
+  funcInfo->type().isPointer=returnType.isPointer();
+  funcInfo->type().isArray=returnType.isArray();
+  funcInfo->type().isRef=returnType.isRef();
   funcInfo->func().returnType = returnType;
   funcInfo->func().paramTypes = paramTypes;
   funcInfo->hasError = hasError;
@@ -692,6 +699,9 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   callSym->hasError = hasError;
   callSym->type().type = callSymbolInfo->func().returnType;
   callSym->type().isNullable = callSymbolInfo->type().isNullable;
+  callSym->type().isPointer=callSymbolInfo->type().isPointer;
+  callSym->type().isRef=callSymbolInfo->type().isRef; 
+  callSym->type().isArray=callSymbolInfo->type().isArray;
   callSym->codegen().ID = callSymbolInfo->codegen().ID;
   //This means the return value was heap raised
   callSym->storage().isHeap=callSymbolInfo->storage().isHeap;
@@ -699,15 +709,21 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   
   /* I am doing this because there are two issues I am combatting I dont want the baton to escape its scope if 
    the return type is not a pointer at the same time I dont wanna block heap variables that are being passed into the call*/
+  logInternal("IS THE CALL HEAP RAISED: "+std::to_string(callSym->storage().isHeap));
+
+  logInternal("IS THE RETURN VALUE OF THIS CALL A POINTER: "+std::to_string(callSym->type().isPointer));
   if(callSym->type().isPointer){
-      metaData[funcCall->function_identifier.get()]=callSym;
-      transferBaton(funcCall,callSym->codegen().ID);
+      if(callSym->storage().isHeap){
+            metaData[funcCall->function_identifier.get()]=callSym;
+            transferBaton(funcCall,callSym->codegen().ID);
+      }
   }else{
         for(const auto &arg:toTransfer){
             auto argSym=getSymbolFromMeta(arg);
             if(!argSym)
                 reportDevBug("Failed to get argument symbol info",arg);
 
+            logInternal("IS THE ARG HEAP RAISED: "+std::to_string(argSym->storage().isHeap));
             if(argSym->storage().isHeap)
                 transferBaton(arg,argSym->codegen().ID);
         }

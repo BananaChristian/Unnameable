@@ -1471,10 +1471,11 @@ bool Semantics::isCallCompatible(const SymbolInfo& funcInfo, CallExpression* cal
     for (size_t i = 0; i < callExpr->parameters.size(); ++i) {
         auto& param = callExpr->parameters[i];
         const auto& expectedType = funcInfo.func().paramTypes[i].first;
-        auto argInfo = metaData[param.get()];
+        auto argInfo = getSymbolFromMeta(param.get());
         logInternal("Arg " + std::to_string(i) + " metaData lookup: " +
                     (argInfo ? "found, type=" + argInfo->type().type.resolvedName : "NOT FOUND"));
-        if (!argInfo) continue;
+        if (!argInfo)
+            reportDevBug("Failed to get argument symbol info",param.get());
 
         ResolvedType argType = argInfo->type().type;
 

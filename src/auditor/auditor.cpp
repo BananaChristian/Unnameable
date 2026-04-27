@@ -335,15 +335,17 @@ void Auditor::auditCallExpression(Node *node){
     }
     inhibit=false;
     
-    for(const auto &arg:tofree){
-        auto argSym=semantics.getSymbolFromMeta(arg);
-        if(!argSym)
-            reportDevBug("Failed to get argument symbol info ",arg);
-        simulateFree(arg,argSym->codegen().ID);
+    if(callSym->type().isPointer){
+        if(callSym->storage().isHeap)
+            simulateFree(callExpr,callSym->codegen().ID);
+    }else{
+        for(const auto &arg:tofree){
+            auto argSym=semantics.getSymbolFromMeta(arg);
+            if(!argSym)
+                reportDevBug("Failed to get argument symbol info ",arg);
+            simulateFree(arg,argSym->codegen().ID);
+        }
     }
-
-    if(callSym->storage().isHeap)
-        simulateFree(callExpr,callSym->codegen().ID);
 }
 
 void Auditor::auditBlockStatement(Node* node) {
@@ -353,7 +355,6 @@ void Auditor::auditBlockStatement(Node* node) {
     activeBlocks.push_back(blockStmt);
     if (shouldNativeBunkerBlock(blockStmt)) {
         bunkerPersists(blockStmt);
-        bunkerHeists(blockStmt);
         if (hasDisruptors(blockStmt)) {
             logInternal("[TRIGGER] Block disruptor detected bunkering natives for block: " +
                         blockStmt->toString());
@@ -388,8 +389,10 @@ void Auditor::auditBlockExpression(Node* node) {
 
     if (shouldNativeBunkerBlock(blockExpr)) {
         bunkerPersists(blockExpr);
-        bunkerHeists(blockExpr);
+        bunkerNativeHeists(blockExpr);
     }
+    if(shouldForeignBunkerBlock(blockExpr))
+        bunkerForeignHeists(blockExpr);
 
     activeBlocks.pop_back();
 }

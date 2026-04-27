@@ -119,8 +119,9 @@ class Auditor {
     void bunkerForeigners(Node *block);
     void bunkerCycles(Node *block);
     void bunkerPersists(Node *block);
-    void bunkerHeists(Node *block);
-    std::vector<std::string> sortedHeists(const std::unique_ptr<BlockInfo> &info);
+    void bunkerNativeHeists(Node *block);
+    void bunkerForeignHeists(Node *block);
+    std::vector<std::string> sortHeists(const std::unique_ptr<BlockInfo> &info,bool isForeign);
 
     bool isBunkered(const std::string &id);
     bool isAlreadyClassified(const std::string &id, BlockInfo *blockInfo);

@@ -904,7 +904,7 @@ void IRGenerator::freeForeigners(Node *block) {
         "\n[FOREINER-CLEANUP] >>> Entering Foreigner Cleanup for "
         "block at line: " +
         block->toString());
-    logInternal("[LOOP KEY] " + std::to_string((uintptr_t)block));
+    logInternal("[BLOCK KEY] " + std::to_string((uintptr_t)block));
 
     auto it = map.find(block);
     if (it == map.end()) {
@@ -974,7 +974,7 @@ void IRGenerator::freeNatives(Node *block) {
         "\n[NATIVE-CLEANUP] >>> Entering Native Cleanup for block "
         "at line: " +
         block->toString());
-    logInternal("[LOOP KEY] " + std::to_string((uintptr_t)block));
+    logInternal("[BLOCK KEY] " + std::to_string((uintptr_t)block));
 
     auto it = map.find(block);
     if (it == map.end()) {

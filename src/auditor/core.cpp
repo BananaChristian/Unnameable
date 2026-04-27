@@ -4,6 +4,7 @@
 #include "ast.hpp"
 #include "audit.hpp"
 #include "errors.hpp"
+
 Auditor::Auditor(Semantics &semantics, ErrorHandler &errorHandler, bool isVerbose)
     : semantics(semantics), errorHandler(errorHandler), verbose(isVerbose) {
     registerAuditorFunctions();
@@ -206,7 +207,15 @@ void Auditor::classifyBlock(Node *block) {
         }
 
         if (auto declaration = dynamic_cast<VariableDeclaration *>(actualNode)) {
-            classifySymbol(declaration, block, info.get());
+            auto declSym=semantics.getSymbolFromMeta(declaration);
+            if(declSym->storage().isHeap){
+                classifySymbol(declaration, block, info.get());
+            }else{
+                auto init=declaration->initializer.get();
+                if(init){
+                    classifySymbol(init,block,info.get());
+                }
+            }
         } else {
             auto idents = semantics.digIdentifiers(actualNode);
             for (const auto &ident : idents) {
@@ -234,12 +243,16 @@ void Auditor::classifySymbol(Node *node, Node *block, BlockInfo *info) {
     logInternal("[CLASSIFY-SYM] bornHere = " + std::string(bornHere ? "true" : "false"));
 
     if (bornHere) {
-        if (!isAlreadyClassified(sym->codegen().ID, info)) {
-            logInternal("[CLASSIFIER] NATIVE: " + sym->codegen().ID + " in " + block->toString());
-            info->natives.push_back(sym->codegen().ID);
+        // Must also die here to be a true native
+            if (diesInBlock(sym->codegen().ID, block)) {
+                if (!isAlreadyClassified(sym->codegen().ID, info)) {
+                    logInternal("[CLASSIFIER] NATIVE: " + sym->codegen().ID + " in " + block->toString());
+                    info->natives.push_back(sym->codegen().ID);
+                } else {
+                    logInternal("[CLASSIFIER] NATIVE (DUPLICATE SKIPPED): " + sym->codegen().ID + " in " + block->toString());
+                }
         } else {
-            logInternal("[CLASSIFIER] NATIVE (DUPLICATE SKIPPED): " + sym->codegen().ID + " in " +
-                        block->toString());
+            logInternal("[CLASSIFIER] " + sym->codegen().ID + " born here but escapes, not a native");
         }
     } else {
         // Check if it's a true foreigner (dies in this block)
@@ -666,11 +679,11 @@ void Auditor::bunkerPersists(Node *block) {
     }
 }
 
-void Auditor::bunkerHeists(Node *block) {
+void Auditor::bunkerNativeHeists(Node *block) {
     auto &blockInfo = deferedFrees[block];
-    for (const auto &heistID : sortedHeists(blockInfo)) {
+    for (const auto &heistID : sortHeists(blockInfo,false)) {
         if (isBunkered(heistID)) {
-            logInternal("[BUNKER-HEIST] Baton " + heistID + " is already bunkered");
+            logInternal("[NATIVE-BUNKER-HEIST] Baton " + heistID + " is already bunkered");
             continue;
         }
 
@@ -687,21 +700,59 @@ void Auditor::bunkerHeists(Node *block) {
         }
 
         // SUCCESS LOGS
-        logInternal("[HEIST BUNKERING] SUCCESS: Moving baton for " + heistID + " into bunker.");
+        logInternal("[NATIVE HEIST BUNKERING] SUCCESS: Moving baton for " + heistID + " into bunker.");
 
         nativesToFree[block].push_back({std::move(baton), sym});
         bunkeredIDs.insert(heistID);
     }
 }
 
-std::vector<std::string> Auditor::sortedHeists(const std::unique_ptr<BlockInfo> &info) {
+void Auditor::bunkerForeignHeists(Node *block) {
+    auto &blockInfo = deferedFrees[block];
+    for (const auto &heistID : sortHeists(blockInfo,true)) {
+        if (isBunkered(heistID)) {
+            logInternal("[FOREIGN-BUNKER-HEIST] Baton " + heistID + " is already bunkered");
+            continue;
+        }
+
+        Node *holder = semantics.queryForLifeTimeBaton(heistID);
+        if (!holder) reportDevBug("Failed to get baton holder for ID: " + heistID, block);
+
+        auto sym = semantics.getSymbolFromMeta(holder);
+        if (!sym) reportDevBug("Failed to get holder symbol info for ID:" + heistID, block);
+
+        auto &baton = semantics.responsibilityTable[holder];
+        if (!baton) {
+            scanForBaton(heistID);
+            reportDevBug("No baton in responsibilityTable for " + heistID, block);
+        }
+
+        // SUCCESS LOGS
+        logInternal("[FOREIGN HEIST BUNKERING] SUCCESS: Moving baton for " + heistID + " into bunker.");
+
+        foreignersToFree[block].push_back({std::move(baton), sym});
+        bunkeredIDs.insert(heistID);
+    }
+}
+
+
+std::vector<std::string> Auditor::sortHeists(const std::unique_ptr<BlockInfo> &info,bool isForeign) {
     std::vector<std::string> cleanList;
 
-    for (const std::string &nativeID : info->natives) {
-        if (semantics.heistIDs.count(nativeID)) {
-            cleanList.push_back(nativeID);
+    if(isForeign){
+        for (const std::string &foreignID : info->foreigners) {
+            if (semantics.heistIDs.count(foreignID)) {
+                cleanList.push_back(foreignID);
+            }
+        }
+    }else{
+        for (const std::string &nativeID : info->natives) {
+            if (semantics.heistIDs.count(nativeID)) {
+                cleanList.push_back(nativeID);
+            }
         }
     }
+    
     return cleanList;
 }
 
