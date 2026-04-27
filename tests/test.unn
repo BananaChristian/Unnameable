@@ -1,11 +1,9 @@
-func asm_test:i32 {
-    heap i64 x
-    asm<intel> {
-        mov rax, $0 :in r x
-    }
-    return 1
+func asm_test:ptr i32 {
+    heap ptr i32 x -> bitcast<ptr i32>(0)
+    return x
 }
 
 func main:i32{
+    auto lemmesee=asm_test()
     return 0
 }
