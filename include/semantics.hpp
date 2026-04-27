@@ -274,8 +274,6 @@ class Semantics {
     AllocatorRole getFunctionRole(const std::vector<std::unique_ptr<Statement>> &params,
                                   Expression *returnType, const std::string &funcName);
     bool areSignaturesCompatible(const SymbolInfo &declInfo, FunctionExpression *funcExpr);
-    bool signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberInfo> &declMember,
-                                            FunctionExpression *funcExpr);
     bool checkParamListCompatibility(
         const std::vector<std::pair<ResolvedType, std::string>> &expectedParams,
         const std::vector<std::unique_ptr<Statement>> &actualParams);

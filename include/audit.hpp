@@ -76,6 +76,8 @@ class Auditor {
     void auditCaseStatement(Node *node);
     void auditSwitchStatement(Node *node);
     void auditASMStatement(Node *node);
+    void auditSealStatement(Node *node);
+    void auditComponentStatement(Node *node);
 
     void auditWhileStatement(Node *node);
     void auditForStatement(Node *node);
@@ -93,6 +95,7 @@ class Auditor {
                         const std::vector<std::unique_ptr<Statement>> &clause,
                         const std::unique_ptr<BlockInfo> &blockInfo);
     void classifySymbol(Node *node, Node *block, BlockInfo *info);
+    void filterBeforeClassifySym(Node *node,Node *block, BlockInfo *info);
     Node *peelNode(Node *node);
     bool hasDisruptors(Node *block);
     bool shouldForeignBunkerBlock(Node *block);

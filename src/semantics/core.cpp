@@ -1389,14 +1389,6 @@ bool Semantics::areSignaturesCompatible(const SymbolInfo& declInfo, FunctionExpr
     return isTypeCompatible(declInfo.func().returnType, actualReturn);
 }
 
-bool Semantics::signaturesMatchBehaviorDeclaration(const std::shared_ptr<MemberInfo>& declMember,
-                                                   FunctionExpression* funcExpr) {
-    if (!declMember || !funcExpr) return false;
-    if (!checkParamListCompatibility(declMember->paramTypes, funcExpr->call)) return false;
-    ResolvedType actualReturn = inferNodeDataType(funcExpr->return_type.get());
-    return isTypeCompatible(declMember->returnType, actualReturn);
-}
-
 bool Semantics::isMethodCallCompatible(const MemberInfo& memFuncInfo, CallExpression* callExpr) {
     bool allGood = true;
 

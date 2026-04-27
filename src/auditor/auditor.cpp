@@ -424,3 +424,29 @@ void Auditor::auditASMStatement(Node *node){
         simulateFree(node,sym->codegen().ID);
     }
 }
+
+void Auditor::auditSealStatement(Node *node){
+    auto sealStmt=dynamic_cast<SealStatement*>(node);
+    if(!sealStmt)
+        return;
+   //I dont care that much I just wanna expose what is inside his block 
+   audit(sealStmt->block.get());
+}
+
+void Auditor::auditComponentStatement(Node *node){
+    auto compStmt=dynamic_cast<ComponentStatement*>(node);
+    if(!compStmt)
+        return;
+    
+    for(const auto &method:compStmt->methods){
+        audit(method.get());
+    }
+    
+    if(compStmt->initConstructor.has_value()){
+        auto initStmt=dynamic_cast<InitStatement*>(compStmt->initConstructor.value().get());
+        if(!initStmt)
+            return;
+        
+        audit(initStmt->block.get());
+    }
+}

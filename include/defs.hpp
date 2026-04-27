@@ -237,6 +237,9 @@ struct MemberInfo {
     ResolvedType type;
     ResolvedType parentType;  // Parent type (meaningful for enum members)
     ResolvedType returnType;  // Return type  (meaningful for function members)
+    bool isReturnHeap;//If the value being returned is heap
+    std::string allocType;
+    std::string retFamilyID;
     std::vector<std::pair<ResolvedType, std::string>> paramTypes;
 
     bool isNullable = false;
