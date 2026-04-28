@@ -11,9 +11,7 @@
 *.stub
 
 #Test folders
-compiler_test
-experiments
-legacyC
+std
 
 #Test binary
 test
@@ -22,7 +20,6 @@ test
 /core
 /core/*.o
 
-/unnc_test
 
 # Build system
 .clang-format.
@@ -43,5 +40,4 @@ CMakeCache.txt
 # Logs
 *.log
 
-TODO
 /compile_commands.json

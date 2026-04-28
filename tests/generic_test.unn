@@ -1,0 +1,31 @@
+generic ArrayGen(T) {
+    component Array {
+        ptr T data
+        usize size
+        usize capacity
+        
+        init(usize initial_capacity) {
+            # setup
+        }
+        
+        func push(T value): void {
+            # if size == capacity, realloc
+        }
+        
+        func get(usize index): T {
+            return data[index]
+        }
+        
+        func pop: void {
+            # remove last
+        }
+    }
+}
+
+# Instantiate for i32
+instantiate ArrayGen(i32) as I32
+
+func main:i32{
+  I32_Array array
+  return 0
+}
