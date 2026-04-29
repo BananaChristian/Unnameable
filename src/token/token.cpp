@@ -70,6 +70,8 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: VOID";
   case TokenType::FUNCTION:
     return "Token Type: FUNCTION";
+  case TokenType::FN:
+    return "Token Type: FN";
   case TokenType::AUTO:
     return "Token Type: AUTO";
   case TokenType::AT:

@@ -1,12 +1,1 @@
-component Maths{
-    func test:i32{
-        heap i32 x=100
-        return x
-    }
-}
-
-func main:i32{
-    heap Maths mtc
-    heap i32 result = mtc.test()
-    return 0
-}
+fn(fn: i32): ptr i32 x

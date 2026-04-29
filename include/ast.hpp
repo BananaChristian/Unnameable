@@ -739,6 +739,7 @@ struct BasicType : Expression {
 };
 
 struct ReturnType : Expression {
+  std::unique_ptr<Expression> fnptr_mod;     // Function pointer modifier
   std::unique_ptr<Expression> modified_type; // TypeModifier or nullptr
   std::unique_ptr<Expression> base_type;     // BasicType always
   bool isVoid = false;
@@ -747,6 +748,8 @@ struct ReturnType : Expression {
     if (isVoid)
       return "Return Type: void";
     std::string result = "Return Type: ";
+    if (fnptr_mod)
+      result += fnptr_mod->toString();
     if (modified_type)
       result += modified_type->toString();
     result += base_type->toString();
@@ -754,18 +757,20 @@ struct ReturnType : Expression {
   }
 
   ReturnType *shallowClone() const override {
-    return new ReturnType(clonePtr(modified_type), clonePtr(base_type), isVoid);
+    return new ReturnType(clonePtr(fnptr_mod), clonePtr(modified_type),
+                          clonePtr(base_type), isVoid);
   }
 
   // Void constructor
   ReturnType() : Expression(Token{}), isVoid(true) {}
 
   // Normal constructor
-  ReturnType(std::unique_ptr<Expression> mod, std::unique_ptr<Expression> base,
+  ReturnType(std::unique_ptr<Expression> fn_mod,
+             std::unique_ptr<Expression> mod, std::unique_ptr<Expression> base,
              bool void_ = false)
       : Expression(base ? base->expression : Token{}),
-        modified_type(std::move(mod)), base_type(std::move(base)),
-        isVoid(void_) {}
+        fnptr_mod(std::move(fn_mod)), modified_type(std::move(mod)),
+        base_type(std::move(base)), isVoid(void_) {}
 };
 
 // Prefix expression node for syntax like !true;
@@ -1134,6 +1139,31 @@ struct ComponentStatement : Statement {
   }
 };
 
+// Function pointer modifier
+struct FunctionPointerModifier : Expression {
+  Token fn_token;
+  std::vector<std::unique_ptr<Expression>> type_args;
+
+  std::string toString() override {
+    std::string result = " Func Pointer Mod: ";
+    result += "fn(";
+    for (const auto &arg : type_args)
+      result += arg->toString() + ",";
+
+    result += "): ";
+
+    return result;
+  }
+
+  FunctionPointerModifier *shallowClone() const override {
+    return new FunctionPointerModifier(fn_token, clonePtrVector(type_args));
+  }
+
+  FunctionPointerModifier(Token fn,
+                          std::vector<std::unique_ptr<Expression>> args)
+      : Expression(fn), fn_token(fn), type_args(std::move(args)) {};
+};
+
 struct TypeModifier : Expression {
   bool isArray = false;
   bool isPointer = false;
@@ -1196,6 +1226,7 @@ struct VariableDeclaration : Statement {
   // Pointers first (8-byte aligned)
   std::unique_ptr<Expression> allocator;
   std::unique_ptr<Expression> modified_type;
+  std::unique_ptr<Expression> fnPtrMod;
   std::unique_ptr<Expression> base_type;
   std::unique_ptr<Expression> var_name;
   std::unique_ptr<Expression> initializer;
@@ -1242,6 +1273,10 @@ struct VariableDeclaration : Statement {
       result += modified_type->toString();
     }
 
+    // Func modifier
+    if (fnPtrMod)
+      result += fnPtrMod->toString();
+
     // Base type
     result += base_type ? base_type->toString() : "<unknown>";
     result += " ";
@@ -1260,13 +1295,15 @@ struct VariableDeclaration : Statement {
   }
 
   VariableDeclaration *shallowClone() const override {
-    return new VariableDeclaration(
-        clonePtr(allocator), clonePtr(modified_type), clonePtr(base_type),
-        clonePtr(var_name), clonePtr(initializer), assign_token, mutability,
-        isPersist, isHeap, isVolatile, isRestrict, isExportable);
+    return new VariableDeclaration(clonePtr(allocator), clonePtr(fnPtrMod),
+                                   clonePtr(modified_type), clonePtr(base_type),
+                                   clonePtr(var_name), clonePtr(initializer),
+                                   assign_token, mutability, isPersist, isHeap,
+                                   isVolatile, isRestrict, isExportable);
   }
 
   VariableDeclaration(std::unique_ptr<Expression> _allocator,
+                      std::unique_ptr<Expression> fn_mod,
                       std::unique_ptr<Expression> _modifier,
                       std::unique_ptr<Expression> base,
                       std::unique_ptr<Expression> name,
@@ -1276,10 +1313,11 @@ struct VariableDeclaration : Statement {
                       bool _export)
       : Statement(name ? name->token : Token{}),
         allocator(std::move(_allocator)), modified_type(std::move(_modifier)),
-        base_type(std::move(base)), var_name(std::move(name)),
-        initializer(std::move(init)), assign_token(_assign), mutability(mut),
-        isPersist(_persist), isHeap(_heap), isVolatile(_volatile),
-        isRestrict(_restrict), isExportable(_export) {}
+        fnPtrMod(std::move(fn_mod)), base_type(std::move(base)),
+        var_name(std::move(name)), initializer(std::move(init)),
+        assign_token(_assign), mutability(mut), isPersist(_persist),
+        isHeap(_heap), isVolatile(_volatile), isRestrict(_restrict),
+        isExportable(_export) {}
 };
 
 struct AssignmentStatement : Statement {

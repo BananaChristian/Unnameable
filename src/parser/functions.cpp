@@ -63,6 +63,58 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
   return args;
 }
 
+// Parsing function pointer parameters
+std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
+  bool hasParens = false;
+  std::vector<std::unique_ptr<Expression>> params;
+  if (currentToken().type == TokenType::LPAREN) {
+    hasParens = true;
+    advance(); // Consume the ( token
+  }
+  if (hasParens && currentToken().type == TokenType::RPAREN) {
+    advance(); // Consume )
+    if (currentToken().type != TokenType::COLON) {
+      logError("Expected ':' after empty parameter list but got '" +
+                   currentToken().TokenLiteral + "'",
+               currentToken());
+    }
+    return params;
+  }
+  if (!hasParens && currentToken().type == TokenType::COLON)
+    return params;
+
+  auto firstParam = parseReturnType();
+  if (!firstParam)
+    return params;
+
+  params.push_back(std::move(firstParam));
+
+  while (currentToken().type == TokenType::COMMA) {
+    advance();
+    auto param = parseReturnType();
+    if (!param)
+      return params;
+
+    params.push_back(std::move(param));
+  }
+  if (hasParens && currentToken().type != TokenType::RPAREN) {
+    logError("Expected ')' after function pointer parameters but got '" +
+                 currentToken().TokenLiteral + "'",
+             currentToken());
+    return params;
+  }
+  if (hasParens)
+    advance();
+
+  if (currentToken().type != TokenType::COLON)
+    logError(
+        "Expected ':' after function pointer parameters closing but got '" +
+            currentToken().TokenLiteral + "'",
+        currentToken());
+
+  return params;
+}
+
 // Parsing function expression
 std::unique_ptr<Expression> Parser::parseFunctionExpression() {
   bool isExportable = false;
@@ -97,7 +149,8 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
         currentToken().type == TokenType::VOID ||
         currentToken().type == TokenType::ARRAY ||
         currentToken().type == TokenType::PTR ||
-        currentToken().type == TokenType::REF) {
+        currentToken().type == TokenType::REF||
+        currentToken().type==TokenType::FN) {
       return_type = parseReturnType();
     }
 
@@ -169,6 +222,17 @@ std::unique_ptr<Expression> Parser::parseBlockExpression() {
 
   advance();
   return block;
+}
+
+// Parsing function pointer statement
+std::unique_ptr<Expression> Parser::parseFunctionPointerModifier() {
+  Token fn_token = currentToken();
+  advance();
+  auto params = parseFnPointerParameters();
+  advance();
+
+  return std::make_unique<FunctionPointerModifier>(fn_token,
+                                                   std::move(params));
 }
 
 // Parsing function statement

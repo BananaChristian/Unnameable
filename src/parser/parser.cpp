@@ -467,6 +467,7 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::PERSIST] =
       &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::FN]=&Parser::parseVariableModifier;
 
   StatementParseFunctionsMap[TokenType::VOLATILE] =
       &Parser::parseVariableModifier;

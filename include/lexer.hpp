@@ -18,6 +18,7 @@ class Lexer {
   std::unordered_map<std::string, TokenType> keywords = {
       {"auto", TokenType::AUTO},
       {"func", TokenType::FUNCTION},
+      {"fn",TokenType::FN},
       {"return", TokenType::RETURN},
 
       {"enum", TokenType::ENUM},

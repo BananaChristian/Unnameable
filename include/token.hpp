@@ -57,6 +57,7 @@ enum class TokenType {
 
   // Keywords
   FUNCTION,
+  FN,
   AUTO,
   RETURN,
   CAST,

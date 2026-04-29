@@ -84,6 +84,12 @@ std::unique_ptr<Expression> Parser::parseReturnType() {
     return std::make_unique<ReturnType>(); // isVoid constructor
   }
 
+  // Parse func modifier if present
+  std::unique_ptr<Expression> fnptr_mod;
+  if (currentToken().type == TokenType::FN) {
+    fnptr_mod = parseFunctionPointerModifier();
+  }
+
   // Parse modifier if present
   std::unique_ptr<Expression> modifier = nullptr;
   if (currentToken().type == TokenType::PTR ||
@@ -99,6 +105,7 @@ std::unique_ptr<Expression> Parser::parseReturnType() {
     logError("Expected base type in return type but got '" +
                  currentToken().TokenLiteral + "'",
              currentToken());
+    advance();
     return nullptr;
   }
 
@@ -108,5 +115,5 @@ std::unique_ptr<Expression> Parser::parseReturnType() {
     return nullptr;
   }
 
-  return std::make_unique<ReturnType>(std::move(modifier), std::move(base));
+  return std::make_unique<ReturnType>(std::move(fnptr_mod),std::move(modifier), std::move(base));
 }

@@ -133,6 +133,9 @@ private:
   // Parsing the function statement
   std::unique_ptr<Statement> parseFunctionStatement();
 
+  //Parsing function pointer statement
+  std::unique_ptr<Expression> parseFunctionPointerModifier();
+
   // Parsing return statements
   std::unique_ptr<Statement> parseReturnStatement();
 
@@ -302,6 +305,7 @@ private:
 
   // Parsing function parameters
   std::vector<std::unique_ptr<Statement>> parseFunctionParameters();
+  std::vector<std::unique_ptr<Expression>> parseFnPointerParameters();
 
   // HELPER FUNCTIONS
   Token &currentToken();
