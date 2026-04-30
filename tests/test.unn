@@ -1,1 +1,7 @@
-fn(fn: i32): ptr i32 x
+func add(i32 x): i32{
+    return x+3
+}
+
+fn(i32?): i32 x = add
+x(null)
+

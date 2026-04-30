@@ -1,6 +1,7 @@
 #include "ast.hpp"
 #include "semantics.hpp"
 #include <memory>
+#include <string>
 
 static std::shared_ptr<SymbolInfo>
 makeFuncSymbol(const std::string &name, bool isExportable, bool hasError) {
@@ -630,6 +631,44 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
               "' return type: " + returnType.resolvedName);
 }
 
+void Semantics::analyzeFnPtrCall(
+    CallExpression *callNode, std::vector<ResolvedType> &argTypes,
+    std::vector<Node *> &toTransfer,
+    const std::shared_ptr<SymbolInfo> &contextSym) {
+  auto fnPtrType = contextSym->type().type;
+  if (argTypes.size() != fnPtrType.fnParamTypes.size()) {
+    logSemanticErrors("Function pointer '" + std::to_string(argTypes.size()) +
+                          "' arguments provided but expected '" +
+                          std::to_string(fnPtrType.fnParamTypes.size()) + "'",
+                      callNode);
+    return;
+  }
+
+  for (size_t i = 0; i < fnPtrType.fnParamTypes.size(); ++i) {
+    auto expectedType = fnPtrType.fnParamTypes[i];
+    if (!isTypeCompatible(expectedType, argTypes[i])) {
+      logSemanticErrors("Type mismatch on arguments '" + std::to_string(i) +
+                            "' expected '" + expectedType.resolvedName +
+                            "' but got '" + argTypes[i].resolvedName + "'",
+                        callNode);
+    }
+  }
+
+  auto callSym = std::make_shared<SymbolInfo>();
+  callSym->hasError = hasError;
+  callSym->type().type = *fnPtrType.fnReturnType;
+
+  for (const auto &arg : toTransfer) {
+    auto argSym = getSymbolFromMeta(arg);
+    if (!argSym)
+      reportDevBug("Failed to get argument symbol info", arg);
+
+    if (argSym->storage().isHeap)
+      transferBaton(arg, argSym->codegen().ID);
+  }
+  metaData[callNode] = callSym;
+}
+
 void Semantics::walkFunctionCallExpression(Node *node) {
   auto *funcCall = dynamic_cast<CallExpression *>(node);
   if (!funcCall)
@@ -647,16 +686,18 @@ void Semantics::walkFunctionCallExpression(Node *node) {
         funcCall);
     return;
   }
+  bool isFnPtr = callSymbolInfo->type().isFnPtr;
 
-  if (!callSymbolInfo->isFunction) {
-    logSemanticErrors("'" + callName +
-                          "' is a variable, not a function. "
-                          "Did you mean to call a different name?",
-                      funcCall);
+  if (!callSymbolInfo->isFunction && !isFnPtr) {
+    logSemanticErrors(
+        "'" + callName +
+            "' is a variable, not a function or a function pointer"
+            "Did you mean to call with a different name?",
+        funcCall);
     return;
   }
 
-  if (!callSymbolInfo->func().isDeclaration) {
+  if (!callSymbolInfo->func().isDeclaration && !isFnPtr) {
     logSemanticErrors("'" + callName +
                           "' has not been defined anywhere. "
                           "Add a definition or a forward declaration.",
@@ -664,29 +705,56 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   }
 
   std::vector<Node *> toTransfer;
+  std::vector<ResolvedType> argTypes;
   for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
     const auto &arg = funcCall->parameters[i];
     walker(arg.get());
     auto argSym = getSymbolFromMeta(arg.get());
     if (!argSym)
       reportDevBug("Failed to get argument symbol info", arg.get());
-    giveGenericLiteralContext(
-        arg.get(), callSymbolInfo->func().paramTypes[i].first, argSym);
-
-    if (auto *nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
-      if (i < callSymbolInfo->func().paramTypes.size()) {
-        auto expected = callSymbolInfo->func().paramTypes[i].first;
-        if (expected.isNull) {
-          metaData[nullLit]->type().type = expected;
-        } else {
-          logSemanticErrors("Cannot pass 'null' to parameter " +
-                                std::to_string(i + 1) + " of '" + callName +
-                                "' — it is not nullable.",
-                            arg.get());
+    if (!isFnPtr) {
+      giveGenericLiteralContext(
+          arg.get(), callSymbolInfo->func().paramTypes[i].first, argSym);
+      if (auto *nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
+        if (i < callSymbolInfo->func().paramTypes.size()) {
+          auto expected = callSymbolInfo->func().paramTypes[i].first;
+          if (expected.isNull) {
+            metaData[nullLit]->type().type = expected;
+          } else {
+            logSemanticErrors("Cannot pass 'null' to parameter " +
+                                  std::to_string(i + 1) + " of '" + callName +
+                                  "' — it is not nullable.",
+                              arg.get());
+          }
+        }
+      }
+    } else {
+      giveGenericLiteralContext(
+          arg.get(), callSymbolInfo->type().type.fnParamTypes[i], argSym);
+      if (auto *nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
+        if (i < callSymbolInfo->type().type.fnParamTypes.size()) {
+          auto expected = callSymbolInfo->type().type.fnParamTypes[i];
+          if (expected.isNull) {
+            metaData[nullLit]->type().type = expected;
+          } else {
+            logSemanticErrors("Cannot pass 'null' to parameter " +
+                                  std::to_string(i + 1) + " of '" + callName +
+                                  "' — it is not nullable.",
+                              arg.get());
+          }
         }
       }
     }
+
+    argTypes.push_back(argSym->type().type);
     toTransfer.push_back(arg.get());
+  }
+
+  // This takes an entirely different branch
+  if (isFnPtr) {
+    analyzeFnPtrCall(funcCall, argTypes, toTransfer, callSymbolInfo);
+
+    return;
   }
 
   if (!isCallCompatible(*callSymbolInfo, funcCall)) {
@@ -709,11 +777,6 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   /* I am doing this because there are two issues I am combatting I dont want
    the baton to escape its scope if the return type is not a pointer at the same
    time I dont wanna block heap variables that are being passed into the call*/
-  logInternal("IS THE CALL HEAP RAISED: " +
-              std::to_string(callSym->storage().isHeap));
-
-  logInternal("IS THE RETURN VALUE OF THIS CALL A POINTER: " +
-              std::to_string(callSym->type().isPointer));
   if (callSym->type().isPointer) {
     if (callSym->storage().isHeap) {
       metaData[funcCall->function_identifier.get()] = callSym;
@@ -814,7 +877,7 @@ void Semantics::walkSealCallExpression(Node *node,
                       funcCall);
   }
 
-    std::vector<Node *> toTransfer;
+  std::vector<Node *> toTransfer;
   for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
     const auto &arg = funcCall->parameters[i];
     walker(arg.get());
@@ -858,19 +921,19 @@ void Semantics::walkSealCallExpression(Node *node,
   callSym->storage().isHeap = callSymbolInfo->storage().isHeap;
   callSym->storage().allocType = callSymbolInfo->storage().allocType;
 
-  if(callSym->type().isPointer){
-      if(callSym->storage().isHeap){
-          metaData[funcCall->function_identifier.get()]=callSym;
-          transferBaton(funcCall,callSym->codegen().ID);
-      }
-  }else{
-      for(const auto &arg:toTransfer){
-          auto argSym=getSymbolFromMeta(arg);
-          if(!argSym)
-              reportDevBug("Failed to get argumant symbol info",arg);
-          if(argSym->storage().isHeap)
-                transferBaton(arg,argSym->codegen().ID);
-      }
+  if (callSym->type().isPointer) {
+    if (callSym->storage().isHeap) {
+      metaData[funcCall->function_identifier.get()] = callSym;
+      transferBaton(funcCall, callSym->codegen().ID);
+    }
+  } else {
+    for (const auto &arg : toTransfer) {
+      auto argSym = getSymbolFromMeta(arg);
+      if (!argSym)
+        reportDevBug("Failed to get argumant symbol info", arg);
+      if (argSym->storage().isHeap)
+        transferBaton(arg, argSym->codegen().ID);
+    }
   }
 
   metaData[funcCall] = callSym;
@@ -942,10 +1005,10 @@ void Semantics::walkSealStatement(Node *node) {
     }
 
     auto funcSym = resolveSymbolInfo(name);
-    if (!funcSym) 
+    if (!funcSym)
       reportDevBug("Internal error: could not find '" + name +
-                            "' after walking it.",
-                        funcStmt);
+                       "' after walking it.",
+                   funcStmt);
 
     if (isExportable)
       funcSym->isExportable = true;
