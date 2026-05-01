@@ -447,6 +447,7 @@ llvm::Type *IRGenerator::getLLVMType(const ResolvedType &type) {
 
         case DataType::STRING:
         case DataType::OPAQUE:
+        case DataType::FUNC_PTR:
             baseType = llvm::PointerType::get(context, 0);
             break;
 

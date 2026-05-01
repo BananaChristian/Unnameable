@@ -544,6 +544,7 @@ void Semantics::walkIdentifierExpression(Node *node) {
     auto fnSym=std::make_shared<SymbolInfo>();
     fnSym->type().type=makeFnPtrType(symbolInfo->func().returnType, symbolInfo);
     fnSym->type().isFnPtr=true;
+    fnSym->isFunction=true;
     metaData[identExpr]=fnSym;
     return;
   }

@@ -2,6 +2,15 @@ func add(i32 x): i32{
     return x+3
 }
 
-fn(i32?): i32 x = add
-x(null)
+fn(i32):i32 x= add
+
+func test: i32{
+  return x(11)
+}
+
+func main:i32{
+    i32 result= test()
+    trace result
+    return 0
+}
 

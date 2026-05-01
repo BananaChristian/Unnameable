@@ -181,6 +181,15 @@ void Semantics::walkFunctionParameters(Node *node) {
     return;
   }
 
+  if (param->initializer) {
+    errorHandler.addHint("Parameters cannot have default values in Unnameable")
+        .addHint("Pass the value explicitly at the call site instead")
+        .addHint("Example: func test(i32 x): void, call as test(10)");
+    logSemanticErrors(
+        "Parameter '" + paramName + "' cannot have a default value", param);
+    return;
+  }
+
   auto *baseType = dynamic_cast<BasicType *>(param->base_type.get());
   if (baseType && baseType->data_token.type == TokenType::AUTO) {
     errorHandler.addHint("Parameter types must be written out explicitly.")
@@ -193,10 +202,7 @@ void Semantics::walkFunctionParameters(Node *node) {
                       param);
     return;
   }
-
-  ResolvedType base = inferDeclarationBaseType(param);
-  ResolvedType resolvedType =
-      resolveTypeWithModifier(param->modified_type.get(), base);
+  ResolvedType resolvedType = inferNodeDataType(param);
 
   if (param->isHeap) {
     errorHandler
@@ -234,6 +240,7 @@ void Semantics::walkFunctionParameters(Node *node) {
 
   auto info = std::make_shared<SymbolInfo>();
   info->type().type = resolvedType;
+  info->type().isFnPtr = resolvedType.kind == DataType::FUNC_PTR;
   info->storage().isMutable = (param->mutability == Mutability::MUTABLE);
   info->storage().isConstant =
       false; // parameters are never compile-time constants
@@ -657,6 +664,8 @@ void Semantics::analyzeFnPtrCall(
   auto callSym = std::make_shared<SymbolInfo>();
   callSym->hasError = hasError;
   callSym->type().type = *fnPtrType.fnReturnType;
+  callSym->isFunction=true;
+  callSym->type().isFnPtr=true;
 
   for (const auto &arg : toTransfer) {
     auto argSym = getSymbolFromMeta(arg);
@@ -666,6 +675,7 @@ void Semantics::analyzeFnPtrCall(
     if (argSym->storage().isHeap)
       transferBaton(arg, argSym->codegen().ID);
   }
+  metaData[callNode->function_identifier.get()]=contextSym;
   metaData[callNode] = callSym;
 }
 

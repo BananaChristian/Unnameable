@@ -422,7 +422,8 @@ llvm::Type* Layout::getLLVMType(const ResolvedType& type) {
 
         case DataType::STRING:
         case DataType::OPAQUE:
-            // Both are just opaque pointers at the base level
+        case DataType::FUNC_PTR:
+            // These are just opaque pointers at the base level
             baseType = llvm::PointerType::get(context, 0);
             break;
 
