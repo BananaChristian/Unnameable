@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,7 +34,11 @@ struct Node {
 
   virtual ~Node() = default;
 
-  virtual std::string toString() { return "Node: " + token.TokenLiteral; };
+  virtual std::string toString() {
+    std::ostringstream oss;
+    oss << "Node: " << token.TokenLiteral;
+    return oss.str();
+  };
 
   virtual Node *shallowClone() const = 0;
 
@@ -43,8 +48,11 @@ struct Node {
 // GENERAL EXPRESSION NODE
 struct Expression : Node {
   Token expression;
+
   std::string toString() override {
-    return "Expression: " + expression.TokenLiteral;
+    std::ostringstream oss;
+    oss << "Expression " << expression.TokenLiteral;
+    return oss.str();
   }
 
   Expression *shallowClone() const override {
@@ -57,8 +65,11 @@ struct Expression : Node {
 // GENERAL STATEMENT NODE
 struct Statement : Node {
   Token statement;
+
   std::string toString() override {
-    return "Statement: " + statement.TokenLiteral;
+    std::ostringstream oss;
+    oss << "Statement: " << statement.TokenLiteral;
+    return oss.str();
   }
 
   Statement *shallowClone() const override { return new Statement(statement); }
@@ -68,8 +79,11 @@ struct Statement : Node {
 // Identifier statement node
 struct Identifier : Expression {
   Token identifier;
+
   std::string toString() override {
-    return "Identifier: " + identifier.TokenLiteral;
+    std::ostringstream oss;
+    oss << "Identifier: " << identifier.TokenLiteral;
+    return oss.str();
   }
 
   Identifier *shallowClone() const override {
@@ -85,12 +99,10 @@ struct AddressExpression : Expression {
   std::unique_ptr<Expression> identifier;
 
   std::string toString() override {
-    std::string var = "expr";
-    if (identifier)
-      var = identifier->toString();
-
-    return "Address Expression: (" + addr_token.TokenLiteral + " " + var +
-           ")\n";
+    std::ostringstream oss;
+    oss << "AddressExpression: (" << addr_token.TokenLiteral << " "
+        << (identifier ? identifier->toString() : "expr");
+    return oss.str();
   }
 
   AddressExpression *shallowClone() const override {
@@ -107,12 +119,10 @@ struct DereferenceExpression : Expression {
   std::unique_ptr<Expression> identifier;
 
   std::string toString() override {
-    std::string exprStr = "expr";
-    if (identifier)
-      exprStr = identifier->toString();
-
-    return "Dereference Expression: (" + deref_token.TokenLiteral + " " +
-           exprStr + ")\n";
+    std::ostringstream oss;
+    oss << "DereferenceExpression: (" << deref_token.TokenLiteral << " "
+        << (identifier ? identifier->toString() : "expr");
+    return oss.str();
   }
 
   DereferenceExpression *shallowClone() const override {
@@ -129,11 +139,12 @@ struct SelfExpression : Expression {
   std::vector<std::unique_ptr<Expression>> fields;
 
   std::string toString() override {
-    std::string fieldStr = "";
+    std::ostringstream oss;
+    oss << "Self Expression: " << self_token.TokenLiteral;
     for (const auto &field : fields) {
-      fieldStr += "." + field->toString();
+      oss << "." << (field ? field->toString() : "null");
     }
-    return "Self Expression: " + self_token.TokenLiteral + fieldStr;
+    return oss.str();
   }
 
   SelfExpression(Token self, std::vector<std::unique_ptr<Expression>> fieldExpr)
@@ -146,12 +157,13 @@ struct NewComponentExpression : Expression {
   std::vector<std::unique_ptr<Expression>> arguments;
 
   std::string toString() override {
-    std::string args_str;
+    std::ostringstream oss;
+    oss << "NewComponentExpression: new " << component_name.TokenLiteral << "(";
     for (auto &arg : arguments) {
-      args_str += arg->toString() + ", ";
+      oss << (arg ? arg->toString() : "null") << ",";
     }
-    return "NewComponentExpression: new " + component_name.TokenLiteral + "(" +
-           args_str + ")";
+    oss << ")";
+    return oss.str();
   }
 
   NewComponentExpression *shallowClone() const override {
@@ -168,8 +180,11 @@ struct NewComponentExpression : Expression {
 // Null literal
 struct NullLiteral : Expression {
   Token null_token;
+
   std::string toString() override {
-    return "Null Literal: " + null_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "Null Literal: " << null_token.TokenLiteral;
+    return oss.str();
   }
 
   NullLiteral *shallowClone() const override {
@@ -184,7 +199,9 @@ struct I8Literal : Expression {
   Token i8_token;
 
   std::string toString() override {
-    return "i8 Literal: " + i8_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "i8 literal: " << i8_token.TokenLiteral;
+    return oss.str();
   }
 
   I8Literal *shallowClone() const override { return new I8Literal(i8_token); }
@@ -196,7 +213,9 @@ struct U8Literal : Expression {
   Token u8_token;
 
   std::string toString() override {
-    return "u8 Literal: " + u8_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "u8 literal: " << u8_token.TokenLiteral;
+    return oss.str();
   }
 
   U8Literal *shallowClone() const override { return new U8Literal(u8_token); }
@@ -206,8 +225,11 @@ struct U8Literal : Expression {
 // Signed 16 bit Integer literal
 struct I16Literal : Expression {
   Token i16_token;
+
   std::string toString() override {
-    return "i16 Literal: " + i16_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "i16 literal" << i16_token.TokenLiteral;
+    return oss.str();
   }
 
   I16Literal *shallowClone() const override {
@@ -219,8 +241,11 @@ struct I16Literal : Expression {
 // Unsigned 16 bit Ineteger literal
 struct U16Literal : Expression {
   Token u16_token;
+
   std::string toString() override {
-    return "u16 Literal: " + u16_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "u16 literal: " << u16_token.TokenLiteral;
+    return oss.str();
   }
   U16Literal *shallowClone() const override {
     return new U16Literal(u16_token);
@@ -232,8 +257,11 @@ struct U16Literal : Expression {
 // Signed 32 bit Integer literal
 struct I32Literal : Expression {
   Token i32_token;
+
   std::string toString() override {
-    return "i32 Literal: " + i32_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "i32 literal: " + i32_token.TokenLiteral;
+    return oss.str();
   }
 
   I32Literal *shallowClone() const override {
@@ -245,8 +273,11 @@ struct I32Literal : Expression {
 // Unsigned 32 bit integer literal
 struct U32Literal : Expression {
   Token u32_token;
+
   std::string toString() override {
-    return "u32 Literal: " + u32_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "u32 literal: " << u32_token.TokenLiteral;
+    return oss.str();
   }
 
   U32Literal *shallowClone() const override {
@@ -258,8 +289,11 @@ struct U32Literal : Expression {
 // Signed 64 bit integer literal
 struct I64Literal : Expression {
   Token i64_token;
+
   std::string toString() override {
-    return "i64 Literal: " + i64_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "i64 literal: " << i64_token.TokenLiteral;
+    return oss.str();
   }
 
   I64Literal *shallowClone() const override {
@@ -271,8 +305,11 @@ struct I64Literal : Expression {
 // Unsigned 64 bit integer literal
 struct U64Literal : Expression {
   Token u64_token;
+
   std::string toString() override {
-    return "u64 Literal: " + u64_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "u64 literal: " << u64_token.TokenLiteral;
+    return oss.str();
   }
 
   U64Literal *shallowClone() const override {
@@ -285,8 +322,11 @@ struct U64Literal : Expression {
 // Signed 128 bit integer literal
 struct I128Literal : Expression {
   Token i128_token;
+
   std::string toString() override {
-    return "i128 Literal: " + i128_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "i128 literal: " << i128_token.TokenLiteral;
+    return oss.str();
   }
 
   I128Literal *shallowClone() const override {
@@ -298,8 +338,11 @@ struct I128Literal : Expression {
 // Unsigned 128 bit integer literal
 struct U128Literal : Expression {
   Token u128_token;
+
   std::string toString() override {
-    return "U128 Literal: " + u128_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "u128 literal: " << u128_token.TokenLiteral;
+    return oss.str();
   }
 
   U128Literal *shallowClone() const override {
@@ -310,8 +353,11 @@ struct U128Literal : Expression {
 
 struct ISIZELiteral : Expression {
   Token isize_token;
+
   std::string toString() override {
-    return "ISIZE Literal: " + isize_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "isize literal: " << isize_token.TokenLiteral;
+    return oss.str();
   }
 
   ISIZELiteral *shallowClone() const override {
@@ -323,8 +369,11 @@ struct ISIZELiteral : Expression {
 
 struct USIZELiteral : Expression {
   Token usize_token;
+
   std::string toString() override {
-    return "USIZE Literal: " + usize_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "usize literal: " << usize_token.TokenLiteral;
+    return oss.str();
   }
 
   USIZELiteral *shallowClone() const override {
@@ -336,9 +385,12 @@ struct USIZELiteral : Expression {
 
 struct INTLiteral : Expression {
   Token int_token;
+
   std::string toString() override {
-    return "INT Literal: " + int_token.TokenLiteral;
-  };
+    std::ostringstream oss;
+    oss << "int literal: " << int_token.TokenLiteral;
+    return oss.str();
+  }
 
   INTLiteral *shallowClone() const override {
     return new INTLiteral(int_token);
@@ -350,8 +402,11 @@ struct INTLiteral : Expression {
 // Boolean literal
 struct BooleanLiteral : Expression {
   Token boolean_token;
+
   std::string toString() override {
-    return "Boolean Literal: " + boolean_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "bool literal: " << boolean_token.TokenLiteral;
+    return oss.str();
   }
 
   BooleanLiteral *shallowClone() const override {
@@ -363,8 +418,11 @@ struct BooleanLiteral : Expression {
 // F32 literal
 struct F32Literal : Expression {
   Token f32_token;
+
   std::string toString() override {
-    return "F32 Literal: " + f32_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "f32 literal: " << f32_token.TokenLiteral;
+    return oss.str();
   }
 
   F32Literal *shallowClone() const override {
@@ -376,8 +434,11 @@ struct F32Literal : Expression {
 // F64 literal
 struct F64Literal : Expression {
   Token f64_token;
+
   std::string toString() override {
-    return "F64 Literal: " + f64_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "f64 literal: " << f64_token.TokenLiteral;
+    return oss.str();
   }
 
   F64Literal *shallowClone() const override {
@@ -389,8 +450,11 @@ struct F64Literal : Expression {
 // Generic Float literal
 struct FloatLiteral : Expression {
   Token float_token;
+
   std::string toString() override {
-    return "Float Literal: " + float_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "float literal: " << float_token.TokenLiteral;
+    return oss.str();
   }
 
   FloatLiteral *shallowClone() const override {
@@ -403,8 +467,11 @@ struct FloatLiteral : Expression {
 // 8 bit Char literal
 struct Char8Literal : Expression {
   Token char8_token;
+
   std::string toString() override {
-    return "Char8 Literal: " + char8_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "char8 literal: " << char8_token.TokenLiteral;
+    return oss.str();
   }
 
   Char8Literal *shallowClone() const override {
@@ -417,8 +484,11 @@ struct Char8Literal : Expression {
 // 16 bit Char literal
 struct Char16Literal : Expression {
   Token char16_token;
+
   std::string toString() override {
-    return "Char16 Literal: " + char16_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "char16 literal: " << char16_token.TokenLiteral;
+    return oss.str();
   }
 
   Char16Literal *shallowClone() const override {
@@ -430,8 +500,11 @@ struct Char16Literal : Expression {
 // 32 bit Char literal
 struct Char32Literal : Expression {
   Token char32_token;
+
   std::string toString() override {
-    return "Char32 Literal: " + char32_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "char32 literal: " << char32_token.TokenLiteral;
+    return oss.str();
   }
 
   Char32Literal *shallowClone() const override {
@@ -443,8 +516,11 @@ struct Char32Literal : Expression {
 // String literal
 struct StringLiteral : Expression {
   Token string_token;
+
   std::string toString() override {
-    return "String Literal: " + string_token.TokenLiteral;
+    std::ostringstream oss;
+    oss << "string literal: " << string_token.TokenLiteral;
+    return oss.str();
   }
 
   StringLiteral *shallowClone() const override {
@@ -464,30 +540,36 @@ struct FStringLiteral : Expression {
   std::vector<FStringSegment> segments;
 
   std::string toString() override {
-    std::string res = "F-String Literal: \"";
+    std::ostringstream oss;
+    oss << "F-String Literal: \"";
 
     for (const auto &seg : segments) {
       // Handle the String part (The text context)
       if (seg.string_part) {
-        res += seg.string_part->toString();
+        oss << seg.string_part->toString();
       }
 
       // Handle the Expression Payload (The { } stuff)
       if (!seg.values.empty()) {
-        res += "{";
+        oss << "{";
         for (size_t i = 0; i < seg.values.size(); ++i) {
-          res += seg.values[i]->toString();
+          if (seg.values[i]) {
+            oss << seg.values[i]->toString();
+          } else {
+            oss << "null";
+          }
           if (i < seg.values.size() - 1) {
-            res += ", ";
+            oss << ", ";
           }
         }
-        res += "}";
+        oss << "}";
       }
     }
 
-    res += "\"";
-    return res;
+    oss << "\"";
+    return oss.str();
   }
+
   FStringLiteral *shallowClone() const override {
     std::vector<FStringSegment> clonedSegs;
     for (const auto &seg : segments) {
@@ -514,15 +596,7 @@ struct SizeOfExpression : Expression {
   Token sizeOf;
   std::unique_ptr<Expression> type;
 
-  std::string toString() override {
-    std::string typeStr;
-    if (type) {
-      typeStr = type->toString();
-    } else {
-      typeStr = "type";
-    }
-    return "Sizeof Expression: sizeof<" + typeStr + ">";
-  }
+  std::string toString() override { return ""; }
 
   SizeOfExpression *shallowClone() const override {
     return new SizeOfExpression(sizeOf, clonePtr(type));
@@ -539,15 +613,11 @@ struct CastExpression : Expression {
   std::unique_ptr<Expression> expr;
 
   std::string toString() override {
-    std::string typeStr = "<No type>";
-    if (type) {
-      typeStr = "<" + type->toString() + ">";
-    }
-    std::string exprStr = "(No expr)";
-    if (expr) {
-      exprStr = "(" + expr->toString() + ")";
-    }
-    return "Cast Expression: " + cast.TokenLiteral + typeStr + exprStr;
+    std::ostringstream oss;
+    oss << "Cast Expression: " << cast.TokenLiteral << "<"
+        << (type ? type->toString() : "no type") << ">("
+        << (expr ? expr->toString() : "No expr") << ")";
+    return oss.str();
   }
 
   CastExpression *shallowClone() const override {
@@ -566,15 +636,11 @@ struct BitcastExpression : Expression {
   std::unique_ptr<Expression> expr;
 
   std::string toString() override {
-    std::string typeStr = "<No type>";
-    if (type) {
-      typeStr = "<" + type->toString() + ">";
-    }
-    std::string exprStr = "(No expr)";
-    if (expr) {
-      exprStr = "(" + expr->toString() + ")";
-    }
-    return "Bitcast Expression: " + bitcast.TokenLiteral + typeStr + exprStr;
+    std::ostringstream oss;
+    oss << "Bitcast Expression: " << bitcast.TokenLiteral << "<"
+        << (type ? type->toString() : "no type") << ">("
+        << (expr ? expr->toString() : "No expr") << ")";
+    return oss.str();
   }
 
   BitcastExpression *shallowClone() const override {
@@ -590,15 +656,22 @@ struct BitcastExpression : Expression {
 struct CallExpression : Expression {
   std::unique_ptr<Expression> function_identifier;
   std::vector<std::unique_ptr<Expression>> parameters;
+
   std::string toString() override {
-    std::string args_str;
+    std::ostringstream oss;
+    oss << "Call Expression: "
+        << (function_identifier ? function_identifier->toString() : "null")
+        << "(";
+
     for (size_t i = 0; i < parameters.size(); ++i) {
-      args_str += parameters[i]->toString();
-      if (i < parameters.size() - 1)
-        args_str += ", ";
+      oss << (parameters[i] ? parameters[i]->toString() : "null");
+      if (i < parameters.size() - 1) {
+        oss << ", ";
+      }
     }
-    return "Call Expression: " + function_identifier->toString() + "(" +
-           args_str + ")";
+
+    oss << ")";
+    return oss.str();
   }
 
   CallExpression *shallowClone() const override {
@@ -617,13 +690,12 @@ struct CallExpression : Expression {
 struct UnwrapExpression : Expression {
   Token unwrap_token;
   std::unique_ptr<Expression> expr;
+
   std::string toString() override {
-    std::string exprStr = "<empty>";
-    if (expr) {
-      exprStr = expr->toString();
-    }
-    return "Unwrap expression: (" + unwrap_token.TokenLiteral + " " + exprStr +
-           ")\n";
+    std::ostringstream oss;
+    oss << "UnwrapExpression: (" << unwrap_token.TokenLiteral << " "
+        << (expr ? expr->toString() : "empty");
+    return oss.str();
   }
 
   UnwrapExpression *shallowClone() const override {
@@ -634,42 +706,29 @@ struct UnwrapExpression : Expression {
       : Expression(unwrap), unwrap_token(unwrap), expr(std::move(e)) {};
 };
 
-// Method call expression
-struct MethodCallExpression : Expression {
-  std::unique_ptr<Expression> instance;
-  std::unique_ptr<Expression> call;
-
-  std::string toString() override {
-    return "Method Call Expression: " + instance->toString() + "." +
-           call->toString();
-  }
-
-  MethodCallExpression *shallowClone() const override {
-    return new MethodCallExpression(clonePtr(instance), clonePtr(call));
-  }
-
-  MethodCallExpression(std::unique_ptr<Expression> inst,
-                       std::unique_ptr<Expression> callExpr)
-      : Expression(inst->expression), instance(std::move(inst)),
-        call(std::move(callExpr)) {}
-};
-
 // Instance expression
 struct InstanceExpression : Expression {
   std::unique_ptr<Expression> blockIdent;
   std::vector<std::unique_ptr<Statement>> fields;
 
   std::string toString() override {
-    std::string args;
-    for (const auto &field : fields) {
-      args += field->toString();
+    std::ostringstream oss;
+    oss << "Instance expression: ";
+
+    // Instance name
+    oss << (blockIdent ? blockIdent->toString() : "null");
+
+    oss << " {";
+
+    // Fields with commas
+    for (size_t i = 0; i < fields.size(); ++i) {
+      if (i > 0)
+        oss << ", ";
+      oss << (fields[i] ? fields[i]->toString() : "null");
     }
 
-    std::string instName = "instName";
-    if (blockIdent)
-      instName = blockIdent->toString();
-
-    return "Instance expression: " + instName + " {" + args + "}";
+    oss << "}";
+    return oss.str();
   }
 
   InstanceExpression *shallowClone() const override {
@@ -691,22 +750,29 @@ struct FunctionExpression : Expression {
   std::unique_ptr<Expression> block;
 
   std::string toString() override {
-    std::string cl = "(";
-    for (size_t i = 0; i < call.size(); ++i) {
-      cl += call[i] ? call[i]->toString() : "<null>";
-      if (i < call.size() - 1) {
-        cl += ", ";
-      }
+    std::ostringstream oss;
+
+    // Export keyword
+    if (isExportable) {
+      oss << "export ";
     }
-    cl += ")";
 
-    std::string ret_str = return_type ? return_type->toString() : "<no type>";
-    std::string block_str = block ? block->toString() : "<no block>";
-    std::string exportStr = isExportable ? "export " : "";
+    oss << "FunctionExpression: " << func_key.TokenLiteral << " ";
+    oss << "Function parameters: (";
 
-    return exportStr + "FunctionExpression: " + func_key.TokenLiteral + " " +
-           "Function parameters: " + cl + " Return type: " + ret_str +
-           " Function block: " + block_str;
+    // Parameters
+    for (size_t i = 0; i < call.size(); ++i) {
+      if (i > 0)
+        oss << ", ";
+      oss << (call[i] ? call[i]->toString() : "<null>");
+    }
+
+    oss << ")";
+    oss << " Return type: "
+        << (return_type ? return_type->toString() : "<no type>");
+    oss << " Function block: " << (block ? block->toString() : "<no block>");
+
+    return oss.str();
   }
 
   FunctionExpression *shallowClone() const override {
@@ -726,8 +792,11 @@ struct FunctionExpression : Expression {
 struct BasicType : Expression {
   Token data_token;        // Basic token like i32
   bool isNullable = false; // If we see ? we toggle
+
   std::string toString() override {
-    return "Basic Type: " + data_token.TokenLiteral + (isNullable ? "?" : "");
+    std::ostringstream oss;
+    oss << "Basic Type: " << data_token.TokenLiteral << (isNullable ? "?" : "");
+    return oss.str();
   }
 
   BasicType *shallowClone() const override {
@@ -745,15 +814,26 @@ struct ReturnType : Expression {
   bool isVoid = false;
 
   std::string toString() override {
-    if (isVoid)
+    if (isVoid) {
       return "Return Type: void";
-    std::string result = "Return Type: ";
-    if (fnptr_mod)
-      result += fnptr_mod->toString();
-    if (modified_type)
-      result += modified_type->toString();
-    result += base_type->toString();
-    return result;
+    }
+
+    std::ostringstream oss;
+    oss << "Return Type: ";
+
+    if (fnptr_mod) {
+      oss << fnptr_mod->toString();
+    }
+    if (modified_type) {
+      oss << modified_type->toString();
+    }
+    if (base_type) {
+      oss << base_type->toString();
+    } else {
+      oss << "<null>";
+    }
+
+    return oss.str();
   }
 
   ReturnType *shallowClone() const override {
@@ -779,11 +859,11 @@ struct PrefixExpression : Expression {
   std::unique_ptr<Expression> operand;
 
   std::string toString() override {
-    std::string operStr = "No op";
-    if (operand)
-      operStr = operand->toString();
+    std::ostringstream oss;
+    oss << "Prefix Expression: (" << operat.TokenLiteral
+        << (operand ? operand->toString() : "No op") << ")";
 
-    return "Prefix Expression: (" + operat.TokenLiteral + operStr + ")";
+    return oss.str();
   }
 
   PrefixExpression *shallowClone() const override {
@@ -800,12 +880,11 @@ struct PostfixExpression : Expression {
   Token operator_token;
 
   std::string toString() override {
-    std::string operStr = "No op";
-    if (operand)
-      operStr = operand->toString();
+    std::ostringstream oss;
+    oss << "PostfixExpression: (" << (operand ? operand->toString() : "No op")
+        << operator_token.TokenLiteral << ")";
 
-    return "Postfix Expression: (" + operStr + operator_token.TokenLiteral +
-           ")";
+    return oss.str();
   }
 
   PostfixExpression *shallowClone() const override {
@@ -823,17 +902,13 @@ struct InfixExpression : Expression {
   std::unique_ptr<Expression> right_operand;
 
   std::string toString() override {
-    std::string leftSide = "left";
-    std::string rightSide = "right";
+    std::ostringstream oss;
+    oss << "Infix Expression: ("
+        << (left_operand ? left_operand->toString() : "left")
+        << operat.TokenLiteral
+        << (right_operand ? right_operand->toString() : "right") << ")";
 
-    if (left_operand)
-      leftSide = left_operand->toString();
-
-    if (right_operand)
-      rightSide = right_operand->toString();
-
-    return "Infix Expression: (" + leftSide + " " + operat.TokenLiteral + " " +
-           rightSide + ")";
+    return oss.str();
   }
 
   InfixExpression *shallowClone() const override {
@@ -853,8 +928,10 @@ struct ExpressionStatement : Statement {
   std::unique_ptr<Expression> expression;
 
   std::string toString() override {
+    std::ostringstream oss;
     if (expression) {
-      return "Expression statement: " + expression->toString() + "\n";
+      oss << "Expression statement: " << expression->toString() << "\n";
+      return oss.str();
     }
     return "";
   }
@@ -870,8 +947,11 @@ struct ExpressionStatement : Statement {
 // Break statement node
 struct BreakStatement : Statement {
   Token break_tok;
+
   std::string toString() override {
-    return "Break Statement: " + break_tok.TokenLiteral + "\n";
+    std::ostringstream oss;
+    oss << "Break Statement: " << break_tok.TokenLiteral << "\n";
+    return oss.str();
   }
 
   BreakStatement *shallowClone() const override {
@@ -884,8 +964,11 @@ struct BreakStatement : Statement {
 // Continue statement struct
 struct ContinueStatement : Statement {
   Token cont_tok;
+
   std::string toString() override {
-    return "Continue Statement: " + cont_tok.TokenLiteral + "\n";
+    std::ostringstream oss;
+    oss << "Continue Statement: " << cont_tok.TokenLiteral << "\n";
+    return oss.str();
   }
 
   ContinueStatement *shallowClone() const override {
@@ -903,13 +986,20 @@ struct AllocatorStatement : Statement {
   std::unique_ptr<Statement> block;
 
   std::string toString() override {
-    std::string exportStr = isExportable ? "export " : "";
-    std::string blockName = "";
-    if (allocator_name) {
-      blockName = allocator_name->toString() + " ";
+    std::ostringstream oss;
+    oss << "Allocator Interface: ";
+
+    if (isExportable) {
+      oss << "export ";
     }
 
-    return "Allocator Interface: " + exportStr + blockName + block->toString();
+    if (allocator_name) {
+      oss << allocator_name->toString() << " ";
+    }
+
+    oss << (block ? block->toString() : "<null block>");
+
+    return oss.str();
   }
 
   AllocatorStatement(bool exportable, Token alloc,
@@ -927,17 +1017,18 @@ struct SealStatement : Statement {
   std::unique_ptr<Statement> block;
 
   std::string toString() override {
-    std::string exportStr = isExportable ? "export " : "";
-    std::string name = "No name";
-    if (sealName) {
-      name = sealName->toString();
-    }
-    std::string blockStr = "";
-    if (block) {
-      blockStr = block->toString();
-    }
-    return "Seal Statement: " + exportStr + seal_token.TokenLiteral + " " +
-           name + blockStr;
+    std::ostringstream oss;
+    oss << "Seal Statement: ";
+
+    if (isExportable)
+      oss << "export ";
+    oss << seal_token.TokenLiteral << " ";
+    oss << (sealName ? sealName->toString() : "No name");
+
+    if (block)
+      oss << " " << block->toString();
+
+    return oss.str();
   }
 
   SealStatement(bool isExp, Token seal, std::unique_ptr<Expression> name,
@@ -953,10 +1044,10 @@ struct InjectStatement : Statement {
   std::unique_ptr<Expression> expr;
 
   std::string toString() override {
-    std::string result = "Inject statement: ";
-    result += kind_token.TokenLiteral + " ";
-    result += expr->toString();
-    return result + ";";
+    std::ostringstream oss;
+    oss << "Inject statement: " << kind_token.TokenLiteral
+        << (expr ? expr->toString() : "expr");
+    return oss.str();
   }
 
   InjectStatement(Token injectTok, Token kindTok,
@@ -985,17 +1076,29 @@ struct StructureModifier : Expression {
         isUnion(union_), _align(std::move(align)) {}
 
   std::string toString() override {
-    std::string result;
-    if (isPacked)
-      result += "packed ";
-    if (isBitfield)
-      result += "bitfield ";
-    if (isUnion)
-      result += "union ";
+    std::ostringstream oss;
+    bool first = true;
 
-    if (_align)
-      result += "align(" + _align->toString() + ") ";
-    return result;
+    auto addModifier = [&](const std::string &mod) {
+      if (!first)
+        oss << " ";
+      oss << mod;
+      first = false;
+    };
+
+    if (isPacked)
+      addModifier("packed");
+    if (isBitfield)
+      addModifier("bitfield");
+    if (isUnion)
+      addModifier("union");
+    if (_align) {
+      if (!first)
+        oss << " ";
+      oss << "align(" << _align->toString() << ")";
+    }
+
+    return oss.str();
   }
 };
 
@@ -1025,29 +1128,30 @@ struct RecordStatement : Statement {
         recordName(std::move(name)), fields(std::move(record_fields)) {}
 
   std::string toString() override {
-    std::string result;
-    if (isVolatile)
-      result += "volatile ";
+    std::ostringstream oss;
 
+    if (isVolatile)
+      oss << "volatile ";
     if (isExportable)
-      result += "export ";
+      oss << "export ";
 
     if (mutability == Mutability::MUTABLE)
-      result += "mut ";
+      oss << "mut ";
     if (mutability == Mutability::CONSTANT)
-      result += "const ";
+      oss << "const ";
 
     if (modifiers)
-      result += modifiers->toString();
+      oss << modifiers->toString();
 
-    result += "record " + recordName->toString();
+    oss << "record " << (recordName ? recordName->toString() : "<null>");
+    oss << " {\n";
 
-    result += " {\n";
-    for (const auto &field : fields)
-      result += "  " + field->toString() + "\n";
-    result += "}";
+    for (const auto &field : fields) {
+      oss << "  " << (field ? field->toString() : "<null field>") << "\n";
+    }
 
-    return result;
+    oss << "}";
+    return oss.str();
   }
 };
 
@@ -1058,12 +1162,14 @@ struct InitStatement : Statement {
   std::unique_ptr<Statement> block;
 
   std::string toString() override {
-    std::string args;
+    std::ostringstream oss;
+    oss << "InitStatement: " << init_token.TokenLiteral << "(";
     for (auto &arguments : constructor_args) {
-      args += arguments->toString();
+
+      oss << (arguments ? arguments->toString() : "argument");
     }
-    return "Init Statement: " + init_token.TokenLiteral + " (" + args + ") " +
-           block->toString();
+    oss << ")" << (block ? block->toString() : "block");
+    return oss.str();
   }
 
   InitStatement *shallowClone() const override {
@@ -1108,34 +1214,41 @@ struct ComponentStatement : Statement {
         initConstructor(std::move(init)) {}
 
   std::string toString() override {
-    std::string result = isExportable ? "export " : "";
+    std::ostringstream oss;
 
-    result += "component " + component_name->toString();
+    if (isExportable)
+      oss << "export ";
 
-    result += " {\n";
+    oss << "component "
+        << (component_name ? component_name->toString() : "<null>");
+    oss << " {\n";
 
     for (const auto &field : fields) {
-      if (!field)
-        std::cout << "Encountered null field\n";
-      else
-        result += "  " + field->toString() + "\n";
+      if (!field) {
+        oss << "  <null field>\n";
+      } else {
+        oss << "  " << field->toString() << "\n";
+      }
     }
 
     for (const auto &method : methods) {
-      if (!method)
-        std::cout << "Encountered null method\n";
-      else
-        result += "  " + method->toString() + "\n";
+      if (!method) {
+        oss << "  <null method>\n";
+      } else {
+        oss << "  " << method->toString() << "\n";
+      }
     }
 
-    for (const auto &injected : injectedFields)
-      result += "  " + injected->toString() + "\n";
+    for (const auto &injected : injectedFields) {
+      oss << "  " << (injected ? injected->toString() : "<null>") << "\n";
+    }
 
-    if (initConstructor.has_value())
-      result += "  " + (*initConstructor)->toString() + "\n";
+    if (initConstructor.has_value() && *initConstructor) {
+      oss << "  " << (*initConstructor)->toString() << "\n";
+    }
 
-    result += "}";
-    return result;
+    oss << "}";
+    return oss.str();
   }
 };
 
@@ -1145,14 +1258,17 @@ struct FunctionPointerModifier : Expression {
   std::vector<std::unique_ptr<Expression>> type_args;
 
   std::string toString() override {
-    std::string result = " Func Pointer Mod: ";
-    result += "fn(";
-    for (const auto &arg : type_args)
-      result += arg->toString() + ",";
+    std::ostringstream oss;
+    oss << " Func Pointer Mod: fn(";
 
-    result += "): ";
+    for (size_t i = 0; i < type_args.size(); ++i) {
+      if (i > 0)
+        oss << ", ";
+      oss << (type_args[i] ? type_args[i]->toString() : "<null>");
+    }
 
-    return result;
+    oss << "): ";
+    return oss.str();
   }
 
   FunctionPointerModifier *shallowClone() const override {
@@ -1174,32 +1290,32 @@ struct TypeModifier : Expression {
       inner_modifier; // For nested modifiers like ptr inside arr
 
   std::string toString() override {
-    std::string result;
+    std::ostringstream oss;
 
     if (isPointer) {
-      result += "ptr";
+      oss << "ptr";
       if (inner_modifier) {
-        result += "<" + inner_modifier->toString() + ">";
+        oss << "<" << inner_modifier->toString() << ">";
       }
-      result += " ";
+      oss << " ";
     } else if (isReference) {
-      result += "ref";
+      oss << "ref";
       if (inner_modifier) {
-        result += "<" + inner_modifier->toString() + ">";
+        oss << "<" << inner_modifier->toString() << ">";
       }
-      result += " ";
+      oss << " ";
     } else if (isArray) {
-      result += "arr";
+      oss << "arr";
       for (const auto &dim : dimensions) {
-        result += "[" + dim->toString() + "]";
+        oss << "[" << (dim ? dim->toString() : "?") << "]";
       }
       if (inner_modifier) {
-        result += "<" + inner_modifier->toString() + ">";
+        oss << "<" << inner_modifier->toString() << ">";
       }
-      result += " ";
+      oss << " ";
     }
 
-    return result;
+    return oss.str();
   }
 
   TypeModifier *shallowClone() const override {
@@ -1243,55 +1359,58 @@ struct VariableDeclaration : Statement {
   bool isExportable = false;
 
   std::string toString() override {
-    std::string result;
+    std::ostringstream oss;
+    oss << "Variable Declaration: (";
 
     // Storage with optional allocator
     if (isHeap) {
-      result += "heap";
+      oss << "heap";
       if (allocator) {
-        result += "<" + allocator->toString() + ">";
+        oss << "<" << allocator->toString() << ">";
       }
-      result += " ";
+      oss << " ";
     }
 
     // Type qualifiers
     if (isPersist)
-      result += "persist ";
+      oss << "persist ";
     if (isVolatile)
-      result += "volatile ";
+      oss << "volatile ";
     if (isRestrict)
-      result += "restrict ";
+      oss << "restrict ";
     if (isExportable)
-      result += "export ";
+      oss << "export ";
     if (mutability == Mutability::CONSTANT)
-      result += "const ";
+      oss << "const ";
     if (mutability == Mutability::MUTABLE)
-      result += "mut ";
+      oss << "mut ";
 
     // Type modifiers (ptr, arr, ref)
     if (modified_type) {
-      result += modified_type->toString();
+      oss << modified_type->toString();
     }
 
     // Func modifier
-    if (fnPtrMod)
-      result += fnPtrMod->toString();
+    if (fnPtrMod) {
+      oss << fnPtrMod->toString();
+    }
 
     // Base type
-    result += base_type ? base_type->toString() : "<unknown>";
-    result += " ";
+    oss << (base_type ? base_type->toString() : "<unknown>");
+    oss << " ";
 
     // name
-    result += var_name ? var_name->toString() : "<unnamed>";
+    oss << (var_name ? var_name->toString() : "<unnamed>");
 
     // Initializer
     if (initializer) {
-      result += " = " + initializer->toString();
+      oss << " = " << initializer->toString();
     } else {
-      result += " <uninitialized>";
+      oss << " <uninitialized>";
     }
 
-    return "Variable Declaration: (" + result + ")";
+    oss << ")";
+    return oss.str();
   }
 
   VariableDeclaration *shallowClone() const override {
@@ -1324,9 +1443,13 @@ struct AssignmentStatement : Statement {
   std::unique_ptr<Expression> identifier;
   Token op;
   std::unique_ptr<Expression> value;
+
   std::string toString() override {
-    return "Assignment statement: (Variable: " + identifier->toString() +
-           op.TokenLiteral + " Value: " + value->toString() + ")";
+    std::ostringstream oss;
+    oss << "Assignment statement: (Variable: " << identifier->toString()
+        << op.TokenLiteral
+        << " Value: " << (value ? value->toString() : "value") << ")";
+    return oss.str();
   };
 
   AssignmentStatement *shallowClone() const override {
@@ -1353,8 +1476,11 @@ struct FieldAssignment : Statement {
         value(std::move(val)) {};
 
   std::string toString() override {
-    return "Field Assignment: (Path: " + lhs_chain->toString() +
-           op.TokenLiteral + " Value: " + value->toString() + ")";
+    std::ostringstream oss;
+    oss << "Field Assignment: (Path: " << lhs_chain->toString()
+        << op.TokenLiteral
+        << " Value: " << (value ? value->toString() : "value") << ")";
+    return oss.str();
   }
 };
 
@@ -1363,12 +1489,10 @@ struct ReturnStatement : Statement {
   Token return_stmt;
   std::unique_ptr<Expression> return_value;
   std::string toString() override {
-    std::string retStr = "";
-    if (return_value) {
-      retStr = return_value->toString();
-    }
-    return "Return Statement: " + return_stmt.TokenLiteral + " " + retStr +
-           "\n";
+    std::ostringstream oss;
+    oss << "Return Statement: " << return_stmt.TokenLiteral << " "
+        << (return_value ? return_value->toString() : "");
+    return oss.str();
   }
 
   ReturnStatement *shallowClone() const override {
@@ -1385,8 +1509,13 @@ struct elifStatement : Statement {
   std::unique_ptr<Statement> elif_result;
 
   std::string toString() override {
-    return "elifStatement: " + elif_token.TokenLiteral + "(" +
-           elif_condition->toString() + ") {" + elif_result->toString() + "}";
+    std::ostringstream oss;
+    oss << "elifStatement: " << elif_token.TokenLiteral
+        << "(" +
+               (elif_condition ? elif_condition->toString() : "elif_condition")
+        << ") {" << (elif_result ? elif_result->toString() : "elif_result")
+        << "}";
+    return oss.str();
   }
 
   elifStatement *shallowClone() const override {
@@ -1412,39 +1541,49 @@ struct ifStatement : Statement {
   std::optional<std::unique_ptr<Statement>> else_result;
 
   std::string toString() override {
-    std::string result = "IfStatement:\n";
+    std::ostringstream oss;
+    oss << "IfStatement:\n";
 
-    if (condition)
-      result += "  if (" + condition->toString() + ") {\n";
-    else
-      result += "  if (<null condition>) {\n";
+    // Condition
+    if (condition) {
+      oss << "  if (" << condition->toString() << ") {\n";
+    } else {
+      oss << "  if (<null condition>) {\n";
+    }
 
-    if (if_result)
-      result += "    " + if_result->toString() + "\n";
-    else
-      result += "    <null if_result>\n";
+    // If body
+    if (if_result) {
+      oss << "    " << if_result->toString() << "\n";
+    } else {
+      oss << "    <null if_result>\n";
+    }
 
-    result += "  }\n";
+    oss << "  }\n";
 
-    if (!elifClauses.empty()) {
-      for (const auto &elifs : elifClauses) {
-        result += elifs->toString();
+    // Elif clauses
+    for (const auto &elifs : elifClauses) {
+      if (elifs) {
+        oss << elifs->toString();
+      } else {
+        oss << "    <null elif>\n";
       }
     }
+    oss << "\n";
 
     // ELSE block
     if (else_stmt.has_value()) {
-      result += "  else {\n";
+      oss << "  else {\n";
 
-      if (else_result.has_value() && *else_result)
-        result += "    " + (*else_result)->toString() + "\n";
-      else
-        result += "    <null else_result>\n";
+      if (else_result.has_value() && *else_result) {
+        oss << "    " << (*else_result)->toString() << "\n";
+      } else {
+        oss << "    <null else_result>\n";
+      }
 
-      result += "  }\n";
+      oss << "  }\n";
     }
 
-    return result;
+    return oss.str();
   }
 
   ifStatement *shallowClone() const override {
@@ -1470,11 +1609,12 @@ struct CaseClause : Statement {
   std::vector<std::unique_ptr<Statement>> body;
 
   std::string toString() override {
-    std::string body_content;
-    for (const auto &b : body) {
-      body_content += "\n    " + b->toString();
+    std::ostringstream oss;
+    oss << "case " << (condition ? condition->toString() : "condition");
+    for (const auto &content : body) {
+      oss << (content ? content->toString() : "body");
     }
-    return "case " + condition->toString() + ":" + body_content;
+    return oss.str();
   }
 
   CaseClause *shallowClone() const override {
@@ -1499,23 +1639,25 @@ struct SwitchStatement : Statement {
   std::vector<std::unique_ptr<Statement>> default_statements;
 
   std::string toString() override {
-    std::string result = "switch (" + switch_init->toString() + ") {\n";
+    std::ostringstream oss;
+    oss << "switch (" << (switch_init ? switch_init->toString() : "<null>")
+        << ") {\n";
 
     // Print all case clauses
     for (const auto &clause : case_clauses) {
-      result += clause->toString() + "\n";
+      oss << (clause ? clause->toString() : "<null clause>") << "\n";
     }
 
     // Print default statements if they exist
     if (!default_statements.empty()) {
-      result += "\n  default:\n";
+      oss << "\n  default:\n";
       for (const auto &stmt : default_statements) {
-        result += "    " + stmt->toString() + "\n";
+        oss << "    " << (stmt ? stmt->toString() : "<null stmt>") << "\n";
       }
     }
 
-    result += "}";
-    return result;
+    oss << "}";
+    return oss.str();
   }
 
   SwitchStatement *shallowClone() const override {
@@ -1539,11 +1681,10 @@ struct EnumMember : Node {
   std::unique_ptr<Expression> value;
 
   std::string toString() override {
-    std::string val;
-    if (value) {
-      val += "= " + value->toString();
-    }
-    return "Enum Member: " + enumMember + val;
+    std::ostringstream oss;
+    oss << "Enum Member: " << enumMember
+        << (value ? value->toString() : "value");
+    return oss.str();
   }
 
   EnumMember *shallowClone() const override {
@@ -1561,21 +1702,29 @@ struct EnumStatement : Statement {
   std::unique_ptr<Expression> enum_identifier;
   std::optional<Token> int_type;
   std::vector<std::unique_ptr<EnumMember>> enum_content;
+
   std::string toString() override {
-    std::string exportStr = isExportable ? "export " : "";
-    std::string enum_block;
-    std::string int_typestr = "";
+    std::ostringstream oss;
+
+    if (isExportable)
+      oss << "export ";
+    oss << "Enum statement: "
+        << (enum_identifier ? enum_identifier->toString() : "<null>");
 
     if (int_type.has_value()) {
-      int_typestr = " : " + int_type.value().TokenLiteral;
+      oss << " : " << int_type.value().TokenLiteral;
     }
 
-    for (const auto &enum_cont : enum_content) {
-      enum_block += enum_cont->toString() + ",\n";
+    oss << " { ";
+
+    for (size_t i = 0; i < enum_content.size(); ++i) {
+      if (i > 0)
+        oss << ", ";
+      oss << (enum_content[i] ? enum_content[i]->toString() : "<null>");
     }
 
-    return exportStr + "Enum statement: " + enum_identifier->toString() +
-           int_typestr + " { " + enum_block + " }";
+    oss << " }";
+    return oss.str();
   }
 
   EnumStatement *shallowClone() const override {
@@ -1595,7 +1744,7 @@ struct EnumStatement : Statement {
 
 struct ForStatement : Statement {
   Token for_key;
-  std::unique_ptr<Statement> initializer; // int i;
+  std::unique_ptr<Statement> initializer; // mut i32 i;
   std::unique_ptr<Expression> condition;  // i < 10
   std::unique_ptr<Statement> step;        // i = i + 1
   std::unique_ptr<Statement> body;        // the loop body
@@ -1613,13 +1762,15 @@ struct ForStatement : Statement {
         body(std::move(body)) {};
 
   std::string toString() override {
-    std::string out = "ForStatement(\n";
-    out += "  Init: " + (initializer ? initializer->toString() : "null") + "\n";
-    out += "  Cond: " + (condition ? condition->toString() : "null") + "\n";
-    out += "  Step: " + (step ? step->toString() : "null") + "\n";
-    out += "  Body: " + (body ? body->toString() : "null") + "\n";
-    out += ")";
-    return out;
+    std::ostringstream oss;
+    oss << "ForStatement(\n";
+    oss << "  Init: " << (initializer ? initializer->toString() : "null")
+        << "\n";
+    oss << "  Cond: " << (condition ? condition->toString() : "null") << "\n";
+    oss << "  Step: " << (step ? step->toString() : "null") << "\n";
+    oss << "  Body: " << (body ? body->toString() : "null") << "\n";
+    oss << ")";
+    return oss.str();
   }
 };
 
@@ -1629,7 +1780,10 @@ struct WhileStatement : Statement {
   std::unique_ptr<Statement> loop;
 
   std::string toString() override {
-    return "While : " + condition->toString() + loop->toString();
+    std::ostringstream oss;
+    oss << "While : " << (condition ? condition->toString() : "condition")
+        << (loop ? loop->toString() : "loop");
+    return oss.str();
   }
 
   WhileStatement *shallowClone() const override {
@@ -1646,8 +1800,12 @@ struct WhileStatement : Statement {
 struct FunctionStatement : Statement {
   Token token;
   std::unique_ptr<Expression> funcExpr;
+
   std::string toString() override {
-    return "Function Statement: " + funcExpr->toString();
+    std::ostringstream oss;
+    oss << "Function Statement: "
+        << (funcExpr ? funcExpr->toString() : "func_expr");
+    return oss.str();
   }
 
   FunctionStatement *shallowClone() const override {
@@ -1668,17 +1826,26 @@ struct FunctionDeclaration : Statement {
   bool isNullable = false;
 
   std::string toString() override {
-    std::string exportStr = isExportable ? "export " : "";
-    std::string arguments;
-    for (auto &param : parameters) {
-      arguments += param->toString();
+    std::ostringstream oss;
+
+    if (isExportable)
+      oss << "export ";
+    oss << "Function Declaration Statement: ";
+    oss << func_keyword_token.TokenLiteral << " ";
+    oss << (function_name ? function_name->toString() : "[null_name]") << " ";
+
+    for (size_t i = 0; i < parameters.size(); ++i) {
+      if (parameters[i]) {
+        oss << parameters[i]->toString();
+      } else {
+        oss << "<null>";
+      }
     }
 
-    return exportStr + "Function Declaration Statement: " +
-           func_keyword_token.TokenLiteral + " " +
-           (function_name ? function_name->toString() : "[null_name]") + " " +
-           arguments + " " +
-           (return_type ? return_type->toString() : "[no_return]");
+    oss << " ";
+    oss << (return_type ? return_type->toString() : "[no_return]");
+
+    return oss.str();
   }
 
   FunctionDeclaration *shallowClone() const override {
@@ -1700,8 +1867,12 @@ struct FunctionDeclaration : Statement {
 struct FunctionDeclarationExpression : Expression {
   Token func_token;
   std::unique_ptr<Statement> funcDeclrStmt;
+
   std::string toString() override {
-    return "Function Declaration Expression: " + funcDeclrStmt->toString();
+    std::ostringstream oss;
+    oss << "Function Declaration Expression: "
+        << (funcDeclrStmt ? funcDeclrStmt->toString() : "fn_decl");
+    return oss.str();
   }
 
   FunctionDeclarationExpression *shallowClone() const override {
@@ -1718,15 +1889,17 @@ struct FunctionDeclarationExpression : Expression {
 struct BlockStatement : Statement {
   Token brace;
   std::vector<std::unique_ptr<Statement>> statements;
+
   std::string toString() override {
-    std::string out = "Block Statement: { ";
+    std::ostringstream oss;
+    oss << "Block Statement: { ";
     for (const auto &s : statements) {
       if (s) {
-        out += s->toString();
+        oss << s->toString();
       }
     }
-    out += " }";
-    return out;
+    oss << " }";
+    return oss.str();
   }
 
   BlockStatement *shallowClone() const override {
@@ -1746,22 +1919,27 @@ struct GenericStatement : Statement {
   std::unique_ptr<Statement> block;
 
   std::string toString() override {
-    std::string parameters;
-    for (const auto &param : type_parameters) {
-      parameters += param.TokenLiteral + ",";
+    std::ostringstream oss;
+
+    oss << "Generic Statement: ";
+    oss << (block_name ? block_name->toString() : "<null>");
+    oss << "(";
+
+    for (size_t i = 0; i < type_parameters.size(); ++i) {
+      if (i > 0)
+        oss << ",";
+      oss << type_parameters[i].TokenLiteral;
     }
 
-    if (!parameters.empty() && parameters.back() == ',') {
-      parameters.pop_back();
-    }
-
-    std::string block_str = " { <blueprint stored> }";
+    oss << ")";
 
     if (block) {
-      block_str = block->toString();
+      oss << block->toString();
+    } else {
+      oss << " { <blueprint stored> }";
     }
-    return "Generic Statement: " + block_name->toString() + "(" + parameters +
-           ")" + block_str;
+
+    return oss.str();
   }
 
   GenericStatement(Token generic, std::unique_ptr<Expression> name,
@@ -1779,11 +1957,14 @@ struct InstantiateStatement : Statement {
   Token alias;
 
   std::string toString() override {
-    std::string prefix;
+    std::ostringstream oss;
     if (isExportable)
-      prefix += "export ";
-    return prefix + "Instantiate statement: " + generic_call->toString() +
-           " as " + alias.TokenLiteral;
+      oss << "export ";
+
+    oss << "Instantiate statement: "
+        << (generic_call ? generic_call->toString() : "no generic_call()")
+        << " as " << alias.TokenLiteral;
+    return oss.str();
   }
 
   InstantiateStatement(bool _export, Token inst,
@@ -1798,12 +1979,19 @@ struct GenericCall : Expression {
   std::vector<Token> args;
 
   std::string toString() override {
-    std::string arg;
-    for (const auto &param : args) {
-      arg += param.TokenLiteral + ",";
-    };
-    return "Generic Call:" + ident->toString() + "(" + arg + ")";
-  };
+    std::ostringstream oss;
+    oss << "Generic Call:" << (ident ? ident->toString() : "<null>") << "(";
+
+    for (size_t i = 0; i < args.size(); ++i) {
+      if (i > 0)
+        oss << ",";
+      oss << args[i].TokenLiteral;
+    }
+
+    oss << ")";
+    return oss.str();
+  }
+
   GenericCall(std::unique_ptr<Expression> name, std::vector<Token> types)
       : Expression(name->token), ident(std::move(name)), args(types) {};
 };
@@ -1814,13 +2002,13 @@ struct ArrayLiteral : Expression {
   std::vector<std::unique_ptr<Expression>> array;
 
   std::string toString() override {
-    std::string items;
+    std::ostringstream oss;
+    oss << "ArrayLiteral: [";
     for (const auto &item : array) {
-      items += item->toString() + ",";
+      oss << (item ? item->toString() : "item") << ",";
     }
-    if (!items.empty())
-      items.pop_back(); // remove last comma
-    return "ArrayLiteral: [" + items + "]";
+    oss << "]";
+    return oss.str();
   }
 
   ArrayLiteral *shallowClone() const override {
@@ -1837,11 +2025,13 @@ struct ArraySubscript : Expression {
   std::vector<std::unique_ptr<Expression>> index_exprs;
 
   std::string toString() override {
-    std::string indexStr;
+    std::ostringstream oss;
+    oss << "ArraySubscript expression: "
+        << (identifier ? identifier->toString() : "name");
     for (const auto &index : index_exprs) {
-      indexStr += "[" + index->toString() + "]";
+      oss << "[" << (index ? index->toString() : "index") << "]";
     }
-    return "Array Subscript Expression: " + identifier->toString() + indexStr;
+    return oss.str();
   }
 
   ArraySubscript *shallowClone() const override {
@@ -1855,28 +2045,16 @@ struct ArraySubscript : Expression {
         index_exprs(std::move(ids)) {};
 };
 
-// Merge statement
-struct MergeStatement : Statement {
-  Token merge_key;
-  std::unique_ptr<Expression> stringExpr;
-
-  std::string toString() override {
-    return "Merge Statement: " + merge_key.TokenLiteral + " " +
-           stringExpr->toString();
-  }
-
-  MergeStatement(Token merge, std::unique_ptr<Expression> string)
-      : Statement(merge), merge_key(merge), stringExpr(std::move(string)) {};
-};
-
 // Import statement
 struct ImportStatement : Statement {
   Token import_key;
   std::unique_ptr<Expression> stringExpr;
 
   std::string toString() override {
-    return "Import Statement: " + import_key.TokenLiteral + " " +
-           stringExpr->toString();
+    std::ostringstream oss;
+    oss << "Import Statement: " << import_key.TokenLiteral << " "
+        << (stringExpr ? stringExpr->toString() : "<example>");
+    return oss.str();
   }
 
   ImportStatement(Token import, std::unique_ptr<Expression> string)
@@ -1889,8 +2067,10 @@ struct LinkStatement : Statement {
   std::unique_ptr<Expression> stringExpr;
 
   std::string toString() override {
-    return "Link Statement: " + link_key.TokenLiteral + " " +
-           stringExpr->toString();
+    std::ostringstream oss;
+    oss << "Link Statement: " << link_key.TokenLiteral << " "
+        << (stringExpr ? stringExpr->toString() : "<example>");
+    return oss.str();
   }
 
   LinkStatement(Token link, std::unique_ptr<Expression> string)
@@ -1903,14 +2083,15 @@ struct TraceStatement : Statement {
   std::vector<std::unique_ptr<Expression>> arguments;
 
   std::string toString() override {
-    std::string argsStr;
+    std::ostringstream oss;
+    oss << "Trace Statement: " << trace_keyword.TokenLiteral << "(";
     for (size_t i = 0; i < arguments.size(); ++i) {
-      argsStr += arguments[i]->toString();
+      oss << (arguments[i] ? arguments[i]->toString() : "argument");
       if (i < arguments.size() - 1)
-        argsStr += ", ";
+        oss << ", ";
     }
-    return "Trace Statement: " + trace_keyword.TokenLiteral + " (" + argsStr +
-           ")";
+    oss << ")";
+    return oss.str();
   }
 
   TraceStatement *shallowClone() const override {
@@ -1940,16 +2121,19 @@ struct ASMInstruction : Statement {
   std::vector<std::unique_ptr<ASMConstraint>> constraints;
 
   std::string toString() override {
-    std::string result = mnemonic;
+    std::ostringstream oss;
+    oss << mnemonic;
+
     if (!operands.empty()) {
-      result += " ";
-      for (size_t i = 0; i < operands.size(); i++) {
-        result += operands[i];
-        if (i < operands.size() - 1)
-          result += ", ";
+      oss << " ";
+      for (size_t i = 0; i < operands.size(); ++i) {
+        if (i > 0)
+          oss << ", ";
+        oss << operands[i];
       }
     }
-    return result;
+
+    return oss.str();
   }
 
   ASMInstruction(std::string _mnemonic, std::vector<std::string> _operands,
@@ -1975,14 +2159,22 @@ struct ASMStatement : Statement {
   }
 
   std::string toString() override {
-    std::string result;
+    std::ostringstream oss;
+
     if (isVolatile)
-      result += "volatile ";
-    result += "asm<" + dialect + "> {\n";
-    for (const auto &instr : instructions)
-      result += "    " + instr->toString() + "\n";
-    result += "}";
-    return result;
+      oss << "volatile ";
+    oss << "asm<" << dialect << "> {\n";
+
+    for (const auto &instr : instructions) {
+      if (instr) {
+        oss << "    " << instr->toString() << "\n";
+      } else {
+        oss << "    <null instruction>\n";
+      }
+    }
+
+    oss << "}";
+    return oss.str();
   }
 
   ASMStatement(bool _volatile, Token asm_t, std::string _dialect,
@@ -1999,14 +2191,17 @@ struct BlockExpression : Expression {
   std::optional<std::unique_ptr<Expression>> finalexpr;
 
   std::string toString() override {
-    std::string out = "BlockExpression: { \n";
+    std::ostringstream oss;
+    oss << "BlockExpression: { \n";
     for (auto &stmt : statements) {
-      out += stmt->toString() + "\n";
+      oss << (stmt ? stmt->toString() : "stmt") << "\n";
     }
     if (finalexpr.has_value() && finalexpr.value()) {
-      out += "Final Expression: " + finalexpr.value()->toString();
+      oss << "Final Expression: "
+          << (finalexpr.value() ? finalexpr.value()->toString() : "");
     }
-    return out + "}";
+    oss << "}";
+    return oss.str();
   };
 
   BlockExpression *shallowClone() const override {

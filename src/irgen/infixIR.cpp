@@ -191,7 +191,8 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
     }
 
     return cmpRes;
-  } else if (leftSym->type().type.isPointer() || rightSym->type().type.isPointer()) {
+  } else if (leftSym->type().type.isPointer() ||
+             rightSym->type().type.isPointer()) {
 
     if (left->getType() != right->getType()) {
       right = funcBuilder.CreateBitCast(right, left->getType(), "ptr_cmp_norm");
@@ -289,24 +290,30 @@ IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
   std::string lookUpName = parentTypeName;
   std::string memberName =
       semantics.extractIdentifierName(infix->right_operand.get());
+  auto memberSym =
+      semantics.getMemberSym(memberName, infix->left_operand.get());
 
   if (leftSym->type().type.isPointer() || leftSym->type().type.isRef())
     lookUpName = semantics.getBaseTypeName(leftSym->type().type);
 
-  auto parentTypeIt = semantics.customTypesTable.find(lookUpName);
-  if (parentTypeIt == semantics.customTypesTable.end())
-    throw std::runtime_error("Unknown struct type '" + lookUpName + "'");
+  if (!memberSym) {
+    memberSym =
+        semantics.getSealedFunctionSym(memberName, infix->left_operand.get());
+    if (!memberSym) {
+      reportDevBug("Failed to get member '" + memberName + "' in type '" +
+                       lookUpName + "'",
+                   infix);
+    }
+  }
 
-  auto &parentInfo = parentTypeIt->second;
-  auto memberIt = parentInfo->members.find(memberName);
-  if (memberIt == parentInfo->members.end())
-    throw std::runtime_error("No member '" + memberName + "' in type '" +
-                             lookUpName + "'");
+  // If the member is a function take the call route
+  if (memberSym->isFunction)
+    return generateDotCall(infix, left, leftSym);
 
   // get member index + type
-  unsigned memberIndex = memberIt->second->memberIndex;
+  unsigned memberIndex = memberSym->type().memberIndex;
   llvm::StructType *structTy = llvmCustomTypes[lookUpName];
-  llvm::Type *memberType = getLLVMType(memberIt->second->type);
+  llvm::Type *memberType = getLLVMType(memberSym->type().type);
 
   // if lhs is struct by value, we need a pointer to use GEP
   llvm::Value *lhsPtr = left;
@@ -330,7 +337,7 @@ IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
       funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
 
   // Check if the member itself is volatile
-  if (memberIt->second->isVolatile) {
+  if (memberSym->storage().isVolatile) {
     memberVal->setVolatile(true);
   }
   // Also check if the parent is volatile (volatile propagates to members)
@@ -339,6 +346,56 @@ IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
   }
 
   return memberVal;
+}
+
+llvm::Value *
+IRGenerator::generateDotCall(InfixExpression *infix, llvm::Value *left,
+                             const std::shared_ptr<SymbolInfo> &leftSym) {
+  auto callName = semantics.extractIdentifierName(infix->right_operand.get());
+  auto typeName = semantics.getBaseTypeName(leftSym->type().type);
+  auto rhsCall = dynamic_cast<CallExpression *>(infix->right_operand.get());
+
+  // Check if LHS is a seal
+  auto sealIt = semantics.sealTable.find(
+      semantics.extractIdentifierName(infix->left_operand.get()));
+
+  if (sealIt != semantics.sealTable.end()) {
+    // Seal path — mangle and call directly, no self arg
+    rhsCall->function_identifier->expression.TokenLiteral =
+        sealIt->first + "_" + callName;
+    rhsCall->function_identifier->token.TokenLiteral =
+        sealIt->first + "_" + callName;
+    return generateCallExpression(rhsCall);
+  }
+
+  // If the LHS is an instance
+  auto callSym = semantics.getMemberSym(
+      semantics.extractIdentifierName(rhsCall), infix->left_operand.get());
+
+  if (!callSym)
+    reportDevBug("Failed to get member symbol info", rhsCall);
+
+  // Mangle the name
+  rhsCall->function_identifier->expression.TokenLiteral =
+      typeName + "_" + callName;
+  rhsCall->function_identifier->token.TokenLiteral = typeName + "_" + callName;
+  pendingSelfArg = left;
+  llvm::Value *result;
+
+  if (callSym->type().isFnPtr) {
+    llvm::Type *structTy = llvmCustomTypes[typeName];
+    llvm::Value *fieldAddr = funcBuilder.CreateStructGEP(
+        structTy, left, callSym->type().memberIndex, callName);
+    result = generateFnPtrCall(rhsCall, callSym, fieldAddr);
+  } else {
+    result = generateCallExpression(rhsCall);
+  }
+  pendingSelfArg = nullptr; // Just to be safe
+
+  if (!result)
+    reportDevBug("Failed to generate value for infix call", rhsCall);
+
+  return result;
 }
 
 llvm::Value *IRGenerator::handleEnumAccess(InfixExpression *infix) {
@@ -367,63 +424,68 @@ llvm::Value *IRGenerator::handleEnumAccess(InfixExpression *infix) {
   return llvm::ConstantInt::get(llvmEnumTy, memberValue);
 }
 
-llvm::Value *IRGenerator::handleLogical(InfixExpression *infix,
-                                         llvm::Value *left,
-                                         const std::shared_ptr<SymbolInfo> &leftSym,
-                                         const std::shared_ptr<SymbolInfo> &rightSym) {
-    // Ensure left is i1
-    if (left->getType() != funcBuilder.getInt1Ty())
-        left = funcBuilder.CreateICmpNE(
-            left, llvm::Constant::getNullValue(left->getType()), "boolcastl");
+llvm::Value *
+IRGenerator::handleLogical(InfixExpression *infix, llvm::Value *left,
+                           const std::shared_ptr<SymbolInfo> &leftSym,
+                           const std::shared_ptr<SymbolInfo> &rightSym) {
+  // Ensure left is i1
+  if (left->getType() != funcBuilder.getInt1Ty())
+    left = funcBuilder.CreateICmpNE(
+        left, llvm::Constant::getNullValue(left->getType()), "boolcastl");
 
-    llvm::Function *fn = funcBuilder.GetInsertBlock()->getParent();
+  llvm::Function *fn = funcBuilder.GetInsertBlock()->getParent();
 
-    if (infix->operat.type == TokenType::AND) {
-        // Short circuit AND:
-        // if left is false, skip right and return false
-        llvm::BasicBlock *evalRight = llvm::BasicBlock::Create(context, "and.rhs", fn);
-        llvm::BasicBlock *merge    = llvm::BasicBlock::Create(context, "and.merge", fn);
+  if (infix->operat.type == TokenType::AND) {
+    // Short circuit AND:
+    // if left is false, skip right and return false
+    llvm::BasicBlock *evalRight =
+        llvm::BasicBlock::Create(context, "and.rhs", fn);
+    llvm::BasicBlock *merge =
+        llvm::BasicBlock::Create(context, "and.merge", fn);
 
-        llvm::BasicBlock *leftBlock = funcBuilder.GetInsertBlock();
-        funcBuilder.CreateCondBr(left, evalRight, merge);
+    llvm::BasicBlock *leftBlock = funcBuilder.GetInsertBlock();
+    funcBuilder.CreateCondBr(left, evalRight, merge);
 
-        // Evaluate right only if left was true
-        funcBuilder.SetInsertPoint(evalRight);
-        llvm::Value *right = generateExpression(infix->right_operand.get());
-        if (right->getType() != funcBuilder.getInt1Ty())
-            right = funcBuilder.CreateICmpNE(
-                right, llvm::Constant::getNullValue(right->getType()), "boolcastr");
-        llvm::BasicBlock *rightBlock = funcBuilder.GetInsertBlock();
-        funcBuilder.CreateBr(merge);
+    // Evaluate right only if left was true
+    funcBuilder.SetInsertPoint(evalRight);
+    llvm::Value *right = generateExpression(infix->right_operand.get());
+    if (right->getType() != funcBuilder.getInt1Ty())
+      right = funcBuilder.CreateICmpNE(
+          right, llvm::Constant::getNullValue(right->getType()), "boolcastr");
+    llvm::BasicBlock *rightBlock = funcBuilder.GetInsertBlock();
+    funcBuilder.CreateBr(merge);
 
-        funcBuilder.SetInsertPoint(merge);
-        llvm::PHINode *phi = funcBuilder.CreatePHI(funcBuilder.getInt1Ty(), 2, "andtmp");
-        phi->addIncoming(funcBuilder.getFalse(), leftBlock);
-        phi->addIncoming(right, rightBlock);
-        return phi;
+    funcBuilder.SetInsertPoint(merge);
+    llvm::PHINode *phi =
+        funcBuilder.CreatePHI(funcBuilder.getInt1Ty(), 2, "andtmp");
+    phi->addIncoming(funcBuilder.getFalse(), leftBlock);
+    phi->addIncoming(right, rightBlock);
+    return phi;
 
-    } else {
-        // Short circuit OR:
-        // if left is true, skip right and return true
-        llvm::BasicBlock *evalRight = llvm::BasicBlock::Create(context, "or.rhs", fn);
-        llvm::BasicBlock *merge    = llvm::BasicBlock::Create(context, "or.merge", fn);
+  } else {
+    // Short circuit OR:
+    // if left is true, skip right and return true
+    llvm::BasicBlock *evalRight =
+        llvm::BasicBlock::Create(context, "or.rhs", fn);
+    llvm::BasicBlock *merge = llvm::BasicBlock::Create(context, "or.merge", fn);
 
-        llvm::BasicBlock *leftBlock = funcBuilder.GetInsertBlock();
-        funcBuilder.CreateCondBr(left, merge, evalRight);
+    llvm::BasicBlock *leftBlock = funcBuilder.GetInsertBlock();
+    funcBuilder.CreateCondBr(left, merge, evalRight);
 
-        // Evaluate right only if left was false
-        funcBuilder.SetInsertPoint(evalRight);
-        llvm::Value *right = generateExpression(infix->right_operand.get());
-        if (right->getType() != funcBuilder.getInt1Ty())
-            right = funcBuilder.CreateICmpNE(
-                right, llvm::Constant::getNullValue(right->getType()), "boolcastr");
-        llvm::BasicBlock *rightBlock = funcBuilder.GetInsertBlock();
-        funcBuilder.CreateBr(merge);
+    // Evaluate right only if left was false
+    funcBuilder.SetInsertPoint(evalRight);
+    llvm::Value *right = generateExpression(infix->right_operand.get());
+    if (right->getType() != funcBuilder.getInt1Ty())
+      right = funcBuilder.CreateICmpNE(
+          right, llvm::Constant::getNullValue(right->getType()), "boolcastr");
+    llvm::BasicBlock *rightBlock = funcBuilder.GetInsertBlock();
+    funcBuilder.CreateBr(merge);
 
-        funcBuilder.SetInsertPoint(merge);
-        llvm::PHINode *phi = funcBuilder.CreatePHI(funcBuilder.getInt1Ty(), 2, "ortmp");
-        phi->addIncoming(funcBuilder.getTrue(), leftBlock);
-        phi->addIncoming(right, rightBlock);
-        return phi;
-    }
+    funcBuilder.SetInsertPoint(merge);
+    llvm::PHINode *phi =
+        funcBuilder.CreatePHI(funcBuilder.getInt1Ty(), 2, "ortmp");
+    phi->addIncoming(funcBuilder.getTrue(), leftBlock);
+    phi->addIncoming(right, rightBlock);
+    return phi;
+  }
 }

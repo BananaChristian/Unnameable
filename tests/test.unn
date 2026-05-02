@@ -1,16 +1,16 @@
-func add(i32 x): i32{
-    return x+3
+func cleanup(ptr opaque whatever): i32 {
+    return  1
 }
 
-fn(i32):i32 x= add
-
-func test: i32{
-  return x(11)
+component Player {
+    i32 health
+    fn():i32 drop
 }
 
-func main:i32{
-    i32 result= test()
-    trace result
+func main: i32 {
+    Player p
+    p.health = 100
+    p.drop = cleanup
+    p.drop()
     return 0
 }
-

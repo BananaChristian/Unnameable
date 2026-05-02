@@ -15,7 +15,7 @@ URC_X86_LINUX = $(LIB_DIR)/urc/architecture/x86_64/linux
 UNNC = ./$(OUT)
 
 # _____Compiler Flags______
-CXXFLAGS = -std=c++17 -Wall -g -Iinclude
+CXXFLAGS=-std=c++17 -Wall -g -Iinclude
 
 # ______Runtime Flags_________
 RUNTIME_CXXFLAGS   = -std=c++17 -g -ffreestanding -nostdlib -fno-stack-protector -fno-exceptions

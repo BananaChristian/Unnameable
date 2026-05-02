@@ -149,8 +149,6 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(EnumStatement)] = &Semantics::walkEnumStatement;
   walkerFunctionsMap[typeid(InstanceExpression)] =
       &Semantics::walkInstanceExpression;
-  walkerFunctionsMap[typeid(MethodCallExpression)] =
-      &Semantics::walkMethodCallExpression;
 
   walkerFunctionsMap[typeid(AllocatorStatement)] =
       &Semantics::walkAllocatorInterface;
@@ -443,7 +441,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     logInternal("Identifier name in the inferer '" + name + "'");
     auto symbol = resolveSymbolInfo(name);
     if (symbol) {
-      if (symbol->isFunction) 
+      if (symbol->isFunction)
         return makeFnPtrType(symbol->func().returnType, symbol);
 
       logInternal("Identifier Data Type '" + symbol->type().type.resolvedName +
@@ -501,69 +499,31 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   }
 
   if (auto callExpr = dynamic_cast<CallExpression *>(node)) {
-    auto symbol = resolveSymbolInfo(
-        callExpr->function_identifier->expression.TokenLiteral);
-    if (symbol) {
-      return symbol->type().type;
-    } else {
+    auto funcName = extractIdentifierName(callExpr);
+    auto symbol = resolveSymbolInfo(funcName);
+    if (!symbol) {
+      symbol = getSealedFunctionSym(funcName, lhsNode);
+      if (!symbol) {
+        symbol = getMemberSym(funcName, lhsNode);
+        if (!symbol) {
+          logSemanticErrors(
+              "Undefined function name '" +
+                  callExpr->function_identifier->expression.TokenLiteral + "'",
+              callExpr->function_identifier.get());
+          return errorType;
+        }
+      }
+    }
+    if (!symbol->isFunction && !symbol->type().isFnPtr) {
       logSemanticErrors(
-          "Undefined function name '" +
-              callExpr->function_identifier->expression.TokenLiteral + "'",
-          callExpr->function_identifier.get());
+          "'" + funcName +
+              "' is  a variable, not a function or a function pointer",
+          callExpr);
       return errorType;
     }
+    return symbol->type().type;
   }
 
-  if (auto metCall = dynamic_cast<MethodCallExpression *>(node)) {
-    auto instanceName = metCall->instance->expression.TokenLiteral;
-
-    auto instanceSym = resolveSymbolInfo(instanceName);
-
-    if (!instanceSym) {
-      logSemanticErrors("Undefined instance name '" + instanceName + "' ",
-                        metCall->instance.get());
-      return errorType;
-    }
-
-    auto call = dynamic_cast<CallExpression *>(metCall->call.get());
-    auto callName = call->function_identifier->expression.TokenLiteral;
-
-    // Search using custom types table to get the members
-    // Get the type
-    auto type = instanceSym->type().type;
-    // Check the customTypes table
-    auto typeIt = customTypesTable.find(type.resolvedName);
-    auto sealIt = sealTable.find(instanceName);
-    if (typeIt != customTypesTable.end()) {
-      auto members = typeIt->second->members;
-      auto it = members.find(callName);
-      if (it == members.end()) {
-        logSemanticErrors("Function '" + callName + "' doesnt exist in type '" +
-                              type.resolvedName + "'",
-                          call->function_identifier.get());
-        return errorType;
-      }
-
-      auto memInfo = it->second;
-      return memInfo->type;
-    } else if (sealIt != sealTable.end()) {
-      auto sealFnMap = sealIt->second;
-      auto sealFnIt = sealFnMap.find(callName);
-      if (sealFnIt == sealFnMap.end()) {
-        logSemanticErrors("Function '" + callName + "' doesnt exist in seal '" +
-                              instanceName + "'",
-                          call->function_identifier.get());
-        return errorType;
-      }
-
-      auto sealInfo = sealFnIt->second;
-      return sealInfo->type().type;
-    } else {
-      logSemanticErrors("Unknown type or seal '" + instanceName + "'",
-                        call->function_identifier.get());
-      return errorType;
-    }
-  }
   if (auto unwrapExpr = dynamic_cast<UnwrapExpression *>(node)) {
     auto exprType = inferNodeDataType(unwrapExpr->expr.get());
     exprType.isNull = false;
@@ -667,9 +627,6 @@ std::string Semantics::extractIdentifierName(Node *node) {
     return identName;
   } else if (auto ident = dynamic_cast<Identifier *>(node)) {
     identName = ident->identifier.TokenLiteral;
-    return identName;
-  } else if (dynamic_cast<MethodCallExpression *>(node)) {
-    identName = "<methodfuncName>"; // Place holder for now
     return identName;
   } else if (auto deref = dynamic_cast<DereferenceExpression *>(node)) {
     identName = extractIdentifierName(deref->identifier.get());
@@ -848,34 +805,13 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
       return nullptr;
     }
 
-    // Look up the type definition in customTypesTable
-    auto typeIt = customTypesTable.find(lookUpName);
-    if (typeIt == customTypesTable.end()) {
-      logSemanticErrors("Type '" + lookUpName + "' not found",
-                        infixExpr->left_operand.get());
-      return nullptr;
+    auto sealFnSym =
+        getSealedFunctionSym(childName, infixExpr->left_operand.get());
+    if (sealFnSym) {
+      return sealFnSym;
+    } else {
+      return getMemberSym(childName, infixExpr->left_operand.get());
     }
-
-    // Look for childName in members
-    auto memberIt = typeIt->second->members.find(childName);
-    if (memberIt == typeIt->second->members.end()) {
-      logSemanticErrors("Type '" + lookUpName + "' has no member '" +
-                            childName + "'",
-                        infixExpr->right_operand.get());
-      return nullptr;
-    }
-
-    auto memberInfo = memberIt->second;
-    auto dotResult = std::make_shared<SymbolInfo>();
-    dotResult->type().type = memberInfo->type;
-    dotResult->storage().isConstant = memberInfo->isConstant;
-    dotResult->storage().isMutable = memberInfo->isMutable;
-    dotResult->storage().isInitialized = memberInfo->isInitialised;
-    dotResult->type().isNullable = memberInfo->isNullable;
-    dotResult->type().isPointer = memberInfo->isPointer;
-    dotResult->type().memberIndex = memberInfo->memberIndex;
-
-    return dotResult;
 
   } else if (operatorType == TokenType::SCOPE_OPERATOR) {
     if (parentType.kind != DataType::ENUM) {
@@ -1372,6 +1308,103 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected,
   }
 
   return false;
+}
+
+void Semantics::insertMetaData(Node *node, std::shared_ptr<SymbolInfo> sym) {
+  if (!sym)
+    reportDevBug("No symbol was passed for registration", node);
+
+  // Validate before insertion
+  if (sym) {
+    // Check for NULL raw pointer with non-empty control block
+    if (!sym.get() && sym.use_count() > 0) {
+      reportDevBug("Inserting symbol with null raw pointer but use count is '" +
+                       std::to_string(sym.use_count()) + "'",
+                   node);
+    }
+
+    // Check for insane use_count (indicates corrupted control block)
+    if (sym.use_count() > 1000000 || sym.use_count() < 0) {
+      reportDevBug("Corrupted use_count '" + std::to_string(sym.use_count()) +
+                       "'",
+                   node);
+    }
+  }
+
+  metaData[node] = sym;
+}
+
+std::shared_ptr<SymbolInfo>
+Semantics::getSealedFunctionSym(const std::string &funcName, Node *context) {
+  auto sealName = extractIdentifierName(context);
+  auto sealIt = sealTable.find(sealName);
+  if (sealIt == sealTable.end())
+    return nullptr;
+
+  auto sealContents = sealIt->second;
+  auto sealContentsIt = sealContents.find(funcName);
+  if (sealContentsIt == sealContents.end())
+    return nullptr;
+
+  return sealContentsIt->second;
+}
+
+std::shared_ptr<SymbolInfo>
+Semantics::getMemberSym(const std::string &childName, Node *instance) {
+  if (!instance)
+    reportDevBug("Invalid instance node", instance);
+
+  auto instName = extractIdentifierName(instance);
+  auto instanceSym = getSymbolFromMeta(instance);
+  if (!instanceSym)
+    reportDevBug("Failed to get instance '" + instName + "' symbol Info",
+                 instance);
+
+  // It need the type name as I am gonna query the custom types table
+  std::string lookupName = getBaseTypeName(instanceSym->type().type);
+
+  auto typeIt = customTypesTable.find(lookupName);
+  if (typeIt == customTypesTable.end())
+    return nullptr;
+
+  auto memberIt = typeIt->second->members.find(childName);
+  if (memberIt == typeIt->second->members.end())
+    return nullptr;
+
+  auto memberInfo = memberIt->second;
+  auto memSym = std::make_shared<SymbolInfo>();
+  // The first batch is common symbol stuff
+  memSym->type().type = memberInfo->type;
+  memSym->storage().isConstant = memberInfo->isConstant;
+  memSym->storage().isMutable = memberInfo->isMutable;
+  memSym->storage().isInitialized = memberInfo->isInitialised;
+  memSym->storage().isVolatile = memberInfo->isVolatile;
+  memSym->storage().isRestrict = memberInfo->isRestrict;
+  memSym->type().isNullable = memberInfo->isNullable;
+  memSym->type().isPointer = memberInfo->isPointer;
+  memSym->type().isRef = memberInfo->isRef;
+  memSym->type().isArray = memberInfo->type.isArray();
+  memSym->type().memberIndex = memberInfo->memberIndex;
+  if (memberInfo->isFnPtr) {
+    memSym->type().isFnPtr = memberInfo->isFnPtr;
+    memSym->isFunction = true;
+  }
+
+  // This batch is specific for methods it has some overrides
+  if (memberInfo->isFunction) {
+    memSym->type().type = memberInfo->returnType;
+    memSym->type().isFnPtr = memberInfo->isFnPtr;
+    memSym->isFunction = memberInfo->isFunction;
+    memSym->func().isDeclaration = memberInfo->isDeclared;
+    memSym->type().isPointer = memberInfo->returnType.isPointer();
+    memSym->type().isRef = memberInfo->returnType.isRef();
+    memSym->type().isArray = memberInfo->returnType.isArray();
+    memSym->codegen().ID = memberInfo->retFamilyID;
+    memSym->storage().isHeap = memberInfo->isReturnHeap;
+    memSym->storage().allocType = memberInfo->allocType;
+  }
+
+  return memSym;
 }
 
 bool Semantics::hasReturnPath(Node *node) {
@@ -2476,7 +2509,23 @@ std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {
     return nullptr;
   }
 
-  return it->second;
+  auto sym = it->second;
+  if (sym) {
+    if (!sym.get() && sym.use_count() > 0) {
+      reportDevBug(
+          "Retrieved symbol has a null raw pointer but a use count of '" +
+              std::to_string(sym.use_count()) + "'",
+          node);
+    }
+
+    if (sym.use_count() > 1000000 || sym.use_count() < 0) {
+      reportDevBug("Corrupted use_count '" + std::to_string(sym.use_count()) +
+                       "'",
+                   node);
+    }
+  }
+
+  return sym;
 }
 
 std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
@@ -2547,15 +2596,6 @@ std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
   // UnwrapExpression (unwrap x)
   if (auto *unwrap = dynamic_cast<UnwrapExpression *>(node)) {
     return digIdentifiers(unwrap->expr.get());
-  }
-
-  // MethodCallExpression (instance.method())
-  if (auto *method = dynamic_cast<MethodCallExpression *>(node)) {
-    auto instanceIds = digIdentifiers(method->instance.get());
-    auto callIds = digIdentifiers(method->call.get());
-    results.insert(results.end(), instanceIds.begin(), instanceIds.end());
-    results.insert(results.end(), callIds.begin(), callIds.end());
-    return results;
   }
 
   // InstanceExpression (Type { fields })

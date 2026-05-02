@@ -70,6 +70,10 @@ public:
   bool hasReturnPathInBlock(
       const std::vector<std::unique_ptr<Statement>> &statements);
   bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>> &stmts);
+  std::shared_ptr<SymbolInfo> getSealedFunctionSym(const std::string &funcName,
+                                                   Node *instance);
+  std::shared_ptr<SymbolInfo> getMemberSym(const std::string &childName,
+                                           Node *instance);
   ResolvedType inferNodeDataType(Node *node);
   std::string extractIdentifierName(Node *node);
   std::string extractDeclarationName(Node *node);
@@ -117,6 +121,8 @@ private:
   uint64_t normalDeclCount = 0;
   uint64_t ptrDeclCount = 0;
   uint64_t arrDeclCount = 0;
+  Node *lhsNode = nullptr; // I store the seal or instance node here as I
+                           // analyze the infix expression(for method crap)
 
   // Walking the data type literals
   void walkI8Literal(Node *node);
@@ -157,7 +163,6 @@ private:
   void walkSelfExpression(Node *node);
   void walkEnumStatement(Node *node);
   void walkInstanceExpression(Node *node);
-  void walkMethodCallExpression(Node *node);
 
   // Waling infix, prefix and postfix expressions
   void walkInfixExpression(Node *node);
@@ -228,8 +233,6 @@ private:
   void walkTraceStatement(Node *node);
 
   void walkFunctionParameters(Node *node);
-
-  void walkSealCallExpression(Node *node, const std::string &sealName);
 
   // HELPER FUNCTIONS
   void registerWalkerFunctions();
@@ -321,6 +324,7 @@ private:
   createLifeTimeTracker(Node *declarationNode, Node *initializer,
                         const std::shared_ptr<SymbolInfo> &declSym);
   void transferBaton(Node *receiver, const std::string &familyID);
+  void insertMetaData(Node *node, std::shared_ptr<SymbolInfo> sym);
   void logSemanticErrors(const std::string &message, Node *contextNode);
   void logSpecialErrors(const std::string &message, int line, int col);
   void reportDevBug(const std::string &message, Node *contextNode);

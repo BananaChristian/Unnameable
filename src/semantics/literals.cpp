@@ -8,7 +8,7 @@ void Semantics::registerLiteral(Node *literal, const ResolvedType &type) {
   info->type().isNullable = false;
   info->storage().isMutable = false;
   info->storage().isConstant = false;
-  metaData[literal] = info;
+  insertMetaData(literal,info);
 }
 
 // Walking the data type literals
@@ -220,7 +220,7 @@ void Semantics::walkNullLiteral(Node *node) {
   symbol->type().type =
       ResolvedType::makeBase(DataType::UNKNOWN,
                              "null"); // Unknown data type for now
-  metaData[nullLit] = symbol;
+  insertMetaData(nullLit,symbol);
 }
 
 // Walking the array literal
@@ -243,5 +243,5 @@ void Semantics::walkArrayLiteral(Node *node) {
   arrInfo->storage().isMutable = false;
   arrInfo->storage().isConstant = false;
   arrInfo->type().sizePerDimensions = sizePerDims;
-  metaData[arrLit] = arrInfo;
+  insertMetaData(arrLit,arrInfo);
 }

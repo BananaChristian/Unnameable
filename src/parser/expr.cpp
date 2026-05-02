@@ -220,17 +220,6 @@ std::unique_ptr<Expression> Parser::parseGroupedExpression() {
   return expr;
 }
 
-// Parsing the method call expression
-std::unique_ptr<Expression>
-Parser::parseMethodCallExpression(std::unique_ptr<Expression> left) {
-  advance(); // consume FULLSTOP
-
-  auto callExpr = parseCallExpression();
-
-  return std::make_unique<MethodCallExpression>(std::move(left),
-                                                std::move(callExpr));
-}
-
 // Parsing function call arguments
 std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments() {
   std::vector<std::unique_ptr<Expression>> args;
@@ -302,18 +291,6 @@ std::unique_ptr<Expression> Parser::parseUnwrapExpression() {
   }
 
   return std::make_unique<UnwrapExpression>(unwrap, std::move(expr));
-}
-
-std::unique_ptr<Expression>
-Parser::parseInfixOrMethodCallExpression(std::unique_ptr<Expression> left) {
-  // Peek ahead by 2
-  if (peekToken(2).type == TokenType::LPAREN) {
-    // Method call: p1.test(...)
-    return parseMethodCallExpression(std::move(left));
-  } else {
-    // Regular member access: p1.health
-    return parseInfixExpression(std::move(left));
-  }
 }
 
 // Parsing the sizeof expression

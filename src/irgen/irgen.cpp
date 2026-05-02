@@ -575,8 +575,6 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
     expressionGeneratorsMap[typeid(BlockExpression)] = &IRGenerator::generateBlockExpression;
     expressionGeneratorsMap[typeid(CallExpression)] = &IRGenerator::generateCallExpression;
     expressionGeneratorsMap[typeid(UnwrapExpression)] = &IRGenerator::generateUnwrapExpression;
-    expressionGeneratorsMap[typeid(MethodCallExpression)] =
-        &IRGenerator::generateMethodCallExpression;
     expressionGeneratorsMap[typeid(SelfExpression)] = &IRGenerator::generateSelfExpression;
     expressionGeneratorsMap[typeid(InstanceExpression)] = &IRGenerator::generateInstanceExpression;
     expressionGeneratorsMap[typeid(ArraySubscript)] =

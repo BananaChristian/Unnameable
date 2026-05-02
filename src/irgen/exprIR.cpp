@@ -518,6 +518,17 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
 
   bool wasInhibited = inhibitCleanUp; // Save previous state
   inhibitCleanUp = true;
+  // For dot operator, check if LHS is a seal — seals have no runtime value
+  if (infix->operat.type == TokenType::FULLSTOP) {
+    std::string lhsName =
+        semantics.extractIdentifierName(infix->left_operand.get());
+    auto sealIt = semantics.sealTable.find(lhsName);
+    if (sealIt != semantics.sealTable.end()) {
+      // Seal has no runtime value, pass nullptr and let handleMemberAccess deal
+      // with it
+      return handleMemberAccess(infix, nullptr, leftSym, rightSym);
+    }
+  }
 
   llvm::Value *leftVal = generateExpression(infix->left_operand.get());
   if (infix->operat.type == TokenType::FULLSTOP)

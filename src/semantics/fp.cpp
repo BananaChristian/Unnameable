@@ -664,8 +664,8 @@ void Semantics::analyzeFnPtrCall(
   auto callSym = std::make_shared<SymbolInfo>();
   callSym->hasError = hasError;
   callSym->type().type = *fnPtrType.fnReturnType;
-  callSym->isFunction=true;
-  callSym->type().isFnPtr=true;
+  callSym->isFunction = true;
+  callSym->type().isFnPtr = true;
 
   for (const auto &arg : toTransfer) {
     auto argSym = getSymbolFromMeta(arg);
@@ -675,7 +675,7 @@ void Semantics::analyzeFnPtrCall(
     if (argSym->storage().isHeap)
       transferBaton(arg, argSym->codegen().ID);
   }
-  metaData[callNode->function_identifier.get()]=contextSym;
+  metaData[callNode->function_identifier.get()] = contextSym;
   metaData[callNode] = callSym;
 }
 
@@ -688,14 +688,25 @@ void Semantics::walkFunctionCallExpression(Node *node) {
       funcCall->function_identifier->expression.TokenLiteral;
 
   auto callSymbolInfo = resolveSymbolInfo(callName);
+
   if (!callSymbolInfo) {
-    logSemanticErrors(
-        "'" + callName +
-            "' has not been declared or defined. "
-            "Make sure it is spelled correctly and visible in this scope.",
-        funcCall);
-    return;
+    // If it fails maybe the guy is in a seal
+    callSymbolInfo = getSealedFunctionSym(callName, lhsNode);
+    // If it fails again check component instances
+    if (!callSymbolInfo) {
+      callSymbolInfo = getMemberSym(callName, lhsNode);
+      // Now if it fails here there is no hope
+      if (!callSymbolInfo) {
+        logSemanticErrors(
+            "'" + callName +
+                "' has not been declared or defined. "
+                "Make sure it is spelled correctly and visible in this scope.",
+            funcCall);
+        return;
+      }
+    }
   }
+
   bool isFnPtr = callSymbolInfo->type().isFnPtr;
 
   if (!callSymbolInfo->isFunction && !isFnPtr) {
@@ -833,122 +844,6 @@ void Semantics::walkTraceStatement(Node *node) {
   }
 
   insideTrace = false;
-}
-
-void Semantics::walkSealCallExpression(Node *node,
-                                       const std::string &sealName) {
-  auto *funcCall = dynamic_cast<CallExpression *>(node);
-  if (!funcCall)
-    reportDevBug("Invalid function call expression", node);
-
-  const std::string callName =
-      funcCall->function_identifier->expression.TokenLiteral;
-
-  auto sealIt = sealTable.find(sealName);
-  if (sealIt == sealTable.end()) {
-    logSemanticErrors(
-        "Seal '" + sealName +
-            "' does not exist. "
-            "Check the seal name or make sure it has been declared.",
-        funcCall);
-    return;
-  }
-
-  auto &sealFnMap = sealIt->second;
-  auto sealFnIt = sealFnMap.find(callName);
-  if (sealFnIt == sealFnMap.end()) {
-    logSemanticErrors("Seal '" + sealName + "' has no function named '" +
-                          callName +
-                          "'. "
-                          "Check the seal definition for a typo.",
-                      funcCall);
-    return;
-  }
-
-  auto callSymbolInfo = sealFnIt->second;
-  if (!callSymbolInfo) {
-    logSemanticErrors("'" + callName + "' in seal '" + sealName +
-                          "' has not been declared or defined.",
-                      funcCall);
-    return;
-  }
-
-  if (!callSymbolInfo->isFunction) {
-    logSemanticErrors(
-        "'" + callName + "' in seal '" + sealName +
-            "' is not a function. Did you mean to call a different name?",
-        funcCall);
-    return;
-  }
-
-  if (!callSymbolInfo->func().isDeclaration) {
-    logSemanticErrors("'" + callName + "' in seal '" + sealName +
-                          "' has no definition. Add a function body.",
-                      funcCall);
-  }
-
-  std::vector<Node *> toTransfer;
-  for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
-    const auto &arg = funcCall->parameters[i];
-    walker(arg.get());
-    auto argSym = getSymbolFromMeta(arg.get());
-    if (!argSym)
-      reportDevBug("Failed to get argument symbol info", arg.get());
-    giveGenericLiteralContext(
-        arg.get(), callSymbolInfo->func().paramTypes[i].first, argSym);
-
-    if (auto *nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
-      if (i < callSymbolInfo->func().paramTypes.size()) {
-        auto expected = callSymbolInfo->func().paramTypes[i].first;
-        if (expected.isNull) {
-          metaData[nullLit]->type().type = expected;
-        } else {
-          logSemanticErrors("Cannot pass 'null' to parameter " +
-                                std::to_string(i + 1) + " of '" + callName +
-                                "' in seal '" + sealName +
-                                "' it is not nullable.",
-                            arg.get());
-        }
-      }
-    }
-    toTransfer.push_back(arg.get());
-  }
-
-  if (!isCallCompatible(*callSymbolInfo, funcCall)) {
-    logSemanticErrors("Incompatible call", funcCall);
-    return;
-  }
-
-  auto callSym = std::make_shared<SymbolInfo>();
-  callSym->hasError = hasError;
-  callSym->type().type = callSymbolInfo->func().returnType;
-  callSym->type().isNullable = callSymbolInfo->type().isNullable;
-  callSym->type().isPointer = callSymbolInfo->type().isPointer;
-  callSym->type().isRef = callSymbolInfo->type().isRef;
-  callSym->type().isArray = callSymbolInfo->type().isArray;
-  callSym->codegen().ID = callSymbolInfo->codegen().ID;
-  // This means the return value was heap raised
-  callSym->storage().isHeap = callSymbolInfo->storage().isHeap;
-  callSym->storage().allocType = callSymbolInfo->storage().allocType;
-
-  if (callSym->type().isPointer) {
-    if (callSym->storage().isHeap) {
-      metaData[funcCall->function_identifier.get()] = callSym;
-      transferBaton(funcCall, callSym->codegen().ID);
-    }
-  } else {
-    for (const auto &arg : toTransfer) {
-      auto argSym = getSymbolFromMeta(arg);
-      if (!argSym)
-        reportDevBug("Failed to get argumant symbol info", arg);
-      if (argSym->storage().isHeap)
-        transferBaton(arg, argSym->codegen().ID);
-    }
-  }
-
-  metaData[funcCall] = callSym;
-  logInternal("Stored metaData for seal call to '" + callName +
-              "' return type: " + callSymbolInfo->type().type.resolvedName);
 }
 
 void Semantics::walkSealStatement(Node *node) {

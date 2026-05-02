@@ -189,7 +189,6 @@ struct StorageInfo {
 
   int pointerCount = 0;
   int refCount = 0;       // Number of live references to this symbol
-  bool isInvalid = false; // Consumed by a move, no longer usable
 };
 
 // FunctionInfo, only populated when the symbol represents a callable
@@ -274,11 +273,13 @@ struct MemberInfo {
   bool isConstant = false;
   bool isInitialised = false;
   bool isVolatile = false;
+  bool isRestrict=false;
   bool isExportable = false;
 
   // Indirection
   bool isRef = false;
   bool isPointer = false;
+  bool isFnPtr=false;
 
   // Function / method flags
   bool isFunction = false;
@@ -291,7 +292,6 @@ struct MemberInfo {
   int memberIndex = -1;
   Node *node = nullptr;
   Node *typeNode = nullptr;
-  Node *lastUseNode = nullptr;
 
   llvm::Value *llvmValue = nullptr;
   llvm::Type *llvmType = nullptr;

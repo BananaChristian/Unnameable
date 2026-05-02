@@ -393,8 +393,10 @@ void Semantics::walkRecordStatement(Node *node) {
     memInfo->isConstant = fieldSymbol->storage().isConstant;
     memInfo->isInitialised = fieldSymbol->storage().isInitialized;
     memInfo->isPointer = fieldSymbol->type().isPointer;
+    memInfo->isRef=fieldSymbol->type().isRef;
     memInfo->isNullable = fieldSymbol->type().isNullable;
     memInfo->isVolatile = fieldSymbol->storage().isVolatile;
+    memInfo->isFnPtr=fieldSymbol->type().isFnPtr;
     memInfo->typeNode = recordStmt;
     memInfo->node = field.get();
     memInfo->memberIndex = currentMemberIndex++;
@@ -695,7 +697,6 @@ void Semantics::walkComponentStatement(Node *node) {
       if (typeIt == customTypesTable.end()) {
         logSemanticErrors("Record with name '" + identName + "' does not exist",
                           ident);
-        hasError = true;
         return;
       }
 
@@ -739,6 +740,9 @@ void Semantics::walkComponentStatement(Node *node) {
         memberCopy->isConstant = info->isConstant;
         memberCopy->isVolatile = info->isVolatile;
         memberCopy->isInitialised = info->isInitialised;
+        memberCopy->isFnPtr=info->isFnPtr;
+        memberCopy->isRef=info->isRef;
+        memberCopy->isPointer=info->isPointer;
 
         memberCopy->node = info->node;
         memberCopy->memberIndex = currentMemberIndex++;
@@ -753,6 +757,10 @@ void Semantics::walkComponentStatement(Node *node) {
         memSym->storage().isConstant = info->isConstant;
         memSym->storage().isVolatile = info->isVolatile;
         memSym->storage().isInitialized = info->isInitialised;
+        memSym->type().isFnPtr=info->isFnPtr;
+        memSym->type().isPointer=info->isPointer;
+        memSym->type().isArray=info->type.isArray();
+        memSym->type().isRef=info->isRef;
         memSym->type().memberIndex = memberCopy->memberIndex;
         currentScope[name] = memSym;
 
@@ -801,7 +809,6 @@ void Semantics::walkComponentStatement(Node *node) {
                     "' collides with existing field in component '" +
                     componentName + "'",
                 infixExpr);
-            hasError = true;
             return;
           }
 
@@ -828,6 +835,10 @@ void Semantics::walkComponentStatement(Node *node) {
           memSym->storage().isInitialized = memIt->second->isInitialised;
           memSym->storage().isVolatile = memIt->second->isVolatile;
           memSym->type().memberIndex = memberCopy->memberIndex;
+          memSym->type().isFnPtr=memberCopy->isFnPtr;
+          memSym->type().isRef=memberCopy->isRef;
+          memSym->type().isPointer=memberCopy->isPointer;
+          memSym->type().isArray=memberCopy->type.isArray();
           symbolTable.back()[memberName] = memSym;
 
           componentTypeInfo->members = members;
@@ -858,6 +869,9 @@ void Semantics::walkComponentStatement(Node *node) {
       memInfo->node = data.get();
       memInfo->typeNode = componentStmt;
       memInfo->isVolatile = declSym->storage().isVolatile;
+      memInfo->isFnPtr=declSym->type().isFnPtr;
+      memInfo->isPointer=declSym->type().isPointer;
+      memInfo->isRef=declSym->type().isRef;
       memInfo->memberIndex = currentMemberIndex++;
 
       members[declName] = memInfo;
@@ -1040,173 +1054,6 @@ void Semantics::walkNewComponentExpression(Node *node) {
 
   // This map link is critical for the IR Generator to know what it's looking at
   metaData[newExpr] = info;
-}
-
-void Semantics::walkMethodCallExpression(Node *node) {
-  auto metCall = dynamic_cast<MethodCallExpression *>(node);
-  if (!metCall)
-    reportDevBug("Invalid method call expression node", node);
-
-  auto instanceIdent = dynamic_cast<Identifier *>(metCall->instance.get());
-  if (!instanceIdent) {
-    logSemanticErrors("Method call instance must be an identifier", metCall);
-    return;
-  }
-
-  const std::string instanceName = instanceIdent->identifier.TokenLiteral;
-
-  // Get the call expression and function name
-  auto funcCall = dynamic_cast<CallExpression *>(metCall->call.get());
-  if (!funcCall) {
-    logSemanticErrors("Invalid call expression in method call", metCall);
-    return;
-  }
-
-  const std::string funcName =
-      funcCall->function_identifier->expression.TokenLiteral;
-
-  // check if this LHS is a seal name
-  auto sealIt = sealTable.find(instanceName);
-  if (sealIt != sealTable.end()) {
-    // SEAL PATH
-    auto &sealMap = sealIt->second;
-    auto sealfnIt = sealMap.find(funcName);
-    if (sealfnIt == sealMap.end()) {
-      logSemanticErrors("Function '" + funcName + "' does not exist in seal '" +
-                            instanceName + "'",
-                        funcCall->function_identifier.get());
-      return;
-    }
-
-    // Walk the seal call
-    walkSealCallExpression(funcCall, instanceName);
-
-    auto fnInfo = getSymbolFromMeta(funcCall);
-
-    // Fill the method-call metaData for the whole expression
-    auto fnCallSym = std::make_shared<SymbolInfo>();
-    fnCallSym->hasError = hasError;
-    fnCallSym->type().type = fnInfo->type().type;
-    fnCallSym->type().isNullable = fnInfo->type().isNullable;
-
-    metaData[metCall] = fnCallSym;
-    return;
-  }
-
-  // Walk the instance first to populate metaData for it
-  walker(metCall->instance.get());
-
-  auto instanceSym = resolveSymbolInfo(instanceName);
-  if (!instanceSym) {
-    logSemanticErrors("Unidentified instance name '" + instanceName + "'",
-                      funcCall->function_identifier.get());
-    return;
-  }
-
-  auto type = instanceSym->type().type;
-  auto typeIt = customTypesTable.find(type.resolvedName);
-  if (typeIt == customTypesTable.end()) {
-    logSemanticErrors("Unknown type '" + type.resolvedName +
-                          "' for instance '" + instanceName + "'",
-                      funcCall->function_identifier.get());
-    return;
-  }
-
-  // Check if the instance is the type itself and block such as it is leading to
-  // issues in LLVM
-  if (type.resolvedName == instanceName)
-    logSemanticErrors("Cannot use the actual type as the instance itself",
-                      funcCall->function_identifier.get());
-
-  // Now check members on the component type
-  auto &members = typeIt->second->members;
-  std::cout << "[SEMANTIC DEBUG] Searching for '" << funcName << "' in type '"
-            << type.resolvedName << "'\n";
-  std::cout << "[SEMANTIC DEBUG] Current members in " << type.resolvedName
-            << ": ";
-  for (auto const &[name, info] : members) {
-    std::cout << name << " (isFunc: " << (info->isFunction ? "Y" : "N") << ") ";
-  }
-  std::cout << "\n";
-  auto memIt = members.find(funcName);
-  if (memIt == members.end()) {
-    logSemanticErrors("'Function " + funcName + "' does not exist in type '" +
-                          type.resolvedName + "'",
-                      funcCall->function_identifier.get());
-    return;
-  }
-
-  auto memInfo = memIt->second;
-
-  // Declaration check
-  if (!memInfo->isDeclared) {
-    logSemanticErrors("'" + funcName + "' was not declared anywhere",
-                      funcCall->function_identifier.get());
-  }
-
-  // Walk the arguments (populate metaData for them)
-  std::vector<Node *>toTransfer;
-  for (size_t i = 0; i < funcCall->parameters.size(); ++i) {
-    const auto &arg = funcCall->parameters[i];
-    walker(arg.get());
-    auto argSym = getSymbolFromMeta(arg.get());
-    giveGenericLiteralContext(arg.get(), memInfo->paramTypes[i].first, argSym);
-
-    if (auto nullLit = dynamic_cast<NullLiteral *>(arg.get())) {
-      if (i < memInfo->paramTypes.size()) {
-        auto expected = memInfo->paramTypes[i].first;
-        if (expected.isNull) {
-          metaData[nullLit]->type().type = expected;
-        } else {
-          logSemanticErrors("Cannot pass null to non-nullable parameter",
-                            arg.get());
-          continue;
-        }
-      }
-    }
-    toTransfer.push_back(arg.get());
-  }
-
-  // Compatibility check (parameters/return)
-  if (!isMethodCallCompatible(*memInfo, funcCall)) {
-    logSemanticErrors("Incompatible method call", funcCall);
-    return;
-  }
-
-  // Update the instance symbol metaData usage info
-  // instanceSym->lastUseNode = metCall;
-  if (instanceSym->storage().refCount) {
-    instanceSym->storage().refCount--;
-  }
-
-  // Create result metaData for this method call expression
-  auto metCallSym = std::make_shared<SymbolInfo>();
-  metCallSym->hasError = hasError;
-  metCallSym->type().type = memInfo->returnType;
-  metCallSym->type().isNullable = memInfo->isNullable;
-  metCallSym->type().isPointer=memInfo->returnType.isPointer();
-  metCallSym->type().isRef=memInfo->returnType.isRef();
-  metCallSym->type().isArray=memInfo->returnType.isArray();
-  metCallSym->codegen().ID=memInfo->retFamilyID;
-  metCallSym->storage().isHeap=memInfo->isReturnHeap;
-  metCallSym->storage().allocType=memInfo->allocType;
-  
-  if(metCallSym->type().isPointer){
-      if(metCallSym->storage().isHeap){
-          metaData[funcCall->function_identifier.get()]=metCallSym;
-          transferBaton(funcCall, metCallSym->codegen().ID);
-      }
-  }else{
-      for(const auto &arg:toTransfer){
-          auto argSym=getSymbolFromMeta(arg);
-          if(!argSym)
-              reportDevBug("Failed to get argumant symbol info",arg);
-          if(argSym->storage().isHeap)
-                transferBaton(arg,argSym->codegen().ID);
-      }
-  }
-  
-  metaData[metCall] = metCallSym;
 }
 
 void Semantics::walkASMStatement(Node *node) {

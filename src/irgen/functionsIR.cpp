@@ -1,4 +1,5 @@
 #include "irgen.hpp"
+#include "llvm/IR/Instructions.h"
 #include <llvm-18/llvm/IR/Function.h>
 
 void IRGenerator::generateFunctionStatement(Node *node) {
@@ -392,7 +393,8 @@ void IRGenerator::generateReturnStatement(Node *node) {
 
 llvm::Value *
 IRGenerator::generateFnPtrCall(CallExpression *callExpr,
-                               const std::shared_ptr<SymbolInfo> &callSym) {
+                               const std::shared_ptr<SymbolInfo> &callSym,
+                               llvm::Value *fnPtrAddress) {
 
   auto identSym =
       semantics.getSymbolFromMeta(callExpr->function_identifier.get());
@@ -400,9 +402,18 @@ IRGenerator::generateFnPtrCall(CallExpression *callExpr,
     reportDevBug("Failed to get fn pointer sym",
                  callExpr->function_identifier.get());
 
-  llvm::Value *fnPtrAlloca = identSym->codegen().llvmValue;
-  llvm::Value *fnPtr = funcBuilder.CreateLoad(
-      llvm::PointerType::get(context, 0), fnPtrAlloca, "fnptr");
+  llvm::Value *fnPtrAlloca = fnPtrAddress; // use provided address if available
+  if (!fnPtrAlloca) {
+    fnPtrAlloca = identSym->codegen().llvmValue;
+    if (!fnPtrAlloca)
+      fnPtrAlloca =
+          generateIdentifierAddress(callExpr->function_identifier.get());
+    if (!fnPtrAlloca)
+      reportDevBug("Function pointer value is null", callExpr);
+  }
+
+  llvm::Value *fnPtr =
+      funcBuilder.CreateLoad(fnPtrAlloca->getType(), fnPtrAlloca, "fnptr");
 
   const ResolvedType &fnPtrType = identSym->type().type;
   bool wasInhibited = inhibitCleanUp;
@@ -458,42 +469,26 @@ IRGenerator::generateFnPtrCall(CallExpression *callExpr,
 
   // Handle sret if needed
   llvm::AllocaInst *sretAlloca = nullptr;
-  if (hasSRet) {
+  if (hasSRet)
     sretAlloca = funcBuilder.CreateAlloca(originalRetTy, nullptr, "sret.tmp");
-    argsV.push_back(sretAlloca);
-  }
 
-  // Generate args with coercion
-  for (size_t i = 0; i < callExpr->parameters.size(); i++) {
-    llvm::Value *argVal = generateExpression(callExpr->parameters[i].get());
-    if (!argVal)
-      reportDevBug("Failed to generate fn pointer argument",
-                   callExpr->parameters[i].get());
-
-    const auto &info = paramCoercions[i];
-    if (info.isMemory) {
-      llvm::AllocaInst *tmp =
-          funcBuilder.CreateAlloca(argVal->getType(), nullptr, "byval.tmp");
-      funcBuilder.CreateStore(argVal, tmp);
-      argVal = tmp;
-    } else if (info.coercedType && info.coercedType != argVal->getType()) {
-      if (argVal->getType()->isStructTy() || info.coercedType->isIntegerTy())
-        argVal = funcBuilder.CreateBitCast(argVal, info.coercedType);
-    }
-
-    // Nullable wrapping
-    llvm::Type *expectedTy = paramTypes[i + (hasSRet ? 1 : 0)];
-    if (expectedTy->isStructTy() && !argVal->getType()->isStructTy()) {
-      llvm::Value *wrapped = llvm::UndefValue::get(expectedTy);
-      wrapped =
-          funcBuilder.CreateInsertValue(wrapped, funcBuilder.getInt1(true), 0);
-      wrapped = funcBuilder.CreateInsertValue(wrapped, argVal, 1);
-      argVal = wrapped;
-    }
-
-    argsV.push_back(argVal);
-  }
   inhibitCleanUp = wasInhibited;
+
+  auto userArgs =
+      prepareFnPtrArguments(fnPtrType.fnParamTypes, callExpr->parameters);
+  if (pendingSelfArg) {
+    argsV.push_back(pendingSelfArg);
+    pendingSelfArg = nullptr;
+    if (hasSRet)
+      argsV.push_back(sretAlloca);
+
+    argsV.insert(argsV.end(), userArgs.begin(), userArgs.end());
+  } else {
+    if (hasSRet)
+      argsV.push_back(sretAlloca);
+
+    argsV.insert(argsV.end(), userArgs.begin(), userArgs.end());
+  }
 
   // Emit indirect call
   llvm::Value *call = funcBuilder.CreateCall(fnTy, fnPtr, argsV, "fnptrtmp");
@@ -544,7 +539,7 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
     reportDevBug("Call expression symbol info does not exist", callExpr);
 
   if (callSym->type().isFnPtr)
-    return generateFnPtrCall(callExpr, callSym);
+    return generateFnPtrCall(callExpr, callSym, nullptr);
 
   llvm::Function *calledFunc = module->getFunction(fnName);
   if (!calledFunc) {
@@ -558,8 +553,16 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
     coercion = coercionIt->second;
   }
 
-  std::vector<llvm::Value *> argsV =
-      prepareArguments(calledFunc, callExpr->parameters, 0, coercion);
+  std::vector<llvm::Value *> argsV;
+  if (pendingSelfArg) {
+    argsV.push_back(pendingSelfArg);
+    pendingSelfArg = nullptr;
+    auto userArgs =
+        prepareArguments(calledFunc, callExpr->parameters, 1, coercion);
+    argsV.insert(argsV.end(), userArgs.begin(), userArgs.end());
+  } else {
+    argsV = prepareArguments(calledFunc, callExpr->parameters, 0, coercion);
+  }
 
   // Emit the function call
   llvm::Value *call = funcBuilder.CreateCall(calledFunc, argsV, "calltmp");
@@ -611,7 +614,7 @@ llvm::Value *IRGenerator::generateCallAddress(Node *node) {
     reportDevBug("Call expression symbol info not found", callExpr);
 
   if (callSym->type().isFnPtr) {
-    llvm::Value *result = generateFnPtrCall(callExpr, callSym);
+    llvm::Value *result = generateFnPtrCall(callExpr, callSym,nullptr);
     if (!result)
       reportDevBug("Fn pointer call returned void, cannot take address",
                    callExpr);
@@ -633,8 +636,16 @@ llvm::Value *IRGenerator::generateCallAddress(Node *node) {
     coercion = coercionIt->second;
   }
 
-  std::vector<llvm::Value *> argsV =
-      prepareArguments(calledFunc, callExpr->parameters, 0, coercion);
+  std::vector<llvm::Value *> argsV;
+  if (pendingSelfArg) {
+    argsV.push_back(pendingSelfArg);
+    pendingSelfArg = nullptr;
+    auto userArgs =
+        prepareArguments(calledFunc, callExpr->parameters, 1, coercion);
+    argsV.insert(argsV.end(), userArgs.begin(), userArgs.end());
+  } else {
+    argsV = prepareArguments(calledFunc, callExpr->parameters, 0, coercion);
+  }
 
   llvm::Type *retTy = calledFunc->getReturnType();
   if (retTy->isVoidTy())
@@ -678,9 +689,8 @@ std::vector<llvm::Value *> IRGenerator::prepareArguments(
   for (size_t i = 0; i < params.size(); ++i) {
     llvm::Value *argVal = nullptr;
 
-    auto metaIt = semantics.metaData.find(params[i].get());
-    if (metaIt != semantics.metaData.end() &&
-        metaIt->second->type().needsImplicitAddress) {
+    auto argSym = semantics.getSymbolFromMeta(params[i].get());
+    if (argSym && argSym->type().needsImplicitAddress) {
       argVal = generateIdentifierAddress(params[i].get());
     } else {
       argVal = generateExpression(params[i].get());

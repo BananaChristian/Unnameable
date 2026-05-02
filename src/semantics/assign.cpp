@@ -59,7 +59,6 @@ bool Semantics::checkTypeCompatible(ResolvedType lhs, ResolvedType rhs, bool rhs
         logSemanticErrors("Type mismatch: '" + name + "' expects '" + lhs.resolvedName +
                               "' but the right-hand side has type '" + rhs.resolvedName + "'.",
                           site);
-        hasError = false;
         return false;
     }
     return true;
@@ -75,7 +74,6 @@ bool Semantics::handleNullRhs(NullLiteral *nullLit, const std::shared_ptr<Symbol
                               "Declare the variable with a '?' suffix (e.g. 'Type?') "
                               "if it should be allowed to hold null.",
                           assignStmt);
-        hasError = false;
         return true;  // error logged, caller should bail
     }
 
@@ -84,7 +82,7 @@ bool Semantics::handleNullRhs(NullLiteral *nullLit, const std::shared_ptr<Symbol
     if (nullSym) nullSym->type().type = lhsSym->type().type;
 
     lhsSym->storage().isInitialized = true;
-    metaData[assignStmt] = lhsSym;
+    insertMetaData(assignStmt,lhsSym);
     hasError = false;
     return true;
 }
@@ -184,7 +182,7 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
 
     selfSymbol->storage().isInitialized = true;
     selfSymbol->hasError = hasError;
-    metaData[assignStmt] = selfSymbol;
+    insertMetaData(assignStmt,selfSymbol);
 }
 
 void Semantics::walkAssignStatement(Node *node) {
@@ -262,7 +260,7 @@ void Semantics::walkAssignStatement(Node *node) {
     if (lhsSym->storage().isHeap && rhsIsHeap(assignStmt->value.get()))
         transferBaton(assignStmt, lhsSym->codegen().ID);
 
-    metaData[assignStmt] = lhsSym;
+    insertMetaData(assignStmt,lhsSym);
 }
 
 void Semantics::walkFieldAssignmentStatement(Node *node) {
@@ -289,7 +287,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     checkOperatorStyle(fieldAssignStmt->op.type, lhsInfo->type().isPointer, name, fieldAssignStmt);
 
     if (!fieldAssignStmt->value) {
-        metaData[fieldAssignStmt] = lhsInfo;
+        insertMetaData(fieldAssignStmt,lhsInfo);
         return;
     }
 
@@ -310,23 +308,19 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
                                   "nullable. Add a '?' to the field's type declaration if null "
                                   "is a valid state for it.",
                               fieldAssignStmt);
-            hasError = false;
             return;
         }
         rhsInfo->type().type = lhsInfo->type().type;
         rhsInfo->storage().isInitialized = true;
         rhsInfo->type().isDefinitelyNull = true;
-        metaData[fieldAssignStmt] = lhsInfo;
+        insertMetaData(fieldAssignStmt,lhsInfo);
         return;
     }
 
-    if (dynamic_cast<INTLiteral *>(fieldAssignStmt->value.get())) {
-        if (isInteger(lhsInfo->type().type)) rhsInfo->type().type = lhsInfo->type().type;
-    }
     giveGenericLiteralContext(fieldAssignStmt->value.get(), lhsInfo->type().type, rhsInfo);
 
     checkTypeCompatible(lhsInfo->type().type, rhsInfo->type().type, /*rhsIsNull=*/false, name,
                         fieldAssignStmt);
 
-    metaData[fieldAssignStmt] = lhsInfo;
+    insertMetaData(fieldAssignStmt,lhsInfo);
 }

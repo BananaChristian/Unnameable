@@ -1,4 +1,5 @@
 #include <string>
+#include <cxxabi.h>
 
 #include "ast.hpp"
 #include "semantics.hpp"
@@ -613,7 +614,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
     }
   }
 
-  metaData[declaration] = declInfo;
+  insertMetaData(declaration,declInfo);
   logInternal("[DEBUG] Stored metadata for " + declName +
               " | isHeap: " + std::to_string(declInfo->storage().isHeap) +
               " | ID: " + declInfo->codegen().ID +

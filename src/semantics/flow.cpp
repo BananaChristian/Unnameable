@@ -44,13 +44,17 @@ void Semantics::walkWhileStatement(Node *node) {
     return;
 
   auto whileCondition = whileStmt->condition.get();
-  ResolvedType whileCondType = inferNodeDataType(whileCondition);
+  walker(whileCondition);
+  auto condSym=getSymbolFromMeta(whileCondition);
+  if(!condSym)
+    reportDevBug("Failed to get while condition symbol info", whileCondition);
+
+  ResolvedType whileCondType = condSym->type().type;
   if (whileCondType.kind != DataType::BOOLEAN) {
     logSemanticErrors("Expected boolean type but got '" +
                           whileCondType.resolvedName + "'",
                       whileCondition);
   }
-  walker(whileCondition);
 
   loopContext.push_back(true);
   symbolTable.push_back({});
@@ -78,9 +82,14 @@ void Semantics::walkIfStatement(Node *node) {
     return;
 
   auto ifStmtCondition = ifStmt->condition.get();
-  ResolvedType ifStmtType = inferNodeDataType(ifStmtCondition);
-
   walker(ifStmtCondition);
+  auto condSym = getSymbolFromMeta(ifStmtCondition);
+  if (!condSym)
+    reportDevBug("Failed to get if statement condition symbol info",
+                 ifStmtCondition);
+
+  ResolvedType ifStmtType = condSym->type().type;
+
   // Dealing with the if result
   walker(ifStmt->if_result.get());
 
@@ -110,7 +119,6 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   if (!isLiteral(caseCondition)) {
     logSemanticErrors("Case condition must be a constant literal",
                       caseCondition);
-    hasError = true;
     return;
   }
 
@@ -126,7 +134,6 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
     logSemanticErrors(
         "Invalid case target expected only integers, chars, and enumarations",
         caseCondition);
-    hasError = true;
   }
   if (caseType.kind != targetType.kind) {
     logSemanticErrors("Type mismatch: case literal type '" +
@@ -146,7 +153,7 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   auto caseInfo = std::make_shared<SymbolInfo>();
   caseInfo->hasError = hasError;
 
-  metaData[caseStmt] = caseInfo;
+  insertMetaData(caseStmt,caseInfo);
 }
 
 void Semantics::walkSwitchStatement(Node *node) {
@@ -154,7 +161,6 @@ void Semantics::walkSwitchStatement(Node *node) {
   if (!switchStmt)
     return;
 
-  hasError = false;
 
   symbolTable.push_back({}); // Push a new scope for the switch
 
@@ -196,14 +202,13 @@ void Semantics::walkSwitchStatement(Node *node) {
 
   auto switchInfo = std::make_shared<SymbolInfo>();
   switchInfo->hasError = hasError;
-  metaData[switchStmt] = switchInfo;
+  insertMetaData(switchStmt,switchInfo);
 }
 
 void Semantics::walkForStatement(Node *node) {
   auto forStmt = dynamic_cast<ForStatement *>(node);
   if (!forStmt)
     return;
-  hasError = true;
 
   symbolTable.push_back({});
   // Handling the initializer

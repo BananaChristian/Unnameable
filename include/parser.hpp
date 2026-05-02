@@ -296,10 +296,6 @@ private:
   std::unique_ptr<Expression> parseArrayLiteral();
   // Call expression parse function
   std::unique_ptr<Expression> parseCallExpression();
-
-  std::unique_ptr<Expression>
-  parseInfixOrMethodCallExpression(std::unique_ptr<Expression> left);
-
   // Parsing call arguments
   std::vector<std::unique_ptr<Expression>> parseCallArguments();
 

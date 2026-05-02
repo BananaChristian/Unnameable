@@ -220,7 +220,7 @@ void Parser::registerInfixFns() {
   InfixParseFunctionsMap[TokenType::SHIFT_RIGHT] =
       &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::FULLSTOP] =
-      &Parser::parseInfixOrMethodCallExpression;
+      &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::SCOPE_OPERATOR] =
       &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;

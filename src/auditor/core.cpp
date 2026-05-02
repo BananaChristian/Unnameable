@@ -243,15 +243,15 @@ void Auditor::filterBeforeClassifySym(Node *node,Node *block, BlockInfo *info){
           filterBeforeClassifySym(init, block,info);
         }
       }
-    } else if(auto infixCall=dynamic_cast<MethodCallExpression*>(node)){
+    } else if(auto infixCall=dynamic_cast<InfixExpression*>(node)){
         logInternal("Taken method call path");
-        auto instance=infixCall->instance.get();
+        auto instance=infixCall->left_operand.get();
         const std::string sealName=semantics.extractIdentifierName(instance);
         logInternal("Seal Name: "+sealName);
         bool isSealInstance=semantics.sealTable.count(sealName);
         logInternal("Is It is Seal Instance: "+std::to_string(isSealInstance));
         if(isSealInstance){
-            auto idents = semantics.digIdentifiers(infixCall->call.get());
+            auto idents = semantics.digIdentifiers(infixCall->right_operand.get());
             for (const auto &ident : idents) {
               classifySymbol(ident, block, info);
             }
@@ -1055,13 +1055,6 @@ bool Auditor::containsNode(Node *root, Node *target) {
 
   if (auto *unwrap = dynamic_cast<UnwrapExpression *>(root)) {
     if (containsNode(unwrap->expr.get(), target))
-      return true;
-  }
-
-  if (auto *method = dynamic_cast<MethodCallExpression *>(root)) {
-    if (containsNode(method->instance.get(), target))
-      return true;
-    if (containsNode(method->call.get(), target))
       return true;
   }
 

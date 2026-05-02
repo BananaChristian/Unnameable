@@ -13,8 +13,7 @@ void Semantics::walkInfixExpression(Node *node) {
 
   // Retrieve the symbol info of the left side
   if (!leftSym) {
-    logSemanticErrors("Unresolved expression in infix left side", left);
-    return;
+    reportDevBug("Unresolved expression in infix left side", left);
   }
 
   auto lhsType = leftSym->type().type;
@@ -22,13 +21,27 @@ void Semantics::walkInfixExpression(Node *node) {
   // Access operators
   if (infixExpr->operat.type == TokenType::FULLSTOP ||
       infixExpr->operat.type == TokenType::SCOPE_OPERATOR) {
+
     auto rhsIdent = dynamic_cast<Identifier *>(infixExpr->right_operand.get());
-    if (!rhsIdent) {
-      logSemanticErrors("Right-hand side of '.' must be an identifier",
-                        infixExpr->right_operand.get());
+    auto rhsCall =
+        dynamic_cast<CallExpression *>(infixExpr->right_operand.get());
+
+    if (!rhsIdent && !rhsCall) {
+      logSemanticErrors(
+          "Right-hand side of '.' must be an identifier or a call",
+          infixExpr->right_operand.get());
       return;
     }
+
     logInternal("Lhs Infix Type: " + lhsType.resolvedName);
+
+    if (rhsCall) {
+      lhsNode = infixExpr->left_operand.get();
+      walkFunctionCallExpression(rhsCall);
+      lhsNode = nullptr; // Reset for the next round
+      insertMetaData(infixExpr, getSymbolFromMeta(rhsCall));
+      return;
+    }
 
     // Resolve member
     auto memberInfo =
@@ -44,8 +57,8 @@ void Semantics::walkInfixExpression(Node *node) {
                 memberInfo->type().type.resolvedName);
 
     // Store metadata for RHS identifier
-    metaData[rhsIdent] = memberInfo;
-    metaData[infixExpr] = memberInfo;
+    insertMetaData(rhsIdent, memberInfo);
+    insertMetaData(infixExpr, memberInfo);
 
     return;
   }
@@ -65,7 +78,7 @@ void Semantics::walkInfixExpression(Node *node) {
   info->hasError = hasError;
   info->storage().isInitialized = false;
 
-  metaData[infixExpr] = info;
+  insertMetaData(infixExpr, info);
 }
 
 void Semantics::walkPrefixExpression(Node *node) {
@@ -113,7 +126,7 @@ void Semantics::walkPrefixExpression(Node *node) {
   info->storage().isConstant = false;
   info->storage().isInitialized = false;
 
-  metaData[prefixExpr] = info;
+  insertMetaData(prefixExpr, info);
 }
 
 void Semantics::walkPostfixExpression(Node *node) {
@@ -164,7 +177,7 @@ void Semantics::walkPostfixExpression(Node *node) {
   info->storage().isMutable = false;
   info->storage().isInitialized = false;
 
-  metaData[postfixExpr] = info;
+  insertMetaData(postfixExpr, info);
 }
 
 void Semantics::walkUnwrapExpression(Node *node) {
@@ -221,7 +234,7 @@ void Semantics::walkUnwrapExpression(Node *node) {
 
   logInternal("Unwrapped Type: " + exprType.resolvedName);
 
-  metaData[unwrapExpr] = unwrapSym;
+  insertMetaData(unwrapExpr, unwrapSym);
 }
 
 void Semantics::walkExpressionStatement(Node *node) {
@@ -540,16 +553,17 @@ void Semantics::walkIdentifierExpression(Node *node) {
     return;
   }
 
-  if(symbolInfo->isFunction){
-    auto fnSym=std::make_shared<SymbolInfo>();
-    fnSym->type().type=makeFnPtrType(symbolInfo->func().returnType, symbolInfo);
-    fnSym->type().isFnPtr=true;
-    fnSym->isFunction=true;
-    metaData[identExpr]=fnSym;
+  if (symbolInfo->isFunction) {
+    auto fnSym = std::make_shared<SymbolInfo>();
+    fnSym->type().type =
+        makeFnPtrType(symbolInfo->func().returnType, symbolInfo);
+    fnSym->type().isFnPtr = true;
+    fnSym->isFunction = true;
+    insertMetaData(identExpr, fnSym);
     return;
   }
 
-  metaData[identExpr] = symbolInfo;
+  insertMetaData(identExpr, symbolInfo);
   if (symbolInfo->storage().isHeap) {
     transferBaton(identExpr, symbolInfo->codegen().ID);
   }
@@ -568,9 +582,9 @@ void Semantics::walkAddressExpression(Node *node) {
   auto addrName = extractIdentifierName(innerExpr);
 
   auto call = dynamic_cast<CallExpression *>(innerExpr);
-  auto metCall = dynamic_cast<MethodCallExpression *>(innerExpr);
 
   if (auto infix = dynamic_cast<InfixExpression *>(innerExpr)) {
+    call = dynamic_cast<CallExpression *>(infix->right_operand.get());
     // Check the operator
     if (infix->operat.type != TokenType::FULLSTOP &&
         infix->operat.type != TokenType::SCOPE_OPERATOR) {
@@ -589,7 +603,7 @@ void Semantics::walkAddressExpression(Node *node) {
     }
   }
 
-  if (call || metCall) {
+  if (call) {
     errorHandler
         .addHint("When you use the 'addr' operator you want to get the address "
                  "of that expression")
@@ -626,7 +640,7 @@ void Semantics::walkAddressExpression(Node *node) {
     addrInfo->codegen().ID = symbolInfo->codegen().ID;
     transferBaton(addrExpr, addrInfo->codegen().ID);
   }
-  metaData[addrExpr] = addrInfo;
+  insertMetaData(addrExpr, addrInfo);
 }
 
 void Semantics::walkDereferenceExpression(Node *node) {
@@ -714,7 +728,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
     transferBaton(derefExpr, derefInfo->codegen().ID);
   }
 
-  metaData[derefExpr] = derefInfo;
+  insertMetaData(derefExpr,derefInfo);
 }
 
 void Semantics::walkSizeOfExpression(Node *node) {

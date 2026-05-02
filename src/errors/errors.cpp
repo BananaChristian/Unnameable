@@ -218,12 +218,6 @@ int ErrorHandler::getTokenLength(Node *contextNode) {
     if (auto fnCall = dynamic_cast<CallExpression *>(contextNode))
         return getTokenLength(fnCall->function_identifier.get());
 
-    if (auto metCall = dynamic_cast<MethodCallExpression *>(contextNode)) {
-        auto rightLen = getTokenLength(metCall->instance.get());
-        auto leftLen = getTokenLength(metCall->call.get());
-        return rightLen + leftLen + 1;
-    }
-
     if (auto infix = dynamic_cast<InfixExpression *>(contextNode)) {
         auto rightLen = getTokenLength(infix->right_operand.get());
         auto leftLen = getTokenLength(infix->left_operand.get());

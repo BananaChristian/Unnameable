@@ -90,6 +90,7 @@ private:
   size_t totalHeapSize;
   bool isVerbose;
   bool inhibitCleanUp = false;
+  llvm::Value *pendingSelfArg = nullptr;
 
   CoercionInfo classifyStruct(llvm::StructType *structTy);
   void classifyWord(uint64_t offset, uint64_t size, llvm::Type *type,
@@ -193,7 +194,6 @@ private:
 
   llvm::Value *generateSelfExpression(Node *node);
   llvm::Value *generateInstanceExpression(Node *node);
-  llvm::Value *generateMethodCallExpression(Node *node);
   llvm::Value *generateArraySubscriptExpression(Node *node);
 
   llvm::Value *generateCastExpression(Node *node);
@@ -214,6 +214,8 @@ private:
 
   llvm::Value *generateExpression(Node *node);
   llvm::Value *generateAddress(Node *node);
+  llvm::Value *generateDotCall(InfixExpression *infix, llvm::Value *left,
+                               const std::shared_ptr<SymbolInfo> &leftSym);
 
   void generateStatement(Node *node);
   void traceRuntime(llvm::Value *val, ResolvedType type);
@@ -296,7 +298,8 @@ private:
                                         std::shared_ptr<SymbolInfo> sym,
                                         const std::string &name);
   llvm::Value *generateFnPtrCall(CallExpression *callExpr,
-                                 const std::shared_ptr<SymbolInfo> &callSym);
+                                 const std::shared_ptr<SymbolInfo> &callSym,
+                                 llvm::Value *fnPtrAddress);
   llvm::Constant *generateGlobalRecordDefaults(const std::string &typeName);
   // For components
   llvm::Value *generateComponentInit(VariableDeclaration *declaration,
