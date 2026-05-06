@@ -101,6 +101,7 @@ enum class TokenType {
 
   IMPORT, // import keyword
   LINK,   // Link keyword
+  MODULE, //module keyword
 
   SEAL, // Scope seal keyword
 

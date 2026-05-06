@@ -266,6 +266,8 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: IMPORT";
   case TokenType::LINK:
     return "TokenType: LINK";
+  case TokenType::MODULE:
+    return "TokenType: MODULE";
 
   case TokenType::SEAL:
     return "Token Type: SEAL";

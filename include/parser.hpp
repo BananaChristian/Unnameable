@@ -179,9 +179,10 @@ private:
 
   // Parsing the import statement
   std::unique_ptr<Statement> parseImportStatement();
-
   // Parsing the link statement
   std::unique_ptr<Statement> parseLinkStatement();
+  //Parsing the module statement
+  std::unique_ptr<Statement> parseModuleStatement();
 
   //Parsing the asm statement
   std::unique_ptr<ASMConstraint> parseASMConstraint();

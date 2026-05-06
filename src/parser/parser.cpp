@@ -81,6 +81,13 @@ std::unique_ptr<Statement> Parser::parseImportStatement() {
   return std::make_unique<ImportStatement>(import_token, std::move(importStr));
 }
 
+std::unique_ptr<Statement> Parser::parseModuleStatement() {
+  Token module = currentToken();
+  advance();
+  auto module_name = parseIdentifier();
+  return std::make_unique<ModuleStatement>(module, std::move(module_name));
+}
+
 std::unique_ptr<Statement> Parser::parseLinkStatement() {
   Token link_token = currentToken();
   advance();
@@ -94,15 +101,15 @@ std::unique_ptr<Statement> Parser::parseTraceStatement() {
   Token trace = currentToken();
   advance(); // Consume the trace token
 
-    std::vector<std::unique_ptr<Expression>> args;
+  std::vector<std::unique_ptr<Expression>> args;
 
-    //Grab the first guy
+  // Grab the first guy
+  args.push_back(parseExpression(Precedence::PREC_NONE));
+
+  while (currentToken().type == TokenType::COMMA) {
+    advance(); // Consume the ,
     args.push_back(parseExpression(Precedence::PREC_NONE));
-
-    while(currentToken().type==TokenType::COMMA){
-        advance();//Consume the ,
-        args.push_back(parseExpression(Precedence::PREC_NONE));
-    }
+  }
 
   return std::make_unique<TraceStatement>(trace, std::move(args));
 }
@@ -178,15 +185,15 @@ bool Parser::isBasicType(TokenType type) {
   }
 }
 
-bool Parser::isTypeModifier(TokenType type){
-    switch(type){
-        case TokenType::ARRAY:
-        case TokenType::PTR:
-        case TokenType::REF:
-            return true;
-        default:
-            return false;
-    }
+bool Parser::isTypeModifier(TokenType type) {
+  switch (type) {
+  case TokenType::ARRAY:
+  case TokenType::PTR:
+  case TokenType::REF:
+    return true;
+  default:
+    return false;
+  }
 }
 
 // Slider function
@@ -219,8 +226,7 @@ void Parser::registerInfixFns() {
   InfixParseFunctionsMap[TokenType::SHIFT_LEFT] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::SHIFT_RIGHT] =
       &Parser::parseInfixExpression;
-  InfixParseFunctionsMap[TokenType::FULLSTOP] =
-      &Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::FULLSTOP] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::SCOPE_OPERATOR] =
       &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;
@@ -260,7 +266,7 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::FLOAT] = &Parser::parseFloatLiteral;
 
   PrefixParseFunctionsMap[TokenType::STRING] = &Parser::parseStringLiteral;
-  PrefixParseFunctionsMap[TokenType::F_STRING]=&Parser::parseFStringLiteral;
+  PrefixParseFunctionsMap[TokenType::F_STRING] = &Parser::parseFStringLiteral;
   PrefixParseFunctionsMap[TokenType::SIZEOF] = &Parser::parseSizeOfExpression;
 
   PrefixParseFunctionsMap[TokenType::IDENTIFIER] =
@@ -394,6 +400,7 @@ void Parser::registerStatementParseFns() {
       &Parser::parseContinueStatement;
   StatementParseFunctionsMap[TokenType::LINK] = &Parser::parseLinkStatement;
   StatementParseFunctionsMap[TokenType::IMPORT] = &Parser::parseImportStatement;
+  StatementParseFunctionsMap[TokenType::MODULE] = &Parser::parseModuleStatement;
   StatementParseFunctionsMap[TokenType::TRACE] = &Parser::parseTraceStatement;
 
   // For basic types
@@ -436,7 +443,7 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::F32_KEYWORD] =
       &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::F64_KEYWORD] =
-   &Parser::parseVariableDeclaration; 
+      &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::STRING_KEYWORD] =
       &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::BOOL_KEYWORD] =
@@ -467,7 +474,7 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::PERSIST] =
       &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::HEAP] = &Parser::parseVariableModifier;
-  StatementParseFunctionsMap[TokenType::FN]=&Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::FN] = &Parser::parseVariableModifier;
 
   StatementParseFunctionsMap[TokenType::VOLATILE] =
       &Parser::parseVariableModifier;
@@ -477,8 +484,9 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::ALLOCATOR] =
       &Parser::parseAllocatorStatement;
   StatementParseFunctionsMap[TokenType::SEAL] = &Parser::parseSealStatement;
-  StatementParseFunctionsMap[TokenType::ASM]= &Parser::parseASMStatement;
-  StatementParseFunctionsMap[TokenType::EXPORT] = &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::ASM] = &Parser::parseASMStatement;
+  StatementParseFunctionsMap[TokenType::EXPORT] =
+      &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::REF] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::PTR] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::DEREF] =

@@ -1,3 +1,5 @@
+module test
+
 func cleanup(ptr opaque whatever): i32 {
     return  1
 }

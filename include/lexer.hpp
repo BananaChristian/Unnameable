@@ -18,7 +18,7 @@ class Lexer {
   std::unordered_map<std::string, TokenType> keywords = {
       {"auto", TokenType::AUTO},
       {"func", TokenType::FUNCTION},
-      {"fn",TokenType::FN},
+      {"fn", TokenType::FN},
       {"return", TokenType::RETURN},
 
       {"enum", TokenType::ENUM},
@@ -93,9 +93,9 @@ class Lexer {
       {"align", TokenType::ALIGN},
       {"union", TokenType::UNION},
       {"bitfield", TokenType::BITFIELD},
-      {"alias",TokenType::ALIAS},
-      {"asm",TokenType::ASM},
-      
+      {"alias", TokenType::ALIAS},
+      {"asm", TokenType::ASM},
+
       {"ref", TokenType::REF},
       {"ptr", TokenType::PTR},
       {"addr", TokenType::ADDR},
@@ -113,7 +113,9 @@ class Lexer {
 
       {"export", TokenType::EXPORT},
       {"import", TokenType::IMPORT},
-      {"link", TokenType::LINK}};
+      {"link", TokenType::LINK},
+      {"module", TokenType::MODULE},
+  };
 
 public:
   Lexer(const std::string &sourceCode, ErrorHandler &handler);

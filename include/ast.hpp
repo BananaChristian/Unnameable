@@ -2077,6 +2077,21 @@ struct LinkStatement : Statement {
       : Statement(link), link_key(link), stringExpr(std::move(string)) {};
 };
 
+struct ModuleStatement : Statement {
+  Token module;
+  std::unique_ptr<Expression> module_name;
+
+  std::string toString() override {
+    std::ostringstream oss;
+    oss << "Module Statement: " << module.TokenLiteral << " "
+        << (module_name ? module_name->toString() : "<module_name>");
+    return oss.str();
+  }
+
+  ModuleStatement(Token mod, std::unique_ptr<Expression> name)
+      : Statement(mod), module(mod), module_name(std::move(name)) {}
+};
+
 // Trace statement
 struct TraceStatement : Statement {
   Token trace_keyword;
