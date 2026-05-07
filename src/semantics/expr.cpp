@@ -255,7 +255,6 @@ void Semantics::walkCastExpression(Node *node) {
   if (!castExpr)
     return;
 
-  hasError = false;
 
   auto destNode = castExpr->type.get();
   if (!destNode)
@@ -374,7 +373,7 @@ void Semantics::walkCastExpression(Node *node) {
   auto castInfo = std::make_shared<SymbolInfo>();
   castInfo->hasError = hasError;
   castInfo->type().type = destinationType;
-  metaData[castExpr] = castInfo;
+  insertMetaData(castExpr, castInfo);
 }
 
 void Semantics::walkBitcastExpression(Node *node) {
@@ -382,7 +381,6 @@ void Semantics::walkBitcastExpression(Node *node) {
   if (!bitcastExpr)
     return;
 
-  hasError = false;
 
   auto destNode = bitcastExpr->type.get();
   if (!destNode)
@@ -466,7 +464,7 @@ void Semantics::walkBitcastExpression(Node *node) {
   auto bitcastInfo = std::make_shared<SymbolInfo>();
   bitcastInfo->type().type = destinationType;
   bitcastInfo->hasError = hasError;
-  metaData[bitcastExpr] = bitcastInfo;
+  insertMetaData(bitcastExpr, bitcastInfo);
 
   logInternal("Bitcast validated: " + sourceType.resolvedName + " -> " +
               destinationType.resolvedName);
@@ -532,7 +530,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   arrAccessInfo->type().dynSizePerDimensions =
       arrSymbol->type().dynSizePerDimensions;
 
-  metaData[arrExpr] = arrAccessInfo;
+  insertMetaData(arrExpr, arrAccessInfo);
   if (arrSymbol->storage().isHeap) {
     arrAccessInfo->codegen().ID = arrSymbol->codegen().ID;
     transferBaton(arrExpr, arrSymbol->codegen().ID);
@@ -759,5 +757,5 @@ void Semantics::walkSizeOfExpression(Node *node) {
   sizeInfo->type().type = ResolvedType::makeBase(DataType::USIZE, "usize");
   sizeInfo->hasError = hasError;
 
-  metaData[sizeExpr] = sizeInfo;
+  insertMetaData(sizeExpr, sizeInfo);
 }

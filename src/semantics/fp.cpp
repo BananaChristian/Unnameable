@@ -87,7 +87,7 @@ void Semantics::walkReturnStatement(Node *node) {
     auto voidSym = std::make_shared<SymbolInfo>();
     voidSym->type().type = expectedReturn;
     voidSym->hasError = hasError;
-    metaData[retStmt] = voidSym;
+    insertMetaData(retStmt, voidSym);
     return;
   }
 
@@ -162,6 +162,7 @@ void Semantics::walkReturnStatement(Node *node) {
     retSym->storage().allocType = valSym->storage().allocType;
     transferBaton(retStmt, retSym->codegen().ID);
   }
+  insertMetaData(retStmt, retSym);
   metaData[retStmt] = retSym;
 }
 
@@ -251,7 +252,7 @@ void Semantics::walkFunctionParameters(Node *node) {
   info->isParam = true;
   info->hasError = hasError;
 
-  metaData[param] = info;
+  insertMetaData(param, info);
   symbolTable.back()[paramName] = info;
 
   logInternal("Parameter '" + paramName +
@@ -435,7 +436,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   else
     symbolTable.back()[funcName] = funcInfo;
 
-  metaData[funcExpr] = funcInfo;
+  insertMetaData(funcExpr, funcInfo);
   currentFunction = funcInfo;
   logInternal("Finalised '" + funcName +
               "' return type: " + returnType.resolvedName);
@@ -675,8 +676,8 @@ void Semantics::analyzeFnPtrCall(
     if (argSym->storage().isHeap)
       transferBaton(arg, argSym->codegen().ID);
   }
-  metaData[callNode->function_identifier.get()] = contextSym;
-  metaData[callNode] = callSym;
+  insertMetaData(callNode->function_identifier.get(),contextSym);
+  insertMetaData(callNode, callSym);
 }
 
 void Semantics::walkFunctionCallExpression(Node *node) {
@@ -816,7 +817,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     }
   }
 
-  metaData[funcCall] = callSym;
+  insertMetaData(funcCall, callSym);
 }
 
 void Semantics::walkTraceStatement(Node *node) {
@@ -926,7 +927,7 @@ void Semantics::walkSealStatement(Node *node) {
   sealSym->isExportable = isExportable;
   sealSym->hasError = hasError;
 
-  metaData[sealStmt] = sealSym;
+  insertMetaData(sealStmt, sealSym);
   symbolTable[0][sealName] = sealSym;
   sealTable[sealName] = sealMap;
 

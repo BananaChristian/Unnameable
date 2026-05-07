@@ -217,7 +217,7 @@ void Semantics::walkAssignStatement(Node *node) {
             return;
         }
         rhsSym->type().type = lhsSym->type().type;
-        metaData[assignStmt] = lhsSym;
+        insertMetaData(assignStmt, lhsSym);
         return;
     }
 

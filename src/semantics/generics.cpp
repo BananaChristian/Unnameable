@@ -5,7 +5,6 @@ void Semantics::walkGenericStatement(Node *node) {
   auto genericStmt = dynamic_cast<GenericStatement *>(node);
   if (!genericStmt)
     return;
-  hasError = false;
 
   std::string blockName = genericStmt->block_name->expression.TokenLiteral;
 
@@ -156,7 +155,7 @@ void Semantics::walkInstantiateStatement(Node *node) {
   info->generic().instTable = std::move(instantiationInfo);
 
   symbolTable.back()[aliasName] = info;
-  metaData[instStmt] = info;
+  insertMetaData(instStmt, info);
 }
 
 void Semantics::substituteTypes(

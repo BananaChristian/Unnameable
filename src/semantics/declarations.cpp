@@ -1,5 +1,4 @@
 #include <string>
-#include <cxxabi.h>
 
 #include "ast.hpp"
 #include "semantics.hpp"
@@ -389,7 +388,7 @@ void Semantics::handleNullInitializers(
     responsibilityTable[declaration] = std::move(lifetime);
   }
   declInfo->hasError = hasError;
-  metaData[declaration] = declInfo;
+  insertMetaData(declaration, declInfo);
   symbolTable.back()[declName] = declInfo;
   // Clear the global error flagger
   hasError = false;

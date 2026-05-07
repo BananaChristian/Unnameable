@@ -8,7 +8,6 @@ void Semantics::walkAllocatorInterface(Node *node) {
   const std::string allocName =
       allocStmt->allocator_name->expression.TokenLiteral;
 
-  hasError = false;
 
   // allocator name must be unique
   auto existing = resolveSymbolInfo(allocName);
@@ -123,7 +122,6 @@ void Semantics::walkAllocatorInterface(Node *node) {
       logSemanticErrors("Function '" + funcName +
                             "' does not satisfy allocator contract",
                         fnStmt);
-      hasError = true;
     }
   }
 
@@ -133,14 +131,13 @@ void Semantics::walkAllocatorInterface(Node *node) {
                           "' must define exactly one allocation function and "
                           "one free function",
                       nullptr);
-    hasError = true;
   }
 
   auto allocSym = std::make_shared<SymbolInfo>();
   allocSym->isExportable = isExportable;
   allocSym->hasError = hasError;
 
-  metaData[allocStmt] = allocSym;
+  insertMetaData(allocStmt, allocSym);
   symbolTable[0][allocName] = allocSym;
   allocatorMap[allocName] = handle;
 

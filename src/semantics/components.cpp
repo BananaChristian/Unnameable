@@ -297,7 +297,7 @@ void Semantics::walkEnumStatement(Node *node) {
   generalInfo->isExportable = isExportable;
   symbolTable[symbolTable.size() - 2][enumStmtName] = generalInfo;
 
-  metaData[enumStmt] = generalInfo;
+  insertMetaData(enumStmt, generalInfo);
 
   // Pop temporary scope
   symbolTable.pop_back();
@@ -307,7 +307,6 @@ void Semantics::walkRecordStatement(Node *node) {
   auto recordStmt = dynamic_cast<RecordStatement *>(node);
   if (!recordStmt)
     return;
-  hasError = false;
 
   // Get block name
   std::string recordName = recordStmt->recordName->expression.TokenLiteral;
@@ -342,7 +341,7 @@ void Semantics::walkRecordStatement(Node *node) {
   // Early registration
   symbolTable[0][recordName] = recordSym;
   customTypesTable[recordName] = typeInfo;
-  metaData[recordStmt] = recordSym;
+  insertMetaData(recordStmt, recordSym);
 
   // Create new local scope for analysis
   insideRecord = true;
@@ -481,7 +480,7 @@ void Semantics::walkInstanceExpression(Node *node) {
   instInfo->type().type = instType;
   instInfo->hasError = hasError;
 
-  metaData[instExpr] = instInfo;
+  insertMetaData(instExpr, instInfo);
 }
 
 void Semantics::walkInitConstructor(Node *node) {
@@ -534,7 +533,7 @@ void Semantics::walkInitConstructor(Node *node) {
   popScope();
 
   // Attach metadata
-  metaData[initStmt] = initInfo;
+  insertMetaData(initStmt, initInfo);
 }
 
 // Resolves a self expression chain like self.pos.x.y
@@ -629,7 +628,7 @@ void Semantics::walkSelfExpression(Node *node) {
     }
   }
 
-  metaData[selfExpr] = info;
+  insertMetaData(selfExpr, info);
 }
 
 void Semantics::walkComponentStatement(Node *node) {
@@ -659,7 +658,7 @@ void Semantics::walkComponentStatement(Node *node) {
 
   symbolTable[0][componentName] = componentSymbol;
   customTypesTable[componentName] = componentTypeInfo;
-  metaData[componentStmt] = componentSymbol;
+  insertMetaData(componentStmt, componentSymbol);
 
   std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
   int currentMemberIndex = 0;
@@ -677,13 +676,11 @@ void Semantics::walkComponentStatement(Node *node) {
   for (const auto &injectedField : componentStmt->injectedFields) {
     if (!injectedField) {
       reportDevBug("Invalid inject record node ", nullptr);
-      return;
     }
 
     auto injectStmt = dynamic_cast<InjectStatement *>(injectedField.get());
     if (!injectStmt) {
       reportDevBug("Invalid inject statement", injectedField.get());
-      continue;
     }
 
     // Mass import case
@@ -856,8 +853,6 @@ void Semantics::walkComponentStatement(Node *node) {
       std::shared_ptr<SymbolInfo> declSym = resolveSymbolInfo(declName);
       if (!declSym) {
         reportDevBug("Failed to resolve member '" + declName + "'", data.get());
-        hasError = true;
-        continue;
       }
       auto memInfo = std::make_shared<MemberInfo>();
       memInfo->memberName = declName;
@@ -1053,7 +1048,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
   info->relations().componentSymbol = componentSym;
 
   // This map link is critical for the IR Generator to know what it's looking at
-  metaData[newExpr] = info;
+  insertMetaData(newExpr, info);
 }
 
 void Semantics::walkASMStatement(Node *node) {
