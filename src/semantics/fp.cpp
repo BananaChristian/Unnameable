@@ -644,18 +644,28 @@ void Semantics::analyzeFnPtrCall(
     std::vector<Node *> &toTransfer,
     const std::shared_ptr<SymbolInfo> &contextSym) {
   auto fnPtrType = contextSym->type().type;
-  if (argTypes.size() != fnPtrType.fnParamTypes.size()) {
+
+  // In a dot context skip the first parameter as it is the implicit self
+  logInternal("lhsNode is: " + (lhsNode ? lhsNode->toString() : "null"));
+
+  size_t param_offset = (lhsNode != nullptr) ? 1 : 0;
+
+  size_t expectedCount = (param_offset <= fnPtrType.fnParamTypes.size())
+                             ? fnPtrType.fnParamTypes.size() - param_offset
+                             : 0;
+
+  if (argTypes.size() != expectedCount) {
     logSemanticErrors("Function pointer '" + std::to_string(argTypes.size()) +
                           "' arguments provided but expected '" +
-                          std::to_string(fnPtrType.fnParamTypes.size()) + "'",
+                          std::to_string(expectedCount) + "'",
                       callNode);
     return;
   }
 
-  for (size_t i = 0; i < fnPtrType.fnParamTypes.size(); ++i) {
-    auto expectedType = fnPtrType.fnParamTypes[i];
+  for (size_t i = 0; i < argTypes.size(); ++i) {
+    auto expectedType = fnPtrType.fnParamTypes[i + param_offset];
     if (!isTypeCompatible(expectedType, argTypes[i])) {
-      logSemanticErrors("Type mismatch on arguments '" + std::to_string(i) +
+      logSemanticErrors("Type mismatch on arguments '" + std::to_string(i + 1) +
                             "' expected '" + expectedType.resolvedName +
                             "' but got '" + argTypes[i].resolvedName + "'",
                         callNode);
@@ -676,7 +686,7 @@ void Semantics::analyzeFnPtrCall(
     if (argSym->storage().isHeap)
       transferBaton(arg, argSym->codegen().ID);
   }
-  insertMetaData(callNode->function_identifier.get(),contextSym);
+  insertMetaData(callNode->function_identifier.get(), contextSym);
   insertMetaData(callNode, callSym);
 }
 
@@ -775,7 +785,6 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   // This takes an entirely different branch
   if (isFnPtr) {
     analyzeFnPtrCall(funcCall, argTypes, toTransfer, callSymbolInfo);
-
     return;
   }
 
@@ -801,7 +810,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
    time I dont wanna block heap variables that are being passed into the call*/
   if (callSym->type().isPointer) {
     if (callSym->storage().isHeap) {
-      metaData[funcCall->function_identifier.get()] = callSym;
+      insertMetaData(funcCall->function_identifier.get(), callSym);
       transferBaton(funcCall, callSym->codegen().ID);
     }
   } else {

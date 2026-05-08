@@ -104,7 +104,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     stmt = parseAllocatorStatement();
   else if (isBasicType(currentToken().type) ||
            currentToken().type == TokenType::IDENTIFIER ||
-           currentToken().type == TokenType::AUTO)
+           currentToken().type == TokenType::AUTO||
+           currentToken().type==TokenType::VOID)
     stmt = parseVariableDeclaration();
   else {
     logError("Expected variable declaration,components,records,allocators or "
@@ -179,6 +180,7 @@ std::unique_ptr<Statement> Parser::parseVariableDeclaration() {
 
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::IDENTIFIER ||
+      currentToken().type==TokenType::VOID||
       currentToken().type == TokenType::AUTO) {
     base_type = parseBasicType();
     if (!base_type) {

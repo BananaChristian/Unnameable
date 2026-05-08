@@ -324,6 +324,17 @@ void Semantics::enforceDeclarationRules(
     }
   }
 
+  // Rule on someone who might write void x = whatever
+  if (!declaration->fnPtrMod && base_type->token.type == TokenType::VOID) {
+    errorHandler.addHint(
+        "'void' means nothing a variable's type cannot be nothing");
+    logSemanticErrors(
+        "Cannot apply void base type to non function pointer variable '" +
+            declName + "'",
+        declaration);
+    return;
+  }
+
   // Create initial info I will collect it later
   if (declaration->fnPtrMod)
     declInfo->type().isFnPtr = true;
@@ -613,7 +624,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
     }
   }
 
-  insertMetaData(declaration,declInfo);
+  insertMetaData(declaration, declInfo);
   logInternal("[DEBUG] Stored metadata for " + declName +
               " | isHeap: " + std::to_string(declInfo->storage().isHeap) +
               " | ID: " + declInfo->codegen().ID +

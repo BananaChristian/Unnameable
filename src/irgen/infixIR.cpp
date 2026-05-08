@@ -392,9 +392,6 @@ IRGenerator::generateDotCall(InfixExpression *infix, llvm::Value *left,
   }
   pendingSelfArg = nullptr; // Just to be safe
 
-  if (!result)
-    reportDevBug("Failed to generate value for infix call", rhsCall);
-
   return result;
 }
 

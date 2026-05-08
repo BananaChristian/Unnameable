@@ -1214,14 +1214,22 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected,
     return true;
   }
 
-  // Opaque pointer,accepts any pointer
+  // Opaque pointer,accepts any pointer(universal pointer receiver)
   if (expected.isBase() && expected.kind == DataType::OPAQUE) {
-    // Only applies when expected is a bare opaque — not when recursing
+    // Only applies when expected is a bare opaque not when recursing
     // into inner types of a ptr<opaque> comparison
     if (actual.isBase() && actual.kind == DataType::OPAQUE)
       return true; // both are bare opaque, they match
-    if (!actual.isPointer())
-      return false;
+                   
+    if (expected.isPointer() && actual.isPointer()) {
+      if (!expected.innerType || !actual.innerType)
+        return false;
+      // ptr opaque accepts any pointer
+      if (expected.innerType->kind == DataType::OPAQUE)
+        return true;
+      return isTypeCompatible(*expected.innerType, *actual.innerType);
+    }
+
     if (!expected.isNull && actual.isNull)
       return false;
     return true;
@@ -2052,6 +2060,8 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
 
   case TokenType::BOOL_KEYWORD:
     return makeType(ResolvedType::makeBase(DataType::BOOLEAN, "bool"));
+  case TokenType::VOID:
+      return makeType(ResolvedType::makeBase(DataType::VOID, "void"));
 
   case TokenType::AUTO: {
     auto value = declaration->initializer.get();

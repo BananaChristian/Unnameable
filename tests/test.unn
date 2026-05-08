@@ -1,12 +1,10 @@
 module test
 
-func cleanup(ptr opaque whatever): i32 {
-    return  1
-}
+func cleanup(ptr opaque whatever): void {}
 
 component Player {
     i32 health
-    fn():i32 drop
+    fn(ptr opaque ):void drop
 }
 
 func main: i32 {
