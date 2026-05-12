@@ -155,5 +155,6 @@ private:
   char32_t readHexEscape(int digits);
   Token readChar();
   bool isValidTokenStart(char32_t ch);
-  void logError(const std::string &message, const Token &token);
+  void logError(ErrorCode code, const Token &token,
+                std::vector<std::string> args = {});
 };

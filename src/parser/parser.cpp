@@ -207,12 +207,17 @@ void Parser::advance() {
 
 void Parser::synchronize(SyncLevel level = SyncLevel::TOP) {
   while (currentToken().type != TokenType::END) {
+
     if (level == SyncLevel::TOP) {
       if (isTopLevelSyncToken(currentToken().type)) {
+        logInternal("Calling synchronizer on token: " +
+                    currentToken().TokenLiteral);
         return;
       }
     } else if (level == SyncLevel::MID) {
       if (isMidLevelSyncToken(currentToken().type)) {
+        logInternal("Calling synchronizer on token: " +
+                    currentToken().TokenLiteral);
         return;
       }
     }

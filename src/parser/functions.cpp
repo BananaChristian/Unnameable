@@ -12,13 +12,21 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
     hasParens = true;
     advance(); // move past '('
   }
+  
+  if(hasParens &&currentToken().type!=TokenType::RPAREN){
+    logError(ErrorCode::UnexpectedToken, currentToken(),{")",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return args;
+  }
 
   // Check for empty parameter list or no parentheses
   if (hasParens && currentToken().type == TokenType::RPAREN) {
     advance(); // move past ')'
     if (currentToken().type != TokenType::COLON) {
       logError(ErrorCode::UnexpectedToken, currentToken(),
-               {"':'", currentToken().TokenLiteral});
+               {":", currentToken().TokenLiteral});
+      synchronize(SyncLevel::TOP);
+      return args;
     }
     return args; // empty vector
   }
@@ -47,7 +55,8 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
   // If we used parentheses, we must have closing ')'
   if (hasParens && currentToken().type != TokenType::RPAREN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"')'", currentToken().TokenLiteral});
+             {")", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return args;
   }
   if (hasParens)
@@ -56,7 +65,9 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
   // Check colon after parameter list
   if (currentToken().type != TokenType::COLON) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"':'", currentToken().TokenLiteral});
+             {":", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return args;
   }
 
   return args;
@@ -70,11 +81,20 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
     hasParens = true;
     advance(); // Consume the ( token
   }
+
+  if(hasParens&& currentToken().type != TokenType::RPAREN){
+    logError(ErrorCode::UnexpectedToken, currentToken(),{")",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return params;
+  }
+
   if (hasParens && currentToken().type == TokenType::RPAREN) {
     advance(); // Consume )
     if (currentToken().type != TokenType::COLON) {
       logError(ErrorCode::UnexpectedToken, currentToken(),
-               {"':'", currentToken().TokenLiteral});
+               {":", currentToken().TokenLiteral});
+      synchronize(SyncLevel::TOP);
+      return params;
     }
     return params;
   }
@@ -97,15 +117,19 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
   }
   if (hasParens && currentToken().type != TokenType::RPAREN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"')'", currentToken().TokenLiteral});
+             {")", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return params;
   }
   if (hasParens)
     advance();
 
-  if (currentToken().type != TokenType::COLON)
+  if (currentToken().type != TokenType::COLON) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"':'", currentToken().TokenLiteral});
+             {":", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return params;
+  }
 
   return params;
 }
@@ -119,19 +143,16 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
   advance();
 
   //----------Dealing with function name------------
-  auto identExpr = parseIdentifier();
-  auto identNode = dynamic_cast<Identifier *>(identExpr.get());
-
-  if (!identNode) {
-    logError(ErrorCode::UnexpectedToken,
-             currentToken(),{"identifier",currentToken().TokenLiteral});
+  if (currentToken().type != TokenType::IDENTIFIER) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"identifier", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
+  auto identToken = currentToken();
+  auto identExpr = parseIdentifier();
 
-  Token identToken = identNode->identifier;
-
-  //---Dealing with the call itself
+  // Dealing with the call itself
   auto call = parseFunctionParameters(); // We might get some arguments or not
                                          // so we call the parse call expression
 
@@ -150,8 +171,8 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
     }
 
     else {
-      logError(ErrorCode::InvalidReturnType,
-               currentToken(),{currentToken().TokenLiteral});
+      logError(ErrorCode::InvalidReturnType, currentToken(),
+               {currentToken().TokenLiteral});
       synchronize(SyncLevel::TOP);
       return nullptr;
     }
@@ -189,8 +210,8 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
 std::unique_ptr<Expression> Parser::parseBlockExpression() {
   Token lbrace = currentToken();
   if (lbrace.type != TokenType::LBRACE) {
-    logError(ErrorCode::UnexpectedToken,
-             currentToken(),{"'{'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"{", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -198,19 +219,28 @@ std::unique_ptr<Expression> Parser::parseBlockExpression() {
   auto block = std::make_unique<BlockExpression>(lbrace);
   while (currentToken().type != TokenType::RBRACE) {
     if (currentToken().type == TokenType::END) {
-      logError(ErrorCode::MissingClosingBracket, currentToken(),{currentToken().TokenLiteral});
+      logError(ErrorCode::MissingClosingBracket, currentToken(),
+               {currentToken().TokenLiteral});
       return nullptr;
     }
 
     auto stmt = parseStatement();
-    if (stmt) {
+    if (!stmt) {
+      if (isTopLevelSyncToken(currentToken().type) ||
+          currentToken().type == TokenType::END) {
+        logError(ErrorCode::MissingClosingBracket, currentToken(),
+                 {currentToken().TokenLiteral});
+        return nullptr;
+      }
+      continue;
+    } else {
       block->statements.push_back(std::move(stmt));
     }
   }
 
   if (currentToken().type != TokenType::RBRACE) {
-    logError(ErrorCode::MissingClosingBracket,
-             currentToken(),{currentToken().TokenLiteral});
+    logError(ErrorCode::MissingClosingBracket, currentToken(),
+             {currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }

@@ -61,6 +61,25 @@ else
 	@echo "Compiler built at $(OUT)"
 endif
 
+# Test binary for lexer and parser only
+TEST_SRC = src/parser_test.cpp \
+           src/token/token.cpp \
+           src/lexer/lexer.cpp \
+           src/parser/*.cpp \
+           src/errors/errors.cpp
+
+TEST_OUT = $(BIN_DIR)/unnc_test$(EXE_EXT)
+
+test: $(TEST_OUT)
+
+$(TEST_OUT): $(TEST_SRC)
+	@mkdir -p $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(TEST_SRC) -o $(TEST_OUT)
+	@echo "Test binary built at $(TEST_OUT)"
+
+parser_test: test
+	./$(TEST_OUT) tests/test.unn
+
 # _____Build the Core  (Dumps into ./core)______
 core: $(CORE_DIR)/entry.o $(LIB_OBJS)
 	@echo "Bundling core objects into $(URC_LIB)..."

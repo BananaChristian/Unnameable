@@ -44,7 +44,7 @@ void ErrorHandler::report(CompilerError &error) {
     std::cerr << " " << i << " | " << sourceLines[i - 1] << "\n";
 
     // Caret line for error line
-    if (i == error.line) {
+    if (static_cast<size_t>(i) == error.line) {
       std::cerr << "   | ";
 
       // Handle tabs for positioning
@@ -52,8 +52,8 @@ void ErrorHandler::report(CompilerError &error) {
       std::string line = sourceLines[i - 1];
 
       // First, print spaces/tabs to reach the error column visually
-      for (int j = 0;
-           j < error.column - 1 && j < static_cast<int>(line.length()); j++) {
+      for (size_t j = 0;
+           j < error.column - 1 && j < line.length(); j++) {
         if (line[j] == '\t') {
           std::cerr << "\t";
           visualColumn += 4; // Tabs count as 4 visually
@@ -106,6 +106,20 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.message = "unterminated string '{0}'";
     return message;
   }
+  case ErrorCode::InvalidEscape: {
+    message.code = ErrorCode::InvalidEscape;
+    message.message = "invalid escape '{0}'";
+    return message;
+  }
+  case ErrorCode::UnterminatedChar: {
+    message.code = ErrorCode::UnterminatedString;
+    message.message = "unterminated char '{0}'";
+    return message;
+  }
+  case ErrorCode::InvalidToken: {
+    message.code = ErrorCode::InvalidToken;
+    message.message = "invalid token '{0}'";
+  }
   case ErrorCode::UnterminatedComment: {
     message.code = ErrorCode::UnterminatedComment;
     message.message = "unterminated comment";
@@ -118,7 +132,7 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   }
   case ErrorCode::MissingClosingBracket: {
     message.code = ErrorCode::MissingClosingBracket;
-    message.message = "missing closing bracket expected '{0}' but got '{1}'";
+    message.message = "missing closing bracket expected '}' but got '{0}'";
     return message;
   }
   case ErrorCode::InvalidReturnType: {
@@ -136,21 +150,28 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.message = "cannot apply modifier to this statement";
     return message;
   }
+  case ErrorCode::MultipleMutSpecifiers: {
+    message.code = ErrorCode::MultipleMutSpecifiers;
+    message.message = "cannot apply multiple mutability specifiers";
+  }
   case ErrorCode::InvalidConstraint: {
     message.code = ErrorCode::InvalidConstraint;
-    message.message="expected 'in' or 'out' after ':' but got '{0}'";
+    message.message = "expected 'in' or 'out' after ':' but got '{0}'";
     return message;
-  }case ErrorCode::ExpectIntegerToken:{
-    message.code=ErrorCode::ExpectIntegerToken;
-    message.message="expected an intenger token but got '{0}'";
+  }
+  case ErrorCode::ExpectIntegerToken: {
+    message.code = ErrorCode::ExpectIntegerToken;
+    message.message = "expected an intenger token but got '{0}'";
     return message;
-  }case ErrorCode::UnsupportedStatement:{
-    message.code=ErrorCode::UnsupportedStatement;
-    message.message="unexpected statement";
+  }
+  case ErrorCode::UnsupportedStatement: {
+    message.code = ErrorCode::UnsupportedStatement;
+    message.message = "unexpected statement";
     return message;
-  }case ErrorCode::DuplicateInit:{
-    message.code=ErrorCode::DuplicateInit;
-    message.message="duplicate init";
+  }
+  case ErrorCode::DuplicateInit: {
+    message.code = ErrorCode::DuplicateInit;
+    message.message = "duplicate init";
     return message;
   }
   case ErrorCode::UndefinedVariable: {
@@ -162,6 +183,11 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.code = ErrorCode::TypeMismatch;
     message.message = "type mismatch expected '{0}' but got '{1}'";
     message.hints.push_back("Try casting");
+    return message;
+  }
+  default: {
+    message.code = ErrorCode::GenericError;
+    message.message = "an error occured";
     return message;
   }
   }

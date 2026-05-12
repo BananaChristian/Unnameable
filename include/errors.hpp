@@ -15,23 +15,27 @@ enum class ErrorLevel {
 };
 
 enum ErrorCode {
+  GenericError=0000,
+
   // Lexer errors
   UnexpectedChar = 1001,
   UnterminatedString = 1002,
-  UnterminatedComment = 1003,
+  InvalidEscape = 1003,
+  UnterminatedChar = 1004,
+  UnterminatedComment = 1005,
+  InvalidToken = 1006,
 
   // Parser errors
   UnexpectedToken = 2001,
   MissingClosingBracket = 2002,
-  InvalidReturnType=2003,
-  InvalidType= 2004,
-  InvalidModifier=2005,
-  InvalidConstraint=2006,
-  ExpectIntegerToken=2007,
-  DuplicateInit=2008,
-  UnsupportedStatement=2009,
-  MultipleMutSpecifiers=2010,
-  
+  InvalidReturnType = 2003,
+  InvalidType = 2004,
+  InvalidModifier = 2005,
+  InvalidConstraint = 2006,
+  ExpectIntegerToken = 2007,
+  DuplicateInit = 2008,
+  UnsupportedStatement = 2009,
+  MultipleMutSpecifiers = 2010,
 
   // Semantics
   UndefinedVariable = 3001,
@@ -63,7 +67,8 @@ public:
   ErrorHandler &addHint(const std::string &hint);
   ErrorMessage generateErrorMessage(ErrorCode code);
   int getTokenLength(Node *contextNode);
-  std::string format_string(std::string &message, std::vector<std::string> &args);
+  std::string format_string(std::string &message,
+                            std::vector<std::string> &args);
 
 private:
   std::vector<std::string> sourceLines;
