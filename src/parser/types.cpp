@@ -16,14 +16,12 @@ std::unique_ptr<Expression> Parser::parseTypeModifier() {
         std::unique_ptr<Expression> lengthExpr;
         lengthExpr = parseExpression(Precedence::PREC_NONE);
         if (!lengthExpr) {
-          reportDevBug("Failed to parse length expression", currentToken());
           return nullptr;
         }
 
         if (currentToken().type != TokenType::RBRACKET) {
-          logError("Expected ']' after array length but got '" +
-                       currentToken().TokenLiteral + "'",
-                   currentToken());
+          logError(ErrorCode::UnexpectedToken,
+                   currentToken(),{"']'",currentToken().TokenLiteral});
           return nullptr;
         }
         advance(); // consume ']'
@@ -44,9 +42,8 @@ std::unique_ptr<Expression> Parser::parseTypeModifier() {
         gt_token.type = TokenType::GREATER_THAN;
         replaceCurrentToken(gt_token);
       } else {
-        logError("Expected '>' to close the type modifier grouping but got '" +
-                     currentToken().TokenLiteral + "'",
-                 currentToken());
+        logError(ErrorCode::UnexpectedToken,
+                 currentToken(),{"'>'",currentToken().TokenLiteral});
         return nullptr;
       }
     }
@@ -102,18 +99,14 @@ std::unique_ptr<Expression> Parser::parseReturnType() {
   if (!isBasicType(currentToken().type) &&
       currentToken().type != TokenType::IDENTIFIER &&
       currentToken().type != TokenType::OPAQUE) {
-    logError("Expected base type in return type but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::InvalidType, currentToken(),
+             {currentToken().TokenLiteral});
     advance();
     return nullptr;
   }
 
   auto base = parseBasicType();
-  if (!base) {
-    logError("Failed to parse base return type", currentToken());
-    return nullptr;
-  }
 
-  return std::make_unique<ReturnType>(std::move(fnptr_mod),std::move(modifier), std::move(base));
+  return std::make_unique<ReturnType>(std::move(fnptr_mod), std::move(modifier),
+                                      std::move(base));
 }

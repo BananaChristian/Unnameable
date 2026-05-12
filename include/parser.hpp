@@ -7,6 +7,12 @@
 #include <string>
 #include <vector>
 
+enum SyncLevel {
+  TOP,
+  MID,
+  NONE,
+};
+
 class Parser {
   std::vector<Token> tokenInput;
   std::string fileName;
@@ -133,7 +139,7 @@ private:
   // Parsing the function statement
   std::unique_ptr<Statement> parseFunctionStatement();
 
-  //Parsing function pointer statement
+  // Parsing function pointer statement
   std::unique_ptr<Expression> parseFunctionPointerModifier();
 
   // Parsing return statements
@@ -181,10 +187,10 @@ private:
   std::unique_ptr<Statement> parseImportStatement();
   // Parsing the link statement
   std::unique_ptr<Statement> parseLinkStatement();
-  //Parsing the module statement
+  // Parsing the module statement
   std::unique_ptr<Statement> parseModuleStatement();
 
-  //Parsing the asm statement
+  // Parsing the asm statement
   std::unique_ptr<ASMConstraint> parseASMConstraint();
   std::unique_ptr<Statement> parseASMInstruction();
   std::unique_ptr<Statement> parseASMStatement();
@@ -285,7 +291,7 @@ private:
   std::unique_ptr<Expression> parseNullLiteral();
   // String
   std::unique_ptr<Expression> parseStringLiteral();
-  //F-String
+  // F-String
   std::unique_ptr<Expression> parseFStringLiteral();
   // Sizeof
   std::unique_ptr<Expression> parseSizeOfExpression();
@@ -320,11 +326,16 @@ private:
   bool isIntegerType(TokenType type);
   // Checker for integer literals
   bool isIntegerLiteralType(TokenType type);
-  //Checker for type modifier
+  // Checker for type modifier
   bool isTypeModifier(TokenType type);
 
+  bool isTopLevelSyncToken(TokenType type);
+  bool isMidLevelSyncToken(TokenType type);
+  void synchronize(SyncLevel level);
+
   // Logging
-  void logError(const std::string &message, const Token &token);
+  void logError(ErrorCode code, const Token &token,
+                std::vector<std::string> args = {});
   void reportDevBug(const std::string &message, const Token &token);
   void logInternal(const std::string &message);
 };

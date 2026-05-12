@@ -16,10 +16,10 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
   Token heap_token;
   std::unique_ptr<Expression> allocType = nullptr;     // For heap<allocator>
   std::unique_ptr<Expression> type_modifier = nullptr; // For shit like ptr,ref
-  std::unique_ptr<Expression> fnPtr_mod=nullptr; //For shit like func(i32):
+  std::unique_ptr<Expression> fnPtr_mod = nullptr; // For shit like func(i32):
   bool dynamicHeapDecl = false;
   bool isTypeModified = false;
-  bool isFuncModded=false;
+  bool isFuncModded = false;
 
   while (true) {
     if (currentToken().type == TokenType::HEAP) {
@@ -33,7 +33,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
         advance(); // consume <
         allocType = parseIdentifier();
         if (currentToken().type != TokenType::GREATER_THAN) {
-          logError("Expected '>' after allocator type", currentToken());
+          logError(ErrorCode::UnexpectedToken, currentToken(),
+                   {"'>'", currentToken().TokenLiteral});
           return nullptr;
         }
         advance(); // consume >
@@ -42,14 +43,14 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
       }
     } else if (currentToken().type == TokenType::MUT) {
       if (isMut || isConst) {
-        logError("Multiple mutability specifiers", currentToken());
+        logError(ErrorCode::MultipleMutSpecifiers, currentToken());
         return nullptr;
       }
       isMut = true;
       advance();
     } else if (currentToken().type == TokenType::CONST) {
       if (isMut || isConst) {
-        logError("Multiple mutability specifiers", currentToken());
+        logError(ErrorCode::MultipleMutSpecifiers, currentToken());
         return nullptr;
       }
       isConst = true;
@@ -66,10 +67,10 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     } else if (currentToken().type == TokenType::EXPORT) {
       isExportable = true;
       advance();
-    } else if(currentToken().type==TokenType::FN){
-      isFuncModded=true;
-      fnPtr_mod=parseFunctionPointerModifier();
-    }else if (currentToken().type == TokenType::PTR ||
+    } else if (currentToken().type == TokenType::FN) {
+      isFuncModded = true;
+      fnPtr_mod = parseFunctionPointerModifier();
+    } else if (currentToken().type == TokenType::PTR ||
                currentToken().type == TokenType::REF ||
                currentToken().type == TokenType::ARRAY) {
       isTypeModified = true;
@@ -82,7 +83,7 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
   // Determine mutability enum from collected flags
   Mutability mutability = Mutability::IMMUTABLE;
   if (isMut && isConst) {
-    logError("Variable cannot be both 'mut' and 'const'", currentToken());
+    logError(ErrorCode::MultipleMutSpecifiers, currentToken());
     return nullptr;
   }
   if (isMut)
@@ -104,13 +105,11 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     stmt = parseAllocatorStatement();
   else if (isBasicType(currentToken().type) ||
            currentToken().type == TokenType::IDENTIFIER ||
-           currentToken().type == TokenType::AUTO||
-           currentToken().type==TokenType::VOID)
+           currentToken().type == TokenType::AUTO ||
+           currentToken().type == TokenType::VOID)
     stmt = parseVariableDeclaration();
   else {
-    logError("Expected variable declaration,components,records,allocators or "
-             "function after modifiers",
-             currentToken());
+    logError(ErrorCode::InvalidModifier, currentToken());
     return nullptr;
   }
 
@@ -149,7 +148,7 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
   } else if (auto asmStmt = dynamic_cast<ASMStatement *>(stmt.get())) {
     asmStmt->isVolatile = isVolatile;
   } else {
-    logError("Cannot apply modifiers to this statement type", currentToken());
+    logError(ErrorCode::InvalidModifier, currentToken());
     return nullptr;
   }
 
@@ -161,8 +160,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     varDecl->modified_type = std::move(type_modifier);
   }
 
-  if(isFuncModded){
-    varDecl->fnPtrMod=std::move(fnPtr_mod);
+  if (isFuncModded) {
+    varDecl->fnPtrMod = std::move(fnPtr_mod);
   }
 
   return stmt;
@@ -171,7 +170,7 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
 std::unique_ptr<Statement> Parser::parseVariableDeclaration() {
   // Modifiers
   std::unique_ptr<Expression> allocator = nullptr;
-  std::unique_ptr<Expression> fn_mod=nullptr;
+  std::unique_ptr<Expression> fn_mod = nullptr;
   std::unique_ptr<Expression> modified_type = nullptr;
 
   // Cores
@@ -180,31 +179,25 @@ std::unique_ptr<Statement> Parser::parseVariableDeclaration() {
 
   if (isBasicType(currentToken().type) ||
       currentToken().type == TokenType::IDENTIFIER ||
-      currentToken().type==TokenType::VOID||
+      currentToken().type == TokenType::VOID ||
       currentToken().type == TokenType::AUTO) {
     base_type = parseBasicType();
-    if (!base_type) {
-      logError("Type parse failed for '" + currentToken().TokenLiteral + "'",
-               currentToken());
-      return nullptr;
-    }
   } else {
-    logError("Invalid variable declaration type '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::InvalidType, currentToken(),
+             {currentToken().TokenLiteral});
     return nullptr;
   }
 
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected variable name after data type but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken,
+             currentToken(),{"'identifier'",currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
 
   identifier = parseIdentifier();
-  if(!identifier){
-    logError("Failed to parse identifier for variable name",previousToken());
+  if (!identifier) {
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
 
@@ -219,7 +212,7 @@ std::unique_ptr<Statement> Parser::parseVariableDeclaration() {
   }
 
   return std::make_unique<VariableDeclaration>(
-      std::move(allocator),std::move(fn_mod), std::move(modified_type), std::move(base_type),
-      std::move(identifier), std::move(value), assign_token,
-      Mutability::IMMUTABLE, false, false, false, false, false);
+      std::move(allocator), std::move(fn_mod), std::move(modified_type),
+      std::move(base_type), std::move(identifier), std::move(value),
+      assign_token, Mutability::IMMUTABLE, false, false, false, false, false);
 }

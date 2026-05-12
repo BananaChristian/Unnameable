@@ -205,6 +205,79 @@ void Parser::advance() {
   }
 }
 
+void Parser::synchronize(SyncLevel level = SyncLevel::TOP) {
+  while (currentToken().type != TokenType::END) {
+    if (level == SyncLevel::TOP) {
+      if (isTopLevelSyncToken(currentToken().type)) {
+        return;
+      }
+    } else if (level == SyncLevel::MID) {
+      if (isMidLevelSyncToken(currentToken().type)) {
+        return;
+      }
+    }
+    advance();
+  }
+}
+
+bool Parser::isTopLevelSyncToken(TokenType type) {
+  switch (type) {
+  case TokenType::FUNCTION:
+  case TokenType::INIT:
+  case TokenType::COMPONENT:
+  case TokenType::RECORD:
+  case TokenType::ALLOCATOR:
+  case TokenType::GENERIC:
+  case TokenType::INSTANTIATE:
+  case TokenType::IF:
+  case TokenType::WHILE:
+  case TokenType::FOR:
+  case TokenType::SEAL:
+  case TokenType::ENUM:
+  case TokenType::ASM:
+  case TokenType::RBRACE:
+  case TokenType::MUT:
+  case TokenType::CONST:
+  case TokenType::HEAP:
+  case TokenType::EXPORT:
+  case TokenType::INJECT:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool Parser::isMidLevelSyncToken(TokenType type) {
+  switch (type) {
+  // Expression/statement boundaries within a block
+  case TokenType::SEMICOLON:
+  case TokenType::COMMA:
+  case TokenType::RPAREN:
+  case TokenType::RBRACKET:
+  case TokenType::RBRACE: // Also a mid-level boundary
+  case TokenType::ELSE:
+  case TokenType::END: // End of file
+
+  // Operators that start new expressions
+  case TokenType::PLUS_PLUS:
+  case TokenType::MINUS_MINUS:
+  case TokenType::BANG:
+  case TokenType::ADDR:
+  case TokenType::UNWRAP:
+  case TokenType::BITWISE_NOT:
+
+    // Keywords that start new statements
+
+  case TokenType::RETURN:
+  case TokenType::BREAK:
+  case TokenType::CONTINUE:
+    return true;
+
+  default:
+    return false;
+  }
+}
+
 // Registration functions
 // Registering infix functions for a particular token type
 void Parser::registerInfixFns() {
@@ -565,16 +638,18 @@ bool Parser::isDeclaration(Node *node) {
 }
 
 // Error logging
-void Parser::logError(const std::string &message, const Token &token) {
+void Parser::logError(ErrorCode code, const Token &token,
+                      std::vector<std::string> args) {
   hasFailed = true;
-
   CompilerError error;
   error.level = ErrorLevel::PARSER;
   error.line = token.line;
-  error.col = token.column;
-  error.message = message;
-  error.tokenLength = token.TokenLiteral.length();
-  error.hints = {};
+  error.column = token.column;
+  error.length = token.TokenLiteral.length();
+
+  ErrorMessage msg = errorHandler.generateErrorMessage(code);
+  msg.message = errorHandler.format_string(msg.message, args);
+  error.message = msg;
 
   errorHandler.report(error);
 }
@@ -583,11 +658,12 @@ void Parser::reportDevBug(const std::string &message, const Token &token) {
   CompilerError error;
   error.level = ErrorLevel::INTERNAL;
   error.line = token.line;
-  error.col = token.column;
-  error.message = message;
-  error.tokenLength = token.TokenLiteral.length();
-  error.hints = {};
-
+  error.column = token.column;
+  error.length = token.TokenLiteral.length();
+  error.message.message = "internal compiler error: " + message;
+  error.message.hints.push_back("this is a compiler bug, not your fault");
+  error.message.hints.push_back(
+      "please report at https://github.com/BananaChristian/Unnameable/issues");
   errorHandler.report(error);
   std::abort();
 }

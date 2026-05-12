@@ -210,7 +210,7 @@ std::unique_ptr<Expression> Parser::parseFStringLiteral() {
                 segments.push_back(std::move(currentSeg));
                 pos = endBrace + 1;
             } else {
-                logError("Missing '}' in f-string", f_token);
+                logError(ErrorCode::UnexpectedToken, f_token,{"'}'",currentToken().TokenLiteral});
                 break;
             }
         } else {
@@ -241,15 +241,14 @@ std::unique_ptr<Expression> Parser::parseArrayLiteral() {
     if (currentToken().type == TokenType::COMMA) {
       advance(); // consume ',' and continue
     } else if (currentToken().type != TokenType::RBRACKET) {
-      logError("Unexpected token in array literal: " +
-                   currentToken().TokenLiteral,
-               currentToken());
+      logError(ErrorCode::UnexpectedToken,
+               currentToken(),{",",currentToken().TokenLiteral});
       return nullptr;
     }
   }
 
   if (currentToken().type != TokenType::RBRACKET) {
-    logError("Expected ']' to close array literal", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),{"']'",currentToken().TokenLiteral});
     return nullptr;
   }
   advance(); // consume ']'

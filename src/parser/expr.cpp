@@ -69,7 +69,7 @@ Parser::parseInfixExpression(std::unique_ptr<Expression> left) {
   advance();
   auto right = parseExpression(prec);
   if (!right) {
-    logError("Invalid rhs expression in infix expression", previousToken());
+    return nullptr;
   }
   return std::make_unique<InfixExpression>(std::move(left), operat,
                                            std::move(right));
@@ -116,10 +116,9 @@ std::unique_ptr<Expression> Parser::parseDereferenceExpression() {
 // Parsing identifier expression
 std::unique_ptr<Expression> Parser::parseIdentifier() {
   auto ident = std::make_unique<Identifier>(currentToken());
-  if (!ident) {
-    logError("Failed to parse identifier '" + currentToken().TokenLiteral + "'",
-             currentToken());
-  }
+  if (!ident) 
+    return nullptr;
+  
   advance();
   return ident;
 }
@@ -138,9 +137,9 @@ std::unique_ptr<Expression> Parser::parseArraySubscript() {
       return nullptr;
 
     if (currentToken().type != TokenType::RBRACKET) {
-      logError("Expected ']' after index but got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"']'", currentToken().TokenLiteral});
+
       return nullptr;
     }
     advance(); // Consume ]
@@ -181,16 +180,15 @@ std::unique_ptr<Expression> Parser::parseNewComponentExpression() {
   advance(); // Consuming the new keyword open
   Token component_name = currentToken();
   if (component_name.type != TokenType::IDENTIFIER) {
-    logError("Expected identifier for component name after new but got '" +
-                 component_name.TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"identifier", currentToken().TokenLiteral});
     return nullptr;
   }
   advance(); // Consuming the component name
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after component name in 'new' expression but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'('", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
   advance(); // Consume the lparen
@@ -205,14 +203,14 @@ std::unique_ptr<Expression> Parser::parseGroupedExpression() {
   advance(); // Consume the ( token
   auto expr = parseExpression(Precedence::PREC_NONE);
   if (!expr) {
-    logError("Empty grouped expression after '('", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),{"')'",currentToken().TokenLiteral});
     return nullptr;
   }
 
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' to close grouped expression but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken,
+             currentToken(),{"')'",currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
 
@@ -247,7 +245,8 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments() {
   if (currentToken().type == TokenType::RPAREN) {
     advance(); // consume ')'
   } else {
-    logError("Expected ')' after function arguments", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'(", currentToken().TokenLiteral});
   }
 
   return args;
@@ -262,10 +261,9 @@ std::unique_ptr<Expression> Parser::parseCallExpression() {
   if (call_token.type !=
       TokenType::LPAREN) { // Checking if we encounter the left parenthesis
                            // after the function name has been declared
-    logError("Expected ( after function name bug got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
-    advance();
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'('", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
 
@@ -285,9 +283,7 @@ std::unique_ptr<Expression> Parser::parseUnwrapExpression() {
   advance(); // Consume the unwrap token
   std::unique_ptr<Expression> expr = parseExpression(operatorPrecedence);
   if (!expr) {
-    logError("Expected an expression after unwrap but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    return nullptr;
   }
 
   return std::make_unique<UnwrapExpression>(unwrap, std::move(expr));
@@ -301,26 +297,35 @@ std::unique_ptr<Expression> Parser::parseSizeOfExpression() {
   if (currentToken().type == TokenType::LESS_THAN) {
     advance(); // Consume the < token
   } else {
-    logError("Expected '<' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'<'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
 
   std::unique_ptr<Expression> type = nullptr;
 
-  if (isBasicType(currentToken().type) ||isTypeModifier(currentToken().type)||currentToken().type == TokenType::IDENTIFIER) {
+  if (isBasicType(currentToken().type) || isTypeModifier(currentToken().type) ||
+      currentToken().type == TokenType::IDENTIFIER) {
     type = parseReturnType();
   } else {
-    logError("Expected a type but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
-    advance();
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"type", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
+    return nullptr;
+  }
+
+  if(!type){
+    synchronize(SyncLevel::MID);
+    return nullptr;
   }
 
   if (currentToken().type == TokenType::GREATER_THAN) {
     advance();
   } else {
-    logError("Expected '>' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'<'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
 
@@ -334,45 +339,42 @@ std::unique_ptr<Expression> Parser::parseCastExpression() {
 
   advance();
   if (currentToken().type != TokenType::LESS_THAN) {
-    logError("Expected '<' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'<'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
   advance(); // Consume the < token
 
-  if (isBasicType(currentToken().type)) {
-    type = parseBasicType();
-  } else {
-    if (currentToken().type == TokenType::IDENTIFIER) {
-      logError("Expected a built in type but got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
-      advance();
-    } else {
-      logError("Inavlid cast type '" + currentToken().TokenLiteral + "'",
-               currentToken());
-      advance();
-    }
-  }
+  type = parseReturnType();
+  if(!type)
+    return nullptr;
 
   if (currentToken().type != TokenType::GREATER_THAN) {
-    logError("Expected '>' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'>'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
   advance(); // Consume the > token
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' but got '" + currentToken().TokenLiteral + "",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'('", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
   advance(); // Consume the ( token
 
   expr = parseExpression(Precedence::PREC_NONE);
+  if(!expr){
+    return nullptr;
+  }
+  
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"')'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
   advance(); // Consume the )
@@ -387,33 +389,41 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
   std::unique_ptr<Expression> expr = nullptr;
   advance();
   if (currentToken().type != TokenType::LESS_THAN) {
-    logError("Expected '<' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'<'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
 
   advance();
   type = parseReturnType();
+  if(!type){
+    synchronize(SyncLevel::MID);
+    return nullptr;
+  }
 
   if (currentToken().type != TokenType::GREATER_THAN) {
-    logError("Expected '>' but got '" + currentToken().TokenLiteral + "'",
-             currentToken()),
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'>'", currentToken().TokenLiteral}),
         currentToken();
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
   advance();
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'('", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
   advance();
 
   expr = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected  ')' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken,
+             currentToken(),{"')'",currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
   advance(); // Consume the )

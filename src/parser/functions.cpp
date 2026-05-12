@@ -17,9 +17,8 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
   if (hasParens && currentToken().type == TokenType::RPAREN) {
     advance(); // move past ')'
     if (currentToken().type != TokenType::COLON) {
-      logError("Expected ':' after empty parameter list but got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"':'", currentToken().TokenLiteral});
     }
     return args; // empty vector
   }
@@ -47,9 +46,8 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
 
   // If we used parentheses, we must have closing ')'
   if (hasParens && currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' after function parameters but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"')'", currentToken().TokenLiteral});
     return args;
   }
   if (hasParens)
@@ -57,7 +55,8 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
 
   // Check colon after parameter list
   if (currentToken().type != TokenType::COLON) {
-    logError("Expected ':' after function declaration", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"':'", currentToken().TokenLiteral});
   }
 
   return args;
@@ -74,9 +73,8 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
   if (hasParens && currentToken().type == TokenType::RPAREN) {
     advance(); // Consume )
     if (currentToken().type != TokenType::COLON) {
-      logError("Expected ':' after empty parameter list but got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"':'", currentToken().TokenLiteral});
     }
     return params;
   }
@@ -98,19 +96,16 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
     params.push_back(std::move(param));
   }
   if (hasParens && currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' after function pointer parameters but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"')'", currentToken().TokenLiteral});
     return params;
   }
   if (hasParens)
     advance();
 
   if (currentToken().type != TokenType::COLON)
-    logError(
-        "Expected ':' after function pointer parameters closing but got '" +
-            currentToken().TokenLiteral + "'",
-        currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"':'", currentToken().TokenLiteral});
 
   return params;
 }
@@ -128,9 +123,9 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
   auto identNode = dynamic_cast<Identifier *>(identExpr.get());
 
   if (!identNode) {
-    logError("Expected identifier for function name after 'func' but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken,
+             currentToken(),{"identifier",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
 
@@ -149,22 +144,22 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
         currentToken().type == TokenType::VOID ||
         currentToken().type == TokenType::ARRAY ||
         currentToken().type == TokenType::PTR ||
-        currentToken().type == TokenType::REF||
-        currentToken().type==TokenType::FN) {
+        currentToken().type == TokenType::REF ||
+        currentToken().type == TokenType::FN) {
       return_type = parseReturnType();
     }
 
     else {
-      logError("Unexpected return type '" + currentToken().TokenLiteral + "'",
-               currentToken());
+      logError(ErrorCode::InvalidReturnType,
+               currentToken(),{currentToken().TokenLiteral});
+      synchronize(SyncLevel::TOP);
       return nullptr;
     }
   }
 
   if (!return_type) {
-    logError("Expected a return type but got '" + previousToken().TokenLiteral +
-                 "'",
-             previousToken());
+    synchronize(SyncLevel::TOP);
+    return nullptr;
   }
 
   if (currentToken().type == TokenType::SEMICOLON) {
@@ -194,16 +189,16 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
 std::unique_ptr<Expression> Parser::parseBlockExpression() {
   Token lbrace = currentToken();
   if (lbrace.type != TokenType::LBRACE) {
-    logError("Expected { after data type but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken,
+             currentToken(),{"'{'",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance();
   auto block = std::make_unique<BlockExpression>(lbrace);
   while (currentToken().type != TokenType::RBRACE) {
     if (currentToken().type == TokenType::END) {
-      logError("Unterminated block experession", currentToken());
+      logError(ErrorCode::MissingClosingBracket, currentToken(),{currentToken().TokenLiteral});
       return nullptr;
     }
 
@@ -214,9 +209,9 @@ std::unique_ptr<Expression> Parser::parseBlockExpression() {
   }
 
   if (currentToken().type != TokenType::RBRACE) {
-    logError("Expected } but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
-    advance();
+    logError(ErrorCode::MissingClosingBracket,
+             currentToken(),{currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
 
@@ -231,8 +226,7 @@ std::unique_ptr<Expression> Parser::parseFunctionPointerModifier() {
   auto params = parseFnPointerParameters();
   advance();
 
-  return std::make_unique<FunctionPointerModifier>(fn_token,
-                                                   std::move(params));
+  return std::make_unique<FunctionPointerModifier>(fn_token, std::move(params));
 }
 
 // Parsing function statement

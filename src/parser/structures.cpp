@@ -20,7 +20,8 @@ std::unique_ptr<Statement> Parser::parseStructureModifier() {
         advance(); // Consume (
         alignExpr = parseExpression(get_precedence(currentToken().type));
         if (currentToken().type != TokenType::RPAREN) {
-          logError("Expected ')' after align expression", currentToken());
+          logError(ErrorCode::UnexpectedToken, currentToken(),
+                   {"')'", currentToken().TokenLiteral});
           return nullptr;
         }
         advance(); // Consume )
@@ -60,7 +61,7 @@ std::unique_ptr<Statement> Parser::parseStructureModifier() {
     recordStmt->modifiers->isUnion = isUnion;
     recordStmt->modifiers->isPacked = isPacked;
   } else {
-    logError("Cannot apply modifiers to this statement type", currentToken());
+    logError(ErrorCode::InvalidModifier, currentToken());
     return nullptr;
   }
 
@@ -78,8 +79,8 @@ std::unique_ptr<ASMConstraint> Parser::parseASMConstraint() {
   // Parse direction "in" or "out"
   std::string direction = currentToken().TokenLiteral;
   if (direction != "in" && direction != "out") {
-    logError("Expected 'in' or 'out' after ':' but got '" + direction + "'",
-             currentToken());
+    logError(ErrorCode::InvalidConstraint, currentToken(),
+             {currentToken().TokenLiteral});
     return nullptr;
   }
   advance(); // consume direction
@@ -177,14 +178,17 @@ std::unique_ptr<Statement> Parser::parseASMStatement() {
     dialect = currentToken().TokenLiteral;
     advance(); // consume dialect name
     if (currentToken().type != TokenType::GREATER_THAN) {
-      logError("Expected '>' to close dialect specifier", currentToken());
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {">", currentToken().TokenLiteral});
       return nullptr;
     }
     advance(); // consume '>'
   }
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected '{' after 'asm'", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'{'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // consume '{'
@@ -234,8 +238,9 @@ std::unique_ptr<Statement> Parser::parseSealStatement() {
   std::unique_ptr<Expression> sealIdent = parseIdentifier();
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected { but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'{'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
 
@@ -252,18 +257,18 @@ std::unique_ptr<Statement> Parser::parseGenericStatement() {
 
   // name
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected identifier for generic name but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"identifier", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   auto genericIdent = parseIdentifier();
 
   // type param list
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after generic name but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'('", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // consume '('
@@ -278,23 +283,22 @@ std::unique_ptr<Statement> Parser::parseGenericStatement() {
     } else if (currentToken().type == TokenType::COMMA) {
       advance(); // consume comma
     } else {
-      logError("Unexpected token in generic parameters: '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
       return nullptr;
     }
   }
 
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' to close generic parameter list", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"')'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // consume ')'
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected '{' to start generic block but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'{'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
 
@@ -310,16 +314,18 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
 
   // Dealing with the generic call
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected 'identifier' for  generic call but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'identifier", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
 
   auto ident = parseIdentifier();
   // Expect '('
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after instantiate identifier", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'('", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // consume '('
@@ -335,9 +341,6 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
       types.push_back(currentToken());
       advance();
     } else {
-      logError("Unexpected token in generic call: " +
-                   currentToken().TokenLiteral,
-               currentToken());
       return nullptr;
     }
 
@@ -349,9 +352,9 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
 
     // If not comma, next MUST be ')'
     if (currentToken().type != TokenType::RPAREN) {
-      logError("Expected ',' or ')' but got '" + currentToken().TokenLiteral +
-                   "'",
-               currentToken());
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"',' or ')'", currentToken().TokenLiteral});
+      synchronize(SyncLevel::TOP);
       return nullptr;
     }
   }
@@ -361,17 +364,19 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
   advance();
 
   if (currentToken().type != TokenType::AS) {
-    logError("Expected 'as' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'as'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   Token as = currentToken();
   advance();
 
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected 'identifier' but got '" + currentToken().TokenLiteral +
-                 "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'identifier'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return nullptr;
   }
   Token alias = currentToken();
   advance();
@@ -385,9 +390,8 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
 std::unique_ptr<EnumMember> Parser::parseEnumMember() {
   // Check if the current token is an identifier
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Enum member must start with an identifier, got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'identifier'", currentToken().TokenLiteral});
     return nullptr; // Return nullptr but don't advance to allow recovery in
                     // caller
   }
@@ -401,19 +405,15 @@ std::unique_ptr<EnumMember> Parser::parseEnumMember() {
   if (currentToken().type == TokenType::ASSIGN) {
     advance(); // Consume the assignment token
     if (!isIntegerLiteralType(currentToken().type)) {
-      logError("Enum member value must be an integer, got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
+      logError(ErrorCode::ExpectIntegerToken, currentToken(),
+               {currentToken().TokenLiteral});
       return nullptr; // Return nullptr without advancing
     }
     // Parse the expression for the integer value
     value = parseExpression(Precedence::PREC_NONE);
     if (!value) {
-      logError("Failed to parse enum member value", currentToken());
       return nullptr;
     }
-    // No need for manual advance here; parseExpression should handle token
-    // consumption
   }
 
   return std::make_unique<EnumMember>(memberToken, name, std::move(value));
@@ -429,9 +429,9 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
   // Parse the enum class's name
   auto enum_ident = parseIdentifier();
   if (!enum_ident) {
-    logError("Expected identifier for enum class name, got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'identifier'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
 
@@ -439,9 +439,9 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
   if (currentToken().type == TokenType::COLON) {
     advance(); // Consume the colon token
     if (!isIntegerType(currentToken().type)) {
-      logError("Expected integer type after colon in enum class, got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
+      logError(ErrorCode::ExpectIntegerToken, currentToken(),
+               {currentToken().TokenLiteral});
+      synchronize(SyncLevel::TOP);
       return nullptr;
     }
     int_token = currentToken();
@@ -450,9 +450,9 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
 
   // Check for opening brace
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected '{' for enum class body, got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'{'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // Consume the { token
@@ -476,23 +476,19 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
     if (currentToken().type == TokenType::COMMA) {
       advance(); // Consume the comma
     } else if (currentToken().type == TokenType::SEMICOLON) {
-      logError("Semicolons are not allowed inside enum class; use commas to "
-               "separate members",
-               currentToken());
       advance(); // Consume the semicolon to continue parsing
     } else if (currentToken().type != TokenType::RBRACE) {
-      logError("Expected ',' or '}' after enum member, got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"',' or '}'", currentToken().TokenLiteral});
       // Don't advance here; let the loop check the next token
     }
   }
 
   // Check for closing brace
   if (currentToken().type != TokenType::RBRACE) {
-    logError("Expected '}' to close enum class, got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::MissingClosingBracket, currentToken(),
+             {currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // Consume the } token
@@ -523,9 +519,10 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
   Token component_token = currentToken();
   advance(); // Consume the keyword component
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected component name but got '" + currentToken().TokenLiteral +
-                 "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'identifier'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return nullptr;
   }
   auto component_name = parseIdentifier();
   advance(); // Consuming the LPAREN
@@ -558,9 +555,8 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
         stmt = parseInjectStatement();
         injectedfields.push_back(std::move(stmt));
       } else {
-        logError("Expected 'inject record',but got '" +
-                     nextToken().TokenLiteral + "'",
-                 currentToken());
+        logError(ErrorCode::UnexpectedToken, currentToken(),
+                 {"'record", nextToken().TokenLiteral});
         advance(); // skip the unexpected token
       }
       break;
@@ -568,8 +564,6 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       auto exportStmt = parseVariableModifier();
       auto fnStmt = dynamic_cast<FunctionStatement *>(exportStmt.get());
       if (!fnStmt) {
-        logError("Only function exports are allowed in component statement",
-                 currentToken());
         break;
       }
       methods.push_back(std::move(exportStmt));
@@ -582,7 +576,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       break;
     case TokenType::INIT:
       if (initConstructor.has_value()) {
-        logError("Duplicate init constructor in component", currentToken());
+        logError(ErrorCode::DuplicateInit, currentToken());
         advance();
         break;
       }
@@ -594,16 +588,13 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
       break;
 
     default:
-      logError("Invalid statement encountered inside component",
-               currentToken());
       advance();
       continue;
     }
   }
   if (currentToken().type != TokenType::RBRACE) {
-    logError("Expected } to close component block but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::MissingClosingBracket, currentToken(),
+             {currentToken().TokenLiteral});
   }
   advance(); // Consume the RBRACE
 
@@ -621,9 +612,8 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
 
   // Expect LPAREN
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after 'init', but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'('", currentToken().TokenLiteral});
     return nullptr;
   }
   advance(); // consume '('
@@ -640,27 +630,24 @@ std::unique_ptr<Statement> Parser::parseInitConstructorStatement() {
     if (currentToken().type == TokenType::COMMA) {
       advance(); // consume comma and continue
     } else if (currentToken().type != TokenType::RPAREN) {
-      logError("Expected ',' or ')' in init argument list, got '" +
-                   currentToken().TokenLiteral + "'",
-               currentToken());
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"',' or ')'", currentToken().TokenLiteral});
       return nullptr;
     }
   }
 
   // Expect closing RPAREN
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' to close init argument list but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"')'", currentToken().TokenLiteral});
     return nullptr;
   }
   advance(); // consume ')'
 
   // Parse the block statement
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected '{' to start init block but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'{'", currentToken().TokenLiteral});
     return nullptr;
   }
 
@@ -678,27 +665,19 @@ std::unique_ptr<Statement> Parser::parseInjectStatement() {
   Token kind_token;
   if (currentToken().type == TokenType::RECORD) {
     kind_token = currentToken();
-    advance(); // Consume 'record' or 'behavior'
+    advance(); // Consume 'record'
   } else {
-    logError("Expected either 'record' keyword but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'record'", currentToken().TokenLiteral});
   }
 
   if (currentToken().type == TokenType::FULLSTOP ||
       currentToken().type == TokenType::SCOPE_OPERATOR) {
-    logError("Expected record name but you are starting with a fullstop",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'identifier'", currentToken().TokenLiteral});
   }
 
   std::unique_ptr<Expression> expr = parseExpression(Precedence::PREC_NONE);
-
-  // Special check to prevent function calls
-  auto callExpr = dynamic_cast<CallExpression *>(expr.get());
-  if (callExpr) {
-    logError("Unexpected function call", currentToken());
-    return nullptr;
-  }
 
   if (currentToken().type == TokenType::SEMICOLON) {
     advance();
@@ -715,15 +694,17 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
   Token record_token = currentToken();
   advance(); // Consuming the data keyword token
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError("Expected record name but got '" + currentToken().TokenLiteral +
-                 "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'identifier'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return nullptr;
   }
   auto recordName = parseIdentifier();
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected { to start record block but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'{'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return nullptr;
   }
 
   advance(); // Consuming the LBRACE
@@ -738,14 +719,13 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
     if (dynamic_cast<VariableDeclaration *>(field.get())) {
       fields.push_back(std::move(field));
     } else {
-      logError("Unsupported statement inside record", currentToken());
+      logError(ErrorCode::UnsupportedStatement, currentToken());
     }
   }
 
   if (currentToken().type != TokenType::RBRACE) {
-    logError("Expected } to close data block but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::MissingClosingBracket, currentToken(),
+             {currentToken().TokenLiteral});
   }
   advance();
 
@@ -760,9 +740,9 @@ Parser::parseInstanceExpression(std::unique_ptr<Expression> left) {
   std::vector<std::unique_ptr<Statement>> args;
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected '{' but got '" + currentToken().TokenLiteral + "'",
-             currentToken());
-    advance();
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'{'", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
     return nullptr;
   }
 
@@ -792,7 +772,8 @@ Parser::parseInstanceExpression(std::unique_ptr<Expression> left) {
   if (currentToken().type == TokenType::RBRACE) {
     advance(); // consume '}'
   } else {
-    logError("Expected '}' after instance arguments", currentToken());
+    logError(ErrorCode::MissingClosingBracket, currentToken(),
+             {currentToken().TokenLiteral});
     return nullptr;
   }
 
@@ -803,9 +784,8 @@ Parser::parseInstanceExpression(std::unique_ptr<Expression> left) {
 std::unique_ptr<Statement> Parser::parseBlockStatement() {
   Token lbrace = currentToken();
   if (lbrace.type != TokenType::LBRACE) {
-    logError("Expected '{' to start block but got '" + lbrace.TokenLiteral +
-                 "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'{'", currentToken().TokenLiteral});
     return nullptr;
   }
   advance();
@@ -826,9 +806,8 @@ std::unique_ptr<Statement> Parser::parseBlockStatement() {
   }
 
   if (currentToken().type != TokenType::RBRACE) {
-    logError("Expected } to close block but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::MissingClosingBracket, currentToken(),
+             {currentToken().TokenLiteral});
     return nullptr;
   }
   advance();

@@ -5,13 +5,15 @@ std::unique_ptr<Statement> Parser::parseWhileStatement() {
   Token while_key = currentToken();
   advance();
   if (currentToken().type != TokenType::LPAREN) {
-    logError(" Expected ')' after keyword while ", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),{"')'",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance();
   auto condition = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    logError(" Expected ')' after while condition", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),{"')'",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance();
@@ -26,7 +28,8 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
   advance(); // consume 'for'
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError("Expected '(' after 'for'", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),{"'('",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // consume '('
@@ -39,9 +42,8 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
   auto condition = parseExpression(Precedence::PREC_NONE);
 
   if (currentToken().type != TokenType::SEMICOLON) {
-    logError("Expected ';' after condition in for loop but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken,
+             currentToken(),{"';'",currentToken().TokenLiteral});
     return nullptr;
   }
   advance();
@@ -50,15 +52,16 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
   auto step = parseStatement();
 
   if (currentToken().type != TokenType::RPAREN) {
-    logError("Expected ')' after step expression but got '" +
-                 currentToken().TokenLiteral + "'",
-             currentToken());
+    logError(ErrorCode::UnexpectedToken,
+             currentToken(),{"')'",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // consume ')'
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError("Expected '{' to start for loop block", currentToken());
+    logError(ErrorCode::UnexpectedToken, currentToken(),{"'{'",currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
     return nullptr;
   }
 
