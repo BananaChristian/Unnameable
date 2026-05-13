@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
 
 #include "ast.hpp"
 
@@ -26,7 +28,7 @@ void ErrorHandler::report(CompilerError &error) {
     hintBuffer.clear();
   }
 
-  std::string displayName = getLevelDisplayName(error.level);
+  std::string displayName = errorCodeName(error.code, error.level);
   std::string baseName = getBaseName(fileName);
 
   // Header
@@ -52,8 +54,7 @@ void ErrorHandler::report(CompilerError &error) {
       std::string line = sourceLines[i - 1];
 
       // First, print spaces/tabs to reach the error column visually
-      for (size_t j = 0;
-           j < error.column - 1 && j < line.length(); j++) {
+      for (size_t j = 0; j < error.column - 1 && j < line.length(); j++) {
         if (line[j] == '\t') {
           std::cerr << "\t";
           visualColumn += 4; // Tabs count as 4 visually
@@ -81,6 +82,10 @@ void ErrorHandler::report(CompilerError &error) {
   }
 }
 
+int ErrorHandler::errorCodeToInt(ErrorCode code) {
+  return static_cast<int>(code);
+}
+
 std::string ErrorHandler::format_string(std::string &message,
                                         std::vector<std::string> &args) {
   for (size_t i = 0; i < args.size(); i++) {
@@ -93,75 +98,151 @@ std::string ErrorHandler::format_string(std::string &message,
   return message;
 }
 
+std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
+  std::vector<std::string> suggestions;
+  switch (code) {
+  case ErrorCode::MultipleMutSpecifiers: {
+    suggestions.push_back(
+        "'mut' and 'const cannot be used together as they are contradictory");
+    return suggestions;
+  }
+  case ErrorCode::TypeMismatchArrayLit: {
+    suggestions.push_back("All elements in an must be the same type");
+    return suggestions;
+  }
+  case ErrorCode::NoneIndexableType: {
+    suggestions.push_back(
+        "Only array and pointer types can be subscripted with []");
+    return suggestions;
+  }
+  case ErrorCode::UndefinedVariable: {
+    suggestions.push_back("Declare the variable before using it");
+    return suggestions;
+  }
+  case ErrorCode::NoneDereferencableType: {
+    suggestions.push_back("Only pointer types can be dereferenced");
+    return suggestions;
+  }
+  case ErrorCode::InvalidUsageOfNull: {
+    suggestions.push_back(
+        "Nullable variables cannot be directly used in operations take caution "
+        "and unwrap them or use coalesce operator");
+    return suggestions;
+  }
+  case ErrorCode::FailedToInfer: {
+    suggestions.push_back(
+        "Could be an unknown variable or lack of a value for auto");
+    return suggestions;
+  }
+  case ErrorCode::GlobalHeapVar: {
+    suggestions.push_back(
+        "It seems you have declared a heap variable in an invalid scope the "
+        "compiler cannot carry out bunkering because it has failed to figure "
+        "out the exact block this declaration was made under");
+    return suggestions;
+  }
+  case ErrorCode::InvalidBindOperator: {
+    suggestions.push_back("use '->' for pointer or reference assignment");
+    suggestions.push_back("ptr i32 x -> addr y");
+    suggestions.push_back("use '::' for enum access");
+    return suggestions;
+  }
+  case ErrorCode::InvalidImmutUse: {
+    suggestions.push_back("try applying the 'mut' modifier to the variable");
+    return suggestions;
+  }
+  default: {
+    return suggestions;
+  }
+  }
+}
+
 ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   ErrorMessage message;
   switch (code) {
   case ErrorCode::UnexpectedChar: {
     message.code = ErrorCode::UnexpectedChar;
     message.message = "unexpected character '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::UnterminatedString: {
     message.code = ErrorCode::UnterminatedString;
     message.message = "unterminated string '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::InvalidEscape: {
     message.code = ErrorCode::InvalidEscape;
     message.message = "invalid escape '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::UnterminatedChar: {
     message.code = ErrorCode::UnterminatedString;
     message.message = "unterminated char '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::InvalidToken: {
     message.code = ErrorCode::InvalidToken;
     message.message = "invalid token '{0}'";
+    message.hints = suggestForError(code);
+    return message;
   }
   case ErrorCode::UnterminatedComment: {
     message.code = ErrorCode::UnterminatedComment;
     message.message = "unterminated comment";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::UnexpectedToken: {
     message.code = ErrorCode::UnexpectedToken;
     message.message = "expected token '{0}' but got '{1}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::MissingClosingBracket: {
     message.code = ErrorCode::MissingClosingBracket;
     message.message = "missing closing bracket expected '}' but got '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::InvalidReturnType: {
     message.code = ErrorCode::InvalidReturnType;
     message.message = "expected a return type but got '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::InvalidType: {
     message.code = ErrorCode::InvalidType;
     message.message = "expected a type but got '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::InvalidModifier: {
     message.code = ErrorCode::InvalidModifier;
     message.message = "cannot apply modifier to this statement";
+    message.hints = suggestForError(code);
+
     return message;
   }
   case ErrorCode::MultipleMutSpecifiers: {
     message.code = ErrorCode::MultipleMutSpecifiers;
     message.message = "cannot apply multiple mutability specifiers";
+    message.hints = suggestForError(code);
+    return message;
   }
   case ErrorCode::InvalidConstraint: {
     message.code = ErrorCode::InvalidConstraint;
     message.message = "expected 'in' or 'out' after ':' but got '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::ExpectIntegerToken: {
     message.code = ErrorCode::ExpectIntegerToken;
     message.message = "expected an intenger token but got '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::UnsupportedStatement: {
@@ -172,17 +253,117 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   case ErrorCode::DuplicateInit: {
     message.code = ErrorCode::DuplicateInit;
     message.message = "duplicate init";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::UndefinedVariable: {
     message.code = ErrorCode::UndefinedVariable;
     message.message = "Undefined variable '{0}'";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::TypeMismatch: {
     message.code = ErrorCode::TypeMismatch;
     message.message = "type mismatch expected '{0}' but got '{1}'";
-    message.hints.push_back("Try casting");
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::TypeMismatchArrayLit: {
+    message.code = ErrorCode::TypeMismatchArrayLit;
+    message.message = "type mismatch for array literal at element '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NoneIndexableType: {
+    message.code = ErrorCode::NoneIndexableType;
+    message.message = "type '{0}' is non indexable";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NoneDereferencableType: {
+    message.code = ErrorCode::NoneDereferencableType;
+    message.message = "cannot dereference non pointer type '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidSelfAccess: {
+    message.code = InvalidSelfAccess;
+    message.message = "Invalid self access";
+    return message;
+  }
+  case ErrorCode::NotaFuncOrFnPtr: {
+    message.code = ErrorCode::NotaFuncOrFnPtr;
+    message.message = "'{0}' is not a function or a function pointer";
+    return message;
+  }
+  case ErrorCode::LHSMustBeNull: {
+    message.code = ErrorCode::LHSMustBeNull;
+    message.message =
+        "left hand side of the caolesce operator must be nullable";
+    return message;
+  }
+  case ErrorCode::InvalidUsageOfNull: {
+    message.code = ErrorCode::InvalidUsageOfNull;
+    message.message = "Invalid usage of a null variable '{name}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NonExistantMember: {
+    message.code = ErrorCode::NonExistantMember;
+    message.message = "'{0}' is not a member of type '{1}'";
+    return message;
+  }
+  case ErrorCode::InvalidOperationOnTypes: {
+    message.code = ErrorCode::InvalidOperationOnTypes;
+    message.message =
+        "Cannot carry out '{0}' operation on types '{1}' and '{2}'";
+    return message;
+  }
+  case ErrorCode::InvalidPrefixOrPostfixOps: {
+    message.code = ErrorCode::InvalidPrefixOrPostfixOps;
+    message.message = "Cannot carry out '{0}' on type '{1}'";
+    return message;
+  }
+  case ErrorCode::ArgumentSizeMismatch: {
+    message.code = ErrorCode::ArgumentSizeMismatch;
+    message.message = "function '{0}' expected '{1}' arguments but got '{2}'";
+    return message;
+  }
+  case ErrorCode::ArgumentTypeMismatch: {
+    message.code = ErrorCode::ArgumentTypeMismatch;
+    message.message =
+        "type mismatch in argument '{0}' expected '{1}' but got '{2}'";
+    return message;
+  }
+  case ErrorCode::NullPassFailure: {
+    message.code = ErrorCode::NullPassFailure;
+    message.message =
+        "cannot pass null to a non nullable argument '{0}' of type '{1}'";
+    return message;
+  }
+  case ErrorCode::FailedToInfer: {
+    message.code = ErrorCode::FailedToInfer;
+    message.message = "failed to infer type";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::GlobalHeapVar: {
+    message.code = ErrorCode::GlobalHeapVar;
+    message.message =
+        "cannot declare a heap variable '{0}' in an invalid scope";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidBindOperator: {
+    message.code = ErrorCode::InvalidBindOperator;
+    message.message = "invalid operator '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidImmutUse: {
+    message.code = ErrorCode::InvalidImmutUse;
+    message.message = "cannot apply '{0}' to an immutable variable '{1}'";
+    message.hints = suggestForError(code);
     return message;
   }
   default: {
@@ -193,22 +374,15 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   }
 }
 
-std::string ErrorHandler::getLevelDisplayName(ErrorLevel level) {
+std::string ErrorHandler::errorCodeName(ErrorCode code, ErrorLevel level) {
+  int codeInt = errorCodeToInt(code);
   switch (level) {
-  case ErrorLevel::LEXER:
-    return "Lexer error";
-  case ErrorLevel::PARSER:
-    return "Parsing error";
-  case ErrorLevel::SEMANTIC:
-    return "Semantic error";
-  case ErrorLevel::AUDITOR:
-    return "Auditor error";
-  case ErrorLevel::LAYOUT:
-    return "Layout error";
-  case ErrorLevel::INTERNAL:
-    return "INTERNAL COMPILER ERROR";
-  case ErrorLevel::IMPORT:
-    return "Import error";
+  case ErrorLevel::ERROR:
+    return "E" + std::to_string(codeInt);
+  case ErrorLevel::WARNING:
+    return "W" + std::to_string(codeInt);
+  case ErrorLevel::FATAL:
+    return "F" + std::to_string(codeInt);
   }
 
   return "Unknown issue";

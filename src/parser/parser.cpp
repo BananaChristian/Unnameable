@@ -647,10 +647,11 @@ void Parser::logError(ErrorCode code, const Token &token,
                       std::vector<std::string> args) {
   hasFailed = true;
   CompilerError error;
-  error.level = ErrorLevel::PARSER;
+  error.level = ErrorLevel::ERROR;
   error.line = token.line;
   error.column = token.column;
   error.length = token.TokenLiteral.length();
+  error.code = code;
 
   ErrorMessage msg = errorHandler.generateErrorMessage(code);
   msg.message = errorHandler.format_string(msg.message, args);
@@ -661,7 +662,8 @@ void Parser::logError(ErrorCode code, const Token &token,
 
 void Parser::reportDevBug(const std::string &message, const Token &token) {
   CompilerError error;
-  error.level = ErrorLevel::INTERNAL;
+  error.level = ErrorLevel::FATAL;
+  error.code = ErrorCode::GenericError;
   error.line = token.line;
   error.column = token.column;
   error.length = token.TokenLiteral.length();

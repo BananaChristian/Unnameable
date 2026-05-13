@@ -67,8 +67,7 @@ void Semantics::walkInfixExpression(Node *node) {
   walker(infixExpr->right_operand.get());
   ResolvedType infixType = inferNodeDataType(infixExpr);
   if (infixType.kind == DataType::UNKNOWN) {
-    logSemanticErrors("Infix cannot be of unknown type",
-                      infixExpr->left_operand.get());
+    logSemanticErrors(ErrorCode::FailedToInfer, infixExpr->left_operand.get());
   }
 
   auto info = std::make_shared<SymbolInfo>();
@@ -91,18 +90,14 @@ void Semantics::walkPrefixExpression(Node *node) {
   if (prefixExpr->operat.type == TokenType::PLUS_PLUS ||
       prefixExpr->operat.type == TokenType::MINUS_MINUS) {
     if (auto ident = dynamic_cast<Identifier *>(prefixExprOperand)) {
-      auto symbol = resolveSymbolInfo(ident->expression.TokenLiteral);
+      auto name = extractIdentifierName(ident);
+      auto symbol = resolveSymbolInfo(name);
       if (!symbol) {
-        logSemanticErrors("Undefined variable in prefix expression '" +
-                              ident->expression.TokenLiteral + "'",
-                          prefixExpr);
+        logSemanticErrors(ErrorCode::UndefinedVariable, prefixExpr, {name});
         return;
       }
       if (!symbol->storage().isMutable) {
-        logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral +
-                              "' to immutable variable '" +
-                              ident->expression.TokenLiteral + "'",
-                          prefixExpr);
+        logSemanticErrors(ErrorCode::InvalidImmutUse, prefixExpr, {name});
         return;
       }
       if (!symbol->storage().isInitialized) {
@@ -255,7 +250,6 @@ void Semantics::walkCastExpression(Node *node) {
   if (!castExpr)
     return;
 
-
   auto destNode = castExpr->type.get();
   if (!destNode)
     return;
@@ -380,7 +374,6 @@ void Semantics::walkBitcastExpression(Node *node) {
   auto bitcastExpr = dynamic_cast<BitcastExpression *>(node);
   if (!bitcastExpr)
     return;
-
 
   auto destNode = bitcastExpr->type.get();
   if (!destNode)
@@ -726,7 +719,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
     transferBaton(derefExpr, derefInfo->codegen().ID);
   }
 
-  insertMetaData(derefExpr,derefInfo);
+  insertMetaData(derefExpr, derefInfo);
 }
 
 void Semantics::walkSizeOfExpression(Node *node) {

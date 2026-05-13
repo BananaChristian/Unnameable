@@ -325,7 +325,8 @@ private:
                         const std::shared_ptr<SymbolInfo> &declSym);
   void transferBaton(Node *receiver, const std::string &familyID);
   void insertMetaData(Node *node, std::shared_ptr<SymbolInfo> sym);
-  void logSemanticErrors(const std::string &message, Node *contextNode);
+  void logSemanticErrors(ErrorCode code, Node *contextNode,
+                         std::vector<std::string> args = {});
   void logSpecialErrors(const std::string &message, int line, int col);
   void reportDevBug(const std::string &message, Node *contextNode);
   void logInternal(const std::string &message);

@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "ast.hpp"
 #include "semantics.hpp"
@@ -261,12 +262,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     for (size_t i = 1; i < arrLit->array.size(); ++i) {
       ResolvedType elemType = inferNodeDataType(arrLit->array[i].get());
       if (!isTypeCompatible(firstType, elemType)) {
-        errorHandler.addHint("All array elements must be the same type")
-            .addHint("Expected type: " + firstType.resolvedName)
-            .addHint("Got type: " + elemType.resolvedName);
-        logSemanticErrors("Type mismatch of array member at index '" +
-                              std::to_string(i) + "'",
-                          arrLit);
+        logSemanticErrors(ErrorCode::TypeMismatch, arrLit, {std::to_string(i)});
         return errorType;
       }
     }
@@ -279,26 +275,22 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     auto arrSym = resolveSymbolInfo(arrayName);
 
     if (!arrSym) {
-      logSemanticErrors("Unidentified variable '" + arrayName + "'",
+      logSemanticErrors(ErrorCode::UndefinedVariable,
                         arrAccess->identifier.get());
       return errorType;
     }
 
     if (!arrSym->type().type.isArray()) {
-      errorHandler.addHint("Only array types can be subscripted with '[]'")
-          .addHint("Declare as: arr[N] i32 " + arrayName)
-          .addHint("Or initialize with an array literal");
-      logSemanticErrors("Cannot index into non-array type '" +
-                            arrSym->type().type.resolvedName + "'",
-                        arrAccess->identifier.get());
+      logSemanticErrors(ErrorCode::NoneIndexableType,
+                        arrAccess->identifier.get(),
+                        {arrSym->type().type.resolvedName});
       return errorType;
     }
 
     if (arrSym->type().type.isNull) {
-      errorHandler.addHint("Unwrap the nullable array before indexing")
-          .addHint("Use '?''?' or 'unwrap' to get the non-nullable value");
-      logSemanticErrors("Cannot index into nullable array '" + arrayName + "'",
-                        arrAccess->identifier.get());
+      logSemanticErrors(ErrorCode::NoneIndexableType,
+                        arrAccess->identifier.get(),
+                        {arrSym->type().type.resolvedName});
       return errorType;
     }
 
@@ -352,9 +344,8 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
     auto sym = resolveSymbolInfo(instName);
     if (!sym) {
-      logSemanticErrors("Failed to infer type for unidentified identifier '" +
-                            instName + "'",
-                        instExpr->blockIdent.get());
+      logSemanticErrors(ErrorCode::UndefinedVariable,
+                        instExpr->blockIdent.get(), {instName});
       return errorType;
     }
 
@@ -377,7 +368,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     if (auto selfExpr =
             dynamic_cast<SelfExpression *>(assignStmt->identifier.get())) {
       if (selfExpr->fields.empty()) {
-        logSemanticErrors("Invalid 'self' access in assignment",
+        logSemanticErrors(ErrorCode::InvalidSelfAccess,
                           assignStmt->identifier.get());
         return errorType;
       }
@@ -386,7 +377,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       auto lastField = selfExpr->fields.back().get();
       auto ident = dynamic_cast<Identifier *>(lastField);
       if (!ident) {
-        logSemanticErrors("Expected identifier in 'self' field chain",
+        logSemanticErrors(ErrorCode::InvalidSelfAccess,
                           assignStmt->identifier.get());
         return errorType;
       }
@@ -401,10 +392,9 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     auto assignStmtVal = assignStmt->value.get();
     ResolvedType assignStmtValType = inferNodeDataType(assignStmtVal);
     if (!isTypeCompatible(assignSymbol->type().type, assignStmtValType)) {
-      logSemanticErrors("Type mismatch expected '" +
-                            assignStmtValType.resolvedName + "' but got '" +
-                            assignSymbol->type().type.resolvedName + "'",
-                        assignStmt->identifier.get());
+      logSemanticErrors(ErrorCode::TypeMismatch, assignStmt->identifier.get(),
+                        {assignStmtValType.resolvedName,
+                         assignSymbol->type().type.resolvedName});
     } else {
       return assignSymbol->type().type;
     }
@@ -414,8 +404,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     auto componentName = newExpr->component_name.TokenLiteral;
     auto componentIt = customTypesTable.find(componentName);
     if (componentIt == customTypesTable.end()) {
-      logSemanticErrors("Component '" + componentName + "' does not exist",
-                        newExpr);
+      logSemanticErrors(ErrorCode::UndefinedVariable, newExpr, {componentName});
       return errorType;
     }
     return componentIt->second->type;
@@ -448,7 +437,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
                   "'");
       return symbol->type().type;
     } else {
-      logSemanticErrors("Undefined variable '" + name + "'", ident);
+      logSemanticErrors(ErrorCode::UndefinedVariable, ident, {name});
       return errorType;
     }
   }
@@ -457,18 +446,15 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     std::string name = extractIdentifierName(derefExpr->identifier.get());
     auto derefSym = resolveSymbolInfo(name);
     if (!derefSym) {
-      logSemanticErrors("Undefined variable '" + name + "'",
-                        derefExpr->identifier.get());
+      logSemanticErrors(ErrorCode::UndefinedVariable,
+                        derefExpr->identifier.get(), {name});
       return errorType;
     }
     // Must actually be a pointer to deref
     if (!derefSym->type().type.isPointer()) {
-      errorHandler.addHint("Only pointer types can be dereferenced")
-          .addHint("Use 'addr' to get a pointer first")
-          .addHint("Example: ptr i32 p -> addr x, then deref p");
-      logSemanticErrors("Cannot dereference non-pointer variable '" + name +
-                            "'",
-                        derefExpr->identifier.get());
+      logSemanticErrors(ErrorCode::NoneDereferencableType,
+                        derefExpr->identifier.get(),
+                        {derefSym->type().type.resolvedName});
       return errorType;
     }
     // Unwrap one pointer level return what it points to
@@ -506,19 +492,14 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       if (!symbol) {
         symbol = getMemberSym(funcName, lhsNode);
         if (!symbol) {
-          logSemanticErrors(
-              "Undefined function name '" +
-                  callExpr->function_identifier->expression.TokenLiteral + "'",
-              callExpr->function_identifier.get());
+          logSemanticErrors(ErrorCode::UndefinedVariable,
+                            callExpr->function_identifier.get(), {funcName});
           return errorType;
         }
       }
     }
     if (!symbol->isFunction && !symbol->type().isFnPtr) {
-      logSemanticErrors(
-          "'" + funcName +
-              "' is  a variable, not a function or a function pointer",
-          callExpr);
+      logSemanticErrors(ErrorCode::NotaFuncOrFnPtr, callExpr, {funcName});
       return errorType;
     }
     return symbol->type().type;
@@ -697,7 +678,7 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
 
   if (operatorType == TokenType::COALESCE) {
     if (!leftType.isNull) {
-      logSemanticErrors("Left-hand side of coalesce must be nullable",
+      logSemanticErrors(ErrorCode::LHSMustBeNull,
                         infixNode->left_operand.get());
       return ResolvedType::error();
     }
@@ -710,11 +691,8 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
     baseType.resolvedName = strippedName;
 
     if (!isTypeCompatible(baseType, rightType)) {
-      logSemanticErrors(
-          "Type of fallback in coalesce does not match nullable type '" +
-              baseType.resolvedName + "' must match '" +
-              rightType.resolvedName + "'",
-          ident);
+      logSemanticErrors(ErrorCode::TypeMismatch, ident,
+                        {baseType.resolvedName, rightType.resolvedName});
       return ResolvedType::error();
     }
 
@@ -723,16 +701,14 @@ ResolvedType Semantics::inferInfixExpressionType(Node *node) {
   }
 
   if (ident) {
-    auto symbol = resolveSymbolInfo(ident->identifier.TokenLiteral);
+    auto name = extractIdentifierName(ident);
+    auto symbol = resolveSymbolInfo(name);
     if (!symbol) {
-      logSemanticErrors(
-          "Undefined variable '" + ident->identifier.TokenLiteral + "'", ident);
+      logSemanticErrors(ErrorCode::UndefinedVariable, ident, {name});
       return ResolvedType::error();
     }
     if (symbol->type().isDefinitelyNull) {
-      logSemanticErrors("Cannot use definitely-null variable '" +
-                            ident->identifier.TokenLiteral + "' in operations",
-                        ident);
+      logSemanticErrors(ErrorCode::InvalidUsageOfNull, ident, {name});
       symbol->hasError = true;
       return ResolvedType::error();
     }
@@ -793,14 +769,14 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
 
   // Block nullable access
   if (parentType.isNull) {
-    logSemanticErrors("Cannot access a nullable type '" + lookUpName + "'",
-                      infixExpr->left_operand.get());
+    logSemanticErrors(ErrorCode::InvalidUsageOfNull,
+                      infixExpr->left_operand.get(), {lookUpName});
     return nullptr;
   }
 
   if (operatorType == TokenType::FULLSTOP) {
     if (parentType.kind == DataType::ENUM) {
-      logSemanticErrors("Dot operator applied to enum use (::) to access",
+      logSemanticErrors(ErrorCode::InvalidBindOperator,
                         infixExpr->left_operand.get());
       return nullptr;
     }
@@ -815,7 +791,7 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
 
   } else if (operatorType == TokenType::SCOPE_OPERATOR) {
     if (parentType.kind != DataType::ENUM) {
-      logSemanticErrors("Scope operator(::) applied to none enum  variable",
+      logSemanticErrors(ErrorCode::InvalidBindOperator,
                         infixExpr->left_operand.get());
       return nullptr;
     }
@@ -823,17 +799,16 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     // Look for the definition in the custom types table
     auto typeIt = customTypesTable.find(lookUpName);
     if (typeIt == customTypesTable.end()) {
-      logSemanticErrors("Type '" + lookUpName + "' not found",
-                        infixExpr->left_operand.get());
+      logSemanticErrors(ErrorCode::UndefinedVariable,
+                        infixExpr->left_operand.get(), {lookUpName});
       return nullptr;
     }
 
     // Look for the childName in members
     auto memIt = typeIt->second->members.find(childName);
     if (memIt == typeIt->second->members.end()) {
-      logSemanticErrors("Type '" + lookUpName + "' does not have a member '" +
-                            childName + "'",
-                        infixExpr->left_operand.get());
+      logSemanticErrors(ErrorCode::NonExistantMember,
+                        infixExpr->left_operand.get(), {childName, lookUpName});
       return nullptr;
     }
 
@@ -865,15 +840,6 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
       return ResolvedType::error();
   }
 
-  // The odds of this happening are low unless the parser messed up
-  if (operatorType == TokenType::ASSIGN) {
-    logSemanticErrors(
-        "Cannot use '" + operatorStr +
-            "'in binary operations. It is reserved for assignments",
-        infix->left_operand.get());
-    return ResolvedType::error();
-  }
-
   // Comparison operators
   bool isComparison = (operatorType == TokenType::GREATER_THAN ||
                        operatorType == TokenType::GT_OR_EQ ||
@@ -884,19 +850,17 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
 
   if (isComparison) {
     if (leftType.isNull || rightType.isNull) {
-      logSemanticErrors("Cannot carry out comparison on types '" +
-                            leftType.resolvedName + "' and '" +
-                            rightType.resolvedName +
-                            "' as one of them is nullable",
-                        infix->left_operand.get());
+      logSemanticErrors(
+          ErrorCode::InvalidOperationOnTypes, infix->left_operand.get(),
+          {operatorStr, leftType.resolvedName, rightType.resolvedName});
       return ResolvedType::error();
     }
 
     if (leftType.kind == rightType.kind)
       return ResolvedType::makeBase(DataType::BOOLEAN, "boolean");
-    logSemanticErrors("Cannot compare '" + leftType.resolvedName + "' to '" +
-                          rightType.resolvedName + "'",
-                      infix->left_operand.get());
+    logSemanticErrors(
+        ErrorCode::InvalidOperationOnTypes, infix->left_operand.get(),
+        {operatorStr, leftType.resolvedName, rightType.resolvedName});
     return ResolvedType::error();
   }
 
@@ -915,11 +879,9 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
 
   if (isArithmetic) {
     if (leftType.isNull || rightType.isNull) {
-      logSemanticErrors("Cannot carry out arithmetic on types '" +
-                            leftType.resolvedName + "' and '" +
-                            rightType.resolvedName +
-                            "' as one of them is nullable",
-                        infix->left_operand.get());
+      logSemanticErrors(
+          ErrorCode::InvalidOperationOnTypes, infix->left_operand.get(),
+          {operatorStr, leftType.resolvedName, rightType.resolvedName});
       return ResolvedType::error();
     }
     if (leftType.isPointer() && isInteger(rightType)) {
@@ -963,9 +925,8 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
       return rightType;
     }
 
-    logSemanticErrors("Type mismatch '" + leftType.resolvedName +
-                          "' does not match '" + rightType.resolvedName + "'",
-                      infix->left_operand.get());
+    logSemanticErrors(ErrorCode::TypeMismatch, infix->left_operand.get(),
+                      {leftType.resolvedName, rightType.resolvedName});
     return ResolvedType::error();
   }
 
@@ -979,18 +940,15 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
         return leftType;
       }
 
-      logSemanticErrors("Bitwise mismatch, Cannot use '" + operatorStr +
-                            "' on different integer types '" +
-                            leftType.resolvedName + "' and '" +
-                            rightType.resolvedName + "'",
-                        infix->left_operand.get());
+      logSemanticErrors(
+          ErrorCode::InvalidOperationOnTypes, infix->left_operand.get(),
+          {operatorStr, leftType.resolvedName, rightType.resolvedName});
       return ResolvedType::error();
     }
 
-    logSemanticErrors("Bitwise operations cannot be performed on '" +
-                          leftType.resolvedName + "' and '" +
-                          rightType.resolvedName + "'",
-                      infix->left_operand.get());
+    logSemanticErrors(
+        ErrorCode::InvalidOperationOnTypes, infix->left_operand.get(),
+        {operatorStr, leftType.resolvedName, rightType.resolvedName});
     return ResolvedType::error();
   }
 
@@ -1002,14 +960,10 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     }
 
     logSemanticErrors(
-        "Shift operators require integers on both sides  but got '" +
-            leftType.resolvedName + "' and '" + rightType.resolvedName + "'",
-        infix->left_operand.get());
+        ErrorCode::InvalidOperationOnTypes, infix->left_operand.get(),
+        {operatorStr, leftType.resolvedName, rightType.resolvedName});
     return ResolvedType::unknown();
   }
-
-  logSemanticErrors("Unknown binary operator '" + operatorStr + "'",
-                    infix->left_operand.get());
   return ResolvedType::error();
 }
 
@@ -1027,9 +981,8 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
     if (isBoolean(operandType) || operandType.isPointer()) {
       return ResolvedType::makeBase(DataType::BOOLEAN, "bool");
     }
-    logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
-                          operandType.resolvedName + "'",
-                      node);
+    logSemanticErrors(ErrorCode::InvalidPrefixOrPostfixOps, node,
+                      {operatorStr, operandType.resolvedName});
     return ResolvedType::error();
   }
   case TokenType::MINUS:
@@ -1040,9 +993,8 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
       return operandType;
     }
 
-    logSemanticErrors("Cannot apply '" + operatorStr + "' to type '" +
-                          operandType.resolvedName + "'",
-                      node);
+    logSemanticErrors(ErrorCode::InvalidPrefixOrPostfixOps, node,
+                      {operatorStr, operandType.resolvedName});
     return ResolvedType::error();
   }
   case TokenType::BITWISE_NOT: {
@@ -1050,11 +1002,8 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
       return operandType;
     }
 
-    logSemanticErrors(
-        "Bitwise operator '" + operatorStr +
-            "' can only be applied to integer types you provided '" +
-            operandType.resolvedName + "'",
-        node);
+    logSemanticErrors(ErrorCode::InvalidPrefixOrPostfixOps, node,
+                      {operatorStr, operandType.resolvedName});
     return ResolvedType::error();
   }
   default:
@@ -1220,7 +1169,7 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected,
     // into inner types of a ptr<opaque> comparison
     if (actual.isBase() && actual.kind == DataType::OPAQUE)
       return true; // both are bare opaque, they match
-                   
+
     if (expected.isPointer() && actual.isPointer()) {
       if (!expected.innerType || !actual.innerType)
         return false;
@@ -1641,11 +1590,9 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
   auto funcName = callExpr->function_identifier->expression.TokenLiteral;
 
   if (memFuncInfo.paramTypes.size() != callExpr->parameters.size()) {
-    logSemanticErrors("Function '" + funcName + "' call has " +
-                          std::to_string(callExpr->parameters.size()) +
-                          " arguments, but expects " +
-                          std::to_string(memFuncInfo.paramTypes.size()),
-                      callExpr);
+    logSemanticErrors(ErrorCode::ArgumentSizeMismatch, callExpr,
+                      {funcName, std::to_string(memFuncInfo.paramTypes.size()),
+                       std::to_string(callExpr->parameters.size())});
     return false;
   }
 
@@ -1661,9 +1608,7 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
     bool isCompatible = isTypeCompatible(expectedType, argType);
 
     if (argType.kind == DataType::UNKNOWN) {
-      logSemanticErrors("Could not infer type for argument " +
-                            std::to_string(i + 1),
-                        param.get());
+      logSemanticErrors(FailedToInfer, param.get());
       allGood = false;
       continue;
     }
@@ -1672,22 +1617,17 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
       if (expectedType.isNull) {
         argType = expectedType; // promote null, nullable type
       } else {
-        logSemanticErrors("Cannot pass null to non-nullable parameter " +
-                              std::to_string(i + 1) + ": expected " +
-                              expectedType.resolvedName,
-                          param.get());
+        logSemanticErrors(ErrorCode::NullPassFailure, param.get(),
+                          {std::to_string(i + 1), expectedType.resolvedName});
         allGood = false;
         continue;
       }
     }
 
     if (!isCompatible) {
-      logSemanticErrors("Call for '" + funcName +
-                            "'has a type mismatch in argument " +
-                            std::to_string(i + 1) + ", expected '" +
-                            expectedType.resolvedName + "' but got '" +
-                            argType.resolvedName + "'",
-                        param.get());
+      logSemanticErrors(ErrorCode::ArgumentTypeMismatch, param.get(),
+                        {std::to_string(i + 1), expectedType.resolvedName,
+                         argType.resolvedName});
       allGood = false;
       continue;
     }
@@ -1704,11 +1644,10 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
 
   // Check parameter count
   if (funcInfo.func().paramTypes.size() != callExpr->parameters.size()) {
-    logSemanticErrors("Function '" + funcName + "' call has " +
-                          std::to_string(callExpr->parameters.size()) +
-                          " arguments, but expected " +
-                          std::to_string(funcInfo.func().paramTypes.size()),
-                      callExpr);
+    logSemanticErrors(ErrorCode::ArgumentSizeMismatch, callExpr,
+                      {funcName,
+                       std::to_string(funcInfo.func().paramTypes.size()),
+                       std::to_string(callExpr->parameters.size())});
     return false;
   }
 
@@ -1727,9 +1666,7 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
     bool isCompatible = isTypeCompatible(expectedType, argType);
 
     if (argType.kind == DataType::UNKNOWN) {
-      logSemanticErrors("Could not infer type for argument " +
-                            std::to_string(i + 1),
-                        param.get());
+      logSemanticErrors(FailedToInfer, param.get());
       allGood = false;
       continue;
     }
@@ -1738,22 +1675,17 @@ bool Semantics::isCallCompatible(const SymbolInfo &funcInfo,
       if (expectedType.isNull) {
         argType = expectedType;
       } else {
-        logSemanticErrors("Cannot pass null to non-nullable parameter " +
-                              std::to_string(i + 1) + ": expected " +
-                              expectedType.resolvedName,
-                          param.get());
+        logSemanticErrors(ErrorCode::NullPassFailure, param.get(),
+                          {std::to_string(i + 1), expectedType.resolvedName});
         allGood = false;
         continue;
       }
     }
 
     if (!isCompatible) {
-      logSemanticErrors("Call for '" + funcName +
-                            "'has a type mismatch in argument " +
-                            std::to_string(i + 1) + ", expected '" +
-                            expectedType.resolvedName + "' but got '" +
-                            argType.resolvedName + "'",
-                        param.get());
+      logSemanticErrors(
+          ErrorCode::ArgumentTypeMismatch, param.get(),
+          {funcName, expectedType.resolvedName, argType.resolvedName});
       allGood = false;
       continue;
     }
@@ -2061,12 +1993,12 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
   case TokenType::BOOL_KEYWORD:
     return makeType(ResolvedType::makeBase(DataType::BOOLEAN, "bool"));
   case TokenType::VOID:
-      return makeType(ResolvedType::makeBase(DataType::VOID, "void"));
+    return makeType(ResolvedType::makeBase(DataType::VOID, "void"));
 
   case TokenType::AUTO: {
     auto value = declaration->initializer.get();
     if (!value) {
-      logSemanticErrors("Cannot infer without a value", declaration);
+      logSemanticErrors(ErrorCode::FailedToInfer, declaration);
       return ResolvedType::unknown();
     }
     auto inferred = inferNodeDataType(value);
@@ -2079,7 +2011,7 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
     // Search for the name in the custom types table
     auto typeIt = customTypesTable.find(typeName);
     if (typeIt == customTypesTable.end()) {
-      logSemanticErrors("Type '" + typeName + "' is unknown", baseType);
+      logSemanticErrors(ErrorCode::UndefinedVariable, baseType, {typeName});
       return ResolvedType::error();
     }
 
@@ -2263,12 +2195,8 @@ Semantics::createLifeTimeTracker(Node *declarationNode, Node *initializer,
     logInternal("[BORN] Baton " + lifetime->ID +
                 " born in block: " + currentBlock->toString());
   } else {
-    errorHandler.addHint(
-        "It seems you have declared a heap variable in an invalid scope the "
-        "compiler cannot carry out bunkering because it has failed to figure "
-        "out the exact block this declaration was made under");
-    logSemanticErrors("Failed to register declaration inside block",
-                      declarationNode);
+    logSemanticErrors(ErrorCode::GlobalHeapVar, declarationNode,
+                      {extractDeclarationName(declarationNode)});
   }
 
   logInternal("Created baton: " + lifetime->ID +
@@ -2738,32 +2666,35 @@ void Semantics::logSpecialErrors(const std::string &message, int line,
                                  int col) {
   hasFailed = true;
   CompilerError error;
-  error.level = ErrorLevel::SEMANTIC;
+  error.level = ErrorLevel::ERROR;
   error.line = line;
-  error.col = col;
-  error.message = message;
-  error.hints = {};
+  error.column = col;
 
   errorHandler.report(error);
 }
 
-void Semantics::logSemanticErrors(const std::string &message,
-                                  Node *contextNode) {
+void Semantics::logSemanticErrors(ErrorCode code, Node *contextNode,
+                                  std::vector<std::string> args) {
   auto tokenLine = 0;
   auto tokenColumn = 0;
   if (contextNode) {
     tokenLine = contextNode->token.line;
     tokenColumn = contextNode->token.column;
   }
+
   hasFailed = true;
   hasError = true;
+
   CompilerError error;
-  error.level = ErrorLevel::SEMANTIC;
+  error.level = ErrorLevel::ERROR;
   error.line = tokenLine;
-  error.col = tokenColumn;
-  error.message = message;
-  error.tokenLength = errorHandler.getTokenLength(contextNode);
-  error.hints = {};
+  error.column = tokenColumn;
+  error.length = errorHandler.getTokenLength(contextNode);
+  error.code = code;
+
+  ErrorMessage msg = errorHandler.generateErrorMessage(code);
+  msg.message = errorHandler.format_string(msg.message, args);
+  error.message = msg;
 
   errorHandler.report(error);
 }
@@ -2777,15 +2708,16 @@ void Semantics::reportDevBug(const std::string &message, Node *contextNode) {
   }
 
   CompilerError error;
-  error.level = ErrorLevel::INTERNAL;
+  error.level = ErrorLevel::FATAL;
+  error.code = ErrorCode::GenericError;
   error.line = line;
-  error.col = col;
-  error.message = message;
-  error.tokenLength = errorHandler.getTokenLength(contextNode);
-  error.hints = {};
-
+  error.column = col;
+  error.length = errorHandler.getTokenLength(contextNode);
+  error.message.message = "internal compiler error: " + message;
+  error.message.hints.push_back("this is a compiler bug, not your fault");
+  error.message.hints.push_back(
+      "please report at https://github.com/BananaChristian/Unnameable/issues");
   errorHandler.report(error);
-
   std::abort();
 }
 

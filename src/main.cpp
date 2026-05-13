@@ -53,14 +53,16 @@ fs::path getCompilerRoot() {
   }
 }
 
-void ensureParentDirectoryExists(const fs::path &filePath,const std::string &logMessage){
-    fs::path parentDir= filePath.parent_path();
-    if(!parentDir.empty()&& !fs::exists(parentDir)){
-        fs::create_directories(parentDir);
-        if(logOutput&&!logMessage.empty()){
-            std::cout<<COLOR_CYAN<<"[INFO]"<<logMessage<<": "<<parentDir.string()<<COLOR_RESET<<"\n";
-        }
+void ensureParentDirectoryExists(const fs::path &filePath,
+                                 const std::string &logMessage) {
+  fs::path parentDir = filePath.parent_path();
+  if (!parentDir.empty() && !fs::exists(parentDir)) {
+    fs::create_directories(parentDir);
+    if (logOutput && !logMessage.empty()) {
+      std::cout << COLOR_CYAN << "[INFO]" << logMessage << ": "
+                << parentDir.string() << COLOR_RESET << "\n";
     }
+  }
 }
 
 int main(int argc, char **argv) {
@@ -202,18 +204,18 @@ int main(int argc, char **argv) {
 
   fs::path srcPath(sourceFile);
   if (!exeFile.empty()) {
-        fs::path exePath(exeFile);
-        fs::path buildDir = exePath.parent_path();
-        // If objFile wasn't explicitly set, put it in the build directory
-        if (objFile.empty() || objFile == srcPath.stem().string() + ".o") {
-            objFile = (buildDir / srcPath.stem()).string() + ".o";
-        }
-    
-        // If stubFile wasn't explicitly set, put it in the build directory
-        if (stubFile.empty() || stubFile == srcPath.stem().string() + ".stub") {
-        stubFile = (buildDir / srcPath.stem()).string() + ".stub";
-        }
+    fs::path exePath(exeFile);
+    fs::path buildDir = exePath.parent_path();
+    // If objFile wasn't explicitly set, put it in the build directory
+    if (objFile.empty() || objFile == srcPath.stem().string() + ".o") {
+      objFile = (buildDir / srcPath.stem()).string() + ".o";
     }
+
+    // If stubFile wasn't explicitly set, put it in the build directory
+    if (stubFile.empty() || stubFile == srcPath.stem().string() + ".stub") {
+      stubFile = (buildDir / srcPath.stem()).string() + ".stub";
+    }
+  }
 
   if (objFile.empty())
     objFile = srcPath.stem().string() + ".o";
@@ -251,12 +253,13 @@ int main(int argc, char **argv) {
     Lexer lexer(sourceCode, errorHandler);
     lexer.updateTokenList();
 
-    if (lexer.failed())
+    if (lexer.failed()) {
+      std::cerr << COLOR_RED << "Lexer faield\n" << COLOR_RESET;
       return 1;
+    }
 
     if (logOutput) {
-      std::cout << COLOR_BOLD << COLOR_BLUE << "Tokeninizing tokens ..."
-                << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Tokens" << COLOR_RESET << "\n";
       for (const auto &token : lexer.token_list) {
         std::cout << COLOR_CYAN << "Token: " << COLOR_RESET
                   << TokenTypeToLiteral(token.type) << ", Literal: \""
@@ -268,12 +271,13 @@ int main(int argc, char **argv) {
     Parser parser(lexer.token_list, errorHandler);
     auto AST = parser.parseProgram();
 
-    if (parser.failed())
+    if (parser.failed()) {
+      std::cerr << COLOR_RED << "Parser failed\n" << COLOR_RESET;
       return 1;
+    }
 
     if (logOutput)
-      std::cout << COLOR_BOLD << COLOR_BLUE << "Generating AST..."
-                << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "AST" << COLOR_RESET << "\n";
 
     for (auto &node : AST) {
       if (logOutput) {
@@ -284,30 +288,31 @@ int main(int argc, char **argv) {
     // Deserializer phase
     Deserializer deserial(errorHandler, logOutput);
     if (logOutput)
-      std::cout << COLOR_BOLD << COLOR_BLUE << "Deserializing stub.."
-                << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Deserialzer" << COLOR_RESET
+                << "\n";
     deserial.processImports(AST, sourceFile);
 
     if (deserial.failed()) {
+      std::cerr << COLOR_RED << "Deserialzer failed\n" << COLOR_RESET;
       return 1;
     }
 
     // SEMANTICS PASS
     if (logOutput)
-      std::cout << COLOR_BOLD << COLOR_BLUE << "Analyzing semantics..."
-                << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Semantics" << COLOR_RESET
+                << "\n";
     Semantics semantics(deserial, errorHandler, logOutput);
     for (const auto &node : AST)
       semantics.walker(node.get());
 
     if (semantics.failed()) {
+      std::cerr << COLOR_RED << "Semantics failed \n" << COLOR_RESET;
       return 1;
     }
 
     // BATON AUDITOR PASS
     if (logOutput)
-      std::cout << COLOR_BOLD << COLOR_BLUE << "Auditing baton state..."
-                << COLOR_RESET << "\n";
+      std::cout << COLOR_BOLD << COLOR_BLUE << "Auditor" << COLOR_RESET << "\n";
     Auditor auditor(semantics, errorHandler, logOutput);
     // Classifier pass
     for (const auto &node : AST)
@@ -317,36 +322,38 @@ int main(int argc, char **argv) {
       auditor.audit(node.get());
 
     if (auditor.failed()) {
+      std::cerr << COLOR_RED << "Auditor failed \n" << COLOR_RESET;
       return 1;
     }
 
     // LAYOUT PASS
     if (!checkOnly) {
       if (logOutput)
-        std::cout << COLOR_BOLD << COLOR_BLUE << "Calculating layout..."
-                  << COLOR_RESET << "\n";
+        std::cout << COLOR_BOLD << COLOR_BLUE << "Layout" << COLOR_RESET
+                  << "\n";
       llvm::LLVMContext llvmContext;
       Layout layout(semantics, llvmContext, errorHandler, logOutput);
       for (const auto &node : AST)
         layout.calculatorDriver(node.get());
 
       if (layout.failed()) {
+        std::cerr << COLOR_RED << "Layout failed \n" << COLOR_RESET;
         return 1;
       }
 
       // STUB GENERATION
       StubGen stubGen(semantics, stubFile, logOutput);
       if (stubOnly) {
-          ensureParentDirectoryExists(stubFile,"Creating stub directory");
+        ensureParentDirectoryExists(stubFile, "Creating stub directory");
         if (logOutput)
-          std::cout << COLOR_BLUE << "Generating stub ..." << COLOR_RESET
-                    << "\n";
+          std::cout << COLOR_BLUE << "Stub" << COLOR_RESET << "\n";
         for (const auto &node : AST)
           stubGen.stubGenerator(node.get());
 
         stubGen.finish();
 
         if (stubGen.failed()) {
+          std::cerr << COLOR_RED << "Stub generation failed \n" << COLOR_RESET;
           return 1;
         }
 
@@ -360,8 +367,7 @@ int main(int argc, char **argv) {
 
       // IR GENERATION
       if (logOutput)
-        std::cout << COLOR_BOLD << COLOR_BLUE << "Generating IR..."
-                  << COLOR_RESET << "\n";
+        std::cout << COLOR_BOLD << COLOR_BLUE << "IR" << COLOR_RESET << "\n";
       IRGenerator irgen(semantics, errorHandler, auditor, layout.totalHeapSize,
                         logOutput, currentOptLevel);
       irgen.generate(AST);
@@ -373,7 +379,7 @@ int main(int argc, char **argv) {
       std::cout << COLOR_YELLOW
                 << "\nGenerating object file: " << objPath.string()
                 << COLOR_RESET << "\n";
-      ensureParentDirectoryExists(objPath,"Creating object directory");
+      ensureParentDirectoryExists(objPath, "Creating object directory");
       if (!irgen.emitObjectFile(objPath.string())) {
         std::cerr << COLOR_RED << "[ERROR]" << COLOR_RESET
                   << " Failed to generate object file: " << objPath.string()
@@ -391,7 +397,7 @@ int main(int argc, char **argv) {
       fs::path exePath = fs::absolute(exeFile);
       std::cout << COLOR_YELLOW << "\nLinking executable: " << exePath.string()
                 << COLOR_RESET << "\n";
-      ensureParentDirectoryExists(exePath,"Creating executable directory");
+      ensureParentDirectoryExists(exePath, "Creating executable directory");
 
       Linker linker(deserial, objPath.string(), staticCompile);
       linker.processLinks(AST, sourceFile, exePath.string());

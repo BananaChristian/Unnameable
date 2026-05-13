@@ -5,17 +5,13 @@
 #include <vector>
 
 enum class ErrorLevel {
-  LEXER,
-  PARSER,
-  IMPORT,
-  SEMANTIC,
-  AUDITOR,
-  LAYOUT,
-  INTERNAL
+  WARNING,
+  ERROR,
+  FATAL,
 };
 
-enum ErrorCode {
-  GenericError=0000,
+enum ErrorCode : int {
+  GenericError = 0000,
 
   // Lexer errors
   UnexpectedChar = 1001,
@@ -40,6 +36,23 @@ enum ErrorCode {
   // Semantics
   UndefinedVariable = 3001,
   TypeMismatch = 3002,
+  TypeMismatchArrayLit = 3003,
+  NoneIndexableType = 3004,
+  NoneDereferencableType = 3005,
+  NotaFuncOrFnPtr = 3006,
+  InvalidSelfAccess = 3007,
+  LHSMustBeNull = 3008,
+  InvalidUsageOfNull = 3009,
+  NonExistantMember = 3010,
+  InvalidBindOperator = 3011,
+  InvalidOperationOnTypes = 3012,
+  InvalidPrefixOrPostfixOps = 3013,
+  ArgumentSizeMismatch = 3014,
+  ArgumentTypeMismatch = 3015,
+  NullPassFailure=3016,
+  FailedToInfer=3017,
+  GlobalHeapVar= 3018,
+  InvalidImmutUse=3019,
 };
 
 struct ErrorMessage {
@@ -72,9 +85,11 @@ public:
 
 private:
   std::vector<std::string> sourceLines;
+  std::vector<std::string> suggestForError(ErrorCode code);
+  int errorCodeToInt(ErrorCode code);
+  std::string errorCodeName(ErrorCode code, ErrorLevel level);
 
   void loadSourceLines();
-  std::string getLevelDisplayName(ErrorLevel level);
   std::string getBaseName(const std::string &fullPath);
   std::string getSourceLine(int line, std::vector<std::string> sourceLines);
 };

@@ -376,17 +376,22 @@ bool Lexer::isIdentifierContinue(char32_t ch) {
 void Lexer::readComments() {
   if (currentChar() == U'#') {
     advance();
-    if (currentChar() == U'#') // Multi-line block
-    {
+    if (currentChar() == U'#') {
+      CAPTURE_POS;
+      Token commentStart{"##", TokenType::ILLEGAL, tokenLine,
+                         tokenColumn}; // capture here
       advance();
       while (currentChar() != U'\0') {
         if (currentChar() == U'#' && peekChar() == U'#') {
           advance();
           advance();
-          return; // EXIT HERE
+          return;
         }
         advance();
       }
+      // report at the opening ## not at \0
+      logError(ErrorCode::UnterminatedComment, commentStart);
+      return;
     }
     // Single line comment
     while (currentChar() != U'\0' && currentChar() != U'\n') {
@@ -427,7 +432,7 @@ Token Lexer::readFString() {
         value += '\\';
         break;
       default:
-        value += (char)escapedChar;
+        value += static_cast<char>(escapedChar);
         break;
       }
       advance();
@@ -607,8 +612,9 @@ Token Lexer::readChar() {
     if (currentChar() == U'\'' || currentChar() == U'\n' ||
         currentChar() == U'\0') {
       errorToken.TokenLiteral = "";
-      // EMPTY CHAR TO BE REVISED
       logError(ErrorCode::InvalidToken, errorToken, {errorToken.TokenLiteral});
+      if (currentChar() == U'\'')
+        advance(); // consume the closing quote
       return errorToken;
     }
 
@@ -924,9 +930,10 @@ void Lexer::logError(ErrorCode code, const Token &token,
   hasFailed = true;
 
   CompilerError error;
-  error.level = ErrorLevel::LEXER;
+  error.level = ErrorLevel::ERROR;
   error.line = token.line;
   error.column = token.column;
+  error.code=code;
   ErrorMessage msg = errorHandler.generateErrorMessage(code);
   msg.message = errorHandler.format_string(msg.message, args);
   error.message = msg;
