@@ -151,6 +151,60 @@ std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
     suggestions.push_back("try applying the 'mut' modifier to the variable");
     return suggestions;
   }
+  case ErrorCode::InvalidAddrOperand: {
+    suggestions.push_back(
+        "When you use the 'addr' operator you want to get the address "
+        "of that expression");
+    suggestions.push_back("The 'addr' operator can only work on an expression "
+                          "with a permanent location, function calls are "
+                          "temporary in nature and have no location ");
+    return suggestions;
+  }
+  case ErrorCode::NoneBitcastableType: {
+    suggestions.push_back(
+        "Bitcastable destinations: pointers, integers, floats, opaque");
+    suggestions.push_back(
+        "Bitcast destination or source cannot be nullable,try removing "
+        "'?' from the type");
+    suggestions.push_back("References and arrays cannot be bitcast targets");
+    suggestions.push_back(
+        "Bare custom types cannot be bitcast, use ptr MyType instead");
+    return suggestions;
+  }
+  case ErrorCode::NoneCastableType: {
+    suggestions.push_back("Cannot cast from or to a nullable type");
+    suggestions.push_back("Use bitcast to cast pointers");
+    suggestions.push_back(
+        "References are aliases,try casting the target variable directly");
+    suggestions.push_back(
+        "Arrays cannot be cast, trying casting individual elements");
+    suggestions.push_back("Custom types cannot be cast,maybe consider "
+                          "implementing a conversion method yourself");
+    suggestions.push_back(
+        "Valid cast sources and destinations are: integers,floats and bool");
+  }
+  case ErrorCode::NonVoidReturn: {
+    suggestions.push_back(
+        "Add a return value, or change the return type to 'void'.");
+    return suggestions;
+  }
+  case ErrorCode::InvalidPersistParam: {
+    suggestions.push_back(
+        "'persist' only applies to heap variables inside function bodies");
+    suggestions.push_back("Parameters cannot be marked as persist");
+    return suggestions;
+  }
+  case ErrorCode::InvalidNullReferenceParam: {
+    suggestions.push_back("References always point to valid memory, so "
+                          "nullable are contradictory");
+    suggestions.push_back(
+        "If null is a valid state, use a nullable pointer like 'ptr i32? x");
+    return suggestions;
+  }
+  case ErrorCode::InvalidHeapParam: {
+    suggestions.push_back("cannot declare a parameter as a heap variable");
+    return suggestions;
+  }
   default: {
     return suggestions;
   }
@@ -282,7 +336,7 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   }
   case ErrorCode::NoneDereferencableType: {
     message.code = ErrorCode::NoneDereferencableType;
-    message.message = "cannot dereference non pointer type '{0}'";
+    message.message = "cannot dereference type '{0}'";
     message.hints = suggestForError(code);
     return message;
   }
@@ -363,6 +417,75 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   case ErrorCode::InvalidImmutUse: {
     message.code = ErrorCode::InvalidImmutUse;
     message.message = "cannot apply '{0}' to an immutable variable '{1}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidUninitUse: {
+    message.code = ErrorCode::InvalidUninitUse;
+    message.message = "cannot apply '{0}' to unitialized variable '{1}'";
+    return message;
+  }
+  case ErrorCode::InvalidAddrOperand: {
+    message.code = ErrorCode::InvalidAddrOperand;
+    message.message = "cannot get the address of a temporary value '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NoneBitcastableType: {
+    message.code = ErrorCode::NoneBitcastableType;
+    message.message = "cannot bitcast from or to type '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NoneCastableType: {
+    message.code = ErrorCode::NoneCastableType;
+    message.message = "cannot cast from or to type '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::UnwrappableType: {
+    message.code = ErrorCode::UnwrappableType;
+    message.message = "cannot unwrap type '{0}'";
+    return message;
+  }
+  case ErrorCode::InvalidInfix: {
+    message.code = ErrorCode::InvalidInfix;
+    message.message =
+        "right handside of the '.' must be an identifier or a call";
+    return message;
+  }
+  case ErrorCode::FloatingReturns: {
+    message.code = ErrorCode::FloatingReturns;
+    message.message = "return statement cannot be outside a function body";
+    return message;
+  }
+  case ErrorCode::NonVoidReturn: {
+    message.code = ErrorCode::NonVoidReturn;
+    message.message =
+        "non-void function '{0}' has a return statement with no value";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::DuplicateName: {
+    message.code = ErrorCode::DuplicateName;
+    message.message = "duplicate name '{0}'";
+    return message;
+  }
+  case ErrorCode::InvalidHeapParam: {
+    message.code = ErrorCode::InvalidHeapParam;
+    message.message = "cannot heap allocated";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidPersistParam: {
+    message.code = ErrorCode::InvalidPersistParam;
+    message.message = "parameter '{0}' marked as persist";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidNullReferenceParam: {
+    message.code = ErrorCode::InvalidNullReferenceParam;
+    message.message = "reference parameter '{0}' cannot be nullable";
     message.hints = suggestForError(code);
     return message;
   }

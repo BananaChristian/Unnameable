@@ -43,11 +43,9 @@ void Semantics::walkBlockExpression(Node *node) {
         if (exprType.kind != DataType::ERROR &&
             !isTypeCompatible(fn.func().returnType, exprType) &&
             !nullMismatch) {
-          logSemanticErrors("Final expression has type '" +
-                                exprType.resolvedName +
-                                "' but the function returns '" +
-                                fn.func().returnType.resolvedName + "'.",
-                            finalNode);
+          logSemanticErrors(
+              ErrorCode::TypeMismatch, finalNode,
+              {exprType.resolvedName, fn.func().returnType.resolvedName});
         }
       }
     }
@@ -65,8 +63,7 @@ void Semantics::walkReturnStatement(Node *node) {
   if (!currentFunction) {
     errorHandler.addHint("Return statements must live inside a function body.")
         .addHint("Move this return statement into a function.");
-    logSemanticErrors("Return statement found outside of a function body",
-                      retStmt);
+    logSemanticErrors(ErrorCode::FloatingReturns, retStmt);
   }
 
   const ResolvedType &expectedReturn =
@@ -74,14 +71,8 @@ void Semantics::walkReturnStatement(Node *node) {
 
   if (!retStmt->return_value) {
     if (expectedReturn.base().kind != DataType::VOID) {
-      errorHandler
-          .addHint("This function must return a value of type '" +
-                   expectedReturn.resolvedName + "'.")
-          .addHint("Add a return value, or change the return type to 'void'.");
-      logSemanticErrors("Non-void function '" +
-                            currentFunction.value()->func().funcName +
-                            "' has a return statement with no value.",
-                        retStmt);
+      logSemanticErrors(ErrorCode::NonVoidReturn, retStmt,
+                        {currentFunction.value()->func().funcName});
     }
 
     auto voidSym = std::make_shared<SymbolInfo>();
@@ -125,9 +116,8 @@ void Semantics::walkReturnStatement(Node *node) {
     errorHandler.addHint("Expected: " + expectedReturn.resolvedName)
         .addHint("Got:      " + valueType.resolvedName)
         .addHint("Check the function signature or the return expression.");
-    logSemanticErrors("Return type mismatch in function '" +
-                          currentFunction.value()->func().funcName + "'.",
-                      retStmt);
+    logSemanticErrors(ErrorCode::TypeMismatch, retStmt,
+                      {expectedReturn.resolvedName, valueType.resolvedName});
   }
 
   if (valueType.isRef()) {
@@ -178,7 +168,7 @@ void Semantics::walkFunctionParameters(Node *node) {
   if (lookUpInCurrentScope(paramName)) {
     errorHandler.addHint("Each parameter must have a unique name.")
         .addHint("Rename one of the '" + paramName + "' parameters.");
-    logSemanticErrors("Duplicate parameter name '" + paramName + "'.", param);
+    logSemanticErrors(ErrorCode::DuplicateName, param, {paramName});
     return;
   }
 
@@ -212,30 +202,17 @@ void Semantics::walkFunctionParameters(Node *node) {
         .addHint("Remove 'heap' from the parameter.")
         .addHint(
             "If you need heap data, accept a pointer instead: 'ptr i32 p'.");
-    logSemanticErrors("Parameter '" + paramName + "' cannot be heap-allocated.",
-                      param);
+    logSemanticErrors(ErrorCode::InvalidHeapParam, param, {paramName});
     return;
   }
 
   if (resolvedType.isRef() && resolvedType.isNull) {
-    errorHandler
-        .addHint("References always point to valid memory, so nullable "
-                 "references are contradictory.")
-        .addHint("Remove '?' from the reference type.")
-        .addHint(
-            "If null is a valid state, use a nullable pointer: 'ptr i32?'.");
-    logSemanticErrors(
-        "Reference parameter '" + paramName + "' cannot be nullable.", param);
+    logSemanticErrors(ErrorCode::InvalidNullReferenceParam, param, {paramName});
     return;
   }
 
   if (param->isPersist) {
-    errorHandler
-        .addHint(
-            "'persist' only applies to heap variables inside function bodies.")
-        .addHint("Remove 'persist' from the parameter declaration.");
-    logSemanticErrors(
-        "Parameter '" + paramName + "' cannot be marked 'persist'.", param);
+    logSemanticErrors(ErrorCode::InvalidPersistParam, param, {paramName});
     return;
   }
 

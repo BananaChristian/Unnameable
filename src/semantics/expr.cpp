@@ -27,9 +27,8 @@ void Semantics::walkInfixExpression(Node *node) {
         dynamic_cast<CallExpression *>(infixExpr->right_operand.get());
 
     if (!rhsIdent && !rhsCall) {
-      logSemanticErrors(
-          "Right-hand side of '.' must be an identifier or a call",
-          infixExpr->right_operand.get());
+      logSemanticErrors(ErrorCode::InvalidInfix,
+                        infixExpr->right_operand.get());
       return;
     }
 
@@ -97,20 +96,16 @@ void Semantics::walkPrefixExpression(Node *node) {
         return;
       }
       if (!symbol->storage().isMutable) {
-        logSemanticErrors(ErrorCode::InvalidImmutUse, prefixExpr, {name});
+        logSemanticErrors(ErrorCode::InvalidImmutUse, prefixExpr,
+                          {prefixExpr->operat.TokenLiteral, name});
         return;
       }
       if (!symbol->storage().isInitialized) {
-        logSemanticErrors("Cannot apply '" + prefixExpr->operat.TokenLiteral +
-                              "' to uninitialized variable '" +
-                              ident->expression.TokenLiteral + "'",
-                          prefixExpr);
+        logSemanticErrors(ErrorCode::InvalidImmutUse, prefixExpr,
+                          {prefixExpr->operat.TokenLiteral, name});
         return;
       }
     } else {
-      logSemanticErrors("Prefix operator '" + prefixExpr->operat.TokenLiteral +
-                            "' can only be applied to identifiers",
-                        prefixExpr);
       return;
     }
   }
@@ -134,34 +129,22 @@ void Semantics::walkPostfixExpression(Node *node) {
   if (postfixExpr->operator_token.type == TokenType::PLUS_PLUS ||
       postfixExpr->operator_token.type == TokenType::MINUS_MINUS) {
     if (auto ident = dynamic_cast<Identifier *>(postfixOperand)) {
-      auto symbol = resolveSymbolInfo(ident->expression.TokenLiteral);
+      auto name = extractIdentifierName(ident);
+      auto symbol = resolveSymbolInfo(name);
       if (!symbol) {
-        logSemanticErrors("Undefined variable in postfix expression '" +
-                              ident->expression.TokenLiteral + "'",
-                          postfixExpr);
+        logSemanticErrors(ErrorCode::UndefinedVariable, postfixExpr, {name});
         return;
       }
       if (symbol->storage().isMutable == false) {
-        logSemanticErrors("Cannot apply '" +
-                              postfixExpr->operator_token.TokenLiteral +
-                              "' to immutable variable '" +
-                              ident->expression.TokenLiteral + "'",
-                          postfixExpr);
+        logSemanticErrors(ErrorCode::InvalidImmutUse, postfixExpr, {name});
         return;
       }
       if (!symbol->storage().isInitialized) {
-        logSemanticErrors("Cannot apply '" +
-                              postfixExpr->operator_token.TokenLiteral +
-                              "' to uninitialized variable '" +
-                              ident->expression.TokenLiteral + "'",
-                          postfixExpr);
+        logSemanticErrors(ErrorCode::InvalidUninitUse, postfixExpr,
+                          {postfixExpr->operator_token.TokenLiteral, name});
         return;
       }
     } else {
-      logSemanticErrors("Postfix operator '" +
-                            postfixExpr->operator_token.TokenLiteral +
-                            "' can only be applied to identifiers",
-                        postfixExpr);
       return;
     }
   }
@@ -180,8 +163,6 @@ void Semantics::walkUnwrapExpression(Node *node) {
   if (!unwrapExpr)
     return;
 
-  bool hasError = false;
-
   auto expr = dynamic_cast<Expression *>(unwrapExpr->expr.get());
   if (!expr) {
     reportDevBug("Invalid unwrap expression", unwrapExpr->expr.get());
@@ -194,23 +175,21 @@ void Semantics::walkUnwrapExpression(Node *node) {
   auto exprSym = metaData[expr];
 
   if (!exprSym) {
-    logSemanticErrors("Unwrapped unknown identifier '" + exprName + "'",
-                      unwrapExpr);
+    logSemanticErrors(ErrorCode::UndefinedVariable, unwrapExpr, {exprName});
     return;
   }
 
   ResolvedType exprType = exprSym->type().type;
 
   if (!exprType.isNull) {
-    logSemanticErrors("Cannot unwrap a concrete type '" +
-                          exprType.resolvedName + "'",
-                      unwrapExpr);
+    logSemanticErrors(ErrorCode::UnwrappableType, unwrapExpr,
+                      {exprType.resolvedName});
     hasError = true;
   }
 
   if (exprType.kind == DataType::VOID || exprType.kind == DataType::UNKNOWN) {
-    logSemanticErrors("Cannot unwrap type '" + exprType.resolvedName + "'",
-                      unwrapExpr);
+    logSemanticErrors(ErrorCode::UnwrappableType, unwrapExpr,
+                      {exprType.resolvedName});
     hasError = true;
   }
 
@@ -258,20 +237,13 @@ void Semantics::walkCastExpression(Node *node) {
 
   // Cast destination must be a plain scalar, no modifiers
   if (!destinationType.isBase()) {
-    errorHandler.addHint("'cast' only converts between scalar numeric types")
-        .addHint("For pointer conversions use 'bitcast'")
-        .addHint("Example: cast<i32>(myFloat)");
-    logSemanticErrors("Cast destination '" + destinationType.resolvedName +
-                          "' must be a scalar type",
-                      destNode);
+    logSemanticErrors(ErrorCode::NoneCastableType, destNode,
+                      {destinationType.resolvedName});
   }
 
   if (destinationType.isNull) {
-    errorHandler.addHint("Unwrap the nullable before casting")
-        .addHint("Use '?''?' or 'unwrap' to get the non-nullable value first");
-    logSemanticErrors("Cannot cast to nullable type '" +
-                          destinationType.resolvedName + "'",
-                      destNode);
+    logSemanticErrors(ErrorCode::NoneCastableType, destNode,
+                      {destinationType.resolvedName});
   }
 
   auto isCastable = [](const ResolvedType &t) -> bool {
@@ -300,12 +272,8 @@ void Semantics::walkCastExpression(Node *node) {
   };
 
   if (!isCastable(destinationType)) {
-    errorHandler.addHint("Valid cast destinations: integers, floats, bool")
-        .addHint("For pointer conversions use 'bitcast'")
-        .addHint("For custom types consider implementing a conversion method");
-    logSemanticErrors("Invalid cast destination type '" +
-                          destinationType.resolvedName + "'",
-                      destNode);
+    logSemanticErrors(ErrorCode::NoneCastableType, destNode,
+                      {destinationType.resolvedName});
   }
 
   auto sourceExpr = castExpr->expr.get();
@@ -320,48 +288,28 @@ void Semantics::walkCastExpression(Node *node) {
   ResolvedType sourceType = sym->type().type;
 
   if (sourceType.isNull) {
-    errorHandler.addHint("Unwrap the nullable before casting")
-        .addHint("Use '?''?' or 'unwrap' to get the non-nullable value first");
-    logSemanticErrors("Cannot cast from nullable type '" +
-                          sourceType.resolvedName + "'",
-                      sourceExpr);
+    logSemanticErrors(ErrorCode::NoneCastableType, sourceExpr,
+                      {sourceType.resolvedName});
   }
 
   if (sourceType.isPointer()) {
-    errorHandler.addHint("Pointers cannot be cast — use 'bitcast' instead")
-        .addHint(
-            "Example: bitcast<usize>(myPtr) to get the address as integer");
-    logSemanticErrors("Cannot cast from pointer type '" +
-                          sourceType.resolvedName + "'",
-                      sourceExpr);
+    logSemanticErrors(ErrorCode::NoneCastableType, sourceExpr,
+                      {sourceType.resolvedName});
   }
 
   if (sourceType.isRef()) {
-    errorHandler
-        .addHint("References are aliases, cast the target variable directly")
-        .addHint(
-            "Example: cast<i32>(targetVar) instead of casting the reference");
-    logSemanticErrors("Cannot cast from reference type '" +
-                          sourceType.resolvedName + "'",
-                      sourceExpr);
+    logSemanticErrors(ErrorCode::NoneCastableType, sourceExpr,
+                      {sourceType.resolvedName});
   }
 
   if (sourceType.isArray()) {
-    errorHandler
-        .addHint("Arrays cannot be cast, cast individual elements instead")
-        .addHint("Example: cast<i32>(myArr[0])");
-    logSemanticErrors("Cannot cast from array type '" +
-                          sourceType.resolvedName + "'",
-                      sourceExpr);
+    logSemanticErrors(ErrorCode::NoneCastableType, sourceExpr,
+                      {sourceType.resolvedName});
   }
 
   if (!isCastable(sourceType)) {
-    errorHandler.addHint("Valid cast sources: integers, floats, bool")
-        .addHint(
-            "Custom types cannot be cast, use a conversion method instead");
-    logSemanticErrors("Invalid cast source type '" + sourceType.resolvedName +
-                          "'",
-                      sourceExpr);
+    logSemanticErrors(ErrorCode::NoneCastableType, sourceExpr,
+                      {sourceType.resolvedName});
   }
 
   auto castInfo = std::make_shared<SymbolInfo>();
@@ -427,31 +375,19 @@ void Semantics::walkBitcastExpression(Node *node) {
   };
 
   if (destinationType.isNull) {
-    errorHandler.addHint("Bitcast destination cannot be nullable")
-        .addHint("Remove the '?' from the destination type");
-    logSemanticErrors("Cannot bitcast to nullable type '" +
-                          destinationType.resolvedName + "'",
-                      destNode);
+    logSemanticErrors(ErrorCode::NoneBitcastableType, destNode,
+                      {destinationType.resolvedName});
   }
 
   if (!isBitcastable(sourceType)) {
-    errorHandler
-        .addHint("Bitcastable types: pointers, integers, floats, opaque")
-        .addHint("References and arrays cannot be bitcast")
-        .addHint("Bare custom types cannot be bitcast, use ptr MyType instead");
-    logSemanticErrors("Cannot bitcast from type '" + sourceType.resolvedName +
-                          "'",
-                      sourceExpr);
+    logSemanticErrors(ErrorCode::NoneBitcastableType, sourceExpr,
+                      {sourceType.resolvedName});
   }
 
   if (!isBitcastable(destinationType)) {
-    errorHandler
-        .addHint("Bitcastable destinations: pointers, integers, floats, opaque")
-        .addHint("References and arrays cannot be bitcast targets")
-        .addHint("Bare custom types cannot be bitcast, use ptr MyType instead");
-    logSemanticErrors("Cannot bitcast to type '" +
-                          destinationType.resolvedName + "'",
-                      destNode);
+    logSemanticErrors(ErrorCode::NoneBitcastableType, destNode,
+                      {destinationType.resolvedName});
+    return;
   }
 
   auto bitcastInfo = std::make_shared<SymbolInfo>();
@@ -473,7 +409,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
 
   auto arrSymbol = resolveSymbolInfo(arrName);
   if (!arrSymbol) {
-    logSemanticErrors("Unidentified variable '" + arrName + "'", arrExpr);
+    logSemanticErrors(ErrorCode::UndefinedVariable, arrExpr, {arrName});
     return;
   }
 
@@ -491,14 +427,13 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   if (!arrType.isArray() && !arrType.isPointer()) {
     errorHandler.addHint(
         "Subscripting is only permmited on arrays and pointers");
-    logSemanticErrors("Type '" + arrType.resolvedName + "' cannot be indexed ",
-                      arrExpr);
+    logSemanticErrors(ErrorCode::NoneIndexableType, arrExpr,
+                      {arrType.resolvedName});
   }
 
   if (arrType.isNull) {
-    logSemanticErrors("Cannot index a nullable '" + arrName + "' of type '" +
-                          arrType.resolvedName + "' without unwrapping it ",
-                      arrExpr);
+    logSemanticErrors(ErrorCode::NoneIndexableType, arrExpr,
+                      {arrType.resolvedName});
     return;
   }
 
@@ -539,8 +474,7 @@ void Semantics::walkIdentifierExpression(Node *node) {
   auto symbolInfo = resolveSymbolInfo(identName);
 
   if (!symbolInfo) {
-    logSemanticErrors(" Use of undeclared identifer '" + identName + "'",
-                      identExpr);
+    logSemanticErrors(ErrorCode::UndefinedVariable, identExpr, {identName});
     return;
   }
 
@@ -579,38 +513,20 @@ void Semantics::walkAddressExpression(Node *node) {
     // Check the operator
     if (infix->operat.type != TokenType::FULLSTOP &&
         infix->operat.type != TokenType::SCOPE_OPERATOR) {
-      errorHandler
-          .addHint(
-              "When you use the 'addr' operator you want to get the address "
-              "of that expression")
-          .addHint("The 'addr' operator can only work on an expression with a "
-                   "permanent "
-                   "location an arithetic operation of any sorts does not have "
-                   "this");
-      logSemanticErrors(
-          "Cannot take address of an arithmetic expression or comparison",
-          infix);
+      logSemanticErrors(ErrorCode::InvalidAddrOperand, infix, {addrName});
       return;
     }
   }
 
   if (call) {
-    errorHandler
-        .addHint("When you use the 'addr' operator you want to get the address "
-                 "of that expression")
-        .addHint("The 'addr' operator can only work on an expression "
-                 "with a permanent location, function calls are "
-                 "temporary in nature and have no location ");
-    logSemanticErrors("Cannot get the address to a temporary value '" +
-                          addrName + "'",
-                      innerExpr);
+    logSemanticErrors(ErrorCode::InvalidAddrOperand, innerExpr, {addrName});
     return;
   }
 
   walker(innerExpr);
   auto symbolInfo = getSymbolFromMeta(innerExpr);
   if (!symbolInfo) {
-    logSemanticErrors("Unidentified variable '" + addrName + "'", innerExpr);
+    logSemanticErrors(ErrorCode::UndefinedVariable, innerExpr, {addrName});
     return;
   }
 
@@ -646,59 +562,38 @@ void Semantics::walkDereferenceExpression(Node *node) {
 
   auto derefSym = getSymbolFromMeta(innerNode);
   if (!derefSym) {
-    errorHandler.addHint("Check spelling or declaration order")
-        .addHint("Variables must be declared before use");
-    logSemanticErrors("Use of undeclared identifier '" + derefName + "'",
-                      derefExpr);
+    logSemanticErrors(ErrorCode::UndefinedVariable, derefExpr, {derefName});
     return;
   }
 
-  if (derefSym->hasError) {
-    logSemanticErrors(
-        "The dereference expression that is getting dereference is erronious",
-        derefExpr);
+  if (derefSym->hasError)
     return;
-  }
 
   // Must be a pointer to dereference
   if (!derefSym->type().type.isPointer()) {
-    errorHandler.addHint("Only pointer types can be dereferenced")
-        .addHint("Declare as: ptr i32 " + derefName + " -> addr target")
-        .addHint("Then dereference with: deref " + derefName);
-    logSemanticErrors("Cannot dereference non-pointer type '" +
-                          derefSym->type().type.resolvedName + "'",
-                      derefExpr);
+    logSemanticErrors(ErrorCode::NoneDereferencableType, derefExpr,
+                      {derefSym->type().type.resolvedName});
     return;
   }
 
   // Block nullable, must unwrap first
   if (derefSym->type().type.isNull) {
-    errorHandler.addHint("Unwrap the nullable pointer before dereferencing")
-        .addHint("Use '?''?' or 'unwrap' to get the non-nullable pointer first")
-        .addHint("Example: deref (myPtr ?? defaultPtr)");
-    logSemanticErrors("Cannot dereference nullable pointer '" + derefName + "'",
-                      derefExpr);
+    logSemanticErrors(ErrorCode::NoneDereferencableType, derefExpr,
+                      {derefSym->type().type.resolvedName});
     return;
   }
 
   // Block opaque pointer,no type info to dereference into
   // With chains opaque lives in innerType not at the top level
   if (!derefSym->type().type.innerType) {
-    errorHandler.addHint("Pointer has no inner type information")
-        .addHint("Use bitcast to convert to a typed pointer first")
-        .addHint("Example: bitcast<ptr i32>(myOpaquePtr)");
-    logSemanticErrors("Cannot dereference untyped pointer '" + derefName + "'",
-                      derefExpr);
+    logSemanticErrors(ErrorCode::NoneDereferencableType, derefExpr,
+                      {derefSym->type().type.resolvedName});
     return;
   }
 
   if (derefSym->type().type.innerType->base().kind == DataType::OPAQUE) {
-    errorHandler
-        .addHint("Opaque pointers have no concrete type to dereference into")
-        .addHint("Use bitcast to convert to a typed pointer first")
-        .addHint("Example: bitcast<ptr i32>(myOpaquePtr)");
-    logSemanticErrors("Cannot dereference opaque pointer '" + derefName + "'",
-                      derefExpr);
+    logSemanticErrors(ErrorCode::NoneDereferencableType, derefExpr,
+                      {derefSym->type().type.resolvedName});
     return;
   }
 
@@ -742,7 +637,7 @@ void Semantics::walkSizeOfExpression(Node *node) {
   if (!isInbuilt) {
     auto typeIt = customTypesTable.find(typeName);
     if (typeIt == customTypesTable.end()) {
-      logSemanticErrors("Unknown type '" + typeName + "' in sizeof", typeNode);
+      logSemanticErrors(ErrorCode::UndefinedVariable, typeNode, {typeName});
     }
   }
 
