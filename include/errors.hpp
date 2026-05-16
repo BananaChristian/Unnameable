@@ -154,6 +154,11 @@ enum ErrorCode : int {
   RefToLocal = 3131,
   MutableRefToImmutable = 3132,
   ArrayDimCountMismatch = 3133,
+
+  ArraySizeMismatch = 4001,
+
+  IllegalCycle = 5001,
+  InvalidReturnEscape = 5002,
 };
 
 struct ErrorMessage {

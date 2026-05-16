@@ -71,7 +71,7 @@ void Semantics::enforceDeclarationRules(
 
   // Block a name reuse
   if (resolveSymbolInfo(declName)) {
-    logSemanticErrors(ErrorCode::DuplicateName, declaration);
+    logSemanticErrors(ErrorCode::DuplicateName, declaration, {declName});
     return;
   }
 

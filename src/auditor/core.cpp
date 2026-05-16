@@ -1,5 +1,6 @@
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "ast.hpp"
 #include "audit.hpp"
@@ -39,8 +40,8 @@ void Auditor::registerAuditorFunctions() {
   auditFnsMap[typeid(WhileStatement)] = &Auditor::auditWhileStatement;
   auditFnsMap[typeid(ForStatement)] = &Auditor::auditForStatement;
   auditFnsMap[typeid(ASMStatement)] = &Auditor::auditASMStatement;
-  auditFnsMap[typeid(SealStatement)]=&Auditor::auditSealStatement;
-  auditFnsMap[typeid(ComponentStatement)]=&Auditor::auditComponentStatement;
+  auditFnsMap[typeid(SealStatement)] = &Auditor::auditSealStatement;
+  auditFnsMap[typeid(ComponentStatement)] = &Auditor::auditComponentStatement;
 }
 
 void Auditor::buildUsageMap(BlockExpression *block) {
@@ -141,13 +142,12 @@ void Auditor::classifyNode(Node *node) {
   } else if (auto switchStmt = dynamic_cast<SwitchStatement *>(node)) {
     logInternal("[CLASSIFY-NODE] Recurse into SwitchStatement");
     classifySwitch(switchStmt);
-  } else if(auto sealStmt=dynamic_cast<SealStatement*>(node)){
-      logInternal("[CLASSIFY-NODE] Recurse into SealStatement");
-      auto blockStmt=dynamic_cast<BlockStatement*>(sealStmt->block.get());
-      for(const auto &seals:blockStmt->statements)
-        classifyNode(seals.get());
-  }
-  else {
+  } else if (auto sealStmt = dynamic_cast<SealStatement *>(node)) {
+    logInternal("[CLASSIFY-NODE] Recurse into SealStatement");
+    auto blockStmt = dynamic_cast<BlockStatement *>(sealStmt->block.get());
+    for (const auto &seals : blockStmt->statements)
+      classifyNode(seals.get());
+  } else {
     logInternal("[CLASSIFY-NODE] No classification pass for this node type");
   }
 }
@@ -221,7 +221,7 @@ void Auditor::classifyBlock(Node *block) {
       logInternal("[CLASSIFY-BLOCK] Found SwitchStatement, recursing");
       classifySwitch(switchStmt);
     }
-    
+
     filterBeforeClassifySym(actualNode, block, info.get());
   }
 
@@ -230,56 +230,59 @@ void Auditor::classifyBlock(Node *block) {
               ", Foreigners: " + std::to_string(info->foreigners.size()));
 }
 
-void Auditor::filterBeforeClassifySym(Node *node,Node *block, BlockInfo *info){
-    logInternal("INSIDE FILTER");
-    if (auto declaration = dynamic_cast<VariableDeclaration *>(node)) {
-        logInternal("Taken declaration path");
-      auto declSym = semantics.getSymbolFromMeta(declaration);
-      if (declSym->storage().isHeap) {
-        classifySymbol(declaration, block, info);
-      } else {
-        auto init = declaration->initializer.get();
-        if (init) {
-          filterBeforeClassifySym(init, block,info);
-        }
+void Auditor::filterBeforeClassifySym(Node *node, Node *block,
+                                      BlockInfo *info) {
+  logInternal("INSIDE FILTER");
+  if (auto declaration = dynamic_cast<VariableDeclaration *>(node)) {
+    logInternal("Taken declaration path");
+    auto declSym = semantics.getSymbolFromMeta(declaration);
+    if (declSym->storage().isHeap) {
+      classifySymbol(declaration, block, info);
+    } else {
+      auto init = declaration->initializer.get();
+      if (init) {
+        filterBeforeClassifySym(init, block, info);
       }
-    } else if(auto infixCall=dynamic_cast<InfixExpression*>(node)){
-        logInternal("Taken method call path");
-        auto instance=infixCall->left_operand.get();
-        const std::string sealName=semantics.extractIdentifierName(instance);
-        logInternal("Seal Name: "+sealName);
-        bool isSealInstance=semantics.sealTable.count(sealName);
-        logInternal("Is It is Seal Instance: "+std::to_string(isSealInstance));
-        if(isSealInstance){
-            auto idents = semantics.digIdentifiers(infixCall->right_operand.get());
-            for (const auto &ident : idents) {
-              classifySymbol(ident, block, info);
-            }
-        }else{
-            auto idents = semantics.digIdentifiers(node);
-            for (const auto &ident : idents) {
-              classifySymbol(ident, block, info);
-            }
-        }
-    }else {
-      logInternal("Taken normal path");
+    }
+  } else if (auto infixCall = dynamic_cast<InfixExpression *>(node)) {
+    logInternal("Taken method call path");
+    auto instance = infixCall->left_operand.get();
+    const std::string sealName = semantics.extractIdentifierName(instance);
+    logInternal("Seal Name: " + sealName);
+    bool isSealInstance = semantics.sealTable.count(sealName);
+    logInternal("Is It is Seal Instance: " + std::to_string(isSealInstance));
+    if (isSealInstance) {
+      auto idents = semantics.digIdentifiers(infixCall->right_operand.get());
+      for (const auto &ident : idents) {
+        classifySymbol(ident, block, info);
+      }
+    } else {
       auto idents = semantics.digIdentifiers(node);
       for (const auto &ident : idents) {
         classifySymbol(ident, block, info);
       }
     }
+  } else {
+    logInternal("Taken normal path");
+    auto idents = semantics.digIdentifiers(node);
+    for (const auto &ident : idents) {
+      classifySymbol(ident, block, info);
+    }
+  }
 }
 
 void Auditor::classifySymbol(Node *node, Node *block, BlockInfo *info) {
   // Get symbol
   auto sym = semantics.getSymbolFromMeta(node);
-  if(!sym){
-      logInternal("[CLASSIFY-SYM] Failed to symbol info for node: "+node->toString());
-      return;
+  if (!sym) {
+    logInternal("[CLASSIFY-SYM] Failed to symbol info for node: " +
+                node->toString());
+    return;
   }
 
   if (!sym->storage().isHeap) {
-    logInternal("[CLASSIFY-SYM] No heap symbol for node: "+node->toString()+" skipping...");
+    logInternal("[CLASSIFY-SYM] No heap symbol for node: " + node->toString() +
+                " skipping...");
     return;
   }
 
@@ -2117,9 +2120,7 @@ void Auditor::checkCycleSafety(const std::unique_ptr<BlockInfo> &blockInfo,
         "\n"
         "  Fix:\n"
         "    • Ensure all batons in the cycle are from the same block\n");
-    logAuditError(
-        "Illegal cycle detected between native and foreigner lifetimes",
-        contextNode);
+    logAuditError(ErrorCode::IllegalCycle, contextNode);
   }
 }
 
@@ -2149,7 +2150,8 @@ void Auditor::logInternal(const std::string &message) {
   }
 }
 
-void Auditor::logAuditError(const std::string &message, Node *contextNode) {
+void Auditor::logAuditError(ErrorCode code, Node *contextNode,
+                            std::vector<std::string> args) {
   hasFailed = true;
 
   auto line = 0;
@@ -2160,34 +2162,36 @@ void Auditor::logAuditError(const std::string &message, Node *contextNode) {
   }
 
   CompilerError error;
-  error.level = ErrorLevel::AUDITOR;
+  error.level = ErrorLevel::ERROR;
   error.line = line;
-  error.col = col;
-  error.message = message;
-  error.tokenLength = errorHandler.getTokenLength(contextNode);
-  error.hints = {};
+  error.column = col;
+  ErrorMessage msg = errorHandler.generateErrorMessage(code);
+  msg.message = errorHandler.format_string(msg.message, args);
+  error.message = msg;
+  error.length = errorHandler.getTokenLength(contextNode);
 
   errorHandler.report(error);
 }
 
 void Auditor::reportDevBug(const std::string &message, Node *contextNode) {
-  auto line = 0;
-  auto col = 0;
+  int line = 0;
+  int col = 0;
   if (contextNode) {
     line = contextNode->token.line;
     col = contextNode->token.column;
   }
 
   CompilerError error;
-  error.level = ErrorLevel::INTERNAL;
+  error.level = ErrorLevel::FATAL;
+  error.code = ErrorCode::GenericError;
   error.line = line;
-  error.col = col;
-  error.message = message;
-  error.tokenLength = errorHandler.getTokenLength(contextNode);
-  error.hints = {};
-
+  error.column = col;
+  error.length = errorHandler.getTokenLength(contextNode);
+  error.message.message = "internal compiler error: " + message;
+  error.message.hints.push_back("this is a compiler bug, not your fault");
+  error.message.hints.push_back(
+      "please report at https://github.com/BananaChristian/Unnameable/issues");
   errorHandler.report(error);
-
   std::abort();
 }
 

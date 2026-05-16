@@ -12,12 +12,6 @@ std::vector<std::unique_ptr<Statement>> Parser::parseFunctionParameters() {
     hasParens = true;
     advance(); // move past '('
   }
-  
-  if(hasParens &&currentToken().type!=TokenType::RPAREN){
-    logError(ErrorCode::UnexpectedToken, currentToken(),{")",currentToken().TokenLiteral});
-    synchronize(SyncLevel::TOP);
-    return args;
-  }
 
   // Check for empty parameter list or no parentheses
   if (hasParens && currentToken().type == TokenType::RPAREN) {

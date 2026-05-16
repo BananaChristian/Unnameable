@@ -62,7 +62,7 @@ else
 endif
 
 # Test binary for lexer and parser only
-TEST_SRC = src/parser_test.cpp \
+TEST_SRC = parser_test/parser_test.cpp \
            src/token/token.cpp \
            src/lexer/lexer.cpp \
            src/parser/*.cpp \

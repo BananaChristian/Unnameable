@@ -405,9 +405,8 @@ std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
     return suggestions;
   }
   case ErrorCode::DuplicateName: {
-    suggestions.push_back("Name '{0}' already exists in this scope");
+    suggestions.push_back("This variable already exists in this scope");
     suggestions.push_back("Rename one of the declarations");
-    suggestions.push_back("Use a different scope or namespace");
     return suggestions;
   }
   case ErrorCode::InvalidHeapParam: {
@@ -878,6 +877,7 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   case ErrorCode::DuplicateName: {
     message.code = ErrorCode::DuplicateName;
     message.message = "name '{0}' already exists in scope";
+    message.hints = suggestForError(code);
     return message;
   }
   case ErrorCode::InvalidHeapParam: {
@@ -1418,6 +1418,23 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.message =
         "dimension count mismatch for array '{0}': expected '{1}', got '{2}'";
     message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ArraySizeMismatch: {
+    message.code = ArraySizeMismatch;
+    message.message = "size mismatch, expected '{0}' but got '{}' elements";
+    return message;
+  }
+  case ErrorCode::IllegalCycle: {
+    message.code = ErrorCode::IllegalCycle;
+    message.message =
+        "illegal cycle detected between native and foreigner lifetimes";
+    return message;
+  }
+  case ErrorCode::InvalidReturnEscape: {
+    message.code = InvalidReturnEscape;
+    message.message =
+        "the return value '{0}' cannot escape with hidden dependecies";
     return message;
   }
   default: {

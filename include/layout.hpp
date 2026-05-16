@@ -2,10 +2,10 @@
 #include "ast.hpp"
 #include "errors.hpp"
 #include "irgen.hpp"
+#include "semantics.hpp"
 #include <llvm-18/llvm/IR/DataLayout.h>
 #include <typeindex>
 #include <unordered_map>
-#include "semantics.hpp"
 
 class Layout {
 public:
@@ -58,7 +58,8 @@ private:
   uint64_t countFlattenedElements(Node *node);
 
   // Loggers
-  void logLayoutError(const std::string &message, Node *contextNode);
+  void logLayoutError(ErrorCode code, Node *contextNode,
+                      std::vector<std::string> args = {});
   void reportDevBug(const std::string &message);
   void logInternal(const std::string &message);
 
