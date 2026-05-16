@@ -196,8 +196,8 @@ std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
     return suggestions;
   }
   case ErrorCode::DuplicateInit: {
-    suggestions.push_back("Remove one of the duplicate initializers");
-    suggestions.push_back("You can only initialize a variable once");
+    suggestions.push_back("Remove one of the duplicate init constructors");
+    suggestions.push_back("You can only have one init per component");
     return suggestions;
   }
   case ErrorCode::UndefinedVariable: {
@@ -512,6 +512,108 @@ std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
     suggestions.push_back("Example: ptr i32 x, mut i64 y");
     return suggestions;
   }
+  case ErrorCode::MissingOrInvalidReturnType: {
+    suggestions.push_back(
+        "All fuction definitions and declarations must declare a return type");
+    suggestions.push_back("use 'void' if the function returns nothing");
+    suggestions.push_back("example: func foo: void");
+    return suggestions;
+  }
+  case ErrorCode::NonVoidNoReturn: {
+    suggestions.push_back("add a return statement at the end of the function");
+    suggestions.push_back(
+        "every code path must return a value of the correct return type");
+    return suggestions;
+  }
+  case ErrorCode::UnreachableCode: {
+    suggestions.push_back(
+        "A terminator (like return, break, or continue) "
+        "is like a one-way exit. Once the computer takes that exit, it "
+        "cannot turn around to see the code that follows. This code is "
+        "considered 'dead' because no path of execution can ever reach it.");
+    return suggestions;
+  }
+  case ErrorCode::InvalidConstUse: {
+    suggestions.push_back(
+        "declare the variable as 'mut' if you plan on reassigning it");
+    return suggestions;
+  }
+  case ErrorCode::CantReassignImmut: {
+    suggestions.push_back(
+        "declare the variable with 'mut' if you intend it to be mutable");
+    return suggestions;
+  }
+  case ErrorCode::InvalidOperatorStyle: {
+    suggestions.push_back("Cannot use '{0}' on '{1}' because it is not a {2}");
+    suggestions.push_back("Use '{3}' instead for this type");
+    return suggestions;
+  }
+  case ErrorCode::OpaqueNullAssignment: {
+    suggestions.push_back("Cannot assign 'null' to opaque pointer '{0}'");
+    suggestions.push_back(
+        "Opaque pointers must always point to a valid allocation");
+    suggestions.push_back(
+        "Use a regular pointer type if null is needed: ptr<Type>?");
+    return suggestions;
+  }
+  case ErrorCode::OpaqueTypeMismatch: {
+    suggestions.push_back("Type mismatch: opaque pointer '{0}' requires a "
+                          "pointer value, got '{1}'");
+    suggestions.push_back("Opaque pointers only accept other pointer types");
+    suggestions.push_back("Try using a pointer instead of a direct value");
+    return suggestions;
+  }
+  case ErrorCode::NullAssignmentToNonNullable: {
+    suggestions.push_back(
+        "Cannot assign 'null' to '{0}' because it is not nullable");
+    suggestions.push_back("Declare the variable with a '?' suffix: {0}?");
+    suggestions.push_back("Example: let x: Type? = null");
+    return suggestions;
+  }
+  case ErrorCode::SelfOnlyInComponent: {
+    suggestions.push_back("'self' can only be used inside a component");
+    suggestions.push_back("Move this assignment into a component method");
+    suggestions.push_back(
+        "Components are defined with the 'component' keyword");
+    return suggestions;
+  }
+  case ErrorCode::InvalidFieldChain: {
+    suggestions.push_back("Invalid field access chain in 'self' expression");
+    suggestions.push_back(
+        "Each field in the chain must be a valid member of the current type");
+    suggestions.push_back("Check that all intermediate fields exist");
+    return suggestions;
+  }
+  case ErrorCode::ExpectedIdentifierInSelf: {
+    suggestions.push_back("Expected a plain identifier in 'self' field chain");
+    suggestions.push_back(
+        "Use dot notation with simple field names: self.field.subfield");
+    suggestions.push_back(
+        "Expressions and calls are not allowed in field access chains");
+    return suggestions;
+  }
+  case ErrorCode::ArrayShapeMismatch: {
+    suggestions.push_back("Array shape mismatch for '{0}'");
+    suggestions.push_back("The variable was declared with {1} dimension(s), "
+                          "but the literal has {2} dimension(s)");
+    suggestions.push_back("Check the array declaration: [T; N] for fixed size, "
+                          "or [] for dynamic");
+    return suggestions;
+  }
+  case ErrorCode::LhsHasError: {
+    suggestions.push_back("Left-hand side of assignment contains errors");
+    suggestions.push_back("Fix the errors in the LHS before continuing");
+    suggestions.push_back("Check for undefined variables or type mismatches");
+    return suggestions;
+  }
+  case ErrorCode::NullAssignmentToField: {
+    suggestions.push_back(
+        "Cannot assign 'null' to field '{0}' because it is not nullable");
+    suggestions.push_back(
+        "Add a '?' to the field's type declaration in the component");
+    suggestions.push_back("Example: field: Type?");
+    return suggestions;
+  }
   default: {
     return suggestions;
   }
@@ -687,7 +789,7 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   }
   case ErrorCode::ArgumentSizeMismatch: {
     message.code = ErrorCode::ArgumentSizeMismatch;
-    message.message = "function '{0}' expected '{1}' arguments but got '{2}'";
+    message.message = "'{0}' expected '{1}' arguments but got '{2}'";
     return message;
   }
   case ErrorCode::ArgumentTypeMismatch: {
@@ -869,9 +971,453 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.code = ErrorCode::FloatingTrace;
     message.message = "trace statements are not allowed in global scope";
     return message;
-  }case ErrorCode::NotDefinedOrDeclared:{
-    message.code=ErrorCode::NotDefinedOrDeclared;
-    message.message="'{0}' has not been defined or declared anywhere";
+  }
+  case ErrorCode::NotDefinedOrDeclared: {
+    message.code = ErrorCode::NotDefinedOrDeclared;
+    message.message = "'{0}' has not been defined or declared anywhere";
+    return message;
+  }
+  case ErrorCode::AlreadyDeclaredFunc: {
+    message.code = ErrorCode::AlreadyDeclaredFunc;
+    message.message = "'{0}' has already been declared";
+    return message;
+  }
+  case ErrorCode::MissingOrInvalidReturnType: {
+    message.code = ErrorCode::MissingOrInvalidReturnType;
+    message.message = "missing or invalid return type";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case MissingOrInvalidBody: {
+    message.code = ErrorCode::MissingOrInvalidBody;
+    message.message = "missing or invalid body";
+    return message;
+  }
+  case ErrorCode::NonVoidNoReturn: {
+    message.code = ErrorCode::NonVoidNoReturn;
+    message.message = "non void function '{0}' has no return value";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::CaseCondLiteral: {
+    message.code = ErrorCode::CaseCondLiteral;
+    message.message = "case condition must be a constant literal";
+    return message;
+  }
+  case ErrorCode::InvalidSwitchOrCaseTarget: {
+    message.code = ErrorCode::InvalidSwitchOrCaseTarget;
+    message.message = "target only takes integers,chars and enumerations";
+    return message;
+  }
+  case ErrorCode::FloatingControl: {
+    message.code = ErrorCode::FloatingControl;
+    message.message = "'{0}' used outside valid context";
+    return message;
+  }
+  case ErrorCode::UnreachableCode: {
+    message.code = ErrorCode::UnreachableCode;
+    message.message = "unreachable code after '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidFuncsInAllocator: {
+    message.code = ErrorCode::InvalidFuncsInAllocator;
+    message.message = "allocator interfaces must define exactly two function, "
+                      "one allocating function and one freeing function";
+    return message;
+  }
+  case ErrorCode::InvalidAllocatorContract: {
+    message.code = ErrorCode::InvalidAllocatorContract;
+    message.message = "'{0}' does not satisfy allocato contract";
+    return message;
+  }
+  case ErrorCode::IllegalStmtInAllocator: {
+    message.code = ErrorCode::IllegalStmtInAllocator;
+    message.message = "only functions definitions and declarations are allowed "
+                      "inside allocator interfaces";
+    return message;
+  }
+  case ErrorCode::InvalidCountInAllocator: {
+    message.code = ErrorCode::InvalidCountInAllocator;
+    message.message = "allocator interface must define exactly one allocation "
+                      "function and one free function";
+    return message;
+  }
+  case ErrorCode::InvalidAllocationFuncParam: {
+    message.code = ErrorCode::InvalidAllocationFuncParam;
+    message.message = "allocation function '{0}' must take a size parameter of "
+                      "type 'usize' but got '{1}'";
+    return message;
+  }
+  case ErrorCode::InvalidDeallocatorParam: {
+    message.code = ErrorCode::InvalidDeallocatorParam;
+    message.message = "deallocation function '{0}' must take a parameter of "
+                      "'ptr opaque' but got '{1}'";
+    return message;
+  }
+  case ErrorCode::InvalidAllocationReturn: {
+    message.code = ErrorCode::InvalidAllocationReturn;
+    message.message = "allocator function '{0}' must either return an opaque "
+                      "pointer (for allocation) or void(for freeing)";
+    return message;
+  }
+  case ErrorCode::InvalidConstUse: {
+    message.code = ErrorCode::InvalidConstUse;
+    message.message = "'{0}' is declared as 'const' and cannot be reassigned";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::CantReassignImmut: {
+    message.code = ErrorCode::CantReassignImmut;
+    message.message = "'{0}' is immutable and has already been initialized";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidOperatorStyle: {
+    message.code = ErrorCode::InvalidOperatorStyle;
+    message.message = "cannot use '{0}' on '{1}' because it is not a {2}";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::OpaqueNullAssignment: {
+    message.code = ErrorCode::OpaqueNullAssignment;
+    message.message = "cannot assign 'null' to opaque pointer '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::OpaqueTypeMismatch: {
+    message.code = ErrorCode::OpaqueTypeMismatch;
+    message.message =
+        "type mismatch an opaque pointer '{0}' requires a pointer, got '{1}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NullAssignmentToNonNullable: {
+    message.code = ErrorCode::NullAssignmentToNonNullable;
+    message.message =
+        "cannot assign 'null' to '{0}' because it is not nullable";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::SelfOnlyInComponent: {
+    message.code = ErrorCode::SelfOnlyInComponent;
+    message.message = "'self' can only be used inside a component";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidFieldChain: {
+    message.code = ErrorCode::InvalidFieldChain;
+    message.message = "invalid field access chain in 'self' expression";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ExpectedIdentifierInSelf: {
+    message.code = ErrorCode::ExpectedIdentifierInSelf;
+    message.message = "expected plain identifier in 'self' field chain, found "
+                      "complex expression";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ArrayShapeMismatch: {
+    message.code = ErrorCode::ArrayShapeMismatch;
+    message.message = "array shape mismatch for '{0}': declared with {1} "
+                      "dimension(s), literal has {2} dimension(s)";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::LhsHasError: {
+    message.code = ErrorCode::LhsHasError;
+    message.message = "left-hand side of assignment contains errors";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NullAssignmentToField: {
+    message.code = ErrorCode::NullAssignmentToField;
+    message.message =
+        "cannot assign 'null' to field '{0}' because it is not nullable";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidStmtInGenerics: {
+    message.code = ErrorCode::InvalidStmtInGenerics;
+    message.message = "invalid statement inside generic block";
+    return message;
+  }
+  case ErrorCode::FloatingFString: {
+    message.code = ErrorCode::FloatingFString;
+    message.message = "f-strings are only valid when used in a trace statement";
+    return message;
+  }
+  case ErrorCode::NotaMemberOf: {
+    message.code = ErrorCode::NotaMemberOf;
+    message.message = "'{0}' is not a member of '{1}'";
+    return message;
+  }
+  case ErrorCode::IllegalStmtInRecordOrComponent: {
+    message.code = ErrorCode::IllegalStmtInRecordOrComponent;
+    message.message = "illegal statement in '{0}'";
+    return message;
+  }
+  case ErrorCode::InstNotaRecord: {
+    message.code = ErrorCode::InstNotaRecord;
+    message.message = "'{0}' is not a record";
+    return message;
+  }
+  case ErrorCode::InjectionCollision: {
+    message.code = ErrorCode::InjectionCollision;
+    message.message = "'{0}' from '{1}' collides with existing field";
+    return message;
+  }
+  case ErrorCode::GlobalInstantiation: {
+    message.code = ErrorCode::GlobalInstantiation;
+    message.message = "cannot instantiate a component in global scope";
+    return message;
+  }
+  case ErrorCode::NoNeedForInit: {
+    message.code = ErrorCode::NoNeedForInit;
+    message.message =
+        "Component '{0}' has no constructor so need for arguments";
+    return message;
+  }
+  case ErrorCode::InvalidEnumMemberVal: {
+    message.code = ErrorCode::InvalidEnumMemberVal;
+    message.message = "member value must be a i8,u8, i16, u16,u32, i64, u63, "
+                      "i128, u128 or isize, usize literal";
+    return message;
+  }
+  case ErrorCode::InvalidEnumLitType: {
+    message.code = ErrorCode::InvalidEnumMemberVal;
+    message.message = "invalid literal type for enum member";
+    return message;
+  }
+  case ErrorCode::SignIncompatibility: {
+    message.code = ErrorCode::SignIncompatibility;
+    message.message = "'{0}' is incompatible with the underlying type";
+    return message;
+  }
+  case ErrorCode::OutOfRange: {
+    message.code = ErrorCode::OutOfRange;
+    message.message = "'{0}' is out of range for the underlying type";
+    return message;
+  }
+  case ErrorCode::NegativeMember: {
+    message.code = ErrorCode::NegativeMember;
+    message.message = "negative auto-incremented value '{0}' invalid for "
+                      "unsigned underlying type";
+    return message;
+  }
+  case ErrorCode::FloatingInit: {
+    message.code = ErrorCode::FloatingInit;
+    message.message = "init constructor msut only appear inside a component";
+    return message;
+  }
+  case ErrorCode::InvalidInjectionOp: {
+    message.code = ErrorCode::InvalidInjectionOp;
+    message.message = "invalid operator use @ for explicit injections";
+    return message;
+  }
+  case ErrorCode::ConstMustBeInitialized: {
+    message.code = ErrorCode::ConstMustBeInitialized;
+    message.message = "constant variable '{0}' must be initialized";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ConstRequiresLiteral: {
+    message.code = ErrorCode::ConstRequiresLiteral;
+    message.message = "constant '{0}' must be initialized with a literal, not "
+                      "a runtime expression";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ConstCannotBeNullable: {
+    message.code = ErrorCode::ConstCannotBeNullable;
+    message.message = "constant '{0}' cannot be nullable";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ConstCannotBePersist: {
+    message.code = ErrorCode::ConstCannotBePersist;
+    message.message = "constant '{0}' cannot be marked 'persist'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ConstCannotBeVolatile: {
+    message.code = ErrorCode::ConstCannotBeVolatile;
+    message.message = "variable '{0}' cannot be both 'volatile' and 'const'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ConstCannotBeHeap: {
+    message.code = ErrorCode::ConstCannotBeHeap;
+    message.message = "constant '{0}' cannot be heap allocated";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::HeapFnPtrInvalid: {
+    message.code = ErrorCode::HeapFnPtrInvalid;
+    message.message = "function pointer '{0}' cannot be heap allocated";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::PersistRequiresHeap: {
+    message.code = ErrorCode::PersistRequiresHeap;
+    message.message = "variable '{0}' uses 'persist' without 'heap'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ExportableRequiresGlobal: {
+    message.code = ErrorCode::ExportableRequiresGlobal;
+    message.message = "exportable declarations must exist only in global scope";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::GlobalArraySizeConst: {
+    message.code = ErrorCode::GlobalArraySizeConst;
+    message.message = "array size must be constant in global scope";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::PointerRequiresArrow: {
+    message.code = ErrorCode::PointerRequiresArrow;
+    message.message =
+        "pointer variable '{0}' requires '->' for initialization, not '='";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RefRequiresArrow: {
+    message.code = ErrorCode::RefRequiresArrow;
+    message.message =
+        "reference variable '{0}' requires '->' for initialization, not '='";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RestrictOnRefInvalid: {
+    message.code = ErrorCode::RestrictOnRefInvalid;
+    message.message = "cannot apply 'restrict' to reference variable '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::PointerMustBeInitialized: {
+    message.code = ErrorCode::PointerMustBeInitialized;
+    message.message = "pointer variable '{0}' must be initialized";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RestrictOnNonPointer: {
+    message.code = ErrorCode::RestrictOnNonPointer;
+    message.message =
+        "'restrict' cannot be applied to non-pointer variable '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RefMustBeInitialized: {
+    message.code = ErrorCode::RefMustBeInitialized;
+    message.message = "reference variable '{0}' must be initialized";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RefCannotBeNullable: {
+    message.code = ErrorCode::RefCannotBeNullable;
+    message.message = "reference variable '{0}' cannot be nullable";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RefCannotBePersist: {
+    message.code = ErrorCode::RefCannotBePersist;
+    message.message = "reference '{0}' cannot be marked 'persist'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RefCannotBeVolatile: {
+    message.code = ErrorCode::RefCannotBeVolatile;
+    message.message = "reference '{0}' cannot be marked 'volatile'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RefCannotBeHeap: {
+    message.code = ErrorCode::RefCannotBeHeap;
+    message.message = "reference '{0}' cannot be heap allocated";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ArrayMissingDimensions: {
+    message.code = ErrorCode::ArrayMissingDimensions;
+    message.message = "array '{0}' missing dimensions and initializer";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::VoidVariableInvalid: {
+    message.code = ErrorCode::VoidVariableInvalid;
+    message.message =
+        "cannot apply void base type to non function pointer variable '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NullToNonNullable: {
+    message.code = ErrorCode::NullToNonNullable;
+    message.message = "cannot assign null to non-nullable variable '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NullToArrayNoDims: {
+    message.code = ErrorCode::NullToArrayNoDims;
+    message.message = "cannot assign null to array '{0}' without dimensions";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::NullToReference: {
+    message.code = ErrorCode::NullToReference;
+    message.message = "cannot assign null to reference variable '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::UnknownAllocator: {
+    message.code = ErrorCode::UnknownAllocator;
+    message.message = "unknown allocator type '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ErroniousInitializer: {
+    message.code = ErrorCode::ErroniousInitializer;
+    message.message = "the initializer contains errors";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::OpaqueNonPointer: {
+    message.code = ErrorCode::OpaqueNonPointer;
+    message.message = "'opaque' only applies to pointer declarations";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::OpaqueInitNonPointer: {
+    message.code = ErrorCode::OpaqueInitNonPointer;
+    message.message = "cannot initialize opaque pointer with non-pointer type";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RefToNullable: {
+    message.code = ErrorCode::RefToNullable;
+    message.message = "reference cannot reference nullable value";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::RefToLocal: {
+    message.code = ErrorCode::RefToLocal;
+    message.message = "cannot create reference to local variable '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::MutableRefToImmutable: {
+    message.code = ErrorCode::MutableRefToImmutable;
+    message.message = "cannot create mutable reference to immutable variable";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ArrayDimCountMismatch: {
+    message.code = ErrorCode::ArrayDimCountMismatch;
+    message.message =
+        "dimension count mismatch for array '{0}': expected '{1}', got '{2}'";
+    message.hints = suggestForError(code);
     return message;
   }
   default: {

@@ -17,14 +17,8 @@ void Semantics::walkBlockStatement(Node *node) {
   for (const auto &stmt : stmts) {
     // Check for unreachable code
     if (gateClosed) {
-      errorHandler.addHint(
-          "A terminator (like return, break, or continue) "
-          "is like a one-way exit. Once the computer takes that exit, it "
-          "cannot turn around to see the code that follows. This code is "
-          "considered 'dead' because no path of execution can ever reach it.");
-      logSemanticErrors("Unreachable code detected after '" + terminatorString +
-                            "'.",
-                        stmt.get());
+      logSemanticErrors(ErrorCode::UnreachableCode, stmt.get(),
+                        {terminatorString});
       break;
     }
 
@@ -45,15 +39,14 @@ void Semantics::walkWhileStatement(Node *node) {
 
   auto whileCondition = whileStmt->condition.get();
   walker(whileCondition);
-  auto condSym=getSymbolFromMeta(whileCondition);
-  if(!condSym)
+  auto condSym = getSymbolFromMeta(whileCondition);
+  if (!condSym)
     reportDevBug("Failed to get while condition symbol info", whileCondition);
 
   ResolvedType whileCondType = condSym->type().type;
   if (whileCondType.kind != DataType::BOOLEAN) {
-    logSemanticErrors("Expected boolean type but got '" +
-                          whileCondType.resolvedName + "'",
-                      whileCondition);
+    logSemanticErrors(ErrorCode::TypeMismatch, whileCondition,
+                      {"bool", whileCondType.resolvedName});
   }
 
   loopContext.push_back(true);
@@ -117,8 +110,7 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   auto caseCondition = caseStmt->condition.get();
 
   if (!isLiteral(caseCondition)) {
-    logSemanticErrors("Case condition must be a constant literal",
-                      caseCondition);
+    logSemanticErrors(ErrorCode::CaseCondLiteral, caseCondition);
     return;
   }
 
@@ -131,16 +123,11 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   bool isValid = isInteger(targetType) || isChar(targetType) ||
                  (targetType.kind == DataType::ENUM);
   if (!isValid) {
-    logSemanticErrors(
-        "Invalid case target expected only integers, chars, and enumarations",
-        caseCondition);
+    logSemanticErrors(ErrorCode::InvalidSwitchOrCaseTarget, caseCondition);
   }
   if (caseType.kind != targetType.kind) {
-    logSemanticErrors("Type mismatch: case literal type '" +
-                          caseType.resolvedName +
-                          "' doesnt match switch expression type '" +
-                          targetType.resolvedName + "'",
-                      caseCondition);
+    logSemanticErrors(ErrorCode::TypeMismatch, caseCondition,
+                      {targetType.resolvedName, caseType.resolvedName});
   }
 
   symbolTable.push_back({}); // Pushing a new clause scope
@@ -153,14 +140,13 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
   auto caseInfo = std::make_shared<SymbolInfo>();
   caseInfo->hasError = hasError;
 
-  insertMetaData(caseStmt,caseInfo);
+  insertMetaData(caseStmt, caseInfo);
 }
 
 void Semantics::walkSwitchStatement(Node *node) {
   auto switchStmt = dynamic_cast<SwitchStatement *>(node);
   if (!switchStmt)
     return;
-
 
   symbolTable.push_back({}); // Push a new scope for the switch
 
@@ -175,9 +161,7 @@ void Semantics::walkSwitchStatement(Node *node) {
   bool isValid = isInteger(targetType) || isChar(targetType) ||
                  (targetType.kind == DataType::ENUM);
   if (!isValid) {
-    logSemanticErrors(
-        "Invalid switch target expected only integers, chars, and enumarations",
-        switchStmt);
+    logSemanticErrors(ErrorCode::InvalidSwitchOrCaseTarget, switchStmt);
   }
 
   for (const auto &caseClause : switchStmt->case_clauses) {
@@ -194,15 +178,13 @@ void Semantics::walkSwitchStatement(Node *node) {
     }
     popScope();
     caseContext.pop_back();
-  } else {
-    logSemanticErrors("Switch statement is missing default case", switchStmt);
   }
 
   popScope();
 
   auto switchInfo = std::make_shared<SymbolInfo>();
   switchInfo->hasError = hasError;
-  insertMetaData(switchStmt,switchInfo);
+  insertMetaData(switchStmt, switchInfo);
 }
 
 void Semantics::walkForStatement(Node *node) {
@@ -235,7 +217,7 @@ void Semantics::walkBreakStatement(Node *node) {
     return;
 
   if (loopContext.empty() && caseContext.empty()) {
-    logSemanticErrors(" 'break' used outside a loop or switch", breakStmt);
+    logSemanticErrors(ErrorCode::FloatingControl, breakStmt, {"break"});
   }
 }
 
@@ -245,6 +227,6 @@ void Semantics::walkContinueStatement(Node *node) {
     return;
 
   if (loopContext.empty()) {
-    logSemanticErrors("'continue' used outside a loop", continueStmt);
+    logSemanticErrors(ErrorCode::FloatingControl, continueStmt, {"continue"});
   }
 }

@@ -15,7 +15,7 @@ void Semantics::walkEnumStatement(Node *node) {
 
   // Check duplicate type name
   if (resolveSymbolInfo(enumStmtName)) {
-    logSemanticErrors("Already used the name '" + enumStmtName + "'", enumStmt);
+    logSemanticErrors(ErrorCode::DuplicateName, enumStmt, {enumStmtName});
     return;
   }
 
@@ -86,8 +86,8 @@ void Semantics::walkEnumStatement(Node *node) {
 
     // Check for duplicate member name
     if (members.count(memberName) || resolveSymbolInfo(memberName)) {
-      logSemanticErrors("Enum member name '" + memberName + "' already exists",
-                        enumMember.get());
+      logSemanticErrors(ErrorCode::DuplicateName, enumMember.get(),
+                        {memberName});
       symbolTable.pop_back();
       return;
     }
@@ -149,9 +149,7 @@ void Semantics::walkEnumStatement(Node *node) {
         literalType = TokenType::INT;
         literalStr = intLit->expression.TokenLiteral;
       } else {
-        logSemanticErrors("Enum member value must be a i8,u8, i16, u16, i32, "
-                          "u32, i64, u63, i128, u128 or isize, usize literal",
-                          enumMember.get());
+        logSemanticErrors(ErrorCode::InvalidEnumMemberVal, enumMember.get());
         symbolTable.pop_back();
         return;
       }
@@ -177,24 +175,21 @@ void Semantics::walkEnumStatement(Node *node) {
         isUnsignedLiteral = true;
         break;
       default:
-        logSemanticErrors("Invalid literal type for enum member",
-                          enumMember.get());
+        logSemanticErrors(ErrorCode::InvalidEnumLitType, enumMember.get());
         symbolTable.pop_back();
         return;
       }
 
       // Validate signedness
       if (isUnsignedLiteral && !underlyingIsUnsigned) {
-        logSemanticErrors("Unsigned literal '" + literalStr +
-                              "' incompatible with signed underlying type",
-                          enumMember.get());
+        logSemanticErrors(ErrorCode::SignIncompatibility, enumMember.get(),
+                          {literalStr});
         symbolTable.pop_back();
         return;
       }
       if (!isUnsignedLiteral && underlyingIsUnsigned) {
-        logSemanticErrors("Signed literal '" + literalStr +
-                              "' incompatible with unsigned underlying type",
-                          enumMember.get());
+        logSemanticErrors(ErrorCode::SignIncompatibility, enumMember.get(),
+                          {literalStr});
         symbolTable.pop_back();
         return;
       }
@@ -231,25 +226,20 @@ void Semantics::walkEnumStatement(Node *node) {
           // No range check for I64, I128, ISIZE YET
         }
       } catch (const std::invalid_argument &) {
-        logSemanticErrors("Invalid integer literal '" + literalStr + "'",
-                          enumMember.get());
+        logSemanticErrors(ErrorCode::InvalidEnumMemberVal, enumMember.get());
         symbolTable.pop_back();
         return;
       } catch (const std::out_of_range &e) {
-        logSemanticErrors(
-            "Value '" + literalStr +
-                "' out of range for underlying type: " + std::string(e.what()),
-            enumMember.get());
+        logSemanticErrors(ErrorCode::OutOfRange, enumMember.get(),
+                          {literalStr});
         symbolTable.pop_back();
         return;
       }
     } else {
       memberValue = currentValue;
       if (underlyingIsUnsigned && memberValue < 0) {
-        logSemanticErrors("Negative auto-incremented value '" +
-                              std::to_string(memberValue) +
-                              "' invalid for unsigned underlying type",
-                          enumMember.get());
+        logSemanticErrors(ErrorCode::NegativeMember, enumMember.get(),
+                          {std::to_string(memberValue)});
         symbolTable.pop_back();
         return;
       }
@@ -314,7 +304,7 @@ void Semantics::walkRecordStatement(Node *node) {
 
   // Ensure name not already used
   if (resolveSymbolInfo(recordName)) {
-    logSemanticErrors("Already used the name '" + recordName + "'", recordStmt);
+    logSemanticErrors(DuplicateName, recordStmt, {recordName});
     return;
   }
 
@@ -356,8 +346,8 @@ void Semantics::walkRecordStatement(Node *node) {
 
     // Double check incase the parser messed up and leaked wrong statements
     if (!declaration) {
-      logSemanticErrors("Invalid statement inside record '" + recordName + "'",
-                        field.get());
+      logSemanticErrors(ErrorCode::IllegalStmtInRecordOrComponent, field.get(),
+                        {recordName});
       continue; // skip bad field but keep going
     }
 
@@ -392,10 +382,10 @@ void Semantics::walkRecordStatement(Node *node) {
     memInfo->isConstant = fieldSymbol->storage().isConstant;
     memInfo->isInitialised = fieldSymbol->storage().isInitialized;
     memInfo->isPointer = fieldSymbol->type().isPointer;
-    memInfo->isRef=fieldSymbol->type().isRef;
+    memInfo->isRef = fieldSymbol->type().isRef;
     memInfo->isNullable = fieldSymbol->type().isNullable;
     memInfo->isVolatile = fieldSymbol->storage().isVolatile;
-    memInfo->isFnPtr=fieldSymbol->type().isFnPtr;
+    memInfo->isFnPtr = fieldSymbol->type().isFnPtr;
     memInfo->typeNode = recordStmt;
     memInfo->node = field.get();
     memInfo->memberIndex = currentMemberIndex++;
@@ -429,14 +419,14 @@ void Semantics::walkInstanceExpression(Node *node) {
   auto instSym = resolveSymbolInfo(instName);
 
   if (!instSym) {
-    logSemanticErrors("Undefined identifier '" + instName + "'",
-                      instExpr->blockIdent.get());
+    logSemanticErrors(ErrorCode::UndefinedVariable, instExpr->blockIdent.get(),
+                      {instName});
     return;
   }
 
   if (instSym->type().type.kind != DataType::RECORD)
-    logSemanticErrors("'" + instName + "' is not a record ",
-                      instExpr->blockIdent.get());
+    logSemanticErrors(ErrorCode::InstNotaRecord, instExpr->blockIdent.get(),
+                      {instName});
 
   // Dealing with arguments if they exist
   if (!instExpr->fields.empty()) {
@@ -447,9 +437,8 @@ void Semantics::walkInstanceExpression(Node *node) {
 
       auto it = members.find(fieldName);
       if (it == members.end()) {
-        logSemanticErrors("Field '" + fieldName + "' does not exist in '" +
-                              instName + "'",
-                          instExpr->blockIdent.get());
+        logSemanticErrors(ErrorCode::NotaMemberOf, instExpr->blockIdent.get(),
+                          {instName, fieldName});
         continue;
       }
 
@@ -491,8 +480,7 @@ void Semantics::walkInitConstructor(Node *node) {
   // Must be inside a component
   if (currentTypeStack.empty() ||
       currentTypeStack.back().type.kind != DataType::COMPONENT) {
-    logSemanticErrors("`init` constructor must be declared inside a component",
-                      initStmt);
+    logSemanticErrors(FloatingInit, initStmt);
     return;
   }
 
@@ -500,9 +488,7 @@ void Semantics::walkInitConstructor(Node *node) {
 
   // Only one init constructor per component
   if (currentComponent.hasInitConstructor) {
-    logSemanticErrors("Component '" + currentComponent.typeName +
-                          "' already has an init constructor",
-                      initStmt);
+    logSemanticErrors(ErrorCode::DuplicateInit, initStmt);
     return;
   }
   currentComponent.hasInitConstructor = true;
@@ -543,7 +529,7 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
   // Look up the component's type info
   auto ctIt = customTypesTable.find(componentName);
   if (ctIt == customTypesTable.end()) {
-    logSemanticErrors("Component '" + componentName + "' not found", selfExpr);
+    logSemanticErrors(ErrorCode::UndefinedVariable, selfExpr, {componentName});
     return nullptr;
   }
 
@@ -557,9 +543,8 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
     // Look in the current type's members
     auto memIt = currentTypeInfo->members.find(fieldName);
     if (memIt == currentTypeInfo->members.end()) {
-      logSemanticErrors("'" + fieldName + "' does not exist in type '" +
-                            currentTypeInfo->type.resolvedName + "'",
-                        fieldNode.get());
+      logSemanticErrors(ErrorCode::NotaMemberOf, fieldNode.get(),
+                        {fieldName, currentTypeInfo->type.resolvedName});
       return nullptr;
     }
 
@@ -576,8 +561,8 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
     if (isCustom) {
       auto ctiIt = customTypesTable.find(lookUpName);
       if (ctiIt == customTypesTable.end()) {
-        logSemanticErrors("Type info for '" + lookUpName + "' not found",
-                          fieldNode.get());
+        logSemanticErrors(ErrorCode::UndefinedVariable, fieldNode.get(),
+                          {lookUpName});
         return nullptr;
       }
       currentTypeInfo = ctiIt->second;
@@ -597,7 +582,7 @@ void Semantics::walkSelfExpression(Node *node) {
   // Must be inside a component
   if (currentTypeStack.empty() ||
       currentTypeStack.back().type.kind != DataType::COMPONENT) {
-    logSemanticErrors("'self' cannot be used outside a component", selfExpr);
+    logSemanticErrors(ErrorCode::SelfOnlyInComponent, selfExpr);
     return;
   }
 
@@ -642,8 +627,7 @@ void Semantics::walkComponentStatement(Node *node) {
   insideComponent = true;
 
   if (symbolTable[0].find(componentName) != symbolTable[0].end()) {
-    logSemanticErrors("Component name'" + componentName + "' already in use",
-                      componentStmt);
+    logSemanticErrors(ErrorCode::DuplicateName, componentStmt, {componentName});
     return;
   }
 
@@ -692,8 +676,7 @@ void Semantics::walkComponentStatement(Node *node) {
 
       auto typeIt = customTypesTable.find(identName);
       if (typeIt == customTypesTable.end()) {
-        logSemanticErrors("Record with name '" + identName + "' does not exist",
-                          ident);
+        logSemanticErrors(ErrorCode::UndefinedVariable, ident, {identName});
         return;
       }
 
@@ -711,21 +694,15 @@ void Semantics::walkComponentStatement(Node *node) {
       for (auto &[name, info] : sortedMembers) {
         // CHECK FOR COLLISION FIRST!
         if (members.find(name) != members.end()) {
-          logSemanticErrors(
-              "Field '" + name + "' from record '" + identName +
-                  "' collides with existing field in component '" +
-                  componentName + "'",
-              ident);
+          logSemanticErrors(ErrorCode::InjectionCollision, ident,
+                            {name, identName});
           return;
         }
 
         // Also check in current scope (fields already defined in component)
         if (symbolTable.back().find(name) != symbolTable.back().end()) {
-          logSemanticErrors(
-              "Field '" + name + "' from record '" + identName +
-                  "' collides with existing member in component '" +
-                  componentName + "'",
-              ident);
+          logSemanticErrors(ErrorCode::InjectionCollision, ident,
+                            {name, identName});
           return;
         }
 
@@ -737,9 +714,9 @@ void Semantics::walkComponentStatement(Node *node) {
         memberCopy->isConstant = info->isConstant;
         memberCopy->isVolatile = info->isVolatile;
         memberCopy->isInitialised = info->isInitialised;
-        memberCopy->isFnPtr=info->isFnPtr;
-        memberCopy->isRef=info->isRef;
-        memberCopy->isPointer=info->isPointer;
+        memberCopy->isFnPtr = info->isFnPtr;
+        memberCopy->isRef = info->isRef;
+        memberCopy->isPointer = info->isPointer;
 
         memberCopy->node = info->node;
         memberCopy->memberIndex = currentMemberIndex++;
@@ -754,10 +731,10 @@ void Semantics::walkComponentStatement(Node *node) {
         memSym->storage().isConstant = info->isConstant;
         memSym->storage().isVolatile = info->isVolatile;
         memSym->storage().isInitialized = info->isInitialised;
-        memSym->type().isFnPtr=info->isFnPtr;
-        memSym->type().isPointer=info->isPointer;
-        memSym->type().isArray=info->type.isArray();
-        memSym->type().isRef=info->isRef;
+        memSym->type().isFnPtr = info->isFnPtr;
+        memSym->type().isPointer = info->isPointer;
+        memSym->type().isArray = info->type.isArray();
+        memSym->type().isRef = info->isRef;
         memSym->type().memberIndex = memberCopy->memberIndex;
         currentScope[name] = memSym;
 
@@ -785,9 +762,7 @@ void Semantics::walkComponentStatement(Node *node) {
       TokenType op = infixExpr->operat.type;
 
       if (op != TokenType::AT) {
-        logSemanticErrors("Invalid operator '" +
-                              infixExpr->operat.TokenLiteral +
-                              "' for explicit injection",
+        logSemanticErrors(ErrorCode::InvalidInjectionOp,
                           infixExpr);
       }
 
@@ -800,22 +775,14 @@ void Semantics::walkComponentStatement(Node *node) {
         auto memIt = importedMembers.find(memberName);
         if (memIt != importedMembers.end()) {
           if (members.find(memberName) != members.end()) {
-            logSemanticErrors(
-                "Explicit injection of field '" + memberName +
-                    "' from record '" + dataName +
-                    "' collides with existing field in component '" +
-                    componentName + "'",
-                infixExpr);
+            logSemanticErrors(ErrorCode::InjectionCollision, ident,
+                              {memberName, dataName});
             return;
           }
 
           if (symbolTable.back().find(memberName) != symbolTable.back().end()) {
-            logSemanticErrors(
-                "Explicit injection of field '" + memberName +
-                    "' collides with existing member in component '" +
-                    componentName + "'",
-                infixExpr);
-            hasError = true;
+            logSemanticErrors(ErrorCode::InjectionCollision, ident,
+                              {memberName, dataName});
             return;
           }
 
@@ -832,10 +799,10 @@ void Semantics::walkComponentStatement(Node *node) {
           memSym->storage().isInitialized = memIt->second->isInitialised;
           memSym->storage().isVolatile = memIt->second->isVolatile;
           memSym->type().memberIndex = memberCopy->memberIndex;
-          memSym->type().isFnPtr=memberCopy->isFnPtr;
-          memSym->type().isRef=memberCopy->isRef;
-          memSym->type().isPointer=memberCopy->isPointer;
-          memSym->type().isArray=memberCopy->type.isArray();
+          memSym->type().isFnPtr = memberCopy->isFnPtr;
+          memSym->type().isRef = memberCopy->isRef;
+          memSym->type().isPointer = memberCopy->isPointer;
+          memSym->type().isArray = memberCopy->type.isArray();
           symbolTable.back()[memberName] = memSym;
 
           componentTypeInfo->members = members;
@@ -864,9 +831,9 @@ void Semantics::walkComponentStatement(Node *node) {
       memInfo->node = data.get();
       memInfo->typeNode = componentStmt;
       memInfo->isVolatile = declSym->storage().isVolatile;
-      memInfo->isFnPtr=declSym->type().isFnPtr;
-      memInfo->isPointer=declSym->type().isPointer;
-      memInfo->isRef=declSym->type().isRef;
+      memInfo->isFnPtr = declSym->type().isFnPtr;
+      memInfo->isPointer = declSym->type().isPointer;
+      memInfo->isRef = declSym->type().isRef;
       memInfo->memberIndex = currentMemberIndex++;
 
       members[declName] = memInfo;
@@ -875,9 +842,8 @@ void Semantics::walkComponentStatement(Node *node) {
       metaData[declaration] = declSym;
       componentTypeInfo->members = members;
     } else {
-      logSemanticErrors("Invalid statement found in component '" +
-                            componentName + "' definition scope",
-                        data.get());
+      logSemanticErrors(ErrorCode::IllegalStmtInRecordOrComponent, data.get(),
+                        {componentName});
     }
   }
 
@@ -904,9 +870,9 @@ void Semantics::walkComponentStatement(Node *node) {
         memInfo->isMutable = metSym->storage().isMutable;
         memInfo->isExportable = metSym->isExportable;
         memInfo->returnType = metSym->func().returnType;
-        memInfo->retFamilyID=metSym->codegen().ID;
-        memInfo->isReturnHeap=metSym->storage().isHeap;
-        memInfo->allocType=metSym->storage().allocType;
+        memInfo->retFamilyID = metSym->codegen().ID;
+        memInfo->isReturnHeap = metSym->storage().isHeap;
+        memInfo->allocType = metSym->storage().allocType;
         memInfo->isVolatile = metSym->storage().isVolatile;
         memInfo->isFunction = true;
         memInfo->isDefined = true;
@@ -928,10 +894,7 @@ void Semantics::walkComponentStatement(Node *node) {
           funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
         }
       }
-      logSemanticErrors(
-          "Cannot use function declarations inside a component '" +
-              componentName + "'",
-          funcDeclrExpr);
+      logSemanticErrors(ErrorCode::IllegalFunctionDeclaration, funcDeclrExpr);
     }
   }
 
@@ -964,12 +927,11 @@ void Semantics::walkNewComponentExpression(Node *node) {
   auto newExpr = dynamic_cast<NewComponentExpression *>(node);
   if (!newExpr)
     return;
-  hasError = false;
 
   auto componentName = newExpr->component_name.TokenLiteral;
 
   if (isGlobalScope()) {
-    logSemanticErrors("Cannot instiate a component in global scope", newExpr);
+    logSemanticErrors(ErrorCode::GlobalInstantiation, newExpr);
     return;
   }
   // UNIFIED TYPE LOOKUP
@@ -986,8 +948,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
   }
 
   if (!componentExists) {
-    logSemanticErrors("Component '" + componentName + "' does not exist",
-                      newExpr);
+    logSemanticErrors(ErrorCode::UndefinedVariable, newExpr, {componentName});
     return;
   }
 
@@ -1009,18 +970,14 @@ void Semantics::walkNewComponentExpression(Node *node) {
   // FLATTENED VALIDATION LOGIC
   if (!hasInitConstructor) {
     if (!givenArgs.empty()) {
-      logSemanticErrors("Component '" + componentName +
-                            "' has no init constructor, arguments not allowed.",
-                        newExpr);
+      logSemanticErrors(ErrorCode::NoNeedForInit, newExpr, {componentName});
     }
   } else {
     // We have a constructor, check the count
     if (expectedArgs.size() != givenArgs.size()) {
-      std::string msg =
-          "Constructor for '" + componentName + "' expects " +
-          std::to_string(expectedArgs.size()) + " arguments but got " +
-          (givenArgs.empty() ? "none" : std::to_string(givenArgs.size())) + ".";
-      logSemanticErrors(msg, newExpr);
+      logSemanticErrors(ErrorCode::ArgumentSizeMismatch, newExpr,
+                        {componentName, std::to_string(expectedArgs.size()),
+                         std::to_string(givenArgs.size())});
     }
 
     // PAIRWISE TYPE CHECKING
@@ -1031,10 +988,9 @@ void Semantics::walkNewComponentExpression(Node *node) {
       ResolvedType expectedType = expectedArgs[i];
 
       if (argType.kind != expectedType.kind) {
-        logSemanticErrors("Type mismatch in argument " + std::to_string(i + 1) +
-                              ": expected '" + expectedType.resolvedName +
-                              "', got '" + argType.resolvedName + "'.",
-                          newExpr);
+        logSemanticErrors(ErrorCode::ArgumentTypeMismatch, newExpr,
+                          {std::to_string(i + 1), expectedType.resolvedName,
+                           argType.resolvedName});
       }
     }
   }

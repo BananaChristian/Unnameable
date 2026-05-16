@@ -8,7 +8,7 @@ void Semantics::registerLiteral(Node *literal, const ResolvedType &type) {
   info->type().isNullable = false;
   info->storage().isMutable = false;
   info->storage().isConstant = false;
-  insertMetaData(literal,info);
+  insertMetaData(literal, info);
 }
 
 // Walking the data type literals
@@ -32,30 +32,29 @@ void Semantics::walkStringLiteral(Node *node) {
                   ResolvedType::makeBase(DataType::STRING, "string"));
 }
 
-void Semantics::walkFStringLiteral(Node *node){
-    auto fStr= dynamic_cast<FStringLiteral*>(node);
-    if(!fStr)
-        return;
-    
-    if(!insideTrace)
-    {
-        logSemanticErrors("f-strings are only valid when used with a trace statement", fStr);
-        return;
-    }
-    
-    //Call the walker on the crap inside bro
-    for(const auto &seg:fStr->segments){
-        if(seg.string_part)
-            walker(seg.string_part.get());
+void Semantics::walkFStringLiteral(Node *node) {
+  auto fStr = dynamic_cast<FStringLiteral *>(node);
+  if (!fStr)
+    return;
 
-        if(!seg.values.empty()){
-            for(const auto &val:seg.values){
-                walker(val.get());
-            }
-        }
-    }
+  if (!insideTrace) {
+    logSemanticErrors(ErrorCode::FloatingFString, fStr);
+    return;
+  }
 
-    registerLiteral(fStr,ResolvedType::makeBase(DataType::STRING,"string"));
+  // Call the walker on the crap inside bro
+  for (const auto &seg : fStr->segments) {
+    if (seg.string_part)
+      walker(seg.string_part.get());
+
+    if (!seg.values.empty()) {
+      for (const auto &val : seg.values) {
+        walker(val.get());
+      }
+    }
+  }
+
+  registerLiteral(fStr, ResolvedType::makeBase(DataType::STRING, "string"));
 }
 
 void Semantics::walkChar8Literal(Node *node) {
@@ -220,7 +219,7 @@ void Semantics::walkNullLiteral(Node *node) {
   symbol->type().type =
       ResolvedType::makeBase(DataType::UNKNOWN,
                              "null"); // Unknown data type for now
-  insertMetaData(nullLit,symbol);
+  insertMetaData(nullLit, symbol);
 }
 
 // Walking the array literal
@@ -243,5 +242,5 @@ void Semantics::walkArrayLiteral(Node *node) {
   arrInfo->storage().isMutable = false;
   arrInfo->storage().isConstant = false;
   arrInfo->type().sizePerDimensions = sizePerDims;
-  insertMetaData(arrLit,arrInfo);
+  insertMetaData(arrLit, arrInfo);
 }

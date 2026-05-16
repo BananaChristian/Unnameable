@@ -11,10 +11,9 @@ void Semantics::walkGenericStatement(Node *node) {
   // Check if the generic name is being used somewhere else in the same scope
   auto existing = resolveSymbolInfo(blockName);
 
-  if (existing) 
-    logSemanticErrors("Generic block name '" + blockName + "' already in use",
-                      genericStmt->block_name.get());
-  
+  if (existing)
+    logSemanticErrors(ErrorCode::DuplicateName, genericStmt->block_name.get(),
+                      {blockName});
 
   GenericBluePrint bluePrint;
   bluePrint.name = blockName;
@@ -35,12 +34,10 @@ void Semantics::walkGenericStatement(Node *node) {
   auto blockStmt = dynamic_cast<BlockStatement *>(genericStmt->block.get());
   for (const auto &stmt : blockStmt->statements) {
     auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get());
-    auto recordStmt=dynamic_cast<RecordStatement*>(stmt.get());
-    auto componentStmt=dynamic_cast<ComponentStatement*>(stmt.get());
-    if (!fnStmt&&!recordStmt&&!componentStmt) {
-      logSemanticErrors(
-          "Invalid statement inside generic block",
-          stmt.get());
+    auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get());
+    auto componentStmt = dynamic_cast<ComponentStatement *>(stmt.get());
+    if (!fnStmt && !recordStmt && !componentStmt) {
+      logSemanticErrors(ErrorCode::InvalidStmtInGenerics, stmt.get());
     }
   }
 
@@ -63,7 +60,7 @@ void Semantics::walkInstantiateStatement(Node *node) {
     return;
 
   hasError = false;
-  bool isExportable=instStmt->isExportable;
+  bool isExportable = instStmt->isExportable;
   // Get the name of the generic we want to instantiate
   auto genericCall = dynamic_cast<GenericCall *>(instStmt->generic_call.get());
   std::string genericName = genericCall->ident->expression.TokenLiteral;
@@ -82,15 +79,15 @@ void Semantics::walkInstantiateStatement(Node *node) {
 
   auto existing = resolveSymbolInfo(aliasName);
   if (existing) {
-    logSemanticErrors("Alias '" + aliasName + "' already in use", instStmt);
+    logSemanticErrors(ErrorCode::DuplicateName, instStmt, {aliasName});
   }
 
   // Search for the generic blue print
   auto bluePrintIt = genericMap.find(genericName);
 
   if (bluePrintIt == genericMap.end()) {
-    logSemanticErrors("Unknown generic block '" + genericName + "' ",
-                      genericCall->ident.get());
+    logSemanticErrors(ErrorCode::UndefinedVariable, genericCall->ident.get(),
+                      {genericName});
     return;
   }
 
@@ -101,10 +98,9 @@ void Semantics::walkInstantiateStatement(Node *node) {
 
   // Check the argument count
   if (genericCall->args.size() != blueprint.typeParams.size()) {
-    logSemanticErrors("Generic '" + genericName + "' requires " +
-                          std::to_string(blueprint.typeParams.size()) +
-                          " type arguments",
-                      genericCall->ident.get());
+    logSemanticErrors(ErrorCode::ArgumentSizeMismatch, genericCall->ident.get(),
+                      {genericName, std::to_string(blueprint.typeParams.size()),
+                       std::to_string(genericCall->args.size())});
   }
 
   std::unordered_map<std::string, ResolvedType> paramToType;
@@ -123,24 +119,24 @@ void Semantics::walkInstantiateStatement(Node *node) {
   logInternal("Mangling name ...");
   mangleGenericName(clonedSubTree.get(), aliasName);
 
-  //Cascade the export flag
-  auto blockStmt=dynamic_cast<BlockStatement*>(clonedSubTree.get());
-  for(const auto &stmt:blockStmt->statements){
-    if(auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get())){
-      auto fnExpr=dynamic_cast<FunctionExpression*>(fnStmt->funcExpr.get());
-      fnExpr->isExportable=isExportable;
+  // Cascade the export flag
+  auto blockStmt = dynamic_cast<BlockStatement *>(clonedSubTree.get());
+  for (const auto &stmt : blockStmt->statements) {
+    if (auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get())) {
+      auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
+      fnExpr->isExportable = isExportable;
     }
-    if(auto recordStmt=dynamic_cast<RecordStatement*>(stmt.get()))
-      recordStmt->isExportable=isExportable;
+    if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get()))
+      recordStmt->isExportable = isExportable;
 
-    if(auto componentStmt=dynamic_cast<ComponentStatement*>(stmt.get()))
-      componentStmt->isExportable=isExportable;
-     }
+    if (auto componentStmt = dynamic_cast<ComponentStatement *>(stmt.get()))
+      componentStmt->isExportable = isExportable;
+  }
 
   // Walk the generated subtree
   logInternal("Analyzing cloned sub tree ...");
   walker(clonedSubTree.get());
- 
+
   // Build the instantion info
   GenericInstantiationInfo instantiationInfo;
   instantiationInfo.aliasName = aliasName;
@@ -206,31 +202,31 @@ void Semantics::substituteTypes(
       substituteTypes(stmt.get(), subMap);
   }
 
-  //Variables
+  // Variables
   if (auto varDecl = dynamic_cast<VariableDeclaration *>(node)) {
     if (varDecl->base_type)
       substituteTypes(varDecl->base_type.get(), subMap);
   }
 
-  //Record statement
-  if(auto recordStmt=dynamic_cast<RecordStatement*>(node))
-      for(const auto &field:recordStmt->fields)
-        substituteTypes(field.get(),subMap);
-  
+  // Record statement
+  if (auto recordStmt = dynamic_cast<RecordStatement *>(node))
+    for (const auto &field : recordStmt->fields)
+      substituteTypes(field.get(), subMap);
 
-  //Component Statement
-  if(auto compStmt=dynamic_cast<ComponentStatement*>(node)){
-    for(const auto &field:compStmt->fields)
-        substituteTypes(field.get(),subMap);
+  // Component Statement
+  if (auto compStmt = dynamic_cast<ComponentStatement *>(node)) {
+    for (const auto &field : compStmt->fields)
+      substituteTypes(field.get(), subMap);
 
-    for(const auto &method:compStmt->methods)
-        substituteTypes(method.get(),subMap);
+    for (const auto &method : compStmt->methods)
+      substituteTypes(method.get(), subMap);
 
-    if(compStmt->initConstructor.has_value()){
-      auto initConstructor=dynamic_cast<InitStatement*>(compStmt->initConstructor.value().get());
-      for(const auto &param:initConstructor->constructor_args)
-        substituteTypes(param.get(),subMap);
-      substituteTypes(initConstructor->block.get(),subMap);
+    if (compStmt->initConstructor.has_value()) {
+      auto initConstructor = dynamic_cast<InitStatement *>(
+          compStmt->initConstructor.value().get());
+      for (const auto &param : initConstructor->constructor_args)
+        substituteTypes(param.get(), subMap);
+      substituteTypes(initConstructor->block.get(), subMap);
     }
   }
 }
@@ -273,11 +269,9 @@ void Semantics::mangleGenericName(Node *node, std::string aliasName) {
     }
   }
 
-  if(auto recordStmt=dynamic_cast<RecordStatement*>(node))
-    mangleGenericName(recordStmt->recordName.get(),aliasName);
-  
+  if (auto recordStmt = dynamic_cast<RecordStatement *>(node))
+    mangleGenericName(recordStmt->recordName.get(), aliasName);
 
-  if(auto compStmt=dynamic_cast<ComponentStatement*>(node))
-    mangleGenericName(compStmt->component_name.get(),aliasName);
-  
+  if (auto compStmt = dynamic_cast<ComponentStatement *>(node))
+    mangleGenericName(compStmt->component_name.get(), aliasName);
 }

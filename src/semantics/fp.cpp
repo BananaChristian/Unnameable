@@ -286,11 +286,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   }
 
   if (!funcExpr->return_type) {
-    errorHandler.addHint("All functions must declare a return type.")
-        .addHint("Use 'void' if the function returns nothing.")
-        .addHint("Example: func foo: void { ... }");
-    logSemanticErrors("Function '" + funcName + "' is missing a return type.",
-                      funcExpr);
+    logSemanticErrors(ErrorCode::MissingOrInvalidReturnType, funcExpr);
     insideFunction = false;
     return;
   }
@@ -305,12 +301,7 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   ResolvedType returnType = inferNodeDataType(retType);
   if (returnType.base().kind == DataType::UNKNOWN) {
-    errorHandler
-        .addHint("Valid return types: i32, ptr i32, arr[N] i32, void, etc.")
-        .addHint("For custom types, make sure they are declared before this "
-                 "function.");
-    logSemanticErrors("Function '" + funcName + "' has an invalid return type.",
-                      retType);
+    logSemanticErrors(ErrorCode::MissingOrInvalidReturnType, retType);
   }
 
   // Exportable function using a non-exportable custom return type
@@ -346,10 +337,7 @@ void Semantics::walkFunctionExpression(Node *node) {
               "' return type: " + returnType.resolvedName);
 
   if (!funcExpr->block) {
-    errorHandler.addHint("Add a body enclosed in '{}'.")
-        .addHint("Example: func foo: void { ... }");
-    logSemanticErrors("Function '" + funcName + "' is missing a body.",
-                      funcExpr);
+    logSemanticErrors(ErrorCode::MissingOrInvalidBody, funcExpr);
     insideFunction = false;
     return;
   }
@@ -372,11 +360,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   }
 
   if (returnType.base().kind != DataType::VOID && !hasReturnPath(block)) {
-    errorHandler.addHint("Add a return statement at the end of the function.")
-        .addHint("Every code path must return a value of type '" +
-                 returnType.resolvedName + "'.");
-    logSemanticErrors(
-        "Non-void function '" + funcName + "' has no return value.", funcExpr);
+    logSemanticErrors(ErrorCode::NonVoidNoReturn, funcExpr, {funcName});
   }
 
   popScope();
@@ -411,21 +395,13 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   auto existing = resolveSymbolInfo(funcName);
   if (existing) {
     if (existing->func().isDeclaration) {
-      errorHandler
-          .addHint("A declaration for '" + funcName +
-                   "' already exists in this scope.")
-          .addHint("Remove the duplicate declaration.");
-      logSemanticErrors("'" + funcName + "' has already been declared.",
-                        funcDeclrStmt);
+      logSemanticErrors(ErrorCode::AlreadyDeclaredFunc, funcDeclrStmt,
+                        {funcName});
     } else if (existing->func().isDefined) {
-      errorHandler.addHint("'" + funcName + "' already has a full definition.")
-          .addHint("The definition is sufficient — remove this declaration.");
-      logSemanticErrors("'" + funcName + "' has already been defined.",
-                        funcDeclrStmt);
+      logSemanticErrors(ErrorCode::AlreadyDefinedFunc, funcDeclrStmt,
+                        {funcName});
     } else {
-      errorHandler.addHint("Choose a different name for this function.");
-      logSemanticErrors("Name '" + funcName + "' is already in use.",
-                        funcDeclrStmt);
+      logSemanticErrors(ErrorCode::DuplicateName, funcDeclrStmt, {funcName});
     }
     return;
   }
@@ -473,11 +449,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
   auto *retType = dynamic_cast<ReturnType *>(funcDeclrStmt->return_type.get());
   if (!retType) {
-    errorHandler.addHint("All function declarations must have a return type.")
-        .addHint("Use 'void' if the function returns nothing.");
-    logSemanticErrors("Declaration '" + funcName +
-                          "' is missing a return type.",
-                      funcDeclrStmt);
+    logSemanticErrors(ErrorCode::MissingOrInvalidReturnType, funcDeclrStmt);
     symbolTable.pop_back();
     currentFunction = std::nullopt;
     return;
@@ -485,12 +457,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
   ResolvedType returnType = inferNodeDataType(retType);
   if (returnType.base().kind == DataType::UNKNOWN) {
-    errorHandler
-        .addHint("Valid return types: i32, ptr i32, arr[N] i32, void, etc.")
-        .addHint("For custom types, make sure they are declared before this "
-                 "function.");
-    logSemanticErrors(
-        "Declaration '" + funcName + "' has an invalid return type.", retType);
+    logSemanticErrors(MissingOrInvalidReturnType, retType);
   }
 
   if (!retType->isVoid) {
@@ -741,9 +708,7 @@ void Semantics::walkSealStatement(Node *node) {
 
   auto *blockStmt = dynamic_cast<BlockStatement *>(sealStmt->block.get());
   if (!blockStmt) {
-    logSemanticErrors("Seal '" + sealName +
-                          "' has an invalid or missing body. "
-                          "Add a block containing function definitions.",
+    logSemanticErrors(ErrorCode::MissingOrInvalidBody,
                       sealStmt->sealName.get());
     return;
   }

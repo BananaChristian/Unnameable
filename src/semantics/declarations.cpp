@@ -71,110 +71,61 @@ void Semantics::enforceDeclarationRules(
 
   // Block a name reuse
   if (resolveSymbolInfo(declName)) {
-    std::string errorMsg =
-        "Variable '" + declName + "' cannot be redeclared in the same scope";
-    errorHandler.addHint("Variable names must be unique within their scope")
-        .addHint("Consider using a different name");
+    logSemanticErrors(ErrorCode::DuplicateName, declaration);
     return;
   }
 
   // Check the constant
   if (!initializer && isConstant) {
-    errorHandler.addHint("Constants must be initialized at declaration")
-        .addHint("Example: const i32 MAX_SIZE = 100")
-        .addHint("For uninitialized mutable variables, use 'mut'");
-    logSemanticErrors("Constant variable '" + declName +
-                          "' must be initialized",
-                      declaration);
+    logSemanticErrors(ErrorCode::ConstMustBeInitialized, declaration,
+                      {declName});
   }
 
   if (isConstant && !isConstLiteral(initializer)) {
-    errorHandler.addHint("Constants require compile-time known values")
-        .addHint("Use literals: 42, 3.14, \"hello\", true, etc.")
-        .addHint("For runtime immutable values, remove the 'const' keyword");
-
-    logSemanticErrors(
-        "Constant '" + declName +
-            "' must be initialized with a literal, not a runtime expression",
-        declaration);
+    logSemanticErrors(ErrorCode::ConstRequiresLiteral, declaration, {declName});
   }
 
   if (isConstant && isNullable) {
-    errorHandler.addHint("Constants must hold a concrete value, never 'null'")
-        .addHint("Remove the '?' suffix to make the type non-nullable")
-        .addHint("Example: const i32 VALUE = 42 (not i32?)");
-
-    logSemanticErrors("Constant '" + declName + "' cannot be nullable",
-                      declaration);
+    logSemanticErrors(ErrorCode::ConstCannotBeNullable, declaration,
+                      {declName});
   }
 
   if (isPersist && isConstant) {
-    errorHandler
-        .addHint("'persist' delays baton-system frees on heap variables")
-        .addHint("Constants are compile-time values — the baton system never "
-                 "touches them")
-        .addHint("Remove 'persist', constants manage themselves");
-    logSemanticErrors("Constant '" + declName + "' cannot be marked 'persist'",
-                      declaration);
+    logSemanticErrors(ErrorCode::ConstCannotBePersist, declaration, {declName});
     return;
   }
 
   if (isVolatile && isConstant) {
-    errorHandler
-        .addHint("'const' means compile-time fixed, 'volatile' means hardware "
-                 "can change it")
-        .addHint("These are contradictory, pick one")
-        .addHint("For read-only hardware registers, use 'volatile' alone");
-    logSemanticErrors("Variable '" + declName +
-                          "' cannot be both 'volatile' and 'const'",
-                      declaration);
+    logSemanticErrors(ErrorCode::ConstCannotBeVolatile, declaration,
+                      {declName});
     return;
   }
 
   if (declaration->fnPtrMod && isHeap) {
-    errorHandler.addHint("Function pointers hold code addresses, not heap data")
-        .addHint(
-            "Remove 'heap' function pointers are stack allocated by nature")
-        .addHint("Example: fn(i32):i32 callback = add_one");
-    logSemanticErrors("Function pointer '" + declName +
-                          "' cannot be heap allocated",
-                      declaration);
+    logSemanticErrors(HeapFnPtrInvalid, declaration, {declName});
     return;
   }
 
   if (isHeap && isConstant) {
-    errorHandler
-        .addHint("Constants are compile-time values, heap is runtime dynamic")
-        .addHint("Remove 'heap' and let the compiler handle storage")
-        .addHint(
-            "If you need a large constant, consider a global const instead");
-    logSemanticErrors("Constant '" + declName + "' cannot be heap allocated",
-                      declaration);
+    logSemanticErrors(ConstCannotBeHeap, declaration, {declName});
     return;
   }
 
   // Persist requires heap
   if (isPersist && !isHeap) {
-    errorHandler.addHint("'persist' flag only applies to heap allocations")
-        .addHint("For example  'persist heap i32 x = 10'");
-    logSemanticErrors("Variable '" + declName +
-                          "' uses 'persist' without 'heap'",
-                      declaration);
+    logSemanticErrors(ErrorCode::PersistRequiresHeap, declaration, {declName});
     return;
   }
   // Rule on exportables
   if (isExportable && !isGlobal) {
-    logSemanticErrors("Exportable declarations must exist only in global scope",
-                      declaration);
+    logSemanticErrors(ExportableRequiresGlobal, declaration);
     return;
   }
 
   // Global scope rules
   if (isGlobal) {
     if (isHeap) {
-      logSemanticErrors("Cannot declare a heap variable '" + declName +
-                            "' in global scope",
-                        declaration);
+      logSemanticErrors(ErrorCode::GlobalHeapVar, declaration, {declName});
       return;
     }
 
@@ -183,8 +134,7 @@ void Semantics::enforceDeclarationRules(
       if (type_modifier && !type_modifier->dimensions.empty()) {
         for (auto &dim : type_modifier->dimensions) {
           if (!isConstLiteral(dim.get())) {
-            logSemanticErrors("Array size must be constant in global scope",
-                              dim.get());
+            logSemanticErrors(GlobalArraySizeConst, dim.get());
             return;
           }
         }
@@ -199,139 +149,70 @@ void Semantics::enforceDeclarationRules(
         if (declaration->assign_token.has_value() &&
             declaration->assign_token->type != TokenType::ARROW) {
           std::string kind = isPointer ? "ptr" : "ref";
-
-          errorHandler
-              .addHint(
-                  kind +
-                  " variables must be initialized with the arrow operator '->'")
-              .addHint("Example: " + kind + " i32 p -> addr x")
-              .addHint("The arrow indicates the " + kind +
-                       " is being bound to a target")
-              .addHint("For regular assignment, use '='");
-
-          logSemanticErrors(kind + " variable '" + declName +
-                                "' requires '->' for initialization, not '='",
-                            declaration);
+          logSemanticErrors(ErrorCode::PointerRequiresArrow, declaration,
+                            {declName});
         }
       }
     }
   }
 
   if (isRestrict && isRef) {
-    errorHandler
-        .addHint(
-            "'restrict' is a pointer-only qualifier that indicates no aliasing")
-        .addHint("References already guarantee unique access semantics")
-        .addHint("Remove 'restrict' or use a pointer instead of a reference");
-    logSemanticErrors("Cannot apply 'restrict' to reference variable '" +
-                          declName + "'",
-                      declaration);
+    logSemanticErrors(ErrorCode::RestrictOnRefInvalid, declaration, {declName});
     return;
   }
 
   // Pointer rules
   if (isPointer && !initializer) {
     if (!insideComponent && !insideRecord) {
-      errorHandler
-          .addHint("Pointers that arent inside record or components must point "
-                   "to something, even "
-                   "if it's null")
-          .addHint("Initialize with: 'addr variable', 'bitcast<ptr "
-                   "T>(0)', or another pointer")
-          .addHint("Example: ptr i32 p -> addr x")
-          .addHint("Example: ptr i32 p -> bitcast<ptr i32>(0)  # null pointer");
-
-      logSemanticErrors("Pointer variable '" + declName +
-                            "' must be initialized",
-                        declaration);
+      logSemanticErrors(ErrorCode::PointerMustBeInitialized, declaration,
+                        {declName});
     }
   }
 
   if (isRestrict && !isPointer) {
-    errorHandler
-        .addHint("'restrict' only applies to pointers, it signals no aliasing")
-        .addHint("Remove 'restrict' for non-pointer declarations")
-        .addHint("Example of valid usage: restrict ptr i32 p -> addr x");
-    logSemanticErrors("'restrict' cannot be applied to non-pointer variable '" +
-                          declName + "'",
-                      declaration);
+    logSemanticErrors(ErrorCode::RestrictOnNonPointer, declaration, {declName});
     return;
   }
 
   // Reference rules
   if (!insideRecord || !insideComponent) {
     if (isRef && !initializer) {
-      errorHandler.addHint("References must always point to valid memory")
-          .addHint("Initialize with: 'addr variable' or another reference")
-          .addHint("Example: ref i32 r -> x")
-          .addHint("References cannot be null or uninitialized");
-
-      logSemanticErrors("Reference variable '" + declName +
-                            "' must be initialized",
-                        declaration);
+      logSemanticErrors(RefMustBeInitialized, declaration, {declName});
     }
   }
 
   if (isRef && isNullable) {
-    logSemanticErrors("Reference variable '" + declName +
-                          "' cannot be nullable",
-                      declaration);
+    logSemanticErrors(RefCannotBeNullable, declaration, {declName});
     return;
   }
 
   if (isPersist && isRef) {
-    errorHandler.addHint("'persist' only affects heap allocations")
-        .addHint("References are aliases with no heap allocation of their own")
-        .addHint("Mark the target variable as 'persist' instead");
-    logSemanticErrors("Reference '" + declName + "' cannot be marked 'persist'",
-                      declaration);
+    logSemanticErrors(RefCannotBePersist, declaration, {declName});
     return;
   }
 
   if (isVolatile && isRef) {
-    errorHandler
-        .addHint(
-            "'volatile' tells the compiler to always read fresh from memory")
-        .addHint("References are aliases, apply 'volatile' to the target "
-                 "variable instead")
-        .addHint(
-            "Example: declare the heap target as volatile, then reference it");
-    logSemanticErrors("Reference '" + declName +
-                          "' cannot be marked 'volatile'",
-                      declaration);
+    logSemanticErrors(RefCannotBeVolatile, declaration, {declName});
     return;
   }
 
   if (isHeap && isRef) {
-    errorHandler.addHint("References are aliases, they cannot own heap memory")
-        .addHint("Remove 'heap', references track their target's lifetime")
-        .addHint("If you need heap memory, declare the target as heap instead");
-    logSemanticErrors("Reference '" + declName + "' cannot be heap allocated",
-                      declaration);
+    logSemanticErrors(RefCannotBeHeap, declaration, {declName});
     return;
   }
 
   // Array rules
   if (isArray && !initializer) {
     if (type_modifier && type_modifier->dimensions.empty()) {
-      errorHandler.addHint("Arrays need dimensions or an initializer")
-          .addHint("Specify dimensions: arr[10] i32 x")
-          .addHint("Or initialize: arr i32 x = [1, 2, 3]");
-      logSemanticErrors("Array '" + declName +
-                            "' missing dimensions and initializer",
-                        declaration);
+      logSemanticErrors(ErrorCode::ArrayMissingDimensions, declaration,
+                        {declName});
       return;
     }
   }
 
   // Rule on someone who might write void x = whatever
   if (!declaration->fnPtrMod && base_type->token.type == TokenType::VOID) {
-    errorHandler.addHint(
-        "'void' means nothing a variable's type cannot be nothing");
-    logSemanticErrors(
-        "Cannot apply void base type to non function pointer variable '" +
-            declName + "'",
-        declaration);
+    logSemanticErrors(VoidVariableInvalid, declaration, {declName});
     return;
   }
 
@@ -364,30 +245,19 @@ void Semantics::handleNullInitializers(
   const auto &type = declInfo->type().type;
 
   if (!declInfo->type().isNullable) {
-    errorHandler.addHint("Nullable types use '?' suffix: i32?")
-        .addHint("Make the type nullable: " + type.resolvedName + "?")
-        .addHint("Or initialize with a non-null value");
-    logSemanticErrors("Cannot assign null to non-nullable variable '" +
-                          declName + "'",
-                      declaration);
+    logSemanticErrors(ErrorCode::NullToNonNullable, declaration, {declName});
     return;
   }
 
   if (declInfo->type().isArray) {
     if (type_modifier->dimensions.empty()) {
-      errorHandler.addHint("Arrays need dimensions: arr[10] i32 x")
-          .addHint("Or initialize with array literal: arr i32 x = [1, 2, 3]");
-      logSemanticErrors("Cannot assign null to array without dimensions",
-                        declaration);
+      logSemanticErrors(NullToArrayNoDims, declaration);
     }
     return;
   }
 
   if (declInfo->type().isRef) {
-    logSemanticErrors(
-        "Cannot assign null to a reference variable declaration '" + declName +
-            "' of type '" + type.resolvedName + "'",
-        declaration);
+    logSemanticErrors(NullToReference, declaration, {declName});
   }
 
   // Give the null context
@@ -426,8 +296,8 @@ void Semantics::walkVariableDeclaration(Node *node) {
     const std::string &allocatorName = extractIdentifierName(allocator);
     auto allocIt = allocatorMap.find(allocatorName);
     if (allocIt == allocatorMap.end()) {
-      logSemanticErrors("Unknown allocator type '" + allocatorName + "'",
-                        allocator);
+      logSemanticErrors(ErrorCode::UnknownAllocator, allocator,
+                        {allocatorName});
       return;
     }
 
@@ -462,14 +332,13 @@ void Semantics::walkVariableDeclaration(Node *node) {
     if (!initSym) {
       errorHandler.addHint("Check spelling or declaration order")
           .addHint("Variables must be declared before use");
-      logSemanticErrors("Variable '" + initName + "' is undefined",
-                        initializer);
+      logSemanticErrors(UndefinedVariable, initializer, {initName});
       return;
     }
 
     // If the initializer is erronious dont proceed
     if (initSym->hasError) {
-      logSemanticErrors("The initializer is erronious", initializer);
+      logSemanticErrors(ErroniousInitializer, initializer);
       return;
     }
 
@@ -490,8 +359,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
       errorHandler.addHint("'opaque' can only be used with pointer types")
           .addHint("Example: ptr opaque p")
           .addHint("Remove 'opaque' for non-pointer types");
-      logSemanticErrors("'opaque' only applies to pointer declarations",
-                        declaration);
+      logSemanticErrors(OpaqueNonPointer, declaration);
       return;
     }
 
@@ -506,21 +374,13 @@ void Semantics::walkVariableDeclaration(Node *node) {
       }
       if (declaredType.kind == DataType::OPAQUE) {
         if (!initSym->type().type.isPointer()) {
-          errorHandler
-              .addHint("Opaque pointers can only point to other pointers")
-              .addHint("Use: ptr opaque p -> addr x")
-              .addHint("Make sure the target is a pointer type");
-          logSemanticErrors(
-              "Cannot initialize opaque pointer with non-pointer type",
-              declaration);
+          logSemanticErrors(ErrorCode::OpaqueInitNonPointer, declaration);
         }
       } else if (!ignoreCheck) {
         if (!isTypeCompatible(declaredType, initSym->type().type)) {
-          std::string errorMsg = "Type mismatch in variable declaration";
-          errorHandler.addHint("Expected type: " + declaredType.resolvedName)
-              .addHint("Got type: " + initSym->type().type.resolvedName)
-              .addHint("Check if types match or convert using cast or bitcast");
-          logSemanticErrors(errorMsg, declaration);
+          logSemanticErrors(
+              TypeMismatch, declaration,
+              {declaredType.resolvedName, initSym->type().type.resolvedName});
           return;
         }
       }
@@ -529,30 +389,17 @@ void Semantics::walkVariableDeclaration(Node *node) {
     //  Reference rules
     if (declInfo->type().isRef) {
       if (initSym->type().isNullable) {
-        errorHandler.addHint("References cannot point to nullable values")
-            .addHint("Use 'unwrap' or '?''?' to get the non-nullable value");
-        logSemanticErrors("Reference cannot reference nullable value",
-                          declaration);
+        logSemanticErrors(RefToNullable, declaration);
         return;
       }
 
       if (!initSym->storage().isHeap && !initSym->storage().isGlobal) {
-        errorHandler
-            .addHint("References only work with heap or global variables")
-            .addHint("Allocate on heap: heap i32 x = 10")
-            .addHint("Or use global scope");
-        logSemanticErrors("Cannot create reference to local variable '" +
-                              initName + "'",
-                          declaration);
+        logSemanticErrors(ErrorCode::RefToLocal, declaration, {initName});
         return;
       }
 
       if (declInfo->storage().isMutable && !initSym->storage().isMutable) {
-        errorHandler.addHint("Mutable reference requires mutable target")
-            .addHint("Make target mutable: mut i32 x = 10");
-        logSemanticErrors(
-            "Cannot create mutable reference to immutable variable",
-            declaration);
+        logSemanticErrors(MutableRefToImmutable, declaration);
       }
 
       // A reference is an alias so it inherits the properties of the guy he is
@@ -576,11 +423,9 @@ void Semantics::walkVariableDeclaration(Node *node) {
           !type_modifier->dimensions.empty()) {
         if (declSizePerDim.size() != initSym->type().sizePerDimensions.size()) {
           logSemanticErrors(
-              "Dimension count mismatch expected '" +
-                  std::to_string(declSizePerDim.size()) + "' but got '" +
-                  std::to_string(initSym->type().sizePerDimensions.size()) +
-                  "'",
-              declaration);
+              ErrorCode::ArrayDimCountMismatch, declaration,
+              {declName, std::to_string(declSizePerDim.size()),
+               std::to_string(initSym->type().sizePerDimensions.size())});
           return;
         }
         declSizePerDim = initSym->type().sizePerDimensions;
