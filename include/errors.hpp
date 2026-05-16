@@ -65,6 +65,20 @@ enum ErrorCode : int {
   InvalidHeapParam = 3034,
   InvalidPersistParam = 3035,
   InvalidNullReferenceParam = 3036,
+  InvalidAutoUse = 3037,
+  NoParamDefaultVal = 3038,
+  DanglingReferenceReturn = 3039,
+  IllegalFunctionDeclaration = 3040,
+  IllegalStmtInSeal = 3041,
+  InvalidNullReturn = 3042,
+  InvalidFinalExpression = 3043,
+  IllegalFunctionDefinition = 3044,
+  DefnDeclMismatch = 3045,
+  AlreadyDefinedFunc = 3046,
+  MatchExportsToTypes = 3047,
+  InvalidParam = 3048,
+  FloatingTrace = 3049,
+  NotDefinedOrDeclared = 3050,
 };
 
 struct ErrorMessage {

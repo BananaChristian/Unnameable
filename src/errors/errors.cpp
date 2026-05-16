@@ -101,108 +101,415 @@ std::string ErrorHandler::format_string(std::string &message,
 std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
   std::vector<std::string> suggestions;
   switch (code) {
+  case ErrorCode::UnexpectedChar: {
+    suggestions.push_back(
+        "Valid characters include letters, numbers, and standard operators");
+    suggestions.push_back("Check if you meant to use a different symbol");
+    return suggestions;
+  }
+  case ErrorCode::UnterminatedString: {
+    suggestions.push_back(
+        "Add a closing double quote (\") at the end of the string");
+    suggestions.push_back("For multi-line strings, use \"\"\" instead");
+    return suggestions;
+  }
+  case ErrorCode::InvalidEscape: {
+    suggestions.push_back("Valid escape sequences: \\n (newline), \\t (tab), "
+                          "\\r (carriage return)");
+    suggestions.push_back("Also valid: \\\" (double quote), \\\\ (backslash)");
+    suggestions.push_back("To include a literal backslash, use \\\\");
+    return suggestions;
+  }
+  case ErrorCode::UnterminatedChar: {
+    suggestions.push_back(
+        "Add a closing single quote (') at the end of the character");
+    suggestions.push_back(
+        "Character literals must contain exactly one character");
+    return suggestions;
+  }
+  case ErrorCode::InvalidToken: {
+    suggestions.push_back(
+        "Check for special characters that might not be allowed");
+    suggestions.push_back("Tokens must start with a letter or underscore");
+    return suggestions;
+  }
+  case ErrorCode::UnterminatedComment: {
+    suggestions.push_back("Close the comment with '##'");
+    suggestions.push_back("Comments cannot be nested");
+    return suggestions;
+  }
+  case ErrorCode::UnexpectedToken: {
+    suggestions.push_back("Check the expected syntax and fix the token");
+    suggestions.push_back("You might have forgotten a semicolon or operator");
+    return suggestions;
+  }
+  case ErrorCode::MissingClosingBracket: {
+    suggestions.push_back("Add a closing '}' to match the opening '{'");
+    suggestions.push_back("Check for unmatched braces in your code");
+    return suggestions;
+  }
+  case ErrorCode::InvalidReturnType: {
+    suggestions.push_back(
+        "Valid return types: void, i32, i64, f32, f64, bool, ptr, ref");
+    suggestions.push_back("Or use a custom type defined with 'record'");
+    return suggestions;
+  }
+  case ErrorCode::InvalidType: {
+    suggestions.push_back(
+        "Built-in types: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool");
+    suggestions.push_back("Pointer: ptr<type> or type*");
+    suggestions.push_back("Reference: ref<type> or type&");
+    suggestions.push_back("Nullable: add '?' after the type");
+    return suggestions;
+  }
+  case ErrorCode::InvalidModifier: {
+    suggestions.push_back("Modifiers like 'mut', 'const', 'heap' only apply to "
+                          "variable declarations");
+    suggestions.push_back(
+        "Cannot apply modifiers to expressions or statements");
+    return suggestions;
+  }
   case ErrorCode::MultipleMutSpecifiers: {
     suggestions.push_back(
-        "'mut' and 'const cannot be used together as they are contradictory");
+        "'mut' and 'const' cannot be used together as they are contradictory");
+    suggestions.push_back(
+        "Choose one: 'mut' for mutable, 'const' for immutable");
+    return suggestions;
+  }
+  case ErrorCode::InvalidConstraint: {
+    suggestions.push_back(
+        "Use 'in' for input parameters that won't be modified");
+    suggestions.push_back(
+        "Use 'out' for output parameters that will be written to");
+    suggestions.push_back("Example: func process(in x: i32, out y: i32)");
+    return suggestions;
+  }
+  case ErrorCode::ExpectIntegerToken: {
+    suggestions.push_back("Expected an integer literal like 0, 42, 100, or -5");
+    suggestions.push_back("Hex: 0xFF, Binary: 0b1010, Octal: 0o755");
+    return suggestions;
+  }
+  case ErrorCode::UnsupportedStatement: {
+    suggestions.push_back(
+        "This statement is not supported in the current context");
+    suggestions.push_back("Check if you meant to use a different construct");
+    return suggestions;
+  }
+  case ErrorCode::DuplicateInit: {
+    suggestions.push_back("Remove one of the duplicate initializers");
+    suggestions.push_back("You can only initialize a variable once");
+    return suggestions;
+  }
+  case ErrorCode::UndefinedVariable: {
+    suggestions.push_back(
+        "Declare the variable before using it with 'let' or 'var'");
+    suggestions.push_back("Check for typos in the variable name");
+    suggestions.push_back("The variable might be out of scope");
+    return suggestions;
+  }
+  case ErrorCode::TypeMismatch: {
+    suggestions.push_back("Use 'as' to cast between compatible types");
+    suggestions.push_back("Example: let x: i32 = y as i32");
+    suggestions.push_back(
+        "Check if both sides of the operation have the same type");
     return suggestions;
   }
   case ErrorCode::TypeMismatchArrayLit: {
-    suggestions.push_back("All elements in an must be the same type");
+    suggestions.push_back(
+        "All elements in an array literal must be the same type");
+    suggestions.push_back("Check element {0} for type mismatch");
+    suggestions.push_back("Consider using a tuple or struct if types differ");
     return suggestions;
   }
   case ErrorCode::NoneIndexableType: {
     suggestions.push_back(
         "Only array and pointer types can be subscripted with []");
-    return suggestions;
-  }
-  case ErrorCode::UndefinedVariable: {
-    suggestions.push_back("Declare the variable before using it");
+    suggestions.push_back(
+        "Make sure the type is an array like [T; N] or ptr<T>");
+    suggestions.push_back(
+        "If using a custom type, implement an indexer method");
     return suggestions;
   }
   case ErrorCode::NoneDereferencableType: {
-    suggestions.push_back("Only pointer types can be dereferenced");
+    suggestions.push_back(
+        "Only pointer types can be dereferenced with the * operator");
+    suggestions.push_back("Use 'ptr<T>' or 'T*' for pointer types");
+    suggestions.push_back("References (&T) are automatically dereferenced");
+    return suggestions;
+  }
+  case ErrorCode::InvalidSelfAccess: {
+    suggestions.push_back("'self' is only available inside method definitions");
+    suggestions.push_back("Use 'self' to refer to the current instance");
+    suggestions.push_back("Static methods don't have access to 'self'");
+    return suggestions;
+  }
+  case ErrorCode::NotaFuncOrFnPtr: {
+    suggestions.push_back("'{0}' is not a function or a function pointer");
+    suggestions.push_back("Check if you meant to call a method instead");
+    suggestions.push_back("Function pointers: fn(type) : return_type");
+    return suggestions;
+  }
+  case ErrorCode::LHSMustBeNull: {
+    suggestions.push_back(
+        "Left hand side of the coalesce operator '??' must be nullable");
+    suggestions.push_back("Add '?' to the type to make it nullable");
+    suggestions.push_back("Example: let x: i32? = value ?? 0");
     return suggestions;
   }
   case ErrorCode::InvalidUsageOfNull: {
     suggestions.push_back(
-        "Nullable variables cannot be directly used in operations take caution "
-        "and unwrap them or use coalesce operator");
+        "Nullable variables cannot be directly used in operations");
+    suggestions.push_back("Use '!' to unwrap: nullable! (panics if null)");
+    suggestions.push_back("Use '??' to coalesce: nullable ?? default_value");
+    suggestions.push_back("Check with 'if nullable != null' before using");
+    return suggestions;
+  }
+  case ErrorCode::NonExistantMember: {
+    suggestions.push_back("'{0}' is not a member of type '{1}'");
+    suggestions.push_back("Check the spelling of the member name");
+    suggestions.push_back(
+        "Review the type definition to see available members");
+    suggestions.push_back("Maybe you meant a different type?");
+    return suggestions;
+  }
+  case ErrorCode::InvalidOperationOnTypes: {
+    suggestions.push_back(
+        "Cannot carry out '{0}' operation on types '{1}' and '{2}'");
+    suggestions.push_back("Both operands need to support this operation");
+    suggestions.push_back("Consider casting one of the operands first");
+    return suggestions;
+  }
+  case ErrorCode::InvalidPrefixOrPostfixOps: {
+    suggestions.push_back("Cannot carry out '{0}' on type '{1}'");
+    suggestions.push_back(
+        "Prefix/postfix operators work on numeric types (i32, f64, etc.)");
+    suggestions.push_back(
+        "For custom types, implement the operator in a method");
+    return suggestions;
+  }
+  case ErrorCode::ArgumentSizeMismatch: {
+    suggestions.push_back(
+        "Function '{0}' expected '{1}' arguments but got '{2}'");
+    suggestions.push_back(
+        "Check the function definition for correct parameter count");
+    suggestions.push_back("You might be missing some arguments or have extras");
+    return suggestions;
+  }
+  case ErrorCode::ArgumentTypeMismatch: {
+    suggestions.push_back(
+        "Type mismatch in argument '{0}': expected '{1}' but got '{2}'");
+    suggestions.push_back(
+        "Cast the argument to the correct type: arg as target_type");
+    suggestions.push_back("Check if you passed parameters in the wrong order");
+    return suggestions;
+  }
+  case ErrorCode::NullPassFailure: {
+    suggestions.push_back(
+        "Cannot pass null to argument '{0}' which expects type '{1}'");
+    suggestions.push_back("Use '!' to unwrap: nullable! (panics if null)");
+    suggestions.push_back(
+        "Make the parameter nullable by adding '?' to its type");
+    suggestions.push_back("Check with 'if nullable != null' before passing");
     return suggestions;
   }
   case ErrorCode::FailedToInfer: {
     suggestions.push_back(
         "Could be an unknown variable or lack of a value for auto");
+    suggestions.push_back(
+        "Provide an explicit type annotation: let x: i32 = ...");
+    suggestions.push_back("Make sure the initializer has a clear type");
     return suggestions;
   }
   case ErrorCode::GlobalHeapVar: {
+    suggestions.push_back("Heap variables cannot be declared in global scope");
+    suggestions.push_back("Move the heap allocation inside a function body");
+    suggestions.push_back("Use normal variables for global state");
     suggestions.push_back(
-        "It seems you have declared a heap variable in an invalid scope the "
-        "compiler cannot carry out bunkering because it has failed to figure "
-        "out the exact block this declaration was made under");
+        "The compiler cannot determine the lifetime of global heap vars");
     return suggestions;
   }
   case ErrorCode::InvalidBindOperator: {
-    suggestions.push_back("use '->' for pointer or reference assignment");
-    suggestions.push_back("ptr i32 x -> addr y");
-    suggestions.push_back("use '::' for enum access");
+    suggestions.push_back("Use '->' for pointer or reference assignment");
+    suggestions.push_back("Example: ptr i32 x -> addr y");
+    suggestions.push_back("Use '::' for enum variant access");
+    suggestions.push_back("Use '.' for struct/record field access");
     return suggestions;
   }
   case ErrorCode::InvalidImmutUse: {
-    suggestions.push_back("try applying the 'mut' modifier to the variable");
+    suggestions.push_back("Cannot modify immutable variable '{1}' with '{0}'");
+    suggestions.push_back(
+        "Add 'mut' to the variable declaration: let mut x = value");
+    suggestions.push_back("Create a mutable copy: let mut y = x");
+    return suggestions;
+  }
+  case ErrorCode::InvalidUninitUse: {
+    suggestions.push_back("Cannot use uninitialized variable '{1}' with '{0}'");
+    suggestions.push_back("Initialize the variable before using it");
+    suggestions.push_back("Check all code paths to ensure initialization");
     return suggestions;
   }
   case ErrorCode::InvalidAddrOperand: {
+    suggestions.push_back("Cannot get address of temporary value '{0}'");
+    suggestions.push_back("Store the value in a variable first: let temp = "
+                          "expr; let ptr = &temp");
     suggestions.push_back(
-        "When you use the 'addr' operator you want to get the address "
-        "of that expression");
-    suggestions.push_back("The 'addr' operator can only work on an expression "
-                          "with a permanent location, function calls are "
-                          "temporary in nature and have no location ");
+        "Function calls return temporary values with no permanent address");
+    suggestions.push_back("Literals and expressions are temporary in nature");
     return suggestions;
   }
   case ErrorCode::NoneBitcastableType: {
     suggestions.push_back(
-        "Bitcastable destinations: pointers, integers, floats, opaque");
+        "Bitcastable types: pointers, integers, floats, opaque");
     suggestions.push_back(
-        "Bitcast destination or source cannot be nullable,try removing "
-        "'?' from the type");
+        "Cannot bitcast from or to nullable types (remove '?')");
     suggestions.push_back("References and arrays cannot be bitcast targets");
-    suggestions.push_back(
-        "Bare custom types cannot be bitcast, use ptr MyType instead");
+    suggestions.push_back("Custom types need 'ptr MyType' to be bitcastable");
     return suggestions;
   }
   case ErrorCode::NoneCastableType: {
-    suggestions.push_back("Cannot cast from or to a nullable type");
-    suggestions.push_back("Use bitcast to cast pointers");
+    suggestions.push_back("Cannot cast from or to nullable types (remove '?')");
+    suggestions.push_back("Use bitcast for pointer conversions");
     suggestions.push_back(
-        "References are aliases,try casting the target variable directly");
+        "References are aliases, cast the target variable directly");
     suggestions.push_back(
-        "Arrays cannot be cast, trying casting individual elements");
-    suggestions.push_back("Custom types cannot be cast,maybe consider "
-                          "implementing a conversion method yourself");
+        "Arrays cannot be cast, cast individual elements instead");
+    suggestions.push_back("Custom types need conversion methods");
+    suggestions.push_back("Valid cast targets: integers, floats, bool");
+    return suggestions;
+  }
+  case ErrorCode::UnwrappableType: {
+    suggestions.push_back("Cannot unwrap type '{0}' with '!' or '??'");
+    suggestions.push_back("Only nullable types (with '?') can be unwrapped");
+    suggestions.push_back("Add '?' to the type to make it nullable if needed");
+    return suggestions;
+  }
+  case ErrorCode::InvalidInfix: {
     suggestions.push_back(
-        "Valid cast sources and destinations are: integers,floats and bool");
+        "Right hand side of '.' must be an identifier or a call");
+    suggestions.push_back("Use method name after '.'");
+    suggestions.push_back("For complex expressions, use parentheses first");
+    return suggestions;
+  }
+  case ErrorCode::FloatingReturns: {
+    suggestions.push_back("Return statement cannot be outside a function body");
+    suggestions.push_back("Move the return inside a function");
+    suggestions.push_back(
+        "At top level, use 'return' only in function definitions");
+    return suggestions;
   }
   case ErrorCode::NonVoidReturn: {
+    suggestions.push_back("Non-void function '{0}' has a return with no value");
+    suggestions.push_back("Add a return value of type {0}");
     suggestions.push_back(
-        "Add a return value, or change the return type to 'void'.");
+        "Or change the return type to 'void' if no value needed");
     return suggestions;
   }
-  case ErrorCode::InvalidPersistParam: {
-    suggestions.push_back(
-        "'persist' only applies to heap variables inside function bodies");
-    suggestions.push_back("Parameters cannot be marked as persist");
-    return suggestions;
-  }
-  case ErrorCode::InvalidNullReferenceParam: {
-    suggestions.push_back("References always point to valid memory, so "
-                          "nullable are contradictory");
-    suggestions.push_back(
-        "If null is a valid state, use a nullable pointer like 'ptr i32? x");
+  case ErrorCode::DuplicateName: {
+    suggestions.push_back("Name '{0}' already exists in this scope");
+    suggestions.push_back("Rename one of the declarations");
+    suggestions.push_back("Use a different scope or namespace");
     return suggestions;
   }
   case ErrorCode::InvalidHeapParam: {
-    suggestions.push_back("cannot declare a parameter as a heap variable");
+    suggestions.push_back("Cannot declare a parameter as heap variable");
+    suggestions.push_back("Remove the 'heap' keyword from the parameter");
+    suggestions.push_back(
+        "Use 'heap' only inside function bodies for allocation");
+    return suggestions;
+  }
+  case ErrorCode::InvalidPersistParam: {
+    suggestions.push_back("Parameter '{0}' cannot be marked as 'persist'");
+    suggestions.push_back(
+        "'persist' only applies to heap variables inside function bodies");
+    suggestions.push_back("Remove 'persist' from the parameter");
+    return suggestions;
+  }
+  case ErrorCode::InvalidNullReferenceParam: {
+    suggestions.push_back("Reference parameter '{0}' cannot be nullable");
+    suggestions.push_back("Remove '?' from the reference type");
+    suggestions.push_back("If null is needed, use a pointer: ptr i32?");
+    suggestions.push_back("References always point to valid memory by design");
+    return suggestions;
+  }
+  case ErrorCode::InvalidAutoUse: {
+    suggestions.push_back("Must explicitly state the parameter's data type");
+    suggestions.push_back("'auto' is not allowed for function parameters");
+    suggestions.push_back("Specify a concrete type like i32, f64, etc.");
+    return suggestions;
+  }
+  case ErrorCode::NoParamDefaultVal: {
+    suggestions.push_back(
+        "Function parameters cannot have default values in this language");
+    suggestions.push_back("Remove the '=' and default value");
+    suggestions.push_back("Use overloading or optional types instead");
+    return suggestions;
+  }
+  case ErrorCode::DanglingReferenceReturn: {
+    suggestions.push_back(
+        "Returning reference to local variable '{0}' is unsafe");
+    suggestions.push_back(
+        "The local variable will be freed when the function returns");
+    suggestions.push_back("Return the value directly: return x instead of &x");
+    suggestions.push_back("Or heap allocate: return heap i32 {x}");
+    return suggestions;
+  }
+  case ErrorCode::IllegalFunctionDeclaration: {
+    suggestions.push_back(
+        "Function declarations cannot exist inside seals and components");
+    suggestions.push_back("Move the declaration to the top level");
+    suggestions.push_back(
+        "Try providing a full definition instead of just a declaration");
+    return suggestions;
+  }
+  case ErrorCode::IllegalStmtInSeal: {
+    suggestions.push_back(
+        "Only function definitions are allowed inside a seal");
+    suggestions.push_back(
+        "Move non-function statements outside the seal block");
+    suggestions.push_back("Wrap the statement in a function if needed");
+    return suggestions;
+  }
+  case ErrorCode::InvalidNullReturn: {
+    suggestions.push_back(
+        "Cannot return null from a function with non-nullable return type");
+    suggestions.push_back("Add '?' to the return type: func name() : Type?");
+    suggestions.push_back("Return a valid value instead of null");
+    return suggestions;
+  }
+  case ErrorCode::InvalidFinalExpression: {
+    suggestions.push_back(
+        "A void function cannot have a final expression as its return value");
+    suggestions.push_back(
+        "Remove the final expression or change return type to non-void");
+    suggestions.push_back("Use 'return' for void functions");
+    return suggestions;
+  }
+  case ErrorCode::IllegalFunctionDefinition: {
+    suggestions.push_back(
+        "Cannot nest function definitions inside other functions");
+    suggestions.push_back("Move the inner function to the top level");
+    return suggestions;
+  }
+  case ErrorCode::DefnDeclMismatch: {
+    suggestions.push_back("The definition signature must match the earlier "
+                          "declaration, check the parameters and return types");
+    return suggestions;
+  }
+  case ErrorCode::AlreadyDefinedFunc: {
+    suggestions.push_back(
+        "Unnameable does not allow for overloading, please use unique names "
+        "for your functions or isolate them via seals and components");
+    return suggestions;
+  }
+  case ErrorCode::MatchExportsToTypes: {
+    suggestions.push_back("Mark the type as exportable, exportable functions "
+                          "may only use exportable types");
+    return suggestions;
+  }
+  case ErrorCode::InvalidParam: {
+    suggestions.push_back(
+        "parameters must follow the unified declaration syntax");
+    suggestions.push_back("Example: ptr i32 x, mut i64 y");
     return suggestions;
   }
   default: {
@@ -468,7 +775,7 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   }
   case ErrorCode::DuplicateName: {
     message.code = ErrorCode::DuplicateName;
-    message.message = "duplicate name '{0}'";
+    message.message = "name '{0}' already exists in scope";
     return message;
   }
   case ErrorCode::InvalidHeapParam: {
@@ -487,6 +794,84 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.code = ErrorCode::InvalidNullReferenceParam;
     message.message = "reference parameter '{0}' cannot be nullable";
     message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidAutoUse: {
+    message.code = ErrorCode::InvalidAutoUse;
+    message.message = "must explicitly state the parameter's data type";
+    return message;
+  }
+  case ErrorCode::NoParamDefaultVal: {
+    message.code = ErrorCode::NoParamDefaultVal;
+    message.message = "parameter's cannot have a default value";
+    return message;
+  }
+  case ErrorCode::DanglingReferenceReturn: {
+    message.code = ErrorCode::DanglingReferenceReturn;
+    message.message = "cannot return a reference to a local variable '{0}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::IllegalFunctionDeclaration: {
+    message.code = ErrorCode::IllegalFunctionDeclaration;
+    message.message = "illegal function declaration";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::IllegalStmtInSeal: {
+    message.code = ErrorCode::IllegalStmtInSeal;
+    message.message = "only function definitions are allowed inside a seal";
+    return message;
+  }
+  case ErrorCode::InvalidNullReturn: {
+    message.code = ErrorCode::InvalidNullReturn;
+    message.message =
+        "cannot return null from a function whose return type is not nullable";
+    return message;
+  }
+  case ErrorCode::InvalidFinalExpression: {
+    message.code = ErrorCode::InvalidFinalExpression;
+    message.message = "A void function cannot have a final expression";
+    return message;
+  }
+  case ErrorCode::IllegalFunctionDefinition: {
+    message.code = ErrorCode::IllegalFunctionDefinition;
+    message.message = "cannot nest function definitions";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::DefnDeclMismatch: {
+    message.code = ErrorCode::DefnDeclMismatch;
+    message.message =
+        "the definition of '{0}' does not match its prior declaration";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::AlreadyDefinedFunc: {
+    message.code = ErrorCode::AlreadyDefinedFunc;
+    message.message = "function '{0}' is already defined";
+    return message;
+  }
+  case ErrorCode::MatchExportsToTypes: {
+    message.code = ErrorCode::MatchExportsToTypes;
+    message.message = "exportable function '{0}' uses non exportable type "
+                      "'{1}'";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::InvalidParam: {
+    message.code = ErrorCode::InvalidParam;
+    message.message = "invalid parameter";
+    message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::FloatingTrace: {
+    message.code = ErrorCode::FloatingTrace;
+    message.message = "trace statements are not allowed in global scope";
+    return message;
+  }case ErrorCode::NotDefinedOrDeclared:{
+    message.code=ErrorCode::NotDefinedOrDeclared;
+    message.message="'{0}' has not been defined or declared anywhere";
     return message;
   }
   default: {
