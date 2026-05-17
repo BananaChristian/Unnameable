@@ -154,6 +154,8 @@ enum ErrorCode : int {
   RefToLocal = 3131,
   MutableRefToImmutable = 3132,
   ArrayDimCountMismatch = 3133,
+  ModMustBeGlobal = 3134,
+  ImportMustBeGlobal = 3135,
 
   ArraySizeMismatch = 4001,
 

@@ -76,9 +76,10 @@ std::unique_ptr<Statement> Parser::parseImportStatement() {
   Token import_token = currentToken();
   advance();
 
-  auto importStr = parseStringLiteral();
+  auto module_name = parseIdentifier();
 
-  return std::make_unique<ImportStatement>(import_token, std::move(importStr));
+  return std::make_unique<ImportStatement>(import_token,
+                                           std::move(module_name));
 }
 
 std::unique_ptr<Statement> Parser::parseModuleStatement() {

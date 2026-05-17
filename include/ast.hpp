@@ -2048,17 +2048,18 @@ struct ArraySubscript : Expression {
 // Import statement
 struct ImportStatement : Statement {
   Token import_key;
-  std::unique_ptr<Expression> stringExpr;
+  std::unique_ptr<Expression> module_name;
 
   std::string toString() override {
     std::ostringstream oss;
     oss << "Import Statement: " << import_key.TokenLiteral << " "
-        << (stringExpr ? stringExpr->toString() : "<example>");
+        << (module_name ? module_name->toString() : "<example>");
     return oss.str();
   }
 
-  ImportStatement(Token import, std::unique_ptr<Expression> string)
-      : Statement(import), import_key(import), stringExpr(std::move(string)) {};
+  ImportStatement(Token import, std::unique_ptr<Expression> module)
+      : Statement(import), import_key(import),
+        module_name(std::move(module)) {};
 };
 
 // Link statement

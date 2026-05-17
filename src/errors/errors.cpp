@@ -1425,6 +1425,16 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.message = "size mismatch, expected '{0}' but got '{}' elements";
     return message;
   }
+  case ErrorCode::ModMustBeGlobal: {
+    message.code = ErrorCode::ModMustBeGlobal;
+    message.message = "module statement must be top level in global scope";
+    return message;
+  }
+  case ErrorCode::ImportMustBeGlobal: {
+    message.code = ErrorCode::ImportMustBeGlobal;
+    message.message = "import statement must be top level in global scope";
+    return message;
+  }
   case ErrorCode::IllegalCycle: {
     message.code = ErrorCode::IllegalCycle;
     message.message =

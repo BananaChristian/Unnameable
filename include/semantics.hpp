@@ -233,6 +233,8 @@ private:
   void walkTraceStatement(Node *node);
 
   void walkFunctionParameters(Node *node);
+  void walkModuleStatement(Node *node);
+  void walkImportStatement(Node *node);
 
   // HELPER FUNCTIONS
   void registerWalkerFunctions();

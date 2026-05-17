@@ -343,144 +343,19 @@ void Deserializer::readStubTable(std::istream& in) {
     }
 }
 
-void Deserializer::processImports(const std::vector<std::unique_ptr<Node>>& nodes,
-                                  const std::string& currentFile) {
-    for (const auto& node : nodes) {
-        auto* importStmt = dynamic_cast<ImportStatement*>(node.get());
-        if (!importStmt) continue;
-
-        std::string resolved = resolveImportPath(importStmt, currentFile);
-        if (resolved.empty()) {
-            logImportError("Could not resolve import path", importStmt->token.line,
-                           importStmt->token.column);
+void Deserializer::processLoads(const std::vector<std::string>& stubPaths) {
+    for (const auto& path : stubPaths) {
+        if (loadedStubs.count(path)) {
+            logInternal("Skipping already loaded stub: " + path);
+            continue;
+        }
+        if (!fs::exists(path)) {
+            logImportError("Stub not found: " + path, 0, 0);
             hasFailed = true;
             continue;
         }
-
-        // Skip already loaded stubs
-        if (loadedStubs.count(resolved)) {
-            logInternal("Skipping already loaded stub: " + resolved);
-            continue;
-        }
-
-        loadStub(resolved);
+        loadStub(path);
     }
-}
-
-std::string Deserializer::resolveImportPath(ImportStatement* import,
-                                            const std::string& currentFile) {
-    // Validation with detailed feedback
-    if (!import || !import->stringExpr) {
-        std::string err =
-            "AST Corrupt: Import statement missing string expression in " + currentFile;
-        reportDevBug(err);
-        throw std::runtime_error(err);
-    }
-
-    auto strLit = dynamic_cast<StringLiteral*>(import->stringExpr.get());
-    std::string raw = strLit->string_token.TokenLiteral;
-
-    // Normalize paths to absolute to prevent "Relative vs Absolute" comparison bugs
-    fs::path absCurrentFile = fs::absolute(currentFile);
-    fs::path currentDir = absCurrentFile.parent_path();
-
-    // Determine where to put stub and object files
-    fs::path stubPath;
-    fs::path unnPath = currentDir / (raw + ".unn");
-    fs::path binaryPath;
-    
-    if (!buildDirectory.empty()) {
-        // Use build directory for outputs
-        stubPath = fs::path(buildDirectory) / (raw + ".stub");
-        binaryPath = fs::path(buildDirectory) / (raw + ".o");
-    } else {
-        // Use source directory
-        stubPath = currentDir / (raw + ".stub");
-        binaryPath = currentDir / (raw + ".o");
-    }
-    
-    // Record the link (always, regardless of build directory)
-    recordLink(binaryPath.string());
-
-    // Auto-Generation Logic
-    if (!fs::exists(stubPath)) {
-        if (fs::exists(unnPath)) {
-            logInternal("[AUTO-STUB] Missing interface for '" + raw +
-                        "'. Spawning sub-compiler...");
-
-            // Recursion Guard: Pass the absolute path of the current file to the child
-            const char* env_stack = std::getenv("UNNC_IMPORT_STACK");
-            std::string newStack =
-                (env_stack ? std::string(env_stack) + "," : "") + absCurrentFile.string();
-
-#ifdef _WIN32
-            _putenv_s("UNNC_IMPORT_STACK", newStack.c_str());
-#else
-            setenv("UNNC_IMPORT_STACK", newStack.c_str(), 1);
-#endif
-
-            // Also pass build directory to child
-            if (!buildDirectory.empty()) {
-                setenv("UNNC_BUILD_DIR", buildDirectory.c_str(), 1);
-            }
-
-            // Find the absolute path of THIS compiler executable
-            std::string compilerExe;
-            try {
-                compilerExe = fs::canonical("/proc/self/exe").string();
-            } catch (...) {
-                // Fallback if procfs is restricted
-                compilerExe = "./unnc";
-            }
-
-            // Explicitly tell the child where to put the stub and object
-            std::string cmd = compilerExe + " " + unnPath.string() + 
-                              " -stub " + stubPath.string() +
-                              " -compile " + binaryPath.string();
-
-            logInternal("[EXEC] " + cmd);
-            int result = std::system(cmd.c_str());
-
-            if (result != 0) {
-                std::string errorMsg =
-                    "Dependency Error: Failed to generate stub for '" + raw +
-                    "'. The sub-compiler returned exit code: " + std::to_string(result);
-                logImportError(errorMsg, strLit->expression.line, strLit->expression.column);
-                throw std::runtime_error(errorMsg);
-            }
-        } else {
-            std::string errorMsg = "Module Not Found: Checked for '" + unnPath.string() + "'";
-            logImportError(errorMsg, strLit->expression.line, strLit->expression.column);
-            throw std::runtime_error(errorMsg);
-        }
-    }
-
-    // Path Validation & Security (Weakly canonical handles symlinks)
-    fs::path resolved;
-    try {
-        resolved = fs::weakly_canonical(stubPath);
-    } catch (const std::exception& e) {
-        resolved = stubPath;
-    }
-
-    // Security: Prevent accessing files outside the project workspace
-    fs::path projectRoot = fs::current_path();
-    std::string resolvedStr = resolved.string();
-
-    if (resolvedStr.rfind(projectRoot.string(), 0) != 0) {
-        std::string errorMsg = "Security Violation: Import path '" + raw +
-                               "' escapes project root (" + projectRoot.string() + ")";
-        logImportError(errorMsg, strLit->expression.line, strLit->expression.column);
-        throw std::runtime_error(errorMsg);
-    }
-
-    // Deduplication: Don't reload what we already have
-    if (loadedStubs.find(resolvedStr) != loadedStubs.end()) {
-        return resolvedStr;
-    }
-
-    logInternal("[SUCCESS] Resolved module '" + raw + "' to " + resolvedStr);
-    return resolvedStr;
 }
 
 void Deserializer::loadStub(const std::string& path) {
@@ -500,10 +375,6 @@ void Deserializer::loadStub(const std::string& path) {
         logImportError(std::string("Failed to read stub '") + path + "': " + e.what(), 0, 0);
         hasFailed = true;
     }
-}
-
-void Deserializer::recordLink(const std::string& path) {
-    linkerRegistry.push_back({path, LinkOrigin::NATIVE_IMPORT});
 }
 
 void Deserializer::logInternal(const std::string& message) {

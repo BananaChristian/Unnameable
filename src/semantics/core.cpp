@@ -163,6 +163,8 @@ void Semantics::registerWalkerFunctions() {
   walkerFunctionsMap[typeid(InstantiateStatement)] =
       &Semantics::walkInstantiateStatement;
   walkerFunctionsMap[typeid(ASMStatement)] = &Semantics::walkASMStatement;
+  walkerFunctionsMap[typeid(ModuleStatement)] = &Semantics::walkModuleStatement;
+  walkerFunctionsMap[typeid(ImportStatement)] = &Semantics::walkImportStatement;
 }
 
 ResolvedType Semantics::inferNodeDataType(Node *node) {
