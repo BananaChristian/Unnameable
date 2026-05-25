@@ -106,6 +106,15 @@ void Semantics::enforceDeclarationRules(
     return;
   }
 
+  // Block usage of inbuilt heap qualifier when in freestanding
+  if (isHeap && freeStanding) {
+    if (!declaration->allocator) {
+      logSemanticErrors(ErrorCode::IllegalUseInFreeStanding, declaration,
+                        {"heap"});
+      return;
+    }
+  }
+
   if (isHeap && isConstant) {
     logSemanticErrors(ConstCannotBeHeap, declaration, {declName});
     return;
@@ -242,7 +251,6 @@ void Semantics::handleNullInitializers(
   const std::string &declName = declaration->var_name->expression.TokenLiteral;
   auto type_modifier =
       dynamic_cast<TypeModifier *>(declaration->modified_type.get());
-  const auto &type = declInfo->type().type;
 
   if (!declInfo->type().isNullable) {
     logSemanticErrors(ErrorCode::NullToNonNullable, declaration, {declName});

@@ -156,6 +156,7 @@ enum ErrorCode : int {
   ArrayDimCountMismatch = 3133,
   ModMustBeGlobal = 3134,
   ImportMustBeGlobal = 3135,
+  IllegalUseInFreeStanding = 3136,
 
   ArraySizeMismatch = 4001,
 

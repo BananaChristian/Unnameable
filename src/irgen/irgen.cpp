@@ -28,11 +28,14 @@
 
 IRGenerator::IRGenerator(Semantics &semantics, ErrorHandler &handler,
                          Auditor &auditor, size_t totalHeap, bool isVerbose,
-                         OptLevel optLevel)
+                         OptLevel optLevel, std::string target_triple,
+                         std::string filename, bool isFreeStanding)
     : optLevel(optLevel), context(), funcBuilder(context),
-      module(std::make_unique<llvm::Module>("unnameable", context)),
+      module(std::make_unique<llvm::Module>(filename, context)),
       semantics(semantics), errorHandler(handler), auditor(auditor),
-      totalHeapSize(totalHeap), isVerbose(isVerbose) {
+      totalHeapSize(totalHeap), isVerbose(isVerbose),
+      freestanding(isFreeStanding), target_triple(target_triple),
+      filename(filename) {
   setupTargetLayout();
 
   registerGeneratorFunctions();
@@ -59,8 +62,7 @@ void IRGenerator::generate(const std::vector<std::unique_ptr<Node>> &program) {
 //  Main Expression generator helper function
 llvm::Value *IRGenerator::generateExpression(Node *node) {
   if (!node) {
-    throw std::runtime_error(
-        "Null node sent to the expression generator dispatcher");
+    reportDevBug("Null node sent to the expression generator dispatcher", node);
   }
   auto exprIt = expressionGeneratorsMap.find(typeid(*node));
   if (exprIt == expressionGeneratorsMap.end()) {
@@ -80,9 +82,6 @@ llvm::Value *IRGenerator::generateAddress(Node *node) {
 
   auto addrIt = addressGeneratorsMap.find(typeid(*node));
   if (addrIt == addressGeneratorsMap.end()) {
-    errorHandler.addHint(
-        "The address generator(L-value) for this node does not exist "
-        "in the address generator functions map");
     reportDevBug("Could not find address generator for " + node->toString(),
                  node);
   }
@@ -1635,17 +1634,23 @@ bool IRGenerator::currentBlockIsTerminated() {
 llvm::Module &IRGenerator::getLLVMModule() { return *module; }
 
 void IRGenerator::setupTargetLayout() {
+  // Initialization
   llvm::InitializeAllTargetInfos();
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllAsmPrinters();
 
-  std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
+  std::string targetTripleStr = target_triple.empty()
+                                    ? llvm::sys::getDefaultTargetTriple()
+                                    : target_triple;
+
   module->setTargetTriple(targetTripleStr);
 
   std::string error;
   auto target = llvm::TargetRegistry::lookupTarget(targetTripleStr, error);
   if (!target)
-    throw std::runtime_error("Target not found");
+    throw std::runtime_error("Target not found: " + error);
 
   // Convert OptLevel for layout (though layout mostly uses it for ABI
   // decisions)
@@ -1672,12 +1677,16 @@ void IRGenerator::setupTargetLayout() {
 
   // Create target machine WITH optimization level
   std::optional<llvm::Reloc::Model> relocModel = llvm::Reloc::PIC_;
+  if (targetTripleStr.find("-none") != std::string::npos) {
+    relocModel = llvm::Reloc::Static; // Force Static relocation for bare-metal
+  }
+
   std::optional<llvm::CodeModel::Model> codeModel = std::nullopt;
 
-  auto targetMachine = target->createTargetMachine(
-      targetTripleStr, "generic", "", opt, relocModel, codeModel,
-      llvmOptLevel, // Optimization level passed here
-      false);       //  Optional unique suffix
+  targetMachine =
+      std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
+          targetTripleStr, "generic", "", opt, relocModel, codeModel,
+          llvmOptLevel, false)); //  Optional unique suffix
 
   if (!targetMachine)
     throw std::runtime_error("Failed to create TargetMachine");
@@ -1687,66 +1696,11 @@ void IRGenerator::setupTargetLayout() {
 }
 
 bool IRGenerator::emitObjectFile(const std::string &filename) {
-  // Initialization
-  llvm::InitializeAllTargetInfos();
-  llvm::InitializeAllTargets();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmParsers();
-  llvm::InitializeAllAsmPrinters();
-
-  // Target Setup
-  std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
-  module->setTargetTriple(targetTripleStr);
-
-  std::string error;
-  auto target = llvm::TargetRegistry::lookupTarget(targetTripleStr, error);
-  if (!target) {
-    llvm::errs() << "Failed to find target: " << error << "\n";
-    return false;
-  }
-
-  llvm::TargetOptions opt;
-
-  // Convert our OptLevel to LLVM optimization level
-  llvm::CodeGenOptLevel llvmOptLevel;
-  switch (optLevel) {
-  case OptLevel::NONE:
-    llvmOptLevel = llvm::CodeGenOptLevel::None;
-    break;
-  case OptLevel::BASIC:
-    llvmOptLevel = llvm::CodeGenOptLevel::Less;
-    break;
-  case OptLevel::STANDARD:
-    llvmOptLevel = llvm::CodeGenOptLevel::Default;
-    break;
-  case OptLevel::AGGRESSIVE:
-    llvmOptLevel = llvm::CodeGenOptLevel::Aggressive;
-    break;
-  default:
-    llvmOptLevel = llvm::CodeGenOptLevel::None;
-    break;
-  }
-
-  // CPU and features using generic for now
-  std::string cpu = "generic";
-  std::string features = "";
-
-  // Create target machine with optimization level
-  std::optional<llvm::Reloc::Model> relocModel = llvm::Reloc::PIC_;
-  std::optional<llvm::CodeModel::Model> codeModel = std::nullopt;
-
-  auto targetMachine = target->createTargetMachine(
-      targetTripleStr, cpu, features, opt, relocModel, codeModel,
-      llvmOptLevel, // Optimization level
-      false);       // Optional unique suffix
-
+  // Guard check to ensure setupTargetLayout() ran first
   if (!targetMachine) {
-    llvm::errs() << "Failed to create TargetMachine\n";
+    llvm::errs() << "Error: TargetMachine was never initialized.\n";
     return false;
   }
-
-  // Set data layout from target machine
-  module->setDataLayout(targetMachine->createDataLayout());
 
   // Open output file
   std::error_code EC;
@@ -1758,20 +1712,16 @@ bool IRGenerator::emitObjectFile(const std::string &filename) {
 
   // Create pass manager
   llvm::legacy::PassManager pass;
-
-  // Set file type to object file
   llvm::CodeGenFileType fileType = llvm::CodeGenFileType::ObjectFile;
 
-  // Add passes to emit object file
+  // Use the pre-configured targetMachine directly
   if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
     llvm::errs() << "TargetMachine can't emit object file\n";
     return false;
   }
 
-  // Run the passes
+  // Run and flush
   pass.run(*module);
-
-  // Flush output
   dest.flush();
 
   return true;

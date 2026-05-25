@@ -19,7 +19,8 @@ class Semantics {
 
 public:
   Deserializer &deserializer;
-  Semantics(Deserializer &deserializer, ErrorHandler &handler, bool isVerbose);
+  Semantics(Deserializer &deserializer, ErrorHandler &handler, bool isVerbose,
+            bool isFreeStanding);
   void walker(Node *node);
   bool failed();
 
@@ -116,6 +117,7 @@ private:
   bool hasFailed = false;
   bool hasError = false;
   bool verbose = false;
+  bool freeStanding = false;
   std::vector<Node *> activeBlocks;
 
   uint64_t normalDeclCount = 0;

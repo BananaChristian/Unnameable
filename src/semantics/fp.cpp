@@ -668,6 +668,12 @@ void Semantics::walkTraceStatement(Node *node) {
   if (!traceStmt)
     return;
 
+  if (freeStanding) {
+    logSemanticErrors(ErrorCode::IllegalUseInFreeStanding, traceStmt,
+                      {"trace"});
+    return;
+  }
+
   if (isGlobalScope()) {
     logSemanticErrors(ErrorCode::FloatingTrace, traceStmt);
     return;

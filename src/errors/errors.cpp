@@ -233,14 +233,21 @@ std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
   case ErrorCode::NoneDereferencableType: {
     suggestions.push_back(
         "Only pointer types can be dereferenced with the * operator");
-    suggestions.push_back("Use 'ptr<T>' or 'T*' for pointer types");
-    suggestions.push_back("References (&T) are automatically dereferenced");
+    suggestions.push_back("Use ptr T' for pointer types");
+    suggestions.push_back("References (ref T) are automatically dereferenced");
     return suggestions;
   }
   case ErrorCode::InvalidSelfAccess: {
     suggestions.push_back("'self' is only available inside method definitions");
     suggestions.push_back("Use 'self' to refer to the current instance");
     suggestions.push_back("Static methods don't have access to 'self'");
+    return suggestions;
+  }
+  case ErrorCode::IllegalUseInFreeStanding: {
+    suggestions.push_back(
+        "cannot use this operation because freestanding mode means the "
+        "compiler will not link against the standard library and yet this "
+        "operation needs the standard library");
     return suggestions;
   }
   case ErrorCode::NotaFuncOrFnPtr: {
@@ -1420,9 +1427,15 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.hints = suggestForError(code);
     return message;
   }
+  case ErrorCode::IllegalUseInFreeStanding: {
+    message.code = ErrorCode::IllegalUseInFreeStanding;
+    message.message = "cannot use operation '{0}' in freestanding mode";
+    message.hints = suggestForError(code);
+    return message;
+  }
   case ErrorCode::ArraySizeMismatch: {
     message.code = ArraySizeMismatch;
-    message.message = "size mismatch, expected '{0}' but got '{}' elements";
+    message.message = "size mismatch, expected '{0}' but got '{1}' elements";
     return message;
   }
   case ErrorCode::ModMustBeGlobal: {

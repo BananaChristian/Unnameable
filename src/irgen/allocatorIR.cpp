@@ -2,6 +2,14 @@
 
 void IRGenerator::registerAllocators() {
   for (const auto &allocPair : semantics.allocatorMap) {
+    auto allocator_type = allocPair.first;
+    if (allocator_type == "GPA") {
+      if (freestanding) {
+        continue; // Skip GPA's registration as its from the standard library
+                  // and the freestanding blocks it
+      }
+    }
+
     auto handle = allocPair.second;
 
     // Allocator function

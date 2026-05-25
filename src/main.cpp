@@ -4,6 +4,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,28 @@ namespace fs = std::filesystem;
 
 bool logOutput = false;
 OptLevel currentOptLevel = OptLevel::NONE;
+
+struct PlatformExtension {
+  std::string objectExtension;
+  std::string executableExtension;
+};
+
+PlatformExtension getPlatformExtensions(const std::string &tripleStr) {
+  PlatformExtension extension;
+  // Default to unix like
+  extension.objectExtension = ".o";
+  extension.executableExtension = "";
+
+  if (tripleStr.find("-windows") != std::string::npos ||
+      tripleStr.find("-win32") != std::string::npos ||
+      tripleStr.find("-mingw") != std::string::npos) {
+
+    extension.objectExtension = ".obj";
+    extension.executableExtension = ".exe";
+  }
+
+  return extension;
+}
 
 std::string readFileToString(const std::string &filepath) {
   std::ifstream file(filepath);
@@ -81,9 +104,13 @@ int main(int argc, char **argv) {
           << "  -link <lib>           Link an external library\n\n"
           << COLOR_BOLD << "Options:\n"
           << COLOR_RESET
-          << "  -verbose              Enable verbose internal logs\n"
-          << "  -help                 Show this help message\n"
-          << "  --version             Show version\n\n"
+          << "  -freestanding           Do not link the Standard library\n"
+          << "  -script <file>          Specify a custom linker script layout\n"
+          << "  -target <target>        Compile the code to meet a certain "
+             "architecture by specifying the target triple\n"
+          << "  -verbose                Enable verbose internal logs\n"
+          << "  -help                   Show this help message\n"
+          << "  -version                Show version\n\n"
           << COLOR_BOLD << "Optimization:\n"
           << COLOR_RESET << "  --debug               No optimizations\n"
           << "  --basic               Basic optimizations\n"
@@ -98,11 +125,15 @@ int main(int argc, char **argv) {
           << "  unnc -link-only -link obj/main.o -link obj/lib.o -build "
              "build/app\n"
           << "  unnc main.unn -stub stubs/main.stub\n"
-          << "  unnc main.unn -compile obj/main.o\n\n";
+          << "  unnc main.unn -compile obj/main.o\n"
+          << "  unnc kernel.unn -build build/kernel.bin -freestanding -script "
+             "linker.ld\n"
+          << "  unnc main.unn -build build/app -target "
+             "x86_64-unknown-linux-gnu\n\n";
       return 0;
     }
     if (arg == "--version") {
-      std::cout << COLOR_GREEN << "Unnameable Compiler v0.0.0\n" << COLOR_RESET;
+      std::cout << COLOR_GREEN << "Unnameable Compiler v0.1.0\n" << COLOR_RESET;
       return 0;
     }
   }
@@ -111,6 +142,8 @@ int main(int argc, char **argv) {
   std::string objFile;
   std::string exeFile;
   std::string stubFile;
+  std::string target;
+  std::string customScriptPath;
   std::vector<std::string> loads;
   std::vector<std::string> links;
   bool compileOnly = false;
@@ -118,17 +151,26 @@ int main(int argc, char **argv) {
   bool staticCompile = false;
   bool checkOnly = false;
   bool linkOnly = false;
+  bool isFreeStanding = false;
 
   // Parse arguments
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "-compile" && i + 1 < argc) {
       objFile = argv[++i];
-      if (fs::path(objFile).extension() != ".o")
-        objFile += ".o";
       compileOnly = true;
     } else if (arg == "-build" && i + 1 < argc) {
       exeFile = argv[++i];
+    } else if (arg == "-target" && i + 1 < argc) {
+      target = argv[++i];
+    } else if (arg == "-script") {
+      if (i + 1 < argc) {
+        customScriptPath = argv[++i];
+      } else {
+        throw std::runtime_error(
+            "Error: -script requires a file path argument");
+      }
+
     } else if (arg == "-stub" && i + 1 < argc) {
       stubFile = argv[++i];
       stubOnly = true;
@@ -144,6 +186,8 @@ int main(int argc, char **argv) {
       linkOnly = true;
     } else if (arg == "-verbose") {
       logOutput = true;
+    } else if (arg == "-freestanding") {
+      isFreeStanding = true;
     } else if (arg == "--debug") {
       currentOptLevel = OptLevel::NONE;
     } else if (arg == "--basic") {
@@ -157,8 +201,8 @@ int main(int argc, char **argv) {
     } else if (arg[0] != '-') {
       sourceFile = arg;
     } else {
-      std::cerr << COLOR_RED << "[ERROR]" << COLOR_RESET
-                << " Unknown flag: " << arg << "\n";
+      std::cerr << COLOR_RED << "[ERROR]" << COLOR_RESET << " Unknown flag: '"
+                << arg << "' try 'unnc -help'\n";
       return 1;
     }
   }
@@ -180,7 +224,7 @@ int main(int argc, char **argv) {
       ensureParentDirectoryExists(exePath, "Creating executable directory");
       std::cout << COLOR_YELLOW << "Linking: " << exePath.string()
                 << COLOR_RESET << "\n";
-      Linker linker(staticCompile);
+      Linker linker(staticCompile, isFreeStanding, customScriptPath);
       std::string mainObj = links[0];
       std::vector<std::string> restLinks(links.begin() + 1, links.end());
       linker.processLinks(mainObj, restLinks, exePath.string());
@@ -200,13 +244,30 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  PlatformExtension ext = getPlatformExtensions(target);
   fs::path srcPath(sourceFile);
 
   // Default output paths
   if (objFile.empty())
-    objFile = srcPath.stem().string() + ".o";
+    objFile = srcPath.stem().string() + ext.objectExtension;
+  else {
+    // If the user provided a name without an extension, normalize it
+    if (fs::path(objFile).extension().empty()) {
+      objFile += ext.objectExtension;
+    }
+  }
+
   if (exeFile.empty())
-    exeFile = srcPath.stem().string();
+    exeFile = srcPath.stem().string() + ext.executableExtension;
+  else {
+    // If user provided an executable path without an extension on Windows, fix
+    // it
+    if (!ext.executableExtension.empty() &&
+        fs::path(exeFile).extension() != ext.executableExtension) {
+      exeFile += ext.executableExtension;
+    }
+  }
+
   if (stubFile.empty())
     stubFile = srcPath.stem().string() + ".stub";
 
@@ -281,7 +342,7 @@ int main(int argc, char **argv) {
     // Semantics
     if (logOutput)
       std::cout << COLOR_BOLD << COLOR_BLUE << "Semantics\n" << COLOR_RESET;
-    Semantics semantics(deserial, errorHandler, logOutput);
+    Semantics semantics(deserial, errorHandler, logOutput, isFreeStanding);
     for (const auto &node : AST)
       semantics.walker(node.get());
     if (semantics.failed())
@@ -331,7 +392,8 @@ int main(int argc, char **argv) {
     if (logOutput)
       std::cout << COLOR_BOLD << COLOR_BLUE << "IR\n" << COLOR_RESET;
     IRGenerator irgen(semantics, errorHandler, auditor, layout.totalHeapSize,
-                      logOutput, currentOptLevel);
+                      logOutput, currentOptLevel, target, sourceFile,
+                      isFreeStanding);
     irgen.generate(AST);
     if (logOutput)
       irgen.dumpIR();
@@ -358,7 +420,7 @@ int main(int argc, char **argv) {
     ensureParentDirectoryExists(exePath, "Creating executable directory");
     std::cout << COLOR_YELLOW << "Linking: " << exePath.string() << COLOR_RESET
               << "\n";
-    Linker linker(staticCompile);
+    Linker linker(staticCompile, isFreeStanding, customScriptPath);
     linker.processLinks(objPath.string(), links, exePath.string());
     std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
               << " Executable: " << exePath.string() << "\n";

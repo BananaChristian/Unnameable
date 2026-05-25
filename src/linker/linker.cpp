@@ -6,7 +6,9 @@
 
 namespace fs = std::filesystem;
 
-Linker::Linker(bool isStatic) : isStatic(isStatic) {}
+Linker::Linker(bool isStatic, bool freeStanding, std::string customScriptPath)
+    : isStatic(isStatic), freeStanding(freeStanding),
+      customScriptPath(customScriptPath) {}
 
 std::string Linker::getExecutableDir() {
   char buf[4096];
@@ -26,7 +28,8 @@ void Linker::processLinks(const std::string &currentObject,
                           const std::string &outputExecutable) {
 
   if (!checkLLD())
-    throw std::runtime_error("ld.lld not found — install lld to use unnc");
+    throw std::runtime_error(
+        "ld.lld not found, please install lld to use unnc");
 
   // Static library — just archive
   if (isStatic) {
@@ -56,28 +59,39 @@ void Linker::processLinks(const std::string &currentObject,
   fs::path urcLib = coreDir / "urc.a";
   fs::path interpPath = coreDir / "interp.o";
 
-  if (!fs::exists(entryPath))
-    throw std::runtime_error("Missing core/entry.o");
-  if (!fs::exists(urcLib))
-    throw std::runtime_error("Missing core/urc.a");
-  if (needsDynamic && !fs::exists(interpPath))
-    throw std::runtime_error("Missing core/interp.o for dynamic build");
+  if (!freeStanding) {
+    if (!fs::exists(entryPath))
+      throw std::runtime_error("Missing core/entry.o");
+    if (!fs::exists(urcLib))
+      throw std::runtime_error("Missing core/urc.a");
+    if (needsDynamic && !fs::exists(interpPath))
+      throw std::runtime_error("Missing core/interp.o for dynamic build");
+  }
 
   // Pick linker script
   std::string scriptName =
       needsDynamic ? "linker_dynamic.ld" : "linker_static.ld";
   fs::path scriptPath = scriptDir / scriptName;
+
+  // If the user provided a custom path override and use it
+  if (!customScriptPath.empty())
+    scriptPath = customScriptPath;
+
   if (!fs::exists(scriptPath))
-    throw std::runtime_error("Missing linker script: " + scriptName);
+    throw std::runtime_error("Could not find linker script: " +
+                             customScriptPath);
 
   // Build command
   std::string cmd = "ld.lld -T " + scriptPath.string() +
                     " --gc-sections -o \"" + outputExecutable + "\"";
 
   // Core objects, order matters
-  if (needsDynamic)
-    cmd += " \"" + interpPath.string() + "\"";
-  cmd += " \"" + entryPath.string() + "\"";
+  if (!freeStanding) {
+    if (needsDynamic)
+      cmd += " \"" + interpPath.string() + "\"";
+
+    cmd += " \"" + entryPath.string() + "\"";
+  }
 
   // User's object
   cmd += " \"" + currentObject + "\"";
@@ -97,10 +111,9 @@ void Linker::processLinks(const std::string &currentObject,
   }
 
   // Core runtime last
-  cmd += " \"" + urcLib.string() + "\"";
+  if (!freeStanding)
+    cmd += " \"" + urcLib.string() + "\"";
 
-  std::cout << "[LINKER] Mode: " << (needsDynamic ? "DYNAMIC" : "STATIC")
-            << "\n";
   std::cout << "[LINKER] " << cmd << "\n";
 
   if (system(cmd.c_str()) != 0)

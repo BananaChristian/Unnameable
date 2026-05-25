@@ -5,6 +5,8 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Value.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
 
 #include "ast.hpp"
 #include "audit.hpp"
@@ -47,7 +49,9 @@ class IRGenerator {
 
 public:
   IRGenerator(Semantics &semantics, ErrorHandler &handler, Auditor &auditor,
-              size_t totalHeapSize, bool isVerbose, OptLevel optLevel);
+              size_t totalHeapSize, bool isVerbose, OptLevel optLevel,
+              std::string target_triple, std::string filename,
+              bool isFreeStanding);
 
   using generatorFunctions = void (IRGenerator::*)(Node *node);
   using expressionGenerators = llvm::Value *(IRGenerator::*)(Node * node);
@@ -84,11 +88,15 @@ private:
   llvm::IRBuilder<> funcBuilder; // This is the builder for functions
   std::unique_ptr<llvm::Module> module;
   const llvm::DataLayout *layout;
+  std::unique_ptr<llvm::TargetMachine> targetMachine;
   Semantics &semantics;
   ErrorHandler &errorHandler;
   Auditor &auditor;
   size_t totalHeapSize;
   bool isVerbose;
+  bool freestanding = false;
+  std::string target_triple;
+  std::string filename;
   bool inhibitCleanUp = false;
   llvm::Value *pendingSelfArg = nullptr;
 
