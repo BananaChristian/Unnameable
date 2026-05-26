@@ -117,8 +117,6 @@ enum ErrorCode : int {
   NoNeedForInit = 3092,
   InvalidEnumMemberVal = 3093,
   InvalidEnumLitType = 3094,
-  SignIncompatibility = 3095,
-  OutOfRange = 3096,
   NegativeMember = 3097,
   FloatingInit = 3098,
   ConstMustBeInitialized = 3100,
@@ -157,6 +155,9 @@ enum ErrorCode : int {
   ModMustBeGlobal = 3134,
   ImportMustBeGlobal = 3135,
   IllegalUseInFreeStanding = 3136,
+  InterruptsMustBeVoid=3137,
+  CannotCallInterrupts=3138,
+  CannotPassCustomByVal=3139,
 
   ArraySizeMismatch = 4001,
 

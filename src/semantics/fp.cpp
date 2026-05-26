@@ -4,7 +4,8 @@
 #include <string>
 
 static std::shared_ptr<SymbolInfo>
-makeFuncSymbol(const std::string &name, bool isExportable, bool hasError) {
+makeFuncSymbol(const std::string &name, bool isExportable, bool isNaked,
+               bool isInterrupt, bool hasError) {
   auto sym = std::make_shared<SymbolInfo>();
   sym->isFunction = true;
   sym->isExportable = isExportable;
@@ -13,6 +14,8 @@ makeFuncSymbol(const std::string &name, bool isExportable, bool hasError) {
   sym->func().isDeclaration = false;
   sym->func().isDefined = false;
   sym->func().returnType = ResolvedType::unknown();
+  sym->func().isInterrupt = isInterrupt;
+  sym->func().isNaked = isNaked;
   return sym;
 }
 
@@ -64,6 +67,13 @@ void Semantics::walkReturnStatement(Node *node) {
 
   const ResolvedType &expectedReturn =
       currentFunction.value()->func().returnType;
+
+  if (currentFunction.value()->func().isInterrupt) {
+    if (expectedReturn.base().kind != DataType::VOID) {
+      logSemanticErrors(ErrorCode::InterruptsMustBeVoid, retStmt);
+      return;
+    }
+  }
 
   if (!retStmt->return_value) {
     if (expectedReturn.base().kind != DataType::VOID) {
@@ -132,16 +142,13 @@ void Semantics::walkReturnStatement(Node *node) {
     transferBaton(retStmt, retSym->codegen().ID);
   }
   insertMetaData(retStmt, retSym);
-  metaData[retStmt] = retSym;
 }
 
 void Semantics::walkFunctionParameters(Node *node) {
   auto *param = dynamic_cast<VariableDeclaration *>(node);
-  if (!param) {
+  if (!param)
     reportDevBug("Function parameter is not a VariableDeclaration", node);
-  }
 
-  logInternal("Analyzing function parameter...");
   const std::string &paramName = param->var_name->expression.TokenLiteral;
 
   if (lookUpInCurrentScope(paramName)) {
@@ -159,7 +166,14 @@ void Semantics::walkFunctionParameters(Node *node) {
     logSemanticErrors(ErrorCode::InvalidAutoUse, param);
     return;
   }
+
   ResolvedType resolvedType = inferNodeDataType(param);
+  if (currentFunction.value()->func().isInterrupt &&
+      isCustomTypeByValue(resolvedType)) {
+    logSemanticErrors(ErrorCode::CannotPassCustomByVal, param,
+                      {resolvedType.resolvedName});
+    return;
+  }
 
   if (param->isHeap) {
     logSemanticErrors(ErrorCode::InvalidHeapParam, param, {paramName});
@@ -210,6 +224,8 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   const std::string funcName = funcExpr->func_key.TokenLiteral;
   const bool isExportable = funcExpr->isExportable;
+  const bool isInterrupt = funcExpr->isInterrupt;
+  const bool isNaked = funcExpr->isNaked;
 
   if (insideFunction) {
     logSemanticErrors(ErrorCode::IllegalFunctionDefinition, funcExpr);
@@ -235,7 +251,8 @@ void Semantics::walkFunctionExpression(Node *node) {
     }
   }
 
-  auto funcInfo = makeFuncSymbol(funcName, isExportable, hasError);
+  auto funcInfo =
+      makeFuncSymbol(funcName, isExportable, isNaked, isInterrupt, hasError);
   funcInfo->func().isDeclaration = true;
 
   bool insideMemberContext = insideComponent || insideSeal || insideAllocator;
@@ -322,6 +339,8 @@ void Semantics::walkFunctionExpression(Node *node) {
   funcInfo->type().isPointer = returnType.isPointer();
   funcInfo->type().isArray = returnType.isArray();
   funcInfo->type().isRef = returnType.isRef();
+  funcInfo->func().isNaked = isNaked;
+  funcInfo->func().isInterrupt = isInterrupt;
   funcInfo->func().returnType = returnType;
   funcInfo->func().paramTypes = paramTypes;
   funcInfo->func().isDefined = true;
@@ -386,6 +405,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   const std::string funcName =
       funcDeclrStmt->function_name->expression.TokenLiteral;
   const bool isExportable = funcDeclrStmt->isExportable;
+  const bool isNaked = funcDeclrStmt->isNaked;
+  const bool isInterrupt = funcDeclrStmt->isInterrupt;
 
   if (insideFunction) {
     logSemanticErrors(ErrorCode::IllegalFunctionDeclaration, funcDeclrStmt);
@@ -406,7 +427,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     return;
   }
 
-  auto funcInfo = makeFuncSymbol(funcName, isExportable, hasError);
+  auto funcInfo =
+      makeFuncSymbol(funcName, isExportable, isNaked, isInterrupt, hasError);
   funcInfo->func().isDeclaration = true;
 
   currentFunction = funcInfo;
@@ -476,6 +498,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   funcInfo->type().isRef = returnType.isRef();
   funcInfo->func().returnType = returnType;
   funcInfo->func().paramTypes = paramTypes;
+  funcInfo->func().isInterrupt = isInterrupt;
+  funcInfo->func().isNaked = isNaked;
   funcInfo->hasError = hasError;
   funcInfo->isExportable = isExportable;
 
@@ -544,8 +568,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   if (!funcCall)
     reportDevBug("Invalid function call expression", node);
 
-  const std::string callName =
-      funcCall->function_identifier->expression.TokenLiteral;
+  const std::string callName = extractIdentifierName(funcCall);
 
   auto callSymbolInfo = resolveSymbolInfo(callName);
 
@@ -570,9 +593,11 @@ void Semantics::walkFunctionCallExpression(Node *node) {
     return;
   }
 
-  if (!callSymbolInfo->func().isDeclaration && !isFnPtr) {
+  if (!callSymbolInfo->func().isDeclaration && !isFnPtr)
     logSemanticErrors(ErrorCode::NotDefinedOrDeclared, funcCall, {callName});
-  }
+
+  if (callSymbolInfo->func().isInterrupt)
+    logSemanticErrors(ErrorCode::CannotCallInterrupts, funcCall, {callName});
 
   std::vector<Node *> toTransfer;
   std::vector<ResolvedType> argTypes;

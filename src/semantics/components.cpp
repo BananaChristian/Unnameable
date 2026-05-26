@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <limits>
 #include <string>
 
 #include "ast.hpp"
@@ -63,16 +62,12 @@ void Semantics::walkEnumStatement(Node *node) {
   }
 
   // Determine if underlying type is unsigned
-  bool underlyingIsUnsigned = (underLyingType.kind == DataType::U8 ||
-                               underLyingType.kind == DataType::U16 ||
-                               underLyingType.kind == DataType::U32 ||
-                               underLyingType.kind == DataType::U64 ||
-                               underLyingType.kind == DataType::U128);
+  bool underlyingIsUnsigned = isUnsignedIntegerType(underLyingType);
 
   // Push temporary scope
   symbolTable.push_back({});
   std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
-  std::int64_t currentValue = 0;
+  int64_t currentValue = 0;
   auto enumInfo = std::make_shared<SymbolInfo>();
 
   for (const auto &enumMember : enumStmt->enum_content) {
@@ -94,147 +89,40 @@ void Semantics::walkEnumStatement(Node *node) {
 
     std::int64_t memberValue = 0;
     if (enumMember->value) {
-      // Check all literal types
-      TokenType literalType = TokenType::ILLEGAL; // Default invalid type
-      std::string literalStr;
-      if (auto i8Lit = dynamic_cast<I8Literal *>(enumMember->value.get())) {
-        literalType = TokenType::INT8;
-        literalStr = i8Lit->expression.TokenLiteral;
-      } else if (auto u8Lit =
-                     dynamic_cast<U8Literal *>(enumMember->value.get())) {
-        literalType = TokenType::UINT8;
-        literalStr = u8Lit->expression.TokenLiteral;
-      } else if (auto i16Lit =
-                     dynamic_cast<I16Literal *>(enumMember->value.get())) {
-        literalType = TokenType::INT16;
-        literalStr = i16Lit->expression.TokenLiteral;
-      } else if (auto u16Lit =
-                     dynamic_cast<U16Literal *>(enumMember->value.get())) {
-        literalType = TokenType::UINT16;
-        literalStr = u16Lit->expression.TokenLiteral;
-      } else if (auto i32Lit =
-                     dynamic_cast<I32Literal *>(enumMember->value.get())) {
-        literalType = TokenType::INT32;
-        literalStr = i32Lit->expression.TokenLiteral;
-      } else if (auto u32Lit =
-                     dynamic_cast<U32Literal *>(enumMember->value.get())) {
-        literalType = TokenType::UINT32;
-        literalStr = u32Lit->expression.TokenLiteral;
-      } else if (auto i64Lit =
-                     dynamic_cast<I64Literal *>(enumMember->value.get())) {
-        literalType = TokenType::INT64;
-        literalStr = i64Lit->expression.TokenLiteral;
-      } else if (auto u64Lit =
-                     dynamic_cast<U64Literal *>(enumMember->value.get())) {
-        literalType = TokenType::UINT64;
-        literalStr = u64Lit->expression.TokenLiteral;
-      } else if (auto i128Lit =
-                     dynamic_cast<I128Literal *>(enumMember->value.get())) {
-        literalType = TokenType::INT128;
-        literalStr = i128Lit->expression.TokenLiteral;
-      } else if (auto u128Lit =
-                     dynamic_cast<U128Literal *>(enumMember->value.get())) {
-        literalType = TokenType::UINT128;
-        literalStr = u128Lit->expression.TokenLiteral;
-      } else if (auto isizeLit =
-                     dynamic_cast<ISIZELiteral *>(enumMember->value.get())) {
-        literalType = TokenType::INTSIZE;
-        literalStr = isizeLit->expression.TokenLiteral;
-      } else if (auto usizeLit =
-                     dynamic_cast<USIZELiteral *>(enumMember->value.get())) {
-        literalType = TokenType::UINTSIZE;
-        literalStr = usizeLit->expression.TokenLiteral;
-      } else if (auto intLit =
-                     dynamic_cast<INTLiteral *>(enumMember->value.get())) {
-        literalType = TokenType::INT;
-        literalStr = intLit->expression.TokenLiteral;
-      } else {
+      if (!isIntegerConstant(enumMember->value.get())) {
         logSemanticErrors(ErrorCode::InvalidEnumMemberVal, enumMember.get());
         symbolTable.pop_back();
         return;
       }
 
-      // Map literal type to DataType
-      bool isUnsignedLiteral;
-      switch (literalType) {
-      case TokenType::INT8:
-      case TokenType::INT16:
-      case TokenType::INT32:
-      case TokenType::INT64:
-      case TokenType::INT128:
-      case TokenType::INTSIZE:
-      case TokenType::INT: // Generic int is i32
-        isUnsignedLiteral = false;
-        break;
-      case TokenType::UINT8:
-      case TokenType::UINT16:
-      case TokenType::UINT32:
-      case TokenType::UINT64:
-      case TokenType::UINT128:
-      case TokenType::UINTSIZE:
-        isUnsignedLiteral = true;
-        break;
-      default:
+      walker(enumMember->value.get());
+      auto litSym = getSymbolFromMeta(enumMember->value.get());
+      if (!litSym)
+        reportDevBug("Failed to analyze enum member value",
+                     enumMember->value.get());
+
+      auto literalType = litSym->type().type;
+      if (!isInteger(literalType)) {
         logSemanticErrors(ErrorCode::InvalidEnumLitType, enumMember.get());
         symbolTable.pop_back();
         return;
       }
 
-      // Validate signedness
-      if (isUnsignedLiteral && !underlyingIsUnsigned) {
-        logSemanticErrors(ErrorCode::SignIncompatibility, enumMember.get(),
-                          {literalStr});
-        symbolTable.pop_back();
-        return;
+      // Give the enum member's value literal context
+      if (enumMember->value.get()) {
+        giveGenericLiteralContext(enumMember->value.get(), underLyingType,
+                                  litSym);
       }
-      if (!isUnsignedLiteral && underlyingIsUnsigned) {
-        logSemanticErrors(ErrorCode::SignIncompatibility, enumMember.get(),
-                          {literalStr});
+
+      if(!isTypeCompatible(underLyingType, literalType)){
+        logSemanticErrors(ErrorCode::TypeMismatch, enumMember->value.get(),{underLyingType.resolvedName,literalType.resolvedName});
         symbolTable.pop_back();
         return;
       }
 
-      // Parse and validate range
-      try {
-        if (isUnsignedLiteral) {
-          std::uint64_t parsedValue = std::stoull(literalStr);
-          memberValue = static_cast<std::int64_t>(parsedValue);
-          if (underLyingType.kind == DataType::U8 &&
-              parsedValue > std::numeric_limits<std::uint8_t>::max())
-            throw std::out_of_range("Value out of range for u8");
-          if (underLyingType.kind == DataType::U16 &&
-              parsedValue > std::numeric_limits<std::uint16_t>::max())
-            throw std::out_of_range("Value out of range for u16");
-          if (underLyingType.kind == DataType::U32 &&
-              parsedValue > std::numeric_limits<std::uint32_t>::max())
-            throw std::out_of_range("Value out of range for u32");
-          // No range check for U64, U128, USIZE yet
-        } else {
-          memberValue = std::stoll(literalStr);
-          if (underLyingType.kind == DataType::I8 &&
-              (memberValue < std::numeric_limits<std::int8_t>::min() ||
-               memberValue > std::numeric_limits<std::int8_t>::max()))
-            throw std::out_of_range("Value out of range for i8");
-          if (underLyingType.kind == DataType::I16 &&
-              (memberValue < std::numeric_limits<std::int16_t>::min() ||
-               memberValue > std::numeric_limits<std::int16_t>::max()))
-            throw std::out_of_range("Value out of range for i16");
-          if (underLyingType.kind == DataType::I32 &&
-              (memberValue < std::numeric_limits<std::int32_t>::min() ||
-               memberValue > std::numeric_limits<std::int32_t>::max()))
-            throw std::out_of_range("Value out of range for i32");
-          // No range check for I64, I128, ISIZE YET
-        }
-      } catch (const std::invalid_argument &) {
-        logSemanticErrors(ErrorCode::InvalidEnumMemberVal, enumMember.get());
-        symbolTable.pop_back();
-        return;
-      } catch (const std::out_of_range &e) {
-        logSemanticErrors(ErrorCode::OutOfRange, enumMember.get(),
-                          {literalStr});
-        symbolTable.pop_back();
-        return;
-      }
+      std::uint64_t parsedValue =
+          std::stoull(enumMember->value.get()->expression.TokenLiteral);
+      memberValue = static_cast<std::int64_t>(parsedValue);
     } else {
       memberValue = currentValue;
       if (underlyingIsUnsigned && memberValue < 0) {
@@ -762,8 +650,7 @@ void Semantics::walkComponentStatement(Node *node) {
       TokenType op = infixExpr->operat.type;
 
       if (op != TokenType::AT) {
-        logSemanticErrors(ErrorCode::InvalidInjectionOp,
-                          infixExpr);
+        logSemanticErrors(ErrorCode::InvalidInjectionOp, infixExpr);
       }
 
       auto dataName = leftIdent->expression.TokenLiteral;

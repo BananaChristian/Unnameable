@@ -74,7 +74,7 @@ struct ResolvedType {
   // nullptr means I am the base
   std::shared_ptr<ResolvedType> innerType = nullptr;
 
-  //Only meaningful if we are dealing with an fnPtr
+  // Only meaningful if we are dealing with an fnPtr
   std::vector<ResolvedType> fnParamTypes;
   std::shared_ptr<ResolvedType> fnReturnType;
 
@@ -158,7 +158,7 @@ struct TypeInfo {
   bool isRef = false;
   bool isPointer = false;
   bool isArray = false;
-  bool isFnPtr=false;
+  bool isFnPtr = false;
 
   // Heap address flag, set when the variable needs an implicit address-of
   // during codegen (e.g. heap-allocated structs passed by pointer).
@@ -188,7 +188,7 @@ struct StorageInfo {
   int64_t constIntVal = 0; // Compile-time integer value (when isConstant)
 
   int pointerCount = 0;
-  int refCount = 0;       // Number of live references to this symbol
+  int refCount = 0; // Number of live references to this symbol
 };
 
 // FunctionInfo, only populated when the symbol represents a callable
@@ -200,7 +200,9 @@ struct FunctionInfo {
 
   bool isDeclaration = false; // Forward-declared but not yet defined
   bool isDefined = false;
-  bool isBehavior = false; // Component method / behaviour block
+
+  bool isInterrupt = false;
+  bool isNaked = false;
 };
 
 // GenericInfo, only populated for generic symbols and their instantiations
@@ -273,13 +275,15 @@ struct MemberInfo {
   bool isConstant = false;
   bool isInitialised = false;
   bool isVolatile = false;
-  bool isRestrict=false;
+  bool isRestrict = false;
   bool isExportable = false;
+  bool isNaked = false;
+  bool isInterrupt = false;
 
   // Indirection
   bool isRef = false;
   bool isPointer = false;
-  bool isFnPtr=false;
+  bool isFnPtr = false;
 
   // Function / method flags
   bool isFunction = false;

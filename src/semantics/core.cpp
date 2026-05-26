@@ -1790,6 +1790,47 @@ bool Semantics::isInteger(const ResolvedType &t) {
   return isInt;
 }
 
+bool Semantics::isUnsignedIntegerType(const ResolvedType &type) {
+  bool isUnsigned = false;
+  if (!type.isBase())
+    return isUnsigned;
+
+  switch (type.kind) {
+  case DataType::U8:
+  case DataType::U16:
+  case DataType::U32:
+  case DataType::U64:
+  case DataType::U128:
+  case DataType::USIZE:
+    isUnsigned = true;
+  default:
+    isUnsigned = false;
+  }
+
+  return isUnsigned;
+}
+
+bool Semantics::isSignedIntegerType(const ResolvedType &type) {
+  bool isSigned = false;
+  // This guards against heavily modified types
+  if (!type.isBase())
+    return isSigned;
+
+  switch (type.kind) {
+  case DataType::I8:
+  case DataType::I16:
+  case DataType::I32:
+  case DataType::I64:
+  case DataType::I128:
+  case DataType::ISIZE:
+    isSigned = true;
+  default:
+    isSigned = false;
+  }
+
+  return isSigned;
+}
+
 bool Semantics::isFloat(const ResolvedType &t) {
   return (t.kind == DataType::F32 || t.kind == DataType::F64) && t.isBase();
 }
@@ -2398,6 +2439,28 @@ bool Semantics::isTerminator(Node *stmt) {
     return true;
 
   return false;
+}
+
+bool Semantics::isCustomTypeByValue(const ResolvedType &type) {
+  bool isPassedByVal = false;
+  // First check if it is even a custom type if its not dont bother
+  auto typeIt = customTypesTable.find(type.base().resolvedName);
+  if (typeIt == customTypesTable.end())
+    isPassedByVal = false;
+
+  if (type.base().kind == DataType::ENUM)
+    isPassedByVal = false;
+
+  if (type.isPointer())
+    isPassedByVal = false;
+
+  if (type.isRef())
+    isPassedByVal = false;
+
+  if (type.isNull)
+    isPassedByVal = false;
+
+  return isPassedByVal;
 }
 
 std::string Semantics::getTerminatorString(Node *node) {

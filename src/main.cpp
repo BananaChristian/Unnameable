@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
              "x86_64-unknown-linux-gnu\n\n";
       return 0;
     }
-    if (arg == "--version") {
+    if (arg == "--version"|| arg == "-version") {
       std::cout << COLOR_GREEN << "Unnameable Compiler v0.1.0\n" << COLOR_RESET;
       return 0;
     }

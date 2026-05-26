@@ -12,6 +12,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
   bool isVolatile = false;
   bool isRestrict = false;
   bool isExportable = false;
+  bool isInterrupt = false;
+  bool isNaked = false;
 
   Token heap_token;
   std::unique_ptr<Expression> allocType = nullptr;     // For heap<allocator>
@@ -66,6 +68,12 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
       advance();
     } else if (currentToken().type == TokenType::EXPORT) {
       isExportable = true;
+      advance();
+    } else if (currentToken().type == TokenType::INTERRUPT) {
+      isInterrupt = true;
+      advance();
+    } else if (currentToken().type == TokenType::NAKED) {
+      isNaked = true;
       advance();
     } else if (currentToken().type == TokenType::FN) {
       isFuncModded = true;
@@ -137,12 +145,17 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
     auto fnDeclrExpr =
         dynamic_cast<FunctionDeclarationExpression *>(fnStmt->funcExpr.get());
-    if (fnExpr)
+    if (fnExpr) {
       fnExpr->isExportable = isExportable;
+      fnExpr->isInterrupt = isInterrupt;
+      fnExpr->isNaked = isNaked;
+    }
     if (fnDeclrExpr) {
       if (auto fnDeclStmt = dynamic_cast<FunctionDeclaration *>(
               fnDeclrExpr->funcDeclrStmt.get())) {
         fnDeclStmt->isExportable = isExportable;
+        fnDeclStmt->isInterrupt = isInterrupt;
+        fnDeclStmt->isNaked = isNaked;
       }
     }
   } else if (auto asmStmt = dynamic_cast<ASMStatement *>(stmt.get())) {
@@ -189,8 +202,8 @@ std::unique_ptr<Statement> Parser::parseVariableDeclaration() {
   }
 
   if (currentToken().type != TokenType::IDENTIFIER) {
-    logError(ErrorCode::UnexpectedToken,
-             currentToken(),{"'identifier'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'identifier'", currentToken().TokenLiteral});
     synchronize(SyncLevel::MID);
     return nullptr;
   }

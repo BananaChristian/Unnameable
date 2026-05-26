@@ -744,6 +744,8 @@ struct InstanceExpression : Expression {
 // Function expression struct node
 struct FunctionExpression : Expression {
   bool isExportable;
+  bool isInterrupt;
+  bool isNaked;
   Token func_key;
   std::vector<std::unique_ptr<Statement>> call;
   std::unique_ptr<Expression> return_type;
@@ -753,9 +755,14 @@ struct FunctionExpression : Expression {
     std::ostringstream oss;
 
     // Export keyword
-    if (isExportable) {
+    if (isExportable)
       oss << "export ";
-    }
+
+    if (isInterrupt)
+      oss << "interrupt ";
+
+    if (isNaked)
+      oss << "naked ";
 
     oss << "FunctionExpression: " << func_key.TokenLiteral << " ";
     oss << "Function parameters: (";
@@ -776,17 +783,18 @@ struct FunctionExpression : Expression {
   }
 
   FunctionExpression *shallowClone() const override {
-    return new FunctionExpression(isExportable, func_key, clonePtrVector(call),
-                                  clonePtr(return_type), clonePtr(block));
+    return new FunctionExpression(isExportable, isInterrupt, isNaked, func_key,
+                                  clonePtrVector(call), clonePtr(return_type),
+                                  clonePtr(block));
   }
 
-  FunctionExpression(bool exportable, Token fn,
+  FunctionExpression(bool exportable, bool interrupt, bool naked, Token fn,
                      std::vector<std::unique_ptr<Statement>> c,
                      std::unique_ptr<Expression> return_t,
                      std::unique_ptr<Expression> bl)
-      : Expression(fn), isExportable(exportable), func_key(fn),
-        call(std::move(c)), return_type(std::move(return_t)),
-        block(std::move(bl)) {};
+      : Expression(fn), isExportable(exportable), isInterrupt(interrupt),
+        isNaked(naked), func_key(fn), call(std::move(c)),
+        return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
 struct BasicType : Expression {
@@ -1819,6 +1827,8 @@ struct FunctionStatement : Statement {
 // Function declaration statement
 struct FunctionDeclaration : Statement {
   bool isExportable;
+  bool isInterrupt;
+  bool isNaked;
   Token func_keyword_token;
   std::unique_ptr<Expression> function_name;
   std::vector<std::unique_ptr<Statement>> parameters;
@@ -1830,6 +1840,11 @@ struct FunctionDeclaration : Statement {
 
     if (isExportable)
       oss << "export ";
+    if (isInterrupt)
+      oss << "interrupt ";
+    if (isNaked)
+      oss << "naked ";
+
     oss << "Function Declaration Statement: ";
     oss << func_keyword_token.TokenLiteral << " ";
     oss << (function_name ? function_name->toString() : "[null_name]") << " ";
@@ -1849,16 +1864,18 @@ struct FunctionDeclaration : Statement {
   }
 
   FunctionDeclaration *shallowClone() const override {
-    return new FunctionDeclaration(
-        isExportable, func_keyword_token, clonePtr(function_name),
-        clonePtrVector(parameters), clonePtr(return_type));
+    return new FunctionDeclaration(isExportable, isInterrupt, isNaked,
+                                   func_keyword_token, clonePtr(function_name),
+                                   clonePtrVector(parameters),
+                                   clonePtr(return_type));
   }
 
-  FunctionDeclaration(bool exportable, Token func,
+  FunctionDeclaration(bool exportable, bool interrupt, bool naked, Token func,
                       std::unique_ptr<Expression> identifier,
                       std::vector<std::unique_ptr<Statement>> params,
                       std::unique_ptr<Expression> ret_type)
-      : Statement(func), isExportable(exportable), func_keyword_token(func),
+      : Statement(func), isExportable(exportable), isInterrupt(interrupt),
+        isNaked(naked), func_keyword_token(func),
         function_name(std::move(identifier)), parameters(std::move(params)),
         return_type(std::move(ret_type)) {};
 };

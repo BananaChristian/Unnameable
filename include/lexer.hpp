@@ -84,6 +84,8 @@ class Lexer {
       {"bool", TokenType::BOOL_KEYWORD},
       {"arr", TokenType::ARRAY},
 
+      {"interrupt", TokenType::INTERRUPT},
+      {"naked", TokenType::NAKED},
       {"persist", TokenType::PERSIST},
       {"const", TokenType::CONST},
       {"mut", TokenType::MUT},

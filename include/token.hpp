@@ -65,6 +65,9 @@ enum class TokenType {
 
   ENUM,
 
+  NAKED,
+  INTERRUPT,
+
   PERSIST,   // Persist keyword
   VOLATILE,  // Volatile keyword
   RESTRICT,  // restrict keyword
@@ -101,12 +104,12 @@ enum class TokenType {
 
   IMPORT, // import keyword
   LINK,   // Link keyword
-  MODULE, //module keyword
+  MODULE, // module keyword
 
   SEAL, // Scope seal keyword
 
-  TRACE,//trace keyword 
-  ASM, //asm keyword
+  TRACE, // trace keyword
+  ASM,   // asm keyword
 
   // Control flow
   IF,
@@ -154,8 +157,8 @@ enum class TokenType {
   INT,   // Generic integer
   FLOAT, // Generic float
 
-  STRING,//For normal strings ""
-  F_STRING,//For stuff like f""
+  STRING,   // For normal strings ""
+  F_STRING, // For stuff like f""
 
   CHAR8, // 8 bit char
   CHAR8_KEYWORD,

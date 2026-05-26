@@ -566,6 +566,9 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::ASM] = &Parser::parseASMStatement;
   StatementParseFunctionsMap[TokenType::EXPORT] =
       &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::INTERRUPT] =
+      &Parser::parseVariableModifier;
+  StatementParseFunctionsMap[TokenType::NAKED] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::REF] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::PTR] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::DEREF] =

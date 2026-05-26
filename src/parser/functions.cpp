@@ -76,8 +76,9 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
     advance(); // Consume the ( token
   }
 
-  if(hasParens&& currentToken().type != TokenType::RPAREN){
-    logError(ErrorCode::UnexpectedToken, currentToken(),{")",currentToken().TokenLiteral});
+  if (hasParens && currentToken().type != TokenType::RPAREN) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {")", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return params;
   }
@@ -130,7 +131,6 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
 
 // Parsing function expression
 std::unique_ptr<Expression> Parser::parseFunctionExpression() {
-  bool isExportable = false;
   //--------Dealing with func keyword---------------
   Token func_tok =
       currentToken(); // The token representing the keyword for functions (func)
@@ -183,7 +183,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
 
   if (currentToken().type != TokenType::LBRACE) {
     auto decl = std::make_unique<FunctionDeclaration>(
-        isExportable, func_tok, std::move(identExpr), std::move(call),
+        false, false, false, func_tok, std::move(identExpr), std::move(call),
         std::move(return_type));
 
     return std::make_unique<FunctionDeclarationExpression>(func_tok,
@@ -196,7 +196,7 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
   }
 
   return std::make_unique<FunctionExpression>(
-      isExportable, identToken, std::move(call), std::move(return_type),
+      false, false, false, identToken, std::move(call), std::move(return_type),
       std::move(block));
 }
 

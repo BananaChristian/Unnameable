@@ -881,6 +881,22 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.hints = suggestForError(code);
     return message;
   }
+  case ErrorCode::InterruptsMustBeVoid: {
+    message.code = ErrorCode::InterruptsMustBeVoid;
+    message.message = "interrupt functions must have a return type of 'void'";
+    return message;
+  }
+  case ErrorCode::CannotCallInterrupts: {
+    message.code = ErrorCode::CannotCallInterrupts;
+    message.message = "cannot directly call interrupt function '{0}'";
+    return message;
+  }
+  case ErrorCode::CannotPassCustomByVal: {
+    message.code = ErrorCode::CannotPassCustomByVal;
+    message.message = "cannot pass a record or component type '{0}' by value "
+                      "use a pointer instead";
+    return message;
+  }
   case ErrorCode::DuplicateName: {
     message.code = ErrorCode::DuplicateName;
     message.message = "name '{0}' already exists in scope";
@@ -1193,18 +1209,8 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     return message;
   }
   case ErrorCode::InvalidEnumLitType: {
-    message.code = ErrorCode::InvalidEnumMemberVal;
-    message.message = "invalid literal type for enum member";
-    return message;
-  }
-  case ErrorCode::SignIncompatibility: {
-    message.code = ErrorCode::SignIncompatibility;
-    message.message = "'{0}' is incompatible with the underlying type";
-    return message;
-  }
-  case ErrorCode::OutOfRange: {
-    message.code = ErrorCode::OutOfRange;
-    message.message = "'{0}' is out of range for the underlying type";
+    message.code = ErrorCode::InvalidEnumLitType;
+    message.message = "invalid integer literal type for enum member";
     return message;
   }
   case ErrorCode::NegativeMember: {

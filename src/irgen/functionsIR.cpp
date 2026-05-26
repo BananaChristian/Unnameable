@@ -222,6 +222,11 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
                  fnExpr);
   }
 
+  if (funcSym && funcSym->func().isInterrupt) {
+    fn->addFnAttr(llvm::Attribute::NoInline);
+    fn->addFnAttr("interrupt");
+  }
+
   // Store coercion info
   FunctionCoercion coercion;
   coercion.originalParamTypes = originalParamTypes;
@@ -614,7 +619,7 @@ llvm::Value *IRGenerator::generateCallAddress(Node *node) {
     reportDevBug("Call expression symbol info not found", callExpr);
 
   if (callSym->type().isFnPtr) {
-    llvm::Value *result = generateFnPtrCall(callExpr, callSym,nullptr);
+    llvm::Value *result = generateFnPtrCall(callExpr, callSym, nullptr);
     if (!result)
       reportDevBug("Fn pointer call returned void, cannot take address",
                    callExpr);

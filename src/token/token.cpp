@@ -101,6 +101,10 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: COMPONENT";
   case TokenType::SELF:
     return "Token Type: SELF";
+  case TokenType::INTERRUPT:
+    return "Token  Type: INTERRUPT";
+  case TokenType::NAKED:
+    return "Token Type: NAKED";
 
   case TokenType::NEW:
     return "Token Type: NEW";

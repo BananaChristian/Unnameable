@@ -318,7 +318,10 @@ private:
                               CallExpression *callExpr);
   bool isLiteral(Node *node);
   bool isGenericIntOrFloat(Node *node);
+  bool isUnsignedIntegerType(const ResolvedType &type);
+  bool isSignedIntegerType(const ResolvedType &type);
   bool rhsIsHeap(Node *node);
+  bool isCustomTypeByValue(const ResolvedType &type);
   void popScope();
   void registerLiteral(Node *literal, const ResolvedType &type);
   Node *getCurrentBlock();
