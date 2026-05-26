@@ -885,6 +885,10 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.code = ErrorCode::InterruptsMustBeVoid;
     message.message = "interrupt functions must have a return type of 'void'";
     return message;
+  }case ErrorCode::CannotBeInterruptAndNaked:{
+    message.code=ErrorCode::CannotBeInterruptAndNaked;
+    message.message="a function cannot be both interrupt and naked";
+    return message;
   }
   case ErrorCode::CannotCallInterrupts: {
     message.code = ErrorCode::CannotCallInterrupts;
@@ -1272,6 +1276,11 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.hints = suggestForError(code);
     return message;
   }
+  case ErrorCode::CannotAllowParamsInNaked: {
+    message.code = ErrorCode::CannotAllowParamsInNaked;
+    message.message = "cannot allow parameters in naked function '{0}'";
+    return message;
+  }
   case ErrorCode::PersistRequiresHeap: {
     message.code = ErrorCode::PersistRequiresHeap;
     message.message = "variable '{0}' uses 'persist' without 'heap'";
@@ -1314,6 +1323,12 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.code = ErrorCode::PointerMustBeInitialized;
     message.message = "pointer variable '{0}' must be initialized";
     message.hints = suggestForError(code);
+    return message;
+  }
+  case ErrorCode::ExpectedOnlyASM: {
+    message.code = ErrorCode::ExpectedOnlyASM;
+    message.message =
+        "naked functions must only contain inline assembly block";
     return message;
   }
   case ErrorCode::RestrictOnNonPointer: {

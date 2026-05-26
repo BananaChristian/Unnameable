@@ -158,6 +158,9 @@ enum ErrorCode : int {
   InterruptsMustBeVoid=3137,
   CannotCallInterrupts=3138,
   CannotPassCustomByVal=3139,
+  CannotAllowParamsInNaked=3140,
+  ExpectedOnlyASM=3141,
+  CannotBeInterruptAndNaked=3142,
 
   ArraySizeMismatch = 4001,
 

@@ -1,4 +1,5 @@
 #include "irgen.hpp"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/Instructions.h"
 #include <llvm-18/llvm/IR/Function.h>
 
@@ -227,6 +228,10 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
     fn->addFnAttr("interrupt");
   }
 
+  if (funcSym && funcSym->func().isNaked) {
+    fn->addFnAttr(llvm::Attribute::Naked);
+  }
+
   // Store coercion info
   FunctionCoercion coercion;
   coercion.originalParamTypes = originalParamTypes;
@@ -243,7 +248,12 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
 
   // Bind parameters with original types (not coerced)
   auto argIter = fn->arg_begin();
-  size_t paramIdx = 0;
+  if (hasSRet && argIter != fn->arg_end()) {
+    argIter++;
+  }
+
+  size_t userParamIdx = 0;
+  size_t coercionIdx = hasSRet ? 1 : 0;
 
   for (auto &p : fnExpr->call) {
     auto pIt = semantics.metaData.find(p.get());
@@ -251,15 +261,15 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
       reportDevBug("Failed to find parameter meta data", p.get());
     }
 
-    llvm::Type *originalTy = originalParamTypes[paramIdx];
+    llvm::Type *originalTy = originalParamTypes[userParamIdx];
     llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(
         originalTy, nullptr, p->statement.TokenLiteral);
 
     llvm::Value *paramValue = &(*argIter);
 
     // If parameter was coerced, bitcast back to original type
-    if (paramCoercion[paramIdx].coercedType &&
-        paramCoercion[paramIdx].coercedType != originalTy) {
+    if (paramCoercion[coercionIdx].coercedType &&
+        paramCoercion[coercionIdx].coercedType != originalTy) {
       paramValue =
           funcBuilder.CreateBitCast(paramValue, originalTy->getPointerTo());
       paramValue = funcBuilder.CreateLoad(originalTy, paramValue);
@@ -269,7 +279,8 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
     pIt->second->codegen().llvmValue = alloca;
 
     argIter++;
-    paramIdx++;
+    userParamIdx++;
+    coercionIdx++;
   }
 
   llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
@@ -279,10 +290,20 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   bool isVoidFunction = funcSym->func().returnType.kind == DataType::VOID;
 
   if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator())) {
-    if (isVoidFunction) {
-      funcBuilder.CreateRetVoid();
+    if (funcSym->func().isNaked) {
+      // Naked functions still need an LLVM terminator to satisfy the backend
+      if (isVoidFunction) {
+        funcBuilder.CreateRetVoid();
+      } else {
+        funcBuilder.CreateUnreachable(); // Tells LLVM: control flow stops here!
+      }
     } else {
-      funcBuilder.CreateUnreachable();
+      // Normal function fallback
+      if (isVoidFunction) {
+        funcBuilder.CreateRetVoid();
+      } else {
+        funcBuilder.CreateUnreachable();
+      }
     }
   }
 

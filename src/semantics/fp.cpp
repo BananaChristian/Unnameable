@@ -68,6 +68,9 @@ void Semantics::walkReturnStatement(Node *node) {
   const ResolvedType &expectedReturn =
       currentFunction.value()->func().returnType;
 
+  if (currentFunction.value()->func().isNaked)
+    return;
+
   if (currentFunction.value()->func().isInterrupt) {
     if (expectedReturn.base().kind != DataType::VOID) {
       logSemanticErrors(ErrorCode::InterruptsMustBeVoid, retStmt);
@@ -251,6 +254,11 @@ void Semantics::walkFunctionExpression(Node *node) {
     }
   }
 
+  if (isInterrupt && isNaked) {
+    logSemanticErrors(ErrorCode::CannotBeInterruptAndNaked, funcExpr);
+    return;
+  }
+
   auto funcInfo =
       makeFuncSymbol(funcName, isExportable, isNaked, isInterrupt, hasError);
   funcInfo->func().isDeclaration = true;
@@ -266,6 +274,14 @@ void Semantics::walkFunctionExpression(Node *node) {
   symbolTable.push_back({});
 
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+
+  if (isNaked && !funcExpr->call.empty()) {
+    logSemanticErrors(ErrorCode::CannotAllowParamsInNaked, funcExpr,
+                      {funcName});
+    insideFunction = false;
+    symbolTable.pop_back();
+    return;
+  }
 
   for (const auto &param : funcExpr->call) {
     if (!param)
@@ -332,6 +348,14 @@ void Semantics::walkFunctionExpression(Node *node) {
     }
   }
 
+  if (isInterrupt && !retType->isVoid) {
+    logSemanticErrors(ErrorCode::InterruptsMustBeVoid,
+                      funcExpr->return_type.get());
+    insideFunction = false;
+    symbolTable.pop_back();
+    return;
+  }
+
   funcInfo->hasError = hasError;
   funcInfo->isExportable = isExportable;
   funcInfo->type().type = returnType;
@@ -374,12 +398,23 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   for (const auto &stmt : block->statements) {
     std::optional<std::shared_ptr<SymbolInfo>> savedFunc = currentFunction;
+    if (isNaked) {
+      auto asmStmt = dynamic_cast<ASMStatement *>(stmt.get());
+      if (!asmStmt) {
+        logSemanticErrors(ErrorCode::ExpectedOnlyASM, funcExpr);
+        insideFunction = false;
+        symbolTable.pop_back();
+        break;
+      }
+    }
     walker(stmt.get());
     currentFunction = savedFunc;
   }
 
-  if (returnType.base().kind != DataType::VOID && !hasReturnPath(block)) {
-    logSemanticErrors(ErrorCode::NonVoidNoReturn, funcExpr, {funcName});
+  if (!isNaked) {
+    if (returnType.base().kind != DataType::VOID && !hasReturnPath(block)) {
+      logSemanticErrors(ErrorCode::NonVoidNoReturn, funcExpr, {funcName});
+    }
   }
 
   popScope();
@@ -427,6 +462,11 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     return;
   }
 
+  if (isInterrupt && isNaked) {
+    logSemanticErrors(ErrorCode::CannotBeInterruptAndNaked, funcDeclrStmt);
+    return;
+  }
+
   auto funcInfo =
       makeFuncSymbol(funcName, isExportable, isNaked, isInterrupt, hasError);
   funcInfo->func().isDeclaration = true;
@@ -435,6 +475,13 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   symbolTable.push_back({});
 
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
+
+  if (isNaked && !funcDeclrStmt->parameters.empty()) {
+    logSemanticErrors(ErrorCode::CannotAllowParamsInNaked, funcDeclrStmt,
+                      {funcName});
+    symbolTable.pop_back();
+    return;
+  }
 
   for (const auto &param : funcDeclrStmt->parameters) {
     if (!param)
@@ -480,6 +527,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   ResolvedType returnType = inferNodeDataType(retType);
   if (returnType.base().kind == DataType::UNKNOWN) {
     logSemanticErrors(MissingOrInvalidReturnType, retType);
+    return;
   }
 
   if (!retType->isVoid) {
@@ -490,6 +538,12 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
       logSemanticErrors(ErrorCode::MatchExportsToTypes, retType,
                         {funcName, retBaseName});
     }
+  }
+
+  if (isInterrupt && !retType->isVoid) {
+    logSemanticErrors(ErrorCode::InterruptsMustBeVoid,
+                      funcDeclrStmt->return_type.get());
+    return;
   }
 
   funcInfo->type().type = returnType;
@@ -507,7 +561,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   currentFunction = std::nullopt;
 
   symbolTable.back()[funcName] = funcInfo;
-  metaData[funcDeclrStmt] = funcInfo;
+  insertMetaData(funcDeclrStmt, funcInfo);
 
   logInternal("Stored declaration '" + funcName +
               "' return type: " + returnType.resolvedName);
