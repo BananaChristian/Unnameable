@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../basics/">
+        <link rel="prev" href="../memory-management/">
       
       
-        <link rel="next" href="../functions/">
+        <link rel="next" href="../baton-internals/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>Control Flow - Unnameable</title>
+        <title>Allocator Interfaces - Unnameable</title>
       
     
     
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#control-flow" class="md-skip">
+        <a href="#allocator-interfaces" class="md-skip">
           Skip to content
         </a>
       
@@ -110,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Control Flow
+              Allocator Interfaces
             
           </span>
         </div>
@@ -339,37 +339,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Control Flow
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../control-flow/" class="md-nav__link">
         
   
   
@@ -385,70 +358,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#if-elif-else" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        If, elif, else
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#while-loop" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        While loop
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#for-loop" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        For loop
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#switch" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Switch
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -598,10 +507,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../allocator-interfaces/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Allocator Interfaces
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -617,6 +553,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#defining-an-allocator-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defining an allocator interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-a-custom-allocator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using a custom allocator
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#all-heap-features-apply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All heap features apply
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exporting-allocator-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exporting allocator interfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -684,10 +684,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#if-elif-else" class="md-nav__link">
+  <a href="#defining-an-allocator-interface" class="md-nav__link">
     <span class="md-ellipsis">
       
-        If, elif, else
+        Defining an allocator interface
       
     </span>
   </a>
@@ -695,10 +695,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#while-loop" class="md-nav__link">
+  <a href="#using-a-custom-allocator" class="md-nav__link">
     <span class="md-ellipsis">
       
-        While loop
+        Using a custom allocator
       
     </span>
   </a>
@@ -706,10 +706,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#for-loop" class="md-nav__link">
+  <a href="#all-heap-features-apply" class="md-nav__link">
     <span class="md-ellipsis">
       
-        For loop
+        All heap features apply
       
     </span>
   </a>
@@ -717,10 +717,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#switch" class="md-nav__link">
+  <a href="#exporting-allocator-interfaces" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Switch
+        Exporting allocator interfaces
       
     </span>
   </a>
@@ -744,49 +744,40 @@
 
 
 
-<h1 id="control-flow">Control flow</h1>
-<h2 id="if-elif-else">If, elif, else</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>func if_test(i32 val):void {
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    if(val == 1) {
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>        trace 1
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    } elif(val == 2) {
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        trace 2
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    } else {
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        trace &quot;I dont know&quot;
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    }
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>}
+<h1 id="allocator-interfaces">Allocator interfaces</h1>
+<p>By default <code>heap</code> uses the compiler's built-in allocator called <strong>GPA</strong>. If you want to control how memory is allocated and freed you can provide your own allocator through an allocator interface.</p>
+<h2 id="defining-an-allocator-interface">Defining an allocator interface</h2>
+<p>An allocator interface is declared with the <code>allocator</code> keyword. It must contain exactly two function declarations one for allocation and one for deallocation. The signatures must match <code>malloc</code> and <code>free</code> exactly or the compiler will reject the interface:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>allocator MyAllocator {
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    func alloc(usize size):ptr opaque
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    func free(ptr opaque p):void
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>}
 </code></pre></div>
-<p>Conditions are wrapped in parentheses. <code>elif</code> is used for additional branches rather than <code>else if</code>.</p>
-<h2 id="while-loop">While loop</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>func while_test:void {
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    mut i32 x = 1
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    while(x &lt; 3) {
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>        x++
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        trace x
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    }
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>}
+<p>The compiler only cares about the signatures — it does not care what your allocator does internally as long as the signatures match.</p>
+<h2 id="using-a-custom-allocator">Using a custom allocator</h2>
+<p>Pass the allocator interface name in angle brackets after <code>heap</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>heap&lt;MyAllocator&gt; i32 x
 </code></pre></div>
-<h2 id="for-loop">For loop</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>func for_test:void {
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    for(mut i32 i = 0; i &lt; 3; i++) {
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>        trace i
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    }
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>}
+<p>The baton system works exactly the same as with the default allocator. The only difference is that your <code>alloc</code> and <code>free</code> functions are called instead of the compiler's built-in ones. You can verify this in the generated IR the compiler emits calls to your named functions directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">%x_heap_raw</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">call</span><span class="w"> </span><span class="kt">ptr</span><span class="w"> </span><span class="vg">@alloc</span><span class="p">(</span><span class="kt">i64</span><span class="w"> </span><span class="m">4</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">store</span><span class="w"> </span><span class="kt">i32</span><span class="w"> </span><span class="m">0</span><span class="p">,</span><span class="w"> </span><span class="kt">ptr</span><span class="w"> </span><span class="nv">%x_heap_raw</span><span class="p">,</span><span class="w"> </span><span class="k">align</span><span class="w"> </span><span class="m">4</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">call</span><span class="w"> </span><span class="k">void</span><span class="w"> </span><span class="vg">@free</span><span class="p">(</span><span class="kt">ptr</span><span class="w"> </span><span class="nv">%x_heap_raw</span><span class="p">)</span>
 </code></pre></div>
-<p>The loop variable is declared inline with a full type declaration. The variable must be <code>mut</code> since the loop increments it.</p>
-<h2 id="switch">Switch</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>func switch_test(i32 val):void {
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    switch(val) {
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        case 1:
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>            trace 1
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        case 2:
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>            trace 2
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        default:
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>            trace &quot;No Num&quot;
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    }
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>}
+<h2 id="all-heap-features-apply">All heap features apply</h2>
+<p>Every modifier and behavior that works with the default <code>heap</code> also works with a custom allocator:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>persist heap&lt;MyAllocator&gt; i32 x
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>mut heap&lt;MyAllocator&gt; MyType obj = new MyType()
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>heap&lt;MyAllocator&gt; arr[4] f32 vec
 </code></pre></div>
-<p>Unlike C, the compiler always breaks after each case. Fallthrough is not possible as each case is isolated by design.</p>
+<p>The baton system, last-use freeing, bunkering, robbery all behavior is identical. The allocator interface is purely a substitution at the call site.</p>
+<h2 id="exporting-allocator-interfaces">Exporting allocator interfaces</h2>
+<p>Allocator interfaces can be marked <code>export</code> to expose them to the stub system:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>export allocator MyAllocator {
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    func alloc(usize size):ptr opaque
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    func free(ptr opaque p):void
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>}
+</code></pre></div>
+<p>This makes the interface available for modular use across translation units.</p>
 
 
 

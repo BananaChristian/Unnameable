@@ -21,6 +21,7 @@ nav:
       - Operators and Nullability: reference/operators-nullability.md
       - Comments, Globals and Casting: reference/comments-globals-casting.md
       - Memory Management: reference/memory-management.md
+      - Allocator Interfaces: reference/allocator-interfaces.md
       - Baton Internals: reference/baton-internals.md
 
 
