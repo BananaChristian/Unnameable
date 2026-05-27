@@ -76,13 +76,6 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
     advance(); // Consume the ( token
   }
 
-  if (hasParens && currentToken().type != TokenType::RPAREN) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),
-             {")", currentToken().TokenLiteral});
-    synchronize(SyncLevel::TOP);
-    return params;
-  }
-
   if (hasParens && currentToken().type == TokenType::RPAREN) {
     advance(); // Consume )
     if (currentToken().type != TokenType::COLON) {
@@ -93,6 +86,7 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
     }
     return params;
   }
+
   if (!hasParens && currentToken().type == TokenType::COLON)
     return params;
 
