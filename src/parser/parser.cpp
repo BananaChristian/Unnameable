@@ -247,6 +247,7 @@ bool Parser::isTopLevelSyncToken(TokenType type) {
   case TokenType::HEAP:
   case TokenType::EXPORT:
   case TokenType::INJECT:
+  case TokenType::GLOBAL:
     return true;
   default:
     return false;
@@ -562,6 +563,8 @@ void Parser::registerStatementParseFns() {
 
   StatementParseFunctionsMap[TokenType::ALLOCATOR] =
       &Parser::parseAllocatorStatement;
+  StatementParseFunctionsMap[TokenType::GLOBAL] =
+      &Parser::parseGlobalAllocatorStatement;
   StatementParseFunctionsMap[TokenType::SEAL] = &Parser::parseSealStatement;
   StatementParseFunctionsMap[TokenType::ASM] = &Parser::parseASMStatement;
   StatementParseFunctionsMap[TokenType::EXPORT] =

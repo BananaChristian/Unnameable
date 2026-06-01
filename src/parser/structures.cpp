@@ -1,6 +1,7 @@
 #include "ast.hpp"
 #include "parser.hpp"
 #include "token.hpp"
+#include <memory>
 
 std::unique_ptr<Statement> Parser::parseStructureModifier() {
   bool isPacked = false;
@@ -813,4 +814,26 @@ std::unique_ptr<Statement> Parser::parseBlockStatement() {
   advance();
 
   return std::make_unique<BlockStatement>(lbrace, std::move(statements));
+}
+
+std::unique_ptr<Statement> Parser::parseGlobalAllocatorStatement() {
+  Token global_t = currentToken();
+  advance(); // Consume the global token
+  if (currentToken().type != TokenType::ALLOCATOR) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+  }
+  Token allocator_token = currentToken();
+  advance(); // Consume the allocator_token
+
+  if (currentToken().type != TokenType::IDENTIFIER) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+  }
+  std::unique_ptr<Expression> allocator_name = parseIdentifier();
+
+  return std::make_unique<GlobalAllocatorStatement>(global_t, allocator_token,
+                                                    std::move(allocator_name));
 }

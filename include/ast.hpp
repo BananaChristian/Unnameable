@@ -1017,6 +1017,25 @@ struct AllocatorStatement : Statement {
         allocator_name(std::move(name)), block(std::move(blk)) {};
 };
 
+struct GlobalAllocatorStatement : Statement {
+  Token global_token;
+  Token allocator_token;
+  std::unique_ptr<Expression> allocator_name;
+
+  std::string toString() override {
+    std::ostringstream oss;
+    oss << global_token.TokenLiteral << " ";
+    oss << allocator_token.TokenLiteral << " ";
+    oss << (allocator_name ? allocator_name->toString() : "<allocator_name>");
+    return oss.str();
+  }
+
+  GlobalAllocatorStatement(Token _global_t, Token _allocator_t,
+                           std::unique_ptr<Expression> _name)
+      : Statement(_global_t), global_token(_global_t),
+        allocator_token(_allocator_t), allocator_name(std::move(_name)) {};
+};
+
 // Seal block statement
 struct SealStatement : Statement {
   bool isExportable;
@@ -1149,7 +1168,7 @@ struct RecordStatement : Statement {
       oss << "const ";
 
     if (modifiers)
-      oss << modifiers->toString();
+      oss << modifiers->toString() << " ";
 
     oss << "record " << (recordName ? recordName->toString() : "<null>");
     oss << " {\n";

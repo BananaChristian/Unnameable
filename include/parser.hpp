@@ -111,6 +111,7 @@ private:
   std::unique_ptr<Statement> parseDereferenceAssignment();
   // Parsing allocator statement
   std::unique_ptr<Statement> parseAllocatorStatement();
+  std::unique_ptr<Statement> parseGlobalAllocatorStatement();
   // Parsing field assignment such as b.item=10
   std::unique_ptr<Statement> parseFieldAssignment();
   // Parsing seal statement

@@ -214,3 +214,36 @@ void Semantics::registerInbuiltAllocatorTypes() {
 
   allocatorMap["GPA"] = stdHandle;
 }
+
+void Semantics::walkGlobalAllocator(Node *node) {
+  auto globalAlloc = dynamic_cast<GlobalAllocatorStatement *>(node);
+  if (!globalAlloc)
+    return;
+
+  auto allocator_name =
+      extractIdentifierName(globalAlloc->allocator_name.get());
+
+  // Check if the allocator exists in the allocator map
+  auto it = allocatorMap.find(allocator_name);
+  if (it == allocatorMap.end()) {
+    logSemanticErrors(ErrorCode::UnknownAllocator,
+                      globalAlloc->allocator_name.get(),{allocator_name});
+    return;
+  }
+
+  if (globalAllocatorSet) {
+    logSemanticErrors(ErrorCode::AlreadySetGlobalAllocator,
+                      globalAlloc->allocator_name.get());
+    return;
+  }
+
+  if (!isGlobalScope()) {
+    logSemanticErrors(ErrorCode::globalAllocatorMustBeGlobal,
+                      globalAlloc->allocator_name.get());
+    return;
+  }
+
+  globalAllocatorSet = true;
+  globalAllocatorName =
+      allocator_name; // Override GPA with whatever the user has provided
+}

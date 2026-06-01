@@ -105,6 +105,7 @@ class Lexer {
 
       {"heap", TokenType::HEAP},
       {"allocator", TokenType::ALLOCATOR},
+      {"global", TokenType::GLOBAL},
 
       {"seal", TokenType::SEAL},
       {"trace", TokenType::TRACE},

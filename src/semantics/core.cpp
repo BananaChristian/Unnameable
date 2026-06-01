@@ -154,6 +154,8 @@ void Semantics::registerWalkerFunctions() {
 
   walkerFunctionsMap[typeid(AllocatorStatement)] =
       &Semantics::walkAllocatorInterface;
+  walkerFunctionsMap[typeid(GlobalAllocatorStatement)] =
+      &Semantics::walkGlobalAllocator;
   walkerFunctionsMap[typeid(SealStatement)] = &Semantics::walkSealStatement;
 
   // Walker registration for the trace system
@@ -1132,8 +1134,8 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
       return parentType;
     }
 
-    logSpecialErrors("Unknown type '" + token.TokenLiteral + "'", token.line,
-                     token.column);
+    logSpecialErrors(ErrorCode::UndefinedVariable, token.line,
+                     token.column,{token.TokenLiteral});
     return ResolvedType::unknown();
   }
   default:
@@ -2728,13 +2730,21 @@ std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
   return results;
 }
 
-void Semantics::logSpecialErrors(const std::string &message, int line,
-                                 int col) {
+void Semantics::logSpecialErrors(ErrorCode code, int line, int col,
+                                 std::vector<std::string> args) {
   hasFailed = true;
+  hasError = true;
+
   CompilerError error;
   error.level = ErrorLevel::ERROR;
   error.line = line;
   error.column = col;
+  error.length = errorHandler.getTokenLength(nullptr);
+  error.code = code;
+
+  ErrorMessage msg = errorHandler.generateErrorMessage(code);
+  msg.message = errorHandler.format_string(msg.message, args);
+  error.message = msg;
 
   errorHandler.report(error);
 }

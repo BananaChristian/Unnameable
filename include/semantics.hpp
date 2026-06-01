@@ -118,6 +118,8 @@ private:
   bool hasError = false;
   bool verbose = false;
   bool freeStanding = false;
+  bool globalAllocatorSet = false;
+  std::string globalAllocatorName = "GPA"; // The default allocator is GPA
   std::vector<Node *> activeBlocks;
 
   uint64_t normalDeclCount = 0;
@@ -217,6 +219,7 @@ private:
 
   // Walking allocator interface
   void walkAllocatorInterface(Node *node);
+  void walkGlobalAllocator(Node *node);
 
   // Walking generics
   void walkGenericStatement(Node *node);
@@ -334,7 +337,9 @@ private:
   void insertMetaData(Node *node, std::shared_ptr<SymbolInfo> sym);
   void logSemanticErrors(ErrorCode code, Node *contextNode,
                          std::vector<std::string> args = {});
-  void logSpecialErrors(const std::string &message, int line, int col);
+  void logSpecialErrors(ErrorCode code, int line, int col,
+                        std::vector<std::string> args = {});
+
   void reportDevBug(const std::string &message, Node *contextNode);
   void logInternal(const std::string &message);
 };

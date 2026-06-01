@@ -175,6 +175,7 @@ enum class TokenType {
   OPAQUE, // opaque keyword token
 
   SIZEOF, // sizeof token
+  GLOBAL, //global token
 
   VOID,
   TRUE,

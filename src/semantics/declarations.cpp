@@ -311,7 +311,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
 
     allocType = allocIt->first;
   } else {
-    allocType = "GPA"; // The default GPA type
+    allocType = globalAllocatorName; // The default GPA type
   }
   declInfo->storage().allocType = allocType;
 
@@ -338,8 +338,6 @@ void Semantics::walkVariableDeclaration(Node *node) {
     initSym = getSymbolFromMeta(initializer);
 
     if (!initSym) {
-      errorHandler.addHint("Check spelling or declaration order")
-          .addHint("Variables must be declared before use");
       logSemanticErrors(UndefinedVariable, initializer, {initName});
       return;
     }

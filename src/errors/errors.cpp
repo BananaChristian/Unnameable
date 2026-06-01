@@ -201,15 +201,14 @@ std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
     return suggestions;
   }
   case ErrorCode::UndefinedVariable: {
-    suggestions.push_back(
-        "Declare the variable before using it with 'let' or 'var'");
     suggestions.push_back("Check for typos in the variable name");
     suggestions.push_back("The variable might be out of scope");
     return suggestions;
   }
   case ErrorCode::TypeMismatch: {
-    suggestions.push_back("Use 'as' to cast between compatible types");
-    suggestions.push_back("Example: let x: i32 = y as i32");
+    suggestions.push_back(
+        "Use 'cast<i32>(x)' to cast between compatible types");
+    suggestions.push_back("Example: i32 y= cast<i32>(x)");
     suggestions.push_back(
         "Check if both sides of the operation have the same type");
     return suggestions;
@@ -885,9 +884,10 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.code = ErrorCode::InterruptsMustBeVoid;
     message.message = "interrupt functions must have a return type of 'void'";
     return message;
-  }case ErrorCode::CannotBeInterruptAndNaked:{
-    message.code=ErrorCode::CannotBeInterruptAndNaked;
-    message.message="a function cannot be both interrupt and naked";
+  }
+  case ErrorCode::CannotBeInterruptAndNaked: {
+    message.code = ErrorCode::CannotBeInterruptAndNaked;
+    message.message = "a function cannot be both interrupt and naked";
     return message;
   }
   case ErrorCode::CannotCallInterrupts: {
@@ -1327,8 +1327,7 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   }
   case ErrorCode::ExpectedOnlyASM: {
     message.code = ErrorCode::ExpectedOnlyASM;
-    message.message =
-        "naked functions must only contain inline assembly block";
+    message.message = "naked functions must only contain inline assembly block";
     return message;
   }
   case ErrorCode::RestrictOnNonPointer: {
@@ -1479,6 +1478,16 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.code = InvalidReturnEscape;
     message.message =
         "the return value '{0}' cannot escape with hidden dependecies";
+    return message;
+  }
+  case ErrorCode::AlreadySetGlobalAllocator: {
+    message.code = ErrorCode::AlreadySetGlobalAllocator;
+    message.message = "can only set global allocator once";
+    return message;
+  }
+  case ErrorCode::globalAllocatorMustBeGlobal: {
+    message.code = ErrorCode::globalAllocatorMustBeGlobal;
+    message.message = "the global allocator must be only exist in global scope";
     return message;
   }
   default: {

@@ -19,7 +19,7 @@ mut record AllocationData{
 mut ptr AllocationData freeHead->bitcast<ptr AllocationData>(0)
 
 func split(ptr AllocationData originalAlloc, usize requested_size): void {
-    # Calculate exactly where the new header starts
+    # Cagpalculate exactly where the new header starts
     # We move forward by: HeaderSize + the size the user actually gets
     ptr AllocationData newAllocation -> bitcast<ptr AllocationData>(bitcast<usize>(originalAlloc) + sizeof<AllocationData> + requested_size)
 

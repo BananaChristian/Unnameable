@@ -1,11 +1,11 @@
-naked func raw_get_code() :i32 {
-  asm{
-      mov eax, 42;    # Load 42 directly into the return register
-      ret             # Manually return to caller
-  }
+allocator MyAllocator{
+  func allocate(usize size): ptr opaque
+  func free(ptr opaque p): void
 }
 
+global allocator MyAllocator
+
 func main:i32{
-  auto val=raw_get_code()
-  return 0
+    heap i32 x=100
+    return 0
 }

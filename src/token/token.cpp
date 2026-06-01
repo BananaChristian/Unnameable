@@ -105,6 +105,8 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token  Type: INTERRUPT";
   case TokenType::NAKED:
     return "Token Type: NAKED";
+  case TokenType::GLOBAL:
+    return "Token Type: GLOBAL";
 
   case TokenType::NEW:
     return "Token Type: NEW";

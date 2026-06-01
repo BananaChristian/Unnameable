@@ -1,0 +1,9 @@
+allocator MyAllocator{
+    func alloc(usize size): ptr opaque
+    func free(ptr opaque p):void
+}
+
+func main:i32{
+    heap<MyAllocator> i32 x #This will throw linker errors
+    return 0
+}
