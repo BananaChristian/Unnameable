@@ -336,7 +336,7 @@ void IRGenerator::generateComponentFunctionStatement(
   if (!funcSym)
     reportDevBug("Failed to find function symbol info", fnExpr);
 
-  std::string funcName = compName + "_" + fnExpr->func_key.TokenLiteral;
+  std::string funcName = compName + "_" + semantics.extractIdentifierName(fnExpr);
 
   // Build parameter types with coercion (first param is %this)
   llvm::Type *thisPtrType = llvmCustomTypes[compName]->getPointerTo();
@@ -352,7 +352,7 @@ void IRGenerator::generateComponentFunctionStatement(
   paramCoercion.push_back(thisCoercion);
   originalParamTypes.push_back(thisPtrType);
 
-  for (auto &p : fnExpr->call) {
+  for (auto &p : fnExpr->parameters) {
     auto paramSym = semantics.getSymbolFromMeta(p.get());
     if (!paramSym)
       reportDevBug("Missing parameter symbol info", p.get());
@@ -448,7 +448,7 @@ void IRGenerator::generateComponentFunctionStatement(
 
   // Map user parameters
   size_t paramIdx = 1; // skip this
-  for (auto &p : fnExpr->call) {
+  for (auto &p : fnExpr->parameters) {
     auto paramSym = semantics.getSymbolFromMeta(p.get());
     if (!paramSym)
       reportDevBug("Failed to find param symbol info", p.get());

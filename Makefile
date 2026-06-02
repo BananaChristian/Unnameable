@@ -122,4 +122,4 @@ clean:
 	rm -rf $(BIN_DIR) $(CORE_DIR)/*.o $(OBJ_DIR)/*.o
 	@echo "Cleaned build artifacts."
 
-.PHONY: all core clean run
+.PHONY: all core clean run test parser_test

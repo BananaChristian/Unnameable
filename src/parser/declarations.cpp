@@ -36,7 +36,7 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
         allocType = parseIdentifier();
         if (currentToken().type != TokenType::GREATER_THAN) {
           logError(ErrorCode::UnexpectedToken, currentToken(),
-                   {"'>'", currentToken().TokenLiteral});
+                   {">", currentToken().TokenLiteral});
           return nullptr;
         }
         advance(); // consume >
@@ -203,7 +203,7 @@ std::unique_ptr<Statement> Parser::parseVariableDeclaration() {
 
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'identifier'", currentToken().TokenLiteral});
+             {"identifier", currentToken().TokenLiteral});
     synchronize(SyncLevel::MID);
     return nullptr;
   }

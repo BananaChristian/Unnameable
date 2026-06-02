@@ -49,6 +49,7 @@ class Parser {
       {TokenType::UNWRAP, Precedence::PREC_UNARY},
       {TokenType::BITWISE_NOT, Precedence::PREC_UNARY},
       {TokenType::FULLSTOP, Precedence::PREC_CALL},
+      {TokenType::AT, Precedence::PREC_CALL},
       {TokenType::LPAREN, Precedence::PREC_CALL},
       {TokenType::SCOPE_OPERATOR, Precedence::PREC_CALL},
       {TokenType::AT, Precedence::PREC_CALL},
@@ -218,10 +219,6 @@ private:
   std::unique_ptr<Expression>
   parseInstanceExpression(std::unique_ptr<Expression> left);
 
-  // Method access call expression parse function
-  std::unique_ptr<Expression>
-  parseMethodCallExpression(std::unique_ptr<Expression> left);
-
   std::unique_ptr<Expression> parseUnwrapExpression();
   std::unique_ptr<Expression> parseIdentifier();
   std::unique_ptr<Expression> parseAddressExpression();
@@ -230,9 +227,11 @@ private:
   // Parsing array subscript expression
   std::unique_ptr<Expression> parseArraySubscript();
   // Decider for identifier or array subscript
-  std::unique_ptr<Expression> parseIdentifierOrArraySubscript();
+  std::unique_ptr<Expression> parseIdentifierExpression();
   // Parsing self expression
   std::unique_ptr<Expression> parseSelfExpression();
+  std::unique_ptr<Expression>
+  parseComponentAccess(std::unique_ptr<Expression> lhs);
 
   // Parsing for expression
   std::unique_ptr<Expression> parseFunctionExpression();

@@ -544,7 +544,7 @@ void Semantics::walkComponentStatement(Node *node) {
        .members = members,
        .node = componentStmt});
 
-  // Walk record imports
+  // Walk record injections
   for (const auto &injectedField : componentStmt->injectedFields) {
     if (!injectedField) {
       reportDevBug("Invalid inject record node ", nullptr);
@@ -555,7 +555,7 @@ void Semantics::walkComponentStatement(Node *node) {
       reportDevBug("Invalid inject statement", injectedField.get());
     }
 
-    // Mass import case
+    // Mass inject case
     auto ident = dynamic_cast<Identifier *>(injectStmt->expr.get());
     if (ident) {
       auto identName = ident->expression.TokenLiteral;
@@ -638,38 +638,32 @@ void Semantics::walkComponentStatement(Node *node) {
     }
 
     // Specific import case
-    auto infixExpr = dynamic_cast<InfixExpression *>(injectStmt->expr.get());
-    if (infixExpr) {
-      auto leftIdent =
-          dynamic_cast<Identifier *>(infixExpr->left_operand.get());
-      auto rightIdent =
-          dynamic_cast<Identifier *>(infixExpr->right_operand.get());
-      if (!leftIdent || !rightIdent)
+    auto access = dynamic_cast<ComponentAccess *>(injectStmt->expr.get());
+    if (access) {
+      auto parent =
+          dynamic_cast<Identifier *>(access->parent.get());
+      auto child =
+          dynamic_cast<Identifier *>(access->child.get());
+      if (!parent || !child)
         return;
 
-      TokenType op = infixExpr->operat.type;
+      auto recordName = extractIdentifierName(parent);
+      auto memberName = extractIdentifierName(child);
 
-      if (op != TokenType::AT) {
-        logSemanticErrors(ErrorCode::InvalidInjectionOp, infixExpr);
-      }
-
-      auto dataName = leftIdent->expression.TokenLiteral;
-      auto memberName = rightIdent->expression.TokenLiteral;
-
-      auto importedTypeIt = customTypesTable.find(dataName);
+      auto importedTypeIt = customTypesTable.find(recordName);
       if (importedTypeIt != customTypesTable.end()) {
         auto &importedMembers = importedTypeIt->second->members;
         auto memIt = importedMembers.find(memberName);
         if (memIt != importedMembers.end()) {
           if (members.find(memberName) != members.end()) {
             logSemanticErrors(ErrorCode::InjectionCollision, ident,
-                              {memberName, dataName});
+                              {memberName, recordName});
             return;
           }
 
           if (symbolTable.back().find(memberName) != symbolTable.back().end()) {
             logSemanticErrors(ErrorCode::InjectionCollision, ident,
-                              {memberName, dataName});
+                              {memberName, recordName});
             return;
           }
 
@@ -744,14 +738,14 @@ void Semantics::walkComponentStatement(Node *node) {
     std::string funcName = "unknown";
 
     if (funcExpr) {
-      funcName = funcExpr->func_key.TokenLiteral;
+      funcName = extractIdentifierName(funcExpr);
       walker(funcExpr);
-      auto metSym = resolveSymbolInfo(funcExpr->func_key.TokenLiteral);
-      logInternal("Trying to insert '" + funcExpr->func_key.TokenLiteral + "'");
+      auto metSym = resolveSymbolInfo(funcName);
+      logInternal("Trying to insert '" + funcName + "'");
       if (metSym) {
         logInternal("Inserting component function expression ....");
         auto memInfo = std::make_shared<MemberInfo>();
-        memInfo->memberName = funcExpr->func_key.TokenLiteral;
+        memInfo->memberName = funcName;
         memInfo->type = metSym->type().type;
         memInfo->isNullable = metSym->type().isNullable;
         memInfo->isMutable = metSym->storage().isMutable;
@@ -821,7 +815,6 @@ void Semantics::walkNewComponentExpression(Node *node) {
     logSemanticErrors(ErrorCode::GlobalInstantiation, newExpr);
     return;
   }
-  // UNIFIED TYPE LOOKUP
   // We determine the type once and use it everywhere.
   ResolvedType componentType;
   bool componentExists = false;

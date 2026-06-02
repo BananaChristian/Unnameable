@@ -1623,7 +1623,7 @@ int ErrorHandler::getTokenLength(Node *contextNode) {
     return getTokenLength(fnStmt->funcExpr.get());
 
   if (auto fnExpr = dynamic_cast<FunctionExpression *>(contextNode))
-    return fnExpr->func_key.TokenLiteral.length();
+    return fnExpr->func_identifier.get()->token.TokenLiteral.length();
 
   if (auto fnDeclExpr =
           dynamic_cast<FunctionDeclarationExpression *>(contextNode))
@@ -1633,7 +1633,7 @@ int ErrorHandler::getTokenLength(Node *contextNode) {
     return getTokenLength(fnDecl->function_name.get());
 
   if (auto basicType = dynamic_cast<BasicType *>(contextNode))
-    return basicType->data_token.TokenLiteral.length();
+    return basicType->type_token.TokenLiteral.length();
 
   if (auto fnCall = dynamic_cast<CallExpression *>(contextNode))
     return getTokenLength(fnCall->function_identifier.get());

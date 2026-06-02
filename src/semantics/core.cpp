@@ -473,9 +473,11 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     return makePointerType(innerType, false);
   }
 
-  if (auto basicType = dynamic_cast<BasicType *>(node))
-    return tokenTypeToResolvedType(basicType->data_token,
+  if (auto basicType = dynamic_cast<BasicType *>(node)) {
+    auto type_name = extractIdentifierName(basicType);
+    return tokenTypeToResolvedType(basicType->type_token, type_name,
                                    basicType->isNullable);
+  }
 
   if (auto retType = dynamic_cast<ReturnType *>(node)) {
     if (retType->isVoid)
@@ -642,6 +644,23 @@ std::string Semantics::extractIdentifierName(Node *node) {
     return identName;
   } else if (auto postfix = dynamic_cast<PostfixExpression *>(node)) {
     identName = extractIdentifierName(postfix->operand.get());
+    return identName;
+  } else if (auto compAccess = dynamic_cast<ComponentAccess *>(node)) {
+    auto parent = extractIdentifierName(compAccess->parent.get());
+    auto child = extractIdentifierName(compAccess->child.get());
+    identName = parent + "_" + child;
+    return identName;
+  } else if (auto fnExpr = dynamic_cast<FunctionExpression *>(node)) {
+    auto identName = extractIdentifierName(fnExpr->func_identifier.get());
+    return identName;
+  } else if (auto fnDeclExpr =
+                 dynamic_cast<FunctionDeclarationExpression *>(node)) {
+    auto fnDeclrStmt =
+        dynamic_cast<FunctionDeclaration *>(fnDeclExpr->funcDeclrStmt.get());
+    auto identName = extractIdentifierName(fnDeclrStmt->function_name.get());
+    return identName;
+  } else if (auto baseType = dynamic_cast<BasicType *>(node)) {
+    auto identName = extractIdentifierName(baseType->type.get());
     return identName;
   }
 
@@ -1065,7 +1084,7 @@ bool Semantics::isGlobalScope() {
   return false;
 }
 
-ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
+ResolvedType Semantics::tokenTypeToResolvedType(Token token,const std::string &type, bool isNullable) {
   auto makeType = [&](DataType nonNull, const std::string &baseName) {
     if (isNullable) {
       ResolvedType t;
@@ -1127,15 +1146,15 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token, bool isNullable) {
     return ResolvedType::makeBase(DataType::VOID, "void");
 
   case TokenType::IDENTIFIER: {
-    auto parentIt = customTypesTable.find(token.TokenLiteral);
+    auto parentIt = customTypesTable.find(type);
     if (parentIt != customTypesTable.end()) {
       auto parentType = parentIt->second->type;
       parentType.isNull = isNullable;
       return parentType;
     }
 
-    logSpecialErrors(ErrorCode::UndefinedVariable, token.line,
-                     token.column,{token.TokenLiteral});
+    logSpecialErrors(ErrorCode::UndefinedVariable, token.line, token.column,
+                     {token.TokenLiteral});
     return ResolvedType::unknown();
   }
   default:
@@ -1314,7 +1333,7 @@ Semantics::getSealedFunctionSym(const std::string &funcName, Node *context) {
 std::shared_ptr<SymbolInfo>
 Semantics::getMemberSym(const std::string &childName, Node *instance) {
   if (!instance)
-    reportDevBug("Invalid instance node", instance);
+    return nullptr;
 
   auto instName = extractIdentifierName(instance);
   auto instanceSym = getSymbolFromMeta(instance);
@@ -1567,8 +1586,8 @@ bool Semantics::checkParamListCompatibility(
       auto base = dynamic_cast<BasicType *>(param->base_type.get());
       if (!base)
         return false;
-      std::string actualGeneric = base->data_token.type == TokenType::IDENTIFIER
-                                      ? base->data_token.TokenLiteral
+      std::string actualGeneric = base->type_token.type == TokenType::IDENTIFIER
+                                      ? extractIdentifierName(base)
                                       : "";
       if (actualGeneric != expectedGeneric)
         return false;
@@ -1582,7 +1601,8 @@ bool Semantics::checkParamListCompatibility(
 
 bool Semantics::areSignaturesCompatible(const SymbolInfo &declInfo,
                                         FunctionExpression *funcExpr) {
-  if (!checkParamListCompatibility(declInfo.func().paramTypes, funcExpr->call))
+  if (!checkParamListCompatibility(declInfo.func().paramTypes,
+                                   funcExpr->parameters))
     return false;
   ResolvedType actualReturn = inferNodeDataType(funcExpr->return_type.get());
   return isTypeCompatible(declInfo.func().returnType, actualReturn);
@@ -1982,7 +2002,7 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
   logInternal("Resolving Variable declaration Base Type ....");
 
   auto baseType = dynamic_cast<BasicType *>(declaration->base_type.get());
-  TokenType basetype_tokentype = baseType->data_token.type;
+  TokenType basetype_tokentype = baseType->type_token.type;
   auto makeType = [&](const ResolvedType &type) {
     return ResolvedType::makeBase(type.kind, type.resolvedName,
                                   baseType->isNullable);
@@ -2053,7 +2073,7 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
 
   // Dealing with custom types now
   case TokenType::IDENTIFIER: {
-    auto typeName = baseType->data_token.TokenLiteral;
+    auto typeName = extractIdentifierName(baseType);
     // Search for the name in the custom types table
     auto typeIt = customTypesTable.find(typeName);
     if (typeIt == customTypesTable.end()) {

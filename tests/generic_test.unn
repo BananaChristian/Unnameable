@@ -22,10 +22,20 @@ generic ArrayGen(T) {
     }
 }
 
+generic Mtc(T){
+  func add(T x,T y): T
+}
+
 # Instantiate for i32
 instantiate ArrayGen(i32) as I32
+instantiate Mtc(i32) as I32Mtc
+
+func [I32Mtc@add](i32 x, i32 y):i32{
+    return x+y
+}
 
 func main:i32{
-  I32_Array array
+  I32@Array array
+  i32 result = I32Mtc@add(7,1)
   return 0
 }

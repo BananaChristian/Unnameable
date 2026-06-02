@@ -44,12 +44,12 @@ void StubGen::generateSealStatement(Node *node) {
         }
 
         if (!fnExpr->isExportable) {
-            std::cout << "[DEBUG] Function " << fnExpr->func_key.TokenLiteral
+            std::cout << "[DEBUG] Function " << semantics.extractIdentifierName(fnExpr)
                       << " is not exportable.\n";
             continue;
         }
 
-        auto fnName = fnExpr->func_key.TokenLiteral;
+        auto fnName = semantics.extractIdentifierName(fnExpr);
         std::string unmangled = unmangle(fnName);
         logInternal("Looking for function in sealFnMap: " + unmangled);
 
@@ -416,7 +416,7 @@ void StubGen::generateInstantiateStatement(Node *node) {
             auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
             if (!fnExpr) continue;
 
-            std::string mangledName = fnExpr->func_key.TokenLiteral;
+            std::string mangledName = semantics.extractIdentifierName(fnExpr);
             logInternal("Collecting generic function '" + mangledName + "'");
 
             auto fnSym = semantics.getSymbolFromMeta(fnExpr);
@@ -466,7 +466,7 @@ void StubGen::generateFunctionExpression(FunctionExpression *fnExpr) {
     if (!fnSym) reportDevBug("Failed to get symbol info for function");
 
     FunctionEntry fn;
-    fn.funcName = fnExpr->func_key.TokenLiteral;
+    fn.funcName = semantics.extractIdentifierName(fnExpr);
     fn.returnType = fnSym->func().returnType;
     fn.paramTypes = fnSym->func().paramTypes;
     fn.isDeclaration = false;

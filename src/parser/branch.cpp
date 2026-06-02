@@ -1,14 +1,14 @@
 #include "ast.hpp"
 #include "parser.hpp"
 
-
 //-----------------------SWITCH STATEMENT---------------------------
 // Parsing case clause
 std::unique_ptr<Statement> Parser::parseCaseClause() {
   std::vector<std::unique_ptr<Statement>> body;
   Token case_token = currentToken();
   if (case_token.type != TokenType::CASE) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"'case'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"case", currentToken().TokenLiteral});
   }
 
   advance();
@@ -16,7 +16,8 @@ std::unique_ptr<Statement> Parser::parseCaseClause() {
   auto condition = parseExpression(Precedence::PREC_NONE);
 
   if (currentToken().type != TokenType::COLON) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"':'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {":", currentToken().TokenLiteral});
   }
 
   advance();
@@ -46,18 +47,21 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement() {
   Token switch_token = currentToken();
   advance(); // Advancing past the switch keyword
   if (currentToken().type != TokenType::LPAREN) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"'('",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"(", currentToken().TokenLiteral});
   }
 
   advance(); // Consuming the ( token
   auto switchExpr = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"')'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {")", currentToken().TokenLiteral});
   }
 
   advance(); // Consume the ) token;
   if (currentToken().type != TokenType::LBRACE) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"'{'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"{", currentToken().TokenLiteral});
   }
 
   advance(); // Consume the { token;
@@ -70,7 +74,8 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement() {
       default_token = currentToken();
       advance(); // Consume DEFAULT
       if (currentToken().type != TokenType::COLON) {
-        logError(ErrorCode::UnexpectedToken,currentToken(),{"':'",currentToken().TokenLiteral});
+        logError(ErrorCode::UnexpectedToken, currentToken(),
+                 {":", currentToken().TokenLiteral});
       }
       advance(); // Consume COLON
       while (currentToken().type != TokenType::CASE &&
@@ -84,13 +89,14 @@ std::unique_ptr<Statement> Parser::parseSwitchStatement() {
         }
       }
     } else {
-      logError(ErrorCode::UnexpectedToken,currentToken(),{""});
+      logError(ErrorCode::UnexpectedToken, currentToken(), {""});
       advance();
     }
   }
 
   if (default_token.type != TokenType::DEFAULT) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"'default'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"'default'", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -109,7 +115,8 @@ std::unique_ptr<Statement> Parser::parseElifStatement() {
   advance();
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"'(;",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"(", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -128,7 +135,8 @@ std::unique_ptr<Statement> Parser::parseIfStatement() {
   advance();
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"'('",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"(", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -136,7 +144,8 @@ std::unique_ptr<Statement> Parser::parseIfStatement() {
 
   auto condition = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    logError(ErrorCode::UnexpectedToken,currentToken(),{"')'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {")", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }

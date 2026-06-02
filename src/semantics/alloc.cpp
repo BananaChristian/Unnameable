@@ -55,20 +55,20 @@ void Semantics::walkAllocatorInterface(Node *node) {
 
     if (auto fnExpr =
             dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get())) {
-      funcName = fnExpr->func_key.TokenLiteral;
+      funcName = extractIdentifierName(fnExpr);
 
       if (isExportable) {
         fnExpr->isExportable = true;
       }
 
-      if (fnExpr->call.size() != 1) {
+      if (fnExpr->parameters.size() != 1) {
         logSemanticErrors(
             ErrorCode::ArgumentSizeMismatch, fnExpr,
-            {funcName, std::to_string(1), std::to_string(fnExpr->call.size())});
+            {funcName, std::to_string(1), std::to_string(fnExpr->parameters.size())});
         return;
       }
 
-      role = getFunctionRole(fnExpr->call, fnExpr->return_type.get(), funcName);
+      role = getFunctionRole(fnExpr->parameters, fnExpr->return_type.get(), funcName);
 
     } else if (auto fnExpr = dynamic_cast<FunctionDeclarationExpression *>(
                    fnStmt->funcExpr.get())) {

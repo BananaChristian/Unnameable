@@ -140,7 +140,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   if (!fnExpr)
     reportDevBug("Invalid function expression", fnExpr);
 
-  auto fnName = fnExpr->func_key.TokenLiteral;
+  auto fnName = semantics.extractIdentifierName(fnExpr);
   auto funcSym = semantics.getSymbolFromMeta(fnExpr);
 
   isGlobalScope = false;
@@ -150,7 +150,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   std::vector<CoercionInfo> paramCoercion;
   std::vector<llvm::Type *> coercedParamTypes;
 
-  for (auto &p : fnExpr->call) {
+  for (auto &p : fnExpr->parameters) {
     auto paramSym = semantics.getSymbolFromMeta(p.get());
     if (!paramSym)
       reportDevBug("Missing parameter symbol info", p.get());
@@ -255,7 +255,7 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   size_t userParamIdx = 0;
   size_t coercionIdx = hasSRet ? 1 : 0;
 
-  for (auto &p : fnExpr->call) {
+  for (auto &p : fnExpr->parameters) {
     auto pIt = semantics.metaData.find(p.get());
     if (pIt == semantics.metaData.end()) {
       reportDevBug("Failed to find parameter meta data", p.get());
@@ -558,7 +558,7 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
     reportDevBug("Function calls are not allowed at global scope", callExpr);
 
   const std::string &fnName =
-      callExpr->function_identifier->expression.TokenLiteral;
+      semantics.extractIdentifierName(callExpr);
 
   auto callSym = semantics.getSymbolFromMeta(callExpr);
   if (!callSym)

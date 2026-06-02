@@ -125,24 +125,41 @@ std::vector<std::unique_ptr<Expression>> Parser::parseFnPointerParameters() {
 
 // Parsing function expression
 std::unique_ptr<Expression> Parser::parseFunctionExpression() {
-  //--------Dealing with func keyword---------------
   Token func_tok =
       currentToken(); // The token representing the keyword for functions (func)
   advance();
 
-  //----------Dealing with function name------------
-  if (currentToken().type != TokenType::IDENTIFIER) {
+  std::unique_ptr<Expression> func_identifier = nullptr;
+  if (currentToken().type == TokenType::LBRACKET) {
+    advance(); // Move past '['
+
+    if (currentToken().type != TokenType::IDENTIFIER) {
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"identifier", currentToken().TokenLiteral});
+      return nullptr;
+    }
+    func_identifier=parseExpression(Precedence::PREC_NONE);
+
+    if (currentToken().type != TokenType::RBRACKET) {
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"]", currentToken().TokenLiteral});
+      return nullptr;
+    }
+    advance(); // Move past ']'
+
+  } else if (currentToken().type == TokenType::IDENTIFIER) {
+    // Fallback for normal functions (e.g., "func test()")
+    func_identifier = parseIdentifier();
+  } else {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"identifier", currentToken().TokenLiteral});
-    synchronize(SyncLevel::TOP);
+             {"identifier or [", currentToken().TokenLiteral});
     return nullptr;
   }
-  auto identToken = currentToken();
-  auto identExpr = parseIdentifier();
 
   // Dealing with the call itself
-  auto call = parseFunctionParameters(); // We might get some arguments or not
-                                         // so we call the parse call expression
+  auto parameters =
+      parseFunctionParameters(); // We might get some arguments or not
+                                 // so we call the parse call expression
 
   std::unique_ptr<Expression> return_type = nullptr;
   //--Checking for colons
@@ -177,8 +194,8 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
 
   if (currentToken().type != TokenType::LBRACE) {
     auto decl = std::make_unique<FunctionDeclaration>(
-        false, false, false, func_tok, std::move(identExpr), std::move(call),
-        std::move(return_type));
+        false, false, false, func_tok, std::move(func_identifier),
+        std::move(parameters), std::move(return_type));
 
     return std::make_unique<FunctionDeclarationExpression>(func_tok,
                                                            std::move(decl));
@@ -190,8 +207,8 @@ std::unique_ptr<Expression> Parser::parseFunctionExpression() {
   }
 
   return std::make_unique<FunctionExpression>(
-      false, false, false, identToken, std::move(call), std::move(return_type),
-      std::move(block));
+      false, false, false, func_tok, std::move(func_identifier),
+      std::move(parameters), std::move(return_type), std::move(block));
 }
 
 // Parsing block expressions

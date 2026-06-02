@@ -1073,7 +1073,7 @@ bool Auditor::containsNode(Node *root, Node *target) {
   }
 
   if (auto *funcExpr = dynamic_cast<FunctionExpression *>(root)) {
-    for (auto &param : funcExpr->call) {
+    for (auto &param : funcExpr->parameters) {
       if (containsNode(param.get(), target))
         return true;
     }

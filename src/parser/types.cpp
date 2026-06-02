@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "token.hpp"
+#include <memory>
 
 std::unique_ptr<Expression> Parser::parseTypeModifier() {
   Token type_modifier = currentToken();
@@ -20,8 +21,8 @@ std::unique_ptr<Expression> Parser::parseTypeModifier() {
         }
 
         if (currentToken().type != TokenType::RBRACKET) {
-          logError(ErrorCode::UnexpectedToken,
-                   currentToken(),{"']'",currentToken().TokenLiteral});
+          logError(ErrorCode::UnexpectedToken, currentToken(),
+                   {"']'", currentToken().TokenLiteral});
           return nullptr;
         }
         advance(); // consume ']'
@@ -42,8 +43,8 @@ std::unique_ptr<Expression> Parser::parseTypeModifier() {
         gt_token.type = TokenType::GREATER_THAN;
         replaceCurrentToken(gt_token);
       } else {
-        logError(ErrorCode::UnexpectedToken,
-                 currentToken(),{"'>'",currentToken().TokenLiteral});
+        logError(ErrorCode::UnexpectedToken, currentToken(),
+                 {"'>'", currentToken().TokenLiteral});
         return nullptr;
       }
     }
@@ -62,16 +63,33 @@ std::unique_ptr<Expression> Parser::parseTypeModifier() {
 
 // Parsing basic type
 std::unique_ptr<Expression> Parser::parseBasicType() {
-  Token data_token;
-  bool isNullable = false;
+  Token type_token = currentToken();
 
-  data_token = currentToken();
-  advance();
+  if (currentToken().type != TokenType::IDENTIFIER) {
+    advance();
+    return std::make_unique<BasicType>(type_token, nullptr, false);
+  }
+
+  std::unique_ptr<Expression> type = parseIdentifier(); // Consumes 'I32'
+
+  // Manually handle the '@' safely without letting Pratt hijack it or
+  // overshoot!
+  if (currentToken().type == TokenType::AT) {
+    Token at_tok = currentToken();
+    advance(); // Consume '@'
+
+    auto modifier = parseIdentifier(); // Consumes 'Array'
+    type = std::make_unique<ComponentAccess>(std::move(type), at_tok,
+                                             std::move(modifier));
+  }
+
+  bool isNullable = false;
   if (currentToken().type == TokenType::QUESTION_MARK) {
     isNullable = true;
-    advance(); // Consume the ? if it exists
+    advance();
   }
-  return std::make_unique<BasicType>(data_token, isNullable);
+
+  return std::make_unique<BasicType>(type_token, std::move(type), isNullable);
 }
 
 std::unique_ptr<Expression> Parser::parseReturnType() {

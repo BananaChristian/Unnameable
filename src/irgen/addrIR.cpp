@@ -83,26 +83,33 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
 // Infix L-value generator
 llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
   auto infix = dynamic_cast<InfixExpression *>(node);
+  if(!infix)
+    reportDevBug("Invalid infix node", node);
+  
+
   llvm::Value *address = generateAddress(infix->left_operand.get());
   if (!address)
     reportDevBug("Failed to generate L-Value", infix->left_operand.get());
 
   if (infix->operat.type == TokenType::FULLSTOP) {
-    auto lhsMeta = semantics.metaData[infix->left_operand.get()];
+    auto lhsSym = semantics.getSymbolFromMeta(infix->left_operand.get());
+    if (!lhsSym)
+      reportDevBug("Failed to get lhs sym", infix->left_operand.get());
+
     auto rhsIdent = dynamic_cast<Identifier *>(infix->right_operand.get());
 
-    if (lhsMeta->type().type.isPointer() || lhsMeta->type().type.isRef()) {
+    if (lhsSym->type().type.isPointer() || lhsSym->type().type.isRef()) {
       llvm::Type *ptrTy = llvm::PointerType::get(funcBuilder.getContext(), 0);
       auto *load = funcBuilder.CreateLoad(ptrTy, address, "ptr_deref");
-      if (lhsMeta->storage().isVolatile) {
+      if (lhsSym->storage().isVolatile) {
         load->setVolatile(true);
       }
       address = load;
     }
 
-    std::string lookUpName = lhsMeta->type().type.resolvedName;
-    if (lhsMeta->type().type.isPointer() || lhsMeta->type().type.isRef())
-      lookUpName = semantics.getBaseTypeName(lhsMeta->type().type);
+    std::string lookUpName = lhsSym->type().type.resolvedName;
+    if (lhsSym->type().type.isPointer() || lhsSym->type().type.isRef())
+      lookUpName = semantics.getBaseTypeName(lhsSym->type().type);
     llvm::StructType *structTy = llvmCustomTypes[lookUpName];
 
     auto memberInfo = semantics.metaData[infix];

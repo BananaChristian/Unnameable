@@ -279,7 +279,8 @@ std::unique_ptr<Statement> Parser::parseGenericStatement() {
   while (currentToken().type != TokenType::RPAREN &&
          currentToken().type != TokenType::END) {
     if (currentToken().type == TokenType::IDENTIFIER) {
-      types.push_back(currentToken());
+      auto type_ident = currentToken();
+      types.push_back(type_ident);
       advance();
     } else if (currentToken().type == TokenType::COMMA) {
       advance(); // consume comma
@@ -316,7 +317,7 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
   // Dealing with the generic call
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'identifier", currentToken().TokenLiteral});
+             {"identifier", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -325,22 +326,25 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
   // Expect '('
   if (currentToken().type != TokenType::LPAREN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'('", currentToken().TokenLiteral});
+             {"(", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // consume '('
 
-  std::vector<Token> types;
+  std::vector<std::unique_ptr<Expression>> types;
 
   // Parse argument list
   while (currentToken().type != TokenType::RPAREN &&
          currentToken().type != TokenType::END) {
     // Must be a type token (basic OR custom)
     if (currentToken().type == TokenType::IDENTIFIER ||
+        currentToken().type == TokenType::PTR ||
+        currentToken().type == TokenType::REF ||
+        currentToken().type == TokenType::ARRAY ||
         isBasicType(currentToken().type)) {
-      types.push_back(currentToken());
-      advance();
+      auto type = parseReturnType();
+      types.push_back(std::move(type));
     } else {
       return nullptr;
     }
@@ -354,13 +358,14 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
     // If not comma, next MUST be ')'
     if (currentToken().type != TokenType::RPAREN) {
       logError(ErrorCode::UnexpectedToken, currentToken(),
-               {"',' or ')'", currentToken().TokenLiteral});
+               {", or )", currentToken().TokenLiteral});
       synchronize(SyncLevel::TOP);
       return nullptr;
     }
   }
 
-  auto generic_call = std::make_unique<GenericCall>(std::move(ident), types);
+  auto generic_call =
+      std::make_unique<GenericCall>(std::move(ident), std::move(types));
 
   advance();
 
@@ -375,7 +380,7 @@ std::unique_ptr<Statement> Parser::parseInstantiateStatement() {
 
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'identifier'", currentToken().TokenLiteral});
+             {"identifier", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -392,7 +397,7 @@ std::unique_ptr<EnumMember> Parser::parseEnumMember() {
   // Check if the current token is an identifier
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'identifier'", currentToken().TokenLiteral});
+             {"identifier", currentToken().TokenLiteral});
     return nullptr; // Return nullptr but don't advance to allow recovery in
                     // caller
   }
@@ -431,7 +436,7 @@ std::unique_ptr<Statement> Parser::parseEnumStatement() {
   auto enum_ident = parseIdentifier();
   if (!enum_ident) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'identifier'", currentToken().TokenLiteral});
+             {"identifier", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -521,7 +526,7 @@ std::unique_ptr<Statement> Parser::parseComponentStatement() {
   advance(); // Consume the keyword component
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'identifier'", currentToken().TokenLiteral});
+             {"identifier", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -672,17 +677,16 @@ std::unique_ptr<Statement> Parser::parseInjectStatement() {
              {"'record'", currentToken().TokenLiteral});
   }
 
-  if (currentToken().type == TokenType::FULLSTOP ||
-      currentToken().type == TokenType::SCOPE_OPERATOR) {
+  if (currentToken().type != TokenType::IDENTIFIER) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'identifier'", currentToken().TokenLiteral});
+             {"identifier", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
   }
 
   std::unique_ptr<Expression> expr = parseExpression(Precedence::PREC_NONE);
 
-  if (currentToken().type == TokenType::SEMICOLON) {
+  if (currentToken().type == TokenType::SEMICOLON)
     advance();
-  }
 
   return std::make_unique<InjectStatement>(inject_token, kind_token,
                                            std::move(expr));
@@ -696,7 +700,7 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
   advance(); // Consuming the data keyword token
   if (currentToken().type != TokenType::IDENTIFIER) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'identifier'", currentToken().TokenLiteral});
+             {"identifier", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }

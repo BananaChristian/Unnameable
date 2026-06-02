@@ -211,14 +211,10 @@ void Parser::synchronize(SyncLevel level = SyncLevel::TOP) {
 
     if (level == SyncLevel::TOP) {
       if (isTopLevelSyncToken(currentToken().type)) {
-        logInternal("Calling synchronizer on token: " +
-                    currentToken().TokenLiteral);
         return;
       }
     } else if (level == SyncLevel::MID) {
       if (isMidLevelSyncToken(currentToken().type)) {
-        logInternal("Calling synchronizer on token: " +
-                    currentToken().TokenLiteral);
         return;
       }
     }
@@ -309,9 +305,9 @@ void Parser::registerInfixFns() {
   InfixParseFunctionsMap[TokenType::FULLSTOP] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::SCOPE_OPERATOR] =
       &Parser::parseInfixExpression;
+  InfixParseFunctionsMap[TokenType::AT] = &Parser::parseComponentAccess;
   InfixParseFunctionsMap[TokenType::AND] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::OR] = &Parser::parseInfixExpression;
-  InfixParseFunctionsMap[TokenType::AT] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::NOT_EQUALS] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::EQUALS] = &Parser::parseInfixExpression;
   InfixParseFunctionsMap[TokenType::LBRACE] = &Parser::parseInstanceExpression;
@@ -350,7 +346,7 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::SIZEOF] = &Parser::parseSizeOfExpression;
 
   PrefixParseFunctionsMap[TokenType::IDENTIFIER] =
-      &Parser::parseIdentifierOrArraySubscript;
+      &Parser::parseIdentifierExpression;
   PrefixParseFunctionsMap[TokenType::ADDR] = &Parser::parseAddressExpression;
   PrefixParseFunctionsMap[TokenType::DEREF] =
       &Parser::parseDereferenceExpression;
@@ -387,86 +383,58 @@ void Parser::registerPostfixFns() {
 std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   Token current = currentToken();
 
-  // --- THE UNIFIED SCANNER ---
-  // This skips dots, identifiers, AND brackets to find the operation (=, (,
-  // etc.)
-  auto peekAheadToDecision = [this]() -> Token {
-    int offset = 0;
-    while (true) {
-      Token t = peekToken(offset);
-
-      if (t.type == TokenType::IDENTIFIER || t.type == TokenType::FULLSTOP ||
-          t.type == TokenType::SCOPE_OPERATOR) {
-        offset++;
-      } else if (t.type == TokenType::LBRACKET) {
-        int depth = 0;
-        while (true) {
-          Token subT = peekToken(offset);
-          if (subT.type == TokenType::LBRACKET)
-            depth++;
-          else if (subT.type == TokenType::RBRACKET) {
-            depth--;
-            if (depth == 0) {
-              offset++;
-              break;
-            }
-          } else if (subT.type == TokenType::END)
-            return subT;
-          offset++;
-        }
-      } else {
-        return t; // The token that follows the L-Value chain
-      }
-    }
-  };
-
-  Token decisionToken = peekAheadToDecision();
-  Token peek1 = peekToken(1);
-
-  if (peek1.type == TokenType::IDENTIFIER) {
+  // 1. Clean, explicit check for variable declarations ONLY
+  // If we see an identifier followed directly by another identifier, it's a
+  // declaration (e.g., "i32 x")
+  if (currentToken().type == TokenType::IDENTIFIER &&
+      nextToken().type == TokenType::IDENTIFIER) {
     return parseVariableDeclaration();
   }
-
-  if (peek1.type == TokenType::LPAREN) {
-    auto callExpr = parseCallExpression();
-    return std::make_unique<ExpressionStatement>(current, std::move(callExpr));
+  // If it's an @ type declaration (e.g., "Test@Type arrayName")
+  if (currentToken().type == TokenType::IDENTIFIER &&
+      nextToken().type == TokenType::AT) {
+    if (peekToken(2).type == TokenType::IDENTIFIER &&
+        peekToken(3).type == TokenType::IDENTIFIER) {
+      return parseVariableDeclaration();
+    }
   }
 
-  if (decisionToken.type == TokenType::ASSIGN ||
-      decisionToken.type == TokenType::ARROW) {
+  // For EVERYTHING else (calls, dots, assignments, scopes, array indices),
+  // let your working Pratt expression engine build the left-hand side
+  // naturally!
+  auto lhs = parseExpression(Precedence::PREC_NONE);
+  if (!lhs)
+    return nullptr;
 
-    // Check if the chain contains ANY dots or scope operators
-    bool hasFieldAccess = false;
-    int checkOffset = 0;
-    while (true) {
-      Token t = peekToken(checkOffset);
-      if (t.type == decisionToken.type)
-        break;
-      if (t.type == TokenType::FULLSTOP ||
-          t.type == TokenType::SCOPE_OPERATOR) {
-        hasFieldAccess = true;
-        break;
+  // Now look at the token the expression engine left us parked on.
+  // Is it an assignment operator?
+  if (currentToken().type == TokenType::ASSIGN ||
+      currentToken().type == TokenType::ARROW) {
+    Token op = currentToken();
+    advance(); // Move past '=' or '->'
+
+    auto val =
+        parseExpression(Precedence::PREC_NONE); // Parse the right-hand value
+    if (!val)
+      return nullptr;
+
+    // FIX Dynamically route to the correct AST Node type!
+    if (auto *infix = dynamic_cast<InfixExpression *>(lhs.get())) {
+      if (infix->operat.type == TokenType::FULLSTOP) {
+        // It's an actual structural field mutation (e.g., x.u = 177)
+        return std::make_unique<FieldAssignment>(std::move(lhs), op,
+                                                 std::move(val));
       }
-      checkOffset++;
     }
 
-    if (hasFieldAccess) {
-      // It has dots! Use the specialized FieldAssignment
-      // This will handle: test[18].what[7].that[yy] = 10
-      return parseFieldAssignment();
-    } else {
-      // It's just a variable or a simple array: x = 10 or x[0] = 10
-      return parseAssignmentStatement();
-    }
+    // It's a normal variable update or binder (e.g., current -> current.next)
+    return std::make_unique<AssignmentStatement>(std::move(lhs), op,
+                                                 std::move(val));
   }
 
-  // Fall back to normal ident expr e.g x
-  auto expr = parseExpression(Precedence::PREC_NONE);
-  if (expr) {
-    return std::make_unique<ExpressionStatement>(current, std::move(expr));
-  }
-
-  return nullptr;
+  // 4. If there's no assignment operator, it was just a standalone expression
+  // (like a call or access)!
+  return std::make_unique<ExpressionStatement>(current, std::move(lhs));
 }
 
 // Registering the statement parsing functions

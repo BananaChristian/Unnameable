@@ -59,19 +59,18 @@ void Semantics::walkInstantiateStatement(Node *node) {
   if (!instStmt)
     return;
 
-  hasError = false;
   bool isExportable = instStmt->isExportable;
   // Get the name of the generic we want to instantiate
   auto genericCall = dynamic_cast<GenericCall *>(instStmt->generic_call.get());
   std::string genericName = genericCall->ident->expression.TokenLiteral;
   // Extract the type args here and map them to the semantic type system
-  std::vector<Token> rawTypes;
+  std::vector<Node *> rawTypes;
   std::vector<ResolvedType> resolvedArgs;
-  for (const auto &typeToken : genericCall->args) {
-    auto type = tokenTypeToResolvedType(typeToken, false);
+  for (const auto &typeExpr : genericCall->args) {
+    auto type = inferNodeDataType(typeExpr.get());
     // Store the resolved types for later matching to the generic types
     resolvedArgs.push_back(type);
-    rawTypes.push_back(typeToken);
+    rawTypes.push_back(typeExpr.get());
   }
 
   // Get the alias name (Will be appended to the instantiated members)
@@ -104,7 +103,7 @@ void Semantics::walkInstantiateStatement(Node *node) {
   }
 
   std::unordered_map<std::string, ResolvedType> paramToType;
-  std::unordered_map<std::string, Token> rawTypeMap;
+  std::unordered_map<std::string, Node *> rawTypeMap;
 
   for (int i = 0; i < static_cast<int>(blueprint.typeParams.size()); i++) {
     paramToType[blueprint.typeParams[i]] = resolvedArgs[i];
@@ -123,8 +122,15 @@ void Semantics::walkInstantiateStatement(Node *node) {
   auto blockStmt = dynamic_cast<BlockStatement *>(clonedSubTree.get());
   for (const auto &stmt : blockStmt->statements) {
     if (auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get())) {
-      auto fnExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
-      fnExpr->isExportable = isExportable;
+      if (auto fnExpr =
+              dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get()))
+        fnExpr->isExportable = isExportable;
+      if (auto fnDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(
+              fnStmt->funcExpr.get())) {
+        auto fnDeclrStmt = dynamic_cast<FunctionDeclaration *>(
+            fnDeclrExpr->funcDeclrStmt.get());
+        fnDeclrStmt->isExportable = isExportable;
+      }
     }
     if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get()))
       recordStmt->isExportable = isExportable;
@@ -155,16 +161,16 @@ void Semantics::walkInstantiateStatement(Node *node) {
 }
 
 void Semantics::substituteTypes(
-    Node *node, std::unordered_map<std::string, Token> &subMap) {
+    Node *node, std::unordered_map<std::string, Node *> &subMap) {
 
   if (auto basic = dynamic_cast<BasicType *>(node)) {
-    std::string genericName = basic->data_token.TokenLiteral;
+    std::string genericName = basic->type_token.TokenLiteral;
     if (subMap.count(genericName)) {
       logInternal("Subbing Type: " + basic->token.TokenLiteral + " to " +
-                  subMap.at(genericName).TokenLiteral);
-      basic->data_token = subMap.at(genericName);
-      basic->token = subMap.at(genericName);
-      basic->expression = subMap.at(genericName);
+                  subMap.at(genericName)->token.TokenLiteral);
+      basic->type_token = subMap.at(genericName)->token;
+      basic->token = subMap.at(genericName)->token;
+      basic->expression = subMap.at(genericName)->token;
     }
   } else if (auto ret = dynamic_cast<ReturnType *>(node)) {
     if (ret->base_type)
@@ -175,7 +181,7 @@ void Semantics::substituteTypes(
   if (auto fnStmt = dynamic_cast<FunctionStatement *>(node)) {
     if (auto fnExpr =
             dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get())) {
-      for (const auto &param : fnExpr->call)
+      for (const auto &param : fnExpr->parameters)
         substituteTypes(param.get(), subMap);
       substituteTypes(fnExpr->return_type.get(), subMap);
       substituteTypes(fnExpr->block.get(), subMap);
@@ -247,9 +253,9 @@ void Semantics::mangleGenericName(Node *node, std::string aliasName) {
     if (auto fnExpr =
             dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get())) {
       // Get the name and mangle it
-      auto original = fnExpr->func_key.TokenLiteral;
+      auto original = extractIdentifierName(fnExpr);
       auto mangled = aliasName + "_" + original;
-      fnExpr->func_key.TokenLiteral = mangled;
+      fnExpr->func_identifier.get()->token.TokenLiteral = mangled;
       fnExpr->token.TokenLiteral = mangled;
       fnExpr->expression.TokenLiteral = mangled;
     }

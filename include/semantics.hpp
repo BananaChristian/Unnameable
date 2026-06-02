@@ -255,7 +255,9 @@ private:
                               ResolvedType rightType, Node *expr);
   ResolvedType resultOfUnary(TokenType operatorType,
                              const ResolvedType &oprendType, Node *node);
-  ResolvedType tokenTypeToResolvedType(Token token, bool isNullable);
+  ResolvedType tokenTypeToResolvedType(Token token,
+                                       const std::string &type_name,
+                                       bool isNullable);
   std::shared_ptr<SymbolInfo> resultOfScopeOrDot(TokenType operatorType,
                                                  const ResolvedType &parentType,
                                                  const std::string &childName,
@@ -276,7 +278,7 @@ private:
   int inferLiteralDimensions(ArrayLiteral *arrLit);
   void inferSizePerDimension(ArrayLiteral *lit, std::vector<int64_t> &sizes);
   void substituteTypes(Node *node,
-                       std::unordered_map<std::string, Token> &subMap);
+                       std::unordered_map<std::string, Node *> &subMap);
   void mangleGenericName(Node *node, std::string aliasName);
   void checkOperatorStyle(TokenType op, bool isPointer, const std::string &name,
                           Node *site);

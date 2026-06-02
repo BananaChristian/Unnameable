@@ -5,14 +5,16 @@ std::unique_ptr<Statement> Parser::parseWhileStatement() {
   Token while_key = currentToken();
   advance();
   if (currentToken().type != TokenType::LPAREN) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),{"')'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {")", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance();
   auto condition = parseExpression(Precedence::PREC_NONE);
   if (currentToken().type != TokenType::RPAREN) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),{"')'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"')'", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -28,7 +30,8 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
   advance(); // consume 'for'
 
   if (currentToken().type != TokenType::LPAREN) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),{"'('",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"(", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
@@ -42,8 +45,8 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
   auto condition = parseExpression(Precedence::PREC_NONE);
 
   if (currentToken().type != TokenType::SEMICOLON) {
-    logError(ErrorCode::UnexpectedToken,
-             currentToken(),{"';'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {";", currentToken().TokenLiteral});
     return nullptr;
   }
   advance();
@@ -52,15 +55,16 @@ std::unique_ptr<Statement> Parser::parseForStatement() {
   auto step = parseStatement();
 
   if (currentToken().type != TokenType::RPAREN) {
-    logError(ErrorCode::UnexpectedToken,
-             currentToken(),{"')'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {")", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }
   advance(); // consume ')'
 
   if (currentToken().type != TokenType::LBRACE) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),{"'{'",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"{", currentToken().TokenLiteral});
     synchronize(SyncLevel::TOP);
     return nullptr;
   }

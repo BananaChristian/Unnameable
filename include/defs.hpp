@@ -217,7 +217,7 @@ struct GenericInstantiationInfo {
   std::string aliasName;
   std::string blueprintName;
   std::unordered_map<std::string, ResolvedType> paramToType;
-  std::unordered_map<std::string, Token> rawTypeMap;
+  std::unordered_map<std::string, Node*> rawTypeMap;
   std::unique_ptr<Node> instantiatedAST;
 
   GenericInstantiationInfo() = default;

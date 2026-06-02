@@ -149,12 +149,27 @@ std::unique_ptr<Expression> Parser::parseArraySubscript() {
   return std::make_unique<ArraySubscript>(std::move(ident), std::move(indexes));
 }
 
-std::unique_ptr<Expression> Parser::parseIdentifierOrArraySubscript() {
+std::unique_ptr<Expression>
+Parser::parseComponentAccess(std::unique_ptr<Expression> parent) {
+  auto at_token = currentToken();
+  advance();
+  if (currentToken().type != TokenType::IDENTIFIER) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"identifier", currentToken().TokenLiteral});
+    return nullptr;
+  }
+  auto child = parseExpression(Precedence::PREC_NONE);
+
+  return std::make_unique<ComponentAccess>(std::move(parent), at_token,
+                                           std::move(child));
+}
+
+std::unique_ptr<Expression> Parser::parseIdentifierExpression() {
   if (nextToken().type == TokenType::LBRACKET) {
     return parseArraySubscript();
-  } else if (nextToken().type == TokenType::LPAREN) {
+  } else if (nextToken().type == TokenType::LPAREN)
     return parseCallExpression();
-  }
+
   return parseIdentifier();
 }
 
@@ -202,11 +217,8 @@ std::unique_ptr<Expression> Parser::parseNewComponentExpression() {
 std::unique_ptr<Expression> Parser::parseGroupedExpression() {
   advance(); // Consume the ( token
   auto expr = parseExpression(Precedence::PREC_NONE);
-  if (!expr) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),
-             {")", currentToken().TokenLiteral});
+  if (!expr)
     return nullptr;
-  }
 
   if (currentToken().type != TokenType::RPAREN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
@@ -243,19 +255,27 @@ std::vector<std::unique_ptr<Expression>> Parser::parseCallArguments() {
     args.push_back(std::move(arg));
   }
 
-  if (currentToken().type == TokenType::RPAREN) {
-    advance(); // consume ')'
-  } else {
+  if (currentToken().type != TokenType::RPAREN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"(", currentToken().TokenLiteral});
+             {")", currentToken().TokenLiteral});
+    return args;
   }
+
+  advance();
 
   return args;
 }
 
 // Parsing the call expression
 std::unique_ptr<Expression> Parser::parseCallExpression() {
-  auto ident = parseIdentifier();
+  if (currentToken().type != TokenType::IDENTIFIER) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"identifier", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
+    return nullptr;
+  }
+
+  std::unique_ptr<Expression> ident = parseIdentifier();
 
   Token call_token = currentToken(); // We expect a left parenthesis here
 
@@ -263,7 +283,7 @@ std::unique_ptr<Expression> Parser::parseCallExpression() {
       TokenType::LPAREN) { // Checking if we encounter the left parenthesis
                            // after the function name has been declared
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'('", currentToken().TokenLiteral});
+             {"(", currentToken().TokenLiteral});
     synchronize(SyncLevel::MID);
     return nullptr;
   }
@@ -299,7 +319,7 @@ std::unique_ptr<Expression> Parser::parseSizeOfExpression() {
     advance(); // Consume the < token
   } else {
     logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"'<'", currentToken().TokenLiteral});
+             {"<", currentToken().TokenLiteral});
     synchronize(SyncLevel::MID);
     return nullptr;
   }
@@ -369,7 +389,8 @@ std::unique_ptr<Expression> Parser::parseCastExpression() {
 
   expr = parseExpression(Precedence::PREC_NONE);
   if (!expr) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),{"expression",currentToken().TokenLiteral});
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"expression", currentToken().TokenLiteral});
     synchronize(SyncLevel::MID);
     return nullptr;
   }
@@ -390,7 +411,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
   Token bitcast = currentToken();
   std::unique_ptr<Expression> type = nullptr;
   std::unique_ptr<Expression> expr = nullptr;
-  advance();
+  advance(); //Consume the bitcast token
   if (currentToken().type != TokenType::LESS_THAN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
              {"<", currentToken().TokenLiteral});
@@ -398,7 +419,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
     return nullptr;
   }
 
-  advance();
+  advance(); //Consume the < token
   type = parseReturnType();
   if (!type) {
     synchronize(SyncLevel::MID);
@@ -412,7 +433,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
     synchronize(SyncLevel::MID);
     return nullptr;
   }
-  advance();
+  advance(); //Consume the > token
 
   if (currentToken().type != TokenType::LPAREN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
@@ -420,7 +441,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
     synchronize(SyncLevel::MID);
     return nullptr;
   }
-  advance();
+  advance();//Consume the ( token
 
   expr = parseExpression(Precedence::PREC_NONE);
   if (!expr) {

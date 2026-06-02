@@ -165,17 +165,19 @@ void Semantics::walkFunctionParameters(Node *node) {
   }
 
   auto *baseType = dynamic_cast<BasicType *>(param->base_type.get());
-  if (baseType && baseType->data_token.type == TokenType::AUTO) {
+  if (baseType && baseType->type_token.type == TokenType::AUTO) {
     logSemanticErrors(ErrorCode::InvalidAutoUse, param);
     return;
   }
 
   ResolvedType resolvedType = inferNodeDataType(param);
-  if (currentFunction.value()->func().isInterrupt &&
-      isCustomTypeByValue(resolvedType)) {
-    logSemanticErrors(ErrorCode::CannotPassCustomByVal, param,
-                      {resolvedType.resolvedName});
-    return;
+  if (currentFunction) {
+    if (currentFunction.value()->func().isInterrupt &&
+        isCustomTypeByValue(resolvedType)) {
+      logSemanticErrors(ErrorCode::CannotPassCustomByVal, param,
+                        {resolvedType.resolvedName});
+      return;
+    }
   }
 
   if (param->isHeap) {
@@ -225,7 +227,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   if (!funcExpr)
     reportDevBug("Invalid function expression", node);
 
-  const std::string funcName = funcExpr->func_key.TokenLiteral;
+  const std::string funcName = extractIdentifierName(funcExpr);
   const bool isExportable = funcExpr->isExportable;
   const bool isInterrupt = funcExpr->isInterrupt;
   const bool isNaked = funcExpr->isNaked;
@@ -275,7 +277,7 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
 
-  if (isNaked && !funcExpr->call.empty()) {
+  if (isNaked && !funcExpr->parameters.empty()) {
     logSemanticErrors(ErrorCode::CannotAllowParamsInNaked, funcExpr,
                       {funcName});
     insideFunction = false;
@@ -283,7 +285,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     return;
   }
 
-  for (const auto &param : funcExpr->call) {
+  for (const auto &param : funcExpr->parameters) {
     if (!param)
       continue;
 
@@ -810,12 +812,12 @@ void Semantics::walkSealStatement(Node *node) {
     std::string name;
     if (auto *fnExpr =
             dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get())) {
-      name = fnExpr->func_key.TokenLiteral;
+      name = extractIdentifierName(fnExpr);
       logInternal("Sealing function '" + name + "'");
 
       // Mangle the name so IRGen can distinguish seal members.
       const std::string mangled = sealName + "_" + name;
-      fnExpr->func_key.TokenLiteral = mangled;
+      fnExpr->func_identifier.get()->token.TokenLiteral = mangled;
       fnExpr->token.TokenLiteral = mangled;
       fnExpr->expression.TokenLiteral = mangled;
       logInternal("Mangled to '" + mangled + "'");

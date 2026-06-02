@@ -746,8 +746,9 @@ struct FunctionExpression : Expression {
   bool isExportable;
   bool isInterrupt;
   bool isNaked;
-  Token func_key;
-  std::vector<std::unique_ptr<Statement>> call;
+  Token func_token;
+  std::unique_ptr<Expression> func_identifier;
+  std::vector<std::unique_ptr<Statement>> parameters;
   std::unique_ptr<Expression> return_type;
   std::unique_ptr<Expression> block;
 
@@ -764,14 +765,16 @@ struct FunctionExpression : Expression {
     if (isNaked)
       oss << "naked ";
 
-    oss << "FunctionExpression: " << func_key.TokenLiteral << " ";
+    oss << "FunctionExpression: ";
+    oss << (func_identifier ? func_identifier->toString() : "<func_name>");
+    oss << " ";
     oss << "Function parameters: (";
 
     // Parameters
-    for (size_t i = 0; i < call.size(); ++i) {
+    for (size_t i = 0; i < parameters.size(); ++i) {
       if (i > 0)
         oss << ", ";
-      oss << (call[i] ? call[i]->toString() : "<null>");
+      oss << (parameters[i] ? parameters[i]->toString() : "<null>");
     }
 
     oss << ")";
@@ -783,36 +786,65 @@ struct FunctionExpression : Expression {
   }
 
   FunctionExpression *shallowClone() const override {
-    return new FunctionExpression(isExportable, isInterrupt, isNaked, func_key,
-                                  clonePtrVector(call), clonePtr(return_type),
-                                  clonePtr(block));
+    return new FunctionExpression(isExportable, isInterrupt, isNaked,
+                                  func_token, clonePtr(func_identifier),
+                                  clonePtrVector(parameters),
+                                  clonePtr(return_type), clonePtr(block));
   }
 
-  FunctionExpression(bool exportable, bool interrupt, bool naked, Token fn,
-                     std::vector<std::unique_ptr<Statement>> c,
+  FunctionExpression(bool exportable, bool interrupt, bool naked,
+                     Token func_token, std::unique_ptr<Expression> _name,
+                     std::vector<std::unique_ptr<Statement>> _parameters,
                      std::unique_ptr<Expression> return_t,
                      std::unique_ptr<Expression> bl)
-      : Expression(fn), isExportable(exportable), isInterrupt(interrupt),
-        isNaked(naked), func_key(fn), call(std::move(c)),
+      : Expression(func_token), isExportable(exportable),
+        isInterrupt(interrupt), isNaked(naked), func_token(func_token),
+        func_identifier(std::move(_name)), parameters(std::move(_parameters)),
         return_type(std::move(return_t)), block(std::move(bl)) {};
 };
 
-struct BasicType : Expression {
-  Token data_token;        // Basic token like i32
-  bool isNullable = false; // If we see ? we toggle
+struct ComponentAccess : Expression {
+  std::unique_ptr<Expression> parent;
+  Token at_token;
+  std::unique_ptr<Expression> child;
 
   std::string toString() override {
     std::ostringstream oss;
-    oss << "Basic Type: " << data_token.TokenLiteral << (isNullable ? "?" : "");
+    oss << "ComponentAccess:";
+    oss << (parent ? parent->toString() : "<parent>");
+    oss << "@" << (child ? child->toString() : "<child>");
+    return oss.str();
+  }
+
+  ComponentAccess *shallowClone() const override {
+    return new ComponentAccess(clonePtr(parent), at_token, clonePtr(child));
+  }
+
+  ComponentAccess(std::unique_ptr<Expression> _parent, Token _at,
+                  std::unique_ptr<Expression> _child)
+      : Expression(_at), parent(std::move(_parent)),
+        child(std::move(_child)) {};
+};
+
+struct BasicType : Expression {
+  Token type_token;
+  std::unique_ptr<Expression> type; // Basic token like i32
+  bool isNullable = false;          // If we see ? we toggle
+
+  std::string toString() override {
+    std::ostringstream oss;
+    oss << "Basic Type: " << (type ? type->toString() : type_token.TokenLiteral)
+        << (isNullable ? "?" : "");
     return oss.str();
   }
 
   BasicType *shallowClone() const override {
-    return new BasicType(data_token, isNullable);
+    return new BasicType(type_token, clonePtr(type), isNullable);
   }
 
-  BasicType(Token data, bool isNull)
-      : Expression(data), data_token(data), isNullable(isNull) {};
+  BasicType(Token data_type, std::unique_ptr<Expression> _type, bool isNull)
+      : Expression(data_type), type_token(data_type), type(std::move(_type)),
+        isNullable(isNull) {};
 };
 
 struct ReturnType : Expression {
@@ -2012,7 +2044,7 @@ struct InstantiateStatement : Statement {
 // Generic call expression
 struct GenericCall : Expression {
   std::unique_ptr<Expression> ident;
-  std::vector<Token> args;
+  std::vector<std::unique_ptr<Expression>> args;
 
   std::string toString() override {
     std::ostringstream oss;
@@ -2021,15 +2053,17 @@ struct GenericCall : Expression {
     for (size_t i = 0; i < args.size(); ++i) {
       if (i > 0)
         oss << ",";
-      oss << args[i].TokenLiteral;
+      oss << (args[i] ? args[i]->toString() : "<type>");
     }
 
     oss << ")";
     return oss.str();
   }
 
-  GenericCall(std::unique_ptr<Expression> name, std::vector<Token> types)
-      : Expression(name->token), ident(std::move(name)), args(types) {};
+  GenericCall(std::unique_ptr<Expression> name,
+              std::vector<std::unique_ptr<Expression>> types)
+      : Expression(name->token), ident(std::move(name)),
+        args(std::move(types)) {};
 };
 
 // Array Literal
@@ -2284,6 +2318,6 @@ enum class Precedence {
   PREC_FACTOR,      // "* /"
   PREC_UNARY,       // "! - ~"
   PREC_POSTFIX,
-  PREC_CALL, // . ()
+  PREC_CALL, // . () @
   PREC_PRIMARY
 };

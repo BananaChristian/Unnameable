@@ -221,7 +221,7 @@ void IRGenerator::generateFieldAssignmentStatement(Node *node) {
   logInternal("Generating field assignment");
   inhibitCleanUp = true;
 
-  llvm::Value *fieldAddress = generateInfixAddress(fieldStmt->lhs_chain.get());
+  llvm::Value *fieldAddress = generateAddress(fieldStmt->lhs_chain.get());
   if (!fieldAddress)
     reportDevBug("Failed to get field address", fieldStmt);
 

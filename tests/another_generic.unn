@@ -1,0 +1,14 @@
+generic Test(T){
+    func shout(T x): void
+}
+
+instantiate Test(i32) as Magin
+
+func [Magin@shout](i32 x): void{
+  trace x
+}
+
+func main:i32{
+  Magin@shout(3)
+  return 0
+}
