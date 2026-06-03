@@ -89,12 +89,8 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: RESTRICT";
   case TokenType::PACKED:
     return "Token Type: PACKED";
-  case TokenType::UNION:
-    return "Token Type: UNION";
   case TokenType::ALIGN:
     return "Token Type: ALIGN";
-  case TokenType::BITFIELD:
-    return "Token Type: BITFIELD";
   case TokenType::CONST:
     return "Token Type: CONST";
   case TokenType::COMPONENT:

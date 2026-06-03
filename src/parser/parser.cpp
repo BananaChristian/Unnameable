@@ -383,8 +383,7 @@ void Parser::registerPostfixFns() {
 std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   Token current = currentToken();
 
-  // 1. Clean, explicit check for variable declarations ONLY
-  // If we see an identifier followed directly by another identifier, it's a
+  // If there is an identifier followed directly by another identifier, it's a
   // declaration (e.g., "i32 x")
   if (currentToken().type == TokenType::IDENTIFIER &&
       nextToken().type == TokenType::IDENTIFIER) {
@@ -400,8 +399,8 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   }
 
   // For EVERYTHING else (calls, dots, assignments, scopes, array indices),
-  // let your working Pratt expression engine build the left-hand side
-  // naturally!
+  // let the Pratt expression engine build the left-hand side
+  // naturally
   auto lhs = parseExpression(Precedence::PREC_NONE);
   if (!lhs)
     return nullptr;
@@ -418,21 +417,20 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
     if (!val)
       return nullptr;
 
-    // FIX Dynamically route to the correct AST Node type!
     if (auto *infix = dynamic_cast<InfixExpression *>(lhs.get())) {
       if (infix->operat.type == TokenType::FULLSTOP) {
-        // It's an actual structural field mutation (e.g., x.u = 177)
+        // It's an actual structural field mutation (like x.u = 177)
         return std::make_unique<FieldAssignment>(std::move(lhs), op,
                                                  std::move(val));
       }
     }
 
-    // It's a normal variable update or binder (e.g., current -> current.next)
+    // It's a normal variable update or binder (like current -> current.next)
     return std::make_unique<AssignmentStatement>(std::move(lhs), op,
                                                  std::move(val));
   }
 
-  // 4. If there's no assignment operator, it was just a standalone expression
+  // If there's no assignment operator, it was just a standalone expression
   // (like a call or access)!
   return std::make_unique<ExpressionStatement>(current, std::move(lhs));
 }
@@ -544,10 +542,6 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::PTR] = &Parser::parseVariableModifier;
   StatementParseFunctionsMap[TokenType::DEREF] =
       &Parser::parseDereferenceAssignment;
-  StatementParseFunctionsMap[TokenType::UNION] =
-      &Parser::parseStructureModifier;
-  StatementParseFunctionsMap[TokenType::BITFIELD] =
-      &Parser::parseStructureModifier;
   StatementParseFunctionsMap[TokenType::PACKED] =
       &Parser::parseStructureModifier;
   StatementParseFunctionsMap[TokenType::ALIGN] =

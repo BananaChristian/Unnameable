@@ -1490,6 +1490,18 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.message = "the global allocator must be only exist in global scope";
     return message;
   }
+  case ErrorCode::AlignMustBeIntegerConstant: {
+    message.code = ErrorCode::AlignMustBeIntegerConstant;
+    message.message =
+        "alignment attribute requires an integer constant like 4096";
+    return message;
+  }
+  case ErrorCode::PowerOfTwoAlign: {
+    message.code = ErrorCode::PowerOfTwoAlign;
+    message.message =
+        "Alignment value must be a power of two (e.g., 4, 16, 64, 4096)";
+    return message;
+  }
   default: {
     message.code = ErrorCode::GenericError;
     message.message = "an error occured";

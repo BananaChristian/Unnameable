@@ -1,0 +1,15 @@
+packed record PackedHeader {
+    u8 id
+    u64 address
+}
+
+align(4096) record AlignedGuy{
+  i32 x
+  i32 y
+}
+
+func main:i32{
+  PackedHeader header
+  AlignedGuy guy
+  return 0
+}

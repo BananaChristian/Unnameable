@@ -5,8 +5,6 @@
 
 std::unique_ptr<Statement> Parser::parseStructureModifier() {
   bool isPacked = false;
-  bool isBitField = false;
-  bool isUnion = false;
 
   Token alignToken;
   bool alignModded = false;
@@ -33,14 +31,6 @@ std::unique_ptr<Statement> Parser::parseStructureModifier() {
       logInternal("packed");
       isPacked = true;
       advance();
-    } else if (currentToken().type == TokenType::UNION) {
-      logInternal("union");
-      isUnion = true;
-      advance();
-    } else if (currentToken().type == TokenType::BITFIELD) {
-      logInternal("bitfield");
-      isBitField = true;
-      advance();
     } else {
       break;
     }
@@ -54,12 +44,9 @@ std::unique_ptr<Statement> Parser::parseStructureModifier() {
 
   auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get());
   if (!recordStmt->modifiers)
-    recordStmt->modifiers =
-        std::make_unique<StructureModifier>(false, false, false, nullptr);
+    recordStmt->modifiers = std::make_unique<StructureModifier>(false, nullptr);
 
   if (recordStmt) {
-    recordStmt->modifiers->isBitfield = isBitField;
-    recordStmt->modifiers->isUnion = isUnion;
     recordStmt->modifiers->isPacked = isPacked;
   } else {
     logError(ErrorCode::InvalidModifier, currentToken());

@@ -93,8 +93,6 @@ class Lexer {
       {"restrict", TokenType::RESTRICT},
       {"packed", TokenType::PACKED},
       {"align", TokenType::ALIGN},
-      {"union", TokenType::UNION},
-      {"bitfield", TokenType::BITFIELD},
       {"alias", TokenType::ALIAS},
       {"asm", TokenType::ASM},
 

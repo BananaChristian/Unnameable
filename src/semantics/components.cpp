@@ -114,8 +114,10 @@ void Semantics::walkEnumStatement(Node *node) {
                                   litSym);
       }
 
-      if(!isTypeCompatible(underLyingType, literalType)){
-        logSemanticErrors(ErrorCode::TypeMismatch, enumMember->value.get(),{underLyingType.resolvedName,literalType.resolvedName});
+      if (!isTypeCompatible(underLyingType, literalType)) {
+        logSemanticErrors(
+            ErrorCode::TypeMismatch, enumMember->value.get(),
+            {underLyingType.resolvedName, literalType.resolvedName});
         symbolTable.pop_back();
         return;
       }
@@ -215,6 +217,16 @@ void Semantics::walkRecordStatement(Node *node) {
   typeInfo->typeName = recordName;
   typeInfo->type = ResolvedType::makeBase(DataType::RECORD, recordName),
   typeInfo->isExportable = isExportable;
+
+  if (auto recordModifier =
+          dynamic_cast<StructureModifier *>(recordStmt->modifiers.get())) {
+    recordSym->storage().isPacked = recordModifier->isPacked;
+    if (recordModifier->_align.get()) {
+      typeInfo->isExplicitAligned = true;
+      typeInfo->alignmentBytes =
+          parseAlignmentBytes(recordModifier->_align.get());
+    }
+  }
 
   // Early registration
   symbolTable[0][recordName] = recordSym;
@@ -640,10 +652,8 @@ void Semantics::walkComponentStatement(Node *node) {
     // Specific import case
     auto access = dynamic_cast<ComponentAccess *>(injectStmt->expr.get());
     if (access) {
-      auto parent =
-          dynamic_cast<Identifier *>(access->parent.get());
-      auto child =
-          dynamic_cast<Identifier *>(access->child.get());
+      auto parent = dynamic_cast<Identifier *>(access->parent.get());
+      auto child = dynamic_cast<Identifier *>(access->child.get());
       if (!parent || !child)
         return;
 

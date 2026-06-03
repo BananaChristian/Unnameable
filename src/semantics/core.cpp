@@ -2557,11 +2557,28 @@ std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {
   return sym;
 }
 
+uint32_t Semantics::parseAlignmentBytes(Node *node) {
+  uint32_t value = 0;
+  if (!dynamic_cast<INTLiteral *>(node)) {
+    logSemanticErrors(ErrorCode::AlignMustBeIntegerConstant, node);
+    return value;
+  }
+  value = std::stoi(node->token.TokenLiteral);
+  // Enforce rule of power of 2
+  if (value == 0 || (value & (value - 1)) != 0) {
+    logSemanticErrors(ErrorCode::PowerOfTwoAlign, node);
+    value = 0;
+    return value;
+  }
+
+  return value;
+}
+
 void Semantics::overwriteNodeName(Node *node, const std::string &mangled_name) {
   if (auto identifier = dynamic_cast<Identifier *>(node)) {
     identifier->identifier.TokenLiteral = mangled_name;
     identifier->token.TokenLiteral = mangled_name;
-    identifier->expression.TokenLiteral=mangled_name;
+    identifier->expression.TokenLiteral = mangled_name;
   }
   if (auto call = dynamic_cast<CallExpression *>(node))
     overwriteNodeName(call->function_identifier.get(), mangled_name);

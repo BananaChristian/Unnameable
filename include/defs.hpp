@@ -185,6 +185,7 @@ struct StorageInfo {
   bool isMutable = false;  // Declared with 'var'
   bool isConstant = false; // Declared with 'const'
   bool isInitialized = false;
+  bool isPacked = false;
   int64_t constIntVal = 0; // Compile-time integer value (when isConstant)
 
   int pointerCount = 0;
@@ -217,7 +218,7 @@ struct GenericInstantiationInfo {
   std::string aliasName;
   std::string blueprintName;
   std::unordered_map<std::string, ResolvedType> paramToType;
-  std::unordered_map<std::string, Node*> rawTypeMap;
+  std::unordered_map<std::string, Node *> rawTypeMap;
   std::unique_ptr<Node> instantiatedAST;
 
   GenericInstantiationInfo() = default;
@@ -308,6 +309,8 @@ struct CustomTypeInfo {
   DataType underLyingType = DataType::I32; // enum backing type
   std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
   bool isExportable = false;
+  bool isExplicitAligned = false;
+  uint32_t alignmentBytes = 0;
 };
 
 // ScopeInfo

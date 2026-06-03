@@ -344,6 +344,8 @@ private:
   llvm::Function *getOrDeclareStrcat();
   llvm::Function *getOrDeclareUnniptoa();
   llvm::Value *calculateFStringSize(FStringLiteral *fStr);
+  llvm::Align getCustomOrABIAlign(std::shared_ptr<SymbolInfo> sym,
+                                  llvm::Type *llvmTy);
   void reportDevBug(const std::string &message, Node *contextNode);
   void logInternal(const std::string &message);
 };

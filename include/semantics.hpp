@@ -329,6 +329,7 @@ private:
   bool rhsIsHeap(Node *node);
   bool isCustomTypeByValue(const ResolvedType &type);
   void overwriteNodeName(Node *node, const std::string &mangled_name);
+  uint32_t parseAlignmentBytes(Node *node);
   void popScope();
   void registerLiteral(Node *literal, const ResolvedType &type);
   Node *getCurrentBlock();

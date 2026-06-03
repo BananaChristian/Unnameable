@@ -74,8 +74,6 @@ enum class TokenType {
   HEAP,      // heap keword that allows a user to use a dynamic heap
   ALLOCATOR, // Allocator keyword
 
-  BITFIELD,
-  UNION,
   PACKED,
   ALIGN,
 

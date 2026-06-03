@@ -32,7 +32,7 @@ void IRGenerator::generateRecordStatement(Node *node) {
       llvm::Type *ty = getLLVMType(info->type);
       memberTypes[info->memberIndex] = ty;
     }
-    structTy->setBody(memberTypes);
+    structTy->setBody(memberTypes, sym->storage().isPacked);
   }
   sym->codegen().llvmType = structTy;
 
@@ -336,7 +336,8 @@ void IRGenerator::generateComponentFunctionStatement(
   if (!funcSym)
     reportDevBug("Failed to find function symbol info", fnExpr);
 
-  std::string funcName = compName + "_" + semantics.extractIdentifierName(fnExpr);
+  std::string funcName =
+      compName + "_" + semantics.extractIdentifierName(fnExpr);
 
   // Build parameter types with coercion (first param is %this)
   llvm::Type *thisPtrType = llvmCustomTypes[compName]->getPointerTo();

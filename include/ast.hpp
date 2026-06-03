@@ -1118,21 +1118,18 @@ struct InjectStatement : Statement {
 // Structure modifier
 struct StructureModifier : Expression {
   bool isPacked = false;
-  bool isBitfield = false;
-  bool isUnion = false;
   std::unique_ptr<Expression> _align;
 
   StructureModifier *shallowClone() const override {
-    return new StructureModifier(isPacked, isBitfield, isUnion,
+    return new StructureModifier(isPacked,
                                  clonePtr(_align));
   }
 
   StructureModifier() : Expression(Token{}) {}
 
-  StructureModifier(bool packed, bool bitfield, bool union_,
+  StructureModifier(bool packed,
                     std::unique_ptr<Expression> align = nullptr)
-      : Expression(Token{}), isPacked(packed), isBitfield(bitfield),
-        isUnion(union_), _align(std::move(align)) {}
+      : Expression(Token{}), isPacked(packed), _align(std::move(align)) {}
 
   std::string toString() override {
     std::ostringstream oss;
@@ -1147,10 +1144,6 @@ struct StructureModifier : Expression {
 
     if (isPacked)
       addModifier("packed");
-    if (isBitfield)
-      addModifier("bitfield");
-    if (isUnion)
-      addModifier("union");
     if (_align) {
       if (!first)
         oss << " ";
