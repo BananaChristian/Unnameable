@@ -119,6 +119,7 @@ void Semantics::registerWalkerFunctions() {
       &Semantics::walkFunctionCallExpression;
   walkerFunctionsMap[typeid(UnwrapExpression)] =
       &Semantics::walkUnwrapExpression;
+  walkerFunctionsMap[typeid(ComponentAccess)] = &Semantics::walkComponentAccess;
   walkerFunctionsMap[typeid(ReturnStatement)] = &Semantics::walkReturnStatement;
 
   // Walker registration for type expressions
@@ -1084,7 +1085,9 @@ bool Semantics::isGlobalScope() {
   return false;
 }
 
-ResolvedType Semantics::tokenTypeToResolvedType(Token token,const std::string &type, bool isNullable) {
+ResolvedType Semantics::tokenTypeToResolvedType(Token token,
+                                                const std::string &type,
+                                                bool isNullable) {
   auto makeType = [&](DataType nonNull, const std::string &baseName) {
     if (isNullable) {
       ResolvedType t;
@@ -2552,6 +2555,16 @@ std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {
   }
 
   return sym;
+}
+
+void Semantics::overwriteNodeName(Node *node, const std::string &mangled_name) {
+  if (auto identifier = dynamic_cast<Identifier *>(node)) {
+    identifier->identifier.TokenLiteral = mangled_name;
+    identifier->token.TokenLiteral = mangled_name;
+    identifier->expression.TokenLiteral=mangled_name;
+  }
+  if (auto call = dynamic_cast<CallExpression *>(node))
+    overwriteNodeName(call->function_identifier.get(), mangled_name);
 }
 
 std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {

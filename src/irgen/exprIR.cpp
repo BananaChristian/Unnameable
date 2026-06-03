@@ -1121,6 +1121,15 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
   return addr;
 }
 
+llvm::Value *IRGenerator::generateComponentAccessExpression(Node *node){
+  auto compAccess=dynamic_cast<ComponentAccess*>(node);
+  if(!compAccess)
+    return nullptr;
+
+  auto value = generateExpression(compAccess->child.get());
+  return value;
+}
+
 llvm::Value *IRGenerator::generateAddressExpression(Node *node) {
   auto addrExpr = dynamic_cast<AddressExpression *>(node);
   if (!addrExpr) {

@@ -587,6 +587,8 @@ void IRGenerator::registerAddressGeneratorFunctions() {
       &IRGenerator::generateIdentifierAddress;
   addressGeneratorsMap[typeid(InfixExpression)] =
       &IRGenerator::generateInfixAddress;
+  addressGeneratorsMap[typeid(ComponentAccess)] =
+      &IRGenerator::generateComponentAccessAddress;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions() {
@@ -666,6 +668,8 @@ void IRGenerator::registerExpressionGeneratorFunctions() {
       &IRGenerator::generateInstanceExpression;
   expressionGeneratorsMap[typeid(ArraySubscript)] =
       &IRGenerator::generateArraySubscriptExpression;
+  expressionGeneratorsMap[typeid(ComponentAccess)] =
+      &IRGenerator::generateComponentAccessExpression;
 }
 
 char IRGenerator::decodeCharLiteral(const std::string &literal) {

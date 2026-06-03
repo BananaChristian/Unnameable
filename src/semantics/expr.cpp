@@ -79,6 +79,21 @@ void Semantics::walkInfixExpression(Node *node) {
   insertMetaData(infixExpr, info);
 }
 
+void Semantics::walkComponentAccess(Node *node) {
+  auto compAccess = dynamic_cast<ComponentAccess *>(node);
+  if (!compAccess)
+    return;
+
+  auto mangled_name = extractIdentifierName(compAccess);
+  // Overwrite the name of the rhs and then pass it to the walker
+  overwriteNodeName(compAccess->child.get(), mangled_name);
+  // Walk the rhs
+  walker(compAccess->child.get());
+
+  auto sym = getSymbolFromMeta(compAccess->child.get());
+  insertMetaData(compAccess, sym);
+}
+
 void Semantics::walkPrefixExpression(Node *node) {
   auto prefixExpr = dynamic_cast<PrefixExpression *>(node);
   if (!prefixExpr)

@@ -194,6 +194,7 @@ private:
   llvm::Value *generateIdentifierExpression(Node *node);
   llvm::Value *generateAddressExpression(Node *node);
   llvm::Value *generateDereferenceExpression(Node *node);
+  llvm::Value *generateComponentAccessExpression(Node *node);
 
   llvm::Value *generateBlockExpression(Node *node);
   llvm::Value *generateFunctionExpression(Node *node);
@@ -214,6 +215,7 @@ private:
   llvm::Value *generateArraySubscriptAddress(Node *node);
   llvm::Value *generateIdentifierAddress(Node *node);
   llvm::Value *generateInfixAddress(Node *node);
+  llvm::Value *generateComponentAccessAddress(Node *node);
 
   // HELPER FUNCTIONS
   void registerGeneratorFunctions();

@@ -125,6 +125,15 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
   return nullptr;
 }
 
+llvm::Value *IRGenerator::generateComponentAccessAddress(Node *node){
+  auto compAccess=dynamic_cast<ComponentAccess*>(node);
+  if(!compAccess)
+    return nullptr;
+
+  auto address=generateAddress(compAccess->child.get());
+  return address;
+}
+
 // Self L-Value  generator
 llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   auto selfExpr = dynamic_cast<SelfExpression *>(node);
