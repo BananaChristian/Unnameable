@@ -215,6 +215,7 @@ private:
   llvm::Value *generateArraySubscriptAddress(Node *node);
   llvm::Value *generateIdentifierAddress(Node *node);
   llvm::Value *generateInfixAddress(Node *node);
+  llvm::Value *generatePostfixAddress(Node *node);
   llvm::Value *generateComponentAccessAddress(Node *node);
 
   // HELPER FUNCTIONS

@@ -44,7 +44,7 @@ void Semantics::walkWhileStatement(Node *node) {
     reportDevBug("Failed to get while condition symbol info", whileCondition);
 
   ResolvedType whileCondType = condSym->type().type;
-  if (whileCondType.kind != DataType::BOOLEAN) {
+  if (!isTypeConvertibleToBool(whileCondType)) {
     logSemanticErrors(ErrorCode::TypeMismatch, whileCondition,
                       {"bool", whileCondType.resolvedName});
   }
@@ -111,6 +111,7 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
 
   if (!isLiteral(caseCondition)) {
     logSemanticErrors(ErrorCode::CaseCondLiteral, caseCondition);
+    insertErrorMetaData(caseStmt);
     return;
   }
 

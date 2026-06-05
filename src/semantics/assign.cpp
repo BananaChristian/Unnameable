@@ -179,8 +179,14 @@ void Semantics::walkAssignStatement(Node *node) {
 
   walker(assignStmt->identifier.get());
   auto lhsSym = getSymbolFromMeta(assignStmt->identifier.get());
-  if (!lhsSym || lhsSym->hasError)
+  if (!lhsSym)
+    reportDevBug("Failed to get lhs symbol info in assignment statement",
+                 assignStmt->identifier.get());
+
+  if (lhsSym->hasError) {
+    insertErrorMetaData(assignStmt);
     return;
+  }
 
   checkOperatorStyle(assignStmt->op.type, lhsSym->type().isPointer, name,
                      assignStmt);
@@ -193,6 +199,7 @@ void Semantics::walkAssignStatement(Node *node) {
     if (!lhsSym->type().isNullable) {
       logSemanticErrors(ErrorCode::NullAssignmentToNonNullable,
                         assignStmt->identifier.get(), {name});
+      insertErrorMetaData(assignStmt);
       return;
     }
     rhsSym->type().type = lhsSym->type().type;
@@ -203,8 +210,10 @@ void Semantics::walkAssignStatement(Node *node) {
   giveGenericLiteralContext(assignStmt->value.get(), lhsSym->type().type,
                             rhsSym);
 
-  if (rhsSym->hasError)
+  if (rhsSym->hasError) {
+    insertErrorMetaData(assignStmt);
     return;
+  }
 
   if (!lhsSym->type().isNullable && rhsSym->type().isDefinitelyNull) {
     logSemanticErrors(ErrorCode::NullAssignmentToNonNullable,
@@ -247,14 +256,12 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
 
   walker(fieldAssignStmt->lhs_chain.get());
   auto lhsInfo = getSymbolFromMeta(fieldAssignStmt->lhs_chain.get());
-  if (!lhsInfo) {
+  if (!lhsInfo)
     reportDevBug("Failed to resolve LHS symbol in field assignment",
                  fieldAssignStmt->lhs_chain.get());
-    return;
-  }
 
   if (lhsInfo->hasError) {
-    logSemanticErrors(ErrorCode::LhsHasError, fieldAssignStmt->lhs_chain.get());
+    insertErrorMetaData(fieldAssignStmt);
     return;
   }
 
@@ -264,7 +271,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
                      fieldAssignStmt);
 
   if (!fieldAssignStmt->value) {
-    insertMetaData(fieldAssignStmt, lhsInfo);
+    insertErrorMetaData(fieldAssignStmt);
     return;
   }
 
@@ -274,6 +281,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     auto valName = extractIdentifierName(fieldAssignStmt->value.get());
     logSemanticErrors(ErrorCode::UndefinedVariable,
                       fieldAssignStmt->value.get(), {valName});
+    insertErrorMetaData(fieldAssignStmt);
     return;
   }
 
@@ -282,6 +290,7 @@ void Semantics::walkFieldAssignmentStatement(Node *node) {
     if (!lhsInfo->type().type.isNull) {
       logSemanticErrors(ErrorCode::NullAssignmentToField, fieldAssignStmt,
                         {name});
+      insertErrorMetaData(fieldAssignStmt);
       return;
     }
     rhsInfo->type().type = lhsInfo->type().type;

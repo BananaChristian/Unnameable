@@ -9,12 +9,14 @@ void Semantics::walkEnumStatement(Node *node) {
   if (!enumStmt)
     return;
 
-  std::string enumStmtName = enumStmt->enum_identifier->expression.TokenLiteral;
+  std::string enumStmtName =
+      extractIdentifierName(enumStmt->enum_identifier.get());
   bool isExportable = enumStmt->isExportable;
 
   // Check duplicate type name
   if (resolveSymbolInfo(enumStmtName)) {
     logSemanticErrors(ErrorCode::DuplicateName, enumStmt, {enumStmtName});
+    insertErrorMetaData(enumStmt);
     return;
   }
 
@@ -71,11 +73,9 @@ void Semantics::walkEnumStatement(Node *node) {
   auto enumInfo = std::make_shared<SymbolInfo>();
 
   for (const auto &enumMember : enumStmt->enum_content) {
-    if (!enumMember) {
+    if (!enumMember)
       reportDevBug("Invalid enum member", node);
-      symbolTable.pop_back();
-      return;
-    }
+
     logInternal("Analysing enum member ...");
     std::string memberName = enumMember->enumMember;
 
@@ -83,6 +83,7 @@ void Semantics::walkEnumStatement(Node *node) {
     if (members.count(memberName) || resolveSymbolInfo(memberName)) {
       logSemanticErrors(ErrorCode::DuplicateName, enumMember.get(),
                         {memberName});
+      insertErrorMetaData(enumStmt);
       symbolTable.pop_back();
       return;
     }
@@ -91,6 +92,7 @@ void Semantics::walkEnumStatement(Node *node) {
     if (enumMember->value) {
       if (!isIntegerConstant(enumMember->value.get())) {
         logSemanticErrors(ErrorCode::InvalidEnumMemberVal, enumMember.get());
+        insertErrorMetaData(enumStmt);
         symbolTable.pop_back();
         return;
       }
@@ -104,6 +106,7 @@ void Semantics::walkEnumStatement(Node *node) {
       auto literalType = litSym->type().type;
       if (!isInteger(literalType)) {
         logSemanticErrors(ErrorCode::InvalidEnumLitType, enumMember.get());
+        insertErrorMetaData(enumStmt);
         symbolTable.pop_back();
         return;
       }
@@ -118,6 +121,7 @@ void Semantics::walkEnumStatement(Node *node) {
         logSemanticErrors(
             ErrorCode::TypeMismatch, enumMember->value.get(),
             {underLyingType.resolvedName, literalType.resolvedName});
+        insertErrorMetaData(enumStmt);
         symbolTable.pop_back();
         return;
       }
@@ -130,6 +134,7 @@ void Semantics::walkEnumStatement(Node *node) {
       if (underlyingIsUnsigned && memberValue < 0) {
         logSemanticErrors(ErrorCode::NegativeMember, enumMember.get(),
                           {std::to_string(memberValue)});
+        insertErrorMetaData(enumStmt);
         symbolTable.pop_back();
         return;
       }
@@ -189,12 +194,13 @@ void Semantics::walkRecordStatement(Node *node) {
     return;
 
   // Get block name
-  std::string recordName = recordStmt->recordName->expression.TokenLiteral;
+  std::string recordName = extractIdentifierName(recordStmt->recordName.get());
   bool isExportable = recordStmt->isExportable;
 
   // Ensure name not already used
   if (resolveSymbolInfo(recordName)) {
     logSemanticErrors(DuplicateName, recordStmt, {recordName});
+    insertErrorMetaData(recordStmt);
     return;
   }
 
@@ -258,9 +264,8 @@ void Semantics::walkRecordStatement(Node *node) {
       declaration->mutability = Mutability::CONSTANT;
 
     // Apply volatility to the entire block if the user marked it
-    if (isBlockVolatile) {
+    if (isBlockVolatile)
       declaration->isVolatile = true;
-    }
 
     // Walk the let statement to register it in the scope
     walker(field.get());
@@ -314,7 +319,7 @@ void Semantics::walkInstanceExpression(Node *node) {
   if (!instExpr)
     return;
 
-  auto instName = instExpr->blockIdent->expression.TokenLiteral;
+  auto instName = extractIdentifierName(instExpr->blockIdent.get());
 
   auto instSym = resolveSymbolInfo(instName);
 
@@ -381,6 +386,7 @@ void Semantics::walkInitConstructor(Node *node) {
   if (currentTypeStack.empty() ||
       currentTypeStack.back().type.kind != DataType::COMPONENT) {
     logSemanticErrors(FloatingInit, initStmt);
+    insertErrorMetaData(initStmt);
     return;
   }
 
@@ -389,6 +395,7 @@ void Semantics::walkInitConstructor(Node *node) {
   // Only one init constructor per component
   if (currentComponent.hasInitConstructor) {
     logSemanticErrors(ErrorCode::DuplicateInit, initStmt);
+    insertErrorMetaData(initStmt);
     return;
   }
   currentComponent.hasInitConstructor = true;
@@ -483,6 +490,7 @@ void Semantics::walkSelfExpression(Node *node) {
   if (currentTypeStack.empty() ||
       currentTypeStack.back().type.kind != DataType::COMPONENT) {
     logSemanticErrors(ErrorCode::SelfOnlyInComponent, selfExpr);
+    insertErrorMetaData(selfExpr);
     return;
   }
 
@@ -528,6 +536,7 @@ void Semantics::walkComponentStatement(Node *node) {
 
   if (symbolTable[0].find(componentName) != symbolTable[0].end()) {
     logSemanticErrors(ErrorCode::DuplicateName, componentStmt, {componentName});
+    insertErrorMetaData(componentStmt);
     return;
   }
 
@@ -603,6 +612,7 @@ void Semantics::walkComponentStatement(Node *node) {
         if (symbolTable.back().find(name) != symbolTable.back().end()) {
           logSemanticErrors(ErrorCode::InjectionCollision, ident,
                             {name, identName});
+          insertErrorMetaData(componentStmt);
           return;
         }
 
@@ -668,12 +678,14 @@ void Semantics::walkComponentStatement(Node *node) {
           if (members.find(memberName) != members.end()) {
             logSemanticErrors(ErrorCode::InjectionCollision, ident,
                               {memberName, recordName});
+            insertErrorMetaData(componentStmt);
             return;
           }
 
           if (symbolTable.back().find(memberName) != symbolTable.back().end()) {
             logSemanticErrors(ErrorCode::InjectionCollision, ident,
                               {memberName, recordName});
+            insertErrorMetaData(componentStmt);
             return;
           }
 
@@ -823,6 +835,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
 
   if (isGlobalScope()) {
     logSemanticErrors(ErrorCode::GlobalInstantiation, newExpr);
+    insertErrorMetaData(newExpr);
     return;
   }
   // We determine the type once and use it everywhere.
@@ -839,6 +852,7 @@ void Semantics::walkNewComponentExpression(Node *node) {
 
   if (!componentExists) {
     logSemanticErrors(ErrorCode::UndefinedVariable, newExpr, {componentName});
+    insertErrorMetaData(newExpr);
     return;
   }
 

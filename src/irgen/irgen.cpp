@@ -589,6 +589,8 @@ void IRGenerator::registerAddressGeneratorFunctions() {
       &IRGenerator::generateInfixAddress;
   addressGeneratorsMap[typeid(ComponentAccess)] =
       &IRGenerator::generateComponentAccessAddress;
+  addressGeneratorsMap[typeid(PostfixExpression)] =
+      &IRGenerator::generatePostfixAddress;
 }
 
 void IRGenerator::registerExpressionGeneratorFunctions() {

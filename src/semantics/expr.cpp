@@ -12,9 +12,8 @@ void Semantics::walkInfixExpression(Node *node) {
   auto leftSym = getSymbolFromMeta(left);
 
   // Retrieve the symbol info of the left side
-  if (!leftSym) {
+  if (!leftSym)
     reportDevBug("Unresolved expression in infix left side", left);
-  }
 
   auto lhsType = leftSym->type().type;
 
@@ -29,6 +28,7 @@ void Semantics::walkInfixExpression(Node *node) {
     if (!rhsIdent && !rhsCall) {
       logSemanticErrors(ErrorCode::InvalidInfix,
                         infixExpr->right_operand.get());
+      insertErrorMetaData(infixExpr);
       return;
     }
 
@@ -108,16 +108,19 @@ void Semantics::walkPrefixExpression(Node *node) {
       auto symbol = resolveSymbolInfo(name);
       if (!symbol) {
         logSemanticErrors(ErrorCode::UndefinedVariable, prefixExpr, {name});
+        insertErrorMetaData(prefixExpr);
         return;
       }
       if (!symbol->storage().isMutable) {
         logSemanticErrors(ErrorCode::InvalidImmutUse, prefixExpr,
                           {prefixExpr->operat.TokenLiteral, name});
+        insertErrorMetaData(prefixExpr);
         return;
       }
       if (!symbol->storage().isInitialized) {
         logSemanticErrors(ErrorCode::InvalidImmutUse, prefixExpr,
                           {prefixExpr->operat.TokenLiteral, name});
+        insertErrorMetaData(prefixExpr);
         return;
       }
     } else {
@@ -148,19 +151,20 @@ void Semantics::walkPostfixExpression(Node *node) {
       auto symbol = resolveSymbolInfo(name);
       if (!symbol) {
         logSemanticErrors(ErrorCode::UndefinedVariable, postfixExpr, {name});
+        insertErrorMetaData(postfixExpr);
         return;
       }
       if (symbol->storage().isMutable == false) {
         logSemanticErrors(ErrorCode::InvalidImmutUse, postfixExpr, {name});
+        insertErrorMetaData(postfixExpr);
         return;
       }
       if (!symbol->storage().isInitialized) {
         logSemanticErrors(ErrorCode::InvalidUninitUse, postfixExpr,
                           {postfixExpr->operator_token.TokenLiteral, name});
+        insertErrorMetaData(postfixExpr);
         return;
       }
-    } else {
-      return;
     }
   }
   walker(postfixOperand);
@@ -179,10 +183,8 @@ void Semantics::walkUnwrapExpression(Node *node) {
     return;
 
   auto expr = dynamic_cast<Expression *>(unwrapExpr->expr.get());
-  if (!expr) {
+  if (!expr)
     reportDevBug("Invalid unwrap expression", unwrapExpr->expr.get());
-    return;
-  }
 
   auto exprName = extractIdentifierName(unwrapExpr->expr.get());
 
@@ -191,6 +193,7 @@ void Semantics::walkUnwrapExpression(Node *node) {
 
   if (!exprSym) {
     logSemanticErrors(ErrorCode::UndefinedVariable, unwrapExpr, {exprName});
+    insertErrorMetaData(unwrapExpr);
     return;
   }
 
@@ -199,13 +202,11 @@ void Semantics::walkUnwrapExpression(Node *node) {
   if (!exprType.isNull) {
     logSemanticErrors(ErrorCode::UnwrappableType, unwrapExpr,
                       {exprType.resolvedName});
-    hasError = true;
   }
 
   if (exprType.kind == DataType::VOID || exprType.kind == DataType::UNKNOWN) {
     logSemanticErrors(ErrorCode::UnwrappableType, unwrapExpr,
                       {exprType.resolvedName});
-    hasError = true;
   }
 
   logInternal("Unwrap type before strip :" + exprType.resolvedName);
@@ -355,14 +356,14 @@ void Semantics::walkBitcastExpression(Node *node) {
 
   ResolvedType sourceType = sourceSym->type().type;
 
-  // Bitcastable — pointer (any inner type) or scalar numeric
-  // Blocks: refs, arrays, bare custom types, nullable
+  // Bitcastable pointer (any inner type) or scalar numeric
+  // Blocks refs, arrays, bare custom types, nullable
   auto isBitcastable = [](const ResolvedType &t) -> bool {
-    // Nullable is never bitcastable — unwrap first
+    // Nullable is never bitcastable unwrap first
     if (t.isNull)
       return false;
 
-    // References are aliases — no bit representation
+    // References are aliases no bit representation
     if (t.isRef())
       return false;
 
@@ -402,6 +403,7 @@ void Semantics::walkBitcastExpression(Node *node) {
   if (!isBitcastable(destinationType)) {
     logSemanticErrors(ErrorCode::NoneBitcastableType, destNode,
                       {destinationType.resolvedName});
+    insertErrorMetaData(bitcastExpr);
     return;
   }
 
@@ -425,6 +427,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   auto arrSymbol = resolveSymbolInfo(arrName);
   if (!arrSymbol) {
     logSemanticErrors(ErrorCode::UndefinedVariable, arrExpr, {arrName});
+    insertErrorMetaData(arrExpr);
     return;
   }
 
@@ -449,6 +452,7 @@ void Semantics::walkArraySubscriptExpression(Node *node) {
   if (arrType.isNull) {
     logSemanticErrors(ErrorCode::NoneIndexableType, arrExpr,
                       {arrType.resolvedName});
+    insertErrorMetaData(arrExpr);
     return;
   }
 
@@ -490,6 +494,7 @@ void Semantics::walkIdentifierExpression(Node *node) {
 
   if (!symbolInfo) {
     logSemanticErrors(ErrorCode::UndefinedVariable, identExpr, {identName});
+    insertErrorMetaData(identExpr);
     return;
   }
 
@@ -529,12 +534,14 @@ void Semantics::walkAddressExpression(Node *node) {
     if (infix->operat.type != TokenType::FULLSTOP &&
         infix->operat.type != TokenType::SCOPE_OPERATOR) {
       logSemanticErrors(ErrorCode::InvalidAddrOperand, infix, {addrName});
+      insertErrorMetaData(addrExpr);
       return;
     }
   }
 
   if (call) {
     logSemanticErrors(ErrorCode::InvalidAddrOperand, innerExpr, {addrName});
+    insertErrorMetaData(addrExpr);
     return;
   }
 
@@ -542,6 +549,7 @@ void Semantics::walkAddressExpression(Node *node) {
   auto symbolInfo = getSymbolFromMeta(innerExpr);
   if (!symbolInfo) {
     logSemanticErrors(ErrorCode::UndefinedVariable, innerExpr, {addrName});
+    insertErrorMetaData(addrExpr);
     return;
   }
 
@@ -578,16 +586,21 @@ void Semantics::walkDereferenceExpression(Node *node) {
   auto derefSym = getSymbolFromMeta(innerNode);
   if (!derefSym) {
     logSemanticErrors(ErrorCode::UndefinedVariable, derefExpr, {derefName});
+    insertErrorMetaData(derefExpr);
     return;
   }
 
-  if (derefSym->hasError)
+  if (derefSym->hasError) {
+    logSemanticErrors(ErrorCode::ErroniousInitializer, innerNode);
+    insertErrorMetaData(derefExpr);
     return;
+  }
 
   // Must be a pointer to dereference
   if (!derefSym->type().type.isPointer()) {
     logSemanticErrors(ErrorCode::NoneDereferencableType, derefExpr,
                       {derefSym->type().type.resolvedName});
+    insertErrorMetaData(derefExpr);
     return;
   }
 
@@ -595,6 +608,7 @@ void Semantics::walkDereferenceExpression(Node *node) {
   if (derefSym->type().type.isNull) {
     logSemanticErrors(ErrorCode::NoneDereferencableType, derefExpr,
                       {derefSym->type().type.resolvedName});
+    insertErrorMetaData(derefExpr);
     return;
   }
 
@@ -603,12 +617,14 @@ void Semantics::walkDereferenceExpression(Node *node) {
   if (!derefSym->type().type.innerType) {
     logSemanticErrors(ErrorCode::NoneDereferencableType, derefExpr,
                       {derefSym->type().type.resolvedName});
+    insertErrorMetaData(derefExpr);
     return;
   }
 
   if (derefSym->type().type.innerType->base().kind == DataType::OPAQUE) {
     logSemanticErrors(ErrorCode::NoneDereferencableType, derefExpr,
                       {derefSym->type().type.resolvedName});
+    insertErrorMetaData(derefExpr);
     return;
   }
 

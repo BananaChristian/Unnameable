@@ -83,9 +83,8 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
 // Infix L-value generator
 llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
   auto infix = dynamic_cast<InfixExpression *>(node);
-  if(!infix)
+  if (!infix)
     reportDevBug("Invalid infix node", node);
-  
 
   llvm::Value *address = generateAddress(infix->left_operand.get());
   if (!address)
@@ -125,12 +124,12 @@ llvm::Value *IRGenerator::generateInfixAddress(Node *node) {
   return nullptr;
 }
 
-llvm::Value *IRGenerator::generateComponentAccessAddress(Node *node){
-  auto compAccess=dynamic_cast<ComponentAccess*>(node);
-  if(!compAccess)
+llvm::Value *IRGenerator::generateComponentAccessAddress(Node *node) {
+  auto compAccess = dynamic_cast<ComponentAccess *>(node);
+  if (!compAccess)
     return nullptr;
 
-  auto address=generateAddress(compAccess->child.get());
+  auto address = generateAddress(compAccess->child.get());
   return address;
 }
 
@@ -263,8 +262,23 @@ llvm::Value *IRGenerator::generateArraySubscriptAddress(Node *node) {
   llvm::Value *allocaPtr = generateIdentifierAddress(arrExpr->identifier.get());
   llvm::Value *dataPtr = allocaPtr;
 
-  if (identSym->type().isPointer) {
-    logInternal("  -> Identifier is a raw pointer, loading base address...");
+  // Double-check the physical LLVM storage type. If the identifier is a stack
+  // slot holding an incoming parameter pointer or a variable pointer (ptr), we
+  // MUST load it.
+  bool isPointerStorage = identSym->type().isPointer;
+
+  // Explicit fallback fallback: check if it's a parameter/variable pointer mask
+  if (!isPointerStorage && allocaPtr->getType()->isPointerTy()) {
+    // If our type-checker missed it but the variable's source type is
+    // explicitly an external pointer array reference
+    if (identSym->type().type.isPointer()) {
+      isPointerStorage = true;
+    }
+  }
+
+  if (isPointerStorage) {
+    logInternal("  -> Identifier is a raw pointer parameter/variable, loading "
+                "base address...");
     dataPtr =
         funcBuilder.CreateLoad(funcBuilder.getPtrTy(), allocaPtr, "ptr_base");
   }
@@ -379,13 +393,18 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
 
   auto ptrType = llvm::PointerType::getUnqual(context);
 
-  auto *baseLoad = funcBuilder.CreateLoad(ptrType, addr, "base_lift");
   // Get symbol for the pointer being dereferenced
   auto sym = semantics.getSymbolFromMeta(current);
-  if (sym && sym->storage().isVolatile) {
-    baseLoad->setVolatile(true);
+  if (dynamic_cast<PostfixExpression *>(current)) {
+    // 'addr' is already the raw target address pointer value we need!
+  } else {
+    // Standard stack variables or identifiers need their addresses loaded first
+    auto *baseLoad = funcBuilder.CreateLoad(ptrType, addr, "base_lift");
+    if (sym && sym->storage().isVolatile) {
+      baseLoad->setVolatile(true);
+    }
+    addr = baseLoad;
   }
-  addr = baseLoad;
 
   for (int i = 0; i < derefCount - 1; i++) {
     auto *hopLoad = funcBuilder.CreateLoad(ptrType, addr, "deref_hop_addr");
@@ -400,4 +419,51 @@ llvm::Value *IRGenerator::generateDereferenceAddress(Node *node) {
     funcBuilder.Insert(pendingFree);
 
   return addr;
+}
+
+llvm::Value *IRGenerator::generatePostfixAddress(Node *node) {
+  auto postfix = dynamic_cast<PostfixExpression *>(node);
+  if (!postfix)
+    reportDevBug("Invalid postfix expression", node);
+
+  // Generic address lookup (handles identifiers, array access, etc.)
+  llvm::Value *address = generateAddress(postfix->operand.get());
+  if (!address)
+    reportDevBug("Null storage pointer for postfix operand", postfix);
+
+  auto postfixSym = semantics.getSymbolFromMeta(postfix);
+  if (!postfixSym)
+    reportDevBug("Symbol metadata missing for postfix expression", postfix);
+
+  ResolvedType resultType = postfixSym->type().type;
+  llvm::Type *varType = getLLVMType(resultType);
+
+  // 2. Load the current address value stored inside the variable
+  llvm::Value *originalValue =
+      funcBuilder.CreateLoad(varType, address, "loadtmp");
+
+  llvm::Value *updatedValue = nullptr;
+
+  if (resultType.isPointer()) {
+    // Determine step direction
+    int64_t step =
+        (postfix->operator_token.type == TokenType::PLUS_PLUS) ? 1 : -1;
+    llvm::Value *offset =
+        llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), step);
+
+    // Get the element type the pointer points to (e.g., u8)
+    llvm::Type *elemType = getLLVMType(*resultType.innerType);
+
+    // CreateGEP handles low-level pointer arithmetic scaling automatically
+    updatedValue =
+        funcBuilder.CreateGEP(elemType, originalValue, offset, "ptr_step");
+  } else {
+    reportDevBug("generatePostfixAddress called on a non-pointer type",
+                 postfix);
+  }
+
+  // Save the incremented pointer back to the storage slot
+  funcBuilder.CreateStore(updatedValue, address);
+
+  return originalValue;
 }

@@ -1,11 +1,12 @@
-allocator MyAllocator{
+##allocator MyAllocator{
   func allocate(usize size): ptr opaque
   func free(ptr opaque p): void
 }
 
-global allocator MyAllocator
+global allocator MyAllocator##
 
 func main:i32{
     heap i32 x=100
+    trace x
     return 0
 }

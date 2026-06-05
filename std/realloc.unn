@@ -1,0 +1,19 @@
+#Unnameable realloc
+
+ptr opaque NULL -> bitcast<ptr opaque>(0)
+
+export func realloc(ptr opaque old,usize old_size, usize new_size):ptr opaque{
+   ptr opaque new_ptr -> unn_alloc(new_size) 
+   if(!new_ptr){
+      return NULL
+   }
+   ptr u8 src -> bitcast<ptr u8>(old)
+   ptr u8 dst -> bitcast<ptr u8>(new_ptr)
+   mut usize i=0
+   while(i<old_size){
+      dst[i]=src[i]
+      i=i+1
+   }
+   unn_dealloc(old)
+   return new_ptr
+}

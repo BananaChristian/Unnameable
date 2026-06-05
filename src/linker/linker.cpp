@@ -31,7 +31,7 @@ void Linker::processLinks(const std::string &currentObject,
     throw std::runtime_error(
         "ld.lld not found, please install lld to use unnc");
 
-  // Static library — just archive
+  // Static library just archive
   if (isStatic) {
     std::string libPath = outputExecutable;
     if (fs::path(libPath).extension() != ".a")
@@ -51,21 +51,29 @@ void Linker::processLinks(const std::string &currentObject,
   }
 
   std::string exeDir = getExecutableDir();
-  fs::path coreDir = fs::path(exeDir).parent_path() / "core";
+  fs::path buildDir = fs::path(exeDir).parent_path() / "build";
+  fs::path coreDir = buildDir / "core";
+  fs::path palDir = buildDir / "pal" / "x86_64" / "linux";
   fs::path scriptDir = fs::path(exeDir).parent_path() / "scripts";
 
-  // Validate core files
-  fs::path entryPath = coreDir / "entry.o";
+  // PAL files
+  fs::path entryPath = palDir / "entry.o";
+  fs::path interpPath = palDir / "interp.o";
+  fs::path palLib = palDir / "pal.a";
+
+  // Core file
   fs::path urcLib = coreDir / "urc.a";
-  fs::path interpPath = coreDir / "interp.o";
 
   if (!freeStanding) {
     if (!fs::exists(entryPath))
-      throw std::runtime_error("Missing core/entry.o");
+      throw std::runtime_error("Missing pal/x86_64/linux/entry.o");
+    if (!fs::exists(palLib))
+      throw std::runtime_error("Missing pal/x86_64/linux/pal.a");
     if (!fs::exists(urcLib))
       throw std::runtime_error("Missing core/urc.a");
     if (needsDynamic && !fs::exists(interpPath))
-      throw std::runtime_error("Missing core/interp.o for dynamic build");
+      throw std::runtime_error(
+          "Missing pal/x86_64/linux/interp.o for dynamic build");
   }
 
   // Pick linker script
@@ -85,34 +93,34 @@ void Linker::processLinks(const std::string &currentObject,
   std::string cmd = "ld.lld -T " + scriptPath.string() +
                     " --gc-sections -o \"" + outputExecutable + "\"";
 
-  // Core objects, order matters
+  // PAL objects, order matters
   if (!freeStanding) {
     if (needsDynamic)
       cmd += " \"" + interpPath.string() + "\"";
-
     cmd += " \"" + entryPath.string() + "\"";
   }
 
   // User's object
   cmd += " \"" + currentObject + "\"";
 
-  // User links from Belt
+  // User links
   for (const auto &link : userLinks) {
     bool isPath = link.find('/') != std::string::npos ||
                   fs::path(link).extension() == ".o" ||
                   fs::path(link).extension() == ".a" ||
                   fs::path(link).extension() == ".so";
-
-    if (isPath) {
+    if (isPath)
       cmd += " \"" + link + "\"";
-    } else {
+    else
       cmd += " -l" + link;
-    }
   }
 
-  // Core runtime last
+  // Core last always
+  cmd += " \"" + urcLib.string() + "\"";
+
+  // PAL.a after core if not freestanding
   if (!freeStanding)
-    cmd += " \"" + urcLib.string() + "\"";
+    cmd += " \"" + palLib.string() + "\"";
 
   std::cout << "[LINKER] " << cmd << "\n";
 

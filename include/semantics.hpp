@@ -328,6 +328,8 @@ private:
   bool isSignedIntegerType(const ResolvedType &type);
   bool rhsIsHeap(Node *node);
   bool isCustomTypeByValue(const ResolvedType &type);
+  bool isTypeConvertibleToBool(const ResolvedType &type);
+  bool typeSupportsIncrementOrDecrement(const ResolvedType &type);
   void overwriteNodeName(Node *node, const std::string &mangled_name);
   uint32_t parseAlignmentBytes(Node *node);
   void popScope();
@@ -340,6 +342,7 @@ private:
                         const std::shared_ptr<SymbolInfo> &declSym);
   void transferBaton(Node *receiver, const std::string &familyID);
   void insertMetaData(Node *node, std::shared_ptr<SymbolInfo> sym);
+  void insertErrorMetaData(Node *node);
   void logSemanticErrors(ErrorCode code, Node *contextNode,
                          std::vector<std::string> args = {});
   void logSpecialErrors(ErrorCode code, int line, int col,

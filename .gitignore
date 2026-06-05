@@ -10,15 +10,14 @@
 *.cache
 *.stub
 
-#Test folders
-std
-
 #Test binary
 test
 
-# Core object folder
+# Lib objects folder
 /core
-/core/*.o
+/build
+
+/artifacts
 
 
 # Build system

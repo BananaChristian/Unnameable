@@ -1,0 +1,27 @@
+export func unnitoa(i128 val, ptr u8 buf): ptr u8
+
+export func unnftoa(mut f64 val,mut ptr u8 buf): ptr u8{
+  if(val<0){
+      deref (buf++) = '-'
+      val = -val
+  }
+
+  i64 ipart= cast<i64>(val)
+  mut f64 fpart= val - cast<f64>(ipart)
+
+  unnitoa(cast<i128>(ipart),buf)
+
+  while( deref buf){
+      buf++
+  }
+  deref (buf++) = '.'
+  for(mut i32 i=0;i<6;i++){
+    fpart = fpart * 10
+    i32 digit= cast<i32>(fpart)
+    deref (buf++) = '0' + bitcast<char8>(digit)
+    fpart = fpart - cast<f64>(digit)
+  }
+
+  deref buf = '\0'
+  return buf
+}

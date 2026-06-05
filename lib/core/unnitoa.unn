@@ -1,0 +1,37 @@
+export func divmod10_u128(ptr u128 val): ptr u32
+
+export func unnitoa(i128 val, ptr u8 buf): ptr u8{
+  mut arr[64] u8 temp
+  mut i32 i=0
+  mut i32 neg=0
+
+  if (val==0){
+      buf[0] = '0'
+      buf[1] ='\0';
+      return buf
+  }
+
+  mut u128 uval
+  if(val < 0){
+      neg=1
+      uval= cast<u128>(-val)
+  }else{
+      uval=cast<u128>(val)
+  }
+
+  while (uval > 0){
+    temp[i++]= '0'+ bitcast<char8>(divmod10_u128(addr uval));
+  }
+  
+  if(neg){
+      temp[i++] = '-'
+  }
+
+  mut i32 j=0
+  while(i>0){
+      buf[j++] = temp[--i]
+  }
+
+  buf[j] = '\0'
+  return buf
+}

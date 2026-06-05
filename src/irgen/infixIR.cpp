@@ -44,9 +44,12 @@ llvm::Value *IRGenerator::handleArithmeticAndBitwise(
   auto infixSym = semantics.getSymbolFromMeta(infix);
   auto resultType = infixSym->type().type;
 
+  // Set up pointer-sized integer configuration matching the target layout
+  llvm::Type *ptrIntType =
+      llvm::Type::getIntNTy(context, layout->getPointerSizeInBits());
+
   switch (infix->operat.type) {
   case TokenType::PLUS: {
-    // Pointer arithmetic, GEP into what the pointer points to
     if (leftSym->type().type.isPointer()) {
       if (!leftSym->type().type.innerType)
         reportDevBug("Pointer has no inner type for arithmetic", infix);
@@ -59,7 +62,6 @@ llvm::Value *IRGenerator::handleArithmeticAndBitwise(
   }
 
   case TokenType::MINUS: {
-    // Pointer arithmetic,negative GEP
     if (leftSym->type().type.isPointer()) {
       if (!leftSym->type().type.innerType)
         reportDevBug("Pointer has no inner type for arithmetic", infix);
@@ -79,19 +81,48 @@ llvm::Value *IRGenerator::handleArithmeticAndBitwise(
   }
 
   case TokenType::DIVIDE: {
-    if (isIntegerType(resultType.base().kind)) {
-      return isSignedInteger(resultType.base().kind)
-                 ? funcBuilder.CreateSDiv(left, right, "divtmp")
-                 : funcBuilder.CreateUDiv(left, right, "divtmp");
+    // FIX Safely downcast pointer values before division math execution
+    bool returnsPointer = left->getType()->isPointerTy();
+    if (returnsPointer) {
+      left = funcBuilder.CreatePtrToInt(left, ptrIntType, "math_ptr2int_l");
     }
-    return funcBuilder.CreateFDiv(left, right, "fdivtmp");
+    if (right->getType()->isPointerTy()) {
+      right = funcBuilder.CreatePtrToInt(right, ptrIntType, "math_ptr2int_r");
+    }
+
+    llvm::Value *divRes = nullptr;
+    if (isIntegerType(resultType.base().kind) || returnsPointer) {
+      divRes = isSignedInteger(resultType.base().kind)
+                   ? funcBuilder.CreateSDiv(left, right, "divtmp")
+                   : funcBuilder.CreateUDiv(left, right, "divtmp");
+    } else {
+      divRes = funcBuilder.CreateFDiv(left, right, "fdivtmp");
+    }
+
+    // Cast the calculated result value right back to an LLVM pointer type
+    if (returnsPointer) {
+      return funcBuilder.CreateIntToPtr(
+          divRes, llvm::PointerType::getUnqual(context), "math_int2ptr");
+    }
+    return divRes;
   }
 
   case TokenType::MODULUS: {
-    if (!isIntegerType(resultType.base().kind))
+    if (!isIntegerType(resultType.base().kind) &&
+        !left->getType()->isPointerTy())
       throw std::runtime_error(
           "Modulus not supported for float types at line " +
           std::to_string(infix->operat.line));
+
+    if (left->getType()->isPointerTy()) {
+      left = funcBuilder.CreatePtrToInt(left, ptrIntType, "math_ptr2int_l");
+    }
+    if (right->getType()->isPointerTy()) {
+      right = funcBuilder.CreatePtrToInt(right, ptrIntType, "math_ptr2int_r");
+    }
+
+    // MODULUS returns a raw integer remainder, so just return the
+    // instruction directly
     return isSignedInteger(resultType.base().kind)
                ? funcBuilder.CreateSRem(left, right, "modtmp")
                : funcBuilder.CreateURem(left, right, "modtmp");
@@ -165,6 +196,14 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
       return cmpRes;
     }
   } else if (leftType == DataType::F32 || leftType == DataType::F64) {
+
+    // --- Normalize Type Mismatches Before Comparing Floats ---
+    // If the right operand is an integer (e.g. 'val < 0'), cast it up to match
+    // the left side's float/double type
+    if (right->getType()->isIntegerTy()) {
+      right = funcBuilder.CreateSIToFP(right, left->getType(), "cast_to_fpcmp");
+    }
+
     llvm::Value *cmpRes = nullptr;
     switch (infix->operat.type) {
     case TokenType::EQUALS:
@@ -198,7 +237,6 @@ IRGenerator::handleComparison(InfixExpression *infix, llvm::Value *left,
       right = funcBuilder.CreateBitCast(right, left->getType(), "ptr_cmp_norm");
     }
     llvm::Value *cmpRes = nullptr;
-    // Pointers are compared as Unsigned Integers
     switch (infix->operat.type) {
     case TokenType::EQUALS:
       cmpRes = funcBuilder.CreateICmpEQ(left, right, "ptr_eq");

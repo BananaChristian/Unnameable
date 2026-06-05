@@ -547,7 +547,9 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
 
   auto resultType = infixSym->type().type;
   // Promote operands to widest integer type among left, right, and result
-  if (isIntegerType(resultType.kind)) {
+  // Only promote if neither operand evaluates to an LLVM pointer type
+  if (isIntegerType(resultType.kind) && !leftVal->getType()->isPointerTy() &&
+      !rightVal->getType()->isPointerTy()) {
     leftVal = promoteInt(leftVal, leftSym->type().type.kind, resultType.kind);
     rightVal =
         promoteInt(rightVal, rightSym->type().type.kind, resultType.kind);
@@ -692,59 +694,59 @@ llvm::Value *IRGenerator::generatePostfixExpression(Node *node) {
   if (!postfix)
     reportDevBug("Invalid postfix expression", node);
 
-  auto identifier = dynamic_cast<Identifier *>(postfix->operand.get());
-  if (!identifier)
-    reportDevBug("Postfix operand must be a variable", identifier);
-  auto identName = identifier->identifier.TokenLiteral;
-  llvm::Value *address = generateIdentifierAddress(identifier);
+  auto postfixOperand = postfix->operand.get();
+  llvm::Value *address = generateAddress(postfixOperand);
 
   if (!address)
-    throw std::runtime_error("Null variable pointer for: " +
-                             identifier->identifier.TokenLiteral);
+    reportDevBug("Null variable pointer for postfix operand", postfix);
 
   auto postfixSym = semantics.getSymbolFromMeta(postfix);
   if (!postfixSym) {
-    reportDevBug("Variable '" + identName + "' does not exist", postfix);
+    reportDevBug("Missing symbol metadata for postfix expression", postfix);
   }
 
   ResolvedType resultType = postfixSym->type().type;
-
-  // Get the type from resultType for CreateLoad
   llvm::Type *varType = getLLVMType(resultType);
   if (!varType)
-    reportDevBug("Invalid type for variable: " +
-                     identifier->identifier.TokenLiteral,
-                 postfix);
+    reportDevBug("Invalid type mapping for postfix operand", postfix);
 
   llvm::Value *originalValue =
       funcBuilder.CreateLoad(varType, address, llvm::Twine("loadtmp"));
 
-  llvm::Value *delta = nullptr;
-  if (resultType.kind == DataType::F32 || resultType.kind == DataType::F64) {
-    delta = llvm::ConstantFP::get(varType, 1.0);
-  } else if (isIntegerType(resultType.kind)) {
-    delta = llvm::ConstantInt::get(varType, 1);
+  llvm::Value *updatedValue = nullptr;
+
+  // Explicitly catch pointer types and perform pointer math (GEP)
+  if (resultType.isPointer()) {
+    int64_t step =
+        (postfix->operator_token.type == TokenType::PLUS_PLUS) ? 1 : -1;
+    llvm::Value *offset =
+        llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), step);
+
+    // Grab the type the pointer points to (e.g., u8 for ptr<u8>)
+    llvm::Type *elemType = getLLVMType(*resultType.innerType);
+
+    updatedValue =
+        funcBuilder.CreateGEP(elemType, originalValue, offset, "ptr_step");
+  }
+  // Standard Scalar Floats
+  else if (resultType.kind == DataType::F32 ||
+           resultType.kind == DataType::F64) {
+    llvm::Value *delta = llvm::ConstantFP::get(varType, 1.0);
+    updatedValue =
+        (postfix->operator_token.type == TokenType::PLUS_PLUS)
+            ? funcBuilder.CreateFAdd(originalValue, delta, llvm::Twine("finc"))
+            : funcBuilder.CreateFSub(originalValue, delta, llvm::Twine("fdec"));
+  }
+  // Standard Scalar Integers
+  else if (isIntegerType(resultType.kind)) {
+    llvm::Value *delta = llvm::ConstantInt::get(varType, 1);
+    updatedValue =
+        (postfix->operator_token.type == TokenType::PLUS_PLUS)
+            ? funcBuilder.CreateAdd(originalValue, delta, llvm::Twine("inc"))
+            : funcBuilder.CreateSub(originalValue, delta, llvm::Twine("dec"));
   } else {
     reportDevBug("Unsupported type for ++/--", postfix);
   }
-
-  llvm::Value *updatedValue = nullptr;
-
-  if (postfix->operator_token.type == TokenType::PLUS_PLUS)
-    updatedValue =
-        (resultType.kind == DataType::F32 || resultType.kind == DataType::F64)
-            ? funcBuilder.CreateFAdd(originalValue, delta, llvm::Twine("finc"))
-            : funcBuilder.CreateAdd(originalValue, delta, llvm::Twine("inc"));
-  else if (postfix->operator_token.type == TokenType::MINUS_MINUS)
-    updatedValue =
-        (resultType.kind == DataType::F32 || resultType.kind == DataType::F64)
-            ? funcBuilder.CreateFSub(originalValue, delta, llvm::Twine("fdec"))
-            : funcBuilder.CreateSub(originalValue, delta, llvm::Twine("dec"));
-  else
-    throw std::runtime_error("Unsupported postfix operator: " +
-                             postfix->operator_token.TokenLiteral +
-                             " at line " +
-                             std::to_string(postfix->operator_token.line));
 
   funcBuilder.CreateStore(updatedValue, address);
 
@@ -858,7 +860,6 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
   if (!bitcastSym)
     reportDevBug("Failed to get bitcast symbol info", bitcastExpr);
 
-  // Generate the source value (the bits we are reinterpreting)
   llvm::Value *sourceVal = generateExpression(bitcastExpr->expr.get());
   if (!sourceVal)
     reportDevBug("Failed to generate source value", bitcastExpr->expr.get());
@@ -866,22 +867,15 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
   llvm::Type *srcType = sourceVal->getType();
   llvm::Type *dstType = getLLVMType(bitcastSym->type().type);
 
-  // If types are already identical, just return the value
   if (srcType == dstType)
     return sourceVal;
 
   // Handle Pointer <- -> Integer Reinterpretation
-  // LLVM does not allow 'BitCast' between different address spaces or
-  // between the Integer and Pointer register classes.
-
   if (srcType->isPointerTy() && dstType->isIntegerTy()) {
     return funcBuilder.CreatePtrToInt(sourceVal, dstType, "bitcast_ptr_to_int");
   }
 
   if (srcType->isIntegerTy() && dstType->isPointerTy()) {
-    // If the integer is smaller than the pointer (e.g., i32 to i64 ptr),
-    // we need to sign-extend it first to ensure bits like '-1' fill the
-    // address.
     auto ptrWidth = module->getDataLayout().getPointerSizeInBits();
     if (srcType->getIntegerBitWidth() < ptrWidth) {
       sourceVal = funcBuilder.CreateSExt(
@@ -890,9 +884,30 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
     return funcBuilder.CreateIntToPtr(sourceVal, dstType, "bitcast_int_to_ptr");
   }
 
+  // --- Safe Integer-to-Integer Resizing ---
+  // If the user attempts to bitcast for example an i32 to an i8, intercept and truncate.
+  if (srcType->isIntegerTy() && dstType->isIntegerTy()) {
+    unsigned srcBits = srcType->getIntegerBitWidth();
+    unsigned dstBits = dstType->getIntegerBitWidth();
+
+    if (srcBits != dstBits) {
+      if (dstBits < srcBits) {
+        // Downcast, safely drop the high bits
+        return funcBuilder.CreateTrunc(sourceVal, dstType, "bitcast_trunc");
+      } else {
+        // Upcast, check semantic metadata to see if it needs sign or zero
+        // extension
+        auto exprSym = semantics.getSymbolFromMeta(bitcastExpr->expr.get());
+        if (exprSym && isSignedInteger(exprSym->type().type.kind)) {
+          return funcBuilder.CreateSExt(sourceVal, dstType, "bitcast_sext");
+        } else {
+          return funcBuilder.CreateZExt(sourceVal, dstType, "bitcast_zext");
+        }
+      }
+    }
+  }
+
   // Handle Pointer <-> Pointer or Same-Size Type Reinterpretation
-  // This covers things like ptr u8 to ptr STRUCT, or u64 to i64.
-  // We use CreateBitCast here because the bit-width must be identical.
   return funcBuilder.CreateBitCast(sourceVal, dstType, "bitcast_raw");
 }
 
@@ -1121,9 +1136,9 @@ llvm::Value *IRGenerator::generateDereferenceExpression(Node *node) {
   return addr;
 }
 
-llvm::Value *IRGenerator::generateComponentAccessExpression(Node *node){
-  auto compAccess=dynamic_cast<ComponentAccess*>(node);
-  if(!compAccess)
+llvm::Value *IRGenerator::generateComponentAccessExpression(Node *node) {
+  auto compAccess = dynamic_cast<ComponentAccess *>(node);
+  if (!compAccess)
     return nullptr;
 
   auto value = generateExpression(compAccess->child.get());

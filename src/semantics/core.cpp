@@ -860,7 +860,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
   // Logical operators: &&, ||
   if (operatorType == TokenType::AND || operatorType == TokenType::OR) {
     if (isBoolean(leftType) && isBoolean(rightType))
-      return ResolvedType::makeBase(DataType::BOOLEAN, "boolean");
+      return ResolvedType::makeBase(DataType::BOOLEAN, "bool");
     else
       return ResolvedType::error();
   }
@@ -882,7 +882,7 @@ ResolvedType Semantics::resultOfBinary(TokenType operatorType,
     }
 
     if (leftType.kind == rightType.kind)
-      return ResolvedType::makeBase(DataType::BOOLEAN, "boolean");
+      return ResolvedType::makeBase(DataType::BOOLEAN, "bool");
     logSemanticErrors(
         ErrorCode::InvalidOperationOnTypes, infix->left_operand.get(),
         {operatorStr, leftType.resolvedName, rightType.resolvedName});
@@ -1012,11 +1012,12 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
   }
   case TokenType::MINUS:
   case TokenType::PLUS:
+    if (isInteger(operandType) || isFloat(operandType))
+      return operandType;
   case TokenType::PLUS_PLUS:
   case TokenType::MINUS_MINUS: {
-    if (isInteger(operandType) || isFloat(operandType)) {
+    if (typeSupportsIncrementOrDecrement(operandType))
       return operandType;
-    }
 
     logSemanticErrors(ErrorCode::InvalidPrefixOrPostfixOps, node,
                       {operatorStr, operandType.resolvedName});
@@ -1292,6 +1293,15 @@ bool Semantics::isTypeCompatible(const ResolvedType &expected,
   }
 
   return false;
+}
+
+void Semantics::insertErrorMetaData(Node *node) {
+  auto errorInfo = std::make_shared<SymbolInfo>();
+  errorInfo->type().type.kind = DataType::ERROR;
+  errorInfo->type().type.resolvedName = "error";
+  errorInfo->hasError = true;
+
+  insertMetaData(node, errorInfo);
 }
 
 void Semantics::insertMetaData(Node *node, std::shared_ptr<SymbolInfo> sym) {
@@ -2168,6 +2178,7 @@ ResolvedType Semantics::makePointerType(const ResolvedType &inner,
                                         bool isNull) {
   ResolvedType outer;
   outer.modifier = Modifier::POINTER;
+  outer.kind = inner.kind;
   outer.innerType = std::make_shared<ResolvedType>(inner);
   outer.isNull = isNull;
   outer.resolvedName = "ptr<" + inner.resolvedName + ">";
@@ -2178,6 +2189,7 @@ ResolvedType Semantics::makeRefType(const ResolvedType &inner, bool isNull) {
   ResolvedType outer;
   outer.modifier = Modifier::REFERENCE;
   outer.innerType = std::make_shared<ResolvedType>(inner);
+  outer.kind = inner.kind;
   outer.isNull = isNull;
   outer.resolvedName = "ref<" + inner.resolvedName + ">";
   return outer;
@@ -2530,6 +2542,20 @@ void Semantics::popScope() {
     }
   }
   symbolTable.pop_back();
+}
+
+bool Semantics::isTypeConvertibleToBool(const ResolvedType &type) {
+  if (type.isPointer())
+    return true;
+
+  return type.kind == DataType::BOOLEAN || isChar(type) || isInteger(type);
+}
+
+bool Semantics::typeSupportsIncrementOrDecrement(const ResolvedType &type) {
+  if (type.isPointer())
+    return true;
+
+  return isChar(type) || isInteger(type) || isFloat(type);
 }
 
 std::shared_ptr<SymbolInfo> Semantics::getSymbolFromMeta(Node *node) {

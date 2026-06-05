@@ -57,13 +57,11 @@ void Semantics::walkBlockExpression(Node *node) {
 
 void Semantics::walkReturnStatement(Node *node) {
   auto *retStmt = dynamic_cast<ReturnStatement *>(node);
-  if (!retStmt) {
+  if (!retStmt)
     reportDevBug("Invalid return statement node", node);
-  }
 
-  if (!currentFunction) {
+  if (!currentFunction)
     logSemanticErrors(ErrorCode::FloatingReturns, retStmt);
-  }
 
   const ResolvedType &expectedReturn =
       currentFunction.value()->func().returnType;
@@ -74,6 +72,7 @@ void Semantics::walkReturnStatement(Node *node) {
   if (currentFunction.value()->func().isInterrupt) {
     if (expectedReturn.base().kind != DataType::VOID) {
       logSemanticErrors(ErrorCode::InterruptsMustBeVoid, retStmt);
+      insertErrorMetaData(retStmt);
       return;
     }
   }
@@ -123,6 +122,7 @@ void Semantics::walkReturnStatement(Node *node) {
       if (!valSym->relations().refereeSymbol) {
         logSemanticErrors(ErrorCode::DanglingReferenceReturn, retStmt,
                           {extractIdentifierName(retStmt->return_value.get())});
+        insertErrorMetaData(retStmt);
         return;
       }
     }
@@ -161,12 +161,14 @@ void Semantics::walkFunctionParameters(Node *node) {
 
   if (param->initializer) {
     logSemanticErrors(ErrorCode::NoParamDefaultVal, param);
+    insertErrorMetaData(param);
     return;
   }
 
   auto *baseType = dynamic_cast<BasicType *>(param->base_type.get());
   if (baseType && baseType->type_token.type == TokenType::AUTO) {
     logSemanticErrors(ErrorCode::InvalidAutoUse, param);
+    insertErrorMetaData(param);
     return;
   }
 
@@ -176,22 +178,26 @@ void Semantics::walkFunctionParameters(Node *node) {
         isCustomTypeByValue(resolvedType)) {
       logSemanticErrors(ErrorCode::CannotPassCustomByVal, param,
                         {resolvedType.resolvedName});
+      insertErrorMetaData(param);
       return;
     }
   }
 
   if (param->isHeap) {
     logSemanticErrors(ErrorCode::InvalidHeapParam, param, {paramName});
+    insertErrorMetaData(param);
     return;
   }
 
   if (resolvedType.isRef() && resolvedType.isNull) {
     logSemanticErrors(ErrorCode::InvalidNullReferenceParam, param, {paramName});
+    insertErrorMetaData(param);
     return;
   }
 
   if (param->isPersist) {
     logSemanticErrors(ErrorCode::InvalidPersistParam, param, {paramName});
+    insertErrorMetaData(param);
     return;
   }
 
@@ -234,6 +240,7 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   if (insideFunction) {
     logSemanticErrors(ErrorCode::IllegalFunctionDefinition, funcExpr);
+    insertErrorMetaData(funcExpr);
     return;
   }
 
@@ -245,6 +252,7 @@ void Semantics::walkFunctionExpression(Node *node) {
       if (existing->func().isDefined) {
         logSemanticErrors(ErrorCode::AlreadyDefinedFunc, funcExpr, {funcName});
         insideFunction = false;
+        insertErrorMetaData(funcExpr);
         return;
       } else if (existing->func().isDeclaration) {
         if (!areSignaturesCompatible(*existing, funcExpr)) {
@@ -258,6 +266,7 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   if (isInterrupt && isNaked) {
     logSemanticErrors(ErrorCode::CannotBeInterruptAndNaked, funcExpr);
+    insertErrorMetaData(funcExpr);
     return;
   }
 
@@ -280,6 +289,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   if (isNaked && !funcExpr->parameters.empty()) {
     logSemanticErrors(ErrorCode::CannotAllowParamsInNaked, funcExpr,
                       {funcName});
+    insertErrorMetaData(funcExpr);
     insideFunction = false;
     symbolTable.pop_back();
     return;
@@ -302,7 +312,6 @@ void Semantics::walkFunctionExpression(Node *node) {
     if (!paramInfo) {
       reportDevBug("Parameter '" + paramName + "' was not analysed",
                    param.get());
-      continue;
     }
 
     // Exportable function using a non-exportable custom type
@@ -323,6 +332,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   if (!funcExpr->return_type) {
     logSemanticErrors(ErrorCode::MissingOrInvalidReturnType, funcExpr);
     insideFunction = false;
+    insertErrorMetaData(funcExpr);
     return;
   }
 
@@ -354,6 +364,7 @@ void Semantics::walkFunctionExpression(Node *node) {
     logSemanticErrors(ErrorCode::InterruptsMustBeVoid,
                       funcExpr->return_type.get());
     insideFunction = false;
+    insertErrorMetaData(funcExpr);
     symbolTable.pop_back();
     return;
   }
@@ -383,17 +394,15 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   if (!funcExpr->block) {
     logSemanticErrors(ErrorCode::MissingOrInvalidBody, funcExpr);
+    insertErrorMetaData(funcExpr);
     insideFunction = false;
     return;
   }
 
   auto *block = dynamic_cast<BlockExpression *>(funcExpr->block.get());
-  if (!block) {
+  if (!block)
     reportDevBug("Invalid function body for '" + funcName + "'",
                  funcExpr->block.get());
-    insideFunction = false;
-    return;
-  }
 
   logInternal("Walking body of '" + funcName + "'");
   activeBlocks.push_back(block);
@@ -447,6 +456,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
   if (insideFunction) {
     logSemanticErrors(ErrorCode::IllegalFunctionDeclaration, funcDeclrStmt);
+    insertErrorMetaData(funcDeclrStmt);
     return;
   }
 
@@ -466,6 +476,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
   if (isInterrupt && isNaked) {
     logSemanticErrors(ErrorCode::CannotBeInterruptAndNaked, funcDeclrStmt);
+    insertErrorMetaData(funcDeclrStmt);
     return;
   }
 
@@ -481,6 +492,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   if (isNaked && !funcDeclrStmt->parameters.empty()) {
     logSemanticErrors(ErrorCode::CannotAllowParamsInNaked, funcDeclrStmt,
                       {funcName});
+    insertErrorMetaData(funcDeclrStmt);
     symbolTable.pop_back();
     return;
   }
@@ -521,6 +533,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   auto *retType = dynamic_cast<ReturnType *>(funcDeclrStmt->return_type.get());
   if (!retType) {
     logSemanticErrors(ErrorCode::MissingOrInvalidReturnType, funcDeclrStmt);
+    insertErrorMetaData(funcDeclrStmt);
     symbolTable.pop_back();
     currentFunction = std::nullopt;
     return;
@@ -529,6 +542,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   ResolvedType returnType = inferNodeDataType(retType);
   if (returnType.base().kind == DataType::UNKNOWN) {
     logSemanticErrors(MissingOrInvalidReturnType, retType);
+    insertErrorMetaData(funcDeclrStmt);
     return;
   }
 
@@ -545,6 +559,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   if (isInterrupt && !retType->isVoid) {
     logSemanticErrors(ErrorCode::InterruptsMustBeVoid,
                       funcDeclrStmt->return_type.get());
+    insertErrorMetaData(funcDeclrStmt);
     return;
   }
 
@@ -589,6 +604,7 @@ void Semantics::analyzeFnPtrCall(
     logSemanticErrors(ErrorCode::ArgumentSizeMismatch, callNode,
                       {callName, std::to_string(expectedCount),
                        std::to_string(argTypes.size())});
+    insertErrorMetaData(callNode);
     return;
   }
 
@@ -637,6 +653,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
       // Now if it fails here there is no hope
       if (!callSymbolInfo) {
         logSemanticErrors(ErrorCode::UndefinedVariable, funcCall, {callName});
+        insertErrorMetaData(funcCall);
         return;
       }
     }
@@ -646,6 +663,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
 
   if (!callSymbolInfo->isFunction && !isFnPtr) {
     logSemanticErrors(ErrorCode::NotaFuncOrFnPtr, funcCall, {callName});
+    insertErrorMetaData(funcCall);
     return;
   }
 
@@ -704,6 +722,7 @@ void Semantics::walkFunctionCallExpression(Node *node) {
   }
 
   if (!isCallCompatible(*callSymbolInfo, funcCall)) {
+    insertErrorMetaData(funcCall);
     hasError = true;
     return;
   }
@@ -752,11 +771,13 @@ void Semantics::walkTraceStatement(Node *node) {
   if (freeStanding) {
     logSemanticErrors(ErrorCode::IllegalUseInFreeStanding, traceStmt,
                       {"trace"});
+    insertErrorMetaData(traceStmt);
     return;
   }
 
   if (isGlobalScope()) {
     logSemanticErrors(ErrorCode::FloatingTrace, traceStmt);
+    insertErrorMetaData(traceStmt);
     return;
   }
 
@@ -797,6 +818,7 @@ void Semantics::walkSealStatement(Node *node) {
   if (!blockStmt) {
     logSemanticErrors(ErrorCode::MissingOrInvalidBody,
                       sealStmt->sealName.get());
+    insertErrorMetaData(sealStmt);
     return;
   }
 
@@ -828,6 +850,7 @@ void Semantics::walkSealStatement(Node *node) {
                    funcStmt->funcExpr.get())) {
       logSemanticErrors(ErrorCode::IllegalFunctionDeclaration,
                         funcStmt->funcExpr.get());
+      insertErrorMetaData(sealStmt);
       return;
     }
 

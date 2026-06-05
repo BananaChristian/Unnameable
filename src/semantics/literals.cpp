@@ -39,6 +39,7 @@ void Semantics::walkFStringLiteral(Node *node) {
 
   if (!insideTrace) {
     logSemanticErrors(ErrorCode::FloatingFString, fStr);
+    insertErrorMetaData(fStr);
     return;
   }
 

@@ -72,6 +72,7 @@ void Semantics::enforceDeclarationRules(
   // Block a name reuse
   if (resolveSymbolInfo(declName)) {
     logSemanticErrors(ErrorCode::DuplicateName, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -92,17 +93,20 @@ void Semantics::enforceDeclarationRules(
 
   if (isPersist && isConstant) {
     logSemanticErrors(ErrorCode::ConstCannotBePersist, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
   if (isVolatile && isConstant) {
     logSemanticErrors(ErrorCode::ConstCannotBeVolatile, declaration,
                       {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
   if (declaration->fnPtrMod && isHeap) {
     logSemanticErrors(HeapFnPtrInvalid, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -111,23 +115,27 @@ void Semantics::enforceDeclarationRules(
     if (!declaration->allocator) {
       logSemanticErrors(ErrorCode::IllegalUseInFreeStanding, declaration,
                         {"heap"});
+      insertErrorMetaData(declaration);
       return;
     }
   }
 
   if (isHeap && isConstant) {
     logSemanticErrors(ConstCannotBeHeap, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
   // Persist requires heap
   if (isPersist && !isHeap) {
     logSemanticErrors(ErrorCode::PersistRequiresHeap, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
   // Rule on exportables
   if (isExportable && !isGlobal) {
     logSemanticErrors(ExportableRequiresGlobal, declaration);
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -135,6 +143,7 @@ void Semantics::enforceDeclarationRules(
   if (isGlobal) {
     if (isHeap) {
       logSemanticErrors(ErrorCode::GlobalHeapVar, declaration, {declName});
+      insertErrorMetaData(declaration);
       return;
     }
 
@@ -144,6 +153,7 @@ void Semantics::enforceDeclarationRules(
         for (auto &dim : type_modifier->dimensions) {
           if (!isConstLiteral(dim.get())) {
             logSemanticErrors(GlobalArraySizeConst, dim.get());
+            insertErrorMetaData(declaration);
             return;
           }
         }
@@ -167,6 +177,7 @@ void Semantics::enforceDeclarationRules(
 
   if (isRestrict && isRef) {
     logSemanticErrors(ErrorCode::RestrictOnRefInvalid, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -180,6 +191,7 @@ void Semantics::enforceDeclarationRules(
 
   if (isRestrict && !isPointer) {
     logSemanticErrors(ErrorCode::RestrictOnNonPointer, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -192,11 +204,13 @@ void Semantics::enforceDeclarationRules(
 
   if (isRef && isNullable) {
     logSemanticErrors(RefCannotBeNullable, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
   if (isPersist && isRef) {
     logSemanticErrors(RefCannotBePersist, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -207,6 +221,7 @@ void Semantics::enforceDeclarationRules(
 
   if (isHeap && isRef) {
     logSemanticErrors(RefCannotBeHeap, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -215,6 +230,7 @@ void Semantics::enforceDeclarationRules(
     if (type_modifier && type_modifier->dimensions.empty()) {
       logSemanticErrors(ErrorCode::ArrayMissingDimensions, declaration,
                         {declName});
+      insertErrorMetaData(declaration);
       return;
     }
   }
@@ -222,6 +238,7 @@ void Semantics::enforceDeclarationRules(
   // Rule on someone who might write void x = whatever
   if (!declaration->fnPtrMod && base_type->token.type == TokenType::VOID) {
     logSemanticErrors(VoidVariableInvalid, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -254,6 +271,7 @@ void Semantics::handleNullInitializers(
 
   if (!declInfo->type().isNullable) {
     logSemanticErrors(ErrorCode::NullToNonNullable, declaration, {declName});
+    insertErrorMetaData(declaration);
     return;
   }
 
@@ -306,6 +324,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
     if (allocIt == allocatorMap.end()) {
       logSemanticErrors(ErrorCode::UnknownAllocator, allocator,
                         {allocatorName});
+      insertErrorMetaData(declaration);
       return;
     }
 
@@ -339,12 +358,14 @@ void Semantics::walkVariableDeclaration(Node *node) {
 
     if (!initSym) {
       logSemanticErrors(UndefinedVariable, initializer, {initName});
+      insertErrorMetaData(declaration);
       return;
     }
 
     // If the initializer is erronious dont proceed
     if (initSym->hasError) {
       logSemanticErrors(ErroniousInitializer, initializer);
+      insertErrorMetaData(declaration);
       return;
     }
 
@@ -387,6 +408,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
           logSemanticErrors(
               TypeMismatch, declaration,
               {declaredType.resolvedName, initSym->type().type.resolvedName});
+          insertErrorMetaData(declaration);
           return;
         }
       }
@@ -396,11 +418,13 @@ void Semantics::walkVariableDeclaration(Node *node) {
     if (declInfo->type().isRef) {
       if (initSym->type().isNullable) {
         logSemanticErrors(RefToNullable, declaration);
+        insertErrorMetaData(declaration);
         return;
       }
 
       if (!initSym->storage().isHeap && !initSym->storage().isGlobal) {
         logSemanticErrors(ErrorCode::RefToLocal, declaration, {initName});
+        insertErrorMetaData(declaration);
         return;
       }
 
@@ -432,6 +456,7 @@ void Semantics::walkVariableDeclaration(Node *node) {
               ErrorCode::ArrayDimCountMismatch, declaration,
               {declName, std::to_string(declSizePerDim.size()),
                std::to_string(initSym->type().sizePerDimensions.size())});
+          insertErrorMetaData(declaration);
           return;
         }
         declSizePerDim = initSym->type().sizePerDimensions;

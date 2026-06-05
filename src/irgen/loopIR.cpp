@@ -30,9 +30,24 @@ void IRGenerator::generateWhileStatement(Node *node) {
 
   // Promote to boolean if needed
   if (!condVal->getType()->isIntegerTy(1)) {
-    condVal = funcBuilder.CreateICmpNE(
-        condVal, llvm::ConstantInt::get(condVal->getType(), 0),
-        "whilecond.bool");
+    // Check if the condition evaluates to an LLVM Pointer type
+    if (condVal->getType()->isPointerTy()) {
+      llvm::Value *nullPtr = llvm::ConstantPointerNull::get(
+          llvm::cast<llvm::PointerType>(condVal->getType()));
+
+      condVal =
+          funcBuilder.CreateICmpNE(condVal, nullPtr, "whilecond.ptr_not_null");
+    }
+    // Handle standard integers/booleans
+    else if (condVal->getType()->isIntOrIntVectorTy()) {
+      condVal = funcBuilder.CreateICmpNE(
+          condVal, llvm::ConstantInt::get(condVal->getType(), 0),
+          "whilecond.bool");
+    } else {
+      reportDevBug("While loop condition evaluated to an unsupported type for "
+                   "truthiness",
+                   whileStmt);
+    }
   }
 
   funcBuilder.CreateCondBr(condVal, bodyBB, endBB);

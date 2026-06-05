@@ -7,13 +7,14 @@ void Semantics::walkAllocatorInterface(Node *node) {
     return;
 
   const std::string allocName =
-      allocStmt->allocator_name->expression.TokenLiteral;
+      extractIdentifierName(allocStmt->allocator_name.get());
 
   // allocator name must be unique
   auto existing = resolveSymbolInfo(allocName);
   if (existing) {
     logSemanticErrors(ErrorCode::UndefinedVariable,
                       allocStmt->allocator_name.get(), {allocName});
+    insertErrorMetaData(allocStmt);
     return;
   }
 
@@ -22,6 +23,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
   if (!block) {
     logSemanticErrors(ErrorCode::MissingOrInvalidBody,
                       allocStmt->allocator_name.get());
+    insertErrorMetaData(allocStmt);
     return;
   }
 
@@ -62,13 +64,15 @@ void Semantics::walkAllocatorInterface(Node *node) {
       }
 
       if (fnExpr->parameters.size() != 1) {
-        logSemanticErrors(
-            ErrorCode::ArgumentSizeMismatch, fnExpr,
-            {funcName, std::to_string(1), std::to_string(fnExpr->parameters.size())});
+        logSemanticErrors(ErrorCode::ArgumentSizeMismatch, fnExpr,
+                          {funcName, std::to_string(1),
+                           std::to_string(fnExpr->parameters.size())});
+        insertErrorMetaData(allocStmt);
         return;
       }
 
-      role = getFunctionRole(fnExpr->parameters, fnExpr->return_type.get(), funcName);
+      role = getFunctionRole(fnExpr->parameters, fnExpr->return_type.get(),
+                             funcName);
 
     } else if (auto fnExpr = dynamic_cast<FunctionDeclarationExpression *>(
                    fnStmt->funcExpr.get())) {
@@ -84,6 +88,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
         logSemanticErrors(ErrorCode::ArgumentSizeMismatch, fnExpr,
                           {funcName, std::to_string(1),
                            std::to_string(fnDecl->parameters.size())});
+        insertErrorMetaData(allocStmt);
         return;
       }
 
@@ -227,7 +232,7 @@ void Semantics::walkGlobalAllocator(Node *node) {
   auto it = allocatorMap.find(allocator_name);
   if (it == allocatorMap.end()) {
     logSemanticErrors(ErrorCode::UnknownAllocator,
-                      globalAlloc->allocator_name.get(),{allocator_name});
+                      globalAlloc->allocator_name.get(), {allocator_name});
     return;
   }
 

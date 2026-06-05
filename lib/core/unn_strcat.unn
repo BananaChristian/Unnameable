@@ -1,0 +1,13 @@
+export func unn_strcat(ptr u8 dest,mut ptr u8 src): ptr u8{
+  mut ptr u8 rd -> dest
+  while(deref rd){
+    rd++
+  }
+
+  while(deref src){
+    deref (rd++) = deref (src++)
+  }
+
+  deref rd = '\0'
+  return dest
+}
