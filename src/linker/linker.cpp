@@ -6,9 +6,8 @@
 
 namespace fs = std::filesystem;
 
-Linker::Linker(bool isStatic, bool freeStanding, std::string customScriptPath)
-    : isStatic(isStatic), freeStanding(freeStanding),
-      customScriptPath(customScriptPath) {}
+Linker::Linker(bool freeStanding, std::string customScriptPath)
+    : freeStanding(freeStanding), customScriptPath(customScriptPath) {}
 
 std::string Linker::getExecutableDir() {
   char buf[4096];
@@ -30,18 +29,6 @@ void Linker::processLinks(const std::string &currentObject,
   if (!checkLLD())
     throw std::runtime_error(
         "ld.lld not found, please install lld to use unnc");
-
-  // Static library just archive
-  if (isStatic) {
-    std::string libPath = outputExecutable;
-    if (fs::path(libPath).extension() != ".a")
-      libPath += ".a";
-    std::string cmd = "ar rcs \"" + libPath + "\" \"" + currentObject + "\"";
-    std::cout << "[ARCHIVER] " << cmd << "\n";
-    if (system(cmd.c_str()) != 0)
-      throw std::runtime_error("Archiver failed");
-    return;
-  }
 
   // Determine if we need dynamic linking
   bool needsDynamic = false;

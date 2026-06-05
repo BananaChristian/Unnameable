@@ -95,7 +95,6 @@ int main(int argc, char **argv) {
           << COLOR_RESET << "  -stub <file>          Generate stub file only\n"
           << "  -compile <file>       Compile to object file only\n"
           << "  -build <file>         Compile and link to executable\n"
-          << "  -static               Generate a static library\n"
           << "  -link-only            Link only, no compilation\n"
           << "  -check                Run the frontend only\n\n"
           << COLOR_BOLD << "Loads & Links:\n"
@@ -148,7 +147,6 @@ int main(int argc, char **argv) {
   std::vector<std::string> links;
   bool compileOnly = false;
   bool stubOnly = false;
-  bool staticCompile = false;
   bool checkOnly = false;
   bool linkOnly = false;
   bool isFreeStanding = false;
@@ -178,8 +176,6 @@ int main(int argc, char **argv) {
       loads.push_back(argv[++i]);
     } else if (arg == "-link" && i + 1 < argc) {
       links.push_back(argv[++i]);
-    } else if (arg == "-static") {
-      staticCompile = true;
     } else if (arg == "-check") {
       checkOnly = true;
     } else if (arg == "-link-only") {
@@ -224,7 +220,7 @@ int main(int argc, char **argv) {
       ensureParentDirectoryExists(exePath, "Creating executable directory");
       std::cout << COLOR_YELLOW << "Linking: " << exePath.string()
                 << COLOR_RESET << "\n";
-      Linker linker(staticCompile, isFreeStanding, customScriptPath);
+      Linker linker(isFreeStanding, customScriptPath);
       std::string mainObj = links[0];
       std::vector<std::string> restLinks(links.begin() + 1, links.end());
       linker.processLinks(mainObj, restLinks, exePath.string());
@@ -420,7 +416,7 @@ int main(int argc, char **argv) {
     ensureParentDirectoryExists(exePath, "Creating executable directory");
     std::cout << COLOR_YELLOW << "Linking: " << exePath.string() << COLOR_RESET
               << "\n";
-    Linker linker(staticCompile, isFreeStanding, customScriptPath);
+    Linker linker(isFreeStanding, customScriptPath);
     linker.processLinks(objPath.string(), links, exePath.string());
     std::cout << COLOR_GREEN << "[SUCCESS]" << COLOR_RESET
               << " Executable: " << exePath.string() << "\n";
