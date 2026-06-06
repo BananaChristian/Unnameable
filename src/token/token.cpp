@@ -161,6 +161,10 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "TokenType: U16";
   case TokenType::U16_KEYWORD:
     return "Token Type: U16_KEYWORD";
+  case TokenType::DOLLAR:
+    return "TokenType: DOLLAR";
+  case TokenType::DOLLAR_DOLLAR:
+    return "TokenType: DOLLAR_DOLLAR";
 
   case TokenType::INT32:
     return "Token Type: I32";

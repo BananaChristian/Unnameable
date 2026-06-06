@@ -50,7 +50,8 @@ enum class TokenType {
   QUESTION_MARK,  //"?"
   COALESCE,       //"??"
 
-  DOLLAR,
+  DOLLAR, //$
+  DOLLAR_DOLLAR, //$$
   IDENTIFIER,
   STRING_KEYWORD,
   BOOL_KEYWORD,

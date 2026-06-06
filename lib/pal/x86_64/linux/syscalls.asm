@@ -4,6 +4,8 @@ section .text
     global mmap
     global munmap
     global memcpy
+    global get_sys_info
+    global get_uname
 
 ;write(int fd, const void *buf, size_t count)
 write:
@@ -40,4 +42,17 @@ memcpy:
     mov rax, rdi        ; Return value is the original dest
     mov rcx, rdx        ; Move count to RCX for rep
     rep movsb           ; Move RCX bytes from [RSI] to [RDI]
+    ret
+
+;get_sys_info(sysinfo *info)
+get_sys_info:
+    ;Syscall number 99 is for sysinfo
+    mov rax, 99
+    syscall
+    ret
+
+;get_uname(UnameInfo *info)
+get_uname:
+    mov rax,63 
+    syscall
     ret

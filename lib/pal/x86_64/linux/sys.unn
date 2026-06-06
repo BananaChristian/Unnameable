@@ -1,0 +1,31 @@
+#sys implementation for linux x86_64
+export mut record sysinfo{
+  isize uptime
+  arr[3] usize loads
+  usize totalram
+  usize freeram
+  usize sharedram
+  usize bufferram
+  usize totalswap
+  usize freeswap
+  u16 procs
+  usize totalhigh
+  usize freehigh
+  u32 mem_unit
+  arr[22] u8 _f
+}
+
+export mut record UnameInfo{
+  arr[65] u8 sysname
+  arr[65] u8 nodename
+  arr[65] u8 release
+  arr[65] u8 version
+  arr[65] u8 machine
+  arr[65] u8 domainname
+}
+
+#These will be provided by syscalls.asm
+export func get_sys_info(ptr sysinfo info):i32
+export func get_uname(ptr UnameInfo info): i32
+
+

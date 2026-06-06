@@ -781,12 +781,18 @@ Token Lexer::tokenize() {
     advance();
     return Token{"~", TokenType::BITWISE_NOT, tokenLine, tokenColumn};
   }
-  case '$': {
+  case U'$': {
     CAPTURE_POS;
-    advance();
-    return Token{"$", TokenType::DOLLAR, tokenLine, tokenColumn};
+    if (peekChar() == U'$') {
+      advance();
+      advance();
+      return Token{"$$", TokenType::DOLLAR_DOLLAR, tokenLine, tokenColumn};
+    } else {
+      advance();
+      return Token{"$", TokenType::DOLLAR, tokenLine, tokenColumn};
+    }
   }
-  case '>': {
+  case U'>': {
     CAPTURE_POS;
     if (peekChar() == U'>') {
       advance();
@@ -933,7 +939,7 @@ void Lexer::logError(ErrorCode code, const Token &token,
   error.level = ErrorLevel::ERROR;
   error.line = token.line;
   error.column = token.column;
-  error.code=code;
+  error.code = code;
   ErrorMessage msg = errorHandler.generateErrorMessage(code);
   msg.message = errorHandler.format_string(msg.message, args);
   error.message = msg;

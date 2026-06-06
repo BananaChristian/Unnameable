@@ -1121,14 +1121,12 @@ struct StructureModifier : Expression {
   std::unique_ptr<Expression> _align;
 
   StructureModifier *shallowClone() const override {
-    return new StructureModifier(isPacked,
-                                 clonePtr(_align));
+    return new StructureModifier(isPacked, clonePtr(_align));
   }
 
   StructureModifier() : Expression(Token{}) {}
 
-  StructureModifier(bool packed,
-                    std::unique_ptr<Expression> align = nullptr)
+  StructureModifier(bool packed, std::unique_ptr<Expression> align = nullptr)
       : Expression(Token{}), isPacked(packed), _align(std::move(align)) {}
 
   std::string toString() override {
@@ -2293,6 +2291,22 @@ struct BlockExpression : Expression {
   }
 
   BlockExpression(Token lbrace) : Expression(lbrace) {};
+};
+
+struct MacroExpression : Expression {
+  Token bill_token;
+  std::unique_ptr<Statement> inner; // This can hold anything from expression
+                                    // statements to full statements
+
+  std::string toString() override {
+    std::ostringstream oss;
+    oss << "MacroExpression :" << "$$";
+    oss << "{" << (inner ? inner->toString() : "inner") << "}";
+    return oss.str();
+  };
+
+  MacroExpression(Token bill, std::unique_ptr<Statement> stmt)
+      : Expression(bill), inner(std::move(stmt)) {};
 };
 
 enum class Precedence {

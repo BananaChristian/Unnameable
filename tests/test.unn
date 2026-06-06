@@ -1,12 +1,26 @@
-##allocator MyAllocator{
-  func allocate(usize size): ptr opaque
-  func free(ptr opaque p): void
+$${x}
+
+$${deref x}
+
+$${ func test(i32 x):i32 }
+
+$$x
+
+$$call()
+
+$${ if(x){trace "what"}}
+
+1+ $$x
+
+$$if(x){
+  return x
 }
 
-global allocator MyAllocator##
+func macro_test:i32{
+  $${
+      while(x==11){
+          
+      }
+    }
 
-func main:i32{
-    heap i32 x=100
-    trace x
-    return 0
 }

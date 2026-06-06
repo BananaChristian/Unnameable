@@ -369,6 +369,7 @@ void Parser::registerPrefixFns() {
       &Parser::parseFunctionExpression;
   PrefixParseFunctionsMap[TokenType::CAST] = &Parser::parseCastExpression;
   PrefixParseFunctionsMap[TokenType::BITCAST] = &Parser::parseBitcastExpression;
+  PrefixParseFunctionsMap[TokenType::DOLLAR_DOLLAR]= &Parser::parseMacroExpression;
 }
 
 // Registering the postfix parse functions

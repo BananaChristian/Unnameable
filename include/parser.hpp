@@ -306,6 +306,9 @@ private:
   // Parsing call arguments
   std::vector<std::unique_ptr<Expression>> parseCallArguments();
 
+  //Parsing the macro expression
+  std::unique_ptr<Expression> parseMacroExpression();
+
   // Parsing function parameters
   std::vector<std::unique_ptr<Statement>> parseFunctionParameters();
   std::vector<std::unique_ptr<Expression>> parseFnPointerParameters();

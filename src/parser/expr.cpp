@@ -411,7 +411,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
   Token bitcast = currentToken();
   std::unique_ptr<Expression> type = nullptr;
   std::unique_ptr<Expression> expr = nullptr;
-  advance(); //Consume the bitcast token
+  advance(); // Consume the bitcast token
   if (currentToken().type != TokenType::LESS_THAN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
              {"<", currentToken().TokenLiteral});
@@ -419,7 +419,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
     return nullptr;
   }
 
-  advance(); //Consume the < token
+  advance(); // Consume the < token
   type = parseReturnType();
   if (!type) {
     synchronize(SyncLevel::MID);
@@ -433,7 +433,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
     synchronize(SyncLevel::MID);
     return nullptr;
   }
-  advance(); //Consume the > token
+  advance(); // Consume the > token
 
   if (currentToken().type != TokenType::LPAREN) {
     logError(ErrorCode::UnexpectedToken, currentToken(),
@@ -441,7 +441,7 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
     synchronize(SyncLevel::MID);
     return nullptr;
   }
-  advance();//Consume the ( token
+  advance(); // Consume the ( token
 
   expr = parseExpression(Precedence::PREC_NONE);
   if (!expr) {
@@ -461,4 +461,29 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
 
   return std::make_unique<BitcastExpression>(bitcast, std::move(type),
                                              std::move(expr));
+}
+
+std::unique_ptr<Expression> Parser::parseMacroExpression() {
+  Token dollar_dollar = currentToken();
+  advance(); // Consume the dollar_dollar token
+
+  bool hasBraces = false;
+  if (currentToken().type == TokenType::LBRACE) {
+    hasBraces = true;
+    advance();
+  }
+  std::unique_ptr<Statement> inner = parseStatement();
+
+  if (hasBraces) {
+    if (currentToken().type != TokenType::RBRACE) {
+      logError(ErrorCode::UnexpectedToken, currentToken(),
+               {"}", currentToken().TokenLiteral});
+      synchronize(SyncLevel::MID);
+      return nullptr;
+    } else {
+      advance(); // Consume the }
+    }
+  }
+
+  return std::make_unique<MacroExpression>(dollar_dollar, std::move(inner));
 }
