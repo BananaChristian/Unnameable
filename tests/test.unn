@@ -4,23 +4,19 @@ $${deref x}
 
 $${ func test(i32 x):i32 }
 
-$$x
-
-$$call()
 
 $${ if(x){trace "what"}}
 
-1+ $$x
-
-$$if(x){
-  return x
+$${
+  mut record Status{
+    i32 x
+    i32 y
+  }
+  func test:i32
 }
 
-func macro_test:i32{
-  $${
-      while(x==11){
-          
-      }
+1+ $${
+    func test:i32 {
+        return 122
     }
-
-}
+  }

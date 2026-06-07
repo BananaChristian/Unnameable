@@ -1,4 +1,5 @@
 #include "ast.hpp"
+#include "errors.hpp"
 #include "parser.hpp"
 #include "token.hpp"
 #include <memory>
@@ -464,26 +465,34 @@ std::unique_ptr<Expression> Parser::parseBitcastExpression() {
 }
 
 std::unique_ptr<Expression> Parser::parseMacroExpression() {
+  std::vector<std::unique_ptr<Statement>> macro_statements;
+
   Token dollar_dollar = currentToken();
   advance(); // Consume the dollar_dollar token
 
-  bool hasBraces = false;
-  if (currentToken().type == TokenType::LBRACE) {
-    hasBraces = true;
-    advance();
-  }
-  std::unique_ptr<Statement> inner = parseStatement();
-
-  if (hasBraces) {
-    if (currentToken().type != TokenType::RBRACE) {
-      logError(ErrorCode::UnexpectedToken, currentToken(),
-               {"}", currentToken().TokenLiteral});
-      synchronize(SyncLevel::MID);
-      return nullptr;
-    } else {
-      advance(); // Consume the }
-    }
+  if (currentToken().type != TokenType::LBRACE) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"{", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
+    return nullptr;
   }
 
-  return std::make_unique<MacroExpression>(dollar_dollar, std::move(inner));
+  advance(); // Consume the {
+  while (currentToken().type != TokenType::RBRACE &&
+         currentToken().type != TokenType::END) {
+    std::unique_ptr<Statement> stmt = parseStatement();
+    if (stmt)
+      macro_statements.push_back(std::move(stmt));
+  }
+
+  if (currentToken().type != TokenType::RBRACE) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"}", currentToken().TokenLiteral});
+    synchronize(SyncLevel::MID);
+    return nullptr;
+  }
+  advance(); // Consume the }
+
+  return std::make_unique<MacroExpression>(dollar_dollar,
+                                           std::move(macro_statements));
 }

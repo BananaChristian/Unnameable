@@ -20,7 +20,7 @@ class Semantics {
 public:
   Deserializer &deserializer;
   Semantics(Deserializer &deserializer, ErrorHandler &handler, bool isVerbose,
-            bool isFreeStanding);
+            bool isFreeStanding, bool inComptime);
   void walker(Node *node);
   bool failed();
 
@@ -118,6 +118,7 @@ private:
   bool hasError = false;
   bool verbose = false;
   bool freeStanding = false;
+  bool inComptime = false;
   bool globalAllocatorSet = false;
   std::string globalAllocatorName = "GPA"; // The default allocator is GPA
   std::vector<Node *> activeBlocks;

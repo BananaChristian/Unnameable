@@ -13,9 +13,9 @@
 #define COLOR_RED "\033[31m"
 
 Semantics::Semantics(Deserializer &deserial, ErrorHandler &handler,
-                     bool verbose, bool freestanding)
+                     bool verbose, bool freestanding, bool inComptime)
     : errorHandler(handler), deserializer(deserial), verbose(verbose),
-      freeStanding(freestanding) {
+      freeStanding(freestanding), inComptime(inComptime) {
   symbolTable.push_back({});
   registerWalkerFunctions();
 

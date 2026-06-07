@@ -2295,18 +2295,24 @@ struct BlockExpression : Expression {
 
 struct MacroExpression : Expression {
   Token bill_token;
-  std::unique_ptr<Statement> inner; // This can hold anything from expression
-                                    // statements to full statements
+  std::vector<std::unique_ptr<Statement>>
+      macro; // This can hold anything from expression
+             // statements to full statements
 
   std::string toString() override {
     std::ostringstream oss;
     oss << "MacroExpression :" << "$$";
-    oss << "{" << (inner ? inner->toString() : "inner") << "}";
+    oss << "{";
+    for (const auto &stmt : macro) {
+      oss << (stmt ? stmt->toString() : "inner");
+    }
+    oss << "}";
     return oss.str();
   };
 
-  MacroExpression(Token bill, std::unique_ptr<Statement> stmt)
-      : Expression(bill), inner(std::move(stmt)) {};
+  MacroExpression(Token bill,
+                  std::vector<std::unique_ptr<Statement>> macro_stmts)
+      : Expression(bill), macro(std::move(macro_stmts)) {};
 };
 
 enum class Precedence {
