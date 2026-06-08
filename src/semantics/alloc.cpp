@@ -30,7 +30,7 @@ void Semantics::walkAllocatorInterface(Node *node) {
   bool isExportable = allocStmt->isExportable;
 
   // allocator scope
-  symbolTable.push_back({});
+  payload.symbolTable.push_back({});
   insideAllocator = true;
 
   // allocator contract: exactly two functions
@@ -131,8 +131,8 @@ void Semantics::walkAllocatorInterface(Node *node) {
   allocSym->hasError = hasError;
 
   insertMetaData(allocStmt, allocSym);
-  symbolTable[0][allocName] = allocSym;
-  allocatorMap[allocName] = handle;
+  payload.symbolTable[0][allocName] = allocSym;
+  payload.allocatorMap[allocName] = handle;
 
   insideAllocator = false;
   popScope();
@@ -217,7 +217,7 @@ void Semantics::registerInbuiltAllocatorTypes() {
                                           "p");
   stdHandle.freeSymbol = freeSym;
 
-  allocatorMap["GPA"] = stdHandle;
+  payload.allocatorMap["GPA"] = stdHandle;
 }
 
 void Semantics::walkGlobalAllocator(Node *node) {
@@ -229,8 +229,8 @@ void Semantics::walkGlobalAllocator(Node *node) {
       extractIdentifierName(globalAlloc->allocator_name.get());
 
   // Check if the allocator exists in the allocator map
-  auto it = allocatorMap.find(allocator_name);
-  if (it == allocatorMap.end()) {
+  auto it = payload.allocatorMap.find(allocator_name);
+  if (it == payload.allocatorMap.end()) {
     logSemanticErrors(ErrorCode::UnknownAllocator,
                       globalAlloc->allocator_name.get(), {allocator_name});
     return;

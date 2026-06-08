@@ -175,11 +175,11 @@ void Semantics::importSeals() {
       sealMap[fn.funcName] = symInfoFromFunctionEntry(fe);
     }
 
-    sealTable[seal.sealName] = std::move(sealMap);
+    payload.sealTable[seal.sealName] = std::move(sealMap);
 
     auto sealSym = std::make_shared<SymbolInfo>();
     sealSym->isExportable = true;
-    symbolTable[0][seal.sealName] = sealSym;
+    payload.symbolTable[0][seal.sealName] = sealSym;
 
     logInternal("Finished importing seal '" + seal.sealName + "'");
   }
@@ -205,11 +205,11 @@ void Semantics::importComponents() {
 
     // Register into customTypesTable, ImportedComponentTable and symbolTable[0]
     registerTypeSymbol(comp.componentName, DataType::COMPONENT, members,
-                       customTypesTable, ImportedComponentTable,
-                       symbolTable[0]);
+                       payload.customTypesTable, payload.ImportedComponentTable,
+                       payload.symbolTable[0]);
 
     if (comp.hasInit) {
-      importedInits[comp.componentName] = symInfoFromComponentInit(comp.init);
+      payload.importedInits[comp.componentName] = symInfoFromComponentInit(comp.init);
       logInternal("  init registered for '" + comp.componentName + "'");
     }
 
@@ -233,7 +233,7 @@ void Semantics::importRecords() {
 
     // Register into customTypesTable, ImportedRecordTable and symbolTable[0]
     registerTypeSymbol(record.recordName, DataType::RECORD, members,
-                       customTypesTable, ImportedRecordTable, symbolTable[0]);
+                       payload.customTypesTable, payload.ImportedRecordTable, payload.symbolTable[0]);
 
     logInternal("Finished importing record '" + record.recordName + "'");
   }
@@ -270,13 +270,13 @@ void Semantics::importEnums() {
       members[m.memberName] = memInfo;
     }
 
-    customTypesTable[en.enumName] = typeInfo;
+    payload.customTypesTable[en.enumName] = typeInfo;
 
     auto sym = std::make_shared<SymbolInfo>();
     sym->isExportable = true;
     sym->members = members;
     sym->type().type = ResolvedType::makeBase(DataType::ENUM, en.enumName);
-    symbolTable[0][en.enumName] = sym;
+    payload.symbolTable[0][en.enumName] = sym;
 
     logInternal("Finished importing enum '" + en.enumName + "'");
   }
@@ -307,11 +307,11 @@ void Semantics::importAllocators() {
     handle.freeSymbol = freeSym;
     logInternal("  free '" + handle.freeName + "'");
 
-    allocatorMap[alloc.allocatorName] = handle;
+    payload.allocatorMap[alloc.allocatorName] = handle;
 
     auto interfaceSym = std::make_shared<SymbolInfo>();
     interfaceSym->isExportable = true;
-    symbolTable[0][alloc.allocatorName] = interfaceSym;
+    payload.symbolTable[0][alloc.allocatorName] = interfaceSym;
 
     logInternal("Finished importing allocator '" + alloc.allocatorName + "'");
   }
@@ -323,7 +323,7 @@ void Semantics::importFunctions() {
 
   for (const auto &fn : deserializer.stub.functions) {
     logInternal("Importing function '" + fn.funcName + "'");
-    registerFunctionSymbol(fn, ImportedFunctionsTable, symbolTable[0]);
+    registerFunctionSymbol(fn, payload.ImportedFunctionsTable, payload.symbolTable[0]);
     logInternal("Finished importing function '" + fn.funcName + "'");
   }
 }
@@ -333,7 +333,7 @@ void Semantics::importVariables() {
               std::to_string(deserializer.stub.variables.size()));
   for (const auto &var : deserializer.stub.variables) {
     logInternal("Importing variable '" + var.var_name + "'");
-    registerVariableSymbol(var, ImportedVariablesTable, symbolTable[0]);
+    registerVariableSymbol(var, payload.ImportedVariablesTable, payload.symbolTable[0]);
     logInternal("Finished importing variable '" + var.var_name + "'");
   }
 }
@@ -355,11 +355,11 @@ void Semantics::importGenerics() {
         members[m.methodName] = memberInfoFromComponentMethod(m);
 
       registerTypeSymbol(comp.componentName, DataType::COMPONENT, members,
-                         customTypesTable, ImportedComponentTable,
-                         symbolTable[0]);
+                         payload.customTypesTable, payload.ImportedComponentTable,
+                         payload.symbolTable[0]);
 
       if (comp.hasInit) {
-        importedInits[comp.componentName] = symInfoFromComponentInit(comp.init);
+        payload.importedInits[comp.componentName] = symInfoFromComponentInit(comp.init);
         logInternal("  init registered for '" + comp.componentName + "'");
       }
     }
@@ -372,12 +372,12 @@ void Semantics::importGenerics() {
         members[m.memberName] = memberInfoFromRecordMember(m);
 
       registerTypeSymbol(record.recordName, DataType::RECORD, members,
-                         customTypesTable, ImportedRecordTable, symbolTable[0]);
+                         payload.customTypesTable, payload.ImportedRecordTable, payload.symbolTable[0]);
     }
 
     for (const auto &fn : gen.functions) {
       logInternal("  generic function '" + fn.funcName + "'");
-      registerFunctionSymbol(fn, ImportedFunctionsTable, symbolTable[0]);
+      registerFunctionSymbol(fn, payload.ImportedFunctionsTable, payload.symbolTable[0]);
     }
 
     logInternal("Finished importing instantiation '" + gen.aliasName + "'");

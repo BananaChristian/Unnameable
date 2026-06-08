@@ -144,8 +144,9 @@ void Layout::calculateVariableDeclarationSize(Node *node) {
 
     if (!type_modifier->dimensions.empty() && isConstantLength) {
       if (declaration->initializer && totalElements != totalLiteralElements) {
-        logLayoutError(ErrorCode::ArraySizeMismatch,
-                       declaration,{std::to_string(totalElements),std::to_string(totalLiteralElements)});
+        logLayoutError(ErrorCode::ArraySizeMismatch, declaration,
+                       {std::to_string(totalElements),
+                        std::to_string(totalLiteralElements)});
       }
     } else {
       totalElements = totalLiteralElements;
@@ -305,27 +306,31 @@ void Layout::calculateRecordStatement(Node *node) {
 
   auto recordName = recordStmt->recordName->expression.TokenLiteral;
 
-  auto dataMeta = semantics.metaData.find(recordStmt);
-  if (dataMeta == semantics.metaData.end()) {
-    reportDevBug("Could not find record '" + recordName + "' metaData");
-    return;
-  }
-
-  auto dataSym = dataMeta->second;
-  if (!dataSym) {
-    reportDevBug("Could not find record symbolInfo '" + recordName + "'");
+  auto recordSym = semantics.getSymbolFromMeta(recordStmt);
+  if (!recordSym) {
+    reportDevBug("Could not find record '" + recordName + "' symbol info");
     return;
   }
 
   std::vector<llvm::Type *> fieldTypes;
 
-  for (const auto &[key, value] : dataSym->members) {
-    llvm::Type *fieldType = getLLVMType(value->type);
+  for (const auto &[key, value] : recordSym->members) {
+    llvm::Type *fieldType;
+
+    auto memberSym = semantics.getSymbolFromMeta(value->node);
+    if (memberSym && memberSym->storage().isHeap) {
+      // Heap field store a POINTER to the type
+      llvm::Type *baseType = getLLVMType(value->type);
+      fieldType = baseType->getPointerTo(); // ptr to i32, ptr to struct, etc.
+    } else {
+      fieldType = getLLVMType(value->type);
+    }
+
     fieldTypes.push_back(fieldType);
   }
 
   llvm::StructType *structTy = llvm::StructType::create(context, recordName);
-  structTy->setBody(fieldTypes, /*isPacked*/ false);
+  structTy->setBody(fieldTypes, /*isPacked*/ recordSym->storage().isPacked);
 
   typeMap[recordName] = structTy;
 }
@@ -481,8 +486,8 @@ llvm::Type *Layout::getLLVMType(const ResolvedType &type) {
   }
 
   case DataType::ENUM: {
-    auto enumIt = semantics.customTypesTable.find(type.resolvedName);
-    if (enumIt == semantics.customTypesTable.end())
+    auto enumIt = semantics.payload.customTypesTable.find(type.resolvedName);
+    if (enumIt == semantics.payload.customTypesTable.end())
       throw std::runtime_error("Layout requested for unknown enum '" +
                                type.resolvedName + "'");
     // Recurse on the underlying type
@@ -519,7 +524,7 @@ void Layout::calculateAllocatorInterfaceSize(Node *node) {
 
 void Layout::declareAllCustomTypes() {
   logInternal("Declaring all custom type");
-  for (const auto &[name, info] : semantics.customTypesTable) {
+  for (const auto &[name, info] : semantics.payload.customTypesTable) {
     auto typeIt = typeMap.find(name);
     if (typeIt == typeMap.end())
       typeMap[name] = llvm::StructType::create(context, name);
@@ -528,7 +533,7 @@ void Layout::declareAllCustomTypes() {
 
 void Layout::registerImportedTypes() {
   logInternal("Registering component type");
-  for (const auto &compTypesPair : semantics.ImportedComponentTable) {
+  for (const auto &compTypesPair : semantics.payload.ImportedComponentTable) {
     const auto &[compName, typeInfo] = compTypesPair;
     const auto &members = typeInfo->members;
     std::vector<llvm::Type *> fieldTypes;
@@ -549,7 +554,7 @@ void Layout::registerImportedTypes() {
     structTy->setBody(fieldTypes, false);
   }
 
-  for (const auto &dataTypesPair : semantics.ImportedRecordTable) {
+  for (const auto &dataTypesPair : semantics.payload.ImportedRecordTable) {
     const auto &[dataName, typeInfo] = dataTypesPair;
     const auto &members = typeInfo->members;
 

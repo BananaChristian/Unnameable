@@ -1,22 +1,10 @@
-$${x}
-
-$${deref x}
-
-$${ func test(i32 x):i32 }
-
-
-$${ if(x){trace "what"}}
-
-$${
-  mut record Status{
-    i32 x
-    i32 y
-  }
-  func test:i32
+record Test{
+  heap i32 x
+  heap i32 y
 }
 
-1+ $${
-    func test:i32 {
-        return 122
-    }
-  }
+func main:i32{
+  heap Test test
+  test.x
+  return 0
+}

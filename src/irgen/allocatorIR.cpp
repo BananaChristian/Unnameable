@@ -1,7 +1,7 @@
 #include "irgen.hpp"
 
 void IRGenerator::registerAllocators() {
-  for (const auto &allocPair : semantics.allocatorMap) {
+  for (const auto &allocPair : semantics.payload.allocatorMap) {
     auto allocator_type = allocPair.first;
     if (allocator_type == "GPA") {
       if (freestanding) {

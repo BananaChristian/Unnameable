@@ -249,7 +249,7 @@ void Auditor::filterBeforeClassifySym(Node *node, Node *block,
     auto instance = infixCall->left_operand.get();
     const std::string sealName = semantics.extractIdentifierName(instance);
     logInternal("Seal Name: " + sealName);
-    bool isSealInstance = semantics.sealTable.count(sealName);
+    bool isSealInstance = semantics.payload.sealTable.count(sealName);
     logInternal("Is It is Seal Instance: " + std::to_string(isSealInstance));
     if (isSealInstance) {
       auto idents = semantics.digIdentifiers(infixCall->right_operand.get());

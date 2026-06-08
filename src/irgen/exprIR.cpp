@@ -341,6 +341,12 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     return address;
   }
 
+  if (isRecordType(sym->type().type.resolvedName) && sym->storage().isHeap) {
+    inhibitCleanUp = wasInhibited;
+    emitCleanup(identExpr);
+    return address;
+  }
+
   if (sym->storage().isHeap) {
     llvm::Type *elemTy = sym->codegen().llvmType;
     llvm::Value *actualHeapAddr = address;
@@ -522,8 +528,8 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   if (infix->operat.type == TokenType::FULLSTOP) {
     std::string lhsName =
         semantics.extractIdentifierName(infix->left_operand.get());
-    auto sealIt = semantics.sealTable.find(lhsName);
-    if (sealIt != semantics.sealTable.end()) {
+    auto sealIt = semantics.payload.sealTable.find(lhsName);
+    if (sealIt != semantics.payload.sealTable.end()) {
       // Seal has no runtime value, pass nullptr and let handleMemberAccess deal
       // with it
       return handleMemberAccess(infix, nullptr, leftSym, rightSym);
@@ -531,14 +537,23 @@ llvm::Value *IRGenerator::generateInfixExpression(Node *node) {
   }
 
   llvm::Value *leftVal = generateExpression(infix->left_operand.get());
-  if (infix->operat.type == TokenType::FULLSTOP)
-    return handleMemberAccess(infix, leftVal, leftSym, rightSym);
+  if (infix->operat.type == TokenType::FULLSTOP) {
+    auto result = handleMemberAccess(infix, leftVal, leftSym, rightSym);
+    inhibitCleanUp = wasInhibited;
+    emitCleanup(infix);
+    return result;
+  }
 
   // Handle boolean logical operators (AND, OR)
   if (infix->operat.type == TokenType::AND ||
-      infix->operat.type == TokenType::OR)
-    return handleLogical(infix, leftVal, leftSym, rightSym);
+      infix->operat.type == TokenType::OR) {
+    auto result = handleLogical(infix, leftVal, leftSym, rightSym);
+    inhibitCleanUp = wasInhibited;
+    emitCleanup(infix);
+    return result;
+  }
 
+  inhibitCleanUp = true;
   // Handle Null Coalesce (??)
   if (infix->operat.type == TokenType::COALESCE)
     result = handleCoalesce(infix, leftVal);
@@ -885,7 +900,8 @@ llvm::Value *IRGenerator::generateBitcastExpression(Node *node) {
   }
 
   // --- Safe Integer-to-Integer Resizing ---
-  // If the user attempts to bitcast for example an i32 to an i8, intercept and truncate.
+  // If the user attempts to bitcast for example an i32 to an i8, intercept and
+  // truncate.
   if (srcType->isIntegerTy() && dstType->isIntegerTy()) {
     unsigned srcBits = srcType->getIntegerBitWidth();
     unsigned dstBits = dstType->getIntegerBitWidth();
@@ -986,8 +1002,8 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
   // component)
 
   // Semantic chain walk
-  auto ctIt = semantics.customTypesTable.find(compName);
-  if (ctIt == semantics.customTypesTable.end())
+  auto ctIt = semantics.payload.customTypesTable.find(compName);
+  if (ctIt == semantics.payload.customTypesTable.end())
     reportDevBug("Unknown component '" + compName + "'", selfExpr);
 
   auto currentTypeInfo = ctIt->second;
@@ -1028,8 +1044,8 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
       if (lastMemberInfo->type.isPointer() || lastMemberInfo->type.isRef())
         lookUpName = semantics.getBaseTypeName(lastMemberInfo->type);
 
-      auto nestedIt = semantics.customTypesTable.find(lookUpName);
-      if (nestedIt == semantics.customTypesTable.end())
+      auto nestedIt = semantics.payload.customTypesTable.find(lookUpName);
+      if (nestedIt == semantics.payload.customTypesTable.end())
         reportDevBug("Nested type '" + lookUpName + "'not found", selfExpr);
 
       currentTypeInfo = nestedIt->second;

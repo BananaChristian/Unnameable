@@ -29,7 +29,15 @@ void IRGenerator::generateRecordStatement(Node *node) {
 
     for (auto &pair : sym->members) {
       std::shared_ptr<MemberInfo> info = pair.second;
-      llvm::Type *ty = getLLVMType(info->type);
+      llvm::Type *ty;
+      auto memberSym = semantics.getSymbolFromMeta(info->node);
+      if (memberSym->storage().isHeap) {
+        llvm::Type *baseType = getLLVMType(info->type);
+        ty = baseType->getPointerTo();
+      } else {
+        ty = getLLVMType(info->type);
+      }
+
       memberTypes[info->memberIndex] = ty;
     }
     structTy->setBody(memberTypes, sym->storage().isPacked);
@@ -51,8 +59,8 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
     reportDevBug("Unknown record type: " + instName,
                  instExpr->blockIdent.get());
 
-  auto typeInfoIt = semantics.customTypesTable.find(instName);
-  if (typeInfoIt == semantics.customTypesTable.end())
+  auto typeInfoIt = semantics.payload.customTypesTable.find(instName);
+  if (typeInfoIt == semantics.payload.customTypesTable.end())
     reportDevBug("Missing custom type info for '" + instName + "'",
                  instExpr->blockIdent.get());
 
@@ -121,11 +129,19 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
   llvm::Value *instancePtr =
       funcBuilder.CreateAlloca(structTy, nullptr, instName + "_inst");
 
-  // Store each field
+  // Initialize heap fields FIRST (before storing normal fields)
+  initializeRecordHeapFields(instancePtr, structTy, instName, userInits);
+
   for (auto const &[memberName, info] : orderedMembers) {
+    auto memberSym = semantics.getSymbolFromMeta(info->node);
+
+    // Skip heap fields - already handled by initializeRecordHeapFields
+    if (memberSym && memberSym->storage().isHeap)
+      continue;
+
+    // Handle normal fields...
     llvm::Value *memberPtr = funcBuilder.CreateStructGEP(
         structTy, instancePtr, info->memberIndex, memberName);
-
     llvm::Value *finalVal = nullptr;
 
     auto it = userInits.find(memberName);
@@ -140,16 +156,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
       }
     }
 
-    if (!finalVal)
-      reportDevBug("Failed to resolve value for field '" + memberName + "'",
-                   info->node);
-
-    auto *storeInst = funcBuilder.CreateStore(finalVal, memberPtr);
-
-    auto sym = semantics.getSymbolFromMeta(instExpr);
-    bool isInstanceVolatile = sym && sym->storage().isVolatile;
-    if (isInstanceVolatile || info->isVolatile)
-      storeInst->setVolatile(true);
+    funcBuilder.CreateStore(finalVal, memberPtr);
   }
 
   // Return the loaded struct value
@@ -581,7 +588,7 @@ void IRGenerator::generateEnumStatement(Node *node) {
     reportDevBug("Fail to find enum symbol info", enumStmt);
 
   auto enumTypeInfo =
-      semantics.customTypesTable[enumInfo->type().type.resolvedName];
+      semantics.payload.customTypesTable[enumInfo->type().type.resolvedName];
 
   // Creating a struct for book keeping
   llvm::StructType *enumStruct =
@@ -680,4 +687,81 @@ void IRGenerator::generateASMStatement(Node *node) {
   funcBuilder.CreateCall(asmFuncType, inlineAsm, args);
   for (const auto &node : tofree)
     emitCleanup(node);
+}
+
+void IRGenerator::initializeRecordHeapFields(
+    llvm::Value *structPtr, llvm::StructType *structTy,
+    const std::string &typeName,
+    const std::unordered_map<std::string, AssignmentStatement *> &userInits) {
+
+  auto typeInfo = semantics.payload.customTypesTable[typeName];
+  if (!typeInfo) {
+    reportDevBug("No type info for record: " + typeName, nullptr);
+  }
+
+  // Sort members by index
+  std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>>
+      orderedMembers;
+  for (const auto &[name, info] : typeInfo->members) {
+    orderedMembers.push_back({name, info});
+  }
+  std::sort(orderedMembers.begin(), orderedMembers.end(),
+            [](const auto &a, const auto &b) {
+              return a.second->memberIndex < b.second->memberIndex;
+            });
+
+  for (const auto &[memberName, memberInfo] : orderedMembers) {
+    // Get the member symbol to check if it's a heap field
+    auto memberSym = semantics.getSymbolFromMeta(memberInfo->node);
+    if (!memberSym)
+      continue;
+
+    // ONLY handle heap fields
+    if (!memberSym->storage().isHeap)
+      continue;
+
+    // Get the base type (what the field stores)
+    llvm::Type *baseType = getLLVMType(memberInfo->type);
+    size_t fieldSize = layout->getTypeAllocSize(baseType);
+
+    // Create a temporary symbol info for allocation
+    auto tempSym = std::make_shared<SymbolInfo>();
+    tempSym->storage().allocType = memberSym->storage().allocType;
+    tempSym->type().type = memberInfo->type;
+    tempSym->codegen().componentSize = fieldSize;
+
+    // Allocate heap storage for this field
+    llvm::Value *heapPtr = allocateRuntimeHeap(
+        tempSym, funcBuilder.getInt64(fieldSize), memberName);
+
+    // Store the heap pointer in the struct slot
+    llvm::Value *fieldSlot = funcBuilder.CreateStructGEP(
+        structTy, structPtr, memberInfo->memberIndex, memberName + "_slot");
+    funcBuilder.CreateStore(heapPtr, fieldSlot);
+
+    // Handle default value or user-provided value
+    llvm::Value *initValue = nullptr;
+
+    // Check if user provided a value for this field
+    auto userIt = userInits.find(memberName);
+    if (userIt != userInits.end()) {
+      // User provided value - evaluate it
+      initValue = generateExpression(userIt->second->value.get());
+    } else {
+      // No user value - check for default in declaration
+      auto varDecl = dynamic_cast<VariableDeclaration *>(memberInfo->node);
+      if (varDecl && varDecl->initializer) {
+        initValue = generateExpression(varDecl->initializer.get());
+      } else {
+        // No default - zero initialize
+        initValue = llvm::Constant::getNullValue(baseType);
+      }
+    }
+
+    // Store the initial value to the heap location
+    if (initValue) {
+      funcBuilder.CreateStore(initValue, heapPtr);
+    }
+    memberSym->codegen().llvmValue = heapPtr;
+  }
 }

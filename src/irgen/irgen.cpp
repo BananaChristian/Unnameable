@@ -494,8 +494,8 @@ llvm::Type *IRGenerator::getLLVMType(const ResolvedType &type) {
   }
 
   case DataType::ENUM: {
-    auto enumIt = semantics.customTypesTable.find(type.resolvedName);
-    if (enumIt == semantics.customTypesTable.end()) {
+    auto enumIt = semantics.payload.customTypesTable.find(type.resolvedName);
+    if (enumIt == semantics.payload.customTypesTable.end()) {
       reportDevBug("IRGenerator requested unknown enum '" + type.resolvedName +
                        "'",
                    nullptr);
@@ -994,8 +994,8 @@ void IRGenerator::traceRuntime(llvm::Value *val, ResolvedType type) {
 
 void IRGenerator::freeDynamicHeapStorage(const std::string &allocatorType,
                                          llvm::Value *toFree) {
-  auto it = semantics.allocatorMap.find(allocatorType);
-  if (it == semantics.allocatorMap.end())
+  auto it = semantics.payload.allocatorMap.find(allocatorType);
+  if (it == semantics.payload.allocatorMap.end())
     return;
 
   auto deallocatorName = it->second.freeName;
@@ -1187,8 +1187,8 @@ void IRGenerator::executePhysicalFree(const std::shared_ptr<SymbolInfo> &sym) {
   logInternal("  [Deallocating] Generating  deallocation for: " +
               sym->codegen().ID);
 
-  auto it = semantics.allocatorMap.find(sym->storage().allocType);
-  if (it == semantics.allocatorMap.end()) {
+  auto it = semantics.payload.allocatorMap.find(sym->storage().allocType);
+  if (it == semantics.payload.allocatorMap.end()) {
     logInternal(
         "  [EXEC-FREE-FAIL] No allocator mapping for type allocator type '" +
         sym->storage().allocType + "'");
@@ -1255,6 +1255,11 @@ void IRGenerator::emitDeclarationClean(Node *contextNode) {
     for (const auto &[id, depSym] : baton->dependents) {
       logInternal("    [Dep-Free] ID: " + id);
       executePhysicalFree(depSym);
+    }
+
+    for (const auto &captured_field : baton->captured_fields) {
+      logInternal("[Captured-Field-Free]: " + captured_field.capturedID);
+      executePhysicalFree(captured_field.symbol);
     }
 
     // Free the leader
@@ -1329,6 +1334,11 @@ void IRGenerator::emitCleanup(Node *contextNode) {
         logInternal("    [Dep-Free] ID: " + id);
         executePhysicalFree(depSym);
       }
+
+      for (const auto &captured_field : baton->captured_fields) {
+      logInternal("[Captured-Field-Free]: " + captured_field.capturedID);
+      executePhysicalFree(captured_field.symbol);
+    }
 
       // Free the leader
       if (identSym->storage().isHeap) {

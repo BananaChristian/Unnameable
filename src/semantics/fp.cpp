@@ -33,8 +33,8 @@ void Semantics::walkBlockExpression(Node *node) {
     auto *finalNode = blockExpr->finalexpr.value().get();
     walker(finalNode);
 
-    if (currentFunction) {
-      auto &fn = *currentFunction.value();
+    if (payload.currentFunction) {
+      auto &fn = *payload.currentFunction.value();
       if (fn.func().returnType.kind == DataType::VOID) {
         logSemanticErrors(ErrorCode::InvalidFinalExpression, finalNode);
       } else {
@@ -60,16 +60,16 @@ void Semantics::walkReturnStatement(Node *node) {
   if (!retStmt)
     reportDevBug("Invalid return statement node", node);
 
-  if (!currentFunction)
+  if (!payload.currentFunction)
     logSemanticErrors(ErrorCode::FloatingReturns, retStmt);
 
   const ResolvedType &expectedReturn =
-      currentFunction.value()->func().returnType;
+      payload.currentFunction.value()->func().returnType;
 
-  if (currentFunction.value()->func().isNaked)
+  if (payload.currentFunction.value()->func().isNaked)
     return;
 
-  if (currentFunction.value()->func().isInterrupt) {
+  if (payload.currentFunction.value()->func().isInterrupt) {
     if (expectedReturn.base().kind != DataType::VOID) {
       logSemanticErrors(ErrorCode::InterruptsMustBeVoid, retStmt);
       insertErrorMetaData(retStmt);
@@ -80,7 +80,7 @@ void Semantics::walkReturnStatement(Node *node) {
   if (!retStmt->return_value) {
     if (expectedReturn.base().kind != DataType::VOID) {
       logSemanticErrors(ErrorCode::NonVoidReturn, retStmt,
-                        {currentFunction.value()->func().funcName});
+                        {payload.currentFunction.value()->func().funcName});
     }
 
     auto voidSym = std::make_shared<SymbolInfo>();
@@ -98,7 +98,7 @@ void Semantics::walkReturnStatement(Node *node) {
   }
 
   giveGenericLiteralContext(retStmt->return_value.get(),
-                            currentFunction.value()->type().type, valSym);
+                            payload.currentFunction.value()->type().type, valSym);
 
   ResolvedType valueType = valSym->type().type;
   if (valueType.base().kind == DataType::UNKNOWN)
@@ -129,11 +129,11 @@ void Semantics::walkReturnStatement(Node *node) {
   }
 
   // Transfer ownership baton to the caller.
-  currentFunction->get()->codegen().ID = valSym->codegen().ID;
+  payload.currentFunction->get()->codegen().ID = valSym->codegen().ID;
   // This doesnt mean the function is heap raised  it means the return value is
   // heap raised
-  currentFunction->get()->storage().isHeap = valSym->storage().isHeap;
-  currentFunction->get()->storage().allocType = valSym->storage().allocType;
+  payload.currentFunction->get()->storage().isHeap = valSym->storage().isHeap;
+  payload.currentFunction->get()->storage().allocType = valSym->storage().allocType;
 
   auto retSym = std::make_shared<SymbolInfo>();
   retSym->type().type = expectedReturn;
@@ -173,8 +173,8 @@ void Semantics::walkFunctionParameters(Node *node) {
   }
 
   ResolvedType resolvedType = inferNodeDataType(param);
-  if (currentFunction) {
-    if (currentFunction.value()->func().isInterrupt &&
+  if (payload.currentFunction) {
+    if (payload.currentFunction.value()->func().isInterrupt &&
         isCustomTypeByValue(resolvedType)) {
       logSemanticErrors(ErrorCode::CannotPassCustomByVal, param,
                         {resolvedType.resolvedName});
@@ -215,7 +215,7 @@ void Semantics::walkFunctionParameters(Node *node) {
   info->hasError = hasError;
 
   insertMetaData(param, info);
-  symbolTable.back()[paramName] = info;
+  payload.symbolTable.back()[paramName] = info;
 
   logInternal("Parameter '" + paramName +
               "' resolved type: " + resolvedType.resolvedName);
@@ -276,13 +276,13 @@ void Semantics::walkFunctionExpression(Node *node) {
 
   bool insideMemberContext = insideComponent || insideSeal || insideAllocator;
   if (!insideMemberContext)
-    symbolTable[0][funcName] = funcInfo;
+    payload.symbolTable[0][funcName] = funcInfo;
   else
-    symbolTable.back()[funcName] = funcInfo;
+    payload.symbolTable.back()[funcName] = funcInfo;
 
-  currentFunction = funcInfo;
+  payload.currentFunction = funcInfo;
   logInternal("Set current function to '" + funcName + "'");
-  symbolTable.push_back({});
+  payload.symbolTable.push_back({});
 
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
 
@@ -291,7 +291,7 @@ void Semantics::walkFunctionExpression(Node *node) {
                       {funcName});
     insertErrorMetaData(funcExpr);
     insideFunction = false;
-    symbolTable.pop_back();
+    payload.symbolTable.pop_back();
     return;
   }
 
@@ -316,14 +316,14 @@ void Semantics::walkFunctionExpression(Node *node) {
 
     // Exportable function using a non-exportable custom type
     const std::string baseTypeName = getBaseTypeName(paramInfo->type().type);
-    auto typeIt = customTypesTable.find(baseTypeName);
-    if (typeIt != customTypesTable.end() && isExportable &&
+    auto typeIt = payload.customTypesTable.find(baseTypeName);
+    if (typeIt != payload.customTypesTable.end() && isExportable &&
         !typeIt->second->isExportable) {
       logSemanticErrors(ErrorCode::MatchExportsToTypes, param.get(),
                         {funcName, baseTypeName});
     }
 
-    symbolTable.back()[paramName] = paramInfo;
+    payload.symbolTable.back()[paramName] = paramInfo;
     paramTypes.emplace_back(paramInfo->type().type, paramName);
     logInternal("Parameter '" + paramName +
                 "' type: " + paramInfo->type().type.resolvedName);
@@ -352,8 +352,8 @@ void Semantics::walkFunctionExpression(Node *node) {
   // Exportable function using a non-exportable custom return type
   if (!retType->isVoid) {
     const std::string retBaseName = getBaseTypeName(returnType);
-    auto retTypeIt = customTypesTable.find(retBaseName);
-    if (retTypeIt != customTypesTable.end() && isExportable &&
+    auto retTypeIt = payload.customTypesTable.find(retBaseName);
+    if (retTypeIt != payload.customTypesTable.end() && isExportable &&
         !retTypeIt->second->isExportable) {
       logSemanticErrors(ErrorCode::MatchExportsToTypes, retType,
                         {funcName, retBaseName});
@@ -365,7 +365,7 @@ void Semantics::walkFunctionExpression(Node *node) {
                       funcExpr->return_type.get());
     insideFunction = false;
     insertErrorMetaData(funcExpr);
-    symbolTable.pop_back();
+    payload.symbolTable.pop_back();
     return;
   }
 
@@ -383,12 +383,12 @@ void Semantics::walkFunctionExpression(Node *node) {
   funcInfo->func().isDefined = true;
 
   if (!insideMemberContext)
-    symbolTable[0][funcName] = funcInfo;
+    payload.symbolTable[0][funcName] = funcInfo;
   else
-    symbolTable.back()[funcName] = funcInfo;
+    payload.symbolTable.back()[funcName] = funcInfo;
 
   insertMetaData(funcExpr, funcInfo);
-  currentFunction = funcInfo;
+  payload.currentFunction = funcInfo;
   logInternal("Finalised '" + funcName +
               "' return type: " + returnType.resolvedName);
 
@@ -408,18 +408,18 @@ void Semantics::walkFunctionExpression(Node *node) {
   activeBlocks.push_back(block);
 
   for (const auto &stmt : block->statements) {
-    std::optional<std::shared_ptr<SymbolInfo>> savedFunc = currentFunction;
+    std::optional<std::shared_ptr<SymbolInfo>> savedFunc = payload.currentFunction;
     if (isNaked) {
       auto asmStmt = dynamic_cast<ASMStatement *>(stmt.get());
       if (!asmStmt) {
         logSemanticErrors(ErrorCode::ExpectedOnlyASM, funcExpr);
         insideFunction = false;
-        symbolTable.pop_back();
+        payload.symbolTable.pop_back();
         break;
       }
     }
     walker(stmt.get());
-    currentFunction = savedFunc;
+    payload.currentFunction = savedFunc;
   }
 
   if (!isNaked) {
@@ -432,7 +432,7 @@ void Semantics::walkFunctionExpression(Node *node) {
   activeBlocks.pop_back();
   funcInfo->hasError = hasError;
   insideFunction = false;
-  currentFunction = std::nullopt;
+  payload.currentFunction = std::nullopt;
   logInternal("Finished analysing '" + funcName + "'");
 }
 
@@ -484,8 +484,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
       makeFuncSymbol(funcName, isExportable, isNaked, isInterrupt, hasError);
   funcInfo->func().isDeclaration = true;
 
-  currentFunction = funcInfo;
-  symbolTable.push_back({});
+  payload.currentFunction = funcInfo;
+  payload.symbolTable.push_back({});
 
   std::vector<std::pair<ResolvedType, std::string>> paramTypes;
 
@@ -493,7 +493,7 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
     logSemanticErrors(ErrorCode::CannotAllowParamsInNaked, funcDeclrStmt,
                       {funcName});
     insertErrorMetaData(funcDeclrStmt);
-    symbolTable.pop_back();
+    payload.symbolTable.pop_back();
     return;
   }
 
@@ -518,8 +518,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
     auto &paramInfo = paramIt->second;
     const std::string baseTypeName = getBaseTypeName(paramInfo->type().type);
-    auto typeIt = customTypesTable.find(baseTypeName);
-    if (typeIt != customTypesTable.end() && isExportable &&
+    auto typeIt = payload.customTypesTable.find(baseTypeName);
+    if (typeIt != payload.customTypesTable.end() && isExportable &&
         !typeIt->second->isExportable) {
       logSemanticErrors(ErrorCode::MatchExportsToTypes, param.get(),
                         {funcName, baseTypeName});
@@ -534,8 +534,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   if (!retType) {
     logSemanticErrors(ErrorCode::MissingOrInvalidReturnType, funcDeclrStmt);
     insertErrorMetaData(funcDeclrStmt);
-    symbolTable.pop_back();
-    currentFunction = std::nullopt;
+    payload.symbolTable.pop_back();
+    payload.currentFunction = std::nullopt;
     return;
   }
 
@@ -548,8 +548,8 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
 
   if (!retType->isVoid) {
     const std::string retBaseName = getBaseTypeName(returnType);
-    auto retTypeIt = customTypesTable.find(retBaseName);
-    if (retTypeIt != customTypesTable.end() && isExportable &&
+    auto retTypeIt = payload.customTypesTable.find(retBaseName);
+    if (retTypeIt != payload.customTypesTable.end() && isExportable &&
         !retTypeIt->second->isExportable) {
       logSemanticErrors(ErrorCode::MatchExportsToTypes, retType,
                         {funcName, retBaseName});
@@ -574,10 +574,10 @@ void Semantics::walkFunctionDeclarationStatement(Node *node) {
   funcInfo->hasError = hasError;
   funcInfo->isExportable = isExportable;
 
-  symbolTable.pop_back();
-  currentFunction = std::nullopt;
+  payload.symbolTable.pop_back();
+  payload.currentFunction = std::nullopt;
 
-  symbolTable.back()[funcName] = funcInfo;
+  payload.symbolTable.back()[funcName] = funcInfo;
   insertMetaData(funcDeclrStmt, funcInfo);
 
   logInternal("Stored declaration '" + funcName +
@@ -811,7 +811,7 @@ void Semantics::walkSealStatement(Node *node) {
 
   std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> sealMap;
 
-  symbolTable.push_back({});
+  payload.symbolTable.push_back({});
   insideSeal = true;
 
   auto *blockStmt = dynamic_cast<BlockStatement *>(sealStmt->block.get());
@@ -872,8 +872,8 @@ void Semantics::walkSealStatement(Node *node) {
   sealSym->hasError = hasError;
 
   insertMetaData(sealStmt, sealSym);
-  symbolTable[0][sealName] = sealSym;
-  sealTable[sealName] = sealMap;
+  payload.symbolTable[0][sealName] = sealSym;
+  payload.sealTable[sealName] = sealMap;
 
   insideSeal = false;
   popScope();

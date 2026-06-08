@@ -285,6 +285,11 @@ private:
                                   const std::shared_ptr<SymbolInfo> &leftSym,
                                   const std::shared_ptr<SymbolInfo> &rightSym);
   llvm::Value *handleEnumAccess(InfixExpression *infix);
+  void initializeRecordHeapFields(
+      llvm::Value *structPtr, llvm::StructType *structTy,
+      const std::string &typeName,
+      const std::unordered_map<std::string, AssignmentStatement *> &userInits =
+          {});
 
   std::vector<llvm::Value *>
   prepareArguments(llvm::Function *func,

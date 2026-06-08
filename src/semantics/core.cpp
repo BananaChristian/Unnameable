@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "ast.hpp"
+#include "defs.hpp"
+#include "errors.hpp"
 #include "semantics.hpp"
 #include "token.hpp"
 
@@ -16,7 +18,7 @@ Semantics::Semantics(Deserializer &deserial, ErrorHandler &handler,
                      bool verbose, bool freestanding, bool inComptime)
     : errorHandler(handler), deserializer(deserial), verbose(verbose),
       freeStanding(freestanding), inComptime(inComptime) {
-  symbolTable.push_back({});
+  payload.symbolTable.push_back({});
   registerWalkerFunctions();
 
   import();
@@ -308,11 +310,11 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   if (auto selfExpr = dynamic_cast<SelfExpression *>(node)) {
     // Start: find the type of the component containing this method
-    if (currentTypeStack.empty() ||
-        currentTypeStack.back().type.kind != DataType::COMPONENT)
+    if (payload.currentTypeStack.empty() ||
+        payload.currentTypeStack.back().type.kind != DataType::COMPONENT)
       return unknownType;
 
-    std::string currentTypeName = currentTypeStack.back().typeName;
+    std::string currentTypeName = payload.currentTypeStack.back().typeName;
 
     // Walk through the chain of fields: pos -> x -> y
     for (const auto &field : selfExpr->fields) {
@@ -323,8 +325,8 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       const std::string fieldName = ident->identifier.TokenLiteral;
 
       // Look up this type's custom definition
-      auto ctIt = customTypesTable.find(currentTypeName);
-      if (ctIt == customTypesTable.end())
+      auto ctIt = payload.customTypesTable.find(currentTypeName);
+      if (ctIt == payload.customTypesTable.end())
         return unknownType;
 
       // Find member in this component
@@ -408,8 +410,8 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   if (auto newExpr = dynamic_cast<NewComponentExpression *>(node)) {
     auto componentName = newExpr->component_name.TokenLiteral;
-    auto componentIt = customTypesTable.find(componentName);
-    if (componentIt == customTypesTable.end()) {
+    auto componentIt = payload.customTypesTable.find(componentName);
+    if (componentIt == payload.customTypesTable.end()) {
       logSemanticErrors(ErrorCode::UndefinedVariable, newExpr, {componentName});
       return errorType;
     }
@@ -822,8 +824,8 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     }
 
     // Look for the definition in the custom types table
-    auto typeIt = customTypesTable.find(lookUpName);
-    if (typeIt == customTypesTable.end()) {
+    auto typeIt = payload.customTypesTable.find(lookUpName);
+    if (typeIt == payload.customTypesTable.end()) {
       logSemanticErrors(ErrorCode::UndefinedVariable,
                         infixExpr->left_operand.get(), {lookUpName});
       return nullptr;
@@ -1039,8 +1041,8 @@ ResolvedType Semantics::resultOfUnary(TokenType operatorType,
 
 std::shared_ptr<SymbolInfo>
 Semantics::resolveSymbolInfo(const std::string &name) {
-  for (int i = symbolTable.size() - 1; i >= 0; --i) {
-    auto &scope = symbolTable[i];
+  for (int i = payload.symbolTable.size() - 1; i >= 0; --i) {
+    auto &scope = payload.symbolTable[i];
     logInternal("Searching for '" + name + "' in scope level " +
                 std::to_string(i));
     for (auto &[key, value] : scope) {
@@ -1058,17 +1060,17 @@ Semantics::resolveSymbolInfo(const std::string &name) {
 
 std::shared_ptr<SymbolInfo>
 Semantics::lookUpInCurrentScope(const std::string &name) {
-  if (symbolTable.empty()) {
+  if (payload.symbolTable.empty()) {
     reportDevBug("Attempted current scope look up on empty symbol table",
                  nullptr);
     return nullptr;
   }
 
   // Access the current scope which is the latest scope in the symbol table
-  auto &currentScope = symbolTable.back();
+  auto &currentScope = payload.symbolTable.back();
 
   logInternal("Searching for '" + name + "' in current scope level " +
-              std::to_string(symbolTable.size() - 1) + "...");
+              std::to_string(payload.symbolTable.size() - 1) + "...");
 
   if (currentScope.find(name) != currentScope.end()) {
     logInternal("Found match for '" + name + "' in current scope");
@@ -1080,7 +1082,7 @@ Semantics::lookUpInCurrentScope(const std::string &name) {
 }
 
 bool Semantics::isGlobalScope() {
-  if (symbolTable.size() == 1) {
+  if (payload.symbolTable.size() == 1) {
     return true;
   }
   return false;
@@ -1150,8 +1152,8 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token,
     return ResolvedType::makeBase(DataType::VOID, "void");
 
   case TokenType::IDENTIFIER: {
-    auto parentIt = customTypesTable.find(type);
-    if (parentIt != customTypesTable.end()) {
+    auto parentIt = payload.customTypesTable.find(type);
+    if (parentIt != payload.customTypesTable.end()) {
       auto parentType = parentIt->second->type;
       parentType.isNull = isNullable;
       return parentType;
@@ -1331,8 +1333,8 @@ void Semantics::insertMetaData(Node *node, std::shared_ptr<SymbolInfo> sym) {
 std::shared_ptr<SymbolInfo>
 Semantics::getSealedFunctionSym(const std::string &funcName, Node *context) {
   auto sealName = extractIdentifierName(context);
-  auto sealIt = sealTable.find(sealName);
-  if (sealIt == sealTable.end())
+  auto sealIt = payload.sealTable.find(sealName);
+  if (sealIt == payload.sealTable.end())
     return nullptr;
 
   auto sealContents = sealIt->second;
@@ -1357,8 +1359,8 @@ Semantics::getMemberSym(const std::string &childName, Node *instance) {
   // It need the type name as I am gonna query the custom types table
   std::string lookupName = getBaseTypeName(instanceSym->type().type);
 
-  auto typeIt = customTypesTable.find(lookupName);
-  if (typeIt == customTypesTable.end())
+  auto typeIt = payload.customTypesTable.find(lookupName);
+  if (typeIt == payload.customTypesTable.end())
     return nullptr;
 
   auto memberIt = typeIt->second->members.find(childName);
@@ -1379,6 +1381,8 @@ Semantics::getMemberSym(const std::string &childName, Node *instance) {
   memSym->type().isRef = memberInfo->isRef;
   memSym->type().isArray = memberInfo->type.isArray();
   memSym->type().memberIndex = memberInfo->memberIndex;
+  memSym->storage().isHeap = memberInfo->isHeap;
+  memSym->codegen().ID = memberInfo->ID;
   if (memberInfo->isFnPtr) {
     memSym->type().isFnPtr = memberInfo->isFnPtr;
     memSym->isFunction = true;
@@ -1402,8 +1406,9 @@ Semantics::getMemberSym(const std::string &childName, Node *instance) {
 }
 
 bool Semantics::hasReturnPath(Node *node) {
-  if (currentFunction &&
-      currentFunction.value()->func().returnType.kind == DataType::VOID) {
+  if (payload.currentFunction &&
+      payload.currentFunction.value()->func().returnType.kind ==
+          DataType::VOID) {
     return true; // Void functions don't need returns
   }
 
@@ -1420,10 +1425,11 @@ bool Semantics::hasReturnPath(Node *node) {
       ResolvedType exprType =
           inferNodeDataType(blockExpr->finalexpr.value().get());
       return exprType.kind == DataType::ERROR ||
-             isTypeCompatible(currentFunction.value()->func().returnType,
-                              exprType) ||
+             isTypeCompatible(
+                 payload.currentFunction.value()->func().returnType,
+                 exprType) ||
              (dynamic_cast<NullLiteral *>(blockExpr->finalexpr.value().get()) &&
-              currentFunction.value()->type().isNullable);
+              payload.currentFunction.value()->type().isNullable);
     }
     return false;
   }
@@ -1443,7 +1449,7 @@ bool Semantics::hasReturnPathInBlock(
     // Check if this statement itself is a return
     if (auto retStmt = dynamic_cast<ReturnStatement *>(stmt.get())) {
       if (retStmt->return_value ||
-          (currentFunction.value()->type().isNullable &&
+          (payload.currentFunction.value()->type().isNullable &&
            !retStmt->return_value)) {
         return true; // Found a return
       }
@@ -2088,8 +2094,8 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
   case TokenType::IDENTIFIER: {
     auto typeName = extractIdentifierName(baseType);
     // Search for the name in the custom types table
-    auto typeIt = customTypesTable.find(typeName);
-    if (typeIt == customTypesTable.end()) {
+    auto typeIt = payload.customTypesTable.find(typeName);
+    if (typeIt == payload.customTypesTable.end()) {
       logSemanticErrors(ErrorCode::UndefinedVariable, baseType, {typeName});
       return ResolvedType::error();
     }
@@ -2225,202 +2231,11 @@ bool Semantics::isIdentInSelf(SelfExpression *self, Identifier *target) {
   return false;
 }
 
-std::string
-Semantics::generateLifetimeID(const std::shared_ptr<SymbolInfo> &sym) {
-  if (sym->type().isPointer)
-    return "P" + std::to_string(ptrDeclCount++);
-  else if (sym->type().isArray)
-    return "A" + std::to_string(arrDeclCount++);
-  else
-    return "N" + std::to_string(normalDeclCount++);
-
-  return "NO ID";
-}
-
-std::unique_ptr<LifeTime>
-Semantics::createLifeTimeTracker(Node *declarationNode, Node *initializer,
-                                 const std::shared_ptr<SymbolInfo> &declSym) {
-  logInternal("Creating lifetime baton...");
-  auto lifetime = std::make_unique<LifeTime>();
-  lifetime->ID = generateLifetimeID(declSym);
-  lifetime->isResponsible = true;
-  lifetime->isAlive = true;
-  lifetime->persist = declSym->storage().isPersist;
-
-  auto idents = digIdentifiers(initializer);
-  for (const auto &identifier : idents) {
-    auto identSym = getSymbolFromMeta(identifier);
-    if (!identSym) {
-      logInternal("Failed to get identifier symbol info during lifetime "
-                  "creation skipping....");
-      continue;
-    }
-
-    if (!identSym->storage().isHeap) {
-      logInternal("Encountered non heap ident skipping...");
-      continue;
-    }
-
-    auto targetBaton = getBaton(identSym->codegen().ID);
-    if (!targetBaton)
-      reportDevBug("Failed to get lifetime baton for ident of lifetime ID: " +
-                       identSym->codegen().ID,
-                   identifier);
-
-    transferResponsibility(lifetime.get(), targetBaton, identSym);
-  }
-
-  Node *currentBlock = getCurrentBlock();
-  if (currentBlock) {
-    bornInBlock[currentBlock].push_back(lifetime->ID);
-    logInternal("[BORN] Baton " + lifetime->ID +
-                " born in block: " + currentBlock->toString());
-  } else {
-    logSemanticErrors(ErrorCode::GlobalHeapVar, declarationNode,
-                      {extractDeclarationName(declarationNode)});
-  }
-
-  logInternal("Created baton: " + lifetime->ID +
-              " for Node: " + declarationNode->toString());
-  return lifetime;
-}
-
-LifeTime *Semantics::getBaton(const std::string &ID) {
-  // Primary Attempt: Use the ID to find the ORIGINAL holder node
-  Node *holder = queryForLifeTimeBaton(ID);
-
-  if (holder) {
-    auto it = responsibilityTable.find(holder);
-    if (it != responsibilityTable.end()) {
-      return it->second.get();
-    }
-  }
-
-  // Fallback, Deep Search by ID
-  for (auto const &[node, baton] : responsibilityTable) {
-    if (baton && baton->ID == ID) {
-      logInternal("[BATON GETTER] Found via Deep Search for ID: " + ID);
-      return baton.get();
-    }
-  }
-
-  logInternal("[BATON GETTER] Total Failure: ID " + ID + " exists nowhere.");
-  return nullptr;
-}
-
-void Semantics::transferResponsibility(
-    LifeTime *currentBaton, LifeTime *targetBaton,
-    const std::shared_ptr<SymbolInfo> &targetSym) {
-  if (!targetBaton) {
-    logInternal(
-        "[HEIST] Failed to carry out heist due to missing target baton");
-    return;
-  }
-
-  if (!currentBaton) {
-    logInternal("[HEIST] Failed to carry out normal heist a non heap variable "
-                "might have been "
-                "encountered");
-    if (targetSym->storage().isHeap) {
-      logInternal("[HEIST] Carrying out heist registration");
-      heistIDs.insert(targetSym->codegen().ID);
-    }
-    return;
-  }
-
-  logInternal("[HEIST] Robber (Current): " + currentBaton->ID);
-  logInternal("[HEIST] Victim (Target): " + targetBaton->ID);
-  logInternal("[HEIST] Target Pointer Count: " +
-              std::to_string(targetSym->storage().pointerCount));
-
-  if (currentBaton->ID == targetBaton->ID) {
-    logInternal("[HEIST] SKIPPED: Cannot create self-dependency");
-    return;
-  }
-
-  if (!targetSym->storage().isHeap) {
-    logInternal("[HEIST] The victim is not heap raised dont bother");
-    return;
-  }
-
-  // Assign the baton pointer count
-  targetBaton->ptrCount = targetSym->storage().pointerCount;
-
-  auto targetPointerCount = targetBaton->ptrCount;
-
-  // The moment of truth: Can we rob it?
-  if (targetPointerCount <= 2) {
-    logInternal("[HEIST] SUCCESS: Robbery approved. Disarming " +
-                targetBaton->ID);
-
-    targetBaton->isResponsible = false;      // The Victim is now impotent
-    targetBaton->ownedBy = currentBaton->ID; // The Master-Slave link
-
-    // The Robber takes the specific target
-    currentBaton->dependents[targetBaton->ID] = targetSym;
-
-    // THE LOOT: Robber takes all the victim's existing dependents too
-    for (auto const &[id, sym] : targetBaton->dependents) {
-      logInternal("[HEIST] COLLECTING LOOT: Robber " + currentBaton->ID +
-                  " now owns " + id);
-      currentBaton->dependents[id] = sym;
-    }
-  } else {
-    logInternal("[HEIST] FAILURE: Robbery vetoed. Pointer count (" +
-                std::to_string(targetPointerCount) + ") is too high.");
-  }
-
-  logInternal("[HEIST] Victim " + targetBaton->ID + " isResponsible = " +
-              (targetBaton->isResponsible ? "TRUE" : "FALSE") + " ---");
-}
-
-const std::unique_ptr<LifeTime> &
-Semantics::readBatonInfo(const std::string &batonID) {
-  for (const auto &[node, baton] : responsibilityTable) {
-    if (baton && baton->ID == batonID) {
-      return baton;
-    }
-  }
-
-  static const std::unique_ptr<LifeTime> nullBaton = nullptr;
-  return nullBaton;
-}
-
-Node *Semantics::queryForLifeTimeBaton(const std::string &familyID) {
-  for (const auto &[node, baton] : responsibilityTable) {
-    // If the node has the briefcase
-    if (baton) {
-      // Check if we are in the same family
-      if (familyID == baton->ID) {
-        // If we are please tell me the node holding it
-        return node;
-      }
-      continue;
-    }
-    continue;
-  }
-  return nullptr;
-}
-
 Node *Semantics::getCurrentBlock() {
   if (activeBlocks.empty())
     return nullptr;
 
   return activeBlocks.back();
-}
-
-bool Semantics::isBornInScope(Node *root, const std::string &ID) {
-  auto it = bornInBlock.find(root);
-  if (it == bornInBlock.end()) {
-    return false;
-  }
-
-  for (const std::string &id : it->second) {
-    if (id == ID) {
-      return true;
-    }
-  }
-  return false;
 }
 
 bool Semantics::rhsIsHeap(Node *node) {
@@ -2431,40 +2246,6 @@ bool Semantics::rhsIsHeap(Node *node) {
       return true;
   }
   return false;
-}
-
-void Semantics::transferBaton(Node *receiver, const std::string &familyID) {
-  Node *holder = queryForLifeTimeBaton(familyID);
-  if (!holder) {
-    reportDevBug("Could not find the baton holder for lifetime ID: " + familyID,
-                 receiver);
-  }
-  if (!dynamic_cast<Identifier *>(receiver)) {
-    logInternal("[BATON TRANSFER] Transfering baton of ID: " + familyID +
-                " from node: " + holder->toString() +
-                " to composite node: " + receiver->toString());
-  }
-  std::string identName = "<no name>";
-  auto identifiers = digIdentifiers(receiver);
-  for (const auto &identifier : identifiers) {
-    identName = extractIdentifierName(identifier);
-    auto identSym = getSymbolFromMeta(identifier);
-    if (!identSym) {
-      reportDevBug("Failed to get symbol info for identifer node during baton "
-                   "transfer '" +
-                       identName + "'",
-                   identifier);
-    }
-
-    if (!identSym->storage().isHeap) {
-      logInternal("[BATON TRANSFER] The identifier '" + identName +
-                  "' is not heap allocated skipping..");
-    }
-    // Ensure we give the baton to the correct identifier
-    if (familyID == identSym->codegen().ID) {
-      responsibilityTable[identifier] = std::move(responsibilityTable[holder]);
-    }
-  }
 }
 
 bool Semantics::isTerminator(Node *stmt) {
@@ -2478,11 +2259,52 @@ bool Semantics::isTerminator(Node *stmt) {
   return false;
 }
 
+bool Semantics::isCompOrRecordType(const ResolvedType &type) {
+  bool isCustom = false;
+  auto typeIt = payload.customTypesTable.find(type.base().resolvedName);
+  if (typeIt != payload.customTypesTable.end())
+    isCustom = false;
+
+  if (type.kind == DataType::RECORD)
+    isCustom = true;
+
+  if (type.kind == DataType::COMPONENT)
+    isCustom = true;
+
+  return isCustom;
+}
+
+const std::shared_ptr<CustomTypeInfo> &
+Semantics::getCustomTypeInfo(const std::string &type_name) {
+  auto it = payload.customTypesTable.find(type_name);
+  if (it == payload.customTypesTable.end()) {
+    static std::shared_ptr<CustomTypeInfo> empty = nullptr;
+    return empty;
+  }
+  return it->second;
+}
+
+bool Semantics::customTypeHasHeapFields(const std::string &type_name) {
+  auto typeInfo = getCustomTypeInfo(type_name);
+  if (!typeInfo)
+    return false;
+
+  for (const auto &member : typeInfo->members) {
+    auto memSym = getSymbolFromMeta(member.second->node);
+    if (!memSym)
+      continue;
+
+    if (memSym->storage().isHeap)
+      return true;
+  }
+  return false;
+}
+
 bool Semantics::isCustomTypeByValue(const ResolvedType &type) {
   bool isPassedByVal = false;
   // First check if it is even a custom type if its not dont bother
-  auto typeIt = customTypesTable.find(type.base().resolvedName);
-  if (typeIt == customTypesTable.end())
+  auto typeIt = payload.customTypesTable.find(type.base().resolvedName);
+  if (typeIt == payload.customTypesTable.end())
     isPassedByVal = false;
 
   if (type.base().kind == DataType::ENUM)
@@ -2513,7 +2335,7 @@ std::string Semantics::getTerminatorString(Node *node) {
 }
 
 void Semantics::popScope() {
-  auto &scope = symbolTable.back();
+  auto &scope = payload.symbolTable.back();
   for (auto &[name, sym] : scope) {
     // If the symbol we come across is a reference and it is referencing
     // validly
@@ -2541,7 +2363,7 @@ void Semantics::popScope() {
       }
     }
   }
-  symbolTable.pop_back();
+  payload.symbolTable.pop_back();
 }
 
 bool Semantics::isTypeConvertibleToBool(const ResolvedType &type) {
@@ -2610,200 +2432,21 @@ void Semantics::overwriteNodeName(Node *node, const std::string &mangled_name) {
     overwriteNodeName(call->function_identifier.get(), mangled_name);
 }
 
-std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
-  std::vector<Identifier *> results;
-
-  if (!node)
-    return results;
-
-  // Base case: node is already an identifier
-  if (auto *ident = dynamic_cast<Identifier *>(node)) {
-    results.push_back(ident);
-    return results;
-  }
-
-  // AddressExpression (addr b)
-  if (auto *addr = dynamic_cast<AddressExpression *>(node)) {
-    return digIdentifiers(addr->identifier.get());
-  }
-
-  // DereferenceExpression (deref p)
-  if (auto *deref = dynamic_cast<DereferenceExpression *>(node)) {
-    return digIdentifiers(deref->identifier.get());
-  }
-
-  // SelfExpression (self.field)
-  if (auto *self = dynamic_cast<SelfExpression *>(node)) {
-    for (auto &field : self->fields) {
-      auto fieldIds = digIdentifiers(field.get());
-      results.insert(results.end(), fieldIds.begin(), fieldIds.end());
-    }
-    return results;
-  }
-
-  // Subscript expression
-  if (auto *arrSub = dynamic_cast<ArraySubscript *>(node)) {
-    if (auto *ident = dynamic_cast<Identifier *>(arrSub->identifier.get()))
-      results.push_back(ident);
-
-    for (auto &lens : arrSub->index_exprs) {
-      auto lenIds = digIdentifiers(lens.get());
-      results.insert(results.end(), lenIds.begin(), lenIds.end());
-    }
-    return results;
-  }
-
-  // NewComponentExpression (new Player(args))
-  if (auto *newComp = dynamic_cast<NewComponentExpression *>(node)) {
-    for (auto &arg : newComp->arguments) {
-      auto argIds = digIdentifiers(arg.get());
-      results.insert(results.end(), argIds.begin(), argIds.end());
-    }
-    return results;
-  }
-
-  // CallExpression (func(x, y))
-  if (auto *call = dynamic_cast<CallExpression *>(node)) {
-    if (auto callIdent =
-            dynamic_cast<Identifier *>(call->function_identifier.get()))
-      results.push_back(callIdent);
-
-    for (auto &arg : call->parameters) {
-      auto argIds = digIdentifiers(arg.get());
-      results.insert(results.end(), argIds.begin(), argIds.end());
-    }
-    return results;
-  }
-
-  // UnwrapExpression (unwrap x)
-  if (auto *unwrap = dynamic_cast<UnwrapExpression *>(node)) {
-    return digIdentifiers(unwrap->expr.get());
-  }
-
-  // InstanceExpression (Type { fields })
-  if (auto *instance = dynamic_cast<InstanceExpression *>(node)) {
-    if (instance->blockIdent) {
-      auto blockIds = digIdentifiers(instance->blockIdent.get());
-      results.insert(results.end(), blockIds.begin(), blockIds.end());
-    }
-    for (auto &field : instance->fields) {
-      auto fieldIds = digIdentifiers(field.get());
-      results.insert(results.end(), fieldIds.begin(), fieldIds.end());
-    }
-    return results;
-  }
-
-  // CastExpression (cast<i32>(x))
-  if (auto *cast = dynamic_cast<CastExpression *>(node)) {
-    if (cast->expr) {
-      auto exprIds = digIdentifiers(cast->expr.get());
-      results.insert(results.end(), exprIds.begin(), exprIds.end());
-    }
-    return results;
-  }
-
-  // BitcastExpression (bitcast<ptr>(x))
-  if (auto *bitcast = dynamic_cast<BitcastExpression *>(node)) {
-    if (bitcast->expr) {
-      auto exprIds = digIdentifiers(bitcast->expr.get());
-      results.insert(results.end(), exprIds.begin(), exprIds.end());
-    }
-    return results;
-  }
-
-  // PrefixExpression (!x, -y)
-  if (auto *prefix = dynamic_cast<PrefixExpression *>(node)) {
-    return digIdentifiers(prefix->operand.get());
-  }
-
-  // PostfixExpression (i++, j--)
-  if (auto *postfix = dynamic_cast<PostfixExpression *>(node)) {
-    return digIdentifiers(postfix->operand.get());
-  }
-
-  // FString literal
-  if (auto *fStr = dynamic_cast<FStringLiteral *>(node)) {
-    for (const auto &seg : fStr->segments) {
-      for (const auto &value : seg.values) {
-        auto ids = digIdentifiers(value.get());
-        results.insert(results.end(), ids.begin(), ids.end());
-      }
-    }
-    return results;
-  }
-
-  // InfixExpression (x + y, a.next, b.prev)
-  if (auto *infix = dynamic_cast<InfixExpression *>(node)) {
-    auto leftIds = digIdentifiers(infix->left_operand.get());
-    auto rightIds = digIdentifiers(infix->right_operand.get());
-    results.insert(results.end(), leftIds.begin(), leftIds.end());
-    results.insert(results.end(), rightIds.begin(), rightIds.end());
-    return results;
-  }
-
-  // ArrayLiteral ([1, 2, 3])
-  if (auto *arrayLit = dynamic_cast<ArrayLiteral *>(node)) {
-    for (auto &item : arrayLit->array) {
-      auto itemIds = digIdentifiers(item.get());
-      results.insert(results.end(), itemIds.begin(), itemIds.end());
-    }
-    return results;
-  }
-
-  // ArraySubscript (arr[5])
-  if (auto *subscript = dynamic_cast<ArraySubscript *>(node)) {
-    if (subscript->identifier) {
-      auto identIds = digIdentifiers(subscript->identifier.get());
-      results.insert(results.end(), identIds.begin(), identIds.end());
-    }
-    for (auto &index : subscript->index_exprs) {
-      auto indexIds = digIdentifiers(index.get());
-      results.insert(results.end(), indexIds.begin(), indexIds.end());
-    }
-    return results;
-  }
-
-  // STATEMENTS
-  // ExpressionStatement
-  if (auto *exprStmt = dynamic_cast<ExpressionStatement *>(node)) {
-    return digIdentifiers(exprStmt->expression.get());
-  }
-
-  // AssignmentStatement (x = y)
-  if (auto *assign = dynamic_cast<AssignmentStatement *>(node)) {
-    auto identIds = digIdentifiers(assign->identifier.get());
-    auto valueIds = digIdentifiers(assign->value.get());
-    results.insert(results.end(), identIds.begin(), identIds.end());
-    results.insert(results.end(), valueIds.begin(), valueIds.end());
-    return results;
-  }
-
-  // FieldAssignment (a.next = addr b)
-  if (auto *fieldAssign = dynamic_cast<FieldAssignment *>(node)) {
-    auto lhsIds = digIdentifiers(fieldAssign->lhs_chain.get());
-    auto valueIds = digIdentifiers(fieldAssign->value.get());
-    results.insert(results.end(), lhsIds.begin(), lhsIds.end());
-    results.insert(results.end(), valueIds.begin(), valueIds.end());
-    return results;
-  }
-
-  // ReturnStatement
-  if (auto *ret = dynamic_cast<ReturnStatement *>(node)) {
-    if (ret->return_value) {
-      return digIdentifiers(ret->return_value.get());
-    }
-    return results;
-  }
-
-  // TraceStatement
-  if (auto *trace = dynamic_cast<TraceStatement *>(node)) {
-    for (const auto &expr : trace->arguments) {
-      auto idents = digIdentifiers(expr.get());
-      results.insert(results.end(), idents.begin(), idents.end());
-    }
-    return results;
-  }
-  return results;
+void Semantics::overrideSemantics(SemanticPayload &overrider) {
+  payload.symbolTable = overrider.symbolTable;
+  payload.customTypesTable = overrider.customTypesTable;
+  payload.ImportedComponentTable = overrider.ImportedComponentTable;
+  payload.ImportedRecordTable = overrider.ImportedRecordTable;
+  payload.ImportedFunctionsTable = overrider.ImportedFunctionsTable;
+  payload.ImportedVariablesTable = overrider.ImportedVariablesTable;
+  payload.sealTable = overrider.sealTable;
+  payload.importedInits = overrider.importedInits;
+  payload.loopContext = overrider.loopContext;
+  payload.caseContext = overrider.caseContext;
+  payload.currentTypeStack = overrider.currentTypeStack;
+  payload.genericMap = overrider.genericMap;
+  payload.allocatorMap = overrider.allocatorMap;
+  payload.componentInitArgs = overrider.componentInitArgs;
 }
 
 void Semantics::logSpecialErrors(ErrorCode code, int line, int col,
@@ -2868,7 +2511,8 @@ void Semantics::reportDevBug(const std::string &message, Node *contextNode) {
   error.message.message = "internal compiler error: " + message;
   error.message.hints.push_back("this is a compiler bug, not your fault");
   error.message.hints.push_back(
-      "please report at https://github.com/BananaChristian/Unnameable/issues");
+      "please report at "
+      "https://github.com/BananaChristian/Unnameable/issues");
   errorHandler.report(error);
   std::abort();
 }

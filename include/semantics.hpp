@@ -14,18 +14,9 @@
 #include "errors.hpp"
 #include "token.hpp"
 
-class Semantics {
-  ErrorHandler &errorHandler;
+using LifeTimeTable = std::unordered_map<Node *, std::unique_ptr<LifeTime>>;
 
-public:
-  Deserializer &deserializer;
-  Semantics(Deserializer &deserializer, ErrorHandler &handler, bool isVerbose,
-            bool isFreeStanding, bool inComptime);
-  void walker(Node *node);
-  bool failed();
-
-  using walkerFunctions = void (Semantics::*)(Node *);
-  std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
+struct SemanticPayload {
   std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
       symbolTable;
   std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
@@ -38,11 +29,6 @@ public:
       ImportedFunctionsTable;
   std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>
       ImportedVariablesTable;
-  std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
-
-  using LifeTimeTable = std::unordered_map<Node *, std::unique_ptr<LifeTime>>;
-  LifeTimeTable responsibilityTable;
-
   std::unordered_map<
       std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
       sealTable;
@@ -51,13 +37,32 @@ public:
   std::vector<bool> loopContext;
   std::vector<bool> caseContext;
   std::vector<ScopeInfo> currentTypeStack;
-  std::unordered_set<std::string> heistIDs;
 
-  std::unordered_map<std::string, GenericBluePrint> genericMap;
+  std::unordered_map<std::string, std::shared_ptr<GenericBluePrint>> genericMap;
   std::unordered_map<std::string, AllocatorHandle> allocatorMap;
   std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
+};
 
+class Semantics {
+  ErrorHandler &errorHandler;
+
+public:
+  Deserializer &deserializer;
+  Semantics(Deserializer &deserializer, ErrorHandler &handler, bool isVerbose,
+            bool isFreeStanding, bool inComptime);
+  void walker(Node *node);
+  bool failed();
+
+  using walkerFunctions = void (Semantics::*)(Node *);
+  std::unordered_map<std::type_index, walkerFunctions> walkerFunctionsMap;
+
+  SemanticPayload payload;
+  std::unordered_map<Node *, std::shared_ptr<SymbolInfo>> metaData;
   std::unordered_map<Node *, std::vector<std::string>> bornInBlock;
+
+  std::unordered_set<std::string> heistIDs;
+
+  LifeTimeTable responsibilityTable;
 
   // Public helpers
   std::shared_ptr<SymbolInfo> resolveSymbolInfo(const std::string &name);
@@ -88,6 +93,7 @@ public:
   bool isString(const ResolvedType &t);
   bool isChar(const ResolvedType &t);
   bool isConstLiteral(Node *node);
+  void overrideSemantics(SemanticPayload &payload);
 
   LifeTime *getBaton(const std::string &ID);
   std::vector<Identifier *> digIdentifiers(Node *node);
@@ -284,6 +290,8 @@ private:
   void mangleGenericName(Node *node, std::string aliasName);
   void checkOperatorStyle(TokenType op, bool isPointer, const std::string &name,
                           Node *site);
+  void executeFieldsCapture(const std::string &type_name,
+                         const std::unique_ptr<LifeTime> &type_baton);
   void checkMutability(const SymbolInfo &sym, const std::string &name,
                        Node *site);
   void analyzeFnPtrCall(CallExpression *callNode,
@@ -328,9 +336,13 @@ private:
   bool isUnsignedIntegerType(const ResolvedType &type);
   bool isSignedIntegerType(const ResolvedType &type);
   bool rhsIsHeap(Node *node);
+  bool isCompOrRecordType(const ResolvedType &type);
   bool isCustomTypeByValue(const ResolvedType &type);
   bool isTypeConvertibleToBool(const ResolvedType &type);
+  const std::shared_ptr<CustomTypeInfo> &
+  getCustomTypeInfo(const std::string &type_name);
   bool typeSupportsIncrementOrDecrement(const ResolvedType &type);
+  bool customTypeHasHeapFields(const std::string &type_name);
   void overwriteNodeName(Node *node, const std::string &mangled_name);
   uint32_t parseAlignmentBytes(Node *node);
   void popScope();

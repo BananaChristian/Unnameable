@@ -822,6 +822,12 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.hints = suggestForError(code);
     return message;
   }
+  case ErrorCode::InvalidHeapScope: {
+    message.code = ErrorCode::InvalidHeapScope;
+    message.message =
+        "cannot declare a heap variable '{0}' in a component or a record";
+    return message;
+  }
   case ErrorCode::InvalidBindOperator: {
     message.code = ErrorCode::InvalidBindOperator;
     message.message = "invalid operator '{0}'";

@@ -324,6 +324,7 @@ llvm::Value *
 IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
                                 const std::shared_ptr<SymbolInfo> &leftSym,
                                 const std::shared_ptr<SymbolInfo> &rightSym) {
+  logInternal("TRIGGERED MEMBER ACCESS");
   std::string parentTypeName = leftSym->type().type.resolvedName;
   std::string lookUpName = parentTypeName;
   std::string memberName =
@@ -351,7 +352,14 @@ IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
   // get member index + type
   unsigned memberIndex = memberSym->type().memberIndex;
   llvm::StructType *structTy = llvmCustomTypes[lookUpName];
-  llvm::Type *memberType = getLLVMType(memberSym->type().type);
+
+  // Get the base type (what the user thinks they have)
+  logInternal("USER VISIBLE TYPE ON ACCESS: " +
+              memberSym->type().type.resolvedName);
+  llvm::Type *userVisibleType = getLLVMType(memberSym->type().type);
+
+  // Get the actual stored type in the struct (may be pointer for heap fields)
+  llvm::Type *actualStoredType = structTy->getElementType(memberIndex);
 
   // if lhs is struct by value, we need a pointer to use GEP
   llvm::Value *lhsPtr = left;
@@ -367,23 +375,46 @@ IRGenerator::handleMemberAccess(InfixExpression *infix, llvm::Value *left,
     lhsPtr = allocaTmp;
   }
 
-  llvm::Value *memberPtr =
+  // Get pointer to the field slot in the struct
+  llvm::Value *memberSlotPtr =
       funcBuilder.CreateStructGEP(structTy, lhsPtr, memberIndex, memberName);
 
-  // now return by-value load, not a pointer
-  llvm::LoadInst *memberVal =
-      funcBuilder.CreateLoad(memberType, memberPtr, memberName + "_val");
+  llvm::Value *result = nullptr;
+
+  logInternal("Checking if the member is heap raised...");
+  if (memberSym->storage().isHeap) {
+    llvm::Value *heapPtr = funcBuilder.CreateLoad(
+        actualStoredType, memberSlotPtr, memberName + "_heap_ptr");
+    logInternal("TAKEN HEAP ACCESS PATH");
+
+    result =
+        funcBuilder.CreateLoad(userVisibleType, heapPtr, memberName + "_val");
+
+    logInternal("Heap field access: " + memberName + " (auto-dereferenced)");
+  } else if (memberSym->type().type.isPointer()) {
+    result = funcBuilder.CreateLoad(actualStoredType, memberSlotPtr,
+                                    memberName + "_ptr");
+
+    logInternal("User pointer access: " + memberName + " (returning pointer)");
+  } else {
+    result = funcBuilder.CreateLoad(actualStoredType, memberSlotPtr,
+                                    memberName + "_val");
+
+    logInternal("Normal field access: " + memberName);
+  }
 
   // Check if the member itself is volatile
   if (memberSym->storage().isVolatile) {
-    memberVal->setVolatile(true);
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(result))
+      load->setVolatile(true);
   }
   // Also check if the parent is volatile (volatile propagates to members)
   else if (leftSym->storage().isVolatile) {
-    memberVal->setVolatile(true);
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(result))
+      load->setVolatile(true);
   }
 
-  return memberVal;
+  return result;
 }
 
 llvm::Value *
@@ -394,10 +425,10 @@ IRGenerator::generateDotCall(InfixExpression *infix, llvm::Value *left,
   auto rhsCall = dynamic_cast<CallExpression *>(infix->right_operand.get());
 
   // Check if LHS is a seal
-  auto sealIt = semantics.sealTable.find(
+  auto sealIt = semantics.payload.sealTable.find(
       semantics.extractIdentifierName(infix->left_operand.get()));
 
-  if (sealIt != semantics.sealTable.end()) {
+  if (sealIt != semantics.payload.sealTable.end()) {
     // Seal path — mangle and call directly, no self arg
     rhsCall->function_identifier->expression.TokenLiteral =
         sealIt->first + "_" + callName;
@@ -436,8 +467,8 @@ IRGenerator::generateDotCall(InfixExpression *infix, llvm::Value *left,
 llvm::Value *IRGenerator::handleEnumAccess(InfixExpression *infix) {
 
   auto enumName = semantics.extractIdentifierName(infix->left_operand.get());
-  auto leftTypeIt = semantics.customTypesTable.find(enumName);
-  if (leftTypeIt == semantics.customTypesTable.end())
+  auto leftTypeIt = semantics.payload.customTypesTable.find(enumName);
+  if (leftTypeIt == semantics.payload.customTypesTable.end())
     throw std::runtime_error("Unknown enum '" + enumName + "'");
 
   auto leftType = leftTypeIt->second->type;

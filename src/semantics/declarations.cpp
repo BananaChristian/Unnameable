@@ -1,6 +1,7 @@
 #include <string>
 
 #include "ast.hpp"
+#include "errors.hpp"
 #include "semantics.hpp"
 #include "token.hpp"
 
@@ -296,7 +297,7 @@ void Semantics::handleNullInitializers(
   }
   declInfo->hasError = hasError;
   insertMetaData(declaration, declInfo);
-  symbolTable.back()[declName] = declInfo;
+  payload.symbolTable.back()[declName] = declInfo;
   // Clear the global error flagger
   hasError = false;
   return;
@@ -320,8 +321,8 @@ void Semantics::walkVariableDeclaration(Node *node) {
   if (declaration->allocator) {
     auto allocator = dynamic_cast<Identifier *>(declaration->allocator.get());
     const std::string &allocatorName = extractIdentifierName(allocator);
-    auto allocIt = allocatorMap.find(allocatorName);
-    if (allocIt == allocatorMap.end()) {
+    auto allocIt = payload.allocatorMap.find(allocatorName);
+    if (allocIt == payload.allocatorMap.end()) {
       logSemanticErrors(ErrorCode::UnknownAllocator, allocator,
                         {allocatorName});
       insertErrorMetaData(declaration);
@@ -338,6 +339,14 @@ void Semantics::walkVariableDeclaration(Node *node) {
 
   ResolvedType declaredType = inferNodeDataType(declaration);
   declInfo->type().type = declaredType;
+
+  if (isCompOrRecordType(declInfo->type().type) && isGlobalScope()) {
+    if (customTypeHasHeapFields(declInfo->type().type.resolvedName)) {
+      logSemanticErrors(GlobalHeapVar, declaration, {declName});
+      insertErrorMetaData(declaration);
+      return;
+    }
+  }
 
   std::vector<uint64_t> declSizePerDim;
   std::vector<Node *> dynSizePerDim;
@@ -474,6 +483,13 @@ void Semantics::walkVariableDeclaration(Node *node) {
   if (declInfo->storage().isHeap) {
     auto lifetime = createLifeTimeTracker(declaration, initializer, declInfo);
     declInfo->codegen().ID = lifetime->ID;
+    // This triggers when u say heap Player p or whatever the compiler captures
+    // batons of the inner fields
+    if (isCompOrRecordType(declInfo->type().type)) {
+      logInternal("Triggered field capture");
+      executeFieldsCapture(declInfo->type().type.resolvedName, lifetime);
+    }
+
     responsibilityTable[declaration] = std::move(lifetime);
   } else if (initializer) {
     auto idents = digIdentifiers(initializer);
@@ -505,5 +521,5 @@ void Semantics::walkVariableDeclaration(Node *node) {
               " | isHeap: " + std::to_string(declInfo->storage().isHeap) +
               " | ID: " + declInfo->codegen().ID +
               " | type :" + declInfo->type().type.resolvedName);
-  symbolTable.back()[declName] = declInfo;
+  payload.symbolTable.back()[declName] = declInfo;
 }

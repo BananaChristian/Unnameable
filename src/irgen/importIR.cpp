@@ -6,7 +6,7 @@
 #include "map"
 
 void IRGenerator::declareImportedSeals() {
-    for (const auto &sealPair : semantics.sealTable) {
+    for (const auto &sealPair : semantics.payload.sealTable) {
         const std::string &sealName = sealPair.first;
         for (const auto &fnPair : sealPair.second) {
             const std::string &callName = fnPair.first;  // e.g. "add"
@@ -103,18 +103,18 @@ void IRGenerator::finalizeTypeBody(const std::string &typeName,
 
 void IRGenerator::declareImportedTypes() {
     // Loop through Components
-    for (const auto &[name, typeInfo] : semantics.ImportedComponentTable) {
+    for (const auto &[name, typeInfo] : semantics.payload.ImportedComponentTable) {
         finalizeTypeBody(name, typeInfo, "COMPONENT");
     }
 
     // Loop through Data Blocks
-    for (const auto &[name, typeInfo] : semantics.ImportedRecordTable) {
+    for (const auto &[name, typeInfo] : semantics.payload.ImportedRecordTable) {
         finalizeTypeBody(name, typeInfo, "RECORD");
     }
 }
 
 void IRGenerator::declareCustomTypes() {
-    for (const auto &[name, info] : semantics.customTypesTable) {
+    for (const auto &[name, info] : semantics.payload.customTypesTable) {
         if (llvmCustomTypes.find(name) == llvmCustomTypes.end()) {
             logInternal("[+] Creating opaque '" + name + "'");
             llvmCustomTypes[name] = llvm::StructType::create(context, name);
@@ -181,8 +181,8 @@ void IRGenerator::declareImportedComponentMethods(const std::string &funcName,
 }
 
 void IRGenerator::declareImportedInit(const std::string &typeName) {
-    auto it = semantics.importedInits.find(typeName);
-    if (it == semantics.importedInits.end()) {
+    auto it = semantics.payload.importedInits.find(typeName);
+    if (it == semantics.payload.importedInits.end()) {
         return;  // There is no init so dont bother
     }
 
@@ -213,7 +213,7 @@ void IRGenerator::declareImportedInit(const std::string &typeName) {
 }
 
 void IRGenerator::declareImportedFunctions() {
-    for (const auto& funcPair : semantics.ImportedFunctionsTable) {
+    for (const auto& funcPair : semantics.payload.ImportedFunctionsTable) {
         const auto& funcName = funcPair.first;
         auto funcSym = funcPair.second;
         
@@ -278,7 +278,7 @@ void IRGenerator::declareImportedFunctions() {
 }
 
 void IRGenerator::declareImportedVariables(){
-    for(const auto &varPair:semantics.ImportedVariablesTable){
+    for(const auto &varPair:semantics.payload.ImportedVariablesTable){
         const auto &varName=varPair.first;
         auto varSym=varPair.second;
 

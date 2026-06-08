@@ -8,29 +8,22 @@ void Semantics::walkGenericStatement(Node *node) {
 
   std::string blockName = genericStmt->block_name->expression.TokenLiteral;
 
-  // Check if the generic name is being used somewhere else in the same scope
   auto existing = resolveSymbolInfo(blockName);
-
   if (existing)
     logSemanticErrors(ErrorCode::DuplicateName, genericStmt->block_name.get(),
                       {blockName});
 
-  GenericBluePrint bluePrint;
-  bluePrint.name = blockName;
+  // Create the blueprint on the heap via shared_ptr
+  auto bluePrint = std::make_shared<GenericBluePrint>();
+  bluePrint->name = blockName;
 
-  // Get the type params(order matters)
   for (const auto &typeParam : genericStmt->type_parameters) {
-    // Extract the name and store it on our vector
-    std::string param_name = typeParam.TokenLiteral;
-    bluePrint.typeParams.push_back(param_name);
+    bluePrint->typeParams.push_back(typeParam.TokenLiteral);
   }
 
-  // build reverse index
-  for (int i = 0; i < static_cast<int>(bluePrint.typeParams.size()); i++)
-    bluePrint.typeParamIndex[bluePrint.typeParams[i]] = i;
+  for (int i = 0; i < static_cast<int>(bluePrint->typeParams.size()); i++)
+    bluePrint->typeParamIndex[bluePrint->typeParams[i]] = i;
 
-  // Check if the top level statements in this block are only function
-  // statements
   auto blockStmt = dynamic_cast<BlockStatement *>(genericStmt->block.get());
   for (const auto &stmt : blockStmt->statements) {
     auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get());
@@ -41,17 +34,17 @@ void Semantics::walkGenericStatement(Node *node) {
     }
   }
 
-  // store the original AST subtree
-  bluePrint.blockAST = std::move(genericStmt->block);
+  bluePrint->blockAST =
+      std::unique_ptr<Node>(genericStmt->block->shallowClone());
 
-  // Register in the generic blue print table
-  genericMap[blockName] = std::move(bluePrint);
+  // Store the shared_ptr directly in the payload map
+  payload.genericMap[blockName] = bluePrint;
 
   auto genInfo = std::make_shared<SymbolInfo>();
   genInfo->hasError = hasError;
   genInfo->generic().isGeneric = true;
 
-  symbolTable.back()[blockName] = genInfo;
+  payload.symbolTable.back()[blockName] = genInfo;
 }
 
 void Semantics::walkInstantiateStatement(Node *node) {
@@ -60,20 +53,17 @@ void Semantics::walkInstantiateStatement(Node *node) {
     return;
 
   bool isExportable = instStmt->isExportable;
-  // Get the name of the generic we want to instantiate
   auto genericCall = dynamic_cast<GenericCall *>(instStmt->generic_call.get());
   std::string genericName = genericCall->ident->expression.TokenLiteral;
-  // Extract the type args here and map them to the semantic type system
+
   std::vector<Node *> rawTypes;
   std::vector<ResolvedType> resolvedArgs;
   for (const auto &typeExpr : genericCall->args) {
     auto type = inferNodeDataType(typeExpr.get());
-    // Store the resolved types for later matching to the generic types
     resolvedArgs.push_back(type);
     rawTypes.push_back(typeExpr.get());
   }
 
-  // Get the alias name (Will be appended to the instantiated members)
   std::string aliasName = instStmt->alias.TokenLiteral;
 
   auto existing = resolveSymbolInfo(aliasName);
@@ -81,44 +71,38 @@ void Semantics::walkInstantiateStatement(Node *node) {
     logSemanticErrors(ErrorCode::DuplicateName, instStmt, {aliasName});
   }
 
-  // Search for the generic blue print
-  auto bluePrintIt = genericMap.find(genericName);
-
-  if (bluePrintIt == genericMap.end()) {
+  auto bluePrintIt = payload.genericMap.find(genericName);
+  if (bluePrintIt == payload.genericMap.end()) {
     logSemanticErrors(ErrorCode::UndefinedVariable, genericCall->ident.get(),
                       {genericName});
     return;
   }
 
-  GenericBluePrint &blueprint = bluePrintIt->second;
+  std::shared_ptr<GenericBluePrint> blueprint = bluePrintIt->second;
 
-  // Getting the cloned sub tree
-  std::unique_ptr<Node> clonedSubTree(blueprint.blockAST->shallowClone());
-
-  // Check the argument count
-  if (genericCall->args.size() != blueprint.typeParams.size()) {
+  if (genericCall->args.size() != blueprint->typeParams.size()) {
     logSemanticErrors(ErrorCode::ArgumentSizeMismatch, genericCall->ident.get(),
-                      {genericName, std::to_string(blueprint.typeParams.size()),
+                      {genericName,
+                       std::to_string(blueprint->typeParams.size()),
                        std::to_string(genericCall->args.size())});
   }
+
+  std::unique_ptr<Node> clonedSubTree(blueprint->blockAST->shallowClone());
 
   std::unordered_map<std::string, ResolvedType> paramToType;
   std::unordered_map<std::string, Node *> rawTypeMap;
 
-  for (int i = 0; i < static_cast<int>(blueprint.typeParams.size()); i++) {
-    paramToType[blueprint.typeParams[i]] = resolvedArgs[i];
-    rawTypeMap[blueprint.typeParams[i]] = rawTypes[i];
+  for (int i = 0; i < static_cast<int>(blueprint->typeParams.size()); i++) {
+    paramToType[blueprint->typeParams[i]] = resolvedArgs[i];
+    rawTypeMap[blueprint->typeParams[i]] = rawTypes[i];
   }
 
-  // Apply type substitution
   logInternal("Substituting Types ...");
   substituteTypes(clonedSubTree.get(), rawTypeMap);
 
-  // Mangle names
   logInternal("Mangling name ...");
   mangleGenericName(clonedSubTree.get(), aliasName);
 
-  // Cascade the export flag
   auto blockStmt = dynamic_cast<BlockStatement *>(clonedSubTree.get());
   for (const auto &stmt : blockStmt->statements) {
     if (auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get())) {
@@ -139,14 +123,12 @@ void Semantics::walkInstantiateStatement(Node *node) {
       componentStmt->isExportable = isExportable;
   }
 
-  // Walk the generated subtree
   logInternal("Analyzing cloned sub tree ...");
   walker(clonedSubTree.get());
 
-  // Build the instantion info
   GenericInstantiationInfo instantiationInfo;
   instantiationInfo.aliasName = aliasName;
-  instantiationInfo.blueprintName = bluePrintIt->second.name;
+  instantiationInfo.blueprintName = blueprint->name; // Use arrow operator
   instantiationInfo.paramToType = paramToType;
   instantiationInfo.rawTypeMap = rawTypeMap;
   instantiationInfo.instantiatedAST = std::move(clonedSubTree);
@@ -156,7 +138,7 @@ void Semantics::walkInstantiateStatement(Node *node) {
   info->hasError = hasError;
   info->generic().instTable = std::move(instantiationInfo);
 
-  symbolTable.back()[aliasName] = info;
+  payload.symbolTable.back()[aliasName] = info;
   insertMetaData(instStmt, info);
 }
 

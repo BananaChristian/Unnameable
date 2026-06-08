@@ -1,0 +1,22 @@
+$${x}
+
+$${deref x}
+
+$${ func test(i32 x):i32 }
+
+
+$${ if(x){trace "what"}}
+
+$${
+  mut record Status{
+    i32 x
+    i32 y
+  }
+  func test:i32
+}
+
+1+ $${
+    func test:i32 {
+        return 122
+    }
+}

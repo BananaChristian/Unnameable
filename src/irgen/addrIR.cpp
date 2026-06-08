@@ -168,8 +168,8 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   llvm::Value *currentPtr = selfLoad;
 
   // Semantic chain walk
-  auto ctIt = semantics.customTypesTable.find(compName);
-  if (ctIt == semantics.customTypesTable.end()) {
+  auto ctIt = semantics.payload.customTypesTable.find(compName);
+  if (ctIt == semantics.payload.customTypesTable.end()) {
     errorHandler.addHint(
         "The type was never registered by the semantic analyzer");
     reportDevBug("Component not found in customTypeTable",
@@ -229,8 +229,8 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
       if (lastMemberInfo->type.isPointer() || lastMemberInfo->type.isRef())
         lookUpName = semantics.getBaseTypeName(lastMemberInfo->type);
 
-      auto nestedIt = semantics.customTypesTable.find(lookUpName);
-      if (nestedIt == semantics.customTypesTable.end()) {
+      auto nestedIt = semantics.payload.customTypesTable.find(lookUpName);
+      if (nestedIt == semantics.payload.customTypesTable.end()) {
         errorHandler.addHint("Type '" + lookUpName +
                              "' was not registered by the semantic analyzer");
         reportDevBug("Nested type '" + lookUpName + "' not found", selfExpr);

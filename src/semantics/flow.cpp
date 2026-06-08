@@ -49,12 +49,12 @@ void Semantics::walkWhileStatement(Node *node) {
                       {"bool", whileCondType.resolvedName});
   }
 
-  loopContext.push_back(true);
-  symbolTable.push_back({});
+  payload.loopContext.push_back(true);
+  payload.symbolTable.push_back({});
   auto whileLoop = whileStmt->loop.get();
   walker(whileLoop);
   popScope();
-  loopContext.pop_back();
+  payload.loopContext.pop_back();
 }
 
 void Semantics::walkElifStatement(Node *node) {
@@ -131,13 +131,13 @@ void Semantics::walkCaseStatement(Node *node, const ResolvedType &targetType) {
                       {targetType.resolvedName, caseType.resolvedName});
   }
 
-  symbolTable.push_back({}); // Pushing a new clause scope
-  caseContext.push_back(true);
+  payload.symbolTable.push_back({}); // Pushing a new clause scope
+  payload.caseContext.push_back(true);
   for (const auto &stmt : caseStmt->body) {
     walker(stmt.get());
   }
   popScope();
-  caseContext.pop_back();
+  payload.caseContext.pop_back();
   auto caseInfo = std::make_shared<SymbolInfo>();
   caseInfo->hasError = hasError;
 
@@ -149,7 +149,7 @@ void Semantics::walkSwitchStatement(Node *node) {
   if (!switchStmt)
     return;
 
-  symbolTable.push_back({}); // Push a new scope for the switch
+  payload.symbolTable.push_back({}); // Push a new scope for the switch
 
   // The switch's init
   walker(switchStmt->switch_init.get());
@@ -172,13 +172,13 @@ void Semantics::walkSwitchStatement(Node *node) {
 
   // For the default case
   if (!switchStmt->default_statements.empty()) {
-    caseContext.push_back(true);
-    symbolTable.push_back({}); // Push the scope for the default statements
+    payload.caseContext.push_back(true);
+    payload.symbolTable.push_back({}); // Push the scope for the default statements
     for (const auto &stmt : switchStmt->default_statements) {
       walker(stmt.get());
     }
     popScope();
-    caseContext.pop_back();
+    payload.caseContext.pop_back();
   }
 
   popScope();
@@ -193,7 +193,7 @@ void Semantics::walkForStatement(Node *node) {
   if (!forStmt)
     return;
 
-  symbolTable.push_back({});
+  payload.symbolTable.push_back({});
   // Handling the initializer
   auto initializer = forStmt->initializer.get();
   walker(initializer);
@@ -204,12 +204,12 @@ void Semantics::walkForStatement(Node *node) {
   auto step = forStmt->step.get();
   walker(step);
   // Handling the block
-  loopContext.push_back(true);
+  payload.loopContext.push_back(true);
 
   auto block = forStmt->body.get();
   walker(block);
   popScope();
-  loopContext.pop_back();
+  payload.loopContext.pop_back();
 }
 
 void Semantics::walkBreakStatement(Node *node) {
@@ -217,7 +217,7 @@ void Semantics::walkBreakStatement(Node *node) {
   if (!breakStmt)
     return;
 
-  if (loopContext.empty() && caseContext.empty()) {
+  if (payload.loopContext.empty() && payload.caseContext.empty()) {
     logSemanticErrors(ErrorCode::FloatingControl, breakStmt, {"break"});
   }
 }
@@ -227,7 +227,7 @@ void Semantics::walkContinueStatement(Node *node) {
   if (!continueStmt)
     return;
 
-  if (loopContext.empty()) {
+  if (payload.loopContext.empty()) {
     logSemanticErrors(ErrorCode::FloatingControl, continueStmt, {"continue"});
   }
 }

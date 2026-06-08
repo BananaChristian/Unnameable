@@ -163,8 +163,9 @@ enum ErrorCode : int {
   CannotBeInterruptAndNaked = 3142,
   AlreadySetGlobalAllocator = 3143,
   globalAllocatorMustBeGlobal = 3144,
-  AlignMustBeIntegerConstant=3145,
-  PowerOfTwoAlign=3146,
+  AlignMustBeIntegerConstant = 3145,
+  PowerOfTwoAlign = 3146,
+  InvalidHeapScope = 3147,
 
   ArraySizeMismatch = 4001,
 

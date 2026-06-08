@@ -12,9 +12,9 @@ void StubGen::generateSealStatement(Node *node) {
 
     auto sealName = sealStmt->sealName->expression.TokenLiteral;
     logInternal("Proccesing seal: " + sealName);
-    auto sealIt = semantics.sealTable.find(sealName);
+    auto sealIt = semantics.payload.sealTable.find(sealName);
 
-    if (sealIt == semantics.sealTable.end()) {
+    if (sealIt == semantics.payload.sealTable.end()) {
         reportDevBug("Seal not found in the semantics sealTable");
     }
 
@@ -202,8 +202,8 @@ void StubGen::generateEnumStatement(Node *node) {
 
     // I will use the customTypesTable as it has more information about the
     // members
-    auto enumIt = semantics.customTypesTable.find(enumName);
-    if (enumIt == semantics.customTypesTable.end()) {
+    auto enumIt = semantics.payload.customTypesTable.find(enumName);
+    if (enumIt == semantics.payload.customTypesTable.end()) {
         reportDevBug("Could not find type '" + enumName + "' in semantics custom types table");
     }
 
@@ -241,8 +241,8 @@ void StubGen::generateAllocatorStatement(Node *node) {
     std::string allocatorName = allocatorStmt->allocator_name->expression.TokenLiteral;
 
     logInternal("Processing allocator interface '" + allocatorName + "'");
-    auto allocatorIt = semantics.allocatorMap.find(allocatorName);
-    if (allocatorIt == semantics.allocatorMap.end()) {
+    auto allocatorIt = semantics.payload.allocatorMap.find(allocatorName);
+    if (allocatorIt == semantics.payload.allocatorMap.end()) {
         reportDevBug("Failed to find allocator '" + allocatorName + "' in allocator map");
     }
 

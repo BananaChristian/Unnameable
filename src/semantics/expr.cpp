@@ -666,8 +666,8 @@ void Semantics::walkSizeOfExpression(Node *node) {
 
   // Check if the type written is legal that is if its not inbuilt
   if (!isInbuilt) {
-    auto typeIt = customTypesTable.find(typeName);
-    if (typeIt == customTypesTable.end()) {
+    auto typeIt = payload.customTypesTable.find(typeName);
+    if (typeIt == payload.customTypesTable.end()) {
       logSemanticErrors(ErrorCode::UndefinedVariable, typeNode, {typeName});
     }
   }

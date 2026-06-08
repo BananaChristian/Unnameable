@@ -18,6 +18,7 @@ void IRGenerator::generateVariableDeclaration(Node *node) {
   if (isGlobalScope) {
     if (sym->storage().isHeap)
       reportDevBug("Cannot heap raise in global scope", declaration);
+
     generateGlobalScalarLet(sym, name, declaration->initializer.get());
     return;
   }
@@ -57,12 +58,21 @@ llvm::Value *IRGenerator::generateScalarStorage(VariableDeclaration *decl,
     if (sym->storage().isVolatile)
       store->setVolatile(true);
     sym->type().isAddress = true;
+
+    // Check if this is a record type with heap fields
+    if (isRecordType(sym->type().type.resolvedName)) {
+      llvm::StructType *structTy =
+          llvm::cast<llvm::StructType>(getLLVMType(sym->type().type));
+      initializeRecordHeapFields(storage, structTy,
+                                 sym->type().type.resolvedName);
+    }
+
     return storage;
   }
 
   // stack scalar
   llvm::Type *varTy = getLLVMType(sym->type().type);
-  llvm::Align align = getCustomOrABIAlign(sym,varTy);
+  llvm::Align align = getCustomOrABIAlign(sym, varTy);
   auto *storage = funcBuilder.CreateAlloca(varTy, nullptr, name);
   llvm::cast<llvm::AllocaInst>(storage)->setAlignment(align);
 
@@ -88,6 +98,14 @@ llvm::Value *IRGenerator::generateScalarStorage(VariableDeclaration *decl,
   store->setAlignment(align);
   if (sym->storage().isVolatile)
     store->setVolatile(true);
+
+  // Check if this is a record type with heap fields
+  if (isRecordType(sym->type().type.resolvedName)) {
+    llvm::StructType *structTy = llvm::cast<llvm::StructType>(varTy);
+    initializeRecordHeapFields(storage, structTy,
+                               sym->type().type.resolvedName);
+  }
+
   return storage;
 }
 
@@ -341,7 +359,8 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                        "' must be initialized with a constant expression",
                    value);
     }
-  } else if (semantics.customTypesTable.count(sym->type().type.resolvedName)) {
+  } else if (semantics.payload.customTypesTable.count(
+                 sym->type().type.resolvedName)) {
     init = generateGlobalRecordDefaults(sym->type().type.resolvedName);
   } else {
     init = llvm::Constant::getNullValue(varType);
@@ -364,7 +383,7 @@ void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
 llvm::Constant *
 IRGenerator::generateGlobalRecordDefaults(const std::string &typeName) {
   auto *structTy = llvm::cast<llvm::StructType>(llvmCustomTypes[typeName]);
-  auto compInfo = semantics.customTypesTable[typeName];
+  auto compInfo = semantics.payload.customTypesTable[typeName];
 
   std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>>
       orderedMembers;
@@ -423,9 +442,9 @@ IRGenerator::generateComponentInit(VariableDeclaration *declaration,
     storeInst->setAlignment(finalAlign);
   }
 
-  auto compTypeIt = semantics.customTypesTable.find(
+  auto compTypeIt = semantics.payload.customTypesTable.find(
       semantics.getBaseTypeName(sym->type().type));
-  if (compTypeIt != semantics.customTypesTable.end()) {
+  if (compTypeIt != semantics.payload.customTypesTable.end()) {
     for (const auto &[fieldName, memInfo] : compTypeIt->second->members) {
       auto varDecl = dynamic_cast<VariableDeclaration *>(memInfo->node);
       if (!varDecl || !varDecl->initializer)
@@ -464,8 +483,8 @@ IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
                                         const std::string &varName) {
   const std::string &allocatorTypeName = sym->storage().allocType;
 
-  auto it = semantics.allocatorMap.find(allocatorTypeName);
-  if (it == semantics.allocatorMap.end()) {
+  auto it = semantics.payload.allocatorMap.find(allocatorTypeName);
+  if (it == semantics.payload.allocatorMap.end()) {
     reportDevBug("Unknown allocator type '" + allocatorTypeName + "'", nullptr);
   }
 
@@ -497,7 +516,7 @@ llvm::Value *IRGenerator::allocateRuntimeHeap(std::shared_ptr<SymbolInfo> sym,
                                               llvm::Value *runtimeSize,
                                               const std::string &varName) {
   const std::string &allocatorTypeName = sym->storage().allocType;
-  auto it = semantics.allocatorMap.find(allocatorTypeName);
+  auto it = semantics.payload.allocatorMap.find(allocatorTypeName);
   auto handle = it->second;
 
   llvm::Function *allocFunc = module->getFunction(handle.allocateName);
@@ -518,8 +537,8 @@ llvm::Align IRGenerator::getCustomOrABIAlign(std::shared_ptr<SymbolInfo> sym,
   // Check if this type is a registered Record type
   if (isRecordType(typeName)) {
     // Query semantics  for this specific custom type metadata
-    auto typeIt = semantics.customTypesTable.find(typeName);
-    if (typeIt != semantics.customTypesTable.end()) {
+    auto typeIt = semantics.payload.customTypesTable.find(typeName);
+    if (typeIt != semantics.payload.customTypesTable.end()) {
       auto recordMeta = typeIt->second;
       if (recordMeta->isExplicitAligned) {
         return llvm::Align(recordMeta->alignmentBytes);

@@ -12,6 +12,7 @@
 
 struct SymbolInfo;
 struct MemberInfo;
+struct CapturedField;
 
 // Type system tracker
 enum class DataType {
@@ -274,6 +275,7 @@ struct MemberInfo {
   bool isNullable = false;
   bool isMutable = false;
   bool isConstant = false;
+  bool isHeap = false;
   bool isInitialised = false;
   bool isVolatile = false;
   bool isRestrict = false;
@@ -293,6 +295,7 @@ struct MemberInfo {
 
   // Enum member
   int64_t constantValue = 0;
+  std::string ID;
 
   int memberIndex = -1;
   Node *node = nullptr;
@@ -311,6 +314,10 @@ struct CustomTypeInfo {
   bool isExportable = false;
   bool isExplicitAligned = false;
   uint32_t alignmentBytes = 0;
+  std::vector<std::string>
+      captureCandidates; // This stores IDs for heap declared vars inside a
+                         // record or component later when instatiated these
+                         // will be robbed
 };
 
 // ScopeInfo
@@ -437,11 +444,20 @@ struct LifeTime {
   bool isAlive = false; // Auditor liveness simulation flag
   std::map<std::string, std::shared_ptr<SymbolInfo>>
       dependents; // Dependents map for batons that have been robbed
+  std::vector<CapturedField>
+      captured_fields; // This is where the capture field batons sit for record
+                       // and component members
   int ptrCount;
   int refCount;
 
   LifeTime() = default;
   LifeTime(const LifeTime &other) = default;
+};
+
+struct CapturedField {
+  Node *node; // The field itself
+  std::string capturedID; //Its ID 
+  std::shared_ptr<SymbolInfo> symbol;
 };
 
 struct AllocatorHandle {

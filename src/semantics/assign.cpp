@@ -79,13 +79,13 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
     return;
 
   // 'self' is only valid inside a component body.
-  if (currentTypeStack.empty() ||
-      currentTypeStack.back().type.kind != DataType::COMPONENT) {
+  if (payload.currentTypeStack.empty() ||
+      payload.currentTypeStack.back().type.kind != DataType::COMPONENT) {
     logSemanticErrors(ErrorCode::SelfOnlyInComponent, selfExpr);
     return;
   }
 
-  auto &componentScope = currentTypeStack.back();
+  auto &componentScope = payload.currentTypeStack.back();
   std::string currentTypeName = componentScope.typeName;
   std::string assignName = extractIdentifierName(selfExpr);
 
@@ -100,8 +100,8 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
 
     const std::string &fieldName = extractIdentifierName(ident);
 
-    auto compTypeIt = customTypesTable.find(currentTypeName);
-    if (compTypeIt == customTypesTable.end()) {
+    auto compTypeIt = payload.customTypesTable.find(currentTypeName);
+    if (compTypeIt == payload.customTypesTable.end()) {
       logSemanticErrors(ErrorCode::UndefinedVariable, selfExpr,
                         {currentTypeName});
       return;

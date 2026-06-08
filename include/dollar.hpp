@@ -1,85 +1,38 @@
 #pragma once
 #include "ast.hpp"
-#include "defs.hpp"
+#include "deserial.hpp"
+#include "errors.hpp"
 #include "semantics.hpp"
-#include <memory>
+#include "vm.hpp"
 #include <string>
-#include <unordered_map>
-#include <variant>
 #include <vector>
+#include "emitter.hpp"
 
-enum Opcode {
-  ADD,
-  SUB,
-  MUL,
-  DIV,
-  MOD,
-
-  EQ,
-  NEQ,
-  LT,
-  GT,
-  LTE,
-  GTE,
-
-  AND,
-  OR,
-  NOT,
-
-  JMP,
-  JMP_IF,
-  RET,
-
-  MOV,
-  PHI,
-
-  EMIT,
-  CALL,
-  CONST,
-};
-
-struct Register {
-  int id = 0;
-};
-
-using Value = std::variant<int64_t, double, bool, std::string, Node *>;
-
-struct Instruction {
-  Opcode opcode;                 // Crap like add
-  Register result;               // If no result -1
-  std::vector<Register> sources; // Source registers
-};
-
-struct Block {
-  std::string label;
-  std::vector<Instruction> instructions;
-};
-
-class VirtualMachine {
-  std::unordered_map<int, Register> register_map;
-
-private:
-  Register new_register();
-  void set();
-  Value get();
-};
-
-// Dollar bill's manager
+// Dollar bill's engine
 class DollarBill {
 public:
-  DollarBill(
-      std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
-          symbolTable);
+  DollarBill(SemanticPayload payload, Node *macro, ErrorHandler &handler,
+             Deserializer &deserial, bool verbose, bool freestanding);
+
   Node *emit(Node *macroNode); // This is what the walkers interface with feed
                                // it the macroNode and get the evaluatedNode
 
+  void logInternal(const std::string &message);
+  void logError(ErrorCode code, Node *node, std::vector<std::string> args = {});
+  void reportDevBug(const std::string &message, Node *node);
+
 private:
-  std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
-      DBsymbolTable; //A copy of the semantics that called's symbol table
-
-  Semantics semantics; // This is the semantics that will be called internally
-                       // by dollar bill
-  VirtualMachine machine; // This is the guy who will create the Node we want
-
-  // Helpers
+  bool hasFailed = false;
+  bool verbose = false;
+  bool freestanding = false;
+  SemanticPayload DBSpayload;
+  ErrorHandler &handler;
+  Deserializer &deserial;
+  Node *macro;
+  Semantics DBsemantics;
+  Emitter emmiter; // declared after, can now reference DBsemantics
+  VirtualMachine machine;
+  //These fields are where the dollar scope sits when the return node is created they get fed to the resulting node
+  int macro_line;
+  int macro_col;
 };
