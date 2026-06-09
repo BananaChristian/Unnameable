@@ -29,8 +29,6 @@ void IRGenerator::generateVariableDeclaration(Node *node) {
     storage = generateArrayStorage(declaration, sym, name);
   else if (sym->type().isRef)
     storage = generateReferenceStorage(declaration, sym, name);
-  else if (isComponentType(sym->type().type.resolvedName))
-    storage = generateComponentStorage(declaration, sym, name);
   else
     storage = generateScalarStorage(declaration, sym, name);
 
@@ -237,16 +235,6 @@ IRGenerator::generateReferenceStorage(VariableDeclaration *decl,
 
   return targetAddr;
 }
-
-llvm::Value *
-IRGenerator::generateComponentStorage(VariableDeclaration *decl,
-                                      std::shared_ptr<SymbolInfo> sym,
-                                      const std::string &name) {
-  auto *structTy = llvm::dyn_cast<llvm::StructType>(
-      componentTypes[sym->type().type.resolvedName]);
-  return generateComponentInit(decl, sym, structTy, sym->storage().isHeap);
-}
-
 //_______________________HELPERS______________________________________
 void IRGenerator::generateGlobalScalarLet(std::shared_ptr<SymbolInfo> sym,
                                           const std::string &letName,
@@ -419,64 +407,6 @@ IRGenerator::generateGlobalRecordDefaults(const std::string &typeName) {
   return llvm::ConstantStruct::get(structTy, fieldConstants);
 }
 
-llvm::Value *
-IRGenerator::generateComponentInit(VariableDeclaration *declaration,
-                                   std::shared_ptr<SymbolInfo> sym,
-                                   llvm::StructType *structTy, bool isHeap) {
-  const std::string &name = declaration->var_name->expression.TokenLiteral;
-
-  llvm::Value *instancePtr = nullptr;
-  if (isHeap) {
-    instancePtr = allocateDynamicHeapStorage(sym, name);
-  } else {
-    const llvm::DataLayout &DL = module->getDataLayout();
-    llvm::Align finalAlign = DL.getPrefTypeAlign(structTy);
-
-    auto *allocaInst =
-        funcBuilder.CreateAlloca(structTy, nullptr, name + ".stack");
-    allocaInst->setAlignment(finalAlign);
-    instancePtr = allocaInst;
-
-    auto *storeInst = funcBuilder.CreateStore(
-        llvm::Constant::getNullValue(structTy), instancePtr);
-    storeInst->setAlignment(finalAlign);
-  }
-
-  auto compTypeIt = semantics.payload.customTypesTable.find(
-      semantics.getBaseTypeName(sym->type().type));
-  if (compTypeIt != semantics.payload.customTypesTable.end()) {
-    for (const auto &[fieldName, memInfo] : compTypeIt->second->members) {
-      auto varDecl = dynamic_cast<VariableDeclaration *>(memInfo->node);
-      if (!varDecl || !varDecl->initializer)
-        continue;
-
-      llvm::Value *initVal = generateExpression(varDecl->initializer.get());
-      llvm::Value *fieldPtr = funcBuilder.CreateStructGEP(
-          structTy, instancePtr, memInfo->memberIndex, fieldName + "_field");
-      funcBuilder.CreateStore(initVal, fieldPtr);
-    }
-  }
-
-  auto newExpr = declaration->initializer
-                     ? dynamic_cast<NewComponentExpression *>(
-                           declaration->initializer.get())
-                     : nullptr;
-
-  if (newExpr) {
-    std::string initFnName =
-        semantics.getBaseTypeName(sym->type().type) + "_init";
-    if (llvm::Function *initFn = module->getFunction(initFnName)) {
-      std::vector<llvm::Value *> initArgs;
-      initArgs.push_back(instancePtr);
-      for (auto &arg : newExpr->arguments)
-        initArgs.push_back(generateExpression(arg.get()));
-      funcBuilder.CreateCall(initFn, initArgs);
-    }
-  }
-
-  return instancePtr;
-}
-
 // Dynamic heap storage
 llvm::Value *
 IRGenerator::allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,
@@ -549,10 +479,6 @@ llvm::Align IRGenerator::getCustomOrABIAlign(std::shared_ptr<SymbolInfo> sym,
   // Fall back to the standard layout alignment if it's a regular primitive or a
   // normal record
   return layout->getABITypeAlign(llvmTy);
-}
-
-bool IRGenerator::isComponentType(const std::string &name) {
-  return componentTypes.count(name);
 }
 
 bool IRGenerator::isRecordType(const std::string &name) {

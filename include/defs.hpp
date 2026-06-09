@@ -316,17 +316,16 @@ struct CustomTypeInfo {
   uint32_t alignmentBytes = 0;
   std::vector<std::string>
       captureCandidates; // This stores IDs for heap declared vars inside a
-                         // record or component later when instatiated these
-                         // will be robbed
+  // record or component later when instatiated these
+  // will be robbed
+  Node *typeNode;
 };
 
 // ScopeInfo
 struct ScopeInfo {
   ResolvedType type;
   std::string typeName;
-  bool hasInitConstructor = false;
   std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
-  Node *node = nullptr;
 };
 
 // SymbolInfo,the central symbol descriptor

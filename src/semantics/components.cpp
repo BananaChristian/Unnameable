@@ -1,10 +1,39 @@
-#include <algorithm>
+#include <memory>
 #include <string>
 
 #include "ast.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
 #include "token.hpp"
+
+void Semantics::mapSymbolInfoToMemberInfo(
+    const std::shared_ptr<SymbolInfo> &sym,
+    std::shared_ptr<MemberInfo> &memInfo, int memberIndex) {
+  memInfo->type = sym->type().type;
+  memInfo->isMutable = sym->storage().isMutable;
+  memInfo->isConstant = sym->storage().isConstant;
+  memInfo->isInitialised = sym->storage().isInitialized;
+  memInfo->isPointer = sym->type().isPointer;
+  memInfo->isRef = sym->type().isRef;
+  memInfo->isNullable = sym->type().isNullable;
+  memInfo->isVolatile = sym->storage().isVolatile;
+  memInfo->isFnPtr = sym->type().isFnPtr;
+  memInfo->isHeap = sym->storage().isHeap;
+  memInfo->ID = sym->codegen().ID;
+  memInfo->allocType = sym->storage().allocType;
+  memInfo->isVolatile = sym->storage().isVolatile;
+  memInfo->memberIndex = memberIndex;
+
+  if (memInfo->isFunction) {
+    memInfo->paramTypes = sym->func().paramTypes;
+    memInfo->isReturnHeap = sym->storage().isHeap;
+    memInfo->retFamilyID = sym->codegen().ID;
+    memInfo->returnType = sym->func().returnType;
+    memInfo->isExportable = sym->isExportable;
+    memInfo->isDefined = true;
+    memInfo->isDeclared = true;
+  }
+}
 
 void Semantics::walkEnumStatement(Node *node) {
   auto enumStmt = dynamic_cast<EnumStatement *>(node);
@@ -195,6 +224,7 @@ void Semantics::walkRecordStatement(Node *node) {
   typeInfo->typeName = recordName;
   typeInfo->type = ResolvedType::makeBase(DataType::RECORD, recordName),
   typeInfo->isExportable = isExportable;
+  typeInfo->typeNode = recordStmt;
 
   if (auto recordModifier =
           dynamic_cast<StructureModifier *>(recordStmt->modifiers.get())) {
@@ -224,7 +254,7 @@ void Semantics::walkRecordStatement(Node *node) {
 
     // Double check incase the parser messed up and leaked wrong statements
     if (!declaration) {
-      logSemanticErrors(ErrorCode::IllegalStmtInRecordOrComponent, field.get(),
+      logSemanticErrors(ErrorCode::IllegalStmtInRecord, field.get(),
                         {recordName});
       continue; // skip bad field but keep going
     }
@@ -250,7 +280,7 @@ void Semantics::walkRecordStatement(Node *node) {
                        "' was not analyzed properly",
                    field.get());
     }
-    fieldSymbol->type().memberIndex=currentMemberIndex;
+    fieldSymbol->type().memberIndex = currentMemberIndex;
 
     // If the variable analyzed is heap then register it as capture candidate
     if (fieldSymbol->storage().isHeap)
@@ -259,20 +289,9 @@ void Semantics::walkRecordStatement(Node *node) {
     // Build member info
     auto memInfo = std::make_shared<MemberInfo>();
     memInfo->memberName = fieldName;
-    memInfo->type = fieldSymbol->type().type;
-    memInfo->isMutable = fieldSymbol->storage().isMutable;
-    memInfo->isConstant = fieldSymbol->storage().isConstant;
-    memInfo->isInitialised = fieldSymbol->storage().isInitialized;
-    memInfo->isPointer = fieldSymbol->type().isPointer;
-    memInfo->isRef = fieldSymbol->type().isRef;
-    memInfo->isNullable = fieldSymbol->type().isNullable;
-    memInfo->isVolatile = fieldSymbol->storage().isVolatile;
-    memInfo->isFnPtr = fieldSymbol->type().isFnPtr;
-    memInfo->isHeap = fieldSymbol->storage().isHeap;
-    memInfo->ID = fieldSymbol->codegen().ID;
+    mapSymbolInfoToMemberInfo(fieldSymbol, memInfo, currentMemberIndex);
     memInfo->typeNode = recordStmt;
     memInfo->node = field.get();
-    memInfo->memberIndex = currentMemberIndex;
     currentMemberIndex++;
 
     // Insert into members map
@@ -358,66 +377,70 @@ void Semantics::walkInstanceExpression(Node *node) {
   insertMetaData(instExpr, instInfo);
 }
 
-void Semantics::walkInitConstructor(Node *node) {
-  auto initStmt = dynamic_cast<InitStatement *>(node);
-  if (!initStmt)
+void Semantics::walkMethodsStatement(Node *node) {
+  auto metStmt = dynamic_cast<MethodsStatement *>(node);
+  if (!metStmt)
     return;
 
-  // Must be inside a component
-  if (payload.currentTypeStack.empty() ||
-      payload.currentTypeStack.back().type.kind != DataType::COMPONENT) {
-    logSemanticErrors(FloatingInit, initStmt);
-    insertErrorMetaData(initStmt);
+  std::string name = extractIdentifierName(metStmt->method_identifier.get());
+  auto typeInfo = getCustomTypeInfo(name);
+  if (!typeInfo) {
+    logSemanticErrors(ErrorCode::UndefinedVariable,
+                      metStmt->method_identifier.get());
+    insertErrorMetaData(metStmt);
     return;
   }
 
-  auto &currentComponent = payload.currentTypeStack.back();
+  auto metSym = std::make_shared<SymbolInfo>();
+  metSym->type().type = typeInfo->type;
 
-  // Only one init constructor per component
-  if (currentComponent.hasInitConstructor) {
-    logSemanticErrors(ErrorCode::DuplicateInit, initStmt);
-    insertErrorMetaData(initStmt);
-    return;
+  insideMethods = true;
+
+  // Restore a type stack so that self can see the members in the record
+  payload.currentTypeStack.push_back(
+      {.type = ResolvedType::makeBase(DataType::RECORD, name),
+       .typeName = name,
+       .members = typeInfo->members});
+
+  for (const auto &stmt : metStmt->functions) {
+    auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get());
+    // Only function definitions
+    auto funcExpr = dynamic_cast<FunctionExpression *>(fnStmt->funcExpr.get());
+    if (!funcExpr) {
+      logSemanticErrors(ErrorCode::IllegalStmtInMethods, fnStmt);
+      continue;
+    }
+    walker(stmt.get());
+    auto fnSym = getSymbolFromMeta(funcExpr);
+    if (!fnSym)
+      reportDevBug("Failed to get function symbol info", funcExpr);
+
+    auto memInfo = std::make_shared<MemberInfo>();
+    memInfo->isFunction = true;
+    // These are functions so I dont care about memberIndex
+    mapSymbolInfoToMemberInfo(fnSym, memInfo, -1);
+    auto fnName = extractIdentifierName(funcExpr->func_identifier.get());
+    memInfo->node = funcExpr;
+    memInfo->typeNode = typeInfo->typeNode;
+    memInfo->memberName = fnName;
+    typeInfo->members[fnName] = memInfo;
   }
-  currentComponent.hasInitConstructor = true;
 
-  // init constructor is always void-returning
-  auto initInfo = std::make_shared<SymbolInfo>();
-  initInfo->type().type = ResolvedType::makeBase(DataType::VOID, "void");
-  initInfo->func().returnType = ResolvedType::makeBase(DataType::VOID, "void");
-  initInfo->func().isDeclaration = true;
-  initInfo->func().isDefined = true;
+  insideMethods = false;
+  metSym->members = typeInfo->members;
 
-  auto currentComponentName = currentComponent.typeName;
-  std::vector<ResolvedType> initArgs;
-  // Process constructor parameters
-  payload.symbolTable.push_back({});
-  for (const auto &arg : initStmt->constructor_args) {
-    walkFunctionParameters(arg.get());
-    // Storing the init args
-    initArgs.push_back(inferNodeDataType(arg.get()));
-  }
-  initInfo->func().initArgs = initArgs;
-  payload.componentInitArgs[currentComponentName] = initArgs;
-
-  // Walk the constructor body
-  if (initStmt->block) {
-    walkBlockStatement(initStmt->block.get());
-  }
-  popScope();
-
-  // Attach metadata
-  insertMetaData(initStmt, initInfo);
+  insertMetaData(metStmt, metSym);
+  payload.currentTypeStack.pop_back();
 }
 
 // Resolves a self expression chain like self.pos.x.y
 // Returns the ResolvedType of the final field, nullptr on error
 ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
-                                          const std::string &componentName) {
-  // Look up the component's type info
-  auto ctIt = payload.customTypesTable.find(componentName);
+                                          const std::string &typeName) {
+  // Look up the type's type info
+  auto ctIt = payload.customTypesTable.find(typeName);
   if (ctIt == payload.customTypesTable.end()) {
-    logSemanticErrors(ErrorCode::UndefinedVariable, selfExpr, {componentName});
+    logSemanticErrors(ErrorCode::UndefinedVariable, selfExpr, {typeName});
     return nullptr;
   }
 
@@ -442,7 +465,6 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
     // If this member is a custom type, get its CustomTypeInfo for next
     // iteration
     bool isCustom = currentResolvedType->kind == DataType::RECORD ||
-                    currentResolvedType->kind == DataType::COMPONENT ||
                     currentResolvedType->kind == DataType::ENUM;
     std::string lookUpName = getBaseTypeName(currentTypeInfo->type);
 
@@ -469,15 +491,15 @@ void Semantics::walkSelfExpression(Node *node) {
     return;
   // Must be inside a component
   if (payload.currentTypeStack.empty() ||
-      payload.currentTypeStack.back().type.kind != DataType::COMPONENT) {
+      payload.currentTypeStack.back().type.kind != DataType::RECORD) {
     logSemanticErrors(ErrorCode::SelfOnlyInComponent, selfExpr);
     insertErrorMetaData(selfExpr);
     return;
   }
 
-  const std::string &componentName = payload.currentTypeStack.back().typeName;
+  const std::string &typeName = payload.currentTypeStack.back().typeName;
 
-  ResolvedType *finalType = resolveSelfChain(selfExpr, componentName);
+  ResolvedType *finalType = resolveSelfChain(selfExpr, typeName);
   if (!finalType)
     return;
 
@@ -488,7 +510,7 @@ void Semantics::walkSelfExpression(Node *node) {
   // Mutability etc only available if the last member is a custom member
   auto lastNode = selfExpr->fields.back().get();
   if (lastNode) {
-    auto ctIt = payload.customTypesTable.find(componentName);
+    auto ctIt = payload.customTypesTable.find(typeName);
     if (ctIt != payload.customTypesTable.end()) {
       auto &members = ctIt->second->members;
       auto memIt = members.find(extractIdentifierName(lastNode));
@@ -503,396 +525,6 @@ void Semantics::walkSelfExpression(Node *node) {
   }
 
   insertMetaData(selfExpr, info);
-}
-
-void Semantics::walkComponentStatement(Node *node) {
-  auto componentStmt = dynamic_cast<ComponentStatement *>(node);
-  if (!componentStmt)
-    return;
-
-  auto componentName = componentStmt->component_name->expression.TokenLiteral;
-  bool isExportable = componentStmt->isExportable;
-
-  insideComponent = true;
-
-  if (payload.symbolTable[0].find(componentName) !=
-      payload.symbolTable[0].end()) {
-    logSemanticErrors(ErrorCode::DuplicateName, componentStmt, {componentName});
-    insertErrorMetaData(componentStmt);
-    return;
-  }
-
-  auto componentSymbol = std::make_shared<SymbolInfo>();
-  componentSymbol->isComponent = true;
-  auto componentTypeInfo = std::make_shared<CustomTypeInfo>();
-
-  componentSymbol->type().type =
-      ResolvedType::makeBase(DataType::COMPONENT, componentName);
-  componentTypeInfo->type =
-      ResolvedType::makeBase(DataType::COMPONENT, componentName);
-
-  payload.symbolTable[0][componentName] = componentSymbol;
-  payload.customTypesTable[componentName] = componentTypeInfo;
-  insertMetaData(componentStmt, componentSymbol);
-
-  std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
-  int currentMemberIndex = 0;
-
-  // Enter a new component scope
-  payload.symbolTable.push_back({});
-  payload.currentTypeStack.push_back(
-      {.type = ResolvedType::makeBase(DataType::COMPONENT, componentName),
-       .typeName = componentName,
-       .hasInitConstructor = false,
-       .members = members,
-       .node = componentStmt});
-
-  // Walk record injections
-  for (const auto &injectedField : componentStmt->injectedFields) {
-    if (!injectedField) {
-      reportDevBug("Invalid inject record node ", nullptr);
-    }
-
-    auto injectStmt = dynamic_cast<InjectStatement *>(injectedField.get());
-    if (!injectStmt) {
-      reportDevBug("Invalid inject statement", injectedField.get());
-    }
-
-    // Mass inject case
-    auto ident = dynamic_cast<Identifier *>(injectStmt->expr.get());
-    if (ident) {
-      auto identName = ident->expression.TokenLiteral;
-      logInternal("Injecting fields from '" + identName + "' into '" +
-                  componentName + "'");
-
-      auto typeIt = payload.customTypesTable.find(identName);
-      if (typeIt == payload.customTypesTable.end()) {
-        logSemanticErrors(ErrorCode::UndefinedVariable, ident, {identName});
-        return;
-      }
-
-      auto &importedMembers = typeIt->second->members;
-      auto &currentScope = payload.symbolTable.back();
-
-      std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>>
-          sortedMembers(importedMembers.begin(), importedMembers.end());
-
-      std::sort(sortedMembers.begin(), sortedMembers.end(),
-                [](const auto &a, const auto &b) {
-                  return a.second->memberIndex < b.second->memberIndex;
-                });
-
-      for (auto &[name, info] : sortedMembers) {
-        // CHECK FOR COLLISION FIRST!
-        if (members.find(name) != members.end()) {
-          logSemanticErrors(ErrorCode::InjectionCollision, ident,
-                            {name, identName});
-          return;
-        }
-
-        // Also check in current scope (fields already defined in component)
-        if (payload.symbolTable.back().find(name) !=
-            payload.symbolTable.back().end()) {
-          logSemanticErrors(ErrorCode::InjectionCollision, ident,
-                            {name, identName});
-          insertErrorMetaData(componentStmt);
-          return;
-        }
-
-        auto memberCopy = std::make_shared<MemberInfo>();
-        memberCopy->memberName = info->memberName;
-        memberCopy->type = info->type;
-        memberCopy->isNullable = info->isNullable;
-        memberCopy->isMutable = info->isMutable;
-        memberCopy->isConstant = info->isConstant;
-        memberCopy->isVolatile = info->isVolatile;
-        memberCopy->isInitialised = info->isInitialised;
-        memberCopy->isFnPtr = info->isFnPtr;
-        memberCopy->isRef = info->isRef;
-        memberCopy->isPointer = info->isPointer;
-
-        memberCopy->node = info->node;
-        memberCopy->memberIndex = currentMemberIndex++;
-        members[name] = memberCopy;
-
-        componentTypeInfo->members = members;
-
-        auto memSym = std::make_shared<SymbolInfo>();
-        memSym->type().type = info->type;
-        memSym->type().isNullable = info->isNullable;
-        memSym->storage().isMutable = info->isMutable;
-        memSym->storage().isConstant = info->isConstant;
-        memSym->storage().isVolatile = info->isVolatile;
-        memSym->storage().isInitialized = info->isInitialised;
-        memSym->type().isFnPtr = info->isFnPtr;
-        memSym->type().isPointer = info->isPointer;
-        memSym->type().isArray = info->type.isArray();
-        memSym->type().isRef = info->isRef;
-        memSym->type().memberIndex = memberCopy->memberIndex;
-        currentScope[name] = memSym;
-
-        if (memberCopy->node) {
-          metaData[memberCopy->node] = memSym;
-          logInternal("Mapped member node '" + memberCopy->node->toString() +
-                      "' symbol for '" + name + "'");
-        } else {
-          // If the node wasnt populated
-          reportDevBug("Injected member '" + name + "' has no node", nullptr);
-        }
-      }
-    }
-
-    // Specific import case
-    auto access = dynamic_cast<ComponentAccess *>(injectStmt->expr.get());
-    if (access) {
-      auto parent = dynamic_cast<Identifier *>(access->parent.get());
-      auto child = dynamic_cast<Identifier *>(access->child.get());
-      if (!parent || !child)
-        return;
-
-      auto recordName = extractIdentifierName(parent);
-      auto memberName = extractIdentifierName(child);
-
-      auto importedTypeIt = payload.customTypesTable.find(recordName);
-      if (importedTypeIt != payload.customTypesTable.end()) {
-        auto &importedMembers = importedTypeIt->second->members;
-        auto memIt = importedMembers.find(memberName);
-        if (memIt != importedMembers.end()) {
-          if (members.find(memberName) != members.end()) {
-            logSemanticErrors(ErrorCode::InjectionCollision, ident,
-                              {memberName, recordName});
-            insertErrorMetaData(componentStmt);
-            return;
-          }
-
-          if (payload.symbolTable.back().find(memberName) !=
-              payload.symbolTable.back().end()) {
-            logSemanticErrors(ErrorCode::InjectionCollision, ident,
-                              {memberName, recordName});
-            insertErrorMetaData(componentStmt);
-            return;
-          }
-
-          // Copy only the requested member
-          std::shared_ptr<MemberInfo> memberCopy = memIt->second;
-          memberCopy->memberIndex = currentMemberIndex++;
-          members[memberName] = memberCopy;
-
-          auto memSym = std::make_shared<SymbolInfo>();
-          memSym->type().type = memIt->second->type;
-          memSym->type().isNullable = memIt->second->isNullable;
-          memSym->storage().isMutable = memIt->second->isMutable;
-          memSym->storage().isConstant = memIt->second->isConstant;
-          memSym->storage().isInitialized = memIt->second->isInitialised;
-          memSym->storage().isVolatile = memIt->second->isVolatile;
-          memSym->type().memberIndex = memberCopy->memberIndex;
-          memSym->type().isFnPtr = memberCopy->isFnPtr;
-          memSym->type().isRef = memberCopy->isRef;
-          memSym->type().isPointer = memberCopy->isPointer;
-          memSym->type().isArray = memberCopy->type.isArray();
-          payload.symbolTable.back()[memberName] = memSym;
-
-          componentTypeInfo->members = members;
-        }
-      }
-    }
-  }
-
-  for (const auto &data : componentStmt->fields) {
-    auto declaration = dynamic_cast<VariableDeclaration *>(data.get());
-    std::string declName = extractDeclarationName(data.get());
-
-    if (declaration) {
-      walker(data.get());
-      std::shared_ptr<SymbolInfo> declSym = resolveSymbolInfo(declName);
-      if (!declSym) {
-        reportDevBug("Failed to resolve member '" + declName + "'", data.get());
-      }
-      auto memInfo = std::make_shared<MemberInfo>();
-      memInfo->memberName = declName;
-      memInfo->type = declSym->type().type;
-      memInfo->isNullable = declSym->type().isNullable;
-      memInfo->isMutable = declSym->storage().isMutable;
-      memInfo->isConstant = declSym->storage().isConstant;
-      memInfo->isInitialised = declSym->storage().isInitialized;
-      memInfo->node = data.get();
-      memInfo->typeNode = componentStmt;
-      memInfo->isVolatile = declSym->storage().isVolatile;
-      memInfo->isFnPtr = declSym->type().isFnPtr;
-      memInfo->isPointer = declSym->type().isPointer;
-      memInfo->isRef = declSym->type().isRef;
-      memInfo->memberIndex = currentMemberIndex++;
-
-      members[declName] = memInfo;
-      declSym->type().memberIndex = memInfo->memberIndex;
-
-      metaData[declaration] = declSym;
-      componentTypeInfo->members = members;
-    } else {
-      logSemanticErrors(ErrorCode::IllegalStmtInRecordOrComponent, data.get(),
-                        {componentName});
-    }
-  }
-
-  for (const auto &method : componentStmt->methods) {
-    auto funcStmt = dynamic_cast<FunctionStatement *>(method.get());
-    if (!funcStmt)
-      continue;
-
-    auto funcExpr =
-        dynamic_cast<FunctionExpression *>(funcStmt->funcExpr.get());
-    std::string funcName = "unknown";
-
-    if (funcExpr) {
-      funcName = extractIdentifierName(funcExpr);
-      walker(funcExpr);
-      auto metSym = resolveSymbolInfo(funcName);
-      logInternal("Trying to insert '" + funcName + "'");
-      if (metSym) {
-        logInternal("Inserting component function expression ....");
-        auto memInfo = std::make_shared<MemberInfo>();
-        memInfo->memberName = funcName;
-        memInfo->type = metSym->type().type;
-        memInfo->isNullable = metSym->type().isNullable;
-        memInfo->isMutable = metSym->storage().isMutable;
-        memInfo->isExportable = metSym->isExportable;
-        memInfo->returnType = metSym->func().returnType;
-        memInfo->retFamilyID = metSym->codegen().ID;
-        memInfo->isReturnHeap = metSym->storage().isHeap;
-        memInfo->allocType = metSym->storage().allocType;
-        memInfo->isVolatile = metSym->storage().isVolatile;
-        memInfo->isFunction = true;
-        memInfo->isDefined = true;
-        memInfo->isDeclared = true;
-        memInfo->paramTypes = metSym->func().paramTypes;
-        memInfo->node = funcExpr;
-        memInfo->typeNode = componentStmt;
-        members[funcName] = memInfo;
-      }
-      componentTypeInfo->members =
-          members; // Update the custom type table members
-    } else {
-      auto funcDeclrExpr = dynamic_cast<FunctionDeclarationExpression *>(
-          funcStmt->funcExpr.get());
-      if (funcDeclrExpr && funcDeclrExpr->funcDeclrStmt) {
-        auto funcDeclrStmt = dynamic_cast<FunctionDeclaration *>(
-            funcDeclrExpr->funcDeclrStmt.get());
-        if (funcDeclrStmt) {
-          funcName = funcDeclrStmt->function_name->expression.TokenLiteral;
-        }
-      }
-      logSemanticErrors(ErrorCode::IllegalFunctionDeclaration, funcDeclrExpr);
-    }
-  }
-
-  // Register component as a symbol
-  componentSymbol->hasError = hasError;
-  componentSymbol->members = members;
-
-  componentTypeInfo->members = members;
-  componentTypeInfo->typeName = componentName;
-  componentTypeInfo->isExportable = isExportable;
-  componentTypeInfo->type =
-      ResolvedType::makeBase(DataType::COMPONENT, componentName);
-
-  payload.customTypesTable[componentName] = componentTypeInfo;
-
-  if (componentStmt->initConstructor.has_value())
-    walkInitConstructor(componentStmt->initConstructor.value().get());
-
-  if (members.empty()) {
-    logInternal("Component members are empty at runtime");
-  }
-
-  // Exit component scope
-  payload.currentTypeStack.pop_back();
-  insideComponent = false;
-  payload.symbolTable.pop_back();
-}
-
-void Semantics::walkNewComponentExpression(Node *node) {
-  auto newExpr = dynamic_cast<NewComponentExpression *>(node);
-  if (!newExpr)
-    return;
-
-  auto componentName = newExpr->component_name.TokenLiteral;
-
-  if (isGlobalScope()) {
-    logSemanticErrors(ErrorCode::GlobalInstantiation, newExpr);
-    insertErrorMetaData(newExpr);
-    return;
-  }
-  // We determine the type once and use it everywhere.
-  ResolvedType componentType;
-  bool componentExists = false;
-
-  if (payload.customTypesTable.count(componentName)) {
-    componentType = payload.customTypesTable[componentName]->type;
-    componentExists = true;
-  } else if (payload.ImportedComponentTable.count(componentName)) {
-    componentType = payload.ImportedComponentTable[componentName]->type;
-    componentExists = true;
-  }
-
-  if (!componentExists) {
-    logSemanticErrors(ErrorCode::UndefinedVariable, newExpr, {componentName});
-    insertErrorMetaData(newExpr);
-    return;
-  }
-
-  // UNIFIED INIT LOOKUP
-  // Bridge the gap between local and imported constructor signatures.
-  std::vector<ResolvedType> expectedArgs;
-  bool hasInitConstructor = false;
-
-  if (payload.importedInits.count(componentName)) {
-    hasInitConstructor = true;
-    expectedArgs = payload.importedInits[componentName]->func().initArgs;
-  } else if (payload.componentInitArgs.count(componentName)) {
-    hasInitConstructor = true;
-    expectedArgs = payload.componentInitArgs[componentName];
-  }
-
-  const auto &givenArgs = newExpr->arguments;
-
-  // FLATTENED VALIDATION LOGIC
-  if (!hasInitConstructor) {
-    if (!givenArgs.empty()) {
-      logSemanticErrors(ErrorCode::NoNeedForInit, newExpr, {componentName});
-    }
-  } else {
-    // We have a constructor, check the count
-    if (expectedArgs.size() != givenArgs.size()) {
-      logSemanticErrors(ErrorCode::ArgumentSizeMismatch, newExpr,
-                        {componentName, std::to_string(expectedArgs.size()),
-                         std::to_string(givenArgs.size())});
-    }
-
-    // PAIRWISE TYPE CHECKING
-    size_t checkCount = std::min(expectedArgs.size(), givenArgs.size());
-    for (size_t i = 0; i < checkCount; ++i) {
-      walker(givenArgs[i].get()); // Analyze the argument expression
-      ResolvedType argType = inferNodeDataType(givenArgs[i].get());
-      ResolvedType expectedType = expectedArgs[i];
-
-      if (argType.kind != expectedType.kind) {
-        logSemanticErrors(ErrorCode::ArgumentTypeMismatch, newExpr,
-                          {std::to_string(i + 1), expectedType.resolvedName,
-                           argType.resolvedName});
-      }
-    }
-  }
-
-  // Fetch the actual symbol for the IR Generator
-  auto componentSym = resolveSymbolInfo(componentName);
-
-  auto info = std::make_shared<SymbolInfo>();
-  info->type().type = componentType;
-  info->hasError = hasError;
-  info->relations().componentSymbol = componentSym;
-
-  // This map link is critical for the IR Generator to know what it's looking at
-  insertMetaData(newExpr, info);
 }
 
 void Semantics::walkASMStatement(Node *node) {

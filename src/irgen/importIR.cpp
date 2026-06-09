@@ -91,12 +91,6 @@ void IRGenerator::finalizeTypeBody(const std::string &typeName,
     for (const auto &methodPair : methods) {
         declareImportedComponentMethods(methodPair.first, typeName, methodPair.second);
     }
-
-    // Handle Component-specific logic
-    if (category == "COMPONENT") {
-        componentTypes[typeName] = structTy;
-        declareImportedInit(typeName);
-    }
 }
 
 void IRGenerator::declareImportedTypes() {

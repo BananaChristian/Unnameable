@@ -274,7 +274,7 @@ void Semantics::walkFunctionExpression(Node *node) {
       makeFuncSymbol(funcName, isExportable, isNaked, isInterrupt, hasError);
   funcInfo->func().isDeclaration = true;
 
-  bool insideMemberContext = insideComponent || insideSeal || insideAllocator;
+  bool insideMemberContext = insideMethods || insideSeal || insideAllocator;
   if (!insideMemberContext)
     payload.symbolTable[0][funcName] = funcInfo;
   else

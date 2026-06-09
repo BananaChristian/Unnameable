@@ -109,7 +109,7 @@ enum ErrorCode : int {
   InvalidStmtInGenerics = 3084,
   FloatingFString = 3085,
   NotaMemberOf = 3086,
-  IllegalStmtInRecordOrComponent = 3087,
+  IllegalStmtInMethods = 3087,
   InstNotaRecord = 3088,
   InjectionCollision = 3089,
   GlobalInstantiation = 3090,
@@ -166,6 +166,7 @@ enum ErrorCode : int {
   AlignMustBeIntegerConstant = 3145,
   PowerOfTwoAlign = 3146,
   InvalidHeapScope = 3147,
+  IllegalStmtInRecord = 3148,
 
   ArraySizeMismatch = 4001,
 

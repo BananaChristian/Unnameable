@@ -1,4 +1,5 @@
 #include "irgen.hpp"
+#include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Instructions.h"
 #include <llvm-18/llvm/IR/Function.h>
@@ -141,7 +142,15 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
     reportDevBug("Invalid function expression", fnExpr);
 
   auto fnName = semantics.extractIdentifierName(fnExpr);
+
+  // Mangle the name if we are inside a method
+  if (metTracker.insideMethods)
+    fnName =
+        metTracker.typeName + "_" + semantics.extractIdentifierName(fnExpr);
+
   auto funcSym = semantics.getSymbolFromMeta(fnExpr);
+  if (!funcSym)
+    reportDevBug("Failed to get function symbol info", fnExpr);
 
   isGlobalScope = false;
 
@@ -150,6 +159,32 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   std::vector<CoercionInfo> paramCoercion;
   std::vector<llvm::Type *> coercedParamTypes;
 
+  bool hasSelf = metTracker.insideMethods;
+  bool hasSRet = false;
+
+  // Handle self parameter if we're in a method
+  if (hasSelf) {
+    // Get the struct pointer type for 'self'
+    llvm::Type *selfType = llvmCustomTypes[metTracker.typeName];
+    if (!selfType)
+      reportDevBug("Unknown type for method: " + metTracker.typeName, fnExpr);
+
+    llvm::Type *selfPtrType = selfType->getPointerTo();
+
+    // Add self to original param types (for bookkeeping)
+    originalParamTypes.push_back(selfPtrType);
+
+    // Self coercion - just pass the pointer directly
+    CoercionInfo selfCoercion;
+    selfCoercion.isMemory = false;
+    selfCoercion.coercedType = selfPtrType;
+    paramCoercion.push_back(selfCoercion);
+
+    // Self is always passed as pointer parameter
+    coercedParamTypes.push_back(selfPtrType);
+  }
+
+  // Handle user parameters
   for (auto &p : fnExpr->parameters) {
     auto paramSym = semantics.getSymbolFromMeta(p.get());
     if (!paramSym)
@@ -186,29 +221,28 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   returnCoercion.isMemory = false;
   returnCoercion.coercedType = originalRetTy;
   llvm::Type *coercedRetTy = originalRetTy;
-  bool hasSRet = false;
 
   if (auto *structTy = llvm::dyn_cast<llvm::StructType>(originalRetTy)) {
     returnCoercion = classifyStruct(structTy);
     if (returnCoercion.isMemory) {
-      // Large struct return: add hidden sret parameter
       coercedRetTy = llvm::Type::getVoidTy(context);
       hasSRet = true;
-      // Insert pointer parameter at beginning
+      // Insert sret parameter at the VERY beginning (before self)
       coercedParamTypes.insert(coercedParamTypes.begin(),
                                structTy->getPointerTo());
-      // Add coercion info for sret
       CoercionInfo sretInfo;
       sretInfo.isMemory = true;
       sretInfo.coercedType = structTy->getPointerTo();
       paramCoercion.insert(paramCoercion.begin(), sretInfo);
+      originalParamTypes.insert(originalParamTypes.begin(),
+                                structTy->getPointerTo());
     } else if (returnCoercion.coercedType) {
       coercedRetTy = returnCoercion.coercedType;
     }
   }
 
   llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
-  if (fnName == "main" || funcSym->isExportable)
+  if (funcSym && funcSym->isExportable)
     linkage = llvm::Function::ExternalLinkage;
 
   llvm::FunctionType *funcType =
@@ -246,41 +280,63 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
   llvm::BasicBlock *entry = llvm::BasicBlock::Create(context, "entry", fn);
   funcBuilder.SetInsertPoint(entry);
 
-  // Bind parameters with original types (not coerced)
+  // Bind parameters
   auto argIter = fn->arg_begin();
-  if (hasSRet && argIter != fn->arg_end()) {
-    argIter++;
+  size_t paramIdx = 0;
+
+  // Skip sret if present
+  if (hasSRet) {
+    llvm::Argument &sretArg = *argIter;
+    sretArg.setName("sret");
+    ++argIter;
+    ++paramIdx;
   }
 
-  size_t userParamIdx = 0;
-  size_t coercionIdx = hasSRet ? 1 : 0;
+  // Handle self parameter
+  if (hasSelf) {
+    llvm::Argument &selfArg = *argIter;
+    selfArg.setName(metTracker.typeName + ".self");
 
+    // Get the struct type for this record
+    llvm::Type *selfType = llvmCustomTypes[metTracker.typeName];
+    llvm::Type *selfPtrType = selfType->getPointerTo();
+
+    llvm::AllocaInst *selfAlloca = funcBuilder.CreateAlloca(
+        selfPtrType, nullptr, metTracker.typeName + ".self_ptr");
+    funcBuilder.CreateStore(&selfArg, selfAlloca);
+
+    funcSym->codegen().llvmValue = selfAlloca;
+    currentFunctionSelfMap[currentFunction] = selfAlloca;
+
+    ++argIter;
+    ++paramIdx;
+  }
+
+  // Handle user parameters
   for (auto &p : fnExpr->parameters) {
-    auto pIt = semantics.metaData.find(p.get());
-    if (pIt == semantics.metaData.end()) {
-      reportDevBug("Failed to find parameter meta data", p.get());
-    }
+    auto paramSym = semantics.getSymbolFromMeta(p.get());
+    if (!paramSym)
+      reportDevBug("Failed to get parameter symbol info", p.get());
 
-    llvm::Type *originalTy = originalParamTypes[userParamIdx];
+    llvm::Type *originalTy = originalParamTypes[paramIdx];
     llvm::AllocaInst *alloca = funcBuilder.CreateAlloca(
         originalTy, nullptr, p->statement.TokenLiteral);
 
     llvm::Value *paramValue = &(*argIter);
 
-    // If parameter was coerced, bitcast back to original type
-    if (paramCoercion[coercionIdx].coercedType &&
-        paramCoercion[coercionIdx].coercedType != originalTy) {
+    // If parameter was coerced, handle it
+    if (paramCoercion[paramIdx].coercedType &&
+        paramCoercion[paramIdx].coercedType != originalTy) {
       paramValue =
           funcBuilder.CreateBitCast(paramValue, originalTy->getPointerTo());
       paramValue = funcBuilder.CreateLoad(originalTy, paramValue);
     }
 
     funcBuilder.CreateStore(paramValue, alloca);
-    pIt->second->codegen().llvmValue = alloca;
+    paramSym->codegen().llvmValue = alloca;
 
-    argIter++;
-    userParamIdx++;
-    coercionIdx++;
+    ++argIter;
+    ++paramIdx;
   }
 
   llvm::BasicBlock *oldInsertPoint = funcBuilder.GetInsertBlock();
@@ -291,14 +347,12 @@ llvm::Value *IRGenerator::generateFunctionExpression(Node *node) {
 
   if (finalBlock && (finalBlock->empty() || !finalBlock->getTerminator())) {
     if (funcSym->func().isNaked) {
-      // Naked functions still need an LLVM terminator to satisfy the backend
       if (isVoidFunction) {
         funcBuilder.CreateRetVoid();
       } else {
-        funcBuilder.CreateUnreachable(); // Tells LLVM: control flow stops here!
+        funcBuilder.CreateUnreachable();
       }
     } else {
-      // Normal function fallback
       if (isVoidFunction) {
         funcBuilder.CreateRetVoid();
       } else {
@@ -557,8 +611,7 @@ llvm::Value *IRGenerator::generateCallExpression(Node *node) {
   if (isGlobalScope)
     reportDevBug("Function calls are not allowed at global scope", callExpr);
 
-  const std::string &fnName =
-      semantics.extractIdentifierName(callExpr);
+  const std::string &fnName = semantics.extractIdentifierName(callExpr);
 
   auto callSym = semantics.getSymbolFromMeta(callExpr);
   if (!callSym)

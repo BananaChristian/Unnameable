@@ -67,14 +67,13 @@ public:
   std::unordered_map<std::type_index, expressionGenerators>
       expressionGeneratorsMap;
   std::unordered_map<std::type_index, addressGenerators> addressGeneratorsMap;
-  std::unordered_map<std::string, llvm::StructType *> componentTypes;
   std::unordered_map<std::string, llvm::StructType *> recordTypes;
   std::unordered_map<std::string, llvm::StructType *> llvmCustomTypes;
   std::unordered_map<std::string, unsigned> llvmStructIndices;
   std::unordered_map<llvm::Function *, llvm::AllocaInst *>
       currentFunctionSelfMap;
 
-  ComponentStatement *currentComponent = nullptr;
+  MethodsStatement *currentMethods = nullptr;
   llvm::Value *currentComponentInstance;
   llvm::Function *currentFunction;
   std::vector<JumpTarget> jumpStack;
@@ -99,6 +98,11 @@ private:
   std::string filename;
   bool inhibitCleanUp = false;
   llvm::Value *pendingSelfArg = nullptr;
+  struct MethodTracker {
+    std::string typeName;
+    bool insideMethods = false;
+  };
+  MethodTracker metTracker;
 
   CoercionInfo classifyStruct(llvm::StructType *structTy);
   void classifyWord(uint64_t offset, uint64_t size, llvm::Type *type,
@@ -143,13 +147,10 @@ private:
   // Special case because this is wrapped in the function statement but actaully
   // doesnt evaluate to anything;
   void generateFunctionDeclarationExpression(Node *node);
+
   // Component system
   void generateRecordStatement(Node *node);
-  void generateInitFunction(Node *node, ComponentStatement *component);
-  void generateComponentStatement(Node *node);
-  void generateComponentFunctionStatement(Node *node,
-                                          const std::string &compName);
-
+  void generateMethodsStatement(Node *node);
   void generateInstantiateStatement(Node *node);
   void generateSealStatement(Node *node);
 
@@ -310,18 +311,10 @@ private:
   llvm::Value *generateReferenceStorage(VariableDeclaration *decl,
                                         std::shared_ptr<SymbolInfo> sym,
                                         const std::string &name);
-  llvm::Value *generateComponentStorage(VariableDeclaration *decl,
-                                        std::shared_ptr<SymbolInfo> sym,
-                                        const std::string &name);
   llvm::Value *generateFnPtrCall(CallExpression *callExpr,
                                  const std::shared_ptr<SymbolInfo> &callSym,
                                  llvm::Value *fnPtrAddress);
   llvm::Constant *generateGlobalRecordDefaults(const std::string &typeName);
-  // For components
-  llvm::Value *generateComponentInit(VariableDeclaration *declaration,
-                                     std::shared_ptr<SymbolInfo> sym,
-                                     llvm::StructType *structTy, bool isHeap);
-  bool isComponentType(const std::string &name);
   bool isRecordType(const std::string &name);
   // Helper for allocating heap storage
   llvm::Value *allocateDynamicHeapStorage(std::shared_ptr<SymbolInfo> sym,

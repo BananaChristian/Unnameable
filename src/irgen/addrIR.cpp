@@ -15,11 +15,9 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
   const std::string &identName = identExpr->identifier.TokenLiteral;
 
   auto sym = semantics.getSymbolFromMeta(identExpr);
-  if (!sym) {
-    errorHandler.addHint(
-        "Semantics did not register the identifier symbol info");
-    reportDevBug("Could not find identifier metadata", identExpr);
-  }
+  if (!sym)
+    reportDevBug("Could not find identifier symbol info", identExpr);
+  
 
   if (sym->type().isFnPtr && sym->isFunction) {
     llvm::Function *fn = module->getFunction(identName);
@@ -29,10 +27,10 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
     return fn;
   }
 
-  if (!sym->codegen().llvmValue && currentComponent) {
+  if (!sym->codegen().llvmValue && currentMethods) {
     // Check if this identifier is a field of the current component
-    auto compSym = semantics.getSymbolFromMeta(currentComponent);
-    if (compSym && compSym->members.count(identName)) {
+    auto metsSym = semantics.getSymbolFromMeta(currentMethods);
+    if (metsSym && metsSym->members.count(identName)) {
       // Treat as self.field , create a SelfExpression
       Token selfToken("self", TokenType::SELF, identExpr->identifier.line,
                       identExpr->identifier.column);
@@ -50,8 +48,8 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
     reportDevBug("No value for '" + identName + "'", identExpr);
 
   // Component instance -> pointer to struct
-  auto compIt = componentTypes.find(sym->type().type.resolvedName);
-  if (compIt != componentTypes.end()) {
+  auto compIt = recordTypes.find(sym->type().type.resolvedName);
+  if (compIt != recordTypes.end()) {
     address = variablePtr;
   } else {
     // scalar/heap -> ensure typed pointer
@@ -140,17 +138,17 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     reportDevBug("Invalid self expression", node);
   }
 
-  const std::string &compName =
-      currentComponent->component_name->expression.TokenLiteral;
+  const std::string &typeName =
+      semantics.extractIdentifierName(currentMethods->method_identifier.get());
 
   // Lookup LLVM struct for top-level component
   llvm::StructType *currentStructTy = nullptr;
-  auto it = componentTypes.find(compName);
-  if (it == componentTypes.end()) {
-    errorHandler.addHint("Component '" + compName +
-                         "' was not added into the componentTypes table");
-    reportDevBug("Component '" + compName + "' not found in componentTypes",
-                 currentComponent->component_name.get());
+  auto it = recordTypes.find(typeName);
+  if (it == recordTypes.end()) {
+    errorHandler.addHint("Component '" + typeName +
+                         "' was not added into the recordTypes table");
+    reportDevBug("record '" + typeName + "' not found in componentTypes",
+                 currentMethods->method_identifier.get());
   }
 
   currentStructTy = it->second;
@@ -168,15 +166,10 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
   llvm::Value *currentPtr = selfLoad;
 
   // Semantic chain walk
-  auto ctIt = semantics.payload.customTypesTable.find(compName);
-  if (ctIt == semantics.payload.customTypesTable.end()) {
-    errorHandler.addHint(
-        "The type was never registered by the semantic analyzer");
-    reportDevBug("Component not found in customTypeTable",
-                 currentComponent->component_name.get());
-  }
+  auto currentTypeInfo = semantics.getCustomTypeInfo(typeName);
+  if (!currentTypeInfo)
+    reportDevBug("Failed to get type '" + typeName + "'", selfExpr);
 
-  auto currentTypeInfo = ctIt->second;
   std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
 
   for (size_t i = 0; i < selfExpr->fields.size(); ++i) {

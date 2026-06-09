@@ -165,7 +165,7 @@ void Semantics::enforceDeclarationRules(
   // Assignment sign rule for pointers and references
   if (isPointer || isRef) {
     if (initializer) {
-      if (!insideComponent && !insideRecord) {
+      if (!insideRecord) {
         if (declaration->assign_token.has_value() &&
             declaration->assign_token->type != TokenType::ARROW) {
           std::string kind = isPointer ? "ptr" : "ref";
@@ -184,7 +184,7 @@ void Semantics::enforceDeclarationRules(
 
   // Pointer rules
   if (isPointer && !initializer) {
-    if (!insideComponent && !insideRecord) {
+    if (!insideRecord) {
       logSemanticErrors(ErrorCode::PointerMustBeInitialized, declaration,
                         {declName});
     }
@@ -197,7 +197,7 @@ void Semantics::enforceDeclarationRules(
   }
 
   // Reference rules
-  if (!insideRecord || !insideComponent) {
+  if (!insideRecord) {
     if (isRef && !initializer) {
       logSemanticErrors(RefMustBeInitialized, declaration, {declName});
     }

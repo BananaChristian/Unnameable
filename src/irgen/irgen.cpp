@@ -558,10 +558,10 @@ void IRGenerator::registerGeneratorFunctions() {
   // Component system
   generatorFunctionsMap[typeid(RecordStatement)] =
       &IRGenerator::generateRecordStatement;
-  generatorFunctionsMap[typeid(ComponentStatement)] =
-      &IRGenerator::generateComponentStatement;
   generatorFunctionsMap[typeid(EnumStatement)] =
       &IRGenerator::generateEnumStatement;
+  generatorFunctionsMap[typeid(MethodsStatement)] =
+      &IRGenerator::generateMethodsStatement;
   generatorFunctionsMap[typeid(TraceStatement)] =
       &IRGenerator::generateTraceStatement;
   generatorFunctionsMap[typeid(InstantiateStatement)] =
@@ -1336,9 +1336,9 @@ void IRGenerator::emitCleanup(Node *contextNode) {
       }
 
       for (const auto &captured_field : baton->captured_fields) {
-      logInternal("[Captured-Field-Free]: " + captured_field.capturedID);
-      executePhysicalFree(captured_field.symbol);
-    }
+        logInternal("[Captured-Field-Free]: " + captured_field.capturedID);
+        executePhysicalFree(captured_field.symbol);
+      }
 
       // Free the leader
       if (identSym->storage().isHeap) {

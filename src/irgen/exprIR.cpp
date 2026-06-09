@@ -334,10 +334,10 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
                  identExpr);
   }
 
-  // Component instance -> return pointer to the struct instance (address is
+  // Record instance -> return pointer to the struct instance (address is
   // already correct)
-  auto compIt = componentTypes.find(sym->type().type.resolvedName);
-  if (compIt != componentTypes.end()) {
+  auto compIt = recordTypes.find(sym->type().type.resolvedName);
+  if (compIt != recordTypes.end()) {
     return address;
   }
 
@@ -981,14 +981,14 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
   if (!selfExpr)
     reportDevBug("Invalid self expression", node);
 
-  const std::string &compName =
-      currentComponent->component_name->expression.TokenLiteral;
+  const std::string &typeName =
+      semantics.extractIdentifierName(currentMethods->method_identifier.get());
 
   // Lookup LLVM struct for top-level component
   llvm::StructType *currentStructTy = nullptr;
-  auto it = componentTypes.find(compName);
-  if (it == componentTypes.end())
-    reportDevBug("Component '" + compName + "' not found in componentTypes",
+  auto it = recordTypes.find(typeName);
+  if (it == recordTypes.end())
+    reportDevBug("Component '" + typeName + "' not found in componentTypes",
                  selfExpr);
 
   currentStructTy = it->second;
@@ -1000,15 +1000,13 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
 
   llvm::Value *currentPtr = funcBuilder.CreateLoad(
       currentStructTy->getPointerTo(), selfAlloca, "self_load");
-  // self pointer itself is never volatile (it's just a pointer to the
-  // component)
+  // self pointer itself is never volatile (it's just a pointer to the record
 
   // Semantic chain walk
-  auto ctIt = semantics.payload.customTypesTable.find(compName);
-  if (ctIt == semantics.payload.customTypesTable.end())
-    reportDevBug("Unknown component '" + compName + "'", selfExpr);
+  auto currentTypeInfo = semantics.getCustomTypeInfo(typeName);
+  if (!currentTypeInfo)
+    reportDevBug("Could not find type '" + typeName + "'", selfExpr);
 
-  auto currentTypeInfo = ctIt->second;
   std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
 
   for (size_t i = 0; i < selfExpr->fields.size(); ++i) {
@@ -1065,7 +1063,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
   if (lastFieldIsCall) {
     std::string methodName =
         semantics.extractIdentifierName(selfExpr->fields.back().get());
-    std::string mangledName = compName + "_" + methodName;
+    std::string mangledName = typeName + "_" + methodName;
 
     llvm::Function *targetFunc = module->getFunction(mangledName);
     if (!targetFunc)

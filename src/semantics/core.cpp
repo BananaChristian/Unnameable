@@ -146,10 +146,8 @@ void Semantics::registerWalkerFunctions() {
 
   // Walker registration for the component system
   walkerFunctionsMap[typeid(RecordStatement)] = &Semantics::walkRecordStatement;
-  walkerFunctionsMap[typeid(ComponentStatement)] =
-      &Semantics::walkComponentStatement;
-  walkerFunctionsMap[typeid(NewComponentExpression)] =
-      &Semantics::walkNewComponentExpression;
+  walkerFunctionsMap[typeid(MethodsStatement)] =
+      &Semantics::walkMethodsStatement;
   walkerFunctionsMap[typeid(SelfExpression)] = &Semantics::walkSelfExpression;
   walkerFunctionsMap[typeid(EnumStatement)] = &Semantics::walkEnumStatement;
   walkerFunctionsMap[typeid(InstanceExpression)] =
@@ -1368,12 +1366,13 @@ Semantics::getMemberSym(const std::string &childName, Node *instance) {
     return nullptr;
 
   auto memberInfo = memberIt->second;
-  
-  // For regular data members, return the original symbol from the declaration node
+
+  // For regular data members, return the original symbol from the declaration
+  // node
   if (!memberInfo->isFunction) {
     return getSymbolFromMeta(memberInfo->node);
   }
-  
+
   // For methods/functions, we may still need to create a symbol
   // (or you can store and return the original from elsewhere)
   auto memSym = std::make_shared<SymbolInfo>();
@@ -1387,7 +1386,7 @@ Semantics::getMemberSym(const std::string &childName, Node *instance) {
   memSym->codegen().ID = memberInfo->retFamilyID;
   memSym->storage().isHeap = memberInfo->isReturnHeap;
   memSym->storage().allocType = memberInfo->allocType;
-  
+
   return memSym;
 }
 

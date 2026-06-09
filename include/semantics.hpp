@@ -118,10 +118,10 @@ public:
 
 private:
   bool insideFunction = false;
-  bool insideComponent = false;
   bool insideRecord = false;
   bool insideSeal = false;
   bool insideAllocator = false;
+  bool insideMethods = false;
   bool insideTrace = false;
 
   bool hasFailed = false;
@@ -174,10 +174,10 @@ private:
   void walkRecordStatement(Node *node);
   void walkComponentStatement(Node *node);
   void walkNewComponentExpression(Node *node);
-  void walkInitConstructor(Node *node);
   void walkSelfExpression(Node *node);
   void walkEnumStatement(Node *node);
   void walkInstanceExpression(Node *node);
+  void walkMethodsStatement(Node *node);
 
   // Waling infix, prefix and postfix expressions
   void walkInfixExpression(Node *node);
@@ -292,6 +292,9 @@ private:
   void substituteTypes(Node *node,
                        std::unordered_map<std::string, Node *> &subMap);
   void mangleGenericName(Node *node, std::string aliasName);
+  void mapSymbolInfoToMemberInfo(const std::shared_ptr<SymbolInfo> &symInfo,
+                                 std::shared_ptr<MemberInfo> &memInfo,
+                                 int memberIndex);
   void checkOperatorStyle(TokenType op, bool isPointer, const std::string &name,
                           Node *site);
   void executeFieldsCapture(Node *context, const std::string &type_name,

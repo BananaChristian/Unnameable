@@ -753,7 +753,7 @@ std::unique_ptr<Statement> Parser::parseMethodsStatement() {
          currentToken().type != TokenType::END) {
     auto fnStmt = parseStatement();
     if (!dynamic_cast<FunctionStatement *>(fnStmt.get())) {
-      logError(ErrorCode::IllegalStmtInRecordOrComponent, currentToken());
+      logError(ErrorCode::IllegalStmtInMethods, currentToken());
       synchronize(SyncLevel::TOP);
       return nullptr;
     }

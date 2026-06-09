@@ -229,6 +229,16 @@ std::vector<std::string> ErrorHandler::suggestForError(ErrorCode code) {
         "If using a custom type, implement an indexer method");
     return suggestions;
   }
+  case ErrorCode::IllegalStmtInMethods: {
+    suggestions.push_back("Methods must only have function definitions");
+    return suggestions;
+  }
+  case ErrorCode::IllegalStmtInRecord: {
+    suggestions.push_back("records must only hold variable declarations");
+    suggestions.push_back(
+        "if you want to add a method implement one using a methods block");
+    return suggestions;
+  }
   case ErrorCode::NoneDereferencableType: {
     suggestions.push_back(
         "Only pointer types can be dereferenced with the * operator");
@@ -1186,9 +1196,16 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.message = "'{0}' is not a member of '{1}'";
     return message;
   }
-  case ErrorCode::IllegalStmtInRecordOrComponent: {
-    message.code = ErrorCode::IllegalStmtInRecordOrComponent;
-    message.message = "illegal statement in '{0}'";
+  case ErrorCode::IllegalStmtInMethods: {
+    message.code = ErrorCode::IllegalStmtInMethods;
+    message.message = "illegal statement in methods '{0}'";
+    message.hints = suggestForError(ErrorCode::IllegalStmtInMethods);
+    return message;
+  }
+  case ErrorCode::IllegalStmtInRecord: {
+    message.code = ErrorCode::IllegalStmtInRecord;
+    message.message = "illegal statement in record '{0}'";
+    message.hints = suggestForError(ErrorCode::IllegalStmtInRecord);
     return message;
   }
   case ErrorCode::InstNotaRecord: {
