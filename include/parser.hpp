@@ -176,6 +176,9 @@ private:
   // Parsing record statements
   std::unique_ptr<Statement> parseRecordStatement();
 
+  // Parsing the methods block
+  std::unique_ptr<Statement> parseMethodsStatement();
+
   // Parsing generic statements
   std::unique_ptr<Statement> parseGenericStatement();
 
@@ -306,7 +309,7 @@ private:
   // Parsing call arguments
   std::vector<std::unique_ptr<Expression>> parseCallArguments();
 
-  //Parsing the macro expression
+  // Parsing the macro expression
   std::unique_ptr<Expression> parseMacroExpression();
 
   // Parsing function parameters

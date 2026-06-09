@@ -95,6 +95,8 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: CONST";
   case TokenType::COMPONENT:
     return "Token Type: COMPONENT";
+  case TokenType::METHODS:
+    return "Token Type: METHODS";
   case TokenType::SELF:
     return "Token Type: SELF";
   case TokenType::INTERRUPT:

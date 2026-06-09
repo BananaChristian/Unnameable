@@ -27,6 +27,7 @@ class Lexer {
       {"self", TokenType::SELF},
       {"new", TokenType::NEW},
       {"record", TokenType::RECORD},
+      {"methods", TokenType::METHODS},
       {"inject", TokenType::INJECT},
       {"init", TokenType::INIT},
 

@@ -1,0 +1,29 @@
+ptr usize NULL -> bitcast<ptr usize>(0)
+
+export func unniptoa(mut ptr usize val, ptr u8 buf): ptr u8 {
+    ptr u8 hex_digits -> "0123456789ABCDEF"
+    mut arr[20] u8 temp
+    mut i32 i = 0
+
+    if (val == NULL) {
+        buf[0] = '0'
+        buf[1] = 'x'
+        buf[2] = '0'
+        buf[3] = '\0'
+        return buf
+    }
+
+    while (val) {
+        temp[i++] = hex_digits[val % 16]
+        val = val/16;
+    }
+
+    mut i32 j = 0
+    buf[j++] = '0'
+    buf[j++] = 'x'
+    while (i > 0) {
+        buf[j++] = temp[--i]
+    }
+    buf[j] = '\0'
+    return buf
+}

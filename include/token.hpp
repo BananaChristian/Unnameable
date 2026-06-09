@@ -50,7 +50,7 @@ enum class TokenType {
   QUESTION_MARK,  //"?"
   COALESCE,       //"??"
 
-  DOLLAR, //$
+  DOLLAR,        //$
   DOLLAR_DOLLAR, //$$
   IDENTIFIER,
   STRING_KEYWORD,
@@ -84,6 +84,7 @@ enum class TokenType {
   INJECT,    // inject keyword that injects the record fields directly into the
              // component
   INIT,      // constructor keyword
+  METHODS,   // methods keyword
 
   GENERIC, // Generic block keyword
   INSTANTIATE,
@@ -174,7 +175,7 @@ enum class TokenType {
   OPAQUE, // opaque keyword token
 
   SIZEOF, // sizeof token
-  GLOBAL, //global token
+  GLOBAL, // global token
 
   VOID,
   TRUE,

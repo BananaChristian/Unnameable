@@ -75,6 +75,8 @@ public:
   bool ifReturnsInAllPaths(ifStatement *ifStmt);
   bool hasReturnPathInBlock(
       const std::vector<std::unique_ptr<Statement>> &statements);
+  const std::shared_ptr<CustomTypeInfo> &
+  getCustomTypeInfo(const std::string &type_name);
   bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>> &stmts);
   std::shared_ptr<SymbolInfo> getSealedFunctionSym(const std::string &funcName,
                                                    Node *instance);
@@ -111,6 +113,8 @@ public:
   std::vector<uint64_t> getSizePerDimesion(Node *node);
   std::string getBaseTypeName(const ResolvedType &type);
   uint64_t getIntegerConstant(Node *node);
+  bool isCompOrRecordType(const ResolvedType &type);
+  bool customTypeHasHeapFields(const std::string &type_name);
 
 private:
   bool insideFunction = false;
@@ -290,8 +294,8 @@ private:
   void mangleGenericName(Node *node, std::string aliasName);
   void checkOperatorStyle(TokenType op, bool isPointer, const std::string &name,
                           Node *site);
-  void executeFieldsCapture(const std::string &type_name,
-                         const std::unique_ptr<LifeTime> &type_baton);
+  void executeFieldsCapture(Node *context, const std::string &type_name,
+                            const std::unique_ptr<LifeTime> &type_baton);
   void checkMutability(const SymbolInfo &sym, const std::string &name,
                        Node *site);
   void analyzeFnPtrCall(CallExpression *callNode,
@@ -336,13 +340,9 @@ private:
   bool isUnsignedIntegerType(const ResolvedType &type);
   bool isSignedIntegerType(const ResolvedType &type);
   bool rhsIsHeap(Node *node);
-  bool isCompOrRecordType(const ResolvedType &type);
   bool isCustomTypeByValue(const ResolvedType &type);
   bool isTypeConvertibleToBool(const ResolvedType &type);
-  const std::shared_ptr<CustomTypeInfo> &
-  getCustomTypeInfo(const std::string &type_name);
   bool typeSupportsIncrementOrDecrement(const ResolvedType &type);
-  bool customTypeHasHeapFields(const std::string &type_name);
   void overwriteNodeName(Node *node, const std::string &mangled_name);
   uint32_t parseAlignmentBytes(Node *node);
   void popScope();

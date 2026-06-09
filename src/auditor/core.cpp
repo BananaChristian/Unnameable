@@ -230,14 +230,57 @@ void Auditor::classifyBlock(Node *block) {
               ", Foreigners: " + std::to_string(info->foreigners.size()));
 }
 
+void Auditor::classifyUnusedFields(const std::shared_ptr<SymbolInfo> &declSym,
+                                   Node *block, BlockInfo *info) {
+  std::string typeName = semantics.getBaseTypeName(declSym->type().type);
+
+  // Check if it's a record type
+  auto typeInfo = semantics.payload.customTypesTable.find(typeName);
+  if (typeInfo == semantics.payload.customTypesTable.end())
+    return;
+
+  // Iterate through ALL members of the record
+  for (const auto &[memberName, memberInfo] : typeInfo->second->members) {
+    if (memberInfo->isHeap) {
+      // Here the aim is to see if this thing has a baton and if it does is it
+      // inside the record if it is then it is unused
+      auto fieldSym = semantics.getSymbolFromMeta(memberInfo->node);
+      if (fieldSym) {
+        std::string fieldID = fieldSym->codegen().ID;
+        Node *holder = semantics.queryForLifeTimeBaton(fieldID);
+
+        if (!holder)
+          reportDevBug("Failed to get baton holder for ID: " + fieldID,
+                       memberInfo->node);
+
+        // Check if the holder is the same as this node
+        if (holder == memberInfo->node) {
+          if (!isAlreadyClassified(fieldID, info)) {
+            logInternal("[CLASSIFIER] NATIVE (from record field): " + fieldID);
+            info->natives.push_back(fieldID);
+          }
+        }
+      }
+    }
+  }
+}
+
 void Auditor::filterBeforeClassifySym(Node *node, Node *block,
                                       BlockInfo *info) {
   logInternal("INSIDE FILTER");
   if (auto declaration = dynamic_cast<VariableDeclaration *>(node)) {
     logInternal("Taken declaration path");
     auto declSym = semantics.getSymbolFromMeta(declaration);
-    if (declSym->storage().isHeap) {
-      classifySymbol(declaration, block, info);
+
+    // Check if this is a record with heap fields
+    bool isRecordWithHeapFields =
+        semantics.isCompOrRecordType(declSym->type().type) &&
+        semantics.customTypeHasHeapFields(declSym->type().type.resolvedName);
+
+    if (declSym->storage().isHeap || isRecordWithHeapFields) {
+      classifyUnusedFields(declSym, block, info);
+      classifySymbol(declaration, block,
+                     info); // Include stack records with heap fields
     } else {
       auto init = declaration->initializer.get();
       if (init) {
@@ -245,10 +288,9 @@ void Auditor::filterBeforeClassifySym(Node *node, Node *block,
       }
     }
   } else if (auto infixCall = dynamic_cast<InfixExpression *>(node)) {
-    logInternal("Taken method call path");
     auto instance = infixCall->left_operand.get();
     const std::string sealName = semantics.extractIdentifierName(instance);
-    logInternal("Seal Name: " + sealName);
+    logInternal("Potential Seal Name: " + sealName);
     bool isSealInstance = semantics.payload.sealTable.count(sealName);
     logInternal("Is It is Seal Instance: " + std::to_string(isSealInstance));
     if (isSealInstance) {
@@ -263,7 +305,7 @@ void Auditor::filterBeforeClassifySym(Node *node, Node *block,
       }
     }
   } else {
-    logInternal("Taken normal path");
+    logInternal("Triggered routine path");
     auto idents = semantics.digIdentifiers(node);
     for (const auto &ident : idents) {
       classifySymbol(ident, block, info);
@@ -512,6 +554,74 @@ bool Auditor::shouldNativeBunkerBlock(Node *block) {
   return result;
 }
 
+std::vector<std::string>
+Auditor::sortCapturedIDs(const std::string &type_name,
+                         const std::unique_ptr<BlockInfo> &info) {
+  std::vector<std::string> sortedIDs;
+  auto typeInfo = semantics.getCustomTypeInfo(type_name);
+
+  // Inacse it is not a custom type
+  if (!typeInfo) {
+    logInternal("[CAPTURED SORTER]: Failed to get custom type info returning "
+                "empty list");
+    return sortedIDs;
+  }
+
+  for (const auto &capturedID : typeInfo->captureCandidates) {
+    for (const auto &deferedID : info->natives) {
+      if (capturedID == deferedID) {
+        sortedIDs.push_back(capturedID);
+      }
+    }
+  }
+
+  return sortedIDs;
+}
+
+void Auditor::bunkerCapturedFields(Node *block, const std::string &type_name) {
+  auto &blockInfo = deferedFrees[block];
+  if (!shouldNativeBunkerBlock(block))
+    return;
+
+  for (const auto &capturedID : sortCapturedIDs(type_name, blockInfo)) {
+    if (isBunkered(capturedID)) {
+      logInternal("[CAPTURE BUNKERING] Baton " + capturedID +
+                  " is already bunkered, skipping");
+      continue;
+    }
+
+    Node *holder = semantics.queryForLifeTimeBaton(capturedID);
+    if (!holder) {
+      scanForBaton(capturedID);
+      logInternal("[CAPTURE BUNKERING] Could not find the baton holder for "
+                  "lifetime ID:" +
+                  capturedID + " skipping...");
+      continue;
+    }
+
+    auto holderSym = semantics.getSymbolFromMeta(holder);
+    if (!holderSym) {
+      logInternal(
+          "[CAPTURE BUNKERING] Failed to get the symbol info for holder " +
+          holder->toString() + " for lifetime ID: " + capturedID +
+          " skipping...");
+      continue;
+    }
+
+    auto &baton = semantics.responsibilityTable[holder];
+    if (!baton) {
+      scanForBaton(capturedID);
+      logInternal("[CAPTURE BUNKERING] Could not find the baton for "
+                  "lifetime ID:" +
+                  capturedID + " skipping...");
+      continue;
+    }
+
+    bunker.nativesToFree[block].push_back({std::move(baton), holderSym});
+    bunkeredIDs.insert(capturedID);
+  }
+}
+
 void Auditor::bunkerNatives(Node *block) {
   auto &blockInfo = deferedFrees[block];
   for (const auto &nativeID : blockInfo->natives) {
@@ -548,7 +658,7 @@ void Auditor::bunkerNatives(Node *block) {
       continue;
     }
 
-    nativesToFree[block].push_back({std::move(baton), holderSym});
+    bunker.nativesToFree[block].push_back({std::move(baton), holderSym});
     bunkeredIDs.insert(nativeID);
   }
 }
@@ -605,7 +715,7 @@ void Auditor::bunkerForeigners(Node *block) {
     logInternal("[FOREIGNER BUNKERING] SUCCESS: Moving baton for " +
                 foreignerID + " into bunker.");
 
-    foreignersToFree[block].push_back({std::move(baton), holderSym});
+    bunker.foreignersToFree[block].push_back({std::move(baton), holderSym});
     bunkeredIDs.insert(foreignerID);
 
     logInternal("[FOREIGNER BUNKERING] ID " + foreignerID +
@@ -715,7 +825,7 @@ void Auditor::bunkerCycles(Node *block) {
     logInternal("[CYCLE BUNKERING] SUCCESS: Moving baton for " + validID +
                 " into bunker.");
 
-    nativesToFree[block].push_back({std::move(baton), holderSym});
+    bunker.nativesToFree[block].push_back({std::move(baton), holderSym});
     bunkeredIDs.insert(validID);
     bunkeredCount++;
 
@@ -726,7 +836,7 @@ void Auditor::bunkerCycles(Node *block) {
   logInternal("[BUNKER-CYCLES] Total bunkered: " +
               std::to_string(bunkeredCount));
   logInternal("[BUNKER-CYCLES] nativesToFree size for this block: " +
-              std::to_string(nativesToFree[block].size()));
+              std::to_string(bunker.nativesToFree[block].size()));
 }
 
 void Auditor::bunkerPersists(Node *block) {
@@ -756,7 +866,7 @@ void Auditor::bunkerPersists(Node *block) {
                     persistID);
         continue;
       }
-      nativesToFree[block].push_back({std::move(baton), sym});
+      bunker.nativesToFree[block].push_back({std::move(baton), sym});
       bunkeredIDs.insert(persistID);
     } else {
       logInternal("[BUNKER-PERSIST] Lifetime ID: " + persistID +
@@ -793,7 +903,7 @@ void Auditor::bunkerNativeHeists(Node *block) {
     logInternal("[NATIVE HEIST BUNKERING] SUCCESS: Moving baton for " +
                 heistID + " into bunker.");
 
-    nativesToFree[block].push_back({std::move(baton), sym});
+    bunker.nativesToFree[block].push_back({std::move(baton), sym});
     bunkeredIDs.insert(heistID);
   }
 }
@@ -825,7 +935,7 @@ void Auditor::bunkerForeignHeists(Node *block) {
     logInternal("[FOREIGN HEIST BUNKERING] SUCCESS: Moving baton for " +
                 heistID + " into bunker.");
 
-    foreignersToFree[block].push_back({std::move(baton), sym});
+    bunker.foreignersToFree[block].push_back({std::move(baton), sym});
     bunkeredIDs.insert(heistID);
   }
 }
@@ -1823,7 +1933,7 @@ void Auditor::scanForBaton(const std::string &id) {
   }
 
   bool foundInNatives = false;
-  for (const auto &[block, batonList] : nativesToFree) {
+  for (const auto &[block, batonList] : bunker.nativesToFree) {
     for (size_t i = 0; i < batonList.size(); ++i) {
       const auto &[baton, sym] = batonList[i];
       if (baton && baton->ID == id) {
@@ -1848,7 +1958,7 @@ void Auditor::scanForBaton(const std::string &id) {
   }
 
   bool foundInForeigners = false;
-  for (const auto &[block, batonList] : foreignersToFree) {
+  for (const auto &[block, batonList] : bunker.foreignersToFree) {
     for (size_t i = 0; i < batonList.size(); ++i) {
       const auto &[baton, sym] = batonList[i];
       if (baton && baton->ID == id) {

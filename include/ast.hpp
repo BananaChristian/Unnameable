@@ -1205,6 +1205,34 @@ struct RecordStatement : Statement {
   }
 };
 
+struct MethodsStatement : Statement {
+  Token methods_token;
+  std::unique_ptr<Expression> method_identifier;
+  std::vector<std::unique_ptr<Statement>> functions;
+
+  std::string toString() override {
+    std::ostringstream oss;
+    oss << "Methods Statement: "
+        << (method_identifier ? method_identifier->toString() : "methods_name")
+        << " {";
+    for (const auto &fns : functions) {
+      oss << (fns ? fns->toString() : "func_mtd");
+    }
+    oss << "}";
+    return oss.str();
+  }
+
+  MethodsStatement *shallowClone() const override {
+    return new MethodsStatement(methods_token, clonePtr(method_identifier),
+                                clonePtrVector(functions));
+  }
+
+  MethodsStatement(Token _mtds, std::unique_ptr<Expression> mtds_name,
+                   std::vector<std::unique_ptr<Statement>> fns)
+      : Statement(_mtds), methods_token(_mtds),
+        method_identifier(std::move(mtds_name)), functions(std::move(fns)) {}
+};
+
 // Init statement
 struct InitStatement : Statement {
   Token init_token;

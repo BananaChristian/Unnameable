@@ -1008,7 +1008,7 @@ void IRGenerator::freeDynamicHeapStorage(const std::string &allocatorType,
 }
 
 void IRGenerator::freeForeigners(Node *block) {
-  auto &map = auditor.foreignersToFree;
+  auto &map = auditor.bunker.foreignersToFree;
 
   logInternal("\n[FOREINER-CLEANUP] >>> Entering Foreigner Cleanup for "
               "block at line: " +
@@ -1082,7 +1082,7 @@ void IRGenerator::freeForeigners(Node *block) {
 }
 
 void IRGenerator::freeNatives(Node *block) {
-  auto &map = auditor.nativesToFree;
+  auto &map = auditor.bunker.nativesToFree;
 
   logInternal("\n[NATIVE-CLEANUP] >>> Entering Native Cleanup for block "
               "at line: " +

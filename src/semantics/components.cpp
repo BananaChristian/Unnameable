@@ -250,6 +250,7 @@ void Semantics::walkRecordStatement(Node *node) {
                        "' was not analyzed properly",
                    field.get());
     }
+    fieldSymbol->type().memberIndex=currentMemberIndex;
 
     // If the variable analyzed is heap then register it as capture candidate
     if (fieldSymbol->storage().isHeap)
@@ -271,7 +272,8 @@ void Semantics::walkRecordStatement(Node *node) {
     memInfo->ID = fieldSymbol->codegen().ID;
     memInfo->typeNode = recordStmt;
     memInfo->node = field.get();
-    memInfo->memberIndex = currentMemberIndex++;
+    memInfo->memberIndex = currentMemberIndex;
+    currentMemberIndex++;
 
     // Insert into members map
     recordMembers[fieldName] = memInfo;

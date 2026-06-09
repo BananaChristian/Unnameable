@@ -341,9 +341,11 @@ llvm::Value *IRGenerator::generateIdentifierExpression(Node *node) {
     return address;
   }
 
-  if (isRecordType(sym->type().type.resolvedName) && sym->storage().isHeap) {
+  if (isRecordType(sym->type().type.resolvedName)) {
     inhibitCleanUp = wasInhibited;
-    emitCleanup(identExpr);
+    if (sym->storage().isHeap)
+      emitCleanup(identExpr);
+
     return address;
   }
 

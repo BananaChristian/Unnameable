@@ -435,6 +435,13 @@ private:
   }
 };
 
+struct DropInfo {
+  std::shared_ptr<SymbolInfo> funcSym;
+  std::string methodName;
+  llvm::Value *instancePtr;
+  bool isCalled;
+};
+
 struct LifeTime {
   std::string ID;      // Main lifetime family ID
   std::string ownedBy; // Who robbed this baton and now owns it
@@ -447,6 +454,7 @@ struct LifeTime {
   std::vector<CapturedField>
       captured_fields; // This is where the capture field batons sit for record
                        // and component members
+  std::vector<DropInfo> baton_drops; // This is where baton drops are stored
   int ptrCount;
   int refCount;
 
@@ -455,8 +463,8 @@ struct LifeTime {
 };
 
 struct CapturedField {
-  Node *node; // The field itself
-  std::string capturedID; //Its ID 
+  Node *node;             // The field itself
+  std::string capturedID; // Its ID
   std::shared_ptr<SymbolInfo> symbol;
 };
 

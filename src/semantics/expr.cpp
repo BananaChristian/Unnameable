@@ -59,6 +59,9 @@ void Semantics::walkInfixExpression(Node *node) {
     insertMetaData(rhsIdent, memberInfo);
     insertMetaData(infixExpr, memberInfo);
 
+    if (memberInfo->storage().isHeap)
+      transferBaton(infixExpr->right_operand.get(), memberInfo->codegen().ID);
+
     return;
   }
 

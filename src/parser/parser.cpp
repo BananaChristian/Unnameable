@@ -369,7 +369,8 @@ void Parser::registerPrefixFns() {
       &Parser::parseFunctionExpression;
   PrefixParseFunctionsMap[TokenType::CAST] = &Parser::parseCastExpression;
   PrefixParseFunctionsMap[TokenType::BITCAST] = &Parser::parseBitcastExpression;
-  PrefixParseFunctionsMap[TokenType::DOLLAR_DOLLAR]= &Parser::parseMacroExpression;
+  PrefixParseFunctionsMap[TokenType::DOLLAR_DOLLAR] =
+      &Parser::parseMacroExpression;
 }
 
 // Registering the postfix parse functions
@@ -506,6 +507,8 @@ void Parser::registerStatementParseFns() {
   StatementParseFunctionsMap[TokenType::COMPONENT] =
       &Parser::parseComponentStatement;
   StatementParseFunctionsMap[TokenType::RECORD] = &Parser::parseRecordStatement;
+  StatementParseFunctionsMap[TokenType::METHODS] =
+      &Parser::parseMethodsStatement;
   StatementParseFunctionsMap[TokenType::INJECT] = &Parser::parseInjectStatement;
   StatementParseFunctionsMap[TokenType::INIT] =
       &Parser::parseInitConstructorStatement;

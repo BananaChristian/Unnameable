@@ -4,7 +4,17 @@ record Test{
 }
 
 func main:i32{
-  heap Test test
+  Test test
   test.x
   return 0
 }
+
+##methods Test{
+  func add(): i32{
+      
+  }
+
+  func sub():i32{
+
+  }
+}##

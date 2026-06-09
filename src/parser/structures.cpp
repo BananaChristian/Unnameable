@@ -1,4 +1,5 @@
 #include "ast.hpp"
+#include "errors.hpp"
 #include "parser.hpp"
 #include "token.hpp"
 #include <memory>
@@ -724,6 +725,49 @@ std::unique_ptr<Statement> Parser::parseRecordStatement() {
   return std::make_unique<RecordStatement>(
       record_token, false, false, Mutability::IMMUTABLE, nullptr,
       std::move(recordName), std::move(fields));
+}
+
+std::unique_ptr<Statement> Parser::parseMethodsStatement() {
+  std::vector<std::unique_ptr<Statement>> functions;
+  Token methods_token = currentToken();
+  advance(); // Consume the methods keyword
+
+  if (currentToken().type != TokenType::IDENTIFIER) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"identifier", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return nullptr;
+  }
+
+  std::unique_ptr<Expression> mtds_name = parseIdentifier();
+
+  if (currentToken().type != TokenType::LBRACE) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"{", currentToken().TokenLiteral});
+    synchronize(SyncLevel::TOP);
+    return nullptr;
+  }
+
+  advance(); // Consume the {
+  while (currentToken().type != TokenType::RBRACE &&
+         currentToken().type != TokenType::END) {
+    auto fnStmt = parseStatement();
+    if (!dynamic_cast<FunctionStatement *>(fnStmt.get())) {
+      logError(ErrorCode::IllegalStmtInRecordOrComponent, currentToken());
+      synchronize(SyncLevel::TOP);
+      return nullptr;
+    }
+    functions.push_back(std::move(fnStmt));
+  }
+
+  if (currentToken().type != TokenType::RBRACE) {
+    logError(ErrorCode::UnexpectedToken, currentToken(),
+             {"}", currentToken().TokenLiteral});
+  }
+  advance(); // Consume the } token
+
+  return std::make_unique<MethodsStatement>(methods_token, std::move(mtds_name),
+                                            std::move(functions));
 }
 
 // Parsing instance expression

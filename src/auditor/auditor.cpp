@@ -16,8 +16,13 @@ void Auditor::auditVariableDeclaration(Node *node) {
   if (!sym)
     return;
 
-  if (!sym->storage().isHeap)
-    return;
+  // Carry out a mandatory bunker for captured_fields if the declaration is
+  // stack and isnt in global scope
+  if (!activeBlocks.empty()) {
+    auto currentBlock = activeBlocks.back();
+    if (!sym->storage().isHeap)
+      bunkerCapturedFields(currentBlock, sym->type().type.resolvedName);
+  }
 
   simulateDeclFree(declaration, sym->codegen().ID);
 }

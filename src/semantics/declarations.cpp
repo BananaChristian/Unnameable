@@ -477,21 +477,28 @@ void Semantics::walkVariableDeclaration(Node *node) {
     }
   }
 
+  // Baton creation
   LifeTime *targetBaton = nullptr;
+  std::unique_ptr<LifeTime> lifetime = nullptr;
 
-  // Creating the baton
-  if (declInfo->storage().isHeap) {
-    auto lifetime = createLifeTimeTracker(declaration, initializer, declInfo);
+  if (declInfo->storage().isHeap)
+    lifetime = createLifeTimeTracker(declaration, initializer, declInfo);
+
+  if (lifetime)
     declInfo->codegen().ID = lifetime->ID;
-    // This triggers when u say heap Player p or whatever the compiler captures
-    // batons of the inner fields
-    if (isCompOrRecordType(declInfo->type().type)) {
-      logInternal("Triggered field capture");
-      executeFieldsCapture(declInfo->type().type.resolvedName, lifetime);
-    }
 
+  if (isCompOrRecordType(declInfo->type().type)) {
+    logInternal("Triggered field capture");
+    executeFieldsCapture(declaration, declInfo->type().type.resolvedName,
+                         lifetime);
+  }
+
+  if (lifetime)
     responsibilityTable[declaration] = std::move(lifetime);
-  } else if (initializer) {
+
+  // If the declaration itself isnt heap we still need to transfer baton in its
+  // initializer
+  if (!declInfo->storage().isHeap && initializer) {
     auto idents = digIdentifiers(initializer);
     for (const auto &identifier : idents) {
       auto identSym = getSymbolFromMeta(identifier);

@@ -1356,7 +1356,7 @@ Semantics::getMemberSym(const std::string &childName, Node *instance) {
     reportDevBug("Failed to get instance '" + instName + "' symbol Info",
                  instance);
 
-  // It need the type name as I am gonna query the custom types table
+  // Need the type name to query the custom types table
   std::string lookupName = getBaseTypeName(instanceSym->type().type);
 
   auto typeIt = payload.customTypesTable.find(lookupName);
@@ -1368,40 +1368,26 @@ Semantics::getMemberSym(const std::string &childName, Node *instance) {
     return nullptr;
 
   auto memberInfo = memberIt->second;
+  
+  // For regular data members, return the original symbol from the declaration node
+  if (!memberInfo->isFunction) {
+    return getSymbolFromMeta(memberInfo->node);
+  }
+  
+  // For methods/functions, we may still need to create a symbol
+  // (or you can store and return the original from elsewhere)
   auto memSym = std::make_shared<SymbolInfo>();
-  // The first batch is common symbol stuff
-  memSym->type().type = memberInfo->type;
-  memSym->storage().isConstant = memberInfo->isConstant;
-  memSym->storage().isMutable = memberInfo->isMutable;
-  memSym->storage().isInitialized = memberInfo->isInitialised;
-  memSym->storage().isVolatile = memberInfo->isVolatile;
-  memSym->storage().isRestrict = memberInfo->isRestrict;
-  memSym->type().isNullable = memberInfo->isNullable;
-  memSym->type().isPointer = memberInfo->isPointer;
-  memSym->type().isRef = memberInfo->isRef;
-  memSym->type().isArray = memberInfo->type.isArray();
-  memSym->type().memberIndex = memberInfo->memberIndex;
-  memSym->storage().isHeap = memberInfo->isHeap;
-  memSym->codegen().ID = memberInfo->ID;
-  if (memberInfo->isFnPtr) {
-    memSym->type().isFnPtr = memberInfo->isFnPtr;
-    memSym->isFunction = true;
-  }
-
-  // This batch is specific for methods it has some overrides
-  if (memberInfo->isFunction) {
-    memSym->type().type = memberInfo->returnType;
-    memSym->type().isFnPtr = memberInfo->isFnPtr;
-    memSym->isFunction = memberInfo->isFunction;
-    memSym->func().isDeclaration = memberInfo->isDeclared;
-    memSym->type().isPointer = memberInfo->returnType.isPointer();
-    memSym->type().isRef = memberInfo->returnType.isRef();
-    memSym->type().isArray = memberInfo->returnType.isArray();
-    memSym->codegen().ID = memberInfo->retFamilyID;
-    memSym->storage().isHeap = memberInfo->isReturnHeap;
-    memSym->storage().allocType = memberInfo->allocType;
-  }
-
+  memSym->type().type = memberInfo->returnType;
+  memSym->type().isFnPtr = memberInfo->isFnPtr;
+  memSym->isFunction = memberInfo->isFunction;
+  memSym->func().isDeclaration = memberInfo->isDeclared;
+  memSym->type().isPointer = memberInfo->returnType.isPointer();
+  memSym->type().isRef = memberInfo->returnType.isRef();
+  memSym->type().isArray = memberInfo->returnType.isArray();
+  memSym->codegen().ID = memberInfo->retFamilyID;
+  memSym->storage().isHeap = memberInfo->isReturnHeap;
+  memSym->storage().allocType = memberInfo->allocType;
+  
   return memSym;
 }
 

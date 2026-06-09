@@ -57,8 +57,6 @@ void IRGenerator::finalizeTypeBody(const std::string &typeName,
         return;  // Body already defined, skip to avoid LLVM double-set panic
     }
 
-    // Separate Data (Layout) from Methods
-    // Use a map for layout to force correct index ordering (0, 1, 2...)
     std::map<int, std::pair<std::string, llvm::Type *>> layoutMap;
     std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>> methods;
 

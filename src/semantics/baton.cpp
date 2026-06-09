@@ -428,26 +428,39 @@ std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
 }
 
 void Semantics::executeFieldsCapture(
-    const std::string &type_name, const std::unique_ptr<LifeTime> &type_baton) {
-  if (!type_baton) {
-    logInternal("[FIELD CAPTURE] Cannot carryout capture as there is no "
-                "liftetime to perform it");
-    return;
-  }
-
+    Node *context, const std::string &type_name,
+    const std::unique_ptr<LifeTime> &type_baton) {
   auto it = payload.customTypesTable.find(type_name);
   if (it == payload.customTypesTable.end()) {
-    logSemanticErrors(ErrorCode::UndefinedVariable, nullptr);
+    logSemanticErrors(ErrorCode::UndefinedVariable, context);
     return;
   }
 
   const std::shared_ptr<CustomTypeInfo> typeInfo = it->second;
 
   for (const auto &captureID : typeInfo->captureCandidates) {
+    // This is in a case of stack declaration it allows the system to register
+    // the fields to the block they are born in
+    if (!type_baton) {
+      logInternal(
+          "[FIELD CAPTURE] Cannot carryout normal capture as there is no "
+          "liftetime to perform it");
+      logInternal(
+          "[FIELD CAPTURE] Falling back to registering field capture for "
+          "bunkering");
+      Node *currentBlock = getCurrentBlock();
+      if (currentBlock) {
+        bornInBlock[currentBlock].push_back(captureID);
+      } else {
+        logSemanticErrors(ErrorCode::GlobalHeapVar, context);
+      }
+      return;
+    }
+
     Node *capture_holder = queryForLifeTimeBaton(captureID);
     if (!capture_holder)
       reportDevBug("Could not find baton holder for family id: " + captureID,
-                   nullptr);
+                   context);
 
     auto it = responsibilityTable.find(capture_holder);
     if (it == responsibilityTable.end())

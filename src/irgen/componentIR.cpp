@@ -8,7 +8,7 @@ void IRGenerator::generateRecordStatement(Node *node) {
 
   auto sym = semantics.getSymbolFromMeta(recordStmt);
   if (!sym)
-    reportDevBug("Miising record symbol info", recordStmt->recordName.get());
+    reportDevBug("Mising record symbol info", recordStmt->recordName.get());
 
   std::string blockName = recordStmt->recordName->expression.TokenLiteral;
 

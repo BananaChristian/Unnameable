@@ -19,6 +19,19 @@ struct CycleGroup {
   bool hasForeigner = false;
 };
 
+// This represents a block's bunker
+struct Bunker {
+  std::unordered_map<Node *,
+                     std::vector<std::pair<std::unique_ptr<LifeTime>,
+                                           std::shared_ptr<SymbolInfo>>>>
+      foreignersToFree;
+  std::unordered_map<Node *,
+                     std::vector<std::pair<std::unique_ptr<LifeTime>,
+                                           std::shared_ptr<SymbolInfo>>>>
+      nativesToFree;
+  std::vector<DropInfo> drops;
+};
+
 class Auditor {
   Semantics &semantics;
   ErrorHandler &errorHandler;
@@ -30,14 +43,7 @@ public:
   void audit(Node *node);
   void runClassifier(Node *node);
   bool failed();
-  std::unordered_map<Node *,
-                     std::vector<std::pair<std::unique_ptr<LifeTime>,
-                                           std::shared_ptr<SymbolInfo>>>>
-      foreignersToFree;
-  std::unordered_map<Node *,
-                     std::vector<std::pair<std::unique_ptr<LifeTime>,
-                                           std::shared_ptr<SymbolInfo>>>>
-      nativesToFree;
+  Bunker bunker;
   std::unordered_map<Node *, std::unique_ptr<BlockInfo>> deferedFrees;
 
 private:
@@ -98,6 +104,7 @@ private:
                       const std::unique_ptr<BlockInfo> &blockInfo);
   void classifySymbol(Node *node, Node *block, BlockInfo *info);
   void filterBeforeClassifySym(Node *node, Node *block, BlockInfo *info);
+  void classifyUnusedFields(const std::shared_ptr<SymbolInfo> &declSym,Node *block,BlockInfo *info);
   Node *peelNode(Node *node);
   bool hasDisruptors(Node *block);
   bool shouldForeignBunkerBlock(Node *block);
@@ -128,8 +135,12 @@ private:
   void bunkerForeigners(Node *block);
   void bunkerCycles(Node *block);
   void bunkerPersists(Node *block);
+  std::vector<std::string>
+  sortCapturedIDs(const std::string &type_name,
+                  const std::unique_ptr<BlockInfo> &info);
   void bunkerNativeHeists(Node *block);
   void bunkerForeignHeists(Node *block);
+  void bunkerCapturedFields(Node *node, const std::string &type_name);
   std::vector<std::string> sortHeists(const std::unique_ptr<BlockInfo> &info,
                                       bool isForeign);
 
