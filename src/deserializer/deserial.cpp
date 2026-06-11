@@ -1,11 +1,13 @@
 #include "deserial.hpp"
 
 #include "defs.hpp"
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <istream>
 #include <stdexcept>
+#include <string>
 namespace fs = std::filesystem;
 
 Deserializer::Deserializer(ErrorHandler &handler, bool verbose)
@@ -109,60 +111,6 @@ SealTable Deserializer::readSealTable(std::istream &in) {
   return seal;
 }
 
-ComponentMember Deserializer::readComponentMember(std::istream &in) {
-  ComponentMember m;
-  m.memberName = readString(in, "compMember/name");
-  m.type = readResolvedType(in);
-  m.memberIndex = read_s32(in, "compMember/index");
-  m.isNullable = static_cast<bool>(read_u8(in, "compMember/nullable"));
-  m.isMutable = static_cast<bool>(read_u8(in, "compMember/mutable"));
-  m.isConstant = static_cast<bool>(read_u8(in, "compMember/constant"));
-  m.isRef = static_cast<bool>(read_u8(in, "compMember/ref"));
-  m.isPointer = static_cast<bool>(read_u8(in, "compMember/pointer"));
-  return m;
-}
-
-ComponentMethod Deserializer::readComponentMethod(std::istream &in) {
-  ComponentMethod m;
-  m.methodName = readString(in, "compMethod/name");
-  m.returnType = readResolvedType(in);
-  m.paramTypes = readParamTypes(in);
-  m.isFunction = static_cast<bool>(read_u8(in, "compMethod/isFunction"));
-  return m;
-}
-
-ComponentInit Deserializer::readComponentInit(std::istream &in) {
-  ComponentInit init;
-  init.returnType = readResolvedType(in);
-  init.type = readResolvedType(in);
-  uint32_t argCount = read_u32(in, "compInit/argCount");
-  init.initArgs.reserve(argCount);
-  for (uint32_t i = 0; i < argCount; ++i)
-    init.initArgs.push_back(readResolvedType(in));
-  return init;
-}
-
-ComponentTable Deserializer::readComponentTable(std::istream &in) {
-  ComponentTable comp;
-  comp.componentName = readString(in, "comp/name");
-
-  uint32_t memberCount = read_u32(in, "comp/memberCount");
-  comp.members.reserve(memberCount);
-  for (uint32_t i = 0; i < memberCount; ++i)
-    comp.members.push_back(readComponentMember(in));
-
-  uint32_t methodCount = read_u32(in, "comp/methodCount");
-  comp.methods.reserve(methodCount);
-  for (uint32_t i = 0; i < methodCount; ++i)
-    comp.methods.push_back(readComponentMethod(in));
-
-  comp.hasInit = static_cast<bool>(read_u8(in, "comp/hasInit"));
-  if (comp.hasInit)
-    comp.init = readComponentInit(in);
-
-  return comp;
-}
-
 RecordMember Deserializer::readRecordMember(std::istream &in) {
   RecordMember m;
   m.memberName = readString(in, "recMember/name");
@@ -184,6 +132,16 @@ RecordTable Deserializer::readRecordTable(std::istream &in) {
   for (uint32_t i = 0; i < memberCount; ++i)
     record.members.push_back(readRecordMember(in));
   return record;
+}
+
+RecordMethodsTable Deserializer::readMethodsTable(std::istream &in) {
+  RecordMethodsTable methods;
+  methods.recordName = readString(in, "methods/name");
+  uint32_t methodsCount = read_u32(in, "methods/methodCount");
+  methods.methods.reserve(methodsCount);
+  for (uint32_t i = 0; i < methodsCount; ++i)
+    methods.methods.push_back(readFunctionEntry(in));
+  return methods;
 }
 
 EnumMembers Deserializer::readEnumMember(std::istream &in) {
@@ -245,13 +203,6 @@ VariableEntry Deserializer::readVariableEntry(std::istream &in) {
 Generics Deserializer::readGenerics(std::istream &in) {
   Generics gen;
   gen.aliasName = readString(in, "generics/alias");
-
-  // Components
-  uint32_t compCount = read_u32(in, "generics/compCount");
-  gen.components.reserve(compCount);
-  for (uint32_t i = 0; i < compCount; ++i)
-    gen.components.push_back(readComponentTable(in));
-
   // Records
   uint32_t recCount = read_u32(in, "generics/recCount");
   gen.records.reserve(recCount);
@@ -287,72 +238,71 @@ void Deserializer::readStubTable(std::istream &in) {
     switch (sectionTag) {
     case StubSection::SEALS: {
       uint32_t count = read_u32(in, "seals/count");
-      stub.seals.reserve(count);
+      module.exports.seals.reserve(count);
       for (uint32_t i = 0; i < count; ++i)
-        stub.seals.push_back(readSealTable(in));
+        module.exports.seals.push_back(readSealTable(in));
       logInternal("Read " + std::to_string(count) + " seal(s)");
-      break;
-    }
-
-    case StubSection::COMPONENTS: {
-      uint32_t count = read_u32(in, "components/count");
-      stub.components.reserve(count);
-      for (uint32_t i = 0; i < count; ++i)
-        stub.components.push_back(readComponentTable(in));
-      logInternal("Read " + std::to_string(count) + " component(s)");
       break;
     }
 
     case StubSection::RECORDS: {
       uint32_t count = read_u32(in, "records/count");
-      stub.records.reserve(count);
+      module.exports.records.reserve(count);
       for (uint32_t i = 0; i < count; ++i)
-        stub.records.push_back(readRecordTable(in));
+        module.exports.records.push_back(readRecordTable(in));
       logInternal("Read " + std::to_string(count) + " record(s)");
+      break;
+    }
+    case StubSection::METHODS: {
+      uint32_t count = read_u32(in, "methods/count");
+      module.exports.methods.reserve(count);
+      for (uint32_t i = 0; i < count; ++i)
+        module.exports.methods.push_back(readMethodsTable(in));
+      logInternal("Read " + std::to_string(count) + " method(s)");
       break;
     }
 
     case StubSection::ENUMS: {
       uint32_t count = read_u32(in, "enums/count");
-      stub.enums.reserve(count);
+      module.exports.enums.reserve(count);
       for (uint32_t i = 0; i < count; ++i)
-        stub.enums.push_back(readEnumTable(in));
+        module.exports.enums.push_back(readEnumTable(in));
       logInternal("Read " + std::to_string(count) + " enum(s)");
       break;
     }
 
     case StubSection::ALLOCATORS: {
       uint32_t count = read_u32(in, "allocators/count");
-      stub.allocators.reserve(count);
+      module.exports.allocators.reserve(count);
       for (uint32_t i = 0; i < count; ++i)
-        stub.allocators.push_back(readAllocator(in));
+        module.exports.allocators.push_back(readAllocator(in));
       logInternal("Read " + std::to_string(count) + " allocator(s)");
       break;
     }
 
     case StubSection::FUNCTIONS: {
       uint32_t count = read_u32(in, "functions/count");
-      stub.functions.reserve(count);
+      module.exports.functions.reserve(count);
       for (uint32_t i = 0; i < count; ++i)
-        stub.functions.push_back(readFunctionEntry(in));
+        module.exports.functions.push_back(readFunctionEntry(in));
       logInternal("Read " + std::to_string(count) + " function(s)");
       break;
     }
 
     case StubSection::VARIABLES: {
       uint32_t count = read_u32(in, "variables/count");
-      stub.variables.reserve(count);
+      module.exports.variables.reserve(count);
       for (uint32_t i = 0; i < count; ++i)
-        stub.variables.push_back(readVariableEntry(in));
+        module.exports.variables.push_back(readVariableEntry(in));
       logInternal("Read " + std::to_string(count) + " variable(s)");
       break;
     }
 
     case StubSection::GENERICS: {
       uint32_t count = read_u32(in, "generics/count");
-      stub.generics.reserve(count);
+      module.exports.generics.reserve(count);
       for (uint32_t i = 0; i < count; ++i)
-        stub.generics.push_back(readGenerics(in));
+        module.exports.generics.push_back(readGenerics(in));
       logInternal("Read " + std::to_string(count) +
                   " generic instantiation(s)");
       break;
@@ -366,21 +316,26 @@ void Deserializer::readStubTable(std::istream &in) {
   }
 }
 
+void Deserializer::readModule(std::istream &in) {
+  module.name = readString(in, "module/name");
+  readStubTable(in);
+}
+
 void Deserializer::processLoads(const std::vector<std::string> &stubPaths) {
   for (const auto &path : stubPaths) {
-    if (loadedStubs.count(path)) {
-      logInternal("Skipping already loaded stub: " + path);
+    if (loadedModules.count(path)) {
+      logInternal("Skipping already loaded module: " + path);
       continue;
     }
     if (!fs::exists(path)) {
-      logImportError("Stub not found: " + path, 0, 0);
+      logImportError("Module not found: " + path, 0, 0);
       continue;
     }
-    loadStub(path);
+    loadModule(path);
   }
 }
 
-void Deserializer::loadStub(const std::string &path) {
+void Deserializer::loadModule(const std::string &path) {
   logInternal("Loading stub: " + path);
   std::ifstream in(path, std::ios::binary);
   if (!in) {
@@ -388,13 +343,12 @@ void Deserializer::loadStub(const std::string &path) {
     return;
   }
   try {
-    readStubTable(in);
-    loadedStubs[path] = path;
-    // No recordLink here — the .o was already registered in resolveImportPath
-    logInternal("Stub loaded successfully: " + path);
+    readModule(in);
+    loadedModules[path] = path;
+    logInternal("Module loaded successfully: " + path);
   } catch (const std::exception &e) {
     logImportError(
-        std::string("Failed to read stub '") + path + "': " + e.what(), 0, 0);
+        std::string("Failed to read module '") + path + "': " + e.what(), 0, 0);
   }
 }
 

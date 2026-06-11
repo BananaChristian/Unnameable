@@ -11,17 +11,17 @@ class Deserializer {
 public:
   Deserializer(ErrorHandler &handler, bool isVerbose);
 
-  void processLoads(const std::vector<std::string> &stubPaths);
+  void processLoads(const std::vector<std::string> &modulePaths);
   void setBuildDirectory(const std::string &dir) { buildDirectory = dir; }
   std::string buildDirectory;
 
   bool failed();
 
   // Fully deserialized stub data,semantics converts this into live symbols
-  StubTable stub;
+  Module module;
 
-  // Tracks already,loaded stubs to avoid double-loading (path -> path)
-  std::unordered_map<std::string, std::string> loadedStubs;
+  // Tracks already,loaded modules to avoid double-loading (path -> path)
+  std::unordered_map<std::string, std::string> loadedModules;
 
 private:
   ErrorHandler &errorHandler;
@@ -31,7 +31,7 @@ private:
   static constexpr uint32_t STUB_MAGIC = 0x53545542; // "STUB"
   static constexpr uint16_t STUB_VERSION = 1;
 
-  void loadStub(const std::string &resolved);
+  void loadModule(const std::string &resolved);
 
   // Binary read primitives
   void readOrFail(std::istream &in, void *dst, size_t size,
@@ -53,13 +53,9 @@ private:
   SealFunction readSealFunction(std::istream &in);
   SealTable readSealTable(std::istream &in);
 
-  ComponentMember readComponentMember(std::istream &in);
-  ComponentMethod readComponentMethod(std::istream &in);
-  ComponentInit readComponentInit(std::istream &in);
-  ComponentTable readComponentTable(std::istream &in);
-
   RecordMember readRecordMember(std::istream &in);
   RecordTable readRecordTable(std::istream &in);
+  RecordMethodsTable readMethodsTable(std::istream &in);
 
   EnumMembers readEnumMember(std::istream &in);
   EnumTable readEnumTable(std::istream &in);
@@ -72,8 +68,8 @@ private:
 
   Generics readGenerics(std::istream &in);
 
-  //  Top-level stub reader
   void readStubTable(std::istream &in);
+  void readModule(std::istream &in);
 
   //  Logging
   void reportDevBug(const std::string &message);

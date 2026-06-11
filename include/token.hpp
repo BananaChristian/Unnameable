@@ -78,12 +78,9 @@ enum class TokenType {
   PACKED,
   ALIGN,
 
-  COMPONENT, // component key word for classes
   SELF,      // self keyword for a component instance
   RECORD,    // record keyword token for record blocks
-  INJECT,    // inject keyword that injects the record fields directly into the
              // component
-  INIT,      // constructor keyword
   METHODS,   // methods keyword
 
   GENERIC, // Generic block keyword
@@ -91,7 +88,6 @@ enum class TokenType {
   AS,
   ALIAS,
 
-  NEW,    // new keyword for a new instance of a component
   CONST,  // constant keyword
   MUT,    // mutable keyword
   REF,    // reference keyword

@@ -264,45 +264,12 @@ struct CodegenInfo {
 
 struct MemberInfo {
   std::string memberName;
-  ResolvedType type;
-  ResolvedType parentType; // Parent type (meaningful for enum members)
-  ResolvedType returnType; // Return type  (meaningful for function members)
-  bool isReturnHeap;       // If the value being returned is heap
-  std::string allocType;
-  std::string retFamilyID;
-  std::vector<std::pair<ResolvedType, std::string>> paramTypes;
-
-  bool isNullable = false;
-  bool isMutable = false;
-  bool isConstant = false;
-  bool isHeap = false;
-  bool isInitialised = false;
-  bool isVolatile = false;
-  bool isRestrict = false;
-  bool isExportable = false;
-  bool isNaked = false;
-  bool isInterrupt = false;
-
-  // Indirection
-  bool isRef = false;
-  bool isPointer = false;
-  bool isFnPtr = false;
-
-  // Function / method flags
-  bool isFunction = false;
-  bool isDeclared = false;
-  bool isDefined = false;
-
-  // Enum member
-  int64_t constantValue = 0;
-  std::string ID;
-
-  int memberIndex = -1;
-  Node *node = nullptr;
-  Node *typeNode = nullptr;
-
-  llvm::Value *llvmValue = nullptr;
-  llvm::Type *llvmType = nullptr;
+  ResolvedType parentType;
+  int64_t constantValue;
+  bool isFunction;    // Is it a function
+  bool isDeclaration; // Is it a variable declaration
+  std::shared_ptr<SymbolInfo> symbolInfo;
+  Node *node;
 };
 
 // CustomTypeInfo
@@ -477,7 +444,7 @@ struct AllocatorHandle {
 // Stub generation structs
 enum class StubSection : uint8_t {
   SEALS,
-  COMPONENTS,
+  METHODS,
   RECORDS,
   ENUMS,
   ALLOCATORS,
@@ -495,41 +462,6 @@ struct SealFunction {
 struct SealTable {
   std::string sealName;
   std::vector<SealFunction> sealFns;
-};
-
-// Struct that will hold  component members such as int x or whatever
-struct ComponentMember {
-  std::string memberName;
-  ResolvedType type;       // Member type like int or whatever
-  int memberIndex = -1;    // Will be used by reader's IRGen so lemme keep it
-  bool isNullable = false; // Is the member nullable
-  bool isMutable = false;
-  bool isConstant = false;
-  bool isRef = false;
-  bool isPointer = false;
-};
-
-// Struct that will hold a component method
-struct ComponentMethod {
-  std::string methodName;
-  ResolvedType returnType;
-  std::vector<std::pair<ResolvedType, std::string>> paramTypes;
-  bool isFunction = false;
-};
-
-struct ComponentInit {
-  std::vector<ResolvedType> initArgs;
-  ResolvedType returnType;
-  ResolvedType type;
-};
-
-struct ComponentTable {
-  std::string componentName;
-  std::vector<ComponentMember> members;
-  std::vector<ComponentMethod> methods;
-  bool hasInit = false;
-  ComponentInit init; // Every component only has one init so only one field
-                      // here but its optional
 };
 
 struct RecordMember {
@@ -580,6 +512,12 @@ struct FunctionEntry {
   bool isDeclaration;
 };
 
+// This is the entire methods block
+struct RecordMethodsTable {
+  std::string recordName;
+  std::vector<FunctionEntry> methods;
+};
+
 struct VariableEntry {
   std::string var_name;
   ResolvedType declaredType;
@@ -591,17 +529,21 @@ struct VariableEntry {
 struct Generics {
   std::string aliasName;
   std::vector<RecordTable> records;
-  std::vector<ComponentTable> components;
   std::vector<FunctionEntry> functions;
 };
 
 struct StubTable {
   std::vector<SealTable> seals;
-  std::vector<ComponentTable> components;
   std::vector<RecordTable> records;
+  std::vector<RecordMethodsTable> methods;
   std::vector<EnumTable> enums;
   std::vector<Allocator> allocators;
   std::vector<FunctionEntry> functions;
   std::vector<VariableEntry> variables;
   std::vector<Generics> generics;
+};
+
+struct Module {
+  std::string name;
+  StubTable exports;
 };

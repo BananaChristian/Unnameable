@@ -85,7 +85,7 @@ private:
   void auditSwitchStatement(Node *node);
   void auditASMStatement(Node *node);
   void auditSealStatement(Node *node);
-  void auditComponentStatement(Node *node);
+  void auditMethodsStatement(Node *node);
 
   void auditWhileStatement(Node *node);
   void auditForStatement(Node *node);

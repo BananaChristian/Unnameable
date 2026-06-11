@@ -2,299 +2,224 @@
 
 #include <string>
 
+#include "defs.hpp"
 #include "irgen.hpp"
 #include "map"
 
 void IRGenerator::declareImportedSeals() {
-    for (const auto &sealPair : semantics.payload.sealTable) {
-        const std::string &sealName = sealPair.first;
-        for (const auto &fnPair : sealPair.second) {
-            const std::string &callName = fnPair.first;  // e.g. "add"
-            auto fnSym = fnPair.second;
+  for (const auto &modPair : semantics.payload.modules) {
+    auto mod = modPair.second;
+    for (const auto &sealPair : mod.seals) {
+      const std::string &sealName = sealPair.first;
+      for (const auto &fnPair : sealPair.second) {
+        const std::string &callName = fnPair.first; // e.g. "add"
+        auto fnSym = fnPair.second;
 
-            // Create the MANGLED name
-            std::string mangledName = sealName + "_" + callName;  // e.g. "Test_add"
+        // Create the MANGLED name
+        std::string mangledName = sealName + "_" + callName; // e.g. "Test_add"
 
-            llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
-            if (fnSym->isExportable) linkage = llvm::Function::ExternalLinkage;
+        llvm::Function::LinkageTypes linkage = llvm::Function::InternalLinkage;
+        if (fnSym->isExportable)
+          linkage = llvm::Function::ExternalLinkage;
 
-            // Convert ResolvedType and ParamTypes to LLVM Types
-            llvm::Type *llvmReturnType = getLLVMType(fnSym->func().returnType);
-            std::vector<llvm::Type *> llvmParamTypes;
+        // Convert ResolvedType and ParamTypes to LLVM Types
+        llvm::Type *llvmReturnType = getLLVMType(fnSym->func().returnType);
+        std::vector<llvm::Type *> llvmParamTypes;
 
-            for (const auto &param : fnSym->func().paramTypes) {
-                llvmParamTypes.push_back(getLLVMType(param.first));
-            }
+        for (const auto &param : fnSym->func().paramTypes) {
+          llvmParamTypes.push_back(getLLVMType(param.first));
+        }
 
-            // Create the function type
-            llvm::FunctionType *fnType = llvm::FunctionType::get(llvmReturnType, llvmParamTypes,
-                                                                 false  // Not variadic
+        // Create the function type
+        llvm::FunctionType *fnType =
+            llvm::FunctionType::get(llvmReturnType, llvmParamTypes,
+                                    false // Not variadic
             );
 
-            // This is a declaration, not a definition, so the body is implicitly
-            // external
-            llvm::Function::Create(fnType, linkage, mangledName, module.get());
-        }
+        // This is a declaration, not a definition, so the body is implicitly
+        // external
+        llvm::Function::Create(fnType, linkage, mangledName, module.get());
+      }
     }
+  }
 }
 
-void IRGenerator::finalizeTypeBody(const std::string &typeName,
-                                   const std::shared_ptr<CustomTypeInfo> &typeInfo,
-                                   std::string category) {
-    logInternal("Finalizing " + category + ": " + typeName);
+void IRGenerator::finalizeTypeBody(
+    const std::string &typeName,
+    const std::shared_ptr<CustomTypeInfo> &typeInfo, std::string category) {
+  logInternal("Finalizing " + category + ": " + typeName);
 
-    // Locate the Opaque Stub
-    auto typeIt = llvmCustomTypes.find(typeName);
-    if (typeIt == llvmCustomTypes.end()) {
-        errorHandler.addHint("Type '" + typeName + "' missing from llvmCustomTypes.")
-            .addHint("Ensure Phase 1 (declareCustomTypes) ran for this module.");
-        reportDevBug("Internal IRGen Error: Type stub not found", nullptr);
-        return;
+  // Locate the Opaque Stub
+  auto typeIt = llvmCustomTypes.find(typeName);
+  if (typeIt == llvmCustomTypes.end()) {
+    errorHandler
+        .addHint("Type '" + typeName + "' missing from llvmCustomTypes.")
+        .addHint("Ensure Phase 1 (declareCustomTypes) ran for this module.");
+    reportDevBug("Internal IRGen Error: Type stub not found", nullptr);
+    return;
+  }
+
+  auto *structTy = llvm::cast<llvm::StructType>(typeIt->second);
+  if (!structTy->isOpaque()) {
+    return; // Body already defined, skip to avoid LLVM double-set panic
+  }
+
+  std::map<int, std::pair<std::string, llvm::Type *>> layoutMap;
+  std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>> methods;
+
+  for (const auto &[mName, mInfo] : typeInfo->members) {
+    if (mInfo->isFunction) {
+      methods.push_back({mName, mInfo});
+      continue;
+    }
+    auto mSym = mInfo->symbolInfo;
+
+    llvm::Type *ty = getLLVMType(mSym->type().type);
+    if (!ty) {
+      errorHandler.addHint("Failed to resolve type for member: " + mName)
+          .addHint("Check if custom type '" + mSym->type().type.resolvedName +
+                   "' is fully declared.");
+      reportDevBug("Type Resolution Failure", nullptr);
     }
 
-    auto *structTy = llvm::cast<llvm::StructType>(typeIt->second);
-    if (!structTy->isOpaque()) {
-        return;  // Body already defined, skip to avoid LLVM double-set panic
-    }
+    layoutMap[mSym->type().memberIndex] = std::make_pair(mName, ty);
+  }
 
-    std::map<int, std::pair<std::string, llvm::Type *>> layoutMap;
-    std::vector<std::pair<std::string, std::shared_ptr<MemberInfo>>> methods;
+  // Flatten the Map into a Dense Field Vector
+  std::vector<llvm::Type *> fieldTypes;
+  for (auto const &[index, pair] : layoutMap) {
+    fieldTypes.push_back(pair.second);
+  }
 
-    for (const auto &[mName, mInfo] : typeInfo->members) {
-        if (mInfo->isFunction) {
-            methods.push_back({mName, mInfo});
-            continue;
-        }
+  // Commit Body to LLVM
+  structTy->setBody(fieldTypes, false);
+  logInternal("Committed body for " + typeName);
 
-        llvm::Type *ty = getLLVMType(mInfo->type);
-        if (!ty) {
-            errorHandler.addHint("Failed to resolve type for member: " + mName)
-                .addHint("Check if custom type '" + mInfo->type.resolvedName +
-                         "' is fully declared.");
-            reportDevBug("Type Resolution Failure", nullptr);
-        }
-
-        layoutMap[mInfo->memberIndex] = std::make_pair(mName, ty);
-    }
-
-    // Flatten the Map into a Dense Field Vector
-    std::vector<llvm::Type *> fieldTypes;
-    for (auto const &[index, pair] : layoutMap) {
-        fieldTypes.push_back(pair.second);
-    }
-
-    // Commit Body to LLVM
-    structTy->setBody(fieldTypes, false);
-    logInternal("Committed body for " + typeName);
-
-    // Generate Method Declarations
-    for (const auto &methodPair : methods) {
-        declareImportedComponentMethods(methodPair.first, typeName, methodPair.second);
-    }
+  // Generate Method Declarations
+  // for (const auto &methodPair : methods) {
+  // declareImportedComponentMethods(methodPair.first, typeName,
+  // methodPair.second);
+  //}
 }
 
 void IRGenerator::declareImportedTypes() {
-    // Loop through Components
-    for (const auto &[name, typeInfo] : semantics.payload.ImportedComponentTable) {
-        finalizeTypeBody(name, typeInfo, "COMPONENT");
+  // Loop through Data Blocks
+  for (const auto &[name, modInfo] : semantics.payload.modules) {
+    for (const auto &[name, typeInfo] : modInfo.importedTypes) {
+      if (typeInfo->type.kind == DataType::ENUM)
+        continue;
+      finalizeTypeBody(name, typeInfo, "RECORD");
     }
-
-    // Loop through Data Blocks
-    for (const auto &[name, typeInfo] : semantics.payload.ImportedRecordTable) {
-        finalizeTypeBody(name, typeInfo, "RECORD");
-    }
+  }
 }
 
 void IRGenerator::declareCustomTypes() {
-    for (const auto &[name, info] : semantics.payload.customTypesTable) {
-        if (llvmCustomTypes.find(name) == llvmCustomTypes.end()) {
-            logInternal("[+] Creating opaque '" + name + "'");
-            llvmCustomTypes[name] = llvm::StructType::create(context, name);
-        } else {
-            logInternal("[.] Already exists '" + name + "'");
-        }
+  for (const auto &[name, info] : semantics.payload.customTypesTable) {
+    if (llvmCustomTypes.find(name) == llvmCustomTypes.end()) {
+      logInternal("[+] Creating opaque '" + name + "'");
+      llvmCustomTypes[name] = llvm::StructType::create(context, name);
+    } else {
+      logInternal("[.] Already exists '" + name + "'");
     }
-}
-
-void IRGenerator::declareImportedComponentMethods(const std::string &funcName,
-                                                  const std::string &typeName,
-                                                  const std::shared_ptr<MemberInfo> &memberInfo) {
-    logInternal("Importing method '" + funcName + "'");
-
-    // Name Mangling
-    std::string methodName = typeName + "_" + funcName;
-    logInternal("Mangled name '" + methodName + "'");
-
-    // The 'self' Pointer (This pointer)
-    auto typeIt = llvmCustomTypes.find(typeName);
-    if (typeIt == llvmCustomTypes.end()) {
-        reportDevBug("Could not find base type '" + typeName + "' for method declaration", nullptr);
-    }
-
-    llvm::Type *thisPtrType = typeIt->second->getPointerTo();
-    std::vector<llvm::Type *> paramTypes = {thisPtrType};
-    logInternal("Added 'self' paramter as pointer to '" + typeName + "'");
-
-    // User Parameters
-    auto params = memberInfo->paramTypes;
-    for (size_t i = 0; i < params.size(); ++i) {
-        llvm::Type *pTy = getLLVMType(params[i].first);
-        if (!pTy) {
-            logInternal("Failed to resolve type for param " + std::to_string(i) + " (" +
-                        params[i].second + ")");
-            continue;
-        }
-        paramTypes.push_back(pTy);
-    }
-
-    // Return Type Investigation
-    ResolvedType retType = memberInfo->returnType;
-
-    llvm::Type *llvmRetTy = getLLVMType(retType);
-
-    // Function Creation
-    llvm::FunctionType *fnType = llvm::FunctionType::get(llvmRetTy, paramTypes, false);
-
-    // Check if function already exists in module to avoid symbol collisions
-    if (module->getFunction(methodName)) {
-        logInternal("Function '" + methodName + "' already declared in module skipping creation");
-        return;
-    }
-
-    llvm::Function *declaredfn =
-        llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, methodName, module.get());
-
-    // Name the 'self' parameter in the IR
-    if (declaredfn->arg_size() > 0) {
-        auto argIt = declaredfn->arg_begin();
-        argIt->setName(typeName + ".self");
-        logInternal("Name arg(0) as: " + typeName + ".self");
-    }
-}
-
-void IRGenerator::declareImportedInit(const std::string &typeName) {
-    auto it = semantics.payload.importedInits.find(typeName);
-    if (it == semantics.payload.importedInits.end()) {
-        return;  // There is no init so dont bother
-    }
-
-    auto initSym = it->second;
-    std::string initName = typeName + "_init";
-
-    if (module->getFunction(initName)) return;  // It was already declared so dont bother
-
-    auto structTy = llvmCustomTypes[typeName];
-    std::vector<llvm::Type *> paramTypes = {structTy->getPointerTo()};
-    for (const auto &argType : initSym->func().initArgs) {
-        paramTypes.push_back(getLLVMType(argType));
-    }
-
-    llvm::FunctionType *fnType =
-        llvm::FunctionType::get(llvm::Type::getVoidTy(context), paramTypes, false);
-
-    // Create the External Declaration
-    llvm::Function *initFn =
-        llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, initName, module.get());
-
-    // Label that first param
-    if (initFn->arg_size() > 0) {
-        initFn->arg_begin()->setName(typeName + ".self");
-    }
-
-    logInternal("Declared imported init '" + initName + "'");
+  }
 }
 
 void IRGenerator::declareImportedFunctions() {
-    for (const auto& funcPair : semantics.payload.ImportedFunctionsTable) {
-        const auto& funcName = funcPair.first;
-        auto funcSym = funcPair.second;
-        
-        FunctionCoercion coercion;
-        
-        // Coerce parameters
-        for (const auto& param : funcSym->func().paramTypes) {
-            llvm::Type* originalTy = getLLVMType(param.first);
-            coercion.originalParamTypes.push_back(originalTy);
-            
-            llvm::Type* coercedTy = originalTy;
-            CoercionInfo paramInfo;
-            paramInfo.isMemory = false;
-            paramInfo.coercedType = originalTy;
-            
-            if (auto* structTy = llvm::dyn_cast<llvm::StructType>(originalTy)) {
-                paramInfo = classifyStruct(structTy);
-                if (paramInfo.isMemory) {
-                    // Pass large structs by pointer with 'byval'
-                    coercedTy = structTy->getPointerTo();
-                    paramInfo.coercedType = coercedTy;
-                } else if (paramInfo.coercedType) {
-                    coercedTy = paramInfo.coercedType;
-                }
-            }
-            
-            coercion.coercedParamTypes.push_back(coercedTy);
-            coercion.paramCoercion.push_back(paramInfo);
+  for (const auto &modPair : semantics.payload.modules) {
+    auto mod = modPair.second;
+    for (const auto &[name, symInfo] : mod.importedSymbols) {
+      if (!symInfo->isFunction)
+        continue;
+
+      const auto &funcName = name;
+
+      FunctionCoercion coercion;
+
+      // Coerce parameters
+      for (const auto &param : symInfo->func().paramTypes) {
+        llvm::Type *originalTy = getLLVMType(param.first);
+        coercion.originalParamTypes.push_back(originalTy);
+
+        llvm::Type *coercedTy = originalTy;
+        CoercionInfo paramInfo;
+        paramInfo.isMemory = false;
+        paramInfo.coercedType = originalTy;
+
+        if (auto *structTy = llvm::dyn_cast<llvm::StructType>(originalTy)) {
+          paramInfo = classifyStruct(structTy);
+          if (paramInfo.isMemory) {
+            // Pass large structs by pointer with 'byval'
+            coercedTy = structTy->getPointerTo();
+            paramInfo.coercedType = coercedTy;
+          } else if (paramInfo.coercedType) {
+            coercedTy = paramInfo.coercedType;
+          }
         }
-        
-        // Coerce return type
-        llvm::Type* retType = getLLVMType(funcSym->func().returnType);
-        coercion.returnCoercion.isMemory = false;
-        coercion.returnCoercion.coercedType = retType;
-        
-        if (auto* structTy = llvm::dyn_cast<llvm::StructType>(retType)) {
-            coercion.returnCoercion = classifyStruct(structTy);
-            if (coercion.returnCoercion.isMemory) {
-                // Return large structs by reference add hidden sret parameter
-                // This requires modifying the function type to add a pointer parameter
-                // For now, just use integer coercion
-                retType = coercion.returnCoercion.coercedType;
-                if (!retType) retType = llvm::Type::getVoidTy(context);
-            } else if (coercion.returnCoercion.coercedType) {
-                retType = coercion.returnCoercion.coercedType;
-            }
+
+        coercion.coercedParamTypes.push_back(coercedTy);
+        coercion.paramCoercion.push_back(paramInfo);
+      }
+
+      // Coerce return type
+      llvm::Type *retType = getLLVMType(symInfo->func().returnType);
+      coercion.returnCoercion.isMemory = false;
+      coercion.returnCoercion.coercedType = retType;
+
+      if (auto *structTy = llvm::dyn_cast<llvm::StructType>(retType)) {
+        coercion.returnCoercion = classifyStruct(structTy);
+        if (coercion.returnCoercion.isMemory) {
+          // Return large structs by reference add hidden sret parameter
+          // This requires modifying the function type to add a pointer
+          // parameter For now, just use integer coercion
+          retType = coercion.returnCoercion.coercedType;
+          if (!retType)
+            retType = llvm::Type::getVoidTy(context);
+        } else if (coercion.returnCoercion.coercedType) {
+          retType = coercion.returnCoercion.coercedType;
         }
-        
-        // Create function type with coerced parameters
-        llvm::FunctionType* fnType = llvm::FunctionType::get(retType, coercion.coercedParamTypes, false);
-        llvm::Function* fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, funcName, module.get());
-        
-        // Add 'byval' attribute for large struct parameters
-        for (size_t i = 0; i < coercion.paramCoercion.size(); i++) {
-            if (coercion.paramCoercion[i].isMemory) {
-                fn->addParamAttr(i, llvm::Attribute::ByVal);
-            }
+      }
+
+      // Create function type with coerced parameters
+      llvm::FunctionType *fnType =
+          llvm::FunctionType::get(retType, coercion.coercedParamTypes, false);
+      llvm::Function *fn = llvm::Function::Create(
+          fnType, llvm::Function::ExternalLinkage, funcName, module.get());
+
+      // Add 'byval' attribute for large struct parameters
+      for (size_t i = 0; i < coercion.paramCoercion.size(); i++) {
+        if (coercion.paramCoercion[i].isMemory) {
+          fn->addParamAttr(i, llvm::Attribute::ByVal);
         }
-        
-        functionCoercionMap[fn] = coercion;
+      }
+
+      functionCoercionMap[fn] = coercion;
     }
+  }
 }
 
-void IRGenerator::declareImportedVariables(){
-    for(const auto &varPair:semantics.payload.ImportedVariablesTable){
-        const auto &varName=varPair.first;
-        auto varSym=varPair.second;
+void IRGenerator::declareImportedVariables() {
+  for (const auto &modPair : semantics.payload.modules) {
+    auto mod = modPair.second;
+    for (const auto &[varName, varSym] : mod.importedSymbols) {
+      llvm::Type *varType = getLLVMType(varSym->type().type);
+      if (!varType)
+        reportDevBug("Failed to get LLVM type for variable '" + varName + "'",
+                     nullptr);
 
-        llvm::Type *varType=getLLVMType(varSym->type().type);
-        if(!varType)
-            reportDevBug("Failed to get LLVM type for variable '"+varName+"'",nullptr);
+      if (module->getGlobalVariable(varName)) {
+        logInternal("Variable '" + varName +
+                    "' was already declared, skipping...");
+        continue;
+      }
 
-        if(module->getGlobalVariable(varName)){
-            logInternal("Variable '"+varName+"' was already declared, skipping...");
-            continue;
-        }
+      // Create external global declaration
+      llvm::GlobalVariable *globalVar = new llvm::GlobalVariable(
+          *module, varType, varSym->storage().isConstant,
+          llvm::GlobalValue::ExternalLinkage, nullptr, varName);
 
-        //Create external global declaration
-        llvm::GlobalVariable *globalVar= new llvm::GlobalVariable(
-                *module,
-                varType,
-                varSym->storage().isConstant,
-                llvm::GlobalValue::ExternalLinkage,
-                nullptr,
-                varName
-                );
-
-        varSym->codegen().llvmValue=globalVar;
-        varSym->codegen().llvmType=varType; 
-        logInternal("Declared imported variable: "+varName);
+      varSym->codegen().llvmValue = globalVar;
+      varSym->codegen().llvmType = varType;
+      logInternal("Declared imported variable: " + varName);
     }
+  }
 }

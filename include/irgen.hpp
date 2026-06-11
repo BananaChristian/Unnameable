@@ -237,7 +237,7 @@ private:
   void declareImportedVariables();
   void declareCustomTypes();
   void registerAllocators();
-  void declareImportedInit(const std::string &typeName);
+  //void declareImportedInit(const std::string &typeName);
   char *const_unnitoa(__int128 val, char *buf);
   char decodeCharLiteral(const std::string &literal);
   uint32_t decodeUTF8ToCodePoint(const std::string &literal);
@@ -254,9 +254,9 @@ private:
   void finalizeTypeBody(const std::string &typeName,
                         const std::shared_ptr<CustomTypeInfo> &typeInfo,
                         std::string category);
-  void declareImportedComponentMethods(
-      const std::string &funcName, const std::string &typeName,
-      const std::shared_ptr<MemberInfo> &memberInfo);
+  //void declareImportedComponentMethods(
+     // const std::string &funcName, const std::string &typeName,
+     // const std::shared_ptr<MemberInfo> &memberInfo);
   llvm::Value *coerceToBoolean(llvm::Value *val, Node *expr);
   llvm::GlobalVariable *
   createGlobalArrayConstant(llvm::Constant *constantArray);

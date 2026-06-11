@@ -6,7 +6,7 @@ void Semantics::walkGenericStatement(Node *node) {
   if (!genericStmt)
     return;
 
-  std::string blockName = genericStmt->block_name->expression.TokenLiteral;
+  std::string blockName = extractIdentifierName(genericStmt->block_name.get());
 
   auto existing = resolveSymbolInfo(blockName);
   if (existing)
@@ -28,8 +28,8 @@ void Semantics::walkGenericStatement(Node *node) {
   for (const auto &stmt : blockStmt->statements) {
     auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get());
     auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get());
-    auto componentStmt = dynamic_cast<ComponentStatement *>(stmt.get());
-    if (!fnStmt && !recordStmt && !componentStmt) {
+    auto methodsStmt = dynamic_cast<MethodsStatement *>(stmt.get());
+    if (!fnStmt && !recordStmt && !methodsStmt) {
       logSemanticErrors(ErrorCode::InvalidStmtInGenerics, stmt.get());
     }
   }
@@ -119,8 +119,8 @@ void Semantics::walkInstantiateStatement(Node *node) {
     if (auto recordStmt = dynamic_cast<RecordStatement *>(stmt.get()))
       recordStmt->isExportable = isExportable;
 
-    if (auto componentStmt = dynamic_cast<ComponentStatement *>(stmt.get()))
-      componentStmt->isExportable = isExportable;
+    if (auto metStmt = dynamic_cast<MethodsStatement *>(stmt.get()))
+      metStmt->isExportable = isExportable;
   }
 
   logInternal("Analyzing cloned sub tree ...");
@@ -202,20 +202,9 @@ void Semantics::substituteTypes(
       substituteTypes(field.get(), subMap);
 
   // Component Statement
-  if (auto compStmt = dynamic_cast<ComponentStatement *>(node)) {
-    for (const auto &field : compStmt->fields)
-      substituteTypes(field.get(), subMap);
-
-    for (const auto &method : compStmt->methods)
+  if (auto metStmt = dynamic_cast<MethodsStatement *>(node)) {
+    for (const auto &method : metStmt->functions)
       substituteTypes(method.get(), subMap);
-
-    if (compStmt->initConstructor.has_value()) {
-      auto initConstructor = dynamic_cast<InitStatement *>(
-          compStmt->initConstructor.value().get());
-      for (const auto &param : initConstructor->constructor_args)
-        substituteTypes(param.get(), subMap);
-      substituteTypes(initConstructor->block.get(), subMap);
-    }
   }
 }
 
@@ -260,6 +249,6 @@ void Semantics::mangleGenericName(Node *node, std::string aliasName) {
   if (auto recordStmt = dynamic_cast<RecordStatement *>(node))
     mangleGenericName(recordStmt->recordName.get(), aliasName);
 
-  if (auto compStmt = dynamic_cast<ComponentStatement *>(node))
-    mangleGenericName(compStmt->component_name.get(), aliasName);
+  if (auto metStmt = dynamic_cast<MethodsStatement *>(node))
+    mangleGenericName(metStmt->method_identifier.get(), aliasName);
 }

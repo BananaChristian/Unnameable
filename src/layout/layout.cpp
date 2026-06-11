@@ -7,6 +7,7 @@
 #include <string>
 
 #include "ast.hpp"
+#include "defs.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
 
@@ -66,8 +67,8 @@ void Layout::registerComponentCalculatorFns() {
       &Layout::calculateFunctionExpression;
   calculatorFnsMap[typeid(BlockExpression)] = &Layout::calculateBlockExpression;
   calculatorFnsMap[typeid(RecordStatement)] = &Layout::calculateRecordStatement;
-  calculatorFnsMap[typeid(ComponentStatement)] =
-      &Layout::calculateComponentStatement;
+  calculatorFnsMap[typeid(MethodsStatement)] =
+      &Layout::calculateMethodsStatement;
   calculatorFnsMap[typeid(InstantiateStatement)] =
       &Layout::calculateInstantiateStatement;
   calculatorFnsMap[typeid(SealStatement)] = &Layout::calculateSealStatement;
@@ -307,23 +308,21 @@ void Layout::calculateRecordStatement(Node *node) {
   auto recordName = recordStmt->recordName->expression.TokenLiteral;
 
   auto recordSym = semantics.getSymbolFromMeta(recordStmt);
-  if (!recordSym) {
+  if (!recordSym)
     reportDevBug("Could not find record '" + recordName + "' symbol info");
-    return;
-  }
 
   std::vector<llvm::Type *> fieldTypes;
 
   for (const auto &[key, value] : recordSym->members) {
     llvm::Type *fieldType;
 
-    auto memberSym = semantics.getSymbolFromMeta(value->node);
+    auto memberSym = value->symbolInfo;
     if (memberSym && memberSym->storage().isHeap) {
       // Heap field store a POINTER to the type
-      llvm::Type *baseType = getLLVMType(value->type);
+      llvm::Type *baseType = getLLVMType(memberSym->type().type);
       fieldType = baseType->getPointerTo(); // ptr to i32, ptr to struct, etc.
     } else {
-      fieldType = getLLVMType(value->type);
+      fieldType = getLLVMType(memberSym->type().type);
     }
 
     fieldTypes.push_back(fieldType);
@@ -335,47 +334,13 @@ void Layout::calculateRecordStatement(Node *node) {
   typeMap[recordName] = structTy;
 }
 
-void Layout::calculateComponentStatement(Node *node) {
-  auto compStmt = dynamic_cast<ComponentStatement *>(node);
-  if (!compStmt)
+void Layout::calculateMethodsStatement(Node *node) {
+  auto metStmt = dynamic_cast<MethodsStatement *>(node);
+  if (!metStmt)
     return;
 
-  auto compName = compStmt->component_name->expression.TokenLiteral;
-
-  auto compMeta = semantics.metaData.find(compStmt);
-  if (compMeta == semantics.metaData.end()) {
-    reportDevBug("Could not find component metaData for component'" + compName +
-                 "'");
-    return;
-  }
-
-  auto compSym = compMeta->second;
-  if (!compSym) {
-    reportDevBug("Could not find component symbolInfo '" + compName + "'");
-    return;
-  }
-
-  // Creating a component sketch
-  std::vector<llvm::Type *> fieldTypes;
-
-  for (const auto &[key, value] : compSym->members) {
-    // Each member has a ResolvedType, get its LLVM type
-    llvm::Type *fieldType = getLLVMType(value->type);
-    fieldTypes.push_back(fieldType);
-  }
-
-  // Creating an empty struct type for data field types
-  auto *structTy = llvm::cast<llvm::StructType>(typeMap[compName]);
-  if (!structTy->isOpaque())
-    return; // already defined
-
-  structTy->setBody(fieldTypes, false);
-
-  // Calculating for the private methods
-  for (const auto &method : compStmt->methods) {
-    logInternal("Inside private method calculation");
-    calculatorDriver(method.get());
-  }
+  for (const auto &methods : metStmt->functions)
+    calculatorDriver(methods.get());
 }
 
 void Layout::calculateSealStatement(Node *node) {
@@ -533,44 +498,32 @@ void Layout::declareAllCustomTypes() {
 
 void Layout::registerImportedTypes() {
   logInternal("Registering component type");
-  for (const auto &compTypesPair : semantics.payload.ImportedComponentTable) {
-    const auto &[compName, typeInfo] = compTypesPair;
-    const auto &members = typeInfo->members;
-    std::vector<llvm::Type *> fieldTypes;
-
-    for (const auto &memberPair : members) {
-      const auto &[memberName, memInfo] = memberPair;
-      if (memInfo->isFunction)
+  for (const auto &modPair : semantics.payload.modules) {
+    auto mod = modPair.second;
+    for (const auto &recPair : mod.importedTypes) {
+      const auto &[recordName, typeInfo] = recPair;
+      if (typeInfo->type.kind != DataType::RECORD)
         continue;
 
-      llvm::Type *fieldType = getLLVMType(memInfo->type);
-      fieldTypes.push_back(fieldType);
+      const auto &members = typeInfo->members;
+
+      std::vector<llvm::Type *> fieldTypes;
+
+      for (const auto &memberPair : members) {
+        const auto &[memberName, memInfo] = memberPair;
+        auto memSym = memInfo->symbolInfo;
+        if (!memSym)
+          reportDevBug("Failed to get member symbol info");
+        llvm::Type *fieldType = getLLVMType(memSym->type().type);
+        fieldTypes.push_back(fieldType);
+      }
+
+      auto *structTy = llvm::cast<llvm::StructType>(typeMap[recordName]);
+      if (!structTy->isOpaque())
+        return; // already defined
+
+      structTy->setBody(fieldTypes, false);
     }
-
-    auto *structTy = llvm::cast<llvm::StructType>(typeMap[compName]);
-    if (!structTy->isOpaque())
-      return; // already defined
-
-    structTy->setBody(fieldTypes, false);
-  }
-
-  for (const auto &dataTypesPair : semantics.payload.ImportedRecordTable) {
-    const auto &[dataName, typeInfo] = dataTypesPair;
-    const auto &members = typeInfo->members;
-
-    std::vector<llvm::Type *> fieldTypes;
-
-    for (const auto &memberPair : members) {
-      const auto &[memberName, memInfo] = memberPair;
-      llvm::Type *fieldType = getLLVMType(memInfo->type);
-      fieldTypes.push_back(fieldType);
-    }
-
-    auto *structTy = llvm::cast<llvm::StructType>(typeMap[dataName]);
-    if (!structTy->isOpaque())
-      return; // already defined
-
-    structTy->setBody(fieldTypes, false);
   }
 }
 

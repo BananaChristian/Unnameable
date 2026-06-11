@@ -151,32 +151,6 @@ struct SelfExpression : Expression {
       : Expression(self), self_token(self), fields(std::move(fieldExpr)) {};
 };
 
-struct NewComponentExpression : Expression {
-  Token new_token;      // token for 'new'
-  Token component_name; // e.g. 'Player'
-  std::vector<std::unique_ptr<Expression>> arguments;
-
-  std::string toString() override {
-    std::ostringstream oss;
-    oss << "NewComponentExpression: new " << component_name.TokenLiteral << "(";
-    for (auto &arg : arguments) {
-      oss << (arg ? arg->toString() : "null") << ",";
-    }
-    oss << ")";
-    return oss.str();
-  }
-
-  NewComponentExpression *shallowClone() const override {
-    return new NewComponentExpression(new_token, component_name,
-                                      clonePtrVector(arguments));
-  }
-
-  NewComponentExpression(Token newTok, Token compName,
-                         std::vector<std::unique_ptr<Expression>> args)
-      : Expression(newTok), new_token(newTok), component_name(compName),
-        arguments(std::move(args)) {}
-};
-
 // Null literal
 struct NullLiteral : Expression {
   Token null_token;
@@ -1096,25 +1070,6 @@ struct SealStatement : Statement {
         sealName(std::move(name)), block(std::move(blk)) {}
 };
 
-// Inject statement struct
-struct InjectStatement : Statement {
-  Token inject_token;
-  Token kind_token; // "record"
-  std::unique_ptr<Expression> expr;
-
-  std::string toString() override {
-    std::ostringstream oss;
-    oss << "Inject statement: " << kind_token.TokenLiteral
-        << (expr ? expr->toString() : "expr");
-    return oss.str();
-  }
-
-  InjectStatement(Token injectTok, Token kindTok,
-                  std::unique_ptr<Expression> name)
-      : Statement(injectTok), inject_token(injectTok), kind_token(kindTok),
-        expr(std::move(name)) {}
-};
-
 // Structure modifier
 struct StructureModifier : Expression {
   bool isPacked = false;
@@ -1206,12 +1161,16 @@ struct RecordStatement : Statement {
 };
 
 struct MethodsStatement : Statement {
+  bool isExportable;
   Token methods_token;
   std::unique_ptr<Expression> method_identifier;
   std::vector<std::unique_ptr<Statement>> functions;
 
   std::string toString() override {
     std::ostringstream oss;
+    if (isExportable)
+      oss << "exportable ";
+
     oss << "Methods Statement: "
         << (method_identifier ? method_identifier->toString() : "methods_name")
         << " {";
@@ -1223,111 +1182,16 @@ struct MethodsStatement : Statement {
   }
 
   MethodsStatement *shallowClone() const override {
-    return new MethodsStatement(methods_token, clonePtr(method_identifier),
+    return new MethodsStatement(isExportable, methods_token,
+                                clonePtr(method_identifier),
                                 clonePtrVector(functions));
   }
 
-  MethodsStatement(Token _mtds, std::unique_ptr<Expression> mtds_name,
+  MethodsStatement(bool isExportable, Token _mtds,
+                   std::unique_ptr<Expression> mtds_name,
                    std::vector<std::unique_ptr<Statement>> fns)
-      : Statement(_mtds), methods_token(_mtds),
+      : Statement(_mtds), isExportable(isExportable), methods_token(_mtds),
         method_identifier(std::move(mtds_name)), functions(std::move(fns)) {}
-};
-
-// Init statement
-struct InitStatement : Statement {
-  Token init_token;
-  std::vector<std::unique_ptr<Statement>> constructor_args;
-  std::unique_ptr<Statement> block;
-
-  std::string toString() override {
-    std::ostringstream oss;
-    oss << "InitStatement: " << init_token.TokenLiteral << "(";
-    for (auto &arguments : constructor_args) {
-
-      oss << (arguments ? arguments->toString() : "argument");
-    }
-    oss << ")" << (block ? block->toString() : "block");
-    return oss.str();
-  }
-
-  InitStatement *shallowClone() const override {
-    return new InitStatement(init_token, clonePtrVector(constructor_args),
-                             clonePtr(block));
-  }
-
-  InitStatement(Token init, std::vector<std::unique_ptr<Statement>> args,
-                std::unique_ptr<Statement> block_content)
-      : Statement(init), constructor_args(std::move(args)),
-        block(std::move(block_content)) {};
-};
-
-// Component statement struct
-struct ComponentStatement : Statement {
-  bool isExportable;
-  Token component_token;
-  std::unique_ptr<Expression> component_name;
-
-  std::vector<std::unique_ptr<Statement>> fields;
-  std::vector<std::unique_ptr<Statement>> methods;
-  std::vector<std::unique_ptr<Statement>> injectedFields;
-  std::optional<std::unique_ptr<Statement>> initConstructor;
-
-  ComponentStatement *shallowClone() const override {
-    return new ComponentStatement(
-        isExportable, component_token, clonePtr(component_name),
-        clonePtrVector(fields), clonePtrVector(methods),
-        clonePtrVector(injectedFields), clonePtr(initConstructor.value()));
-  };
-
-  ComponentStatement(bool exportable, Token component,
-                     std::unique_ptr<Expression> name,
-                     std::vector<std::unique_ptr<Statement>> private_fields,
-                     std::vector<std::unique_ptr<Statement>> private_methods,
-                     std::vector<std::unique_ptr<Statement>> injected_fields,
-                     std::optional<std::unique_ptr<Statement>> init)
-      : Statement(component), isExportable(exportable),
-        component_token(component), component_name(std::move(name)),
-        fields(std::move(private_fields)), methods(std::move(private_methods)),
-        injectedFields(std::move(injected_fields)),
-        initConstructor(std::move(init)) {}
-
-  std::string toString() override {
-    std::ostringstream oss;
-
-    if (isExportable)
-      oss << "export ";
-
-    oss << "component "
-        << (component_name ? component_name->toString() : "<null>");
-    oss << " {\n";
-
-    for (const auto &field : fields) {
-      if (!field) {
-        oss << "  <null field>\n";
-      } else {
-        oss << "  " << field->toString() << "\n";
-      }
-    }
-
-    for (const auto &method : methods) {
-      if (!method) {
-        oss << "  <null method>\n";
-      } else {
-        oss << "  " << method->toString() << "\n";
-      }
-    }
-
-    for (const auto &injected : injectedFields) {
-      oss << "  " << (injected ? injected->toString() : "<null>") << "\n";
-    }
-
-    if (initConstructor.has_value() && *initConstructor) {
-      oss << "  " << (*initConstructor)->toString() << "\n";
-    }
-
-    oss << "}";
-    return oss.str();
-  }
 };
 
 // Function pointer modifier
@@ -2138,17 +2002,20 @@ struct ArraySubscript : Expression {
 struct ImportStatement : Statement {
   Token import_key;
   std::unique_ptr<Expression> module_name;
+  std::unique_ptr<Expression> alias;
 
   std::string toString() override {
     std::ostringstream oss;
     oss << "Import Statement: " << import_key.TokenLiteral << " "
-        << (module_name ? module_name->toString() : "<example>");
+        << (module_name ? module_name->toString() : "<example>") << " as "
+        << (alias ? alias->toString() : "alias");
     return oss.str();
   }
 
-  ImportStatement(Token import, std::unique_ptr<Expression> module)
-      : Statement(import), import_key(import),
-        module_name(std::move(module)) {};
+  ImportStatement(Token import, std::unique_ptr<Expression> module,
+                  std::unique_ptr<Expression> alias)
+      : Statement(import), import_key(import), module_name(std::move(module)),
+        alias(std::move(alias)) {};
 };
 
 // Link statement

@@ -167,6 +167,8 @@ enum ErrorCode : int {
   PowerOfTwoAlign = 3146,
   InvalidHeapScope = 3147,
   IllegalStmtInRecord = 3148,
+  AlreadySetModule=3149,
+  AlreadyImportedModule=3150,
 
   ArraySizeMismatch = 4001,
 

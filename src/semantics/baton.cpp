@@ -274,15 +274,6 @@ std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
     return results;
   }
 
-  // NewComponentExpression (new Player(args))
-  if (auto *newComp = dynamic_cast<NewComponentExpression *>(node)) {
-    for (auto &arg : newComp->arguments) {
-      auto argIds = digIdentifiers(arg.get());
-      results.insert(results.end(), argIds.begin(), argIds.end());
-    }
-    return results;
-  }
-
   // CallExpression (func(x, y))
   if (auto *call = dynamic_cast<CallExpression *>(node)) {
     if (auto callIdent =

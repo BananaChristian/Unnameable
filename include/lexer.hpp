@@ -23,13 +23,9 @@ class Lexer {
 
       {"enum", TokenType::ENUM},
 
-      {"component", TokenType::COMPONENT},
       {"self", TokenType::SELF},
-      {"new", TokenType::NEW},
       {"record", TokenType::RECORD},
       {"methods", TokenType::METHODS},
-      {"inject", TokenType::INJECT},
-      {"init", TokenType::INIT},
 
       {"generic", TokenType::GENERIC},
       {"instantiate", TokenType::INSTANTIATE},

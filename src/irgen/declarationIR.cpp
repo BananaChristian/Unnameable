@@ -382,12 +382,17 @@ IRGenerator::generateGlobalRecordDefaults(const std::string &typeName) {
 
   std::sort(orderedMembers.begin(), orderedMembers.end(),
             [](const auto &a, const auto &b) {
-              return a.second->memberIndex < b.second->memberIndex;
+              return a.second->symbolInfo->type().memberIndex <
+                     b.second->symbolInfo->type().memberIndex;
             });
 
   std::vector<llvm::Constant *> fieldConstants(compInfo->members.size());
 
   for (const auto &[name, memInfo] : orderedMembers) {
+    auto memSym = memInfo->symbolInfo;
+    if (!memSym)
+      reportDevBug("Failed to get member symbol info", memInfo->node);
+
     auto varDecl = dynamic_cast<VariableDeclaration *>(memInfo->node);
     llvm::Constant *fieldInit = nullptr;
 
@@ -398,10 +403,11 @@ IRGenerator::generateGlobalRecordDefaults(const std::string &typeName) {
 
     if (!fieldInit) {
       // No default, zero initialize
-      fieldInit = llvm::Constant::getNullValue(getLLVMType(memInfo->type));
+      fieldInit =
+          llvm::Constant::getNullValue(getLLVMType(memSym->type().type));
     }
 
-    fieldConstants[memInfo->memberIndex] = fieldInit;
+    fieldConstants[memSym->type().memberIndex] = fieldInit;
   }
 
   return llvm::ConstantStruct::get(structTy, fieldConstants);

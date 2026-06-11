@@ -467,21 +467,11 @@ void Auditor::auditSealStatement(Node *node) {
   audit(sealStmt->block.get());
 }
 
-void Auditor::auditComponentStatement(Node *node) {
-  auto compStmt = dynamic_cast<ComponentStatement *>(node);
-  if (!compStmt)
+void Auditor::auditMethodsStatement(Node *node) {
+  auto metStmt = dynamic_cast<MethodsStatement *>(node);
+  if (!metStmt)
     return;
 
-  for (const auto &method : compStmt->methods) {
+  for (const auto &method : metStmt->functions)
     audit(method.get());
-  }
-
-  if (compStmt->initConstructor.has_value()) {
-    auto initStmt =
-        dynamic_cast<InitStatement *>(compStmt->initConstructor.value().get());
-    if (!initStmt)
-      return;
-
-    audit(initStmt->block.get());
-  }
 }

@@ -1483,7 +1483,17 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
   }
   case ErrorCode::ModMustBeGlobal: {
     message.code = ErrorCode::ModMustBeGlobal;
-    message.message = "module statement must be top level in global scope";
+    message.message =
+        "module or import statement must be top level in global scope";
+    return message;
+  }
+  case ErrorCode::AlreadySetModule: {
+    message.code = ErrorCode::AlreadySetModule;
+    message.message = "a module can only be declared once";
+    return message;
+  }case ErrorCode::AlreadyImportedModule:{
+    message.code=ErrorCode::AlreadyImportedModule;
+    message.message="can only import a specific module once";
     return message;
   }
   case ErrorCode::ImportMustBeGlobal: {

@@ -72,6 +72,15 @@ std::unique_ptr<Expression> Parser::parseBasicType() {
 
   std::unique_ptr<Expression> type = parseIdentifier(); // Consumes 'I32'
 
+  // For the outer type like saying std::string
+  if (currentToken().type == TokenType::SCOPE_OPERATOR) {
+    Token scope = currentToken();
+    advance(); // Consume
+    auto inner = parseIdentifier();
+    type = std::make_unique<InfixExpression>(std::move(type), scope,
+                                             std::move(inner));
+  }
+
   // Manually handle the '@' safely without letting Pratt hijack it or
   // overshoot!
   if (currentToken().type == TokenType::AT) {

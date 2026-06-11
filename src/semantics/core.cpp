@@ -21,7 +21,6 @@ Semantics::Semantics(Deserializer &deserial, ErrorHandler &handler,
   payload.symbolTable.push_back({});
   registerWalkerFunctions();
 
-  import();
   registerInbuiltAllocatorTypes(); // Register the inbuilt allocators(malloc for
                                    // now)
 }
@@ -335,11 +334,12 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
       // Get the member type
       const auto &memberInfo = memIt->second;
-      currentTypeName = memberInfo->type.resolvedName; // move deeper
+      currentTypeName =
+          memberInfo->symbolInfo->type().type.resolvedName; // move deeper
 
       // Last field: return its full type
       if (&field == &selfExpr->fields.back())
-        return memberInfo->type;
+        return memberInfo->symbolInfo->type().type;
     }
 
     return unknownType;
@@ -404,16 +404,6 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     } else {
       return assignSymbol->type().type;
     }
-  }
-
-  if (auto newExpr = dynamic_cast<NewComponentExpression *>(node)) {
-    auto componentName = newExpr->component_name.TokenLiteral;
-    auto componentIt = payload.customTypesTable.find(componentName);
-    if (componentIt == payload.customTypesTable.end()) {
-      logSemanticErrors(ErrorCode::UndefinedVariable, newExpr, {componentName});
-      return errorType;
-    }
-    return componentIt->second->type;
   }
 
   if (auto infixExpr = dynamic_cast<InfixExpression *>(node)) {
@@ -815,17 +805,21 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     }
 
   } else if (operatorType == TokenType::SCOPE_OPERATOR) {
-    if (parentType.kind != DataType::ENUM) {
-      logSemanticErrors(ErrorCode::InvalidBindOperator,
-                        infixExpr->left_operand.get());
-      return nullptr;
-    }
-
     // Look for the definition in the custom types table
     auto typeIt = payload.customTypesTable.find(lookUpName);
     if (typeIt == payload.customTypesTable.end()) {
+      auto importedResult = getImportedSymbolInfo(lookUpName, childName);
+      if (importedResult)
+        return importedResult;
+
       logSemanticErrors(ErrorCode::UndefinedVariable,
                         infixExpr->left_operand.get(), {lookUpName});
+      return nullptr;
+    }
+
+    if (parentType.kind != DataType::ENUM) {
+      logSemanticErrors(ErrorCode::InvalidBindOperator,
+                        infixExpr->left_operand.get());
       return nullptr;
     }
 
@@ -838,12 +832,9 @@ std::shared_ptr<SymbolInfo> Semantics::resultOfScopeOrDot(
     }
 
     auto memInfo = memIt->second;
-    auto scopeInfo = std::make_shared<SymbolInfo>();
+    std::shared_ptr<SymbolInfo> scopeInfo = nullptr;
+    scopeInfo = memInfo->symbolInfo;
     scopeInfo->type().type = memInfo->parentType; // This is the actual enum
-    scopeInfo->storage().isConstant = memInfo->isConstant;
-    scopeInfo->storage().isMutable = memInfo->isMutable;
-    scopeInfo->type().isNullable = memInfo->isNullable;
-    scopeInfo->type().memberIndex = memInfo->memberIndex;
 
     return scopeInfo;
   }
@@ -1366,28 +1357,7 @@ Semantics::getMemberSym(const std::string &childName, Node *instance) {
     return nullptr;
 
   auto memberInfo = memberIt->second;
-
-  // For regular data members, return the original symbol from the declaration
-  // node
-  if (!memberInfo->isFunction) {
-    return getSymbolFromMeta(memberInfo->node);
-  }
-
-  // For methods/functions, we may still need to create a symbol
-  // (or you can store and return the original from elsewhere)
-  auto memSym = std::make_shared<SymbolInfo>();
-  memSym->type().type = memberInfo->returnType;
-  memSym->type().isFnPtr = memberInfo->isFnPtr;
-  memSym->isFunction = memberInfo->isFunction;
-  memSym->func().isDeclaration = memberInfo->isDeclared;
-  memSym->type().isPointer = memberInfo->returnType.isPointer();
-  memSym->type().isRef = memberInfo->returnType.isRef();
-  memSym->type().isArray = memberInfo->returnType.isArray();
-  memSym->codegen().ID = memberInfo->retFamilyID;
-  memSym->storage().isHeap = memberInfo->isReturnHeap;
-  memSym->storage().allocType = memberInfo->allocType;
-
-  return memSym;
+  return memberInfo->symbolInfo;
 }
 
 bool Semantics::hasReturnPath(Node *node) {
@@ -1618,16 +1588,20 @@ bool Semantics::isMethodCallCompatible(const MemberInfo &memFuncInfo,
 
   auto funcName = callExpr->function_identifier->expression.TokenLiteral;
 
-  if (memFuncInfo.paramTypes.size() != callExpr->parameters.size()) {
-    logSemanticErrors(ErrorCode::ArgumentSizeMismatch, callExpr,
-                      {funcName, std::to_string(memFuncInfo.paramTypes.size()),
-                       std::to_string(callExpr->parameters.size())});
+  if (memFuncInfo.symbolInfo->func().paramTypes.size() !=
+      callExpr->parameters.size()) {
+    logSemanticErrors(
+        ErrorCode::ArgumentSizeMismatch, callExpr,
+        {funcName,
+         std::to_string(memFuncInfo.symbolInfo->func().paramTypes.size()),
+         std::to_string(callExpr->parameters.size())});
     return false;
   }
 
   for (size_t i = 0; i < callExpr->parameters.size(); ++i) {
     auto &param = callExpr->parameters[i];
-    const auto &expectedType = memFuncInfo.paramTypes[i].first;
+    const auto &expectedType =
+        memFuncInfo.symbolInfo->func().paramTypes[i].first;
     auto argInfo = metaData[param.get()];
     if (!argInfo)
       continue;
@@ -2261,12 +2235,45 @@ bool Semantics::isCompOrRecordType(const ResolvedType &type) {
 
 const std::shared_ptr<CustomTypeInfo> &
 Semantics::getCustomTypeInfo(const std::string &type_name) {
+  static std::shared_ptr<CustomTypeInfo> empty = nullptr;
+
   auto it = payload.customTypesTable.find(type_name);
   if (it == payload.customTypesTable.end()) {
-    static std::shared_ptr<CustomTypeInfo> empty = nullptr;
     return empty;
   }
   return it->second;
+}
+
+const std::shared_ptr<CustomTypeInfo> &
+Semantics::getImportedType(const std::string &module_name,
+                           const std::string &type_name) {
+  static std::shared_ptr<CustomTypeInfo> empty = nullptr;
+
+  auto modIt = payload.modules.find(module_name);
+  if (modIt != payload.modules.end()) {
+    auto space = modIt->second;
+    auto typeIt = space.importedTypes.find(type_name);
+    if (typeIt != space.importedTypes.end()) {
+      return typeIt->second;
+    }
+  }
+
+  return empty;
+}
+
+std::shared_ptr<SymbolInfo>
+Semantics::getImportedSymbolInfo(const std::string &module_name,
+                                 const std::string &symbolName) {
+  auto modIt = payload.modules.find(module_name);
+  if (modIt == payload.modules.end())
+    return nullptr;
+
+  auto module = modIt->second;
+  auto symIt = module.importedSymbols.find(symbolName);
+  if (symIt == module.importedSymbols.end())
+    return nullptr;
+
+  return symIt->second;
 }
 
 bool Semantics::customTypeHasHeapFields(const std::string &type_name) {
@@ -2275,7 +2282,7 @@ bool Semantics::customTypeHasHeapFields(const std::string &type_name) {
     return false;
 
   for (const auto &member : typeInfo->members) {
-    auto memSym = getSymbolFromMeta(member.second->node);
+    auto memSym = member.second->symbolInfo;
     if (!memSym)
       continue;
 
@@ -2420,18 +2427,13 @@ void Semantics::overwriteNodeName(Node *node, const std::string &mangled_name) {
 void Semantics::overrideSemantics(SemanticPayload &overrider) {
   payload.symbolTable = overrider.symbolTable;
   payload.customTypesTable = overrider.customTypesTable;
-  payload.ImportedComponentTable = overrider.ImportedComponentTable;
-  payload.ImportedRecordTable = overrider.ImportedRecordTable;
-  payload.ImportedFunctionsTable = overrider.ImportedFunctionsTable;
-  payload.ImportedVariablesTable = overrider.ImportedVariablesTable;
   payload.sealTable = overrider.sealTable;
-  payload.importedInits = overrider.importedInits;
   payload.loopContext = overrider.loopContext;
   payload.caseContext = overrider.caseContext;
   payload.currentTypeStack = overrider.currentTypeStack;
   payload.genericMap = overrider.genericMap;
   payload.allocatorMap = overrider.allocatorMap;
-  payload.componentInitArgs = overrider.componentInitArgs;
+  payload.modules = overrider.modules;
 }
 
 void Semantics::logSpecialErrors(ErrorCode code, int line, int col,

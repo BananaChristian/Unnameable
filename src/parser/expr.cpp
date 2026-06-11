@@ -190,30 +190,6 @@ std::unique_ptr<Expression> Parser::parseSelfExpression() {
   return std::make_unique<SelfExpression>(self_token, std::move(fields));
 }
 
-// Parse new component expression
-std::unique_ptr<Expression> Parser::parseNewComponentExpression() {
-  Token new_token = currentToken();
-  advance(); // Consuming the new keyword open
-  Token component_name = currentToken();
-  if (component_name.type != TokenType::IDENTIFIER) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"identifier", currentToken().TokenLiteral});
-    return nullptr;
-  }
-  advance(); // Consuming the component name
-  if (currentToken().type != TokenType::LPAREN) {
-    logError(ErrorCode::UnexpectedToken, currentToken(),
-             {"(", currentToken().TokenLiteral});
-    synchronize(SyncLevel::MID);
-    return nullptr;
-  }
-  advance(); // Consume the lparen
-  auto args = parseCallArguments();
-
-  return std::make_unique<NewComponentExpression>(new_token, component_name,
-                                                  std::move(args));
-}
-
 // Grouped expression parse function
 std::unique_ptr<Expression> Parser::parseGroupedExpression() {
   advance(); // Consume the ( token

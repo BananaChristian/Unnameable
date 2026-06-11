@@ -30,15 +30,15 @@ void IRGenerator::generateRecordStatement(Node *node) {
     for (auto &pair : sym->members) {
       std::shared_ptr<MemberInfo> info = pair.second;
       llvm::Type *ty;
-      auto memberSym = semantics.getSymbolFromMeta(info->node);
+      auto memberSym = info->symbolInfo;
       if (memberSym->storage().isHeap) {
-        llvm::Type *baseType = getLLVMType(info->type);
+        llvm::Type *baseType = getLLVMType(memberSym->type().type);
         ty = baseType->getPointerTo();
       } else {
-        ty = getLLVMType(info->type);
+        ty = getLLVMType(memberSym->type().type);
       }
 
-      memberTypes[info->memberIndex] = ty;
+      memberTypes[memberSym->type().memberIndex] = ty;
     }
     structTy->setBody(memberTypes, sym->storage().isPacked);
   }
@@ -82,7 +82,8 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
 
   std::sort(orderedMembers.begin(), orderedMembers.end(),
             [](const auto &a, const auto &b) {
-              return a.second->memberIndex < b.second->memberIndex;
+              return a.second->symbolInfo->type().memberIndex <
+                     b.second->symbolInfo->type().memberIndex;
             });
 
   if (isGlobalScope) {
@@ -90,6 +91,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
 
     for (const auto &[memberName, info] : orderedMembers) {
       llvm::Constant *constField = nullptr;
+      auto memberSym = info->symbolInfo;
 
       auto it = userInits.find(memberName);
       if (it != userInits.end()) {
@@ -112,7 +114,8 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
                          info->node);
           }
         } else {
-          constField = llvm::Constant::getNullValue(getLLVMType(info->type));
+          constField =
+              llvm::Constant::getNullValue(getLLVMType(memberSym->type().type));
         }
       }
       constantFields.push_back(constField);
@@ -133,7 +136,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
   initializeRecordHeapFields(instancePtr, structTy, instName, userInits);
 
   for (auto const &[memberName, info] : orderedMembers) {
-    auto memberSym = semantics.getSymbolFromMeta(info->node);
+    auto memberSym = info->symbolInfo;
 
     // Skip heap fields - already handled by initializeRecordHeapFields
     if (memberSym && memberSym->storage().isHeap)
@@ -141,7 +144,7 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
 
     // Handle normal fields...
     llvm::Value *memberPtr = funcBuilder.CreateStructGEP(
-        structTy, instancePtr, info->memberIndex, memberName);
+        structTy, instancePtr, memberSym->type().memberIndex, memberName);
     llvm::Value *finalVal = nullptr;
 
     auto it = userInits.find(memberName);
@@ -152,7 +155,8 @@ llvm::Value *IRGenerator::generateInstanceExpression(Node *node) {
       if (varDecl && varDecl->initializer) {
         finalVal = generateExpression(varDecl->initializer.get());
       } else {
-        finalVal = llvm::Constant::getNullValue(getLLVMType(info->type));
+        finalVal =
+            llvm::Constant::getNullValue(getLLVMType(memberSym->type().type));
       }
     }
 
@@ -182,9 +186,9 @@ void IRGenerator::generateMethodsStatement(Node *node) {
   metTracker.insideMethods = true;
   metTracker.typeName = metName;
   currentMethods = metStmt;
-  for (const auto &methods : metStmt->functions) {
+  for (const auto &methods : metStmt->functions)
     generateStatement(methods.get());
-  }
+
   metTracker.insideMethods = false;
   metTracker.typeName = "undefined";
 }
@@ -319,12 +323,13 @@ void IRGenerator::initializeRecordHeapFields(
   }
   std::sort(orderedMembers.begin(), orderedMembers.end(),
             [](const auto &a, const auto &b) {
-              return a.second->memberIndex < b.second->memberIndex;
+              return a.second->symbolInfo->type().memberIndex <
+                     b.second->symbolInfo->type().memberIndex;
             });
 
   for (const auto &[memberName, memberInfo] : orderedMembers) {
     // Get the member symbol to check if it's a heap field
-    auto memberSym = semantics.getSymbolFromMeta(memberInfo->node);
+    auto memberSym = memberInfo->symbolInfo;
     if (!memberSym)
       continue;
 
@@ -333,13 +338,13 @@ void IRGenerator::initializeRecordHeapFields(
       continue;
 
     // Get the base type (what the field stores)
-    llvm::Type *baseType = getLLVMType(memberInfo->type);
+    llvm::Type *baseType = getLLVMType(memberInfo->symbolInfo->type().type);
     size_t fieldSize = layout->getTypeAllocSize(baseType);
 
     // Create a temporary symbol info for allocation
     auto tempSym = std::make_shared<SymbolInfo>();
     tempSym->storage().allocType = memberSym->storage().allocType;
-    tempSym->type().type = memberInfo->type;
+    tempSym->type().type = memberInfo->symbolInfo->type().type;
     tempSym->codegen().componentSize = fieldSize;
 
     // Allocate heap storage for this field
@@ -348,7 +353,8 @@ void IRGenerator::initializeRecordHeapFields(
 
     // Store the heap pointer in the struct slot
     llvm::Value *fieldSlot = funcBuilder.CreateStructGEP(
-        structTy, structPtr, memberInfo->memberIndex, memberName + "_slot");
+        structTy, structPtr, memberInfo->symbolInfo->type().memberIndex,
+        memberName + "_slot");
     funcBuilder.CreateStore(heapPtr, fieldSlot);
 
     // Handle default value or user-provided value
@@ -357,15 +363,15 @@ void IRGenerator::initializeRecordHeapFields(
     // Check if user provided a value for this field
     auto userIt = userInits.find(memberName);
     if (userIt != userInits.end()) {
-      // User provided value - evaluate it
+      // User provided value evaluate it
       initValue = generateExpression(userIt->second->value.get());
     } else {
-      // No user value - check for default in declaration
+      // No user value check for default in declaration
       auto varDecl = dynamic_cast<VariableDeclaration *>(memberInfo->node);
       if (varDecl && varDecl->initializer) {
         initValue = generateExpression(varDecl->initializer.get());
       } else {
-        // No default - zero initialize
+        // No default zero initialize
         initValue = llvm::Constant::getNullValue(baseType);
       }
     }

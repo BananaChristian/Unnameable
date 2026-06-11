@@ -41,7 +41,7 @@ void Auditor::registerAuditorFunctions() {
   auditFnsMap[typeid(ForStatement)] = &Auditor::auditForStatement;
   auditFnsMap[typeid(ASMStatement)] = &Auditor::auditASMStatement;
   auditFnsMap[typeid(SealStatement)] = &Auditor::auditSealStatement;
-  auditFnsMap[typeid(ComponentStatement)] = &Auditor::auditComponentStatement;
+  auditFnsMap[typeid(MethodsStatement)] = &Auditor::auditMethodsStatement;
 }
 
 void Auditor::buildUsageMap(BlockExpression *block) {
@@ -147,6 +147,9 @@ void Auditor::classifyNode(Node *node) {
     auto blockStmt = dynamic_cast<BlockStatement *>(sealStmt->block.get());
     for (const auto &seals : blockStmt->statements)
       classifyNode(seals.get());
+  } else if (auto metStmt = dynamic_cast<MethodsStatement *>(node)) {
+    for (const auto &fn : metStmt->functions)
+      classifyNode(fn.get());
   } else {
     logInternal("[CLASSIFY-NODE] No classification pass for this node type");
   }
@@ -241,7 +244,7 @@ void Auditor::classifyUnusedFields(const std::shared_ptr<SymbolInfo> &declSym,
 
   // Iterate through ALL members of the record
   for (const auto &[memberName, memberInfo] : typeInfo->second->members) {
-    if (memberInfo->isHeap) {
+    if (memberInfo->symbolInfo->storage().isHeap) {
       // Here the aim is to see if this thing has a baton and if it does is it
       // inside the record if it is then it is unused
       auto fieldSym = semantics.getSymbolFromMeta(memberInfo->node);
@@ -1150,13 +1153,6 @@ bool Auditor::containsNode(Node *root, Node *target) {
     }
   }
 
-  if (auto *newComp = dynamic_cast<NewComponentExpression *>(root)) {
-    for (auto &arg : newComp->arguments) {
-      if (containsNode(arg.get(), target))
-        return true;
-    }
-  }
-
   if (auto *call = dynamic_cast<CallExpression *>(root)) {
     if (containsNode(call->function_identifier.get(), target))
       return true;
@@ -1178,6 +1174,13 @@ bool Auditor::containsNode(Node *root, Node *target) {
     }
     for (auto &field : instance->fields) {
       if (containsNode(field.get(), target))
+        return true;
+    }
+  }
+
+  if (auto *metStmt = dynamic_cast<MethodsStatement *>(root)) {
+    for (const auto &fns : metStmt->functions) {
+      if (containsNode(fns.get(), target))
         return true;
     }
   }
@@ -1394,27 +1397,6 @@ bool Auditor::containsNode(Node *root, Node *target) {
           dynamic_cast<FunctionDeclarationExpression *>(root)) {
     if (funcDeclExpr->funcDeclrStmt &&
         containsNode(funcDeclExpr->funcDeclrStmt.get(), target))
-      return true;
-  }
-
-  if (auto *comp = dynamic_cast<ComponentStatement *>(root)) {
-    for (auto &method : comp->methods) {
-      if (containsNode(method.get(), target))
-        return true;
-    }
-
-    if (comp->initConstructor.has_value() && comp->initConstructor.value()) {
-      if (containsNode(comp->initConstructor.value().get(), target))
-        return true;
-    }
-  }
-
-  if (auto *init = dynamic_cast<InitStatement *>(root)) {
-    for (auto &arg : init->constructor_args) {
-      if (containsNode(arg.get(), target))
-        return true;
-    }
-    if (init->block && containsNode(init->block.get(), target))
       return true;
   }
 

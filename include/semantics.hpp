@@ -16,23 +16,30 @@
 
 using LifeTimeTable = std::unordered_map<Node *, std::unique_ptr<LifeTime>>;
 
+struct Modulespace {
+  std::string originalName; // "math" (for the original import name)
+  std::string aliasName;    // for the user provided alias
+
+  // Module-specific tables
+  std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>
+      importedSymbols;
+  std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
+      importedTypes;
+  std::unordered_map<std::string, AllocatorHandle> allocators;
+  std::unordered_map<std::string, std::shared_ptr<GenericBluePrint>> generics;
+  std::unordered_map<
+      std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
+      seals;
+};
+
 struct SemanticPayload {
   std::vector<std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
       symbolTable;
   std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
       customTypesTable;
-  std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
-      ImportedComponentTable;
-  std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
-      ImportedRecordTable;
-  std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>
-      ImportedFunctionsTable;
-  std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>
-      ImportedVariablesTable;
   std::unordered_map<
       std::string, std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>>
       sealTable;
-  std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> importedInits;
   std::optional<std::shared_ptr<SymbolInfo>> currentFunction;
   std::vector<bool> loopContext;
   std::vector<bool> caseContext;
@@ -40,7 +47,7 @@ struct SemanticPayload {
 
   std::unordered_map<std::string, std::shared_ptr<GenericBluePrint>> genericMap;
   std::unordered_map<std::string, AllocatorHandle> allocatorMap;
-  std::unordered_map<std::string, std::vector<ResolvedType>> componentInitArgs;
+  std::unordered_map<std::string, Modulespace> modules;
 };
 
 class Semantics {
@@ -77,6 +84,10 @@ public:
       const std::vector<std::unique_ptr<Statement>> &statements);
   const std::shared_ptr<CustomTypeInfo> &
   getCustomTypeInfo(const std::string &type_name);
+  const std::shared_ptr<CustomTypeInfo> &
+  getImportedType(const std::string &module_name, const std::string &type_name);
+  std::shared_ptr<SymbolInfo> getImportedSymbolInfo(const std::string &module_name,
+                        const std::string &symName);
   bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>> &stmts);
   std::shared_ptr<SymbolInfo> getSealedFunctionSym(const std::string &funcName,
                                                    Node *instance);
@@ -129,9 +140,11 @@ private:
   bool verbose = false;
   bool freeStanding = false;
   bool inComptime = false;
+  bool moduleSet = false;
   bool globalAllocatorSet = false;
   std::string globalAllocatorName = "GPA"; // The default allocator is GPA
   std::vector<Node *> activeBlocks;
+  std::unordered_set<std::string> imports;
 
   uint64_t normalDeclCount = 0;
   uint64_t ptrDeclCount = 0;
@@ -172,8 +185,6 @@ private:
 
   // Walking the component functions declaration
   void walkRecordStatement(Node *node);
-  void walkComponentStatement(Node *node);
-  void walkNewComponentExpression(Node *node);
   void walkSelfExpression(Node *node);
   void walkEnumStatement(Node *node);
   void walkInstanceExpression(Node *node);
@@ -313,16 +324,15 @@ private:
   void giveGenericLiteralContext(Node *literal, const ResolvedType &contextType,
                                  const std::shared_ptr<SymbolInfo> &litSym);
 
-  void importSeals();
-  void importComponents();
-  void importComponentInits();
-  void importRecords();
-  void importEnums();
-  void importAllocators();
-  void importFunctions();
-  void importVariables();
-  void importGenerics();
-  void import();
+  void importSeals(Modulespace &space);
+  void importRecords(Modulespace &space);
+  void importMethods(Modulespace &space);
+  void importEnums(Modulespace &space);
+  void importAllocators(Modulespace &space);
+  void importFunctions(Modulespace &space);
+  void importVariables(Modulespace &space);
+  void importGenerics(Modulespace &space);
+  void importModule(Modulespace &space);
 
   void registerInbuiltAllocatorTypes();
   bool isGlobalScope();

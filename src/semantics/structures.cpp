@@ -6,35 +6,6 @@
 #include "semantics.hpp"
 #include "token.hpp"
 
-void Semantics::mapSymbolInfoToMemberInfo(
-    const std::shared_ptr<SymbolInfo> &sym,
-    std::shared_ptr<MemberInfo> &memInfo, int memberIndex) {
-  memInfo->type = sym->type().type;
-  memInfo->isMutable = sym->storage().isMutable;
-  memInfo->isConstant = sym->storage().isConstant;
-  memInfo->isInitialised = sym->storage().isInitialized;
-  memInfo->isPointer = sym->type().isPointer;
-  memInfo->isRef = sym->type().isRef;
-  memInfo->isNullable = sym->type().isNullable;
-  memInfo->isVolatile = sym->storage().isVolatile;
-  memInfo->isFnPtr = sym->type().isFnPtr;
-  memInfo->isHeap = sym->storage().isHeap;
-  memInfo->ID = sym->codegen().ID;
-  memInfo->allocType = sym->storage().allocType;
-  memInfo->isVolatile = sym->storage().isVolatile;
-  memInfo->memberIndex = memberIndex;
-
-  if (memInfo->isFunction) {
-    memInfo->paramTypes = sym->func().paramTypes;
-    memInfo->isReturnHeap = sym->storage().isHeap;
-    memInfo->retFamilyID = sym->codegen().ID;
-    memInfo->returnType = sym->func().returnType;
-    memInfo->isExportable = sym->isExportable;
-    memInfo->isDefined = true;
-    memInfo->isDeclared = true;
-  }
-}
-
 void Semantics::walkEnumStatement(Node *node) {
   auto enumStmt = dynamic_cast<EnumStatement *>(node);
   if (!enumStmt)
@@ -142,23 +113,17 @@ void Semantics::walkEnumStatement(Node *node) {
 
     // Store member info
     auto info = std::make_shared<MemberInfo>();
-    info->memberName = memberName;
-    info->type = underLyingType;
-    info->isConstant = true;
-    info->isInitialised = true;
-    info->isExportable = isExportable;
-    info->node = enumMember.get();
-    info->constantValue = static_cast<int64_t>(memberValue);
-    info->parentType = ResolvedType::makeBase(DataType::ENUM, enumStmtName);
-    members[memberName] = info;
-
-    // Add it to local scope
     auto memberInfo = std::make_shared<SymbolInfo>();
     memberInfo->type().type = underLyingType;
     memberInfo->storage().isConstant = true;
     memberInfo->storage().isInitialized = true;
     memberInfo->isExportable = isExportable;
+    info->memberName = memberName;
+    info->node = enumMember.get();
+    info->constantValue = static_cast<int64_t>(memberValue);
+    info->parentType = ResolvedType::makeBase(DataType::ENUM, enumStmtName);
     payload.symbolTable.back()[memberName] = memberInfo;
+    members[memberName] = info;
 
     currentValue = memberValue + 1;
   }
@@ -288,9 +253,11 @@ void Semantics::walkRecordStatement(Node *node) {
 
     // Build member info
     auto memInfo = std::make_shared<MemberInfo>();
+    // memInfo->typeNode = recordStmt;
     memInfo->memberName = fieldName;
-    mapSymbolInfoToMemberInfo(fieldSymbol, memInfo, currentMemberIndex);
-    memInfo->typeNode = recordStmt;
+    fieldSymbol->type().memberIndex = currentMemberIndex;
+    memInfo->symbolInfo = fieldSymbol;
+    memInfo->isDeclaration = true;
     memInfo->node = field.get();
     currentMemberIndex++;
 
@@ -347,7 +314,7 @@ void Semantics::walkInstanceExpression(Node *node) {
         continue;
       }
 
-      auto expectedFieldType = it->second->type;
+      auto expectedFieldType = it->second->symbolInfo->type().type;
 
       walker(fieldNode->value.get());
       auto litSym = getSymbolFromMeta(fieldNode->value.get());
@@ -390,6 +357,7 @@ void Semantics::walkMethodsStatement(Node *node) {
     insertErrorMetaData(metStmt);
     return;
   }
+  bool isExportable = metStmt->isExportable;
 
   auto metSym = std::make_shared<SymbolInfo>();
   metSym->type().type = typeInfo->type;
@@ -410,19 +378,19 @@ void Semantics::walkMethodsStatement(Node *node) {
       logSemanticErrors(ErrorCode::IllegalStmtInMethods, fnStmt);
       continue;
     }
+    funcExpr->isExportable = isExportable;
     walker(stmt.get());
     auto fnSym = getSymbolFromMeta(funcExpr);
     if (!fnSym)
       reportDevBug("Failed to get function symbol info", funcExpr);
 
+    auto fnName = extractIdentifierName(funcExpr);
     auto memInfo = std::make_shared<MemberInfo>();
     memInfo->isFunction = true;
-    // These are functions so I dont care about memberIndex
-    mapSymbolInfoToMemberInfo(fnSym, memInfo, -1);
-    auto fnName = extractIdentifierName(funcExpr->func_identifier.get());
     memInfo->node = funcExpr;
-    memInfo->typeNode = typeInfo->typeNode;
+    // memInfo->typeNode = typeInfo->typeNode;
     memInfo->memberName = fnName;
+    memInfo->symbolInfo = fnSym;
     typeInfo->members[fnName] = memInfo;
   }
 
@@ -460,7 +428,7 @@ ResolvedType *Semantics::resolveSelfChain(SelfExpression *selfExpr,
     }
 
     // Drill into this member's type for the next field
-    currentResolvedType = &memIt->second->type;
+    currentResolvedType = &memIt->second->symbolInfo->type().type;
 
     // If this member is a custom type, get its CustomTypeInfo for next
     // iteration
@@ -489,7 +457,7 @@ void Semantics::walkSelfExpression(Node *node) {
   auto selfExpr = dynamic_cast<SelfExpression *>(node);
   if (!selfExpr)
     return;
-  // Must be inside a component
+  // Must be inside a methods block
   if (payload.currentTypeStack.empty() ||
       payload.currentTypeStack.back().type.kind != DataType::RECORD) {
     logSemanticErrors(ErrorCode::SelfOnlyInComponent, selfExpr);
@@ -499,13 +467,11 @@ void Semantics::walkSelfExpression(Node *node) {
 
   const std::string &typeName = payload.currentTypeStack.back().typeName;
 
-  ResolvedType *finalType = resolveSelfChain(selfExpr, typeName);
-  if (!finalType)
-    return;
+  // ResolvedType *finalType = resolveSelfChain(selfExpr, typeName);
+  // if (!finalType)
+  // return;
 
-  auto info = std::make_shared<SymbolInfo>();
-  info->type().type = *finalType; // Copy resolved type
-  info->type().isNullable = finalType->isNull;
+  std::shared_ptr<SymbolInfo> info = nullptr;
 
   // Mutability etc only available if the last member is a custom member
   auto lastNode = selfExpr->fields.back().get();
@@ -516,10 +482,7 @@ void Semantics::walkSelfExpression(Node *node) {
       auto memIt = members.find(extractIdentifierName(lastNode));
       if (memIt != members.end()) {
         auto m = memIt->second;
-        info->storage().isMutable = m->isMutable;
-        info->storage().isConstant = m->isConstant;
-        info->storage().isInitialized = m->isInitialised;
-        info->type().memberIndex = m->memberIndex;
+        info = m->symbolInfo;
       }
     }
   }

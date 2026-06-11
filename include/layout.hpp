@@ -46,8 +46,8 @@ private:
   void calculateFunctionExpression(Node *node);
   void calculateBlockExpression(Node *node);
   void calculateRecordStatement(Node *node);
+  void calculateMethodsStatement(Node *node);
   void calculateSealStatement(Node *node);
-  void calculateComponentStatement(Node *node);
   void calculateInstantiateStatement(Node *node);
   void calculateAllocatorInterfaceSize(Node *node);
 

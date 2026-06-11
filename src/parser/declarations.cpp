@@ -103,8 +103,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
   std::unique_ptr<Statement> stmt;
   if (currentToken().type == TokenType::RECORD)
     stmt = parseRecordStatement();
-  else if (currentToken().type == TokenType::COMPONENT)
-    stmt = parseComponentStatement();
+  else if (currentToken().type == TokenType::METHODS)
+    stmt = parseMethodsStatement();
   else if (currentToken().type == TokenType::ASM)
     stmt = parseASMStatement();
   else if (currentToken().type == TokenType::FUNCTION)
@@ -137,8 +137,8 @@ std::unique_ptr<Statement> Parser::parseVariableModifier() {
     recordStmt->isVolatile = isVolatile;
     recordStmt->isExportable = isExportable;
     recordStmt->mutability = mutability;
-  } else if (auto compStmt = dynamic_cast<ComponentStatement *>(stmt.get())) {
-    compStmt->isExportable = isExportable;
+  } else if (auto metsStmt = dynamic_cast<MethodsStatement *>(stmt.get())) {
+    metsStmt->isExportable = isExportable;
   } else if (auto allocStmt = dynamic_cast<AllocatorStatement *>(stmt.get())) {
     allocStmt->isExportable = isExportable;
   } else if (auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get())) {

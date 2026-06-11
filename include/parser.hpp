@@ -162,15 +162,6 @@ private:
   // Parsing block statements
   std::unique_ptr<Statement> parseBlockStatement();
 
-  // Parsing component statements
-  std::unique_ptr<Statement> parseComponentStatement();
-
-  // Parsing constructor statement
-  std::unique_ptr<Statement> parseInitConstructorStatement();
-
-  // Parsing use statements
-  std::unique_ptr<Statement> parseInjectStatement();
-
   // Parsing structure modifier
   std::unique_ptr<Statement> parseStructureModifier();
   // Parsing record statements
@@ -214,9 +205,6 @@ private:
   // Postfix expression parsing function
   std::unique_ptr<Expression>
   parsePostfixExpression(std::unique_ptr<Expression> left);
-
-  // New component expression parse function declaration
-  std::unique_ptr<Expression> parseNewComponentExpression();
 
   // Instance expression parse function
   std::unique_ptr<Expression>

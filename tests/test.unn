@@ -1,20 +1,23 @@
-record Test{
+module test
+
+record Pos{
   heap i32 x
   heap i32 y
 }
 
-methods Test{
+
+export methods Pos{
   func add(): i32{
-    return 1
+    return 1+1
   }
 
   func sub():i32{
-    return 0
+    return 0+7
   }
 }
 
 export func main:i32{
-  Test test
-  test.x
+  Pos pos
+  pos.x
   return 0
 }

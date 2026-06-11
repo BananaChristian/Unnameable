@@ -1,3 +1,5 @@
+#include "defs.hpp"
+#include "errors.hpp"
 #include "semantics.hpp"
 
 void Semantics::walkModuleStatement(Node *node) {
@@ -5,10 +7,15 @@ void Semantics::walkModuleStatement(Node *node) {
   if (!modStmt)
     return;
 
+  if (moduleSet)
+    logSemanticErrors(ErrorCode::AlreadySetModule, modStmt);
+
   if (!isGlobalScope()) {
     logSemanticErrors(ErrorCode::ModMustBeGlobal, modStmt);
     return;
   }
+
+  moduleSet = true;
 }
 
 void Semantics::walkImportStatement(Node *node) {
@@ -20,23 +27,26 @@ void Semantics::walkImportStatement(Node *node) {
     logSemanticErrors(ErrorCode::ModMustBeGlobal, importStmt);
     return;
   }
-}
 
-/// Build a MemberInfo from a ComponentMember.
-static std::shared_ptr<MemberInfo>
-memberInfoFromComponentMember(const ComponentMember &m) {
-  auto info = std::make_shared<MemberInfo>();
-  info->memberName = m.memberName;
-  info->type = m.type;
-  info->memberIndex = m.memberIndex;
-  info->isNullable = m.isNullable;
-  info->isMutable = m.isMutable;
-  info->isConstant = m.isConstant;
-  info->isPointer = m.isPointer;
-  info->isRef = m.isRef;
-  info->isExportable = true;
-  info->isDeclared = true;
-  return info;
+  auto module_name = extractIdentifierName(importStmt->module_name.get());
+
+  auto it = imports.find(module_name);
+  if (it == imports.end())
+    imports.insert(module_name);
+  else {
+    logSemanticErrors(ErrorCode::AlreadyImportedModule, importStmt);
+    return;
+  }
+
+  auto aliasName = importStmt->alias
+                       ? extractIdentifierName(importStmt->alias.get())
+                       : module_name;
+
+  Modulespace module;
+  module.originalName = module_name;
+  module.aliasName = aliasName;
+
+  importModule(module);
 }
 
 /// Build a MemberInfo from a RecordMember.
@@ -44,28 +54,14 @@ static std::shared_ptr<MemberInfo>
 memberInfoFromRecordMember(const RecordMember &m) {
   auto info = std::make_shared<MemberInfo>();
   info->memberName = m.memberName;
-  info->type = m.type;
-  info->memberIndex = m.memberIndex;
-  info->isNullable = m.isNullable;
-  info->isMutable = m.isMutable;
-  info->isConstant = m.isConstant;
-  info->isPointer = m.isPointer;
-  info->isRef = m.isRef;
-  info->isExportable = true;
-  info->isDeclared = true;
-  return info;
-}
-
-/// Build a MemberInfo from a ComponentMethod.
-static std::shared_ptr<MemberInfo>
-memberInfoFromComponentMethod(const ComponentMethod &m) {
-  auto info = std::make_shared<MemberInfo>();
-  info->memberName = m.methodName;
-  info->returnType = m.returnType;
-  info->paramTypes = m.paramTypes;
-  info->isFunction = true;
-  info->isDeclared = true;
-  info->isExportable = true;
+  info->symbolInfo->type().type = m.type;
+  info->symbolInfo->type().memberIndex = m.memberIndex;
+  info->symbolInfo->type().isNullable = m.isNullable;
+  info->symbolInfo->storage().isMutable = m.isMutable;
+  info->symbolInfo->storage().isConstant = m.isConstant;
+  info->symbolInfo->type().isPointer = m.isPointer;
+  info->symbolInfo->type().isRef = m.isRef;
+  info->symbolInfo->isExportable = true;
   return info;
 }
 
@@ -94,27 +90,11 @@ symInfoFromVariableEntry(const VariableEntry &var) {
   return sym;
 }
 
-/// Build a SymbolInfo for an imported init constructor.
-static std::shared_ptr<SymbolInfo>
-symInfoFromComponentInit(const ComponentInit &init) {
-  auto sym = std::make_shared<SymbolInfo>();
-  sym->func().isDeclaration = true;
-  sym->func().isDefined = true;
-  sym->func().returnType = init.returnType;
-  sym->type().type = init.type;
-  for (const auto &arg : init.initArgs)
-    sym->func().initArgs.push_back(arg);
-  return sym;
-}
-
 static void registerTypeSymbol(
     const std::string &name, DataType kind,
     const std::unordered_map<std::string, std::shared_ptr<MemberInfo>> &members,
     std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
-        &customTypesTable,
-    std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
-        &phantomTable,
-    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &globalScope) {
+        &customTypesTable) {
   auto typeInfo = std::make_shared<CustomTypeInfo>();
   typeInfo->typeName = name;
   typeInfo->type = ResolvedType::makeBase(kind, name);
@@ -122,45 +102,37 @@ static void registerTypeSymbol(
   typeInfo->isExportable = true;
 
   customTypesTable[name] = typeInfo;
-  phantomTable[name] = typeInfo;
 
   auto sym = std::make_shared<SymbolInfo>();
   sym->isExportable = true;
   sym->members = members;
   sym->type().type = ResolvedType::makeBase(kind, name);
-  globalScope[name] = sym;
 }
 
 // Special to register imported functions from standalone and from generics
 static void registerFunctionSymbol(
     const FunctionEntry &funcEntry,
-    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &importTable,
-    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &globalScope) {
+    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &importTable) {
   auto funcInfo = std::make_shared<SymbolInfo>();
   funcInfo = symInfoFromFunctionEntry(funcEntry);
   // Register into the imported functions table
   importTable[funcEntry.funcName] = funcInfo;
-  // Register into global scope
-  globalScope[funcEntry.funcName] = funcInfo;
 }
 
 static void registerVariableSymbol(
     const VariableEntry &varEntry,
-    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &importTable,
-    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &globalScope) {
+    std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> &importTable) {
   auto varInfo = std::make_shared<SymbolInfo>();
   varInfo = symInfoFromVariableEntry(varEntry);
   // Register into imported vars table
   importTable[varEntry.var_name] = varInfo;
-  // Register into global scope
-  globalScope[varEntry.var_name] = varInfo;
 }
 
-void Semantics::importSeals() {
+void Semantics::importSeals(Modulespace &space) {
   logInternal("Importing seals: " +
-              std::to_string(deserializer.stub.seals.size()));
+              std::to_string(deserializer.module.exports.seals.size()));
 
-  for (const auto &seal : deserializer.stub.seals) {
+  for (const auto &seal : deserializer.module.exports.seals) {
     logInternal("Importing seal '" + seal.sealName + "'");
 
     std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> sealMap;
@@ -175,53 +147,20 @@ void Semantics::importSeals() {
       sealMap[fn.funcName] = symInfoFromFunctionEntry(fe);
     }
 
-    payload.sealTable[seal.sealName] = std::move(sealMap);
+    space.seals[seal.sealName] = std::move(sealMap);
 
     auto sealSym = std::make_shared<SymbolInfo>();
     sealSym->isExportable = true;
-    payload.symbolTable[0][seal.sealName] = sealSym;
 
     logInternal("Finished importing seal '" + seal.sealName + "'");
   }
 }
 
-void Semantics::importComponents() {
-  logInternal("Importing components: " +
-              std::to_string(deserializer.stub.components.size()));
-
-  for (const auto &comp : deserializer.stub.components) {
-    logInternal("Importing component '" + comp.componentName + "'");
-
-    std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
-
-    for (const auto &m : comp.members) {
-      logInternal("  member '" + m.memberName + "'");
-      members[m.memberName] = memberInfoFromComponentMember(m);
-    }
-    for (const auto &m : comp.methods) {
-      logInternal("  method '" + m.methodName + "'");
-      members[m.methodName] = memberInfoFromComponentMethod(m);
-    }
-
-    // Register into customTypesTable, ImportedComponentTable and symbolTable[0]
-    registerTypeSymbol(comp.componentName, DataType::COMPONENT, members,
-                       payload.customTypesTable, payload.ImportedComponentTable,
-                       payload.symbolTable[0]);
-
-    if (comp.hasInit) {
-      payload.importedInits[comp.componentName] = symInfoFromComponentInit(comp.init);
-      logInternal("  init registered for '" + comp.componentName + "'");
-    }
-
-    logInternal("Finished importing component '" + comp.componentName + "'");
-  }
-}
-
-void Semantics::importRecords() {
+void Semantics::importRecords(Modulespace &space) {
   logInternal("Importing records: " +
-              std::to_string(deserializer.stub.records.size()));
+              std::to_string(deserializer.module.exports.records.size()));
 
-  for (const auto &record : deserializer.stub.records) {
+  for (const auto &record : deserializer.module.exports.records) {
     logInternal("Importing record '" + record.recordName + "'");
 
     std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
@@ -233,17 +172,44 @@ void Semantics::importRecords() {
 
     // Register into customTypesTable, ImportedRecordTable and symbolTable[0]
     registerTypeSymbol(record.recordName, DataType::RECORD, members,
-                       payload.customTypesTable, payload.ImportedRecordTable, payload.symbolTable[0]);
+                       space.importedTypes);
 
     logInternal("Finished importing record '" + record.recordName + "'");
   }
 }
 
-void Semantics::importEnums() {
-  logInternal("Importing enums: " +
-              std::to_string(deserializer.stub.enums.size()));
+void Semantics::importMethods(Modulespace &space) {
+  logInternal("Importing methods: " +
+              std::to_string(deserializer.module.exports.enums.size()));
 
-  for (const auto &en : deserializer.stub.enums) {
+  for (const auto &met : deserializer.module.exports.methods) {
+    logInternal("Importing methods for record: '" + met.recordName);
+
+    auto importedTypeIt = space.importedTypes.find(met.recordName);
+    if (importedTypeIt == space.importedTypes.end()) {
+      // TODO: Add an error here
+      return;
+    }
+
+    auto tyInfo = importedTypeIt->second;
+    if (tyInfo->type.kind != DataType::RECORD)
+      continue;
+
+    for (const auto &fn : met.methods) {
+      auto fnSym = symInfoFromFunctionEntry(fn);
+      auto fnMem = std::make_shared<MemberInfo>();
+      fnMem->symbolInfo = fnSym;
+      fnMem->memberName = fn.funcName;
+      tyInfo->members[fn.funcName] = fnMem;
+    }
+  }
+}
+
+void Semantics::importEnums(Modulespace &space) {
+  logInternal("Importing enums: " +
+              std::to_string(deserializer.module.exports.enums.size()));
+
+  for (const auto &en : deserializer.module.exports.enums) {
     logInternal("Importing enum '" + en.enumName + "'");
 
     auto typeInfo = std::make_shared<CustomTypeInfo>();
@@ -259,34 +225,33 @@ void Semantics::importEnums() {
 
       auto memInfo = std::make_shared<MemberInfo>();
       memInfo->memberName = m.memberName;
-      memInfo->type = m.type;
+      memInfo->symbolInfo->type().type = m.type;
       memInfo->constantValue = m.constantValue;
       memInfo->parentType = m.enumType;
-      memInfo->isConstant = true;
-      memInfo->isInitialised = true;
-      memInfo->isExportable = true;
+      memInfo->symbolInfo->storage().isConstant = true;
+      memInfo->symbolInfo->storage().isInitialized = true;
+      memInfo->symbolInfo->isExportable = true;
 
       typeInfo->members[m.memberName] = memInfo;
       members[m.memberName] = memInfo;
     }
 
-    payload.customTypesTable[en.enumName] = typeInfo;
+    space.importedTypes[en.enumName] = typeInfo;
 
     auto sym = std::make_shared<SymbolInfo>();
     sym->isExportable = true;
     sym->members = members;
     sym->type().type = ResolvedType::makeBase(DataType::ENUM, en.enumName);
-    payload.symbolTable[0][en.enumName] = sym;
 
     logInternal("Finished importing enum '" + en.enumName + "'");
   }
 }
 
-void Semantics::importAllocators() {
+void Semantics::importAllocators(Modulespace &space) {
   logInternal("Importing allocators: " +
-              std::to_string(deserializer.stub.allocators.size()));
+              std::to_string(deserializer.module.exports.allocators.size()));
 
-  for (const auto &alloc : deserializer.stub.allocators) {
+  for (const auto &alloc : deserializer.module.exports.allocators) {
     logInternal("Importing allocator '" + alloc.allocatorName + "'");
 
     AllocatorHandle handle;
@@ -311,58 +276,38 @@ void Semantics::importAllocators() {
 
     auto interfaceSym = std::make_shared<SymbolInfo>();
     interfaceSym->isExportable = true;
-    payload.symbolTable[0][alloc.allocatorName] = interfaceSym;
 
     logInternal("Finished importing allocator '" + alloc.allocatorName + "'");
   }
 }
 
-void Semantics::importFunctions() {
+void Semantics::importFunctions(Modulespace &space) {
   logInternal("Importing standalone functions: " +
-              std::to_string(deserializer.stub.functions.size()));
+              std::to_string(deserializer.module.exports.functions.size()));
 
-  for (const auto &fn : deserializer.stub.functions) {
+  for (const auto &fn : deserializer.module.exports.functions) {
     logInternal("Importing function '" + fn.funcName + "'");
-    registerFunctionSymbol(fn, payload.ImportedFunctionsTable, payload.symbolTable[0]);
+    registerFunctionSymbol(fn, space.importedSymbols);
     logInternal("Finished importing function '" + fn.funcName + "'");
   }
 }
 
-void Semantics::importVariables() {
+void Semantics::importVariables(Modulespace &space) {
   logInternal("Importing standalone variables: " +
-              std::to_string(deserializer.stub.variables.size()));
-  for (const auto &var : deserializer.stub.variables) {
+              std::to_string(deserializer.module.exports.variables.size()));
+  for (const auto &var : deserializer.module.exports.variables) {
     logInternal("Importing variable '" + var.var_name + "'");
-    registerVariableSymbol(var, payload.ImportedVariablesTable, payload.symbolTable[0]);
+    registerVariableSymbol(var, space.importedSymbols);
     logInternal("Finished importing variable '" + var.var_name + "'");
   }
 }
 
-void Semantics::importGenerics() {
+void Semantics::importGenerics(Modulespace &space) {
   logInternal("Importing generic instantiations: " +
-              std::to_string(deserializer.stub.generics.size()));
+              std::to_string(deserializer.module.exports.generics.size()));
 
-  for (const auto &gen : deserializer.stub.generics) {
+  for (const auto &gen : deserializer.module.exports.generics) {
     logInternal("Importing instantiation '" + gen.aliasName + "'");
-
-    for (const auto &comp : gen.components) {
-      logInternal("  generic component '" + comp.componentName + "'");
-
-      std::unordered_map<std::string, std::shared_ptr<MemberInfo>> members;
-      for (const auto &m : comp.members)
-        members[m.memberName] = memberInfoFromComponentMember(m);
-      for (const auto &m : comp.methods)
-        members[m.methodName] = memberInfoFromComponentMethod(m);
-
-      registerTypeSymbol(comp.componentName, DataType::COMPONENT, members,
-                         payload.customTypesTable, payload.ImportedComponentTable,
-                         payload.symbolTable[0]);
-
-      if (comp.hasInit) {
-        payload.importedInits[comp.componentName] = symInfoFromComponentInit(comp.init);
-        logInternal("  init registered for '" + comp.componentName + "'");
-      }
-    }
 
     for (const auto &record : gen.records) {
       logInternal("  generic record '" + record.recordName + "'");
@@ -372,25 +317,25 @@ void Semantics::importGenerics() {
         members[m.memberName] = memberInfoFromRecordMember(m);
 
       registerTypeSymbol(record.recordName, DataType::RECORD, members,
-                         payload.customTypesTable, payload.ImportedRecordTable, payload.symbolTable[0]);
+                         space.importedTypes);
     }
 
     for (const auto &fn : gen.functions) {
       logInternal("  generic function '" + fn.funcName + "'");
-      registerFunctionSymbol(fn, payload.ImportedFunctionsTable, payload.symbolTable[0]);
+      registerFunctionSymbol(fn, space.importedSymbols);
     }
 
     logInternal("Finished importing instantiation '" + gen.aliasName + "'");
   }
 }
 
-void Semantics::import() {
-  importSeals();
-  importComponents();
-  importRecords();
-  importEnums();
-  importAllocators();
-  importFunctions();
-  importVariables();
-  importGenerics();
+void Semantics::importModule(Modulespace &space) {
+  importSeals(space);
+  importRecords(space);
+  importMethods(space);
+  importEnums(space);
+  importAllocators(space);
+  importFunctions(space);
+  importVariables(space);
+  importGenerics(space);
 }

@@ -78,8 +78,14 @@ std::unique_ptr<Statement> Parser::parseImportStatement() {
 
   auto module_name = parseIdentifier();
 
-  return std::make_unique<ImportStatement>(import_token,
-                                           std::move(module_name));
+  std::unique_ptr<Expression> alias = nullptr;
+  if (currentToken().type == TokenType::AS) {
+    advance(); // Consume the 'as' token
+    alias = parseIdentifier();
+  }
+
+  return std::make_unique<ImportStatement>(import_token, std::move(module_name),
+                                           std::move(alias));
 }
 
 std::unique_ptr<Statement> Parser::parseModuleStatement() {
@@ -225,9 +231,8 @@ void Parser::synchronize(SyncLevel level = SyncLevel::TOP) {
 bool Parser::isTopLevelSyncToken(TokenType type) {
   switch (type) {
   case TokenType::FUNCTION:
-  case TokenType::INIT:
-  case TokenType::COMPONENT:
   case TokenType::RECORD:
+  case TokenType::METHODS:
   case TokenType::ALLOCATOR:
   case TokenType::GENERIC:
   case TokenType::INSTANTIATE:
@@ -242,7 +247,6 @@ bool Parser::isTopLevelSyncToken(TokenType type) {
   case TokenType::CONST:
   case TokenType::HEAP:
   case TokenType::EXPORT:
-  case TokenType::INJECT:
   case TokenType::GLOBAL:
     return true;
   default:
@@ -350,8 +354,6 @@ void Parser::registerPrefixFns() {
   PrefixParseFunctionsMap[TokenType::ADDR] = &Parser::parseAddressExpression;
   PrefixParseFunctionsMap[TokenType::DEREF] =
       &Parser::parseDereferenceExpression;
-  PrefixParseFunctionsMap[TokenType::NEW] =
-      &Parser::parseNewComponentExpression;
   PrefixParseFunctionsMap[TokenType::SELF] = &Parser::parseSelfExpression;
   PrefixParseFunctionsMap[TokenType::UNWRAP] = &Parser::parseUnwrapExpression;
   PrefixParseFunctionsMap[TokenType::BANG] = &Parser::parsePrefixExpression;
@@ -393,7 +395,8 @@ std::unique_ptr<Statement> Parser::parseIdentifierStatement() {
   }
   // If it's an @ type declaration (e.g., "Test@Type arrayName")
   if (currentToken().type == TokenType::IDENTIFIER &&
-      nextToken().type == TokenType::AT) {
+      (nextToken().type == TokenType::AT ||
+       nextToken().type == TokenType::SCOPE_OPERATOR)) {
     if (peekToken(2).type == TokenType::IDENTIFIER &&
         peekToken(3).type == TokenType::IDENTIFIER) {
       return parseVariableDeclaration();
@@ -504,14 +507,9 @@ void Parser::registerStatementParseFns() {
       &Parser::parseVariableDeclaration;
   StatementParseFunctionsMap[TokenType::OPAQUE] =
       &Parser::parseVariableDeclaration;
-  StatementParseFunctionsMap[TokenType::COMPONENT] =
-      &Parser::parseComponentStatement;
   StatementParseFunctionsMap[TokenType::RECORD] = &Parser::parseRecordStatement;
   StatementParseFunctionsMap[TokenType::METHODS] =
       &Parser::parseMethodsStatement;
-  StatementParseFunctionsMap[TokenType::INJECT] = &Parser::parseInjectStatement;
-  StatementParseFunctionsMap[TokenType::INIT] =
-      &Parser::parseInitConstructorStatement;
   StatementParseFunctionsMap[TokenType::SWITCH] = &Parser::parseSwitchStatement;
   StatementParseFunctionsMap[TokenType::ENUM] = &Parser::parseEnumStatement;
 

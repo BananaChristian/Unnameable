@@ -1,0 +1,6 @@
+import test 
+
+func main:void{
+  test::Pos pos
+  return  
+}

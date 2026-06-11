@@ -93,8 +93,6 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: ALIGN";
   case TokenType::CONST:
     return "Token Type: CONST";
-  case TokenType::COMPONENT:
-    return "Token Type: COMPONENT";
   case TokenType::METHODS:
     return "Token Type: METHODS";
   case TokenType::SELF:
@@ -105,15 +103,8 @@ std::string TokenTypeToLiteral(TokenType type) {
     return "Token Type: NAKED";
   case TokenType::GLOBAL:
     return "Token Type: GLOBAL";
-
-  case TokenType::NEW:
-    return "Token Type: NEW";
   case TokenType::RECORD:
     return "Token Type: RECORD";
-  case TokenType::INJECT:
-    return "Token Type: INJECT";
-  case TokenType::INIT:
-    return "Token Type: INIT";
 
   case TokenType::GENERIC:
     return "Token Type: GENERIC";

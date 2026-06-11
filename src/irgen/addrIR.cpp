@@ -17,7 +17,6 @@ llvm::Value *IRGenerator::generateIdentifierAddress(Node *node) {
   auto sym = semantics.getSymbolFromMeta(identExpr);
   if (!sym)
     reportDevBug("Could not find identifier symbol info", identExpr);
-  
 
   if (sym->type().isFnPtr && sym->isFunction) {
     llvm::Function *fn = module->getFunction(identName);
@@ -171,6 +170,7 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     reportDevBug("Failed to get type '" + typeName + "'", selfExpr);
 
   std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
+  std::shared_ptr<SymbolInfo> memSym = nullptr;
 
   for (size_t i = 0; i < selfExpr->fields.size(); ++i) {
     auto ident = dynamic_cast<Identifier *>(selfExpr->fields[i].get());
@@ -194,6 +194,10 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
       reportDevBug("Cannot assign to a method call 'self." + fieldName + "'",
                    selfExpr);
 
+    memSym = lastMemberInfo->symbolInfo;
+    if (!memSym)
+      reportDevBug("Failed to get member symbol info", selfExpr);
+
     // GEP for this field
     auto llvmIt = llvmCustomTypes.find(currentTypeName);
     if (llvmIt == llvmCustomTypes.end()) {
@@ -213,14 +217,14 @@ llvm::Value *IRGenerator::generateSelfAddress(Node *node) {
     }
 
     currentPtr = funcBuilder.CreateStructGEP(
-        structTy, currentPtr, lastMemberInfo->memberIndex, fieldName + "_ptr");
+        structTy, currentPtr, memSym->type().memberIndex, fieldName + "_ptr");
 
     // Drill into nested type if needed
-    if (lastMemberInfo->type.kind == DataType::COMPONENT ||
-        lastMemberInfo->type.kind == DataType::RECORD) {
-      std::string lookUpName = lastMemberInfo->type.resolvedName;
-      if (lastMemberInfo->type.isPointer() || lastMemberInfo->type.isRef())
-        lookUpName = semantics.getBaseTypeName(lastMemberInfo->type);
+    if (memSym->type().type.kind == DataType::COMPONENT ||
+        memSym->type().type.kind == DataType::RECORD) {
+      std::string lookUpName = memSym->type().type.resolvedName;
+      if (memSym->type().type.isPointer() || memSym->type().type.isRef())
+        lookUpName = semantics.getBaseTypeName(memSym->type().type);
 
       auto nestedIt = semantics.payload.customTypesTable.find(lookUpName);
       if (nestedIt == semantics.payload.customTypesTable.end()) {

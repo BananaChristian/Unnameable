@@ -1008,6 +1008,7 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
     reportDevBug("Could not find type '" + typeName + "'", selfExpr);
 
   std::shared_ptr<MemberInfo> lastMemberInfo = nullptr;
+  std::shared_ptr<SymbolInfo> memSym=nullptr;
 
   for (size_t i = 0; i < selfExpr->fields.size(); ++i) {
     std::string currentTypeName = currentTypeInfo->type.resolvedName;
@@ -1026,6 +1027,10 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
     if (lastMemberInfo->isFunction)
       break;
 
+    memSym = lastMemberInfo->symbolInfo;
+    if (!memSym)
+      reportDevBug("Failed to get member symbol info", selfExpr);
+
     // GEP for this field
     auto llvmIt = llvmCustomTypes.find(currentTypeName);
     if (llvmIt == llvmCustomTypes.end())
@@ -1035,14 +1040,14 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
     llvm::StructType *structTy = llvmIt->second;
 
     currentPtr = funcBuilder.CreateStructGEP(
-        structTy, currentPtr, lastMemberInfo->memberIndex, fieldName + "_ptr");
+        structTy, currentPtr, memSym->type().memberIndex, fieldName + "_ptr");
 
     //  Drill into nested type if needed
-    if (lastMemberInfo->type.kind == DataType::COMPONENT ||
-        lastMemberInfo->type.kind == DataType::RECORD) {
-      std::string lookUpName = lastMemberInfo->type.resolvedName;
-      if (lastMemberInfo->type.isPointer() || lastMemberInfo->type.isRef())
-        lookUpName = semantics.getBaseTypeName(lastMemberInfo->type);
+    if (memSym->type().type.kind == DataType::COMPONENT ||
+        memSym->type().type.kind == DataType::RECORD) {
+      std::string lookUpName = memSym->type().type.resolvedName;
+      if (memSym->type().type.isPointer() || memSym->type().type.isRef())
+        lookUpName = semantics.getBaseTypeName(memSym->type().type);
 
       auto nestedIt = semantics.payload.customTypesTable.find(lookUpName);
       if (nestedIt == semantics.payload.customTypesTable.end())
@@ -1088,10 +1093,10 @@ llvm::Value *IRGenerator::generateSelfExpression(Node *node) {
     return funcBuilder.CreateCall(targetFunc, args, methodName + "_self_call");
   } else {
     // Original field load path
-    llvm::Type *finalTy = getLLVMType(lastMemberInfo->type);
+    llvm::Type *finalTy = getLLVMType(memSym->type().type);
     auto *finalLoad = funcBuilder.CreateLoad(
         finalTy, currentPtr, selfExpr->fields.back()->toString() + "_val");
-    if (lastMemberInfo->isVolatile)
+    if (memSym->storage().isVolatile)
       finalLoad->setVolatile(true);
     return finalLoad;
   }

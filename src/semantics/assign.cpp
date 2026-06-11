@@ -115,18 +115,12 @@ void Semantics::walkSelfAssignment(AssignmentStatement *assignStmt) {
     }
 
     fieldInfo = memIt->second;
-    currentTypeName = fieldInfo->type.resolvedName;
+    currentTypeName = fieldInfo->symbolInfo->type().type.resolvedName;
   }
 
   // Build a SymbolInfo from the resolved field.
   auto selfSymbol = std::make_shared<SymbolInfo>();
-  selfSymbol->type().type = fieldInfo->type;
-  selfSymbol->type().isNullable = fieldInfo->isNullable;
-  selfSymbol->storage().isMutable = fieldInfo->isMutable;
-  selfSymbol->storage().isConstant = fieldInfo->isConstant;
-  selfSymbol->type().isPointer = fieldInfo->isPointer;
-  selfSymbol->storage().isInitialized = fieldInfo->isInitialised;
-  selfSymbol->type().memberIndex = fieldInfo->memberIndex;
+  selfSymbol = fieldInfo->symbolInfo;
 
   checkOperatorStyle(assignStmt->op.type, selfSymbol->type().isPointer,
                      assignName, assignStmt);
