@@ -1,6 +1,6 @@
 module test
 
-record Pos{
+export record Pos{
   heap i32 x
   heap i32 y
 }
@@ -14,10 +14,4 @@ export methods Pos{
   func sub():i32{
     return 0+7
   }
-}
-
-export func main:i32{
-  Pos pos
-  pos.x
-  return 0
 }

@@ -497,30 +497,33 @@ void Layout::declareAllCustomTypes() {
 }
 
 void Layout::registerImportedTypes() {
-  logInternal("Registering component type");
   for (const auto &modPair : semantics.payload.modules) {
-    auto mod = modPair.second;
+    auto &mod = modPair.second;
     for (const auto &recPair : mod.importedTypes) {
       const auto &[recordName, typeInfo] = recPair;
       if (typeInfo->type.kind != DataType::RECORD)
         continue;
 
-      const auto &members = typeInfo->members;
+      // Create the opaque struct type if it doesn't exist
+      if (typeMap.find(recordName) == typeMap.end()) {
+        typeMap[recordName] = llvm::StructType::create(context, recordName);
+      }
 
+      auto *structTy = llvm::cast<llvm::StructType>(typeMap[recordName]);
+      if (!structTy->isOpaque())
+        continue; // Already defined
+
+      const auto &members = typeInfo->members;
       std::vector<llvm::Type *> fieldTypes;
 
       for (const auto &memberPair : members) {
         const auto &[memberName, memInfo] = memberPair;
         auto memSym = memInfo->symbolInfo;
         if (!memSym)
-          reportDevBug("Failed to get member symbol info");
+          reportDevBug("Failed to get member symbol info for " + memberName);
         llvm::Type *fieldType = getLLVMType(memSym->type().type);
         fieldTypes.push_back(fieldType);
       }
-
-      auto *structTy = llvm::cast<llvm::StructType>(typeMap[recordName]);
-      if (!structTy->isOpaque())
-        return; // already defined
 
       structTy->setBody(fieldTypes, false);
     }

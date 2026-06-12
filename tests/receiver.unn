@@ -1,6 +1,17 @@
 import test 
 
+record Pos{
+    string x
+    i128 y
+}
+
+record PosIs{
+  i32 x
+  i32 y
+}
+
 func main:void{
   test::Pos pos
+  Pos test
   return  
 }

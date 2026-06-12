@@ -1491,14 +1491,20 @@ ErrorMessage ErrorHandler::generateErrorMessage(ErrorCode code) {
     message.code = ErrorCode::AlreadySetModule;
     message.message = "a module can only be declared once";
     return message;
-  }case ErrorCode::AlreadyImportedModule:{
-    message.code=ErrorCode::AlreadyImportedModule;
-    message.message="can only import a specific module once";
+  }
+  case ErrorCode::AlreadyImportedModule: {
+    message.code = ErrorCode::AlreadyImportedModule;
+    message.message = "can only import a specific module once";
     return message;
   }
   case ErrorCode::ImportMustBeGlobal: {
     message.code = ErrorCode::ImportMustBeGlobal;
     message.message = "import statement must be top level in global scope";
+    return message;
+  }
+  case ErrorCode::ExportablevsLocal: {
+    message.code = ErrorCode::ExportablevsLocal;
+    message.message = "Cannot have exportable methods with a local type";
     return message;
   }
   case ErrorCode::IllegalCycle: {

@@ -357,6 +357,7 @@ void Semantics::walkMethodsStatement(Node *node) {
     insertErrorMetaData(metStmt);
     return;
   }
+
   bool isExportable = metStmt->isExportable;
 
   auto metSym = std::make_shared<SymbolInfo>();
@@ -370,6 +371,15 @@ void Semantics::walkMethodsStatement(Node *node) {
        .typeName = name,
        .members = typeInfo->members});
 
+  bool isTyExportable = typeInfo->isExportable;
+  // Block an exportable methods if the type isnt exportable
+  if (!isTyExportable && isExportable) {
+    logSemanticErrors(ErrorCode::ExportablevsLocal,
+                      metStmt->method_identifier.get());
+    insertErrorMetaData(metStmt);
+    return;
+  }
+
   for (const auto &stmt : metStmt->functions) {
     auto fnStmt = dynamic_cast<FunctionStatement *>(stmt.get());
     // Only function definitions
@@ -379,10 +389,17 @@ void Semantics::walkMethodsStatement(Node *node) {
       continue;
     }
     funcExpr->isExportable = isExportable;
+
     walker(stmt.get());
     auto fnSym = getSymbolFromMeta(funcExpr);
     if (!fnSym)
       reportDevBug("Failed to get function symbol info", funcExpr);
+
+    if (!isTyExportable && fnSym->isExportable) {
+      logSemanticErrors(ErrorCode::ExportablevsLocal,
+                        metStmt->method_identifier.get());
+      return;
+    }
 
     auto fnName = extractIdentifierName(funcExpr);
     auto memInfo = std::make_shared<MemberInfo>();

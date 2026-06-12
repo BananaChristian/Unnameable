@@ -94,32 +94,42 @@ void IRGenerator::finalizeTypeBody(
   // Commit Body to LLVM
   structTy->setBody(fieldTypes, false);
   logInternal("Committed body for " + typeName);
-
-  // Generate Method Declarations
-  // for (const auto &methodPair : methods) {
-  // declareImportedComponentMethods(methodPair.first, typeName,
-  // methodPair.second);
-  //}
 }
 
 void IRGenerator::declareImportedTypes() {
-  // Loop through Data Blocks
   for (const auto &[name, modInfo] : semantics.payload.modules) {
     for (const auto &[name, typeInfo] : modInfo.importedTypes) {
       if (typeInfo->type.kind == DataType::ENUM)
         continue;
+
       finalizeTypeBody(name, typeInfo, "RECORD");
     }
   }
 }
 
 void IRGenerator::declareCustomTypes() {
+  // Declare local types
   for (const auto &[name, info] : semantics.payload.customTypesTable) {
     if (llvmCustomTypes.find(name) == llvmCustomTypes.end()) {
       logInternal("[+] Creating opaque '" + name + "'");
       llvmCustomTypes[name] = llvm::StructType::create(context, name);
     } else {
       logInternal("[.] Already exists '" + name + "'");
+    }
+  }
+
+  // Declare imported types from all modules
+  for (const auto &[module_name, space] : semantics.payload.modules) {
+    for (const auto &[type_name, typeInfo] : space.importedTypes) {
+      if (typeInfo->type.kind != DataType::RECORD)
+        continue;
+
+      if (llvmCustomTypes.find(type_name) == llvmCustomTypes.end()) {
+        logInternal("[+] Creating opaque imported '" + type_name +
+                    "' from module '" + module_name + "'");
+        llvmCustomTypes[type_name] =
+            llvm::StructType::create(context, type_name);
+      }
     }
   }
 }

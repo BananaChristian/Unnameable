@@ -1,6 +1,7 @@
 #include "defs.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
+#include <memory>
 
 void Semantics::walkModuleStatement(Node *node) {
   auto modStmt = dynamic_cast<ModuleStatement *>(node);
@@ -19,6 +20,7 @@ void Semantics::walkModuleStatement(Node *node) {
 }
 
 void Semantics::walkImportStatement(Node *node) {
+  logInternal("IMPORT::Triggered import statement analyzer");
   auto importStmt = dynamic_cast<ImportStatement *>(node);
   if (!importStmt)
     return;
@@ -45,8 +47,12 @@ void Semantics::walkImportStatement(Node *node) {
   Modulespace module;
   module.originalName = module_name;
   module.aliasName = aliasName;
+  logInternal("IMPORTED_MODULE_NAME: " + module_name);
+  logInternal("IMPORTED_MODULE_ALIAS_NAME: " + aliasName);
 
   importModule(module);
+
+  payload.modules[aliasName] = module;
 }
 
 /// Build a MemberInfo from a RecordMember.
@@ -54,6 +60,7 @@ static std::shared_ptr<MemberInfo>
 memberInfoFromRecordMember(const RecordMember &m) {
   auto info = std::make_shared<MemberInfo>();
   info->memberName = m.memberName;
+  info->symbolInfo = std::make_shared<SymbolInfo>();
   info->symbolInfo->type().type = m.type;
   info->symbolInfo->type().memberIndex = m.memberIndex;
   info->symbolInfo->type().isNullable = m.isNullable;
@@ -183,7 +190,7 @@ void Semantics::importMethods(Modulespace &space) {
               std::to_string(deserializer.module.exports.enums.size()));
 
   for (const auto &met : deserializer.module.exports.methods) {
-    logInternal("Importing methods for record: '" + met.recordName);
+    logInternal("Importing methods for record: '" + met.recordName + "'");
 
     auto importedTypeIt = space.importedTypes.find(met.recordName);
     if (importedTypeIt == space.importedTypes.end()) {

@@ -94,9 +94,6 @@ void StubGen::generateMethodsStatement(Node *node) {
   if (!metsStmt)
     return;
 
-  if(!metsStmt->isExportable)
-    return;
-
   auto recordName =
       semantics.extractIdentifierName(metsStmt->method_identifier.get());
 
@@ -109,6 +106,9 @@ void StubGen::generateMethodsStatement(Node *node) {
     auto fnSym = memInfo->symbolInfo;
     if (!fnSym)
       reportDevBug("Failed to get method symbol info");
+
+    if (!fnSym->isExportable)
+      continue;
 
     FunctionEntry entry;
     entry.funcName = memName;

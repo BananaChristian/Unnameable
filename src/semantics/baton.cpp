@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "defs.hpp"
 #include "errors.hpp"
 #include "semantics.hpp"
@@ -419,15 +420,24 @@ std::vector<Identifier *> Semantics::digIdentifiers(Node *node) {
 }
 
 void Semantics::executeFieldsCapture(
-    Node *context, const std::string &type_name,
+    VariableDeclaration *declaration, const std::string &type_name,
     const std::unique_ptr<LifeTime> &type_baton) {
-  auto it = payload.customTypesTable.find(type_name);
-  if (it == payload.customTypesTable.end()) {
-    logSemanticErrors(ErrorCode::UndefinedVariable, context);
-    return;
-  }
+  std::shared_ptr<CustomTypeInfo> typeInfo = nullptr;
 
-  const std::shared_ptr<CustomTypeInfo> typeInfo = it->second;
+  auto base_type = dynamic_cast<BasicType *>(declaration->base_type.get());
+
+  if (auto infixTy = dynamic_cast<InfixExpression *>(base_type->type.get())) {
+    typeInfo = getImportedCustomTypeInfo(infixTy);
+    if (!typeInfo)
+      return;
+  } else {
+    auto it = payload.customTypesTable.find(type_name);
+    if (it == payload.customTypesTable.end()) {
+      logSemanticErrors(ErrorCode::UndefinedVariable, base_type, {type_name});
+      return;
+    }
+    typeInfo = it->second;
+  }
 
   for (const auto &captureID : typeInfo->captureCandidates) {
     // This is in a case of stack declaration it allows the system to register
@@ -443,7 +453,7 @@ void Semantics::executeFieldsCapture(
       if (currentBlock) {
         bornInBlock[currentBlock].push_back(captureID);
       } else {
-        logSemanticErrors(ErrorCode::GlobalHeapVar, context);
+        logSemanticErrors(ErrorCode::GlobalHeapVar, declaration);
       }
       return;
     }
@@ -451,7 +461,7 @@ void Semantics::executeFieldsCapture(
     Node *capture_holder = queryForLifeTimeBaton(captureID);
     if (!capture_holder)
       reportDevBug("Could not find baton holder for family id: " + captureID,
-                   context);
+                   declaration);
 
     auto it = responsibilityTable.find(capture_holder);
     if (it == responsibilityTable.end())

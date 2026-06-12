@@ -360,21 +360,7 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   // Dealing with the variable declaration
   if (auto varDecl = dynamic_cast<VariableDeclaration *>(node)) {
-    ResolvedType baseType = ResolvedType::unknown();
-
-    if (auto infixTy =
-            dynamic_cast<InfixExpression *>(varDecl->base_type.get())) {
-      auto module_name = extractIdentifierName(infixTy->left_operand.get());
-      auto type_name = extractIdentifierName(infixTy->right_operand.get());
-      auto tyInfo = getImportedType(module_name, type_name);
-      if (!tyInfo) {
-        logSemanticErrors(ErrorCode::UndefinedVariable, varDecl, {type_name});
-        return errorType;
-      }
-      baseType = tyInfo->type;
-    } else {
-      baseType = inferDeclarationBaseType(varDecl);
-    }
+    ResolvedType baseType = inferDeclarationBaseType(varDecl);
 
     if (varDecl->fnPtrMod)
       return resolveFuncPtrType(varDecl->fnPtrMod.get(),
@@ -480,6 +466,16 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
   }
 
   if (auto basicType = dynamic_cast<BasicType *>(node)) {
+
+    if (auto infixTy = dynamic_cast<InfixExpression *>(basicType->type.get())) {
+      auto importedTY = getImportedType(infixTy);
+      if (basicType->isNullable) {
+        importedTY = ResolvedType::makeBase(
+            importedTY.kind, importedTY.resolvedName, basicType->isNullable);
+      }
+      return importedTY;
+    }
+
     auto type_name = extractIdentifierName(basicType);
     return tokenTypeToResolvedType(basicType->type_token, type_name,
                                    basicType->isNullable);
@@ -490,19 +486,12 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
       return ResolvedType::makeBase(DataType::VOID, "void");
 
     ResolvedType baseType = ResolvedType::unknown();
-    if (auto infixRet =
-            dynamic_cast<InfixExpression *>(retType->base_type.get())) {
-      auto module_name = extractIdentifierName(infixRet->left_operand.get());
-      auto type_name = extractIdentifierName(infixRet->right_operand.get());
-      auto tyInfo = getImportedType(module_name, type_name);
-      if (!tyInfo) {
-        logSemanticErrors(ErrorCode::UndefinedVariable, retType, {type_name});
-        return errorType;
-      }
-      baseType = tyInfo->type;
-    } else {
+    auto baseRet = dynamic_cast<BasicType *>(retType->base_type.get());
+
+    if (auto infixRet = dynamic_cast<InfixExpression *>(baseRet->type.get()))
+      baseType = getImportedType(infixRet);
+    else
       baseType = inferNodeDataType(retType->base_type.get());
-    }
 
     if (retType->fnptr_mod)
       return resolveFuncPtrType(retType->fnptr_mod.get(),
@@ -1179,7 +1168,7 @@ ResolvedType Semantics::tokenTypeToResolvedType(Token token,
 
     logSpecialErrors(ErrorCode::UndefinedVariable, token.line, token.column,
                      {token.TokenLiteral});
-    return ResolvedType::unknown();
+    return ResolvedType::error();
   }
   default:
     return ResolvedType::unknown();
@@ -2009,7 +1998,9 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
   logInternal("Resolving Variable declaration Base Type ....");
 
   auto baseType = dynamic_cast<BasicType *>(declaration->base_type.get());
+
   TokenType basetype_tokentype = baseType->type_token.type;
+
   auto makeType = [&](const ResolvedType &type) {
     return ResolvedType::makeBase(type.kind, type.resolvedName,
                                   baseType->isNullable);
@@ -2084,8 +2075,9 @@ Semantics::inferDeclarationBaseType(VariableDeclaration *declaration) {
     // Search for the name in the custom types table
     auto typeIt = payload.customTypesTable.find(typeName);
     if (typeIt == payload.customTypesTable.end()) {
-      logSemanticErrors(ErrorCode::UndefinedVariable, baseType, {typeName});
-      return ResolvedType::error();
+      auto importedType = getImportedType(baseType->type.get());
+
+      return importedType;
     }
 
     return makeType(ResolvedType::makeBase(typeIt->second->type.kind,
@@ -2274,20 +2266,60 @@ Semantics::getCustomTypeInfo(const std::string &type_name) {
 }
 
 const std::shared_ptr<CustomTypeInfo> &
-Semantics::getImportedType(const std::string &module_name,
-                           const std::string &type_name) {
+Semantics::getImportedCustomTypeInfo(Node *tyNode) {
   static std::shared_ptr<CustomTypeInfo> empty = nullptr;
+  auto infixTy = dynamic_cast<InfixExpression *>(tyNode);
+  if (!infixTy)
+    return empty;
+
+  auto module_name = extractIdentifierName(infixTy->left_operand.get());
+  auto type_name = extractIdentifierName(infixTy->right_operand.get());
 
   auto modIt = payload.modules.find(module_name);
-  if (modIt != payload.modules.end()) {
-    auto space = modIt->second;
-    auto typeIt = space.importedTypes.find(type_name);
-    if (typeIt != space.importedTypes.end()) {
-      return typeIt->second;
-    }
+  if (modIt == payload.modules.end()) {
+    logSemanticErrors(ErrorCode::UndefinedVariable, infixTy->left_operand.get(),
+                      {module_name});
+    return empty;
   }
 
-  return empty;
+  auto moduleSpace = modIt->second;
+  auto typeIt = moduleSpace.importedTypes.find(type_name);
+  if (typeIt == moduleSpace.importedTypes.end()) {
+    logSemanticErrors(ErrorCode::UndefinedVariable,
+                      infixTy->right_operand.get(), {type_name});
+    return empty;
+  }
+
+  return typeIt->second;
+}
+
+ResolvedType &Semantics::getImportedType(Node *tyNode) {
+  static ResolvedType type = ResolvedType::error();
+  auto infixTy = dynamic_cast<InfixExpression *>(tyNode);
+  if (!infixTy)
+    return type;
+
+  auto module_name = extractIdentifierName(infixTy->left_operand.get());
+  auto type_name = extractIdentifierName(infixTy->right_operand.get());
+
+  auto modIt = payload.modules.find(module_name);
+  if (modIt == payload.modules.end()) {
+    logSemanticErrors(ErrorCode::UndefinedVariable, infixTy->left_operand.get(),
+                      {module_name});
+    return type;
+  }
+
+  auto moduleSpace = modIt->second;
+  auto typeIt = moduleSpace.importedTypes.find(type_name);
+  if (typeIt == moduleSpace.importedTypes.end()) {
+    logSemanticErrors(ErrorCode::UndefinedVariable,
+                      infixTy->right_operand.get(), {type_name});
+    return type;
+  }
+
+  auto typeInfo = typeIt->second;
+  type = typeInfo->type;
+  return type;
 }
 
 std::shared_ptr<SymbolInfo>

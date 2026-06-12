@@ -21,8 +21,7 @@ struct Modulespace {
   std::string aliasName;    // for the user provided alias
 
   // Module-specific tables
-  std::unordered_map<std::string, std::shared_ptr<SymbolInfo>>
-      importedSymbols;
+  std::unordered_map<std::string, std::shared_ptr<SymbolInfo>> importedSymbols;
   std::unordered_map<std::string, std::shared_ptr<CustomTypeInfo>>
       importedTypes;
   std::unordered_map<std::string, AllocatorHandle> allocators;
@@ -85,8 +84,10 @@ public:
   const std::shared_ptr<CustomTypeInfo> &
   getCustomTypeInfo(const std::string &type_name);
   const std::shared_ptr<CustomTypeInfo> &
-  getImportedType(const std::string &module_name, const std::string &type_name);
-  std::shared_ptr<SymbolInfo> getImportedSymbolInfo(const std::string &module_name,
+  getImportedCustomTypeInfo(Node *tyNode);
+  ResolvedType &getImportedType(Node *tyNode);
+  std::shared_ptr<SymbolInfo>
+  getImportedSymbolInfo(const std::string &module_name,
                         const std::string &symName);
   bool hasReturnPathList(const std::vector<std::unique_ptr<Statement>> &stmts);
   std::shared_ptr<SymbolInfo> getSealedFunctionSym(const std::string &funcName,
@@ -308,7 +309,8 @@ private:
                                  int memberIndex);
   void checkOperatorStyle(TokenType op, bool isPointer, const std::string &name,
                           Node *site);
-  void executeFieldsCapture(Node *context, const std::string &type_name,
+  void executeFieldsCapture(VariableDeclaration *declaration,
+                            const std::string &type_name,
                             const std::unique_ptr<LifeTime> &type_baton);
   void checkMutability(const SymbolInfo &sym, const std::string &name,
                        Node *site);
