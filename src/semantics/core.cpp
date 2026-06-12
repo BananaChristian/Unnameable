@@ -360,7 +360,22 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
 
   // Dealing with the variable declaration
   if (auto varDecl = dynamic_cast<VariableDeclaration *>(node)) {
-    auto baseType = inferDeclarationBaseType(varDecl);
+    ResolvedType baseType = ResolvedType::unknown();
+
+    if (auto infixTy =
+            dynamic_cast<InfixExpression *>(varDecl->base_type.get())) {
+      auto module_name = extractIdentifierName(infixTy->left_operand.get());
+      auto type_name = extractIdentifierName(infixTy->right_operand.get());
+      auto tyInfo = getImportedType(module_name, type_name);
+      if (!tyInfo) {
+        logSemanticErrors(ErrorCode::UndefinedVariable, varDecl, {type_name});
+        return errorType;
+      }
+      baseType = tyInfo->type;
+    } else {
+      baseType = inferDeclarationBaseType(varDecl);
+    }
+
     if (varDecl->fnPtrMod)
       return resolveFuncPtrType(varDecl->fnPtrMod.get(),
                                 varDecl->modified_type.get(), baseType);
@@ -474,7 +489,21 @@ ResolvedType Semantics::inferNodeDataType(Node *node) {
     if (retType->isVoid)
       return ResolvedType::makeBase(DataType::VOID, "void");
 
-    auto baseType = inferNodeDataType(retType->base_type.get());
+    ResolvedType baseType = ResolvedType::unknown();
+    if (auto infixRet =
+            dynamic_cast<InfixExpression *>(retType->base_type.get())) {
+      auto module_name = extractIdentifierName(infixRet->left_operand.get());
+      auto type_name = extractIdentifierName(infixRet->right_operand.get());
+      auto tyInfo = getImportedType(module_name, type_name);
+      if (!tyInfo) {
+        logSemanticErrors(ErrorCode::UndefinedVariable, retType, {type_name});
+        return errorType;
+      }
+      baseType = tyInfo->type;
+    } else {
+      baseType = inferNodeDataType(retType->base_type.get());
+    }
+
     if (retType->fnptr_mod)
       return resolveFuncPtrType(retType->fnptr_mod.get(),
                                 retType->modified_type.get(), baseType);
