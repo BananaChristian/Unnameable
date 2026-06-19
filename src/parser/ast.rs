@@ -1,4 +1,4 @@
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     // Integers with explicit types
     Int8(i8),
@@ -13,15 +13,15 @@ pub enum Literal {
     Uint128(u128),
     IntSize(isize),  // iz
     UintSize(usize), // uz
-    
+
     // Plain int (no suffix) - default to i64
     Int(i64),
-    
+
     // Floats
     Float(f64),
     F32(f32),
     F64(f64),
-    
+
     // Booleans
     Bool(bool),
 }
@@ -29,8 +29,41 @@ pub enum Literal {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Literal(Literal),
+    Identifier(String),
+    Binary(Box<Expr>, BinaryOp, Box<Expr>),
+    Unary(UnaryOp, Box<Expr>),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryOp {
+    // Arithmetic
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
+    // Comparison
+    Eq,
+    Neq,
+    Lt,
+    Gt,
+    Leq,
+    Geq,
+
+    // Logical
+    And,
+    Or,
+
+    // Assignment
+    Assign,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOp {
+    Neg, // -
+    Not, // !
+}
 
 #[derive(Debug)]
 pub enum Stmt {

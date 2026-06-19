@@ -2,7 +2,7 @@ use crate::{
     lexer::{TType, token::Token},
     parser::{
         Stmt,
-        ast::{Expr, Literal},
+        ast::{BinaryOp, Expr, Literal, UnaryOp},
     },
 };
 
@@ -71,5 +71,53 @@ impl Parser {
         }
 
         Ok(stmts)
+    }
+
+    pub fn is_binary_operator(&self, tt: &TType) -> bool {
+        matches!(
+            tt,
+            TType::Plus
+                | TType::Minus
+                | TType::Star
+                | TType::Slash
+                | TType::Percentage
+                | TType::Eq
+                | TType::Neq
+                | TType::Lt
+                | TType::Gt
+                | TType::Lte
+                | TType::Gte
+                | TType::And
+                | TType::Or
+                | TType::Assign
+        )
+    }
+
+    pub fn map_to_binary_op(&self, tt: &TType) -> BinaryOp {
+        match tt {
+            TType::Plus => BinaryOp::Add,
+            TType::Minus => BinaryOp::Sub,
+            TType::Star => BinaryOp::Mul,
+            TType::Slash => BinaryOp::Div,
+            TType::Percentage => BinaryOp::Mod,
+            TType::Eq => BinaryOp::Eq,
+            TType::Neq => BinaryOp::Neq,
+            TType::Lt => BinaryOp::Lt,
+            TType::Gt => BinaryOp::Gt,
+            TType::Lte => BinaryOp::Leq,
+            TType::Gte => BinaryOp::Geq,
+            TType::And => BinaryOp::And,
+            TType::Or => BinaryOp::Or,
+            TType::Assign => BinaryOp::Assign,
+            _ => panic!("Not a binary operator: {:?}", tt),
+        }
+    }
+
+    pub fn map_to_unary_op(&self, tt: &TType) -> UnaryOp {
+        match tt {
+            TType::Minus => UnaryOp::Neg,
+            TType::Bang => UnaryOp::Not,
+            _ => panic!("Not a unary operator: {:?}", tt),
+        }
     }
 }

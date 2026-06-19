@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::lexer::{TType, token::Token};
 
-
 pub struct Lexer {
     line: usize,
     col: usize,
@@ -340,9 +339,18 @@ impl Lexer {
                 self.advance();
                 if let Some('=') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "==".to_string(), TType::Equals)
+                    Token::new(self.line, self.col, "==".to_string(), TType::Eq)
                 } else {
                     Token::new(self.line, self.col, "=".to_string(), TType::Assign)
+                }
+            }
+            Some('!') => {
+                self.advance();
+                if let Some('=') = self.current_char() {
+                    self.advance();
+                    Token::new(self.line, self.col, "!=".to_string(), TType::Neq)
+                } else {
+                    Token::new(self.line, self.col, "!".to_string(), TType::Bang)
                 }
             }
             Some('>') => {
@@ -368,6 +376,41 @@ impl Lexer {
                 } else {
                     Token::new(self.line, self.col, "<".to_string(), TType::Lt)
                 }
+            }
+            Some('|') => {
+                self.advance();
+                if let Some('|') = self.current_char() {
+                    self.advance();
+                    Token::new(self.line, self.col, "||".to_string(), TType::Or)
+                } else {
+                    self.advance();
+                    Token::new(self.line, self.col, "|".to_string(), TType::Stick)
+                }
+            }
+            Some('&') => {
+                self.advance();
+                if let Some('&') = self.current_char() {
+                    self.advance();
+                    Token::new(self.line, self.col, "&&".to_string(), TType::And)
+                } else {
+                    Token::new(self.line, self.col, "&".to_string(), TType::Ampersand)
+                }
+            }
+            Some('*') => {
+                self.advance();
+                Token::new(self.line, self.col, "*".to_string(), TType::Star)
+            }
+            Some('/') => {
+                self.advance();
+                Token::new(self.line, self.col, "/".to_string(), TType::Slash)
+            }
+            Some('%') => {
+                self.advance();
+                Token::new(self.line, self.col, "%".to_string(), TType::Percentage)
+            }
+            Some('~') => {
+                self.advance();
+                Token::new(self.line, self.col, "~".to_string(), TType::Tilde)
             }
             Some(';') => {
                 self.advance();

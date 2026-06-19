@@ -6,9 +6,12 @@ pub enum TType {
     PlusPlus,
     MinusMinus,
     Colon,      //:
-    Equals,     //==
+    Eq,         //==
     Bind,       //:=
     Assign,     //=
+    Neq,        // '!='
+    And,        //&&
+    Or,         // ||
     Scope,      //::
     Semicolon,  //;
     Gt,         //>
@@ -17,6 +20,13 @@ pub enum TType {
     Leftshift,  //<<
     Gte,        //>=
     Lte,        //<=
+    Star,       // *
+    Slash,      // /
+    Percentage, // %
+    Bang,       // !
+    Tilde,      //~
+    Stick,      // |
+    Ampersand,  //&
 
     // Number types
     Int,
@@ -67,7 +77,7 @@ pub enum TType {
     End,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct Token {
     pub line: usize,
     pub col: usize,

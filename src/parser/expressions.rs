@@ -1,9 +1,120 @@
 use crate::{
-    lexer::{TType, token::Token},
-    parser::{Expr, Literal, Parser},
+    lexer::{
+        TType,
+        token::{self, Token},
+    },
+    parser::{
+        Expr, Literal, Parser,
+        ast::{BinaryOp, UnaryOp},
+        precedence::{self, Precedence},
+    },
 };
 
 impl Parser {
+    pub fn parse_expression(&mut self, min_prec: Precedence) -> Result<Expr, String> {
+        // Parse the leftmost expression (prefix)
+        let mut left = self.parse_prefix()?;
+
+        // While we have a binary operator with higher precedence
+        while let Some(token) = self.current_token() {
+            if token.token_type == TType::End {
+                break;
+            }
+
+            if !self.is_binary_operator(&token.token_type) {
+                break;
+            }
+
+            let op_prec = Precedence::token_precedence(&token.token_type);
+
+            // If the operator has lower precedence than our minimum, stop
+            if op_prec < min_prec {
+                break;
+            }
+
+            // Parse the binary operation
+            left = self.parse_binary(left)?;
+        }
+
+        Ok(left)
+    }
+
+    fn parse_binary(&mut self, left: Expr) -> Result<Expr, String> {
+        let token_type = match self.current_token() {
+            Some(t) => t.token_type.clone(), // Clone just the token type
+            None => return Err("Expected operator".to_string()),
+        };
+
+        // Get operator precedence
+        let prec = Precedence::token_precedence(&token_type);
+
+        // Advance past the operator
+        self.advance();
+
+        // Parse the right side with higher precedence
+        let right = self.parse_expression(prec)?;
+
+        // Create the binary expression
+        let op = self.map_to_binary_op(&token_type);
+
+        Ok(Expr::Binary(Box::new(left), op, Box::new(right)))
+    }
+
+    fn parse_prefix(&mut self) -> Result<Expr, String> {
+        let token = match self.current_token() {
+            Some(t) => t.clone(),
+            None => return Err("Unexpected end of file in parse prefix".to_string()),
+        };
+
+        match token.token_type {
+            // Literals
+            TType::Int
+            | TType::Int8
+            | TType::Uint8
+            | TType::Int16
+            | TType::Uint16
+            | TType::Int32
+            | TType::Uint32
+            | TType::Int64
+            | TType::Uint64
+            | TType::Int128
+            | TType::Uint128
+            | TType::IntSize
+            | TType::UintSize
+            | TType::Float
+            | TType::F32
+            | TType::F64
+            | TType::True
+            | TType::False => self.parse_literal(),
+
+            TType::Identifier => self.parse_identifier(),
+
+            // Unary
+            TType::Minus | TType::Bang => {
+                let op = self.map_to_unary_op(&token.token_type);
+                self.advance(); // consume '-'
+                let expr = self.parse_expression(Precedence::Unary)?;
+                Ok(Expr::Unary(op, Box::new(expr)))
+            }
+
+            _ => Err(format!(
+                "Unexpected token: {:?} at {}:{}",
+                token.token_type, token.line, token.col
+            )),
+        }
+    }
+
+    fn parse_identifier(&mut self) -> Result<Expr, String> {
+        let token = match self.current_token() {
+            Some(t) => t.clone(),
+            None => return Err("Unexpected end of file".to_string()),
+        };
+
+        let name = token.lexeme.clone();
+        self.advance();
+        Ok(Expr::Identifier(name))
+    }
+
     fn parse_number(&self, num_str: &str) -> Result<i64, String> {
         if num_str.starts_with("0x") || num_str.starts_with("0X") {
             let hex_str = &num_str[2..];
@@ -105,8 +216,8 @@ impl Parser {
 
     pub fn parse_literal(&mut self) -> Result<Expr, String> {
         let token = match self.current_token() {
-            Some(t) => t,
-            None => return Err("Unexpected end of file".to_string()),
+            Some(t) => t.clone(),
+            None => return Err("Unexpected end of file in parse literal".to_string()),
         };
 
         match token.token_type {

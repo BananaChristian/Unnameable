@@ -1,5 +1,6 @@
 mod ast;
 mod parser;
+mod precedence;
 mod expressions;
 mod statement;
 
