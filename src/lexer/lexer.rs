@@ -1,17 +1,22 @@
 use std::collections::HashMap;
 
-use crate::lexer::{TType, token::Token};
+use crate::{
+    diagnostics::{CompilerError, Diagnostics, Phase, Span},
+    lexer::{TType, token::Token},
+};
 
-pub struct Lexer {
+pub struct Lexer<'a> {
     line: usize,
     col: usize,
     pos: usize,
     source: Vec<char>,
     keywords: HashMap<String, TType>,
+    diagnostics: &'a mut Diagnostics,
+    pub corrupted: bool,
 }
 
-impl Lexer {
-    pub fn new(src: &str) -> Self {
+impl<'a> Lexer<'a> {
+    pub fn new(src: &str, diagnostics: &'a mut Diagnostics) -> Self {
         let keywords = HashMap::from([
             ("mut".to_string(), TType::Mut),
             ("const".to_string(), TType::Const),
@@ -44,6 +49,8 @@ impl Lexer {
             pos: 0,
             source: src.chars().collect(),
             keywords,
+            corrupted: false,
+            diagnostics,
         }
     }
 
@@ -96,15 +103,22 @@ impl Lexer {
                     if nch == '#' {
                         // Multi-line comment
                         self.advance(); // Consume the second #
+                        let mut closed = false;
 
                         // Skip until closing ##
                         while let Some(c) = self.current_char() {
                             if c == '#' && self.peek_char() == Some('#') {
                                 self.advance(); // Consume first #
                                 self.advance(); // Consume second #
+                                closed = true;
                                 break;
                             }
                             self.advance();
+                        }
+
+                        if !closed {
+                            let span = Span::simple(self.line, self.col, 1);
+                            self.report("Unterminated multi-line comment".to_string(), Some(span));
                         }
                     } else {
                         // Single-line comment
@@ -195,8 +209,10 @@ impl Lexer {
         self.advance(); //Skip 0
         self.advance(); //Skip 1
 
+        let mut has_digit = false;
         while let Some(ch) = self.current_char() {
             if self.is_binary_digit(ch) {
+                has_digit = true;
                 number.push(ch);
                 self.advance();
             } else if ch == '_' {
@@ -204,6 +220,15 @@ impl Lexer {
             } else {
                 break;
             }
+        }
+
+        if !has_digit {
+            let span = Span::simple(line, col, 2);
+            self.report(
+                "Invalid binary number: expected binary digit after '0b'".to_string(),
+                Some(span),
+            );
+            return Token::new(line, col, number, TType::Illegal);
         }
 
         self.parse_suffix(number, line, col)
@@ -217,8 +242,10 @@ impl Lexer {
         self.advance(); //Consume 0
         self.advance(); //Consume x
 
+        let mut has_digit = false;
         while let Some(ch) = self.current_char() {
             if ch.is_ascii_hexdigit() {
+                has_digit = true;
                 number.push(ch);
                 self.advance();
             } else if ch == '_' {
@@ -226,6 +253,15 @@ impl Lexer {
             } else {
                 break;
             }
+        }
+
+        if !has_digit {
+            let span = Span::simple(line, col, 2);
+            self.report(
+                "Invalid hex number: expected hex digit after '0x'".to_string(),
+                Some(span),
+            );
+            return Token::new(line, col, number, TType::Illegal);
         }
 
         self.parse_suffix(number, line, col)
@@ -396,6 +432,14 @@ impl Lexer {
                     Token::new(self.line, self.col, "&".to_string(), TType::Ampersand)
                 }
             }
+            Some('(') => {
+                self.advance();
+                Token::new(self.line, self.col, "(".to_string(), TType::Lparen)
+            }
+            Some(')') => {
+                self.advance();
+                Token::new(self.line, self.col, "(".to_string(), TType::Rparen)
+            }
             Some('*') => {
                 self.advance();
                 Token::new(self.line, self.col, "*".to_string(), TType::Star)
@@ -418,8 +462,14 @@ impl Lexer {
             }
             None => Token::new(self.line, self.col, "".to_string(), TType::End),
             Some(ch) => {
+                let line = self.line;
+                let col = self.col;
+                let span = Span::simple(line, col, 1);
+
+                self.report(format!("Invalid character: '{}'", ch), Some(span));
+
                 self.advance();
-                Token::new(self.line, self.col, ch.to_string(), TType::Illegal)
+                Token::new(line, col, ch.to_string(), TType::Illegal)
             }
         }
     }
@@ -435,5 +485,11 @@ impl Lexer {
             }
         }
         tokens
+    }
+
+    pub fn report(&mut self, message: String, span: Option<Span>) {
+        self.corrupted = true;
+        self.diagnostics
+            .report(CompilerError::error(message, Phase::Lexer, span));
     }
 }

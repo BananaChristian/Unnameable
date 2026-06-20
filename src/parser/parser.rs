@@ -1,23 +1,28 @@
 use crate::{
+    diagnostics::{CompilerError, Diagnostics, Phase, Span},
     lexer::{TType, token::Token},
     parser::{
         Stmt,
-        ast::{BinaryOp, Expr, Literal, UnaryOp},
+        ast::{BinaryOp, UnaryOp},
     },
 };
 
-pub struct Parser {
+pub struct Parser<'a> {
     tokens: Vec<Token>,
     current_pos: usize,
     next_pos: usize,
+    diagnostics: &'a mut Diagnostics,
+    pub corrupted: bool,
 }
 
-impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+impl<'a> Parser<'a> {
+    pub fn new(tokens: Vec<Token>, diagnostics: &'a mut Diagnostics) -> Self {
         Parser {
             tokens: tokens,
             current_pos: 0,
             next_pos: 1,
+            diagnostics,
+            corrupted: false,
         }
     }
 
@@ -27,7 +32,7 @@ impl Parser {
         }
     }
 
-    pub fn current_token(&self) -> Option<&Token> {
+    pub fn current_token(&mut self) -> Option<&Token> {
         if self.current_pos < self.tokens.len() {
             Some(&self.tokens[self.current_pos])
         } else {
@@ -35,20 +40,33 @@ impl Parser {
         }
     }
 
-    pub fn match_token(&mut self, expected: TType) -> bool {
-        if let Some(token) = self.current_token() {
-            if token.token_type == expected {
-                self.advance();
-                true
-            } else {
-                false
-            }
+    pub fn expect_token(&mut self, expected: TType) -> Option<()> {
+        let token = self.current_token()?.clone();
+
+        if token.token_type == expected {
+            self.advance();
+            Some(())
         } else {
-            false
+            let span = Span::from_token(&token);
+            self.report(
+                format!("Expected {:?}, found {:?}", expected, token.token_type),
+                Some(span),
+            );
+            None
         }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Stmt>, String> {
+    fn match_token(&mut self, expected: TType) -> bool {
+        if let Some(token) = self.current_token() {
+            if token.token_type == expected {
+                self.advance();
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn parse(&mut self) -> Vec<Stmt> {
         let mut stmts = Vec::new();
 
         while self.current_pos < self.tokens.len() {
@@ -57,20 +75,18 @@ impl Parser {
                     break;
                 }
 
-                // Parse the statement
-                match self.parse_stmt() {
-                    Ok(stmt) => stmts.push(stmt),
-                    Err(e) => {
-                        self.advance();
-                        return Err(e);
-                    }
+                if let Some(stmt) = self.parse_stmt() {
+                    stmts.push(stmt);
+                } else {
+                    // Error already reported, advance to avoid infinite loop
+                    self.advance();
                 }
             } else {
                 break;
             }
         }
 
-        Ok(stmts)
+        stmts
     }
 
     pub fn is_binary_operator(&self, tt: &TType) -> bool {
@@ -119,5 +135,11 @@ impl Parser {
             TType::Bang => UnaryOp::Not,
             _ => panic!("Not a unary operator: {:?}", tt),
         }
+    }
+
+    pub fn report(&mut self, message: String, span: Option<Span>) {
+        self.corrupted = true;
+        self.diagnostics
+            .report(CompilerError::error(message, Phase::Parser, span));
     }
 }

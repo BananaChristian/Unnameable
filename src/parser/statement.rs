@@ -1,8 +1,9 @@
-use crate::parser::{Parser, Stmt, precedence::Precedence};
+use crate::parser::{Parser, Stmt, ast::StmtKind, precedence::Precedence};
 
-impl Parser{
-    pub fn parse_stmt(&mut self) -> Result<Stmt,String>{
+impl <'a>Parser<'a>{
+    pub fn parse_stmt(&mut self) -> Option<Stmt>{
         let expr=self.parse_expression(Precedence::Lowest)?;
-        Ok(Stmt::Expr(expr))
+        let span=expr.span;
+        Some(Stmt::new(StmtKind::Expr(expr), span))
     }
 }

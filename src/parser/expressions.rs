@@ -1,73 +1,59 @@
 use crate::{
-    lexer::{
-        TType,
-        token::{self, Token},
-    },
+    diagnostics::Span,
+    lexer::{TType, token::Token},
     parser::{
         Expr, Literal, Parser,
-        ast::{BinaryOp, UnaryOp},
-        precedence::{self, Precedence},
+        ast::ExprKind,
+        precedence::Precedence,
     },
 };
 
-impl Parser {
-    pub fn parse_expression(&mut self, min_prec: Precedence) -> Result<Expr, String> {
-        // Parse the leftmost expression (prefix)
+impl<'a> Parser<'a> {
+    pub fn parse_expression(&mut self, min_prec: Precedence) -> Option<Expr> {
         let mut left = self.parse_prefix()?;
 
-        // While we have a binary operator with higher precedence
         while let Some(token) = self.current_token() {
+            let token_type = token.token_type;
             if token.token_type == TType::End {
                 break;
             }
 
-            if !self.is_binary_operator(&token.token_type) {
+            if !self.is_binary_operator(&token_type) {
                 break;
             }
 
-            let op_prec = Precedence::token_precedence(&token.token_type);
+            let op_prec = Precedence::token_precedence(&token_type);
 
-            // If the operator has lower precedence than our minimum, stop
             if op_prec < min_prec {
                 break;
             }
 
-            // Parse the binary operation
             left = self.parse_binary(left)?;
         }
 
-        Ok(left)
+        Some(left)
     }
 
-    fn parse_binary(&mut self, left: Expr) -> Result<Expr, String> {
-        let token_type = match self.current_token() {
-            Some(t) => t.token_type.clone(), // Clone just the token type
-            None => return Err("Expected operator".to_string()),
-        };
+    fn parse_binary(&mut self, left: Expr) -> Option<Expr> {
+        let operator = self.current_token()?;
+        let token_type = operator.token_type.clone();
 
-        // Get operator precedence
-        let prec = Precedence::token_precedence(&token_type);
-
-        // Advance past the operator
         self.advance();
+        let right = self.parse_expression(Precedence::Lowest)?;
 
-        // Parse the right side with higher precedence
-        let right = self.parse_expression(prec)?;
-
-        // Create the binary expression
+        let span = Span::merge(&left.span, &right.span);
         let op = self.map_to_binary_op(&token_type);
 
-        Ok(Expr::Binary(Box::new(left), op, Box::new(right)))
+        Some(Expr::new(
+            ExprKind::Binary(Box::new(left), op, Box::new(right)),
+            span,
+        ))
     }
 
-    fn parse_prefix(&mut self) -> Result<Expr, String> {
-        let token = match self.current_token() {
-            Some(t) => t.clone(),
-            None => return Err("Unexpected end of file in parse prefix".to_string()),
-        };
+    fn parse_prefix(&mut self) -> Option<Expr> {
+        let token = self.current_token()?.clone();
 
         match token.token_type {
-            // Literals
             TType::Int
             | TType::Int8
             | TType::Uint8
@@ -89,145 +75,155 @@ impl Parser {
 
             TType::Identifier => self.parse_identifier(),
 
-            // Unary
+            TType::Lparen => self.parse_grouping(),
+
             TType::Minus | TType::Bang => {
                 let op = self.map_to_unary_op(&token.token_type);
-                self.advance(); // consume '-'
+                let op_span = Span::from_token(&token);
+                self.advance();
+
                 let expr = self.parse_expression(Precedence::Unary)?;
-                Ok(Expr::Unary(op, Box::new(expr)))
+                let span = Span::merge(&op_span, &expr.span);
+                Some(Expr::new(ExprKind::Unary(op, Box::new(expr)), span))
             }
 
-            _ => Err(format!(
-                "Unexpected token: {:?} at {}:{}",
-                token.token_type, token.line, token.col
-            )),
+            _ => {
+                let span = Span::from_token(&token);
+                self.report(
+                    format!("Unexpected token: {:?}", token.token_type),
+                    Some(span),
+                );
+                self.advance();
+                None
+            }
         }
     }
 
-    fn parse_identifier(&mut self) -> Result<Expr, String> {
-        let token = match self.current_token() {
-            Some(t) => t.clone(),
-            None => return Err("Unexpected end of file".to_string()),
-        };
-
-        let name = token.lexeme.clone();
-        self.advance();
-        Ok(Expr::Identifier(name))
+    fn parse_grouping(&mut self) -> Option<Expr> {
+        self.expect_token(TType::Lparen)?;
+        let expr = self.parse_expression(Precedence::Lowest)?;
+        self.expect_token(TType::Rparen)?;
+        Some(expr)
     }
 
-    fn parse_number(&self, num_str: &str) -> Result<i64, String> {
+    fn parse_identifier(&mut self) -> Option<Expr> {
+        let token = self.current_token()?;
+        let name = token.lexeme.clone();
+        let span = Span::from_token(token);
+        self.advance();
+        Some(Expr::new(ExprKind::Identifier(name), span))
+    }
+
+    fn parse_number(&self, num_str: &str) -> Option<i64> {
         if num_str.starts_with("0x") || num_str.starts_with("0X") {
             let hex_str = &num_str[2..];
-            i64::from_str_radix(hex_str, 16).map_err(|_| format!("Invalid hex number: {}", num_str))
+            i64::from_str_radix(hex_str, 16).ok()
         } else if num_str.starts_with("0b") || num_str.starts_with("0B") {
             let bin_str = &num_str[2..];
-            i64::from_str_radix(bin_str, 2)
-                .map_err(|_| format!("Invalid binary number: {}", num_str))
+            i64::from_str_radix(bin_str, 2).ok()
         } else if num_str.starts_with("0o") || num_str.starts_with("0O") {
             let oct_str = &num_str[2..];
-            i64::from_str_radix(oct_str, 8)
-                .map_err(|_| format!("Invalid octal number: {}", num_str))
+            i64::from_str_radix(oct_str, 8).ok()
         } else {
-            num_str
-                .parse::<i64>()
-                .map_err(|_| format!("Invalid number: {}", num_str))
+            num_str.parse::<i64>().ok()
         }
     }
 
-    fn parse_float(&self, num_str: &str) -> Result<f64, String> {
-        num_str
-            .parse::<f64>()
-            .map_err(|_| format!("Invalid float: {}", num_str))
+    fn parse_float(&self, num_str: &str) -> Option<f64> {
+        num_str.parse::<f64>().ok()
     }
 
-    pub fn get_value(&self, token: &Token) -> Result<Literal, String> {
+    pub fn get_value(&mut self, token: &Token) -> Option<Literal> {
         let lexeme = &token.lexeme;
 
-        // Parse the number based on token type
         match token.token_type {
             TType::Int => {
-                // Default int -> i64
                 let value = self.parse_number(lexeme)?;
-                Ok(Literal::Int(value))
+                Some(Literal::Int(value))
             }
             TType::Int8 => {
                 let value = self.parse_number(lexeme)? as i8;
-                Ok(Literal::Int8(value))
+                Some(Literal::Int8(value))
             }
             TType::Uint8 => {
                 let value = self.parse_number(lexeme)? as u8;
-                Ok(Literal::Uint8(value))
+                Some(Literal::Uint8(value))
             }
             TType::Int16 => {
                 let value = self.parse_number(lexeme)? as i16;
-                Ok(Literal::Int16(value))
+                Some(Literal::Int16(value))
             }
             TType::Uint16 => {
                 let value = self.parse_number(lexeme)? as u16;
-                Ok(Literal::Uint16(value))
+                Some(Literal::Uint16(value))
             }
             TType::Int32 => {
                 let value = self.parse_number(lexeme)? as i32;
-                Ok(Literal::Int32(value))
+                Some(Literal::Int32(value))
             }
             TType::Uint32 => {
                 let value = self.parse_number(lexeme)? as u32;
-                Ok(Literal::Uint32(value))
+                Some(Literal::Uint32(value))
             }
             TType::Int64 => {
                 let value = self.parse_number(lexeme)?;
-                Ok(Literal::Int64(value))
+                Some(Literal::Int64(value))
             }
             TType::Uint64 => {
                 let value = self.parse_number(lexeme)? as u64;
-                Ok(Literal::Uint64(value))
+                Some(Literal::Uint64(value))
             }
             TType::Int128 => {
                 let value = self.parse_number(lexeme)? as i128;
-                Ok(Literal::Int128(value))
+                Some(Literal::Int128(value))
             }
             TType::Uint128 => {
                 let value = self.parse_number(lexeme)? as u128;
-                Ok(Literal::Uint128(value))
+                Some(Literal::Uint128(value))
             }
             TType::IntSize => {
                 let value = self.parse_number(lexeme)? as isize;
-                Ok(Literal::IntSize(value))
+                Some(Literal::IntSize(value))
             }
             TType::UintSize => {
                 let value = self.parse_number(lexeme)? as usize;
-                Ok(Literal::UintSize(value))
+                Some(Literal::UintSize(value))
             }
             TType::Float => {
                 let value = self.parse_float(lexeme)?;
-                Ok(Literal::Float(value))
+                Some(Literal::Float(value))
             }
             TType::F32 => {
                 let value = self.parse_float(lexeme)? as f32;
-                Ok(Literal::F32(value))
+                Some(Literal::F32(value))
             }
             TType::F64 => {
                 let value = self.parse_float(lexeme)?;
-                Ok(Literal::F64(value))
+                Some(Literal::F64(value))
             }
-            _ => Err(format!("Unexpected token type: {:?}", token.token_type)),
+            _ => {
+                let span = Span::from_token(token);
+                self.report(
+                    format!("Unexpected token type: {:?}", token.token_type),
+                    Some(span),
+                );
+                None
+            }
         }
     }
 
-    pub fn parse_literal(&mut self) -> Result<Expr, String> {
-        let token = match self.current_token() {
-            Some(t) => t.clone(),
-            None => return Err("Unexpected end of file in parse literal".to_string()),
-        };
+    pub fn parse_literal(&mut self) -> Option<Expr> {
+        let token = self.current_token()?.clone();
+        let span = Span::from_token(&token);
 
         match token.token_type {
             TType::True => {
                 self.advance();
-                Ok(Expr::Literal(Literal::Bool(true)))
+                Some(Expr::new(ExprKind::Literal(Literal::Bool(true)), span))
             }
             TType::False => {
                 self.advance();
-                Ok(Expr::Literal(Literal::Bool(false)))
+                Some(Expr::new(ExprKind::Literal(Literal::Bool(false)), span))
             }
             TType::Int
             | TType::Int8
@@ -247,12 +243,16 @@ impl Parser {
             | TType::F64 => {
                 let literal = self.get_value(&token)?;
                 self.advance();
-                Ok(Expr::Literal(literal))
+                Some(Expr::new(ExprKind::Literal(literal), span))
             }
-            _ => Err(format!(
-                "Expected literal, found {:?} at {}:{}",
-                token.token_type, token.line, token.col
-            )),
+            _ => {
+                self.report(
+                    format!("Expected literal, found {:?}", token.token_type),
+                    Some(span),
+                );
+                self.advance();
+                None
+            }
         }
     }
 }

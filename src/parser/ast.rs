@@ -1,3 +1,5 @@
+use crate::diagnostics::Span;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     // Integers with explicit types
@@ -27,11 +29,27 @@ pub enum Literal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr {
+pub enum ExprKind {
     Literal(Literal),
     Identifier(String),
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
     Unary(UnaryOp, Box<Expr>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
+
+impl Expr {
+    pub fn new(kind: ExprKind, span: Span) -> Self {
+        Expr { kind, span }
+    }
+    
+    pub fn span(&self) -> Span {
+        self.span
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,6 +84,22 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug)]
-pub enum Stmt {
+pub enum StmtKind {
     Expr(Expr),
+}
+
+#[derive(Debug)]
+pub struct Stmt {
+    pub kind: StmtKind,
+    pub span: Span,
+}
+
+impl Stmt {
+    pub fn new(kind: StmtKind, span: Span) -> Self {
+        Stmt { kind, span }
+    }
+    
+    pub fn span(&mut self) -> Span {
+        self.span
+    }
 }

@@ -48,6 +48,7 @@ pub enum TType {
 
     Identifier,
 
+    //Keywords
     Mut,
     Const,
     Var,
@@ -73,11 +74,15 @@ pub enum TType {
     I128Key,
     U128Key,
 
+    //Brackets
+    Lparen, // (
+    Rparen, //)
+
     Illegal,
     End,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub line: usize,
     pub col: usize,
