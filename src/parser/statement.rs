@@ -1,9 +1,78 @@
-use crate::parser::{Parser, Stmt, ast::StmtKind, precedence::Precedence};
+use crate::{
+    ast::{Precedence, Qualifier, Stmt, StmtKind},
+    diagnostics::Span,
+    lexer::TType,
+    parser::Parser,
+};
 
-impl <'a>Parser<'a>{
-    pub fn parse_stmt(&mut self) -> Option<Stmt>{
-        let expr=self.parse_expression(Precedence::Lowest)?;
-        let span=expr.span;
+impl<'a> Parser<'a> {
+    pub fn parse_stmt(&mut self) -> Option<Stmt> {
+        let token = self.current_token()?.clone();
+        match token.token_type {
+            TType::Var => self.parse_var_declaration(),
+            _ => self.parse_expr_stmt(),
+        }
+    }
+
+    fn parse_expr_stmt(&mut self) -> Option<Stmt> {
+        let expr = self.parse_expression(Precedence::Lowest)?;
+        let span = expr.span;
         Some(Stmt::new(StmtKind::Expr(expr), span))
+    }
+
+    fn parse_var_declaration(&mut self) -> Option<Stmt> {
+        let mut span = Span::from_token(self.current_token()?);
+        // Expect 'var' keyword
+        self.expect_token(TType::Var)?;
+
+        // Collect qualifiers (mut, const, heap)
+        let mut qualifiers=Vec::new();
+        if Qualifier::is_valid(self.current_token()?) {
+            qualifiers = self.collect_qualifiers();
+            for qualifier in &qualifiers {
+                span = Span::merge(&span, &qualifier.span)
+            }
+        }
+
+        // Parse the type annotation (optional)
+        let ty = self.parse_type();
+        if let Some(annot) = &ty {
+            span = Span::merge(&span, &annot.span);
+        }
+
+        // Parse the name (identifier)
+        let name = self.parse_identifier()?;
+        span = Span::merge(&span, &name.span);
+
+        // Check for initialization
+        if self.current_token()?.token_type == TType::Bind {
+            span = Span::merge(&span, &Span::from_token(self.current_token()?));
+            self.advance(); // Consume the := token
+
+            // Parse the initializer expression
+            let init = self.parse_expression(Precedence::Lowest)?;
+            span = Span::merge(&span, &init.span);
+
+            Some(Stmt::new(
+                StmtKind::VarDecl {
+                    qualifiers,
+                    type_annotation: ty,
+                    name: Box::new(name),
+                    init: Some(Box::new(init)),
+                },
+                span, // You need to capture the span
+            ))
+        } else {
+            // Declaration without initialization
+            Some(Stmt::new(
+                StmtKind::VarDecl {
+                    qualifiers,
+                    type_annotation: ty,
+                    name: Box::new(name),
+                    init: None,
+                },
+                span,
+            ))
+        }
     }
 }

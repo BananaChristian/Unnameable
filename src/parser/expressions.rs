@@ -1,11 +1,8 @@
 use crate::{
+    ast::{BinaryOp, Expr, ExprKind, Literal, Precedence, Stmt, UnaryOp},
     diagnostics::Span,
     lexer::{TType, token::Token},
-    parser::{
-        Expr, Literal, Parser,
-        ast::ExprKind,
-        precedence::Precedence,
-    },
+    parser::Parser,
 };
 
 impl<'a> Parser<'a> {
@@ -14,11 +11,12 @@ impl<'a> Parser<'a> {
 
         while let Some(token) = self.current_token() {
             let token_type = token.token_type;
-            if token.token_type == TType::End {
+
+            if Stmt::is_valid(token) || token.token_type == TType::End {
                 break;
             }
 
-            if !self.is_binary_operator(&token_type) {
+            if BinaryOp::is_valid(token) {
                 break;
             }
 
@@ -35,14 +33,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_binary(&mut self, left: Expr) -> Option<Expr> {
-        let operator = self.current_token()?;
-        let token_type = operator.token_type.clone();
+        let operator = self.current_token()?.clone();
 
         self.advance();
         let right = self.parse_expression(Precedence::Lowest)?;
 
         let span = Span::merge(&left.span, &right.span);
-        let op = self.map_to_binary_op(&token_type);
+        let op = BinaryOp::new(&operator);
 
         Some(Expr::new(
             ExprKind::Binary(Box::new(left), op, Box::new(right)),
@@ -78,7 +75,7 @@ impl<'a> Parser<'a> {
             TType::Lparen => self.parse_grouping(),
 
             TType::Minus | TType::Bang => {
-                let op = self.map_to_unary_op(&token.token_type);
+                let op = UnaryOp::new(&token);
                 let op_span = Span::from_token(&token);
                 self.advance();
 
@@ -106,7 +103,7 @@ impl<'a> Parser<'a> {
         Some(expr)
     }
 
-    fn parse_identifier(&mut self) -> Option<Expr> {
+    pub fn parse_identifier(&mut self) -> Option<Expr> {
         let token = self.current_token()?;
         let name = token.lexeme.clone();
         let span = Span::from_token(token);

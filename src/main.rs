@@ -3,6 +3,7 @@ use std::{env, fs};
 
 mod diagnostics;
 mod lexer;
+mod ast;
 mod parser;
 
 fn main() -> Result<(), std::io::Error> {

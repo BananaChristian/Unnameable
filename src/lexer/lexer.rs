@@ -41,6 +41,12 @@ impl<'a> Lexer<'a> {
             ("u64".to_string(), TType::U64Key),
             ("i128".to_string(), TType::I128Key),
             ("u128".to_string(), TType::U128Key),
+            ("bool".to_string(), TType::BoolKey),
+            ("f32".to_string(), TType::F32Key),
+            ("f64".to_string(), TType::F64Key),
+            ("ptr".to_string(), TType::Ptr),
+            ("ref".to_string(), TType::Ref),
+            ("arr".to_string(), TType::Arr),
         ]);
 
         Lexer {

@@ -1,4 +1,4 @@
-use crate::diagnostics::Span;
+use crate::{ast::operators::{BinaryOp, UnaryOp}, diagnostics::Span};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
@@ -34,6 +34,7 @@ pub enum ExprKind {
     Identifier(String),
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
     Unary(UnaryOp, Box<Expr>),
+    Call(Box<Expr>, Vec<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,60 +47,8 @@ impl Expr {
     pub fn new(kind: ExprKind, span: Span) -> Self {
         Expr { kind, span }
     }
-    
+
     pub fn span(&self) -> Span {
-        self.span
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum BinaryOp {
-    // Arithmetic
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-
-    // Comparison
-    Eq,
-    Neq,
-    Lt,
-    Gt,
-    Leq,
-    Geq,
-
-    // Logical
-    And,
-    Or,
-
-    // Assignment
-    Assign,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum UnaryOp {
-    Neg, // -
-    Not, // !
-}
-
-#[derive(Debug)]
-pub enum StmtKind {
-    Expr(Expr),
-}
-
-#[derive(Debug)]
-pub struct Stmt {
-    pub kind: StmtKind,
-    pub span: Span,
-}
-
-impl Stmt {
-    pub fn new(kind: StmtKind, span: Span) -> Self {
-        Stmt { kind, span }
-    }
-    
-    pub fn span(&mut self) -> Span {
         self.span
     }
 }

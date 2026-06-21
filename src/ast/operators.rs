@@ -1,0 +1,84 @@
+use crate::lexer::{TType, token::Token};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryOp {
+    // Arithmetic
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
+    // Comparison
+    Eq,
+    Neq,
+    Lt,
+    Gt,
+    Leq,
+    Geq,
+
+    // Logical
+    And,
+    Or,
+
+    // Assignment
+    Assign,
+}
+
+impl BinaryOp {
+    pub fn new(token: &Token) -> Self {
+        match token.token_type {
+            TType::Plus => BinaryOp::Add,
+            TType::Minus => BinaryOp::Sub,
+            TType::Star => BinaryOp::Mul,
+            TType::Slash => BinaryOp::Div,
+            TType::Percentage => BinaryOp::Mod,
+            TType::Eq => BinaryOp::Eq,
+            TType::Neq => BinaryOp::Neq,
+            TType::Lt => BinaryOp::Lt,
+            TType::Gt => BinaryOp::Gt,
+            TType::Lte => BinaryOp::Leq,
+            TType::Gte => BinaryOp::Geq,
+            TType::And => BinaryOp::And,
+            TType::Or => BinaryOp::Or,
+            TType::Assign => BinaryOp::Assign,
+            _ => panic!("Not a binary operator: {:?}", token.token_type),
+        }
+    }
+
+    pub fn is_valid(token: &Token) -> bool {
+        matches!(
+            token.token_type,
+            TType::Plus
+                | TType::Minus
+                | TType::Star
+                | TType::Slash
+                | TType::Percentage
+                | TType::Eq
+                | TType::Neq
+                | TType::Lt
+                | TType::Gt
+                | TType::Lte
+                | TType::Gte
+                | TType::And
+                | TType::Or
+                | TType::Assign
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOp {
+    Neg, // -
+    Not, // !
+}
+
+impl UnaryOp {
+    pub fn new(token: &Token) -> Self {
+        match token.token_type {
+            TType::Minus => UnaryOp::Neg,
+            TType::Bang => UnaryOp::Not,
+            _ => panic!("Not a unary operator: {:?}", token.token_type),
+        }
+    }
+}

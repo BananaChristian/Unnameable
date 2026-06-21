@@ -73,6 +73,14 @@ pub enum TType {
     U64Key,
     I128Key,
     U128Key,
+    ISIZEKey,
+    USIZEKey,
+    BoolKey,
+    F32Key,
+    F64Key,
+    Ptr,
+    Ref,
+    Arr,
 
     //Brackets
     Lparen, // (

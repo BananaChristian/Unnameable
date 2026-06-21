@@ -1,10 +1,7 @@
 use crate::{
+    ast::{Qualifier, Stmt, Type},
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     lexer::{TType, token::Token},
-    parser::{
-        Stmt,
-        ast::{BinaryOp, UnaryOp},
-    },
 };
 
 pub struct Parser<'a> {
@@ -89,52 +86,65 @@ impl<'a> Parser<'a> {
         stmts
     }
 
-    pub fn is_binary_operator(&self, tt: &TType) -> bool {
-        matches!(
-            tt,
-            TType::Plus
-                | TType::Minus
-                | TType::Star
-                | TType::Slash
-                | TType::Percentage
-                | TType::Eq
-                | TType::Neq
-                | TType::Lt
-                | TType::Gt
-                | TType::Lte
-                | TType::Gte
-                | TType::And
-                | TType::Or
-                | TType::Assign
-        )
-    }
-
-    pub fn map_to_binary_op(&self, tt: &TType) -> BinaryOp {
-        match tt {
-            TType::Plus => BinaryOp::Add,
-            TType::Minus => BinaryOp::Sub,
-            TType::Star => BinaryOp::Mul,
-            TType::Slash => BinaryOp::Div,
-            TType::Percentage => BinaryOp::Mod,
-            TType::Eq => BinaryOp::Eq,
-            TType::Neq => BinaryOp::Neq,
-            TType::Lt => BinaryOp::Lt,
-            TType::Gt => BinaryOp::Gt,
-            TType::Lte => BinaryOp::Leq,
-            TType::Gte => BinaryOp::Geq,
-            TType::And => BinaryOp::And,
-            TType::Or => BinaryOp::Or,
-            TType::Assign => BinaryOp::Assign,
-            _ => panic!("Not a binary operator: {:?}", tt),
+    pub fn parse_type(&mut self) -> Option<Type> {
+        let token = self.current_token()?.clone();
+        match token.token_type {
+            TType::Ptr => {
+                self.advance(); //Consume the ptr token
+                self.expect_token(TType::Lt);
+                let inner_type = self.parse_type()?;
+                self.expect_token(TType::Gt);
+                Some(Type::complex(&token, inner_type))
+            }
+            TType::Ref => {
+                self.advance(); //Consum the ref token
+                self.expect_token(TType::Lt);
+                let inner_type = self.parse_type()?;
+                self.expect_token(TType::Gt);
+                Some(Type::complex(&token, inner_type))
+            }
+            TType::ISIZEKey
+            | TType::USIZEKey
+            | TType::I128Key
+            | TType::U128Key
+            | TType::I64Key
+            | TType::U64Key
+            | TType::I32Key
+            | TType::U32key
+            | TType::I16Key
+            | TType::U16Key
+            | TType::I8Key
+            | TType::U8Key
+            | TType::BoolKey
+            | TType::F32Key
+            | TType::F64Key => {
+                self.advance();
+                Some(Type::basic(&token))
+            }
+            _ => None,
         }
     }
 
-    pub fn map_to_unary_op(&self, tt: &TType) -> UnaryOp {
-        match tt {
-            TType::Minus => UnaryOp::Neg,
-            TType::Bang => UnaryOp::Not,
-            _ => panic!("Not a unary operator: {:?}", tt),
+    pub fn collect_qualifiers(&mut self) -> Vec<Qualifier> {
+        let mut qualifiers = Vec::new();
+
+        // Loop while we have qualifiers
+        while let Some(token) = self.current_token() {
+            match token.token_type {
+                TType::Mut | TType::Const | TType::Heap => {
+                    // It's a qualifier! Create it and consume it
+                    let qualifier = Qualifier::new(&token);
+                    qualifiers.push(qualifier);
+                    self.advance();
+                }
+                _ => {
+                    // Not a qualifier, stop collecting
+                    break;
+                }
+            }
         }
+
+        qualifiers
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {
