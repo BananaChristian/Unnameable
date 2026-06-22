@@ -11,6 +11,7 @@ impl<'a> Parser<'a> {
         match token.token_type {
             TType::Var => self.parse_var_declaration(),
             TType::Func => self.parse_func_decl(),
+            TType::Struct => self.parse_struct(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -61,7 +62,7 @@ impl<'a> Parser<'a> {
                     name: Box::new(name),
                     init: Some(Box::new(init)),
                 },
-                span, // You need to capture the span
+                span, 
             ))
         } else {
             // Declaration without initialization
@@ -75,6 +76,58 @@ impl<'a> Parser<'a> {
                 span,
             ))
         }
+    }
+
+    pub fn parse_struct_body(&mut self) -> Option<Stmt> {
+        let mut span = Span::from_token(self.current_token()?);
+        let mut fields = Vec::new();
+
+        self.expect_token(TType::LBrace)?;
+
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            if let Some(param) = self.parse_param_decl() {
+                span = Span::merge(&span, &param.span);
+                fields.push(param);
+            } else {
+                let token = self.current_token()?.clone();
+                self.report(
+                    "Expected field declaration".to_string(),
+                    Some(Span::from_token(&token)),
+                );
+                self.advance(); // Skip
+            }
+
+            // Optional comma
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+            }
+        }
+
+        self.expect_token(TType::Rbrace)?;
+        span = Span::merge(&span, &Span::from_token(self.current_token()?));
+
+        Some(Stmt::new(StmtKind::Block { content: fields }, span))
+    }
+
+    pub fn parse_struct(&mut self) -> Option<Stmt> {
+        let mut span = Span::from_token(self.current_token()?);
+        self.expect_token(TType::Struct)?;
+
+        let name = self.parse_identifier()?;
+        span = Span::merge(&span, &name.span);
+
+        let body = self.parse_struct_body()?;
+        span = Span::merge(&span, &body.span);
+
+        Some(Stmt::new(
+            StmtKind::StructDecl {
+                name: Box::new(name),
+                contents: Box::new(body),
+            },
+            span,
+        ))
     }
 
     pub fn parse_body(&mut self) -> Option<Stmt> {

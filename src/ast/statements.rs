@@ -19,14 +19,18 @@ pub enum StmtKind {
         type_annotation: Type,
         def: Option<Box<Expr>>,
     },
-    Block{
-        content: Vec<Stmt>
+    Block {
+        content: Vec<Stmt>,
     },
     FunctionDecl {
         name: Box<Expr>,
         params: Vec<Stmt>,
         type_annotation: Option<Type>,
         body: Option<Box<Stmt>>,
+    },
+    StructDecl {
+        name: Box<Expr>,
+        contents: Box<Stmt>,
     },
 }
 
@@ -42,6 +46,6 @@ impl Stmt {
     }
 
     pub fn is_valid(token: &Token) -> bool {
-        matches!(token.token_type, TType::Var|TType::Func)
+        matches!(token.token_type, TType::Var | TType::Func | TType::Struct)
     }
 }

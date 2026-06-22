@@ -1,6 +1,6 @@
 use crate::lexer::token::Token;
 
-#[derive(Debug, Clone,Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Span {
     pub line: usize,
     pub col: usize,
@@ -23,26 +23,35 @@ impl Span {
     // Merge two spans
     pub fn merge(start: &Span, end: &Span) -> Self {
         if start.line == end.line {
-            Span {
-                line: start.line,
-                col: start.col,
-                length: (end.col + end.length) - start.col,
+            let end_col = end.col + end.length;
+            if end_col >= start.col {
+                Span {
+                    line: start.line,
+                    col: start.col,
+                    length: end_col - start.col,
+                }
+            } else {
+                start.clone()
             }
         } else {
-            // Multi-line: from start to end
-            Span {
-                line: start.line,
-                col: start.col,
-                length: (end.col + end.length) - start.col,
+            let end_col = end.col + end.length;
+            if end_col >= start.col {
+                Span {
+                    line: start.line,
+                    col: start.col,
+                    length: end_col - start.col,
+                }
+            } else {
+                start.clone()
             }
         }
     }
 
-    pub fn fresh() -> Self{
-        Span{
+    pub fn fresh() -> Self {
+        Span {
             line: 1,
             col: 0,
-            length: 0
+            length: 0,
         }
     }
 }

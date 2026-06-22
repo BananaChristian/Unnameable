@@ -6,11 +6,11 @@ use crate::{
 };
 
 impl<'a> Parser<'a> {
-    fn parse_param_decl(&mut self) -> Option<Stmt> {
+    pub fn parse_param_decl(&mut self) -> Option<Stmt> {
         let start_token = self.current_token()?;
         let mut span = Span::from_token(start_token);
 
-        // 1. Collect qualifiers
+        // Collect qualifiers
         let mut qualifiers = Vec::new();
         while let Some(token) = self.current_token() {
             if Qualifier::is_valid(token) {
@@ -23,11 +23,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // 2. Parse name (must be identifier)
+        // Parse name (must be identifier)
         let name = self.parse_identifier()?;
         span = Span::merge(&span, &name.span);
 
-        // 3. Expect colon
+        // Expect colon
         if self.current_token()?.token_type != TType::Colon {
             // Error: Expected colon
             return None;
@@ -36,11 +36,11 @@ impl<'a> Parser<'a> {
         span = Span::merge(&span, &colon_span);
         self.advance(); // Consume colon
 
-        // 4. Parse type
+        // Parse type
         let ty = self.parse_type()?;
         span = Span::merge(&span, &ty.span);
 
-        // 5. Parse default value (optional)
+        // Parse default value (optional)
         let default = if self.current_token()?.token_type == TType::Bind {
             let bind_span = Span::from_token(self.current_token()?);
             span = Span::merge(&span, &bind_span);
@@ -58,12 +58,12 @@ impl<'a> Parser<'a> {
                 qualifiers,
                 name: Box::new(name),
                 type_annotation: ty,
-                def:default,
+                def: default,
             },
             span,
         ))
     }
-    
+
     fn parse_parameters(&mut self) -> Option<Vec<Stmt>> {
         let mut params = Vec::new();
 
