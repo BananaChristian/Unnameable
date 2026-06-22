@@ -1,2 +1,1 @@
-var mut const heap u8 test := 100
-var u8 test
+func add(a:i32 , b: i32):i32 

@@ -7,7 +7,6 @@ use crate::{
 pub struct Parser<'a> {
     tokens: Vec<Token>,
     current_pos: usize,
-    next_pos: usize,
     diagnostics: &'a mut Diagnostics,
     pub corrupted: bool,
 }
@@ -17,7 +16,6 @@ impl<'a> Parser<'a> {
         Parser {
             tokens: tokens,
             current_pos: 0,
-            next_pos: 1,
             diagnostics,
             corrupted: false,
         }
@@ -32,6 +30,14 @@ impl<'a> Parser<'a> {
     pub fn current_token(&mut self) -> Option<&Token> {
         if self.current_pos < self.tokens.len() {
             Some(&self.tokens[self.current_pos])
+        } else {
+            None
+        }
+    }
+    
+    pub fn next_token(&mut self) -> Option<&Token> {
+        if self.current_pos+1 < self.tokens.len() {
+            Some(&self.tokens[self.current_pos+1])
         } else {
             None
         }
@@ -53,7 +59,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn match_token(&mut self, expected: TType) -> bool {
+    pub fn match_token(&mut self, expected: TType) -> bool {
         if let Some(token) = self.current_token() {
             if token.token_type == expected {
                 self.advance();

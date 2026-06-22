@@ -6,6 +6,7 @@ pub enum TType {
     PlusPlus,
     MinusMinus,
     Colon,      //:
+    Comma,      //,
     Eq,         //==
     Bind,       //:=
     Assign,     //=
@@ -85,6 +86,8 @@ pub enum TType {
     //Brackets
     Lparen, // (
     Rparen, //)
+    LBrace, //{
+    Rbrace, //}
 
     Illegal,
     End,

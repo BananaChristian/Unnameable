@@ -113,4 +113,11 @@ impl Type {
             },
         }
     }
+
+    pub fn none() -> Type {
+        Type {
+            kind: TypeKind::None,
+            span: Span::fresh(),
+        }
+    }
 }

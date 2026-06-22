@@ -37,4 +37,12 @@ impl Span {
             }
         }
     }
+
+    pub fn fresh() -> Self{
+        Span{
+            line: 1,
+            col: 0,
+            length: 0
+        }
+    }
 }

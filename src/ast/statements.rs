@@ -13,6 +13,21 @@ pub enum StmtKind {
         name: Box<Expr>,               //The name of the variable
         init: Option<Box<Expr>>,
     },
+    ParamDecl {
+        qualifiers: Vec<Qualifier>,
+        name: Box<Expr>,
+        type_annotation: Type,
+        def: Option<Box<Expr>>,
+    },
+    Block{
+        content: Vec<Stmt>
+    },
+    FunctionDecl {
+        name: Box<Expr>,
+        params: Vec<Stmt>,
+        type_annotation: Option<Type>,
+        body: Option<Box<Stmt>>,
+    },
 }
 
 #[derive(Debug)]
@@ -27,6 +42,6 @@ impl Stmt {
     }
 
     pub fn is_valid(token: &Token) -> bool {
-        matches!(token.token_type, TType::Var,)
+        matches!(token.token_type, TType::Var|TType::Func)
     }
 }

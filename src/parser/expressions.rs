@@ -12,7 +12,14 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.current_token() {
             let token_type = token.token_type;
 
-            if Stmt::is_valid(token) || token.token_type == TType::End {
+            if Stmt::is_valid(token)
+                || token.token_type == TType::End
+            {
+                break;
+            }
+
+            if token.token_type == TType::Semicolon || token.token_type == TType::Comma {
+                self.advance();
                 break;
             }
 

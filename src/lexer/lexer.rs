@@ -444,7 +444,15 @@ impl<'a> Lexer<'a> {
             }
             Some(')') => {
                 self.advance();
-                Token::new(self.line, self.col, "(".to_string(), TType::Rparen)
+                Token::new(self.line, self.col, ")".to_string(), TType::Rparen)
+            }
+            Some('{') => {
+                self.advance();
+                Token::new(self.line, self.col, "{".to_string(), TType::LBrace)
+            }
+            Some('}') => {
+                self.advance();
+                Token::new(self.line, self.col, "}".to_string(), TType::Rbrace)
             }
             Some('*') => {
                 self.advance();
@@ -465,6 +473,10 @@ impl<'a> Lexer<'a> {
             Some(';') => {
                 self.advance();
                 Token::new(self.line, self.col, ";".to_string(), TType::Semicolon)
+            }
+            Some(',') => {
+                self.advance();
+                Token::new(self.line, self.col, ",".to_string(), TType::Comma)
             }
             None => Token::new(self.line, self.col, "".to_string(), TType::End),
             Some(ch) => {

@@ -10,6 +10,7 @@ impl<'a> Parser<'a> {
         let token = self.current_token()?.clone();
         match token.token_type {
             TType::Var => self.parse_var_declaration(),
+            TType::Func => self.parse_func_decl(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -26,7 +27,7 @@ impl<'a> Parser<'a> {
         self.expect_token(TType::Var)?;
 
         // Collect qualifiers (mut, const, heap)
-        let mut qualifiers=Vec::new();
+        let mut qualifiers = Vec::new();
         if Qualifier::is_valid(self.current_token()?) {
             qualifiers = self.collect_qualifiers();
             for qualifier in &qualifiers {
@@ -74,5 +75,31 @@ impl<'a> Parser<'a> {
                 span,
             ))
         }
+    }
+
+    pub fn parse_body(&mut self) -> Option<Stmt> {
+        let mut span = Span::from_token(self.current_token()?);
+        let mut stmts = Vec::new();
+        self.expect_token(TType::LBrace)?;
+
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            if let Some(stmt) = self.parse_stmt() {
+                span = Span::merge(&span, &stmt.span);
+                stmts.push(stmt);
+            } else {
+                self.advance();
+            }
+        }
+
+        if self.current_token()?.token_type == TType::Rbrace {
+            span = Span::merge(&span, &Span::from_token(self.current_token()?));
+            self.advance(); // Consume '}'
+        } else {
+            return None; // Expected '}'
+        }
+
+        Some(Stmt::new(StmtKind::Block { content: stmts }, span))
     }
 }
