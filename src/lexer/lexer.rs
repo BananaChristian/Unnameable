@@ -6,17 +6,15 @@ use crate::{
 };
 
 pub struct Lexer<'a> {
-    line: usize,
-    col: usize,
     pos: usize,
-    source: Vec<char>,
+    source: &'a str,
     keywords: HashMap<String, TType>,
     diagnostics: &'a mut Diagnostics,
     pub corrupted: bool,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(src: &str, diagnostics: &'a mut Diagnostics) -> Self {
+    pub fn new(src: &'a str, diagnostics: &'a mut Diagnostics) -> Self {
         let keywords = HashMap::from([
             ("mut".to_string(), TType::Mut),
             ("const".to_string(), TType::Const),
@@ -50,46 +48,28 @@ impl<'a> Lexer<'a> {
             ("ptr".to_string(), TType::Ptr),
             ("ref".to_string(), TType::Ref),
             ("arr".to_string(), TType::Arr),
-            ("seal".to_string(),TType::Seal),
+            ("seal".to_string(), TType::Seal),
         ]);
 
         Lexer {
-            line: 1,
-            col: 1,
             pos: 0,
-            source: src.chars().collect(),
+            source: src,
             keywords,
             corrupted: false,
             diagnostics,
         }
     }
 
-    fn peek_char(&self) -> Option<char> {
-        if self.pos + 1 < self.source.len() {
-            Some(self.source[self.pos + 1])
-        } else {
-            None
-        }
+    fn current_char(&self) -> Option<char> {
+        self.source.chars().nth(self.pos)
     }
 
-    fn current_char(&self) -> Option<char> {
-        if self.pos + 1 < self.source.len() {
-            Some(self.source[self.pos])
-        } else {
-            None
-        }
+    fn peek_char(&self) -> Option<char> {
+        self.source.chars().nth(self.pos + 1)
     }
 
     fn advance(&mut self) {
-        if let Some(ch) = self.current_char() {
-            if ch == '\n' {
-                self.line += 1;
-                self.col = 1;
-            } else {
-                self.col += 1;
-            }
-            self.pos += 1;
-        }
+        self.pos += 1;
     }
 
     fn skip_whitespace(&mut self) {
@@ -115,11 +95,10 @@ impl<'a> Lexer<'a> {
                         self.advance(); // Consume the second #
                         let mut closed = false;
 
-                        // Skip until closing ##
                         while let Some(c) = self.current_char() {
                             if c == '#' && self.peek_char() == Some('#') {
-                                self.advance(); // Consume first #
-                                self.advance(); // Consume second #
+                                self.advance();
+                                self.advance();
                                 closed = true;
                                 break;
                             }
@@ -127,7 +106,10 @@ impl<'a> Lexer<'a> {
                         }
 
                         if !closed {
-                            let span = Span::simple(self.line, self.col, 1);
+                            let span = Span {
+                                start: self.pos,
+                                end: self.pos + 1,
+                            };
                             self.report("Unterminated multi-line comment".to_string(), Some(span));
                         }
                     } else {
@@ -144,145 +126,10 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn is_binary_digit(&self, ch: char) -> bool {
-        ch == '0' || ch == '1'
-    }
-
-    fn is_alpha(&self, ch: char) -> bool {
-        ch.is_ascii_alphabetic() || ch == '_'
-    }
-
-    fn is_alpha_or_digit(&self, ch: char) -> bool {
-        self.is_alpha(ch) || ch.is_ascii_digit()
-    }
-
-    fn is_ident_char(&self, ch: char) -> bool {
-        ch.is_ascii_alphabetic() || ch == '_'
-    }
-
-    fn is_ident_continue(&self, ch: char) -> bool {
-        ch.is_ascii_alphabetic() || ch.is_ascii_digit() || ch == '_'
-    }
-
-    fn parse_suffix(&mut self, value: String, line: usize, col: usize) -> Token {
-        let mut suffix = String::new();
-
-        while let Some(ch) = self.current_char() {
-            if self.is_alpha_or_digit(ch) {
-                suffix.push(ch);
-                self.advance();
-            } else {
-                break;
-            }
-        }
-
-        match suffix.as_str() {
-            "i64" => Token::new(line, col, value, TType::Int64),
-            "u64" => Token::new(line, col, value, TType::Uint64),
-            "i16" => Token::new(line, col, value, TType::Int16),
-            "u16" => Token::new(line, col, value, TType::Uint16),
-            "i128" => Token::new(line, col, value, TType::Int128),
-            "u128" => Token::new(line, col, value, TType::Uint128),
-            "i32" => Token::new(line, col, value, TType::Int32),
-            "u32" => Token::new(line, col, value, TType::Uint32),
-            "i8" => Token::new(line, col, value, TType::Int8),
-            "u8" => Token::new(line, col, value, TType::Uint8),
-            "iz" => Token::new(line, col, value, TType::IntSize),
-            "uz" => Token::new(line, col, value, TType::UintSize),
-            _ => Token::new(line, col, value, TType::Int), // Default to Int
-        }
-    }
-
-    fn parse_float_suffix(&mut self, value: String, line: usize, col: usize) -> Token {
-        let mut suffix = String::new();
-        while let Some(ch) = self.current_char() {
-            if self.is_alpha_or_digit(ch) {
-                suffix.push(ch);
-                self.advance();
-            } else {
-                break;
-            }
-        }
-
-        match suffix.as_str() {
-            "f64" => Token::new(line, col, value, TType::F64),
-            "f32" => Token::new(line, col, value, TType::F32),
-            _ => Token::new(line, col, value, TType::Float), // Default to Float
-        }
-    }
-
-    fn read_binary(&mut self) -> Token {
-        let line = self.line;
-        let col = self.col;
-        let mut number = String::from("0b");
-
-        self.advance(); //Skip 0
-        self.advance(); //Skip 1
-
-        let mut has_digit = false;
-        while let Some(ch) = self.current_char() {
-            if self.is_binary_digit(ch) {
-                has_digit = true;
-                number.push(ch);
-                self.advance();
-            } else if ch == '_' {
-                self.advance();
-            } else {
-                break;
-            }
-        }
-
-        if !has_digit {
-            let span = Span::simple(line, col, 2);
-            self.report(
-                "Invalid binary number: expected binary digit after '0b'".to_string(),
-                Some(span),
-            );
-            return Token::new(line, col, number, TType::Illegal);
-        }
-
-        self.parse_suffix(number, line, col)
-    }
-
-    fn read_hex(&mut self) -> Token {
-        let line = self.line;
-        let col = self.col;
-        let mut number = String::from("0x");
-
-        self.advance(); //Consume 0
-        self.advance(); //Consume x
-
-        let mut has_digit = false;
-        while let Some(ch) = self.current_char() {
-            if ch.is_ascii_hexdigit() {
-                has_digit = true;
-                number.push(ch);
-                self.advance();
-            } else if ch == '_' {
-                self.advance();
-            } else {
-                break;
-            }
-        }
-
-        if !has_digit {
-            let span = Span::simple(line, col, 2);
-            self.report(
-                "Invalid hex number: expected hex digit after '0x'".to_string(),
-                Some(span),
-            );
-            return Token::new(line, col, number, TType::Illegal);
-        }
-
-        self.parse_suffix(number, line, col)
-    }
-
     fn read_number(&mut self) -> Token {
-        let line = self.line;
-        let col = self.col;
-        let mut number = String::new();
+        let start = self.pos;
 
-        //Check for hex and binary guys
+        // Check for hex and binary
         if let Some('0') = self.current_char() {
             if let Some(next) = self.peek_char() {
                 if next == 'x' || next == 'X' {
@@ -293,205 +140,581 @@ impl<'a> Lexer<'a> {
             }
         }
 
+        // Read digits
         while let Some(ch) = self.current_char() {
             if ch.is_ascii_digit() {
-                number.push(ch);
                 self.advance();
             } else {
                 break;
             }
         }
 
-        if Some('.') == self.current_char() {
-            number.push('.');
+        // Check for float
+        if let Some('.') = self.current_char() {
             self.advance();
-
             while let Some(ch) = self.current_char() {
                 if ch.is_ascii_digit() {
-                    number.push(ch);
                     self.advance();
                 } else {
                     break;
                 }
             }
-            return self.parse_float_suffix(number, line, col);
+            let end = self.pos;
+            let lexeme = self.source[start..end].to_string();
+            return self.parse_float_suffix(lexeme, Span { start, end });
         }
 
-        self.parse_suffix(number, line, col)
+        let end = self.pos;
+        let lexeme = self.source[start..end].to_string();
+        self.parse_suffix(lexeme, Span { start, end })
+    }
+
+    fn read_hex(&mut self) -> Token {
+        let start = self.pos;
+        self.advance(); // 0
+        self.advance(); // x
+
+        let mut has_digit = false;
+        while let Some(ch) = self.current_char() {
+            if ch.is_ascii_hexdigit() {
+                has_digit = true;
+                self.advance();
+            } else if ch == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        let end = self.pos;
+        let lexeme = self.source[start..end].to_string();
+
+        if !has_digit {
+            let span = Span { start, end };
+            self.report(
+                "Invalid hex number: expected hex digit after '0x'".to_string(),
+                Some(span.clone()),
+            );
+            return Token::new(lexeme, TType::Illegal, span);
+        }
+
+        self.parse_suffix(lexeme, Span { start, end })
+    }
+
+    fn read_binary(&mut self) -> Token {
+        let start = self.pos;
+        self.advance(); // 0
+        self.advance(); // b
+
+        let mut has_digit = false;
+        while let Some(ch) = self.current_char() {
+            if ch == '0' || ch == '1' {
+                has_digit = true;
+                self.advance();
+            } else if ch == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        let end = self.pos;
+        let lexeme = self.source[start..end].to_string();
+
+        if !has_digit {
+            let span = Span { start, end };
+            self.report(
+                "Invalid binary number: expected binary digit after '0b'".to_string(),
+                Some(span.clone()),
+            );
+            return Token::new(lexeme, TType::Illegal, span);
+        }
+
+        self.parse_suffix(lexeme, Span { start, end })
+    }
+
+    fn parse_suffix(&mut self, value: String, span: Span) -> Token {
+        let start = self.pos;
+        while let Some(ch) = self.current_char() {
+            if ch.is_ascii_alphabetic() || ch.is_ascii_digit() {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        let end = self.pos;
+        let suffix = self.source[start..end].to_string();
+
+        let token_type = match suffix.as_str() {
+            "i64" => TType::Int64,
+            "u64" => TType::Uint64,
+            "i16" => TType::Int16,
+            "u16" => TType::Uint16,
+            "i128" => TType::Int128,
+            "u128" => TType::Uint128,
+            "i32" => TType::Int32,
+            "u32" => TType::Uint32,
+            "i8" => TType::Int8,
+            "u8" => TType::Uint8,
+            "iz" => TType::IntSize,
+            "uz" => TType::UintSize,
+            _ => TType::Int,
+        };
+
+        Token::new(
+            value,
+            token_type,
+            Span {
+                start: span.start,
+                end,
+            },
+        )
+    }
+
+    fn parse_float_suffix(&mut self, value: String, span: Span) -> Token {
+        let start = self.pos;
+        while let Some(ch) = self.current_char() {
+            if ch.is_ascii_alphabetic() || ch.is_ascii_digit() {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        let end = self.pos;
+        let suffix = self.source[start..end].to_string();
+
+        let token_type = match suffix.as_str() {
+            "f64" => TType::F64,
+            "f32" => TType::F32,
+            _ => TType::Float,
+        };
+
+        Token::new(
+            value,
+            token_type,
+            Span {
+                start: span.start,
+                end,
+            },
+        )
     }
 
     fn read_identifier(&mut self) -> Token {
-        let line = self.line;
-        let col = self.col;
-        let mut identifier = String::new();
+        let start = self.pos;
 
         while let Some(ch) = self.current_char() {
-            if self.is_ident_char(ch) {
-                identifier.push(ch);
+            if ch.is_ascii_alphanumeric() || ch == '_' {
                 self.advance();
             } else {
-                if self.is_ident_continue(ch) {
-                    identifier.push(ch);
-                    self.advance();
-                } else {
-                    break;
-                }
+                break;
             }
         }
 
-        match self.keywords.get(&identifier) {
-            Some(ttype) => Token::new(line, col, identifier, *ttype),
-            None => Token::new(line, col, identifier, TType::Identifier),
+        let end = self.pos;
+        let lexeme = self.source[start..end].to_string();
+        let span = Span { start, end };
+
+        match self.keywords.get(&lexeme) {
+            Some(ttype) => Token::new(lexeme, *ttype, span),
+            None => Token::new(lexeme, TType::Identifier, span),
         }
     }
 
-    fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
 
+        let start = self.pos;
+
         match self.current_char() {
-            Some(ch) if self.is_ident_char(ch) => self.read_identifier(),
+            Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => self.read_identifier(),
             Some(ch) if ch.is_ascii_digit() || ch == '0' => self.read_number(),
             Some('+') => {
-                self.advance(); //Consume the token 
+                self.advance();
                 if let Some('+') = self.current_char() {
-                    self.advance(); //Consume the second +
-                    Token::new(self.line, self.col, "++".to_string(), TType::PlusPlus)
+                    self.advance();
+                    Token::new(
+                        "++".to_string(),
+                        TType::PlusPlus,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    Token::new(self.line, self.col, "+".to_string(), TType::Plus)
+                    Token::new(
+                        "+".to_string(),
+                        TType::Plus,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some('-') => {
                 self.advance();
                 if let Some('-') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "--".to_string(), TType::MinusMinus)
+                    Token::new(
+                        "--".to_string(),
+                        TType::MinusMinus,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    Token::new(self.line, self.col, "-".to_string(), TType::Minus)
+                    Token::new(
+                        "-".to_string(),
+                        TType::Minus,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some(':') => {
                 self.advance();
                 if let Some(':') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "::".to_string(), TType::Scope)
+                    Token::new(
+                        "::".to_string(),
+                        TType::Scope,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else if let Some('=') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, ":=".to_string(), TType::Bind)
+                    Token::new(
+                        ":=".to_string(),
+                        TType::Bind,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    Token::new(self.line, self.col, ":".to_string(), TType::Colon)
+                    Token::new(
+                        ":".to_string(),
+                        TType::Colon,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some('=') => {
                 self.advance();
                 if let Some('=') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "==".to_string(), TType::Eq)
+                    Token::new(
+                        "==".to_string(),
+                        TType::Eq,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    Token::new(self.line, self.col, "=".to_string(), TType::Assign)
+                    Token::new(
+                        "=".to_string(),
+                        TType::Assign,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some('!') => {
                 self.advance();
                 if let Some('=') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "!=".to_string(), TType::Neq)
+                    Token::new(
+                        "!=".to_string(),
+                        TType::Neq,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    Token::new(self.line, self.col, "!".to_string(), TType::Bang)
+                    Token::new(
+                        "!".to_string(),
+                        TType::Bang,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some('>') => {
                 self.advance();
                 if let Some('=') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, ">=".to_string(), TType::Gte)
+                    Token::new(
+                        ">=".to_string(),
+                        TType::Gte,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else if let Some('>') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, ">>".to_string(), TType::Rightshift)
+                    Token::new(
+                        ">>".to_string(),
+                        TType::Rightshift,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    Token::new(self.line, self.col, ">".to_string(), TType::Gt)
+                    Token::new(
+                        ">".to_string(),
+                        TType::Gt,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some('<') => {
                 self.advance();
                 if let Some('=') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "<=".to_string(), TType::Lte)
+                    Token::new(
+                        "<=".to_string(),
+                        TType::Lte,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else if let Some('>') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "<<".to_string(), TType::Leftshift)
+                    Token::new(
+                        "<<".to_string(),
+                        TType::Leftshift,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    Token::new(self.line, self.col, "<".to_string(), TType::Lt)
+                    Token::new(
+                        "<".to_string(),
+                        TType::Lt,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some('|') => {
                 self.advance();
                 if let Some('|') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "||".to_string(), TType::Or)
+                    Token::new(
+                        "||".to_string(),
+                        TType::Or,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    self.advance();
-                    Token::new(self.line, self.col, "|".to_string(), TType::Stick)
+                    Token::new(
+                        "|".to_string(),
+                        TType::Stick,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some('&') => {
                 self.advance();
                 if let Some('&') = self.current_char() {
                     self.advance();
-                    Token::new(self.line, self.col, "&&".to_string(), TType::And)
+                    Token::new(
+                        "&&".to_string(),
+                        TType::And,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
-                    Token::new(self.line, self.col, "&".to_string(), TType::Ampersand)
+                    Token::new(
+                        "&".to_string(),
+                        TType::Ampersand,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 }
             }
             Some('(') => {
                 self.advance();
-                Token::new(self.line, self.col, "(".to_string(), TType::Lparen)
+                Token::new(
+                    "(".to_string(),
+                    TType::Lparen,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some(')') => {
                 self.advance();
-                Token::new(self.line, self.col, ")".to_string(), TType::Rparen)
+                Token::new(
+                    ")".to_string(),
+                    TType::Rparen,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some('{') => {
                 self.advance();
-                Token::new(self.line, self.col, "{".to_string(), TType::LBrace)
+                Token::new(
+                    "{".to_string(),
+                    TType::LBrace,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some('}') => {
                 self.advance();
-                Token::new(self.line, self.col, "}".to_string(), TType::Rbrace)
+                Token::new(
+                    "}".to_string(),
+                    TType::Rbrace,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
+            }
+            Some('[') => {
+                self.advance();
+                Token::new(
+                    "[".to_string(),
+                    TType::LBracket,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
+            }
+            Some(']') => {
+                self.advance();
+                Token::new(
+                    "]".to_string(),
+                    TType::RBracket,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some('*') => {
                 self.advance();
-                Token::new(self.line, self.col, "*".to_string(), TType::Star)
+                Token::new(
+                    "*".to_string(),
+                    TType::Star,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some('/') => {
                 self.advance();
-                Token::new(self.line, self.col, "/".to_string(), TType::Slash)
+                Token::new(
+                    "/".to_string(),
+                    TType::Slash,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some('%') => {
                 self.advance();
-                Token::new(self.line, self.col, "%".to_string(), TType::Percentage)
+                Token::new(
+                    "%".to_string(),
+                    TType::Percentage,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some('~') => {
                 self.advance();
-                Token::new(self.line, self.col, "~".to_string(), TType::Tilde)
+                Token::new(
+                    "~".to_string(),
+                    TType::Tilde,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some(';') => {
                 self.advance();
-                Token::new(self.line, self.col, ";".to_string(), TType::Semicolon)
+                Token::new(
+                    ";".to_string(),
+                    TType::Semicolon,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some(',') => {
                 self.advance();
-                Token::new(self.line, self.col, ",".to_string(), TType::Comma)
+                Token::new(
+                    ",".to_string(),
+                    TType::Comma,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
-            None => Token::new(self.line, self.col, "".to_string(), TType::End),
+            None => Token::new(
+                "".to_string(),
+                TType::End,
+                Span {
+                    start,
+                    end: self.pos,
+                },
+            ),
             Some(ch) => {
-                let line = self.line;
-                let col = self.col;
-                let span = Span::simple(line, col, 1);
-
-                self.report(format!("Invalid character: '{}'", ch), Some(span));
-
+                let span = Span {
+                    start,
+                    end: self.pos + 1,
+                };
+                self.report(format!("Invalid character: '{}'", ch), Some(span.clone()));
                 self.advance();
-                Token::new(line, col, ch.to_string(), TType::Illegal)
+                Token::new(ch.to_string(), TType::Illegal, span)
             }
         }
     }

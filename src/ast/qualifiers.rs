@@ -3,7 +3,7 @@ use crate::{
     lexer::{TType, token::Token},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum QualifierKind {
     Mut,
     Const,
@@ -11,40 +11,29 @@ pub enum QualifierKind {
     None,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Qualifier {
-    kind: QualifierKind,
+    pub kind: QualifierKind,
     pub span: Span,
 }
 
 impl Qualifier {
     pub fn new(token: &Token) -> Self {
-        match token.token_type {
-            TType::Mut => Qualifier {
-                kind: QualifierKind::Mut,
-                span: Span::from_token(token),
-            },
-            TType::Const => Qualifier {
-                kind: QualifierKind::Const,
-                span: Span::from_token(token),
-            },
-            TType::Heap => Qualifier {
-                kind: QualifierKind::Heap,
-                span: Span::from_token(token),
-            },
-            _ => Qualifier {
-                kind: QualifierKind::None,
-                span: Span::from_token(token),
-            },
+        let kind = match token.token_type {
+            TType::Mut => QualifierKind::Mut,
+            TType::Const => QualifierKind::Const,
+            TType::Heap => QualifierKind::Heap,
+            _ => QualifierKind::None,
+        };
+
+        Qualifier {
+            kind,
+            span: token.clone().span,
         }
     }
 
     pub fn is_valid(token: &Token) -> bool {
-        matches!(
-            token.token_type,
-            TType::Mut
-                | TType::Const
-                | TType::Heap
-        )
+        matches!(token.token_type, TType::Mut | TType::Const | TType::Heap)
     }
 }
+

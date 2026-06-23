@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Qualifier, Stmt, Type},
+    ast::{Precedence, Qualifier, Stmt, Type},
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     lexer::{TType, token::Token},
 };
@@ -14,7 +14,7 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<Token>, diagnostics: &'a mut Diagnostics) -> Self {
         Parser {
-            tokens: tokens,
+            tokens,
             current_pos: 0,
             diagnostics,
             corrupted: false,
@@ -23,11 +23,11 @@ impl<'a> Parser<'a> {
 
     pub fn advance(&mut self) {
         if self.current_pos < self.tokens.len() {
-            self.current_pos += 1
+            self.current_pos += 1;
         }
     }
 
-    pub fn current_token(&mut self) -> Option<&Token> {
+    pub fn current_token(&self) -> Option<&Token> {
         if self.current_pos < self.tokens.len() {
             Some(&self.tokens[self.current_pos])
         } else {
@@ -35,7 +35,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn next_token(&mut self) -> Option<&Token> {
+    pub fn peek_token(&self) -> Option<&Token> {
         if self.current_pos + 1 < self.tokens.len() {
             Some(&self.tokens[self.current_pos + 1])
         } else {
@@ -64,23 +64,36 @@ impl<'a> Parser<'a> {
 
         if tok.token_type == TType::Rightshift {
             // Replace >> with >
-            let replacement = Token::new(tok.line, tok.col, ">".to_string(), TType::Gt);
+            let replacement = Token::new(
+                ">".to_string(),
+                TType::Gt,
+                Span {
+                    start: tok.span.start,
+                    end: tok.span.end,
+                },
+            );
             self.replace_token(replacement);
 
             // Insert another > after it
-            let extra = Token::new(tok.line, tok.col + 1, ">".to_string(), TType::Gt);
+            let extra = Token::new(
+                ">".to_string(),
+                TType::Gt,
+                Span {
+                    start: tok.span.start,
+                    end: tok.span.end,
+                },
+            );
             self.insert_token(extra);
         }
     }
 
     pub fn expect_token(&mut self, expected: TType) -> Option<()> {
         let token = self.current_token()?.clone();
-
         if token.token_type == expected {
             self.advance();
             Some(())
         } else {
-            let span = Span::from_token(&token);
+            let span = token.span;
             self.report(
                 format!("Expected {:?}, found {:?}", expected, token.token_type),
                 Some(span),
@@ -111,7 +124,6 @@ impl<'a> Parser<'a> {
                 if let Some(stmt) = self.parse_stmt() {
                     stmts.push(stmt);
                 } else {
-                    // Error already reported, advance to avoid infinite loop
                     self.advance();
                 }
             } else {
@@ -145,6 +157,23 @@ impl<'a> Parser<'a> {
                 self.expect_token(TType::Gt)?;
                 Some(Type::complex(&token, inner_type))
             }
+            TType::Identifier => {
+                let expr = self.parse_generic_inst()?;
+                Some(Type::custom(expr))
+            }
+            TType::Arr => {
+                self.advance();
+                self.expect_token(TType::LBracket)?;
+                let inner_type = self.parse_type()?;
+                let mut arr_size = None;
+                if self.current_token()?.token_type == TType::Comma {
+                    self.advance(); // Consume the ,
+                    arr_size = self.parse_expression(Precedence::Lowest);
+                }
+
+                self.expect_token(TType::RBracket)?;
+                Some(Type::array(inner_type, arr_size))
+            }
             TType::ISIZEKey
             | TType::USIZEKey
             | TType::I128Key
@@ -170,19 +199,14 @@ impl<'a> Parser<'a> {
     pub fn collect_qualifiers(&mut self) -> Vec<Qualifier> {
         let mut qualifiers = Vec::new();
 
-        // Loop while we have qualifiers
         while let Some(token) = self.current_token() {
             match token.token_type {
                 TType::Mut | TType::Const | TType::Heap => {
-                    // It's a qualifier! Create it and consume it
                     let qualifier = Qualifier::new(&token);
                     qualifiers.push(qualifier);
                     self.advance();
                 }
-                _ => {
-                    // Not a qualifier, stop collecting
-                    break;
-                }
+                _ => break,
             }
         }
 
@@ -195,3 +219,4 @@ impl<'a> Parser<'a> {
             .report(CompilerError::error(message, Phase::Parser, span));
     }
 }
+

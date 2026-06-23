@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expr, Qualifier},
+    ast::Expr,
     diagnostics::Span,
     lexer::{TType, token::Token},
 };
@@ -32,10 +32,10 @@ pub enum TypeKind {
     Ref(Box<Type>),
 
     // Array
-    Array(Box<Type>),
+    Array(Box<Type>, Option<Expr>),
 
     // Custom/User types
-    Custom(Expr),
+    CustomType(Box<Expr>),
 
     // Placeholder
     None,
@@ -43,81 +43,65 @@ pub enum TypeKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
-    kind: TypeKind,
+    pub kind: TypeKind,
     pub span: Span,
 }
 
 impl Type {
     pub fn basic(token: &Token) -> Self {
-        match token.token_type {
-            TType::I8Key => Type {
-                kind: TypeKind::I8,
-                span: Span::from_token(token),
-            },
-            TType::U8Key => Type {
-                kind: TypeKind::U8,
-                span: Span::from_token(token),
-            },
-            TType::I16Key => Type {
-                kind: TypeKind::I16,
-                span: Span::from_token(token),
-            },
-            TType::U16Key => Type {
-                kind: TypeKind::U16,
-                span: Span::from_token(token),
-            },
-            TType::I32Key => Type {
-                kind: TypeKind::I32,
-                span: Span::from_token(token),
-            },
-            TType::U32key => Type {
-                kind: TypeKind::U32,
-                span: Span::from_token(token),
-            },
-            TType::I64Key => Type {
-                kind: TypeKind::I64,
-                span: Span::from_token(token),
-            },
-            TType::U64Key => Type {
-                kind: TypeKind::U64,
-                span: Span::from_token(token),
-            },
-            TType::I128Key => Type {
-                kind: TypeKind::I128,
-                span: Span::from_token(token),
-            },
-            TType::U128Key => Type {
-                kind: TypeKind::U128,
-                span: Span::from_token(token),
-            },
-            _ => Type {
-                kind: TypeKind::None,
-                span: Span::from_token(token),
-            },
-        }
-    }
+        let kind = match token.token_type {
+            TType::I8Key => TypeKind::I8,
+            TType::U8Key => TypeKind::U8,
+            TType::I16Key => TypeKind::I16,
+            TType::U16Key => TypeKind::U16,
+            TType::I32Key => TypeKind::I32,
+            TType::U32key => TypeKind::U32,
+            TType::I64Key => TypeKind::I64,
+            TType::U64Key => TypeKind::U64,
+            TType::I128Key => TypeKind::I128,
+            TType::U128Key => TypeKind::U128,
+            TType::ISIZEKey => TypeKind::ISIZE,
+            TType::USIZEKey => TypeKind::USIZE,
+            TType::BoolKey => TypeKind::Bool,
+            TType::F32Key => TypeKind::F32,
+            TType::F64Key => TypeKind::F64,
+            _ => TypeKind::None,
+        };
 
-    pub fn complex(token: &Token, inner: Type) -> Type {
-        match token.token_type {
-            TType::Ptr => Type {
-                kind: TypeKind::Ptr(Box::new(inner.clone())),
-                span: Span::merge(&Span::from_token(token), &inner.span),
-            },
-            TType::Ref => Type {
-                kind: TypeKind::Ref(Box::new(inner.clone())),
-                span: Span::merge(&Span::from_token(token), &inner.span),
-            },
-            _ => Type {
-                kind: TypeKind::None,
-                span: Span::from_token(token),
-            },
-        }
-    }
-
-    pub fn none() -> Type {
         Type {
-            kind: TypeKind::None,
-            span: Span::fresh(),
+            kind,
+            span: token.clone().span,
+        }
+    }
+
+    pub fn complex(token: &Token, inner: Type) -> Self {
+        let kind = match token.token_type {
+            TType::Ptr => TypeKind::Ptr(Box::new(inner.clone())),
+            TType::Ref => TypeKind::Ref(Box::new(inner.clone())),
+            _ => TypeKind::None,
+        };
+
+        // ⭐ Just use start/end byte offsets
+        let span = Span {
+            start: token.span.start,
+            end: inner.span.end,
+        };
+
+        Type { kind, span }
+    }
+
+    pub fn array(inner: Type, array_size: Option<Expr>) -> Self {
+        let kind = TypeKind::Array(Box::new(inner.clone()), array_size);
+        let span = inner.span.clone();
+
+        Type { kind, span }
+    }
+
+    pub fn custom(expr: Expr) -> Self {
+        Type {
+            kind: TypeKind::CustomType(Box::new(expr.clone())),
+            span: expr.span,
         }
     }
 }
+

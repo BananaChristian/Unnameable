@@ -18,7 +18,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let source = fs::read_to_string(filename)?;
 
-    let mut diagnostics = Diagnostics::new(filename.clone());
+    let mut diagnostics = Diagnostics::new(filename.clone(),source.clone());
 
     let mut lexer = Lexer::new(&source, &mut diagnostics);
     let tokens = lexer.tokenize();
@@ -27,7 +27,7 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     if lexer.corrupted {
-        diagnostics.print(&source);
+        diagnostics.print();
         std::process::exit(1)
     }
 
@@ -36,7 +36,7 @@ fn main() -> Result<(), std::io::Error> {
 
     println!("{:?}", ast);
     if parser.corrupted {
-        diagnostics.print(&source);
+        diagnostics.print();
         std::process::exit(1)
     }
 

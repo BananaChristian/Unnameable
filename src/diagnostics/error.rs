@@ -29,7 +29,7 @@ impl CompilerError {
             message,
             span,
             severity: Severity::Error,
-            phase: Phase::None,
+            phase,
         }
     }
 

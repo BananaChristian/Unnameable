@@ -12,18 +12,19 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.current_token() {
             let token_type = token.token_type;
 
-            if Stmt::is_valid(token)
-                || token.token_type == TType::End
-            {
+            // Stop at statement boundaries
+            if Stmt::is_valid(token) || token_type == TType::End {
                 break;
             }
 
-            if token.token_type == TType::Semicolon || token.token_type == TType::Comma {
+            // Stop at semicolon or comma
+            if token_type == TType::Semicolon || token_type == TType::Comma {
                 self.advance();
                 break;
             }
 
-            if BinaryOp::is_valid(token) {
+            // Check if it's a binary operator
+            if !BinaryOp::is_valid(token) {
                 break;
             }
 
@@ -45,7 +46,10 @@ impl<'a> Parser<'a> {
         self.advance();
         let right = self.parse_expression(Precedence::Lowest)?;
 
-        let span = Span::merge(&left.span, &right.span);
+        let span = Span {
+            start: left.span.start,
+            end: right.span.end,
+        };
         let op = BinaryOp::new(&operator);
 
         Some(Expr::new(
@@ -83,16 +87,19 @@ impl<'a> Parser<'a> {
 
             TType::Minus | TType::Bang => {
                 let op = UnaryOp::new(&token);
-                let op_span = Span::from_token(&token);
+                let op_span = token.span;
                 self.advance();
 
                 let expr = self.parse_expression(Precedence::Unary)?;
-                let span = Span::merge(&op_span, &expr.span);
+                let span = Span {
+                    start: op_span.start,
+                    end: expr.span.end,
+                };
                 Some(Expr::new(ExprKind::Unary(op, Box::new(expr)), span))
             }
 
             _ => {
-                let span = Span::from_token(&token);
+                let span = token.span;
                 self.report(
                     format!("Unexpected token: {:?}", token.token_type),
                     Some(span),
@@ -104,18 +111,77 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_grouping(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
         self.expect_token(TType::Lparen)?;
         let expr = self.parse_expression(Precedence::Lowest)?;
+        let end = self.current_token()?.span.end;
         self.expect_token(TType::Rparen)?;
-        Some(expr)
+
+        let span = Span { start, end };
+        Some(Expr::new(expr.kind.clone(), span))
     }
 
     pub fn parse_identifier(&mut self) -> Option<Expr> {
-        let token = self.current_token()?;
+        let token = self.current_token()?.clone();
         let name = token.lexeme.clone();
-        let span = Span::from_token(token);
+        let span = token.span;
         self.expect_token(TType::Identifier)?;
         Some(Expr::new(ExprKind::Identifier(name), span))
+    }
+
+    pub fn parse_generic_inst(&mut self) -> Option<Expr> {
+        let name = self.parse_identifier()?;
+        let mut start = name.span.start;
+        let mut end = name.span.end;
+        let mut type_params = Vec::new();
+
+        // Check if we have generic arguments
+        if self.current_token()?.token_type == TType::Lt {
+            let lt_span = self.current_token()?.clone().span;
+            start = start.min(lt_span.start);
+            end = end.max(lt_span.end);
+            self.advance(); // Consume '<'
+
+            // Parse types until we hit '>' or '>>'
+            while self.current_token()?.token_type != TType::Gt
+                && self.current_token()?.token_type != TType::Rightshift
+                && self.current_token()?.token_type != TType::End
+            {
+                // Skip commas
+                if self.current_token()?.token_type == TType::Comma {
+                    self.advance();
+                    continue;
+                }
+
+                // Parse a type
+                let ty = self.parse_type()?;
+                type_params.push(ty);
+            }
+
+            // Handle >> (nested generics)
+            self.split_rightshift();
+
+            // Consume the closing '>'
+            if self.current_token()?.token_type == TType::Gt {
+                let gt_span = self.current_token()?.clone().span;
+                start = start.min(gt_span.start);
+                end = end.max(gt_span.end);
+                self.advance(); // Consume '>'
+            } else {
+                self.report("Expected '>' to close generic arguments".to_string(), None);
+                return None;
+            }
+        }
+
+        let span = Span { start, end };
+
+        Some(Expr::new(
+            ExprKind::GenericInstantion {
+                name: Box::new(name),
+                type_params,
+            },
+            span,
+        ))
     }
 
     fn parse_number(&self, num_str: &str) -> Option<i64> {
@@ -206,7 +272,7 @@ impl<'a> Parser<'a> {
                 Some(Literal::F64(value))
             }
             _ => {
-                let span = Span::from_token(token);
+                let span = token.clone().span;
                 self.report(
                     format!("Unexpected token type: {:?}", token.token_type),
                     Some(span),
@@ -218,7 +284,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_literal(&mut self) -> Option<Expr> {
         let token = self.current_token()?.clone();
-        let span = Span::from_token(&token);
+        let span = token.clone().span;
 
         match token.token_type {
             TType::True => {
@@ -260,3 +326,4 @@ impl<'a> Parser<'a> {
         }
     }
 }
+

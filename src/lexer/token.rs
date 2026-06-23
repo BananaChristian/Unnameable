@@ -1,3 +1,5 @@
+use crate::diagnostics::Span;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TType {
     //Signs
@@ -86,10 +88,12 @@ pub enum TType {
     Arr,
 
     //Brackets
-    Lparen, // (
-    Rparen, //)
-    LBrace, //{
-    Rbrace, //}
+    Lparen,   // (
+    Rparen,   //)
+    LBrace,   //{
+    Rbrace,   //}
+    LBracket, //[
+    RBracket, //]
 
     Illegal,
     End,
@@ -97,19 +101,17 @@ pub enum TType {
 
 #[derive(Debug, Clone)]
 pub struct Token {
-    pub line: usize,
-    pub col: usize,
     pub lexeme: String,
     pub token_type: TType,
+    pub span: Span,
 }
 
 impl Token {
-    pub fn new(line: usize, col: usize, lexeme: String, token_type: TType) -> Self {
+    pub fn new(lexeme: String, token_type: TType, span: Span) -> Self {
         Token {
-            line: line,
-            col: col,
-            lexeme: lexeme,
-            token_type: token_type,
+            lexeme,
+            token_type,
+            span,
         }
     }
 }

@@ -1,57 +1,22 @@
-use crate::lexer::token::Token;
+use crate::diagnostics::source::SourceMap;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Span {
-    pub line: usize,
-    pub col: usize,
-    pub length: usize,
+    pub start: usize, // Byte offset
+    pub end: usize,   // Byte offset
 }
 
 impl Span {
-    pub fn from_token(token: &Token) -> Self {
-        Span {
-            line: token.line,
-            col: token.col,
-            length: token.lexeme.len(),
-        }
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
     }
 
-    pub fn simple(line: usize, col: usize, length: usize) -> Self {
-        Span { line, col, length }
+    pub fn line_col(&self, source_map: &SourceMap) -> (usize, usize) {
+        source_map.get_line_col(self.start)
     }
 
-    // Merge two spans
-    pub fn merge(start: &Span, end: &Span) -> Self {
-        if start.line == end.line {
-            let end_col = end.col + end.length;
-            if end_col >= start.col {
-                Span {
-                    line: start.line,
-                    col: start.col,
-                    length: end_col - start.col,
-                }
-            } else {
-                start.clone()
-            }
-        } else {
-            let end_col = end.col + end.length;
-            if end_col >= start.col {
-                Span {
-                    line: start.line,
-                    col: start.col,
-                    length: end_col - start.col,
-                }
-            } else {
-                start.clone()
-            }
-        }
-    }
-
-    pub fn fresh() -> Self {
-        Span {
-            line: 1,
-            col: 0,
-            length: 0,
-        }
+    pub fn length(&self) -> usize {
+        self.end - self.start
     }
 }
+

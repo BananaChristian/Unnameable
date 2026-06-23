@@ -1,4 +1,5 @@
 mod diagnostics;
+mod source;
 mod error;
 mod span;
 

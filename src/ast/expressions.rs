@@ -1,4 +1,10 @@
-use crate::{ast::operators::{BinaryOp, UnaryOp}, diagnostics::Span};
+use crate::{
+    ast::{
+        Type,
+        operators::{BinaryOp, UnaryOp},
+    },
+    diagnostics::Span,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
@@ -34,6 +40,10 @@ pub enum ExprKind {
     Identifier(String),
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
     Unary(UnaryOp, Box<Expr>),
+    GenericInstantion {
+        name: Box<Expr>,
+        type_params: Vec<Type>,
+    },
     Call(Box<Expr>, Vec<Expr>),
 }
 
@@ -46,9 +56,5 @@ pub struct Expr {
 impl Expr {
     pub fn new(kind: ExprKind, span: Span) -> Self {
         Expr { kind, span }
-    }
-
-    pub fn span(&self) -> Span {
-        self.span
     }
 }
