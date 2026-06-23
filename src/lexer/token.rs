@@ -64,6 +64,7 @@ pub enum TType {
     Elif,
     Else,
     Struct,
+    Seal,
 
     I8Key,
     U8Key,

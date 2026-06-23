@@ -12,6 +12,7 @@ impl<'a> Parser<'a> {
             TType::Var => self.parse_var_declaration(),
             TType::Func => self.parse_func_decl(),
             TType::Struct => self.parse_struct(),
+            TType::Seal => self.parse_seal_decl(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -62,7 +63,7 @@ impl<'a> Parser<'a> {
                     name: Box::new(name),
                     init: Some(Box::new(init)),
                 },
-                span, 
+                span,
             ))
         } else {
             // Declaration without initialization
@@ -123,6 +124,25 @@ impl<'a> Parser<'a> {
 
         Some(Stmt::new(
             StmtKind::StructDecl {
+                name: Box::new(name),
+                contents: Box::new(body),
+            },
+            span,
+        ))
+    }
+
+    pub fn parse_seal_decl(&mut self) -> Option<Stmt> {
+        let mut span = Span::from_token(self.current_token()?);
+        self.expect_token(TType::Seal)?;
+
+        let name = self.parse_identifier()?;
+        span = Span::merge(&span, &name.span);
+
+        let body = self.parse_body()?;
+        span = Span::merge(&span, &body.span);
+
+        Some(Stmt::new(
+            StmtKind::SealStmt {
                 name: Box::new(name),
                 contents: Box::new(body),
             },

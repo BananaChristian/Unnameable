@@ -34,12 +34,42 @@ impl<'a> Parser<'a> {
             None
         }
     }
-    
+
     pub fn next_token(&mut self) -> Option<&Token> {
-        if self.current_pos+1 < self.tokens.len() {
-            Some(&self.tokens[self.current_pos+1])
+        if self.current_pos + 1 < self.tokens.len() {
+            Some(&self.tokens[self.current_pos + 1])
         } else {
             None
+        }
+    }
+
+    pub fn replace_token(&mut self, replacement: Token) -> Option<()> {
+        if self.current_pos < self.tokens.len() {
+            self.tokens[self.current_pos] = replacement;
+            Some(())
+        } else {
+            None
+        }
+    }
+
+    pub fn insert_token(&mut self, token: Token) {
+        self.tokens.insert(self.current_pos + 1, token);
+    }
+
+    pub fn split_rightshift(&mut self) {
+        let tok = match self.current_token() {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        if tok.token_type == TType::Rightshift {
+            // Replace >> with >
+            let replacement = Token::new(tok.line, tok.col, ">".to_string(), TType::Gt);
+            self.replace_token(replacement);
+
+            // Insert another > after it
+            let extra = Token::new(tok.line, tok.col + 1, ">".to_string(), TType::Gt);
+            self.insert_token(extra);
         }
     }
 
@@ -96,17 +126,23 @@ impl<'a> Parser<'a> {
         let token = self.current_token()?.clone();
         match token.token_type {
             TType::Ptr => {
-                self.advance(); //Consume the ptr token
-                self.expect_token(TType::Lt);
+                self.advance();
+                self.expect_token(TType::Lt)?;
                 let inner_type = self.parse_type()?;
-                self.expect_token(TType::Gt);
+
+                self.split_rightshift();
+
+                self.expect_token(TType::Gt)?;
                 Some(Type::complex(&token, inner_type))
             }
             TType::Ref => {
-                self.advance(); //Consum the ref token
-                self.expect_token(TType::Lt);
+                self.advance();
+                self.expect_token(TType::Lt)?;
                 let inner_type = self.parse_type()?;
-                self.expect_token(TType::Gt);
+
+                self.split_rightshift();
+
+                self.expect_token(TType::Gt)?;
                 Some(Type::complex(&token, inner_type))
             }
             TType::ISIZEKey

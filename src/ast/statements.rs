@@ -32,6 +32,10 @@ pub enum StmtKind {
         name: Box<Expr>,
         contents: Box<Stmt>,
     },
+    SealStmt{
+        name: Box<Expr>,
+        contents: Box<Stmt>
+    },
 }
 
 #[derive(Debug)]

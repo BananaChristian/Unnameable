@@ -50,6 +50,7 @@ impl<'a> Lexer<'a> {
             ("ptr".to_string(), TType::Ptr),
             ("ref".to_string(), TType::Ref),
             ("arr".to_string(), TType::Arr),
+            ("seal".to_string(),TType::Seal),
         ]);
 
         Lexer {

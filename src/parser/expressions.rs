@@ -114,7 +114,7 @@ impl<'a> Parser<'a> {
         let token = self.current_token()?;
         let name = token.lexeme.clone();
         let span = Span::from_token(token);
-        self.advance();
+        self.expect_token(TType::Identifier)?;
         Some(Expr::new(ExprKind::Identifier(name), span))
     }
 
