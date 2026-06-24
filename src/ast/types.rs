@@ -35,10 +35,14 @@ pub enum TypeKind {
     Array(Box<Type>, Option<Expr>),
 
     //Function pointer
-    Func(Vec<Type>,Box<Option<Type>>),
+    Func(Vec<Type>, Box<Option<Type>>),
 
     // Custom/User types
     CustomType(Box<Expr>),
+
+    Nullable(Box<Type>),
+
+    Unit,
 
     // Placeholder
     None,
@@ -106,14 +110,25 @@ impl Type {
         }
     }
 
-    pub fn funcptr(type_param: Vec<Type>, return_type: Option<Type>, span: Span) -> Self{
-        Type{
-            kind: TypeKind::Func(
-                      type_param,
-                      Box::new(return_type)
-                  ),
-                  span 
+    pub fn funcptr(type_param: Vec<Type>, return_type: Option<Type>, span: Span) -> Self {
+        Type {
+            kind: TypeKind::Func(type_param, Box::new(return_type)),
+            span,
         }
     }
-}
 
+    pub fn nullable(inner: Type, span: Span) -> Self {
+        Type {
+            kind: TypeKind::Nullable(Box::new(inner)),
+            span,
+        }
+    }
+
+    pub fn unit(span: Span) -> Self{
+        Type{
+            kind: TypeKind::Unit,
+            span
+        }
+
+    } 
+}

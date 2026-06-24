@@ -7,29 +7,33 @@ pub enum TType {
     Minus,
     PlusPlus,
     MinusMinus,
-    Colon,      //:
-    Comma,      //,
-    Eq,         //==
-    Bind,       //:=
-    Assign,     //=
-    Neq,        // '!='
-    And,        //&&
-    Or,         // ||
-    Scope,      //::
-    Semicolon,  //;
-    Gt,         //>
-    Rightshift, //>>
-    Lt,         //<
-    Leftshift,  //<<
-    Gte,        //>=
-    Lte,        //<=
-    Star,       // *
-    Slash,      // /
-    Percentage, // %
-    Bang,       // !
-    Tilde,      //~
-    Stick,      // |
-    Ampersand,  //&
+    Colon,         //:
+    Comma,         //,
+    Eq,            //==
+    Bind,          //:=
+    Assign,        //=
+    Neq,           // '!='
+    And,           //&&
+    Or,            // ||
+    Scope,         //::
+    Semicolon,     //;
+    Gt,            //>
+    Rightshift,    //>>
+    Lt,            //<
+    Leftshift,     //<<
+    Gte,           //>=
+    Lte,           //<=
+    Star,          // *
+    Slash,         // /
+    Percentage,    // %
+    Bang,          // !
+    Tilde,         //~
+    Stick,         // |
+    Ampersand,     //&
+    QuestionMark,  //?
+    Coalesce,      //??
+    DoubleExclaim, //'!!'
+    Propagate,     //'!?'
 
     // Number types
     Int,

@@ -1,3 +1,1 @@
-struct Test{
-    a: func(Pair<i32,u32>, u32): i32
-}
+var (i32)? x:= 100

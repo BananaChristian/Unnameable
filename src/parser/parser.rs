@@ -211,6 +211,22 @@ impl<'a> Parser<'a> {
 
                 Some(Type::funcptr(fields, return_type, span))
             }
+            TType::Lparen => {
+                let start = self.current_token()?.span.start;
+                self.advance(); //(
+                if self.current_token()?.token_type == TType::Rparen {
+                    let end = self.current_token()?.span.end;
+                    let span = Span { start, end };
+                    Some(Type::unit(span))
+                } else {
+                    let inner = self.parse_type()?;
+                    self.expect_token(TType::Rparen)?;
+                    self.expect_token(TType::QuestionMark)?;
+                    let end = self.current_token()?.span.end;
+                    let span = Span { start, end };
+                    Some(Type::nullable(inner, span))
+                }
+            }
             TType::ISIZEKey
             | TType::USIZEKey
             | TType::I128Key

@@ -444,6 +444,26 @@ impl<'a> Lexer<'a> {
                             end: self.pos,
                         },
                     )
+                } else if let Some('!') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "!!".to_string(),
+                        TType::DoubleExclaim,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                } else if let Some('?') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "!?".to_string(),
+                        TType::Propagate,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
                     Token::new(
                         "!".to_string(),
@@ -560,6 +580,28 @@ impl<'a> Lexer<'a> {
                     Token::new(
                         "&".to_string(),
                         TType::Ampersand,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                }
+            }
+            Some('?') => {
+                self.advance();
+                if let Some('?') = self.current_char() {
+                    Token::new(
+                        "??".to_string(),
+                        TType::Coalesce,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                } else {
+                    Token::new(
+                        "?".to_string(),
+                        TType::QuestionMark,
                         Span {
                             start,
                             end: self.pos,
