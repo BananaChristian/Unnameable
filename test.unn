@@ -1,1 +1,1 @@
-var (i32)? x:= 100
+func test(): !!(i32,ptr<i32>){}

@@ -40,8 +40,13 @@ pub enum TypeKind {
     // Custom/User types
     CustomType(Box<Expr>),
 
+    //A type like (T)?
     Nullable(Box<Type>),
 
+    //A type like T!!E
+    Failable(Box<Type>, Box<Type>),
+
+    //A type like ()
     Unit,
 
     // Placeholder
@@ -124,11 +129,17 @@ impl Type {
         }
     }
 
-    pub fn unit(span: Span) -> Self{
-        Type{
+    pub fn unit(span: Span) -> Self {
+        Type {
             kind: TypeKind::Unit,
-            span
+            span,
         }
+    }
 
-    } 
+    pub fn failable(inner: Type, fail: Type, span: Span) -> Self {
+        Type {
+            kind: TypeKind::Failable(Box::new(inner), Box::new(fail)),
+            span,
+        }
+    }
 }

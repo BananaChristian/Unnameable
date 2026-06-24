@@ -217,6 +217,7 @@ impl<'a> Parser<'a> {
                 if self.current_token()?.token_type == TType::Rparen {
                     let end = self.current_token()?.span.end;
                     let span = Span { start, end };
+                    self.advance();
                     Some(Type::unit(span))
                 } else {
                     let inner = self.parse_type()?;
@@ -226,6 +227,18 @@ impl<'a> Parser<'a> {
                     let span = Span { start, end };
                     Some(Type::nullable(inner, span))
                 }
+            }
+            TType::DoubleExclaim => {
+                let start = self.current_token()?.span.start;
+                self.advance();
+                self.expect_token(TType::Lparen)?;
+                let ok_ty= self.parse_type()?;
+                self.expect_token(TType::Comma)?;
+                let err_ty= self.parse_type()?;
+                self.expect_token(TType::Rparen)?;
+                let end=self.current_token()?.span.end;
+                let span=Span{start, end};
+                Some(Type::failable(ok_ty, err_ty, span))
             }
             TType::ISIZEKey
             | TType::USIZEKey
