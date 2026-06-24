@@ -34,6 +34,9 @@ pub enum TypeKind {
     // Array
     Array(Box<Type>, Option<Expr>),
 
+    //Function pointer
+    Func(Vec<Type>,Box<Option<Type>>),
+
     // Custom/User types
     CustomType(Box<Expr>),
 
@@ -81,7 +84,6 @@ impl Type {
             _ => TypeKind::None,
         };
 
-        // ⭐ Just use start/end byte offsets
         let span = Span {
             start: token.span.start,
             end: inner.span.end,
@@ -101,6 +103,16 @@ impl Type {
         Type {
             kind: TypeKind::CustomType(Box::new(expr.clone())),
             span: expr.span,
+        }
+    }
+
+    pub fn funcptr(type_param: Vec<Type>, return_type: Option<Type>, span: Span) -> Self{
+        Type{
+            kind: TypeKind::Func(
+                      type_param,
+                      Box::new(return_type)
+                  ),
+                  span 
         }
     }
 }

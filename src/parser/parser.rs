@@ -174,6 +174,43 @@ impl<'a> Parser<'a> {
                 self.expect_token(TType::RBracket)?;
                 Some(Type::array(inner_type, arr_size))
             }
+            TType::Func => {
+                let start = self.current_token()?.span.start;
+                self.advance(); //Consume the func token
+                let mut fields = Vec::new();
+                if self.current_token()?.token_type == TType::Lparen {
+                    self.advance();
+                    while self.current_token()?.token_type != TType::Rparen
+                        && self.current_token()?.token_type != TType::End
+                    {
+                        if let Some(ty) = self.parse_type() {
+                            fields.push(ty);
+                        } else {
+                            self.report(
+                                "Expected a type as a parameter".to_string(),
+                                Some(self.current_token()?.clone().span),
+                            );
+                            self.advance();
+                        }
+
+                        if self.current_token()?.token_type == TType::Comma {
+                            self.advance();
+                        }
+                    }
+                    self.expect_token(TType::Rparen)?;
+                }
+
+                let mut return_type = None;
+                if self.current_token()?.token_type == TType::Colon {
+                    self.advance();
+                    return_type = self.parse_type();
+                }
+
+                let end = self.current_token()?.span.end;
+                let span = Span { start, end };
+
+                Some(Type::funcptr(fields, return_type, span))
+            }
             TType::ISIZEKey
             | TType::USIZEKey
             | TType::I128Key
@@ -219,4 +256,3 @@ impl<'a> Parser<'a> {
             .report(CompilerError::error(message, Phase::Parser, span));
     }
 }
-
