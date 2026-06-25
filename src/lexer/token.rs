@@ -7,20 +7,18 @@ pub enum TType {
     Minus,
     PlusPlus,
     MinusMinus,
-    Colon,         //:
-    Comma,         //,
-    Eq,            //==
-    Bind,          //:=
-    Assign,        //=
-    Neq,           // '!='
-    And,           //&&
-    Or,            // ||
-    Scope,         //::
-    Semicolon,     //;
-    Gt,            //>
-    Rightshift,    //>>
+    Colon,     //:
+    Comma,     //,
+    Eq,        //==
+    Bind,      //:=
+    Assign,    //=
+    Neq,       // '!='
+    And,       //&&
+    Or,        // ||
+    Scope,     //::
+    Semicolon, //;
+    Gt,        //>
     Lt,            //<
-    Leftshift,     //<<
     Gte,           //>=
     Lte,           //<=
     Star,          // *
@@ -54,6 +52,14 @@ pub enum TType {
     F64,
 
     Identifier,
+
+    //Bitwise operations
+    BitwiseAnd, //and
+    BitwiseOr,  //or
+    Rightshift, //shr
+    Leftshift,  //shl
+    Xor,        //xor
+    Not,        //not
 
     //Keywords
     Mut,

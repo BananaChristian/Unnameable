@@ -30,6 +30,12 @@ impl<'a> Lexer<'a> {
             ("if".to_string(), TType::If),
             ("elif".to_string(), TType::Elif),
             ("else".to_string(), TType::Else),
+            ("shr".to_string(), TType::Rightshift),
+            ("shl".to_string(), TType::Leftshift),
+            ("and".to_string(), TType::BitwiseAnd),
+            ("or".to_string(), TType::BitwiseOr),
+            ("xor".to_string(), TType::Xor),
+            ("not".to_string(), TType::Not),
             ("i8".to_string(), TType::I8Key),
             ("u8".to_string(), TType::U8Key),
             ("i16".to_string(), TType::I16Key),
@@ -49,7 +55,7 @@ impl<'a> Lexer<'a> {
             ("ref".to_string(), TType::Ref),
             ("arr".to_string(), TType::Arr),
             ("seal".to_string(), TType::Seal),
-            ("methods".to_string(),TType::Methods),
+            ("methods".to_string(), TType::Methods),
         ]);
 
         Lexer {
@@ -488,16 +494,6 @@ impl<'a> Lexer<'a> {
                             end: self.pos,
                         },
                     )
-                } else if let Some('>') = self.current_char() {
-                    self.advance();
-                    Token::new(
-                        ">>".to_string(),
-                        TType::Rightshift,
-                        Span {
-                            start,
-                            end: self.pos,
-                        },
-                    )
                 } else {
                     Token::new(
                         ">".to_string(),
@@ -516,16 +512,6 @@ impl<'a> Lexer<'a> {
                     Token::new(
                         "<=".to_string(),
                         TType::Lte,
-                        Span {
-                            start,
-                            end: self.pos,
-                        },
-                    )
-                } else if let Some('>') = self.current_char() {
-                    self.advance();
-                    Token::new(
-                        "<<".to_string(),
-                        TType::Leftshift,
                         Span {
                             start,
                             end: self.pos,
