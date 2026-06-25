@@ -81,7 +81,13 @@ impl<'a> Parser<'a> {
             | TType::True
             | TType::False => self.parse_literal(),
 
-            TType::Identifier => self.parse_identifier(),
+            TType::Identifier => {
+                if self.peek_token()?.token_type == TType::Lt {
+                    self.parse_generic_inst()
+                } else {
+                    self.parse_identifier()
+                }
+            }
 
             TType::Lparen => self.parse_grouping(),
 
@@ -326,4 +332,3 @@ impl<'a> Parser<'a> {
         }
     }
 }
-

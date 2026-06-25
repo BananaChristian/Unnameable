@@ -21,6 +21,9 @@ pub enum BinaryOp {
     And,
     Or,
 
+    Access,
+    Scope,
+
     // Assignment
     Assign,
 }
@@ -42,6 +45,7 @@ impl BinaryOp {
             TType::And => BinaryOp::And,
             TType::Or => BinaryOp::Or,
             TType::Assign => BinaryOp::Assign,
+            TType::Scope => BinaryOp::Scope,
             _ => panic!("Not a binary operator: {:?}", token.token_type),
         }
     }
@@ -63,6 +67,7 @@ impl BinaryOp {
                 | TType::And
                 | TType::Or
                 | TType::Assign
+                | TType::Scope
         )
     }
 }

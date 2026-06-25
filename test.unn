@@ -1,3 +1,3 @@
-methods Test{
-    func add:i32 {}
+struct Food {
+    inner: Test::Test<i32>
 }

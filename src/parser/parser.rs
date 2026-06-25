@@ -158,7 +158,7 @@ impl<'a> Parser<'a> {
                 Some(Type::complex(&token, inner_type))
             }
             TType::Identifier => {
-                let expr = self.parse_generic_inst()?;
+                let expr = self.parse_expression(Precedence::Lowest)?;
                 Some(Type::custom(expr))
             }
             TType::Arr => {

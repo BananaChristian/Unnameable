@@ -17,20 +17,23 @@ pub enum Precedence {
     Factor,     // "* /"
     Unary,      // "! - ~"
     Postfix,
-    Call, // . () @
-    Primary,
+    Call,    // . () @
+    Primary, //Shit like ::
 }
 
 impl Precedence {
     pub fn token_precedence(ttype: &TType) -> Self {
         match ttype {
             TType::Plus | TType::Minus => Precedence::Term,
-            TType::Eq | TType::Neq | TType::Lt | TType::Gt | TType::Lte | TType::Gte => {
-                Precedence::Comparison
-            }
+            TType::Lt | TType::Gt | TType::Lte | TType::Gte => Precedence::Comparison,
+            TType::Neq| TType::Eq => Precedence::Equality,
             TType::Bang | TType::Tilde => Precedence::Unary,
             TType::Leftshift | TType::Rightshift => Precedence::Shift,
             TType::Star | TType::Slash | TType::Percentage => Precedence::Factor,
+            TType::Coalesce => Precedence::Coalesce,
+            TType::Scope => Precedence::Primary,
+            TType::And => Precedence::And,
+            TType::Or => Precedence::Or,
             _ => Precedence::Lowest,
         }
     }
