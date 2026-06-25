@@ -5,6 +5,12 @@ use crate::{
 };
 
 #[derive(Debug)]
+pub struct Elif {
+    pub condition: Box<Expr>,
+    pub body: Box<Stmt>,
+}
+
+#[derive(Debug)]
 pub enum StmtKind {
     Expr(Expr),
     VarDecl {
@@ -40,6 +46,12 @@ pub enum StmtKind {
         name: Box<Expr>,
         contents: Vec<Stmt>,
     },
+    IfStmt {
+        condition: Box<Expr>,
+        body: Box<Stmt>,
+        elifs: Vec<Elif>,
+        else_body: Option<Box<Stmt>>,
+    },
 }
 
 #[derive(Debug)]
@@ -54,6 +66,9 @@ impl Stmt {
     }
 
     pub fn is_valid(token: &Token) -> bool {
-        matches!(token.token_type, TType::Var | TType::Func | TType::Struct)
+        matches!(
+            token.token_type,
+            TType::Var | TType::Func | TType::Struct | TType::Methods
+        )
     }
 }

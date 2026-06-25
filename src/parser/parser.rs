@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Precedence, Qualifier, Stmt, Type},
+    ast::{Expr, ExprKind, Precedence, Qualifier, Stmt, Type},
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     lexer::{TType, token::Token},
 };
@@ -43,10 +43,9 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn replace_token(&mut self, replacement: Token) -> Option<()> {
-        if self.current_pos < self.tokens.len() {
-            self.tokens[self.current_pos] = replacement;
-            Some(())
+    pub fn peek_offset_token(&self, offset: usize) -> Option<&Token> {
+        if self.current_pos + offset < self.tokens.len() {
+            Some(&self.tokens[self.current_pos + 1])
         } else {
             None
         }
@@ -99,6 +98,45 @@ impl<'a> Parser<'a> {
         stmts
     }
 
+    pub fn parse_type_generics(&mut self) -> Option<Type> {
+        let mut type_name = self.parse_identifier()?;
+        let start = type_name.span.start;
+        let mut end = type_name.span.end;
+
+        // Handle namespaced types
+        while self.current_token()?.token_type == TType::Scope {
+            self.advance(); // consume '::'
+            let next = self.parse_identifier()?;
+            end = next.span.end;
+            type_name = Expr::new(
+                ExprKind::Path(Box::new(type_name), Box::new(next)),
+                Span { start, end },
+            );
+        }
+
+        let mut type_params = Vec::new();
+
+        if self.current_token()?.token_type == TType::Lt {
+            self.advance(); // consume '<'
+
+            while self.current_token()?.token_type != TType::Gt
+                && self.current_token()?.token_type != TType::End
+            {
+                if self.current_token()?.token_type == TType::Comma {
+                    self.advance();
+                    continue;
+                }
+                let ty = self.parse_type()?;
+                type_params.push(ty);
+            }
+
+            self.expect_token(TType::Gt)?;
+        }
+
+        // Return your Type AST node wrapped up nicely
+        Some(Type::generic(type_name, type_params, Span { start, end }))
+    }
+
     pub fn parse_type(&mut self) -> Option<Type> {
         let token = self.current_token()?.clone();
         match token.token_type {
@@ -116,10 +154,7 @@ impl<'a> Parser<'a> {
                 self.expect_token(TType::Gt)?;
                 Some(Type::complex(&token, inner_type))
             }
-            TType::Identifier => {
-                let expr = self.parse_generic_inst()?;
-                Some(Type::custom(expr))
-            }
+            TType::Identifier => self.parse_type_generics(),
             TType::Arr => {
                 self.advance();
                 self.expect_token(TType::LBracket)?;
@@ -191,12 +226,12 @@ impl<'a> Parser<'a> {
                 let start = self.current_token()?.span.start;
                 self.advance();
                 self.expect_token(TType::Lparen)?;
-                let ok_ty= self.parse_type()?;
+                let ok_ty = self.parse_type()?;
                 self.expect_token(TType::Comma)?;
-                let err_ty= self.parse_type()?;
+                let err_ty = self.parse_type()?;
                 self.expect_token(TType::Rparen)?;
-                let end=self.current_token()?.span.end;
-                let span=Span{start, end};
+                let end = self.current_token()?.span.end;
+                let span = Span { start, end };
                 Some(Type::failable(ok_ty, err_ty, span))
             }
             TType::ISIZEKey

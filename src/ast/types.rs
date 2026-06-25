@@ -37,8 +37,14 @@ pub enum TypeKind {
     //Function pointer
     Func(Vec<Type>, Box<Option<Type>>),
 
-    // Custom/User types
+    // Custom/User types like Pair
     CustomType(Box<Expr>),
+
+    //Like Pair<i32,u32>
+    GenericType {
+        name: Box<Expr>,
+        type_params: Vec<Type>,
+    },
 
     //A type like (T)?
     Nullable(Box<Type>),
@@ -139,6 +145,16 @@ impl Type {
     pub fn failable(inner: Type, fail: Type, span: Span) -> Self {
         Type {
             kind: TypeKind::Failable(Box::new(inner), Box::new(fail)),
+            span,
+        }
+    }
+
+    pub fn generic(name: Expr, params: Vec<Type>, span: Span) -> Self {
+        Type {
+            kind: TypeKind::GenericType {
+                name: Box::new(name),
+                type_params: params,
+            },
             span,
         }
     }

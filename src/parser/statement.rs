@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Precedence, Qualifier, Stmt, StmtKind},
+    ast::{Elif, Precedence, Qualifier, Stmt, StmtKind},
     diagnostics::Span,
     lexer::TType,
     parser::Parser,
@@ -14,6 +14,7 @@ impl<'a> Parser<'a> {
             TType::Struct => self.parse_struct(),
             TType::Seal => self.parse_seal_decl(),
             TType::Methods => self.parse_methods(),
+            TType::If => self.parse_if_stmt(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -162,6 +163,50 @@ impl<'a> Parser<'a> {
             StmtKind::MethodsStmt {
                 name: Box::new(name),
                 contents,
+            },
+            span,
+        ))
+    }
+
+    fn parse_elif(&mut self) -> Option<Elif> {
+        let condition = self.parse_expression(Precedence::Lowest)?;
+        let body = self.parse_body()?;
+        Some(Elif {
+            condition: Box::new(condition),
+            body: Box::new(body),
+        })
+    }
+
+    fn parse_if_stmt(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::If)?;
+        let condition = self.parse_expression(Precedence::Lowest)?;
+        let body = self.parse_body()?;
+
+        let mut elifs = Vec::new();
+        if self.current_token()?.token_type == TType::Elif {
+            while self.current_token()?.token_type == TType::Elif {
+                self.advance(); //Consume the elif
+                let elif = self.parse_elif()?;
+                elifs.push(elif);
+            }
+        }
+
+        let mut else_body = None;
+        if self.current_token()?.token_type == TType::Else {
+            self.advance(); //Consume the else
+            else_body = self.parse_body();
+        }
+
+        let end = self.current_token()?.span.end;
+        let span = Span { start, end };
+
+        Some(Stmt::new(
+            StmtKind::IfStmt {
+                condition: Box::new(condition),
+                body: Box::new(body),
+                elifs,
+                else_body: else_body.map(Box::new),
             },
             span,
         ))

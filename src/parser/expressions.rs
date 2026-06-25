@@ -44,7 +44,8 @@ impl<'a> Parser<'a> {
         let operator = self.current_token()?.clone();
 
         self.advance();
-        let right = self.parse_expression(Precedence::Lowest)?;
+        let op_prec = Precedence::token_precedence(&operator.token_type);
+        let right = self.parse_expression(op_prec)?;
 
         let span = Span {
             start: left.span.start,
@@ -82,12 +83,12 @@ impl<'a> Parser<'a> {
             | TType::False => self.parse_literal(),
 
             TType::Identifier => {
-                if self.peek_token()?.token_type == TType::Lt {
-                    self.parse_generic_inst()
-                } else {
+                if self.peek_token()?.token_type == TType::Scope{
+                    self.parse_turbofish_inst()
+                }else{
                     self.parse_identifier()
                 }
-            }
+            },
 
             TType::Lparen => self.parse_grouping(),
 
@@ -107,7 +108,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let span = token.span;
                 self.report(
-                    format!("Unexpected token: {:?}", token.token_type),
+                    format!("Unexpected prefix token: {:?}", token.token_type),
                     Some(span),
                 );
                 self.advance();
@@ -135,13 +136,17 @@ impl<'a> Parser<'a> {
         Some(Expr::new(ExprKind::Identifier(name), span))
     }
 
-    pub fn parse_generic_inst(&mut self) -> Option<Expr> {
+    pub fn parse_turbofish_inst(&mut self) -> Option<Expr> {
         let mut name = self.parse_identifier()?;
         let start = name.span.start;
         let mut end = name.span.end;
 
         while self.current_token()?.token_type == TType::Scope {
-            self.advance(); // consume ::
+            if self.peek_token()?.token_type == TType::Lt {
+                break;
+            }
+
+            self.advance(); // consume '::'
             let next = self.parse_identifier()?;
             end = next.span.end;
             name = Expr::new(
@@ -151,8 +156,13 @@ impl<'a> Parser<'a> {
         }
 
         let mut type_params = Vec::new();
-        if self.current_token()?.token_type == TType::Lt {
-            self.advance();
+
+        if self.current_token()?.token_type == TType::Scope
+            && self.peek_token()?.token_type == TType::Lt
+        {
+            self.advance(); // consume '::'
+            self.advance(); // consume '<'
+
             while self.current_token()?.token_type != TType::Gt
                 && self.current_token()?.token_type != TType::End
             {
@@ -163,6 +173,9 @@ impl<'a> Parser<'a> {
                 let ty = self.parse_type()?;
                 type_params.push(ty);
             }
+
+            // Update the final span end to include the closing '>'
+            end = self.current_token()?.span.end;
             self.expect_token(TType::Gt)?;
         }
 
@@ -175,6 +188,7 @@ impl<'a> Parser<'a> {
             span,
         ))
     }
+
     fn parse_number(&self, num_str: &str) -> Option<i64> {
         if num_str.starts_with("0x") || num_str.starts_with("0X") {
             let hex_str = &num_str[2..];

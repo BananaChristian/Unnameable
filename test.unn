@@ -1,1 +1,7 @@
-var ptr<test::test::Pair<i32,u32>> x:= 100
+if x < 10{
+    
+} elif x > 10{
+
+}else{
+
+}
