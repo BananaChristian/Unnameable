@@ -1,3 +1,1 @@
-struct Food {
-    inner: Test::Test<i32>
-}
+var ptr<test::test::Pair<i32,u32>> x:= 100

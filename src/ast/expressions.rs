@@ -39,6 +39,7 @@ pub enum ExprKind {
     Literal(Literal),
     Identifier(String),
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
+    Path(Box<Expr>,Box<Expr>),
     Unary(UnaryOp, Box<Expr>),
     GenericInstantion {
         name: Box<Expr>,

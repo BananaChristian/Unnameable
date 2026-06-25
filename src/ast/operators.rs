@@ -21,6 +21,13 @@ pub enum BinaryOp {
     And,
     Or,
 
+    //Bitwise
+    Shr,
+    Shl,
+    Xor,
+    BitAnd,
+    BitOr,
+
     Access,
     Scope,
 
@@ -46,6 +53,11 @@ impl BinaryOp {
             TType::Or => BinaryOp::Or,
             TType::Assign => BinaryOp::Assign,
             TType::Scope => BinaryOp::Scope,
+            TType::Rightshift => BinaryOp::Shr,
+            TType::Leftshift => BinaryOp::Shl,
+            TType::Xor => BinaryOp::Xor,
+            TType::BitwiseAnd => BinaryOp::BitAnd,
+            TType::BitwiseOr => BinaryOp::BitOr,
             _ => panic!("Not a binary operator: {:?}", token.token_type),
         }
     }
@@ -68,6 +80,11 @@ impl BinaryOp {
                 | TType::Or
                 | TType::Assign
                 | TType::Scope
+                | TType::BitwiseAnd
+                | TType::BitwiseOr
+                | TType::Xor
+                | TType::Rightshift
+                | TType::Leftshift
         )
     }
 }

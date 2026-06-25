@@ -136,51 +136,37 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_generic_inst(&mut self) -> Option<Expr> {
-        let name = self.parse_identifier()?;
-        let mut start = name.span.start;
+        let mut name = self.parse_identifier()?;
+        let start = name.span.start;
         let mut end = name.span.end;
+
+        while self.current_token()?.token_type == TType::Scope {
+            self.advance(); // consume ::
+            let next = self.parse_identifier()?;
+            end = next.span.end;
+            name = Expr::new(
+                ExprKind::Path(Box::new(name), Box::new(next)),
+                Span { start, end },
+            );
+        }
+
         let mut type_params = Vec::new();
-
-        // Check if we have generic arguments
         if self.current_token()?.token_type == TType::Lt {
-            let lt_span = self.current_token()?.clone().span;
-            start = start.min(lt_span.start);
-            end = end.max(lt_span.end);
-            self.advance(); // Consume '<'
-
-            // Parse types until we hit '>' or '>>'
+            self.advance();
             while self.current_token()?.token_type != TType::Gt
-                && self.current_token()?.token_type != TType::Rightshift
                 && self.current_token()?.token_type != TType::End
             {
-                // Skip commas
                 if self.current_token()?.token_type == TType::Comma {
                     self.advance();
                     continue;
                 }
-
-                // Parse a type
                 let ty = self.parse_type()?;
                 type_params.push(ty);
             }
-
-            // Handle >> (nested generics)
-            self.split_rightshift();
-
-            // Consume the closing '>'
-            if self.current_token()?.token_type == TType::Gt {
-                let gt_span = self.current_token()?.clone().span;
-                start = start.min(gt_span.start);
-                end = end.max(gt_span.end);
-                self.advance(); // Consume '>'
-            } else {
-                self.report("Expected '>' to close generic arguments".to_string(), None);
-                return None;
-            }
+            self.expect_token(TType::Gt)?;
         }
 
         let span = Span { start, end };
-
         Some(Expr::new(
             ExprKind::GenericInstantion {
                 name: Box::new(name),
@@ -189,7 +175,6 @@ impl<'a> Parser<'a> {
             span,
         ))
     }
-
     fn parse_number(&self, num_str: &str) -> Option<i64> {
         if num_str.starts_with("0x") || num_str.starts_with("0X") {
             let hex_str = &num_str[2..];

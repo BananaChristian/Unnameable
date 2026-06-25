@@ -52,41 +52,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn insert_token(&mut self, token: Token) {
-        self.tokens.insert(self.current_pos + 1, token);
-    }
-
-    pub fn split_rightshift(&mut self) {
-        let tok = match self.current_token() {
-            Some(t) => t.clone(),
-            None => return,
-        };
-
-        if tok.token_type == TType::Rightshift {
-            // Replace >> with >
-            let replacement = Token::new(
-                ">".to_string(),
-                TType::Gt,
-                Span {
-                    start: tok.span.start,
-                    end: tok.span.end,
-                },
-            );
-            self.replace_token(replacement);
-
-            // Insert another > after it
-            let extra = Token::new(
-                ">".to_string(),
-                TType::Gt,
-                Span {
-                    start: tok.span.start,
-                    end: tok.span.end,
-                },
-            );
-            self.insert_token(extra);
-        }
-    }
-
     pub fn expect_token(&mut self, expected: TType) -> Option<()> {
         let token = self.current_token()?.clone();
         if token.token_type == expected {
@@ -141,9 +106,6 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.expect_token(TType::Lt)?;
                 let inner_type = self.parse_type()?;
-
-                self.split_rightshift();
-
                 self.expect_token(TType::Gt)?;
                 Some(Type::complex(&token, inner_type))
             }
@@ -151,14 +113,11 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.expect_token(TType::Lt)?;
                 let inner_type = self.parse_type()?;
-
-                self.split_rightshift();
-
                 self.expect_token(TType::Gt)?;
                 Some(Type::complex(&token, inner_type))
             }
             TType::Identifier => {
-                let expr = self.parse_expression(Precedence::Lowest)?;
+                let expr = self.parse_generic_inst()?;
                 Some(Type::custom(expr))
             }
             TType::Arr => {

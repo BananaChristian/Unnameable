@@ -10,9 +10,9 @@ pub enum Precedence {
     Equality,   // == !=
     Comparison, // < > <= >=
     BitwiseOr,  //|
-    BitwiseXor, //^
+    BitwiseXor, //xor
     BitwiseAnd, //&
-    Shift,      //<< >>
+    Shift,      //shl,shr
     Term,       // + -
     Factor,     // "* /"
     Unary,      // "! - ~"
@@ -26,7 +26,7 @@ impl Precedence {
         match ttype {
             TType::Plus | TType::Minus => Precedence::Term,
             TType::Lt | TType::Gt | TType::Lte | TType::Gte => Precedence::Comparison,
-            TType::Neq| TType::Eq => Precedence::Equality,
+            TType::Neq | TType::Eq => Precedence::Equality,
             TType::Bang | TType::Tilde => Precedence::Unary,
             TType::Leftshift | TType::Rightshift => Precedence::Shift,
             TType::Star | TType::Slash | TType::Percentage => Precedence::Factor,
@@ -34,6 +34,9 @@ impl Precedence {
             TType::Scope => Precedence::Primary,
             TType::And => Precedence::And,
             TType::Or => Precedence::Or,
+            TType::BitwiseAnd => Precedence::BitwiseAnd,
+            TType::BitwiseOr => Precedence::BitwiseOr,
+            TType::Xor => Precedence::BitwiseXor,
             _ => Precedence::Lowest,
         }
     }
