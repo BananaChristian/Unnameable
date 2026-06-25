@@ -32,9 +32,13 @@ pub enum StmtKind {
         name: Box<Expr>,
         contents: Box<Stmt>,
     },
-    SealStmt{
+    SealStmt {
         name: Box<Expr>,
-        contents: Box<Stmt>
+        contents: Vec<Stmt>,
+    },
+    MethodsStmt {
+        name: Box<Expr>,
+        contents: Vec<Stmt>,
     },
 }
 

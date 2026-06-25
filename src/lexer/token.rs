@@ -70,6 +70,7 @@ pub enum TType {
     Elif,
     Else,
     Struct,
+    Methods,
     Seal,
 
     I8Key,

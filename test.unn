@@ -1,1 +1,3 @@
-func test(): !!(i32,ptr<i32>){}
+methods Test{
+    func add:i32 {}
+}

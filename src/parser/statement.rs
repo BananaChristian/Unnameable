@@ -13,6 +13,7 @@ impl<'a> Parser<'a> {
             TType::Func => self.parse_func_decl(),
             TType::Struct => self.parse_struct(),
             TType::Seal => self.parse_seal_decl(),
+            TType::Methods => self.parse_methods(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -114,14 +115,53 @@ impl<'a> Parser<'a> {
         self.expect_token(TType::Seal)?;
 
         let name = self.parse_identifier()?;
-        let body = self.parse_body()?;
+        self.expect_token(TType::LBrace)?;
+        let mut contents = Vec::new();
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            if let Some(stmt) = self.parse_func_decl() {
+                contents.push(stmt);
+            } else {
+                self.advance();
+            }
+        }
+
+        self.expect_token(TType::Rbrace)?;
         let end = self.current_token()?.span.end;
         let span = Span { start, end };
 
         Some(Stmt::new(
             StmtKind::SealStmt {
                 name: Box::new(name),
-                contents: Box::new(body),
+                contents,
+            },
+            span,
+        ))
+    }
+
+    pub fn parse_methods(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Methods)?;
+        let name = self.parse_identifier()?;
+        let mut contents = Vec::new();
+        self.expect_token(TType::LBrace)?;
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            if let Some(stmt) = self.parse_func_decl() {
+                contents.push(stmt);
+            } else {
+                self.advance();
+            }
+        }
+        self.expect_token(TType::Rbrace)?;
+        let end = self.current_token()?.span.end;
+        let span = Span { start, end };
+        Some(Stmt::new(
+            StmtKind::MethodsStmt {
+                name: Box::new(name),
+                contents,
             },
             span,
         ))
@@ -149,4 +189,3 @@ impl<'a> Parser<'a> {
         Some(Stmt::new(StmtKind::Block { content: stmts }, span))
     }
 }
-
