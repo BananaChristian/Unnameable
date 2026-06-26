@@ -1,7 +1,6 @@
 use crate::{
     ast::{
-        Type,
-        operators::{BinaryOp, UnaryOp},
+        PostfixOp, Type, operators::{BinaryOp, UnaryOp}
     },
     diagnostics::Span,
 };
@@ -46,6 +45,7 @@ pub enum ExprKind {
         type_params: Vec<Type>,
     },
     Call(Box<Expr>, Vec<Expr>),
+    Postfix(Box<Expr>,PostfixOp),
 }
 
 #[derive(Debug, Clone, PartialEq)]

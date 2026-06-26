@@ -56,6 +56,7 @@ impl<'a> Lexer<'a> {
             ("arr".to_string(), TType::Arr),
             ("seal".to_string(), TType::Seal),
             ("methods".to_string(), TType::Methods),
+            ("generics".to_string(), TType::Generics),
         ]);
 
         Lexer {
@@ -349,6 +350,16 @@ impl<'a> Lexer<'a> {
                             end: self.pos,
                         },
                     )
+                } else if let Some('=') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "+=".to_string(),
+                        TType::CompoundAdd,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
                     Token::new(
                         "+".to_string(),
@@ -367,6 +378,16 @@ impl<'a> Lexer<'a> {
                     Token::new(
                         "--".to_string(),
                         TType::MinusMinus,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                } else if let Some('=') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "-=".to_string(),
+                        TType::CompoundSub,
                         Span {
                             start,
                             end: self.pos,
@@ -664,36 +685,72 @@ impl<'a> Lexer<'a> {
             }
             Some('*') => {
                 self.advance();
-                Token::new(
-                    "*".to_string(),
-                    TType::Star,
-                    Span {
-                        start,
-                        end: self.pos,
-                    },
-                )
+                if let Some('=') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "*=".to_string(),
+                        TType::CompoundMul,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                } else {
+                    Token::new(
+                        "*".to_string(),
+                        TType::Star,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                }
             }
             Some('/') => {
                 self.advance();
-                Token::new(
-                    "/".to_string(),
-                    TType::Slash,
-                    Span {
-                        start,
-                        end: self.pos,
-                    },
-                )
+                if let Some('=') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "/=".to_string(),
+                        TType::CompoundDiv,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                } else {
+                    Token::new(
+                        "/".to_string(),
+                        TType::Slash,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                }
             }
             Some('%') => {
                 self.advance();
-                Token::new(
-                    "%".to_string(),
-                    TType::Percentage,
-                    Span {
-                        start,
-                        end: self.pos,
-                    },
-                )
+                if let Some('=') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "%=".to_string(),
+                        TType::CompoundModulo,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                } else {
+                    Token::new(
+                        "%".to_string(),
+                        TType::Percentage,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                }
             }
             Some('~') => {
                 self.advance();

@@ -3,15 +3,20 @@ use crate::diagnostics::Span;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TType {
     //Signs
-    Plus,
-    Minus,
-    PlusPlus,
-    MinusMinus,
+    Plus, //+
+    Minus,//-
+    PlusPlus,//++
+    MinusMinus, //--
     Colon,     //:
     Comma,     //,
     Eq,        //==
     Bind,      //:=
     Assign,    //=
+    CompoundAdd,//+=
+    CompoundSub, //-=
+    CompoundModulo, //%=
+    CompoundDiv, // /=
+    CompoundMul, // *=
     Neq,       // '!='
     And,       //&&
     Or,        // ||
@@ -78,6 +83,7 @@ pub enum TType {
     Struct,
     Methods,
     Seal,
+    Generics,
 
     I8Key,
     U8Key,

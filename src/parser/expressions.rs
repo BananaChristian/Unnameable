@@ -1,5 +1,5 @@
 use crate::{
-    ast::{BinaryOp, Expr, ExprKind, Literal, Precedence, Stmt, UnaryOp},
+    ast::{BinaryOp, Expr, ExprKind, Literal, PostfixOp, Precedence, Stmt, UnaryOp},
     diagnostics::Span,
     lexer::{TType, token::Token},
     parser::Parser,
@@ -12,32 +12,74 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.current_token() {
             let token_type = token.token_type;
 
-            // Stop at statement boundaries
             if Stmt::is_valid(token) || token_type == TType::End {
                 break;
             }
 
-            // Stop at semicolon or comma
             if token_type == TType::Semicolon || token_type == TType::Comma {
                 self.advance();
                 break;
             }
 
-            // Check if it's a binary operator
+            // postfix check BEFORE binary gate
+            if PostfixOp::is_valid(token) {
+                left = self.parse_postfix(left)?;
+                continue;
+            }
+
             if !BinaryOp::is_valid(token) {
                 break;
             }
 
             let op_prec = Precedence::token_precedence(&token_type);
-
             if op_prec < min_prec {
                 break;
             }
 
             left = self.parse_binary(left)?;
         }
-
         Some(left)
+    }
+
+    fn parse_postfix(&mut self, left: Expr) -> Option<Expr> {
+        let token = self.current_token()?.clone();
+        let span = Span {
+            start: left.span.start,
+            end: token.span.end,
+        };
+        match token.token_type {
+            TType::Lparen => self.parse_call(left),
+            TType::PlusPlus => {
+                self.advance();
+                Some(Expr::new(
+                    ExprKind::Postfix(Box::new(left), PostfixOp::Increment),
+                    span,
+                ))
+            }
+            TType::MinusMinus => {
+                self.advance();
+                Some(Expr::new(
+                    ExprKind::Postfix(Box::new(left), PostfixOp::Decrement),
+                    span,
+                ))
+            }
+            TType::Propagate => {
+                self.advance();
+                Some(Expr::new(
+                    ExprKind::Postfix(Box::new(left), PostfixOp::Propagate),
+                    span,
+                ))
+            }
+            _ => {
+                let span = token.span;
+                self.report(
+                    format!("Unexpected postfix token: {:?}", token.token_type),
+                    Some(span),
+                );
+                self.advance();
+                None
+            }
+        }
     }
 
     fn parse_binary(&mut self, left: Expr) -> Option<Expr> {
@@ -83,21 +125,23 @@ impl<'a> Parser<'a> {
             | TType::False => self.parse_literal(),
 
             TType::Identifier => {
-                if self.peek_token()?.token_type == TType::Scope{
+                if self.peek_token()?.token_type == TType::Scope
+                    && self.peek_offset_token(2)?.token_type == TType::Lt
+                {
                     self.parse_turbofish_inst()
-                }else{
+                } else {
                     self.parse_identifier()
                 }
-            },
+            }
 
             TType::Lparen => self.parse_grouping(),
 
-            TType::Minus | TType::Bang => {
+            TType::Minus | TType::Bang | TType::PlusPlus | TType::MinusMinus => {
                 let op = UnaryOp::new(&token);
                 let op_span = token.span;
                 self.advance();
 
-                let expr = self.parse_expression(Precedence::Unary)?;
+                let expr = self.parse_prefix()?;
                 let span = Span {
                     start: op_span.start,
                     end: expr.span.end,
@@ -187,6 +231,38 @@ impl<'a> Parser<'a> {
             },
             span,
         ))
+    }
+
+    fn parse_call_arguments(&mut self) -> Option<Vec<Expr>> {
+        let mut args = Vec::new();
+        self.expect_token(TType::Lparen)?;
+        while self.current_token()?.token_type != TType::Rparen
+            && self.current_token()?.token_type != TType::End
+        {
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+                continue;
+            }
+            let expr = self.parse_expression(Precedence::Lowest)?;
+            args.push(expr);
+        }
+
+        self.expect_token(TType::Rparen)?;
+        Some(args)
+    }
+
+    fn parse_call(&mut self, left: Expr) -> Option<Expr> {
+        let args = self.parse_call_arguments()?;
+        let end = self.current_token()?.span.end;
+
+        let span = Span {
+            start: left.span.start,
+            end: end,
+        };
+        Some(Expr {
+            kind: ExprKind::Call(Box::new(left), args),
+            span,
+        })
     }
 
     fn parse_number(&self, num_str: &str) -> Option<i64> {

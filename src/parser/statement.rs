@@ -15,6 +15,7 @@ impl<'a> Parser<'a> {
             TType::Seal => self.parse_seal_decl(),
             TType::Methods => self.parse_methods(),
             TType::If => self.parse_if_stmt(),
+            TType::Generics => self.parse_generic_block(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -209,6 +210,36 @@ impl<'a> Parser<'a> {
                 else_body: else_body.map(Box::new),
             },
             span,
+        ))
+    }
+
+    pub fn parse_generic_block(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Generics)?;
+        self.expect_token(TType::Lt)?;
+
+        let mut params = Vec::new();
+        while self.current_token()?.token_type != TType::Gt
+            && self.current_token()?.token_type != TType::End
+        {
+            let ty = self.parse_type()?;
+            params.push(ty);
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+                continue;
+            }
+        }
+        self.expect_token(TType::Gt)?;
+
+        let body = self.parse_body()?;
+        let end = self.current_token()?.span.end;
+
+        Some(Stmt::new(
+            StmtKind::GenericBlock {
+                params,
+                body: Box::new(body),
+            },
+            Span{start,end},
         ))
     }
 

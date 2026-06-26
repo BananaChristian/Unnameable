@@ -45,7 +45,7 @@ impl<'a> Parser<'a> {
 
     pub fn peek_offset_token(&self, offset: usize) -> Option<&Token> {
         if self.current_pos + offset < self.tokens.len() {
-            Some(&self.tokens[self.current_pos + 1])
+            Some(&self.tokens[self.current_pos + offset])
         } else {
             None
         }
@@ -131,10 +131,12 @@ impl<'a> Parser<'a> {
             }
 
             self.expect_token(TType::Gt)?;
+            // Return your Type AST node wrapped up nicely
+            Some(Type::generic(type_name, type_params, Span { start, end }))
+        }else{
+            Some(Type::custom(type_name))
         }
 
-        // Return your Type AST node wrapped up nicely
-        Some(Type::generic(type_name, type_params, Span { start, end }))
     }
 
     pub fn parse_type(&mut self) -> Option<Type> {

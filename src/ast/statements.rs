@@ -52,6 +52,11 @@ pub enum StmtKind {
         elifs: Vec<Elif>,
         else_body: Option<Box<Stmt>>,
     },
+    GenericBlock{
+        params: Vec<Type>,
+        body:Box<Stmt>,
+
+    },
 }
 
 #[derive(Debug)]
