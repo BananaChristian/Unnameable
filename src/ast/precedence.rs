@@ -11,14 +11,12 @@ pub enum Precedence {
     Comparison, // < > <= >=
     BitwiseOr,  //|
     BitwiseXor, //xor
-    BitwiseAnd, //&
+    BitwiseAnd, //and
     Shift,      //shl,shr
     Term,       // + -
     Factor,     // "* /"
-    Unary,      // "! - ~"
-    Postfix,
-    Call,    // . () @
-    Primary, //Shit like ::
+    Call,    // .
+    Primary, //::
 }
 
 impl Precedence {
@@ -27,7 +25,6 @@ impl Precedence {
             TType::Plus | TType::Minus => Precedence::Term,
             TType::Lt | TType::Gt | TType::Lte | TType::Gte => Precedence::Comparison,
             TType::Neq | TType::Eq => Precedence::Equality,
-            TType::Bang | TType::Tilde => Precedence::Unary,
             TType::Leftshift | TType::Rightshift => Precedence::Shift,
             TType::Star | TType::Slash | TType::Percentage => Precedence::Factor,
             TType::Coalesce => Precedence::Coalesce,
@@ -37,6 +34,13 @@ impl Precedence {
             TType::BitwiseAnd => Precedence::BitwiseAnd,
             TType::BitwiseOr => Precedence::BitwiseOr,
             TType::Xor => Precedence::BitwiseXor,
+            TType::Dot =>Precedence::Call,
+            TType::Assign
+            | TType::CompoundAdd
+            | TType::CompoundSub
+            | TType::CompoundModulo
+            | TType::CompoundMul
+            | TType::CompoundDiv => Precedence::Assignment,
             _ => Precedence::Lowest,
         }
     }

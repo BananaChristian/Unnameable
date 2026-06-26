@@ -3,40 +3,43 @@ use crate::diagnostics::Span;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TType {
     //Signs
-    Plus, //+
-    Minus,//-
-    PlusPlus,//++
-    MinusMinus, //--
-    Colon,     //:
-    Comma,     //,
-    Eq,        //==
-    Bind,      //:=
-    Assign,    //=
-    CompoundAdd,//+=
-    CompoundSub, //-=
+    Plus,           //+
+    Minus,          //-
+    PlusPlus,       //++
+    MinusMinus,     //--
+    Colon,          //:
+    Comma,          //,
+    Eq,             //==
+    Bind,           //:=
+    Assign,         //=
+    CompoundAdd,    //+=
+    CompoundSub,    //-=
     CompoundModulo, //%=
-    CompoundDiv, // /=
-    CompoundMul, // *=
-    Neq,       // '!='
-    And,       //&&
-    Or,        // ||
-    Scope,     //::
-    Semicolon, //;
-    Gt,        //>
-    Lt,            //<
-    Gte,           //>=
-    Lte,           //<=
-    Star,          // *
-    Slash,         // /
-    Percentage,    // %
-    Bang,          // !
-    Tilde,         //~
-    Stick,         // |
-    Ampersand,     //&
-    QuestionMark,  //?
-    Coalesce,      //??
-    DoubleExclaim, //'!!'
-    Propagate,     //'!?'
+    CompoundDiv,    // /=
+    CompoundMul,    // *=
+    Neq,            // '!='
+    And,            //&&
+    Or,             // ||
+    Scope,          //::
+    Semicolon,      //;
+    Gt,             //>
+    Lt,             //<
+    Gte,            //>=
+    Lte,            //<=
+    Star,           // *
+    Slash,          // /
+    Dot,            // .
+    Percentage,     // %
+    Bang,           // !
+    Tilde,          //~
+    Stick,          // |
+    Ampersand,      //&
+    Caret,          //^
+    At,             //@
+    QuestionMark,   //?
+    Coalesce,       //??
+    DoubleExclaim,  //'!!'
+    Propagate,      //'!?'
 
     // Number types
     Int,
@@ -84,6 +87,7 @@ pub enum TType {
     Methods,
     Seal,
     Generics,
+    SizeOf,
 
     I8Key,
     U8Key,

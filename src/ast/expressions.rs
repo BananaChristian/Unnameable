@@ -46,6 +46,7 @@ pub enum ExprKind {
     },
     Call(Box<Expr>, Vec<Expr>),
     Postfix(Box<Expr>,PostfixOp),
+    SizeOfExpr(Box<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

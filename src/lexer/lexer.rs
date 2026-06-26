@@ -57,6 +57,7 @@ impl<'a> Lexer<'a> {
             ("seal".to_string(), TType::Seal),
             ("methods".to_string(), TType::Methods),
             ("generics".to_string(), TType::Generics),
+            ("sizeof".to_string(), TType::SizeOf),
         ]);
 
         Lexer {
@@ -598,6 +599,7 @@ impl<'a> Lexer<'a> {
             Some('?') => {
                 self.advance();
                 if let Some('?') = self.current_char() {
+                    self.advance();
                     Token::new(
                         "??".to_string(),
                         TType::Coalesce,
@@ -616,6 +618,17 @@ impl<'a> Lexer<'a> {
                         },
                     )
                 }
+            }
+            Some('.') => {
+                self.advance();
+                Token::new(
+                    ".".to_string(),
+                    TType::Dot,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
             }
             Some('(') => {
                 self.advance();
@@ -757,6 +770,28 @@ impl<'a> Lexer<'a> {
                 Token::new(
                     "~".to_string(),
                     TType::Tilde,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
+            }
+            Some('^') => {
+                self.advance();
+                Token::new(
+                    "^".to_string(),
+                    TType::Caret,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                )
+            }
+            Some('@') => {
+                self.advance();
+                Token::new(
+                    "@".to_string(),
+                    TType::At,
                     Span {
                         start,
                         end: self.pos,

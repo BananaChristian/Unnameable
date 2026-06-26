@@ -133,10 +133,16 @@ impl<'a> Parser<'a> {
                     self.parse_identifier()
                 }
             }
+            TType::SizeOf => self.parse_sizeof_expr(),
 
             TType::Lparen => self.parse_grouping(),
 
-            TType::Minus | TType::Bang | TType::PlusPlus | TType::MinusMinus => {
+            TType::Minus
+            | TType::Bang
+            | TType::PlusPlus
+            | TType::MinusMinus
+            | TType::At
+            | TType::Caret => {
                 let op = UnaryOp::new(&token);
                 let op_span = token.span;
                 self.advance();
@@ -263,6 +269,20 @@ impl<'a> Parser<'a> {
             kind: ExprKind::Call(Box::new(left), args),
             span,
         })
+    }
+
+    fn parse_sizeof_expr(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::SizeOf)?;
+
+        self.expect_token(TType::Lt)?;
+        let ty = self.parse_type()?;
+        self.expect_token(TType::Gt)?;
+        let end = self.current_token()?.span.end;
+        Some(Expr::new(
+            ExprKind::SizeOfExpr(Box::new(ty)),
+            Span { start, end },
+        ))
     }
 
     fn parse_number(&self, num_str: &str) -> Option<i64> {

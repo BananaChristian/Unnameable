@@ -21,12 +21,20 @@ pub enum BinaryOp {
     And,
     Or,
 
+    Coalesce,
+
     //Bitwise
     Shr,
     Shl,
     Xor,
     BitAnd,
     BitOr,
+
+    AddAssign,
+    SubAssign,
+    DivAssign,
+    ModAssign,
+    MulAssign,
 
     Access,
     Scope,
@@ -51,13 +59,20 @@ impl BinaryOp {
             TType::Gte => BinaryOp::Geq,
             TType::And => BinaryOp::And,
             TType::Or => BinaryOp::Or,
-            TType::Assign => BinaryOp::Assign,
             TType::Scope => BinaryOp::Scope,
             TType::Rightshift => BinaryOp::Shr,
             TType::Leftshift => BinaryOp::Shl,
             TType::Xor => BinaryOp::Xor,
             TType::BitwiseAnd => BinaryOp::BitAnd,
             TType::BitwiseOr => BinaryOp::BitOr,
+            TType::Assign => BinaryOp::Assign,
+            TType::Coalesce => BinaryOp::Coalesce,
+            TType::CompoundAdd => BinaryOp::AddAssign,
+            TType::CompoundSub => BinaryOp::SubAssign,
+            TType::CompoundModulo => BinaryOp::ModAssign,
+            TType::CompoundMul => BinaryOp::MulAssign,
+            TType::CompoundDiv => BinaryOp::DivAssign,
+            TType::Dot => BinaryOp::Access,
             _ => panic!("Not a binary operator: {:?}", token.token_type),
         }
     }
@@ -78,23 +93,32 @@ impl BinaryOp {
                 | TType::Gte
                 | TType::And
                 | TType::Or
-                | TType::Assign
                 | TType::Scope
                 | TType::BitwiseAnd
                 | TType::BitwiseOr
                 | TType::Xor
                 | TType::Rightshift
                 | TType::Leftshift
+                | TType::Assign
+                | TType::CompoundAdd
+                | TType::CompoundDiv
+                | TType::CompoundSub
+                | TType::CompoundMul
+                | TType::CompoundModulo
+                | TType::Coalesce
+                | TType::Dot
         )
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
-    Neg, // -
-    Not, // !
-    Increment, // ++
-    Decrement, //--
+    Neg,         // -
+    Not,         // !
+    Increment,   // ++
+    Decrement,   //--
+    AddressOf,   //@
+    Dereference, //^
 }
 
 impl UnaryOp {
@@ -103,7 +127,9 @@ impl UnaryOp {
             TType::Minus => UnaryOp::Neg,
             TType::Bang => UnaryOp::Not,
             TType::MinusMinus => UnaryOp::Decrement,
-            TType::PlusPlus=>UnaryOp::Increment,
+            TType::PlusPlus => UnaryOp::Increment,
+            TType::At => UnaryOp::AddressOf,
+            TType::Caret => UnaryOp::Dereference,
             _ => panic!("Not a unary operator: {:?}", token.token_type),
         }
     }
