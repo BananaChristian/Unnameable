@@ -17,7 +17,6 @@ impl<'a> Parser<'a> {
             }
 
             if token_type == TType::Semicolon || token_type == TType::Comma {
-                self.advance();
                 break;
             }
 

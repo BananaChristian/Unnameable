@@ -29,6 +29,10 @@ impl<'a> Lexer<'a> {
             ("false".to_string(), TType::False),
             ("if".to_string(), TType::If),
             ("elif".to_string(), TType::Elif),
+            ("while".to_string(),TType::While),
+            ("for".to_string(),TType::For),
+            ("each".to_string(),TType::Each),
+            ("in".to_string(),TType::In),
             ("else".to_string(), TType::Else),
             ("shr".to_string(), TType::Rightshift),
             ("shl".to_string(), TType::Leftshift),
@@ -57,6 +61,7 @@ impl<'a> Lexer<'a> {
             ("seal".to_string(), TType::Seal),
             ("methods".to_string(), TType::Methods),
             ("generics".to_string(), TType::Generics),
+            ("contract".to_string(), TType::Contract),
             ("sizeof".to_string(), TType::SizeOf),
         ]);
 

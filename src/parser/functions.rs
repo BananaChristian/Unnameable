@@ -93,7 +93,7 @@ impl<'a> Parser<'a> {
         Some(params)
     }
 
-    pub fn parse_func_decl(&mut self) -> Option<Stmt> {
+    pub fn parse_func(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Func)?;
 
@@ -117,25 +117,32 @@ impl<'a> Parser<'a> {
         };
 
         // Parse body (only if '{' is present)
-        let body = if self.current_token()?.token_type == TType::LBrace {
+        if self.current_token()?.token_type == TType::LBrace {
             let body = self.parse_body()?;
-            Some(Box::new(body))
+            let end = self.current_token()?.span.end;
+            let span = Span { start, end };
+
+            Some(Stmt::new(
+                StmtKind::FunctionDef {
+                    name: Box::new(name),
+                    params,
+                    type_annotation: return_type,
+                    body: Box::new(body),
+                },
+                span,
+            ))
         } else {
-            None
-        };
+            let end = self.current_token()?.span.end;
+            let span = Span { start, end };
 
-        let end = self.current_token()?.span.end;
-        let span = Span { start, end };
-
-        Some(Stmt::new(
-            StmtKind::FunctionDecl {
-                name: Box::new(name),
-                params,
-                type_annotation: return_type,
-                body,
-            },
-            span,
-        ))
+            Some(Stmt::new(
+                StmtKind::FunctionDecl {
+                    name: Box::new(name),
+                    params,
+                    type_annotation: return_type,
+                },
+                span,
+            ))
+        }
     }
 }
-

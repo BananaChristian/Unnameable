@@ -9,13 +9,17 @@ impl<'a> Parser<'a> {
     pub fn parse_stmt(&mut self) -> Option<Stmt> {
         let token = self.current_token()?.clone();
         match token.token_type {
-            TType::Var => self.parse_var_declaration(),
-            TType::Func => self.parse_func_decl(),
+            TType::Var => self.parse_var(),
+            TType::Func => self.parse_func(),
             TType::Struct => self.parse_struct(),
-            TType::Seal => self.parse_seal_decl(),
+            TType::Seal => self.parse_seal(),
             TType::Methods => self.parse_methods(),
             TType::If => self.parse_if_stmt(),
-            TType::Generics => self.parse_generic_block(),
+            TType::While => self.parse_while(),
+            TType::Each => self.parse_each(),
+            TType::For => self.parse_for(),
+            TType::Generics => self.parse_generics(),
+            TType::Contract => self.parse_contract(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -26,7 +30,7 @@ impl<'a> Parser<'a> {
         Some(Stmt::new(StmtKind::Expr(expr), span))
     }
 
-    fn parse_var_declaration(&mut self) -> Option<Stmt> {
+    fn parse_var(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Var)?;
 
@@ -99,6 +103,21 @@ impl<'a> Parser<'a> {
         self.expect_token(TType::Struct)?;
 
         let name = self.parse_identifier()?;
+        let mut contracts = Vec::new();
+        if self.current_token()?.token_type == TType::Colon {
+            self.advance();
+            while self.current_token()?.token_type != TType::LBrace
+                && self.current_token()?.token_type != TType::End
+            {
+                let contract = self.parse_identifier()?;
+                contracts.push(contract);
+                if self.current_token()?.token_type == TType::Comma {
+                    self.advance();
+                    continue;
+                }
+            }
+        }
+
         let body = self.parse_struct_body()?;
         let end = self.current_token()?.span.end;
         let span = Span { start, end };
@@ -106,13 +125,14 @@ impl<'a> Parser<'a> {
         Some(Stmt::new(
             StmtKind::StructDecl {
                 name: Box::new(name),
+                contracts,
                 contents: Box::new(body),
             },
             span,
         ))
     }
 
-    pub fn parse_seal_decl(&mut self) -> Option<Stmt> {
+    fn parse_seal(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Seal)?;
 
@@ -122,8 +142,18 @@ impl<'a> Parser<'a> {
         while self.current_token()?.token_type != TType::Rbrace
             && self.current_token()?.token_type != TType::End
         {
-            if let Some(stmt) = self.parse_func_decl() {
-                contents.push(stmt);
+            if let Some(stmt) = self.parse_func() {
+                match &stmt.kind {
+                    StmtKind::FunctionDef { .. } => {
+                        contents.push(stmt);
+                    }
+                    _ => {
+                        self.report(
+                            "Only function definitions are allowed in a seal".to_string(),
+                            Some(stmt.span),
+                        );
+                    }
+                }
             } else {
                 self.advance();
             }
@@ -142,7 +172,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    pub fn parse_methods(&mut self) -> Option<Stmt> {
+    fn parse_methods(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Methods)?;
         let name = self.parse_identifier()?;
@@ -151,8 +181,18 @@ impl<'a> Parser<'a> {
         while self.current_token()?.token_type != TType::Rbrace
             && self.current_token()?.token_type != TType::End
         {
-            if let Some(stmt) = self.parse_func_decl() {
-                contents.push(stmt);
+            if let Some(stmt) = self.parse_func() {
+                match stmt.kind {
+                    StmtKind::FunctionDef { .. } => {
+                        contents.push(stmt);
+                    }
+                    _ => {
+                        self.report(
+                            "Only function definitions are allowed in methods".to_string(),
+                            Some(stmt.span),
+                        );
+                    }
+                }
             } else {
                 self.advance();
             }
@@ -213,7 +253,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    pub fn parse_generic_block(&mut self) -> Option<Stmt> {
+    fn parse_generics(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Generics)?;
         self.expect_token(TType::Lt)?;
@@ -239,7 +279,95 @@ impl<'a> Parser<'a> {
                 params,
                 body: Box::new(body),
             },
-            Span{start,end},
+            Span { start, end },
+        ))
+    }
+
+    fn parse_contract(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Contract)?;
+        let name = self.parse_identifier()?;
+        let mut contents = Vec::new();
+        self.expect_token(TType::LBrace)?;
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            if let Some(stmt) = self.parse_func() {
+                match stmt.kind {
+                    StmtKind::FunctionDecl { .. } => contents.push(stmt),
+                    _ => {
+                        self.report(
+                            "Only function declarations are allowed in a contract".to_string(),
+                            Some(stmt.span),
+                        );
+                    }
+                }
+            } else {
+                self.advance();
+            }
+        }
+        self.expect_token(TType::Rbrace)?;
+        let end = self.current_token()?.span.end;
+        Some(Stmt::new(
+            StmtKind::ContractBlock {
+                name: Box::new(name),
+                body: contents,
+            },
+            Span { start, end },
+        ))
+    }
+
+    fn parse_while(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::While)?;
+        let condition = self.parse_expression(Precedence::Lowest)?;
+        let body = self.parse_body()?;
+        let end = self.current_token()?.span.end;
+        Some(Stmt::new(
+            StmtKind::WhileStmt {
+                condition: Box::new(condition),
+                body: Box::new(body),
+            },
+            Span { start, end },
+        ))
+    }
+
+    fn parse_for(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::For)?;
+        let init = self.parse_var()?;
+        self.expect_token(TType::Semicolon)?;
+        let condition = self.parse_expression(Precedence::Lowest)?;
+        self.expect_token(TType::Semicolon)?;
+        let update = self.parse_expression(Precedence::Lowest)?;
+        let body = self.parse_body()?;
+        let end = self.current_token()?.span.end;
+        Some(Stmt::new(
+            StmtKind::ForStmt {
+                init: Box::new(init),
+                condition: Box::new(condition),
+                update: Box::new(update),
+                body: Box::new(body),
+            },
+            Span { start, end },
+        ))
+    }
+
+    pub fn parse_each(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Each)?;
+        let item = self.parse_identifier()?;
+        self.expect_token(TType::In)?;
+        let collection = self.parse_expression(Precedence::Lowest)?;
+        let body = self.parse_body()?;
+        let end = self.current_token()?.span.end;
+        Some(Stmt::new(
+            StmtKind::EachStmt {
+                item: Box::new(item),
+                collection: Box::new(collection),
+                body: Box::new(body),
+            },
+            Span { start, end },
         ))
     }
 

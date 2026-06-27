@@ -28,14 +28,20 @@ pub enum StmtKind {
     Block {
         content: Vec<Stmt>,
     },
+    FunctionDef {
+        name: Box<Expr>,
+        params: Vec<Stmt>,
+        type_annotation: Option<Type>,
+        body: Box<Stmt>,
+    },
     FunctionDecl {
         name: Box<Expr>,
         params: Vec<Stmt>,
         type_annotation: Option<Type>,
-        body: Option<Box<Stmt>>,
     },
     StructDecl {
         name: Box<Expr>,
+        contracts: Vec<Expr>,
         contents: Box<Stmt>,
     },
     SealStmt {
@@ -52,11 +58,29 @@ pub enum StmtKind {
         elifs: Vec<Elif>,
         else_body: Option<Box<Stmt>>,
     },
-    GenericBlock{
+    GenericBlock {
         params: Vec<Type>,
-        body:Box<Stmt>,
-
+        body: Box<Stmt>,
     },
+    ContractBlock {
+        name: Box<Expr>,
+        body: Vec<Stmt>,
+    },
+    WhileStmt{
+        condition: Box<Expr>,
+        body: Box<Stmt>,
+    },
+    ForStmt{
+        init: Box<Stmt>,
+        condition: Box<Expr>,
+        update: Box<Expr>,
+        body: Box<Stmt>
+    },
+    EachStmt{
+        item: Box<Expr>,
+        collection: Box<Expr>,
+        body: Box<Stmt>
+    }
 }
 
 #[derive(Debug)]
