@@ -63,6 +63,8 @@ impl<'a> Lexer<'a> {
             ("generics".to_string(), TType::Generics),
             ("contract".to_string(), TType::Contract),
             ("sizeof".to_string(), TType::SizeOf),
+            ("enum".to_string(),TType::Enum),
+            ("variant".to_string(),TType::Variant),
         ]);
 
         Lexer {

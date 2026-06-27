@@ -93,6 +93,9 @@ pub enum TType {
     Generics,
     Contract,
     SizeOf,
+    Enum,
+    Variant,
+
 
     I8Key,
     U8Key,

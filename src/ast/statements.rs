@@ -11,6 +11,13 @@ pub struct Elif {
 }
 
 #[derive(Debug)]
+pub struct EnumMember {
+    pub name: Expr,
+    pub value: Option<Expr>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
 pub enum StmtKind {
     Expr(Expr),
     VarDecl {
@@ -80,6 +87,11 @@ pub enum StmtKind {
         item: Box<Expr>,
         collection: Box<Expr>,
         body: Box<Stmt>
+    },
+    EnumStmt{
+        name: Box<Expr>,
+        underlying: Option<Type>,
+        content: Vec<EnumMember>
     }
 }
 

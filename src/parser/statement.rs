@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Elif, Precedence, Qualifier, Stmt, StmtKind},
+    ast::{Elif, EnumMember, Precedence, Qualifier, Stmt, StmtKind},
     diagnostics::Span,
     lexer::TType,
     parser::Parser,
@@ -20,6 +20,7 @@ impl<'a> Parser<'a> {
             TType::For => self.parse_for(),
             TType::Generics => self.parse_generics(),
             TType::Contract => self.parse_contract(),
+            TType::Enum => self.parse_enum(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -91,8 +92,9 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(TType::Rbrace)?;
+
         let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
         let span = Span { start, end };
 
         Some(Stmt::new(StmtKind::Block { content: fields }, span))
@@ -159,8 +161,9 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(TType::Rbrace)?;
+
         let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
         let span = Span { start, end };
 
         Some(Stmt::new(
@@ -353,7 +356,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    pub fn parse_each(&mut self) -> Option<Stmt> {
+    fn parse_each(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Each)?;
         let item = self.parse_identifier()?;
@@ -366,6 +369,54 @@ impl<'a> Parser<'a> {
                 item: Box::new(item),
                 collection: Box::new(collection),
                 body: Box::new(body),
+            },
+            Span { start, end },
+        ))
+    }
+
+    fn parse_enum_member(&mut self) -> Option<EnumMember> {
+        let start = self.current_token()?.span.start;
+        let name = self.parse_identifier()?;
+        let mut value = None;
+        if self.current_token()?.token_type == TType::Assign {
+            self.advance();
+            value = self.parse_literal();
+        }
+        let end = self.current_token()?.span.end;
+
+        Some(EnumMember {
+            name,
+            value,
+            span: Span { start, end },
+        })
+    }
+
+    fn parse_enum(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Enum)?;
+        let name = self.parse_identifier()?;
+        let mut underlying = None;
+        if self.current_token()?.token_type == TType::Colon {
+            self.advance();
+            underlying = self.parse_type();
+        }
+
+        let mut members = Vec::new();
+        self.expect_token(TType::LBrace)?;
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            let member = self.parse_enum_member()?;
+            members.push(member);
+        }
+
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
+        Some(Stmt::new(
+            StmtKind::EnumStmt {
+                name: Box::new(name),
+                underlying,
+                content: members,
             },
             Span { start, end },
         ))

@@ -1,1 +1,5 @@
-each item in collection{}
+enum  Test: u8{
+    Num = 1
+    Test =2
+    Food
+}
