@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Elif, EnumMember, Precedence, Qualifier, Stmt, StmtKind},
+    ast::{Elif, EnumMember, Precedence, Qualifier, Stmt, StmtKind, VariantMember},
     diagnostics::Span,
     lexer::TType,
     parser::Parser,
@@ -21,6 +21,7 @@ impl<'a> Parser<'a> {
             TType::Generics => self.parse_generics(),
             TType::Contract => self.parse_contract(),
             TType::Enum => self.parse_enum(),
+            TType::Variant => self.parse_variant(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -92,7 +93,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-
         let end = self.current_token()?.span.end;
         self.expect_token(TType::Rbrace)?;
         let span = Span { start, end };
@@ -160,7 +160,6 @@ impl<'a> Parser<'a> {
                 self.advance();
             }
         }
-
 
         let end = self.current_token()?.span.end;
         self.expect_token(TType::Rbrace)?;
@@ -417,6 +416,74 @@ impl<'a> Parser<'a> {
                 name: Box::new(name),
                 underlying,
                 content: members,
+            },
+            Span { start, end },
+        ))
+    }
+
+    fn parse_variant_member(&mut self) -> Option<VariantMember> {
+        let start = self.current_token()?.span.start;
+        let name = self.parse_identifier()?;
+        let mut types = Vec::new();
+        if self.current_token()?.token_type == TType::Lparen {
+            self.advance();
+            while self.current_token()?.token_type != TType::Rparen
+                && self.current_token()?.token_type != TType::End
+            {
+                let ty = self.parse_type()?;
+                types.push(ty);
+                if self.current_token()?.token_type == TType::Comma {
+                    self.advance();
+                    continue;
+                }
+            }
+            self.expect_token(TType::Rparen)?;
+        }
+
+        let end = self.current_token()?.span.end;
+        Some(VariantMember {
+            name,
+            member_types: types,
+            span: Span { start, end },
+        })
+    }
+
+    fn parse_variant(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Variant)?;
+        let name = self.parse_identifier()?;
+
+        let mut contracts = Vec::new();
+        if self.current_token()?.token_type == TType::Colon {
+            self.advance();
+            while self.current_token()?.token_type != TType::LBrace
+                && self.current_token()?.token_type != TType::End
+            {
+                let contract = self.parse_identifier()?;
+                contracts.push(contract);
+                if self.current_token()?.token_type == TType::Comma {
+                    self.advance();
+                    continue;
+                }
+            }
+        }
+
+        let mut members = Vec::new();
+        self.expect_token(TType::LBrace)?;
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            let member = self.parse_variant_member()?;
+            members.push(member);
+        }
+
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
+        Some(Stmt::new(
+            StmtKind::VariantStmt {
+                name: Box::new(name),
+                contracts,
+                body: members,
             },
             Span { start, end },
         ))

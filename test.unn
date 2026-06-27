@@ -1,5 +1,1 @@
-enum  Test: u8{
-    Num = 1
-    Test =2
-    Food
-}
+Shape::Circle(5.0)

@@ -18,6 +18,13 @@ pub struct EnumMember {
 }
 
 #[derive(Debug)]
+pub struct VariantMember {
+    pub name: Expr,
+    pub member_types: Vec<Type>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
 pub enum StmtKind {
     Expr(Expr),
     VarDecl {
@@ -92,6 +99,11 @@ pub enum StmtKind {
         name: Box<Expr>,
         underlying: Option<Type>,
         content: Vec<EnumMember>
+    },
+    VariantStmt{
+        name: Box<Expr>,
+        contracts: Vec<Expr>,
+        body: Vec<VariantMember>
     }
 }
 
