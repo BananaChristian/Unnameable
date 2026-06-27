@@ -1,5 +1,5 @@
 use crate::{
-    ast::{BinaryOp, Expr, ExprKind, Literal, PostfixOp, Precedence, Stmt, UnaryOp},
+    ast::{BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Precedence, Stmt, UnaryOp},
     diagnostics::Span,
     lexer::{TType, token::Token},
     parser::Parser,
@@ -132,8 +132,8 @@ impl<'a> Parser<'a> {
                     self.parse_identifier()
                 }
             }
+            TType::Init => self.parse_init(),
             TType::SizeOf => self.parse_sizeof_expr(),
-
             TType::Lparen => self.parse_grouping(),
 
             TType::Minus
@@ -281,6 +281,48 @@ impl<'a> Parser<'a> {
         Some(Expr::new(
             ExprKind::SizeOfExpr(Box::new(ty)),
             Span { start, end },
+        ))
+    }
+
+    fn parse_init_param(&mut self) -> Option<InstParam> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Dot)?;
+        let name = self.parse_identifier()?;
+        self.expect_token(TType::Colon)?;
+        let value = self.parse_expression(Precedence::Lowest)?;
+        let end = self.current_token()?.span.end;
+        Some(InstParam {
+            name: Box::new(name),
+            value: Box::new(value),
+            span: Span { start, end },
+        })
+    }
+
+    fn parse_init(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Init)?;
+        let ty = self.parse_type()?;
+        self.expect_token(TType::LBrace)?;
+        let mut params = Vec::new();
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            let param = self.parse_init_param()?;
+            params.push(param);
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+                continue;
+            }
+        }
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
+
+        Some(Expr::new(
+            ExprKind::Instantiation {
+                init_ty: Box::new(ty),
+                body: params,
+            },
+            Span{start,end},
         ))
     }
 

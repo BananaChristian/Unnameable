@@ -95,6 +95,7 @@ pub enum TType {
     SizeOf,
     Enum,
     Variant,
+    Init,
 
 
     I8Key,

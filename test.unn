@@ -1,1 +1,1 @@
-Shape::Circle(5.0)
+init Point<i32,u32>{.x: 100, .y: 100}

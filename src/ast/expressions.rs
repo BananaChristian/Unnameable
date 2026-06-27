@@ -34,6 +34,13 @@ pub enum Literal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct InstParam{
+    pub name: Box<Expr>,
+    pub value: Box<Expr>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     Literal(Literal),
     Identifier(String),
@@ -47,6 +54,10 @@ pub enum ExprKind {
     Call(Box<Expr>, Vec<Expr>),
     Postfix(Box<Expr>,PostfixOp),
     SizeOfExpr(Box<Type>),
+    Instantiation{
+        init_ty: Box<Type>,
+        body: Vec<InstParam>
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

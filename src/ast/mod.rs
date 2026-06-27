@@ -5,7 +5,7 @@ mod precedence;
 mod qualifiers;
 mod types;
 
-pub use expressions::{Literal,Expr,ExprKind};
+pub use expressions::{Literal,Expr,ExprKind,InstParam};
 pub use precedence::Precedence;
 pub use statements::{Stmt,Elif,EnumMember,VariantMember,StmtKind};
 pub use operators::{BinaryOp,UnaryOp,PostfixOp};
