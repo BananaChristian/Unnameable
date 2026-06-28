@@ -9,6 +9,7 @@ impl<'a> Parser<'a> {
     pub fn parse_stmt(&mut self) -> Option<Stmt> {
         let token = self.current_token()?.clone();
         match token.token_type {
+            TType::Mut|TType::Expose|TType::Const|TType::Heap =>self.parse_qualified_stmt(),
             TType::Var => self.parse_var(),
             TType::Func => self.parse_func(),
             TType::Struct => self.parse_struct(),
@@ -34,15 +35,58 @@ impl<'a> Parser<'a> {
         Some(Stmt::new(StmtKind::Expr(expr), span))
     }
 
+    fn parse_qualified_stmt(&mut self) -> Option<Stmt> {
+        let mut qualifiers = Vec::new();
+
+        // collect all qualifiers first
+        while let Some(token) = self.current_token() {
+            if Qualifier::is_valid(token) {
+                qualifiers.push(Qualifier::new(token));
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        // parse normally
+        let token = self.current_token()?;
+        let mut stmt = match token.token_type {
+            TType::Var
+            | TType::Func
+            | TType::Struct
+            | TType::Enum
+            | TType::Contract
+            | TType::Variant => self.parse_stmt()?,
+            _ => {
+                self.report(
+                    "Expected a declaration after qualifiers".to_string(),
+                    Some(token.span.clone()),
+                );
+                return None;
+            }
+        };
+
+        // inject qualifiers into the stmt
+        match &mut stmt.kind {
+            StmtKind::VarDecl { qualifiers: q, .. } |
+            StmtKind::FunctionDef { qualifiers: q,.. }
+            | StmtKind::FunctionDecl {qualifiers: q, .. }
+            | StmtKind::StructDecl {qualifiers:q, .. }
+            | StmtKind::EnumStmt { qualifiers: q,.. }
+            | StmtKind::ContractBlock { qualifiers: q,.. }
+            | StmtKind::VariantStmt { qualifiers: q,.. } => {
+               q.extend(qualifiers); 
+            }
+            _ => {
+                self.report("Qualifiers not valid here".to_string(), Some(stmt.span.clone()));
+            }
+        }
+
+        Some(stmt)
+    }
     fn parse_var(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Var)?;
-
-        // Collect qualifiers (mut, const, heap)
-        let mut qualifiers = Vec::new();
-        if Qualifier::is_valid(self.current_token()?) {
-            qualifiers = self.collect_qualifiers();
-        }
 
         // Parse the type annotation (optional)
         let ty = self.parse_type();
@@ -63,7 +107,7 @@ impl<'a> Parser<'a> {
 
         Some(Stmt::new(
             StmtKind::VarDecl {
-                qualifiers,
+                qualifiers: Vec::new(),
                 type_annotation: ty,
                 name: Box::new(name),
                 init,
@@ -128,6 +172,7 @@ impl<'a> Parser<'a> {
 
         Some(Stmt::new(
             StmtKind::StructDecl {
+                qualifiers:Vec::new(),
                 name: Box::new(name),
                 contracts,
                 contents: Box::new(body),
@@ -169,6 +214,7 @@ impl<'a> Parser<'a> {
 
         Some(Stmt::new(
             StmtKind::SealStmt {
+                qualifiers: Vec::new(),
                 name: Box::new(name),
                 contents,
             },
@@ -314,6 +360,7 @@ impl<'a> Parser<'a> {
         let end = self.current_token()?.span.end;
         Some(Stmt::new(
             StmtKind::ContractBlock {
+                qualifiers: Vec::new(),
                 name: Box::new(name),
                 body: contents,
             },
@@ -415,6 +462,7 @@ impl<'a> Parser<'a> {
         self.expect_token(TType::Rbrace)?;
         Some(Stmt::new(
             StmtKind::EnumStmt {
+                qualifiers:Vec::new(),
                 name: Box::new(name),
                 underlying,
                 content: members,
@@ -483,6 +531,7 @@ impl<'a> Parser<'a> {
         self.expect_token(TType::Rbrace)?;
         Some(Stmt::new(
             StmtKind::VariantStmt {
+                qualifiers: Vec::new(),
                 name: Box::new(name),
                 contracts,
                 body: members,

@@ -1,12 +1,14 @@
 use crate::{
-    ast::{Qualifier, QualifierKind, Stmt},
+    ast::Stmt,
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
-    hir::{HirStmt, QualifierMap},
+    hir::HirStmt,
 };
 
 pub struct Lowering<'a> {
     ast: Vec<Stmt>,
     diagnostics: &'a mut Diagnostics,
+    pub current_type_params: Vec<String>,
+    pub iter_counter: u64,
     pub corrupted: bool,
 }
 
@@ -15,6 +17,8 @@ impl<'a> Lowering<'a> {
         Lowering {
             ast,
             diagnostics,
+            current_type_params: Vec::new(),
+            iter_counter: 0,
             corrupted: false,
         }
     }
@@ -34,15 +38,4 @@ impl<'a> Lowering<'a> {
         self.diagnostics
             .report(CompilerError::error(message, Phase::Lowering, span));
     }
-
-    pub fn convert_qualifier(&mut self,qualifier: &Qualifier) -> Option<QualifierMap>{
-        let mut map =QualifierMap::new();
-        let result=match qualifier.kind{
-            QualifierKind::Mut => 
-
-        }
-
-
-    }
-
 }

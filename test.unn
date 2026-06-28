@@ -1,2 +1,4 @@
-foo()[0]
-[1,3,4]
+expose struct Name{
+  a: i32,
+  b: u32
+}

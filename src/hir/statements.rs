@@ -1,8 +1,7 @@
 use crate::{
-    ast::{Qualifier, QualifierKind},
     diagnostics::Span,
     hir::{
-        expressions::{HirExpr, HirExprKind},
+        expressions::HirExpr,
         types::HirTypeNode,
     },
 };
@@ -26,11 +25,13 @@ impl QualifierMap {
 
 }
 
+#[derive(Debug)]
 pub struct HirStmt {
     pub kind: HirStmtKind,
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub struct HirParam {
     pub name: String,
     pub ty: HirTypeNode,
@@ -39,12 +40,14 @@ pub struct HirParam {
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub struct HirEnumMember {
     pub name: String,
     pub value: i64, // always resolved, auto incremented if not specified
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub struct HirVariantMember {
     pub name: String,
     pub member_types: Vec<HirTypeNode>, // empty vec if no data
@@ -52,6 +55,7 @@ pub struct HirVariantMember {
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub enum HirStmtKind {
     HirReturn(Option<HirExpr>),
     HirBreak,

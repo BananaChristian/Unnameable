@@ -24,6 +24,7 @@ impl Qualifier {
             TType::Mut => QualifierKind::Mut,
             TType::Const => QualifierKind::Const,
             TType::Heap => QualifierKind::Heap,
+            TType::Expose=> QualifierKind::Exposed,
             _ => QualifierKind::None,
         };
 
@@ -34,6 +35,9 @@ impl Qualifier {
     }
 
     pub fn is_valid(token: &Token) -> bool {
-        matches!(token.token_type, TType::Mut | TType::Const | TType::Heap)
+        matches!(
+            token.token_type,
+            TType::Mut | TType::Const | TType::Heap | TType::Expose
+        )
     }
 }

@@ -96,6 +96,7 @@ pub enum TType {
     Enum,
     Variant,
     Init,
+    Expose,
 
 
     I8Key,

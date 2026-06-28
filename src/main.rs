@@ -1,4 +1,4 @@
-use crate::{diagnostics::Diagnostics, lexer::Lexer, parser::Parser};
+use crate::{diagnostics::Diagnostics, lexer::Lexer, lowering::Lowering, parser::Parser};
 use std::{env, fs};
 
 mod diagnostics;
@@ -38,6 +38,14 @@ fn main() -> Result<(), std::io::Error> {
 
     println!("{:?}", ast);
     if parser.corrupted {
+        diagnostics.print();
+        std::process::exit(1)
+    }
+
+    let mut lowering = Lowering::new(ast,&mut diagnostics);
+    let hir= lowering.lower();
+    println!("{:?}",hir);
+    if lowering.corrupted{
         diagnostics.print();
         std::process::exit(1)
     }

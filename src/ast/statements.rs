@@ -4,27 +4,27 @@ use crate::{
     lexer::{TType, token::Token},
 };
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Elif {
     pub condition: Box<Expr>,
     pub body: Box<Stmt>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct EnumMember {
     pub name: Expr,
     pub value: Option<Expr>,
     pub span: Span,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct VariantMember {
     pub name: Expr,
     pub member_types: Vec<Type>,
     pub span: Span,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum StmtKind {
     Expr(Expr),
     Return(Option<Expr>),
@@ -46,22 +46,26 @@ pub enum StmtKind {
         content: Vec<Stmt>,
     },
     FunctionDef {
+        qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         params: Vec<Stmt>,
         type_annotation: Option<Type>,
         body: Box<Stmt>,
     },
     FunctionDecl {
+        qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         params: Vec<Stmt>,
         type_annotation: Option<Type>,
     },
     StructDecl {
+        qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         contracts: Vec<Expr>,
         contents: Box<Stmt>,
     },
     SealStmt {
+        qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         contents: Vec<Stmt>,
     },
@@ -80,6 +84,7 @@ pub enum StmtKind {
         body: Box<Stmt>,
     },
     ContractBlock {
+        qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         body: Vec<Stmt>,
     },
@@ -99,18 +104,20 @@ pub enum StmtKind {
         body: Box<Stmt>,
     },
     EnumStmt {
+        qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         underlying: Option<Type>,
         content: Vec<EnumMember>,
     },
     VariantStmt {
+        qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         contracts: Vec<Expr>,
         body: Vec<VariantMember>,
     },
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Stmt {
     pub kind: StmtKind,
     pub span: Span,

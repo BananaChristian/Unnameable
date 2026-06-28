@@ -124,6 +124,7 @@ impl<'a> Parser<'a> {
 
             Some(Stmt::new(
                 StmtKind::FunctionDef {
+                    qualifiers: Vec::new(),
                     name: Box::new(name),
                     params,
                     type_annotation: return_type,
@@ -137,6 +138,7 @@ impl<'a> Parser<'a> {
 
             Some(Stmt::new(
                 StmtKind::FunctionDecl {
+                    qualifiers: Vec::new(),
                     name: Box::new(name),
                     params,
                     type_annotation: return_type,

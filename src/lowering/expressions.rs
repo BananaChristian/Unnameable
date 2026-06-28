@@ -1,24 +1,159 @@
 use crate::{
-    ast::{Expr, ExprKind, Literal, Qualifier, QualifierKind, Type, TypeKind},
-    hir::{HirExpr, HirExprKind, HirType, HirTypeNode, QualifierMap},
+    ast::{BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier, QualifierKind, Type, TypeKind, UnaryOp},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirType, HirTypeNode, HirUnaryOp, QualifierMap},
     lowering::lowering::Lowering,
 };
 
 impl<'a> Lowering<'a> {
-    pub fn lower_expr(&mut self, expr: &Expr) -> Option<HirExpr>{
-        match expr.kind{
-            ExprKind::Literal(lit) =>{
-                HirExprKind::Literal(self.lower_literal(lit)?)
-            },
-            ExprKind::Identifier(name) =>{
-                HirExprKind::Identifier(name.clone())
-            },
-            ExprKind::Path(_,_) =>{
-                let name =self.extract_name_string(expr)?;
+    pub fn lower_expr(&mut self, expr: &Expr) -> Option<HirExpr> {
+        let kind = match &expr.kind {
+            ExprKind::Literal(lit) => HirExprKind::Literal(self.lower_literal(lit)?),
+
+            ExprKind::Identifier(name) => HirExprKind::Identifier(name.clone()),
+
+            ExprKind::Path(_, _) => {
+                let name = self.extract_name_string(expr)?;
                 HirExprKind::Identifier(name)
             }
-        }
 
+            ExprKind::Binary(left, op, right) => {
+                let hir_left = self.lower_expr(left)?;
+                let hir_right = self.lower_expr(right)?;
+                let hir_op = self.lower_binary_op(op)?;
+                HirExprKind::Binary(Box::new(hir_left), hir_op, Box::new(hir_right))
+            }
+
+            ExprKind::Unary(op, operand) => {
+                let hir_operand = self.lower_expr(operand)?;
+                let hir_op = self.lower_unary_op(op);
+                HirExprKind::Unary(hir_op, Box::new(hir_operand))
+            }
+
+            ExprKind::Call(callee, args) => {
+                let hir_callee = self.lower_expr(callee)?;
+                let hir_args = args
+                    .iter()
+                    .map(|a| self.lower_expr(a))
+                    .collect::<Option<Vec<_>>>()?;
+                HirExprKind::Call(Box::new(hir_callee), hir_args)
+            }
+
+            ExprKind::GenericInstantion { name, type_params } => {
+                let name_str = self.extract_name_string(name)?;
+                let hir_params = type_params
+                    .iter()
+                    .map(|p| self.lower_type(p).map(|t| t.kind))
+                    .collect::<Option<Vec<_>>>()?;
+                HirExprKind::GenericInstantion {
+                    name: name_str,
+                    type_params: hir_params,
+                }
+            }
+
+            ExprKind::Postfix(operand, op) => {
+                let hir_operand = self.lower_expr(operand)?;
+                let hir_op = self.lower_postfix_op(op);
+                HirExprKind::Postfix(Box::new(hir_operand), hir_op)
+            }
+
+            // Sizeof
+            ExprKind::SizeOfExpr(ty) => {
+                let hir_ty = self.lower_type(ty)?;
+                HirExprKind::SizeOf(hir_ty.kind)
+            }
+
+            // Struct instantiation
+            ExprKind::Instantiation { init_ty, body } => {
+                let hir_ty = self.lower_type(init_ty)?;
+                let hir_body = body
+                    .iter()
+                    .map(|p| self.lower_inst_param(p))
+                    .collect::<Option<Vec<_>>>()?;
+                HirExprKind::Instantiation {
+                    init_ty: hir_ty.kind,
+                    body: hir_body,
+                }
+            }
+
+            // Index access
+            ExprKind::Index { target, index } => {
+                let hir_target = self.lower_expr(target)?;
+                let hir_index = self.lower_expr(index)?;
+                HirExprKind::Index {
+                    target: Box::new(hir_target),
+                    index: Box::new(hir_index),
+                }
+            }
+        };
+
+        Some(HirExpr::new(kind, expr.span.clone()))
+    }
+
+    fn lower_binary_op(&self, op: &BinaryOp) -> Option<HirBinaryOp> {
+        match op {
+            BinaryOp::Add => Some(HirBinaryOp::Add),
+            BinaryOp::Sub => Some(HirBinaryOp::Sub),
+            BinaryOp::Mul => Some(HirBinaryOp::Mul),
+            BinaryOp::Div => Some(HirBinaryOp::Div),
+            BinaryOp::Mod => Some(HirBinaryOp::Mod),
+            BinaryOp::Eq => Some(HirBinaryOp::Eq),
+            BinaryOp::Neq => Some(HirBinaryOp::Neq),
+            BinaryOp::Lt => Some(HirBinaryOp::Lt),
+            BinaryOp::Gt => Some(HirBinaryOp::Gt),
+            BinaryOp::Leq => Some(HirBinaryOp::Leq),
+            BinaryOp::Geq => Some(HirBinaryOp::Geq),
+            BinaryOp::And => Some(HirBinaryOp::And),
+            BinaryOp::Or => Some(HirBinaryOp::Or),
+            BinaryOp::Coalesce => Some(HirBinaryOp::Coalesce),
+            BinaryOp::Shr => Some(HirBinaryOp::Shr),
+            BinaryOp::Shl => Some(HirBinaryOp::Shl),
+            BinaryOp::Xor => Some(HirBinaryOp::Xor),
+            BinaryOp::BitAnd => Some(HirBinaryOp::BitAnd),
+            BinaryOp::BitOr => Some(HirBinaryOp::BitOr),
+            BinaryOp::AddAssign => Some(HirBinaryOp::AddAssign),
+            BinaryOp::SubAssign => Some(HirBinaryOp::SubAssign),
+            BinaryOp::DivAssign => Some(HirBinaryOp::DivAssign),
+            BinaryOp::ModAssign => Some(HirBinaryOp::ModAssign),
+            BinaryOp::MulAssign => Some(HirBinaryOp::MulAssign),
+            BinaryOp::Access => Some(HirBinaryOp::Access),
+            BinaryOp::Assign => Some(HirBinaryOp::Assign),
+            BinaryOp::Scope => {
+                // Scope should never reach here — paths resolved earlier
+                None
+            }
+        }
+    }
+
+    fn lower_unary_op(&self, op: &UnaryOp) -> HirUnaryOp {
+        match op {
+            UnaryOp::Neg => HirUnaryOp::Neg,
+            UnaryOp::Not => HirUnaryOp::Not,
+            UnaryOp::Increment => HirUnaryOp::Increment,
+            UnaryOp::Decrement => HirUnaryOp::Decrement,
+            UnaryOp::AddressOf => HirUnaryOp::AddressOf,
+            UnaryOp::Dereference => HirUnaryOp::Dereference,
+        }
+    }
+
+    fn lower_postfix_op(&self, op: &PostfixOp) -> HirPostfixOp {
+        match op {
+            PostfixOp::Increment => HirPostfixOp::Increment,
+            PostfixOp::Decrement => HirPostfixOp::Decrement,
+            PostfixOp::Propagate => HirPostfixOp::Propagate,
+        }
+    }
+
+    fn lower_inst_param(&mut self, param: &InstParam) -> Option<HirInstParam> {
+        let name = match &param.name.kind {
+            ExprKind::Identifier(s) => s.clone(),
+            _ => return None,
+        };
+        let value = self.lower_expr(&param.value)?;
+        Some(HirInstParam {
+            name,
+            value: Box::new(value),
+            span: param.span.clone(),
+        })
     }
 
     pub fn lower_type(&mut self, type_node: &Type) -> Option<HirTypeNode> {
@@ -129,5 +264,34 @@ impl<'a> Lowering<'a> {
         map.expose = qualifiers.iter().any(|q| q.kind == QualifierKind::Exposed);
 
         map
+    }
+
+    fn lower_literal(&mut self, lit: &Literal) -> Option<HirLiteral> {
+        match lit {
+            Literal::Int8(v) => Some(HirLiteral::Int8(*v)),
+            Literal::Uint8(v) => Some(HirLiteral::Uint8(*v)),
+            Literal::Int16(v) => Some(HirLiteral::Int16(*v)),
+            Literal::Uint16(v) => Some(HirLiteral::Uint16(*v)),
+            Literal::Int32(v) => Some(HirLiteral::Int32(*v)),
+            Literal::Uint32(v) => Some(HirLiteral::Uint32(*v)),
+            Literal::Int64(v) => Some(HirLiteral::Int64(*v)),
+            Literal::Uint64(v) => Some(HirLiteral::Uint64(*v)),
+            Literal::Int128(v) => Some(HirLiteral::Int128(*v)),
+            Literal::Uint128(v) => Some(HirLiteral::Uint128(*v)),
+            Literal::IntSize(v) => Some(HirLiteral::IntSize(*v)),
+            Literal::UintSize(v) => Some(HirLiteral::UintSize(*v)),
+            Literal::Int(v) => Some(HirLiteral::Int(*v)),
+            Literal::Float(v) => Some(HirLiteral::Float(*v)),
+            Literal::F32(v) => Some(HirLiteral::F32(*v)),
+            Literal::F64(v) => Some(HirLiteral::F64(*v)),
+            Literal::Bool(v) => Some(HirLiteral::Bool(*v)),
+            Literal::ArrayLiteral(elements) => {
+                let hir_elements = elements
+                    .iter()
+                    .map(|e| self.lower_expr(e))
+                    .collect::<Option<Vec<_>>>()?;
+                Some(HirLiteral::ArrayLiteral(hir_elements))
+            }
+        }
     }
 }
