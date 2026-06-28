@@ -1,6 +1,6 @@
 use crate::{
     ast::{Expr, ExprKind, Stmt, StmtKind},
-    hir::HirStmt,
+    hir::{HirStmt, HirStmtKind, QualifierMap},
     lowering::lowering::Lowering,
 };
 
@@ -26,11 +26,8 @@ impl<'a> Lowering<'a> {
             // Extract name string from Expr::Identifier
             let name_str = self.extract_name_string(name)?;
 
-            // Extract qualifiers into booleans
-            let mutable = qualifiers.iter().any(|q| q.kind == QualifierKind::Mut);
-            let constant = qualifiers.iter().any(|q| q.kind == QualifierKind::Const);
-            let heap = qualifiers.iter().any(|q| q.kind == QualifierKind::Heap);
-            let exposed = qualifiers.iter().any(|q| q.kind == QualifierKind::Exposed);
+            // Extract qualifiers into a booleans map
+            let qualifier_map= self.map_qualifiers(qualifiers);
 
             // Lower the type annotation if present
             let ty = match type_annotation {
@@ -47,14 +44,14 @@ impl<'a> Lowering<'a> {
             Some(HirStmt {
                 kind: HirStmtKind::HirVarDecl {
                     name: name_str,
-                    mutable,
-                    constant,
-                    heap,
-                    exposed,
+                    mutable: qualifier_map.mutable,
+                    constant: qualifier_map.constant,
+                    heap: qualifier_map.heap,
+                    exposed: qualifier_map.expose,
                     ty,
                     init,
                 },
-                span: stmt.span,
+                span: stmt.span.clone(),
             })
         } else {
             None

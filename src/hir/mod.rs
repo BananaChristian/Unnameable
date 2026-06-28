@@ -2,5 +2,6 @@ mod statements;
 mod expressions;
 mod types;
 
-pub use statements::{HirStmt,QualifierMap};
+pub use expressions::{HirExpr,HirExprKind};
+pub use statements::{HirStmt,HirStmtKind,QualifierMap};
 pub use types::{HirTypeNode,HirType};

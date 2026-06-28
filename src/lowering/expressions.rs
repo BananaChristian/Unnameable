@@ -1,10 +1,26 @@
 use crate::{
-    ast::{Expr, ExprKind, Literal, Type, TypeKind},
-    hir::{HirType, HirTypeNode},
+    ast::{Expr, ExprKind, Literal, Qualifier, QualifierKind, Type, TypeKind},
+    hir::{HirExpr, HirExprKind, HirType, HirTypeNode, QualifierMap},
     lowering::lowering::Lowering,
 };
 
 impl<'a> Lowering<'a> {
+    pub fn lower_expr(&mut self, expr: &Expr) -> Option<HirExpr>{
+        match expr.kind{
+            ExprKind::Literal(lit) =>{
+                HirExprKind::Literal(self.lower_literal(lit)?)
+            },
+            ExprKind::Identifier(name) =>{
+                HirExprKind::Identifier(name.clone())
+            },
+            ExprKind::Path(_,_) =>{
+                let name =self.extract_name_string(expr)?;
+                HirExprKind::Identifier(name)
+            }
+        }
+
+    }
+
     pub fn lower_type(&mut self, type_node: &Type) -> Option<HirTypeNode> {
         let kind = match &type_node.kind {
             TypeKind::I8 => HirType::I8,
@@ -89,9 +105,7 @@ impl<'a> Lowering<'a> {
             ExprKind::Literal(Literal::Int(n)) => Some(*n as u64),
             ExprKind::Literal(Literal::Uint64(n)) => Some(*n),
             ExprKind::Literal(Literal::Uint32(n)) => Some(*n as u64),
-            _ => {
-                None
-            }
+            _ => None,
         }
     }
 
@@ -105,5 +119,15 @@ impl<'a> Lowering<'a> {
             }
             _ => None,
         }
+    }
+
+    pub fn map_qualifiers(&self, qualifiers: &Vec<Qualifier>) -> QualifierMap {
+        let mut map = QualifierMap::new();
+        map.mutable = qualifiers.iter().any(|q| q.kind == QualifierKind::Mut);
+        map.constant = qualifiers.iter().any(|q| q.kind == QualifierKind::Const);
+        map.heap = qualifiers.iter().any(|q| q.kind == QualifierKind::Heap);
+        map.expose = qualifiers.iter().any(|q| q.kind == QualifierKind::Exposed);
+
+        map
     }
 }

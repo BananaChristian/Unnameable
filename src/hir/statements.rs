@@ -24,17 +24,11 @@ impl QualifierMap {
         }
     }
 
-    pub fn map_qualifiers(&mut self, kind: QualifierKind) {
-        match kind {
-            QualifierKind::Mut => self.mutable = true,
-            QualifierKind::Const=> self.
-        }
-    }
 }
 
 pub struct HirStmt {
-    kind: HirStmtKind,
-    span: Span,
+    pub kind: HirStmtKind,
+    pub span: Span,
 }
 
 pub struct HirParam {
