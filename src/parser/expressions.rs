@@ -69,6 +69,21 @@ impl<'a> Parser<'a> {
                     span,
                 ))
             }
+            TType::LBracket => {
+                let start = left.span.start;
+                self.advance(); // consume [
+                let index = self.parse_expression(Precedence::Lowest)?;
+                let end = self.current_token()?.span.end;
+                self.expect_token(TType::RBracket)?;
+                let span = Span { start, end };
+                Some(Expr::new(
+                    ExprKind::Index {
+                        target: Box::new(left),
+                        index: Box::new(index),
+                    },
+                    span,
+                ))
+            }
             _ => {
                 let span = token.span;
                 self.report(
@@ -121,7 +136,8 @@ impl<'a> Parser<'a> {
             | TType::F32
             | TType::F64
             | TType::True
-            | TType::False => self.parse_literal(),
+            | TType::False
+            | TType::LBracket => self.parse_literal(),
 
             TType::Identifier => {
                 if self.peek_token()?.token_type == TType::Scope
@@ -322,7 +338,7 @@ impl<'a> Parser<'a> {
                 init_ty: Box::new(ty),
                 body: params,
             },
-            Span{start,end},
+            Span { start, end },
         ))
     }
 
@@ -457,6 +473,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Some(Expr::new(ExprKind::Literal(literal), span))
             }
+            TType::LBracket => self.parse_array_literal(),
             _ => {
                 self.report(
                     format!("Expected literal, found {:?}", token.token_type),
@@ -466,5 +483,28 @@ impl<'a> Parser<'a> {
                 None
             }
         }
+    }
+
+    fn parse_array_literal(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::LBracket)?;
+        let mut elements = Vec::new();
+        while self.current_token()?.token_type != TType::RBracket
+            && self.current_token()?.token_type != TType::End
+        {
+            let element = self.parse_expression(Precedence::Lowest)?;
+            elements.push(element);
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+                continue;
+            }
+        }
+
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::RBracket)?;
+        Some(Expr::new(
+            ExprKind::Literal(Literal::ArrayLiteral(elements)),
+            Span { start, end },
+        ))
     }
 }

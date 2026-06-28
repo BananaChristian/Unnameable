@@ -22,6 +22,8 @@ impl<'a> Parser<'a> {
             TType::Contract => self.parse_contract(),
             TType::Enum => self.parse_enum(),
             TType::Variant => self.parse_variant(),
+            TType::Return => self.parse_return(),
+            TType::Break | TType::Continue => self.parse_break_or_cont(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -487,6 +489,32 @@ impl<'a> Parser<'a> {
             },
             Span { start, end },
         ))
+    }
+
+    fn parse_return(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Return)?;
+
+        let mut expr = None;
+        if !Stmt::is_valid(self.current_token()?)
+            && self.current_token()?.token_type != TType::End
+            && self.current_token()?.token_type != TType::Rbrace
+        {
+            expr = self.parse_expression(Precedence::Lowest);
+        }
+
+        let end = self.current_token()?.span.end;
+        Some(Stmt::new(StmtKind::Return(expr), Span { start, end }))
+    }
+
+    fn parse_break_or_cont(&mut self) -> Option<Stmt> {
+        let token = self.current_token()?.clone();
+        self.advance();
+        match token.token_type {
+            TType::Break => Some(Stmt::new(StmtKind::Break, token.span)),
+            TType::Continue => Some(Stmt::new(StmtKind::Continue, token.span)),
+            _ => None,
+        }
     }
 
     pub fn parse_body(&mut self) -> Option<Stmt> {

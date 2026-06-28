@@ -146,7 +146,7 @@ impl PostfixOp {
     pub fn is_valid(token: &Token) -> bool {
         matches!(
             token.token_type,
-            TType::Lparen | TType::PlusPlus | TType::MinusMinus | TType::Propagate
+            TType::Lparen | TType::PlusPlus | TType::MinusMinus | TType::Propagate | TType::LBracket
         )
     }
 }

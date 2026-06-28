@@ -1,6 +1,7 @@
 use crate::{
     ast::{
-        PostfixOp, Type, operators::{BinaryOp, UnaryOp}
+        PostfixOp, Type,
+        operators::{BinaryOp, UnaryOp},
     },
     diagnostics::Span,
 };
@@ -31,10 +32,13 @@ pub enum Literal {
 
     // Booleans
     Bool(bool),
+
+    //Array literal
+    ArrayLiteral (Vec<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct InstParam{
+pub struct InstParam {
     pub name: Box<Expr>,
     pub value: Box<Expr>,
     pub span: Span,
@@ -45,19 +49,23 @@ pub enum ExprKind {
     Literal(Literal),
     Identifier(String),
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
-    Path(Box<Expr>,Box<Expr>),
+    Path(Box<Expr>, Box<Expr>),
     Unary(UnaryOp, Box<Expr>),
     GenericInstantion {
         name: Box<Expr>,
         type_params: Vec<Type>,
     },
     Call(Box<Expr>, Vec<Expr>),
-    Postfix(Box<Expr>,PostfixOp),
+    Postfix(Box<Expr>, PostfixOp),
     SizeOfExpr(Box<Type>),
-    Instantiation{
+    Instantiation {
         init_ty: Box<Type>,
-        body: Vec<InstParam>
+        body: Vec<InstParam>,
     },
+    Index{
+        target: Box<Expr>,
+        index:Box<Expr>,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -27,6 +27,9 @@ pub struct VariantMember {
 #[derive(Debug)]
 pub enum StmtKind {
     Expr(Expr),
+    Return(Option<Expr>),
+    Break,
+    Continue,
     VarDecl {
         qualifiers: Vec<Qualifier>,    //Things like mut
         type_annotation: Option<Type>, //The type like u8
@@ -80,31 +83,31 @@ pub enum StmtKind {
         name: Box<Expr>,
         body: Vec<Stmt>,
     },
-    WhileStmt{
+    WhileStmt {
         condition: Box<Expr>,
         body: Box<Stmt>,
     },
-    ForStmt{
+    ForStmt {
         init: Box<Stmt>,
         condition: Box<Expr>,
         update: Box<Expr>,
-        body: Box<Stmt>
+        body: Box<Stmt>,
     },
-    EachStmt{
+    EachStmt {
         item: Box<Expr>,
         collection: Box<Expr>,
-        body: Box<Stmt>
+        body: Box<Stmt>,
     },
-    EnumStmt{
+    EnumStmt {
         name: Box<Expr>,
         underlying: Option<Type>,
-        content: Vec<EnumMember>
+        content: Vec<EnumMember>,
     },
-    VariantStmt{
+    VariantStmt {
         name: Box<Expr>,
         contracts: Vec<Expr>,
-        body: Vec<VariantMember>
-    }
+        body: Vec<VariantMember>,
+    },
 }
 
 #[derive(Debug)]
@@ -121,7 +124,13 @@ impl Stmt {
     pub fn is_valid(token: &Token) -> bool {
         matches!(
             token.token_type,
-            TType::Var | TType::Func | TType::Struct | TType::Methods
+            TType::Var
+                | TType::Func
+                | TType::Struct
+                | TType::Methods
+                | TType::Return
+                | TType::Break
+                | TType::Continue
         )
     }
 }
