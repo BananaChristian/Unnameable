@@ -67,7 +67,7 @@ impl Diagnostics {
             let (line, col) = self.source_map.get_line_col(span.start);
             let length = span.end - span.start;
 
-            // ⭐ Store values in variables first to avoid borrow issues
+            // Store values in variables first to avoid borrow issues
             let filename_display = self.filename.color(Color::Cyan);
             let line_display = line.to_string().color(Color::Yellow);
             let col_display = col.to_string().color(Color::Yellow);
@@ -86,7 +86,7 @@ impl Diagnostics {
                 message_display
             );
 
-            // ⭐ Get source lines once
+            // Get source lines once
             let source_lines: Vec<&str> = self.source_map.source.lines().collect();
             if let Some(line_content) = source_lines.get(line - 1) {
                 let pipe = "|".color(Color::Cyan);

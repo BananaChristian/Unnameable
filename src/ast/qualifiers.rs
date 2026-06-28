@@ -7,7 +7,8 @@ use crate::{
 pub enum QualifierKind {
     Mut,
     Const,
-    Heap,
+    Heap, //This will be revised
+    Exposed,
     None,
 }
 
@@ -36,4 +37,3 @@ impl Qualifier {
         matches!(token.token_type, TType::Mut | TType::Const | TType::Heap)
     }
 }
-

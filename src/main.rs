@@ -5,6 +5,8 @@ mod diagnostics;
 mod lexer;
 mod ast;
 mod parser;
+mod hir;
+mod lowering;
 
 fn main() -> Result<(), std::io::Error> {
     let args: Vec<String> = env::args().collect();

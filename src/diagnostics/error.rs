@@ -4,6 +4,7 @@ use crate::diagnostics::span::Span;
 pub enum Phase {
     Lexer,
     Parser,
+    Lowering,
     None,
 }
 
