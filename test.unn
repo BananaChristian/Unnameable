@@ -1,4 +1,9 @@
-methods Food{
-    func tasty() : i32 {}
-    func sub: () {}
+generics <T>{
+  struct Test: Clone{
+    a: T
+  }
+   
+  variant Food: Clone{
+    Pineapple(f32)
+  }
 }

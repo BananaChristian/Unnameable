@@ -1,6 +1,6 @@
 use crate::{
-    ast::{Stmt, StmtKind},
-    hir::{HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode},
+    ast::{Stmt, StmtKind, VariantMember},
+    hir::{HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode, HirVariantMember},
     lowering::lowering::Lowering,
 };
 
@@ -11,6 +11,7 @@ impl<'a> Lowering<'a> {
             StmtKind::FunctionDef { .. } => self.lower_func_def(stmt),
             StmtKind::FunctionDecl { .. } => self.lower_func_decl(stmt),
             StmtKind::StructDecl { .. } => self.lower_struct(stmt),
+            StmtKind::VariantStmt { .. } => self.lower_variant(stmt),
             _ => {
                 self.report("Unknown statement".to_string(), Some(stmt.span.clone()));
                 None
@@ -93,7 +94,7 @@ impl<'a> Lowering<'a> {
                     name: name_str,
                     params: hir_params,
                     return_type,
-                    type_params: self.current_type_params.clone(),
+                    generic_type_params: Vec::new(),
                     exposed: map.expose,
                     body: hir_body,
                 },
@@ -131,7 +132,7 @@ impl<'a> Lowering<'a> {
                     name: name_str,
                     params: hir_params,
                     return_type,
-                    type_params: self.current_type_params.clone(),
+                    generic_type_params: Vec::new(),
                     exposed: map.expose,
                 },
                 span: stmt.span.clone(),
@@ -196,7 +197,7 @@ impl<'a> Lowering<'a> {
                 kind: HirStmtKind::HirStructDecl {
                     name: name_str,
                     contracts: extracted_contracts,
-                    type_params: self.current_type_params.clone(),
+                    generic_type_params: Vec::new(),
                     fields,
                     exposed: map.expose,
                 },
@@ -205,6 +206,67 @@ impl<'a> Lowering<'a> {
         } else {
             None
         }
+    }
+
+    fn lower_variant(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::VariantStmt {
+            qualifiers,
+            name,
+            contracts,
+            body,
+        } = &stmt.kind
+        {
+            let map = self.map_qualifiers(qualifiers);
+            let variant_name = self.extract_name_string(name)?;
+
+            let mut conts = Vec::new();
+            for contract in contracts {
+                let cont_name = self.extract_name_string(contract)?;
+                conts.push(cont_name);
+            }
+
+            let mems = self.lower_variant_member(body)?;
+
+            Some(HirStmt {
+                kind: HirStmtKind::HirVariantDecl {
+                    name: variant_name,
+                    contracts: conts,
+                    members: mems,
+                    generic_type_params: Vec::new(),
+                    exposed: map.expose,
+                },
+                span: stmt.span.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn lower_variant_member(
+        &mut self,
+        members: &Vec<VariantMember>,
+    ) -> Option<Vec<HirVariantMember>> {
+        let mut variants = Vec::new();
+        let mut tag = 0;
+        for member in members {
+            let name_str = self.extract_name_string(&member.name)?;
+            tag += 1;
+            let mut types = Vec::new();
+            for ty in &member.member_types {
+                let convert_ty = self.lower_type(&ty)?;
+                types.push(convert_ty);
+            }
+
+            let variant_m = HirVariantMember {
+                name: name_str,
+                member_types: types,
+                tag,
+                span: member.span.clone(),
+            };
+
+            variants.push(variant_m);
+        }
+        Some(variants)
     }
 
     fn lower_seals(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
@@ -306,10 +368,55 @@ impl<'a> Lowering<'a> {
         }
     }
 
+    fn lower_generics(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+        if let StmtKind::GenericBlock { params, body } = &stmt.kind {
+            let mut generics = Vec::new();
+            let mut generic_types = Vec::new();
+            for param in params {
+                let ty = self.lower_type(param)?;
+                generic_types.push(ty);
+            }
+
+            let body = self.lower_block(body)?;
+            for mut content in body {
+                match &mut content.kind {
+                    HirStmtKind::HirStructDecl {
+                        generic_type_params: t,
+                        ..
+                    }
+                    | HirStmtKind::HirFunctionDef {
+                        generic_type_params: t,
+                        ..
+                    }
+                    | HirStmtKind::HirFunctionDecl {
+                        generic_type_params: t,
+                        ..
+                    }
+                    | HirStmtKind::HirVariantDecl {
+                        generic_type_params: t,
+                        ..
+                    } => {
+                        t.extend(generic_types.clone());
+                        generics.push(content);
+                    }
+                    _ => self.report(
+                        "Invalid statement inside generic block".to_string(),
+                        Some(content.span.clone()),
+                    ),
+                }
+            }
+
+            Some(generics)
+        } else {
+            None
+        }
+    }
+
     pub fn lower_constructs(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
         match stmt.kind {
             StmtKind::SealStmt { .. } => self.lower_seals(stmt),
             StmtKind::MethodsStmt { .. } => self.lower_methods(stmt),
+            StmtKind::GenericBlock { .. } => self.lower_generics(stmt),
             _ => {
                 self.report("Invalid construct".to_string(), Some(stmt.span.clone()));
                 None

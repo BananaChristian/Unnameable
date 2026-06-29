@@ -74,7 +74,7 @@ pub enum HirStmtKind {
         name: String,             // mangled name like Food_add, Point_distance etc
         params: Vec<HirParam>,    // clean param structs, not Stmts
         return_type: HirTypeNode, // never optional, Unit if not specified
-        type_params: Vec<String>,
+        generic_type_params: Vec<HirTypeNode>,
         exposed: bool,      // was in qualifiers
         body: Vec<HirStmt>, // flat list, no Block wrapper
     },
@@ -83,13 +83,13 @@ pub enum HirStmtKind {
         name: String,
         params: Vec<HirParam>,
         return_type: HirTypeNode, // Unit if not specified
-        type_params: Vec<String>,
+        generic_type_params: Vec<HirTypeNode>,
         exposed: bool,
     },
     HirStructDecl {
         name: String,
         contracts: Vec<String>,
-        type_params: Vec<String>,
+        generic_type_params: Vec<HirTypeNode>,
         fields: Vec<HirParam>,
         exposed: bool,
     },
@@ -117,8 +117,7 @@ pub enum HirStmtKind {
         name: String,
         contracts: Vec<String>,
         members: Vec<HirVariantMember>,
-        type_params: Vec<String>, // from generic block if any
+        generic_type_params: Vec<HirTypeNode>, // from generic block if any
         exposed: bool,
-        span: Span,
     },
 }

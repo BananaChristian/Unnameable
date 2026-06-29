@@ -1,13 +1,12 @@
 use crate::{
     ast::{Stmt, StmtKind},
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
-    hir::HirStmt,
+    hir::{HirStmt, HirTypeNode},
 };
 
 pub struct Lowering<'a> {
     ast: Vec<Stmt>,
     diagnostics: &'a mut Diagnostics,
-    pub current_type_params: Vec<String>,
     pub iter_counter: u64,
     pub corrupted: bool,
 }
@@ -17,7 +16,6 @@ impl<'a> Lowering<'a> {
         Lowering {
             ast,
             diagnostics,
-            current_type_params: Vec::new(),
             iter_counter: 0,
             corrupted: false,
         }
@@ -27,7 +25,9 @@ impl<'a> Lowering<'a> {
         let mut hir = Vec::new();
         for stmt in self.ast.clone() {
             match &stmt.kind {
-                StmtKind::SealStmt { .. } | StmtKind::MethodsStmt { .. } => {
+                StmtKind::SealStmt { .. }
+                | StmtKind::MethodsStmt { .. }
+                | StmtKind::GenericBlock { .. } => {
                     if let Some(hir_stmts) = self.lower_constructs(&stmt) {
                         hir.extend(hir_stmts);
                     }
