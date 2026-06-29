@@ -1,8 +1,6 @@
-use std::cell::RefMut;
-
 use crate::{
     ast::{Stmt, StmtKind},
-    hir::{HirParam, HirStmt, HirStmtKind, HirTypeNode},
+    hir::{HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode},
     lowering::lowering::Lowering,
 };
 
@@ -209,7 +207,7 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    pub fn lower_seals(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+    fn lower_seals(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
         if let StmtKind::SealStmt {
             qualifiers,
             name,
@@ -227,7 +225,7 @@ impl<'a> Lowering<'a> {
                     };
 
                     if let Some(name) = name_to_mangle {
-                        let mangled_name=self.mangle_name(seal_name.clone(), name.clone());
+                        let mangled_name = self.mangle_name(seal_name.clone(), name.clone());
 
                         match &mut sealed.kind {
                             HirStmtKind::HirFunctionDef {
@@ -253,6 +251,69 @@ impl<'a> Lowering<'a> {
             Some(fns)
         } else {
             None
+        }
+    }
+
+    fn lower_methods(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+        if let StmtKind::MethodsStmt { name, contents } = &stmt.kind {
+            let type_name = self.extract_name_string(name)?;
+            let mut methods = Vec::new();
+            for metfunc in contents {
+                if let Some(mut func) = self.lower_stmt(metfunc) {
+                    let name_to_mangle = match &func.kind {
+                        HirStmtKind::HirFunctionDef { name, .. } => Some(name.clone()),
+                        _ => None,
+                    };
+
+                    if let Some(name) = name_to_mangle {
+                        let mangled_name = self.mangle_name(type_name.clone(), name.clone());
+
+                        match &mut func.kind {
+                            HirStmtKind::HirFunctionDef {
+                                name: fn_name,
+                                params,
+                                ..
+                            } => {
+                                *fn_name = mangled_name;
+                                let self_param = HirParam {
+                                    name: "self".to_string(),
+                                    ty: HirTypeNode::new(
+                                        HirType::Ref(Box::new(HirType::CustomType(
+                                            type_name.to_string(),
+                                        ))),
+                                        func.span.clone(),
+                                    ),
+                                    mutable: false,
+                                    default: None,
+                                    span: func.span.clone(),
+                                };
+                                params.insert(0, self_param);
+                            }
+                            _ => unreachable!(),
+                        }
+                        methods.push(func);
+                    } else {
+                        self.report(
+                            "Only function definitions are allowed in methods".to_string(),
+                            Some(stmt.span.clone()),
+                        );
+                    }
+                }
+            }
+            Some(methods)
+        } else {
+            None
+        }
+    }
+
+    pub fn lower_constructs(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+        match stmt.kind {
+            StmtKind::SealStmt { .. } => self.lower_seals(stmt),
+            StmtKind::MethodsStmt { .. } => self.lower_methods(stmt),
+            _ => {
+                self.report("Invalid construct".to_string(), Some(stmt.span.clone()));
+                None
+            }
         }
     }
 

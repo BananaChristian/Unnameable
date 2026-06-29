@@ -26,26 +26,24 @@ impl<'a> Lowering<'a> {
     pub fn lower(&mut self) -> Vec<HirStmt> {
         let mut hir = Vec::new();
         for stmt in self.ast.clone() {
-            match &stmt.kind{
-                StmtKind::SealStmt { ..} => {
-                    if let Some(hir_stmts) = self.lower_seals(&stmt){
+            match &stmt.kind {
+                StmtKind::SealStmt { .. } | StmtKind::MethodsStmt { .. } => {
+                    if let Some(hir_stmts) = self.lower_constructs(&stmt) {
                         hir.extend(hir_stmts);
                     }
-                },
+                }
                 _ => {
-                    if let Some(hir_stmt) = self.lower_stmt(&stmt){
+                    if let Some(hir_stmt) = self.lower_stmt(&stmt) {
                         hir.push(hir_stmt);
                     }
-
                 }
-
             }
         }
         hir
     }
 
-    pub fn mangle_name(&mut self,prefix: String, name: String)-> String{
-        format!("{}_{}",prefix,name)
+    pub fn mangle_name(&mut self, prefix: String, name: String) -> String {
+        format!("{}_{}", prefix, name)
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {

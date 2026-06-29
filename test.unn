@@ -1,4 +1,4 @@
-expose seal Test{
-    func add: i32{}
-    func food: (){}
+methods Food{
+    func tasty() : i32 {}
+    func sub: () {}
 }
