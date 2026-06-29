@@ -9,7 +9,7 @@ impl<'a> Parser<'a> {
     pub fn parse_stmt(&mut self) -> Option<Stmt> {
         let token = self.current_token()?.clone();
         match token.token_type {
-            TType::Mut|TType::Expose|TType::Const|TType::Heap =>self.parse_qualified_stmt(),
+            TType::Mut | TType::Expose | TType::Const | TType::Heap => self.parse_qualified_stmt(),
             TType::Var => self.parse_var(),
             TType::Func => self.parse_func(),
             TType::Struct => self.parse_struct(),
@@ -56,7 +56,8 @@ impl<'a> Parser<'a> {
             | TType::Struct
             | TType::Enum
             | TType::Contract
-            | TType::Variant => self.parse_stmt()?,
+            | TType::Variant
+            | TType::Seal => self.parse_stmt()?,
             _ => {
                 self.report(
                     "Expected a declaration after qualifiers".to_string(),
@@ -68,17 +69,21 @@ impl<'a> Parser<'a> {
 
         // inject qualifiers into the stmt
         match &mut stmt.kind {
-            StmtKind::VarDecl { qualifiers: q, .. } |
-            StmtKind::FunctionDef { qualifiers: q,.. }
-            | StmtKind::FunctionDecl {qualifiers: q, .. }
-            | StmtKind::StructDecl {qualifiers:q, .. }
-            | StmtKind::EnumStmt { qualifiers: q,.. }
-            | StmtKind::ContractBlock { qualifiers: q,.. }
-            | StmtKind::VariantStmt { qualifiers: q,.. } => {
-               q.extend(qualifiers); 
+            StmtKind::VarDecl { qualifiers: q, .. }
+            | StmtKind::FunctionDef { qualifiers: q, .. }
+            | StmtKind::FunctionDecl { qualifiers: q, .. }
+            | StmtKind::StructDecl { qualifiers: q, .. }
+            | StmtKind::EnumStmt { qualifiers: q, .. }
+            | StmtKind::ContractBlock { qualifiers: q, .. }
+            | StmtKind::VariantStmt { qualifiers: q, .. }
+            | StmtKind::SealStmt { qualifiers: q, .. } => {
+                q.extend(qualifiers);
             }
             _ => {
-                self.report("Qualifiers not valid here".to_string(), Some(stmt.span.clone()));
+                self.report(
+                    "Qualifiers not valid here".to_string(),
+                    Some(stmt.span.clone()),
+                );
             }
         }
 
@@ -172,7 +177,7 @@ impl<'a> Parser<'a> {
 
         Some(Stmt::new(
             StmtKind::StructDecl {
-                qualifiers:Vec::new(),
+                qualifiers: Vec::new(),
                 name: Box::new(name),
                 contracts,
                 contents: Box::new(body),
@@ -462,7 +467,7 @@ impl<'a> Parser<'a> {
         self.expect_token(TType::Rbrace)?;
         Some(Stmt::new(
             StmtKind::EnumStmt {
-                qualifiers:Vec::new(),
+                qualifiers: Vec::new(),
                 name: Box::new(name),
                 underlying,
                 content: members,

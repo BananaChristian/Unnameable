@@ -1,4 +1,4 @@
-expose struct Name{
-  a: i32,
-  b: u32
+expose seal Test{
+    func add: i32{}
+    func food: (){}
 }

@@ -25,13 +25,13 @@ impl QualifierMap {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct HirStmt {
     pub kind: HirStmtKind,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct HirParam {
     pub name: String,
     pub ty: HirTypeNode,
@@ -40,14 +40,14 @@ pub struct HirParam {
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct HirEnumMember {
     pub name: String,
     pub value: i64, // always resolved, auto incremented if not specified
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct HirVariantMember {
     pub name: String,
     pub member_types: Vec<HirTypeNode>, // empty vec if no data
@@ -55,7 +55,7 @@ pub struct HirVariantMember {
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum HirStmtKind {
     HirReturn(Option<HirExpr>),
     HirBreak,
@@ -92,7 +92,6 @@ pub enum HirStmtKind {
         type_params: Vec<String>,
         fields: Vec<HirParam>,
         exposed: bool,
-        span: Span,
     },
     HirIf {
         condition: HirExpr,

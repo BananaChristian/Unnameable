@@ -1,5 +1,5 @@
 use crate::{
-    ast::Stmt,
+    ast::{Stmt, StmtKind},
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     hir::HirStmt,
 };
@@ -26,11 +26,26 @@ impl<'a> Lowering<'a> {
     pub fn lower(&mut self) -> Vec<HirStmt> {
         let mut hir = Vec::new();
         for stmt in self.ast.clone() {
-            if let Some(hir_stmt) = self.lower_stmt(&stmt) {
-                hir.push(hir_stmt);
+            match &stmt.kind{
+                StmtKind::SealStmt { ..} => {
+                    if let Some(hir_stmts) = self.lower_seals(&stmt){
+                        hir.extend(hir_stmts);
+                    }
+                },
+                _ => {
+                    if let Some(hir_stmt) = self.lower_stmt(&stmt){
+                        hir.push(hir_stmt);
+                    }
+
+                }
+
             }
         }
         hir
+    }
+
+    pub fn mangle_name(&mut self,prefix: String, name: String)-> String{
+        format!("{}_{}",prefix,name)
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {

@@ -1,3 +1,5 @@
+use std::cell::RefMut;
+
 use crate::{
     ast::{Stmt, StmtKind},
     hir::{HirParam, HirStmt, HirStmtKind, HirTypeNode},
@@ -9,7 +11,8 @@ impl<'a> Lowering<'a> {
         match stmt.kind {
             StmtKind::VarDecl { .. } => self.lower_var(stmt),
             StmtKind::FunctionDef { .. } => self.lower_func_def(stmt),
-            StmtKind::FunctionDecl{..} => self.lower_func_decl(stmt),
+            StmtKind::FunctionDecl { .. } => self.lower_func_decl(stmt),
+            StmtKind::StructDecl { .. } => self.lower_struct(stmt),
             _ => {
                 self.report("Unknown statement".to_string(), Some(stmt.span.clone()));
                 None
@@ -69,7 +72,7 @@ impl<'a> Lowering<'a> {
             body,
         } = &stmt.kind
         {
-            let map=self.map_qualifiers(qualifiers);
+            let map = self.map_qualifiers(qualifiers);
 
             // Extract and mangle name
             let name_str = self.extract_name_string(name)?;
@@ -162,6 +165,92 @@ impl<'a> Lowering<'a> {
                 default,
                 span: stmt.span.clone(),
             })
+        } else {
+            None
+        }
+    }
+
+    fn lower_struct(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::StructDecl {
+            qualifiers,
+            name,
+            contracts,
+            contents,
+        } = &stmt.kind
+        {
+            let map = self.map_qualifiers(qualifiers);
+            let name_str = self.extract_name_string(name)?;
+            let mut extracted_contracts = Vec::new();
+            for contract in contracts {
+                let cont = self.extract_name_string(contract)?;
+                extracted_contracts.push(cont);
+            }
+            let fields = if let StmtKind::Block { content } = &contents.kind {
+                content
+                    .iter()
+                    .map(|p| self.lower_param(p))
+                    .collect::<Option<Vec<_>>>()?
+            } else {
+                return None;
+            };
+
+            Some(HirStmt {
+                kind: HirStmtKind::HirStructDecl {
+                    name: name_str,
+                    contracts: extracted_contracts,
+                    type_params: self.current_type_params.clone(),
+                    fields,
+                    exposed: map.expose,
+                },
+                span: stmt.span.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn lower_seals(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+        if let StmtKind::SealStmt {
+            qualifiers,
+            name,
+            contents,
+        } = &stmt.kind
+        {
+            let map = self.map_qualifiers(qualifiers);
+            let seal_name = self.extract_name_string(name)?;
+            let mut fns = Vec::new();
+            for sealed_fn in contents {
+                if let Some(mut sealed) = self.lower_stmt(sealed_fn) {
+                    let name_to_mangle = match &sealed.kind {
+                        HirStmtKind::HirFunctionDef { name, .. } => Some(name.clone()),
+                        _ => None,
+                    };
+
+                    if let Some(name) = name_to_mangle {
+                        let mangled_name=self.mangle_name(seal_name.clone(), name.clone());
+
+                        match &mut sealed.kind {
+                            HirStmtKind::HirFunctionDef {
+                                name: struct_name,
+                                exposed,
+                                ..
+                            } => {
+                                *struct_name = mangled_name; // Update the mangled name
+                                *exposed = map.expose; // Update the boolean flag
+                            }
+                            _ => unreachable!(),
+                        }
+
+                        fns.push(sealed);
+                    } else {
+                        self.report(
+                            "Only function definitions are allowed in seals".to_string(),
+                            Some(stmt.span.clone()),
+                        );
+                    }
+                }
+            }
+            Some(fns)
         } else {
             None
         }
