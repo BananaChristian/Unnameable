@@ -1,9 +1,4 @@
-generics <T>{
-  struct Test: Clone{
-    a: T
-  }
-   
-  variant Food: Clone{
-    Pineapple(f32)
-  }
+expose enum Test: i64{
+    ONE = -1
+    TWO
 }

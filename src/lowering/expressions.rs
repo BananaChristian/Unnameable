@@ -1,6 +1,12 @@
 use crate::{
-    ast::{BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier, QualifierKind, Type, TypeKind, UnaryOp},
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirType, HirTypeNode, HirUnaryOp, QualifierMap},
+    ast::{
+        BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier, QualifierKind, Type,
+        TypeKind, UnaryOp,
+    },
+    hir::{
+        HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirType,
+        HirTypeNode, HirUnaryOp, QualifierMap,
+    },
     lowering::lowering::Lowering,
 };
 
@@ -240,6 +246,16 @@ impl<'a> Lowering<'a> {
             ExprKind::Literal(Literal::Int(n)) => Some(*n as u64),
             ExprKind::Literal(Literal::Uint64(n)) => Some(*n),
             ExprKind::Literal(Literal::Uint32(n)) => Some(*n as u64),
+            _ => None,
+        }
+    }
+
+    pub fn eval_const_int(&self, expr: &Expr) -> Option<i64> {
+        match &expr.kind {
+            ExprKind::Literal(Literal::Int(n)) => Some(*n),
+            ExprKind::Unary(UnaryOp::Neg, inner) => {
+                self.eval_const_int(&*inner.clone()).map(|n| -n)
+            }
             _ => None,
         }
     }

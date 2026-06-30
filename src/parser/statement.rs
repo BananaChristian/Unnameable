@@ -433,7 +433,7 @@ impl<'a> Parser<'a> {
         let mut value = None;
         if self.current_token()?.token_type == TType::Assign {
             self.advance();
-            value = self.parse_literal();
+            value = self.parse_expression(Precedence::Lowest);
         }
         let end = self.current_token()?.span.end;
 

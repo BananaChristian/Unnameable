@@ -1,6 +1,6 @@
 use crate::{
-    ast::{Stmt, StmtKind, VariantMember},
-    hir::{HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode, HirVariantMember},
+    ast::{EnumMember, Stmt, StmtKind, VariantMember},
+    hir::{HirEnumMember, HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode, HirVariantMember},
     lowering::lowering::Lowering,
 };
 
@@ -11,6 +11,7 @@ impl<'a> Lowering<'a> {
             StmtKind::FunctionDef { .. } => self.lower_func_def(stmt),
             StmtKind::FunctionDecl { .. } => self.lower_func_decl(stmt),
             StmtKind::StructDecl { .. } => self.lower_struct(stmt),
+            StmtKind::EnumStmt { .. } => self.lower_enum(stmt),
             StmtKind::VariantStmt { .. } => self.lower_variant(stmt),
             _ => {
                 self.report("Unknown statement".to_string(), Some(stmt.span.clone()));
@@ -242,6 +243,61 @@ impl<'a> Lowering<'a> {
         }
     }
 
+    fn lower_enum(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::EnumStmt {
+            qualifiers,
+            name,
+            underlying,
+            content,
+        } = &stmt.kind
+        {
+            let map = self.map_qualifiers(qualifiers);
+            let enum_name = self.extract_name_string(name)?;
+
+            let underly = match underlying {
+                Some(ty) => self.lower_type(ty)?,
+                None => HirTypeNode::new(HirType::U32, stmt.span.clone()),
+            };
+
+            let members = self.lower_enum_member(content)?;
+
+            Some(HirStmt {
+                kind: HirStmtKind::HirEnumDecl {
+                    name: enum_name,
+                    underlying: underly,
+                    members,
+                    exposed: map.expose,
+                },
+                span: stmt.span.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn lower_enum_member(&mut self, members: &Vec<EnumMember>) -> Option<Vec<HirEnumMember>> {
+        let mut enum_mems = Vec::new();
+        let mut current_value = 0;
+
+        for member in members {
+            let mem_name = self.extract_name_string(&member.name)?;
+            let val = match &member.value {
+                Some(expr) => self.eval_const_int(expr)?,
+                None => current_value,
+            };
+
+            let conv_mem = HirEnumMember {
+                name: mem_name,
+                value: val,
+                span: member.span.clone(),
+            };
+
+            enum_mems.push(conv_mem);
+            current_value = val + 1;
+        }
+        Some(enum_mems)
+    }
+
     fn lower_variant_member(
         &mut self,
         members: &Vec<VariantMember>,
@@ -250,7 +306,6 @@ impl<'a> Lowering<'a> {
         let mut tag = 0;
         for member in members {
             let name_str = self.extract_name_string(&member.name)?;
-            tag += 1;
             let mut types = Vec::new();
             for ty in &member.member_types {
                 let convert_ty = self.lower_type(&ty)?;
@@ -265,6 +320,7 @@ impl<'a> Lowering<'a> {
             };
 
             variants.push(variant_m);
+            tag += 1;
         }
         Some(variants)
     }
