@@ -18,6 +18,9 @@ impl<'a> Lowering<'a> {
             StmtKind::EnumStmt { .. } => self.lower_enum(stmt),
             StmtKind::VariantStmt { .. } => self.lower_variant(stmt),
             StmtKind::WhileStmt { .. } => self.lower_while(stmt),
+            StmtKind::ContractBlock { .. } => self.lower_contract(stmt),
+            StmtKind::Return(..) => self.lower_return(stmt),
+            StmtKind::Break|StmtKind::Continue=> self.lower_break_or_cont(stmt),
             _ => self.lower_expr_stmt(stmt),
         }
     }
@@ -220,7 +223,7 @@ impl<'a> Lowering<'a> {
             let name_str = self.extract_name_string(name)?;
             let mut extracted_contracts = Vec::new();
             for contract in contracts {
-                let cont = self.extract_name_string(contract)?;
+                let cont = self.lower_type(contract)?;
                 extracted_contracts.push(cont);
             }
             let fields = if let StmtKind::Block { content } = &contents.kind {
@@ -378,6 +381,35 @@ impl<'a> Lowering<'a> {
         }
     }
 
+    fn lower_contract(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::ContractBlock {
+            qualifiers,
+            name,
+            body,
+        } = &stmt.kind
+        {
+            let map = self.map_qualifiers(qualifiers);
+            let name_str = self.extract_name_string(name)?;
+            let mut funcs = Vec::new();
+            for func in body {
+                let contract_decl = self.lower_func_decl(func)?;
+                funcs.push(contract_decl);
+            }
+
+            Some(HirStmt {
+                kind: HirStmtKind::HirContractDecl {
+                    name: name_str,
+                    functions: funcs,
+                    generic_type_params: Vec::new(),
+                    exposed: map.expose,
+                },
+                span: stmt.span.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
     fn lower_for(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
         if let StmtKind::ForStmt {
             init,
@@ -438,8 +470,8 @@ impl<'a> Lowering<'a> {
             );
 
             // var item := unwrap[__iter_val_N]
-            let target= self.make_identifier(&iter_var, span.clone());
-            let unwrap_trigger=HirExpr::new(HirExprKind::Unwrap(Box::new(target)),span.clone());
+            let target = self.make_identifier(&iter_var, span.clone());
+            let unwrap_trigger = HirExpr::new(HirExprKind::Unwrap(Box::new(target)), span.clone());
             let item_decl = self.make_var(item_name, false, Some(unwrap_trigger), span.clone());
 
             // lower original body, prepend item decl
@@ -601,6 +633,10 @@ impl<'a> Lowering<'a> {
                     | HirStmtKind::HirVariantDecl {
                         generic_type_params: t,
                         ..
+                    }
+                    | HirStmtKind::HirContractDecl {
+                        generic_type_params: t,
+                        ..
                     } => {
                         t.extend(generic_types.clone());
                         generics.push(content);
@@ -615,6 +651,36 @@ impl<'a> Lowering<'a> {
             Some(generics)
         } else {
             None
+        }
+    }
+
+    fn lower_return(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::Return(ret_expr) = &stmt.kind {
+            let expr = match ret_expr {
+                Some(ex) => self.lower_expr(&ex),
+                None => None,
+            };
+
+            Some(HirStmt {
+                kind: HirStmtKind::HirReturn(expr),
+                span: stmt.span.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn lower_break_or_cont(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        match &stmt.kind {
+            StmtKind::Break => Some(HirStmt {
+                kind: HirStmtKind::HirBreak,
+                span: stmt.span.clone(),
+            }),
+            StmtKind::Continue => Some(HirStmt {
+                kind: HirStmtKind::HirContinue,
+                span: stmt.span.clone(),
+            }),
+            _ => None,
         }
     }
 
@@ -634,10 +700,21 @@ impl<'a> Lowering<'a> {
 
     fn lower_block(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
         if let StmtKind::Block { content } = &stmt.kind {
-            content
-                .iter()
-                .map(|s| self.lower_stmt(s))
-                .collect::<Option<Vec<_>>>()
+            let mut contents = Vec::new();
+            for victim in content {
+                match &victim.kind {
+                    StmtKind::SealStmt { .. } | StmtKind::MethodsStmt { .. } => {
+                        let construct_vec = self.lower_constructs(victim)?;
+                        contents.extend(construct_vec);
+                    }
+                    _ => {
+                        let lowered_stmt = self.lower_stmt(victim)?;
+                        contents.push(lowered_stmt);
+                    }
+                }
+            }
+
+            Some(contents)
         } else {
             None
         }

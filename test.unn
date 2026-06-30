@@ -1,3 +1,2 @@
-each item in collection{
-    foo()
-}
+break
+continue

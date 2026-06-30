@@ -162,7 +162,7 @@ impl<'a> Parser<'a> {
             while self.current_token()?.token_type != TType::LBrace
                 && self.current_token()?.token_type != TType::End
             {
-                let contract = self.parse_identifier()?;
+                let contract = self.parse_type()?;
                 contracts.push(contract);
                 if self.current_token()?.token_type == TType::Comma {
                     self.advance();

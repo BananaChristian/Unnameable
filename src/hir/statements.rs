@@ -88,7 +88,7 @@ pub enum HirStmtKind {
     },
     HirStructDecl {
         name: String,
-        contracts: Vec<String>,
+        contracts: Vec<HirTypeNode>,
         generic_type_params: Vec<HirTypeNode>,
         fields: Vec<HirParam>,
         exposed: bool,
@@ -101,6 +101,7 @@ pub enum HirStmtKind {
     HirContractDecl {
         name: String,
         functions: Vec<HirStmt>,
+        generic_type_params: Vec<HirTypeNode>,
         exposed: bool,
     },
     HirWhile {

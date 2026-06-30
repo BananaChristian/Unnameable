@@ -61,7 +61,7 @@ pub enum StmtKind {
     StructDecl {
         qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
-        contracts: Vec<Expr>,
+        contracts: Vec<Type>,
         contents: Box<Stmt>,
     },
     SealStmt {
