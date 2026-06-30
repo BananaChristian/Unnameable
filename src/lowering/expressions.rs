@@ -3,6 +3,7 @@ use crate::{
         BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier, QualifierKind, Type,
         TypeKind, UnaryOp,
     },
+    diagnostics::Span,
     hir::{
         HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirType,
         HirTypeNode, HirUnaryOp, QualifierMap,
@@ -42,6 +43,11 @@ impl<'a> Lowering<'a> {
                     .map(|a| self.lower_expr(a))
                     .collect::<Option<Vec<_>>>()?;
                 HirExprKind::Call(Box::new(hir_callee), hir_args)
+            }
+
+            ExprKind::Unwrap(inner) =>{
+                let hir_inner= self.lower_expr(inner)?;
+                HirExprKind::Unwrap(Box::new(hir_inner))
             }
 
             ExprKind::GenericInstantion { name, type_params } => {
@@ -301,6 +307,7 @@ impl<'a> Lowering<'a> {
             Literal::F32(v) => Some(HirLiteral::F32(*v)),
             Literal::F64(v) => Some(HirLiteral::F64(*v)),
             Literal::Bool(v) => Some(HirLiteral::Bool(*v)),
+            Literal::Null => Some(HirLiteral::Null),
             Literal::ArrayLiteral(elements) => {
                 let hir_elements = elements
                     .iter()
@@ -309,5 +316,45 @@ impl<'a> Lowering<'a> {
                 Some(HirLiteral::ArrayLiteral(hir_elements))
             }
         }
+    }
+
+    pub fn make_identifier(&self, name: &str, span: Span) -> HirExpr {
+        HirExpr::new(HirExprKind::Identifier(name.to_string()), span)
+    }
+
+    pub fn make_access(&self, target: HirExpr, field: &str, span: Span) -> HirExpr {
+        HirExpr::new(
+            HirExprKind::Binary(
+                Box::new(target),
+                HirBinaryOp::Access,
+                Box::new(self.make_identifier(field, span.clone())),
+            ),
+            span.clone(),
+        )
+    }
+
+    pub fn make_call(&self, callee: HirExpr, args: Vec<HirExpr>, span: Span) -> HirExpr {
+        HirExpr::new(HirExprKind::Call(Box::new(callee), args), span)
+    }
+
+    pub fn make_method_call(
+        &self,
+        target: HirExpr,
+        method: &str,
+        args: Vec<HirExpr>,
+        span: Span,
+    ) -> HirExpr {
+        let access = self.make_access(target, method, span.clone());
+        self.make_call(access, args, span.clone())
+    }
+
+    pub fn make_binary(
+        &self,
+        left: HirExpr,
+        op: HirBinaryOp,
+        right: HirExpr,
+        span: Span,
+    ) -> HirExpr {
+        HirExpr::new(HirExprKind::Binary(Box::new(left), op, Box::new(right)),span)
     }
 }

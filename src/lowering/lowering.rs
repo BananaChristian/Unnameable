@@ -28,7 +28,8 @@ impl<'a> Lowering<'a> {
                 StmtKind::SealStmt { .. }
                 | StmtKind::MethodsStmt { .. }
                 | StmtKind::GenericBlock { .. }
-                | StmtKind::ForStmt { .. } => {
+                | StmtKind::ForStmt { .. }
+                | StmtKind::EachStmt { .. } => {
                     if let Some(hir_stmts) = self.lower_constructs(&stmt) {
                         hir.extend(hir_stmts);
                     }

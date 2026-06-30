@@ -151,6 +151,7 @@ impl<'a> Parser<'a> {
             TType::Init => self.parse_init(),
             TType::SizeOf => self.parse_sizeof_expr(),
             TType::Lparen => self.parse_grouping(),
+            TType::Unwrap =>self.parse_unwrap_expr(),
 
             TType::Minus
             | TType::Bang
@@ -296,6 +297,20 @@ impl<'a> Parser<'a> {
         let end = self.current_token()?.span.end;
         Some(Expr::new(
             ExprKind::SizeOfExpr(Box::new(ty)),
+            Span { start, end },
+        ))
+    }
+
+    fn parse_unwrap_expr(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Unwrap)?;
+
+        self.expect_token(TType::LBracket)?;
+        let inner = self.parse_expression(Precedence::Lowest)?;
+        self.expect_token(TType::RBracket)?;
+        let end = self.current_token()?.span.end;
+        Some(Expr::new(
+            ExprKind::Unwrap(Box::new(inner)),
             Span { start, end },
         ))
     }
@@ -452,6 +467,10 @@ impl<'a> Parser<'a> {
             TType::False => {
                 self.advance();
                 Some(Expr::new(ExprKind::Literal(Literal::Bool(false)), span))
+            }
+            TType::Null => {
+                self.advance();
+                Some(Expr::new(ExprKind::Literal(Literal::Null), span))
             }
             TType::Int
             | TType::Int8

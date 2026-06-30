@@ -35,6 +35,7 @@ pub enum Literal {
 
     //Array literal
     ArrayLiteral (Vec<Expr>),
+    Null,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +52,7 @@ pub enum ExprKind {
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
     Path(Box<Expr>, Box<Expr>),
     Unary(UnaryOp, Box<Expr>),
+    Unwrap(Box<Expr>),
     GenericInstantion {
         name: Box<Expr>,
         type_params: Vec<Type>,

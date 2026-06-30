@@ -26,6 +26,7 @@ pub enum HirLiteral {
     Bool(bool),
     // Array literal
     ArrayLiteral(Vec<HirExpr>),
+    Null,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -111,6 +112,8 @@ pub enum HirExprKind {
 
     // Function call ,callee is resolved, no more Path expressions
     Call(Box<HirExpr>, Vec<HirExpr>),
+
+    Unwrap(Box<HirExpr>),
 
     // Postfix operation
     Postfix(Box<HirExpr>, HirPostfixOp),

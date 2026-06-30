@@ -1,6 +1,10 @@
 use crate::{
     ast::{EnumMember, Stmt, StmtKind, VariantMember},
-    hir::{HirEnumMember, HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode, HirVariantMember},
+    diagnostics::Span,
+    hir::{
+        HirBinaryOp, HirEnumMember, HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt,
+        HirStmtKind, HirType, HirTypeNode, HirVariantMember,
+    },
     lowering::lowering::Lowering,
 };
 
@@ -30,6 +34,27 @@ impl<'a> Lowering<'a> {
         } else {
             self.report("Unknown statement".to_string(), Some(stmt.span.clone()));
             None
+        }
+    }
+
+    pub fn make_var(
+        &self,
+        name: String,
+        mutable: bool,
+        init: Option<HirExpr>,
+        span: Span,
+    ) -> HirStmt {
+        HirStmt {
+            kind: HirStmtKind::HirVarDecl {
+                name,
+                mutable,
+                constant: false,
+                heap: false,
+                exposed: false,
+                ty: None,
+                init,
+            },
+            span,
         }
     }
 
@@ -385,6 +410,71 @@ impl<'a> Lowering<'a> {
         }
     }
 
+    fn lower_each(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+        if let StmtKind::EachStmt {
+            item,
+            collection,
+            body,
+        } = &stmt.kind
+        {
+            let span = stmt.span.clone();
+            let item_name = self.extract_name_string(item)?;
+            let hir_collection = self.lower_expr(collection)?;
+
+            let iter_var = format!("__iter_val_{}", self.iter_counter);
+            self.iter_counter += 1;
+
+            // var __iter_val_N := collection.next()
+            let next_call =
+                self.make_method_call(hir_collection.clone(), "next", vec![], span.clone());
+            let init_stmt = self.make_var(iter_var.clone(), true, Some(next_call), span.clone());
+
+            // condition: __iter_val_N != null
+            let condition = self.make_binary(
+                self.make_identifier(&iter_var, span.clone()),
+                HirBinaryOp::Neq,
+                HirExpr::new(HirExprKind::Literal(HirLiteral::Null), span.clone()),
+                span.clone(),
+            );
+
+            // var item := unwrap[__iter_val_N]
+            let target= self.make_identifier(&iter_var, span.clone());
+            let unwrap_trigger=HirExpr::new(HirExprKind::Unwrap(Box::new(target)),span.clone());
+            let item_decl = self.make_var(item_name, false, Some(unwrap_trigger), span.clone());
+
+            // lower original body, prepend item decl
+            let hir_body = self.lower_block(body)?;
+            let mut full_body = vec![item_decl];
+            full_body.extend(hir_body);
+
+            // __iter_val_N = collection.next() — advance at end
+            let advance_call =
+                self.make_method_call(hir_collection.clone(), "next", vec![], span.clone());
+            let advance_stmt = HirStmt {
+                kind: HirStmtKind::HirExpr(self.make_binary(
+                    self.make_identifier(&iter_var, span.clone()),
+                    HirBinaryOp::Assign,
+                    advance_call,
+                    span.clone(),
+                )),
+                span: span.clone(),
+            };
+            full_body.push(advance_stmt);
+
+            let while_stmt = HirStmt {
+                kind: HirStmtKind::HirWhile {
+                    condition,
+                    body: full_body,
+                },
+                span,
+            };
+
+            Some(vec![init_stmt, while_stmt])
+        } else {
+            None
+        }
+    }
+
     fn lower_seals(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
         if let StmtKind::SealStmt {
             qualifiers,
@@ -534,6 +624,7 @@ impl<'a> Lowering<'a> {
             StmtKind::MethodsStmt { .. } => self.lower_methods(stmt),
             StmtKind::GenericBlock { .. } => self.lower_generics(stmt),
             StmtKind::ForStmt { .. } => self.lower_for(stmt),
+            StmtKind::EachStmt { .. } => self.lower_each(stmt),
             _ => {
                 self.report("Invalid construct".to_string(), Some(stmt.span.clone()));
                 None

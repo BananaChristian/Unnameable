@@ -96,6 +96,8 @@ pub enum TType {
     Enum,
     Variant,
     Init,
+    Null,
+    Unwrap,
     Expose,
 
 
