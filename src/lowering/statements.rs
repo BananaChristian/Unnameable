@@ -13,10 +13,23 @@ impl<'a> Lowering<'a> {
             StmtKind::StructDecl { .. } => self.lower_struct(stmt),
             StmtKind::EnumStmt { .. } => self.lower_enum(stmt),
             StmtKind::VariantStmt { .. } => self.lower_variant(stmt),
-            _ => {
-                self.report("Unknown statement".to_string(), Some(stmt.span.clone()));
-                None
-            }
+            StmtKind::WhileStmt { .. } => self.lower_while(stmt),
+            _ => self.lower_expr_stmt(stmt),
+        }
+    }
+
+    fn lower_expr_stmt(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::Expr(expr) = &stmt.kind {
+            let lowered_expr = self.lower_expr(expr)?;
+            let hir_stmt = HirStmt {
+                kind: HirStmtKind::HirExpr(lowered_expr),
+                span: stmt.span.clone(),
+            };
+
+            Some(hir_stmt)
+        } else {
+            self.report("Unknown statement".to_string(), Some(stmt.span.clone()));
+            None
         }
     }
 
@@ -325,6 +338,53 @@ impl<'a> Lowering<'a> {
         Some(variants)
     }
 
+    fn lower_while(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::WhileStmt { condition, body } = &stmt.kind {
+            let condition = self.lower_expr(condition)?;
+            let body = self.lower_block(body)?;
+
+            let hir_while = HirStmt {
+                kind: HirStmtKind::HirWhile { condition, body },
+                span: stmt.span.clone(),
+            };
+            Some(hir_while)
+        } else {
+            None
+        }
+    }
+
+    fn lower_for(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+        if let StmtKind::ForStmt {
+            init,
+            condition,
+            update,
+            body,
+        } = &stmt.kind
+        {
+            let var = self.lower_var(init)?;
+            let condition = self.lower_expr(condition)?;
+            let update = self.lower_expr(update)?;
+
+            //Lower the body
+            let mut body = self.lower_block(body)?;
+
+            //Push the update into the body
+            body.push(HirStmt {
+                kind: HirStmtKind::HirExpr(update),
+                span: stmt.span.clone(),
+            });
+
+            let hir_while = HirStmt {
+                kind: HirStmtKind::HirWhile { condition, body },
+                span: stmt.span.clone(),
+            };
+
+            Some(vec![var, hir_while])
+        } else {
+            None
+        }
+    }
+
     fn lower_seals(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
         if let StmtKind::SealStmt {
             qualifiers,
@@ -473,6 +533,7 @@ impl<'a> Lowering<'a> {
             StmtKind::SealStmt { .. } => self.lower_seals(stmt),
             StmtKind::MethodsStmt { .. } => self.lower_methods(stmt),
             StmtKind::GenericBlock { .. } => self.lower_generics(stmt),
+            StmtKind::ForStmt { .. } => self.lower_for(stmt),
             _ => {
                 self.report("Invalid construct".to_string(), Some(stmt.span.clone()));
                 None

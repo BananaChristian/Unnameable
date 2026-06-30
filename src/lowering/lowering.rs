@@ -1,7 +1,7 @@
 use crate::{
     ast::{Stmt, StmtKind},
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
-    hir::{HirStmt, HirTypeNode},
+    hir::HirStmt,
 };
 
 pub struct Lowering<'a> {
@@ -27,7 +27,8 @@ impl<'a> Lowering<'a> {
             match &stmt.kind {
                 StmtKind::SealStmt { .. }
                 | StmtKind::MethodsStmt { .. }
-                | StmtKind::GenericBlock { .. } => {
+                | StmtKind::GenericBlock { .. }
+                | StmtKind::ForStmt { .. } => {
                     if let Some(hir_stmts) = self.lower_constructs(&stmt) {
                         hir.extend(hir_stmts);
                     }
