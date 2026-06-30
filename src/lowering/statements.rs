@@ -20,7 +20,8 @@ impl<'a> Lowering<'a> {
             StmtKind::WhileStmt { .. } => self.lower_while(stmt),
             StmtKind::ContractBlock { .. } => self.lower_contract(stmt),
             StmtKind::Return(..) => self.lower_return(stmt),
-            StmtKind::Break|StmtKind::Continue=> self.lower_break_or_cont(stmt),
+            StmtKind::Break | StmtKind::Continue => self.lower_break_or_cont(stmt),
+            StmtKind::IfStmt{..} => self.lower_if(stmt),
             _ => self.lower_expr_stmt(stmt),
         }
     }
@@ -681,6 +682,54 @@ impl<'a> Lowering<'a> {
                 span: stmt.span.clone(),
             }),
             _ => None,
+        }
+    }
+
+    fn lower_if(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::IfStmt {
+            condition,
+            body,
+            elifs,
+            else_body,
+        } = &stmt.kind
+        {
+            let hir_condition = self.lower_expr(condition)?;
+            let hir_body = self.lower_block(body)?;
+
+            // lower the final else body, if any
+            let final_else = match else_body {
+                Some(eb) => Some(self.lower_block(eb)?),
+                None => None,
+            };
+
+            // fold elifs from the back, building nested else-if chains
+            let mut nested_else = final_else;
+            for elif in elifs.iter().rev() {
+                let elif_condition = self.lower_expr(&elif.condition)?;
+                let elif_body = self.lower_block(&elif.body)?;
+
+                let nested_if = HirStmt {
+                    kind: HirStmtKind::HirIf {
+                        condition: elif_condition,
+                        body: elif_body,
+                        else_body: nested_else,
+                    },
+                    span: elif.body.span.clone(),
+                };
+
+                nested_else = Some(vec![nested_if]);
+            }
+
+            Some(HirStmt {
+                kind: HirStmtKind::HirIf {
+                    condition: hir_condition,
+                    body: hir_body,
+                    else_body: nested_else,
+                },
+                span: stmt.span.clone(),
+            })
+        } else {
+            None
         }
     }
 

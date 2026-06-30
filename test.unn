@@ -1,2 +1,7 @@
-break
-continue
+if x<100{
+ foo()
+}elif x>100{
+  faa()
+}else{
+    fee()
+}
