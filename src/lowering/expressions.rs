@@ -54,7 +54,7 @@ impl<'a> Lowering<'a> {
                 let name_str = self.extract_name_string(name)?;
                 let hir_params = type_params
                     .iter()
-                    .map(|p| self.lower_type(p).map(|t| t.kind))
+                    .map(|p| self.lower_type(p))
                     .collect::<Option<Vec<_>>>()?;
                 HirExprKind::GenericInstantion {
                     name: name_str,
@@ -71,7 +71,7 @@ impl<'a> Lowering<'a> {
             // Sizeof
             ExprKind::SizeOfExpr(ty) => {
                 let hir_ty = self.lower_type(ty)?;
-                HirExprKind::SizeOf(hir_ty.kind)
+                HirExprKind::SizeOf(hir_ty)
             }
 
             // Struct instantiation
@@ -82,7 +82,7 @@ impl<'a> Lowering<'a> {
                     .map(|p| self.lower_inst_param(p))
                     .collect::<Option<Vec<_>>>()?;
                 HirExprKind::Instantiation {
-                    init_ty: hir_ty.kind,
+                    init_ty: hir_ty,
                     body: hir_body,
                 }
             }
@@ -190,20 +190,20 @@ impl<'a> Lowering<'a> {
 
             TypeKind::Ptr(inner) => {
                 let inner_hir = self.lower_type(inner)?;
-                HirType::Ptr(Box::new(inner_hir.kind))
+                HirType::Ptr(Box::new(inner_hir))
             }
             TypeKind::Ref(inner) => {
                 let inner_hir = self.lower_type(inner)?;
-                HirType::Ref(Box::new(inner_hir.kind))
+                HirType::Ref(Box::new(inner_hir))
             }
             TypeKind::Nullable(inner) => {
                 let inner_hir = self.lower_type(inner)?;
-                HirType::Nullable(Box::new(inner_hir.kind))
+                HirType::Nullable(Box::new(inner_hir))
             }
             TypeKind::Failable(ok, err) => {
                 let ok_hir = self.lower_type(ok)?;
                 let err_hir = self.lower_type(err)?;
-                HirType::Failable(Box::new(ok_hir.kind), Box::new(err_hir.kind))
+                HirType::Failable(Box::new(ok_hir), Box::new(err_hir))
             }
             TypeKind::Array(inner, size_expr) => {
                 let inner_hir = self.lower_type(inner)?;
@@ -211,18 +211,18 @@ impl<'a> Lowering<'a> {
                     Some(expr) => self.eval_const_size(expr),
                     None => None,
                 };
-                HirType::Array(Box::new(inner_hir.kind), size)
+                HirType::Array(Box::new(inner_hir), size)
             }
             TypeKind::Func(params, return_type) => {
                 let hir_params = params
                     .iter()
-                    .map(|p| self.lower_type(p).map(|t| t.kind))
+                    .map(|p| self.lower_type(p))
                     .collect::<Option<Vec<_>>>()?;
                 let hir_return = match return_type.as_ref() {
-                    Some(r) => Some(Box::new(self.lower_type(r)?.kind)),
-                    None => None,
+                    Some(r) => self.lower_type(r)?,
+                    None => HirTypeNode::unit(self.next_id(), type_node.span.clone()),
                 };
-                HirType::Func(hir_params, hir_return)
+                HirType::Func(hir_params, Box::new(hir_return))
             }
             TypeKind::CustomType(expr) => {
                 let name = self.extract_name_string(expr)?;
@@ -232,7 +232,7 @@ impl<'a> Lowering<'a> {
                 let name_str = self.extract_name_string(name)?;
                 let hir_params = type_params
                     .iter()
-                    .map(|p| self.lower_type(p).map(|t| t.kind))
+                    .map(|p| self.lower_type(p))
                     .collect::<Option<Vec<_>>>()?;
                 HirType::GenericType {
                     name: name_str,
@@ -245,7 +245,11 @@ impl<'a> Lowering<'a> {
             }
         };
 
-        Some(HirTypeNode::new(kind, type_node.span.clone()))
+        Some(HirTypeNode::new(
+            self.next_id(),
+            kind,
+            type_node.span.clone(),
+        ))
     }
 
     fn eval_const_size(&self, expr: &Expr) -> Option<u64> {

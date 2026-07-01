@@ -1,3 +1,2 @@
-variant Test{
-    Paste
-}
+var  Test x := 100
+var y:=99

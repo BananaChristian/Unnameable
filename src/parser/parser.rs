@@ -258,22 +258,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn collect_qualifiers(&mut self) -> Vec<Qualifier> {
-        let mut qualifiers = Vec::new();
-
-        while let Some(token) = self.current_token() {
-            match token.token_type {
-                TType::Mut | TType::Const | TType::Heap => {
-                    let qualifier = Qualifier::new(&token);
-                    qualifiers.push(qualifier);
-                    self.advance();
-                }
-                _ => break,
-            }
-        }
-
-        qualifiers
-    }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;

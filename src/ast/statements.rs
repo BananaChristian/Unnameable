@@ -112,7 +112,7 @@ pub enum StmtKind {
     VariantStmt {
         qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
-        contracts: Vec<Expr>,
+        contracts: Vec<Type>,
         body: Vec<VariantMember>,
     },
 }

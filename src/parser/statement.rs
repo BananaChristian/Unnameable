@@ -89,12 +89,16 @@ impl<'a> Parser<'a> {
 
         Some(stmt)
     }
+
     fn parse_var(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Var)?;
 
         // Parse the type annotation (optional)
-        let ty = self.parse_type();
+        let mut ty=None;
+        if self.peek_token()?.token_type == TType::Identifier{
+            ty= self.parse_type();
+        }
 
         // Parse the name (identifier)
         let name = self.parse_identifier()?;
@@ -514,7 +518,7 @@ impl<'a> Parser<'a> {
             while self.current_token()?.token_type != TType::LBrace
                 && self.current_token()?.token_type != TType::End
             {
-                let contract = self.parse_identifier()?;
+                let contract = self.parse_type()?;
                 contracts.push(contract);
                 if self.current_token()?.token_type == TType::Comma {
                     self.advance();

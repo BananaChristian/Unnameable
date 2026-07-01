@@ -1,5 +1,4 @@
-use super::types::HirType;
-use crate::{diagnostics::Span, lowering::NodeId};
+use crate::{diagnostics::Span, hir::HirTypeNode, lowering::NodeId};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HirLiteral {
@@ -108,7 +107,7 @@ pub enum HirExprKind {
     // Generic instantiation, name is now a resolved mangled string
     GenericInstantion {
         name: String,
-        type_params: Vec<HirType>,
+        type_params: Vec<HirTypeNode>,
     },
 
     // Function call ,callee is resolved, no more Path expressions
@@ -120,11 +119,11 @@ pub enum HirExprKind {
     Postfix(Box<HirExpr>, HirPostfixOp),
 
     // sizeof expression
-    SizeOf(HirType),
+    SizeOf(HirTypeNode),
 
     // Struct instantiation, init Point { .x : 1 }
     Instantiation {
-        init_ty: HirType,
+        init_ty: HirTypeNode,
         body: Vec<HirInstParam>,
     },
 

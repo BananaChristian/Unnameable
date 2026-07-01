@@ -117,7 +117,7 @@ pub enum HirStmtKind {
     },
     HirVariantDecl {
         name: String,
-        contracts: Vec<String>,
+        contracts: Vec<HirTypeNode>,
         members: Vec<HirVariantMember>,
         generic_type_params: Vec<HirTypeNode>, // from generic block if any
         exposed: bool,

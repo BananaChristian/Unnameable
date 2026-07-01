@@ -1,4 +1,4 @@
-use crate::{diagnostics::Diagnostics, lexer::Lexer, lowering::Lowering, parser::Parser};
+use crate::{diagnostics::Diagnostics, lexer::Lexer, lowering::Lowering, parser::Parser, semantics::Semantics};
 use std::{env, fs};
 
 mod diagnostics;
@@ -7,6 +7,7 @@ mod ast;
 mod parser;
 mod hir;
 mod lowering;
+mod semantics;
 
 fn main() -> Result<(), std::io::Error> {
     let args: Vec<String> = env::args().collect();
@@ -49,6 +50,9 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.print();
         std::process::exit(1)
     }
+
+    let mut semantics = Semantics::new(hir, &mut diagnostics);
+    semantics.analyze();
 
     Ok(())
 }

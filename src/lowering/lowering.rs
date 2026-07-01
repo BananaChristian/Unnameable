@@ -4,7 +4,7 @@ use crate::{
     hir::HirStmt,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq,Eq,Hash)]
 pub struct NodeId(pub usize);
 
 pub struct Lowering<'a> {

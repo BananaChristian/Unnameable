@@ -130,7 +130,7 @@ impl<'a> Lowering<'a> {
 
             let return_type = match type_annotation {
                 Some(t) => self.lower_type(t)?,
-                None => HirTypeNode::unit(stmt.span.clone()),
+                None => HirTypeNode::unit(self.next_id(), stmt.span.clone()),
             };
 
             let hir_body = self.lower_block(body)?;
@@ -171,7 +171,7 @@ impl<'a> Lowering<'a> {
 
             let return_type = match type_annotation {
                 Some(t) => self.lower_type(t)?,
-                None => HirTypeNode::unit(stmt.span.clone()),
+                None => HirTypeNode::unit(self.next_id(), stmt.span.clone()),
             };
 
             Some(HirStmt {
@@ -271,7 +271,7 @@ impl<'a> Lowering<'a> {
 
             let mut conts = Vec::new();
             for contract in contracts {
-                let cont_name = self.extract_name_string(contract)?;
+                let cont_name = self.lower_type(contract)?;
                 conts.push(cont_name);
             }
 
@@ -306,7 +306,7 @@ impl<'a> Lowering<'a> {
 
             let underly = match underlying {
                 Some(ty) => self.lower_type(ty)?,
-                None => HirTypeNode::new(HirType::U32, stmt.span.clone()),
+                None => HirTypeNode::new(self.next_id(), HirType::U32, stmt.span.clone()),
             };
 
             let members = self.lower_enum_member(content)?;
@@ -603,8 +603,11 @@ impl<'a> Lowering<'a> {
                                     hir_id: self.next_id(),
                                     name: "self".to_string(),
                                     ty: HirTypeNode::new(
-                                        HirType::Ref(Box::new(HirType::CustomType(
+                                        self.next_id(),
+                                        HirType::Ref(Box::new(HirTypeNode::custom(
+                                            self.next_id(),
                                             type_name.to_string(),
+                                            func.span.clone(),
                                         ))),
                                         func.span.clone(),
                                     ),

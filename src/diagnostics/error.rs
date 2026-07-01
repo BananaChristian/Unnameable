@@ -5,6 +5,7 @@ pub enum Phase {
     Lexer,
     Parser,
     Lowering,
+    Semantics,
     None,
 }
 
