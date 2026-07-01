@@ -14,6 +14,7 @@ impl<'a> Resolver<'a> {
             HirStmtKind::HirEnumDecl { .. } => self.resolve_enum(stmt),
             HirStmtKind::HirIf { .. } => self.resolve_if(stmt, table),
             HirStmtKind::HirWhile { .. } => self.resolve_while(stmt, table),
+            HirStmtKind::HirContractDecl { .. } => self.resolve_contract(stmt, table),
             _ => (),
         }
     }
@@ -197,6 +198,26 @@ impl<'a> Resolver<'a> {
             for bd in body {
                 self.resolve_stmt(bd, table);
             }
+        }
+    }
+
+    fn resolve_contract(&mut self, stmt: &HirStmt, table: &mut NameTable) {
+        if let HirStmtKind::HirContractDecl {
+            name,
+            functions,
+            generic_type_params,
+            ..
+        } = &stmt.kind
+        {
+            self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            self.push_scope();
+            for gen_ty in generic_type_params {
+                self.resolve_type(gen_ty, table);
+            }
+            for func in functions {
+                self.resolve_stmt(func, table);
+            }
+            self.pop_scope();
         }
     }
 }
