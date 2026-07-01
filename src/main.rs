@@ -53,6 +53,10 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut semantics = Semantics::new(hir, &mut diagnostics);
     semantics.analyze();
+    if semantics.corrupted{
+        diagnostics.print();
+        std::process::exit(1)
+    }
 
     Ok(())
 }

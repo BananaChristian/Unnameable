@@ -1,2 +1,4 @@
-var  Test x := 100
-var y:=99
+enum Test{
+  FOOD
+  FOOD
+}

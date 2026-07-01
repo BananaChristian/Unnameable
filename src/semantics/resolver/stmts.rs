@@ -11,15 +11,21 @@ impl<'a> Resolver<'a> {
             HirStmtKind::HirFunctionDef { .. } => self.resolve_func_def(stmt, table),
             HirStmtKind::HirStructDecl { .. } => self.resolve_struct(stmt, table),
             HirStmtKind::HirVariantDecl { .. } => self.resolve_variant(stmt, table),
+            HirStmtKind::HirEnumDecl { .. } => self.resolve_enum(stmt),
+            HirStmtKind::HirIf { .. } => self.resolve_if(stmt, table),
+            HirStmtKind::HirWhile { .. } => self.resolve_while(stmt, table),
             _ => (),
         }
     }
 
     fn resolve_var(&mut self, stmt: &HirStmt, table: &mut NameTable) {
-        if let HirStmtKind::HirVarDecl { name, init, .. } = &stmt.kind {
+        if let HirStmtKind::HirVarDecl { name, init, ty, .. } = &stmt.kind {
             //First resolve  the value
             if let Some(val) = init {
                 self.resolve_expr(val, table);
+            }
+            if let Some(existing_ty) = ty {
+                self.resolve_type(existing_ty, table);
             }
 
             //Now resolve the declaration normally
@@ -152,6 +158,45 @@ impl<'a> Resolver<'a> {
             }
 
             self.pop_scope();
+        }
+    }
+
+    fn resolve_enum(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirEnumDecl { name, members, .. } = &stmt.kind {
+            self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            self.push_scope();
+            for member in members {
+                self.declare(member.name.clone(), member.hir_id, member.span.clone());
+            }
+            self.pop_scope();
+        }
+    }
+
+    fn resolve_if(&mut self, stmt: &HirStmt, table: &mut NameTable) {
+        if let HirStmtKind::HirIf {
+            condition,
+            body,
+            else_body,
+        } = &stmt.kind
+        {
+            self.resolve_expr(condition, table);
+            for content in body {
+                self.resolve_stmt(content, table);
+            }
+            if let Some(el) = else_body {
+                for e in el {
+                    self.resolve_stmt(e, table);
+                }
+            }
+        }
+    }
+
+    fn resolve_while(&mut self, stmt: &HirStmt, table: &mut NameTable) {
+        if let HirStmtKind::HirWhile { condition, body } = &stmt.kind {
+            self.resolve_expr(condition, table);
+            for bd in body {
+                self.resolve_stmt(bd, table);
+            }
         }
     }
 }

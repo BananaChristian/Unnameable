@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use crate::{
-    diagnostics::{self, Diagnostics},
+    diagnostics::Diagnostics,
     hir::HirStmt,
     lowering::NodeId,
-    semantics::resolver::{self, Resolver},
+    semantics::resolver::Resolver,
 };
 
 pub struct NameTable {

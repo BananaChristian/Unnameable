@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    diagnostics::{self, CompilerError, Diagnostics, Phase, Span},
+    diagnostics::{CompilerError, Diagnostics, Phase, Span},
     hir::HirStmt,
     lowering::NodeId,
     semantics::semantics::NameTable,
@@ -40,7 +40,7 @@ impl<'a> Resolver<'a> {
         let current = self.scope_stack.last_mut().unwrap();
         if current.contains_key(&name) {
             self.report(
-                "'{}' already declared in this scope".to_string(),
+                format!("'{}' already exists in this scope", name),
                 Some(span),
             );
         } else {
@@ -55,10 +55,8 @@ impl<'a> Resolver<'a> {
                 return;
             }
         }
-
         self.report(format!("'{}' is not declared", name), Some(span));
     }
-    
 
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
