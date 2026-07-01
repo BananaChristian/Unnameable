@@ -1,5 +1,5 @@
 use super::types::HirType;
-use crate::diagnostics::Span;
+use crate::{diagnostics::Span, lowering::NodeId};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HirLiteral {
@@ -85,6 +85,7 @@ pub enum HirPostfixOp {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HirInstParam {
+    pub hir_id: NodeId,
     pub name: String,
     pub value: Box<HirExpr>,
     pub span: Span,
@@ -136,12 +137,17 @@ pub enum HirExprKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HirExpr {
+    pub hir_id: NodeId,
     pub kind: HirExprKind,
     pub span: Span,
 }
 
 impl HirExpr {
-    pub fn new(kind: HirExprKind, span: Span) -> Self {
-        HirExpr { kind, span }
+    pub fn new(id: NodeId, kind: HirExprKind, span: Span) -> Self {
+        HirExpr {
+            hir_id: id,
+            kind,
+            span,
+        }
     }
 }

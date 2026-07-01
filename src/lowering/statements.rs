@@ -21,7 +21,7 @@ impl<'a> Lowering<'a> {
             StmtKind::ContractBlock { .. } => self.lower_contract(stmt),
             StmtKind::Return(..) => self.lower_return(stmt),
             StmtKind::Break | StmtKind::Continue => self.lower_break_or_cont(stmt),
-            StmtKind::IfStmt{..} => self.lower_if(stmt),
+            StmtKind::IfStmt { .. } => self.lower_if(stmt),
             _ => self.lower_expr_stmt(stmt),
         }
     }
@@ -30,6 +30,7 @@ impl<'a> Lowering<'a> {
         if let StmtKind::Expr(expr) = &stmt.kind {
             let lowered_expr = self.lower_expr(expr)?;
             let hir_stmt = HirStmt {
+                hir_id: lowered_expr.hir_id,
                 kind: HirStmtKind::HirExpr(lowered_expr),
                 span: stmt.span.clone(),
             };
@@ -42,13 +43,14 @@ impl<'a> Lowering<'a> {
     }
 
     pub fn make_var(
-        &self,
+        &mut self,
         name: String,
         mutable: bool,
         init: Option<HirExpr>,
         span: Span,
     ) -> HirStmt {
         HirStmt {
+            hir_id: self.next_id(),
             kind: HirStmtKind::HirVarDecl {
                 name,
                 mutable,
@@ -89,6 +91,7 @@ impl<'a> Lowering<'a> {
             };
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirVarDecl {
                     name: name_str,
                     mutable: qualifier_map.mutable,
@@ -133,6 +136,7 @@ impl<'a> Lowering<'a> {
             let hir_body = self.lower_block(body)?;
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirFunctionDef {
                     name: name_str,
                     params: hir_params,
@@ -171,6 +175,7 @@ impl<'a> Lowering<'a> {
             };
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirFunctionDecl {
                     name: name_str,
                     params: hir_params,
@@ -201,6 +206,7 @@ impl<'a> Lowering<'a> {
                 None => None,
             };
             Some(HirParam {
+                hir_id: self.next_id(),
                 name: name_str,
                 ty,
                 mutable: qualifier_map.mutable,
@@ -237,6 +243,7 @@ impl<'a> Lowering<'a> {
             };
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirStructDecl {
                     name: name_str,
                     contracts: extracted_contracts,
@@ -271,6 +278,7 @@ impl<'a> Lowering<'a> {
             let mems = self.lower_variant_member(body)?;
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirVariantDecl {
                     name: variant_name,
                     contracts: conts,
@@ -304,6 +312,7 @@ impl<'a> Lowering<'a> {
             let members = self.lower_enum_member(content)?;
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirEnumDecl {
                     name: enum_name,
                     underlying: underly,
@@ -329,6 +338,7 @@ impl<'a> Lowering<'a> {
             };
 
             let conv_mem = HirEnumMember {
+                hir_id: self.next_id(),
                 name: mem_name,
                 value: val,
                 span: member.span.clone(),
@@ -355,6 +365,7 @@ impl<'a> Lowering<'a> {
             }
 
             let variant_m = HirVariantMember {
+                hir_id: self.next_id(),
                 name: name_str,
                 member_types: types,
                 tag,
@@ -373,6 +384,7 @@ impl<'a> Lowering<'a> {
             let body = self.lower_block(body)?;
 
             let hir_while = HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirWhile { condition, body },
                 span: stmt.span.clone(),
             };
@@ -398,6 +410,7 @@ impl<'a> Lowering<'a> {
             }
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirContractDecl {
                     name: name_str,
                     functions: funcs,
@@ -428,11 +441,13 @@ impl<'a> Lowering<'a> {
 
             //Push the update into the body
             body.push(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirExpr(update),
                 span: stmt.span.clone(),
             });
 
             let hir_while = HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirWhile { condition, body },
                 span: stmt.span.clone(),
             };
@@ -463,16 +478,21 @@ impl<'a> Lowering<'a> {
             let init_stmt = self.make_var(iter_var.clone(), true, Some(next_call), span.clone());
 
             // condition: __iter_val_N != null
-            let condition = self.make_binary(
-                self.make_identifier(&iter_var, span.clone()),
-                HirBinaryOp::Neq,
-                HirExpr::new(HirExprKind::Literal(HirLiteral::Null), span.clone()),
+            let left = self.make_identifier(&iter_var, span.clone());
+            let right = HirExpr::new(
+                self.next_id(),
+                HirExprKind::Literal(HirLiteral::Null),
                 span.clone(),
             );
+            let condition = self.make_binary(left, HirBinaryOp::Neq, right, span.clone());
 
             // var item := unwrap[__iter_val_N]
             let target = self.make_identifier(&iter_var, span.clone());
-            let unwrap_trigger = HirExpr::new(HirExprKind::Unwrap(Box::new(target)), span.clone());
+            let unwrap_trigger = HirExpr::new(
+                self.next_id(),
+                HirExprKind::Unwrap(Box::new(target)),
+                span.clone(),
+            );
             let item_decl = self.make_var(item_name, false, Some(unwrap_trigger), span.clone());
 
             // lower original body, prepend item decl
@@ -483,9 +503,11 @@ impl<'a> Lowering<'a> {
             // __iter_val_N = collection.next() — advance at end
             let advance_call =
                 self.make_method_call(hir_collection.clone(), "next", vec![], span.clone());
+            let left = self.make_identifier(&iter_var, span.clone());
             let advance_stmt = HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirExpr(self.make_binary(
-                    self.make_identifier(&iter_var, span.clone()),
+                    left,
                     HirBinaryOp::Assign,
                     advance_call,
                     span.clone(),
@@ -495,6 +517,7 @@ impl<'a> Lowering<'a> {
             full_body.push(advance_stmt);
 
             let while_stmt = HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirWhile {
                     condition,
                     body: full_body,
@@ -577,6 +600,7 @@ impl<'a> Lowering<'a> {
                             } => {
                                 *fn_name = mangled_name;
                                 let self_param = HirParam {
+                                    hir_id: self.next_id(),
                                     name: "self".to_string(),
                                     ty: HirTypeNode::new(
                                         HirType::Ref(Box::new(HirType::CustomType(
@@ -663,6 +687,7 @@ impl<'a> Lowering<'a> {
             };
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirReturn(expr),
                 span: stmt.span.clone(),
             })
@@ -674,10 +699,12 @@ impl<'a> Lowering<'a> {
     fn lower_break_or_cont(&mut self, stmt: &Stmt) -> Option<HirStmt> {
         match &stmt.kind {
             StmtKind::Break => Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirBreak,
                 span: stmt.span.clone(),
             }),
             StmtKind::Continue => Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirContinue,
                 span: stmt.span.clone(),
             }),
@@ -709,6 +736,7 @@ impl<'a> Lowering<'a> {
                 let elif_body = self.lower_block(&elif.body)?;
 
                 let nested_if = HirStmt {
+                    hir_id: self.next_id(),
                     kind: HirStmtKind::HirIf {
                         condition: elif_condition,
                         body: elif_body,
@@ -721,6 +749,7 @@ impl<'a> Lowering<'a> {
             }
 
             Some(HirStmt {
+                hir_id: self.next_id(),
                 kind: HirStmtKind::HirIf {
                     condition: hir_condition,
                     body: hir_body,

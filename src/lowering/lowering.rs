@@ -4,10 +4,14 @@ use crate::{
     hir::HirStmt,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NodeId(pub usize);
+
 pub struct Lowering<'a> {
     ast: Vec<Stmt>,
     diagnostics: &'a mut Diagnostics,
     pub iter_counter: u64,
+    pub node_counter: usize,
     pub corrupted: bool,
 }
 
@@ -17,8 +21,15 @@ impl<'a> Lowering<'a> {
             ast,
             diagnostics,
             iter_counter: 0,
+            node_counter: 0,
             corrupted: false,
         }
+    }
+
+    pub fn next_id(&mut self) -> NodeId {
+        let id = NodeId(self.node_counter);
+        self.node_counter += 1;
+        id
     }
 
     pub fn lower(&mut self) -> Vec<HirStmt> {

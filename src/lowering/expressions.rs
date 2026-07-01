@@ -45,8 +45,8 @@ impl<'a> Lowering<'a> {
                 HirExprKind::Call(Box::new(hir_callee), hir_args)
             }
 
-            ExprKind::Unwrap(inner) =>{
-                let hir_inner= self.lower_expr(inner)?;
+            ExprKind::Unwrap(inner) => {
+                let hir_inner = self.lower_expr(inner)?;
                 HirExprKind::Unwrap(Box::new(hir_inner))
             }
 
@@ -98,7 +98,7 @@ impl<'a> Lowering<'a> {
             }
         };
 
-        Some(HirExpr::new(kind, expr.span.clone()))
+        Some(HirExpr::new(self.next_id(), kind, expr.span.clone()))
     }
 
     fn lower_binary_op(&self, op: &BinaryOp) -> Option<HirBinaryOp> {
@@ -162,6 +162,7 @@ impl<'a> Lowering<'a> {
         };
         let value = self.lower_expr(&param.value)?;
         Some(HirInstParam {
+            hir_id: self.next_id(),
             name,
             value: Box::new(value),
             span: param.span.clone(),
@@ -318,12 +319,17 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    pub fn make_identifier(&self, name: &str, span: Span) -> HirExpr {
-        HirExpr::new(HirExprKind::Identifier(name.to_string()), span)
+    pub fn make_identifier(&mut self, name: &str, span: Span) -> HirExpr {
+        HirExpr::new(
+            self.next_id(),
+            HirExprKind::Identifier(name.to_string()),
+            span,
+        )
     }
 
-    pub fn make_access(&self, target: HirExpr, field: &str, span: Span) -> HirExpr {
+    pub fn make_access(&mut self, target: HirExpr, field: &str, span: Span) -> HirExpr {
         HirExpr::new(
+            self.next_id(),
             HirExprKind::Binary(
                 Box::new(target),
                 HirBinaryOp::Access,
@@ -333,12 +339,16 @@ impl<'a> Lowering<'a> {
         )
     }
 
-    pub fn make_call(&self, callee: HirExpr, args: Vec<HirExpr>, span: Span) -> HirExpr {
-        HirExpr::new(HirExprKind::Call(Box::new(callee), args), span)
+    pub fn make_call(&mut self, callee: HirExpr, args: Vec<HirExpr>, span: Span) -> HirExpr {
+        HirExpr::new(
+            self.next_id(),
+            HirExprKind::Call(Box::new(callee), args),
+            span,
+        )
     }
 
     pub fn make_method_call(
-        &self,
+        &mut self,
         target: HirExpr,
         method: &str,
         args: Vec<HirExpr>,
@@ -349,12 +359,16 @@ impl<'a> Lowering<'a> {
     }
 
     pub fn make_binary(
-        &self,
+        &mut self,
         left: HirExpr,
         op: HirBinaryOp,
         right: HirExpr,
         span: Span,
     ) -> HirExpr {
-        HirExpr::new(HirExprKind::Binary(Box::new(left), op, Box::new(right)),span)
+        HirExpr::new(
+            self.next_id(),
+            HirExprKind::Binary(Box::new(left), op, Box::new(right)),
+            span,
+        )
     }
 }
