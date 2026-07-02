@@ -53,22 +53,11 @@ pub enum ResolvedTypeKind {
         ret_type: Box<TypeInfo>,
     },
     //User defined
-    Struct {
+    Custom {
         name: String,
         gen_type_params: Vec<TypeInfo>,
+        members: Vec<(String, TypeInfo)>,
     },
-    Enum {
-        name: String,
-    },
-    Variant {
-        name: String,
-        gen_type_params: Vec<TypeInfo>,
-    },
-    Contract {
-        name: String,
-        gen_type_params: Vec<TypeInfo>,
-    },
-
     Failable {
         ok: Box<TypeInfo>,
         err: Box<TypeInfo>,

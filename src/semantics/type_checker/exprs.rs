@@ -1,6 +1,6 @@
 use crate::{
     diagnostics::Span,
-    hir::{HirExpr, HirExprKind, HirLiteral},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral},
     semantics::{
         semantics::{ResolvedTypeKind, TypeInfo},
         type_checker::checker::TypeChecker,
@@ -8,12 +8,15 @@ use crate::{
 };
 
 impl<'a> TypeChecker<'a> {
-    pub fn check_expr(&mut self, expr: &HirExpr) -> TypeInfo {
+    pub fn expr_type(&mut self, expr: &HirExpr) -> TypeInfo {
         let ty = match &expr.kind {
-            HirExprKind::SizeOf(..) => TypeInfo {
+            HirExprKind::SizeOf(_) => TypeInfo {
                 kind: ResolvedTypeKind::USize,
                 span: expr.span.clone(),
             },
+            HirExprKind::Identifier(_) => self.identifier_type(expr),
+            HirExprKind::Literal(_) => self.literal_type(expr),
+            HirExprKind::Binary(_, _, _) => self.binary_type(expr),
             _ => TypeInfo {
                 kind: ResolvedTypeKind::Unknown,
                 span: expr.span.clone(),
@@ -34,6 +37,32 @@ impl<'a> TypeChecker<'a> {
             }
         };
 
+        self.get_decl_type(decl_id)
+    }
+
+    fn binary_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        if let HirExprKind::Binary(left, op, right) = &expr.kind {
+            let left_ty = self.expr_type(left);
+            let right_ty = self.expr_type(right);
+            if op.clone() == HirBinaryOp::Access {
+                right_ty
+            } else {
+                if !self.types_match(&left_ty, &right_ty) {
+                    self.report(format!("Type mismatch"), Some(expr.span.clone()));
+                    TypeInfo {
+                        kind: ResolvedTypeKind::Unknown,
+                        span: expr.span.clone(),
+                    }
+                } else {
+                    right_ty
+                }
+            }
+        } else {
+            TypeInfo {
+                kind: ResolvedTypeKind::Unknown,
+                span: expr.span.clone(),
+            }
+        }
     }
 
     fn literal_type(&mut self, expr: &HirExpr) -> TypeInfo {
@@ -137,10 +166,10 @@ impl<'a> TypeChecker<'a> {
                 span: span.clone(),
             }
         } else {
-            let first_ty = self.check_expr(&elements[0]);
+            let first_ty = self.expr_type(&elements[0]);
             let mut all_okay = true;
             for element in elements.iter().skip(1) {
-                let element_ty = self.check_expr(element);
+                let element_ty = self.expr_type(element);
                 if !self.types_match(&first_ty, &element_ty) {
                     self.report(
                         format!("array elements must all have the same type"),
