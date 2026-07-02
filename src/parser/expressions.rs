@@ -148,10 +148,12 @@ impl<'a> Parser<'a> {
                     self.parse_identifier()
                 }
             }
+            TType::Bitcast => self.parse_bitcast_expr(),
+            TType::Cast => self.parse_cast_expr(),
             TType::Init => self.parse_init(),
             TType::SizeOf => self.parse_sizeof_expr(),
             TType::Lparen => self.parse_grouping(),
-            TType::Unwrap =>self.parse_unwrap_expr(),
+            TType::Unwrap => self.parse_unwrap_expr(),
 
             TType::Minus
             | TType::Bang
@@ -353,6 +355,38 @@ impl<'a> Parser<'a> {
                 init_ty: Box::new(ty),
                 body: params,
             },
+            Span { start, end },
+        ))
+    }
+
+    fn parse_bitcast_expr(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Bitcast)?;
+        self.expect_token(TType::Lt)?;
+        let ty = self.parse_type()?;
+        self.expect_token(TType::Gt)?;
+        self.expect_token(TType::Lparen)?;
+        let expr = self.parse_expression(Precedence::Lowest)?;
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rparen)?;
+        Some(Expr::new(
+            ExprKind::BitcastExpr(Box::new(ty), Box::new(expr)),
+            Span { start, end },
+        ))
+    }
+
+    fn parse_cast_expr(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Cast)?;
+        self.expect_token(TType::Lt)?;
+        let ty = self.parse_type()?;
+        self.expect_token(TType::Gt)?;
+        self.expect_token(TType::Lparen)?;
+        let expr = self.parse_expression(Precedence::Lowest)?;
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rparen)?;
+        Some(Expr::new(
+            ExprKind::StaticCast(Box::new(ty), Box::new(expr)),
             Span { start, end },
         ))
     }

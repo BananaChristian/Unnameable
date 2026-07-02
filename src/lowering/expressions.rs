@@ -96,6 +96,17 @@ impl<'a> Lowering<'a> {
                     index: Box::new(hir_index),
                 }
             }
+
+            ExprKind::StaticCast(ty, ex) => {
+                let hir_ty = self.lower_type(ty)?;
+                let ep = self.lower_expr(ex)?;
+                HirExprKind::StaticCast(Box::new(hir_ty), Box::new(ep))
+            }
+            ExprKind::BitcastExpr(ty, ex) => {
+                let ty = self.lower_type(ty)?;
+                let ep = self.lower_expr(ex)?;
+                HirExprKind::BitCast(Box::new(ty), Box::new(ep))
+            }
         };
 
         Some(HirExpr::new(self.next_id(), kind, expr.span.clone()))

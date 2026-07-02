@@ -24,6 +24,7 @@ impl<'a> Parser<'a> {
             TType::Enum => self.parse_enum(),
             TType::Variant => self.parse_variant(),
             TType::Return => self.parse_return(),
+            TType::Alias => self.parse_alias(),
             TType::Break | TType::Continue => self.parse_break_or_cont(),
             _ => self.parse_expr_stmt(),
         }
@@ -95,9 +96,9 @@ impl<'a> Parser<'a> {
         self.expect_token(TType::Var)?;
 
         // Parse the type annotation (optional)
-        let mut ty=None;
-        if self.peek_token()?.token_type == TType::Identifier{
-            ty= self.parse_type();
+        let mut ty = None;
+        if self.peek_token()?.token_type == TType::Identifier {
+            ty = self.parse_type();
         }
 
         // Parse the name (identifier)
@@ -573,6 +574,22 @@ impl<'a> Parser<'a> {
             TType::Continue => Some(Stmt::new(StmtKind::Continue, token.span)),
             _ => None,
         }
+    }
+
+    fn parse_alias(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Alias)?;
+        let original = self.parse_type()?;
+        self.expect_token(TType::As)?;
+        let new = self.parse_identifier()?;
+        let end = self.current_token()?.span.end;
+        Some(Stmt::new(
+            StmtKind::AliasStmt {
+                original: Box::new(original),
+                new: Box::new(new),
+            },
+            Span { start, end },
+        ))
     }
 
     pub fn parse_body(&mut self) -> Option<Stmt> {

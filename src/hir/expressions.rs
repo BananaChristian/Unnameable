@@ -120,6 +120,8 @@ pub enum HirExprKind {
 
     // sizeof expression
     SizeOf(HirTypeNode),
+    StaticCast(Box<HirTypeNode>, Box<HirExpr>),
+    BitCast(Box<HirTypeNode>, Box<HirExpr>),
 
     // Struct instantiation, init Point { .x : 1 }
     Instantiation {

@@ -15,6 +15,7 @@ impl<'a> Resolver<'a> {
             HirStmtKind::HirIf { .. } => self.resolve_if(stmt, table),
             HirStmtKind::HirWhile { .. } => self.resolve_while(stmt, table),
             HirStmtKind::HirContractDecl { .. } => self.resolve_contract(stmt, table),
+            HirStmtKind::HirReturn(..) => self.resolve_return(stmt, table),
             _ => (),
         }
     }
@@ -218,6 +219,14 @@ impl<'a> Resolver<'a> {
                 self.resolve_stmt(func, table);
             }
             self.pop_scope();
+        }
+    }
+
+    fn resolve_return(&mut self, stmt: &HirStmt, table: &mut NameTable) {
+        if let HirStmtKind::HirReturn(inner) = &stmt.kind {
+            if let Some(expr) = inner {
+                self.resolve_expr(expr, table);
+            }
         }
     }
 }

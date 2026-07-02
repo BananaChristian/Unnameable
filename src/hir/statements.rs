@@ -105,6 +105,10 @@ pub enum HirStmtKind {
         generic_type_params: Vec<HirTypeNode>,
         exposed: bool,
     },
+    HirAlias{
+        original: Box<HirTypeNode>,
+        alias:Box<HirExpr>,
+    },
     HirWhile {
         condition: HirExpr,
         body: Vec<HirStmt>, // Block wrapper gone, flat list

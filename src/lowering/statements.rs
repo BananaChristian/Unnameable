@@ -22,6 +22,7 @@ impl<'a> Lowering<'a> {
             StmtKind::Return(..) => self.lower_return(stmt),
             StmtKind::Break | StmtKind::Continue => self.lower_break_or_cont(stmt),
             StmtKind::IfStmt { .. } => self.lower_if(stmt),
+            StmtKind::AliasStmt{..} => self.lower_alias(stmt),
             _ => self.lower_expr_stmt(stmt),
         }
     }
@@ -776,6 +777,23 @@ impl<'a> Lowering<'a> {
                 self.report("Invalid construct".to_string(), Some(stmt.span.clone()));
                 None
             }
+        }
+    }
+
+    fn lower_alias(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::AliasStmt { original, new } = &stmt.kind {
+            let orig = self.lower_type(original)?;
+            let new = self.lower_expr(new)?;
+            Some(HirStmt {
+                hir_id: self.next_id(),
+                kind: HirStmtKind::HirAlias {
+                    original: Box::new(orig),
+                    alias: Box::new(new),
+                },
+                span: stmt.span.clone(),
+            })
+        } else {
+            None
         }
     }
 

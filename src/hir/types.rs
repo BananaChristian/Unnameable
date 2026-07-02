@@ -25,13 +25,11 @@ pub enum HirType {
     // Pointer types
     Ptr(Box<HirTypeNode>),
     Ref(Box<HirTypeNode>),
-    // Array — size is a resolved constant, not an Expr
     Array(Box<HirTypeNode>, Option<u64>),
     // Function pointer
     Func(Vec<HirTypeNode>, Box<HirTypeNode>),
     // Custom type — path fully resolved to a string
     CustomType(String),
-    // Generic type — name resolved, type params are HirTypes
     GenericType {
         name: String,
         type_params: Vec<HirTypeNode>,

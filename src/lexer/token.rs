@@ -99,6 +99,10 @@ pub enum TType {
     Null,
     Unwrap,
     Expose,
+    Alias,
+    Bitcast,
+    Cast,
+    As,
 
 
     I8Key,

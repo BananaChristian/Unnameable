@@ -34,7 +34,7 @@ pub enum Literal {
     Bool(bool),
 
     //Array literal
-    ArrayLiteral (Vec<Expr>),
+    ArrayLiteral(Vec<Expr>),
     Null,
 }
 
@@ -60,14 +60,18 @@ pub enum ExprKind {
     Call(Box<Expr>, Vec<Expr>),
     Postfix(Box<Expr>, PostfixOp),
     SizeOfExpr(Box<Type>),
+    //bitcast<i32>(x)
+    BitcastExpr(Box<Type>, Box<Expr>),
+    //cast<i32>(x)
+    StaticCast(Box<Type>, Box<Expr>),
     Instantiation {
         init_ty: Box<Type>,
         body: Vec<InstParam>,
     },
-    Index{
+    Index {
         target: Box<Expr>,
-        index:Box<Expr>,
-    }
+        index: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

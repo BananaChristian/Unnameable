@@ -73,6 +73,10 @@ pub enum StmtKind {
         name: Box<Expr>,
         contents: Vec<Stmt>,
     },
+    AliasStmt {
+        original: Box<Type>,
+        new: Box<Expr>,
+    },
     IfStmt {
         condition: Box<Expr>,
         body: Box<Stmt>,
@@ -135,6 +139,7 @@ impl Stmt {
                 | TType::Func
                 | TType::Struct
                 | TType::Methods
+                | TType::Alias
                 | TType::Return
                 | TType::Break
                 | TType::Continue

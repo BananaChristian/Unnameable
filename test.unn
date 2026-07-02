@@ -1,9 +1,1 @@
-contract Mixer{
-  func test: i32
-  func add: u32
-}
-
-struct Me: Mixer{
-  a: i32
-  a: i32
-}
+cast<i32>(x)
