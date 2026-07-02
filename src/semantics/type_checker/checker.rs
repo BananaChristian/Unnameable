@@ -1,12 +1,10 @@
 use crate::{
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
-    hir::HirStmt,
-    semantics::semantics::{NameTable, ResolvedTypeKind, TypeInfo, TypesTable},
+    diagnostics::{CompilerError, Diagnostics, Phase, Span}, hir::HirStmt, lowering::NodeId, semantics::semantics::{NameTable, ResolvedTypeKind, TypeInfo, TypesTable}
 };
 
 pub struct TypeChecker<'a> {
     hir: &'a Vec<HirStmt>,
-    name_table: &'a NameTable,
+    pub name_table: &'a NameTable,
     pub types_table: &'a mut TypesTable,
     diagnostics: &'a mut Diagnostics,
     pub corrupted: bool,
@@ -166,6 +164,11 @@ impl<'a> TypeChecker<'a> {
             }
             _ => false,
         }
+    }
+
+    pub fn declare_type(&self,stmt: &HirStmt) -> TypeInfo{
+
+
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {

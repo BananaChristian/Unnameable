@@ -84,6 +84,14 @@ impl<'a> Resolver<'a> {
             HirExprKind::SizeOf(ty) => {
                 self.resolve_type(ty, table);
             }
+            HirExprKind::BitCast(ty, exp) => {
+                self.resolve_type(ty, table);
+                self.resolve_expr(exp, table);
+            }
+            HirExprKind::StaticCast(ty, exp) => {
+                self.resolve_type(ty, table);
+                self.resolve_expr(exp, table);
+            }
             _ => (),
         }
     }

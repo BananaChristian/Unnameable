@@ -783,12 +783,12 @@ impl<'a> Lowering<'a> {
     fn lower_alias(&mut self, stmt: &Stmt) -> Option<HirStmt> {
         if let StmtKind::AliasStmt { original, new } = &stmt.kind {
             let orig = self.lower_type(original)?;
-            let new = self.lower_expr(new)?;
+            let new = self.extract_name_string(new)?;
             Some(HirStmt {
                 hir_id: self.next_id(),
                 kind: HirStmtKind::HirAlias {
                     original: Box::new(orig),
-                    alias: Box::new(new),
+                    alias: new,
                 },
                 span: stmt.span.clone(),
             })

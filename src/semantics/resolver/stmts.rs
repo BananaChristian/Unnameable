@@ -16,6 +16,7 @@ impl<'a> Resolver<'a> {
             HirStmtKind::HirWhile { .. } => self.resolve_while(stmt, table),
             HirStmtKind::HirContractDecl { .. } => self.resolve_contract(stmt, table),
             HirStmtKind::HirReturn(..) => self.resolve_return(stmt, table),
+            HirStmtKind::HirAlias { .. } => self.resolve_alias(stmt, table),
             _ => (),
         }
     }
@@ -227,6 +228,13 @@ impl<'a> Resolver<'a> {
             if let Some(expr) = inner {
                 self.resolve_expr(expr, table);
             }
+        }
+    }
+
+    fn resolve_alias(&mut self, stmt: &HirStmt, table: &mut NameTable) {
+        if let HirStmtKind::HirAlias { original, alias } = &stmt.kind {
+            self.resolve_type(original, table);
+            self.declare(alias.clone(), stmt.hir_id, stmt.span.clone());
         }
     }
 }

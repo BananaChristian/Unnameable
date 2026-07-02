@@ -23,6 +23,19 @@ impl<'a> TypeChecker<'a> {
         ty
     }
 
+    fn identifier_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        let decl_id = match self.name_table.resolved.get(&expr.hir_id) {
+            Some(id) => id,
+            None => {
+                return TypeInfo {
+                    kind: ResolvedTypeKind::Unknown,
+                    span: expr.span.clone(),
+                };
+            }
+        };
+
+    }
+
     fn literal_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::Literal(lit) = &expr.kind {
             let ty = match lit {

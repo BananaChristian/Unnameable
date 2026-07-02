@@ -107,7 +107,7 @@ pub enum HirStmtKind {
     },
     HirAlias{
         original: Box<HirTypeNode>,
-        alias:Box<HirExpr>,
+        alias:String,
     },
     HirWhile {
         condition: HirExpr,
