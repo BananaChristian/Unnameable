@@ -14,6 +14,7 @@ pub struct NameTable {
 #[derive(Clone)]
 pub struct TypeInfo {
     pub kind: ResolvedTypeKind,
+    pub name: String,
     pub span: Span,
 }
 
@@ -66,6 +67,100 @@ pub enum ResolvedTypeKind {
         ty: Box<TypeInfo>,
     },
     Unknown,
+}
+
+impl TypeInfo {
+    pub fn unknown(span: Span) -> Self {
+        TypeInfo {
+            kind: ResolvedTypeKind::Unknown,
+            name: "unknown".to_string(),
+            span,
+        }
+    }
+
+    pub fn primitive(kind: ResolvedTypeKind, span: Span) -> Self {
+        let name = match kind {
+            ResolvedTypeKind::I8 => "i8".to_string(),
+            ResolvedTypeKind::U8 => "u8".to_string(),
+            ResolvedTypeKind::I16 => "i16".to_string(),
+            ResolvedTypeKind::U16 => "u16".to_string(),
+            ResolvedTypeKind::I32 => "i32".to_string(),
+            ResolvedTypeKind::U32 => "u32".to_string(),
+            ResolvedTypeKind::I64 => "i64".to_string(),
+            ResolvedTypeKind::U64 => "u64".to_string(),
+            ResolvedTypeKind::I128 => "i128".to_string(),
+            ResolvedTypeKind::U128 => "u128".to_string(),
+            ResolvedTypeKind::USize => "usize".to_string(),
+            ResolvedTypeKind::ISize => "isize".to_string(),
+            ResolvedTypeKind::F32 => "f32".to_string(),
+            ResolvedTypeKind::F64 => "f64".to_string(),
+            ResolvedTypeKind::Bool => "bool".to_string(),
+            _ => "unknown".to_string(),
+        };
+        TypeInfo { kind, name, span }
+    }
+
+    fn func(span: Span, params: Vec<TypeInfo>, ret: TypeInfo) -> Self {
+        let _ps: Vec<String> = params
+            .iter()
+            .map(|param| format!("{}", param.name.clone()))
+            .collect();
+
+        TypeInfo {
+            kind: ResolvedTypeKind::Func {
+                params,
+                ret_type: Box::new(ret.clone()),
+            },
+            name: format!("func():{}", ret.name),
+            span,
+        }
+    }
+
+    fn array(inner: TypeInfo, size: Option<u64>, span: Span) -> Self {
+        TypeInfo {
+            kind: ResolvedTypeKind::Array {
+                inner: Box::new(inner.clone()),
+                size,
+            },
+            name: if let Some(s) = size {
+                format!("arr[{},{}]", inner.name, s)
+            } else {
+                format!("arr[{}]", inner.name)
+            },
+            span,
+        }
+    }
+
+    fn nullable(inner: TypeInfo, span: Span) -> Self {
+        TypeInfo {
+            kind: ResolvedTypeKind::Nullable {
+                ty: Box::new(inner.clone()),
+            },
+            name: format!("({})?", inner.name.clone()),
+            span,
+        }
+    }
+
+    fn failable(ok: TypeInfo, err: TypeInfo, span: Span) -> Self {
+        TypeInfo {
+            kind: ResolvedTypeKind::Failable {
+                ok: Box::new(ok.clone()),
+                err: Box::new(err.clone()),
+            },
+            name: format!("!!({},{})", ok.name, err.name),
+            span,
+        }
+    }
+
+    fn pointer(inner: TypeInfo,span: Span) -> Self {
+        TypeInfo {
+            kind: ResolvedTypeKind::Pointer {
+                inner: Box::new(inner.clone()),
+            },
+            name: format!("ptr<{}>",inner.name),
+            span,
+        }
+    }
 }
 
 pub struct TypesTable {

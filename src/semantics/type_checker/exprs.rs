@@ -49,10 +49,7 @@ impl<'a> TypeChecker<'a> {
             } else {
                 if !self.types_match(&left_ty, &right_ty) {
                     self.report(format!("Type mismatch"), Some(expr.span.clone()));
-                    TypeInfo {
-                        kind: ResolvedTypeKind::Unknown,
-                        span: expr.span.clone(),
-                    }
+                    TypeInfo::unknown(expr.span.clone())
                 } else {
                     right_ty
                 }
@@ -60,8 +57,20 @@ impl<'a> TypeChecker<'a> {
         } else {
             TypeInfo {
                 kind: ResolvedTypeKind::Unknown,
+                name: "unknown".to_string(),
                 span: expr.span.clone(),
             }
+        }
+    }
+
+    fn arithmetic_type(&self, right_ty: &TypeInfo, left: &TypeInfo, span: Span) -> TypeInfo {
+        if !self.is_numeric()
+        if !self.is_numeric(right_ty) {
+            self.report(
+                format!("Right handside must be an arithmetic type"),
+                Some(span.clone()),
+            );
+            TypeInfo::unknown(span)
         }
     }
 

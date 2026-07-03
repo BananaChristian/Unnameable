@@ -241,6 +241,26 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    pub fn is_numeric(&self, ty: &TypeInfo) -> bool {
+        match ty.kind {
+            ResolvedTypeKind::I8
+            | ResolvedTypeKind::U8
+            | ResolvedTypeKind::I16
+            | ResolvedTypeKind::U16
+            | ResolvedTypeKind::I32
+            | ResolvedTypeKind::U32
+            | ResolvedTypeKind::I64
+            | ResolvedTypeKind::U64
+            | ResolvedTypeKind::I128
+            | ResolvedTypeKind::U128
+            | ResolvedTypeKind::ISize
+            | ResolvedTypeKind::USize
+            | ResolvedTypeKind::F32
+            | ResolvedTypeKind::F64 => true,
+            _ => false,
+        }
+    }
+
     pub fn declare_type(&mut self, stmt: &HirStmt) {
         let kind = match &stmt.kind {
             HirStmtKind::HirStructDecl {
@@ -339,10 +359,7 @@ impl<'a> TypeChecker<'a> {
     pub fn get_decl_type(&mut self, decl_id: &NodeId) -> TypeInfo {
         match self.types_table.types.get(&decl_id) {
             Some(ty) => ty.clone(),
-            None => TypeInfo {
-                kind: ResolvedTypeKind::Unknown,
-                span: Span::new(0, 0),
-            },
+            None => TypeInfo::unknown(Span { start: 0, end: 0 }),
         }
     }
 
