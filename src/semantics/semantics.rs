@@ -4,7 +4,7 @@ use crate::{
     diagnostics::{Diagnostics, Span},
     hir::HirStmt,
     lowering::NodeId,
-    semantics::resolver::Resolver,
+    semantics::{resolver::Resolver, type_checker::TypeChecker},
 };
 
 pub struct NameTable {
@@ -100,7 +100,7 @@ impl TypeInfo {
         TypeInfo { kind, name, span }
     }
 
-    fn func(span: Span, params: Vec<TypeInfo>, ret: TypeInfo) -> Self {
+    pub fn func(span: Span, params: Vec<TypeInfo>, ret: TypeInfo) -> Self {
         let _ps: Vec<String> = params
             .iter()
             .map(|param| format!("{}", param.name.clone()))
@@ -116,7 +116,7 @@ impl TypeInfo {
         }
     }
 
-    fn array(inner: TypeInfo, size: Option<u64>, span: Span) -> Self {
+    pub fn array(inner: TypeInfo, size: Option<u64>, span: Span) -> Self {
         TypeInfo {
             kind: ResolvedTypeKind::Array {
                 inner: Box::new(inner.clone()),
@@ -131,7 +131,7 @@ impl TypeInfo {
         }
     }
 
-    fn nullable(inner: TypeInfo, span: Span) -> Self {
+    pub fn nullable(inner: TypeInfo, span: Span) -> Self {
         TypeInfo {
             kind: ResolvedTypeKind::Nullable {
                 ty: Box::new(inner.clone()),
@@ -141,7 +141,7 @@ impl TypeInfo {
         }
     }
 
-    fn failable(ok: TypeInfo, err: TypeInfo, span: Span) -> Self {
+    pub fn failable(ok: TypeInfo, err: TypeInfo, span: Span) -> Self {
         TypeInfo {
             kind: ResolvedTypeKind::Failable {
                 ok: Box::new(ok.clone()),
@@ -152,12 +152,55 @@ impl TypeInfo {
         }
     }
 
-    fn pointer(inner: TypeInfo,span: Span) -> Self {
+    pub fn pointer(inner: TypeInfo, span: Span) -> Self {
         TypeInfo {
             kind: ResolvedTypeKind::Pointer {
                 inner: Box::new(inner.clone()),
             },
-            name: format!("ptr<{}>",inner.name),
+            name: format!("ptr<{}>", inner.name),
+            span,
+        }
+    }
+
+    pub fn reference(inner: TypeInfo, span: Span) -> Self {
+        TypeInfo {
+            kind: ResolvedTypeKind::Ref {
+                inner: Box::new(inner.clone()),
+            },
+            name: format!("ref<{}>", inner.name.clone()),
+            span,
+        }
+    }
+
+    pub fn unit(span: Span) -> Self {
+        TypeInfo {
+            kind: ResolvedTypeKind::Unit,
+            name: format!("()"),
+            span,
+        }
+    }
+
+    pub fn boolean(span: Span) -> Self{
+        TypeInfo{
+            kind:ResolvedTypeKind::Bool,
+            name: format!("bool"),
+            span
+        }
+    }
+
+    pub fn custom(
+        span: Span,
+        name: String,
+        gen_params: Vec<TypeInfo>,
+        members: Vec<(String, TypeInfo)>,
+    ) -> Self {
+        TypeInfo {
+            kind: ResolvedTypeKind::Custom {
+                name: name.clone(),
+                gen_type_params: gen_params,
+                members,
+            },
+            name,
             span,
         }
     }
@@ -210,7 +253,17 @@ impl<'a> Semantics<'a> {
         }
     }
 
+    fn run_type_checker(&mut self) {
+        let mut checker=TypeChecker::new(self.diagnostics, &self.hir, &mut self.ctxt.names, &mut self.ctxt.types);
+        checker.check();
+        if checker.corrupted{
+            self.corrupted=true;
+        }
+
+    }
+
     pub fn analyze(&mut self) {
         self.run_resolver();
+        self.run_type_checker();
     }
 }

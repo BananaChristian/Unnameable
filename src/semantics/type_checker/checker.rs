@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     hir::{HirStmt, HirStmtKind, HirType, HirTypeNode},
@@ -11,7 +9,6 @@ pub struct TypeChecker<'a> {
     hir: &'a Vec<HirStmt>,
     pub name_table: &'a NameTable,
     pub types_table: &'a mut TypesTable,
-    node_idx: HashMap<NodeId, &'a HirStmt>,
     diagnostics: &'a mut Diagnostics,
     pub corrupted: bool,
 }
@@ -23,54 +20,20 @@ impl<'a> TypeChecker<'a> {
         name_table: &'a NameTable,
         types_table: &'a mut TypesTable,
     ) -> Self {
-        let mut checker = TypeChecker {
+        TypeChecker {
             hir,
             name_table,
             types_table,
-            node_idx: HashMap::new(),
             diagnostics,
             corrupted: false,
-        };
-        checker.build_index();
-        checker
+        }
     }
 
-    fn build_index(&mut self) {
+    pub fn check(&mut self) {
         for stmt in self.hir {
-            self.index_stmt(stmt);
+            self.check_stmt(stmt);
         }
     }
-
-    fn index_stmt(&mut self, stmt: &'a HirStmt) {
-        self.node_idx.insert(stmt.hir_id, stmt);
-        match &stmt.kind {
-            HirStmtKind::HirFunctionDef { body, .. } => {
-                for s in body {
-                    self.index_stmt(s);
-                }
-            }
-            HirStmtKind::HirWhile { body, .. } => {
-                for s in body {
-                    self.index_stmt(s);
-                }
-            }
-            HirStmtKind::HirIf {
-                body, else_body, ..
-            } => {
-                for s in body {
-                    self.index_stmt(s);
-                }
-                if let Some(else_stmts) = else_body {
-                    for s in else_stmts {
-                        self.index_stmt(s);
-                    }
-                }
-            }
-            _ => (),
-        }
-    }
-
-    pub fn check(&self) {}
 
     pub fn types_match(&self, expected: &TypeInfo, actual: &TypeInfo) -> bool {
         match (&expected.kind, &actual.kind) {
@@ -175,69 +138,73 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn type_from_hir_type(&self, ty: &HirTypeNode) -> TypeInfo {
-        let kind = match &ty.kind {
-            HirType::I8 => ResolvedTypeKind::I8,
-            HirType::I16 => ResolvedTypeKind::I16,
-            HirType::I32 => ResolvedTypeKind::I32,
-            HirType::I64 => ResolvedTypeKind::I64,
-            HirType::I128 => ResolvedTypeKind::I128,
-            HirType::U8 => ResolvedTypeKind::U8,
-            HirType::U16 => ResolvedTypeKind::U16,
-            HirType::U32 => ResolvedTypeKind::U32,
-            HirType::U64 => ResolvedTypeKind::U64,
-            HirType::U128 => ResolvedTypeKind::U128,
-            HirType::ISize => ResolvedTypeKind::ISize,
-            HirType::USize => ResolvedTypeKind::USize,
-            HirType::F32 => ResolvedTypeKind::F32,
-            HirType::F64 => ResolvedTypeKind::F64,
-            HirType::Bool => ResolvedTypeKind::Bool,
-            HirType::Unit => ResolvedTypeKind::Unit,
+    pub fn type_from_hir_type(&self, ty: &HirTypeNode) -> TypeInfo {
+        match &ty.kind {
+            HirType::I8 => TypeInfo::primitive(ResolvedTypeKind::I8, ty.span.clone()),
+            HirType::I16 => TypeInfo::primitive(ResolvedTypeKind::I16, ty.span.clone()),
+            HirType::I32 => TypeInfo::primitive(ResolvedTypeKind::I32, ty.span.clone()),
+            HirType::I64 => TypeInfo::primitive(ResolvedTypeKind::I64, ty.span.clone()),
+            HirType::I128 => TypeInfo::primitive(ResolvedTypeKind::I128, ty.span.clone()),
+            HirType::U8 => TypeInfo::primitive(ResolvedTypeKind::U8, ty.span.clone()),
+            HirType::U16 => TypeInfo::primitive(ResolvedTypeKind::U16, ty.span.clone()),
+            HirType::U32 => TypeInfo::primitive(ResolvedTypeKind::U32, ty.span.clone()),
+            HirType::U64 => TypeInfo::primitive(ResolvedTypeKind::U64, ty.span.clone()),
+            HirType::U128 => TypeInfo::primitive(ResolvedTypeKind::U128, ty.span.clone()),
+            HirType::ISize => TypeInfo::primitive(ResolvedTypeKind::ISize, ty.span.clone()),
+            HirType::USize => TypeInfo::primitive(ResolvedTypeKind::USize, ty.span.clone()),
+            HirType::F32 => TypeInfo::primitive(ResolvedTypeKind::F32, ty.span.clone()),
+            HirType::F64 => TypeInfo::primitive(ResolvedTypeKind::F64, ty.span.clone()),
+            HirType::Bool => TypeInfo::primitive(ResolvedTypeKind::Bool, ty.span.clone()),
+            HirType::Unit => TypeInfo::unit(ty.span.clone()),
 
-            HirType::Ptr(inner) => ResolvedTypeKind::Pointer {
-                inner: Box::new(self.type_from_hir_type(inner)),
-            },
+            HirType::Ptr(inner) => {
+                TypeInfo::pointer(self.type_from_hir_type(inner), ty.span.clone())
+            }
+            HirType::Ref(inner) => {
+                TypeInfo::reference(self.type_from_hir_type(inner), ty.span.clone())
+            }
+            HirType::Nullable(inner) => {
+                TypeInfo::nullable(self.type_from_hir_type(inner), ty.span.clone())
+            }
 
-            HirType::Ref(inner) => ResolvedTypeKind::Ref {
-                inner: Box::new(self.type_from_hir_type(inner)),
-            },
+            HirType::Failable(ok, err) => TypeInfo::failable(
+                self.type_from_hir_type(ok),
+                self.type_from_hir_type(err),
+                ty.span.clone(),
+            ),
 
-            HirType::Nullable(inner) => self.type_from_hir_type(inner).kind,
+            HirType::Array(inner, size) => {
+                TypeInfo::array(self.type_from_hir_type(inner), *size, ty.span.clone())
+            }
 
-            HirType::Failable(ok, err) => ResolvedTypeKind::Failable {
-                ok: Box::new(self.type_from_hir_type(ok)),
-                err: Box::new(self.type_from_hir_type(err)),
-            },
+            HirType::Func(params, return_type) => TypeInfo::func(
+                ty.span.clone(),
+                params.iter().map(|p| self.type_from_hir_type(p)).collect(),
+                self.type_from_hir_type(return_type),
+            ),
 
-            HirType::Array(inner, size) => ResolvedTypeKind::Array {
-                inner: Box::new(self.type_from_hir_type(inner)),
-                size: None, //Will handle this later
-            },
-
-            HirType::Func(params, return_type) => ResolvedTypeKind::Func {
-                params: params.iter().map(|p| self.type_from_hir_type(p)).collect(),
-                ret_type: Box::new(self.type_from_hir_type(return_type)),
-            },
-
-            HirType::CustomType(name) => ResolvedTypeKind::Custom {
+            HirType::CustomType(name) => TypeInfo {
+                kind: ResolvedTypeKind::Custom {
+                    name: name.clone(),
+                    gen_type_params: vec![],
+                    members: vec![],
+                },
                 name: name.clone(),
-                gen_type_params: vec![],
-                members: vec![],
+                span: ty.span.clone(),
             },
 
-            HirType::GenericType { name, type_params } => ResolvedTypeKind::Custom {
+            HirType::GenericType { name, type_params } => TypeInfo {
+                kind: ResolvedTypeKind::Custom {
+                    name: name.clone(),
+                    gen_type_params: type_params
+                        .iter()
+                        .map(|p| self.type_from_hir_type(p))
+                        .collect(),
+                    members: vec![],
+                },
                 name: name.clone(),
-                gen_type_params: type_params
-                    .iter()
-                    .map(|p| self.type_from_hir_type(p))
-                    .collect(),
-                members: vec![],
+                span: ty.span.clone(),
             },
-        };
-
-        TypeInfo {
-            kind,
-            span: ty.span.clone(),
         }
     }
 
@@ -261,98 +228,43 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn declare_type(&mut self, stmt: &HirStmt) {
-        let kind = match &stmt.kind {
-            HirStmtKind::HirStructDecl {
-                name,
-                generic_type_params,
-                fields,
-                ..
-            } => ResolvedTypeKind::Custom {
-                name: name.clone(),
-                gen_type_params: generic_type_params
-                    .iter()
-                    .map(|ty| self.type_from_hir_type(ty))
-                    .collect(),
-                members: fields
-                    .iter()
-                    .map(|f| (f.name.clone(), self.type_from_hir_type(&f.ty)))
-                    .collect(),
-            },
-
+    pub fn declare_custom_types(&mut self, stmt: &HirStmt) {
+        let ty_info = match &stmt.kind {
             HirStmtKind::HirEnumDecl {
                 name,
                 underlying,
                 members,
                 ..
-            } => ResolvedTypeKind::Custom {
-                name: name.clone(),
-                gen_type_params: vec![],
-                members: members
-                    .iter()
-                    .map(|m| (m.name.clone(), self.type_from_hir_type(underlying)))
-                    .collect(),
-            },
-
-            HirStmtKind::HirVariantDecl {
+            } => TypeInfo::custom(stmt.span.clone(), name.clone(), vec![], vec![]),
+            HirStmtKind::HirStructDecl {
                 name,
+                contracts,
                 generic_type_params,
-                members,
+                fields,
                 ..
             } => {
-                ResolvedTypeKind::Custom {
-                    name: name.clone(),
-                    gen_type_params: generic_type_params
-                        .iter()
-                        .map(|ty| self.type_from_hir_type(ty))
-                        .collect(),
-                    members: members
-                        .iter()
-                        .map(|m| {
-                            let member_ty = if m.member_types.is_empty() {
-                                // no data — just the variant type itself
-                                TypeInfo {
-                                    kind: ResolvedTypeKind::Custom {
-                                        name: name.clone(),
-                                        gen_type_params: vec![],
-                                        members: vec![],
-                                    },
-                                    span: m.span.clone(),
-                                }
-                            } else {
-                                // has data — model as a function returning the variant type
-                                TypeInfo {
-                                    kind: ResolvedTypeKind::Func {
-                                        params: m
-                                            .member_types
-                                            .iter()
-                                            .map(|t| self.type_from_hir_type(t))
-                                            .collect(),
-                                        ret_type: Box::new(TypeInfo {
-                                            kind: ResolvedTypeKind::Custom {
-                                                name: name.clone(),
-                                                gen_type_params: vec![],
-                                                members: vec![],
-                                            },
-                                            span: m.span.clone(),
-                                        }),
-                                    },
-                                    span: m.span.clone(),
-                                }
-                            };
-                            (m.name.clone(), member_ty)
-                        })
-                        .collect(),
-                }
+                let gen_ps = generic_type_params
+                    .iter()
+                    .map(|g| self.type_from_hir_type(g))
+                    .collect();
+                TypeInfo::custom(stmt.span.clone(), name.clone(), gen_ps, vec![])
             }
-
-            _ => ResolvedTypeKind::Unknown,
+            HirStmtKind::HirVariantDecl {
+                name,
+                contracts,
+                members,
+                generic_type_params,
+                ..
+            } => {
+                let gen_ps = generic_type_params
+                    .iter()
+                    .map(|g| self.type_from_hir_type(g))
+                    .collect();
+                TypeInfo::custom(stmt.span.clone(), name.clone(), gen_ps, vec![])
+            }
+            _ => TypeInfo::unknown(stmt.span.clone()),
         };
 
-        let ty_info = TypeInfo {
-            kind,
-            span: stmt.span.clone(),
-        };
         self.types_table.types.insert(stmt.hir_id, ty_info);
     }
 
@@ -361,6 +273,16 @@ impl<'a> TypeChecker<'a> {
             Some(ty) => ty.clone(),
             None => TypeInfo::unknown(Span { start: 0, end: 0 }),
         }
+    }
+
+    pub fn type_mismatch(&mut self, expected: &TypeInfo, actual: &TypeInfo, span: Span) {
+        self.report(
+            format!(
+                "Type mismatch expected {} but got {}",
+                expected.name, actual.name
+            ),
+            Some(span),
+        );
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {
