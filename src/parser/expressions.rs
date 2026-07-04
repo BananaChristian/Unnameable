@@ -150,7 +150,7 @@ impl<'a> Parser<'a> {
             }
             TType::Bitcast => self.parse_bitcast_expr(),
             TType::Cast => self.parse_cast_expr(),
-            TType::Init => self.parse_init(),
+            TType::Dot => self.parse_init(),
             TType::SizeOf => self.parse_sizeof_expr(),
             TType::Lparen => self.parse_grouping(),
             TType::Unwrap => self.parse_unwrap_expr(),
@@ -333,8 +333,8 @@ impl<'a> Parser<'a> {
 
     fn parse_init(&mut self) -> Option<Expr> {
         let start = self.current_token()?.span.start;
-        self.expect_token(TType::Init)?;
-        let ty = self.parse_type()?;
+        self.expect_token(TType::Dot)?;
+        let ty = self.parse_type();
         self.expect_token(TType::LBrace)?;
         let mut params = Vec::new();
         while self.current_token()?.token_type != TType::Rbrace
@@ -352,7 +352,11 @@ impl<'a> Parser<'a> {
 
         Some(Expr::new(
             ExprKind::Instantiation {
-                init_ty: Box::new(ty),
+                init_ty: if let Some(cus_ty)=ty{
+                    Some(Box::new(cus_ty))
+                }else{
+                    None
+                },
                 body: params,
             },
             Span { start, end },

@@ -105,6 +105,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut parser = Parser::new(tokens, &mut diagnostics);
     let ast = parser.parse();
+    println!("{:?}",ast);
     if parser.corrupted {
         diagnostics.print();
         std::process::exit(1);
@@ -117,7 +118,7 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
 
-    let mut semantics = Semantics::new(hir, target_spec, &mut diagnostics);
+    let mut semantics = Semantics::new(hir, &target_spec, &mut diagnostics);
     semantics.analyze();
     if semantics.corrupted {
         diagnostics.print();

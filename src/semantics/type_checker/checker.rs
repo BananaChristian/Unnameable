@@ -1,11 +1,16 @@
 use crate::{
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
-    hir::{HirStmt, HirStmtKind, HirType, HirTypeNode},
+    hir::{
+        HirAnonStructField, HirEnumMember, HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode,
+    },
+    layout::{Layout, LayoutEngine},
     lowering::NodeId,
     semantics::{
+        TypeId,
         semantics::{NameTable, ResolvedTypeKind, TypeInfo, TypesTable},
         type_checker::registry::TypeRegistry,
     },
+    target::TargetSpec,
 };
 
 pub struct TypeChecker<'a> {
@@ -13,6 +18,7 @@ pub struct TypeChecker<'a> {
     pub name_table: &'a NameTable,
     pub types_table: &'a mut TypesTable,
     pub registry: TypeRegistry,
+    pub layout_engine: LayoutEngine<'a>,
     diagnostics: &'a mut Diagnostics,
     pub corrupted: bool,
 }
@@ -22,6 +28,7 @@ impl<'a> TypeChecker<'a> {
         diagnostics: &'a mut Diagnostics,
         hir: &'a Vec<HirStmt>,
         name_table: &'a NameTable,
+        target: &'a TargetSpec,
         types_table: &'a mut TypesTable,
     ) -> Self {
         TypeChecker {
@@ -29,6 +36,7 @@ impl<'a> TypeChecker<'a> {
             name_table,
             types_table,
             registry: TypeRegistry::new(),
+            layout_engine: LayoutEngine::new(target),
             diagnostics,
             corrupted: false,
         }
@@ -40,23 +48,53 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    pub fn update_kind(&mut self, node_id: NodeId, new_kind: ResolvedTypeKind) {
+        if let Some(info) = self.types_table.types.get_mut(&node_id) {
+            info.kind = new_kind;
+        }
+    }
+
+    pub fn update_layout(&mut self, node_id: NodeId, new_layout: Layout) {
+        if let Some(info) = self.types_table.types.get_mut(&node_id) {
+            info.layout = new_layout;
+        }
+    }
+
+    pub fn flush_layout_errors(&mut self) {
+        if self.layout_engine.corrupted {
+            self.corrupted = true;
+        }
+        for (message, span) in self.layout_engine.errors.drain(..) {
+            self.diagnostics
+                .report(CompilerError::error(message, Phase::Semantics, Some(span)));
+        }
+    }
+
     pub fn unknown(&mut self, span: Span) -> TypeInfo {
         let kind = ResolvedTypeKind::Unknown;
         let ty_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, ty_id.clone(), span.clone());
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id: ty_id,
+            layout,
             span,
         }
     }
 
     pub fn primitive(&mut self, kind: ResolvedTypeKind, span: Span) -> TypeInfo {
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
             span,
         }
     }
@@ -71,11 +109,47 @@ impl<'a> TypeChecker<'a> {
             ret_type: Box::new(ret),
         };
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
 
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
+            span,
+        }
+    }
+
+    pub fn tuple(&mut self, fields: Vec<TypeInfo>, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Tuple { fields };
+        let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
+
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            layout,
+            span,
+        }
+    }
+
+    pub fn anonymous(&mut self, fields: Vec<(String, TypeInfo)>, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Anonymous { fields };
+        let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
+
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            layout,
             span,
         }
     }
@@ -86,10 +160,14 @@ impl<'a> TypeChecker<'a> {
             size,
         };
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
             span,
         }
     }
@@ -99,11 +177,15 @@ impl<'a> TypeChecker<'a> {
             ty: Box::new(inner),
         };
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
 
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
             span,
         }
     }
@@ -114,10 +196,14 @@ impl<'a> TypeChecker<'a> {
             err: Box::new(err),
         };
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
             span,
         }
     }
@@ -127,11 +213,15 @@ impl<'a> TypeChecker<'a> {
             inner: Box::new(inner),
         };
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
 
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
             span,
         }
     }
@@ -141,10 +231,14 @@ impl<'a> TypeChecker<'a> {
             inner: Box::new(inner),
         };
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
             span,
         }
     }
@@ -152,11 +246,15 @@ impl<'a> TypeChecker<'a> {
     pub fn unit(&mut self, span: Span) -> TypeInfo {
         let kind = ResolvedTypeKind::Unit;
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
 
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
             span,
         }
     }
@@ -164,11 +262,15 @@ impl<'a> TypeChecker<'a> {
     pub fn boolean(&mut self, span: Span) -> TypeInfo {
         let kind = ResolvedTypeKind::Bool;
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
 
         TypeInfo {
             kind: kind.clone(),
             name: TypeInfo::name(kind),
             type_id,
+            layout,
             span,
         }
     }
@@ -186,6 +288,9 @@ impl<'a> TypeChecker<'a> {
             members: members.clone(),
         };
         let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
         TypeInfo {
             kind: ResolvedTypeKind::Custom {
                 name: name.clone(),
@@ -194,6 +299,7 @@ impl<'a> TypeChecker<'a> {
             },
             name,
             type_id,
+            layout,
             span,
         }
     }
@@ -352,6 +458,17 @@ impl<'a> TypeChecker<'a> {
                 let ret_ty = self.type_from_hir_type(return_type);
                 self.func(ty.span.clone(), _ps, ret_ty)
             }
+            HirType::Tuple(fields) => {
+                let members = fields.iter().map(|f| self.type_from_hir_type(f)).collect();
+                self.tuple(members, ty.span.clone())
+            }
+            HirType::AnonymousStruct(members) => {
+                let fields = members
+                    .iter()
+                    .map(|f| self.anon_struct_field_type(f))
+                    .collect();
+                self.anonymous(fields, ty.span.clone())
+            }
 
             HirType::CustomType(name) => self.custom(ty.span.clone(), name.clone(), vec![], vec![]),
             HirType::GenericType { name, type_params } => {
@@ -384,30 +501,82 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn struct_field_type(&mut self, member: &HirParam) -> (String, TypeInfo) {
+        let field_ty = self.type_from_hir_type(&member.ty);
+        (member.name.clone(), field_ty)
+    }
+
+    fn anon_struct_field_type(&mut self, member: &HirAnonStructField) -> (String, TypeInfo) {
+        let field_ty = self.type_from_hir_type(&member.ty);
+        (member.name.clone(), field_ty)
+    }
+
+    fn enum_member_type(&mut self, member: HirEnumMember, enum_ty: TypeInfo) -> (String, TypeInfo) {
+        (member.name.clone(), enum_ty)
+    }
+
     pub fn declare_custom_types(&mut self, stmt: &HirStmt) {
         let ty_kind = match &stmt.kind {
             HirStmtKind::HirStructDecl {
                 name,
-                contracts,
                 generic_type_params,
                 fields,
-                exposed,
+                ..
             } => ResolvedTypeKind::Custom {
                 name: name.clone(),
                 gen_type_params: generic_type_params
                     .iter()
                     .map(|gen_p| self.type_from_hir_type(gen_p))
                     .collect(),
-                members: vec![],
+                members: fields.iter().map(|f| self.struct_field_type(f)).collect(),
             },
+            HirStmtKind::HirEnumDecl {
+                name,
+                underlying,
+                members,
+                ..
+            } => {
+                let underlying_type_info = self.type_from_hir_type(underlying);
+
+                let stub_kind = ResolvedTypeKind::Custom {
+                    name: name.clone(),
+                    gen_type_params: vec![],
+                    members: vec![],
+                };
+                let mut enum_type_info = self.primitive(stub_kind, stmt.span.clone());
+
+                let resolved_variants: Vec<(String, TypeInfo)> = members
+                    .iter()
+                    .map(|m| self.enum_member_type(m.clone(), enum_type_info.clone()))
+                    .collect();
+
+                let final_kind = ResolvedTypeKind::Custom {
+                    name: name.clone(),
+                    gen_type_params: vec![],
+                    members: resolved_variants,
+                };
+
+                //Override
+                enum_type_info.kind = final_kind.clone();
+                enum_type_info.layout = underlying_type_info.layout.clone();
+
+                self.update_kind(stmt.hir_id, final_kind);
+                self.update_layout(stmt.hir_id, enum_type_info.layout);
+
+                enum_type_info.kind
+            }
             _ => ResolvedTypeKind::Unknown,
         };
 
         let ty_id = self.registry.issue_id(ty_kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&ty_kind, ty_id.clone(), stmt.span.clone());
         let ty_info = TypeInfo {
             kind: ty_kind.clone(),
             name: TypeInfo::name(ty_kind),
             type_id: ty_id,
+            layout,
             span: stmt.span.clone(),
         };
 

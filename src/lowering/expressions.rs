@@ -1,12 +1,12 @@
 use crate::{
     ast::{
-        BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier, QualifierKind, Type,
-        TypeKind, UnaryOp,
+        AnonStructField, BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier,
+        QualifierKind, Type, TypeKind, UnaryOp,
     },
     diagnostics::Span,
     hir::{
-        HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirType,
-        HirTypeNode, HirUnaryOp, QualifierMap,
+        HirAnonStructField, HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral,
+        HirPostfixOp, HirType, HirTypeNode, HirUnaryOp, QualifierMap,
     },
     lowering::lowering::Lowering,
 };
@@ -76,13 +76,18 @@ impl<'a> Lowering<'a> {
 
             // Struct instantiation
             ExprKind::Instantiation { init_ty, body } => {
-                let hir_ty = self.lower_type(init_ty)?;
+                let hir_ty = match init_ty {
+                    Some(boxed_type) => Some(self.lower_type(boxed_type.as_ref())?),
+                    None => None, // Anonymous literal syntax, inferred later
+                };
+
                 let hir_body = body
                     .iter()
                     .map(|p| self.lower_inst_param(p))
                     .collect::<Option<Vec<_>>>()?;
+
                 HirExprKind::Instantiation {
-                    init_ty: hir_ty,
+                    init_ty: hir_ty, // This field in HirExprKind must be an Option now!
                     body: hir_body,
                 }
             }
@@ -180,6 +185,16 @@ impl<'a> Lowering<'a> {
         })
     }
 
+    fn lower_anon_struct_fields(&mut self, field: &AnonStructField) -> Option<HirAnonStructField> {
+        let name = self.extract_name_string(&field.name)?;
+        let ty = self.lower_type(&field.ty)?;
+        Some(HirAnonStructField {
+            name: name.clone(),
+            ty,
+            span: field.span.clone(),
+        })
+    }
+
     pub fn lower_type(&mut self, type_node: &Type) -> Option<HirTypeNode> {
         let kind = match &type_node.kind {
             TypeKind::I8 => HirType::I8,
@@ -250,8 +265,22 @@ impl<'a> Lowering<'a> {
                     type_params: hir_params,
                 }
             }
+            TypeKind::Tuple(types) => {
+                let hir_types = types
+                    .iter()
+                    .map(|t| self.lower_type(t))
+                    .collect::<Option<Vec<_>>>()?;
+
+                HirType::Tuple(hir_types)
+            }
+            TypeKind::AnonStruct(members) => {
+                let fields = members
+                    .iter()
+                    .map(|m| self.lower_anon_struct_fields(m))
+                    .collect::<Option<Vec<_>>>()?;
+                HirType::AnonymousStruct(fields)
+            }
             TypeKind::None => {
-                self.report("Unresolved type".to_string(), Some(type_node.span.clone()));
                 return None;
             }
         };

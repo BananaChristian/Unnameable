@@ -1,6 +1,13 @@
 use crate::{diagnostics::Span, lowering::NodeId};
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct HirAnonStructField {
+    pub name: String,
+    pub ty: HirTypeNode,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum HirType {
     // Integer types
     I8,
@@ -38,6 +45,12 @@ pub enum HirType {
     Nullable(Box<HirTypeNode>),
     // Failable — !!(T, E)
     Failable(Box<HirTypeNode>, Box<HirTypeNode>),
+
+    // Tuple type representation: e.g., (i32, u8)
+    Tuple(Vec<HirTypeNode>),
+
+    // Anonymous Struct type representation: e.g., .{ .x: i32, .y: i32 }
+    AnonymousStruct(Vec<HirAnonStructField>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

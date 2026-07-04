@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expr, ExprKind, Precedence, Qualifier, Stmt, Type},
+    ast::{AnonStructField, Expr, ExprKind, Precedence, Qualifier, Stmt, Type, TypeKind},
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     lexer::{TType, token::Token},
 };
@@ -133,10 +133,23 @@ impl<'a> Parser<'a> {
             self.expect_token(TType::Gt)?;
             // Return your Type AST node wrapped up nicely
             Some(Type::generic(type_name, type_params, Span { start, end }))
-        }else{
+        } else {
             Some(Type::custom(type_name))
         }
+    }
 
+    fn parse_anon_struct_fields(&mut self) -> Option<AnonStructField> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Dot)?;
+        let name = self.parse_identifier()?;
+        self.expect_token(TType::Colon)?;
+        let ty = self.parse_type()?;
+        let end = self.current_token()?.span.end;
+        Some(AnonStructField {
+            name: Box::new(name),
+            ty,
+            span: Span { start, end },
+        })
     }
 
     pub fn parse_type(&mut self) -> Option<Type> {
@@ -209,19 +222,80 @@ impl<'a> Parser<'a> {
             }
             TType::Lparen => {
                 let start = self.current_token()?.span.start;
-                self.advance(); //(
+                self.advance(); // consume '('
+
+                // Empty parens = Unit type: ()
+                // Hard boundary: returns immediately. No nullability checks allowed here.
                 if self.current_token()?.token_type == TType::Rparen {
                     let end = self.current_token()?.span.end;
-                    let span = Span { start, end };
-                    self.advance();
-                    Some(Type::unit(span))
+                    self.advance(); // consume ')'
+                    return Some(Type::unit(Span { start, end }));
+                }
+
+                // Parse elements inside the tuple
+                let mut types = Vec::new();
+                types.push(self.parse_type()?);
+
+                let mut has_multiple_elements = false;
+
+                while self.current_token()?.token_type == TType::Comma {
+                    self.advance(); // consume ','
+
+                    if self.current_token()?.token_type == TType::Rparen {
+                        break;
+                    }
+
+                    has_multiple_elements = true;
+                    types.push(self.parse_type()?);
+                }
+
+                self.expect_token(TType::Rparen)?;
+                let end = self.current_token()?.span.end;
+                let base_type = Type {
+                    kind: TypeKind::Tuple(types),
+                    span: Span { start, end },
+                };
+
+                // Only allow `?` if it's a singular type tuple (e.g., `(i32)?` or `((i32, u8))?`).
+                if !has_multiple_elements && self.current_token()?.token_type == TType::QuestionMark
+                {
+                    self.advance(); // consume '?'
+                    let final_end = self.current_token()?.span.end;
+                    Some(Type::nullable(
+                        base_type,
+                        Span {
+                            start,
+                            end: final_end,
+                        },
+                    ))
                 } else {
-                    let inner = self.parse_type()?;
-                    self.expect_token(TType::Rparen)?;
-                    self.expect_token(TType::QuestionMark)?;
+                    Some(base_type)
+                }
+            }
+            TType::Dot => {
+                if self.peek_token()?.token_type == TType::LBrace {
+                    let start = self.current_token()?.span.start;
+                    self.expect_token(TType::Dot)?;
+                    let mut fields = Vec::new();
+                    self.expect_token(TType::LBrace)?;
+                    while self.current_token()?.token_type != TType::Rbrace
+                        && self.current_token()?.token_type != TType::End
+                    {
+                        let field = self.parse_anon_struct_fields()?;
+                        fields.push(field);
+                        if self.current_token()?.token_type == TType::Comma {
+                            self.advance();
+                            continue;
+                        }
+                    }
+                    self.expect_token(TType::Rbrace)?;
                     let end = self.current_token()?.span.end;
-                    let span = Span { start, end };
-                    Some(Type::nullable(inner, span))
+                    Some(Type {
+                        kind: TypeKind::AnonStruct(fields),
+                        span: Span { start, end },
+                    })
+                } else {
+                    None
                 }
             }
             TType::DoubleExclaim => {
@@ -257,7 +331,6 @@ impl<'a> Parser<'a> {
             _ => None,
         }
     }
-
 
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;

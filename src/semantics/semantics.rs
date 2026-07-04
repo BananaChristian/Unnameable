@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::{
     diagnostics::{Diagnostics, Span},
     hir::HirStmt,
+    layout::Layout,
     lowering::NodeId,
     semantics::{resolver::Resolver, type_checker::TypeChecker},
     target::TargetSpec,
@@ -20,6 +21,7 @@ pub struct TypeInfo {
     pub kind: ResolvedTypeKind,
     pub name: String,
     pub type_id: TypeId,
+    pub layout: Layout,
     pub span: Span,
 }
 
@@ -71,6 +73,12 @@ pub enum ResolvedTypeKind {
     Nullable {
         ty: Box<TypeInfo>,
     },
+    Tuple {
+        fields: Vec<TypeInfo>,
+    },
+    Anonymous {
+        fields: Vec<(String, TypeInfo)>,
+    },
     Unknown,
 }
 
@@ -112,6 +120,18 @@ impl TypeInfo {
             ResolvedTypeKind::Ref { inner } => {
                 format!("ref<{}>", inner.name.clone())
             }
+            ResolvedTypeKind::Tuple { fields } => {
+                let element_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+                format!("({})", element_names.join(", "))
+            }
+
+            ResolvedTypeKind::Anonymous { fields } => {
+                let field_strings: Vec<String> = fields
+                    .iter()
+                    .map(|(name, info)| format!(".{}: {}", name, info.name))
+                    .collect();
+                format!(".{{ {} }}", field_strings.join(", "))
+            }
             _ => "unknown".to_string(),
         }
     }
@@ -141,7 +161,7 @@ impl SemanticCtxt {
 
 pub struct Semantics<'a> {
     hir: Vec<HirStmt>,
-    target_spec: TargetSpec,
+    target_spec: &'a TargetSpec,
     diagnostics: &'a mut Diagnostics,
     ctxt: SemanticCtxt,
     pub corrupted: bool,
@@ -150,7 +170,7 @@ pub struct Semantics<'a> {
 impl<'a> Semantics<'a> {
     pub fn new(
         hir: Vec<HirStmt>,
-        target_spec: TargetSpec,
+        target_spec: &'a TargetSpec,
         diagnostics: &'a mut Diagnostics,
     ) -> Self {
         Semantics {
@@ -175,11 +195,13 @@ impl<'a> Semantics<'a> {
             self.diagnostics,
             &self.hir,
             &mut self.ctxt.names,
+            self.target_spec,
             &mut self.ctxt.types,
         );
         checker.check();
         if checker.corrupted {
             self.corrupted = true;
+            checker.flush_layout_errors();
         }
     }
 

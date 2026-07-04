@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::semantics::semantics::{ResolvedTypeKind, TypeId};
+use crate::{
+    layout::Layout,
+    semantics::semantics::{ResolvedTypeKind, TypeId},
+};
 
 pub struct TypeRegistry {
     issued_types: HashMap<ResolvedTypeKind, TypeId>,

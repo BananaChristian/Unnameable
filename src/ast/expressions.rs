@@ -65,7 +65,7 @@ pub enum ExprKind {
     //cast<i32>(x)
     StaticCast(Box<Type>, Box<Expr>),
     Instantiation {
-        init_ty: Box<Type>,
+        init_ty: Option<Box<Type>>,
         body: Vec<InstParam>,
     },
     Index {

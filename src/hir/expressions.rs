@@ -125,7 +125,7 @@ pub enum HirExprKind {
 
     // Struct instantiation, init Point { .x : 1 }
     Instantiation {
-        init_ty: HirTypeNode,
+        init_ty: Option<HirTypeNode>,
         body: Vec<HirInstParam>,
     },
 

@@ -65,7 +65,6 @@ impl<'a> Lexer<'a> {
             ("sizeof".to_string(), TType::SizeOf),
             ("enum".to_string(), TType::Enum),
             ("variant".to_string(), TType::Variant),
-            ("init".to_string(), TType::Init),
             ("expose".to_string(), TType::Expose),
             ("null".to_string(), TType::Null),
             ("unwrap".to_string(), TType::Unwrap),
