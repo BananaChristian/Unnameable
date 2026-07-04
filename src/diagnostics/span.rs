@@ -1,6 +1,6 @@
 use crate::diagnostics::source::SourceMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq,Eq,Hash)]
 pub struct Span {
     pub start: usize, // Byte offset
     pub end: usize,   // Byte offset

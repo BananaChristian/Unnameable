@@ -2,13 +2,17 @@ use crate::{
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     hir::{HirStmt, HirStmtKind, HirType, HirTypeNode},
     lowering::NodeId,
-    semantics::semantics::{NameTable, ResolvedTypeKind, TypeInfo, TypesTable},
+    semantics::{
+        semantics::{NameTable, ResolvedTypeKind, TypeInfo, TypesTable},
+        type_checker::registry::TypeRegistry,
+    },
 };
 
 pub struct TypeChecker<'a> {
     hir: &'a Vec<HirStmt>,
     pub name_table: &'a NameTable,
     pub types_table: &'a mut TypesTable,
+    pub registry: TypeRegistry,
     diagnostics: &'a mut Diagnostics,
     pub corrupted: bool,
 }
@@ -24,6 +28,7 @@ impl<'a> TypeChecker<'a> {
             hir,
             name_table,
             types_table,
+            registry: TypeRegistry::new(),
             diagnostics,
             corrupted: false,
         }
@@ -32,6 +37,164 @@ impl<'a> TypeChecker<'a> {
     pub fn check(&mut self) {
         for stmt in self.hir {
             self.check_stmt(stmt);
+        }
+    }
+
+    pub fn unknown(&mut self, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Unknown;
+        let ty_id = self.registry.issue_id(kind.clone());
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id: ty_id,
+            span,
+        }
+    }
+
+    pub fn primitive(&mut self, kind: ResolvedTypeKind, span: Span) -> TypeInfo {
+        let type_id = self.registry.issue_id(kind.clone());
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn func(&mut self, span: Span, params: Vec<TypeInfo>, ret: TypeInfo) -> TypeInfo {
+        let _ps: Vec<String> = params
+            .iter()
+            .map(|param| format!("{}", param.name.clone()))
+            .collect();
+        let kind = ResolvedTypeKind::Func {
+            params,
+            ret_type: Box::new(ret),
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn array(&mut self, inner: TypeInfo, size: Option<u64>, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Array {
+            inner: Box::new(inner.clone()),
+            size,
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn nullable(&mut self, inner: TypeInfo, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Nullable {
+            ty: Box::new(inner),
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn failable(&mut self, ok: TypeInfo, err: TypeInfo, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Failable {
+            ok: Box::new(ok),
+            err: Box::new(err),
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn pointer(&mut self, inner: TypeInfo, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Pointer {
+            inner: Box::new(inner),
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn reference(&mut self, inner: TypeInfo, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Ref {
+            inner: Box::new(inner),
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn unit(&mut self, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Unit;
+        let type_id = self.registry.issue_id(kind.clone());
+
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn boolean(&mut self, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Bool;
+        let type_id = self.registry.issue_id(kind.clone());
+
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            span,
+        }
+    }
+
+    pub fn custom(
+        &mut self,
+        span: Span,
+        name: String,
+        gen_params: Vec<TypeInfo>,
+        members: Vec<(String, TypeInfo)>,
+    ) -> TypeInfo {
+        let kind = ResolvedTypeKind::Custom {
+            name: name.clone(),
+            gen_type_params: gen_params.clone(),
+            members: members.clone(),
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+        TypeInfo {
+            kind: ResolvedTypeKind::Custom {
+                name: name.clone(),
+                gen_type_params: gen_params,
+                members,
+            },
+            name,
+            type_id,
+            span,
         }
     }
 
@@ -138,73 +301,66 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn type_from_hir_type(&self, ty: &HirTypeNode) -> TypeInfo {
+    pub fn type_from_hir_type(&mut self, ty: &HirTypeNode) -> TypeInfo {
         match &ty.kind {
-            HirType::I8 => TypeInfo::primitive(ResolvedTypeKind::I8, ty.span.clone()),
-            HirType::I16 => TypeInfo::primitive(ResolvedTypeKind::I16, ty.span.clone()),
-            HirType::I32 => TypeInfo::primitive(ResolvedTypeKind::I32, ty.span.clone()),
-            HirType::I64 => TypeInfo::primitive(ResolvedTypeKind::I64, ty.span.clone()),
-            HirType::I128 => TypeInfo::primitive(ResolvedTypeKind::I128, ty.span.clone()),
-            HirType::U8 => TypeInfo::primitive(ResolvedTypeKind::U8, ty.span.clone()),
-            HirType::U16 => TypeInfo::primitive(ResolvedTypeKind::U16, ty.span.clone()),
-            HirType::U32 => TypeInfo::primitive(ResolvedTypeKind::U32, ty.span.clone()),
-            HirType::U64 => TypeInfo::primitive(ResolvedTypeKind::U64, ty.span.clone()),
-            HirType::U128 => TypeInfo::primitive(ResolvedTypeKind::U128, ty.span.clone()),
-            HirType::ISize => TypeInfo::primitive(ResolvedTypeKind::ISize, ty.span.clone()),
-            HirType::USize => TypeInfo::primitive(ResolvedTypeKind::USize, ty.span.clone()),
-            HirType::F32 => TypeInfo::primitive(ResolvedTypeKind::F32, ty.span.clone()),
-            HirType::F64 => TypeInfo::primitive(ResolvedTypeKind::F64, ty.span.clone()),
-            HirType::Bool => TypeInfo::primitive(ResolvedTypeKind::Bool, ty.span.clone()),
-            HirType::Unit => TypeInfo::unit(ty.span.clone()),
+            HirType::I8 => self.primitive(ResolvedTypeKind::I8, ty.span.clone()),
+            HirType::I16 => self.primitive(ResolvedTypeKind::I16, ty.span.clone()),
+            HirType::I32 => self.primitive(ResolvedTypeKind::I32, ty.span.clone()),
+            HirType::I64 => self.primitive(ResolvedTypeKind::I64, ty.span.clone()),
+            HirType::I128 => self.primitive(ResolvedTypeKind::I128, ty.span.clone()),
+            HirType::U8 => self.primitive(ResolvedTypeKind::U8, ty.span.clone()),
+            HirType::U16 => self.primitive(ResolvedTypeKind::U16, ty.span.clone()),
+            HirType::U32 => self.primitive(ResolvedTypeKind::U32, ty.span.clone()),
+            HirType::U64 => self.primitive(ResolvedTypeKind::U64, ty.span.clone()),
+            HirType::U128 => self.primitive(ResolvedTypeKind::U128, ty.span.clone()),
+            HirType::ISize => self.primitive(ResolvedTypeKind::ISize, ty.span.clone()),
+            HirType::USize => self.primitive(ResolvedTypeKind::USize, ty.span.clone()),
+            HirType::F32 => self.primitive(ResolvedTypeKind::F32, ty.span.clone()),
+            HirType::F64 => self.primitive(ResolvedTypeKind::F64, ty.span.clone()),
+            HirType::Bool => self.primitive(ResolvedTypeKind::Bool, ty.span.clone()),
+            HirType::Unit => self.unit(ty.span.clone()),
 
             HirType::Ptr(inner) => {
-                TypeInfo::pointer(self.type_from_hir_type(inner), ty.span.clone())
+                let inner_ty = self.type_from_hir_type(inner);
+                self.pointer(inner_ty, ty.span.clone())
             }
             HirType::Ref(inner) => {
-                TypeInfo::reference(self.type_from_hir_type(inner), ty.span.clone())
+                let inner_ty = self.type_from_hir_type(inner);
+                self.reference(inner_ty, ty.span.clone())
             }
             HirType::Nullable(inner) => {
-                TypeInfo::nullable(self.type_from_hir_type(inner), ty.span.clone())
+                let inner_ty = self.type_from_hir_type(inner);
+                self.nullable(inner_ty, ty.span.clone())
             }
 
-            HirType::Failable(ok, err) => TypeInfo::failable(
-                self.type_from_hir_type(ok),
-                self.type_from_hir_type(err),
-                ty.span.clone(),
-            ),
+            HirType::Failable(ok, err) => {
+                let ok_ty = self.type_from_hir_type(ok);
+                let err_ty = self.type_from_hir_type(err);
+                self.failable(ok_ty, err_ty, ty.span.clone())
+            }
 
             HirType::Array(inner, size) => {
-                TypeInfo::array(self.type_from_hir_type(inner), *size, ty.span.clone())
+                let inner_ty = self.type_from_hir_type(inner);
+                self.array(inner_ty, *size, ty.span.clone())
             }
 
-            HirType::Func(params, return_type) => TypeInfo::func(
-                ty.span.clone(),
-                params.iter().map(|p| self.type_from_hir_type(p)).collect(),
-                self.type_from_hir_type(return_type),
-            ),
+            HirType::Func(params, return_type) => {
+                let _ps = params
+                    .iter()
+                    .map(|p| self.type_from_hir_type(p).clone())
+                    .collect();
+                let ret_ty = self.type_from_hir_type(return_type);
+                self.func(ty.span.clone(), _ps, ret_ty)
+            }
 
-            HirType::CustomType(name) => TypeInfo {
-                kind: ResolvedTypeKind::Custom {
-                    name: name.clone(),
-                    gen_type_params: vec![],
-                    members: vec![],
-                },
-                name: name.clone(),
-                span: ty.span.clone(),
-            },
-
-            HirType::GenericType { name, type_params } => TypeInfo {
-                kind: ResolvedTypeKind::Custom {
-                    name: name.clone(),
-                    gen_type_params: type_params
-                        .iter()
-                        .map(|p| self.type_from_hir_type(p))
-                        .collect(),
-                    members: vec![],
-                },
-                name: name.clone(),
-                span: ty.span.clone(),
-            },
+            HirType::CustomType(name) => self.custom(ty.span.clone(), name.clone(), vec![], vec![]),
+            HirType::GenericType { name, type_params } => {
+                let _ps = type_params
+                    .iter()
+                    .map(|p| self.type_from_hir_type(p).clone())
+                    .collect();
+                self.custom(ty.span.clone(), name.clone(), _ps, vec![])
+            }
         }
     }
 
@@ -229,40 +385,30 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn declare_custom_types(&mut self, stmt: &HirStmt) {
-        let ty_info = match &stmt.kind {
-            HirStmtKind::HirEnumDecl {
-                name,
-                underlying,
-                members,
-                ..
-            } => TypeInfo::custom(stmt.span.clone(), name.clone(), vec![], vec![]),
+        let ty_kind = match &stmt.kind {
             HirStmtKind::HirStructDecl {
                 name,
                 contracts,
                 generic_type_params,
                 fields,
-                ..
-            } => {
-                let gen_ps = generic_type_params
+                exposed,
+            } => ResolvedTypeKind::Custom {
+                name: name.clone(),
+                gen_type_params: generic_type_params
                     .iter()
-                    .map(|g| self.type_from_hir_type(g))
-                    .collect();
-                TypeInfo::custom(stmt.span.clone(), name.clone(), gen_ps, vec![])
-            }
-            HirStmtKind::HirVariantDecl {
-                name,
-                contracts,
-                members,
-                generic_type_params,
-                ..
-            } => {
-                let gen_ps = generic_type_params
-                    .iter()
-                    .map(|g| self.type_from_hir_type(g))
-                    .collect();
-                TypeInfo::custom(stmt.span.clone(), name.clone(), gen_ps, vec![])
-            }
-            _ => TypeInfo::unknown(stmt.span.clone()),
+                    .map(|gen_p| self.type_from_hir_type(gen_p))
+                    .collect(),
+                members: vec![],
+            },
+            _ => ResolvedTypeKind::Unknown,
+        };
+
+        let ty_id = self.registry.issue_id(ty_kind.clone());
+        let ty_info = TypeInfo {
+            kind: ty_kind.clone(),
+            name: TypeInfo::name(ty_kind),
+            type_id: ty_id,
+            span: stmt.span.clone(),
         };
 
         self.types_table.types.insert(stmt.hir_id, ty_info);
@@ -271,7 +417,7 @@ impl<'a> TypeChecker<'a> {
     pub fn get_decl_type(&mut self, decl_id: &NodeId) -> TypeInfo {
         match self.types_table.types.get(&decl_id) {
             Some(ty) => ty.clone(),
-            None => TypeInfo::unknown(Span { start: 0, end: 0 }),
+            None => self.unknown(Span { start: 0, end: 0 }),
         }
     }
 
@@ -285,7 +431,7 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
-    pub fn insert(&mut self,id:NodeId,ty: TypeInfo){
+    pub fn insert(&mut self, id: NodeId, ty: TypeInfo) {
         self.types_table.types.insert(id, ty);
     }
 

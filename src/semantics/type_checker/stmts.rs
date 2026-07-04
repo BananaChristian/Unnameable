@@ -1,6 +1,6 @@
 use crate::{
     hir::{HirStmt, HirStmtKind},
-    semantics::{semantics::TypeInfo, type_checker::checker::TypeChecker},
+    semantics::{type_checker::checker::TypeChecker},
 };
 
 impl<'a> TypeChecker<'a> {
@@ -27,7 +27,7 @@ impl<'a> TypeChecker<'a> {
         } = &stmt.kind
         {
             let cond_ty = self.expr_type(condition);
-            let bool_ty = TypeInfo::boolean(condition.span.clone());
+            let bool_ty = self.boolean(condition.span.clone());
             if !self.types_match(&bool_ty, &cond_ty) {
                 self.type_mismatch(&bool_ty, &cond_ty, condition.span.clone());
             }
@@ -47,7 +47,7 @@ impl<'a> TypeChecker<'a> {
     fn check_while(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirWhile { condition, body } = &stmt.kind {
             let cond_ty = self.expr_type(condition);
-            let bool_ty = TypeInfo::boolean(condition.span.clone());
+            let bool_ty = self.boolean(condition.span.clone());
             if !self.types_match(&bool_ty, &cond_ty) {
                 self.type_mismatch(&bool_ty, &cond_ty, condition.span.clone());
             }

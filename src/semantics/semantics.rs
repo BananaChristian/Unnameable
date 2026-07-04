@@ -4,21 +4,26 @@ use crate::{
     diagnostics::{Diagnostics, Span},
     hir::HirStmt,
     lowering::NodeId,
-    semantics::{resolver::Resolver, type_checker::TypeChecker}, target::TargetSpec,
+    semantics::{resolver::Resolver, type_checker::TypeChecker},
+    target::TargetSpec,
 };
 
 pub struct NameTable {
     pub resolved: HashMap<NodeId, NodeId>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Hash, Eq, PartialEq)]
+pub struct TypeId(pub usize);
+
+#[derive(Clone, Hash, Eq, PartialEq)]
 pub struct TypeInfo {
     pub kind: ResolvedTypeKind,
     pub name: String,
+    pub type_id: TypeId,
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Hash, Eq, PartialEq)]
 pub enum ResolvedTypeKind {
     //Primitives
     I8,
@@ -70,16 +75,8 @@ pub enum ResolvedTypeKind {
 }
 
 impl TypeInfo {
-    pub fn unknown(span: Span) -> Self {
-        TypeInfo {
-            kind: ResolvedTypeKind::Unknown,
-            name: "unknown".to_string(),
-            span,
-        }
-    }
-
-    pub fn primitive(kind: ResolvedTypeKind, span: Span) -> Self {
-        let name = match kind {
+    pub fn name(kind: ResolvedTypeKind) -> String {
+        match kind {
             ResolvedTypeKind::I8 => "i8".to_string(),
             ResolvedTypeKind::U8 => "u8".to_string(),
             ResolvedTypeKind::I16 => "i16".to_string(),
@@ -95,113 +92,27 @@ impl TypeInfo {
             ResolvedTypeKind::F32 => "f32".to_string(),
             ResolvedTypeKind::F64 => "f64".to_string(),
             ResolvedTypeKind::Bool => "bool".to_string(),
+            ResolvedTypeKind::Unit => "()".to_string(),
+            ResolvedTypeKind::Array { inner, size } => {
+                if let Some(s) = size {
+                    format!("arr[{},{}]", inner.name, s)
+                } else {
+                    format!("arr[{}]", inner.name)
+                }
+            }
+            ResolvedTypeKind::Nullable { ty } => {
+                format!("({})?", ty.name)
+            }
+            ResolvedTypeKind::Failable { ok, err } => {
+                format!("!!({},{})", ok.name, err.name)
+            }
+            ResolvedTypeKind::Pointer { inner } => {
+                format!("ptr<{}>", inner.name)
+            }
+            ResolvedTypeKind::Ref { inner } => {
+                format!("ref<{}>", inner.name.clone())
+            }
             _ => "unknown".to_string(),
-        };
-        TypeInfo { kind, name, span }
-    }
-
-    pub fn func(span: Span, params: Vec<TypeInfo>, ret: TypeInfo) -> Self {
-        let _ps: Vec<String> = params
-            .iter()
-            .map(|param| format!("{}", param.name.clone()))
-            .collect();
-
-        TypeInfo {
-            kind: ResolvedTypeKind::Func {
-                params,
-                ret_type: Box::new(ret.clone()),
-            },
-            name: format!("func():{}", ret.name),
-            span,
-        }
-    }
-
-    pub fn array(inner: TypeInfo, size: Option<u64>, span: Span) -> Self {
-        TypeInfo {
-            kind: ResolvedTypeKind::Array {
-                inner: Box::new(inner.clone()),
-                size,
-            },
-            name: if let Some(s) = size {
-                format!("arr[{},{}]", inner.name, s)
-            } else {
-                format!("arr[{}]", inner.name)
-            },
-            span,
-        }
-    }
-
-    pub fn nullable(inner: TypeInfo, span: Span) -> Self {
-        TypeInfo {
-            kind: ResolvedTypeKind::Nullable {
-                ty: Box::new(inner.clone()),
-            },
-            name: format!("({})?", inner.name.clone()),
-            span,
-        }
-    }
-
-    pub fn failable(ok: TypeInfo, err: TypeInfo, span: Span) -> Self {
-        TypeInfo {
-            kind: ResolvedTypeKind::Failable {
-                ok: Box::new(ok.clone()),
-                err: Box::new(err.clone()),
-            },
-            name: format!("!!({},{})", ok.name, err.name),
-            span,
-        }
-    }
-
-    pub fn pointer(inner: TypeInfo, span: Span) -> Self {
-        TypeInfo {
-            kind: ResolvedTypeKind::Pointer {
-                inner: Box::new(inner.clone()),
-            },
-            name: format!("ptr<{}>", inner.name),
-            span,
-        }
-    }
-
-    pub fn reference(inner: TypeInfo, span: Span) -> Self {
-        TypeInfo {
-            kind: ResolvedTypeKind::Ref {
-                inner: Box::new(inner.clone()),
-            },
-            name: format!("ref<{}>", inner.name.clone()),
-            span,
-        }
-    }
-
-    pub fn unit(span: Span) -> Self {
-        TypeInfo {
-            kind: ResolvedTypeKind::Unit,
-            name: format!("()"),
-            span,
-        }
-    }
-
-    pub fn boolean(span: Span) -> Self{
-        TypeInfo{
-            kind:ResolvedTypeKind::Bool,
-            name: format!("bool"),
-            span
-        }
-    }
-
-    pub fn custom(
-        span: Span,
-        name: String,
-        gen_params: Vec<TypeInfo>,
-        members: Vec<(String, TypeInfo)>,
-    ) -> Self {
-        TypeInfo {
-            kind: ResolvedTypeKind::Custom {
-                name: name.clone(),
-                gen_type_params: gen_params,
-                members,
-            },
-            name,
-            span,
         }
     }
 }
@@ -237,7 +148,11 @@ pub struct Semantics<'a> {
 }
 
 impl<'a> Semantics<'a> {
-    pub fn new(hir: Vec<HirStmt>,target_spec: TargetSpec, diagnostics: &'a mut Diagnostics) -> Self {
+    pub fn new(
+        hir: Vec<HirStmt>,
+        target_spec: TargetSpec,
+        diagnostics: &'a mut Diagnostics,
+    ) -> Self {
         Semantics {
             hir,
             target_spec,
@@ -256,12 +171,16 @@ impl<'a> Semantics<'a> {
     }
 
     fn run_type_checker(&mut self) {
-        let mut checker=TypeChecker::new(self.diagnostics, &self.hir, &mut self.ctxt.names, &mut self.ctxt.types);
+        let mut checker = TypeChecker::new(
+            self.diagnostics,
+            &self.hir,
+            &mut self.ctxt.names,
+            &mut self.ctxt.types,
+        );
         checker.check();
-        if checker.corrupted{
-            self.corrupted=true;
+        if checker.corrupted {
+            self.corrupted = true;
         }
-
     }
 
     pub fn analyze(&mut self) {

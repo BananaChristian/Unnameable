@@ -14,15 +14,13 @@ impl<'a> TypeChecker<'a> {
 
     pub fn expr_type(&mut self, expr: &HirExpr) -> TypeInfo {
         let ty = match &expr.kind {
-            HirExprKind::SizeOf(_) => {
-                TypeInfo::primitive(ResolvedTypeKind::USize, expr.span.clone())
-            }
+            HirExprKind::SizeOf(_) => self.primitive(ResolvedTypeKind::USize, expr.span.clone()),
             HirExprKind::Identifier(_) => self.identifier_type(expr),
             HirExprKind::Literal(_) => self.literal_type(expr),
             HirExprKind::Binary(_, _, _) => self.binary_type(expr),
             HirExprKind::StaticCast(_, _) => self.cast_type(expr),
             HirExprKind::BitCast(_, _) => self.bitcast_type(expr),
-            _ => TypeInfo::unknown(expr.span.clone()),
+            _ => self.unknown(expr.span.clone()),
         };
         self.insert(expr.hir_id, ty.clone());
         ty
@@ -35,7 +33,7 @@ impl<'a> TypeChecker<'a> {
             //Will have to apply some casting rules here
             target_ty
         } else {
-            TypeInfo::unknown(expr.span.clone())
+            self.unknown(expr.span.clone())
         }
     }
 
@@ -46,7 +44,7 @@ impl<'a> TypeChecker<'a> {
             //Will have to apply some bitcasting rules here
             target_ty
         } else {
-            TypeInfo::unknown(expr.span.clone())
+            self.unknown(expr.span.clone())
         }
     }
 
@@ -54,7 +52,7 @@ impl<'a> TypeChecker<'a> {
         let decl_id = match self.name_table.resolved.get(&expr.hir_id) {
             Some(id) => id,
             None => {
-                return TypeInfo::unknown(expr.span.clone());
+                return self.unknown(expr.span.clone());
             }
         };
 
@@ -76,11 +74,11 @@ impl<'a> TypeChecker<'a> {
                 | HirBinaryOp::Lt
                 | HirBinaryOp::Gt
                 | HirBinaryOp::Geq
-                | HirBinaryOp::Leq => TypeInfo::boolean(expr.span.clone()),
-                _ => TypeInfo::unknown(expr.span.clone()),
+                | HirBinaryOp::Leq => self.boolean(expr.span.clone()), //For now
+                _ => self.unknown(expr.span.clone()),
             }
         } else {
-            TypeInfo::unknown(expr.span.clone())
+            self.unknown(expr.span.clone())
         }
     }
 
@@ -91,7 +89,7 @@ impl<'a> TypeChecker<'a> {
                 "Left operand of arithmetic operation must be numeric".to_string(),
                 Some(span.clone()),
             );
-            return TypeInfo::unknown(span.clone());
+            return self.unknown(span.clone());
         }
 
         if !self.is_numeric(&right_ty) {
@@ -99,12 +97,12 @@ impl<'a> TypeChecker<'a> {
                 "Right operand of arithmetic operation must be numeric".to_string(),
                 Some(span.clone()),
             );
-            return TypeInfo::unknown(span.clone());
+            return self.unknown(span.clone());
         }
 
         if !self.types_match(&left_ty, &right_ty) {
             self.type_mismatch(&left_ty, &right_ty, span.clone());
-            return TypeInfo::unknown(span.clone());
+            return self.unknown(span.clone());
         }
 
         left_ty
@@ -113,57 +111,36 @@ impl<'a> TypeChecker<'a> {
     fn literal_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::Literal(lit) = &expr.kind {
             let ty = match lit {
-                HirLiteral::Int8(_) => TypeInfo::primitive(ResolvedTypeKind::I8, expr.span.clone()),
-                HirLiteral::Uint8(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::U8, expr.span.clone())
-                }
-                HirLiteral::Int16(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::I16, expr.span.clone())
-                }
-                HirLiteral::Uint16(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::U16, expr.span.clone())
-                }
-                HirLiteral::Int32(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::I32, expr.span.clone())
-                }
-                HirLiteral::Uint32(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::U32, expr.span.clone())
-                }
-                HirLiteral::Int64(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::I64, expr.span.clone())
-                }
-                HirLiteral::Uint64(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::U64, expr.span.clone())
-                }
-                HirLiteral::Int128(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::I128, expr.span.clone())
-                }
-                HirLiteral::Uint128(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::U128, expr.span.clone())
-                }
+                HirLiteral::Int8(_) => self.primitive(ResolvedTypeKind::I8, expr.span.clone()),
+                HirLiteral::Uint8(_) => self.primitive(ResolvedTypeKind::U8, expr.span.clone()),
+                HirLiteral::Int16(_) => self.primitive(ResolvedTypeKind::I16, expr.span.clone()),
+                HirLiteral::Uint16(_) => self.primitive(ResolvedTypeKind::U16, expr.span.clone()),
+                HirLiteral::Int32(_) => self.primitive(ResolvedTypeKind::I32, expr.span.clone()),
+                HirLiteral::Uint32(_) => self.primitive(ResolvedTypeKind::U32, expr.span.clone()),
+                HirLiteral::Int64(_) => self.primitive(ResolvedTypeKind::I64, expr.span.clone()),
+                HirLiteral::Uint64(_) => self.primitive(ResolvedTypeKind::U64, expr.span.clone()),
+                HirLiteral::Int128(_) => self.primitive(ResolvedTypeKind::I128, expr.span.clone()),
+                HirLiteral::Uint128(_) => self.primitive(ResolvedTypeKind::U128, expr.span.clone()),
                 HirLiteral::IntSize(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::ISize, expr.span.clone())
+                    self.primitive(ResolvedTypeKind::ISize, expr.span.clone())
                 }
                 HirLiteral::UintSize(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::USize, expr.span.clone())
+                    self.primitive(ResolvedTypeKind::USize, expr.span.clone())
                 }
-                HirLiteral::Int(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::USize, expr.span.clone())
+                HirLiteral::Int(_) => self.primitive(ResolvedTypeKind::USize, expr.span.clone()),
+                HirLiteral::Float(_) => self.primitive(ResolvedTypeKind::F32, expr.span.clone()),
+                HirLiteral::F32(_) => self.primitive(ResolvedTypeKind::F32, expr.span.clone()),
+                HirLiteral::F64(_) => self.primitive(ResolvedTypeKind::F64, expr.span.clone()),
+                HirLiteral::Bool(_) => self.primitive(ResolvedTypeKind::Bool, expr.span.clone()),
+                HirLiteral::Null => {
+                    let inner_ty = self.unknown(expr.span.clone());
+                    self.primitive(
+                        ResolvedTypeKind::Nullable {
+                            ty: Box::new(inner_ty),
+                        },
+                        expr.span.clone(),
+                    )
                 }
-                HirLiteral::Float(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::F32, expr.span.clone())
-                }
-                HirLiteral::F32(_) => TypeInfo::primitive(ResolvedTypeKind::F32, expr.span.clone()),
-                HirLiteral::F64(_) => TypeInfo::primitive(ResolvedTypeKind::F64, expr.span.clone()),
-                HirLiteral::Bool(_) => {
-                    TypeInfo::primitive(ResolvedTypeKind::Bool, expr.span.clone())
-                }
-                HirLiteral::Null => TypeInfo::primitive(
-                    ResolvedTypeKind::Nullable {
-                        ty: Box::new(TypeInfo::unknown(expr.span.clone())),
-                    },
-                    expr.span.clone(),
-                ),
                 HirLiteral::ArrayLiteral(elements) => {
                     self.check_array_literal(elements, expr.span.clone())
                 }
@@ -171,13 +148,13 @@ impl<'a> TypeChecker<'a> {
 
             ty
         } else {
-            TypeInfo::unknown(expr.span.clone())
+            self.unknown(expr.span.clone())
         }
     }
 
     fn check_array_literal(&mut self, elements: &Vec<HirExpr>, span: Span) -> TypeInfo {
         if elements.is_empty() {
-            TypeInfo::unknown(span)
+            self.unknown(span)
         } else {
             let first_ty = self.expr_type(&elements[0]);
             let mut all_okay = true;
@@ -193,9 +170,9 @@ impl<'a> TypeChecker<'a> {
             }
 
             if all_okay {
-                TypeInfo::array(first_ty, Some(elements.len() as u64), span)
+                self.array(first_ty, Some(elements.len() as u64), span)
             } else {
-                TypeInfo::unknown(span)
+                self.unknown(span)
             }
         }
     }

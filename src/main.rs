@@ -12,6 +12,7 @@ mod parser;
 mod hir;
 mod lowering;
 mod semantics;
+mod layout;
 
 fn print_help(program_name: &str) {
     println!("Unnameable Compiler");
