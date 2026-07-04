@@ -278,11 +278,15 @@ impl<'a> TypeChecker<'a> {
     pub fn type_mismatch(&mut self, expected: &TypeInfo, actual: &TypeInfo, span: Span) {
         self.report(
             format!(
-                "Type mismatch expected {} but got {}",
+                "Type mismatch between '{}' and '{}'",
                 expected.name, actual.name
             ),
             Some(span),
         );
+    }
+
+    pub fn insert(&mut self,id:NodeId,ty: TypeInfo){
+        self.types_table.types.insert(id, ty);
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {

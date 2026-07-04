@@ -4,7 +4,7 @@ use crate::{
     diagnostics::{Diagnostics, Span},
     hir::HirStmt,
     lowering::NodeId,
-    semantics::{resolver::Resolver, type_checker::TypeChecker},
+    semantics::{resolver::Resolver, type_checker::TypeChecker}, target::TargetSpec,
 };
 
 pub struct NameTable {
@@ -230,15 +230,17 @@ impl SemanticCtxt {
 
 pub struct Semantics<'a> {
     hir: Vec<HirStmt>,
+    target_spec: TargetSpec,
     diagnostics: &'a mut Diagnostics,
     ctxt: SemanticCtxt,
     pub corrupted: bool,
 }
 
 impl<'a> Semantics<'a> {
-    pub fn new(hir: Vec<HirStmt>, diagnostics: &'a mut Diagnostics) -> Self {
+    pub fn new(hir: Vec<HirStmt>,target_spec: TargetSpec, diagnostics: &'a mut Diagnostics) -> Self {
         Semantics {
             hir,
+            target_spec,
             diagnostics,
             ctxt: SemanticCtxt::new(),
             corrupted: false,

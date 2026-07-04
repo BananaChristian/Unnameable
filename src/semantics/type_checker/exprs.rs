@@ -8,6 +8,10 @@ use crate::{
 };
 
 impl<'a> TypeChecker<'a> {
+    pub fn check_expr(&mut self, expr: &HirExpr) {
+        self.expr_type(expr);
+    }
+
     pub fn expr_type(&mut self, expr: &HirExpr) -> TypeInfo {
         let ty = match &expr.kind {
             HirExprKind::SizeOf(_) => {
@@ -17,10 +21,10 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::Literal(_) => self.literal_type(expr),
             HirExprKind::Binary(_, _, _) => self.binary_type(expr),
             HirExprKind::StaticCast(_, _) => self.cast_type(expr),
-            HirExprKind::BitCast(_,_ ) => self.bitcast_type(expr),
+            HirExprKind::BitCast(_, _) => self.bitcast_type(expr),
             _ => TypeInfo::unknown(expr.span.clone()),
         };
-        self.types_table.types.insert(expr.hir_id, ty.clone());
+        self.insert(expr.hir_id, ty.clone());
         ty
     }
 
@@ -99,13 +103,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         if !self.types_match(&left_ty, &right_ty) {
-            self.report(
-                format!(
-                    "Type mismatch between '{}'' and '{}'",
-                    left_ty.name, right_ty.name
-                ),
-                Some(span.clone()),
-            );
+            self.type_mismatch(&left_ty, &right_ty, span.clone());
             return TypeInfo::unknown(span.clone());
         }
 
