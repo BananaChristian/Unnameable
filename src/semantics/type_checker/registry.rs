@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use crate::{
-    layout::Layout,
     semantics::semantics::{ResolvedTypeKind, TypeId},
 };
 

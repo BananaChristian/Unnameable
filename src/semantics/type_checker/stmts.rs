@@ -1,6 +1,6 @@
 use crate::{
     hir::{HirStmt, HirStmtKind},
-    semantics::{type_checker::checker::TypeChecker},
+    semantics::type_checker::checker::TypeChecker,
 };
 
 impl<'a> TypeChecker<'a> {
@@ -9,6 +9,9 @@ impl<'a> TypeChecker<'a> {
             HirStmtKind::HirIf { .. } => self.check_if(stmt),
             HirStmtKind::HirWhile { .. } => self.check_while(stmt),
             HirStmtKind::HirExpr(..) => self.check_expr_stmt(stmt),
+            HirStmtKind::HirVariantDecl { .. }
+            | HirStmtKind::HirStructDecl { .. }
+            | HirStmtKind::HirEnumDecl { .. } => self.declare_custom_types(stmt),
             _ => (),
         }
     }

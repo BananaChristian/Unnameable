@@ -2,6 +2,7 @@ use crate::{
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     hir::{
         HirAnonStructField, HirEnumMember, HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode,
+        HirVariantMember,
     },
     layout::{Layout, LayoutEngine},
     lowering::NodeId,
@@ -330,7 +331,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         name: String,
         gen_params: Vec<TypeInfo>,
-        arms: Vec<(String, TypeInfo)>,
+        arms: Vec<(String, TypeInfo, Vec<TypeInfo>)>,
         span: Span,
     ) -> TypeInfo {
         let kind = ResolvedTypeKind::Variant {
@@ -428,12 +429,12 @@ impl<'a> TypeChecker<'a> {
                 },
             ) => self.types_match(ok_a, ok_b) && self.types_match(err_a, err_b),
             (
-                ResolvedTypeKind::Custom {
+                ResolvedTypeKind::Struct {
                     name: name_a,
                     gen_type_params: gens_a,
                     ..
                 },
-                ResolvedTypeKind::Custom {
+                ResolvedTypeKind::Struct {
                     name: name_b,
                     gen_type_params: gens_b,
                     ..
@@ -518,13 +519,8 @@ impl<'a> TypeChecker<'a> {
                 self.anonymous(fields, ty.span.clone())
             }
 
-            HirType::CustomType(name) => self.custom(ty.span.clone(), name.clone(), vec![], vec![]),
-            HirType::GenericType { name, type_params } => {
-                let _ps = type_params
-                    .iter()
-                    .map(|p| self.type_from_hir_type(p).clone())
-                    .collect();
-                self.custom(ty.span.clone(), name.clone(), _ps, vec![])
+            HirType::CustomType(_) | HirType::GenericType { .. } => {
+                self.look_up_declared_type(ty.hir_id)
             }
         }
     }
@@ -554,12 +550,29 @@ impl<'a> TypeChecker<'a> {
         (member.name.clone(), field_ty)
     }
 
+    fn variant_field_ty(
+        &mut self,
+        member: &HirVariantMember,
+        variant_ty: TypeInfo,
+    ) -> (String, TypeInfo, Vec<TypeInfo>) {
+        let payloads = member
+            .member_types
+            .iter()
+            .map(|ps| self.type_from_hir_type(ps))
+            .collect();
+        (member.name.clone(), variant_ty, payloads)
+    }
+
     fn anon_struct_field_type(&mut self, member: &HirAnonStructField) -> (String, TypeInfo) {
         let field_ty = self.type_from_hir_type(&member.ty);
         (member.name.clone(), field_ty)
     }
 
-    fn enum_member_type(&mut self, member: HirEnumMember, enum_ty: TypeInfo) -> (String, TypeInfo) {
+    fn enum_member_type(
+        &mut self,
+        member: &HirEnumMember,
+        enum_ty: TypeInfo,
+    ) -> (String, TypeInfo) {
         (member.name.clone(), enum_ty)
     }
 
@@ -578,40 +591,58 @@ impl<'a> TypeChecker<'a> {
                     .collect(),
                 members: fields.iter().map(|f| self.struct_field_type(f)).collect(),
             },
+            HirStmtKind::HirVariantDecl {
+                name,
+                members,
+                generic_type_params,
+                ..
+            } => {
+                let g_params = generic_type_params
+                    .iter()
+                    .map(|gen_p| self.type_from_hir_type(gen_p))
+                    .collect();
+
+                let variant_stub =
+                    self.variant_ty(name.clone(), g_params, vec![], stmt.span.clone());
+
+                let new_kind = ResolvedTypeKind::Variant {
+                    name: name.clone(),
+                    gen_type_params: generic_type_params
+                        .iter()
+                        .map(|gen_p| self.type_from_hir_type(gen_p))
+                        .collect(),
+                    arms: members
+                        .iter()
+                        .map(|m| self.variant_field_ty(m, variant_stub.clone()))
+                        .collect(),
+                };
+                self.update_kind(stmt.hir_id, new_kind.clone());
+                new_kind
+            }
             HirStmtKind::HirEnumDecl {
                 name,
                 underlying,
                 members,
                 ..
             } => {
-                let underlying_type_info = self.type_from_hir_type(underlying);
-
-                let stub_kind = ResolvedTypeKind::Custom {
-                    name: name.clone(),
-                    gen_type_params: vec![],
-                    members: vec![],
-                };
-                let mut enum_type_info = self.primitive(stub_kind, stmt.span.clone());
-
-                let resolved_variants: Vec<(String, TypeInfo)> = members
+                let underlying_ty = self.type_from_hir_type(underlying);
+                let enum_stub = self.enum_ty(
+                    name.clone(),
+                    underlying_ty.clone(),
+                    vec![],
+                    stmt.span.clone(),
+                );
+                let fields = members
                     .iter()
-                    .map(|m| self.enum_member_type(m.clone(), enum_type_info.clone()))
+                    .map(|f| self.enum_member_type(f, enum_stub.clone()))
                     .collect();
-
-                let final_kind = ResolvedTypeKind::Custom {
+                let new_kind = ResolvedTypeKind::Enum {
                     name: name.clone(),
-                    gen_type_params: vec![],
-                    members: resolved_variants,
+                    underlying: Box::new(underlying_ty),
+                    members: fields,
                 };
-
-                //Override
-                enum_type_info.kind = final_kind.clone();
-                enum_type_info.layout = underlying_type_info.layout.clone();
-
-                self.update_kind(stmt.hir_id, final_kind);
-                self.update_layout(stmt.hir_id, enum_type_info.layout);
-
-                enum_type_info.kind
+                self.update_kind(stmt.hir_id, new_kind.clone());
+                new_kind
             }
             _ => ResolvedTypeKind::Unknown,
         };
@@ -628,7 +659,7 @@ impl<'a> TypeChecker<'a> {
             span: stmt.span.clone(),
         };
 
-        self.types_table.types.insert(stmt.hir_id, ty_info);
+        self.insert(stmt.hir_id, ty_info);
     }
 
     pub fn get_decl_type(&mut self, decl_id: &NodeId) -> TypeInfo {
@@ -650,6 +681,14 @@ impl<'a> TypeChecker<'a> {
 
     pub fn insert(&mut self, id: NodeId, ty: TypeInfo) {
         self.types_table.types.insert(id, ty);
+    }
+
+    pub fn look_up_declared_type(&mut self, usage_id: NodeId) -> TypeInfo {
+        if let Some(decl_id) = self.name_table.resolved.get(&usage_id) {
+            self.get_decl_type(decl_id)
+        } else {
+            self.unknown(Span { start: 0, end: 0 })
+        }
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {

@@ -15,7 +15,7 @@ impl<'a> TypeChecker<'a> {
     pub fn expr_type(&mut self, expr: &HirExpr) -> TypeInfo {
         let ty = match &expr.kind {
             HirExprKind::SizeOf(_) => self.primitive(ResolvedTypeKind::USize, expr.span.clone()),
-            HirExprKind::Identifier(_) => self.identifier_type(expr),
+            HirExprKind::Identifier(_) => self.look_up_declared_type(expr.hir_id),
             HirExprKind::Literal(_) => self.literal_type(expr),
             HirExprKind::Binary(_, _, _) => self.binary_type(expr),
             HirExprKind::StaticCast(_, _) => self.cast_type(expr),
@@ -46,17 +46,6 @@ impl<'a> TypeChecker<'a> {
         } else {
             self.unknown(expr.span.clone())
         }
-    }
-
-    fn identifier_type(&mut self, expr: &HirExpr) -> TypeInfo {
-        let decl_id = match self.name_table.resolved.get(&expr.hir_id) {
-            Some(id) => id,
-            None => {
-                return self.unknown(expr.span.clone());
-            }
-        };
-
-        self.get_decl_type(decl_id)
     }
 
     fn binary_type(&mut self, expr: &HirExpr) -> TypeInfo {

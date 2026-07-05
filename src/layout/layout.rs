@@ -97,11 +97,9 @@ impl<'a> LayoutEngine<'a> {
                     alignment: element_layout.alignment,
                 }
             }
-            ResolvedTypeKind::Custom {
-                name,
-                gen_type_params,
-                members,
-            } => self.struct_layout(members),
+            ResolvedTypeKind::Struct { members, .. } => self.struct_layout(members),
+            ResolvedTypeKind::Enum { underlying, .. } => self.enum_layout(underlying),
+            ResolvedTypeKind::Variant { arms, .. } => self.variant_layout(arms),
             _ => Layout::empty(),
         }
     }
@@ -132,6 +130,72 @@ impl<'a> LayoutEngine<'a> {
         Layout {
             size: offset,
             alignment: max_align,
+        }
+    }
+
+    fn enum_layout(&mut self, underlying: &TypeInfo) -> Layout {
+        let underlying_layout = self.layout_of(
+            &underlying.kind,
+            underlying.type_id.clone(),
+            underlying.span.clone(),
+        );
+        Layout {
+            size: underlying_layout.size,
+            alignment: underlying_layout.alignment,
+        }
+    }
+
+    fn variant_layout(&mut self, arms: &Vec<(String, TypeInfo, Vec<TypeInfo>)>) -> Layout {
+        let tag_size: usize = 4;
+        let tag_alignment: usize = 4;
+
+        let mut max_payload_size: usize = 0;
+        let mut max_payload_align: usize = 1;
+
+        for (_, _, payload_vec) in arms {
+            let mut arm_offset: usize = 0;
+            let mut arm_max_align: usize = 1;
+
+            for field_ty in payload_vec {
+                let field_layout = self.layout_of(
+                    &field_ty.kind,
+                    field_ty.type_id.clone(),
+                    field_ty.span.clone(),
+                );
+                let padding = (field_ty.layout.alignment - (arm_offset % field_layout.alignment))
+                    % field_layout.alignment;
+                arm_offset += padding;
+                arm_offset += field_layout.size;
+                if field_layout.alignment > arm_max_align {
+                    arm_max_align = field_layout.alignment;
+                }
+            }
+
+            let arm_tail_padding = (arm_max_align - (arm_offset % arm_max_align)) % arm_max_align;
+            arm_offset += arm_tail_padding;
+
+            if arm_offset > max_payload_size {
+                max_payload_size = arm_offset;
+            }
+
+            if arm_max_align > max_payload_align {
+                max_payload_align = arm_max_align;
+            }
+        }
+
+        let final_max_align = std::cmp::max(tag_alignment, max_payload_align);
+
+        let payload_padding =
+            (max_payload_align - (tag_size % max_payload_align)) % max_payload_align;
+        let mut total_size = tag_size + payload_padding + max_payload_size;
+
+        let final_tail_padding =
+            (final_max_align - (total_size % final_max_align)) % final_max_align;
+        total_size += final_tail_padding;
+
+        Layout {
+            size: total_size,
+            alignment: final_max_align,
         }
     }
 

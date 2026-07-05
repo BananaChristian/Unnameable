@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct NameTable {
-    pub resolved: HashMap<NodeId, NodeId>,
+    pub resolved: HashMap<NodeId, NodeId>, //usage_id, declaration_id
 }
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -74,7 +74,7 @@ pub enum ResolvedTypeKind {
     Variant {
         name: String,
         gen_type_params: Vec<TypeInfo>,
-        arms: Vec<(String, TypeInfo)>,
+        arms: Vec<(String, TypeInfo, Vec<TypeInfo>)>,
     },
     Tuple {
         fields: Vec<TypeInfo>,
@@ -159,9 +159,7 @@ impl TypeInfo {
                 }
             }
 
-            ResolvedTypeKind::Enum { name, .. } => {
-                name
-            }
+            ResolvedTypeKind::Enum { name, .. } => name,
 
             ResolvedTypeKind::Variant {
                 name,
