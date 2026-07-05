@@ -61,10 +61,26 @@ pub enum ResolvedTypeKind {
         ret_type: Box<TypeInfo>,
     },
     //User defined
-    Custom {
+    Struct {
         name: String,
         gen_type_params: Vec<TypeInfo>,
         members: Vec<(String, TypeInfo)>,
+    },
+    Enum {
+        name: String,
+        underlying: Box<TypeInfo>,
+        members: Vec<(String, TypeInfo)>,
+    },
+    Variant {
+        name: String,
+        gen_type_params: Vec<TypeInfo>,
+        arms: Vec<(String, TypeInfo)>,
+    },
+    Tuple {
+        fields: Vec<TypeInfo>,
+    },
+    Anonymous {
+        fields: Vec<(String, TypeInfo)>,
     },
     Failable {
         ok: Box<TypeInfo>,
@@ -73,12 +89,7 @@ pub enum ResolvedTypeKind {
     Nullable {
         ty: Box<TypeInfo>,
     },
-    Tuple {
-        fields: Vec<TypeInfo>,
-    },
-    Anonymous {
-        fields: Vec<(String, TypeInfo)>,
-    },
+
     Unknown,
 }
 
@@ -101,6 +112,7 @@ impl TypeInfo {
             ResolvedTypeKind::F64 => "f64".to_string(),
             ResolvedTypeKind::Bool => "bool".to_string(),
             ResolvedTypeKind::Unit => "()".to_string(),
+            ResolvedTypeKind::Unknown => "unknown".to_string(),
             ResolvedTypeKind::Array { inner, size } => {
                 if let Some(s) = size {
                     format!("arr[{},{}]", inner.name, s)
@@ -124,7 +136,6 @@ impl TypeInfo {
                 let element_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
                 format!("({})", element_names.join(", "))
             }
-
             ResolvedTypeKind::Anonymous { fields } => {
                 let field_strings: Vec<String> = fields
                     .iter()
@@ -132,7 +143,44 @@ impl TypeInfo {
                     .collect();
                 format!(".{{ {} }}", field_strings.join(", "))
             }
-            _ => "unknown".to_string(),
+            ResolvedTypeKind::GenericParam(name) => name,
+
+            ResolvedTypeKind::Struct {
+                name,
+                gen_type_params,
+                ..
+            } => {
+                if gen_type_params.is_empty() {
+                    name
+                } else {
+                    let params: Vec<String> =
+                        gen_type_params.iter().map(|p| p.name.clone()).collect();
+                    format!("{}<{}>", name, params.join(", "))
+                }
+            }
+
+            ResolvedTypeKind::Enum { name, .. } => {
+                name
+            }
+
+            ResolvedTypeKind::Variant {
+                name,
+                gen_type_params,
+                ..
+            } => {
+                if gen_type_params.is_empty() {
+                    name
+                } else {
+                    let params: Vec<String> =
+                        gen_type_params.iter().map(|p| p.name.clone()).collect();
+                    format!("{}<{}>", name, params.join(", "))
+                }
+            }
+
+            ResolvedTypeKind::Func { params, ret_type } => {
+                let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+                format!("func({}) : {}", param_names.join(", "), ret_type.name)
+            }
         }
     }
 }

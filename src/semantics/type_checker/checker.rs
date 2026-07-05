@@ -6,7 +6,6 @@ use crate::{
     layout::{Layout, LayoutEngine},
     lowering::NodeId,
     semantics::{
-        TypeId,
         semantics::{NameTable, ResolvedTypeKind, TypeInfo, TypesTable},
         type_checker::registry::TypeRegistry,
     },
@@ -275,29 +274,78 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn custom(
+    pub fn struct_ty(
         &mut self,
-        span: Span,
         name: String,
         gen_params: Vec<TypeInfo>,
         members: Vec<(String, TypeInfo)>,
+        span: Span,
     ) -> TypeInfo {
-        let kind = ResolvedTypeKind::Custom {
+        let kind = ResolvedTypeKind::Struct {
             name: name.clone(),
-            gen_type_params: gen_params.clone(),
-            members: members.clone(),
+            gen_type_params: gen_params,
+            members,
         };
         let type_id = self.registry.issue_id(kind.clone());
         let layout = self
             .layout_engine
             .layout_of(&kind, type_id.clone(), span.clone());
+
         TypeInfo {
-            kind: ResolvedTypeKind::Custom {
-                name: name.clone(),
-                gen_type_params: gen_params,
-                members,
-            },
-            name,
+            name: TypeInfo::name(kind.clone()),
+            kind,
+            type_id,
+            layout,
+            span,
+        }
+    }
+
+    pub fn enum_ty(
+        &mut self,
+        name: String,
+        underlying: TypeInfo,
+        members: Vec<(String, TypeInfo)>,
+        span: Span,
+    ) -> TypeInfo {
+        let kind = ResolvedTypeKind::Enum {
+            name: name.clone(),
+            underlying: Box::new(underlying),
+            members,
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
+
+        TypeInfo {
+            name: TypeInfo::name(kind.clone()),
+            kind,
+            type_id,
+            layout,
+            span,
+        }
+    }
+
+    pub fn variant_ty(
+        &mut self,
+        name: String,
+        gen_params: Vec<TypeInfo>,
+        arms: Vec<(String, TypeInfo)>,
+        span: Span,
+    ) -> TypeInfo {
+        let kind = ResolvedTypeKind::Variant {
+            name: name.clone(),
+            gen_type_params: gen_params,
+            arms,
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+        let layout = self
+            .layout_engine
+            .layout_of(&kind, type_id.clone(), span.clone());
+
+        TypeInfo {
+            name: TypeInfo::name(kind.clone()),
+            kind,
             type_id,
             layout,
             span,
@@ -522,7 +570,7 @@ impl<'a> TypeChecker<'a> {
                 generic_type_params,
                 fields,
                 ..
-            } => ResolvedTypeKind::Custom {
+            } => ResolvedTypeKind::Struct {
                 name: name.clone(),
                 gen_type_params: generic_type_params
                     .iter()
