@@ -644,6 +644,25 @@ impl<'a> TypeChecker<'a> {
                 self.update_kind(stmt.hir_id, new_kind.clone());
                 new_kind
             }
+            HirStmtKind::HirFunctionDecl {
+                params,
+                return_type,
+                ..
+            }
+            | HirStmtKind::HirFunctionDef {
+                params,
+                return_type,
+                ..
+            } => {
+                let ret_ty = self.type_from_hir_type(return_type);
+                ResolvedTypeKind::Func {
+                    params: params
+                        .iter()
+                        .map(|p| self.type_from_hir_type(&p.ty))
+                        .collect(),
+                    ret_type: Box::new(ret_ty),
+                }
+            }
             _ => ResolvedTypeKind::Unknown,
         };
 

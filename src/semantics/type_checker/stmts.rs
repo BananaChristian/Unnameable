@@ -11,7 +11,9 @@ impl<'a> TypeChecker<'a> {
             HirStmtKind::HirExpr(..) => self.check_expr_stmt(stmt),
             HirStmtKind::HirVariantDecl { .. }
             | HirStmtKind::HirStructDecl { .. }
-            | HirStmtKind::HirEnumDecl { .. } => self.declare_custom_types(stmt),
+            | HirStmtKind::HirEnumDecl { .. }
+            | HirStmtKind::HirFunctionDecl { .. } => self.declare_custom_types(stmt),
+            HirStmtKind::HirFunctionDef { .. } => self.check_func(stmt),
             _ => (),
         }
     }
@@ -57,6 +59,17 @@ impl<'a> TypeChecker<'a> {
 
             for st in body {
                 self.check_stmt(st);
+            }
+        }
+    }
+
+    fn check_func(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirFunctionDef { body, .. } = &stmt.kind {
+            //Declare the function type
+            self.declare_custom_types(stmt);
+
+            for s in body {
+                self.check_stmt(s);
             }
         }
     }
