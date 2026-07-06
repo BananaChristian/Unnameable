@@ -9,14 +9,16 @@ use crate::{
     target::TargetSpec,
 };
 
+
+#[derive(Debug)]
 pub struct NameTable {
     pub resolved: HashMap<NodeId, NodeId>, //usage_id, declaration_id
 }
 
-#[derive(Clone, Hash, Eq, PartialEq)]
+#[derive(Debug,Clone, Hash, Eq, PartialEq)]
 pub struct TypeId(pub usize);
 
-#[derive(Clone, Hash, Eq, PartialEq)]
+#[derive(Debug,Clone, Hash, Eq, PartialEq)]
 pub struct TypeInfo {
     pub kind: ResolvedTypeKind,
     pub name: String,
@@ -25,7 +27,7 @@ pub struct TypeInfo {
     pub span: Span,
 }
 
-#[derive(Clone, Hash, Eq, PartialEq)]
+#[derive(Debug,Clone, Hash, Eq, PartialEq)]
 pub enum ResolvedTypeKind {
     //Primitives
     I8,
@@ -183,10 +185,12 @@ impl TypeInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct TypesTable {
     pub types: HashMap<NodeId, TypeInfo>,
 }
 
+#[derive(Debug)]
 pub struct SemanticCtxt {
     pub names: NameTable,
     pub types: TypesTable,
@@ -209,7 +213,7 @@ pub struct Semantics<'a> {
     hir: Vec<HirStmt>,
     target_spec: &'a TargetSpec,
     diagnostics: &'a mut Diagnostics,
-    ctxt: SemanticCtxt,
+    pub ctxt: SemanticCtxt,
     pub corrupted: bool,
 }
 

@@ -11,13 +11,20 @@ impl<'a> Resolver<'a> {
             HirStmtKind::HirFunctionDef { .. } => self.resolve_func_def(stmt, table),
             HirStmtKind::HirStructDecl { .. } => self.resolve_struct(stmt, table),
             HirStmtKind::HirVariantDecl { .. } => self.resolve_variant(stmt, table),
-            HirStmtKind::HirEnumDecl { .. } => self.resolve_enum(stmt),
+            HirStmtKind::HirEnumDecl { .. } => self.resolve_enum(stmt, table),
             HirStmtKind::HirIf { .. } => self.resolve_if(stmt, table),
             HirStmtKind::HirWhile { .. } => self.resolve_while(stmt, table),
             HirStmtKind::HirContractDecl { .. } => self.resolve_contract(stmt, table),
             HirStmtKind::HirReturn(..) => self.resolve_return(stmt, table),
             HirStmtKind::HirAlias { .. } => self.resolve_alias(stmt, table),
+            HirStmtKind::HirExpr(_) => self.resolve_expr_stmt(stmt, table),
             _ => (),
+        }
+    }
+
+    fn resolve_expr_stmt(&mut self, stmt: &HirStmt, table: &mut NameTable) {
+        if let HirStmtKind::HirExpr(expr) = &stmt.kind {
+            self.resolve_expr(expr, table);
         }
     }
 
@@ -33,6 +40,7 @@ impl<'a> Resolver<'a> {
 
             //Now resolve the declaration normally
             self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
         }
     }
 
@@ -46,6 +54,8 @@ impl<'a> Resolver<'a> {
         } = &stmt.kind
         {
             self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
+
             self.push_scope();
             for gen_ty_param in generic_type_params {
                 if let HirType::CustomType(ty_name) = &gen_ty_param.kind {
@@ -79,6 +89,7 @@ impl<'a> Resolver<'a> {
         } = &stmt.kind
         {
             self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
             self.push_scope();
             for gen_ty_param in generic_type_params {
                 if let HirType::CustomType(na) = &gen_ty_param.kind {
@@ -111,6 +122,8 @@ impl<'a> Resolver<'a> {
         } = &stmt.kind
         {
             self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
+
             self.push_scope();
             for gen_ty_param in generic_type_params {
                 if let HirType::CustomType(na) = &gen_ty_param.kind {
@@ -142,6 +155,8 @@ impl<'a> Resolver<'a> {
         } = &stmt.kind
         {
             self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
+
             self.push_scope();
             for gen_ty_param in generic_type_params {
                 if let HirType::CustomType(na) = &gen_ty_param.kind {
@@ -164,9 +179,11 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_enum(&mut self, stmt: &HirStmt) {
+    fn resolve_enum(&mut self, stmt: &HirStmt, table: &mut NameTable) {
         if let HirStmtKind::HirEnumDecl { name, members, .. } = &stmt.kind {
             self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
+
             self.push_scope();
             for member in members {
                 self.declare(member.name.clone(), member.hir_id, member.span.clone());

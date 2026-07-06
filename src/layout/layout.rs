@@ -6,7 +6,7 @@ use crate::{
     target::TargetSpec,
 };
 
-#[derive(Clone, Hash, Eq, PartialEq)]
+#[derive(Debug,Clone, Hash, Eq, PartialEq)]
 pub struct Layout {
     pub size: usize,      //Total size in bytes
     pub alignment: usize, //Required alignment boundary
@@ -79,7 +79,13 @@ impl<'a> LayoutEngine<'a> {
                 size: 16,
                 alignment: 16,
             },
-            ResolvedTypeKind::Pointer { .. } | ResolvedTypeKind::Ref { .. } => Layout {
+            ResolvedTypeKind::USize | ResolvedTypeKind::ISize => Layout {
+                size: self.target.int_width,
+                alignment: self.target.int_width,
+            },
+            ResolvedTypeKind::Pointer { .. }
+            | ResolvedTypeKind::Ref { .. }
+            | ResolvedTypeKind::Func { .. } => Layout {
                 size: self.target.pointer_width,
                 alignment: self.target.pointer_width,
             },

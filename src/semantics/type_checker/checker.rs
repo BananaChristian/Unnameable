@@ -520,7 +520,7 @@ impl<'a> TypeChecker<'a> {
             }
 
             HirType::CustomType(_) | HirType::GenericType { .. } => {
-                self.look_up_declared_type(ty.hir_id)
+                self.look_up_declared_type(ty.hir_id,ty.span.clone())
             }
         }
     }
@@ -681,10 +681,10 @@ impl<'a> TypeChecker<'a> {
         self.insert(stmt.hir_id, ty_info);
     }
 
-    pub fn get_decl_type(&mut self, decl_id: &NodeId) -> TypeInfo {
+    pub fn get_decl_type(&mut self, decl_id: &NodeId,span:Span) -> TypeInfo {
         match self.types_table.types.get(&decl_id) {
             Some(ty) => ty.clone(),
-            None => self.unknown(Span { start: 0, end: 0 }),
+            None => self.unknown(span),
         }
     }
 
@@ -702,11 +702,11 @@ impl<'a> TypeChecker<'a> {
         self.types_table.types.insert(id, ty);
     }
 
-    pub fn look_up_declared_type(&mut self, usage_id: NodeId) -> TypeInfo {
+    pub fn look_up_declared_type(&mut self, usage_id: NodeId, span:Span) -> TypeInfo {
         if let Some(decl_id) = self.name_table.resolved.get(&usage_id) {
-            self.get_decl_type(decl_id)
+            self.get_decl_type(decl_id,span.clone())
         } else {
-            self.unknown(Span { start: 0, end: 0 })
+            self.unknown(span)
         }
     }
 

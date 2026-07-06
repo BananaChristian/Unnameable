@@ -120,6 +120,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut semantics = Semantics::new(hir, &target_spec, &mut diagnostics);
     semantics.analyze();
+    println!("SEMANTIC PAYLOAD: {:?}",semantics.ctxt);
     if semantics.corrupted {
         diagnostics.print();
         std::process::exit(1);

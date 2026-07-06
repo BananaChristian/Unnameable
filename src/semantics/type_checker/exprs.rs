@@ -15,7 +15,10 @@ impl<'a> TypeChecker<'a> {
     pub fn expr_type(&mut self, expr: &HirExpr) -> TypeInfo {
         let ty = match &expr.kind {
             HirExprKind::SizeOf(_) => self.primitive(ResolvedTypeKind::USize, expr.span.clone()),
-            HirExprKind::Identifier(_) => self.look_up_declared_type(expr.hir_id),
+            HirExprKind::Identifier(_) => {
+                self.look_up_declared_type(expr.hir_id, expr.span.clone())
+            }
+            HirExprKind::Call(_, _) => self.call_type(expr),
             HirExprKind::Literal(_) => self.literal_type(expr),
             HirExprKind::Binary(_, _, _) => self.binary_type(expr),
             HirExprKind::StaticCast(_, _) => self.cast_type(expr),
@@ -38,11 +41,22 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn bitcast_type(&mut self, expr: &HirExpr) -> TypeInfo {
-        if let HirExprKind::BitCast(target, _) = &expr.kind {
+        if let HirExprKind::BitCast(target, src_expr) = &expr.kind {
             let target_ty = self.type_from_hir_type(target);
+            let src_ty = self.expr_type(src_expr);
 
-            //Will have to apply some bitcasting rules here
-            target_ty
+            if src_ty.layout.size != target_ty.layout.size {
+                self.report(
+                    format!("bitcast size mismatch, cannot reinterpret '{}' ({} bytes) as '{}' ({} bytes), ensure sizes match",
+                    src_ty.name,
+                    src_ty.layout.size,
+                    target_ty.name,
+                    target_ty.layout.size), 
+                    Some(expr.span.clone()));
+                self.unknown(expr.span.clone())
+            } else {
+                target_ty
+            }
         } else {
             self.unknown(expr.span.clone())
         }
@@ -64,6 +78,41 @@ impl<'a> TypeChecker<'a> {
                 | HirBinaryOp::Gt
                 | HirBinaryOp::Geq
                 | HirBinaryOp::Leq => self.boolean(expr.span.clone()), //For now
+                _ => self.unknown(expr.span.clone()),
+            }
+        } else {
+            self.unknown(expr.span.clone())
+        }
+    }
+
+    fn call_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        println!("TRIGGERED CALL TYPE");
+        if let HirExprKind::Call(name, args) = &expr.kind {
+            let overall_ty = self.expr_type(name);
+            println!("OVERALL TY Is {}", overall_ty.name);
+            match &overall_ty.kind {
+                ResolvedTypeKind::Func { params, ret_type } => {
+                    println!("FOUND IT the FUNC Ty");
+                    if args.len() != params.len() {
+                        self.report(
+                            format!(
+                                "Invalid argument count expected '{}' but got '{}'",
+                                params.len(),
+                                args.len()
+                            ),
+                            Some(expr.span.clone()),
+                        );
+                    }
+
+                    for (arg, param_ty) in args.iter().zip(params.iter()) {
+                        let arg_ty = self.expr_type(arg);
+                        if !self.types_match(&arg_ty, param_ty) {
+                            self.type_mismatch(&arg_ty, param_ty, expr.span.clone());
+                        }
+                    }
+
+                    *ret_type.clone()
+                }
                 _ => self.unknown(expr.span.clone()),
             }
         } else {
