@@ -1,6 +1,6 @@
 use crate::{
     diagnostics::Span,
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
     semantics::{
         semantics::{ResolvedTypeKind, TypeInfo},
         type_checker::checker::TypeChecker,
@@ -23,18 +23,145 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::Binary(_, _, _) => self.binary_type(expr),
             HirExprKind::StaticCast(_, _) => self.cast_type(expr),
             HirExprKind::BitCast(_, _) => self.bitcast_type(expr),
+            HirExprKind::Index { ..} => self.index_type(expr),
+            HirExprKind::Unary(_,_ ) => self.unary_type(expr),
+            HirExprKind::Postfix(_,_ ) => self.postfix_type(expr),
             _ => self.unknown(expr.span.clone()),
         };
         self.insert(expr.hir_id, ty.clone());
         ty
     }
 
+    fn index_type(&mut self,expr: &HirExpr) -> TypeInfo{
+        if let HirExprKind::Index { target, index } =  &expr.kind{
+            let target_ty= self.expr_type(target);
+            let index_ty= self.expr_type(index);
+
+            if !self.is_numeric(&index_ty) {
+                self.report(format!("Invalid index type '{}' array indexes must be integers",index_ty.name), Some(expr.span.clone()));
+                return self.unknown(expr.span.clone());
+            }
+
+            match &target_ty.kind{
+                ResolvedTypeKind::Array { inner, .. } => {
+                    *inner.clone()
+                }
+                ResolvedTypeKind::Pointer { inner } => {
+                    *inner.clone()
+                }
+                _ => {
+                    self.report(format!("Cannot index into a non indexable type '{}'",target_ty.name), Some(expr.span.clone()));
+                    self.unknown(expr.span.clone())
+                }
+            }
+
+        }else{
+            self.unknown(expr.span.clone())
+        }
+    }
+
+    fn unary_type(&mut self,expr: &HirExpr) -> TypeInfo{
+        if let HirExprKind::Unary(op, target) = &expr.kind{
+            let target_ty= self.expr_type(target);
+            match op{
+                HirUnaryOp::Dereference => self.deref_type(&target_ty),
+                HirUnaryOp::AddressOf => self.address_of_type(&target_ty),
+                HirUnaryOp::Increment|HirUnaryOp::Decrement => self.inc_dec_type(&target_ty), 
+                HirUnaryOp::Neg => self.neg_type(&target_ty),
+                HirUnaryOp::Not => self.logical_not_type(&target_ty),
+                _ => self.unknown(expr.span.clone())
+            }
+        }else{
+            self.unknown(expr.span.clone())
+        }
+
+    }
+
+    fn neg_type(&mut self, ty: &TypeInfo) -> TypeInfo{
+        if self.is_signed_numeric(ty){
+            ty.clone()
+        }else{
+            self.report(format!("Cannot apply '-' to type '{}'",ty.name), Some(ty.span.clone()));
+            self.unknown(ty.span.clone())
+        }
+    }
+
+    fn logical_not_type(&mut self,ty: &TypeInfo) -> TypeInfo{
+        match ty.kind{
+            ResolvedTypeKind::Bool  => ty.clone(),
+            _ => {
+                self.report("Operator '!' can only be applied to 'bool'".to_string(), Some(ty.span.clone()));
+                self.unknown(ty.span.clone())
+            }
+        }
+    }
+
+    fn inc_dec_type(&mut self, target_ty: &TypeInfo) ->  TypeInfo {
+        if !self.is_numeric(&target_ty){
+         self.report(format!("Cannot apply operator to numeric type '{}'",target_ty.name), Some(target_ty.span.clone()));
+          self.unknown(target_ty.span.clone())
+        }else{
+         target_ty.clone()
+        }
+    }
+
+    fn deref_type(&mut self,src_ty: &TypeInfo) -> TypeInfo{
+        match &src_ty.kind{
+            ResolvedTypeKind::Pointer { inner } => {
+                *inner.clone()
+            }
+            _ => self.unknown(src_ty.span.clone())
+        }
+    }
+
+    fn address_of_type(&mut self, src_ty: &TypeInfo) -> TypeInfo{
+        let ptr_kind=ResolvedTypeKind::Pointer { inner: Box::new(src_ty.clone()) };
+        let ptr_id= self.registry.issue_id(ptr_kind.clone());
+        let ptr_layout= self.layout_engine.layout_of(&ptr_kind, ptr_id.clone(), src_ty.span.clone());
+        TypeInfo{
+            type_id: ptr_id,
+            name: TypeInfo::name(ptr_kind.clone()),
+            kind: ptr_kind,
+            layout:ptr_layout,
+            span: src_ty.span.clone(),
+        }
+
+    }
+
     fn cast_type(&mut self, expr: &HirExpr) -> TypeInfo {
-        if let HirExprKind::StaticCast(target, _) = &expr.kind {
+        if let HirExprKind::StaticCast(target, src_expr) = &expr.kind {
             let target_ty = self.type_from_hir_type(target);
+            let src_ty=self.expr_type(src_expr);
+
+            let allowed = match (&src_ty.kind, &target_ty.kind) {
+            (_,_) if self.is_numeric(&src_ty) && self.is_numeric(&target_ty) => true,
+
+            (ResolvedTypeKind::Enum { .. }, t) if self.is_integer(t) => true,
+
+            // Pointer to Pointer address reassignment
+            (ResolvedTypeKind::Pointer{..}, ResolvedTypeKind::Pointer { .. }) => true,
+
+            // Pointer value conversions to raw address tracking limits
+            (ResolvedTypeKind::Pointer{..}, ResolvedTypeKind::USize) => true,
+            (ResolvedTypeKind::USize, ResolvedTypeKind::Pointer{..}) => true,
+
+            _ => false,
+        };
+
+            if !allowed{
+                self.report(
+                    format!("Invalid cast cannot convert '{}' to '{}'",
+                    src_ty.name,
+                    target_ty.name),
+                    Some(expr.span.clone()));
+                self.unknown(expr.span.clone())
+            }else{
+
+            target_ty
+
+            }
 
             //Will have to apply some casting rules here
-            target_ty
         } else {
             self.unknown(expr.span.clone())
         }
@@ -58,6 +185,19 @@ impl<'a> TypeChecker<'a> {
                 target_ty
             }
         } else {
+            self.unknown(expr.span.clone())
+        }
+    }
+
+    fn postfix_type(&mut self,expr: &HirExpr) -> TypeInfo{
+        if let HirExprKind::Postfix(inner, op) = &expr.kind{
+            let inner_ty= self.expr_type(inner);
+            match op{
+                HirPostfixOp::Increment|HirPostfixOp::Decrement => inner_ty,
+                _ => self.unknown(expr.span.clone())
+            }
+
+        }else{
             self.unknown(expr.span.clone())
         }
     }
@@ -86,10 +226,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn call_type(&mut self, expr: &HirExpr) -> TypeInfo {
-        println!("TRIGGERED CALL TYPE");
         if let HirExprKind::Call(name, args) = &expr.kind {
             let overall_ty = self.expr_type(name);
-            println!("OVERALL TY Is {}", overall_ty.name);
             match &overall_ty.kind {
                 ResolvedTypeKind::Func { params, ret_type } => {
                     println!("FOUND IT the FUNC Ty");
