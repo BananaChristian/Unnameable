@@ -1,1 +1,17 @@
-Food.Test
+generics <T>{
+  struct Pair {
+    first: T
+  }
+}
+
+generics <U>{
+  func identity(val: U): U {
+    return val
+  }
+}
+
+
+func main() {
+    var Pair<i32> a
+    var b := identity::<bool>(true)
+}

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     hir::{
@@ -13,12 +15,22 @@ use crate::{
     target::TargetSpec,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InstanceKey {
+    // The unique ID of the original generic function or struct definition
+    pub original_def_id: NodeId,
+    // The actual concrete types chosen for this specific call (e.g., [Int32])
+    pub concrete_args: Vec<TypeInfo>,
+}
+
 pub struct TypeChecker<'a> {
     hir: &'a Vec<HirStmt>,
     pub name_table: &'a NameTable,
     pub types_table: &'a mut TypesTable,
     pub registry: TypeRegistry,
     pub layout_engine: LayoutEngine<'a>,
+    pub monomorph_backlog: HashSet<InstanceKey>,
+    pub active_generic_params: Vec<String>,
     diagnostics: &'a mut Diagnostics,
     pub corrupted: bool,
 }
@@ -37,6 +49,8 @@ impl<'a> TypeChecker<'a> {
             types_table,
             registry: TypeRegistry::new(),
             layout_engine: LayoutEngine::new(target),
+            monomorph_backlog: HashSet::new(),
+            active_generic_params: Vec::new(),
             diagnostics,
             corrupted: false,
         }
@@ -99,13 +113,20 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn func(&mut self, span: Span, params: Vec<TypeInfo>, ret: TypeInfo) -> TypeInfo {
+    pub fn func(
+        &mut self,
+        span: Span,
+        gen_params: Vec<TypeInfo>,
+        params: Vec<TypeInfo>,
+        ret: TypeInfo,
+    ) -> TypeInfo {
         let _ps: Vec<String> = params
             .iter()
             .map(|param| format!("{}", param.name.clone()))
             .collect();
         let kind = ResolvedTypeKind::Func {
             params,
+            gen_type_params: gen_params,
             ret_type: Box::new(ret),
         };
         let type_id = self.registry.issue_id(kind.clone());
@@ -382,10 +403,12 @@ impl<'a> TypeChecker<'a> {
                 ResolvedTypeKind::Func {
                     params: params_a,
                     ret_type: ret_a,
+                    gen_type_params: gens_a,
                 },
                 ResolvedTypeKind::Func {
                     params: params_b,
                     ret_type: ret_b,
+                    gen_type_params: gens_b,
                 },
             ) => {
                 if params_a.len() != params_b.len() {
@@ -505,7 +528,7 @@ impl<'a> TypeChecker<'a> {
                     .map(|p| self.type_from_hir_type(p).clone())
                     .collect();
                 let ret_ty = self.type_from_hir_type(return_type);
-                self.func(ty.span.clone(), _ps, ret_ty)
+                self.func(ty.span.clone(), _ps, vec![], ret_ty)
             }
             HirType::Tuple(fields) => {
                 let members = fields.iter().map(|f| self.type_from_hir_type(f)).collect();
@@ -519,8 +542,37 @@ impl<'a> TypeChecker<'a> {
                 self.anonymous(fields, ty.span.clone())
             }
 
-            HirType::CustomType(_) | HirType::GenericType { .. } => {
+            HirType::GenericType { type_params, .. } => {
+                let decl_id: NodeId = *self
+                    .name_table
+                    .resolved
+                    .get(&ty.hir_id)
+                    .expect("Resolver already linked this ID");
+
+                let concrete_args = type_params
+                    .iter()
+                    .map(|arg| self.type_from_hir_type(arg))
+                    .collect();
+
+                let key = InstanceKey {
+                    original_def_id: decl_id,
+                    concrete_args,
+                };
+
+                self.monomorph_backlog.insert(key);
+
                 self.look_up_declared_type(ty.hir_id, ty.span.clone())
+            }
+
+            HirType::CustomType(name) => {
+                if self.active_generic_params.contains(name) {
+                    self.primitive(
+                        ResolvedTypeKind::GenericParam(name.clone()),
+                        ty.span.clone(),
+                    )
+                } else {
+                    self.look_up_declared_type(ty.hir_id, ty.span.clone())
+                }
             }
         }
     }
@@ -594,6 +646,14 @@ impl<'a> TypeChecker<'a> {
         (member.name.clone(), enum_ty)
     }
 
+    fn get_ty_node_name(&self, ty: &HirTypeNode) -> String {
+        if let HirType::CustomType(name) = &ty.kind {
+            name.clone()
+        } else {
+            "".to_string()
+        }
+    }
+
     pub fn declare_custom_types(&mut self, stmt: &HirStmt) {
         let ty_kind = match &stmt.kind {
             HirStmtKind::HirStructDecl {
@@ -601,14 +661,32 @@ impl<'a> TypeChecker<'a> {
                 generic_type_params,
                 fields,
                 ..
-            } => ResolvedTypeKind::Struct {
-                name: name.clone(),
-                gen_type_params: generic_type_params
+            } => {
+                let param_names: Vec<String> = generic_type_params
                     .iter()
-                    .map(|gen_p| self.type_from_hir_type(gen_p))
-                    .collect(),
-                members: fields.iter().map(|f| self.struct_field_type(f)).collect(),
-            },
+                    .map(|p| self.get_ty_node_name(p))
+                    .collect();
+
+                self.active_generic_params = param_names.clone();
+
+                let members = fields.iter().map(|f| self.struct_field_type(f)).collect();
+
+                self.active_generic_params.clear();
+
+                ResolvedTypeKind::Struct {
+                    name: name.clone(),
+                    gen_type_params: param_names
+                        .iter()
+                        .map(|name| {
+                            self.primitive(
+                                ResolvedTypeKind::GenericParam(name.clone()),
+                                stmt.span.clone(),
+                            )
+                        })
+                        .collect(),
+                    members,
+                }
+            }
             HirStmtKind::HirVariantDecl {
                 name,
                 members,
@@ -665,18 +743,41 @@ impl<'a> TypeChecker<'a> {
             HirStmtKind::HirFunctionDecl {
                 params,
                 return_type,
+                generic_type_params,
                 ..
             }
             | HirStmtKind::HirFunctionDef {
                 params,
                 return_type,
+                generic_type_params,
                 ..
             } => {
+                let param_names: Vec<String> = generic_type_params
+                    .iter()
+                    .map(|p| self.get_ty_node_name(p))
+                    .collect();
+
+                self.active_generic_params = param_names.clone();
+
                 let ret_ty = self.type_from_hir_type(return_type);
+
+                let resolved_params: Vec<TypeInfo> = params
+                    .iter()
+                    .map(|p| self.type_from_hir_type(&p.ty))
+                    .collect();
+
+                self.active_generic_params.clear();
+
                 ResolvedTypeKind::Func {
-                    params: params
+                    params: resolved_params,
+                    gen_type_params: param_names
                         .iter()
-                        .map(|p| self.type_from_hir_type(&p.ty))
+                        .map(|name| {
+                            self.primitive(
+                                ResolvedTypeKind::GenericParam(name.clone()),
+                                stmt.span.clone(),
+                            )
+                        })
                         .collect(),
                     ret_type: Box::new(ret_ty),
                 }
@@ -737,6 +838,108 @@ impl<'a> TypeChecker<'a> {
             format!("'{}' is not a member of '{}'", field_name, ty_name),
             Some(span),
         );
+    }
+
+    pub fn specialize_signature(
+        &mut self,
+        template: &TypeInfo,
+        concrete_args: &[TypeInfo],
+        span: Span,
+    ) -> TypeInfo {
+        match &template.kind {
+            ResolvedTypeKind::Struct {
+                name,
+                gen_type_params,
+                members,
+            } => {
+                let specialized_members = members
+                    .iter()
+                    .map(|(field_name, field_ty)| {
+                        (
+                            field_name.clone(),
+                            self.substitute_type(field_ty, gen_type_params, concrete_args),
+                        )
+                    })
+                    .collect();
+
+                self.struct_ty(
+                    name.clone(),
+                    concrete_args.to_vec(),
+                    specialized_members,
+                    span,
+                )
+            }
+            ResolvedTypeKind::Func {
+                params,
+                gen_type_params,
+                ret_type,
+            } => {
+                let specialized_params = params
+                    .iter()
+                    .map(|param_ty| self.substitute_type(param_ty, gen_type_params, concrete_args))
+                    .collect();
+
+                let specialized_ret =
+                    self.substitute_type(ret_type, gen_type_params, concrete_args);
+
+                let specialized_kind = ResolvedTypeKind::Func {
+                    params: specialized_params,
+                    gen_type_params: Vec::new(),
+                    ret_type: Box::new(specialized_ret),
+                };
+
+                let ty_id = self.registry.issue_id(specialized_kind.clone());
+                let layout =
+                    self.layout_engine
+                        .layout_of(&specialized_kind, ty_id.clone(), span.clone());
+
+                TypeInfo {
+                    name: TypeInfo::name(specialized_kind.clone()),
+                    kind: specialized_kind,
+                    type_id: ty_id,
+                    layout,
+                    span,
+                }
+            }
+            _ => template.clone(),
+        }
+    }
+
+    fn substitute_type(
+        &mut self,
+        current: &TypeInfo,
+        template_gen_params: &[TypeInfo],
+        concrete_args: &[TypeInfo],
+    ) -> TypeInfo {
+        match &current.kind {
+            ResolvedTypeKind::GenericParam(param_name) => {
+                let position = template_gen_params
+                    .iter()
+                    .position(|param| &param.name == param_name);
+
+                if let Some(idx) = position {
+                    if let Some(concrete) = concrete_args.get(idx) {
+                        let mut concrete_clone = concrete.clone();
+                        concrete_clone.span = current.span.clone(); // Retain local usage span
+                        return concrete_clone;
+                    }
+                }
+
+                current.clone()
+            }
+            ResolvedTypeKind::Pointer { inner } => {
+                let substituted_inner =
+                    self.substitute_type(inner, template_gen_params, concrete_args);
+                self.pointer(substituted_inner, current.span.clone())
+            }
+            ResolvedTypeKind::Ref { inner } => {
+                let substituted_inner =
+                    self.substitute_type(inner, template_gen_params, concrete_args);
+                self.reference(substituted_inner, current.span.clone())
+            }
+            // ... check other variants like Arrays or Tuples if they contain nested generics
+            _ => current.clone(),
+        }
     }
 
     pub fn insert(&mut self, id: NodeId, ty: TypeInfo) {

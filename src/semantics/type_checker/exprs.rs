@@ -1,10 +1,8 @@
 use crate::{
-    diagnostics::Span,
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
-    semantics::{
+    diagnostics::Span, hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp}, lowering::NodeId, semantics::{
         semantics::{ResolvedTypeKind, TypeInfo},
-        type_checker::checker::TypeChecker,
-    },
+        type_checker::checker::{InstanceKey, TypeChecker},
+    }
 };
 
 impl<'a> TypeChecker<'a> {
@@ -26,10 +24,40 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::Index { ..} => self.index_type(expr),
             HirExprKind::Unary(_,_ ) => self.unary_type(expr),
             HirExprKind::Postfix(_,_ ) => self.postfix_type(expr),
+            HirExprKind::GenericInstantion { .. }=> self.gen_inst_type(expr),
             _ => self.unknown(expr.span.clone()),
         };
         self.insert(expr.hir_id, ty.clone());
         ty
+    }
+
+    fn gen_inst_type(&mut self, expr: &HirExpr)-> TypeInfo{
+        if let  HirExprKind::GenericInstantion {type_params ,..} =  &expr.kind{
+            let template_decl_id: NodeId = *self.name_table.resolved.get(&expr.hir_id)
+            .expect("Name resolver missing mapping for generic instantiation");
+
+            let template_info = self.get_decl_type(&template_decl_id, expr.span.clone());
+
+            let concrete_args: Vec<TypeInfo> = type_params
+            .iter()
+            .map(|param_node| self.type_from_hir_type(param_node))
+            .collect();
+
+            if !concrete_args.is_empty() {
+                let key = InstanceKey {
+                    original_def_id: template_decl_id,
+                    concrete_args: concrete_args.clone(),
+                };
+                self.monomorph_backlog.insert(key);
+            }
+
+            let specialized_type = self.specialize_signature(&template_info, &concrete_args, expr.span.clone());
+    
+            self.insert(expr.hir_id, specialized_type.clone());
+            specialized_type
+        }else{
+            self.unknown(expr.span.clone())
+        }
     }
 
     fn index_type(&mut self,expr: &HirExpr) -> TypeInfo{
@@ -309,8 +337,7 @@ impl<'a> TypeChecker<'a> {
         if let HirExprKind::Call(name, args) = &expr.kind {
             let overall_ty = self.expr_type(name);
             match &overall_ty.kind {
-                ResolvedTypeKind::Func { params, ret_type } => {
-                    println!("FOUND IT the FUNC Ty");
+                ResolvedTypeKind::Func { params, ret_type ,..} => {
                     if args.len() != params.len() {
                         self.report(
                             format!(

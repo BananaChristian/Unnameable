@@ -9,16 +9,15 @@ use crate::{
     target::TargetSpec,
 };
 
-
 #[derive(Debug)]
 pub struct NameTable {
     pub resolved: HashMap<NodeId, NodeId>, //usage_id, declaration_id
 }
 
-#[derive(Debug,Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TypeId(pub usize);
 
-#[derive(Debug,Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TypeInfo {
     pub kind: ResolvedTypeKind,
     pub name: String,
@@ -27,7 +26,7 @@ pub struct TypeInfo {
     pub span: Span,
 }
 
-#[derive(Debug,Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ResolvedTypeKind {
     //Primitives
     I8,
@@ -60,6 +59,7 @@ pub enum ResolvedTypeKind {
     },
     Func {
         params: Vec<TypeInfo>,
+        gen_type_params: Vec<TypeInfo>,
         ret_type: Box<TypeInfo>,
     },
     //User defined
@@ -177,7 +177,8 @@ impl TypeInfo {
                 }
             }
 
-            ResolvedTypeKind::Func { params, ret_type } => {
+            ResolvedTypeKind::Func { params, ret_type ,gen_type_params
+            } => {
                 let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
                 format!("func({}) : {}", param_names.join(", "), ret_type.name)
             }

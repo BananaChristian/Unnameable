@@ -126,7 +126,7 @@ impl<'a> Parser<'a> {
 
             TType::Identifier => {
                 if let Some(next) = self.peek_token() {
-                    next.token_type == TType::Identifier
+                    next.token_type == TType::Identifier || next.token_type == TType::Lt
                 } else {
                     false
                 }

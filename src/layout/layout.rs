@@ -6,7 +6,7 @@ use crate::{
     target::TargetSpec,
 };
 
-#[derive(Debug,Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Layout {
     pub size: usize,      //Total size in bytes
     pub alignment: usize, //Required alignment boundary
@@ -120,8 +120,14 @@ impl<'a> LayoutEngine<'a> {
                 field_ty.type_id.clone(),
                 field_ty.span.clone(),
             );
-            let padding = (field_layout.alignment - (offset % field_layout.alignment))
-                % field_layout.alignment;
+
+            let padding = if field_layout.alignment == 0 {
+                0
+            } else {
+                (field_layout.alignment - (offset % field_layout.alignment))
+                    % field_layout.alignment
+            };
+
             offset += padding;
             offset += field_layout.size;
 
