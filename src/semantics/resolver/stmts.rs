@@ -30,6 +30,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_var(&mut self, stmt: &HirStmt, table: &mut NameTable) {
         if let HirStmtKind::HirVarDecl { name, init, ty, .. } = &stmt.kind {
+            println!("TRIGGERED VAR RESOLVER");
             //First resolve  the value
             if let Some(val) = init {
                 self.resolve_expr(val, table);

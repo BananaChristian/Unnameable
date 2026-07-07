@@ -14,6 +14,7 @@ impl<'a> TypeChecker<'a> {
             | HirStmtKind::HirEnumDecl { .. }
             | HirStmtKind::HirFunctionDecl { .. } => self.declare_custom_types(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.check_func(stmt),
+            HirStmtKind::HirVarDecl { .. } => self.check_var(stmt),
             _ => (),
         }
     }
@@ -71,6 +72,36 @@ impl<'a> TypeChecker<'a> {
             for s in body {
                 self.check_stmt(s);
             }
+        }
+    }
+
+    fn check_var(&mut self, stmt: &HirStmt) {
+        let mut _annotated_ty = self.unknown(stmt.span.clone());
+        if let HirStmtKind::HirVarDecl { ty, init, .. } = &stmt.kind {
+            if let Some(init) = init {
+                let init_ty = self.expr_type(init);
+                _annotated_ty = match ty {
+                    Some(ty) => self.type_from_hir_type(ty),
+                    None => init_ty.clone(),
+                };
+
+                if !self.types_match(&_annotated_ty, &init_ty) {
+                    self.type_mismatch(&_annotated_ty, &init_ty, stmt.span.clone());
+                }
+            } else {
+                _annotated_ty = match ty {
+                    Some(ty) => self.type_from_hir_type(ty),
+                    None => {
+                        self.report(
+                            format!("Cannot infer variable type without an initializer"),
+                            Some(stmt.span.clone()),
+                        );
+                        self.unknown(stmt.span.clone())
+                    }
+                };
+            }
+            self.insert(stmt.hir_id, _annotated_ty);
+
         }
     }
 }

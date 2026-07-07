@@ -60,7 +60,7 @@ pub enum HirBinaryOp {
     ModAssign,
     MulAssign,
     // Field access
-    Access,
+    Access, //x.y
     // Assignment
     Assign,
 }
@@ -120,6 +120,7 @@ pub enum HirExprKind {
 
     // sizeof expression
     SizeOf(HirTypeNode),
+
     StaticCast(Box<HirTypeNode>, Box<HirExpr>),
     BitCast(Box<HirTypeNode>, Box<HirExpr>),
 

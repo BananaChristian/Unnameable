@@ -113,6 +113,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut lowering = Lowering::new(ast, &mut diagnostics);
     let hir = lowering.lower();
+    println!("{:?}",hir);
     if lowering.corrupted {
         diagnostics.print();
         std::process::exit(1);
@@ -120,7 +121,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut semantics = Semantics::new(hir, &target_spec, &mut diagnostics);
     semantics.analyze();
-    println!("SEMANTIC PAYLOAD: {:?}",semantics.ctxt);
+    println!("{:?}",semantics.ctxt);
     if semantics.corrupted {
         diagnostics.print();
         std::process::exit(1);

@@ -732,6 +732,13 @@ impl<'a> TypeChecker<'a> {
         );
     }
 
+    pub fn unknown_member(&mut self, field_name: &String, ty_name: &String, span: Span) {
+        self.report(
+            format!("'{}' is not a member of '{}'", field_name, ty_name),
+            Some(span),
+        );
+    }
+
     pub fn insert(&mut self, id: NodeId, ty: TypeInfo) {
         self.types_table.types.insert(id, ty);
     }

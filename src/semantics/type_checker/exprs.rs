@@ -60,6 +60,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+
     fn unary_type(&mut self,expr: &HirExpr) -> TypeInfo{
         if let HirExprKind::Unary(op, target) = &expr.kind{
             let target_ty= self.expr_type(target);
@@ -69,7 +70,6 @@ impl<'a> TypeChecker<'a> {
                 HirUnaryOp::Increment|HirUnaryOp::Decrement => self.inc_dec_type(&target_ty), 
                 HirUnaryOp::Neg => self.neg_type(&target_ty),
                 HirUnaryOp::Not => self.logical_not_type(&target_ty),
-                _ => self.unknown(expr.span.clone())
             }
         }else{
             self.unknown(expr.span.clone())
@@ -217,11 +217,91 @@ impl<'a> TypeChecker<'a> {
                 | HirBinaryOp::Lt
                 | HirBinaryOp::Gt
                 | HirBinaryOp::Geq
-                | HirBinaryOp::Leq => self.boolean(expr.span.clone()), //For now
+                | HirBinaryOp::Leq => self.comparison_binary_type(&left_ty, &right_ty, expr.span.clone()),
+                HirBinaryOp::And | HirBinaryOp::Or => self.logical_binary_type(&left_ty,&right_ty,expr.span.clone()),
+                HirBinaryOp::Assign => self.assignment_type(&left_ty, &right_ty, expr.span.clone()),
+                HirBinaryOp::Access => self.access_type(&left_ty, right),
                 _ => self.unknown(expr.span.clone()),
             }
         } else {
             self.unknown(expr.span.clone())
+        }
+    }
+
+    fn access_type(&mut self,left_ty: &TypeInfo, field_expr: &HirExpr) -> TypeInfo{
+        let field_name= match &field_expr.kind{
+            HirExprKind::Identifier(name) => name,
+            _ => {
+                self.report("The left of a field access must be an identifier".to_string(), Some(field_expr.span.clone()));
+                &"".to_string()
+            }
+        };
+
+        match &left_ty.kind{
+            ResolvedTypeKind::Struct { name,members ,..}| ResolvedTypeKind::Enum {name, members,..} =>{
+                if let Some(member_tuple)=members.iter().find(|m|m.0==*field_name){
+                    member_tuple.1.clone()
+                }else{
+                    self.unknown_member(field_name, name, field_expr.span.clone());
+                    self.unknown(field_expr.span.clone())
+                }
+            },
+            ResolvedTypeKind::Variant { name, arms ,..} =>{
+                if let Some(arms_tuple)= arms.iter().find(|m|m.0 == *field_name){
+                    arms_tuple.1.clone()
+                }else{
+                    self.unknown_member(field_name, name, field_expr.span.clone());
+                    self.unknown(field_expr.span.clone())
+                }
+            }
+            ResolvedTypeKind::Anonymous { fields } => {
+                if let Some(fields_tuple)= fields.iter().find(|m|m.0 == *field_name){
+                    fields_tuple.1.clone()
+                }else{
+                    self.report(format!("Unknown member '{}' in anonymous struct",field_name), Some(field_expr.span.clone()));
+                    self.unknown(field_expr.span.clone())
+                }
+
+            }
+            _ => {
+                self.report(format!("Cannot carryout an access operation on type '{}'",left_ty.name), Some(field_expr.span.clone()));
+                self.unknown(field_expr.span.clone())
+            }
+
+        }
+    }
+
+    fn assignment_type(&mut self, left_ty: &TypeInfo, right_ty: &TypeInfo,span:Span) -> TypeInfo{
+        if  !self.types_match(left_ty, right_ty){
+            self.type_mismatch(left_ty, right_ty, span.clone());
+            self.unknown(span)
+        }else{
+            left_ty.clone()
+        }
+
+    }
+
+    fn comparison_binary_type(&mut self, left_ty: &TypeInfo,right_ty: &TypeInfo,span:Span)-> TypeInfo{
+        if !self.types_match(left_ty, right_ty){
+            self.type_mismatch(left_ty, right_ty, span.clone());
+            self.unknown(span.clone())
+        }else{
+            self.boolean(span)
+        }
+
+
+    }
+
+    fn logical_binary_type(&mut self, left_ty: &TypeInfo,right_ty: &TypeInfo, span: Span)-> TypeInfo{
+        if right_ty.kind != ResolvedTypeKind::Bool || left_ty.kind != ResolvedTypeKind::Bool{
+            self.report(
+                format!("logical binary operator cannot be applied to types '{}' and '{}'",
+                    left_ty.name, 
+                    right_ty.name), 
+                Some(span.clone()));
+            self.unknown(span.clone())
+        }else{
+            self.boolean(span)
         }
     }
 
