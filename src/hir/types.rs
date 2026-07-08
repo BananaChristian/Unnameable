@@ -37,6 +37,7 @@ pub enum HirType {
     Func(Vec<HirTypeNode>, Box<HirTypeNode>),
     // Custom type — path fully resolved to a string
     CustomType(String),
+    GenericPlaceHolder(String),
     GenericType {
         name: String,
         type_params: Vec<HirTypeNode>,

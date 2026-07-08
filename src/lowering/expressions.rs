@@ -195,6 +195,25 @@ impl<'a> Lowering<'a> {
         })
     }
 
+    fn is_generic(&mut self, type_node: &Type) -> bool {
+        let current_name = match &type_node.kind {
+            TypeKind::CustomType(expr) => self.extract_name_string(expr).unwrap_or_default(),
+            _ => return false,
+        };
+
+        for ty in self.current_generic_params.clone() {
+            let param_name = match &ty.kind {
+                TypeKind::CustomType(expr) => self.extract_name_string(expr).unwrap_or_default(),
+                _ => continue,
+            };
+
+            if current_name == param_name {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn lower_type(&mut self, type_node: &Type) -> Option<HirTypeNode> {
         let kind = match &type_node.kind {
             TypeKind::I8 => HirType::I8,
@@ -252,7 +271,11 @@ impl<'a> Lowering<'a> {
             }
             TypeKind::CustomType(expr) => {
                 let name = self.extract_name_string(expr)?;
-                HirType::CustomType(name)
+                if self.is_generic(type_node) {
+                    HirType::GenericPlaceHolder(name)
+                } else {
+                    HirType::CustomType(name)
+                }
             }
             TypeKind::GenericType { name, type_params } => {
                 let name_str = self.extract_name_string(name)?;

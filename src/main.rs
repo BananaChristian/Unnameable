@@ -1,18 +1,19 @@
 use crate::{
-    diagnostics::Diagnostics, lexer::Lexer, lowering::Lowering, 
-    parser::Parser, semantics::Semantics, target::TargetSpec
+    diagnostics::Diagnostics, lexer::Lexer, lowering::Lowering, parser::Parser,
+    semantics::Semantics, target::TargetSpec,
 };
 use std::{env, fs};
 
-mod target;
-mod diagnostics;
-mod lexer;
 mod ast;
-mod parser;
+mod diagnostics;
 mod hir;
-mod lowering;
-mod semantics;
 mod layout;
+mod lexer;
+mod lowering;
+mod monomorph;
+mod parser;
+mod semantics;
+mod target;
 
 fn print_help(program_name: &str) {
     println!("Unnameable Compiler");
@@ -50,31 +51,51 @@ fn main() -> Result<(), std::io::Error> {
     while i < args.len() {
         match args[i].as_str() {
             "--target-arch" => {
-                if i + 1 < args.len() { arch = Some(args[i + 1].clone()); i += 2; } 
-                else { cli_error("Missing value for --target-arch"); }
+                if i + 1 < args.len() {
+                    arch = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    cli_error("Missing value for --target-arch");
+                }
             }
             "--target-os" => {
-                if i + 1 < args.len() { os = Some(args[i + 1].clone()); i += 2; } 
-                else { cli_error("Missing value for --target-os"); }
+                if i + 1 < args.len() {
+                    os = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    cli_error("Missing value for --target-os");
+                }
             }
             "--ptr-width" => {
                 if i + 1 < args.len() {
-                    ptr_width = Some(args[i + 1].parse().expect("Invalid byte integer for --ptr-width"));
+                    ptr_width = Some(
+                        args[i + 1]
+                            .parse()
+                            .expect("Invalid byte integer for --ptr-width"),
+                    );
                     i += 2;
-                } else { cli_error("Missing value for --ptr-width"); }
+                } else {
+                    cli_error("Missing value for --ptr-width");
+                }
             }
             "--int-width" => {
                 if i + 1 < args.len() {
-                    int_width = Some(args[i + 1].parse().expect("Invalid byte integer for --int-width"));
+                    int_width = Some(
+                        args[i + 1]
+                            .parse()
+                            .expect("Invalid byte integer for --int-width"),
+                    );
                     i += 2;
-                } else { cli_error("Missing value for --int-width"); }
+                } else {
+                    cli_error("Missing value for --int-width");
+                }
             }
             // Treat positional values as the input file path
             flag if flag.starts_with('-') => {
                 eprintln!("Unknown compilation flag: {}", flag);
                 std::process::exit(1);
             }
-            positional => {
+            _positional => {
                 filename = Some(&args[i]);
                 i += 1;
             }
@@ -112,6 +133,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut lowering = Lowering::new(ast, &mut diagnostics);
     let hir = lowering.lower();
+    println!("{:?}", hir);
     if lowering.corrupted {
         diagnostics.print();
         std::process::exit(1);

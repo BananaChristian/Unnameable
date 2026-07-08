@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     diagnostics::{Diagnostics, Span},
@@ -177,7 +177,10 @@ impl TypeInfo {
                 }
             }
 
-            ResolvedTypeKind::Func { params, ret_type ,gen_type_params
+            ResolvedTypeKind::Func {
+                params,
+                ret_type,
+                ..
             } => {
                 let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
                 format!("func({}) : {}", param_names.join(", "), ret_type.name)
@@ -191,10 +194,19 @@ pub struct TypesTable {
     pub types: HashMap<NodeId, TypeInfo>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InstanceKey {
+    // The unique ID of the original generic function or struct definition
+    pub original_def_id: NodeId,
+    // The actual concrete types chosen for this specific call (e.g., [Int32])
+    pub concrete_args: Vec<TypeInfo>,
+}
+
 #[derive(Debug)]
 pub struct SemanticCtxt {
     pub names: NameTable,
     pub types: TypesTable,
+    pub monomorph_backlog: HashSet<InstanceKey>,
 }
 
 impl SemanticCtxt {
@@ -206,6 +218,7 @@ impl SemanticCtxt {
             types: TypesTable {
                 types: HashMap::new(),
             },
+            monomorph_backlog: HashSet::new(),
         }
     }
 }
@@ -245,9 +258,8 @@ impl<'a> Semantics<'a> {
         let mut checker = TypeChecker::new(
             self.diagnostics,
             &self.hir,
-            &mut self.ctxt.names,
+            &mut self.ctxt,
             self.target_spec,
-            &mut self.ctxt.types,
         );
         checker.check();
         if checker.corrupted {

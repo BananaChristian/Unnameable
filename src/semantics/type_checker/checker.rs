@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::{
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     hir::{
@@ -9,27 +7,17 @@ use crate::{
     layout::{Layout, LayoutEngine},
     lowering::NodeId,
     semantics::{
-        semantics::{NameTable, ResolvedTypeKind, TypeInfo, TypesTable},
+        semantics::{InstanceKey, ResolvedTypeKind, SemanticCtxt, TypeInfo},
         type_checker::registry::TypeRegistry,
     },
     target::TargetSpec,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct InstanceKey {
-    // The unique ID of the original generic function or struct definition
-    pub original_def_id: NodeId,
-    // The actual concrete types chosen for this specific call (e.g., [Int32])
-    pub concrete_args: Vec<TypeInfo>,
-}
-
 pub struct TypeChecker<'a> {
     hir: &'a Vec<HirStmt>,
-    pub name_table: &'a NameTable,
-    pub types_table: &'a mut TypesTable,
+    pub ctxt: &'a mut SemanticCtxt,
     pub registry: TypeRegistry,
     pub layout_engine: LayoutEngine<'a>,
-    pub monomorph_backlog: HashSet<InstanceKey>,
     pub active_generic_params: Vec<String>,
     diagnostics: &'a mut Diagnostics,
     pub corrupted: bool,
@@ -39,17 +27,14 @@ impl<'a> TypeChecker<'a> {
     pub fn new(
         diagnostics: &'a mut Diagnostics,
         hir: &'a Vec<HirStmt>,
-        name_table: &'a NameTable,
+        ctxt: &'a mut SemanticCtxt,
         target: &'a TargetSpec,
-        types_table: &'a mut TypesTable,
     ) -> Self {
         TypeChecker {
             hir,
-            name_table,
-            types_table,
+            ctxt,
             registry: TypeRegistry::new(),
             layout_engine: LayoutEngine::new(target),
-            monomorph_backlog: HashSet::new(),
             active_generic_params: Vec::new(),
             diagnostics,
             corrupted: false,
@@ -63,13 +48,13 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn update_kind(&mut self, node_id: NodeId, new_kind: ResolvedTypeKind) {
-        if let Some(info) = self.types_table.types.get_mut(&node_id) {
+        if let Some(info) = self.ctxt.types.types.get_mut(&node_id) {
             info.kind = new_kind;
         }
     }
 
     pub fn update_layout(&mut self, node_id: NodeId, new_layout: Layout) {
-        if let Some(info) = self.types_table.types.get_mut(&node_id) {
+        if let Some(info) = self.ctxt.types.types.get_mut(&node_id) {
             info.layout = new_layout;
         }
     }
@@ -172,6 +157,14 @@ impl<'a> TypeChecker<'a> {
             type_id,
             layout,
             span,
+        }
+    }
+
+    pub fn generic(&mut self, name: String, span: Span) -> TypeInfo {
+        if self.active_generic_params.contains(&name) {
+            self.primitive(ResolvedTypeKind::GenericParam(name.clone()), span.clone())
+        } else {
+            self.unknown(span)
         }
     }
 
@@ -403,12 +396,12 @@ impl<'a> TypeChecker<'a> {
                 ResolvedTypeKind::Func {
                     params: params_a,
                     ret_type: ret_a,
-                    gen_type_params: gens_a,
+                    ..
                 },
                 ResolvedTypeKind::Func {
                     params: params_b,
                     ret_type: ret_b,
-                    gen_type_params: gens_b,
+                    ..
                 },
             ) => {
                 if params_a.len() != params_b.len() {
@@ -534,6 +527,7 @@ impl<'a> TypeChecker<'a> {
                 let members = fields.iter().map(|f| self.type_from_hir_type(f)).collect();
                 self.tuple(members, ty.span.clone())
             }
+
             HirType::AnonymousStruct(members) => {
                 let fields = members
                     .iter()
@@ -544,7 +538,8 @@ impl<'a> TypeChecker<'a> {
 
             HirType::GenericType { type_params, .. } => {
                 let decl_id: NodeId = *self
-                    .name_table
+                    .ctxt
+                    .names
                     .resolved
                     .get(&ty.hir_id)
                     .expect("Resolver already linked this ID");
@@ -559,21 +554,13 @@ impl<'a> TypeChecker<'a> {
                     concrete_args,
                 };
 
-                self.monomorph_backlog.insert(key);
+                self.ctxt.monomorph_backlog.insert(key);
 
                 self.look_up_declared_type(ty.hir_id, ty.span.clone())
             }
 
-            HirType::CustomType(name) => {
-                if self.active_generic_params.contains(name) {
-                    self.primitive(
-                        ResolvedTypeKind::GenericParam(name.clone()),
-                        ty.span.clone(),
-                    )
-                } else {
-                    self.look_up_declared_type(ty.hir_id, ty.span.clone())
-                }
-            }
+            HirType::CustomType(_) => self.look_up_declared_type(ty.hir_id, ty.span.clone()),
+            HirType::GenericPlaceHolder(name) => self.generic(name.clone(), ty.span.clone()),
         }
     }
 
@@ -647,7 +634,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn get_ty_node_name(&self, ty: &HirTypeNode) -> String {
-        if let HirType::CustomType(name) = &ty.kind {
+        if let HirType::GenericPlaceHolder(name) = &ty.kind {
             name.clone()
         } else {
             "".to_string()
@@ -817,7 +804,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn get_decl_type(&mut self, decl_id: &NodeId, span: Span) -> TypeInfo {
-        match self.types_table.types.get(&decl_id) {
+        match self.ctxt.types.types.get(&decl_id) {
             Some(ty) => ty.clone(),
             None => self.unknown(span),
         }
@@ -943,12 +930,12 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn insert(&mut self, id: NodeId, ty: TypeInfo) {
-        self.types_table.types.insert(id, ty);
+        self.ctxt.types.types.insert(id, ty);
     }
 
     pub fn look_up_declared_type(&mut self, usage_id: NodeId, span: Span) -> TypeInfo {
-        if let Some(decl_id) = self.name_table.resolved.get(&usage_id) {
-            self.get_decl_type(decl_id, span.clone())
+        if let Some(decl_id) = self.ctxt.names.resolved.get(&usage_id) {
+            self.get_decl_type(&decl_id.clone(), span.clone())
         } else {
             self.unknown(span)
         }

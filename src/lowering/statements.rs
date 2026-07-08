@@ -22,7 +22,7 @@ impl<'a> Lowering<'a> {
             StmtKind::Return(..) => self.lower_return(stmt),
             StmtKind::Break | StmtKind::Continue => self.lower_break_or_cont(stmt),
             StmtKind::IfStmt { .. } => self.lower_if(stmt),
-            StmtKind::AliasStmt{..} => self.lower_alias(stmt),
+            StmtKind::AliasStmt { .. } => self.lower_alias(stmt),
             _ => self.lower_expr_stmt(stmt),
         }
     }
@@ -639,12 +639,14 @@ impl<'a> Lowering<'a> {
         if let StmtKind::GenericBlock { params, body } = &stmt.kind {
             let mut generics = Vec::new();
             let mut generic_types = Vec::new();
+            self.current_generic_params = params.clone();
             for param in params {
                 let ty = self.lower_type(param)?;
                 generic_types.push(ty);
             }
 
             let body = self.lower_block(body)?;
+            self.current_generic_params.clear();
             for mut content in body {
                 match &mut content.kind {
                     HirStmtKind::HirStructDecl {

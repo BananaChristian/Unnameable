@@ -1,7 +1,7 @@
 use crate::{
     diagnostics::Span, hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp}, lowering::NodeId, semantics::{
-        semantics::{ResolvedTypeKind, TypeInfo},
-        type_checker::checker::{InstanceKey, TypeChecker},
+        semantics::{InstanceKey, ResolvedTypeKind, TypeInfo},
+        type_checker::checker::TypeChecker,
     }
 };
 
@@ -33,7 +33,7 @@ impl<'a> TypeChecker<'a> {
 
     fn gen_inst_type(&mut self, expr: &HirExpr)-> TypeInfo{
         if let  HirExprKind::GenericInstantion {type_params ,..} =  &expr.kind{
-            let template_decl_id: NodeId = *self.name_table.resolved.get(&expr.hir_id)
+            let template_decl_id: NodeId = *self.ctxt.names.resolved.get(&expr.hir_id)
             .expect("Name resolver missing mapping for generic instantiation");
 
             let template_info = self.get_decl_type(&template_decl_id, expr.span.clone());
@@ -48,7 +48,7 @@ impl<'a> TypeChecker<'a> {
                     original_def_id: template_decl_id,
                     concrete_args: concrete_args.clone(),
                 };
-                self.monomorph_backlog.insert(key);
+                self.ctxt.monomorph_backlog.insert(key);
             }
 
             let specialized_type = self.specialize_signature(&template_info, &concrete_args, expr.span.clone());

@@ -1,7 +1,7 @@
 use crate::{
-    ast::{Stmt, StmtKind},
+    ast::{Stmt, StmtKind, Type},
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
-    hir::HirStmt,
+    hir::{HirStmt, HirTypeNode},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq,Eq,Hash)]
@@ -12,6 +12,7 @@ pub struct Lowering<'a> {
     diagnostics: &'a mut Diagnostics,
     pub iter_counter: u64,
     pub node_counter: usize,
+    pub current_generic_params: Vec<Type>,
     pub corrupted: bool,
 }
 
@@ -22,6 +23,7 @@ impl<'a> Lowering<'a> {
             diagnostics,
             iter_counter: 0,
             node_counter: 0,
+            current_generic_params: Vec::new(),
             corrupted: false,
         }
     }
