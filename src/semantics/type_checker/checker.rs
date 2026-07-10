@@ -473,7 +473,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn type_from_hir_type(&mut self, ty: &HirTypeNode) -> TypeInfo {
-        match &ty.kind {
+        let type_info = match &ty.kind {
             HirType::I8 => self.primitive(ResolvedTypeKind::I8, ty.span.clone()),
             HirType::I16 => self.primitive(ResolvedTypeKind::I16, ty.span.clone()),
             HirType::I32 => self.primitive(ResolvedTypeKind::I32, ty.span.clone()),
@@ -561,7 +561,9 @@ impl<'a> TypeChecker<'a> {
 
             HirType::CustomType(_) => self.look_up_declared_type(ty.hir_id, ty.span.clone()),
             HirType::GenericPlaceHolder(name) => self.generic(name.clone(), ty.span.clone()),
-        }
+        };
+        self.insert(ty.hir_id, type_info.clone());
+        type_info
     }
 
     pub fn is_numeric(&self, ty: &TypeInfo) -> bool {

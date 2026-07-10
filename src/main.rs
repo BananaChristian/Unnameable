@@ -133,7 +133,6 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut lowering = Lowering::new(ast, &mut diagnostics);
     let hir = lowering.lower();
-    println!("{:?}", hir);
     if lowering.corrupted {
         diagnostics.print();
         std::process::exit(1);

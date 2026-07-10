@@ -1,10 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    any::Any,
+    collections::{HashMap, HashSet},
+};
 
 use crate::{
     diagnostics::{Diagnostics, Span},
-    hir::HirStmt,
+    hir::{HirStmt, HirType, HirTypeNode},
     layout::Layout,
     lowering::NodeId,
+    monomorph::Monomorphizer,
     semantics::{resolver::Resolver, type_checker::TypeChecker},
     target::TargetSpec,
 };
@@ -178,9 +182,7 @@ impl TypeInfo {
             }
 
             ResolvedTypeKind::Func {
-                params,
-                ret_type,
-                ..
+                params, ret_type, ..
             } => {
                 let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
                 format!("func({}) : {}", param_names.join(", "), ret_type.name)
@@ -268,8 +270,15 @@ impl<'a> Semantics<'a> {
         }
     }
 
+    fn run_monormophizer(&mut self) {
+        let mut monomorphizer = Monomorphizer::new(&mut self.ctxt, &mut self.hir);
+        let cleaned = monomorphizer.run();
+        println!("{:?}", cleaned);
+    }
+
     pub fn analyze(&mut self) {
         self.run_resolver();
         self.run_type_checker();
+        self.run_monormophizer();
     }
 }

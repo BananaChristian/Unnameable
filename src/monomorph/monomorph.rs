@@ -127,6 +127,51 @@ impl<'a> Monomorphizer<'a> {
         }
     }
 
+    fn generate_unified_tree(&mut self) -> Vec<HirStmt> {
+        let mut monorphized_tree = Vec::new();
+        for original in self.hir.iter() {
+            match &original.kind {
+                HirStmtKind::HirFunctionDef {
+                    generic_type_params,
+                    ..
+                }
+                | HirStmtKind::HirStructDecl {
+                    generic_type_params,
+                    ..
+                } => {
+                    if !generic_type_params.is_empty() {
+                        continue;
+                    }
+
+                    let mut production_stmt = original.clone();
+                    let current_name = self.extract_stmt_name(&production_stmt.hir_id);
+                    self.monormophize_stmt(
+                        &mut production_stmt,
+                        &[],
+                        &[],
+                        current_name.to_string(),
+                    );
+                    monorphized_tree.push(production_stmt)
+                }
+                _ => {
+                    let mut production_stmt = original.clone();
+                    let current_name = self.extract_stmt_name(&production_stmt.hir_id);
+                    self.monormophize_stmt(
+                        &mut production_stmt,
+                        &[],
+                        &[],
+                        current_name.to_string(),
+                    );
+                    monorphized_tree.push(production_stmt)
+                }
+            }
+        }
+
+        let mut concrete_instances = std::mem::take(&mut self.generated_stmts);
+        monorphized_tree.append(&mut concrete_instances);
+        monorphized_tree
+    }
+
     pub fn run(&mut self) -> Vec<HirStmt> {
         let backlog_items: Vec<InstanceKey> = self.ctxt.monomorph_backlog.iter().cloned().collect();
         for instance in &backlog_items {
@@ -177,6 +222,6 @@ impl<'a> Monomorphizer<'a> {
             }
         }
 
-        Vec::new()
+        self.generate_unified_tree()
     }
 }
