@@ -428,10 +428,12 @@ impl<'a> TypeChecker<'a> {
                     self.check_array_literal(elements, expr.span.clone())
                 }
             };
-
+            self.insert(expr.hir_id, ty.clone());
             ty
         } else {
-            self.unknown(expr.span.clone())
+            let unknown_ty=self.unknown(expr.span.clone());
+            self.insert(expr.hir_id, unknown_ty.clone());
+            unknown_ty
         }
     }
 

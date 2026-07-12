@@ -1,18 +1,7 @@
-contract Animal {
-    func speak(): ()
-    func name(): ()
-}
-
-struct Test: Animal{
-  x: i32
-}
-
-
-methods Test{
-  func speak(a: i32):(){
-
-  }
-  func name(): (){
-  
-  }
+func test_branch_mismatch(): i32 {
+    if true {
+        return 1
+    } else {
+        var x := 5 
+    }
 }

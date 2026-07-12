@@ -4,7 +4,7 @@ use crate::{
         HirAnonStructField, HirEnumMember, HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode,
         HirVariantMember,
     },
-    layout::{Layout, LayoutEngine},
+    layout::LayoutEngine,
     lowering::NodeId,
     semantics::{
         semantics::{InstanceKey, ResolvedTypeKind, SemanticCtxt, TypeInfo},
@@ -50,12 +50,6 @@ impl<'a> TypeChecker<'a> {
     pub fn update_kind(&mut self, node_id: NodeId, new_kind: ResolvedTypeKind) {
         if let Some(info) = self.ctxt.types.types.get_mut(&node_id) {
             info.kind = new_kind;
-        }
-    }
-
-    pub fn update_layout(&mut self, node_id: NodeId, new_layout: Layout) {
-        if let Some(info) = self.ctxt.types.types.get_mut(&node_id) {
-            info.layout = new_layout;
         }
     }
 

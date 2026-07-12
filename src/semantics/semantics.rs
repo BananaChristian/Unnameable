@@ -1,8 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+    cf_checker::ControlFlowChecker,
+    contract_verifier::ContractVerifier,
     diagnostics::{Diagnostics, Span},
     hir::HirStmt,
+    indexer::NodeIndex,
     layout::Layout,
     lowering::NodeId,
     monomorph::Monomorphizer,
@@ -384,6 +387,18 @@ impl<'a> Semantics<'a> {
     pub fn generate_monormophizer_hir(&mut self) -> Vec<HirStmt> {
         let mut monomorphizer = Monomorphizer::new(&mut self.ctxt, &mut self.hir);
         monomorphizer.run()
+    }
+
+    pub fn verify_contracts(&mut self, hir_index: &NodeIndex) -> bool {
+        let mut verifier = ContractVerifier::new(hir_index, &mut self.ctxt, self.diagnostics);
+        verifier.run();
+        verifier.corrupted
+    }
+
+    pub fn check_control_flow(&mut self, hir_index: &NodeIndex) -> bool {
+        let mut checker = ControlFlowChecker::new(hir_index, &self.ctxt, self.diagnostics);
+        checker.run();
+        checker.corrupted
     }
 
     pub fn analyze(&mut self) {

@@ -1,10 +1,12 @@
 use crate::{
-    contract_verifier::ContractVerifier, diagnostics::Diagnostics, indexer::NodeIndex,
-    lexer::Lexer, lowering::Lowering, parser::Parser, semantics::Semantics, target::TargetSpec,
+    cf_checker::ControlFlowChecker, contract_verifier::ContractVerifier, diagnostics::Diagnostics,
+    indexer::NodeIndex, lexer::Lexer, lowering::Lowering, parser::Parser, semantics::Semantics,
+    target::TargetSpec,
 };
 use std::{env, fs};
 
 mod ast;
+mod cf_checker;
 mod contract_verifier;
 mod diagnostics;
 mod hir;
@@ -150,10 +152,12 @@ fn main() -> Result<(), std::io::Error> {
     let monormorphized_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monormorphized_hir);
 
-    let mut contract_verifier =
-        ContractVerifier::new(&hir_index, &mut semantics.ctxt, &mut diagnostics);
-    contract_verifier.run();
-    if contract_verifier.corrupted {
+    if semantics.verify_contracts(&hir_index) {
+        diagnostics.print();
+        std::process::exit(1);
+    }
+
+    if semantics.check_control_flow(&hir_index) {
         diagnostics.print();
         std::process::exit(1);
     }
