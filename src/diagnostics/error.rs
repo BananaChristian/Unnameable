@@ -6,6 +6,7 @@ pub enum Phase {
     Parser,
     Lowering,
     Semantics,
+    ContractVerifier,
     None,
 }
 

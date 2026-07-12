@@ -300,7 +300,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn assignment_type(&mut self, left_ty: &TypeInfo, right_ty: &TypeInfo,span:Span) -> TypeInfo{
-        if  !self.types_match(left_ty, right_ty){
+        if  !TypeInfo::types_match(left_ty, right_ty){
             self.type_mismatch(left_ty, right_ty, span.clone());
             self.unknown(span)
         }else{
@@ -310,7 +310,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn comparison_binary_type(&mut self, left_ty: &TypeInfo,right_ty: &TypeInfo,span:Span)-> TypeInfo{
-        if !self.types_match(left_ty, right_ty){
+        if !TypeInfo::types_match(left_ty, right_ty){
             self.type_mismatch(left_ty, right_ty, span.clone());
             self.unknown(span.clone())
         }else{
@@ -351,7 +351,7 @@ impl<'a> TypeChecker<'a> {
 
                     for (arg, param_ty) in args.iter().zip(params.iter()) {
                         let arg_ty = self.expr_type(arg);
-                        if !self.types_match(&arg_ty, param_ty) {
+                        if !TypeInfo::types_match(&arg_ty, param_ty) {
                             self.type_mismatch(&arg_ty, param_ty, expr.span.clone());
                         }
                     }
@@ -383,7 +383,7 @@ impl<'a> TypeChecker<'a> {
             return self.unknown(span.clone());
         }
 
-        if !self.types_match(&left_ty, &right_ty) {
+        if !TypeInfo::types_match(&left_ty, &right_ty) {
             self.type_mismatch(&left_ty, &right_ty, span.clone());
             return self.unknown(span.clone());
         }
@@ -443,7 +443,7 @@ impl<'a> TypeChecker<'a> {
             let mut all_okay = true;
             for element in elements.iter().skip(1) {
                 let element_ty = self.expr_type(element);
-                if !self.types_match(&first_ty, &element_ty) {
+                if !TypeInfo::types_match(&first_ty, &element_ty) {
                     self.report(
                         format!("array elements must all have the same type"),
                         Some(span.clone()),

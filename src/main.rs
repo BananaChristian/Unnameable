@@ -1,12 +1,14 @@
 use crate::{
-    diagnostics::Diagnostics, lexer::Lexer, lowering::Lowering, parser::Parser,
-    semantics::Semantics, target::TargetSpec,
+    contract_verifier::ContractVerifier, diagnostics::Diagnostics, indexer::NodeIndex,
+    lexer::Lexer, lowering::Lowering, parser::Parser, semantics::Semantics, target::TargetSpec,
 };
 use std::{env, fs};
 
 mod ast;
+mod contract_verifier;
 mod diagnostics;
 mod hir;
+mod indexer;
 mod layout;
 mod lexer;
 mod lowering;
@@ -141,6 +143,17 @@ fn main() -> Result<(), std::io::Error> {
     let mut semantics = Semantics::new(hir, &target_spec, &mut diagnostics);
     semantics.analyze();
     if semantics.corrupted {
+        diagnostics.print();
+        std::process::exit(1);
+    }
+
+    let monormorphized_hir = semantics.generate_monormophizer_hir();
+    let hir_index = NodeIndex::build(&monormorphized_hir);
+
+    let mut contract_verifier =
+        ContractVerifier::new(&hir_index, &mut semantics.ctxt, &mut diagnostics);
+    contract_verifier.run();
+    if contract_verifier.corrupted {
         diagnostics.print();
         std::process::exit(1);
     }
