@@ -2,7 +2,7 @@ use crate::{
     diagnostics::{CompilerError, Diagnostics, Phase, Span},
     hir::{HirStmt, HirStmtKind},
     indexer::NodeIndex,
-    semantics::{SemanticCtxt, TypeInfo},
+    semantics::{ResolvedTypeKind, SemanticCtxt, TypeInfo},
 };
 
 pub struct ControlFlowChecker<'a> {
@@ -74,6 +74,11 @@ impl<'a> ControlFlowChecker<'a> {
                 }
             }
 
+            if current_fn_ret_ty.kind != ResolvedTypeKind::Unit && !always_returns {
+                self.report(format!("function missing  terminal return statement, expected return statement of type '{}'",current_fn_ret_ty.name), 
+                    Some(stmt.span.clone()));
+            }
+
             self.fn_context = false;
             self.current_return_type = None;
         }
@@ -82,7 +87,7 @@ impl<'a> ControlFlowChecker<'a> {
 
     fn check_return(&mut self, stmt: &HirStmt) -> bool {
         let mut always_returns = false;
-        if let HirStmtKind::HirReturn(val) = &stmt.kind {
+        if let HirStmtKind::HirReturn(_) = &stmt.kind {
             if !self.fn_context {
                 self.report(
                     format!("Return statements must only exist in a function body"),
@@ -90,24 +95,22 @@ impl<'a> ControlFlowChecker<'a> {
                 );
             }
 
-            if let Some(v) = val {
-                let ret_ty = self
-                    .ctxt
-                    .types
-                    .types
-                    .get(&v.hir_id)
-                    .expect(format!("Failed to get type info for id: {:?}", v.hir_id).as_str());
+            let return_ty = self
+                .ctxt
+                .types
+                .types
+                .get(&stmt.hir_id)
+                .expect(format!("Failed to get type info for id: {:?}", &stmt.hir_id).as_str());
 
-                if let Some(current_r) = &self.current_return_type {
-                    if !TypeInfo::types_match(ret_ty, current_r) {
-                        self.report(
-                            format!(
-                                "Expected type '{}' but got '{}'",
-                                ret_ty.name, current_r.name
-                            ),
-                            Some(stmt.span.clone()),
-                        );
-                    }
+            if let Some(current_r) = &self.current_return_type {
+                if !TypeInfo::types_match(return_ty, current_r) {
+                    self.report(
+                        format!(
+                            "Expected type '{}' but got '{}'",
+                            return_ty.name, current_r.name
+                        ),
+                        Some(stmt.span.clone()),
+                    );
                 }
             }
 

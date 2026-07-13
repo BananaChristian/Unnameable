@@ -15,6 +15,7 @@ impl<'a> TypeChecker<'a> {
             | HirStmtKind::HirFunctionDecl { .. } => self.declare_custom_types(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.check_func(stmt),
             HirStmtKind::HirVarDecl { .. } => self.check_var(stmt),
+            HirStmtKind::HirReturn(_) => self.check_return(stmt),
             _ => (),
         }
     }
@@ -22,6 +23,19 @@ impl<'a> TypeChecker<'a> {
     fn check_expr_stmt(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirExpr(expr) = &stmt.kind {
             self.check_expr(expr);
+        }
+    }
+
+    fn check_return(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirReturn(val) = &stmt.kind {
+            let ty = match val {
+                Some(inner) => self.expr_type(inner),
+                None => self.unit(stmt.span.clone()),
+            };
+            self.insert(stmt.hir_id, ty.clone());
+        } else {
+            let unknown_ty = self.unknown(stmt.span.clone());
+            self.insert(stmt.hir_id, unknown_ty.clone());
         }
     }
 
@@ -101,7 +115,6 @@ impl<'a> TypeChecker<'a> {
                 };
             }
             self.insert(stmt.hir_id, _annotated_ty);
-
         }
     }
 }

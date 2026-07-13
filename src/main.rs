@@ -1,7 +1,6 @@
 use crate::{
-    cf_checker::ControlFlowChecker, contract_verifier::ContractVerifier, diagnostics::Diagnostics,
-    indexer::NodeIndex, lexer::Lexer, lowering::Lowering, parser::Parser, semantics::Semantics,
-    target::TargetSpec,
+    diagnostics::Diagnostics, indexer::NodeIndex, lexer::Lexer, lowering::Lowering, parser::Parser,
+    semantics::Semantics, target::TargetSpec,
 };
 use std::{env, fs};
 
@@ -151,11 +150,13 @@ fn main() -> Result<(), std::io::Error> {
 
     let monormorphized_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monormorphized_hir);
+    println!("{:?}", hir_index);
 
     if semantics.verify_contracts(&hir_index) {
         diagnostics.print();
         std::process::exit(1);
     }
+    println!("{:?}",semantics.ctxt.types);
 
     if semantics.check_control_flow(&hir_index) {
         diagnostics.print();

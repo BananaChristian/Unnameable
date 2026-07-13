@@ -393,7 +393,7 @@ impl<'a> TypeChecker<'a> {
 
     fn literal_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::Literal(lit) = &expr.kind {
-            let ty = match lit {
+            match lit {
                 HirLiteral::Int8(_) => self.primitive(ResolvedTypeKind::I8, expr.span.clone()),
                 HirLiteral::Uint8(_) => self.primitive(ResolvedTypeKind::U8, expr.span.clone()),
                 HirLiteral::Int16(_) => self.primitive(ResolvedTypeKind::I16, expr.span.clone()),
@@ -427,13 +427,9 @@ impl<'a> TypeChecker<'a> {
                 HirLiteral::ArrayLiteral(elements) => {
                     self.check_array_literal(elements, expr.span.clone())
                 }
-            };
-            self.insert(expr.hir_id, ty.clone());
-            ty
+            }
         } else {
-            let unknown_ty=self.unknown(expr.span.clone());
-            self.insert(expr.hir_id, unknown_ty.clone());
-            unknown_ty
+            self.unknown(expr.span.clone())
         }
     }
 
