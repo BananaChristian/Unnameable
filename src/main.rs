@@ -17,6 +17,7 @@ mod monomorph;
 mod parser;
 mod semantics;
 mod target;
+mod const_and_mut_validator;
 
 fn print_help(program_name: &str) {
     println!("Unnameable Compiler");
