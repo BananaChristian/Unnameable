@@ -1,11 +1,12 @@
 use crate::{
-    diagnostics::Diagnostics, indexer::NodeIndex, lexer::Lexer, lowering::Lowering, parser::Parser,
-    semantics::Semantics, target::TargetSpec,
+    const_and_mut_validator::Validator, diagnostics::Diagnostics, indexer::NodeIndex, lexer::Lexer,
+    lowering::Lowering, parser::Parser, semantics::Semantics, target::TargetSpec,
 };
 use std::{env, fs};
 
 mod ast;
 mod cf_checker;
+mod const_and_mut_validator;
 mod contract_verifier;
 mod diagnostics;
 mod hir;
@@ -17,7 +18,6 @@ mod monomorph;
 mod parser;
 mod semantics;
 mod target;
-mod const_and_mut_validator;
 
 fn print_help(program_name: &str) {
     println!("Unnameable Compiler");
@@ -151,15 +151,20 @@ fn main() -> Result<(), std::io::Error> {
 
     let monormorphized_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monormorphized_hir);
-    println!("{:?}", hir_index);
 
     if semantics.verify_contracts(&hir_index) {
         diagnostics.print();
         std::process::exit(1);
     }
-    println!("{:?}",semantics.ctxt.types);
 
     if semantics.check_control_flow(&hir_index) {
+        diagnostics.print();
+        std::process::exit(1);
+    }
+
+    let mut validator = Validator::new(&hir_index, &semantics.ctxt, &mut diagnostics);
+    validator.run();
+    if validator.corrupted {
         diagnostics.print();
         std::process::exit(1);
     }

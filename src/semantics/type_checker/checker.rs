@@ -498,6 +498,7 @@ impl<'a> TypeChecker<'a> {
         (member.name.clone(), field_ty)
     }
 
+
     fn variant_field_ty(
         &mut self,
         member: &HirVariantMember,
@@ -638,6 +639,10 @@ impl<'a> TypeChecker<'a> {
                 self.active_generic_params = param_names.clone();
 
                 let ret_ty = self.type_from_hir_type(return_type);
+
+                for p in params{
+                    self.check_func_param_type(p);
+                }
 
                 let resolved_params: Vec<TypeInfo> = params
                     .iter()

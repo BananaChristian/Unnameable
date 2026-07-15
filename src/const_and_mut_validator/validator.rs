@@ -65,7 +65,7 @@ impl<'a> Validator<'a> {
         }
     }
 
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         for (_, stmt) in &self.node_index.nodes {
             self.check_stmt(stmt);
         }
@@ -117,6 +117,7 @@ impl<'a> Validator<'a> {
     fn check_while(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirWhile { condition, body } = &stmt.kind {
             self.enter_scope();
+            self.check_expr(condition);
             for st in body {
                 self.check_stmt(st);
             }
@@ -132,8 +133,9 @@ impl<'a> Validator<'a> {
         } = &stmt.kind
         {
             self.enter_scope();
+            self.check_expr(condition);
             for st in body {
-                self.check_stmt(stmt);
+                self.check_stmt(st);
             }
             self.exit_scope();
 
