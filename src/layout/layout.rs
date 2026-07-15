@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     diagnostics::Span,
     semantics::{ResolvedTypeKind, TypeId, TypeInfo},
     target::TargetSpec,
 };
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Layout {
     pub size: usize,      //Total size in bytes
     pub alignment: usize, //Required alignment boundary

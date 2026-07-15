@@ -1,2 +1,3 @@
 mod serializer;
-mod stub;
+
+pub use serializer::Serializer;

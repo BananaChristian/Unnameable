@@ -1,3 +1,4 @@
-func mut_test(a: i32){
-    a= 100i32
+expose struct Food{
+  a: i32
+  b: u32
 }

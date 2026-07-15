@@ -1,10 +1,19 @@
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
 use crate::{
     hir::{HirStmt, HirStmtKind},
     indexer::NodeIndex,
     lowering::NodeId,
     semantics::{SemanticCtxt, TypeInfo},
-    serializer::stub::ExportStub,
 };
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ExportStub {
+    module_name: String,
+    pub exposed_symbols: HashMap<String, TypeInfo>,
+}
 
 pub struct Serializer<'a> {
     module_name: String,
@@ -14,19 +23,23 @@ pub struct Serializer<'a> {
 }
 
 impl<'a> Serializer<'a> {
-    pub fn new(ctxt: &'a SemanticCtxt, hir_index: &'a NodeIndex) -> Self {
+    pub fn new(module_name: String, ctxt: &'a SemanticCtxt, hir_index: &'a NodeIndex) -> Self {
         Serializer {
-            module_name: String::new(),
+            module_name: module_name.clone(),
             ctxt,
             hir_index,
-            stub: ExportStub::new(),
+            stub: ExportStub {
+                module_name,
+                exposed_symbols: HashMap::new(),
+            },
         }
     }
 
-    fn run(&mut self) {
+    pub fn serialize(mut self) -> ExportStub {
         for (_, stmt) in &self.hir_index.nodes {
-            self.serialize_stmt(&stmt);
+            self.serialize_stmt(stmt);
         }
+        self.stub
     }
 
     fn mangle_name(&self, original_name: &String) -> String {

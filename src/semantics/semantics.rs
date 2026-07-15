@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     cf_checker::ControlFlowChecker,
     contract_verifier::ContractVerifier,
-    diagnostics::{Diagnostics, Span},
+    diagnostics::{self, Diagnostics, Span},
     hir::HirStmt,
     indexer::NodeIndex,
     layout::Layout,
@@ -18,10 +20,10 @@ pub struct NameTable {
     pub resolved: HashMap<NodeId, NodeId>, //usage_id, declaration_id
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TypeId(pub usize);
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TypeInfo {
     pub kind: ResolvedTypeKind,
     pub name: String,
@@ -30,7 +32,7 @@ pub struct TypeInfo {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ResolvedTypeKind {
     //Primitives
     I8,
@@ -342,41 +344,31 @@ impl SemanticCtxt {
 pub struct Semantics<'a> {
     hir: Vec<HirStmt>,
     target_spec: &'a TargetSpec,
-    diagnostics: &'a mut Diagnostics,
     pub ctxt: SemanticCtxt,
     pub corrupted: bool,
 }
 
 impl<'a> Semantics<'a> {
-    pub fn new(
-        hir: Vec<HirStmt>,
-        target_spec: &'a TargetSpec,
-        diagnostics: &'a mut Diagnostics,
-    ) -> Self {
+    pub fn new(hir: Vec<HirStmt>, target_spec: &'a TargetSpec) -> Self {
         Semantics {
             hir,
             target_spec,
-            diagnostics,
             ctxt: SemanticCtxt::new(),
             corrupted: false,
         }
     }
 
-    fn run_resolver(&mut self) {
-        let mut resolver = Resolver::new(self.diagnostics);
+    fn run_resolver(&mut self, diagnostics: &mut Diagnostics) {
+        let mut resolver = Resolver::new(diagnostics);
         resolver.run(&self.hir, &mut self.ctxt.names);
         if resolver.corrupted {
             self.corrupted = true;
         }
     }
 
-    fn run_type_checker(&mut self) {
-        let mut checker = TypeChecker::new(
-            self.diagnostics,
-            &self.hir,
-            &mut self.ctxt,
-            self.target_spec,
-        );
+    fn run_type_checker(&mut self, diagnostics: &mut Diagnostics) {
+        let mut checker =
+            TypeChecker::new(diagnostics, &self.hir, &mut self.ctxt, self.target_spec);
         checker.check();
         if checker.corrupted {
             self.corrupted = true;
@@ -389,20 +381,28 @@ impl<'a> Semantics<'a> {
         monomorphizer.run()
     }
 
-    pub fn verify_contracts(&mut self, hir_index: &NodeIndex) -> bool {
-        let mut verifier = ContractVerifier::new(hir_index, &mut self.ctxt, self.diagnostics);
+    pub fn verify_contracts(
+        &mut self,
+        hir_index: &NodeIndex,
+        diagnostics: &mut Diagnostics,
+    ) -> bool {
+        let mut verifier = ContractVerifier::new(hir_index, &mut self.ctxt, diagnostics);
         verifier.run();
         verifier.corrupted
     }
 
-    pub fn check_control_flow(&mut self, hir_index: &NodeIndex) -> bool {
-        let mut checker = ControlFlowChecker::new(hir_index, &self.ctxt, self.diagnostics);
+    pub fn check_control_flow(
+        &mut self,
+        hir_index: &NodeIndex,
+        diagnostics: &mut Diagnostics,
+    ) -> bool {
+        let mut checker = ControlFlowChecker::new(hir_index, &self.ctxt, diagnostics);
         checker.run();
         checker.corrupted
     }
 
-    pub fn analyze(&mut self) {
-        self.run_resolver();
-        self.run_type_checker();
+    pub fn analyze(&mut self, diagnostics: &mut Diagnostics) {
+        self.run_resolver(diagnostics);
+        self.run_type_checker(diagnostics);
     }
 }

@@ -1,8 +1,9 @@
 use crate::{
     const_and_mut_validator::Validator, diagnostics::Diagnostics, indexer::NodeIndex, lexer::Lexer,
-    lowering::Lowering, parser::Parser, semantics::Semantics, target::TargetSpec,
+    lowering::Lowering, parser::Parser, semantics::Semantics, serializer::Serializer,
+    target::TargetSpec,
 };
-use std::{env, fs};
+use std::{env, fs, path::PathBuf};
 
 mod ast;
 mod cf_checker;
@@ -17,8 +18,8 @@ mod lowering;
 mod monomorph;
 mod parser;
 mod semantics;
-mod target;
 mod serializer;
+mod target;
 
 fn print_help(program_name: &str) {
     println!("Unnameable Compiler");
@@ -29,6 +30,7 @@ fn print_help(program_name: &str) {
     println!("  --target-os <str>     Override the target OS (e.g., linux, windows, none)");
     println!("  --ptr-width <bytes>   Override pointer width in bytes (e.g., 4, 8)");
     println!("  --int-width <bytes>   Override default integer (usize/isize) width in bytes");
+    println!("  --emit-stub <path>    Specify the path to spit out the binary .stub file");
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -51,6 +53,8 @@ fn main() -> Result<(), std::io::Error> {
     let mut os: Option<String> = None;
     let mut ptr_width: Option<usize> = None;
     let mut int_width: Option<usize> = None;
+
+    let mut emit_stub_path: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -95,6 +99,14 @@ fn main() -> Result<(), std::io::Error> {
                     cli_error("Missing value for --int-width");
                 }
             }
+            "--emit-stub" => {
+                if i + 1 < args.len() {
+                    emit_stub_path = Some(PathBuf::from(args[i + 1].clone()));
+                    i += 2;
+                } else {
+                    cli_error("Missing value for --emit-stub");
+                }
+            }
             // Treat positional values as the input file path
             flag if flag.starts_with('-') => {
                 eprintln!("Unknown compilation flag: {}", flag);
@@ -115,6 +127,12 @@ fn main() -> Result<(), std::io::Error> {
             std::process::exit(1);
         }
     };
+
+    let module_name = std::path::Path::new(filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .expect("Failed to derive a valid module name from source file path");
 
     //  Resolve target layout (Build system choices override, otherwise fallbacks to host)
     let target_spec = TargetSpec::new(arch, os, ptr_width, int_width);
@@ -143,8 +161,8 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
 
-    let mut semantics = Semantics::new(hir, &target_spec, &mut diagnostics);
-    semantics.analyze();
+    let mut semantics = Semantics::new(hir, &target_spec);
+    semantics.analyze(&mut diagnostics);
     if semantics.corrupted {
         diagnostics.print();
         std::process::exit(1);
@@ -153,12 +171,12 @@ fn main() -> Result<(), std::io::Error> {
     let monormorphized_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monormorphized_hir);
 
-    if semantics.verify_contracts(&hir_index) {
+    if semantics.verify_contracts(&hir_index, &mut diagnostics) {
         diagnostics.print();
         std::process::exit(1);
     }
 
-    if semantics.check_control_flow(&hir_index) {
+    if semantics.check_control_flow(&hir_index,&mut diagnostics) {
         diagnostics.print();
         std::process::exit(1);
     }
@@ -168,6 +186,17 @@ fn main() -> Result<(), std::io::Error> {
     if validator.corrupted {
         diagnostics.print();
         std::process::exit(1);
+    }
+
+    if let Some(stub_path) = emit_stub_path {
+        // Build the serializer using the automatically derived module name
+        let serializer = Serializer::new(module_name, &semantics.ctxt, &hir_index);
+        let stub = serializer.serialize();
+
+        // Turn the ExportStub directly into binary and dump it
+        let binary_bytes =
+            bincode::serialize(&stub).expect("Failed to serialize export stub to binary");
+        fs::write(stub_path, binary_bytes)?;
     }
 
     Ok(())
