@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::{self, CompilerError, Diagnostics, Phase, Span},
-    hir::{HirExpr, HirExprKind, HirLiteral, HirStmt, HirStmtKind},
+    hir::{HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt, HirStmtKind},
     indexer::NodeIndex,
     semantics::SemanticCtxt,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BindingKind {
+pub enum BindingKind {
     Const,
     Mutable,
     Immutable,
@@ -37,7 +37,7 @@ impl<'a> Validator<'a> {
         }
     }
 
-    fn look_up(&self, name: &str) -> Option<BindingKind> {
+    pub fn look_up(&self, name: &str) -> Option<BindingKind> {
         for scope in self.scopes.iter().rev() {
             if let Some(kind) = scope.get(name) {
                 return Some(*kind);
@@ -66,14 +66,85 @@ impl<'a> Validator<'a> {
     }
 
     fn run(&mut self) {
-        for (_,stmt) in &self.node_index.nodes{
+        for (_, stmt) in &self.node_index.nodes {
             self.check_stmt(stmt);
         }
-
     }
 
-    fn check_stmt(&mut self, stmt: &HirStmt){
-        
+    fn check_stmt(&mut self, stmt: &HirStmt) {
+        match &stmt.kind {
+            HirStmtKind::HirVarDecl { .. } => self.check_var_decl(stmt),
+            HirStmtKind::HirIf { .. } => self.check_if(stmt),
+            HirStmtKind::HirWhile { .. } => self.check_while(stmt),
+            HirStmtKind::HirExpr(_) => self.check_expr_stmt(stmt),
+            _ => (),
+        }
+    }
+
+    fn check_expr_stmt(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirExpr(inner) = &stmt.kind {
+            self.check_expr(inner);
+        }
+    }
+
+    fn check_param(&mut self, param: &HirParam) {
+        if param.mutable {
+            self.scopes
+                .last_mut()
+                .unwrap()
+                .insert(param.name.clone(), BindingKind::Mutable);
+        } else {
+            self.scopes
+                .last_mut()
+                .unwrap()
+                .insert(param.name.clone(), BindingKind::Immutable);
+        }
+    }
+
+    fn check_func_decl(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirFunctionDef { params, body, .. } = &stmt.kind {
+            self.enter_scope();
+            for param in params {
+                self.check_param(param);
+            }
+            for st in body {
+                self.check_stmt(st);
+            }
+            self.exit_scope();
+        }
+    }
+
+    fn check_while(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirWhile { condition, body } = &stmt.kind {
+            self.enter_scope();
+            for st in body {
+                self.check_stmt(st);
+            }
+            self.exit_scope();
+        }
+    }
+
+    fn check_if(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirIf {
+            condition,
+            body,
+            else_body,
+        } = &stmt.kind
+        {
+            self.enter_scope();
+            for st in body {
+                self.check_stmt(stmt);
+            }
+            self.exit_scope();
+
+            if let Some(el_bod) = else_body {
+                self.enter_scope();
+                for el_st in el_bod {
+                    self.check_stmt(el_st);
+                }
+                self.exit_scope();
+            }
+        }
     }
 
     fn check_var_decl(&mut self, stmt: &HirStmt) {
