@@ -153,6 +153,7 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.print();
         std::process::exit(1);
     }
+    println!("{:?}",ast);
 
     let mut lowering = Lowering::new(ast, &mut diagnostics);
     let hir = lowering.lower();
@@ -160,6 +161,7 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.print();
         std::process::exit(1);
     }
+    println!("{:?}",hir);
 
     let mut semantics = Semantics::new(hir, &target_spec);
     semantics.analyze(&mut diagnostics);

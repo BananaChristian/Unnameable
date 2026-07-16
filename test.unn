@@ -1,4 +1,1 @@
-expose struct Food{
-  a: i32
-  b: u32
-}
+import test::Food as that

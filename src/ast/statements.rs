@@ -77,6 +77,10 @@ pub enum StmtKind {
         original: Box<Type>,
         new: Box<Expr>,
     },
+    ImportStmt {
+        name: Box<Expr>,
+        alias: Option<Expr>,
+    },
     IfStmt {
         condition: Box<Expr>,
         body: Box<Stmt>,

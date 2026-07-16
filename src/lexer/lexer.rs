@@ -72,6 +72,7 @@ impl<'a> Lexer<'a> {
             ("cast".to_string(), TType::Cast),
             ("alias".to_string(), TType::Alias),
             ("as".to_string(), TType::As),
+            ("import".to_string(), TType::Import),
         ]);
 
         Lexer {

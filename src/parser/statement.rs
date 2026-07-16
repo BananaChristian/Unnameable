@@ -25,6 +25,7 @@ impl<'a> Parser<'a> {
             TType::Variant => self.parse_variant(),
             TType::Return => self.parse_return(),
             TType::Alias => self.parse_alias(),
+            TType::Import => self.parse_import(),
             TType::Break | TType::Continue => self.parse_break_or_cont(),
             _ => self.parse_expr_stmt(),
         }
@@ -625,6 +626,35 @@ impl<'a> Parser<'a> {
             },
             Span { start, end },
         ))
+    }
+
+    fn parse_import(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Import)?;
+        //It is called path I think
+        let name = self.parse_path_or_identifier()?;
+        let mid = self.current_token()?.span.end;
+
+        if self.current_token()?.token_type == TType::As {
+            self.advance();//Consume the as token
+            let alias = Some(self.parse_identifier()?);
+            let end = self.current_token()?.span.end;
+            Some(Stmt {
+                kind: StmtKind::ImportStmt {
+                    name: Box::new(name),
+                    alias,
+                },
+                span: Span { start, end },
+            })
+        } else {
+            Some(Stmt {
+                kind: StmtKind::ImportStmt {
+                    name: Box::new(name),
+                    alias: None,
+                },
+                span: Span { start, end: mid },
+            })
+        }
     }
 
     pub fn parse_body(&mut self) -> Option<Stmt> {

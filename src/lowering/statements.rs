@@ -23,6 +23,7 @@ impl<'a> Lowering<'a> {
             StmtKind::Break | StmtKind::Continue => self.lower_break_or_cont(stmt),
             StmtKind::IfStmt { .. } => self.lower_if(stmt),
             StmtKind::AliasStmt { .. } => self.lower_alias(stmt),
+            StmtKind::ImportStmt { .. } => self.lower_import(stmt),
             _ => self.lower_expr_stmt(stmt),
         }
     }
@@ -794,6 +795,28 @@ impl<'a> Lowering<'a> {
                 },
                 span: stmt.span.clone(),
             })
+        } else {
+            None
+        }
+    }
+
+    fn lower_import(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        if let StmtKind::ImportStmt { name, alias } = &stmt.kind {
+            let name = self.extract_name_string(name)?;
+            if let Some(al) = alias {
+                let alias = Some(self.extract_name_string(al)?);
+                Some(HirStmt {
+                    hir_id: self.next_id(),
+                    kind: HirStmtKind::HirImport { name, alias },
+                    span: stmt.span.clone(),
+                })
+            } else {
+                Some(HirStmt {
+                    hir_id: self.next_id(),
+                    kind: HirStmtKind::HirImport { name, alias: None },
+                    span: stmt.span.clone(),
+                })
+            }
         } else {
             None
         }

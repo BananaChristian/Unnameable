@@ -204,6 +204,22 @@ impl<'a> Parser<'a> {
         Some(Expr::new(ExprKind::Identifier(name), span))
     }
 
+    pub fn parse_path_or_identifier(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        let name = self.parse_identifier()?;
+        if self.current_token()?.token_type == TType::Scope {
+            self.advance(); //Consume the ::
+            let next = self.parse_identifier()?;
+            let end = self.current_token()?.span.end;
+            Some(Expr::new(
+                ExprKind::Path(Box::new(name), Box::new(next)),
+                Span { start, end },
+            ))
+        } else {
+            Some(name)
+        }
+    }
+
     pub fn parse_turbofish_inst(&mut self) -> Option<Expr> {
         let mut name = self.parse_identifier()?;
         let start = name.span.start;
@@ -352,9 +368,9 @@ impl<'a> Parser<'a> {
 
         Some(Expr::new(
             ExprKind::Instantiation {
-                init_ty: if let Some(cus_ty)=ty{
+                init_ty: if let Some(cus_ty) = ty {
                     Some(Box::new(cus_ty))
-                }else{
+                } else {
                     None
                 },
                 body: params,

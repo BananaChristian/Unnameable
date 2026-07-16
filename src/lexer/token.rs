@@ -102,6 +102,7 @@ pub enum TType {
     Bitcast,
     Cast,
     As,
+    Import,
 
 
     I8Key,

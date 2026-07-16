@@ -105,9 +105,13 @@ pub enum HirStmtKind {
         generic_type_params: Vec<HirTypeNode>,
         exposed: bool,
     },
-    HirAlias{
+    HirAlias {
         original: Box<HirTypeNode>,
-        alias:String,
+        alias: String,
+    },
+    HirImport {
+        name: String,
+        alias: Option<String>,
     },
     HirWhile {
         condition: HirExpr,
