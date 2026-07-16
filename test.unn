@@ -1,1 +1,2 @@
-import test::Food as that
+import weird as food
+import this as food

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     cf_checker::ControlFlowChecker,
     contract_verifier::ContractVerifier,
-    diagnostics::{self, Diagnostics, Span},
+    diagnostics::{Diagnostics, Span},
     hir::HirStmt,
     indexer::NodeIndex,
     layout::Layout,

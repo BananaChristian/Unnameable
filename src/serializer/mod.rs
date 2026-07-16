@@ -1,3 +1,3 @@
 mod serializer;
 
-pub use serializer::Serializer;
+pub use serializer::{Serializer,ExportStub};

@@ -1,7 +1,7 @@
 use crate::{
-    const_and_mut_validator::Validator, diagnostics::Diagnostics, indexer::NodeIndex, lexer::Lexer,
-    lowering::Lowering, parser::Parser, semantics::Semantics, serializer::Serializer,
-    target::TargetSpec,
+    const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine,
+    indexer::NodeIndex, lexer::Lexer, lowering::Lowering, parser::Parser, semantics::Semantics,
+    serializer::Serializer, target::TargetSpec,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -11,6 +11,7 @@ mod const_and_mut_validator;
 mod contract_verifier;
 mod diagnostics;
 mod hir;
+mod import;
 mod indexer;
 mod layout;
 mod lexer;
@@ -31,6 +32,9 @@ fn print_help(program_name: &str) {
     println!("  --ptr-width <bytes>   Override pointer width in bytes (e.g., 4, 8)");
     println!("  --int-width <bytes>   Override default integer (usize/isize) width in bytes");
     println!("  --emit-stub <path>    Specify the path to spit out the binary .stub file");
+    println!(
+        "  --load-stub <path>    Specify the path that the compiler should load the stub file from"
+    );
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -153,7 +157,7 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.print();
         std::process::exit(1);
     }
-    println!("{:?}",ast);
+    println!("{:?}", ast);
 
     let mut lowering = Lowering::new(ast, &mut diagnostics);
     let hir = lowering.lower();
@@ -161,7 +165,14 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.print();
         std::process::exit(1);
     }
-    println!("{:?}",hir);
+    println!("{:?}", hir);
+
+    let mut importer = ImportEngine::new(&mut diagnostics);
+    importer.test_run(&hir);
+    if importer.corrupted {
+        diagnostics.print();
+        std::process::exit(1);
+    }
 
     let mut semantics = Semantics::new(hir, &target_spec);
     semantics.analyze(&mut diagnostics);
@@ -178,7 +189,7 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
 
-    if semantics.check_control_flow(&hir_index,&mut diagnostics) {
+    if semantics.check_control_flow(&hir_index, &mut diagnostics) {
         diagnostics.print();
         std::process::exit(1);
     }
