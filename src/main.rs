@@ -3,6 +3,7 @@ use crate::{
     indexer::NodeIndex, lexer::Lexer, lowering::Lowering, parser::Parser, semantics::Semantics,
     serializer::Serializer, target::TargetSpec,
 };
+
 use std::{env, fs, path::PathBuf};
 
 mod ast;
@@ -59,6 +60,7 @@ fn main() -> Result<(), std::io::Error> {
     let mut int_width: Option<usize> = None;
 
     let mut emit_stub_path: Option<PathBuf> = None;
+    let mut load_stub_paths: Vec<String> = Vec::new();
 
     let mut i = 1;
     while i < args.len() {
@@ -111,6 +113,14 @@ fn main() -> Result<(), std::io::Error> {
                     cli_error("Missing value for --emit-stub");
                 }
             }
+            "--load-stub" => {
+                if i + 1 < args.len() {
+                    load_stub_paths.push(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    cli_error("Missing value for --load-stub");
+                }
+            }
             // Treat positional values as the input file path
             flag if flag.starts_with('-') => {
                 eprintln!("Unknown compilation flag: {}", flag);
@@ -157,7 +167,6 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.print();
         std::process::exit(1);
     }
-    println!("{:?}", ast);
 
     let mut lowering = Lowering::new(ast, &mut diagnostics);
     let hir = lowering.lower();
@@ -165,10 +174,10 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.print();
         std::process::exit(1);
     }
-    println!("{:?}", hir);
 
     let mut importer = ImportEngine::new(&mut diagnostics);
-    importer.test_run(&hir);
+    importer.import(&hir, &load_stub_paths);
+    println!("{:?}",importer.imported_cache);
     if importer.corrupted {
         diagnostics.print();
         std::process::exit(1);
@@ -202,11 +211,9 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     if let Some(stub_path) = emit_stub_path {
-        // Build the serializer using the automatically derived module name
         let serializer = Serializer::new(module_name, &semantics.ctxt, &hir_index);
         let stub = serializer.serialize();
 
-        // Turn the ExportStub directly into binary and dump it
         let binary_bytes =
             bincode::serialize(&stub).expect("Failed to serialize export stub to binary");
         fs::write(stub_path, binary_bytes)?;

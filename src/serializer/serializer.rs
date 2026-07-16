@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ExportStub {
-    module_name: String,
+    pub module_name: String,
     pub exposed_symbols: HashMap<String, TypeInfo>,
 }
 
