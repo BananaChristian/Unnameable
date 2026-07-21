@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use colored::*;
 
 use crate::diagnostics::{
@@ -11,6 +13,8 @@ pub struct Diagnostics {
     pub errors: Vec<CompilerError>,
     pub warnings: Vec<CompilerError>,
 }
+
+pub type SharedDiagnostics = Rc<RefCell<Diagnostics>>;
 
 impl Diagnostics {
     pub fn new(filename: String, source: String) -> Self {

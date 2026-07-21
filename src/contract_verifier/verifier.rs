@@ -1,5 +1,5 @@
 use crate::{
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{HirParam, HirStmt, HirStmtKind, HirTypeNode},
     indexer::NodeIndex,
     semantics::{SemanticCtxt, TypeInfo},
@@ -8,7 +8,7 @@ use crate::{
 pub struct ContractVerifier<'a> {
     node_index: &'a NodeIndex,
     ctxt: &'a mut SemanticCtxt,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
 
@@ -16,7 +16,7 @@ impl<'a> ContractVerifier<'a> {
     pub fn new(
         node_index: &'a NodeIndex,
         ctxt: &'a mut SemanticCtxt,
-        diagnostics: &'a mut Diagnostics,
+        diagnostics: SharedDiagnostics,
     ) -> Self {
         ContractVerifier {
             node_index,
@@ -194,7 +194,10 @@ impl<'a> ContractVerifier<'a> {
 
     fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
-        self.diagnostics
-            .report(CompilerError::error(message, Phase::ContractVerifier, span));
+        self.diagnostics.borrow_mut().report(CompilerError::error(
+            message,
+            Phase::ContractVerifier,
+            span,
+        ));
     }
 }

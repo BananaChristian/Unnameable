@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    diagnostics::{self, CompilerError, Diagnostics, Phase, Span},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt, HirStmtKind},
     indexer::NodeIndex,
     semantics::SemanticCtxt,
@@ -17,7 +17,7 @@ pub enum BindingKind {
 pub struct Validator<'a> {
     node_index: &'a NodeIndex,
     ctxt: &'a SemanticCtxt,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
     scopes: Vec<HashMap<String, BindingKind>>,
     pub corrupted: bool,
 }
@@ -26,7 +26,7 @@ impl<'a> Validator<'a> {
     pub fn new(
         node_index: &'a NodeIndex,
         ctxt: &'a SemanticCtxt,
-        diagnostics: &'a mut Diagnostics,
+        diagnostics: SharedDiagnostics,
     ) -> Self {
         Validator {
             node_index,
@@ -207,6 +207,7 @@ impl<'a> Validator<'a> {
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
         self.diagnostics
+            .borrow_mut()
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
 }

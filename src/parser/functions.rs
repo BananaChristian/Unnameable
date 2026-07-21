@@ -5,7 +5,7 @@ use crate::{
     parser::Parser,
 };
 
-impl<'a> Parser<'a> {
+impl  Parser {
     pub fn parse_param_decl(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
 

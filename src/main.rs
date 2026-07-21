@@ -4,7 +4,7 @@ use crate::{
     serializer::Serializer, target::TargetSpec,
 };
 
-use std::{env, fs, path::PathBuf};
+use std::{cell::RefCell, env, fs, path::PathBuf, rc::Rc};
 
 mod ast;
 mod cf_checker;
@@ -152,61 +152,66 @@ fn main() -> Result<(), std::io::Error> {
     let target_spec = TargetSpec::new(arch, os, ptr_width, int_width);
 
     let source = fs::read_to_string(filename)?;
-    let mut diagnostics = Diagnostics::new(filename.clone(), source.clone());
+    let diagnostics = Rc::new(RefCell::new(Diagnostics::new(
+        filename.clone(),
+        source.clone(),
+    )));
 
-    let mut lexer = Lexer::new(&source, &mut diagnostics);
+    let mut lexer = Lexer::new(&source, Rc::clone(&diagnostics));
     let tokens = lexer.tokenize();
     if lexer.corrupted {
-        diagnostics.print();
+        diagnostics.borrow().print();
         std::process::exit(1);
     }
 
-    let mut parser = Parser::new(tokens, &mut diagnostics);
+    let mut parser = Parser::new(tokens, Rc::clone(&diagnostics));
     let ast = parser.parse();
     if parser.corrupted {
-        diagnostics.print();
+        diagnostics.borrow().print();
         std::process::exit(1);
     }
 
-    let mut lowering = Lowering::new(ast, &mut diagnostics);
-    let hir = lowering.lower();
+    let mut lowering = Lowering::new(ast, Rc::clone(&diagnostics));
+    let mut hir = lowering.lower();
     if lowering.corrupted {
-        diagnostics.print();
+        diagnostics.borrow().print();
         std::process::exit(1);
     }
+    println!("{:?}", hir);
 
-    let mut importer = ImportEngine::new(&mut diagnostics);
-    importer.import(&hir, &load_stub_paths);
-    println!("{:?}",importer.imported_cache);
+    let mut importer = ImportEngine::new(Rc::clone(&diagnostics));
+    importer.import(&mut hir, &load_stub_paths);
+    println!("{:?}", importer.imported_cache);
     if importer.corrupted {
-        diagnostics.print();
+        diagnostics.borrow().print();
         std::process::exit(1);
     }
 
     let mut semantics = Semantics::new(hir, &target_spec);
-    semantics.analyze(&mut diagnostics);
+    semantics.analyze(Rc::clone(&diagnostics), &importer);
     if semantics.corrupted {
-        diagnostics.print();
+        diagnostics.borrow().print();
         std::process::exit(1);
     }
+    println!("NAMES TABLE {:?}",semantics.ctxt.names);
 
     let monormorphized_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monormorphized_hir);
 
-    if semantics.verify_contracts(&hir_index, &mut diagnostics) {
-        diagnostics.print();
+    if semantics.verify_contracts(&hir_index, Rc::clone(&diagnostics)) {
+        diagnostics.borrow().print();
         std::process::exit(1);
     }
 
-    if semantics.check_control_flow(&hir_index, &mut diagnostics) {
-        diagnostics.print();
+    if semantics.check_control_flow(&hir_index, Rc::clone(&diagnostics)) {
+        diagnostics.borrow().print();
         std::process::exit(1);
     }
 
-    let mut validator = Validator::new(&hir_index, &semantics.ctxt, &mut diagnostics);
+    let mut validator = Validator::new(&hir_index, &semantics.ctxt, Rc::clone(&diagnostics));
     validator.run();
     if validator.corrupted {
-        diagnostics.print();
+        diagnostics.borrow().print();
         std::process::exit(1);
     }
 

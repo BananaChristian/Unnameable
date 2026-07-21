@@ -1,5 +1,5 @@
 use crate::{
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{HirStmt, HirStmtKind},
     indexer::NodeIndex,
     semantics::{ResolvedTypeKind, SemanticCtxt, TypeInfo},
@@ -7,7 +7,7 @@ use crate::{
 
 pub struct ControlFlowChecker<'a> {
     node_index: &'a NodeIndex,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
     ctxt: &'a SemanticCtxt,
     loop_depth: u32,
     fn_context: bool,
@@ -19,7 +19,7 @@ impl<'a> ControlFlowChecker<'a> {
     pub fn new(
         node_index: &'a NodeIndex,
         ctxt: &'a SemanticCtxt,
-        diagnostics: &'a mut Diagnostics,
+        diagnostics: SharedDiagnostics,
     ) -> Self {
         ControlFlowChecker {
             node_index,
@@ -189,6 +189,7 @@ impl<'a> ControlFlowChecker<'a> {
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
         self.diagnostics
+            .borrow_mut()
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
 }

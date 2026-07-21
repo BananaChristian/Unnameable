@@ -1,23 +1,26 @@
 use crate::{
     ast::{Stmt, StmtKind, Type},
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
-    hir::{HirStmt, HirTypeNode},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
+    hir::HirStmt
 };
 
-#[derive(Debug, Clone, Copy, PartialEq,Eq,Hash)]
-pub struct NodeId(pub usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeId {
+    pub local: usize,    //This is for nodes born within this particular module
+    pub external: usize, //This is to be used externally by the import engine
+}
 
-pub struct Lowering<'a> {
+pub struct Lowering {
     ast: Vec<Stmt>,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
     pub iter_counter: u64,
     pub node_counter: usize,
     pub current_generic_params: Vec<Type>,
     pub corrupted: bool,
 }
 
-impl<'a> Lowering<'a> {
-    pub fn new(ast: Vec<Stmt>, diagnostics: &'a mut Diagnostics) -> Self {
+impl Lowering {
+    pub fn new(ast: Vec<Stmt>, diagnostics: SharedDiagnostics) -> Self {
         Lowering {
             ast,
             diagnostics,
@@ -29,7 +32,10 @@ impl<'a> Lowering<'a> {
     }
 
     pub fn next_id(&mut self) -> NodeId {
-        let id = NodeId(self.node_counter);
+        let id = NodeId {
+            local: self.node_counter,
+            external: 0,
+        };
         self.node_counter += 1;
         id
     }
@@ -64,6 +70,7 @@ impl<'a> Lowering<'a> {
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
         self.diagnostics
+            .borrow_mut()
             .report(CompilerError::error(message, Phase::Lowering, span));
     }
 }

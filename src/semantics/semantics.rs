@@ -1,12 +1,16 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     cf_checker::ControlFlowChecker,
     contract_verifier::ContractVerifier,
-    diagnostics::{Diagnostics, Span},
+    diagnostics::{SharedDiagnostics, Span},
     hir::HirStmt,
+    import::ImportEngine,
     indexer::NodeIndex,
     layout::Layout,
     lowering::NodeId,
@@ -358,15 +362,15 @@ impl<'a> Semantics<'a> {
         }
     }
 
-    fn run_resolver(&mut self, diagnostics: &mut Diagnostics) {
-        let mut resolver = Resolver::new(diagnostics);
+    fn run_resolver(&mut self, diagnostics: SharedDiagnostics, importer: &ImportEngine) {
+        let mut resolver = Resolver::new(diagnostics, importer);
         resolver.run(&self.hir, &mut self.ctxt.names);
         if resolver.corrupted {
             self.corrupted = true;
         }
     }
 
-    fn run_type_checker(&mut self, diagnostics: &mut Diagnostics) {
+    fn run_type_checker(&mut self, diagnostics: SharedDiagnostics) {
         let mut checker =
             TypeChecker::new(diagnostics, &self.hir, &mut self.ctxt, self.target_spec);
         checker.check();
@@ -384,7 +388,7 @@ impl<'a> Semantics<'a> {
     pub fn verify_contracts(
         &mut self,
         hir_index: &NodeIndex,
-        diagnostics: &mut Diagnostics,
+        diagnostics: SharedDiagnostics,
     ) -> bool {
         let mut verifier = ContractVerifier::new(hir_index, &mut self.ctxt, diagnostics);
         verifier.run();
@@ -394,15 +398,15 @@ impl<'a> Semantics<'a> {
     pub fn check_control_flow(
         &mut self,
         hir_index: &NodeIndex,
-        diagnostics: &mut Diagnostics,
+        diagnostics: SharedDiagnostics,
     ) -> bool {
         let mut checker = ControlFlowChecker::new(hir_index, &self.ctxt, diagnostics);
         checker.run();
         checker.corrupted
     }
 
-    pub fn analyze(&mut self, diagnostics: &mut Diagnostics) {
-        self.run_resolver(diagnostics);
-        self.run_type_checker(diagnostics);
+    pub fn analyze(&mut self, diagnostics: SharedDiagnostics, importer: &ImportEngine) {
+        self.run_resolver(Rc::clone(&diagnostics), importer);
+        self.run_type_checker(Rc::clone(&diagnostics));
     }
 }

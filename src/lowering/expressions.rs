@@ -11,7 +11,7 @@ use crate::{
     lowering::lowering::Lowering,
 };
 
-impl<'a> Lowering<'a> {
+impl Lowering{
     pub fn lower_expr(&mut self, expr: &Expr) -> Option<HirExpr> {
         let kind = match &expr.kind {
             ExprKind::Literal(lit) => HirExprKind::Literal(self.lower_literal(lit)?),

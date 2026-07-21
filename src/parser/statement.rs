@@ -5,7 +5,7 @@ use crate::{
     parser::Parser,
 };
 
-impl<'a> Parser<'a> {
+impl Parser {
     pub fn parse_stmt(&mut self) -> Option<Stmt> {
         let token = self.current_token()?.clone();
         match token.token_type {
@@ -636,7 +636,7 @@ impl<'a> Parser<'a> {
         let mid = self.current_token()?.span.end;
 
         if self.current_token()?.token_type == TType::As {
-            self.advance();//Consume the as token
+            self.advance(); //Consume the as token
             let alias = Some(self.parse_identifier()?);
             let end = self.current_token()?.span.end;
             Some(Stmt {

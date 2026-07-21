@@ -8,7 +8,7 @@ use crate::{
     lowering::lowering::Lowering,
 };
 
-impl<'a> Lowering<'a> {
+impl Lowering{
     pub fn lower_stmt(&mut self, stmt: &Stmt) -> Option<HirStmt> {
         match stmt.kind {
             StmtKind::VarDecl { .. } => self.lower_var(stmt),

@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
 use crate::{
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{HirStmt, HirStmtKind},
+    lowering::NodeId,
+    semantics::TypeInfo,
     serializer::ExportStub,
 };
 
@@ -11,20 +13,24 @@ pub struct ImportCache {
     pub imported_stubs: HashMap<String, ExportStub>, //<alias_name, export_stub>
 }
 
-pub struct ImportEngine<'a> {
+pub struct ImportEngine {
     pub resolved_imports: HashMap<String, Option<String>>, //<Original_name,Alias if any>
+    pub symbol_aliases: HashMap<String, String>, //<alias, original> (MyStruct,test_whatever)
+    pub symbol_declarations: HashMap<String, NodeId>,
     pub imported_cache: ImportCache,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
 
-impl<'a> ImportEngine<'a> {
-    pub fn new(diagnostics: &'a mut Diagnostics) -> Self {
+impl ImportEngine {
+    pub fn new(diagnostics: SharedDiagnostics) -> Self {
         ImportEngine {
             resolved_imports: HashMap::new(),
             imported_cache: ImportCache {
                 imported_stubs: HashMap::new(),
             },
+            symbol_aliases: HashMap::new(),
+            symbol_declarations: HashMap::new(),
             diagnostics,
             corrupted: false,
         }
@@ -54,6 +60,9 @@ impl<'a> ImportEngine<'a> {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
+        println!("SYMBOL ALIASES{:?}", self.symbol_aliases);
+        println!("SYMBOL DECLARATIONS: {:?}", self.symbol_declarations);
+
         for (original_name, alias) in imports_to_process {
             if let Some(stub) = loaded_stubs.remove(&original_name) {
                 let handle = alias.as_ref().unwrap_or(&original_name);
@@ -69,7 +78,7 @@ impl<'a> ImportEngine<'a> {
         }
     }
 
-    pub fn import(&mut self, hir: &Vec<HirStmt>, stub_paths: &Vec<String>) {
+    pub fn import(&mut self, hir: &mut Vec<HirStmt>, stub_paths: &Vec<String>) {
         self.scan_for_import_stmts(hir);
         self.load_and_populate_cache(stub_paths);
     }
@@ -81,13 +90,29 @@ impl<'a> ImportEngine<'a> {
             .any(|alias| alias.as_ref().map_or(false, |val| val == alias_name))
     }
 
-    fn scan_for_import_stmts(&mut self, hir: &Vec<HirStmt>) {
+    fn swap_ids(&mut self, input: &mut NodeId) {
+        input.external = input.local; //Swap the external with the local held
+        input.local = 0; //Make the local 0 since this isnt local
+    }
+
+    fn scan_for_import_stmts(&mut self, hir: &mut Vec<HirStmt>) {
         for stmt in hir {
             if let HirStmtKind::HirImport { name, alias } = &stmt.kind {
-                if !self.resolved_imports.contains_key(name) {
+                if self.is_mangled(name) {
+                    let demangled = self.demangle_name(name);
+                    let module_candidate = demangled.0.unwrap_or(name.clone());
+
                     if let Some(existing_alias) = alias {
                         if self.is_alias_available(existing_alias) {
-                            self.resolved_imports.insert(name.clone(), alias.clone());
+                            self.swap_ids(&mut stmt.hir_id);
+                            self.resolved_imports
+                                .entry(module_candidate)
+                                .or_insert(None);
+
+                            self.symbol_aliases
+                                .insert(existing_alias.clone(), name.clone());
+                            self.symbol_declarations
+                                .insert(existing_alias.clone(), stmt.hir_id.clone());
                         } else {
                             self.report(
                                 format!("Already used alias '{}' ", existing_alias),
@@ -95,13 +120,44 @@ impl<'a> ImportEngine<'a> {
                             );
                         }
                     } else {
-                        self.resolved_imports.insert(name.clone(), None);
+                        if let Some(symbol_name) = demangled.1 {
+                            self.swap_ids(&mut stmt.hir_id);
+                            self.resolved_imports
+                                .entry(module_candidate)
+                                .or_insert(None);
+                            self.symbol_aliases
+                                .insert(symbol_name.clone(), name.clone());
+                            self.symbol_declarations
+                                .insert(symbol_name.clone(), stmt.hir_id.clone());
+                        }
                     }
                 } else {
-                    self.report(
-                        format!("Already imported '{}'", name),
-                        Some(stmt.span.clone()),
-                    );
+                    let candidate = name.clone();
+                    if !self.resolved_imports.contains_key(&candidate) {
+                        if let Some(existing_alias) = alias {
+                            if self.is_alias_available(existing_alias) {
+                                self.swap_ids(&mut stmt.hir_id);
+                                self.resolved_imports.insert(name.clone(), alias.clone());
+                                self.symbol_declarations
+                                    .insert(existing_alias.clone(), stmt.hir_id.clone());
+                            } else {
+                                self.report(
+                                    format!("Already used alias '{}' ", existing_alias),
+                                    Some(stmt.span.clone()),
+                                );
+                            }
+                        } else {
+                            self.swap_ids(&mut stmt.hir_id);
+                            self.resolved_imports.insert(name.clone(), None);
+                            self.symbol_declarations
+                                .insert(name.clone(), stmt.hir_id.clone());
+                        }
+                    } else {
+                        self.report(
+                            format!("Already imported '{}'", name),
+                            Some(stmt.span.clone()),
+                        );
+                    }
                 }
             }
         }
@@ -110,6 +166,7 @@ impl<'a> ImportEngine<'a> {
     fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
         self.diagnostics
+            .borrow_mut()
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
 
@@ -125,5 +182,64 @@ impl<'a> ImportEngine<'a> {
         })?;
 
         Ok(stub)
+    }
+
+    fn demangle_name(&self, mangled: &str) -> (Option<String>, Option<String>) {
+        match mangled.find("_") {
+            Some(idx) if idx > 0 && idx < mangled.len() - 1 => {
+                let prefix = &mangled[..idx];
+                let symbol = &mangled[idx + 1..];
+                (Some(prefix.to_string()), Some(symbol.to_string()))
+            }
+            _ => (Some(mangled.to_string()), None),
+        }
+    }
+
+    fn is_mangled(&self, name: &str) -> bool {
+        match name.find("_") {
+            Some(idx) => idx > 0 && idx < name.len() - 1,
+            None => false,
+        }
+    }
+
+    fn remangle_name(&self, left: &String, right: &String) -> String {
+        format!("{}_{}", left, right)
+    }
+
+    pub fn resolve_imported_name(&self, name: &str) -> Option<NodeId> {
+        let target_name = match self.symbol_aliases.get(name) {
+            Some(mangled_target) => mangled_target.as_str(),
+            None => name,
+        };
+
+        let node_id = *self
+            .symbol_declarations
+            .get(name)
+            .or_else(|| self.symbol_declarations.get(target_name))?;
+
+        let prefix = self.demangle_name(target_name).0?;
+
+        let stub = self.imported_cache.imported_stubs.get(&prefix)?;
+
+        if stub.exposed_symbols.contains_key(target_name) {
+            return Some(node_id);
+        }
+
+        None
+    }
+
+    pub fn resolve_external_type(&self, wanted: &str) -> Option<&TypeInfo> {
+        let (prefix_opt, symbol_opt) = self.demangle_name(wanted);
+
+        let prefix = prefix_opt?;
+        let symbol = symbol_opt?;
+        if let Some(stub) = self.imported_cache.imported_stubs.get(&prefix) {
+            let true_name = self.remangle_name(&stub.module_name, &symbol);
+            if let Some(ty_info) = stub.exposed_symbols.get(&true_name) {
+                return Some(ty_info);
+            }
+        }
+
+        None
     }
 }

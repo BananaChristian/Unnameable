@@ -1,5 +1,5 @@
 use crate::{
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{
         HirAnonStructField, HirEnumMember, HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode,
         HirVariantMember,
@@ -19,13 +19,13 @@ pub struct TypeChecker<'a> {
     pub registry: TypeRegistry,
     pub layout_engine: LayoutEngine<'a>,
     pub active_generic_params: Vec<String>,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
 
 impl<'a> TypeChecker<'a> {
     pub fn new(
-        diagnostics: &'a mut Diagnostics,
+        diagnostics: SharedDiagnostics,
         hir: &'a Vec<HirStmt>,
         ctxt: &'a mut SemanticCtxt,
         target: &'a TargetSpec,
@@ -58,8 +58,11 @@ impl<'a> TypeChecker<'a> {
             self.corrupted = true;
         }
         for (message, span) in self.layout_engine.errors.drain(..) {
-            self.diagnostics
-                .report(CompilerError::error(message, Phase::Semantics, Some(span)));
+            self.diagnostics.borrow_mut().report(CompilerError::error(
+                message,
+                Phase::Semantics,
+                Some(span),
+            ));
         }
     }
 
@@ -498,7 +501,6 @@ impl<'a> TypeChecker<'a> {
         (member.name.clone(), field_ty)
     }
 
-
     fn variant_field_ty(
         &mut self,
         member: &HirVariantMember,
@@ -640,7 +642,7 @@ impl<'a> TypeChecker<'a> {
 
                 let ret_ty = self.type_from_hir_type(return_type);
 
-                for p in params{
+                for p in params {
                     self.check_func_param_type(p);
                 }
 
@@ -840,6 +842,7 @@ impl<'a> TypeChecker<'a> {
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
         self.diagnostics
+            .borrow_mut()
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
 }

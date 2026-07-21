@@ -1,23 +1,26 @@
 use std::collections::HashMap;
 
 use crate::{
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::HirStmt,
+    import::ImportEngine,
     lowering::NodeId,
     semantics::semantics::NameTable,
 };
 
 pub struct Resolver<'a> {
     scope_stack: Vec<HashMap<String, NodeId>>,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
+    import: &'a ImportEngine,
     pub corrupted: bool,
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(diagnostics: &'a mut Diagnostics) -> Self {
+    pub fn new(diagnostics: SharedDiagnostics, import: &'a ImportEngine) -> Self {
         Resolver {
             scope_stack: vec![HashMap::new()],
             diagnostics,
+            import,
             corrupted: false,
         }
     }
@@ -49,18 +52,32 @@ impl<'a> Resolver<'a> {
     }
 
     pub fn resolve_name(&mut self, name: &String, id: NodeId, span: Span, table: &mut NameTable) {
+        //First check scope
         for scope in self.scope_stack.iter().rev() {
             if let Some(decl_id) = scope.get(name) {
                 table.resolved.insert(id, *decl_id);
                 return;
             }
         }
-        self.report(format!("'{}' is not declared", name), Some(span));
+
+        //Now check the import cache
+        match self.import.resolve_imported_name(name) {
+            Some(declid) => {
+                table.resolved.insert(id, declid);
+                return;
+            }
+            None => {
+                self.report(format!("'{}' is not declared", name), Some(span));
+                return;
+            }
+        }
+
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
         self.diagnostics
+            .borrow_mut()
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
 }

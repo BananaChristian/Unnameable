@@ -1,18 +1,18 @@
 use crate::{
-    ast::{AnonStructField, Expr, ExprKind, Precedence, Qualifier, Stmt, Type, TypeKind},
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
+    ast::{AnonStructField, Expr, ExprKind, Precedence, Stmt, Type, TypeKind},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     lexer::{TType, token::Token},
 };
 
-pub struct Parser<'a> {
+pub struct Parser {
     tokens: Vec<Token>,
     current_pos: usize,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token>, diagnostics: &'a mut Diagnostics) -> Self {
+impl Parser {
+    pub fn new(tokens: Vec<Token>, diagnostics: SharedDiagnostics) -> Self {
         Parser {
             tokens,
             current_pos: 0,
@@ -335,6 +335,7 @@ impl<'a> Parser<'a> {
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
         self.diagnostics
+            .borrow_mut()
             .report(CompilerError::error(message, Phase::Parser, span));
     }
 }

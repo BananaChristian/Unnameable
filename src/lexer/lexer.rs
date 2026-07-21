@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    diagnostics::{CompilerError, Diagnostics, Phase, Span},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     lexer::{TType, token::Token},
 };
 
@@ -9,12 +9,12 @@ pub struct Lexer<'a> {
     pos: usize,
     source: &'a str,
     keywords: HashMap<String, TType>,
-    diagnostics: &'a mut Diagnostics,
+    diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(src: &'a str, diagnostics: &'a mut Diagnostics) -> Self {
+    pub fn new(src: &'a str, diagnostics: SharedDiagnostics) -> Self {
         let keywords = HashMap::from([
             ("mut".to_string(), TType::Mut),
             ("const".to_string(), TType::Const),
@@ -871,6 +871,7 @@ impl<'a> Lexer<'a> {
     pub fn report(&mut self, message: String, span: Option<Span>) {
         self.corrupted = true;
         self.diagnostics
+            .borrow_mut()
             .report(CompilerError::error(message, Phase::Lexer, span));
     }
 }

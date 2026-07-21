@@ -5,7 +5,7 @@ use crate::{
     parser::Parser,
 };
 
-impl<'a> Parser<'a> {
+impl Parser {
     pub fn parse_expression(&mut self, min_prec: Precedence) -> Option<Expr> {
         let mut left = self.parse_prefix()?;
 

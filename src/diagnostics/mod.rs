@@ -3,6 +3,6 @@ mod source;
 mod error;
 mod span;
 
-pub use diagnostics::Diagnostics;
+pub use diagnostics::{Diagnostics,SharedDiagnostics};
 pub use span::Span;
 pub use error::{Phase,CompilerError};
