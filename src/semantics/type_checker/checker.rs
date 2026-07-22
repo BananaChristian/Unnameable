@@ -4,6 +4,7 @@ use crate::{
         HirAnonStructField, HirEnumMember, HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode,
         HirVariantMember,
     },
+    import::ImportEngine,
     layout::LayoutEngine,
     lowering::NodeId,
     semantics::{
@@ -19,6 +20,7 @@ pub struct TypeChecker<'a> {
     pub registry: TypeRegistry,
     pub layout_engine: LayoutEngine<'a>,
     pub active_generic_params: Vec<String>,
+    import: &'a ImportEngine,
     diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
@@ -29,6 +31,7 @@ impl<'a> TypeChecker<'a> {
         hir: &'a Vec<HirStmt>,
         ctxt: &'a mut SemanticCtxt,
         target: &'a TargetSpec,
+        import: &'a ImportEngine,
     ) -> Self {
         TypeChecker {
             hir,
@@ -36,6 +39,7 @@ impl<'a> TypeChecker<'a> {
             registry: TypeRegistry::new(),
             layout_engine: LayoutEngine::new(target),
             active_generic_params: Vec::new(),
+            import,
             diagnostics,
             corrupted: false,
         }
@@ -704,7 +708,13 @@ impl<'a> TypeChecker<'a> {
     pub fn get_decl_type(&mut self, decl_id: &NodeId, span: Span) -> TypeInfo {
         match self.ctxt.types.types.get(&decl_id) {
             Some(ty) => ty.clone(),
-            None => self.unknown(span),
+            None => {
+                println!("Declaration ID Being used: {:?}", decl_id);
+                match self.import.resolve_external_ty(decl_id) {
+                    Some(ty) => ty.clone(),
+                    None => self.unknown(span),
+                }
+            }
         }
     }
 
@@ -829,6 +839,15 @@ impl<'a> TypeChecker<'a> {
 
     pub fn insert(&mut self, id: NodeId, ty: TypeInfo) {
         self.ctxt.types.types.insert(id, ty);
+    }
+
+    fn get_decl(&mut self, node_id: &NodeId) -> Option<&HirStmt> {
+        for stmt in self.hir {
+            if *node_id == stmt.hir_id {
+                return Some(stmt);
+            }
+        }
+        None
     }
 
     pub fn look_up_declared_type(&mut self, usage_id: NodeId, span: Span) -> TypeInfo {

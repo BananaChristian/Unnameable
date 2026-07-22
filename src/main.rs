@@ -173,15 +173,14 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut lowering = Lowering::new(ast, Rc::clone(&diagnostics));
     let mut hir = lowering.lower();
+    println!("{:?}",hir);
     if lowering.corrupted {
         diagnostics.borrow().print();
         std::process::exit(1);
     }
-    println!("{:?}", hir);
 
     let mut importer = ImportEngine::new(Rc::clone(&diagnostics));
     importer.import(&mut hir, &load_stub_paths);
-    println!("{:?}", importer.imported_cache);
     if importer.corrupted {
         diagnostics.borrow().print();
         std::process::exit(1);
@@ -193,7 +192,8 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.borrow().print();
         std::process::exit(1);
     }
-    println!("NAMES TABLE {:?}",semantics.ctxt.names);
+    println!("NAMES TABLE {:?}", semantics.ctxt.names);
+    println!("TYPES TABLE {:?}", semantics.ctxt.types.types);
 
     let monormorphized_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monormorphized_hir);

@@ -202,9 +202,6 @@ impl ImportEngine {
         }
     }
 
-    fn remangle_name(&self, left: &String, right: &String) -> String {
-        format!("{}_{}", left, right)
-    }
 
     pub fn resolve_imported_name(&self, name: &str) -> Option<NodeId> {
         let target_name = match self.symbol_aliases.get(name) {
@@ -228,18 +225,24 @@ impl ImportEngine {
         None
     }
 
-    pub fn resolve_external_type(&self, wanted: &str) -> Option<&TypeInfo> {
-        let (prefix_opt, symbol_opt) = self.demangle_name(wanted);
-
-        let prefix = prefix_opt?;
-        let symbol = symbol_opt?;
-        if let Some(stub) = self.imported_cache.imported_stubs.get(&prefix) {
-            let true_name = self.remangle_name(&stub.module_name, &symbol);
-            if let Some(ty_info) = stub.exposed_symbols.get(&true_name) {
-                return Some(ty_info);
+    pub fn resolve_external_ty(&self, decl_id: &NodeId) -> Option<&TypeInfo> {
+        for (symbol, target_id) in &self.symbol_declarations {
+            if *decl_id == *target_id {
+                //We have gotten the id we want
+                //Get the mangled name from the actual symbol this mangled name has the module name
+                //in it
+                let mangled_name = self.symbol_aliases.get(symbol)?;
+                //Demangle it and get the module name
+                let module_name = self.demangle_name(mangled_name).0?;
+                if let Some(stub) = self.imported_cache.imported_stubs.get(&module_name) {
+                    if let Some(ty_info) = stub.exposed_symbols.get(mangled_name.as_str()) {
+                        return Some(ty_info);
+                    }
+                }
             }
         }
 
         None
     }
+    
 }

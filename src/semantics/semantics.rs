@@ -365,14 +365,20 @@ impl<'a> Semantics<'a> {
     fn run_resolver(&mut self, diagnostics: SharedDiagnostics, importer: &ImportEngine) {
         let mut resolver = Resolver::new(diagnostics, importer);
         resolver.run(&self.hir, &mut self.ctxt.names);
+        println!("RESOLVED {:?}", self.ctxt.names);
         if resolver.corrupted {
             self.corrupted = true;
         }
     }
 
-    fn run_type_checker(&mut self, diagnostics: SharedDiagnostics) {
-        let mut checker =
-            TypeChecker::new(diagnostics, &self.hir, &mut self.ctxt, self.target_spec);
+    fn run_type_checker(&mut self, diagnostics: SharedDiagnostics, import: &ImportEngine) {
+        let mut checker = TypeChecker::new(
+            diagnostics,
+            &self.hir,
+            &mut self.ctxt,
+            self.target_spec,
+            import,
+        );
         checker.check();
         if checker.corrupted {
             self.corrupted = true;
@@ -407,6 +413,6 @@ impl<'a> Semantics<'a> {
 
     pub fn analyze(&mut self, diagnostics: SharedDiagnostics, importer: &ImportEngine) {
         self.run_resolver(Rc::clone(&diagnostics), importer);
-        self.run_type_checker(Rc::clone(&diagnostics));
+        self.run_type_checker(Rc::clone(&diagnostics), importer);
     }
 }
