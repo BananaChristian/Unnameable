@@ -1,4 +1,2 @@
-expose struct What{
-    a: i32
-}
+1
 

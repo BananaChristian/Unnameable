@@ -1,7 +1,5 @@
 use crate::{
-    const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine,
-    indexer::NodeIndex, lexer::Lexer, lowering::Lowering, parser::Parser, semantics::Semantics,
-    serializer::Serializer, target::TargetSpec,
+    const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine, indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder, parser::Parser, semantics::Semantics, serializer::Serializer, target::TargetSpec
 };
 
 use std::{cell::RefCell, env, fs, path::PathBuf, rc::Rc};
@@ -22,6 +20,7 @@ mod parser;
 mod semantics;
 mod serializer;
 mod target;
+mod mir;
 
 fn print_help(program_name: &str) {
     println!("Unnameable Compiler");
@@ -216,13 +215,18 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     if let Some(stub_path) = emit_stub_path {
-        let serializer = Serializer::new(module_name, &semantics.ctxt, &hir_index);
+        let serializer = Serializer::new(module_name.clone(), &semantics.ctxt, &hir_index);
         let stub = serializer.serialize();
 
         let binary_bytes =
             bincode::serialize(&stub).expect("Failed to serialize export stub to binary");
         fs::write(stub_path, binary_bytes)?;
     }
+
+    let mut mir_builder= MIRBuilder::new(&hir_index, module_name);
+    let mir_module=mir_builder.build();
+    println!("MIR Module {:?}", mir_module);
+
 
     Ok(())
 }
