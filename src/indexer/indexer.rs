@@ -8,15 +8,18 @@ use crate::{
 #[derive(Debug)]
 pub struct NodeIndex {
     pub nodes: HashMap<NodeId, HirStmt>,
+    pub roots: Vec<NodeId>,
 }
 
 impl NodeIndex {
     pub fn build(hir: &Vec<HirStmt>) -> Self {
         let mut index = NodeIndex {
             nodes: HashMap::new(),
+            roots: Vec::new(),
         };
 
         for stmt in hir {
+            index.roots.push(stmt.hir_id);
             index.index_stmt(&stmt);
         }
 

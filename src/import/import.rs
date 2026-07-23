@@ -60,9 +60,6 @@ impl ImportEngine {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
-        println!("SYMBOL ALIASES{:?}", self.symbol_aliases);
-        println!("SYMBOL DECLARATIONS: {:?}", self.symbol_declarations);
-
         for (original_name, alias) in imports_to_process {
             if let Some(stub) = loaded_stubs.remove(&original_name) {
                 let handle = alias.as_ref().unwrap_or(&original_name);

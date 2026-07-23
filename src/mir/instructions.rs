@@ -3,7 +3,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Vreg(pub usize);
 
-#[derive(Debug, Clone, PartialEq,Eq, Hash)]
+#[derive(Debug, Clone, PartialEq,Eq, Hash,Copy)]
 pub struct BlockId(pub usize);
 
 #[derive(Debug, Clone)]

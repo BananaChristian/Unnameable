@@ -365,7 +365,6 @@ impl<'a> Semantics<'a> {
     fn run_resolver(&mut self, diagnostics: SharedDiagnostics, importer: &ImportEngine) {
         let mut resolver = Resolver::new(diagnostics, importer);
         resolver.run(&self.hir, &mut self.ctxt.names);
-        println!("RESOLVED {:?}", self.ctxt.names);
         if resolver.corrupted {
             self.corrupted = true;
         }

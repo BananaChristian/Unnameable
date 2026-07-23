@@ -1,5 +1,7 @@
 use crate::{
-    const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine, indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder, parser::Parser, semantics::Semantics, serializer::Serializer, target::TargetSpec
+    const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine,
+    indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder, parser::Parser,
+    semantics::Semantics, serializer::Serializer, target::TargetSpec,
 };
 
 use std::{cell::RefCell, env, fs, path::PathBuf, rc::Rc};
@@ -15,12 +17,12 @@ mod indexer;
 mod layout;
 mod lexer;
 mod lowering;
+mod mir;
 mod monomorph;
 mod parser;
 mod semantics;
 mod serializer;
 mod target;
-mod mir;
 
 fn print_help(program_name: &str) {
     println!("Unnameable Compiler");
@@ -172,7 +174,6 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut lowering = Lowering::new(ast, Rc::clone(&diagnostics));
     let mut hir = lowering.lower();
-    println!("{:?}",hir);
     if lowering.corrupted {
         diagnostics.borrow().print();
         std::process::exit(1);
@@ -191,8 +192,6 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.borrow().print();
         std::process::exit(1);
     }
-    println!("NAMES TABLE {:?}", semantics.ctxt.names);
-    println!("TYPES TABLE {:?}", semantics.ctxt.types.types);
 
     let monormorphized_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monormorphized_hir);
@@ -223,10 +222,9 @@ fn main() -> Result<(), std::io::Error> {
         fs::write(stub_path, binary_bytes)?;
     }
 
-    let mut mir_builder= MIRBuilder::new(&hir_index, module_name);
-    let mir_module=mir_builder.build();
+    let mut mir_builder = MIRBuilder::new(&hir_index, module_name);
+    let mir_module = mir_builder.build_module();
     println!("MIR Module {:?}", mir_module);
-
 
     Ok(())
 }

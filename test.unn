@@ -1,2 +1,8 @@
-1
+func test(){
+  1
+}
+
+func test1(){
+  3
+}
 

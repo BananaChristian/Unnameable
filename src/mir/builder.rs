@@ -50,9 +50,13 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    pub fn build(&mut self) -> MIRModule {
-        for (_, stmt) in &self.indexed_hir.nodes {
-            self.build_stmt(stmt)
+    pub fn build_module(&mut self) -> MIRModule {
+        let root_ids = self.indexed_hir.roots.clone();
+
+        for root_id in root_ids {
+            if let Some(stmt) = self.indexed_hir.get(&root_id) {
+                self.build_stmt(stmt);
+            }
         }
         self.module.clone()
     }
@@ -63,7 +67,13 @@ impl<'a> MIRBuilder<'a> {
         current
     }
 
-    fn alloc_block(&mut self) -> BlockId {
+    pub fn alloc_fn_id(&mut self) -> FnId {
+        let current = FnId(self.fn_counter);
+        self.fn_counter += 1;
+        current
+    }
+
+    fn alloc_block_id(&mut self) -> BlockId {
         let current = BlockId(self.block_counter);
         self.block_counter += 1;
         current
@@ -100,7 +110,8 @@ impl<'a> MIRBuilder<'a> {
             .expect("Cannot add an instruction outside a function");
 
         let block_id = self
-            .current_block_id.as_mut()
+            .current_block_id
+            .as_mut()
             .expect("Cannot emit without an active block");
 
         self.module
@@ -115,7 +126,7 @@ impl<'a> MIRBuilder<'a> {
     }
 
     pub fn create_basic_block(&mut self) -> BasicBlock {
-        let new_id = self.alloc_block();
+        let new_id = self.alloc_block_id();
         BasicBlock {
             id: new_id,
             instructions: Vec::new(), //For now empty
@@ -123,18 +134,16 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    pub fn add_block(&mut self) {
+    pub fn add_block(&mut self, block: &BasicBlock) {
         let fn_id = self
             .current_func
             .expect("Cannot emit outside of a function");
-
-        let new_block = self.create_basic_block();
 
         self.module
             .functions
             .get_mut(&fn_id)
             .expect("Invalid active function")
             .blocks
-            .insert(new_block.id.clone(), new_block);
+            .insert(block.id.clone(), block.clone());
     }
 }
