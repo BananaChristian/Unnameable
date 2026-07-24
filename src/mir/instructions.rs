@@ -6,7 +6,7 @@ pub struct Vreg(pub usize);
 #[derive(Debug, Clone, PartialEq,Eq, Hash,Copy)]
 pub struct BlockId(pub usize);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq,Eq,Hash)]
 pub struct GlobalId(pub usize); //ID for global variables
 
 #[derive(Debug, Clone, PartialEq,Eq, Hash, Copy)]
@@ -59,6 +59,8 @@ pub enum MirTy {
     U64,
     I128,
     U128,
+    USIZE,
+    ISIZE,
     F32,
     F64,
     Bool,
@@ -142,7 +144,7 @@ pub enum MIRInstruction {
 #[derive(Debug, Clone)]
 pub enum MIRLinkage {
     Public,
-    Internal,
+    Private,
 }
 
 #[derive(Debug, Clone)]

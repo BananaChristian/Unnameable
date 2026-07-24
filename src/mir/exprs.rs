@@ -9,13 +9,29 @@ use crate::{
 impl<'a> MIRBuilder<'a> {
     pub fn build_expr(&mut self, expr: &HirExpr) -> MIRInstruction {
         match &expr.kind {
-            HirExprKind::Literal(lit) => self.build_literals(&lit),
+            HirExprKind::Literal(_) => {
+                let src = self.expr_value(expr);
+                self.build_assign(src)
+            }
+            HirExprKind::Binary(lhs, operat, rhs) => {
+                let lhs_value = self.expr_value(lhs);
+                let rhs_value = self.expr_value(rhs);
+                let op = self.map_binary_operator(operat);
+                self.build_binary(op, lhs_value, rhs_value)
+            }
             _ => todo!("Will add other expressions later"),
         }
     }
 
-    fn build_literals(&mut self, lit: &HirLiteral) -> MIRInstruction {
-        let src = match *lit {
+    pub fn expr_value(&mut self, expr: &HirExpr) -> MIRValue {
+        match &expr.kind {
+            HirExprKind::Literal(lit) => self.literal_value(&lit),
+            _ => todo!("Will add other expressions later"),
+        }
+    }
+
+    fn literal_value(&mut self, lit: &HirLiteral) -> MIRValue {
+        match *lit {
             HirLiteral::Int8(val) => MIRValue::Constant(ConstantValue::I8(val)),
             HirLiteral::Uint8(val) => MIRValue::Constant(ConstantValue::U8(val)),
             HirLiteral::Int16(val) => MIRValue::Constant(ConstantValue::I16(val)),
@@ -34,8 +50,6 @@ impl<'a> MIRBuilder<'a> {
             HirLiteral::Float(val) => MIRValue::Constant(ConstantValue::F64(val)),
             HirLiteral::Bool(val) => MIRValue::Constant(ConstantValue::Bool(val)),
             _ => todo!("Handle the other constants"),
-        };
-
-        self.build_assign(src)
+        }
     }
 }

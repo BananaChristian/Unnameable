@@ -222,7 +222,7 @@ fn main() -> Result<(), std::io::Error> {
         fs::write(stub_path, binary_bytes)?;
     }
 
-    let mut mir_builder = MIRBuilder::new(&hir_index, module_name);
+    let mut mir_builder = MIRBuilder::new(&hir_index, &semantics.ctxt.types, module_name);
     let mir_module = mir_builder.build_module();
     println!("MIR Module {:?}", mir_module);
 

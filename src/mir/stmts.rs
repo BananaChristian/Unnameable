@@ -2,19 +2,62 @@ use std::collections::HashMap;
 
 use crate::{
     hir::{HirStmt, HirStmtKind},
-    mir::{builder::MIRBuilder, instructions::MIRFn},
+    mir::{
+        builder::MIRBuilder,
+        instructions::{MIRFn, MIRGlobal, MIRLinkage},
+    },
 };
 
 impl<'a> MIRBuilder<'a> {
     pub fn build_stmt(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
+            HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirExpr(_) => self.build_expr_stmt(stmt),
             _ => todo!("Implement all the different statement handlers"),
         }
     }
 
-    pub fn build_fn(&mut self, stmt: &HirStmt) {
+    fn build_var(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirVarDecl {
+            name,
+            constant,
+            exposed,
+            init,
+            ..
+        } = &stmt.kind
+        {
+            let ty = self.get_type(&stmt.hir_id);
+
+            match self.current_func {
+                None => {
+                    let global_id = self.alloc_global_id();
+
+                    let linkage = |is_exposed| {
+                        if is_exposed {
+                            MIRLinkage::Public
+                        } else {
+                            MIRLinkage::Private
+                        }
+                    };
+
+                    let mir_global = MIRGlobal {
+                        global_id: global_id.clone(),
+                        name: name.clone(),
+                        is_const: *constant,
+                        linkage: linkage(*exposed),
+                        ty,
+                        init: init.as_ref().map(|expr| self.expr_value(expr)),
+                    };
+
+                    self.module.globals.insert(global_id, mir_global);
+                }
+                Some(fn_id) => (),
+            }
+        }
+    }
+
+    fn build_fn(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirFunctionDef { name, body, .. } = &stmt.kind {
             let new_fn_id = self.alloc_fn_id();
 

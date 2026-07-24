@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 
 use crate::{
+    hir::HirBinaryOp,
     indexer::NodeIndex,
+    lowering::NodeId,
     mir::instructions::{
-        BasicBlock, BlockId, FnId, GlobalId, MIRFn, MIRGlobal, MIRInstruction, MIRValue, Vreg,
+        BasicBlock, BlockId, FnId, GlobalId, MIRFn, MIRGlobal, MIRInstruction, MIROps, MIRValue,
+        MirTy, Vreg,
     },
+    semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
 };
 
 #[derive(Debug, Clone)]
@@ -18,10 +22,13 @@ pub struct MIRBuilder<'a> {
     //The imput hir to be convereted to MIR
     indexed_hir: &'a NodeIndex,
 
-    //Counters to increment to track vregs and blocks
+    pub types_table: &'a TypesTable,
+
+    //Counters to increment to track vregs, blocks and globals
     vreg_counter: usize,
     block_counter: usize,
     fn_counter: usize,
+    global_counter: usize,
 
     //The current block we are writing to
     pub current_block_id: Option<BlockId>,
@@ -33,12 +40,17 @@ pub struct MIRBuilder<'a> {
 
 //Implementation of the core helpers used by the MIR builder
 impl<'a> MIRBuilder<'a> {
-    pub fn new(indexed_hir: &'a NodeIndex, module_name: String) -> Self {
+    pub fn new(
+        indexed_hir: &'a NodeIndex,
+        types_table: &'a TypesTable,
+        module_name: String,
+    ) -> Self {
         MIRBuilder {
             indexed_hir,
             vreg_counter: 0,
             block_counter: 0,
             fn_counter: 0,
+            global_counter: 0,
             current_block_id: None,
             current_func: None,
             module: MIRModule {
@@ -46,6 +58,7 @@ impl<'a> MIRBuilder<'a> {
                 globals: HashMap::new(),
                 functions: HashMap::new(),
             },
+            types_table,
             corrupted: false,
         }
     }
@@ -79,6 +92,12 @@ impl<'a> MIRBuilder<'a> {
         current
     }
 
+    pub fn alloc_global_id(&mut self) -> GlobalId {
+        let current = GlobalId(self.global_counter);
+        self.global_counter += 1;
+        current
+    }
+
     pub fn is_val_reg(&self, operand: &MIRValue) -> bool {
         match operand {
             MIRValue::Register(_) => true,
@@ -102,6 +121,62 @@ impl<'a> MIRBuilder<'a> {
     pub fn build_assign(&mut self, src: MIRValue) -> MIRInstruction {
         let dest = self.new_register();
         MIRInstruction::Assign { dest, src }
+    }
+
+    pub fn build_alloca(&mut self, ty: MirTy) -> MIRInstruction {
+        let dest = self.new_register();
+        MIRInstruction::Alloca { dest, ty }
+    }
+
+    //Will expand it to handle even for sdiv and crap like that
+    pub fn map_binary_operator(&self, op: &HirBinaryOp) -> MIROps {
+        match op {
+            HirBinaryOp::Add => MIROps::Add,
+            HirBinaryOp::Sub => MIROps::Sub,
+            HirBinaryOp::Mul => MIROps::Mul,
+            HirBinaryOp::Mod => MIROps::Mod,
+            _ => todo!("Map other binary operators"),
+        }
+    }
+
+    pub fn build_binary(
+        &mut self,
+        operator: MIROps,
+        lhs: MIRValue,
+        rhs: MIRValue,
+    ) -> MIRInstruction {
+        let dest = self.new_register();
+        MIRInstruction::BinaryOperation {
+            dest,
+            op: operator,
+            lhs,
+            rhs,
+        }
+    }
+
+    pub fn get_type(&self, id: &NodeId) -> MirTy {
+        let ty_info = self.types_table.types.get(id);
+        match ty_info {
+            Some(ty) => match ty.kind {
+                ResolvedTypeKind::I8 => MirTy::I8,
+                ResolvedTypeKind::U8 => MirTy::U8,
+                ResolvedTypeKind::I16 => MirTy::I16,
+                ResolvedTypeKind::U16 => MirTy::U16,
+                ResolvedTypeKind::I32 => MirTy::I32,
+                ResolvedTypeKind::U32 => MirTy::I32,
+                ResolvedTypeKind::I64 => MirTy::I64,
+                ResolvedTypeKind::U64 => MirTy::U64,
+                ResolvedTypeKind::I128 => MirTy::I128,
+                ResolvedTypeKind::U128 => MirTy::U128,
+                ResolvedTypeKind::USize => MirTy::USIZE,
+                ResolvedTypeKind::ISize => MirTy::ISIZE,
+                ResolvedTypeKind::Bool => MirTy::Bool,
+                ResolvedTypeKind::F32 => MirTy::F32,
+                ResolvedTypeKind::F64 => MirTy::F64,
+                _ => todo!("Will map the rest later"),
+            },
+            None => todo!("Handle a failed type"),
+        }
     }
 
     pub fn add_instruction(&mut self, instruction: MIRInstruction) {

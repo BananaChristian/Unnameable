@@ -1,8 +1,1 @@
-func test(){
-  1
-}
-
-func test1(){
-  3
-}
-
+var u32 MAX := 100u32
