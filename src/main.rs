@@ -224,7 +224,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut mir_builder = MIRBuilder::new(&hir_index, &semantics.ctxt.types,&target_spec, module_name);
     let mir_module = mir_builder.build_module();
-    println!("MIR Module {:?}", mir_module);
+    println!("{}", mir_module);
 
     Ok(())
 }

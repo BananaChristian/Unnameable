@@ -48,6 +48,27 @@ pub enum MIROps {
 }
 
 #[derive(Debug, Clone)]
+pub enum CmpOp {
+    Eq,
+    Neq,
+    // signed
+    Slt,  // signed less than
+    Sgt,  // signed greater than
+    Sle,  // signed less or equal
+    Sge,  // signed greater or equal
+    // unsigned
+    Ult,
+    Ugt,
+    Ule,
+    Uge,
+    // float
+    Flt,
+    Fgt,
+    Fle,
+    Fge,
+}
+
+#[derive(Debug, Clone)]
 pub struct MIRTy {
     pub kind: MIRTykind,
     pub align: usize,
@@ -101,6 +122,13 @@ pub enum MIRInstruction {
     BinaryOperation {
         dest: MIRValue,
         op: MIROps,
+        lhs: MIRValue,
+        rhs: MIRValue,
+    },
+
+    Compare {
+        dest: MIRValue, // always bool
+        op: CmpOp,
         lhs: MIRValue,
         rhs: MIRValue,
     },

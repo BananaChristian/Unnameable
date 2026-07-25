@@ -5,10 +5,11 @@ use crate::{
     indexer::NodeIndex,
     lowering::NodeId,
     mir::instructions::{
-        BasicBlock, BlockId, ConstantValue, FnId, GlobalId, MIRFn, MIRGlobal, MIRInstruction,
-        MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
+        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRFn, MIRGlobal,
+        MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
-    semantics::{ResolvedTypeKind, TypesTable}, target::TargetSpec,
+    semantics::{ResolvedTypeKind, TypesTable},
+    target::TargetSpec,
 };
 
 #[derive(Debug, Clone)]
@@ -35,6 +36,9 @@ pub struct MIRBuilder<'a> {
     pub current_block_id: Option<BlockId>,
     pub current_func: Option<FnId>,
 
+    var_stack: Vec<HashMap<String, MIRValue>>,
+    pub last_value: Option<MIRValue>,
+
     pub module: MIRModule, //The builder writes to this
     pub corrupted: bool,
 }
@@ -45,7 +49,7 @@ impl<'a> MIRBuilder<'a> {
         indexed_hir: &'a NodeIndex,
         types_table: &'a TypesTable,
         target_spec: &'a TargetSpec,
-        module_name: String
+        module_name: String,
     ) -> Self {
         MIRBuilder {
             indexed_hir,
@@ -55,6 +59,8 @@ impl<'a> MIRBuilder<'a> {
             global_counter: 0,
             current_block_id: None,
             current_func: None,
+            var_stack: Vec::new(),
+            last_value: None,
             module: MIRModule {
                 name: module_name,
                 globals: HashMap::new(),
@@ -107,52 +113,148 @@ impl<'a> MIRBuilder<'a> {
         register
     }
 
-    pub fn build_assign(&mut self, src: MIRValue, ty: MIRTy) -> MIRInstruction {
+    pub fn build_assign(&mut self, src: MIRValue, ty: MIRTy) {
         let dest = self.new_register(ty);
-        MIRInstruction::Assign { dest, src }
+        let assign = MIRInstruction::Assign { dest, src };
+        self.add_instruction(assign);
     }
 
-    pub fn build_alloca(&mut self, dest: MIRValue, ty: MIRTy) -> MIRInstruction {
-        MIRInstruction::Alloca {
+    pub fn build_alloca(&mut self, dest: MIRValue, ty: MIRTy) {
+        let alloca = MIRInstruction::Alloca {
             dest,
             align: ty.align,
             ty,
-        }
+        };
+        self.add_instruction(alloca);
     }
 
-    pub fn build_store(&self, ptr: MIRValue, val: MIRValue) -> MIRInstruction {
-        MIRInstruction::Store {
+    pub fn build_store(&mut self, ptr: MIRValue, val: MIRValue) {
+        let store = MIRInstruction::Store {
             ptr,
             align: self.get_val_alignment(&val),
             val,
-        }
+        };
+        self.add_instruction(store);
     }
 
-    //Will expand it to handle even for sdiv and crap like that
-    pub fn map_binary_operator(&self, op: &HirBinaryOp) -> MIROps {
+    pub fn build_load(&mut self, dest: MIRValue, ptr: MIRValue, ty: MIRTy) {
+        let load = MIRInstruction::Load {
+            dest,
+            ptr,
+            align: ty.align,
+            ty,
+        };
+        self.add_instruction(load);
+    }
+
+    pub fn map_arithmetic_op(&self, op: &HirBinaryOp) -> MIROps {
         match op {
             HirBinaryOp::Add => MIROps::Add,
             HirBinaryOp::Sub => MIROps::Sub,
             HirBinaryOp::Mul => MIROps::Mul,
             HirBinaryOp::Mod => MIROps::Mod,
-            _ => todo!("Map other binary operators"),
+            _ => unreachable!("Not an arithmetic operator"),
         }
     }
 
-    pub fn build_binary(
-        &mut self,
-        operator: MIROps,
-        lhs: MIRValue,
-        rhs: MIRValue,
-        ty: MIRTy,
-    ) -> MIRInstruction {
+    pub fn map_cmp_op(&self, op: &HirBinaryOp, lhs: &MIRValue) -> CmpOp {
+        let is_float = match lhs {
+            MIRValue::Register { ty, .. } => {
+                matches!(ty.kind, MIRTykind::F32 | MIRTykind::F64)
+            }
+            MIRValue::Constant(c) => {
+                matches!(c, ConstantValue::F32(_) | ConstantValue::F64(_))
+            }
+        };
+
+        let is_signed = match lhs {
+            MIRValue::Register { ty, .. } => matches!(
+                ty.kind,
+                MIRTykind::I8
+                    | MIRTykind::I16
+                    | MIRTykind::I32
+                    | MIRTykind::I64
+                    | MIRTykind::I128
+                    | MIRTykind::ISIZE
+            ),
+            MIRValue::Constant(c) => matches!(
+                c,
+                ConstantValue::I8(_)
+                    | ConstantValue::I16(_)
+                    | ConstantValue::I32(_)
+                    | ConstantValue::I64(_)
+                    | ConstantValue::I128(_)
+                    | ConstantValue::Int(_)
+            ),
+        };
+
+        match op {
+            HirBinaryOp::Lt => {
+                if is_float {
+                    CmpOp::Flt
+                } else if is_signed {
+                    CmpOp::Slt
+                } else {
+                    CmpOp::Ult
+                }
+            }
+            HirBinaryOp::Gt => {
+                if is_float {
+                    CmpOp::Fgt
+                } else if is_signed {
+                    CmpOp::Sgt
+                } else {
+                    CmpOp::Ugt
+                }
+            }
+            HirBinaryOp::Leq => {
+                if is_float {
+                    CmpOp::Fle
+                } else if is_signed {
+                    CmpOp::Sle
+                } else {
+                    CmpOp::Ule
+                }
+            }
+            HirBinaryOp::Geq => {
+                if is_float {
+                    CmpOp::Fge
+                } else if is_signed {
+                    CmpOp::Sge
+                } else {
+                    CmpOp::Uge
+                }
+            }
+            HirBinaryOp::Eq => CmpOp::Eq,
+            HirBinaryOp::Neq => CmpOp::Neq,
+            _ => unreachable!("Not a comparison operator"),
+        }
+    }
+
+    pub fn build_binary(&mut self, operator: MIROps, lhs: MIRValue, rhs: MIRValue, ty: MIRTy) {
         let dest = self.new_register(ty);
-        MIRInstruction::BinaryOperation {
+        let bin = MIRInstruction::BinaryOperation {
             dest,
             op: operator,
             lhs,
             rhs,
-        }
+        };
+        self.add_instruction(bin);
+    }
+
+    pub fn build_cmp(&mut self, cmp_op: CmpOp, lhs: MIRValue, rhs: MIRValue) {
+        let dest = self.new_register(MIRTy {
+            kind: MIRTykind::Bool,
+            align: 1,
+        });
+        let cmp = MIRInstruction::Compare {
+            dest: dest.clone(),
+            op: cmp_op,
+            lhs,
+            rhs,
+        };
+        self.add_instruction(cmp);
+        self.last_value=Some(dest)
     }
 
     pub fn get_type(&self, id: &NodeId) -> MIRTy {
@@ -228,6 +330,27 @@ impl<'a> MIRBuilder<'a> {
             instructions: Vec::new(), //For now empty
             terminator: Terminator::Return(None),
         }
+    }
+
+    pub fn push_scope(&mut self) {
+        self.var_stack.push(HashMap::new());
+    }
+
+    pub fn pop_scope(&mut self) {
+        self.var_stack.pop();
+    }
+
+    pub fn declare_var(&mut self, name: String, ptr: MIRValue) {
+        self.var_stack.last_mut().unwrap().insert(name, ptr);
+    }
+
+    pub fn lookup_var(&self, name: &str) -> Option<&MIRValue> {
+        for scope in self.var_stack.iter().rev() {
+            if let Some(val) = scope.get(name) {
+                return Some(val);
+            }
+        }
+        None
     }
 
     pub fn add_block(&mut self, block: &BasicBlock) {

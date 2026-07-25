@@ -14,6 +14,7 @@ impl<'a> MIRBuilder<'a> {
             HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
+            HirStmtKind::HirIf { .. } => self.build_if(stmt),
             HirStmtKind::HirExpr(_) => self.build_expr_stmt(stmt),
             _ => todo!("Implement all the different statement handlers"),
         }
@@ -58,12 +59,10 @@ impl<'a> MIRBuilder<'a> {
                         kind: MIRTykind::Ptr,
                         align: 8,
                     });
-                    let alloca = self.build_alloca(dest.clone(), ty.clone());
-                    self.add_instruction(alloca);
+                    self.build_alloca(dest.clone(), ty.clone());
+                    self.declare_var(name.clone(), dest.clone());
                     let val = self.expr_value(init);
-
-                    let store = self.build_store(dest, val);
-                    self.add_instruction(store);
+                    self.build_store(dest, val);
                 }
             }
         }
@@ -94,9 +93,11 @@ impl<'a> MIRBuilder<'a> {
 
             self.add_block(&entry_block);
 
+            self.push_scope();
             for body_stmt in body {
                 self.build_stmt(body_stmt);
             }
+            self.pop_scope();
 
             self.current_func = prev_fn;
             self.current_block_id = prev_block;
@@ -114,10 +115,61 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
+    fn build_if(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirIf {
+            condition,
+            body,
+            else_body,
+        } = &stmt.kind
+        {
+            self.build_expr(condition);
+            let cond_val = self
+                .last_value
+                .as_ref()
+                .cloned()
+                .expect("Failed to get condition value");
+
+            let then_block = self.create_basic_block();
+            let else_block = self.create_basic_block();
+            let merge_block = self.create_basic_block();
+
+            self.set_terminator(Terminator::Branch {
+                cond: cond_val,
+                then: then_block.id,
+                else_block: else_block.id,
+            });
+
+            // build then block
+            self.add_block(&then_block);
+            self.current_block_id = Some(then_block.id);
+            self.push_scope();
+            for st in body {
+                self.build_stmt(st);
+            }
+            self.pop_scope();
+            self.set_terminator(Terminator::Goto(merge_block.id));
+
+            // build else block
+            self.add_block(&else_block);
+            self.current_block_id = Some(else_block.id);
+            self.push_scope();
+            if let Some(else_stmts) = else_body {
+                for st in else_stmts {
+                    self.build_stmt(st);
+                }
+            }
+            self.pop_scope();
+            self.set_terminator(Terminator::Goto(merge_block.id));
+
+            // switch to merge block, execution continues here
+            self.add_block(&merge_block);
+            self.current_block_id = Some(merge_block.id);
+        }
+    }
+
     fn build_expr_stmt(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirExpr(inner) = &stmt.kind {
-            let instruction = self.build_expr(inner);
-            self.add_instruction(instruction);
+            self.build_expr(inner);
         }
     }
 }
