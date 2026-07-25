@@ -1,14 +1,37 @@
+use std::cell::RefCell;
 use std::fs;
 use std::panic;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::{cell::RefCell, path::PathBuf};
 
 use unnc::{
     const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine,
     indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder, parser::Parser,
     semantics::Semantics, target::TargetSpec,
 };
+
+fn capture_diagnostics(diagnostics: &Rc<RefCell<Diagnostics>>) -> String {
+    let diag = diagnostics.borrow();
+    let mut output = String::new();
+
+    output.push_str("=== COMPILATION FAILED ===\n");
+
+    if !diag.errors.is_empty() {
+        output.push_str(&format!("Errors ({}):\n", diag.errors.len()));
+        for err in &diag.errors {
+            output.push_str(&format!("  - {:?}\n", err));
+        }
+    }
+
+    if !diag.warnings.is_empty() {
+        output.push_str(&format!("Warnings ({}):\n", diag.warnings.len()));
+        for warn in &diag.warnings {
+            output.push_str(&format!("  - {:?}\n", warn));
+        }
+    }
+
+    output
+}
 
 fn compile_source_for_test(filename: &str, source: &str) -> String {
     let result = panic::catch_unwind(|| {
@@ -79,14 +102,12 @@ fn compile_source_for_test(filename: &str, source: &str) -> String {
         }
 
         let mir_module = mir_builder.build_module();
-
         format!("=== MIR OUTPUT ===\n{}", mir_module)
     });
 
     match result {
         Ok(output) => output,
         Err(err) => {
-            // Extract the panic message (e.g. from unimplemented!() / panic!())
             let panic_msg = if let Some(s) = err.downcast_ref::<&str>() {
                 s.to_string()
             } else if let Some(s) = err.downcast_ref::<String>() {
@@ -99,22 +120,13 @@ fn compile_source_for_test(filename: &str, source: &str) -> String {
     }
 }
 
-fn capture_diagnostics(diagnostics: &Rc<RefCell<Diagnostics>>) -> String {
-    let diag = diagnostics.borrow();
-    format!(
-        "=== COMPILATION FAILED ===\nErrors: {}\nWarnings: {}",
-        diag.errors.len(),
-        diag.warnings.len()
-    )
-}
-
 fn find_all_fixtures(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                files.extend(find_all_fixtures(&path)); // Recurse into subfolders!
+                files.extend(find_all_fixtures(&path));
             } else if path.extension().and_then(|s| s.to_str()) == Some("unn") {
                 files.push(path);
             }
@@ -127,13 +139,7 @@ fn find_all_fixtures(dir: &Path) -> Vec<PathBuf> {
 fn test_32bit_pointer_width_layouts() {
     let source = "func get_ptr_size(): usize { return 0 }";
 
-    // Simulate 32-bit architecture
-    let target_spec = TargetSpec::new(
-        Some("arm".into()),
-        Some("none".into()),
-        Some(4), // ptr_width = 4 bytes
-        Some(4), // int_width = 4 bytes
-    );
+    let target_spec = TargetSpec::new(Some("arm".into()), Some("none".into()), Some(4), Some(4));
 
     let diagnostics = Rc::new(RefCell::new(Diagnostics::new(
         "test.unn".into(),
@@ -147,7 +153,6 @@ fn test_32bit_pointer_width_layouts() {
     let hir = lowering.lower();
 
     let _semantics = Semantics::new(hir, &target_spec);
-    // Verify 32-bit layout resolution during semantics pass
     assert_eq!(target_spec.pointer_width, 4);
 }
 
@@ -159,7 +164,7 @@ fn test_all_fixtures() {
 
     assert!(
         !entries.is_empty(),
-        "No .unn fixture files found in tests/fixtures! Check your path or file extensions."
+        "No .unn fixture files found in tests/fixtures!"
     );
 
     for path in entries {
