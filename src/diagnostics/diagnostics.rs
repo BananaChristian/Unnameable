@@ -114,6 +114,25 @@ impl Diagnostics {
         for warning in &self.warnings {
             self.print_error(warning);
         }
+
+        let err_count = self
+            .errors
+            .iter()
+            .filter(|e| e.severity == Severity::Error)
+            .count();
+        let warn_count = self.warnings.len();
+
+        if err_count > 0 || warn_count > 0 {
+            println!(
+                "{}",
+                format!(
+                    "aborting due to {} error(s), {} warning(s)",
+                    err_count, warn_count
+                )
+                .bold()
+                .red()
+            );
+        }
     }
 
     fn print_error(&self, error: &CompilerError) {
