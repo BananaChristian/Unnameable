@@ -1,4 +1,6 @@
 /target
+
 TODO
-test.stub
-importer.unn
+
+# Insta temporary/pending snapshots
+*.snap.new
