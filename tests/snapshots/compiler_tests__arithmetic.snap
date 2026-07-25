@@ -1,0 +1,6 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== PANIC IN COMPILER PASS ===
+not yet implemented: Will add other expressions later

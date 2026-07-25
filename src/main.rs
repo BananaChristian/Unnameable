@@ -1,28 +1,10 @@
-use crate::{
+use unnc::{
     const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine,
     indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder, parser::Parser,
     semantics::Semantics, serializer::Serializer, target::TargetSpec,
 };
 
 use std::{cell::RefCell, env, fs, path::PathBuf, rc::Rc};
-
-mod ast;
-mod cf_checker;
-mod const_and_mut_validator;
-mod contract_verifier;
-mod diagnostics;
-mod hir;
-mod import;
-mod indexer;
-mod layout;
-mod lexer;
-mod lowering;
-mod mir;
-mod monomorph;
-mod parser;
-mod semantics;
-mod serializer;
-mod target;
 
 fn print_help(program_name: &str) {
     println!("Unnameable Compiler");
