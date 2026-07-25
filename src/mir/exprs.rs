@@ -9,10 +9,11 @@ use crate::{
 impl<'a> MIRBuilder<'a> {
     pub fn build_expr(&mut self, expr: &HirExpr) {
         let ty = self.get_type(&expr.hir_id);
+        let span = Some(expr.span.clone());
         match &expr.kind {
             HirExprKind::Literal(_) => {
                 let src = self.expr_value(expr);
-                self.build_assign(src, ty)
+                self.build_assign(src, ty, span)
             }
             HirExprKind::Identifier(_) => {
                 self.expr_value(expr);
@@ -27,7 +28,7 @@ impl<'a> MIRBuilder<'a> {
                     | HirBinaryOp::Div
                     | HirBinaryOp::Mod => {
                         let op = self.map_arithmetic_op(operat);
-                        self.build_binary(op, lhs_value, rhs_value, ty)
+                        self.build_binary(op, lhs_value, rhs_value, ty, span)
                     }
                     HirBinaryOp::Eq
                     | HirBinaryOp::Neq
@@ -36,7 +37,7 @@ impl<'a> MIRBuilder<'a> {
                     | HirBinaryOp::Leq
                     | HirBinaryOp::Geq => {
                         let cmp_op = self.map_cmp_op(operat, &lhs_value);
-                        self.build_cmp(cmp_op, lhs_value, rhs_value)
+                        self.build_cmp(cmp_op, lhs_value, rhs_value, span)
                     }
                     _ => todo!(),
                 }
@@ -46,13 +47,14 @@ impl<'a> MIRBuilder<'a> {
     }
 
     pub fn expr_value(&mut self, expr: &HirExpr) -> MIRValue {
+        let span = Some(expr.span.clone());
         match &expr.kind {
             HirExprKind::Literal(lit) => self.literal_value(&lit),
             HirExprKind::Identifier(name) => {
                 let ptr = self.lookup_var(name).cloned().expect("Variable not found");
                 let ty = self.get_type(&expr.hir_id);
                 let dest = self.new_register(ty.clone());
-                self.build_load(dest.clone(), ptr, ty);
+                self.build_load(dest.clone(), ptr, ty, span);
                 dest
             }
 

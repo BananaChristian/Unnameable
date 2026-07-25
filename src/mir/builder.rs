@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::HirBinaryOp,
     indexer::NodeIndex,
     lowering::NodeId,
@@ -40,6 +41,7 @@ pub struct MIRBuilder<'a> {
     pub last_value: Option<MIRValue>,
 
     pub module: MIRModule, //The builder writes to this
+    diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
 
@@ -49,6 +51,7 @@ impl<'a> MIRBuilder<'a> {
         indexed_hir: &'a NodeIndex,
         types_table: &'a TypesTable,
         target_spec: &'a TargetSpec,
+        diagnostics: SharedDiagnostics,
         module_name: String,
     ) -> Self {
         MIRBuilder {
@@ -61,6 +64,7 @@ impl<'a> MIRBuilder<'a> {
             current_func: None,
             var_stack: Vec::new(),
             last_value: None,
+            diagnostics,
             module: MIRModule {
                 name: module_name,
                 globals: HashMap::new(),
@@ -113,38 +117,38 @@ impl<'a> MIRBuilder<'a> {
         register
     }
 
-    pub fn build_assign(&mut self, src: MIRValue, ty: MIRTy) {
+    pub fn build_assign(&mut self, src: MIRValue, ty: MIRTy, span: Option<Span>) {
         let dest = self.new_register(ty);
         let assign = MIRInstruction::Assign { dest, src };
-        self.add_instruction(assign);
+        self.add_instruction(assign, span);
     }
 
-    pub fn build_alloca(&mut self, dest: MIRValue, ty: MIRTy) {
+    pub fn build_alloca(&mut self, dest: MIRValue, ty: MIRTy, span: Option<Span>) {
         let alloca = MIRInstruction::Alloca {
             dest,
             align: ty.align,
             ty,
         };
-        self.add_instruction(alloca);
+        self.add_instruction(alloca, span);
     }
 
-    pub fn build_store(&mut self, ptr: MIRValue, val: MIRValue) {
+    pub fn build_store(&mut self, ptr: MIRValue, val: MIRValue, span: Option<Span>) {
         let store = MIRInstruction::Store {
             ptr,
             align: self.get_val_alignment(&val),
             val,
         };
-        self.add_instruction(store);
+        self.add_instruction(store, span);
     }
 
-    pub fn build_load(&mut self, dest: MIRValue, ptr: MIRValue, ty: MIRTy) {
+    pub fn build_load(&mut self, dest: MIRValue, ptr: MIRValue, ty: MIRTy, span: Option<Span>) {
         let load = MIRInstruction::Load {
             dest,
             ptr,
             align: ty.align,
             ty,
         };
-        self.add_instruction(load);
+        self.add_instruction(load, span);
     }
 
     pub fn map_arithmetic_op(&self, op: &HirBinaryOp) -> MIROps {
@@ -231,7 +235,14 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    pub fn build_binary(&mut self, operator: MIROps, lhs: MIRValue, rhs: MIRValue, ty: MIRTy) {
+    pub fn build_binary(
+        &mut self,
+        operator: MIROps,
+        lhs: MIRValue,
+        rhs: MIRValue,
+        ty: MIRTy,
+        span: Option<Span>,
+    ) {
         let dest = self.new_register(ty);
         let bin = MIRInstruction::BinaryOperation {
             dest,
@@ -239,10 +250,10 @@ impl<'a> MIRBuilder<'a> {
             lhs,
             rhs,
         };
-        self.add_instruction(bin);
+        self.add_instruction(bin, span);
     }
 
-    pub fn build_cmp(&mut self, cmp_op: CmpOp, lhs: MIRValue, rhs: MIRValue) {
+    pub fn build_cmp(&mut self, cmp_op: CmpOp, lhs: MIRValue, rhs: MIRValue, span: Option<Span>) {
         let dest = self.new_register(MIRTy {
             kind: MIRTykind::Bool,
             align: 1,
@@ -253,8 +264,8 @@ impl<'a> MIRBuilder<'a> {
             lhs,
             rhs,
         };
-        self.add_instruction(cmp);
-        self.last_value=Some(dest)
+        self.add_instruction(cmp, span);
+        self.last_value = Some(dest)
     }
 
     pub fn get_type(&self, id: &NodeId) -> MIRTy {
@@ -302,25 +313,43 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    pub fn add_instruction(&mut self, instruction: MIRInstruction) {
-        let fn_id = self
-            .current_func
-            .expect("Cannot add an instruction outside a function");
+    pub fn add_instruction(&mut self, instruction: MIRInstruction, span: Option<Span>) {
+        let Some(fn_id) = self.current_func else {
+            self.report_ice(
+                "Cannot emit instruction: no active function context".to_string(),
+                span,
+            );
+            return;
+        };
 
-        let block_id = self
-            .current_block_id
-            .as_mut()
-            .expect("Cannot emit without an active block");
+        let Some(block_id) = self.current_block_id else {
+            self.report_ice(
+                "Cannot emit instruction: no active basic block".to_string(),
+                span,
+            );
+            return;
+        };
 
-        self.module
-            .functions
-            .get_mut(&fn_id)
-            .expect("Invalid active function")
-            .blocks
-            .get_mut(&block_id)
-            .expect("Invalid active block")
-            .instructions
-            .push(instruction);
+        let Some(func) = self.module.functions.get_mut(&fn_id) else {
+            self.report_ice(
+                format!("Active function {:?} not found in module", fn_id),
+                span,
+            );
+            return;
+        };
+
+        let Some(block) = func.blocks.get_mut(&block_id) else {
+            self.report_ice(
+                format!(
+                    "Active block {:?} not found in function {:?}",
+                    block_id, fn_id
+                ),
+                span,
+            );
+            return;
+        };
+
+        block.instructions.push(instruction);
     }
 
     pub fn create_basic_block(&mut self) -> BasicBlock {
@@ -353,30 +382,66 @@ impl<'a> MIRBuilder<'a> {
         None
     }
 
-    pub fn add_block(&mut self, block: &BasicBlock) {
-        let fn_id = self
-            .current_func
-            .expect("Cannot add a basic block outside of a function");
+    pub fn add_block(&mut self, block: &BasicBlock, span: Option<Span>) {
+        let Some(fn_id) = self.current_func else {
+            self.report_ice(
+                "Cannot add basic block: no active function context".to_string(),
+                span,
+            );
+            return;
+        };
 
-        self.module
-            .functions
-            .get_mut(&fn_id)
-            .expect("Invalid active function")
-            .blocks
-            .insert(block.id.clone(), block.clone());
+        let Some(func) = self.module.functions.get_mut(&fn_id) else {
+            self.report_ice(
+                format!("Active function {} not found in module", fn_id),
+                span,
+            );
+            return;
+        };
+
+        func.blocks.insert(block.id, block.clone());
+    }
+    pub fn set_terminator(&mut self, terminator: Terminator, span: Option<Span>) {
+        let Some(fn_id) = self.current_func else {
+            self.report_ice(
+                "Attempted to set terminator with no active function".to_string(),
+                span,
+            );
+            return;
+        };
+
+        let Some(block_id) = self.current_block_id else {
+            self.report_ice(
+                "Attempted to set terminator with no active block".to_string(),
+                span,
+            );
+            return;
+        };
+
+        let Some(func) = self.module.functions.get_mut(&fn_id) else {
+            self.report_ice(
+                format!("Active function {} not found in module", fn_id),
+                None,
+            );
+            return;
+        };
+
+        let Some(block) = func.blocks.get_mut(&block_id) else {
+            self.report_ice(
+                format!("Active block {} not found in function {}", block_id, fn_id),
+                None,
+            );
+            return;
+        };
+
+        block.terminator = terminator;
     }
 
-    pub fn set_terminator(&mut self, terminator: Terminator) {
-        let fn_id = self.current_func.expect("No active function");
-        let block_id = self.current_block_id.expect("No active block");
-
-        self.module
-            .functions
-            .get_mut(&fn_id)
-            .unwrap()
-            .blocks
-            .get_mut(&block_id)
-            .unwrap()
-            .terminator = terminator;
+    //All errors in the MIR builder are ICE in nature
+    pub fn report_ice(&mut self, message: String, span: Option<Span>) {
+        self.corrupted = true;
+        self.diagnostics
+            .borrow_mut()
+            .report(CompilerError::ice(message, Phase::MIRBuilder, span));
     }
 }

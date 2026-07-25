@@ -269,7 +269,7 @@ impl fmt::Display for MIRFn {
 
 impl fmt::Display for MIRGlobal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut_str = if self.is_const { "const" } else { "mut" };
+        let mut_str = if self.is_const { "const" } else { "" };
         write!(
             f,
             "global @{} {}: {} = {}",

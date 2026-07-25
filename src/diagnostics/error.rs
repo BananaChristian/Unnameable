@@ -7,6 +7,7 @@ pub enum Phase {
     Lowering,
     Semantics,
     ContractVerifier,
+    MIRBuilder,
     None,
 }
 
@@ -54,12 +55,12 @@ impl CompilerError {
         }
     }
 
-    pub fn ice(message: String, span: Option<Span>) -> Self {
+    pub fn ice(message: String,phase: Phase, span: Option<Span>) -> Self {
         CompilerError {
             message,
             span,
             severity: Severity::Ice,
-            phase: Phase::None,
+            phase,
         }
     }
 }

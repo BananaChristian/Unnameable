@@ -15,6 +15,7 @@ impl<'a> MIRBuilder<'a> {
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
             HirStmtKind::HirIf { .. } => self.build_if(stmt),
+            HirStmtKind::HirWhile { .. } => self.build_while(stmt),
             HirStmtKind::HirExpr(_) => self.build_expr_stmt(stmt),
             _ => todo!("Implement all the different statement handlers"),
         }
@@ -59,10 +60,10 @@ impl<'a> MIRBuilder<'a> {
                         kind: MIRTykind::Ptr,
                         align: 8,
                     });
-                    self.build_alloca(dest.clone(), ty.clone());
+                    self.build_alloca(dest.clone(), ty.clone(), Some(stmt.span.clone()));
                     self.declare_var(name.clone(), dest.clone());
                     let val = self.expr_value(init);
-                    self.build_store(dest, val);
+                    self.build_store(dest, val, Some(stmt.span.clone()));
                 }
             }
         }
@@ -91,7 +92,7 @@ impl<'a> MIRBuilder<'a> {
             self.current_func = Some(new_fn_id);
             self.current_block_id = Some(entry_block_id);
 
-            self.add_block(&entry_block);
+            self.add_block(&entry_block, Some(stmt.span.clone()));
 
             self.push_scope();
             for body_stmt in body {
@@ -111,7 +112,7 @@ impl<'a> MIRBuilder<'a> {
                 None => None,
             };
             let terminator = Terminator::Return(ret_val);
-            self.set_terminator(terminator);
+            self.set_terminator(terminator, Some(stmt.span.clone()));
         }
     }
 
@@ -133,24 +134,27 @@ impl<'a> MIRBuilder<'a> {
             let else_block = self.create_basic_block();
             let merge_block = self.create_basic_block();
 
-            self.set_terminator(Terminator::Branch {
-                cond: cond_val,
-                then: then_block.id,
-                else_block: else_block.id,
-            });
+            self.set_terminator(
+                Terminator::Branch {
+                    cond: cond_val,
+                    then: then_block.id,
+                    else_block: else_block.id,
+                },
+                Some(stmt.span.clone()),
+            );
 
             // build then block
-            self.add_block(&then_block);
+            self.add_block(&then_block, Some(stmt.span.clone()));
             self.current_block_id = Some(then_block.id);
             self.push_scope();
             for st in body {
                 self.build_stmt(st);
             }
             self.pop_scope();
-            self.set_terminator(Terminator::Goto(merge_block.id));
+            self.set_terminator(Terminator::Goto(merge_block.id), Some(stmt.span.clone()));
 
             // build else block
-            self.add_block(&else_block);
+            self.add_block(&else_block, Some(stmt.span.clone()));
             self.current_block_id = Some(else_block.id);
             self.push_scope();
             if let Some(else_stmts) = else_body {
@@ -159,12 +163,16 @@ impl<'a> MIRBuilder<'a> {
                 }
             }
             self.pop_scope();
-            self.set_terminator(Terminator::Goto(merge_block.id));
+            self.set_terminator(Terminator::Goto(merge_block.id), Some(stmt.span.clone()));
 
             // switch to merge block, execution continues here
-            self.add_block(&merge_block);
+            self.add_block(&merge_block, Some(stmt.span.clone()));
             self.current_block_id = Some(merge_block.id);
         }
+    }
+
+    fn build_while(&mut self, _stmt: &HirStmt) {
+        todo!("Add while")
     }
 
     fn build_expr_stmt(&mut self, stmt: &HirStmt) {

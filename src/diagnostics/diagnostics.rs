@@ -3,6 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use colored::*;
 
 use crate::diagnostics::{
+    Phase,
     error::{CompilerError, Severity},
     source::SourceMap,
 };
@@ -37,10 +38,66 @@ impl Diagnostics {
         }
     }
 
+    fn print_ice_header(&self, count: usize) {
+        eprintln!(
+            "\n{}",
+            "=================================================================="
+                .bold()
+                .red()
+        );
+        eprintln!("{}", "  INTERNAL COMPILER ERROR ".bold().bright_red());
+        eprintln!(
+            "{}",
+            "=================================================================="
+                .bold()
+                .red()
+        );
+        eprintln!("The compiler encountered an internal state bug and cannot continue.");
+        eprintln!(
+            "This is {} in the compiler itself, NOT an error in your code.",
+            "a bug".bold().underline()
+        );
+        eprintln!(
+            "Total internal errors hit: {}\n",
+            count.to_string().yellow()
+        );
+    }
+
+    fn print_ice_footer(&self) {
+        eprintln!(
+            "\n{}",
+            "------------------------------------------------------------------".dimmed()
+        );
+        eprintln!("{}", "Please consider filing a bug report with:".bold());
+        eprintln!("  1. Your source code file (`{}`)", self.filename.cyan());
+        eprintln!("  2. The exact error trace shown above");
+        eprintln!(
+            "  3. Compiler version: {}",
+            env!("CARGO_PKG_VERSION").yellow()
+        );
+        eprintln!("4. To: https://github.com/BananaChristian/Unnameable/issues");
+        eprintln!(
+            "{}",
+            "==================================================================\n"
+                .bold()
+                .red()
+        );
+    }
+
     pub fn print(&self) {
-        // Print ICEs first
-        for error in self.errors.iter().filter(|e| e.severity == Severity::Ice) {
-            self.print_error(error);
+        let ices: Vec<&CompilerError> = self
+            .errors
+            .iter()
+            .filter(|e| e.severity == Severity::Ice)
+            .collect();
+
+        if !ices.is_empty() {
+            self.print_ice_header(ices.len());
+            for error in ices {
+                self.print_error(error);
+            }
+            self.print_ice_footer();
+            return; // If the compiler crashed internally, don't flood the terminal with downstream errors!
         }
 
         // Print Fatals
@@ -60,56 +117,60 @@ impl Diagnostics {
     }
 
     fn print_error(&self, error: &CompilerError) {
+        // Dynamically include phase if set
+        let phase_suffix = match error.phase {
+            Phase::None => String::new(),
+            ref phase => format!(" [{:?}]", phase),
+        };
+
         let (severity_label, color) = match error.severity {
-            Severity::Error => ("error", Color::Red),
-            Severity::Warning => ("warning", Color::Yellow),
-            Severity::Fatal => ("fatal error", Color::Red),
-            Severity::Ice => ("internal compiler error", Color::BrightRed),
+            Severity::Error => (format!("error{}", phase_suffix), Color::Red),
+            Severity::Warning => (format!("warning{}", phase_suffix), Color::Yellow),
+            Severity::Fatal => (format!("fatal error{}", phase_suffix), Color::Red),
+            Severity::Ice => (
+                format!("internal compiler error{}", phase_suffix),
+                Color::BrightRed,
+            ),
         };
 
         if let Some(span) = &error.span {
             let (line, col) = self.source_map.get_line_col(span.start);
-            let length = span.end - span.start;
+            let length = span.length().max(1);
 
-            // Store values in variables first to avoid borrow issues
-            let filename_display = self.filename.color(Color::Cyan);
-            let line_display = line.to_string().color(Color::Yellow);
-            let col_display = col.to_string().color(Color::Yellow);
-            let severity_display = severity_label.color(color);
-            let message_display = error.message.color(Color::White);
-
+            // Header: filename:line:col: severity: message
             println!(
-                "{}{}{}{}{}{}{} {}",
-                filename_display,
-                ":".color(Color::White),
-                line_display,
-                ":".color(Color::White),
-                col_display,
-                ":".color(Color::White),
-                severity_display,
-                message_display
+                "{}:{}:{}: {}: {}",
+                self.filename.color(Color::Cyan),
+                line.to_string().color(Color::Yellow),
+                col.to_string().color(Color::Yellow),
+                severity_label.color(color).bold(),
+                error.message.color(Color::White).bold()
             );
 
-            // Get source lines once
-            let source_lines: Vec<&str> = self.source_map.source.lines().collect();
-            if let Some(line_content) = source_lines.get(line - 1) {
-                let pipe = "|".color(Color::Cyan);
-                println!("  {} {}", pipe, line_content);
+            let line_snippet = self.source_map.get_line_snippet(span.start);
+            let line_num_str = line.to_string();
+            let padding = " ".repeat(line_num_str.len());
 
-                let mut underline = String::with_capacity(col + length);
-                underline.push_str("  | ");
-                for _ in 0..col - 1 {
-                    underline.push(' ');
-                }
-                for _ in 0..length {
-                    underline.push('^');
-                }
-                println!("{}", underline.color(Color::Red));
+            // Line snippet rendering
+            println!(" {} {}", "|".color(Color::Cyan), line_snippet);
+
+            // Caret underline
+            let mut underline = String::new();
+            underline.push_str(&format!(" {} | ", padding));
+            for _ in 0..col.saturating_sub(1) {
+                underline.push(' ');
             }
+            for _ in 0..length {
+                underline.push('^');
+            }
+
+            println!("{}", underline.color(color).bold());
         } else {
-            let severity_display = severity_label.color(color);
-            let message_display = error.message.color(Color::White);
-            println!("{}: {}", severity_display, message_display);
+            println!(
+                "{}: {}",
+                severity_label.color(color).bold(),
+                error.message.color(Color::White)
+            );
         }
     }
 }

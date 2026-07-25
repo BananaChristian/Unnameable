@@ -1,7 +1,1 @@
-func foo(): u32 {
-    var u32 x := 10u32
-    if x < 20u32 {
-        var u32 y := 1u32
-    }
-    return 0u32
-}
+var u32 MAX := 100u32
