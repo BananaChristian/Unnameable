@@ -1,40 +1,64 @@
-# [Unnameable] (WIP)
+# Unnameable
 
-> **Status:** Experimental  
+> **Status: Experimental**  
 > Syntax, APIs, and compiler internals are unstable and subject to breaking changes without notice.
 
-A experimental programming language compiler written in Rust.
+`Unnameable` is an experimental programming language compiler written in Rust. It features a complete multi-stage pipeline from source text down to middle intermediate representations, with code generation currently under active development.
 
 ---
 
-## Features Implemented So Far
+## Syntax at a Glance
 
-- [x] **Lexer & Parser** (AST generation)
-- [x] Basic Diagnostics 
-- [x] HIR lowering
-- [x] **Name and Scope resolution, Type Checker, Control flow checker, and other basic checks**
-- [x] **MIR (Mid-level Intermediate Representation) Lowering**
-- [ ] Code Generation / Backend Execution (In Progress)
+Here is what a basic program with comments looks like in Unnameable right now:
+
+```text
+## 
+   This is a multiline comment
+   for the Unnameable language.
+##
+
+func main(): u32 {
+    # This is a single line comment
+    var u32 MAX := 100u32
+    return 0u32
+}
+```
+
+---
+
+## Compiler Pipeline Status
+
+- [x] **Lexer & Parser**: Converts source code into an Abstract Syntax Tree (AST).
+- [x] **Diagnostics**: Basic compiler error reporting.
+- [x] **HIR Lowering**: Transforms AST into High-level Intermediate Representation.
+- [x] **Semantic Analysis**: Scope resolution, type checking, and control flow validation.
+- [ ] **MIR Lowering**: Mid-level Intermediate Representation generation (In progress).
+- [ ] **Code Generation**: LLVM backend compilation *(In Progress)*.
 
 ---
 
 ## Quickstart
 
 ### Prerequisites
-- [Rust](https://www.rust-lang.org/) (edition 2021)
+Make sure you have the [Rust toolchain](https://rust-lang.org) installed (supports **Rust 2021 edition**).
 
 ### Building & Running
-Clone the repository and build using Cargo:
+Clone the repository and run a sample file using Cargo:
 
 ```bash
-git clone [https://github.com/BananaChristian/Unnameable.git](https://github.com/BananaChristian/Unnameable.git)
-cd your-repo
+# Clone the repository
+git clone https://github.com
+cd Unnameable
+
+# Run the compiler on a source file
 cargo run -- path/to/sample.unn
 ```
-```
 
-### Licenses
-- Apache License, Version 2.0 (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license (LICENSE-MIT or http://opensource.org/licenses/MIT)
+---
 
+## License
+
+This project is dual-licensed under:
+* **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE) or http://apache.org)
+* **MIT License** ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org)
 
