@@ -4,7 +4,7 @@ use crate::{
     hir::{HirStmt, HirStmtKind},
     mir::{
         builder::MIRBuilder,
-        instructions::{MIRFn, MIRGlobal, MIRLinkage},
+        instructions::{MIRFn, MIRGlobal, MIRLinkage, MIRTy, MIRTykind, Terminator},
     },
 };
 
@@ -13,6 +13,7 @@ impl<'a> MIRBuilder<'a> {
         match &stmt.kind {
             HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
+            HirStmtKind::HirReturn(_) => self.build_return(stmt),
             HirStmtKind::HirExpr(_) => self.build_expr_stmt(stmt),
             _ => todo!("Implement all the different statement handlers"),
         }
@@ -47,12 +48,23 @@ impl<'a> MIRBuilder<'a> {
                         is_const: *constant,
                         linkage: linkage(*exposed),
                         ty,
-                        init: init.as_ref().map(|expr| self.expr_value(expr)),
+                        init: self.expr_value(init),
                     };
 
                     self.module.globals.insert(global_id, mir_global);
                 }
-                Some(fn_id) => (),
+                Some(_) => {
+                    let dest = self.new_register(MIRTy {
+                        kind: MIRTykind::Ptr,
+                        align: 8,
+                    });
+                    let alloca = self.build_alloca(dest.clone(), ty.clone());
+                    self.add_instruction(alloca);
+                    let val = self.expr_value(init);
+
+                    let store = self.build_store(dest, val);
+                    self.add_instruction(store);
+                }
             }
         }
     }
@@ -88,6 +100,17 @@ impl<'a> MIRBuilder<'a> {
 
             self.current_func = prev_fn;
             self.current_block_id = prev_block;
+        }
+    }
+
+    fn build_return(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirReturn(inner) = &stmt.kind {
+            let ret_val = match inner {
+                Some(expr) => Some(self.expr_value(expr)),
+                None => None,
+            };
+            let terminator = Terminator::Return(ret_val);
+            self.set_terminator(terminator);
         }
     }
 

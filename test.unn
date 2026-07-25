@@ -1,1 +1,4 @@
-var u32 MAX := 100u32
+func foo(): u32{
+  var u32 MAX := 100u32
+  return 3u32
+}

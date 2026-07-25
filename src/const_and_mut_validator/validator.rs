@@ -174,16 +174,9 @@ impl<'a> Validator<'a> {
 
             //Is it constant if so, apply come checks
             if is_constant {
-                if let Some(initializer) = init {
-                    if !self.is_compile_time_literal(initializer) {
-                        self.report(format!("Constant variable '{}' must be initilialized with a compile time value",name), 
+                if !self.is_compile_time_literal(init) {
+                    self.report(format!("Constant variable '{}' must be initilialized with a compile time value",name), 
                             Some(stmt.span.clone()));
-                    }
-                } else {
-                    self.report(
-                        format!("Constant variable '{}' must be initialized", name),
-                        Some(stmt.span.clone()),
-                    );
                 }
 
                 self.scopes

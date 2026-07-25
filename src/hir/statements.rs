@@ -69,7 +69,7 @@ pub enum HirStmtKind {
         heap: bool,
         exposed: bool,
         ty: Option<HirTypeNode>,
-        init: Option<HirExpr>,
+        init: Box<HirExpr>, //Must initialize
     },
     HirFunctionDef {
         name: String,             // mangled name like Food_add, Point_distance etc

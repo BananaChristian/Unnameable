@@ -8,16 +8,17 @@ use crate::{
 
 impl<'a> MIRBuilder<'a> {
     pub fn build_expr(&mut self, expr: &HirExpr) -> MIRInstruction {
+        let ty= self.get_type(&expr.hir_id);
         match &expr.kind {
             HirExprKind::Literal(_) => {
                 let src = self.expr_value(expr);
-                self.build_assign(src)
+                self.build_assign(src, ty)
             }
             HirExprKind::Binary(lhs, operat, rhs) => {
                 let lhs_value = self.expr_value(lhs);
                 let rhs_value = self.expr_value(rhs);
                 let op = self.map_binary_operator(operat);
-                self.build_binary(op, lhs_value, rhs_value)
+                self.build_binary(op, lhs_value, rhs_value,ty)
             }
             _ => todo!("Will add other expressions later"),
         }

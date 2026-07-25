@@ -172,9 +172,7 @@ impl<'a> Monomorphizer<'a> {
                 self.monomorphize_type(ty_n)
             }
 
-            if let Some(init_expr) = init {
-                self.monomorphize_expr(init_expr, generic_params, concrete_args);
-            }
+            self.monomorphize_expr(init, generic_params, concrete_args);
         }
     }
 }

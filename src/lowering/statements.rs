@@ -8,7 +8,7 @@ use crate::{
     lowering::lowering::Lowering,
 };
 
-impl Lowering{
+impl Lowering {
     pub fn lower_stmt(&mut self, stmt: &Stmt) -> Option<HirStmt> {
         match stmt.kind {
             StmtKind::VarDecl { .. } => self.lower_var(stmt),
@@ -44,13 +44,7 @@ impl Lowering{
         }
     }
 
-    pub fn make_var(
-        &mut self,
-        name: String,
-        mutable: bool,
-        init: Option<HirExpr>,
-        span: Span,
-    ) -> HirStmt {
+    pub fn make_var(&mut self, name: String, mutable: bool, init: HirExpr, span: Span) -> HirStmt {
         HirStmt {
             hir_id: self.next_id(),
             kind: HirStmtKind::HirVarDecl {
@@ -60,7 +54,7 @@ impl Lowering{
                 heap: false,
                 exposed: false,
                 ty: None,
-                init,
+                init: Box::new(init),
             },
             span,
         }
@@ -87,10 +81,7 @@ impl Lowering{
             };
 
             // Lower the init expression if present
-            let init = match init {
-                Some(e) => Some(self.lower_expr(e)?),
-                None => None,
-            };
+            let hir_init = self.lower_expr(init)?;
 
             Some(HirStmt {
                 hir_id: self.next_id(),
@@ -101,7 +92,7 @@ impl Lowering{
                     heap: qualifier_map.heap,
                     exposed: qualifier_map.expose,
                     ty,
-                    init,
+                    init: Box::new(hir_init),
                 },
                 span: stmt.span.clone(),
             })
@@ -477,7 +468,7 @@ impl Lowering{
             // var __iter_val_N := collection.next()
             let next_call =
                 self.make_method_call(hir_collection.clone(), "next", vec![], span.clone());
-            let init_stmt = self.make_var(iter_var.clone(), true, Some(next_call), span.clone());
+            let init_stmt = self.make_var(iter_var.clone(), true, next_call, span.clone());
 
             // condition: __iter_val_N != null
             let left = self.make_identifier(&iter_var, span.clone());
@@ -495,7 +486,7 @@ impl Lowering{
                 HirExprKind::Unwrap(Box::new(target)),
                 span.clone(),
             );
-            let item_decl = self.make_var(item_name, false, Some(unwrap_trigger), span.clone());
+            let item_decl = self.make_var(item_name, false, unwrap_trigger, span.clone());
 
             // lower original body, prepend item decl
             let hir_body = self.lower_block(body)?;

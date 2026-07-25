@@ -5,10 +5,10 @@ use crate::{
     indexer::NodeIndex,
     lowering::NodeId,
     mir::instructions::{
-        BasicBlock, BlockId, FnId, GlobalId, MIRFn, MIRGlobal, MIRInstruction, MIROps, MIRValue,
-        MirTy, Vreg,
+        BasicBlock, BlockId, ConstantValue, FnId, GlobalId, MIRFn, MIRGlobal, MIRInstruction,
+        MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
-    semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
+    semantics::{ResolvedTypeKind, TypesTable}, target::TargetSpec,
 };
 
 #[derive(Debug, Clone)]
@@ -24,6 +24,7 @@ pub struct MIRBuilder<'a> {
 
     pub types_table: &'a TypesTable,
 
+    pub target_spec: &'a TargetSpec,
     //Counters to increment to track vregs, blocks and globals
     vreg_counter: usize,
     block_counter: usize,
@@ -43,7 +44,8 @@ impl<'a> MIRBuilder<'a> {
     pub fn new(
         indexed_hir: &'a NodeIndex,
         types_table: &'a TypesTable,
-        module_name: String,
+        target_spec: &'a TargetSpec,
+        module_name: String
     ) -> Self {
         MIRBuilder {
             indexed_hir,
@@ -59,6 +61,7 @@ impl<'a> MIRBuilder<'a> {
                 functions: HashMap::new(),
             },
             types_table,
+            target_spec,
             corrupted: false,
         }
     }
@@ -98,34 +101,31 @@ impl<'a> MIRBuilder<'a> {
         current
     }
 
-    pub fn is_val_reg(&self, operand: &MIRValue) -> bool {
-        match operand {
-            MIRValue::Register(_) => true,
-            MIRValue::Constant(_) => false,
-        }
-    }
-
-    pub fn is_val_const(&self, operand: &MIRValue) -> bool {
-        match operand {
-            MIRValue::Register(_) => false,
-            MIRValue::Constant(_) => true,
-        }
-    }
-
-    pub fn new_register(&mut self) -> MIRValue {
+    pub fn new_register(&mut self, reg_ty: MIRTy) -> MIRValue {
         let vreg = self.alloc_vreg();
-        let register = MIRValue::Register(vreg);
+        let register = MIRValue::Register { vreg, ty: reg_ty };
         register
     }
 
-    pub fn build_assign(&mut self, src: MIRValue) -> MIRInstruction {
-        let dest = self.new_register();
+    pub fn build_assign(&mut self, src: MIRValue, ty: MIRTy) -> MIRInstruction {
+        let dest = self.new_register(ty);
         MIRInstruction::Assign { dest, src }
     }
 
-    pub fn build_alloca(&mut self, ty: MirTy) -> MIRInstruction {
-        let dest = self.new_register();
-        MIRInstruction::Alloca { dest, ty }
+    pub fn build_alloca(&mut self, dest: MIRValue, ty: MIRTy) -> MIRInstruction {
+        MIRInstruction::Alloca {
+            dest,
+            align: ty.align,
+            ty,
+        }
+    }
+
+    pub fn build_store(&self, ptr: MIRValue, val: MIRValue) -> MIRInstruction {
+        MIRInstruction::Store {
+            ptr,
+            align: self.get_val_alignment(&val),
+            val,
+        }
     }
 
     //Will expand it to handle even for sdiv and crap like that
@@ -144,8 +144,9 @@ impl<'a> MIRBuilder<'a> {
         operator: MIROps,
         lhs: MIRValue,
         rhs: MIRValue,
+        ty: MIRTy,
     ) -> MIRInstruction {
-        let dest = self.new_register();
+        let dest = self.new_register(ty);
         MIRInstruction::BinaryOperation {
             dest,
             op: operator,
@@ -154,28 +155,48 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    pub fn get_type(&self, id: &NodeId) -> MirTy {
+    pub fn get_type(&self, id: &NodeId) -> MIRTy {
         let ty_info = self.types_table.types.get(id);
+
         match ty_info {
-            Some(ty) => match ty.kind {
-                ResolvedTypeKind::I8 => MirTy::I8,
-                ResolvedTypeKind::U8 => MirTy::U8,
-                ResolvedTypeKind::I16 => MirTy::I16,
-                ResolvedTypeKind::U16 => MirTy::U16,
-                ResolvedTypeKind::I32 => MirTy::I32,
-                ResolvedTypeKind::U32 => MirTy::I32,
-                ResolvedTypeKind::I64 => MirTy::I64,
-                ResolvedTypeKind::U64 => MirTy::U64,
-                ResolvedTypeKind::I128 => MirTy::I128,
-                ResolvedTypeKind::U128 => MirTy::U128,
-                ResolvedTypeKind::USize => MirTy::USIZE,
-                ResolvedTypeKind::ISize => MirTy::ISIZE,
-                ResolvedTypeKind::Bool => MirTy::Bool,
-                ResolvedTypeKind::F32 => MirTy::F32,
-                ResolvedTypeKind::F64 => MirTy::F64,
-                _ => todo!("Will map the rest later"),
-            },
+            Some(ty) => {
+                let kind = match ty.kind {
+                    ResolvedTypeKind::I8 => MIRTykind::I8,
+                    ResolvedTypeKind::U8 => MIRTykind::U8,
+                    ResolvedTypeKind::I16 => MIRTykind::I16,
+                    ResolvedTypeKind::U16 => MIRTykind::U16,
+                    ResolvedTypeKind::I32 => MIRTykind::I32,
+                    ResolvedTypeKind::U32 => MIRTykind::U32,
+                    ResolvedTypeKind::I64 => MIRTykind::I64,
+                    ResolvedTypeKind::U64 => MIRTykind::U64,
+                    ResolvedTypeKind::I128 => MIRTykind::I128,
+                    ResolvedTypeKind::U128 => MIRTykind::U128,
+                    ResolvedTypeKind::USize => MIRTykind::USIZE,
+                    ResolvedTypeKind::ISize => MIRTykind::ISIZE,
+                    ResolvedTypeKind::Bool => MIRTykind::Bool,
+                    ResolvedTypeKind::F32 => MIRTykind::F32,
+                    ResolvedTypeKind::F64 => MIRTykind::F64,
+                    _ => todo!("Will map the rest later"),
+                };
+                let align = ty.layout.alignment;
+                MIRTy { kind, align }
+            }
+
             None => todo!("Handle a failed type"),
+        }
+    }
+
+    pub fn get_val_alignment(&self, val: &MIRValue) -> usize {
+        match val {
+            MIRValue::Register { ty, .. } => ty.align,
+            MIRValue::Constant(c) => match c {
+                ConstantValue::I8(_) | ConstantValue::U8(_) | ConstantValue::Bool(_) => 1,
+                ConstantValue::I16(_) | ConstantValue::U16(_) => 2,
+                ConstantValue::I32(_) | ConstantValue::U32(_) | ConstantValue::F32(_) => 4,
+                ConstantValue::I64(_) | ConstantValue::U64(_) | ConstantValue::F64(_) => 8,
+                ConstantValue::Int(_) | ConstantValue::UInt(_) => self.target_spec.pointer_width,
+                ConstantValue::I128(_) | ConstantValue::U128(_) => 16,
+            },
         }
     }
 
@@ -205,14 +226,14 @@ impl<'a> MIRBuilder<'a> {
         BasicBlock {
             id: new_id,
             instructions: Vec::new(), //For now empty
-            terminator: None,
+            terminator: Terminator::Return(None),
         }
     }
 
     pub fn add_block(&mut self, block: &BasicBlock) {
         let fn_id = self
             .current_func
-            .expect("Cannot emit outside of a function");
+            .expect("Cannot add a basic block outside of a function");
 
         self.module
             .functions
@@ -220,5 +241,19 @@ impl<'a> MIRBuilder<'a> {
             .expect("Invalid active function")
             .blocks
             .insert(block.id.clone(), block.clone());
+    }
+
+    pub fn set_terminator(&mut self, terminator: Terminator) {
+        let fn_id = self.current_func.expect("No active function");
+        let block_id = self.current_block_id.expect("No active block");
+
+        self.module
+            .functions
+            .get_mut(&fn_id)
+            .unwrap()
+            .blocks
+            .get_mut(&block_id)
+            .unwrap()
+            .terminator = terminator;
     }
 }

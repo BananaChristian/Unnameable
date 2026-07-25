@@ -34,7 +34,7 @@ pub enum StmtKind {
         qualifiers: Vec<Qualifier>,    //Things like mut
         type_annotation: Option<Type>, //The type like u8
         name: Box<Expr>,               //The name of the variable
-        init: Option<Box<Expr>>,
+        init: Box<Expr>,
     },
     ParamDecl {
         qualifiers: Vec<Qualifier>,

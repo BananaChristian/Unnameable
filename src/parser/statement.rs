@@ -141,12 +141,8 @@ impl Parser {
 
         let name = self.parse_identifier()?;
 
-        let init = if self.current_token()?.token_type == TType::Bind {
-            self.advance(); // Consume the := token
-            Some(Box::new(self.parse_expression(Precedence::Lowest)?))
-        } else {
-            None
-        };
+        self.expect_token(TType::Bind)?;
+        let init_val = self.parse_expression(Precedence::Lowest)?;
 
         let end = self.current_token()?.span.end;
         let span = Span { start, end };
@@ -156,7 +152,7 @@ impl Parser {
                 qualifiers: Vec::new(),
                 type_annotation: ty,
                 name: Box::new(name),
-                init,
+                init: Box::new(init_val),
             },
             span,
         ))

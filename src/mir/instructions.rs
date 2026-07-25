@@ -3,14 +3,14 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Vreg(pub usize);
 
-#[derive(Debug, Clone, PartialEq,Eq, Hash,Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct BlockId(pub usize);
 
-#[derive(Debug, Clone, PartialEq,Eq,Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GlobalId(pub usize); //ID for global variables
 
-#[derive(Debug, Clone, PartialEq,Eq, Hash, Copy)]
-pub struct FnId(pub usize);//ID for functions
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub struct FnId(pub usize); //ID for functions
 
 #[derive(Debug, Clone)]
 pub enum ConstantValue {
@@ -33,7 +33,7 @@ pub enum ConstantValue {
 
 #[derive(Debug, Clone)]
 pub enum MIRValue {
-    Register(Vreg),
+    Register { vreg: Vreg, ty: MIRTy },
     Constant(ConstantValue),
 }
 
@@ -48,7 +48,13 @@ pub enum MIROps {
 }
 
 #[derive(Debug, Clone)]
-pub enum MirTy {
+pub struct MIRTy {
+    pub kind: MIRTykind,
+    pub align: usize,
+}
+
+#[derive(Debug, Clone)]
+pub enum MIRTykind {
     I8,
     U8,
     I16,
@@ -66,21 +72,13 @@ pub enum MirTy {
     Bool,
     Unit,
     Ptr, //All pointers are opaque
-    FnPtr {
-        params: Vec<MirTy>,
-        return_ty: Box<MirTy>,
-    },
-    Array {
-        element_ty: Box<MirTy>,
-        length: usize,
-    },
 }
 
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BlockId,
     pub instructions: Vec<MIRInstruction>,
-    pub terminator: Option<Terminator>,
+    pub terminator: Terminator,
 }
 
 #[derive(Debug, Clone)]
@@ -115,17 +113,21 @@ pub enum MIRInstruction {
 
     Alloca {
         dest: MIRValue,
-        ty: MirTy,
+        ty: MIRTy,
+        align: usize, //In bytes
     },
 
     Load {
         dest: MIRValue,
         ptr: MIRValue,
+        ty: MIRTy,
+        align: usize,
     },
 
     Store {
         ptr: MIRValue,
         val: MIRValue,
+        align: usize,
     },
 
     //%dest= call %func_name(%arg1,%arg2)
@@ -138,6 +140,27 @@ pub enum MIRInstruction {
     Assign {
         dest: MIRValue,
         src: MIRValue,
+    },
+
+    // GEP equivalent field/index access into structs and arrays
+    GetElementPtr {
+        dest: MIRValue,
+        ptr: MIRValue,
+        offset: MIRValue, // byte offset
+    },
+
+    // Cast operations
+    Cast {
+        dest: MIRValue,
+        src: MIRValue,
+        from_ty: MIRTy,
+        to_ty: MIRTy,
+    },
+
+    BitCast {
+        dest: MIRValue,
+        src: MIRValue,
+        to_ty: MIRTy,
     },
 }
 
@@ -159,8 +182,8 @@ pub struct MIRFn {
 pub struct MIRGlobal {
     pub global_id: GlobalId,
     pub name: String,
-    pub ty: MirTy,
+    pub ty: MIRTy,
     pub is_const: bool,
-    pub init: Option<MIRValue>,
+    pub init: MIRValue,
     pub linkage: MIRLinkage,
 }

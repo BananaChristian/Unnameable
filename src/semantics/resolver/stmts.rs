@@ -30,9 +30,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_var(&mut self, stmt: &HirStmt, table: &mut NameTable) {
         if let HirStmtKind::HirVarDecl { name, init, ty, .. } = &stmt.kind {
-            if let Some(val) = init {
-                self.resolve_expr(val, table);
-            }
+            self.resolve_expr(init, table);
             if let Some(existing_ty) = ty {
                 self.resolve_type(existing_ty, table);
             }

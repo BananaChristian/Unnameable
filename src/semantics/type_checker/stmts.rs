@@ -106,28 +106,16 @@ impl<'a> TypeChecker<'a> {
     fn check_var(&mut self, stmt: &HirStmt) {
         let mut _annotated_ty = self.unknown(stmt.span.clone());
         if let HirStmtKind::HirVarDecl { ty, init, .. } = &stmt.kind {
-            if let Some(init) = init {
-                let init_ty = self.expr_type(init);
-                _annotated_ty = match ty {
-                    Some(ty) => self.type_from_hir_type(ty),
-                    None => init_ty.clone(),
-                };
+            let init_ty = self.expr_type(init);
+            _annotated_ty = match ty {
+                Some(ty) => self.type_from_hir_type(ty),
+                None => init_ty.clone(),
+            };
 
-                if !TypeInfo::types_match(&_annotated_ty, &init_ty) {
-                    self.type_mismatch(&_annotated_ty, &init_ty, stmt.span.clone());
-                }
-            } else {
-                _annotated_ty = match ty {
-                    Some(ty) => self.type_from_hir_type(ty),
-                    None => {
-                        self.report(
-                            format!("Cannot infer variable type without an initializer"),
-                            Some(stmt.span.clone()),
-                        );
-                        self.unknown(stmt.span.clone())
-                    }
-                };
+            if !TypeInfo::types_match(&_annotated_ty, &init_ty) {
+                self.type_mismatch(&_annotated_ty, &init_ty, stmt.span.clone());
             }
+
             self.insert(stmt.hir_id, _annotated_ty);
         }
     }
