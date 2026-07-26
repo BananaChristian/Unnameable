@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Vreg(pub usize);
+pub enum Vreg {
+    Numbered(usize),
+    Named(String),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct BlockId(pub usize);
@@ -53,10 +56,10 @@ pub enum CmpOp {
     Eq,
     Neq,
     // signed
-    Slt,  // signed less than
-    Sgt,  // signed greater than
-    Sle,  // signed less or equal
-    Sge,  // signed greater or equal
+    Slt, // signed less than
+    Sgt, // signed greater than
+    Sle, // signed less or equal
+    Sge, // signed greater or equal
     // unsigned
     Ult,
     Ugt,
@@ -200,9 +203,16 @@ pub enum MIRLinkage {
 }
 
 #[derive(Debug, Clone)]
+pub struct MIRParam {
+    pub name: String,
+    pub ty: MIRTy,
+}
+
+#[derive(Debug, Clone)]
 pub struct MIRFn {
     pub fn_id: FnId,
     pub name: String,
+    pub params: Vec<MIRParam>,
     pub blocks: HashMap<BlockId, BasicBlock>,
     pub entry_block: BlockId, //This also doubles to identify a function
 }

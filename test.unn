@@ -1,4 +1,4 @@
-func foo(){
-  var x := 100
-  x = x+1
+func foo(a: usize){
+  mut var x := a;
+  x = 1;
 }

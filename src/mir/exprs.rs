@@ -14,7 +14,7 @@ impl<'a> MIRBuilder<'a> {
         match &expr.kind {
             HirExprKind::Literal(_) => {
                 let src = self.expr_value(expr);
-                self.build_assign(src, ty, span)
+                self.build_assign(src, ty, span, None)
             }
             HirExprKind::Identifier(_) => {
                 self.expr_value(expr);
@@ -34,8 +34,16 @@ impl<'a> MIRBuilder<'a> {
         span: Option<Span>,
         ty: MIRTy,
     ) {
+        if matches!(op, HirBinaryOp::Assign) {
+            let rhs_value = self.expr_value(rhs);
+            let ptr = self.lookup_ptr(lhs);
+            self.build_store(ptr, rhs_value, span);
+            return;
+        }
+
         let lhs_value = self.expr_value(lhs);
         let rhs_value = self.expr_value(rhs);
+
         match op {
             HirBinaryOp::Add
             | HirBinaryOp::Sub
@@ -50,8 +58,6 @@ impl<'a> MIRBuilder<'a> {
             | HirBinaryOp::MulAssign
             | HirBinaryOp::DivAssign
             | HirBinaryOp::ModAssign => {
-                // lhs_value is the loaded value of x
-                // rhs_value is the right side
                 let base_op = match op {
                     HirBinaryOp::AddAssign => MIROps::Add,
                     HirBinaryOp::SubAssign => MIROps::Sub,
@@ -66,7 +72,7 @@ impl<'a> MIRBuilder<'a> {
                     }
                     _ => unreachable!(),
                 };
-                // emit the operation
+
                 self.build_binary(base_op, lhs_value, rhs_value, ty, span.clone());
 
                 let Some(result) = self.last_value.as_ref().cloned() else {
@@ -74,7 +80,6 @@ impl<'a> MIRBuilder<'a> {
                     return;
                 };
 
-                // store back into lhs's slot
                 let ptr = self.lookup_ptr(lhs);
                 self.build_store(ptr, result, span);
             }
@@ -86,10 +91,6 @@ impl<'a> MIRBuilder<'a> {
             | HirBinaryOp::Geq => {
                 let cmp_op = self.map_cmp_op(op, &lhs_value);
                 self.build_cmp(cmp_op, lhs_value, rhs_value, span)
-            }
-            HirBinaryOp::Assign => {
-                let ptr = self.lookup_ptr(lhs);
-                self.build_store(ptr, rhs_value, span);
             }
             _ => todo!(),
         }
@@ -163,12 +164,12 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::Identifier(name) => {
                 let ptr = self.lookup_var(name).cloned().expect("Variable not found");
                 let ty = self.get_type(&expr.hir_id);
-                let dest = self.new_register(ty.clone());
+                let dest = self.new_register(ty.clone(), None);
                 self.build_load(dest.clone(), ptr, ty, span);
                 dest
             }
 
-            _ => todo!("Will add other expressions later"),
+            _ => todo!("Encoutered {:?},Will add other it later", expr),
         }
     }
 

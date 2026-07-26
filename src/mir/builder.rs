@@ -87,10 +87,15 @@ impl<'a> MIRBuilder<'a> {
         self.module.clone()
     }
 
-    fn alloc_vreg(&mut self) -> Vreg {
-        let current = Vreg(self.vreg_counter);
-        self.vreg_counter += 1;
-        current
+    fn alloc_vreg(&mut self, name: Option<&str>) -> Vreg {
+        match name {
+            Some(s) if !s.is_empty() => Vreg::Named(s.to_string()),
+            _ => {
+                let current = Vreg::Numbered(self.vreg_counter);
+                self.vreg_counter += 1;
+                current
+            }
+        }
     }
 
     pub fn alloc_fn_id(&mut self) -> FnId {
@@ -111,14 +116,19 @@ impl<'a> MIRBuilder<'a> {
         current
     }
 
-    pub fn new_register(&mut self, reg_ty: MIRTy) -> MIRValue {
-        let vreg = self.alloc_vreg();
-        let register = MIRValue::Register { vreg, ty: reg_ty };
-        register
+    pub fn new_register(&mut self, reg_ty: MIRTy, name: Option<&str>) -> MIRValue {
+        let vreg = self.alloc_vreg(name);
+        MIRValue::Register { vreg, ty: reg_ty }
     }
 
-    pub fn build_assign(&mut self, src: MIRValue, ty: MIRTy, span: Option<Span>) {
-        let dest = self.new_register(ty);
+    pub fn build_assign(
+        &mut self,
+        src: MIRValue,
+        ty: MIRTy,
+        span: Option<Span>,
+        name: Option<&str>,
+    ) {
+        let dest = self.new_register(ty, name);
         let assign = MIRInstruction::Assign { dest, src };
         self.add_instruction(assign, span);
     }
@@ -254,7 +264,7 @@ impl<'a> MIRBuilder<'a> {
         ty: MIRTy,
         span: Option<Span>,
     ) {
-        let dest = self.new_register(ty);
+        let dest = self.new_register(ty, None);
         let bin = MIRInstruction::BinaryOperation {
             dest: dest.clone(),
             op: operator,
@@ -266,10 +276,13 @@ impl<'a> MIRBuilder<'a> {
     }
 
     pub fn build_cmp(&mut self, cmp_op: CmpOp, lhs: MIRValue, rhs: MIRValue, span: Option<Span>) {
-        let dest = self.new_register(MIRTy {
-            kind: MIRTykind::Bool,
-            align: 1,
-        });
+        let dest = self.new_register(
+            MIRTy {
+                kind: MIRTykind::Bool,
+                align: 1,
+            },
+            None,
+        );
         let cmp = MIRInstruction::Compare {
             dest: dest.clone(),
             op: cmp_op,

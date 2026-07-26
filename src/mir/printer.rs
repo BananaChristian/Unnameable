@@ -4,7 +4,7 @@ use crate::mir::{
     builder::MIRModule,
     instructions::{
         BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRFn, MIRGlobal,
-        MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
+        MIRInstruction, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
 };
 
@@ -44,7 +44,17 @@ impl fmt::Display for MIRModule {
 
 impl fmt::Display for Vreg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "%{}", self.0)
+        match self {
+            Vreg::Numbered(num) => write!(f, "%{num}"),
+            Vreg::Named(name) => {
+                // If 'name' already starts with '%', don't add another '%'
+                if name.starts_with('%') {
+                    write!(f, "{name}")
+                } else {
+                    write!(f, "%{name}")
+                }
+            }
+        }
     }
 }
 
@@ -246,9 +256,30 @@ impl fmt::Display for BasicBlock {
     }
 }
 
+impl fmt::Display for MIRParam {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Formats as: "usize %x" (or "%x: usize" if preferred)
+        // If self.name already starts with '%', drop the extra '%' below
+        if self.name.starts_with('%') {
+            write!(f, "{} {}", self.ty, self.name)
+        } else {
+            write!(f, "{} %{}", self.ty, self.name)
+        }
+    }
+}
+
 impl fmt::Display for MIRFn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "func @{}() {{", self.name)?;
+        // Format parameter list into comma-separated string
+        let params_str = self
+            .params
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // Print function signature with parameters
+        writeln!(f, "func @{}({}) {{", self.name, params_str)?;
 
         // Sort block keys so output order is deterministic and readable (bb0, bb1, bb2...)
         let mut block_ids: Vec<_> = self.blocks.keys().cloned().collect();

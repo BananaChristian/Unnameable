@@ -4,7 +4,7 @@ use crate::{
     hir::{HirStmt, HirStmtKind},
     mir::{
         builder::MIRBuilder,
-        instructions::{MIRFn, MIRGlobal, MIRLinkage, MIRTy, MIRTykind, Terminator},
+        instructions::{MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRTy, MIRTykind, Terminator},
     },
 };
 
@@ -56,10 +56,13 @@ impl<'a> MIRBuilder<'a> {
                     self.module.globals.insert(global_id, mir_global);
                 }
                 Some(_) => {
-                    let dest = self.new_register(MIRTy {
-                        kind: MIRTykind::Ptr,
-                        align: 8,
-                    });
+                    let dest = self.new_register(
+                        MIRTy {
+                            kind: MIRTykind::Ptr,
+                            align: 8,
+                        },
+                        Some(name),
+                    );
                     self.build_alloca(dest.clone(), ty.clone(), Some(stmt.span.clone()));
                     self.declare_var(name.clone(), dest.clone());
                     let val = self.expr_value(init);
@@ -70,15 +73,28 @@ impl<'a> MIRBuilder<'a> {
     }
 
     fn build_fn(&mut self, stmt: &HirStmt) {
-        if let HirStmtKind::HirFunctionDef { name, body, .. } = &stmt.kind {
+        if let HirStmtKind::HirFunctionDef {
+            name, params, body, ..
+        } = &stmt.kind
+        {
+            let span = Some(stmt.span.clone());
             let new_fn_id = self.alloc_fn_id();
 
             let entry_block = self.create_basic_block();
             let entry_block_id = entry_block.id.clone();
 
+            let mir_params: Vec<MIRParam> = params
+                .iter()
+                .map(|p| MIRParam {
+                    name: p.name.clone(),
+                    ty: self.get_type(&p.hir_id),
+                })
+                .collect();
+
             let mir_fn = MIRFn {
                 fn_id: new_fn_id,
                 name: name.clone(),
+                params: mir_params.clone(),
                 blocks: HashMap::new(),
                 entry_block: entry_block_id,
             };
@@ -92,9 +108,30 @@ impl<'a> MIRBuilder<'a> {
             self.current_func = Some(new_fn_id);
             self.current_block_id = Some(entry_block_id);
 
-            self.add_block(&entry_block, Some(stmt.span.clone()));
+            self.add_block(&entry_block, span.clone());
 
             self.push_scope();
+            for param in &mir_params {
+                if param.name == "self" {
+                    continue;
+                }
+
+                let slot = self.new_register(
+                    MIRTy {
+                        kind: MIRTykind::Ptr,
+                        align: 8,
+                    },
+                    Some(&format!("{}.addr", param.name)),
+                );
+                self.build_alloca(slot.clone(), param.ty.clone(), span.clone());
+
+                let param_val =
+                    self.new_register(param.ty.clone(), Some(param.name.as_str()));
+
+                self.build_store(slot.clone(), param_val, span.clone());
+                self.declare_var(param.name.clone(), slot);
+            }
+
             for body_stmt in body {
                 self.build_stmt(body_stmt);
             }
