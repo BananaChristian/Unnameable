@@ -61,7 +61,7 @@ impl<'a> LayoutEngine<'a> {
 
     pub fn calculate_layout(&mut self, kind: &ResolvedTypeKind) -> Layout {
         match kind {
-            ResolvedTypeKind::I8 | ResolvedTypeKind::U8 => Layout {
+            ResolvedTypeKind::I8 | ResolvedTypeKind::U8 | ResolvedTypeKind::Bool => Layout {
                 size: 1,
                 alignment: 1,
             },

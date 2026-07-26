@@ -1,12 +1,32 @@
 use crate::{
     const_and_mut_validator::validator::{BindingKind, Validator},
-    hir::{HirBinaryOp, HirExpr, HirExprKind},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirPostfixOp, HirUnaryOp},
 };
 
-impl<'a> Validator<'a> {
+impl Validator {
     pub fn check_expr(&mut self, expr: &HirExpr) {
         match &expr.kind {
             HirExprKind::Binary(l, op, r) => self.check_binary(op, r, l),
+            HirExprKind::Postfix(operand, op) => match op {
+                HirPostfixOp::Increment => self.check_mutation_target(operand, "increment"),
+                HirPostfixOp::Decrement => self.check_mutation_target(operand, "decrement"),
+                _ => (),
+            },
+            HirExprKind::Unary(op, operand) => match op {
+                HirUnaryOp::Increment => self.check_mutation_target(operand, "increment"),
+                HirUnaryOp::Decrement => self.check_mutation_target(operand, "decrement"),
+                _ => (),
+            },
+            HirExprKind::Index { target, index } => {
+                self.check_expr(target);
+                self.check_expr(index);
+            }
+            HirExprKind::Call(callee, args) => {
+                self.check_expr(callee);
+                for arg in args {
+                    self.check_expr(arg);
+                }
+            }
             _ => (),
         }
     }
@@ -14,6 +34,23 @@ impl<'a> Validator<'a> {
     fn check_binary(&mut self, op: &HirBinaryOp, right: &HirExpr, left: &HirExpr) {
         match op {
             HirBinaryOp::Assign => self.check_assignement(right, left),
+            HirBinaryOp::AddAssign
+            | HirBinaryOp::SubAssign
+            | HirBinaryOp::MulAssign
+            | HirBinaryOp::DivAssign
+            | HirBinaryOp::ModAssign => self.check_opassign(op, right, left),
+            _ => (),
+        }
+    }
+
+    fn check_opassign(&mut self, op: &HirBinaryOp, right: &HirExpr, left: &HirExpr) {
+        self.check_expr(right);
+        match op {
+            HirBinaryOp::AddAssign => self.check_mutation_target(left, "add and assign to"),
+            HirBinaryOp::SubAssign => self.check_mutation_target(left, "subtract and assign to"),
+            HirBinaryOp::MulAssign => self.check_mutation_target(left, "multiply and assign to"),
+            HirBinaryOp::ModAssign => self.check_mutation_target(left, "modulo and assign to"),
+            HirBinaryOp::DivAssign => self.check_mutation_target(left, "divide and assign to"),
             _ => (),
         }
     }
@@ -41,7 +78,7 @@ impl<'a> Validator<'a> {
                 match binding {
                     BindingKind::Const => {
                         self.report(
-                            format!("Cannot {} constant '{}'", action_description, name),
+                            format!("Cannot {} constant variable '{}'", action_description, name),
                             Some(expr.span.clone()),
                         );
                     }
@@ -69,3 +106,4 @@ impl<'a> Validator<'a> {
         }
     }
 }
+

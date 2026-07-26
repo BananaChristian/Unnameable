@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    hir::HirBinaryOp,
+    hir::{HirBinaryOp, HirExpr, HirExprKind},
     indexer::NodeIndex,
     lowering::NodeId,
     mir::instructions::{
@@ -151,27 +151,8 @@ impl<'a> MIRBuilder<'a> {
         self.add_instruction(load, span);
     }
 
-    pub fn map_arithmetic_op(&self, op: &HirBinaryOp) -> MIROps {
-        match op {
-            HirBinaryOp::Add => MIROps::Add,
-            HirBinaryOp::Sub => MIROps::Sub,
-            HirBinaryOp::Mul => MIROps::Mul,
-            HirBinaryOp::Mod => MIROps::Mod,
-            _ => unreachable!("Not an arithmetic operator"),
-        }
-    }
-
-    pub fn map_cmp_op(&self, op: &HirBinaryOp, lhs: &MIRValue) -> CmpOp {
-        let is_float = match lhs {
-            MIRValue::Register { ty, .. } => {
-                matches!(ty.kind, MIRTykind::F32 | MIRTykind::F64)
-            }
-            MIRValue::Constant(c) => {
-                matches!(c, ConstantValue::F32(_) | ConstantValue::F64(_))
-            }
-        };
-
-        let is_signed = match lhs {
+    pub fn is_signed(&self, lhs: &MIRValue) -> bool {
+        match lhs {
             MIRValue::Register { ty, .. } => matches!(
                 ty.kind,
                 MIRTykind::I8
@@ -190,7 +171,37 @@ impl<'a> MIRBuilder<'a> {
                     | ConstantValue::I128(_)
                     | ConstantValue::Int(_)
             ),
+        }
+    }
+
+    pub fn map_arithmetic_op(&self, op: &HirBinaryOp, lhs: &MIRValue) -> MIROps {
+        match op {
+            HirBinaryOp::Add => MIROps::Add,
+            HirBinaryOp::Sub => MIROps::Sub,
+            HirBinaryOp::Mul => MIROps::Mul,
+            HirBinaryOp::Mod => MIROps::Mod,
+            HirBinaryOp::Div => {
+                if self.is_signed(lhs) {
+                    MIROps::Sdiv
+                } else {
+                    MIROps::Udiv
+                }
+            }
+            _ => unreachable!("Not an arithmetic operator"),
+        }
+    }
+
+    pub fn map_cmp_op(&self, op: &HirBinaryOp, lhs: &MIRValue) -> CmpOp {
+        let is_float = match lhs {
+            MIRValue::Register { ty, .. } => {
+                matches!(ty.kind, MIRTykind::F32 | MIRTykind::F64)
+            }
+            MIRValue::Constant(c) => {
+                matches!(c, ConstantValue::F32(_) | ConstantValue::F64(_))
+            }
         };
+
+        let is_signed = self.is_signed(lhs);
 
         match op {
             HirBinaryOp::Lt => {
@@ -245,12 +256,13 @@ impl<'a> MIRBuilder<'a> {
     ) {
         let dest = self.new_register(ty);
         let bin = MIRInstruction::BinaryOperation {
-            dest,
+            dest: dest.clone(),
             op: operator,
             lhs,
             rhs,
         };
         self.add_instruction(bin, span);
+        self.last_value = Some(dest)
     }
 
     pub fn build_cmp(&mut self, cmp_op: CmpOp, lhs: MIRValue, rhs: MIRValue, span: Option<Span>) {
@@ -289,7 +301,7 @@ impl<'a> MIRBuilder<'a> {
                     ResolvedTypeKind::Bool => MIRTykind::Bool,
                     ResolvedTypeKind::F32 => MIRTykind::F32,
                     ResolvedTypeKind::F64 => MIRTykind::F64,
-                    _ => todo!("Will map the rest later"),
+                    _ => todo!("Will map the other types later {:?}", ty),
                 };
                 let align = ty.layout.alignment;
                 MIRTy { kind, align }
@@ -356,7 +368,7 @@ impl<'a> MIRBuilder<'a> {
         let new_id = self.alloc_block_id();
         BasicBlock {
             id: new_id,
-            instructions: Vec::new(), //For now empty
+            instructions: Vec::new(),
             terminator: Terminator::Return(None),
         }
     }
@@ -380,6 +392,14 @@ impl<'a> MIRBuilder<'a> {
             }
         }
         None
+    }
+
+    pub fn lookup_ptr(&self, expr: &HirExpr) -> MIRValue {
+        if let HirExprKind::Identifier(name) = &expr.kind {
+            self.lookup_var(name).cloned().expect("Variable not found")
+        } else {
+            panic!("Cannot assign to non-identifier")
+        }
     }
 
     pub fn add_block(&mut self, block: &BasicBlock, span: Option<Span>) {

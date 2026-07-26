@@ -1,7 +1,7 @@
 use unnc::{
-    const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine,
-    indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder, parser::Parser,
-    semantics::Semantics, serializer::Serializer, target::TargetSpec,
+    const_and_mut_validator::Validator, diagnostics::Diagnostics, hir::HirPrinter,
+    import::ImportEngine, indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder,
+    parser::Parser, semantics::Semantics, serializer::Serializer, target::TargetSpec,
 };
 
 use std::{cell::RefCell, env, fs, path::PathBuf, rc::Rc};
@@ -11,6 +11,10 @@ fn print_help(program_name: &str) {
     println!("Usage: {} <source.unn> [options]\n", program_name);
     println!("Options:");
     println!("  -h, --help            Show this help menu");
+    println!("  -v, --verbose         Enable all debug output (dumps AST, HIR, and MIR)");
+    println!("  --dump-ast            Print the Abstract Syntax Tree");
+    println!("  --dump-hir            Print the High-Level Intermediate Representation");
+    println!("  --dump-mir            Print the Mid-Level Intermediate Representation");
     println!("  --target-arch <str>   Override the target architecture (e.g., x86_64, arm)");
     println!("  --target-os <str>     Override the target OS (e.g., linux, windows, none)");
     println!("  --ptr-width <bytes>   Override pointer width in bytes (e.g., 4, 8)");
@@ -45,9 +49,32 @@ fn main() -> Result<(), std::io::Error> {
     let mut emit_stub_path: Option<PathBuf> = None;
     let mut load_stub_paths: Vec<String> = Vec::new();
 
+    // Debug output flags
+    let mut dump_ast = false;
+    let mut dump_hir = false;
+    let mut dump_mir = false;
+
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "-v" | "--verbose" => {
+                dump_ast = true;
+                dump_hir = true;
+                dump_mir = true;
+                i += 1;
+            }
+            "--dump-ast" => {
+                dump_ast = true;
+                i += 1;
+            }
+            "--dump-hir" => {
+                dump_hir = true;
+                i += 1;
+            }
+            "--dump-mir" => {
+                dump_mir = true;
+                i += 1;
+            }
             "--target-arch" => {
                 if i + 1 < args.len() {
                     arch = Some(args[i + 1].clone());
@@ -104,7 +131,6 @@ fn main() -> Result<(), std::io::Error> {
                     cli_error("Missing value for --load-stub");
                 }
             }
-            // Treat positional values as the input file path
             flag if flag.starts_with('-') => {
                 eprintln!("Unknown compilation flag: {}", flag);
                 std::process::exit(1);
@@ -153,6 +179,13 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.borrow().print();
         std::process::exit(1);
     }
+    if dump_ast {
+        println!("=== AST Tree ===");
+        for stmt in &ast {
+            print!("{stmt}");
+        }
+        println!();
+    }
 
     let mut lowering = Lowering::new(ast, Rc::clone(&diagnostics));
     let mut hir = lowering.lower();
@@ -175,8 +208,13 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
 
-    let monormorphized_hir = semantics.generate_monormophizer_hir();
-    let hir_index = NodeIndex::build(&monormorphized_hir);
+    let monomorphized_hir = semantics.generate_monormophizer_hir();
+    let hir_index = NodeIndex::build(&monomorphized_hir);
+    if dump_hir {
+        println!("=== HIR Dump ===");
+        println!("{}", HirPrinter::print_hir(&monomorphized_hir));
+        println!();
+    }
 
     if semantics.verify_contracts(&hir_index, Rc::clone(&diagnostics)) {
         diagnostics.borrow().print();
@@ -188,8 +226,8 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
 
-    let mut validator = Validator::new(&hir_index, &semantics.ctxt, Rc::clone(&diagnostics));
-    validator.run();
+    let mut validator = Validator::new(Rc::clone(&diagnostics));
+    validator.run(&monomorphized_hir);
     if validator.corrupted {
         diagnostics.borrow().print();
         std::process::exit(1);
@@ -216,7 +254,10 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
     let mir_module = mir_builder.build_module();
-    println!("{}", mir_module);
+    if dump_mir {
+        println!("=== MIR Dump ===");
+        println!("{}", mir_module);
+    }
 
     Ok(())
 }

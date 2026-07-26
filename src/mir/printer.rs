@@ -136,6 +136,7 @@ impl fmt::Display for MIROps {
             MIROps::Sdiv => write!(f, "sdiv"),
             MIROps::Udiv => write!(f, "udiv"),
             MIROps::Mod => write!(f, "mod"),
+            MIROps::Xor => write!(f, "xor"),
         }
     }
 }

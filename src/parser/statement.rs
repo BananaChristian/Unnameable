@@ -34,6 +34,7 @@ impl Parser {
     fn parse_expr_stmt(&mut self) -> Option<Stmt> {
         let expr = self.parse_expression(Precedence::Lowest)?;
         let span = expr.clone().span;
+        self.expect_token(TType::Semicolon)?;
         Some(Stmt::new(StmtKind::Expr(expr), span))
     }
 
@@ -143,6 +144,8 @@ impl Parser {
 
         self.expect_token(TType::Bind)?;
         let init_val = self.parse_expression(Precedence::Lowest)?;
+
+        self.expect_token(TType::Semicolon)?;
 
         let end = self.current_token()?.span.end;
         let span = Span { start, end };
@@ -594,6 +597,7 @@ impl Parser {
             expr = self.parse_expression(Precedence::Lowest);
         }
 
+        self.expect_token(TType::Semicolon);
         let end = self.current_token()?.span.end;
         Some(Stmt::new(StmtKind::Return(expr), Span { start, end }))
     }

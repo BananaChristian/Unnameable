@@ -14,23 +14,17 @@ pub enum BindingKind {
     Immutable,
 }
 
-pub struct Validator<'a> {
-    node_index: &'a NodeIndex,
-    ctxt: &'a SemanticCtxt,
+pub struct Validator {
     diagnostics: SharedDiagnostics,
     scopes: Vec<HashMap<String, BindingKind>>,
     pub corrupted: bool,
 }
 
-impl<'a> Validator<'a> {
+impl Validator {
     pub fn new(
-        node_index: &'a NodeIndex,
-        ctxt: &'a SemanticCtxt,
         diagnostics: SharedDiagnostics,
     ) -> Self {
         Validator {
-            node_index,
-            ctxt,
             diagnostics,
             scopes: vec![HashMap::new()],
             corrupted: false,
@@ -65,8 +59,8 @@ impl<'a> Validator<'a> {
         }
     }
 
-    pub fn run(&mut self) {
-        for (_, stmt) in &self.node_index.nodes {
+    pub fn run(&mut self, hir: &[HirStmt]) {
+        for stmt in hir {
             self.check_stmt(stmt);
         }
     }
@@ -77,6 +71,12 @@ impl<'a> Validator<'a> {
             HirStmtKind::HirIf { .. } => self.check_if(stmt),
             HirStmtKind::HirWhile { .. } => self.check_while(stmt),
             HirStmtKind::HirExpr(_) => self.check_expr_stmt(stmt),
+            HirStmtKind::HirFunctionDef { .. } => self.check_func_decl(stmt),
+            HirStmtKind::HirReturn(val) => {
+                if let Some(e) = val {
+                    self.check_expr(e);
+                }
+            }
             _ => (),
         }
     }
@@ -204,3 +204,4 @@ impl<'a> Validator<'a> {
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
 }
+

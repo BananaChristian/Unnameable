@@ -1,8 +1,9 @@
 use crate::{
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral},
+    diagnostics::Span,
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
     mir::{
         builder::MIRBuilder,
-        instructions::{ConstantValue, MIRValue},
+        instructions::{ConstantValue, MIROps, MIRTy, MIRValue},
     },
 };
 
@@ -18,31 +19,140 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::Identifier(_) => {
                 self.expr_value(expr);
             }
-            HirExprKind::Binary(lhs, operat, rhs) => {
-                let lhs_value = self.expr_value(lhs);
-                let rhs_value = self.expr_value(rhs);
-                match operat {
-                    HirBinaryOp::Add
-                    | HirBinaryOp::Sub
-                    | HirBinaryOp::Mul
-                    | HirBinaryOp::Div
-                    | HirBinaryOp::Mod => {
-                        let op = self.map_arithmetic_op(operat);
-                        self.build_binary(op, lhs_value, rhs_value, ty, span)
-                    }
-                    HirBinaryOp::Eq
-                    | HirBinaryOp::Neq
-                    | HirBinaryOp::Lt
-                    | HirBinaryOp::Gt
-                    | HirBinaryOp::Leq
-                    | HirBinaryOp::Geq => {
-                        let cmp_op = self.map_cmp_op(operat, &lhs_value);
-                        self.build_cmp(cmp_op, lhs_value, rhs_value, span)
-                    }
-                    _ => todo!(),
-                }
-            }
+            HirExprKind::Unary(op, operand) => self.build_unary(op, ty, operand),
+            HirExprKind::Postfix(operand, op) => self.build_postfix(op, operand, ty),
+            HirExprKind::Binary(lhs, operat, rhs) => self.build_bin(operat, lhs, rhs, span, ty),
             _ => todo!("Will add other expressions later"),
+        }
+    }
+
+    fn build_bin(
+        &mut self,
+        op: &HirBinaryOp,
+        lhs: &HirExpr,
+        rhs: &HirExpr,
+        span: Option<Span>,
+        ty: MIRTy,
+    ) {
+        let lhs_value = self.expr_value(lhs);
+        let rhs_value = self.expr_value(rhs);
+        match op {
+            HirBinaryOp::Add
+            | HirBinaryOp::Sub
+            | HirBinaryOp::Mul
+            | HirBinaryOp::Div
+            | HirBinaryOp::Mod => {
+                let op = self.map_arithmetic_op(op, &lhs_value);
+                self.build_binary(op, lhs_value, rhs_value, ty, span)
+            }
+            HirBinaryOp::AddAssign
+            | HirBinaryOp::SubAssign
+            | HirBinaryOp::MulAssign
+            | HirBinaryOp::DivAssign
+            | HirBinaryOp::ModAssign => {
+                // lhs_value is the loaded value of x
+                // rhs_value is the right side
+                let base_op = match op {
+                    HirBinaryOp::AddAssign => MIROps::Add,
+                    HirBinaryOp::SubAssign => MIROps::Sub,
+                    HirBinaryOp::MulAssign => MIROps::Mul,
+                    HirBinaryOp::ModAssign => MIROps::Mod,
+                    HirBinaryOp::DivAssign => {
+                        if self.is_signed(&lhs_value) {
+                            MIROps::Sdiv
+                        } else {
+                            MIROps::Udiv
+                        }
+                    }
+                    _ => unreachable!(),
+                };
+                // emit the operation
+                self.build_binary(base_op, lhs_value, rhs_value, ty, span.clone());
+
+                let Some(result) = self.last_value.as_ref().cloned() else {
+                    self.report_ice("Failed to get last MIRValue".to_string(), span.clone());
+                    return;
+                };
+
+                // store back into lhs's slot
+                let ptr = self.lookup_ptr(lhs);
+                self.build_store(ptr, result, span);
+            }
+            HirBinaryOp::Eq
+            | HirBinaryOp::Neq
+            | HirBinaryOp::Lt
+            | HirBinaryOp::Gt
+            | HirBinaryOp::Leq
+            | HirBinaryOp::Geq => {
+                let cmp_op = self.map_cmp_op(op, &lhs_value);
+                self.build_cmp(cmp_op, lhs_value, rhs_value, span)
+            }
+            HirBinaryOp::Assign => {
+                let ptr = self.lookup_ptr(lhs);
+                self.build_store(ptr, rhs_value, span);
+            }
+            _ => todo!(),
+        }
+    }
+
+    fn build_postfix(&mut self, op: &HirPostfixOp, operand: &HirExpr, ty: MIRTy) {
+        let span = Some(operand.span.clone());
+        let old_val = self.expr_value(operand);
+
+        let base_op = match op {
+            HirPostfixOp::Increment => MIROps::Add,
+            HirPostfixOp::Decrement => MIROps::Sub,
+            _ => todo!("Add propagate later"),
+        };
+
+        let one_val = MIRValue::Constant(ConstantValue::Int(1));
+        self.build_binary(base_op, old_val.clone(), one_val, ty, span.clone());
+
+        let Some(new_val) = self.last_value.as_ref().cloned() else {
+            self.report_ice("Failed to get last MIRValue".to_string(), span);
+            return;
+        };
+
+        let ptr = self.lookup_ptr(operand);
+        self.build_store(ptr, new_val, span);
+
+        self.last_value = Some(old_val)
+    }
+
+    fn build_unary(&mut self, op: &HirUnaryOp, ty: MIRTy, operand: &HirExpr) {
+        let span = Some(operand.span.clone());
+        let operand_val = self.expr_value(operand);
+
+        match op {
+            HirUnaryOp::Not => {
+                let true_val = MIRValue::Constant(ConstantValue::Bool(true));
+                self.build_binary(MIROps::Xor, operand_val, true_val, ty, span);
+            }
+            HirUnaryOp::Neg => {
+                let zero_val = MIRValue::Constant(ConstantValue::Int(1));
+                self.build_binary(MIROps::Sub, operand_val, zero_val, ty, span);
+            }
+            HirUnaryOp::Increment | HirUnaryOp::Decrement => {
+                let base_op = if matches!(op, HirUnaryOp::Increment) {
+                    MIROps::Add
+                } else {
+                    MIROps::Sub
+                };
+
+                let one_val = MIRValue::Constant(ConstantValue::Int(1));
+
+                self.build_binary(base_op, operand_val, one_val, ty, span.clone());
+
+                let Some(new_val) = self.last_value.as_ref().cloned() else {
+                    self.report_ice("Failed to get last MIRValue".to_string(), span);
+                    return;
+                };
+
+                let ptr = self.lookup_ptr(operand);
+                self.build_store(ptr, new_val.clone(), span);
+                self.last_value = Some(new_val)
+            }
+            _ => (),
         }
     }
 

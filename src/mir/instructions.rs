@@ -45,6 +45,7 @@ pub enum MIROps {
     Sdiv,
     Udiv,
     Mod,
+    Xor,
 }
 
 #[derive(Debug, Clone)]

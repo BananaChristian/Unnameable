@@ -247,7 +247,7 @@ impl<'a> TypeChecker<'a> {
                 | HirBinaryOp::Geq
                 | HirBinaryOp::Leq => self.comparison_binary_type(&left_ty, &right_ty, expr.span.clone()),
                 HirBinaryOp::And | HirBinaryOp::Or => self.logical_binary_type(&left_ty,&right_ty,expr.span.clone()),
-                HirBinaryOp::Assign => self.assignment_type(&left_ty, &right_ty, expr.span.clone()),
+                HirBinaryOp::Assign| HirBinaryOp::AddAssign| HirBinaryOp::SubAssign| HirBinaryOp::MulAssign| HirBinaryOp::ModAssign| HirBinaryOp::DivAssign => self.assignment_type(&left_ty, &right_ty, expr.span.clone()),
                 HirBinaryOp::Access => self.access_type(&left_ty, right),
                 _ => self.unknown(expr.span.clone()),
             }

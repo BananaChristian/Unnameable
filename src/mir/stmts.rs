@@ -123,12 +123,12 @@ impl<'a> MIRBuilder<'a> {
             else_body,
         } = &stmt.kind
         {
+            let span = Some(stmt.span.clone());
             self.build_expr(condition);
-            let cond_val = self
-                .last_value
-                .as_ref()
-                .cloned()
-                .expect("Failed to get condition value");
+            let Some(cond_val) = self.last_value.as_ref().cloned() else {
+                self.report_ice("Failed to get last MIRValue".to_string(), span.clone());
+                return;
+            };
 
             let then_block = self.create_basic_block();
             let else_block = self.create_basic_block();
@@ -140,21 +140,21 @@ impl<'a> MIRBuilder<'a> {
                     then: then_block.id,
                     else_block: else_block.id,
                 },
-                Some(stmt.span.clone()),
+                span.clone(),
             );
 
             // build then block
-            self.add_block(&then_block, Some(stmt.span.clone()));
+            self.add_block(&then_block, span.clone());
             self.current_block_id = Some(then_block.id);
             self.push_scope();
             for st in body {
                 self.build_stmt(st);
             }
             self.pop_scope();
-            self.set_terminator(Terminator::Goto(merge_block.id), Some(stmt.span.clone()));
+            self.set_terminator(Terminator::Goto(merge_block.id), span.clone());
 
             // build else block
-            self.add_block(&else_block, Some(stmt.span.clone()));
+            self.add_block(&else_block, span.clone());
             self.current_block_id = Some(else_block.id);
             self.push_scope();
             if let Some(else_stmts) = else_body {
@@ -163,16 +163,55 @@ impl<'a> MIRBuilder<'a> {
                 }
             }
             self.pop_scope();
-            self.set_terminator(Terminator::Goto(merge_block.id), Some(stmt.span.clone()));
+            self.set_terminator(Terminator::Goto(merge_block.id), span.clone());
 
             // switch to merge block, execution continues here
-            self.add_block(&merge_block, Some(stmt.span.clone()));
+            self.add_block(&merge_block, span);
             self.current_block_id = Some(merge_block.id);
         }
     }
 
-    fn build_while(&mut self, _stmt: &HirStmt) {
-        todo!("Add while")
+    fn build_while(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirWhile { condition, body } = &stmt.kind {
+            let span = Some(stmt.span.clone());
+            let cond_block = self.create_basic_block();
+            let body_block = self.create_basic_block();
+            let exit_block = self.create_basic_block();
+
+            // current block jumps to condition
+            self.set_terminator(Terminator::Goto(cond_block.id), span.clone());
+
+            self.add_block(&cond_block, span.clone());
+            self.current_block_id = Some(cond_block.id);
+            self.build_expr(condition);
+
+            let Some(cond_val) = self.last_value.as_ref().cloned() else {
+                self.report_ice("Failed to get last MIRValue".to_string(), span.clone());
+                return;
+            };
+            self.set_terminator(
+                Terminator::Branch {
+                    cond: cond_val,
+                    then: body_block.id,
+                    else_block: exit_block.id,
+                },
+                span.clone(),
+            );
+
+            //Add the body block
+            self.add_block(&body_block, span.clone());
+            self.current_block_id = Some(body_block.id);
+            self.push_scope();
+            for s in body {
+                self.build_stmt(s);
+            }
+            self.pop_scope();
+            self.set_terminator(Terminator::Goto(cond_block.id), span.clone());
+
+            //Add the exit block
+            self.add_block(&exit_block, span);
+            self.current_block_id = Some(exit_block.id);
+        }
     }
 
     fn build_expr_stmt(&mut self, stmt: &HirStmt) {

@@ -4,6 +4,7 @@ mod precedence;
 mod qualifiers;
 mod statements;
 mod types;
+mod printer;
 
 pub use expressions::{Expr, ExprKind, InstParam, Literal};
 pub use operators::{BinaryOp, PostfixOp, UnaryOp};
