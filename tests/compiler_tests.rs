@@ -83,8 +83,8 @@ fn compile_source_for_test(filename: &str, source: &str) -> String {
             return capture_diagnostics(&diagnostics);
         }
 
-        let mut validator = Validator::new(&hir_index, &semantics.ctxt, Rc::clone(&diagnostics));
-        validator.run();
+        let mut validator = Validator::new(Rc::clone(&diagnostics));
+        validator.run(&monomorphized_hir);
         if validator.corrupted {
             return capture_diagnostics(&diagnostics);
         }

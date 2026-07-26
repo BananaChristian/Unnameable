@@ -17,6 +17,7 @@ pub struct CompilerError {
     pub span: Option<Span>,
     pub severity: Severity,
     pub phase: Phase,
+    pub hint: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +35,7 @@ impl CompilerError {
             span,
             severity: Severity::Error,
             phase,
+            hint: None,
         }
     }
 
@@ -43,6 +45,7 @@ impl CompilerError {
             span,
             severity: Severity::Warning,
             phase: Phase::None,
+            hint: None,
         }
     }
 
@@ -52,6 +55,7 @@ impl CompilerError {
             span,
             severity: Severity::Fatal,
             phase: Phase::None,
+            hint: None,
         }
     }
 
@@ -61,6 +65,7 @@ impl CompilerError {
             span,
             severity: Severity::Ice,
             phase,
+            hint: None,
         }
     }
 }

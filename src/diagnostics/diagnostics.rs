@@ -155,8 +155,11 @@ impl Diagnostics {
         if let Some(span) = &error.span {
             let (line, col) = self.source_map.get_line_col(span.start);
             let length = span.length().max(1);
+            let line_num_str = line.to_string();
+            let padding = " ".repeat(line_num_str.len());
+            let line_snippet = self.source_map.get_line_snippet(span.start); // add this
 
-            // Header: filename:line:col: severity: message
+            // header
             println!(
                 "{}:{}:{}: {}: {}",
                 self.filename.color(Color::Cyan),
@@ -166,24 +169,63 @@ impl Diagnostics {
                 error.message.color(Color::White).bold()
             );
 
-            let line_snippet = self.source_map.get_line_snippet(span.start);
-            let line_num_str = line.to_string();
-            let padding = " ".repeat(line_num_str.len());
+            // context before, up to 2 lines
+            let context_before = 2;
+            let start_line = line.saturating_sub(context_before);
+            for ctx_line in start_line..line {
+                if ctx_line == 0 {
+                    continue;
+                }
+                let snippet = self
+                    .source_map
+                    .get_line_snippet(self.source_map.line_starts[ctx_line - 1]);
+                println!(
+                    " {} | {}",
+                    ctx_line.to_string().color(Color::Cyan).dimmed(),
+                    snippet.dimmed()
+                );
+            }
 
-            // Line snippet rendering
-            println!(" {} {}", "|".color(Color::Cyan), line_snippet);
+            // error line
+            println!(
+                " {} | {}",
+                line_num_str.color(Color::Cyan),
+                line_snippet.color(Color::White).bold()
+            );
 
-            // Caret underline
-            let mut underline = String::new();
-            underline.push_str(&format!(" {} | ", padding));
+            // caret underline
+            let mut underline = format!(" {} | ", padding);
             for _ in 0..col.saturating_sub(1) {
                 underline.push(' ');
             }
             for _ in 0..length {
                 underline.push('^');
             }
-
             println!("{}", underline.color(color).bold());
+
+            // context after, up to 2 lines
+            let context_after = 2;
+            let end_line = (line + context_after).min(self.source_map.line_starts.len());
+            for ctx_line in (line + 1)..=end_line {
+                if ctx_line > self.source_map.line_starts.len() {
+                    continue;
+                }
+                let snippet = self
+                    .source_map
+                    .get_line_snippet(self.source_map.line_starts[ctx_line - 1]);
+                println!(
+                    " {} | {}",
+                    ctx_line.to_string().color(Color::Cyan).dimmed(),
+                    snippet.dimmed()
+                );
+            }
+
+            // hint if present
+            if let Some(hint) = &error.hint {
+                println!(" {} = {}: {}", padding, "hint".bold().cyan(), hint);
+            }
+
+            println!(); // blank line between errors
         } else {
             println!(
                 "{}: {}",

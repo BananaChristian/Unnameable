@@ -668,10 +668,14 @@ impl Parser {
             if let Some(stmt) = self.parse_stmt() {
                 stmts.push(stmt);
             } else {
-                self.advance();
+                match self.current_token()?.token_type {
+                    TType::Rbrace | TType::End => break,
+                    _ => {
+                        self.synchronize();
+                    }
+                }
             }
         }
-
         self.expect_token(TType::Rbrace)?;
         let end = self.current_token()?.span.end;
         let span = Span { start, end };

@@ -62,7 +62,37 @@ impl Parser {
                 format!("Expected {:?}, found {:?}", expected, token.token_type),
                 Some(span),
             );
+            self.synchronize();
             None
+        }
+    }
+
+    pub fn synchronize(&mut self) {
+        while let Some(token) = self.current_token() {
+            match token.token_type {
+                // stop at these next statement starts here
+                TType::Semicolon => {
+                    self.advance(); // consume the semicolon
+                    return;
+                }
+                TType::Func
+                | TType::Seal
+                | TType::Generics
+                | TType::Methods
+                | TType::Var
+                | TType::Struct
+                | TType::Enum
+                | TType::Variant
+                | TType::Contract
+                | TType::If
+                | TType::While
+                | TType::Return
+                | TType::Rbrace
+                | TType::End => return, // don't consume these
+                _ => {
+                    self.advance();
+                }
+            }
         }
     }
 
@@ -78,23 +108,29 @@ impl Parser {
 
     pub fn parse(&mut self) -> Vec<Stmt> {
         let mut stmts = Vec::new();
-
         while self.current_pos < self.tokens.len() {
             if let Some(token) = self.current_token() {
                 if token.token_type == TType::End {
                     break;
                 }
-
                 if let Some(stmt) = self.parse_stmt() {
                     stmts.push(stmt);
                 } else {
-                    self.advance();
+                    if let Some(token) = self.current_token() {
+                        match token.token_type {
+                            TType::End | TType::Rbrace => break,
+                            _ => {
+                                self.synchronize();
+                            }
+                        }
+                    } else {
+                        break;
+                    }
                 }
             } else {
                 break;
             }
         }
-
         stmts
     }
 
