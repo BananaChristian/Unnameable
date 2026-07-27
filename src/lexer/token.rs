@@ -40,6 +40,8 @@ pub enum TType {
     Coalesce,       //??
     DoubleExclaim,  //'!!'
     Propagate,      //'!?'
+    Dollar,         //$
+    DoubleDollar,   //$$
 
     // Number types
     Int,
@@ -103,7 +105,6 @@ pub enum TType {
     Cast,
     As,
     Import,
-
 
     I8Key,
     U8Key,

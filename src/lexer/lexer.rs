@@ -387,6 +387,29 @@ impl<'a> Lexer<'a> {
                     )
                 }
             }
+            Some('$') => {
+                self.advance();
+                if let Some('$') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "$$".to_string(),
+                        TType::DoubleDollar,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                } else {
+                    Token::new(
+                        "$".to_string(),
+                        TType::Dollar,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                }
+            }
             Some('-') => {
                 self.advance();
                 if let Some('-') = self.current_char() {
