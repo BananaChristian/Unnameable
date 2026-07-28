@@ -19,8 +19,8 @@ Here is what a basic program with comments looks like in Unnameable right now:
 
 func main(): u32 {
     # This is a single line comment
-    var u32 MAX := 100u32
-    return 0u32
+    var u32 MAX := 100u32;
+    return 0u32;
 }
 ```
 
