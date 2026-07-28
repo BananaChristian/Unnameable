@@ -1,0 +1,4 @@
+$ func foo(a: usize): usize{
+  mut var x := $${a;};
+  return a;
+}

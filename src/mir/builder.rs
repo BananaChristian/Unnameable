@@ -6,7 +6,7 @@ use crate::{
     indexer::NodeIndex,
     lowering::NodeId,
     mir::instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRFn, MIRGlobal,
+        BasicBlock, BlockId, CmpOp, ConstantValue, DollarMode, FnId, GlobalId, MIRFn, MIRGlobal,
         MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
     semantics::{ResolvedTypeKind, TypesTable},
@@ -32,10 +32,12 @@ pub struct MIRBuilder<'a> {
     block_counter: usize,
     fn_counter: usize,
     global_counter: usize,
+    pub dollar_scope_counter: usize,
 
-    //The current block we are writing to
     pub current_block_id: Option<BlockId>,
     pub current_func: Option<FnId>,
+    pub current_dollar_mode: DollarMode,
+    pub current_dollar_name: Option<String>,
 
     var_stack: Vec<HashMap<String, MIRValue>>,
     pub last_value: Option<MIRValue>,
@@ -60,8 +62,11 @@ impl<'a> MIRBuilder<'a> {
             block_counter: 0,
             fn_counter: 0,
             global_counter: 0,
+            dollar_scope_counter: 0,
             current_block_id: None,
             current_func: None,
+            current_dollar_mode: DollarMode::None,
+            current_dollar_name: None,
             var_stack: Vec::new(),
             last_value: None,
             diagnostics,
@@ -133,10 +138,26 @@ impl<'a> MIRBuilder<'a> {
         self.add_instruction(assign, span);
     }
 
+    pub fn build_dollar_eval(
+        &mut self,
+        dest: MIRValue,
+        scope_fn_name: String,
+        args: Vec<MIRValue>,
+        span: Option<Span>,
+    ) {
+        let inst = MIRInstruction::DollarEval {
+            dest,
+            scope_fn: scope_fn_name,
+            args,
+        };
+        self.add_instruction(inst, span);
+    }
+
     pub fn build_alloca(&mut self, dest: MIRValue, ty: MIRTy, span: Option<Span>) {
         let alloca = MIRInstruction::Alloca {
             dest,
             align: ty.align,
+            dollar_mode: self.current_dollar_mode,
             ty,
         };
         self.add_instruction(alloca, span);
@@ -181,6 +202,7 @@ impl<'a> MIRBuilder<'a> {
                     | ConstantValue::I128(_)
                     | ConstantValue::Int(_)
             ),
+            MIRValue::Poison => false,
         }
     }
 
@@ -209,6 +231,7 @@ impl<'a> MIRBuilder<'a> {
             MIRValue::Constant(c) => {
                 matches!(c, ConstantValue::F32(_) | ConstantValue::F64(_))
             }
+            MIRValue::Poison => false,
         };
 
         let is_signed = self.is_signed(lhs);
@@ -335,6 +358,7 @@ impl<'a> MIRBuilder<'a> {
                 ConstantValue::Int(_) | ConstantValue::UInt(_) => self.target_spec.pointer_width,
                 ConstantValue::I128(_) | ConstantValue::U128(_) => 16,
             },
+            MIRValue::Poison => 0,
         }
     }
 

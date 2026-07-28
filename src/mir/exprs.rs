@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+
 use crate::{
     diagnostics::Span,
     hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
     mir::{
         builder::MIRBuilder,
-        instructions::{ConstantValue, MIROps, MIRTy, MIRValue},
+        instructions::{
+            ConstantValue, DollarMode, MIRFn, MIRLinkage, MIROps, MIRTy, MIRValue, Terminator,
+        },
     },
 };
 
@@ -22,7 +26,71 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::Unary(op, operand) => self.build_unary(op, ty, operand),
             HirExprKind::Postfix(operand, op) => self.build_postfix(op, operand, ty),
             HirExprKind::Binary(lhs, operat, rhs) => self.build_bin(operat, lhs, rhs, span, ty),
+            HirExprKind::DollarScope { .. } => self.build_dollar_scope(expr),
             _ => todo!("Will add other expressions later"),
+        }
+    }
+
+    fn build_dollar_scope(&mut self, expr: &HirExpr) {
+        if let HirExprKind::DollarScope { body, result } = &expr.kind {
+            let span = Some(expr.span.clone());
+            let ty = self.get_type(&expr.hir_id);
+
+            let scope_id = self.dollar_scope_counter;
+            self.dollar_scope_counter += 1;
+            let scope_fn_name = format!("$$scope_{}", scope_id);
+
+            //Save context
+            let parent_func = self.current_func;
+            let parent_block = self.current_block_id;
+            let parent_dollar_mode = self.current_dollar_mode;
+
+            let fn_id = self.alloc_fn_id();
+            let entry_block = self.create_basic_block();
+            let entry_block_id = entry_block.id;
+
+            let mut blocks = HashMap::new();
+            blocks.insert(entry_block_id, entry_block);
+
+            let scope_fn = MIRFn {
+                fn_id: fn_id.clone(),
+                name: scope_fn_name.clone(),
+                params: vec![],
+                dollar_mode: DollarMode::Full,
+                linkage: MIRLinkage::Private,
+                entry_block: entry_block_id,
+                blocks,
+            };
+
+            self.module.functions.insert(fn_id, scope_fn);
+            self.current_func = Some(fn_id);
+            self.current_block_id = Some(entry_block_id);
+            self.current_dollar_mode = DollarMode::Full;
+            self.current_dollar_name = Some(scope_fn_name.clone());
+
+            self.push_scope();
+            for st in body {
+                self.build_stmt(st);
+            }
+
+            if let Some(final_res) = result {
+                let res_val = self.expr_value(final_res);
+                self.set_terminator(Terminator::Return(Some(res_val)), span.clone());
+            } else {
+                self.set_terminator(Terminator::Return(None), span.clone());
+            }
+
+            self.pop_scope();
+
+            //Restore context
+            self.current_func = parent_func;
+            self.current_block_id = parent_block;
+            self.current_dollar_mode = parent_dollar_mode;
+
+            //Emit dollar eval
+            let dest = self.new_register(ty, None);
+            self.build_dollar_eval(dest.clone(), scope_fn_name.clone(), vec![], span);
+            self.last_value = Some(dest);
         }
     }
 
@@ -160,16 +228,102 @@ impl<'a> MIRBuilder<'a> {
     pub fn expr_value(&mut self, expr: &HirExpr) -> MIRValue {
         let span = Some(expr.span.clone());
         match &expr.kind {
-            HirExprKind::Literal(lit) => self.literal_value(&lit),
+            HirExprKind::Literal(lit) => self.literal_value(lit),
+
             HirExprKind::Identifier(name) => {
-                let ptr = self.lookup_var(name).cloned().expect("Variable not found");
+                let Some(ptr) = self.lookup_var(name).cloned() else {
+                    self.report_ice(
+                        format!(
+                            "Variable '{}' not found in symbol table during evaluation",
+                            name
+                        ),
+                        span.clone(),
+                    );
+                    return MIRValue::Poison; // Return poison value to safely gracefully halt/unwind
+                };
+
                 let ty = self.get_type(&expr.hir_id);
                 let dest = self.new_register(ty.clone(), None);
                 self.build_load(dest.clone(), ptr, ty, span);
                 dest
             }
 
-            _ => todo!("Encoutered {:?},Will add other it later", expr),
+            HirExprKind::DollarScope { .. } => {
+                self.build_dollar_scope(expr);
+                if let Some(val) = self.last_value.clone() {
+                    val
+                } else {
+                    self.report_ice(
+                        "Dollar scope evaluation failed to produce a result register".to_string(),
+                        span,
+                    );
+                    MIRValue::Poison
+                }
+            }
+
+            HirExprKind::Binary(lhs, op, rhs) => {
+                let ty = self.get_type(&expr.hir_id);
+                self.build_bin(op, lhs, rhs, span.clone(), ty);
+                if let Some(val) = self.last_value.clone() {
+                    val
+                } else {
+                    self.report_ice(
+                        format!(
+                            "Binary operation '{:?}' failed to produce a result register",
+                            op
+                        ),
+                        span,
+                    );
+                    MIRValue::Poison
+                }
+            }
+
+            // Unary operations (e.g., -x or !x)
+            HirExprKind::Unary(op, operand) => {
+                let ty = self.get_type(&expr.hir_id);
+                self.build_unary(op, ty, operand);
+                if let Some(val) = self.last_value.clone() {
+                    val
+                } else {
+                    self.report_ice(
+                        format!(
+                            "Unary operation '{:?}' failed to produce a result register",
+                            op
+                        ),
+                        span,
+                    );
+                    MIRValue::Poison
+                }
+            }
+
+            // Postfix operations (e.g., x++)
+            HirExprKind::Postfix(operand, op) => {
+                let ty = self.get_type(&expr.hir_id);
+                self.build_postfix(op, operand, ty);
+                if let Some(val) = self.last_value.clone() {
+                    val
+                } else {
+                    self.report_ice(
+                        format!(
+                            "Postfix operation '{:?}' failed to produce a result register",
+                            op
+                        ),
+                        span,
+                    );
+                    MIRValue::Poison
+                }
+            }
+
+            _ => {
+                self.report_ice(
+                    format!(
+                        "Unsupported expression kind '{:?}' encountered in expr_value",
+                        expr.kind
+                    ),
+                    span,
+                );
+                MIRValue::Poison
+            }
         }
     }
 

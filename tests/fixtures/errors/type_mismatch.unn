@@ -1,3 +1,3 @@
-fn bad() {
-    var i32 x = 100u32;
+func bad() {
+    var i32 x := 100u32;
 }

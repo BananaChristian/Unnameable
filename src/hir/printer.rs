@@ -106,10 +106,14 @@ impl HirPrinter {
                 return_type,
                 generic_type_params,
                 exposed,
+                dollar_read,
                 body,
             } => {
                 let exp = if *exposed { " (exposed)" } else { "" };
-                self.write_line(&format!("HirFunctionDef \"{name}\"{exp} [id: {id:?}]"));
+                let dollar_read = if *dollar_read { "$" } else { "" };
+                self.write_line(&format!(
+                    "HirFunctionDef \"{dollar_read}\"{name}\"{exp} [id: {id:?}]"
+                ));
                 self.with_indent(|p| {
                     if !generic_type_params.is_empty() {
                         p.write_line("GenericTypeParams:");
@@ -349,9 +353,10 @@ impl HirPrinter {
     }
 
     fn fmt_param(&mut self, param: &HirParam) {
+        let dollar_str = if param.dollar_read { "$" } else { "" };
         let mut_str = if param.mutable { "mut " } else { "" };
         self.write_line(&format!(
-            "Param {mut_str}\"{}\" [id: {:?}]",
+            "Param \"{dollar_str}\"{mut_str}\"{}\" [id: {:?}]",
             param.name, param.hir_id
         ));
         self.with_indent(|p| {

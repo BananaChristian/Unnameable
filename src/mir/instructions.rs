@@ -15,6 +15,13 @@ pub struct GlobalId(pub usize); //ID for global variables
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct FnId(pub usize); //ID for functions
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DollarMode {
+    None,     //Off limits to dollar bill engine
+    ReadOnly, //$
+    Full,     //$$
+}
+
 #[derive(Debug, Clone)]
 pub enum ConstantValue {
     I8(i8),
@@ -38,6 +45,7 @@ pub enum ConstantValue {
 pub enum MIRValue {
     Register { vreg: Vreg, ty: MIRTy },
     Constant(ConstantValue),
+    Poison,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +154,7 @@ pub enum MIRInstruction {
     Alloca {
         dest: MIRValue,
         ty: MIRTy,
+        dollar_mode: DollarMode,
         align: usize, //In bytes
     },
 
@@ -194,6 +203,13 @@ pub enum MIRInstruction {
         src: MIRValue,
         to_ty: MIRTy,
     },
+
+    // Evaluates a compile-time dollar scope in the Dollar Bill engine
+    DollarEval {
+        dest: MIRValue,      // Where the trailing result of the block goes
+        scope_fn: String,    // Name of the synthesized function, e.g. "@$$scope_0"
+        args: Vec<MIRValue>, // Captured variables passed into the scope
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +221,7 @@ pub enum MIRLinkage {
 #[derive(Debug, Clone)]
 pub struct MIRParam {
     pub name: String,
+    pub dollar_mode: DollarMode,
     pub ty: MIRTy,
 }
 
@@ -213,8 +230,10 @@ pub struct MIRFn {
     pub fn_id: FnId,
     pub name: String,
     pub params: Vec<MIRParam>,
+    pub dollar_mode: DollarMode,
+    pub linkage: MIRLinkage,
     pub blocks: HashMap<BlockId, BasicBlock>,
-    pub entry_block: BlockId, //This also doubles to identify a function
+    pub entry_block: BlockId,
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +241,7 @@ pub struct MIRGlobal {
     pub global_id: GlobalId,
     pub name: String,
     pub ty: MIRTy,
+    pub dollar_mode: DollarMode,
     pub is_const: bool,
     pub init: MIRValue,
     pub linkage: MIRLinkage,

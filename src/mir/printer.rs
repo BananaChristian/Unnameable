@@ -3,8 +3,8 @@ use std::fmt;
 use crate::mir::{
     builder::MIRModule,
     instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRFn, MIRGlobal,
-        MIRInstruction, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
+        BasicBlock, BlockId, CmpOp, ConstantValue, DollarMode, FnId, GlobalId, MIRFn, MIRGlobal,
+        MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
 };
 
@@ -76,6 +76,16 @@ impl fmt::Display for GlobalId {
     }
 }
 
+impl fmt::Display for DollarMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DollarMode::None => write!(f, ""),
+            DollarMode::ReadOnly => write!(f, "$"),
+            DollarMode::Full => write!(f, "$$"),
+        }
+    }
+}
+
 impl fmt::Display for MIRTykind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -133,6 +143,7 @@ impl fmt::Display for MIRValue {
         match self {
             MIRValue::Register { vreg, .. } => write!(f, "{vreg}"),
             MIRValue::Constant(c) => write!(f, "{c}"),
+            MIRValue::Poison => write!(f, "poison"),
         }
     }
 }
@@ -189,8 +200,13 @@ impl fmt::Display for MIRInstruction {
                     .collect();
                 write!(f, "    {dest} = phi {}", incs.join(", "))
             }
-            MIRInstruction::Alloca { dest, ty, align } => {
-                write!(f, "    {dest} = alloca {ty}, align {align}")
+            MIRInstruction::Alloca {
+                dest,
+                ty,
+                dollar_mode,
+                align,
+            } => {
+                write!(f, "    {dest} = alloca {ty} {dollar_mode}, align {align}")
             }
             MIRInstruction::Load {
                 dest,
@@ -223,6 +239,22 @@ impl fmt::Display for MIRInstruction {
             }
             MIRInstruction::BitCast { dest, src, to_ty } => {
                 write!(f, "    {dest} = bitcast {src} to {to_ty}")
+            }
+            MIRInstruction::DollarEval {
+                dest,
+                scope_fn,
+                args,
+            } => {
+                let arg_strs: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+                if args.is_empty() {
+                    write!(f, "    {dest} = $$eval @{scope_fn}")
+                } else {
+                    write!(
+                        f,
+                        "    {dest} = $$eval @{scope_fn}({})",
+                        arg_strs.join(", ")
+                    )
+                }
             }
         }
     }
@@ -258,19 +290,18 @@ impl fmt::Display for BasicBlock {
 
 impl fmt::Display for MIRParam {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Formats as: "usize %x" (or "%x: usize" if preferred)
-        // If self.name already starts with '%', drop the extra '%' below
-        if self.name.starts_with('%') {
-            write!(f, "{} {}", self.ty, self.name)
+        // Formats as: "usize %x [Full]" or "%x: usize [Full]"
+        let name_str = if self.name.starts_with('%') {
+            self.name.to_string()
         } else {
-            write!(f, "{} %{}", self.ty, self.name)
-        }
+            format!("%{}", self.name)
+        };
+        write!(f, "{} {} {}", self.ty, name_str, self.dollar_mode)
     }
 }
 
 impl fmt::Display for MIRFn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Format parameter list into comma-separated string
         let params_str = self
             .params
             .iter()
@@ -278,10 +309,19 @@ impl fmt::Display for MIRFn {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // Print function signature with parameters
-        writeln!(f, "func @{}({}) {{", self.name, params_str)?;
+        let linkage_str = match self.linkage {
+            MIRLinkage::Public => "expose ",
+            MIRLinkage::Private => "",
+        };
 
-        // Sort block keys so output order is deterministic and readable (bb0, bb1, bb2...)
+        // Output signature: $$ expose func @my_fn(i32 %x) {
+        writeln!(
+            f,
+            "{} {}func @{}({}) {{",
+            self.dollar_mode,linkage_str, self.name, params_str
+        )?;
+
+        // Deterministic sorting of basic blocks starting from entry_block
         let mut block_ids: Vec<_> = self.blocks.keys().cloned().collect();
         block_ids.sort_by_key(|b| b.0);
 
@@ -301,11 +341,17 @@ impl fmt::Display for MIRFn {
 
 impl fmt::Display for MIRGlobal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut_str = if self.is_const { "const" } else { "" };
+        let linkage_str = match self.linkage {
+            MIRLinkage::Public => "expose ",
+            MIRLinkage::Private => "",
+        };
+        let mut_str = if self.is_const { "const" } else { "mut" };
+
+        // Output signature: expose global @MY_VAR mut: i32 [Full] = 42
         write!(
             f,
-            "global @{} {}: {} = {}",
-            self.name, mut_str, self.ty, self.init
+            "{}global @{} {}: {} [{}] = {}",
+            linkage_str, self.name, mut_str, self.ty, self.dollar_mode, self.init
         )
     }
 }

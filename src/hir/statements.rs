@@ -22,24 +22,25 @@ impl QualifierMap {
     }
 }
 
-#[derive(Debug, Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HirStmt {
     pub hir_id: NodeId,
     pub kind: HirStmtKind,
     pub span: Span,
 }
 
-#[derive(Debug, Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HirParam {
     pub hir_id: NodeId,
     pub name: String,
     pub ty: HirTypeNode,
     pub mutable: bool,
+    pub dollar_read: bool,
     pub default: Option<HirExpr>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HirEnumMember {
     pub hir_id: NodeId,
     pub name: String,
@@ -47,7 +48,7 @@ pub struct HirEnumMember {
     pub span: Span,
 }
 
-#[derive(Debug, Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HirVariantMember {
     pub hir_id: NodeId,
     pub name: String,
@@ -56,7 +57,7 @@ pub struct HirVariantMember {
     pub span: Span,
 }
 
-#[derive(Debug, Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HirStmtKind {
     HirReturn(Option<Box<HirExpr>>),
     HirBreak,
@@ -71,12 +72,14 @@ pub enum HirStmtKind {
         ty: Option<HirTypeNode>,
         init: Box<HirExpr>, //Must initialize
     },
+
     HirFunctionDef {
         name: String,             // mangled name like Food_add, Point_distance etc
         params: Vec<HirParam>,    // clean param structs, not Stmts
         return_type: HirTypeNode, // never optional, Unit if not specified
         generic_type_params: Vec<HirTypeNode>,
-        exposed: bool,      // was in qualifiers
+        exposed: bool, // was in qualifiers
+        dollar_read: bool,
         body: Vec<HirStmt>, // flat list, no Block wrapper
     },
 

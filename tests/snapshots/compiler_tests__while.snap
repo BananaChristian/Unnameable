@@ -1,0 +1,28 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+ func @foo() {
+bb0:
+    %x = alloca u32 , align 4
+    store 0, ptr %x, align 4
+    goto bb1
+
+bb1:
+    %0 = load u32, ptr %x, align 4
+    %1 = cmp ult %0, 10
+    br %1, bb2, bb3
+
+bb2:
+    %2 = load u32, ptr %x, align 4
+    %3 = add %2, 2
+    store %3, ptr %x, align 4
+    goto bb1
+
+bb3:
+    %4 = load u32, ptr %x, align 4
+    ret %4
+}

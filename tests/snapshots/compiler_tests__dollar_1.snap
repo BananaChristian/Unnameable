@@ -1,0 +1,23 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+$ func @foo(usize %a ) {
+bb0:
+    %a.addr = alloca usize , align 8
+    store %a, ptr %a.addr, align 8
+    %x = alloca usize , align 8
+    %1 = $$eval @$$scope_0
+    store %1, ptr %x, align 8
+    %2 = load usize, ptr %a.addr, align 8
+    ret %2
+}
+
+$$ func @$$scope_0() {
+bb1:
+    %0 = load usize, ptr %a.addr, align 8
+    ret %0
+}

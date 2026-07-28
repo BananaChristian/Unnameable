@@ -136,6 +136,7 @@ impl Lowering {
                     return_type,
                     generic_type_params: Vec::new(),
                     exposed: map.expose,
+                    dollar_read: map.dollar_read,
                     body: hir_body,
                 },
                 span: stmt.span.clone(),
@@ -203,6 +204,7 @@ impl Lowering {
                 name: name_str,
                 ty,
                 mutable: qualifier_map.mutable,
+                dollar_read: qualifier_map.dollar_read,
                 default,
                 span: stmt.span.clone(),
             })
@@ -607,6 +609,7 @@ impl Lowering {
                                         func.span.clone(),
                                     ),
                                     mutable: false,
+                                    dollar_read: false,
                                     default: None,
                                     span: func.span.clone(),
                                 };

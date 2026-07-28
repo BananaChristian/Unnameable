@@ -4,7 +4,9 @@ use crate::{
     hir::{HirStmt, HirStmtKind},
     mir::{
         builder::MIRBuilder,
-        instructions::{MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRTy, MIRTykind, Terminator},
+        instructions::{
+            DollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRTy, MIRTykind, Terminator,
+        },
     },
 };
 
@@ -26,6 +28,7 @@ impl<'a> MIRBuilder<'a> {
             name,
             constant,
             exposed,
+            dollar_read,
             init,
             ..
         } = &stmt.kind
@@ -44,10 +47,17 @@ impl<'a> MIRBuilder<'a> {
                         }
                     };
 
+                    let dollar_mode = if *dollar_read {
+                        DollarMode::ReadOnly
+                    } else {
+                        DollarMode::None
+                    };
+
                     let mir_global = MIRGlobal {
                         global_id: global_id.clone(),
                         name: name.clone(),
                         is_const: *constant,
+                        dollar_mode,
                         linkage: linkage(*exposed),
                         ty,
                         init: self.expr_value(init),
@@ -74,7 +84,12 @@ impl<'a> MIRBuilder<'a> {
 
     fn build_fn(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirFunctionDef {
-            name, params, body, ..
+            name,
+            params,
+            body,
+            dollar_read,
+            exposed,
+            ..
         } = &stmt.kind
         {
             let span = Some(stmt.span.clone());
@@ -83,18 +98,44 @@ impl<'a> MIRBuilder<'a> {
             let entry_block = self.create_basic_block();
             let entry_block_id = entry_block.id.clone();
 
+            let linkage = match *exposed {
+                true => MIRLinkage::Public,
+                false => MIRLinkage::Private,
+            };
+
+            let dollar_mode = match *dollar_read {
+                true => DollarMode::ReadOnly,
+                false => self.current_dollar_mode,
+            };
+
+            //Mangle the name if we are inside a dollar scope
+            let mangled_name = if dollar_mode == DollarMode::Full {
+                match &self.current_dollar_name {
+                    Some(d_name) => format!("{}_{}", d_name, name),
+                    None => name.clone(),
+                }
+            } else {
+                name.clone()
+            };
+
             let mir_params: Vec<MIRParam> = params
                 .iter()
                 .map(|p| MIRParam {
                     name: p.name.clone(),
+                    dollar_mode: match p.dollar_read {
+                        true => DollarMode::ReadOnly,
+                        false => DollarMode::None, //For now
+                    },
                     ty: self.get_type(&p.hir_id),
                 })
                 .collect();
 
             let mir_fn = MIRFn {
                 fn_id: new_fn_id,
-                name: name.clone(),
+                name: mangled_name,
                 params: mir_params.clone(),
+                dollar_mode,
+                linkage,
                 blocks: HashMap::new(),
                 entry_block: entry_block_id,
             };
@@ -125,8 +166,7 @@ impl<'a> MIRBuilder<'a> {
                 );
                 self.build_alloca(slot.clone(), param.ty.clone(), span.clone());
 
-                let param_val =
-                    self.new_register(param.ty.clone(), Some(param.name.as_str()));
+                let param_val = self.new_register(param.ty.clone(), Some(param.name.as_str()));
 
                 self.build_store(slot.clone(), param_val, span.clone());
                 self.declare_var(param.name.clone(), slot);
