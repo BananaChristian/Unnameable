@@ -4,27 +4,27 @@ use crate::{
     lexer::{TType, token::Token},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Elif {
     pub condition: Box<Expr>,
     pub body: Box<Stmt>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnumMember {
     pub name: Expr,
     pub value: Option<Expr>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VariantMember {
     pub name: Expr,
     pub member_types: Vec<Type>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
     Expr(Expr),
     Return(Option<Expr>),
@@ -125,7 +125,7 @@ pub enum StmtKind {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Stmt {
     pub kind: StmtKind,
     pub span: Span,

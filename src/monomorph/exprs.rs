@@ -10,6 +10,7 @@ impl<'a> Monomorphizer<'a> {
         expr: &mut HirExpr,
         generic_params: &[HirTypeNode],
         concrete_args: &[TypeInfo],
+        new_name: String,
     ) {
         match &mut expr.kind {
             HirExprKind::GenericInstantion { type_params, .. } => {
@@ -52,17 +53,25 @@ impl<'a> Monomorphizer<'a> {
                 }
             }
             HirExprKind::Call(callee, args) => {
-                self.monomorphize_expr(callee, generic_params, concrete_args);
+                self.monomorphize_expr(callee, generic_params, concrete_args, new_name.clone());
                 for arg in args {
-                    self.monomorphize_expr(arg, generic_params, concrete_args);
+                    self.monomorphize_expr(arg, generic_params, concrete_args, new_name.clone());
                 }
             }
             HirExprKind::Binary(right, _, left) => {
-                self.monomorphize_expr(right, generic_params, concrete_args);
-                self.monomorphize_expr(left, generic_params, concrete_args);
+                self.monomorphize_expr(right, generic_params, concrete_args, new_name.clone());
+                self.monomorphize_expr(left, generic_params, concrete_args, new_name);
             }
             HirExprKind::Unary(_, operand) => {
-                self.monomorphize_expr(operand, generic_params, concrete_args)
+                self.monomorphize_expr(operand, generic_params, concrete_args, new_name)
+            }
+            HirExprKind::DollarScope { body, result } => {
+                for st in body {
+                    self.monormophize_stmt(st, generic_params, concrete_args, new_name.clone());
+                }
+                if let Some(res) = result {
+                    self.monomorphize_expr(res, generic_params, concrete_args, new_name);
+                }
             }
             _ => (),
         }

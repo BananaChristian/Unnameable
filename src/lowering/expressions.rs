@@ -6,12 +6,12 @@ use crate::{
     diagnostics::Span,
     hir::{
         HirAnonStructField, HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral,
-        HirPostfixOp, HirType, HirTypeNode, HirUnaryOp, QualifierMap,
+        HirPostfixOp, HirStmtKind, HirType, HirTypeNode, HirUnaryOp, QualifierMap,
     },
     lowering::lowering::Lowering,
 };
 
-impl Lowering{
+impl Lowering {
     pub fn lower_expr(&mut self, expr: &Expr) -> Option<HirExpr> {
         let kind = match &expr.kind {
             ExprKind::Literal(lit) => HirExprKind::Literal(self.lower_literal(lit)?),
@@ -111,6 +111,25 @@ impl Lowering{
                 let ty = self.lower_type(ty)?;
                 let ep = self.lower_expr(ex)?;
                 HirExprKind::BitCast(Box::new(ty), Box::new(ep))
+            }
+            ExprKind::DollarScope { body } => {
+                let mut stmts = self.lower_block(body)?;
+                let mut result = None;
+
+                if let Some(last_stmt) = stmts.last() {
+                    if let HirStmtKind::HirExpr(expr) = &last_stmt.kind {
+                        result = Some(expr.clone()); 
+                    }
+                }
+
+                if result.is_some() {
+                    stmts.pop();
+                }
+
+                HirExprKind::DollarScope {
+                    result,
+                    body: stmts,
+                }
             }
         };
 
@@ -350,7 +369,9 @@ impl Lowering{
         let mut map = QualifierMap::new();
         map.mutable = qualifiers.iter().any(|q| q.kind == QualifierKind::Mut);
         map.constant = qualifiers.iter().any(|q| q.kind == QualifierKind::Const);
-        map.heap = qualifiers.iter().any(|q| q.kind == QualifierKind::Heap);
+        map.dollar_read = qualifiers
+            .iter()
+            .any(|q| q.kind == QualifierKind::DollarRead);
         map.expose = qualifiers.iter().any(|q| q.kind == QualifierKind::Exposed);
 
         map

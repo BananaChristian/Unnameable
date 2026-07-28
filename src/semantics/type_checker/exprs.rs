@@ -25,6 +25,18 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::Unary(_,_ ) => self.unary_type(expr),
             HirExprKind::Postfix(_,_ ) => self.postfix_type(expr),
             HirExprKind::GenericInstantion { .. }=> self.gen_inst_type(expr),
+            HirExprKind::DollarScope { body, result } =>{
+                for st in body{
+                    self.check_stmt(st);
+                }
+                //A dollar scope takes the type of the last expression if not its of
+                //unit type
+                match result{
+                    Some(res) => self.expr_type(res),
+                    None => self.unit(expr.span.clone())
+                }
+
+            }
             _ => self.unknown(expr.span.clone()),
         };
         self.insert(expr.hir_id, ty.clone());

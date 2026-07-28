@@ -1,8 +1,8 @@
 use core::fmt;
 
 use crate::ast::{
-    AnonStructField, Elif, EnumMember, Expr, ExprKind, InstParam, Literal, Qualifier,
-    QualifierKind, Stmt, StmtKind, Type, TypeKind, VariantMember,
+    AnonStructField, Elif, EnumMember, Expr, ExprKind, InstParam, Qualifier, QualifierKind, Stmt,
+    StmtKind, Type, TypeKind, VariantMember,
 };
 
 /// Pretty printer for AST nodes that renders human-readable tree structures.
@@ -207,7 +207,11 @@ impl AstPrinter {
                     p.with_indent(|p2| p2.fmt_stmt(contents));
                 });
             }
-            StmtKind::SealStmt { qualifiers, name, contents } => {
+            StmtKind::SealStmt {
+                qualifiers,
+                name,
+                contents,
+            } => {
                 let quals = format_qualifiers(qualifiers);
                 self.write_line(&format!("SealStmt {quals}"));
                 self.with_indent(|p| {
@@ -296,7 +300,11 @@ impl AstPrinter {
                     p.with_indent(|p2| p2.fmt_stmt(body));
                 });
             }
-            StmtKind::ContractBlock { qualifiers, name, body } => {
+            StmtKind::ContractBlock {
+                qualifiers,
+                name,
+                body,
+            } => {
                 let quals = format_qualifiers(qualifiers);
                 self.write_line(&format!("ContractBlock {quals}"));
                 self.with_indent(|p| {
@@ -559,6 +567,10 @@ impl AstPrinter {
                     });
                 });
             }
+            ExprKind::DollarScope { body } => {
+                self.write_line("$$");
+                self.fmt_stmt(body);
+            }
             ExprKind::Index { target, index } => {
                 self.write_line("IndexAccess");
                 self.with_indent(|p| {
@@ -706,8 +718,6 @@ impl AstPrinter {
     }
 }
 
-// --- Helpers ---
-
 fn format_qualifiers(quals: &[Qualifier]) -> String {
     if quals.is_empty() {
         return String::new();
@@ -718,7 +728,7 @@ fn format_qualifiers(quals: &[Qualifier]) -> String {
         .map(|q| match q.kind {
             QualifierKind::Mut => "mut",
             QualifierKind::Const => "const",
-            QualifierKind::Heap => "heap",
+            QualifierKind::DollarRead => "$",
             QualifierKind::Exposed => "expose",
             QualifierKind::None => "none",
         })
@@ -727,8 +737,6 @@ fn format_qualifiers(quals: &[Qualifier]) -> String {
 
     format!("[{}]", names.join(", "))
 }
-
-// --- Display Implementations for Snapshot/Debug Integration ---
 
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt, HirStmtKind},
-    indexer::NodeIndex,
-    semantics::SemanticCtxt,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,9 +19,7 @@ pub struct Validator {
 }
 
 impl Validator {
-    pub fn new(
-        diagnostics: SharedDiagnostics,
-    ) -> Self {
+    pub fn new(diagnostics: SharedDiagnostics) -> Self {
         Validator {
             diagnostics,
             scopes: vec![HashMap::new()],
@@ -65,7 +61,7 @@ impl Validator {
         }
     }
 
-    fn check_stmt(&mut self, stmt: &HirStmt) {
+    pub fn check_stmt(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
             HirStmtKind::HirVarDecl { .. } => self.check_var_decl(stmt),
             HirStmtKind::HirIf { .. } => self.check_if(stmt),
@@ -204,4 +200,3 @@ impl Validator {
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
 }
-

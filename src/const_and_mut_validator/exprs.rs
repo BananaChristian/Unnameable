@@ -17,6 +17,14 @@ impl Validator {
                 HirUnaryOp::Decrement => self.check_mutation_target(operand, "decrement"),
                 _ => (),
             },
+            HirExprKind::DollarScope { body, result } => {
+                for st in body {
+                    self.check_stmt(st);
+                }
+                if let Some(res) = result {
+                    self.check_expr(res);
+                }
+            }
             HirExprKind::Index { target, index } => {
                 self.check_expr(target);
                 self.check_expr(index);
@@ -106,4 +114,3 @@ impl Validator {
         }
     }
 }
-

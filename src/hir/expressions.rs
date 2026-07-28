@@ -1,4 +1,8 @@
-use crate::{diagnostics::Span, hir::HirTypeNode, lowering::NodeId};
+use crate::{
+    diagnostics::Span,
+    hir::{HirStmt, HirTypeNode},
+    lowering::NodeId,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HirLiteral {
@@ -128,6 +132,12 @@ pub enum HirExprKind {
     Instantiation {
         init_ty: Option<HirTypeNode>,
         body: Vec<HirInstParam>,
+    },
+
+    //Dollar scope
+    DollarScope {
+        body: Vec<HirStmt>,
+        result: Option<Box<HirExpr>>, //This is the final result
     },
 
     // Index access — arr[0]

@@ -841,15 +841,6 @@ impl<'a> TypeChecker<'a> {
         self.ctxt.types.types.insert(id, ty);
     }
 
-    fn get_decl(&mut self, node_id: &NodeId) -> Option<&HirStmt> {
-        for stmt in self.hir {
-            if *node_id == stmt.hir_id {
-                return Some(stmt);
-            }
-        }
-        None
-    }
-
     pub fn look_up_declared_type(&mut self, usage_id: NodeId, span: Span) -> TypeInfo {
         if let Some(decl_id) = self.ctxt.names.resolved.get(&usage_id) {
             self.get_decl_type(&decl_id.clone(), span.clone())

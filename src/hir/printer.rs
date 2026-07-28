@@ -1,11 +1,9 @@
 use core::fmt;
 
 use crate::hir::{
-    expressions::{
-        HirExpr, HirExprKind, HirInstParam
-    },
-    types::{HirAnonStructField, HirType, HirTypeNode},
     HirEnumMember, HirParam, HirStmt, HirStmtKind, HirVariantMember,
+    expressions::{HirExpr, HirExprKind, HirInstParam},
+    types::{HirAnonStructField, HirType, HirTypeNode},
 };
 
 /// Pretty printer for HIR (High-level Intermediate Representation) nodes.
@@ -49,7 +47,6 @@ impl HirPrinter {
         printer.output
     }
 
-
     fn indent(&mut self) {
         for _ in 0..self.indent_level {
             self.output.push_str("  ");
@@ -67,7 +64,6 @@ impl HirPrinter {
         f(self);
         self.indent_level -= 1;
     }
-
 
     pub fn fmt_stmt(&mut self, stmt: &HirStmt) {
         let id = stmt.hir_id;
@@ -88,12 +84,12 @@ impl HirPrinter {
                 name,
                 mutable,
                 constant,
-                heap,
+                dollar_read,
                 exposed,
                 ty,
                 init,
             } => {
-                let flags = format_flags(*mutable, *constant, *heap, *exposed);
+                let flags = format_flags(*mutable, *constant, *dollar_read, *exposed);
                 self.write_line(&format!("HirVarDecl \"{name}\" {flags} [id: {id:?}]"));
                 self.with_indent(|p| {
                     if let Some(t) = ty {
@@ -277,9 +273,7 @@ impl HirPrinter {
                     .as_ref()
                     .map(|a| format!(" as \"{a}\""))
                     .unwrap_or_default();
-                self.write_line(&format!(
-                    "HirImport \"{name}\"{alias_str} [id: {id:?}]"
-                ));
+                self.write_line(&format!("HirImport \"{name}\"{alias_str} [id: {id:?}]"));
             }
             HirStmtKind::HirWhile { condition, body } => {
                 self.write_line(&format!("HirWhile [id: {id:?}]"));
@@ -395,13 +389,10 @@ impl HirPrinter {
         }
     }
 
-
     pub fn fmt_expr(&mut self, expr: &HirExpr) {
         let id = expr.hir_id;
         match &expr.kind {
-            HirExprKind::Literal(lit) => {
-                self.write_line(&format!("Literal({lit:?}) [id: {id:?}]"))
-            }
+            HirExprKind::Literal(lit) => self.write_line(&format!("Literal({lit:?}) [id: {id:?}]")),
             HirExprKind::Identifier(name) => {
                 self.write_line(&format!("Identifier(\"{name}\") [id: {id:?}]"))
             }
@@ -488,6 +479,20 @@ impl HirPrinter {
                     });
                 });
             }
+            HirExprKind::DollarScope { body, result } => {
+                self.write_line(&format!("DollarScope [id: {id:?}"));
+                self.with_indent(|p| {
+                    p.write_line("Statements:");
+                    p.with_indent(|p2| {
+                        for st in body {
+                            p2.fmt_stmt(st);
+                        }
+                    });
+                    if let Some(res) = result {
+                        p.with_indent(|p2| p2.fmt_expr(res));
+                    }
+                });
+            }
             HirExprKind::Index { target, index } => {
                 self.write_line(&format!("IndexAccess [id: {id:?}]"));
                 self.with_indent(|p| {
@@ -510,7 +515,6 @@ impl HirPrinter {
             p.with_indent(|p2| p2.fmt_expr(&param.value));
         });
     }
-
 
     pub fn fmt_type(&mut self, ty: &HirTypeNode) {
         let id = ty.hir_id;
@@ -615,7 +619,6 @@ impl HirPrinter {
     }
 }
 
-
 fn format_flags(mutable: bool, constant: bool, heap: bool, exposed: bool) -> String {
     let mut flags = Vec::new();
     if mutable {
@@ -637,7 +640,6 @@ fn format_flags(mutable: bool, constant: bool, heap: bool, exposed: bool) -> Str
         format!("[{}]", flags.join(", "))
     }
 }
-
 
 impl fmt::Display for HirStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

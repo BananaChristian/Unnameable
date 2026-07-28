@@ -33,7 +33,7 @@ impl Lowering {
             let lowered_expr = self.lower_expr(expr)?;
             let hir_stmt = HirStmt {
                 hir_id: lowered_expr.hir_id,
-                kind: HirStmtKind::HirExpr(lowered_expr),
+                kind: HirStmtKind::HirExpr(Box::new(lowered_expr)),
                 span: stmt.span.clone(),
             };
 
@@ -51,7 +51,7 @@ impl Lowering {
                 name,
                 mutable,
                 constant: false,
-                heap: false,
+                dollar_read: false,
                 exposed: false,
                 ty: None,
                 init: Box::new(init),
@@ -89,7 +89,7 @@ impl Lowering {
                     name: name_str,
                     mutable: qualifier_map.mutable,
                     constant: qualifier_map.constant,
-                    heap: qualifier_map.heap,
+                    dollar_read: qualifier_map.dollar_read,
                     exposed: qualifier_map.expose,
                     ty,
                     init: Box::new(hir_init),
@@ -378,7 +378,10 @@ impl Lowering {
 
             let hir_while = HirStmt {
                 hir_id: self.next_id(),
-                kind: HirStmtKind::HirWhile { condition, body },
+                kind: HirStmtKind::HirWhile {
+                    condition: Box::new(condition),
+                    body,
+                },
                 span: stmt.span.clone(),
             };
             Some(hir_while)
@@ -435,13 +438,16 @@ impl Lowering {
             //Push the update into the body
             body.push(HirStmt {
                 hir_id: self.next_id(),
-                kind: HirStmtKind::HirExpr(update),
+                kind: HirStmtKind::HirExpr(Box::new(update)),
                 span: stmt.span.clone(),
             });
 
             let hir_while = HirStmt {
                 hir_id: self.next_id(),
-                kind: HirStmtKind::HirWhile { condition, body },
+                kind: HirStmtKind::HirWhile {
+                    condition: Box::new(condition),
+                    body,
+                },
                 span: stmt.span.clone(),
             };
 
@@ -497,14 +503,10 @@ impl Lowering {
             let advance_call =
                 self.make_method_call(hir_collection.clone(), "next", vec![], span.clone());
             let left = self.make_identifier(&iter_var, span.clone());
+            let inner = self.make_binary(left, HirBinaryOp::Assign, advance_call, span.clone());
             let advance_stmt = HirStmt {
                 hir_id: self.next_id(),
-                kind: HirStmtKind::HirExpr(self.make_binary(
-                    left,
-                    HirBinaryOp::Assign,
-                    advance_call,
-                    span.clone(),
-                )),
+                kind: HirStmtKind::HirExpr(Box::new(inner)),
                 span: span.clone(),
             };
             full_body.push(advance_stmt);
@@ -512,7 +514,7 @@ impl Lowering {
             let while_stmt = HirStmt {
                 hir_id: self.next_id(),
                 kind: HirStmtKind::HirWhile {
-                    condition,
+                    condition: Box::new(condition),
                     body: full_body,
                 },
                 span,
@@ -679,10 +681,10 @@ impl Lowering {
 
     fn lower_return(&mut self, stmt: &Stmt) -> Option<HirStmt> {
         if let StmtKind::Return(ret_expr) = &stmt.kind {
-            let expr = match ret_expr {
-                Some(ex) => self.lower_expr(&ex),
-                None => None,
-            };
+            let expr = ret_expr
+                .as_ref()
+                .and_then(|ex| self.lower_expr(ex))
+                .map(Box::new);
 
             Some(HirStmt {
                 hir_id: self.next_id(),
@@ -736,7 +738,7 @@ impl Lowering {
                 let nested_if = HirStmt {
                     hir_id: self.next_id(),
                     kind: HirStmtKind::HirIf {
-                        condition: elif_condition,
+                        condition: Box::new(elif_condition),
                         body: elif_body,
                         else_body: nested_else,
                     },
@@ -749,7 +751,7 @@ impl Lowering {
             Some(HirStmt {
                 hir_id: self.next_id(),
                 kind: HirStmtKind::HirIf {
-                    condition: hir_condition,
+                    condition: Box::new(hir_condition),
                     body: hir_body,
                     else_body: nested_else,
                 },
@@ -813,7 +815,7 @@ impl Lowering {
         }
     }
 
-    fn lower_block(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+    pub fn lower_block(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
         if let StmtKind::Block { content } = &stmt.kind {
             let mut contents = Vec::new();
             for victim in content {

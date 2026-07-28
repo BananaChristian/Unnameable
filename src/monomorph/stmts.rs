@@ -29,10 +29,10 @@ impl<'a> Monomorphizer<'a> {
                 self.monomorphize_while(stmt, generic_params, concrete_args, new_name)
             }
             HirStmtKind::HirExpr(expr) => {
-                self.monomorphize_expr(expr, generic_params, concrete_args)
+                self.monomorphize_expr(expr, generic_params, concrete_args, new_name)
             }
             HirStmtKind::HirVarDecl { .. } => {
-                self.monomorphize_var_decl(stmt, generic_params, concrete_args);
+                self.monomorphize_var_decl(stmt, generic_params, concrete_args, new_name);
             }
             _ => (),
         }
@@ -128,7 +128,7 @@ impl<'a> Monomorphizer<'a> {
             else_body,
         } = &mut stmt.kind
         {
-            self.monomorphize_expr(condition, generic_params, concrete_args);
+            self.monomorphize_expr(condition, generic_params, concrete_args, new_name.clone());
             for st in body {
                 self.monormophize_stmt(st, generic_params, concrete_args, new_name.clone());
             }
@@ -154,7 +154,7 @@ impl<'a> Monomorphizer<'a> {
         new_name: String,
     ) {
         if let HirStmtKind::HirWhile { condition, body } = &mut stmt.kind {
-            self.monomorphize_expr(condition, generic_params, concrete_args);
+            self.monomorphize_expr(condition, generic_params, concrete_args, new_name.clone());
             for st in body {
                 self.monormophize_stmt(st, generic_params, concrete_args, new_name.clone());
             }
@@ -166,13 +166,14 @@ impl<'a> Monomorphizer<'a> {
         stmt: &mut HirStmt,
         generic_params: &[HirTypeNode],
         concrete_args: &[TypeInfo],
+        new_name: String,
     ) {
         if let HirStmtKind::HirVarDecl { ty, init, .. } = &mut stmt.kind {
             if let Some(ty_n) = ty {
                 self.monomorphize_type(ty_n)
             }
 
-            self.monomorphize_expr(init, generic_params, concrete_args);
+            self.monomorphize_expr(init, generic_params, concrete_args, new_name);
         }
     }
 }

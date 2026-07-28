@@ -72,8 +72,8 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(right, table);
             }
             HirExprKind::Instantiation { init_ty, body } => {
-                if let Some(ty)= init_ty{
-                    self.resolve_type(ty,table);
+                if let Some(ty) = init_ty {
+                    self.resolve_type(ty, table);
                 };
                 for field in body {
                     self.resolve_expr(&field.value, table);
@@ -93,6 +93,14 @@ impl<'a> Resolver<'a> {
             HirExprKind::StaticCast(ty, exp) => {
                 self.resolve_type(ty, table);
                 self.resolve_expr(exp, table);
+            }
+            HirExprKind::DollarScope { body, result } => {
+                for st in body {
+                    self.resolve_stmt(st, table);
+                }
+                if let Some(res) = result {
+                    self.resolve_expr(res, table);
+                }
             }
             _ => (),
         }

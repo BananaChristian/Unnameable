@@ -1,9 +1,8 @@
 use crate::{
     ast::{
-        PostfixOp, Type,
-        operators::{BinaryOp, UnaryOp},
+        PostfixOp, Stmt, Type, operators::{BinaryOp, UnaryOp}
     },
-    diagnostics::Span,
+    diagnostics::Span
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +66,10 @@ pub enum ExprKind {
     Instantiation {
         init_ty: Option<Box<Type>>,
         body: Vec<InstParam>,
+    },
+    //The dollar scope $${}
+    DollarScope {
+        body: Box<Stmt>,
     },
     Index {
         target: Box<Expr>,

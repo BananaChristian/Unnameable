@@ -9,7 +9,9 @@ impl Parser {
     pub fn parse_stmt(&mut self) -> Option<Stmt> {
         let token = self.current_token()?.clone();
         match token.token_type {
-            TType::Mut | TType::Expose | TType::Const | TType::Heap => self.parse_qualified_stmt(),
+            TType::Mut | TType::Expose | TType::Const | TType::Dollar => {
+                self.parse_qualified_stmt()
+            }
             TType::Var => self.parse_var(),
             TType::Func => self.parse_func(),
             TType::Struct => self.parse_struct(),

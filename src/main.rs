@@ -233,6 +233,8 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
 
+    //WILL ADD THE DOLLAR VERIFIER HERE
+
     if let Some(stub_path) = emit_stub_path {
         let serializer = Serializer::new(module_name.clone(), &semantics.ctxt, &hir_index);
         let stub = serializer.serialize();

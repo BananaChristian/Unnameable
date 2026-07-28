@@ -7,12 +7,12 @@ use crate::{
 pub enum QualifierKind {
     Mut,
     Const,
-    Heap, //This will be revised
+    DollarRead, //This is like $
     Exposed,
     None,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Qualifier {
     pub kind: QualifierKind,
     pub span: Span,
@@ -23,7 +23,7 @@ impl Qualifier {
         let kind = match token.token_type {
             TType::Mut => QualifierKind::Mut,
             TType::Const => QualifierKind::Const,
-            TType::Heap => QualifierKind::Heap,
+            TType::Dollar => QualifierKind::DollarRead,
             TType::Expose=> QualifierKind::Exposed,
             _ => QualifierKind::None,
         };
@@ -37,7 +37,7 @@ impl Qualifier {
     pub fn is_valid(token: &Token) -> bool {
         matches!(
             token.token_type,
-            TType::Mut | TType::Const | TType::Heap | TType::Expose
+            TType::Mut | TType::Const | TType::Dollar | TType::Expose
         )
     }
 }

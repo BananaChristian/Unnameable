@@ -8,7 +8,7 @@ pub struct QualifierMap {
     pub mutable: bool,
     pub expose: bool,
     pub constant: bool,
-    pub heap: bool,
+    pub dollar_read: bool,
 }
 
 impl QualifierMap {
@@ -17,19 +17,19 @@ impl QualifierMap {
             mutable: false,
             expose: false,
             constant: false,
-            heap: false,
+            dollar_read: false,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct HirStmt {
     pub hir_id: NodeId,
     pub kind: HirStmtKind,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct HirParam {
     pub hir_id: NodeId,
     pub name: String,
@@ -39,7 +39,7 @@ pub struct HirParam {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct HirEnumMember {
     pub hir_id: NodeId,
     pub name: String,
@@ -47,7 +47,7 @@ pub struct HirEnumMember {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct HirVariantMember {
     pub hir_id: NodeId,
     pub name: String,
@@ -56,17 +56,17 @@ pub struct HirVariantMember {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub enum HirStmtKind {
-    HirReturn(Option<HirExpr>),
+    HirReturn(Option<Box<HirExpr>>),
     HirBreak,
     HirContinue,
-    HirExpr(HirExpr),
+    HirExpr(Box<HirExpr>),
     HirVarDecl {
         name: String,
         mutable: bool,
         constant: bool,
-        heap: bool,
+        dollar_read: bool,
         exposed: bool,
         ty: Option<HirTypeNode>,
         init: Box<HirExpr>, //Must initialize
@@ -95,7 +95,7 @@ pub enum HirStmtKind {
         exposed: bool,
     },
     HirIf {
-        condition: HirExpr,
+        condition: Box<HirExpr>,
         body: Vec<HirStmt>,
         else_body: Option<Vec<HirStmt>>, // elif desugared into nested if here
     },
@@ -114,7 +114,7 @@ pub enum HirStmtKind {
         alias: Option<String>,
     },
     HirWhile {
-        condition: HirExpr,
+        condition: Box<HirExpr>,
         body: Vec<HirStmt>, // Block wrapper gone, flat list
     },
     HirEnumDecl {

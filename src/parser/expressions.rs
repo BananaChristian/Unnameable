@@ -1,5 +1,5 @@
 use crate::{
-    ast::{BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Precedence, Stmt, UnaryOp},
+    ast::{BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Precedence, UnaryOp},
     diagnostics::Span,
     lexer::{TType, token::Token},
     parser::Parser,
@@ -168,7 +168,19 @@ impl Parser {
                 };
                 Some(Expr::new(ExprKind::Unary(op, Box::new(expr)), span))
             }
-
+            TType::DoubleDollar => {
+                let start = self.current_token()?.span.start;
+                self.advance();//Consume the $$
+                let body = self.parse_body()?;
+                let end = self.current_token()?.span.end;
+                let span = Span { start, end };
+                Some(Expr::new(
+                    ExprKind::DollarScope {
+                        body: Box::new(body),
+                    },
+                    span,
+                ))
+            }
             _ => {
                 let span = token.span;
                 self.report(
