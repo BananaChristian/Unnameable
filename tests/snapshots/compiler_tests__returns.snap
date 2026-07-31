@@ -5,7 +5,7 @@ expression: output
 === MIR OUTPUT ===
 module "test_module"
 
- func @max(i32 %a , i32 %b ) {
+ func @max( i32 %a,  i32 %b) {
 bb0:
     %a.addr = alloca i32 , align 4
     store %a, ptr %a.addr, align 4

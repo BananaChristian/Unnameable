@@ -65,7 +65,15 @@ impl<'a> Monomorphizer<'a> {
             HirExprKind::Unary(_, operand) => {
                 self.monomorphize_expr(operand, generic_params, concrete_args, new_name)
             }
-            HirExprKind::DollarScope { body, result } => {
+            HirExprKind::DollarScope {
+                params,
+                body,
+                result,
+            } => {
+                for p in params {
+                    self.monomorphize_expr(p, generic_params, concrete_args, new_name.clone());
+                }
+
                 for st in body {
                     self.monormophize_stmt(st, generic_params, concrete_args, new_name.clone());
                 }

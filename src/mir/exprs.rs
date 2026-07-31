@@ -6,7 +6,8 @@ use crate::{
     mir::{
         builder::MIRBuilder,
         instructions::{
-            ConstantValue, DollarMode, MIRFn, MIRLinkage, MIROps, MIRTy, MIRValue, Terminator,
+            ConstantValue, DollarMode, MIRFn, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind,
+            MIRValue, Terminator,
         },
     },
 };
@@ -32,7 +33,12 @@ impl<'a> MIRBuilder<'a> {
     }
 
     fn build_dollar_scope(&mut self, expr: &HirExpr) {
-        if let HirExprKind::DollarScope { body, result } = &expr.kind {
+        if let HirExprKind::DollarScope {
+            params,
+            body,
+            result,
+        } = &expr.kind
+        {
             let span = Some(expr.span.clone());
             let ty = self.get_type(&expr.hir_id);
 
@@ -40,7 +46,35 @@ impl<'a> MIRBuilder<'a> {
             self.dollar_scope_counter += 1;
             let scope_fn_name = format!("$$scope_{}", scope_id);
 
-            //Save context
+            // Evaluate capture arguments in the Parent context before context switch
+            let mut eval_args = Vec::new();
+            let mut scope_fn_params = Vec::new();
+
+            // Metadata saved for parameter binding inside the inner scope
+            let mut param_bindings = Vec::new();
+
+            for param_expr in params {
+                let param_ty = self.get_type(&param_expr.hir_id);
+                let name = match &param_expr.kind {
+                    HirExprKind::Identifier(ident) => ident.clone(),
+                    _ => panic!("Expected identifier in dollar scope capture list"),
+                };
+
+                // Evaluate the argument in the parent context (loads the external value)
+                let arg_val = self.expr_value(param_expr);
+                eval_args.push(arg_val);
+
+                // Construct the parameter representation for the target scope function
+                scope_fn_params.push(MIRParam {
+                    name: name.clone(),
+                    ty: param_ty.clone(),
+                    dollar_mode: DollarMode::Full,
+                });
+
+                param_bindings.push((name, param_ty));
+            }
+
+            // Save parent context
             let parent_func = self.current_func;
             let parent_block = self.current_block_id;
             let parent_dollar_mode = self.current_dollar_mode;
@@ -55,7 +89,7 @@ impl<'a> MIRBuilder<'a> {
             let scope_fn = MIRFn {
                 fn_id: fn_id.clone(),
                 name: scope_fn_name.clone(),
-                params: vec![],
+                params: scope_fn_params.clone(), // Pass the populated parameter list
                 dollar_mode: DollarMode::Full,
                 linkage: MIRLinkage::Private,
                 entry_block: entry_block_id,
@@ -68,7 +102,27 @@ impl<'a> MIRBuilder<'a> {
             self.current_dollar_mode = DollarMode::Full;
             self.current_dollar_name = Some(scope_fn_name.clone());
 
+            // Set up the inner scope and allocate local memory for parameters
             self.push_scope();
+
+            for (name, param_ty) in param_bindings {
+                let param_val = self.new_register(param_ty.clone(), Some(name.as_str()));
+
+                // Allocate local storage for captured arg in $$scope_N frame
+                let alloc_dest = self.new_register(
+                    MIRTy {
+                        kind: MIRTykind::Bool,
+                        align: 1,
+                    },
+                    None,
+                );
+                self.build_alloca(alloc_dest.clone(), param_ty, span.clone());
+                self.build_store(alloc_dest.clone(), param_val, span.clone());
+
+                // Bind name in scope map to the local stack pointer (%name.addr)
+                self.declare_var(name, alloc_dest);
+            }
+
             for st in body {
                 self.build_stmt(st);
             }
@@ -82,14 +136,14 @@ impl<'a> MIRBuilder<'a> {
 
             self.pop_scope();
 
-            //Restore context
+            //  Restore context back to parent
             self.current_func = parent_func;
             self.current_block_id = parent_block;
             self.current_dollar_mode = parent_dollar_mode;
 
-            //Emit dollar eval
+            //  Emit dollar eval with captured arguments
             let dest = self.new_register(ty, None);
-            self.build_dollar_eval(dest.clone(), scope_fn_name.clone(), vec![], span);
+            self.build_dollar_eval(dest.clone(), scope_fn_name, eval_args, span);
             self.last_value = Some(dest);
         }
     }

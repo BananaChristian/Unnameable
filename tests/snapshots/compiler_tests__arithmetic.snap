@@ -5,7 +5,7 @@ expression: output
 === MIR OUTPUT ===
 module "test_module"
 
- func @add(i32 %a , i32 %b ) {
+ func @add( i32 %a,  i32 %b) {
 bb0:
     %a.addr = alloca i32 , align 4
     store %a, ptr %a.addr, align 4
@@ -17,7 +17,7 @@ bb0:
     ret %2
 }
 
- func @subtract(i32 %a , i32 %b ) {
+ func @subtract( i32 %a,  i32 %b) {
 bb1:
     %a.addr = alloca i32 , align 4
     store %a, ptr %a.addr, align 4

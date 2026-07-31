@@ -567,8 +567,12 @@ impl AstPrinter {
                     });
                 });
             }
-            ExprKind::DollarScope { body } => {
+            ExprKind::DollarScope { params, body } => {
                 self.write_line("$$");
+                self.write_line("captures:");
+                for param in params {
+                    self.fmt_expr(param);
+                }
                 self.fmt_stmt(body);
             }
             ExprKind::Index { target, index } => {

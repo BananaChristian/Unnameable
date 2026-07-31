@@ -484,8 +484,18 @@ impl HirPrinter {
                     });
                 });
             }
-            HirExprKind::DollarScope { body, result } => {
+            HirExprKind::DollarScope {
+                params,
+                body,
+                result,
+            } => {
                 self.write_line(&format!("DollarScope [id: {id:?}"));
+                self.write_line("Captures:");
+                self.with_indent(|p| {
+                    for param in params {
+                        p.fmt_expr(param);
+                    }
+                });
                 self.with_indent(|p| {
                     p.write_line("Statements:");
                     p.with_indent(|p2| {

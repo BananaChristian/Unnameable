@@ -1,8 +1,9 @@
 use crate::{
     ast::{
-        PostfixOp, Stmt, Type, operators::{BinaryOp, UnaryOp}
+        PostfixOp, Stmt, Type,
+        operators::{BinaryOp, UnaryOp},
     },
-    diagnostics::Span
+    diagnostics::Span,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,6 +70,7 @@ pub enum ExprKind {
     },
     //The dollar scope $${}
     DollarScope {
+        params: Vec<Expr>,
         body: Box<Stmt>,
     },
     Index {

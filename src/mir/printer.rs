@@ -296,7 +296,7 @@ impl fmt::Display for MIRParam {
         } else {
             format!("%{}", self.name)
         };
-        write!(f, "{} {} {}", self.ty, name_str, self.dollar_mode)
+        write!(f, "{} {} {}", self.dollar_mode, self.ty, name_str)
     }
 }
 
@@ -318,7 +318,7 @@ impl fmt::Display for MIRFn {
         writeln!(
             f,
             "{} {}func @{}({}) {{",
-            self.dollar_mode,linkage_str, self.name, params_str
+            self.dollar_mode, linkage_str, self.name, params_str
         )?;
 
         // Deterministic sorting of basic blocks starting from entry_block

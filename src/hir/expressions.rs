@@ -136,6 +136,7 @@ pub enum HirExprKind {
 
     //Dollar scope
     DollarScope {
+        params: Vec<HirExpr>,
         body: Vec<HirStmt>,
         result: Option<Box<HirExpr>>, //This is the final result
     },

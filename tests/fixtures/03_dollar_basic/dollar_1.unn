@@ -1,4 +1,4 @@
 $ func foo(a: usize): usize{
-  mut var x := $${a;};
+  mut var x := $$|a|{a;};
   return a;
 }

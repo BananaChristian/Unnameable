@@ -94,7 +94,14 @@ impl<'a> Resolver<'a> {
                 self.resolve_type(ty, table);
                 self.resolve_expr(exp, table);
             }
-            HirExprKind::DollarScope { body, result } => {
+            HirExprKind::DollarScope {
+                params,
+                body,
+                result,
+            } => {
+                for p in params {
+                    self.resolve_expr(p, table);
+                }
                 for st in body {
                     self.resolve_stmt(st, table);
                 }

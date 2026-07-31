@@ -5,19 +5,22 @@ expression: output
 === MIR OUTPUT ===
 module "test_module"
 
-$ func @foo(usize %a ) {
+$ func @foo( usize %a) {
 bb0:
     %a.addr = alloca usize , align 8
     store %a, ptr %a.addr, align 8
     %x = alloca usize , align 8
-    %1 = $$eval @$$scope_0
-    store %1, ptr %x, align 8
-    %2 = load usize, ptr %a.addr, align 8
-    ret %2
+    %0 = load usize, ptr %a.addr, align 8
+    %3 = $$eval @$$scope_0(%0)
+    store %3, ptr %x, align 8
+    %4 = load usize, ptr %a.addr, align 8
+    ret %4
 }
 
-$$ func @$$scope_0() {
+$$ func @$$scope_0($$ usize %a) {
 bb1:
-    %0 = load usize, ptr %a.addr, align 8
-    ret %0
+    %1 = alloca usize $$, align 8
+    store %a, ptr %1, align 8
+    %2 = load usize, ptr %1, align 8
+    ret %2
 }

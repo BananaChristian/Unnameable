@@ -168,19 +168,7 @@ impl Parser {
                 };
                 Some(Expr::new(ExprKind::Unary(op, Box::new(expr)), span))
             }
-            TType::DoubleDollar => {
-                let start = self.current_token()?.span.start;
-                self.advance();//Consume the $$
-                let body = self.parse_body()?;
-                let end = self.current_token()?.span.end;
-                let span = Span { start, end };
-                Some(Expr::new(
-                    ExprKind::DollarScope {
-                        body: Box::new(body),
-                    },
-                    span,
-                ))
-            }
+            TType::DoubleDollar => self.parse_dollar_scope(),
             _ => {
                 let span = token.span;
                 self.report(
@@ -191,6 +179,37 @@ impl Parser {
                 None
             }
         }
+    }
+
+    fn parse_dollar_scope(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.advance(); //Consume the $$
+        let mut params = Vec::new();
+        if self.current_token()?.token_type == TType::Stick {
+            self.advance(); //Consume the |
+            while self.current_token()?.token_type != TType::Stick
+                && self.current_token()?.token_type != TType::End
+            {
+                //Only need Identifiers
+                let expr = self.parse_identifier()?;
+                params.push(expr);
+                if self.current_token()?.token_type == TType::Comma {
+                    self.advance();
+                }
+            }
+
+            self.expect_token(TType::Stick)?;
+        }
+        let body = self.parse_body()?;
+        let end = self.current_token()?.span.end;
+        let span = Span { start, end };
+        Some(Expr::new(
+            ExprKind::DollarScope {
+                params,
+                body: Box::new(body),
+            },
+            span,
+        ))
     }
 
     fn parse_grouping(&mut self) -> Option<Expr> {

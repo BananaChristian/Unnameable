@@ -17,7 +17,14 @@ impl Validator {
                 HirUnaryOp::Decrement => self.check_mutation_target(operand, "decrement"),
                 _ => (),
             },
-            HirExprKind::DollarScope { body, result } => {
+            HirExprKind::DollarScope {
+                params,
+                body,
+                result,
+            } => {
+                for p in params {
+                    self.check_expr(p);
+                }
                 for st in body {
                     self.check_stmt(st);
                 }

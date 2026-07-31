@@ -112,13 +112,18 @@ impl Lowering {
                 let ep = self.lower_expr(ex)?;
                 HirExprKind::BitCast(Box::new(ty), Box::new(ep))
             }
-            ExprKind::DollarScope { body } => {
+            ExprKind::DollarScope { params, body } => {
+                let lowered_params: Vec<HirExpr> = params
+                    .iter()
+                    .map(|p| self.lower_expr(p).expect("Failed to lower identifier"))
+                    .collect();
+
                 let mut stmts = self.lower_block(body)?;
                 let mut result = None;
 
                 if let Some(last_stmt) = stmts.last() {
                     if let HirStmtKind::HirExpr(expr) = &last_stmt.kind {
-                        result = Some(expr.clone()); 
+                        result = Some(expr.clone());
                     }
                 }
 
@@ -127,6 +132,7 @@ impl Lowering {
                 }
 
                 HirExprKind::DollarScope {
+                    params: lowered_params,
                     result,
                     body: stmts,
                 }
