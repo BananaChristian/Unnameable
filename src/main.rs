@@ -1,7 +1,7 @@
 use unnc::{
-    bc_builder::{self, BytecodeBuilder},
+    bc_builder::{BytecodeBuilder, BytecodePrinter},
     const_and_mut_validator::Validator,
-    diagnostics::{self, Diagnostics},
+    diagnostics::Diagnostics,
     hir::HirPrinter,
     import::ImportEngine,
     indexer::NodeIndex,
@@ -25,6 +25,9 @@ fn print_help(program_name: &str) {
     println!("  --dump-ast            Print the Abstract Syntax Tree");
     println!("  --dump-hir            Print the High-Level Intermediate Representation");
     println!("  --dump-mir            Print the Mid-Level Intermediate Representation");
+    println!(
+        " --dump-bytecode             Print the bytecode that will be executed by the dollar bill engine"
+    );
     println!("  --target-arch <str>   Override the target architecture (e.g., x86_64, arm)");
     println!("  --target-os <str>     Override the target OS (e.g., linux, windows, none)");
     println!("  --ptr-width <bytes>   Override pointer width in bytes (e.g., 4, 8)");
@@ -63,6 +66,7 @@ fn main() -> Result<(), std::io::Error> {
     let mut dump_ast = false;
     let mut dump_hir = false;
     let mut dump_mir = false;
+    let mut dump_bytecode = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -71,6 +75,7 @@ fn main() -> Result<(), std::io::Error> {
                 dump_ast = true;
                 dump_hir = true;
                 dump_mir = true;
+                dump_bytecode = true;
                 i += 1;
             }
             "--dump-ast" => {
@@ -83,6 +88,10 @@ fn main() -> Result<(), std::io::Error> {
             }
             "--dump-mir" => {
                 dump_mir = true;
+                i += 1;
+            }
+            "--dump-bytecode" => {
+                dump_bytecode = true;
                 i += 1;
             }
             "--target-arch" => {
@@ -243,8 +252,6 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
 
-    //WILL ADD THE DOLLAR VERIFIER HERE
-
     if let Some(stub_path) = emit_stub_path {
         let serializer = Serializer::new(module_name.clone(), &semantics.ctxt, &hir_index);
         let stub = serializer.serialize();
@@ -273,7 +280,9 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut bc_builder = BytecodeBuilder::new(&mir_module, Rc::clone(&diagnostics));
     let bytecode = bc_builder.build();
-    println!("Bytecode: {:?}", bytecode);
+    if dump_bytecode {
+        print!("{}", BytecodePrinter::print_module(&bytecode));
+    }
 
     Ok(())
 }

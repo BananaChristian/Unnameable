@@ -338,7 +338,7 @@ impl<'a> BytecodeBuilder<'a> {
             } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let Some(fn_id) = self.bytecode_module.fn_symbols.get(scope_fn) else {
-                    self.report_ice(format!("Failed to get MIR function ''{}'", scope_fn));
+                    self.report_ice(format!("Failed to get MIR function '{}'", scope_fn));
                     return;
                 };
                 let arg_regs = args
