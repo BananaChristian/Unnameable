@@ -6,7 +6,7 @@ use crate::{
     mir::{
         builder::MIRBuilder,
         instructions::{
-            ConstantValue, DollarMode, MIRFn, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind,
+            ConstantValue, MIRDollarMode, MIRFn, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind,
             MIRValue, Terminator,
         },
     },
@@ -68,7 +68,7 @@ impl<'a> MIRBuilder<'a> {
                 scope_fn_params.push(MIRParam {
                     name: name.clone(),
                     ty: param_ty.clone(),
-                    dollar_mode: DollarMode::Full,
+                    dollar_mode: MIRDollarMode::Full,
                 });
 
                 param_bindings.push((name, param_ty));
@@ -90,7 +90,7 @@ impl<'a> MIRBuilder<'a> {
                 fn_id: fn_id.clone(),
                 name: scope_fn_name.clone(),
                 params: scope_fn_params.clone(), // Pass the populated parameter list
-                dollar_mode: DollarMode::Full,
+                dollar_mode: MIRDollarMode::Full,
                 linkage: MIRLinkage::Private,
                 entry_block: entry_block_id,
                 blocks,
@@ -99,7 +99,7 @@ impl<'a> MIRBuilder<'a> {
             self.module.functions.insert(fn_id, scope_fn);
             self.current_func = Some(fn_id);
             self.current_block_id = Some(entry_block_id);
-            self.current_dollar_mode = DollarMode::Full;
+            self.current_dollar_mode = MIRDollarMode::Full;
             self.current_dollar_name = Some(scope_fn_name.clone());
 
             // Set up the inner scope and allocate local memory for parameters

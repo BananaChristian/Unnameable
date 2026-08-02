@@ -99,6 +99,7 @@ impl<'a> Resolver<'a> {
                 body,
                 result,
             } => {
+                self.push_scope(); //Push the dollar scope
                 for p in params {
                     self.resolve_expr(p, table);
                 }
@@ -108,6 +109,7 @@ impl<'a> Resolver<'a> {
                 if let Some(res) = result {
                     self.resolve_expr(res, table);
                 }
+                self.pop_scope();
             }
             _ => (),
         }

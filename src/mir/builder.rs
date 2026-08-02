@@ -6,7 +6,7 @@ use crate::{
     indexer::NodeIndex,
     lowering::NodeId,
     mir::instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, DollarMode, FnId, GlobalId, MIRFn, MIRGlobal,
+        BasicBlock, BlockId, CmpOp, ConstantValue, MIRDollarMode, FnId, GlobalId, MIRFn, MIRGlobal,
         MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
     semantics::{ResolvedTypeKind, TypesTable},
@@ -36,7 +36,7 @@ pub struct MIRBuilder<'a> {
 
     pub current_block_id: Option<BlockId>,
     pub current_func: Option<FnId>,
-    pub current_dollar_mode: DollarMode,
+    pub current_dollar_mode: MIRDollarMode,
     pub current_dollar_name: Option<String>,
 
     var_stack: Vec<HashMap<String, MIRValue>>,
@@ -65,7 +65,7 @@ impl<'a> MIRBuilder<'a> {
             dollar_scope_counter: 0,
             current_block_id: None,
             current_func: None,
-            current_dollar_mode: DollarMode::None,
+            current_dollar_mode: MIRDollarMode::None,
             current_dollar_name: None,
             var_stack: Vec::new(),
             last_value: None,

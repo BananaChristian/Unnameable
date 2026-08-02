@@ -15,3 +15,4 @@ pub mod parser;
 pub mod semantics;
 pub mod serializer;
 pub mod target;
+pub mod bc_builder;

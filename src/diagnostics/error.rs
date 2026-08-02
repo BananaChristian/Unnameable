@@ -8,6 +8,7 @@ pub enum Phase {
     Semantics,
     ContractVerifier,
     MIRBuilder,
+    BytecodeBuilder,
     None,
 }
 

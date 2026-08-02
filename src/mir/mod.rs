@@ -1,8 +1,11 @@
 mod builder;
-mod instructions;
 mod exprs;
-mod stmts;
+mod instructions;
 mod printer;
+mod stmts;
 
-pub use builder::MIRBuilder;
-use instructions::MIRTykind;
+pub use builder::{MIRBuilder, MIRModule};
+pub use instructions::{
+    BlockId, ConstantValue, MIRDollarMode, MIRFn, MIRInstruction, MIROps, MIRValue, Terminator,
+    Vreg
+};

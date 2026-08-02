@@ -1,7 +1,17 @@
 use unnc::{
-    const_and_mut_validator::Validator, diagnostics::Diagnostics, hir::HirPrinter,
-    import::ImportEngine, indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder,
-    parser::Parser, semantics::Semantics, serializer::Serializer, target::TargetSpec,
+    bc_builder::{self, BytecodeBuilder},
+    const_and_mut_validator::Validator,
+    diagnostics::{self, Diagnostics},
+    hir::HirPrinter,
+    import::ImportEngine,
+    indexer::NodeIndex,
+    lexer::Lexer,
+    lowering::Lowering,
+    mir::MIRBuilder,
+    parser::Parser,
+    semantics::Semantics,
+    serializer::Serializer,
+    target::TargetSpec,
 };
 
 use std::{cell::RefCell, env, fs, path::PathBuf, rc::Rc};
@@ -260,6 +270,10 @@ fn main() -> Result<(), std::io::Error> {
         println!("=== MIR Dump ===");
         println!("{}", mir_module);
     }
+
+    let mut bc_builder = BytecodeBuilder::new(&mir_module, Rc::clone(&diagnostics));
+    let bytecode = bc_builder.build();
+    println!("Bytecode: {:?}", bytecode);
 
     Ok(())
 }

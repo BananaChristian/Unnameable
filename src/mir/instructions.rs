@@ -16,7 +16,7 @@ pub struct GlobalId(pub usize); //ID for global variables
 pub struct FnId(pub usize); //ID for functions
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DollarMode {
+pub enum MIRDollarMode {
     None,     //Off limits to dollar bill engine
     ReadOnly, //$
     Full,     //$$
@@ -154,7 +154,7 @@ pub enum MIRInstruction {
     Alloca {
         dest: MIRValue,
         ty: MIRTy,
-        dollar_mode: DollarMode,
+        dollar_mode: MIRDollarMode,
         align: usize, //In bytes
     },
 
@@ -221,7 +221,7 @@ pub enum MIRLinkage {
 #[derive(Debug, Clone)]
 pub struct MIRParam {
     pub name: String,
-    pub dollar_mode: DollarMode,
+    pub dollar_mode: MIRDollarMode,
     pub ty: MIRTy,
 }
 
@@ -230,7 +230,7 @@ pub struct MIRFn {
     pub fn_id: FnId,
     pub name: String,
     pub params: Vec<MIRParam>,
-    pub dollar_mode: DollarMode,
+    pub dollar_mode: MIRDollarMode,
     pub linkage: MIRLinkage,
     pub blocks: HashMap<BlockId, BasicBlock>,
     pub entry_block: BlockId,
@@ -241,7 +241,7 @@ pub struct MIRGlobal {
     pub global_id: GlobalId,
     pub name: String,
     pub ty: MIRTy,
-    pub dollar_mode: DollarMode,
+    pub dollar_mode: MIRDollarMode,
     pub is_const: bool,
     pub init: MIRValue,
     pub linkage: MIRLinkage,

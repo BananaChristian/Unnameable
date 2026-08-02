@@ -5,7 +5,7 @@ use crate::{
     mir::{
         builder::MIRBuilder,
         instructions::{
-            DollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRTy, MIRTykind, Terminator,
+            MIRDollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRTy, MIRTykind, Terminator,
         },
     },
 };
@@ -48,9 +48,9 @@ impl<'a> MIRBuilder<'a> {
                     };
 
                     let dollar_mode = if *dollar_read {
-                        DollarMode::ReadOnly
+                        MIRDollarMode::ReadOnly
                     } else {
-                        DollarMode::None
+                        MIRDollarMode::None
                     };
 
                     let mir_global = MIRGlobal {
@@ -104,12 +104,12 @@ impl<'a> MIRBuilder<'a> {
             };
 
             let dollar_mode = match *dollar_read {
-                true => DollarMode::ReadOnly,
+                true => MIRDollarMode::ReadOnly,
                 false => self.current_dollar_mode,
             };
 
             //Mangle the name if we are inside a dollar scope
-            let mangled_name = if dollar_mode == DollarMode::Full {
+            let mangled_name = if dollar_mode == MIRDollarMode::Full {
                 match &self.current_dollar_name {
                     Some(d_name) => format!("{}_{}", d_name, name),
                     None => name.clone(),
@@ -123,8 +123,8 @@ impl<'a> MIRBuilder<'a> {
                 .map(|p| MIRParam {
                     name: p.name.clone(),
                     dollar_mode: match p.dollar_read {
-                        true => DollarMode::ReadOnly,
-                        false => DollarMode::None, //For now
+                        true => MIRDollarMode::ReadOnly,
+                        false => MIRDollarMode::None, //For now
                     },
                     ty: self.get_type(&p.hir_id),
                 })

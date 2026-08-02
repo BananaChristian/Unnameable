@@ -3,7 +3,7 @@ use std::fmt;
 use crate::mir::{
     builder::MIRModule,
     instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, DollarMode, FnId, GlobalId, MIRFn, MIRGlobal,
+        BasicBlock, BlockId, CmpOp, ConstantValue, MIRDollarMode, FnId, GlobalId, MIRFn, MIRGlobal,
         MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
 };
@@ -76,12 +76,12 @@ impl fmt::Display for GlobalId {
     }
 }
 
-impl fmt::Display for DollarMode {
+impl fmt::Display for MIRDollarMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DollarMode::None => write!(f, ""),
-            DollarMode::ReadOnly => write!(f, "$"),
-            DollarMode::Full => write!(f, "$$"),
+            MIRDollarMode::None => write!(f, ""),
+            MIRDollarMode::ReadOnly => write!(f, "$"),
+            MIRDollarMode::Full => write!(f, "$$"),
         }
     }
 }
