@@ -5,6 +5,7 @@ use crate::bc_builder::DollarMode;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AllocId(pub usize);
 
+#[derive(Debug, Clone)]
 pub struct EvalResultTable {
     pub results: HashMap<String, VMValue>,
 }

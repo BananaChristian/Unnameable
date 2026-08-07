@@ -12,6 +12,7 @@ use unnc::{
     semantics::Semantics,
     serializer::Serializer,
     target::TargetSpec,
+    vm::VM,
 };
 
 use std::{cell::RefCell, env, fs, path::PathBuf, rc::Rc};
@@ -284,6 +285,9 @@ fn main() -> Result<(), std::io::Error> {
         print!("{}", BytecodePrinter::print_module(&bytecode));
     }
 
+    let mut vm = VM::new(&bytecode, Rc::clone(&diagnostics));
+    let eval_table = vm.execute();
+    println!("EVAL TABLE {:?}", eval_table);
     Ok(())
 }
 

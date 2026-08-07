@@ -6,7 +6,7 @@ pub enum Vreg {
     Named(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
 pub struct BlockId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

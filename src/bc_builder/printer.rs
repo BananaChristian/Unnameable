@@ -58,7 +58,7 @@ impl BytecodePrinter {
             let _ = writeln!(out, "{}", "-".repeat(50));
             let _ = writeln!(
                 out,
-                "fn @{} (mode: {}, params: {}, registers: {})",
+                "func @{} (mode: {}, params: {}, registers: {})",
                 func.name, func.mode, func.param_count, func.register_count
             );
             let _ = writeln!(out, "{}", "-".repeat(50));
@@ -126,7 +126,7 @@ impl BytecodePrinter {
                 let fn_label = fn_id_to_name
                     .get(fn_id)
                     .map(|name| format!("@{}", name))
-                    .unwrap_or_else(|| format!("fn@{}", fn_id));
+                    .unwrap_or_else(|| format!("func@{}", fn_id));
                 let args_str = args
                     .iter()
                     .map(|a| format!("r{}", a))
@@ -136,6 +136,23 @@ impl BytecodePrinter {
                 match dest {
                     Some(d) => format!("r{} = call {}({})", d, fn_label, args_str),
                     None => format!("call {}({})", fn_label, args_str),
+                }
+            }
+
+            VMOpcode::DollarEval { dest, fn_id, args } => {
+                let fn_label = fn_id_to_name
+                    .get(fn_id)
+                    .map(|name| format!("@{}", name))
+                    .unwrap_or_else(|| format!("func@{}", fn_id));
+                let args_str = args
+                    .iter()
+                    .map(|a| format!("r{}", a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                match dest {
+                    Some(d) => format!("r{} = $$eval {}({})", d, fn_label, args_str),
+                    None => format!("$$eval {}({})", fn_label, args_str),
                 }
             }
 

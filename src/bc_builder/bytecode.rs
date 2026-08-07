@@ -90,8 +90,15 @@ pub enum VMOpcode {
         else_pc: usize,
     },
 
-    // Dollar Scope Evaluation / Function Call
+    // Function Call
     Call {
+        dest: Option<u16>,
+        fn_id: u32,
+        args: Vec<u16>,
+    },
+
+    //Special dollar scope evaluation
+    DollarEval {
         dest: Option<u16>,
         fn_id: u32,
         args: Vec<u16>,
