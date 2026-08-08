@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use bincode::de;
-
 use crate::{
     bc_builder::{BytecodeModule, VMOpcode},
     diagnostics::{CompilerError, Phase, SharedDiagnostics},

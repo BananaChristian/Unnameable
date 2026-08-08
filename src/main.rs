@@ -1,7 +1,8 @@
 use unnc::{
     bc_builder::{BytecodeBuilder, BytecodePrinter},
     const_and_mut_validator::Validator,
-    diagnostics::Diagnostics,
+    diagnostics::{self, Diagnostics},
+    dollar_folder::{self, Folder},
     hir::HirPrinter,
     import::ImportEngine,
     indexer::NodeIndex,
@@ -273,7 +274,7 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.borrow().print();
         std::process::exit(1);
     }
-    let mir_module = mir_builder.build_module();
+    let mut mir_module = mir_builder.build_module();
     if dump_mir {
         println!("=== MIR Dump ===");
         println!("{}", mir_module);
@@ -288,6 +289,14 @@ fn main() -> Result<(), std::io::Error> {
     let mut vm = VM::new(&bytecode, Rc::clone(&diagnostics));
     let eval_table = vm.execute();
     println!("EVAL TABLE {:?}", eval_table);
+
+    let mut dollar_folder = Folder::new(Rc::clone(&diagnostics), &mut mir_module, &eval_table);
+    dollar_folder.fold();
+    if dump_mir {
+        println!("=== Folded MIR Dump ===");
+        println!("{}", mir_module);
+    }
+
     Ok(())
 }
 

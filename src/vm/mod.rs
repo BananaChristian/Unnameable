@@ -4,3 +4,4 @@ mod vm;
 mod ops;
 
 pub use vm::VM;
+pub use structures::{EvalResultTable, VMValue};
