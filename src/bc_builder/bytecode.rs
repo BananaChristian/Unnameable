@@ -10,13 +10,53 @@ pub enum DollarMode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum VMOpcode {
     // Immediate Constants: r[dest] = val
-    ConstInt {
+    ConstI8 {
+        dest: u16,
+        val: i8,
+    },
+    ConstU8 {
+        dest: u16,
+        val: u8,
+    },
+    ConstI16 {
+        dest: u16,
+        val: i16,
+    },
+    ConstU16 {
+        dest: u16,
+        val: u16,
+    },
+    ConstI32 {
+        dest: u16,
+        val: i32,
+    },
+    ConstU32{
+        dest: u16,
+        val: u32,
+    },
+    ConstI64{
         dest: u16,
         val: i64,
+    },
+    ConstU64{
+        dest: u16,
+        val: u64,
+    },
+    ConstIsize {
+        dest: u16,
+        val: isize,
     },
     ConstUSize {
         dest: u16,
         val: usize,
+    },
+    ConstI128{
+        dest: u16,
+        val: i128,
+    },
+    ConstU128{
+        dest: u16,
+        val: u128,
     },
     ConstBool {
         dest: u16,

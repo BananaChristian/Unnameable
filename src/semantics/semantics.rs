@@ -207,7 +207,7 @@ impl TypeInfo {
             (ResolvedTypeKind::U32, ResolvedTypeKind::U32) => true,
             (ResolvedTypeKind::I64, ResolvedTypeKind::I64) => true,
             (ResolvedTypeKind::U64, ResolvedTypeKind::U64) => true,
-            (ResolvedTypeKind::I128, ResolvedTypeKind::U128) => true,
+            (ResolvedTypeKind::I128, ResolvedTypeKind::I128) => true,
             (ResolvedTypeKind::U128, ResolvedTypeKind::U128) => true,
             (ResolvedTypeKind::ISize, ResolvedTypeKind::ISize) => true,
             (ResolvedTypeKind::USize, ResolvedTypeKind::USize) => true,

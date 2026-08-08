@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
+use bincode::de;
+
 use crate::{
     bc_builder::{BytecodeModule, VMOpcode},
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
+    impl_binary_op,
     vm::structures::{AllocId, EvalResultTable, VMFrame, VMMemory, VMValue},
 };
 
@@ -73,15 +76,44 @@ impl<'a> VM<'a> {
             frame.ip += 1;
 
             match instr {
-                VMOpcode::ConstInt { dest, val } => {
-                    frame.registers[dest as usize] = Some(VMValue::Int(val));
+                VMOpcode::ConstI8 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::I8(val));
+                }
+                VMOpcode::ConstU8 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::U8(val));
+                }
+                VMOpcode::ConstI16 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::I16(val));
+                }
+                VMOpcode::ConstU16 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::U16(val));
+                }
+                VMOpcode::ConstI32 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::I32(val));
+                }
+                VMOpcode::ConstU32 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::U32(val));
+                }
+                VMOpcode::ConstI64 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::I64(val));
+                }
+                VMOpcode::ConstU64 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::U64(val));
+                }
+                VMOpcode::ConstIsize { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::Int(val));
                 }
                 VMOpcode::ConstUSize { dest, val } => {
-                    frame.registers[dest as usize] = Some(VMValue::USize(val));
+                    self.write_reg(frame, dest, VMValue::UInt(val));
                 }
-
+                VMOpcode::ConstI128 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::I128(val));
+                }
+                VMOpcode::ConstU128 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::U128(val));
+                }
                 VMOpcode::ConstBool { dest, val } => {
-                    frame.registers[dest as usize] = Some(VMValue::Bool(val));
+                    self.write_reg(frame, dest, VMValue::Bool(val));
                 }
                 VMOpcode::Jump { target_pc } => {
                     frame.ip = target_pc;
@@ -92,45 +124,67 @@ impl<'a> VM<'a> {
                     self.memory
                         .allocations
                         .insert(alloc_id.clone(), vec![0u8; size as usize]);
-                    frame.registers[dest as usize] = Some(VMValue::Ptr(alloc_id, 0));
+                    self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
                 VMOpcode::Return { val } => {
                     return match val {
-                        Some(v) => self.get_reg_val(v, frame),
+                        Some(v) => self.read_reg(v, frame),
                         None => VMValue::Unit,
                     };
                 }
                 VMOpcode::Call { dest, fn_id, args } => {
                     let fn_name = self.module.functions[fn_id as usize].name.clone();
                     let arg_vals: Vec<VMValue> =
-                        args.iter().map(|r| self.get_reg_val(*r, frame)).collect();
+                        args.iter().map(|r| self.read_reg(*r, frame)).collect();
                     let result = self.execute_fn(fn_name.as_str(), arg_vals);
                     if let Some(dest_reg) = dest {
-                        frame.registers[dest_reg as usize] = Some(result)
+                        self.write_reg(frame, dest_reg, result);
                     }
                 }
                 VMOpcode::DollarEval { dest, fn_id, args } => {
                     let scope_name = self.module.functions[fn_id as usize].name.clone();
                     let arg_vals: Vec<VMValue> =
-                        args.iter().map(|r| self.get_reg_val(*r, frame)).collect();
+                        args.iter().map(|r| self.read_reg(*r, frame)).collect();
                     let result = self.execute_fn(scope_name.as_str(), arg_vals);
                     if let Some(dest_reg) = dest {
-                        frame.registers[dest_reg as usize] = Some(result.clone());
+                        self.write_reg(frame, dest_reg, result.clone());
                     }
                     //Write into the eval table
                     self.eval_table.results.insert(scope_name, result);
                 }
-                _ => todo!(),
+                VMOpcode::Add { dest, src1, src2 } => {
+                    let val1 = self.read_reg(src1, frame);
+                    let val2 = self.read_reg(src2, frame);
+                    let result = impl_binary_op!(self,val1,val2,+);
+                    self.write_reg(frame, dest, result);
+                }
+                VMOpcode::Sub { dest, src1, src2 } => {
+                    let val1 = self.read_reg(src1, frame);
+                    let val2 = self.read_reg(src2, frame);
+                    let res = impl_binary_op!(self, val1,val2,-);
+                    self.write_reg(frame, dest, res);
+                }
+                VMOpcode::Mul { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_binary_op!(self, a, b, *);
+                    self.write_reg(frame, dest, res);
+                }
+                _ => todo!("VMOpcode {:?} not implemented", instr),
             }
         }
     }
 
-    fn get_reg_val(&mut self, reg: u16, frame: &VMFrame) -> VMValue {
+    fn read_reg(&mut self, reg: u16, frame: &VMFrame) -> VMValue {
         let Some(val) = &frame.registers[reg as usize] else {
             self.report_ice(format!("Register {} is uninitialized", reg));
             return VMValue::Poison;
         };
         val.clone()
+    }
+
+    fn write_reg(&mut self, frame: &mut VMFrame, dest: u16, val: VMValue) {
+        frame.registers[dest as usize] = Some(val)
     }
 
     pub fn report_ice(&mut self, message: String) {

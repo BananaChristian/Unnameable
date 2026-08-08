@@ -188,48 +188,18 @@ impl<'a> BytecodeBuilder<'a> {
     ) {
         match const_val {
             ConstantValue::Bool(val) => instructions.push(VMOpcode::ConstBool { dest, val: *val }),
-            ConstantValue::I8(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
-            ConstantValue::U8(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
-            ConstantValue::I16(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
-            ConstantValue::U16(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
-            ConstantValue::I32(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
-            ConstantValue::U32(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
-            ConstantValue::I64(v) => instructions.push(VMOpcode::ConstInt { dest, val: *v }),
-            ConstantValue::U64(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
-            ConstantValue::Int(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
+            ConstantValue::I8(v) => instructions.push(VMOpcode::ConstI8 { dest, val: *v }),
+            ConstantValue::U8(v) => instructions.push(VMOpcode::ConstU8 { dest, val: *v }),
+            ConstantValue::I16(v) => instructions.push(VMOpcode::ConstI16 { dest, val: *v }),
+            ConstantValue::U16(v) => instructions.push(VMOpcode::ConstU16 { dest, val: *v }),
+            ConstantValue::I32(v) => instructions.push(VMOpcode::ConstI32 { dest, val: *v }),
+            ConstantValue::U32(v) => instructions.push(VMOpcode::ConstU32 { dest, val: *v }),
+            ConstantValue::I64(v) => instructions.push(VMOpcode::ConstI64 { dest, val: *v }),
+            ConstantValue::U64(v) => instructions.push(VMOpcode::ConstU64 { dest, val: *v }),
+            ConstantValue::Int(v) => instructions.push(VMOpcode::ConstIsize { dest, val: *v }),
             ConstantValue::UInt(v) => instructions.push(VMOpcode::ConstUSize { dest, val: *v }),
-            ConstantValue::I128(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
-            ConstantValue::U128(v) => instructions.push(VMOpcode::ConstInt {
-                dest,
-                val: *v as i64,
-            }),
+            ConstantValue::I128(v) => instructions.push(VMOpcode::ConstI128 { dest, val: *v }),
+            ConstantValue::U128(v) => instructions.push(VMOpcode::ConstU128 { dest, val: *v }),
             ConstantValue::F32(_) => todo!("float constants"),
             ConstantValue::F64(_) => todo!("float constants"),
         }

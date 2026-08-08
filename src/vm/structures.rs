@@ -12,8 +12,20 @@ pub struct EvalResultTable {
 
 #[derive(Debug, Clone)]
 pub enum VMValue {
-    Int(i64),
-    USize(usize),
+    I8(i8),
+    U8(u8),
+    I16(i16),
+    U16(u16),
+    I32(i32),
+    U32(u32),
+    I64(i64),
+    U64(u64),
+    Int(isize),
+    UInt(usize),
+    I128(i128),
+    U128(u128),
+    F32(f32),
+    F64(f64),
     Bool(bool),
     Ptr(AllocId, usize), //allocation id + offset
     Unit,

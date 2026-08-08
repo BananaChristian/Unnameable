@@ -81,7 +81,37 @@ impl BytecodePrinter {
     /// Helper to format individual instructions with indexed registers (r0, r1)
     fn format_opcode(inst: &VMOpcode, fn_id_to_name: &HashMap<u32, &str>) -> String {
         match inst {
-            VMOpcode::ConstInt { dest, val } => format!("r{} = {}", dest, val),
+            VMOpcode::ConstI8 { dest, val } => {
+                format!("r{} = {} (i8)", dest, val)
+            }
+            VMOpcode::ConstU8 { dest, val } => {
+                format!("r{} = {} (u8)", dest, val)
+            }
+            VMOpcode::ConstI16 { dest, val } => {
+                format!("r{} = {} (i16)", dest, val)
+            }
+            VMOpcode::ConstU16 { dest, val } => {
+                format!("r{} = {} (u16)", dest, val)
+            }
+            VMOpcode::ConstI32 { dest, val } => {
+                format!("r{} = {} (i32)", dest, val)
+            }
+            VMOpcode::ConstU32 { dest, val } => {
+                format!("r{} = {} (u32)", dest, val)
+            }
+            VMOpcode::ConstI64 { dest, val } => {
+                format!("r{} = {} (i64)", dest, val)
+            }
+            VMOpcode::ConstU64 { dest, val } => {
+                format!("r{} = {} (u64)", dest, val)
+            }
+            VMOpcode::ConstI128 { dest, val } => {
+                format!("r{} = {} (i128)", dest, val)
+            }
+            VMOpcode::ConstU128 { dest, val } => {
+                format!("r{} = {} (u128)", dest, val)
+            }
+            VMOpcode::ConstIsize { dest, val } => format!("r{} = {} (isize) ",dest,val),
             VMOpcode::ConstUSize { dest, val } => format!("r{} = {} (usize)", dest, val),
             VMOpcode::ConstBool { dest, val } => format!("r{} = {}", dest, val),
 
