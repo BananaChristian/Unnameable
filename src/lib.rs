@@ -18,3 +18,4 @@ pub mod target;
 pub mod bc_builder;
 pub mod vm;
 pub mod dollar_folder;
+pub mod codegen;

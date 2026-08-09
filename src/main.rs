@@ -1,8 +1,10 @@
+use inkwell::context::Context;
 use unnc::{
     bc_builder::{BytecodeBuilder, BytecodePrinter},
+    codegen::Codegen,
     const_and_mut_validator::Validator,
-    diagnostics::{self, Diagnostics},
-    dollar_folder::{self, Folder},
+    diagnostics::Diagnostics,
+    dollar_folder::Folder,
     hir::HirPrinter,
     import::ImportEngine,
     indexer::NodeIndex,
@@ -30,6 +32,7 @@ fn print_help(program_name: &str) {
     println!(
         " --dump-bytecode             Print the bytecode that will be executed by the dollar bill engine"
     );
+    println!("  --dump-ir            Print the LLVM Intermediate Representation");
     println!("  --target-arch <str>   Override the target architecture (e.g., x86_64, arm)");
     println!("  --target-os <str>     Override the target OS (e.g., linux, windows, none)");
     println!("  --ptr-width <bytes>   Override pointer width in bytes (e.g., 4, 8)");
@@ -69,6 +72,7 @@ fn main() -> Result<(), std::io::Error> {
     let mut dump_hir = false;
     let mut dump_mir = false;
     let mut dump_bytecode = false;
+    let mut dump_ir = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -78,6 +82,7 @@ fn main() -> Result<(), std::io::Error> {
                 dump_hir = true;
                 dump_mir = true;
                 dump_bytecode = true;
+                dump_ir = true;
                 i += 1;
             }
             "--dump-ast" => {
@@ -94,6 +99,10 @@ fn main() -> Result<(), std::io::Error> {
             }
             "--dump-bytecode" => {
                 dump_bytecode = true;
+                i += 1;
+            }
+            "--dump-ir" => {
+                dump_ir = true;
                 i += 1;
             }
             "--target-arch" => {
@@ -268,7 +277,7 @@ fn main() -> Result<(), std::io::Error> {
         &semantics.ctxt.types,
         &target_spec,
         Rc::clone(&diagnostics),
-        module_name,
+        module_name.clone(),
     );
     if mir_builder.corrupted {
         diagnostics.borrow().print();
@@ -295,6 +304,14 @@ fn main() -> Result<(), std::io::Error> {
     if dump_mir {
         println!("=== Folded MIR Dump ===");
         println!("{}", mir_module);
+    }
+
+    let context = Context::create();
+    let mut codegen = Codegen::new(&context, &target_spec, module_name.as_str());
+    codegen.compile_module(&mir_module);
+    if dump_ir {
+        println!("=== LLVM IR ===");
+        println!("{}", codegen.print_ir())
     }
 
     Ok(())

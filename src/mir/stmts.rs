@@ -89,6 +89,7 @@ impl<'a> MIRBuilder<'a> {
             body,
             dollar_read,
             exposed,
+            return_type,
             ..
         } = &stmt.kind
         {
@@ -130,6 +131,8 @@ impl<'a> MIRBuilder<'a> {
                 })
                 .collect();
 
+            let ret_ty = self.get_type(&return_type.hir_id);
+
             let mir_fn = MIRFn {
                 fn_id: new_fn_id,
                 name: mangled_name,
@@ -138,6 +141,7 @@ impl<'a> MIRBuilder<'a> {
                 linkage,
                 blocks: HashMap::new(),
                 entry_block: entry_block_id,
+                ret_ty,
             };
 
             self.module.functions.insert(new_fn_id, mir_fn);

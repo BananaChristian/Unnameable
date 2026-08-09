@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Vreg {
     Numbered(usize),
     Named(String),
@@ -234,6 +234,7 @@ pub struct MIRFn {
     pub linkage: MIRLinkage,
     pub blocks: HashMap<BlockId, BasicBlock>,
     pub entry_block: BlockId,
+    pub ret_ty: MIRTy,
 }
 
 #[derive(Debug, Clone)]

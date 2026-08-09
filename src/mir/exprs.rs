@@ -86,6 +86,14 @@ impl<'a> MIRBuilder<'a> {
             let mut blocks = HashMap::new();
             blocks.insert(entry_block_id, entry_block);
 
+            let ret_ty = match result {
+                Some(res) => self.get_type(&res.hir_id),
+                None => MIRTy {
+                    kind: MIRTykind::Unit,
+                    align: 0,
+                },
+            };
+
             let scope_fn = MIRFn {
                 fn_id: fn_id.clone(),
                 name: scope_fn_name.clone(),
@@ -94,6 +102,7 @@ impl<'a> MIRBuilder<'a> {
                 linkage: MIRLinkage::Private,
                 entry_block: entry_block_id,
                 blocks,
+                ret_ty,
             };
 
             self.module.functions.insert(fn_id, scope_fn);
