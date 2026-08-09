@@ -116,13 +116,31 @@ impl<'a> VM<'a> {
                 VMOpcode::Jump { target_pc } => {
                     frame.ip = target_pc;
                 }
-                VMOpcode::Alloca { dest, size, .. } => {
+                VMOpcode::Alloca { dest, .. } => {
                     let alloc_id = AllocId(self.memory.next_alloc);
                     self.memory.next_alloc += 1;
                     self.memory
                         .allocations
-                        .insert(alloc_id.clone(), vec![0u8; size as usize]);
+                        .insert(alloc_id.clone(), VMValue::Unit);
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
+                }
+                VMOpcode::Load { dest, ptr, .. } => {
+                    let ptr_val = self.read_reg(ptr, frame);
+                    if let VMValue::Ptr(alloc_id, _) = ptr_val {
+                        let val = self.mem_read(&alloc_id);
+                        self.write_reg(frame, dest, val);
+                    } else {
+                        self.report_ice("Load from non pointer".to_string());
+                    }
+                }
+                VMOpcode::Store { ptr, val, .. } => {
+                    let ptr_val = self.read_reg(ptr, frame);
+                    let src_val = self.read_reg(val, frame);
+                    if let VMValue::Ptr(alloc_id, _) = ptr_val {
+                        self.mem_write(&alloc_id, src_val);
+                    } else {
+                        self.report_ice("Store to a non pointer".to_string());
+                    }
                 }
                 VMOpcode::Return { val } => {
                     return match val {
@@ -183,6 +201,18 @@ impl<'a> VM<'a> {
 
     fn write_reg(&mut self, frame: &mut VMFrame, dest: u16, val: VMValue) {
         frame.registers[dest as usize] = Some(val)
+    }
+
+    fn mem_read(&mut self, alloc_id: &AllocId) -> VMValue {
+        let Some(val) = self.memory.allocations.get(alloc_id).clone() else {
+            self.report_ice(format!("Failed to get value at allocation {}", alloc_id.0));
+            return VMValue::Poison;
+        };
+        val.clone()
+    }
+
+    fn mem_write(&mut self, alloc_id: &AllocId, val: VMValue) {
+        self.memory.allocations.insert(alloc_id.clone(), val);
     }
 
     pub fn report_ice(&mut self, message: String) {

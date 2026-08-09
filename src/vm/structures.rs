@@ -33,7 +33,7 @@ pub enum VMValue {
 }
 
 pub struct VMMemory {
-    pub allocations: HashMap<AllocId, Vec<u8>>,
+    pub allocations: HashMap<AllocId, VMValue>,
     pub next_alloc: usize,
 }
 
