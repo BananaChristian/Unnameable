@@ -55,6 +55,10 @@ impl<'a> Lexer<'a> {
             ("bool".to_string(), TType::BoolKey),
             ("f32".to_string(), TType::F32Key),
             ("f64".to_string(), TType::F64Key),
+            ("str".to_string(), TType::StrKey),
+            ("char8".to_string(), TType::Char8Key),
+            ("char16".to_string(), TType::Char16Key),
+            ("char32".to_string(), TType::Char32Key),
             ("ptr".to_string(), TType::Ptr),
             ("ref".to_string(), TType::Ref),
             ("arr".to_string(), TType::Arr),
@@ -167,6 +171,8 @@ impl<'a> Lexer<'a> {
         // Read digits
         while let Some(ch) = self.current_char() {
             if ch.is_ascii_digit() {
+                self.advance();
+            } else if ch == '_' {
                 self.advance();
             } else {
                 break;
@@ -857,6 +863,224 @@ impl<'a> Lexer<'a> {
                         end: self.pos,
                     },
                 )
+            }
+            Some('"') => {
+                self.advance(); // consume opening "
+                let mut value = String::new();
+                loop {
+                    match self.current_char() {
+                        Some('"') => {
+                            self.advance();
+                            break;
+                        }
+                        Some('\\') => {
+                            self.advance();
+                            match self.current_char() {
+                                Some('n') => {
+                                    self.advance();
+                                    value.push('\n');
+                                }
+                                Some('t') => {
+                                    self.advance();
+                                    value.push('\t');
+                                }
+                                Some('\\') => {
+                                    self.advance();
+                                    value.push('\\');
+                                }
+                                Some('"') => {
+                                    self.advance();
+                                    value.push('"');
+                                }
+                                Some('0') => {
+                                    self.advance();
+                                    value.push('\0');
+                                }
+                                Some('u') => {
+                                    // unicode escape \u{1F600}
+                                    self.advance(); // consume u
+                                    if self.current_char() == Some('{') {
+                                        self.advance();
+                                        let mut hex = String::new();
+                                        while let Some(c) = self.current_char() {
+                                            if c == '}' {
+                                                self.advance();
+                                                break;
+                                            }
+                                            hex.push(c);
+                                            self.advance();
+                                        }
+                                        if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                                            if let Some(c) = char::from_u32(code) {
+                                                value.push(c);
+                                            } else {
+                                                self.report(
+                                                    format!("Invalid unicode codepoint: {}", hex),
+                                                    None,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                Some(c) => {
+                                    self.report(format!("Unknown escape sequence: \\{}", c), None);
+                                    self.advance();
+                                }
+                                None => {
+                                    self.report(
+                                        "Unexpected end of file in string literal".to_string(),
+                                        None,
+                                    );
+                                    break;
+                                }
+                            }
+                        }
+                        Some(c) => {
+                            value.push(c);
+                            self.advance();
+                        }
+                        None => {
+                            self.report("Unterminated string literal".to_string(), None);
+                            break;
+                        }
+                    }
+                }
+                let end = self.pos;
+                Token::new(value, TType::StringLiteral, Span { start, end })
+            }
+            Some('\'') => {
+                self.advance(); // consume opening '
+                let ch = match self.current_char() {
+                    Some('\\') => {
+                        self.advance();
+                        match self.current_char() {
+                            Some('n') => {
+                                self.advance();
+                                '\n'
+                            }
+                            Some('t') => {
+                                self.advance();
+                                '\t'
+                            }
+                            Some('\\') => {
+                                self.advance();
+                                '\\'
+                            }
+                            Some('\'') => {
+                                self.advance();
+                                '\''
+                            }
+                            Some('0') => {
+                                self.advance();
+                                '\0'
+                            }
+                            Some(c) => {
+                                self.report(format!("Unknown escape sequence: \\{}", c), None);
+                                self.advance();
+                                c
+                            }
+                            None => {
+                                self.report(
+                                    "Unexpected end of file in char literal".to_string(),
+                                    None,
+                                );
+                                return Token::new(
+                                    "".to_string(),
+                                    TType::Illegal,
+                                    Span {
+                                        start,
+                                        end: self.pos,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    Some(c) => {
+                        self.advance();
+                        c
+                    }
+                    None => {
+                        self.report("Unexpected end of file in char literal".to_string(), None);
+                        return Token::new(
+                            "".to_string(),
+                            TType::Illegal,
+                            Span {
+                                start,
+                                end: self.pos,
+                            },
+                        );
+                    }
+                };
+
+                if self.current_char() != Some('\'') {
+                    self.report("Expected closing ' for char literal".to_string(), None);
+                } else {
+                    self.advance(); // consume closing '
+                }
+
+                // read suffix
+                let suffix_start = self.pos;
+                while let Some(c) = self.current_char() {
+                    if c.is_ascii_alphanumeric() {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                let suffix = &self.source[suffix_start..self.pos];
+
+                // validate size fits
+                let char_len = ch.len_utf8();
+                let token_type = match suffix {
+                    "c8" => {
+                        if char_len > 1 {
+                            self.report(
+                                format!("Character '{}' does not fit in char8 (1 byte)", ch),
+                                Some(Span {
+                                    start,
+                                    end: self.pos,
+                                }),
+                            );
+                        }
+                        TType::Char8Literal
+                    }
+                    "c16" => {
+                        if char_len > 2 {
+                            self.report(
+                                format!("Character '{}' does not fit in char16 (2 bytes)", ch),
+                                Some(Span {
+                                    start,
+                                    end: self.pos,
+                                }),
+                            );
+                        }
+                        TType::Char16Literal
+                    }
+                    "c32" => TType::Char32Literal, // always fits
+                    "" => {
+                        // default — char8, validate fits
+                        if char_len > 1 {
+                            self.report(
+                    format!("Character '{}' does not fit in default char8 — use 'c16' or 'c32' suffix", ch),
+                    Some(Span { start, end: self.pos }),
+                );
+                        }
+                        TType::Char8Literal
+                    }
+                    _ => {
+                        self.report(
+                            format!("Unknown char suffix '{}'", suffix),
+                            Some(Span {
+                                start,
+                                end: self.pos,
+                            }),
+                        );
+                        TType::Char8Literal
+                    }
+                };
+
+                let end = self.pos;
+                Token::new(ch.to_string(), token_type, Span { start, end })
             }
             None => Token::new(
                 "".to_string(),

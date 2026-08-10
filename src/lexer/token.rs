@@ -63,6 +63,12 @@ pub enum TType {
 
     Identifier,
 
+    //Literals
+    StringLiteral,
+    Char8Literal,
+    Char16Literal,
+    Char32Literal,
+
     //Bitwise operations
     BitwiseAnd, //and
     BitwiseOr,  //or
@@ -124,6 +130,10 @@ pub enum TType {
     Ptr,
     Ref,
     Arr,
+    Char8Key,
+    Char16Key,
+    Char32Key,
+    StrKey,
 
     //Brackets
     Lparen,   // (
