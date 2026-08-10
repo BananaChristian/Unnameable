@@ -106,11 +106,14 @@ impl<'a> TypeChecker<'a> {
     fn check_var(&mut self, stmt: &HirStmt) {
         let mut _annotated_ty = self.unknown(stmt.span.clone());
         if let HirStmtKind::HirVarDecl { ty, init, .. } = &stmt.kind {
-            let init_ty = self.expr_type(init);
+            let mut init_ty = self.expr_type(init);
             _annotated_ty = match ty {
                 Some(ty) => self.type_from_hir_type(ty),
                 None => init_ty.clone(),
             };
+            if self.is_unsuffixed_literal(init) {
+                init_ty= _annotated_ty.clone();
+            }
 
             if !TypeInfo::types_match(&_annotated_ty, &init_ty) {
                 self.type_mismatch(&_annotated_ty, &init_ty, stmt.span.clone());

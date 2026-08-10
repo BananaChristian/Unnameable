@@ -255,6 +255,10 @@ impl Lowering {
             TypeKind::USIZE => HirType::USize,
             TypeKind::F32 => HirType::F32,
             TypeKind::F64 => HirType::F64,
+            TypeKind::Str => HirType::Str,
+            TypeKind::Char8 => HirType::Char8,
+            TypeKind::Char16 => HirType::Char16,
+            TypeKind::Char32 => HirType::Char32,
             TypeKind::Bool => HirType::Bool,
             TypeKind::Unit => HirType::Unit,
 
@@ -401,6 +405,11 @@ impl Lowering {
             Literal::Float(v) => Some(HirLiteral::Float(*v)),
             Literal::F32(v) => Some(HirLiteral::F32(*v)),
             Literal::F64(v) => Some(HirLiteral::F64(*v)),
+            Literal::Str(s) => Some(HirLiteral::Str(s.clone())),
+            Literal::Char8(c) => Some(HirLiteral::Char8(*c)),
+            Literal::Char16(c) => Some(HirLiteral::Char16(*c)),
+            Literal::Char32(c) => Some(HirLiteral::Char32(*c)),
+
             Literal::Bool(v) => Some(HirLiteral::Bool(*v)),
             Literal::Null => Some(HirLiteral::Null),
             Literal::ArrayLiteral(elements) => {

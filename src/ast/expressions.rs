@@ -30,6 +30,12 @@ pub enum Literal {
     F32(f32),
     F64(f64),
 
+    //String and char literal
+    Str(String),
+    Char8(u8),
+    Char16(u16),
+    Char32(char),
+
     // Booleans
     Bool(bool),
 

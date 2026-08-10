@@ -553,6 +553,29 @@ impl Parser {
                 self.advance();
                 Some(Expr::new(ExprKind::Literal(Literal::Null), span))
             }
+            TType::Char8Literal => {
+                let ch = token.lexeme.chars().next().unwrap_or('\0');
+                self.advance();
+                Some(Expr::new(ExprKind::Literal(Literal::Char8(ch as u8)), span))
+            }
+            TType::Char16Literal => {
+                let ch = token.lexeme.chars().next().unwrap_or('\0');
+                self.advance();
+                Some(Expr::new(
+                    ExprKind::Literal(Literal::Char16(ch as u16)),
+                    span,
+                ))
+            }
+            TType::Char32Literal => {
+                let ch = token.lexeme.chars().next().unwrap_or('\0');
+                self.advance();
+                Some(Expr::new(ExprKind::Literal(Literal::Char32(ch)), span))
+            }
+            TType::StringLiteral => {
+                let s = token.lexeme.clone();
+                self.advance();
+                Some(Expr::new(ExprKind::Literal(Literal::Str(s)), span))
+            }
             TType::Int
             | TType::Int8
             | TType::Uint8

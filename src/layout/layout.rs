@@ -61,15 +61,21 @@ impl<'a> LayoutEngine<'a> {
 
     pub fn calculate_layout(&mut self, kind: &ResolvedTypeKind) -> Layout {
         match kind {
-            ResolvedTypeKind::I8 | ResolvedTypeKind::U8 | ResolvedTypeKind::Bool => Layout {
+            ResolvedTypeKind::I8
+            | ResolvedTypeKind::U8
+            | ResolvedTypeKind::Char8
+            | ResolvedTypeKind::Bool => Layout {
                 size: 1,
                 alignment: 1,
             },
-            ResolvedTypeKind::I16 | ResolvedTypeKind::U16 => Layout {
+            ResolvedTypeKind::I16 | ResolvedTypeKind::U16 | ResolvedTypeKind::Char16 => Layout {
                 size: 2,
                 alignment: 2,
             },
-            ResolvedTypeKind::I32 | ResolvedTypeKind::U32 | ResolvedTypeKind::F32 => Layout {
+            ResolvedTypeKind::I32
+            | ResolvedTypeKind::U32
+            | ResolvedTypeKind::Char32
+            | ResolvedTypeKind::F32 => Layout {
                 size: 4,
                 alignment: 4,
             },
@@ -84,6 +90,10 @@ impl<'a> LayoutEngine<'a> {
             ResolvedTypeKind::USize | ResolvedTypeKind::ISize => Layout {
                 size: self.target.int_width,
                 alignment: self.target.int_width,
+            },
+            ResolvedTypeKind::Str => Layout {
+                size: self.target.pointer_width,
+                alignment: self.target.pointer_width,
             },
             ResolvedTypeKind::Pointer { .. }
             | ResolvedTypeKind::Ref { .. }

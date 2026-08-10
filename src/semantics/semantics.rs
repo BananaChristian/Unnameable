@@ -53,6 +53,10 @@ pub enum ResolvedTypeKind {
     USize,
     F32,
     F64,
+    Str,
+    Char8,
+    Char16,
+    Char32,
     Bool,
     Unit,
     GenericParam(String),
@@ -122,6 +126,10 @@ impl TypeInfo {
             ResolvedTypeKind::ISize => "isize".to_string(),
             ResolvedTypeKind::F32 => "f32".to_string(),
             ResolvedTypeKind::F64 => "f64".to_string(),
+            ResolvedTypeKind::Str => "str".to_string(),
+            ResolvedTypeKind::Char8 => "char8".to_string(),
+            ResolvedTypeKind::Char16 => "char16".to_string(),
+            ResolvedTypeKind::Char32 => "char32".to_string(),
             ResolvedTypeKind::Bool => "bool".to_string(),
             ResolvedTypeKind::Unit => "()".to_string(),
             ResolvedTypeKind::Unknown => "unknown".to_string(),
@@ -213,8 +221,21 @@ impl TypeInfo {
             (ResolvedTypeKind::USize, ResolvedTypeKind::USize) => true,
             (ResolvedTypeKind::F32, ResolvedTypeKind::F32) => true,
             (ResolvedTypeKind::F64, ResolvedTypeKind::F64) => true,
+            (ResolvedTypeKind::Char8, ResolvedTypeKind::Char8) => true,
+            (ResolvedTypeKind::Char16, ResolvedTypeKind::Char16) => true,
+            (ResolvedTypeKind::Char32, ResolvedTypeKind::Char32) => true,
+            (ResolvedTypeKind::Char8, ResolvedTypeKind::U8) => true,
+            (ResolvedTypeKind::U8, ResolvedTypeKind::Char8) => true,
+            (ResolvedTypeKind::Char16, ResolvedTypeKind::U16) => true,
+            (ResolvedTypeKind::U16, ResolvedTypeKind::Char16) => true,
+            (ResolvedTypeKind::Char32, ResolvedTypeKind::U32) => true,
+            (ResolvedTypeKind::U32, ResolvedTypeKind::Char32) => true,
             (ResolvedTypeKind::Bool, ResolvedTypeKind::Bool) => true,
             (ResolvedTypeKind::Unit, ResolvedTypeKind::Unit) => true,
+            (ResolvedTypeKind::Str, ResolvedTypeKind::Str) => true,
+            (ResolvedTypeKind::Str, ResolvedTypeKind::Pointer { inner }) => {
+                matches!(inner.kind, ResolvedTypeKind::Char8)
+            }
             (ResolvedTypeKind::Pointer { inner: a }, ResolvedTypeKind::Pointer { inner: b }) => {
                 TypeInfo::types_match(a, b)
             }

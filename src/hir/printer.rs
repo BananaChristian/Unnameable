@@ -548,6 +548,11 @@ impl HirPrinter {
             HirType::USize => self.write_line(&format!("Type(usize) [id: {id:?}]")),
             HirType::F32 => self.write_line(&format!("Type(f32) [id: {id:?}]")),
             HirType::F64 => self.write_line(&format!("Type(f64) [id: {id:?}]")),
+            HirType::Str => self.write_line(&format!("Type(str) [id: {id:?}]")),
+            HirType::Char8 => self.write_line(&format!("Type(char8) [id: {id:?}]")),
+            HirType::Char16 => self.write_line(&format!("Type(char16) [id: {id:?}]")),
+            HirType::Char32 => self.write_line(&format!("Type(char32) [id: {id:?}]")),
+
             HirType::Bool => self.write_line(&format!("Type(bool) [id: {id:?}]")),
             HirType::Unit => self.write_line(&format!("Type(()) [id: {id:?}]")),
 

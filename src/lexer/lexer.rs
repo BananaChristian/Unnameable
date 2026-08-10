@@ -190,12 +190,12 @@ impl<'a> Lexer<'a> {
                 }
             }
             let end = self.pos;
-            let lexeme = self.source[start..end].to_string();
+            let lexeme = self.source[start..end].replace('_', "");
             return self.parse_float_suffix(lexeme, Span { start, end });
         }
 
         let end = self.pos;
-        let lexeme = self.source[start..end].to_string();
+        let lexeme = self.source[start..end].replace('_', "");
         self.parse_suffix(lexeme, Span { start, end })
     }
 
@@ -217,7 +217,7 @@ impl<'a> Lexer<'a> {
         }
 
         let end = self.pos;
-        let lexeme = self.source[start..end].to_string();
+        let lexeme = self.source[start..end].replace('_', "");
 
         if !has_digit {
             let span = Span { start, end };
@@ -249,7 +249,7 @@ impl<'a> Lexer<'a> {
         }
 
         let end = self.pos;
-        let lexeme = self.source[start..end].to_string();
+        let lexeme = self.source[start..end].replace('_', "");
 
         if !has_digit {
             let span = Span { start, end };

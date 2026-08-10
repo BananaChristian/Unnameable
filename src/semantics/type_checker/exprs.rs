@@ -429,6 +429,10 @@ impl<'a> TypeChecker<'a> {
                 HirLiteral::Float(_) => self.primitive(ResolvedTypeKind::F32, expr.span.clone()),
                 HirLiteral::F32(_) => self.primitive(ResolvedTypeKind::F32, expr.span.clone()),
                 HirLiteral::F64(_) => self.primitive(ResolvedTypeKind::F64, expr.span.clone()),
+                HirLiteral::Str(_) => self.primitive(ResolvedTypeKind::Str, expr.span.clone()),
+                HirLiteral::Char8(_) => self.primitive(ResolvedTypeKind::Char8, expr.span.clone()),
+                HirLiteral::Char16(_) => self.primitive(ResolvedTypeKind::Char16, expr.span.clone()),
+                HirLiteral::Char32(_) => self.primitive(ResolvedTypeKind::Char32, expr.span.clone()),
                 HirLiteral::Bool(_) => self.primitive(ResolvedTypeKind::Bool, expr.span.clone()),
                 HirLiteral::Null => {
                     let inner_ty = self.unknown(expr.span.clone());

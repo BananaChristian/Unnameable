@@ -31,6 +31,12 @@ pub enum TypeKind {
     F32,
     F64,
 
+    //String and char types
+    Str,
+    Char8,
+    Char16,
+    Char32,
+
     // Boolean
     Bool,
 
@@ -96,6 +102,10 @@ impl Type {
             TType::BoolKey => TypeKind::Bool,
             TType::F32Key => TypeKind::F32,
             TType::F64Key => TypeKind::F64,
+            TType::StrKey => TypeKind::Str,
+            TType::Char8Key => TypeKind::Char8,
+            TType::Char16Key => TypeKind::Char16,
+            TType::Char32Key => TypeKind::Char32,
             _ => TypeKind::None,
         };
 

@@ -360,7 +360,11 @@ impl Parser {
             | TType::U8Key
             | TType::BoolKey
             | TType::F32Key
-            | TType::F64Key => {
+            | TType::F64Key
+            | TType::StrKey
+            | TType::Char8Key
+            | TType::Char16Key
+            | TType::Char32Key => {
                 self.advance();
                 Some(Type::basic(&token))
             }

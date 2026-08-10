@@ -25,6 +25,12 @@ pub enum HirLiteral {
     Float(f64),
     F32(f32),
     F64(f64),
+
+    Str(String),
+    Char8(u8),
+    Char16(u16),
+    Char32(char),
+
     // Boolean
     Bool(bool),
     // Array literal

@@ -1,8 +1,8 @@
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{
-        HirAnonStructField, HirEnumMember, HirParam, HirStmt, HirStmtKind, HirType, HirTypeNode,
-        HirVariantMember,
+        HirAnonStructField, HirEnumMember, HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt,
+        HirStmtKind, HirType, HirTypeNode, HirVariantMember,
     },
     import::ImportEngine,
     layout::LayoutEngine,
@@ -384,6 +384,10 @@ impl<'a> TypeChecker<'a> {
             HirType::USize => self.primitive(ResolvedTypeKind::USize, ty.span.clone()),
             HirType::F32 => self.primitive(ResolvedTypeKind::F32, ty.span.clone()),
             HirType::F64 => self.primitive(ResolvedTypeKind::F64, ty.span.clone()),
+            HirType::Str => self.primitive(ResolvedTypeKind::Str, ty.span.clone()),
+            HirType::Char8 => self.primitive(ResolvedTypeKind::Char8, ty.span.clone()),
+            HirType::Char16 => self.primitive(ResolvedTypeKind::Char8, ty.span.clone()),
+            HirType::Char32 => self.primitive(ResolvedTypeKind::Char16, ty.span.clone()),
             HirType::Bool => self.primitive(ResolvedTypeKind::Bool, ty.span.clone()),
             HirType::Unit => self.unit(ty.span.clone()),
 
@@ -846,6 +850,16 @@ impl<'a> TypeChecker<'a> {
             self.get_decl_type(&decl_id.clone(), span.clone())
         } else {
             self.unknown(span)
+        }
+    }
+
+    pub fn is_unsuffixed_literal(&self, expr: &HirExpr) -> bool {
+        match &expr.kind {
+            HirExprKind::Literal(lit) => match lit {
+                HirLiteral::Int(_) | HirLiteral::Float(_) => true,
+                _ => false,
+            },
+            _ => false,
         }
     }
 

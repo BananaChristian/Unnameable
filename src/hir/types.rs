@@ -25,6 +25,12 @@ pub enum HirType {
     // Float types
     F32,
     F64,
+
+    Str,
+    Char8,
+    Char16,
+    Char32,
+
     // Boolean
     Bool,
     // Unit — ()
