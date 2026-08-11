@@ -131,6 +131,10 @@ impl Parser {
             | TType::Float
             | TType::F32
             | TType::F64
+            | TType::StringLiteral
+            | TType::Char8Literal
+            | TType::Char16Literal
+            | TType::Char32Literal
             | TType::True
             | TType::False
             | TType::LBracket => self.parse_literal(),
