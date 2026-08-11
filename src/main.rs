@@ -3,7 +3,7 @@ use unnc::{
     bc_builder::{BytecodeBuilder, BytecodePrinter},
     codegen::Codegen,
     const_and_mut_validator::Validator,
-    diagnostics::Diagnostics,
+    diagnostics::{self, Diagnostics},
     dollar_folder::Folder,
     hir::HirPrinter,
     import::ImportEngine,
@@ -284,7 +284,6 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
     let mut mir_module = mir_builder.build_module();
-    println!("{:?}",mir_module);
     if dump_mir {
         println!("=== MIR Dump ===");
         println!("{}", mir_module);
@@ -308,7 +307,12 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     let context = Context::create();
-    let mut codegen = Codegen::new(&context, &target_spec, module_name.as_str());
+    let mut codegen = Codegen::new(
+        &context,
+        &target_spec,
+        module_name.as_str(),
+        Rc::clone(&diagnostics),
+    );
     codegen.compile_module(&mir_module);
     if dump_ir {
         println!("=== LLVM IR ===");

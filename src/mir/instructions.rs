@@ -57,6 +57,11 @@ pub enum MIROps {
     Udiv,
     Mod,
     Xor,
+    And,  // bitwise and
+    Or,   // bitwise or
+    Shl,  // shift left
+    Shr,  // shift right
+    Ashr, //arithemtic right shift
 }
 
 #[derive(Debug, Clone)]

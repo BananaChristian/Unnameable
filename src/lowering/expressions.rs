@@ -185,6 +185,7 @@ impl Lowering {
             UnaryOp::Decrement => HirUnaryOp::Decrement,
             UnaryOp::AddressOf => HirUnaryOp::AddressOf,
             UnaryOp::Dereference => HirUnaryOp::Dereference,
+            UnaryOp::BitNot => HirUnaryOp::BitNot,
         }
     }
 

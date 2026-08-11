@@ -9,6 +9,7 @@ pub enum Phase {
     ContractVerifier,
     MIRBuilder,
     BytecodeBuilder,
+    Codegen,
     None,
 }
 

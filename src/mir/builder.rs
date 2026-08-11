@@ -223,6 +223,23 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
+    pub fn map_bitwise_op(&mut self, op: &HirBinaryOp, lhs: &MIRValue) -> MIROps {
+        match op {
+            HirBinaryOp::Xor => MIROps::Xor,
+            HirBinaryOp::BitAnd => MIROps::And,
+            HirBinaryOp::BitOr => MIROps::Or,
+            HirBinaryOp::Shr => {
+                if self.is_signed(lhs) {
+                    MIROps::Ashr
+                } else {
+                    MIROps::Shr
+                }
+            }
+            HirBinaryOp::Shl => MIROps::Shl,
+            _ => self.report_ice("Not a bitwise operator".to_string(), None),
+        }
+    }
+
     pub fn map_cmp_op(&self, op: &HirBinaryOp, lhs: &MIRValue) -> CmpOp {
         let is_float = match lhs {
             MIRValue::Register { ty, .. } => {

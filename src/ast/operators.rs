@@ -115,6 +115,7 @@ impl BinaryOp {
 pub enum UnaryOp {
     Neg,         // -
     Not,         // !
+    BitNot,      //not
     Increment,   // ++
     Decrement,   //--
     AddressOf,   //@
@@ -130,6 +131,7 @@ impl UnaryOp {
             TType::PlusPlus => UnaryOp::Increment,
             TType::At => UnaryOp::AddressOf,
             TType::Caret => UnaryOp::Dereference,
+            TType::Not => UnaryOp::BitNot,
             _ => panic!("Not a unary operator: {:?}", token.token_type),
         }
     }
@@ -146,7 +148,11 @@ impl PostfixOp {
     pub fn is_valid(token: &Token) -> bool {
         matches!(
             token.token_type,
-            TType::Lparen | TType::PlusPlus | TType::MinusMinus | TType::Propagate | TType::LBracket
+            TType::Lparen
+                | TType::PlusPlus
+                | TType::MinusMinus
+                | TType::Propagate
+                | TType::LBracket
         )
     }
 }

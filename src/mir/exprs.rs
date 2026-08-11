@@ -207,6 +207,14 @@ impl<'a> MIRBuilder<'a> {
         let rhs_value = self.expr_value(rhs);
 
         match op {
+            HirBinaryOp::Xor
+            | HirBinaryOp::BitAnd
+            | HirBinaryOp::BitOr
+            | HirBinaryOp::Shl
+            | HirBinaryOp::Shr => {
+                let op = self.map_bitwise_op(op, &lhs_value);
+                self.build_binary(op, lhs_value, rhs_value, ty, span);
+            }
             HirBinaryOp::Add
             | HirBinaryOp::Sub
             | HirBinaryOp::Mul
@@ -311,6 +319,10 @@ impl<'a> MIRBuilder<'a> {
                 let ptr = self.lookup_ptr(operand);
                 self.build_store(ptr, new_val.clone(), span);
                 self.last_value = Some(new_val)
+            }
+            HirUnaryOp::BitNot => {
+                let neg_val = MIRValue::Constant(ConstantValue::Int(-1));
+                self.build_binary(MIROps::Xor, operand_val, neg_val, ty, span);
             }
             _ => (),
         }

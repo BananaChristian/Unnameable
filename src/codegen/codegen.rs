@@ -10,6 +10,7 @@ use inkwell::{
 };
 
 use crate::{
+    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     mir::{ConstantValue, MIRGlobal, MIRLinkage, MIRModule, MIRTy, MIRTykind, MIRValue, Vreg},
     target::TargetSpec,
 };
@@ -20,10 +21,17 @@ pub struct Codegen<'ctx> {
     pub builder: Builder<'ctx>,
     target_spec: &'ctx TargetSpec,
     pub vreg_map: HashMap<Vreg, BasicValueEnum<'ctx>>,
+    pub corrupted: bool,
+    diagnostics: SharedDiagnostics,
 }
 
 impl<'ctx> Codegen<'ctx> {
-    pub fn new(context: &'ctx Context, target_spec: &'ctx TargetSpec, module_name: &str) -> Self {
+    pub fn new(
+        context: &'ctx Context,
+        target_spec: &'ctx TargetSpec,
+        module_name: &str,
+        diagnostics: SharedDiagnostics,
+    ) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         Codegen {
@@ -32,6 +40,8 @@ impl<'ctx> Codegen<'ctx> {
             builder,
             target_spec,
             vreg_map: HashMap::new(),
+            corrupted: false,
+            diagnostics,
         }
     }
 
@@ -149,5 +159,12 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn print_ir(&self) -> String {
         self.module.print_to_string().to_string()
+    }
+
+    pub fn report_ice(&mut self, message: String, span: Option<Span>) -> ! {
+        self.corrupted = true;
+        let err = CompilerError::ice(message, Phase::Codegen, span);
+
+        self.diagnostics.borrow_mut().report_ice_and_panic(err);
     }
 }

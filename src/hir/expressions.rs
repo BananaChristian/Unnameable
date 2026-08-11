@@ -79,6 +79,7 @@ pub enum HirBinaryOp {
 pub enum HirUnaryOp {
     Neg,         // -
     Not,         // !
+    BitNot,      // bitwise not
     Increment,   // ++
     Decrement,   // --
     AddressOf,   // @

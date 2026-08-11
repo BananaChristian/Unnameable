@@ -160,7 +160,8 @@ impl Parser {
             | TType::PlusPlus
             | TType::MinusMinus
             | TType::At
-            | TType::Caret => {
+            | TType::Caret
+            | TType::Not => {
                 let op = UnaryOp::new(&token);
                 let op_span = token.span;
                 self.advance();

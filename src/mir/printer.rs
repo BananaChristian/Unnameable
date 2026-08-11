@@ -1,9 +1,9 @@
-use std::fmt;
+use std::fmt::{self, write};
 
 use crate::mir::{
     builder::MIRModule,
     instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, MIRDollarMode, FnId, GlobalId, MIRFn, MIRGlobal,
+        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
         MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
 };
@@ -158,6 +158,11 @@ impl fmt::Display for MIROps {
             MIROps::Udiv => write!(f, "udiv"),
             MIROps::Mod => write!(f, "mod"),
             MIROps::Xor => write!(f, "xor"),
+            MIROps::And => write!(f, "and"),
+            MIROps::Shr => write!(f, "shr"),
+            MIROps::Shl => write!(f, "shl"),
+            MIROps::Ashr => write!(f, "ashr"),
+            MIROps::Or => write!(f, "or"),
         }
     }
 }

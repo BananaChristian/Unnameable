@@ -388,6 +388,7 @@ impl<'a> BytecodeBuilder<'a> {
                     },
                     MIROps::Mod => todo!("mod opcode"),
                     MIROps::Xor => todo!("xor opcode"),
+                    _ => todo!("Add support for other operands")
                 };
                 instructions.push(vm_op);
             }

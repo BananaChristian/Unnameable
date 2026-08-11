@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use inkwell::{
+    FloatPredicate, IntPredicate,
     basic_block::BasicBlock,
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum},
 };
 
 use crate::{
     codegen::Codegen,
-    mir::{BlockId, MIRInstruction, MIROps, MIRValue},
+    mir::{BlockId, CmpOp, MIRInstruction, MIROps, MIRValue},
 };
 
 impl<'ctx> Codegen<'ctx> {
@@ -56,6 +57,23 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap()
                     .into(),
                 MIROps::Xor => self.builder.build_xor(lhs, rhs, "xortmp").unwrap().into(),
+                MIROps::And => self.builder.build_and(lhs, rhs, "andtmp").unwrap().into(),
+                MIROps::Or => self.builder.build_or(lhs, rhs, "ortmp").unwrap().into(),
+                MIROps::Shl =>self
+                    .builder
+                    .build_left_shift(lhs, rhs, "shrtmp")
+                    .unwrap()
+                    .into(),
+                MIROps::Shr => self
+                    .builder
+                    .build_right_shift(lhs, rhs, false, "shrtmp")
+                    .unwrap()
+                    .into(),
+                MIROps::Ashr => self
+                    .builder
+                    .build_right_shift(lhs, rhs, true, "ashrtmp")
+                    .unwrap()
+                    .into(),
             },
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => match op {
                 MIROps::Add => self
@@ -153,6 +171,57 @@ impl<'ctx> Codegen<'ctx> {
                 if let Some(res_val) = call_site.try_as_basic_value().left() {
                     self.bind_dest(dest, res_val);
                 }
+            }
+            MIRInstruction::Compare { dest, op, lhs, rhs } => {
+                let lhs_val = self.lower_value(lhs);
+                let rhs_val = self.lower_value(rhs);
+
+                let res = match op {
+                    // Floating point comparisons
+                    CmpOp::Flt | CmpOp::Fgt | CmpOp::Fle | CmpOp::Fge => {
+                        let float_pred = match op {
+                            CmpOp::Flt => FloatPredicate::OLT,
+                            CmpOp::Fgt => FloatPredicate::OGT,
+                            CmpOp::Fle => FloatPredicate::OLE,
+                            CmpOp::Fge => FloatPredicate::OGE,
+                            _ => unreachable!(),
+                        };
+                        self.builder
+                            .build_float_compare(
+                                float_pred,
+                                lhs_val.into_float_value(),
+                                rhs_val.into_float_value(),
+                                "cmptmp",
+                            )
+                            .unwrap()
+                    }
+                    // Integer (and Pointer/Bool) comparisons
+                    _ => {
+                        let int_pred = match op {
+                            CmpOp::Eq => IntPredicate::EQ,
+                            CmpOp::Neq => IntPredicate::NE,
+                            CmpOp::Slt => IntPredicate::SLT,
+                            CmpOp::Sgt => IntPredicate::SGT,
+                            CmpOp::Sle => IntPredicate::SLE,
+                            CmpOp::Sge => IntPredicate::SGE,
+                            CmpOp::Ult => IntPredicate::ULT,
+                            CmpOp::Ugt => IntPredicate::UGT,
+                            CmpOp::Ule => IntPredicate::ULE,
+                            CmpOp::Uge => IntPredicate::UGE,
+                            _ => unreachable!(),
+                        };
+                        self.builder
+                            .build_int_compare(
+                                int_pred,
+                                lhs_val.into_int_value(),
+                                rhs_val.into_int_value(),
+                                "cmptmp",
+                            )
+                            .unwrap()
+                    }
+                };
+
+                self.bind_dest(dest, res.into());
             }
             _ => (),
         }

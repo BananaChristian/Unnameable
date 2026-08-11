@@ -113,6 +113,7 @@ impl<'a> TypeChecker<'a> {
                 HirUnaryOp::Increment|HirUnaryOp::Decrement => self.inc_dec_type(&target_ty), 
                 HirUnaryOp::Neg => self.neg_type(&target_ty),
                 HirUnaryOp::Not => self.logical_not_type(&target_ty),
+                HirUnaryOp::BitNot => target_ty,//The type doesnt change
             }
         }else{
             self.unknown(expr.span.clone())
@@ -269,6 +270,7 @@ impl<'a> TypeChecker<'a> {
                     self.assignment_type(&left_ty, &right_ty, expr.span.clone())
                 },
                 HirBinaryOp::Access => self.access_type(&left_ty, right),
+                HirBinaryOp::Shr| HirBinaryOp::Shl| HirBinaryOp::BitAnd | HirBinaryOp::BitOr |HirBinaryOp::Xor=> self.bitwise_type(&left_ty, &right_ty,op, expr.span.clone()),
                 _ => self.unknown(expr.span.clone()),
             }
         } else {
@@ -317,6 +319,21 @@ impl<'a> TypeChecker<'a> {
             }
 
         }
+    }
+
+    fn bitwise_type(&mut self,left_ty: &TypeInfo,right_ty: &TypeInfo,op: &HirBinaryOp, span: Span) -> TypeInfo{
+        if !self.is_integer(&left_ty.kind) || !self.is_integer(&right_ty.kind){
+            self.report(format!("Bitwise operators require integer operands but got {} and {}", left_ty.name, right_ty.name), Some(span.clone()));
+            return self.unknown(span)
+        }
+
+        if !TypeInfo::types_match(left_ty, right_ty){
+            self.type_mismatch(left_ty, right_ty, span.clone());
+            return self.unknown(span);
+        }
+
+        left_ty.clone()
+
     }
 
     fn assignment_type(&mut self, left_ty: &TypeInfo, right_ty: &TypeInfo,span:Span) -> TypeInfo{

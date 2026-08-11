@@ -148,9 +148,7 @@ impl<'a> MIRBuilder<'a> {
 
             //  Save previous context
             let prev_fn = self.current_func;
-            println!("PREV FN: {:?}", prev_fn);
             let prev_block = self.current_block_id;
-            println!("PREV_BLOCK: {:?}", prev_block);
 
             self.current_func = Some(new_fn_id);
             self.current_block_id = Some(entry_block_id);
