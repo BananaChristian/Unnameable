@@ -103,11 +103,11 @@ impl<'a> ControlFlowChecker<'a> {
                 .expect(format!("Failed to get type info for id: {:?}", &stmt.hir_id).as_str());
 
             if let Some(current_r) = &self.current_return_type {
-                if !TypeInfo::types_match(return_ty, current_r) {
+                if !TypeInfo::types_match(current_r, return_ty) {
                     self.report(
                         format!(
                             "Expected type '{}' but got '{}'",
-                            return_ty.name, current_r.name
+                            current_r.name, return_ty.name
                         ),
                         Some(stmt.span.clone()),
                     );

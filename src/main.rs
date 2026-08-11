@@ -284,6 +284,7 @@ fn main() -> Result<(), std::io::Error> {
         std::process::exit(1);
     }
     let mut mir_module = mir_builder.build_module();
+    println!("{:?}",mir_module);
     if dump_mir {
         println!("=== MIR Dump ===");
         println!("{}", mir_module);

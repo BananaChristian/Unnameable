@@ -4,6 +4,7 @@ use crate::{
     diagnostics::Span,
     hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
     mir::{
+        MIRInstruction,
         builder::MIRBuilder,
         instructions::{
             ConstantValue, MIRDollarMode, MIRFn, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind,
@@ -28,7 +29,11 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::Postfix(operand, op) => self.build_postfix(op, operand, ty),
             HirExprKind::Binary(lhs, operat, rhs) => self.build_bin(operat, lhs, rhs, span, ty),
             HirExprKind::DollarScope { .. } => self.build_dollar_scope(expr),
-            _ => todo!("Will add other expressions later"),
+            HirExprKind::Call(_, _) => self.build_call(expr),
+            _ => todo!(
+                "Encountered an expression whose handler is yet to be added {:?}",
+                expr
+            ),
         }
     }
 
@@ -157,6 +162,32 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
+    fn build_call(&mut self, expr: &HirExpr) {
+        if let HirExprKind::Call(callee, args) = &expr.kind {
+            let name = match &callee.kind {
+                HirExprKind::Identifier(s) => s.clone(),
+                _ => self.report_ice(
+                    "Failed to get callee name as it is not an identifier".to_string(),
+                    Some(expr.span.clone()),
+                ),
+            };
+
+            let ty = self.get_type(&expr.hir_id);
+
+            let mir_args: Vec<MIRValue> = args.iter().map(|a| self.expr_value(a)).collect();
+            let dest = self.new_register(ty, Some(name.as_str()));
+
+            let call = MIRInstruction::Call {
+                dest: dest.clone(),
+                callee: name,
+                args: mir_args,
+            };
+            self.add_instruction(call, Some(expr.span.clone()));
+
+            self.last_value = Some(dest);
+        }
+    }
+
     fn build_bin(
         &mut self,
         op: &HirBinaryOp,
@@ -208,7 +239,6 @@ impl<'a> MIRBuilder<'a> {
 
                 let Some(result) = self.last_value.as_ref().cloned() else {
                     self.report_ice("Failed to get last MIRValue".to_string(), span.clone());
-                    return;
                 };
 
                 let ptr = self.lookup_ptr(lhs);
@@ -242,7 +272,6 @@ impl<'a> MIRBuilder<'a> {
 
         let Some(new_val) = self.last_value.as_ref().cloned() else {
             self.report_ice("Failed to get last MIRValue".to_string(), span);
-            return;
         };
 
         let ptr = self.lookup_ptr(operand);
@@ -277,7 +306,6 @@ impl<'a> MIRBuilder<'a> {
 
                 let Some(new_val) = self.last_value.as_ref().cloned() else {
                     self.report_ice("Failed to get last MIRValue".to_string(), span);
-                    return;
                 };
 
                 let ptr = self.lookup_ptr(operand);
@@ -302,13 +330,21 @@ impl<'a> MIRBuilder<'a> {
                         ),
                         span.clone(),
                     );
-                    return MIRValue::Poison; // Return poison value to safely gracefully halt/unwind
                 };
 
                 let ty = self.get_type(&expr.hir_id);
                 let dest = self.new_register(ty.clone(), None);
                 self.build_load(dest.clone(), ptr, ty, span);
                 dest
+            }
+
+            HirExprKind::Call(_, _) => {
+                self.build_call(expr);
+                if let Some(val) = self.last_value.clone() {
+                    val
+                } else {
+                    self.report_ice("Could not get call value".to_string(), span);
+                }
             }
 
             HirExprKind::DollarScope { .. } => {
@@ -320,7 +356,6 @@ impl<'a> MIRBuilder<'a> {
                         "Dollar scope evaluation failed to produce a result register".to_string(),
                         span,
                     );
-                    MIRValue::Poison
                 }
             }
 
@@ -337,7 +372,6 @@ impl<'a> MIRBuilder<'a> {
                         ),
                         span,
                     );
-                    MIRValue::Poison
                 }
             }
 
@@ -355,7 +389,6 @@ impl<'a> MIRBuilder<'a> {
                         ),
                         span,
                     );
-                    MIRValue::Poison
                 }
             }
 
@@ -373,7 +406,6 @@ impl<'a> MIRBuilder<'a> {
                         ),
                         span,
                     );
-                    MIRValue::Poison
                 }
             }
 
@@ -385,7 +417,6 @@ impl<'a> MIRBuilder<'a> {
                     ),
                     span,
                 );
-                MIRValue::Poison
             }
         }
     }

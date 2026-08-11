@@ -12,7 +12,8 @@ impl<'a> TypeChecker<'a> {
             HirStmtKind::HirVariantDecl { .. }
             | HirStmtKind::HirStructDecl { .. }
             | HirStmtKind::HirEnumDecl { .. }
-            | HirStmtKind::HirFunctionDecl { .. } => self.declare_custom_types(stmt),
+            | HirStmtKind::HirFunctionDecl { .. }
+            | HirStmtKind::HirAlias { .. } => self.declare_custom_types(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.check_func(stmt),
             HirStmtKind::HirVarDecl { .. } => self.check_var(stmt),
             HirStmtKind::HirReturn(_) => self.check_return(stmt),
@@ -111,8 +112,8 @@ impl<'a> TypeChecker<'a> {
                 Some(ty) => self.type_from_hir_type(ty),
                 None => init_ty.clone(),
             };
-            if self.is_unsuffixed_literal(init) {
-                init_ty= _annotated_ty.clone();
+            if self.is_ty_coercable(&_annotated_ty, init) {
+                init_ty = _annotated_ty.clone();
             }
 
             if !TypeInfo::types_match(&_annotated_ty, &init_ty) {

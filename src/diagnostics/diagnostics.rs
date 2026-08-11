@@ -29,7 +29,10 @@ impl Diagnostics {
 
     pub fn report(&mut self, error: CompilerError) {
         match error.severity {
-            Severity::Error | Severity::Fatal | Severity::Ice => {
+            Severity::Ice => {
+                self.report_ice_and_panic(error);
+            }
+            Severity::Error | Severity::Fatal => {
                 self.errors.push(error);
             }
             Severity::Warning => {
@@ -233,5 +236,13 @@ impl Diagnostics {
                 error.message.color(Color::White)
             );
         }
+    }
+
+    pub fn report_ice_and_panic(&mut self, error: CompilerError) -> ! {
+        self.errors.push(error.clone());
+        self.print_ice_header(1);
+        self.print_error(&error);
+        self.print_ice_footer();
+        panic!("Encountered internal compiler error");
     }
 }

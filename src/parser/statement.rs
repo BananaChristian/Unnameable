@@ -126,7 +126,11 @@ impl Parser {
             | TType::U8Key
             | TType::BoolKey
             | TType::F32Key
-            | TType::F64Key => true,
+            | TType::F64Key
+            | TType::StrKey
+            | TType::Char8Key
+            | TType::Char16Key
+            | TType::Char32Key => true,
 
             TType::Identifier => {
                 if let Some(next) = self.peek_token() {

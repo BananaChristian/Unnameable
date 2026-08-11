@@ -6,7 +6,7 @@ use crate::{
     indexer::NodeIndex,
     lowering::NodeId,
     mir::instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, MIRDollarMode, FnId, GlobalId, MIRFn, MIRGlobal,
+        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
         MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
     semantics::{ResolvedTypeKind, TypesTable},
@@ -365,10 +365,9 @@ impl<'a> MIRBuilder<'a> {
     pub fn add_instruction(&mut self, instruction: MIRInstruction, span: Option<Span>) {
         let Some(fn_id) = self.current_func else {
             self.report_ice(
-                "Cannot emit instruction: no active function context".to_string(),
+                "Cannot emit instruction, no active function context".to_string(),
                 span,
             );
-            return;
         };
 
         let Some(block_id) = self.current_block_id else {
@@ -376,7 +375,6 @@ impl<'a> MIRBuilder<'a> {
                 "Cannot emit instruction: no active basic block".to_string(),
                 span,
             );
-            return;
         };
 
         let Some(func) = self.module.functions.get_mut(&fn_id) else {
@@ -384,7 +382,6 @@ impl<'a> MIRBuilder<'a> {
                 format!("Active function {:?} not found in module", fn_id),
                 span,
             );
-            return;
         };
 
         let Some(block) = func.blocks.get_mut(&block_id) else {
@@ -395,7 +392,6 @@ impl<'a> MIRBuilder<'a> {
                 ),
                 span,
             );
-            return;
         };
 
         block.instructions.push(instruction);
@@ -431,11 +427,14 @@ impl<'a> MIRBuilder<'a> {
         None
     }
 
-    pub fn lookup_ptr(&self, expr: &HirExpr) -> MIRValue {
+    pub fn lookup_ptr(&mut self, expr: &HirExpr) -> MIRValue {
         if let HirExprKind::Identifier(name) = &expr.kind {
             self.lookup_var(name).cloned().expect("Variable not found")
         } else {
-            panic!("Cannot assign to non-identifier")
+            self.report_ice(
+                "Cannot assign to a non-identifier".to_string(),
+                Some(expr.span.clone()),
+            );
         }
     }
 
@@ -445,7 +444,6 @@ impl<'a> MIRBuilder<'a> {
                 "Cannot add basic block: no active function context".to_string(),
                 span,
             );
-            return;
         };
 
         let Some(func) = self.module.functions.get_mut(&fn_id) else {
@@ -453,7 +451,6 @@ impl<'a> MIRBuilder<'a> {
                 format!("Active function {} not found in module", fn_id),
                 span,
             );
-            return;
         };
 
         func.blocks.insert(block.id, block.clone());
@@ -464,7 +461,6 @@ impl<'a> MIRBuilder<'a> {
                 "Attempted to set terminator with no active function".to_string(),
                 span,
             );
-            return;
         };
 
         let Some(block_id) = self.current_block_id else {
@@ -472,7 +468,6 @@ impl<'a> MIRBuilder<'a> {
                 "Attempted to set terminator with no active block".to_string(),
                 span,
             );
-            return;
         };
 
         let Some(func) = self.module.functions.get_mut(&fn_id) else {
@@ -480,7 +475,6 @@ impl<'a> MIRBuilder<'a> {
                 format!("Active function {} not found in module", fn_id),
                 None,
             );
-            return;
         };
 
         let Some(block) = func.blocks.get_mut(&block_id) else {
@@ -488,17 +482,16 @@ impl<'a> MIRBuilder<'a> {
                 format!("Active block {} not found in function {}", block_id, fn_id),
                 None,
             );
-            return;
         };
 
         block.terminator = terminator;
     }
 
     //All errors in the MIR builder are ICE in nature
-    pub fn report_ice(&mut self, message: String, span: Option<Span>) {
+    pub fn report_ice(&mut self, message: String, span: Option<Span>) -> ! {
         self.corrupted = true;
-        self.diagnostics
-            .borrow_mut()
-            .report(CompilerError::ice(message, Phase::MIRBuilder, span));
+        let err = CompilerError::ice(message, Phase::MIRBuilder, span);
+
+        self.diagnostics.borrow_mut().report_ice_and_panic(err);
     }
 }

@@ -424,7 +424,6 @@ impl<'a> BytecodeBuilder<'a> {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let Some(fn_id) = self.bytecode_module.fn_symbols.get(scope_fn) else {
                     self.report_ice(format!("Failed to get MIR function '{}'", scope_fn));
-                    return;
                 };
                 let arg_regs = args
                     .iter()
@@ -489,12 +488,9 @@ impl<'a> BytecodeBuilder<'a> {
         }
     }
 
-    pub fn report_ice(&mut self, message: String) {
+    pub fn report_ice(&mut self, message: String) -> ! {
         self.corrupted = true;
-        self.diagnostics.borrow_mut().report(CompilerError::ice(
-            message,
-            Phase::BytecodeBuilder,
-            None,
-        ));
+        let err = CompilerError::ice(message, Phase::BytecodeBuilder, None);
+        self.diagnostics.borrow_mut().report_ice_and_panic(err);
     }
 }

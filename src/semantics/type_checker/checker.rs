@@ -853,7 +853,19 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn is_unsuffixed_literal(&self, expr: &HirExpr) -> bool {
+    pub fn is_ty_coercable(&self, annotated_ty: &TypeInfo, expr: &HirExpr) -> bool {
+        if self.is_unsuffixed_literal(expr) {
+            if self.is_numeric(annotated_ty) {
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+
+    fn is_unsuffixed_literal(&self, expr: &HirExpr) -> bool {
         match &expr.kind {
             HirExprKind::Literal(lit) => match lit {
                 HirLiteral::Int(_) | HirLiteral::Float(_) => true,

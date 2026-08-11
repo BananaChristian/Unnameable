@@ -148,7 +148,9 @@ impl<'a> MIRBuilder<'a> {
 
             //  Save previous context
             let prev_fn = self.current_func;
+            println!("PREV FN: {:?}", prev_fn);
             let prev_block = self.current_block_id;
+            println!("PREV_BLOCK: {:?}", prev_block);
 
             self.current_func = Some(new_fn_id);
             self.current_block_id = Some(entry_block_id);
@@ -208,7 +210,6 @@ impl<'a> MIRBuilder<'a> {
             self.build_expr(condition);
             let Some(cond_val) = self.last_value.as_ref().cloned() else {
                 self.report_ice("Failed to get last MIRValue".to_string(), span.clone());
-                return;
             };
 
             let then_block = self.create_basic_block();
@@ -268,7 +269,6 @@ impl<'a> MIRBuilder<'a> {
 
             let Some(cond_val) = self.last_value.as_ref().cloned() else {
                 self.report_ice("Failed to get last MIRValue".to_string(), span.clone());
-                return;
             };
             self.set_terminator(
                 Terminator::Branch {
