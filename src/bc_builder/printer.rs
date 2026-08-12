@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{self, Write};
+use std::fmt::{self, Write, format};
 
 use crate::bc_builder::bytecode::{BytecodeModule, DollarMode, VMOpcode};
 
@@ -111,7 +111,7 @@ impl BytecodePrinter {
             VMOpcode::ConstU128 { dest, val } => {
                 format!("r{} = {} (u128)", dest, val)
             }
-            VMOpcode::ConstIsize { dest, val } => format!("r{} = {} (isize) ",dest,val),
+            VMOpcode::ConstIsize { dest, val } => format!("r{} = {} (isize) ", dest, val),
             VMOpcode::ConstUSize { dest, val } => format!("r{} = {} (usize)", dest, val),
             VMOpcode::ConstBool { dest, val } => format!("r{} = {}", dest, val),
 
@@ -135,10 +135,27 @@ impl BytecodePrinter {
                 format!("store_global @{}, r{}", global_id, src)
             }
 
+            VMOpcode::Compare {
+                dest,
+                op,
+                src1,
+                src2,
+            } => {
+                format!("r{}= r{} {} r{}", dest, src1, op, src2)
+            }
+
             VMOpcode::Add { dest, src1, src2 } => format!("r{} = r{} + r{}", dest, src1, src2),
             VMOpcode::Sub { dest, src1, src2 } => format!("r{} = r{} - r{}", dest, src1, src2),
             VMOpcode::Mul { dest, src1, src2 } => format!("r{} = r{} * r{}", dest, src1, src2),
             VMOpcode::Div { dest, src1, src2 } => format!("r{} = r{} / r{}", dest, src1, src2),
+            VMOpcode::Mod { dest, src1, src2 } => format!("r{} = r{} % r{}", dest, src1, src2),
+
+            VMOpcode::Xor { dest, src1, src2 } => format!("r{} = r{} ^ r{}", dest, src1, src2),
+            VMOpcode::And { dest, src1, src2 } => format!("r{} = r{} & r{}", dest, src1, src2),
+            VMOpcode::Or { dest, src1, src2 } => format!("r{} = r{} | r{}", dest, src1, src2),
+            VMOpcode::Shl { dest, src1, src2 } => format!("r{} = r{} << r{}", dest, src1, src2),
+            VMOpcode::Shr { dest, src1, src2 } => format!("r{} = r{} >> r{}", dest, src1, src2),
+            VMOpcode::AShr { dest, src1, src2 } => format!("r{} = r{} ashr r{}", dest, src1, src2),
 
             VMOpcode::Jump { target_pc } => format!("jump -> [{:04}]", target_pc),
             VMOpcode::BranchIf {

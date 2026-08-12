@@ -321,7 +321,7 @@ impl<'a> MIRBuilder<'a> {
                 self.last_value = Some(new_val)
             }
             HirUnaryOp::BitNot => {
-                let neg_val = MIRValue::Constant(ConstantValue::Int(-1));
+                let neg_val = self.get_corresponding_neg_val(&ty);
                 self.build_binary(MIROps::Xor, operand_val, neg_val, ty, span);
             }
             _ => (),

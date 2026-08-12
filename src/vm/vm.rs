@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::{
     bc_builder::{BytecodeModule, VMOpcode},
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
-    impl_binary_op,
+    impl_cmp_op, impl_int_op, impl_numeric_op,
+    mir::CmpOp,
     vm::structures::{AllocId, EvalResultTable, VMFrame, VMMemory, VMValue},
 };
 
@@ -168,22 +169,109 @@ impl<'a> VM<'a> {
                     //Write into the eval table
                     self.eval_table.results.insert(scope_name, result);
                 }
+                VMOpcode::Compare {
+                    dest,
+                    op,
+                    src1,
+                    src2,
+                } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+
+                    let res = match op {
+                        // Equality
+                        CmpOp::Eq => impl_cmp_op!(a, b, ==),
+                        CmpOp::Neq => impl_cmp_op!(a, b, !=),
+
+                        // Signed comparison
+                        CmpOp::Slt => impl_cmp_op!(a, b, <),
+                        CmpOp::Sgt => impl_cmp_op!(a, b, >),
+                        CmpOp::Sle => impl_cmp_op!(a, b, <=),
+                        CmpOp::Sge => impl_cmp_op!(a, b, >=),
+
+                        // Unsigned comparison
+                        CmpOp::Ult => impl_cmp_op!(a, b, <),
+                        CmpOp::Ugt => impl_cmp_op!(a, b, >),
+                        CmpOp::Ule => impl_cmp_op!(a, b, <=),
+                        CmpOp::Uge => impl_cmp_op!(a, b, >=),
+
+                        // Float comparison
+                        CmpOp::Flt => impl_cmp_op!(a, b, <),
+                        CmpOp::Fgt => impl_cmp_op!(a, b, >),
+                        CmpOp::Fle => impl_cmp_op!(a, b, <=),
+                        CmpOp::Fge => impl_cmp_op!(a, b, >=),
+                    };
+
+                    self.write_reg(frame, dest, res);
+                }
                 VMOpcode::Add { dest, src1, src2 } => {
                     let val1 = self.read_reg(src1, frame);
                     let val2 = self.read_reg(src2, frame);
-                    let result = impl_binary_op!(self,val1,val2,+);
+                    let result = impl_numeric_op!(self,val1,val2,+);
                     self.write_reg(frame, dest, result);
                 }
                 VMOpcode::Sub { dest, src1, src2 } => {
                     let val1 = self.read_reg(src1, frame);
                     let val2 = self.read_reg(src2, frame);
-                    let res = impl_binary_op!(self, val1,val2,-);
+                    let res = impl_numeric_op!(self, val1,val2,-);
                     self.write_reg(frame, dest, res);
                 }
                 VMOpcode::Mul { dest, src1, src2 } => {
                     let a = self.read_reg(src1, frame);
                     let b = self.read_reg(src2, frame);
-                    let res = impl_binary_op!(self, a, b, *);
+                    let res = impl_numeric_op!(self, a, b, *);
+                    self.write_reg(frame, dest, res);
+                }
+                VMOpcode::Div { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_numeric_op!(self, a, b, /);
+                    self.write_reg(frame, dest, res);
+                }
+                VMOpcode::Mod { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_numeric_op!(self, a, b, %);
+                    self.write_reg(frame, dest, res);
+                }
+                VMOpcode::And { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_int_op!(a, b, &);
+                    self.write_reg(frame, dest, res);
+                }
+
+                VMOpcode::Or { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_int_op!(a, b, |);
+                    self.write_reg(frame, dest, res);
+                }
+
+                VMOpcode::Xor { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_int_op!(a, b, ^);
+                    self.write_reg(frame, dest, res);
+                }
+
+                VMOpcode::Shl { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_int_op!(a, b, <<);
+                    self.write_reg(frame, dest, res);
+                }
+
+                VMOpcode::Shr { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_int_op!(a, b, >>);
+                    self.write_reg(frame, dest, res);
+                }
+                VMOpcode::AShr { dest, src1, src2 } => {
+                    let a = self.read_reg(src1, frame);
+                    let b = self.read_reg(src2, frame);
+                    let res = impl_int_op!(a, b, >>);
                     self.write_reg(frame, dest, res);
                 }
                 _ => todo!("VMOpcode {:?} not implemented", instr),

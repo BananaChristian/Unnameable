@@ -6,8 +6,8 @@ use crate::{
     },
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     mir::{
-        BlockId, ConstantValue, MIRDollarMode, MIRFn, MIRInstruction, MIRModule, MIROps, MIRValue,
-        Terminator, Vreg,
+        BlockId, CmpOp, ConstantValue, MIRDollarMode, MIRFn, MIRInstruction, MIRModule, MIROps,
+        MIRValue, Terminator, Vreg,
     },
 };
 
@@ -386,21 +386,55 @@ impl<'a> BytecodeBuilder<'a> {
                         src1: lhs_reg,
                         src2: rhs_reg,
                     },
-                    MIROps::Mod => todo!("mod opcode"),
-                    MIROps::Xor => todo!("xor opcode"),
-                    _ => todo!("Add support for other operands")
+                    MIROps::Mod => VMOpcode::Mod {
+                        dest: dest_reg,
+                        src1: lhs_reg,
+                        src2: rhs_reg,
+                    },
+                    MIROps::Xor => VMOpcode::Xor {
+                        dest: dest_reg,
+                        src1: lhs_reg,
+                        src2: rhs_reg,
+                    },
+                    MIROps::And => VMOpcode::And {
+                        dest: dest_reg,
+                        src1: lhs_reg,
+                        src2: rhs_reg,
+                    },
+                    MIROps::Or => VMOpcode::Or {
+                        dest: dest_reg,
+                        src1: lhs_reg,
+                        src2: rhs_reg,
+                    },
+                    MIROps::Shl => VMOpcode::Shl {
+                        dest: dest_reg,
+                        src1: lhs_reg,
+                        src2: rhs_reg,
+                    },
+                    MIROps::Shr => VMOpcode::Shr {
+                        dest: dest_reg,
+                        src1: lhs_reg,
+                        src2: rhs_reg,
+                    },
+                    MIROps::Ashr => VMOpcode::AShr {
+                        dest: dest_reg,
+                        src1: lhs_reg,
+                        src2: rhs_reg,
+                    },
                 };
                 instructions.push(vm_op);
             }
 
             MIRInstruction::Compare { dest, op, lhs, rhs } => {
-                // emit compare as a call to a built-in or inline expand
-                // for now emit as a placeholder
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let lhs_reg = self.lower_mir_value(lhs, reg_map, instructions);
                 let rhs_reg = self.lower_mir_value(rhs, reg_map, instructions);
-                // TODO: add CmpOp to VMOpcode
-                todo!("compare instruction in VM")
+                instructions.push(VMOpcode::Compare {
+                    dest: dest_reg,
+                    op: op.clone(),
+                    src1: lhs_reg,
+                    src2: rhs_reg,
+                });
             }
 
             MIRInstruction::Call { dest, callee, args } => {

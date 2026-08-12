@@ -64,7 +64,7 @@ pub enum MIROps {
     Ashr, //arithemtic right shift
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CmpOp {
     Eq,
     Neq,

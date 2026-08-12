@@ -9,7 +9,7 @@ use crate::{
         BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
         MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
-    semantics::{ResolvedTypeKind, TypesTable},
+    semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
     target::TargetSpec,
 };
 
@@ -293,6 +293,21 @@ impl<'a> MIRBuilder<'a> {
             HirBinaryOp::Eq => CmpOp::Eq,
             HirBinaryOp::Neq => CmpOp::Neq,
             _ => unreachable!("Not a comparison operator"),
+        }
+    }
+
+    pub fn get_corresponding_neg_val(&mut self, ty: &MIRTy) -> MIRValue {
+        match ty.kind {
+            MIRTykind::I8 => MIRValue::Constant(ConstantValue::I8(-1)),
+            MIRTykind::I16 => MIRValue::Constant(ConstantValue::I16(-1)),
+            MIRTykind::I32 => MIRValue::Constant(ConstantValue::I32(-1)),
+            MIRTykind::I64 => MIRValue::Constant(ConstantValue::I64(-1)),
+            MIRTykind::ISIZE => MIRValue::Constant(ConstantValue::Int(-1)),
+            MIRTykind::I128 => MIRValue::Constant(ConstantValue::I128(-1)),
+            _ => self.report_ice(
+                format!("Cannot get negative value for invalid type '{}'", ty),
+                None,
+            ),
         }
     }
 

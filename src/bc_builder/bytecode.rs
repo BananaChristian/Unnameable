@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::mir::CmpOp;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum DollarMode {
     Full,
@@ -30,15 +32,15 @@ pub enum VMOpcode {
         dest: u16,
         val: i32,
     },
-    ConstU32{
+    ConstU32 {
         dest: u16,
         val: u32,
     },
-    ConstI64{
+    ConstI64 {
         dest: u16,
         val: i64,
     },
-    ConstU64{
+    ConstU64 {
         dest: u16,
         val: u64,
     },
@@ -50,11 +52,11 @@ pub enum VMOpcode {
         dest: u16,
         val: usize,
     },
-    ConstI128{
+    ConstI128 {
         dest: u16,
         val: i128,
     },
-    ConstU128{
+    ConstU128 {
         dest: u16,
         val: u128,
     },
@@ -116,6 +118,47 @@ pub enum VMOpcode {
     },
     Div {
         dest: u16,
+        src1: u16,
+        src2: u16,
+    },
+    Mod {
+        dest: u16,
+        src1: u16,
+        src2: u16,
+    },
+    Xor {
+        dest: u16,
+        src1: u16,
+        src2: u16,
+    },
+    And {
+        dest: u16,
+        src1: u16,
+        src2: u16,
+    },
+    Or {
+        dest: u16,
+        src1: u16,
+        src2: u16,
+    },
+    Shl {
+        dest: u16,
+        src1: u16,
+        src2: u16,
+    },
+    Shr {
+        dest: u16,
+        src1: u16,
+        src2: u16,
+    },
+    AShr {
+        dest: u16,
+        src1: u16,
+        src2: u16,
+    },
+    Compare {
+        dest: u16,
+        op: CmpOp,
         src1: u16,
         src2: u16,
     },
