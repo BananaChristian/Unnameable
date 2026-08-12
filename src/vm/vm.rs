@@ -4,8 +4,11 @@ use crate::{
     bc_builder::{BytecodeModule, VMOpcode},
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     impl_cmp_op, impl_int_op, impl_numeric_op,
-    mir::CmpOp,
-    vm::structures::{AllocId, EvalResultTable, VMFrame, VMMemory, VMValue},
+    mir::{CmpOp, MIRTykind},
+    vm::{
+        Allocation,
+        structures::{AllocId, EvalResultTable, VMFrame, VMMemory, VMValue},
+    },
 };
 
 pub struct VM<'a> {
@@ -117,18 +120,25 @@ impl<'a> VM<'a> {
                 VMOpcode::Jump { target_pc } => {
                     frame.ip = target_pc;
                 }
+                VMOpcode::Move { dest, src } => {
+                    let val = self.read_reg(src, frame);
+                    self.write_reg(frame, dest, val);
+                }
                 VMOpcode::Alloca { dest, .. } => {
                     let alloc_id = AllocId(self.memory.next_alloc);
                     self.memory.next_alloc += 1;
-                    self.memory
-                        .allocations
-                        .insert(alloc_id.clone(), VMValue::Unit);
+
+                    let allocation = Allocation {
+                        data: vec![VMValue::Poison],
+                    };
+
+                    self.memory.allocations.insert(alloc_id.clone(), allocation);
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
                 VMOpcode::Load { dest, ptr, .. } => {
                     let ptr_val = self.read_reg(ptr, frame);
-                    if let VMValue::Ptr(alloc_id, _) = ptr_val {
-                        let val = self.mem_read(&alloc_id);
+                    if let VMValue::Ptr(alloc_id, offset) = ptr_val {
+                        let val = self.mem_read(&alloc_id, offset);
                         self.write_reg(frame, dest, val);
                     } else {
                         self.report_ice("Load from non pointer".to_string());
@@ -137,8 +147,8 @@ impl<'a> VM<'a> {
                 VMOpcode::Store { ptr, val, .. } => {
                     let ptr_val = self.read_reg(ptr, frame);
                     let src_val = self.read_reg(val, frame);
-                    if let VMValue::Ptr(alloc_id, _) = ptr_val {
-                        self.mem_write(&alloc_id, src_val);
+                    if let VMValue::Ptr(alloc_id, offset) = ptr_val {
+                        self.mem_write(&alloc_id, offset, src_val);
                     } else {
                         self.report_ice("Store to a non pointer".to_string());
                     }
@@ -274,6 +284,81 @@ impl<'a> VM<'a> {
                     let res = impl_int_op!(a, b, >>);
                     self.write_reg(frame, dest, res);
                 }
+
+                VMOpcode::Cast { dest, src, to_ty } => {
+                    let val = self.read_reg(src, frame);
+
+                    let res = match (val.clone(), &to_ty.kind) {
+                        // Integer/Numeric -> Pointer (inttoptr)
+                        (v, MIRTykind::Ptr)
+                            if to_ty.is_integer()
+                                || matches!(v, VMValue::UInt(_) | VMValue::U64(_)) =>
+                        {
+                            let offset = v.as_u128() as usize;
+                            // AllocId(0) denotes an unallocated/raw address space or null
+                            VMValue::Ptr(AllocId(0), offset)
+                        }
+
+                        // Pointer -> Integer (ptrtoint)
+                        (VMValue::Ptr(_, offset), _) if to_ty.is_integer() => {
+                            // For execution models without flat unified address spaces,
+                            // the numeric address is typically the allocation offset.
+                            let raw_addr = offset as u128;
+                            match &to_ty.kind {
+                                MIRTykind::I8 => VMValue::I8(raw_addr as i8),
+                                MIRTykind::U8 => VMValue::U8(raw_addr as u8),
+                                MIRTykind::I16 => VMValue::I16(raw_addr as i16),
+                                MIRTykind::U16 => VMValue::U16(raw_addr as u16),
+                                MIRTykind::I32 => VMValue::I32(raw_addr as i32),
+                                MIRTykind::U32 => VMValue::U32(raw_addr as u32),
+                                MIRTykind::I64 => VMValue::I64(raw_addr as i64),
+                                MIRTykind::U64 => VMValue::U64(raw_addr as u64),
+                                MIRTykind::ISIZE => VMValue::Int(raw_addr as isize),
+                                MIRTykind::USIZE => VMValue::UInt(raw_addr as usize),
+                                MIRTykind::I128 => VMValue::I128(raw_addr as i128),
+                                MIRTykind::U128 => VMValue::U128(raw_addr),
+                                _ => panic!(
+                                    "Invalid pointer-to-integer cast destination: {:?}",
+                                    to_ty
+                                ),
+                            }
+                        }
+
+                        //  General Primitives -> Target Integer Types
+                        (v, target_kind) if to_ty.is_integer() => match target_kind {
+                            MIRTykind::I8 => VMValue::I8(v.as_i128() as i8),
+                            MIRTykind::U8 => VMValue::U8(v.as_u128() as u8),
+                            MIRTykind::I16 => VMValue::I16(v.as_i128() as i16),
+                            MIRTykind::U16 => VMValue::U16(v.as_u128() as u16),
+                            MIRTykind::I32 => VMValue::I32(v.as_i128() as i32),
+                            MIRTykind::U32 => VMValue::U32(v.as_u128() as u32),
+                            MIRTykind::I64 => VMValue::I64(v.as_i128() as i64),
+                            MIRTykind::U64 => VMValue::U64(v.as_u128() as u64),
+                            MIRTykind::ISIZE => VMValue::Int(v.as_i128() as isize),
+                            MIRTykind::USIZE => VMValue::UInt(v.as_u128() as usize),
+                            MIRTykind::I128 => VMValue::I128(v.as_i128()),
+                            MIRTykind::U128 => VMValue::U128(v.as_u128()),
+                            MIRTykind::Bool => VMValue::Bool(v.as_u128() != 0),
+                            _ => unreachable!(),
+                        },
+
+                        // General Primitives -> Target Float Types
+                        (v, MIRTykind::F32) => VMValue::F32(v.as_f64() as f32),
+                        (v, MIRTykind::F64) => VMValue::F64(v.as_f64()),
+
+                        // Pointer -> Pointer (No-op cast)
+                        (ptr @ VMValue::Ptr(_, _), MIRTykind::Ptr) => ptr,
+
+                        (v, _) => panic!("Unsupported VM cast from {:?} to {:?}", v, to_ty),
+                    };
+
+                    self.write_reg(frame, dest, res);
+                }
+                VMOpcode::BitCast { dest, src, to_ty } => {
+                    let val = self.read_reg(src, frame);
+                    let res = val.bitcast_to(&to_ty);
+                    self.write_reg(frame, dest, res);
+                }
                 _ => todo!("VMOpcode {:?} not implemented", instr),
             }
         }
@@ -291,16 +376,44 @@ impl<'a> VM<'a> {
         frame.registers[dest as usize] = Some(val)
     }
 
-    fn mem_read(&mut self, alloc_id: &AllocId) -> VMValue {
-        let Some(val) = self.memory.allocations.get(alloc_id).clone() else {
-            self.report_ice(format!("Failed to get value at allocation {}", alloc_id.0));
+    fn mem_read(&mut self, alloc_id: &AllocId, offset: usize) -> VMValue {
+        let Some(alloc) = self.memory.allocations.get(alloc_id) else {
+            self.report_ice(format!("Invalid or freed allocation ID: {}", alloc_id.0));
             return VMValue::Poison;
         };
-        val.clone()
+
+        if offset >= alloc.data.len() {
+            self.report_ice(format!(
+                "Out-of-bounds read at AllocId({}) with offset {} (allocation size: {})",
+                alloc_id.0,
+                offset,
+                alloc.data.len()
+            ));
+            return VMValue::Poison;
+        }
+
+        alloc.data[offset].clone()
     }
 
-    fn mem_write(&mut self, alloc_id: &AllocId, val: VMValue) {
-        self.memory.allocations.insert(alloc_id.clone(), val);
+    fn mem_write(&mut self, alloc_id: &AllocId, offset: usize, val: VMValue) {
+        let len = match self.memory.allocations.get(alloc_id) {
+            Some(alloc) => alloc.data.len(),
+            None => {
+                self.report_ice(format!("Invalid or freed allocation ID: {}", alloc_id.0));
+                return;
+            }
+        };
+
+        //  Perform bounds check using `self` safely
+        if offset >= len {
+            self.report_ice(format!(
+                "Out-of-bounds write at AllocId({}) with offset {} (allocation size: {})",
+                alloc_id.0, offset, len
+            ));
+            return;
+        }
+
+        self.memory.allocations.get_mut(alloc_id).unwrap().data[offset] = val;
     }
 
     pub fn report_ice(&mut self, message: String) {

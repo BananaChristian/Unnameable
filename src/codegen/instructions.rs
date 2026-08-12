@@ -8,7 +8,7 @@ use inkwell::{
 
 use crate::{
     codegen::Codegen,
-    mir::{BlockId, CmpOp, MIRInstruction, MIROps, MIRValue},
+    mir::{BlockId, CmpOp, MIRInstruction, MIROps, MIRTykind, MIRValue},
 };
 
 impl<'ctx> Codegen<'ctx> {
@@ -59,7 +59,7 @@ impl<'ctx> Codegen<'ctx> {
                 MIROps::Xor => self.builder.build_xor(lhs, rhs, "xortmp").unwrap().into(),
                 MIROps::And => self.builder.build_and(lhs, rhs, "andtmp").unwrap().into(),
                 MIROps::Or => self.builder.build_or(lhs, rhs, "ortmp").unwrap().into(),
-                MIROps::Shl =>self
+                MIROps::Shl => self
                     .builder
                     .build_left_shift(lhs, rhs, "shrtmp")
                     .unwrap()
@@ -110,7 +110,7 @@ impl<'ctx> Codegen<'ctx> {
     pub fn lower_instruction(
         &mut self,
         inst: &MIRInstruction,
-        bb_map: &HashMap<BlockId, BasicBlock<'ctx>>,
+        _bb_map: &HashMap<BlockId, BasicBlock<'ctx>>,
     ) {
         match inst {
             MIRInstruction::BinaryOperation { dest, op, lhs, rhs } => {
@@ -172,6 +172,139 @@ impl<'ctx> Codegen<'ctx> {
                     self.bind_dest(dest, res_val);
                 }
             }
+            MIRInstruction::Cast {
+                dest,
+                src,
+                from_ty,
+                to_ty,
+            } => {
+                let src_val = self.lower_value(src);
+                let target_ty = self.get_llvmty(to_ty);
+
+                let res = match (&from_ty.kind, &to_ty.kind) {
+                    //  Integer -> Pointer (inttoptr)
+                    (_, MIRTykind::Ptr) if from_ty.is_integer() => self
+                        .builder
+                        .build_int_to_ptr(
+                            src_val.into_int_value(),
+                            target_ty.into_pointer_type(),
+                            "inttoptr",
+                        )
+                        .unwrap()
+                        .into(),
+
+                    //  Pointer -> Integer (ptrtoint)
+                    (MIRTykind::Ptr, _) if to_ty.is_integer() => self
+                        .builder
+                        .build_ptr_to_int(
+                            src_val.into_pointer_value(),
+                            target_ty.into_int_type(),
+                            "ptrtoint",
+                        )
+                        .unwrap()
+                        .into(),
+
+                    // Integer <-> Integer (Truncate, Sign Extend, Zero Extend)
+                    _ if from_ty.is_integer() && to_ty.is_integer() => {
+                        let from_bits = from_ty.bit_width();
+                        let to_bits = to_ty.bit_width();
+                        let int_val = src_val.into_int_value();
+                        let target_int_ty = target_ty.into_int_type();
+
+                        if to_bits < from_bits {
+                            self.builder
+                                .build_int_truncate(int_val, target_int_ty, "trunc")
+                                .unwrap()
+                                .into()
+                        } else if to_bits > from_bits {
+                            if from_ty.is_signed() {
+                                self.builder
+                                    .build_int_s_extend(int_val, target_int_ty, "sext")
+                                    .unwrap()
+                                    .into()
+                            } else {
+                                self.builder
+                                    .build_int_z_extend(int_val, target_int_ty, "zext")
+                                    .unwrap()
+                                    .into()
+                            }
+                        } else {
+                            src_val
+                        }
+                    }
+
+                    // Float -> Integer (fptosi / fptoui)
+                    _ if from_ty.is_float() && to_ty.is_integer() => {
+                        let float_val = src_val.into_float_value();
+                        let target_int_ty = target_ty.into_int_type();
+
+                        if to_ty.is_signed() {
+                            self.builder
+                                .build_float_to_signed_int(float_val, target_int_ty, "fptosi")
+                                .unwrap()
+                                .into()
+                        } else {
+                            self.builder
+                                .build_float_to_unsigned_int(float_val, target_int_ty, "fptoui")
+                                .unwrap()
+                                .into()
+                        }
+                    }
+
+                    // Integer -> Float (sitofp / uitofp)
+                    _ if from_ty.is_integer() && to_ty.is_float() => {
+                        let int_val = src_val.into_int_value();
+                        let target_float_ty = target_ty.into_float_type();
+
+                        if from_ty.is_signed() {
+                            self.builder
+                                .build_signed_int_to_float(int_val, target_float_ty, "sitofp")
+                                .unwrap()
+                                .into()
+                        } else {
+                            self.builder
+                                .build_unsigned_int_to_float(int_val, target_float_ty, "uitofp")
+                                .unwrap()
+                                .into()
+                        }
+                    }
+
+                    // Float -> Float (fpext / fptrunc)
+                    _ if from_ty.is_float() && to_ty.is_float() => {
+                        let from_bits = from_ty.bit_width();
+                        let to_bits = to_ty.bit_width();
+                        let float_val = src_val.into_float_value();
+                        let target_float_ty = target_ty.into_float_type();
+
+                        if to_bits > from_bits {
+                            self.builder
+                                .build_float_ext(float_val, target_float_ty, "fpext")
+                                .unwrap()
+                                .into()
+                        } else if to_bits < from_bits {
+                            self.builder
+                                .build_float_trunc(float_val, target_float_ty, "fptrunc")
+                                .unwrap()
+                                .into()
+                        } else {
+                            src_val
+                        }
+                    }
+
+                    _ => src_val,
+                };
+
+                self.bind_dest(dest, res);
+            }
+            MIRInstruction::BitCast { dest, src, to_ty } => {
+                let src_val = self.lower_value(src);
+                let target_ty = self.get_llvmty(to_ty);
+                let res = self
+                    .builder
+                    .build_bit_cast(src_val, target_ty, "bitcast")
+                    .unwrap();
+                self.bind_dest(dest, res);
+            }
             MIRInstruction::Compare { dest, op, lhs, rhs } => {
                 let lhs_val = self.lower_value(lhs);
                 let rhs_val = self.lower_value(rhs);
@@ -223,7 +356,9 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.bind_dest(dest, res.into());
             }
-            _ => (),
+            _ => {
+                self.report_ice(format!("Unhandled MIR instruction: {}", inst), None);
+            }
         }
     }
 }

@@ -30,6 +30,8 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::Binary(lhs, operat, rhs) => self.build_bin(operat, lhs, rhs, span, ty),
             HirExprKind::DollarScope { .. } => self.build_dollar_scope(expr),
             HirExprKind::Call(_, _) => self.build_call(expr),
+            HirExprKind::StaticCast(_, _) => self.build_cast(expr),
+            HirExprKind::BitCast(_, _) => self.build_bitcast(expr),
             _ => todo!(
                 "Encountered an expression whose handler is yet to be added {:?}",
                 expr
@@ -95,6 +97,7 @@ impl<'a> MIRBuilder<'a> {
                 Some(res) => self.get_type(&res.hir_id),
                 None => MIRTy {
                     kind: MIRTykind::Unit,
+                    size: 0,
                     align: 0,
                 },
             };
@@ -126,6 +129,7 @@ impl<'a> MIRBuilder<'a> {
                 let alloc_dest = self.new_register(
                     MIRTy {
                         kind: MIRTykind::Bool,
+                        size: 1,
                         align: 1,
                     },
                     None,
@@ -184,6 +188,40 @@ impl<'a> MIRBuilder<'a> {
             };
             self.add_instruction(call, Some(expr.span.clone()));
 
+            self.last_value = Some(dest);
+        }
+    }
+
+    fn build_cast(&mut self, expr: &HirExpr) {
+        if let HirExprKind::StaticCast(_, src) = &expr.kind {
+            let to_ty = self.get_type(&expr.hir_id);
+            let from_ty = self.get_type(&src.hir_id);
+
+            let dest = self.new_register(to_ty.clone(), Some("cast"));
+            let src_val = self.expr_value(src);
+
+            let cast_instr = MIRInstruction::Cast {
+                dest: dest.clone(),
+                src: src_val,
+                from_ty,
+                to_ty,
+            };
+            self.add_instruction(cast_instr, Some(expr.span.clone()));
+            self.last_value = Some(dest);
+        }
+    }
+
+    fn build_bitcast(&mut self, expr: &HirExpr) {
+        if let HirExprKind::BitCast(_, src) = &expr.kind {
+            let to_ty = self.get_type(&expr.hir_id);
+            let src_val = self.expr_value(src);
+            let dest = self.new_register(to_ty.clone(), Some("bitcast"));
+            let bitcast_instr = MIRInstruction::BitCast {
+                dest: dest.clone(),
+                src: src_val,
+                to_ty,
+            };
+            self.add_instruction(bitcast_instr, Some(expr.span.clone()));
             self.last_value = Some(dest);
         }
     }
@@ -348,6 +386,23 @@ impl<'a> MIRBuilder<'a> {
                 let dest = self.new_register(ty.clone(), None);
                 self.build_load(dest.clone(), ptr, ty, span);
                 dest
+            }
+
+            HirExprKind::StaticCast(_, _) => {
+                self.build_cast(expr);
+                if let Some(val) = self.last_value.clone() {
+                    val
+                } else {
+                    self.report_ice("Could not get cast value".to_string(), span);
+                }
+            }
+            HirExprKind::BitCast(_, _) => {
+                self.build_bitcast(expr);
+                if let Some(val)= self.last_value.clone(){
+                    val
+                }else{
+                    self.report_ice("Could not get bitcast value".to_string(), span)
+                }
             }
 
             HirExprKind::Call(_, _) => {

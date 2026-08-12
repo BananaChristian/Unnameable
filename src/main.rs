@@ -3,7 +3,7 @@ use unnc::{
     bc_builder::{BytecodeBuilder, BytecodePrinter},
     codegen::Codegen,
     const_and_mut_validator::Validator,
-    diagnostics::{self, Diagnostics},
+    diagnostics::Diagnostics,
     dollar_folder::Folder,
     hir::HirPrinter,
     import::ImportEngine,

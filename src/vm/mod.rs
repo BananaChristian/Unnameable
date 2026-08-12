@@ -3,5 +3,5 @@ mod vm;
 #[macro_use]
 mod ops;
 
+pub use structures::{Allocation, EvalResultTable, VMValue};
 pub use vm::VM;
-pub use structures::{EvalResultTable, VMValue};

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::mir::CmpOp;
+use crate::mir::{CmpOp, MIRTy};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DollarMode {
@@ -162,7 +162,17 @@ pub enum VMOpcode {
         src1: u16,
         src2: u16,
     },
-
+    //Cast and bitcast
+    Cast {
+        dest: u16,
+        src: u16,
+        to_ty: MIRTy,
+    },
+    BitCast {
+        dest: u16,
+        src: u16,
+        to_ty: MIRTy,
+    },
     // Control Flow
     Jump {
         target_pc: usize,

@@ -11,7 +11,7 @@ use crate::{
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Layout {
     pub size: usize,      //Total size in bytes
-    pub alignment: usize, //Required alignment boundary
+    pub alignment: usize, //Required alignment boundary in bytes
 }
 
 impl Layout {

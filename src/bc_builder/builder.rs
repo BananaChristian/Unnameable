@@ -6,8 +6,8 @@ use crate::{
     },
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     mir::{
-        BlockId, CmpOp, ConstantValue, MIRDollarMode, MIRFn, MIRInstruction, MIRModule, MIROps,
-        MIRValue, Terminator, Vreg,
+        BlockId, ConstantValue, MIRDollarMode, MIRFn, MIRInstruction, MIRModule, MIROps, MIRValue,
+        Terminator, Vreg,
     },
 };
 
@@ -475,13 +475,25 @@ impl<'a> BytecodeBuilder<'a> {
                 todo!("GEP in bytecode")
             }
 
-            MIRInstruction::Cast { dest, src, .. } | MIRInstruction::BitCast { dest, src, .. } => {
-                // for now treat as a move VM doesn't care about types
+            MIRInstruction::Cast {
+                dest, src, to_ty, ..
+            } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let src_reg = self.lower_mir_value(src, reg_map, instructions);
-                instructions.push(VMOpcode::Move {
+                instructions.push(VMOpcode::Cast {
                     dest: dest_reg,
                     src: src_reg,
+                    to_ty: to_ty.clone(),
+                });
+            }
+
+            MIRInstruction::BitCast { dest, src, to_ty } => {
+                let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
+                let src_reg = self.lower_mir_value(src, reg_map, instructions);
+                instructions.push(VMOpcode::BitCast {
+                    dest: dest_reg,
+                    src: src_reg,
+                    to_ty: to_ty.clone(),
                 });
             }
 

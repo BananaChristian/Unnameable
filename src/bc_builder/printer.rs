@@ -16,7 +16,7 @@ impl fmt::Display for DollarMode {
 pub struct BytecodePrinter;
 
 impl BytecodePrinter {
-    /// Formats an entire BytecodeModule into a readable assembly-style String.
+    // Formats an entire BytecodeModule into a readable assembly-style String.
     pub fn print_module(module: &BytecodeModule) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "=== BYTECODE MODULE ===");
@@ -118,7 +118,7 @@ impl BytecodePrinter {
             VMOpcode::Move { dest, src } => format!("r{} = r{}", dest, src),
 
             VMOpcode::Alloca { dest, size, align } => {
-                format!("r{} = alloc_stack(size: {}, align: {})", dest, size, align)
+                format!("r{} = alloca size: {}, align: {}", dest, size, align)
             }
 
             VMOpcode::Load { dest, ptr, mode } => {
@@ -126,6 +126,14 @@ impl BytecodePrinter {
             }
             VMOpcode::Store { ptr, val, mode } => {
                 format!("store [r{}], r{} (mode: {})", ptr, val, mode)
+            }
+
+            VMOpcode::Cast { dest, src, to_ty } => {
+                format!("cast r{}, r{} {}", dest, src, to_ty)
+            }
+
+            VMOpcode::BitCast { dest, src, to_ty } => {
+                format!("bitcast r{}, r{} {}", dest, src, to_ty)
             }
 
             VMOpcode::LoadGlobal { dest, global_id } => {

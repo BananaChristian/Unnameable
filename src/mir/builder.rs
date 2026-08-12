@@ -9,7 +9,7 @@ use crate::{
         BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
         MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
-    semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
+    semantics::{ResolvedTypeKind, TypesTable},
     target::TargetSpec,
 };
 
@@ -334,6 +334,7 @@ impl<'a> MIRBuilder<'a> {
         let dest = self.new_register(
             MIRTy {
                 kind: MIRTykind::Bool,
+                size: 1,
                 align: 1,
             },
             None,
@@ -369,10 +370,12 @@ impl<'a> MIRBuilder<'a> {
                     ResolvedTypeKind::Bool => MIRTykind::Bool,
                     ResolvedTypeKind::F32 => MIRTykind::F32,
                     ResolvedTypeKind::F64 => MIRTykind::F64,
+                    ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
                     _ => todo!("Will map the other types later {:?}", ty),
                 };
+                let size = ty.layout.size;
                 let align = ty.layout.alignment;
-                MIRTy { kind, align }
+                MIRTy { kind, size, align }
             }
 
             None => todo!("Handle a failed type"),

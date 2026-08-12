@@ -69,6 +69,7 @@ impl<'a> MIRBuilder<'a> {
                     let dest = self.new_register(
                         MIRTy {
                             kind: MIRTykind::Ptr,
+                            size: 8,//Hard code for now
                             align: 8,
                         },
                         Some(name),
@@ -164,6 +165,8 @@ impl<'a> MIRBuilder<'a> {
                 let slot = self.new_register(
                     MIRTy {
                         kind: MIRTykind::Ptr,
+                        size: 8, //Note that I have hardcoded it here I will
+                        //follow the target spec later
                         align: 8,
                     },
                     Some(&format!("{}.addr", param.name)),

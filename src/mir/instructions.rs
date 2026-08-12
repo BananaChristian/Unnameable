@@ -85,13 +85,54 @@ pub enum CmpOp {
     Fge,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MIRTy {
     pub kind: MIRTykind,
-    pub align: usize,
+    pub size: usize,  //In bytes
+    pub align: usize, //In bytes
 }
 
-#[derive(Debug, Clone)]
+impl MIRTy {
+    pub fn is_integer(&self) -> bool {
+        matches!(
+            self.kind,
+            MIRTykind::I8
+                | MIRTykind::U8
+                | MIRTykind::I16
+                | MIRTykind::U16
+                | MIRTykind::I32
+                | MIRTykind::U32
+                | MIRTykind::I64
+                | MIRTykind::U64
+                | MIRTykind::I128
+                | MIRTykind::U128
+                | MIRTykind::ISIZE
+                | MIRTykind::USIZE
+        )
+    }
+
+    pub fn is_signed(&self) -> bool {
+        matches!(
+            self.kind,
+            MIRTykind::I8
+                | MIRTykind::I16
+                | MIRTykind::I32
+                | MIRTykind::I64
+                | MIRTykind::I128
+                | MIRTykind::ISIZE
+        )
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self.kind, MIRTykind::F32 | MIRTykind::F64)
+    }
+
+    pub fn bit_width(&self) -> usize {
+        self.size * 8
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum MIRTykind {
     I8,
     U8,
