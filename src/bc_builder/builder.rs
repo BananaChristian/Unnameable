@@ -200,7 +200,10 @@ impl<'a> BytecodeBuilder<'a> {
             ConstantValue::UInt(v) => instructions.push(VMOpcode::ConstUSize { dest, val: *v }),
             ConstantValue::I128(v) => instructions.push(VMOpcode::ConstI128 { dest, val: *v }),
             ConstantValue::U128(v) => instructions.push(VMOpcode::ConstU128 { dest, val: *v }),
-            ConstantValue::Ptr(offset)=>instructions.push(VMOpcode::ConstPtr { dest, addr: *offset }),
+            ConstantValue::Ptr(offset) => instructions.push(VMOpcode::ConstPtr {
+                dest,
+                addr: *offset,
+            }),
             ConstantValue::F32(_) => todo!("float constants"),
             ConstantValue::F64(_) => todo!("float constants"),
         }
@@ -350,6 +353,14 @@ impl<'a> BytecodeBuilder<'a> {
                     ptr: ptr_reg,
                     val: val_reg,
                     mode: current_mode,
+                });
+            }
+            MIRInstruction::AddrOf { dest, src } => {
+                let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
+                let src_reg = self.lower_mir_value(src, reg_map, instructions);
+                instructions.push(VMOpcode::AddrOf {
+                    dest: dest_reg,
+                    src: src_reg,
                 });
             }
 

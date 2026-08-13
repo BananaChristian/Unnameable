@@ -244,11 +244,16 @@ pub enum MIRInstruction {
         from_ty: MIRTy,
         to_ty: MIRTy,
     },
-
     BitCast {
         dest: MIRValue,
         src: MIRValue,
         to_ty: MIRTy,
+    },
+
+    // %dest = &%src (yields a pointer to an lvalue / stack location / global)
+    AddrOf {
+        dest: MIRValue,
+        src: MIRValue,
     },
 
     // Evaluates a compile-time dollar scope in the Dollar Bill engine

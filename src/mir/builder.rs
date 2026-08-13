@@ -163,10 +163,16 @@ impl<'a> MIRBuilder<'a> {
         self.add_instruction(alloca, span);
     }
 
-    pub fn build_store(&mut self, ptr: MIRValue, val: MIRValue, span: Option<Span>) {
+    pub fn build_store(
+        &mut self,
+        ptr: MIRValue,
+        val: MIRValue,
+        alignment: usize,
+        span: Option<Span>,
+    ) {
         let store = MIRInstruction::Store {
             ptr,
-            align: self.get_val_alignment(&val),
+            align: alignment,
             val,
         };
         self.add_instruction(store, span);
@@ -396,6 +402,17 @@ impl<'a> MIRBuilder<'a> {
                 ConstantValue::I128(_) | ConstantValue::U128(_) => 16,
             },
             MIRValue::Poison => 0,
+        }
+    }
+
+    pub fn get_alignment(&mut self, expr: &HirExpr) -> usize {
+        if let Some(ty) = self.types_table.types.get(&expr.hir_id) {
+            return ty.layout.alignment;
+        } else {
+            self.report_ice(
+                "Failed to get type alignment".to_string(),
+                Some(expr.span.clone()),
+            );
         }
     }
 

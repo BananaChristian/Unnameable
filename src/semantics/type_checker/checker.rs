@@ -853,7 +853,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    pub fn is_ty_coercable(&self, annotated_ty: &TypeInfo, expr: &HirExpr) -> bool {
+    fn is_ty_coercable(&self, annotated_ty: &TypeInfo, expr: &HirExpr) -> bool {
         if self.is_unsuffixed_literal(expr) {
             if self.is_numeric(annotated_ty) {
                 return true;
@@ -862,6 +862,15 @@ impl<'a> TypeChecker<'a> {
             }
         } else {
             return false;
+        }
+    }
+
+    pub fn coerce_ty(&mut self, annotated_ty: &TypeInfo, expr: &HirExpr) {
+        if self.is_ty_coercable(annotated_ty, expr) {
+            self.ctxt
+                .types
+                .types
+                .insert(expr.hir_id, annotated_ty.clone());
         }
     }
 

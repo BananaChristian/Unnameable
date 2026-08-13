@@ -229,6 +229,9 @@ impl fmt::Display for MIRInstruction {
             MIRInstruction::Store { ptr, val, align } => {
                 write!(f, "    store {val}, ptr {ptr}, align {align}")
             }
+            MIRInstruction::AddrOf { dest, src } => {
+                write!(f, "    {dest} = addr_of {src}")
+            }
             MIRInstruction::Call { dest, callee, args } => {
                 let arg_strs: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                 write!(f, "    {dest} = call @{callee}({})", arg_strs.join(", "))

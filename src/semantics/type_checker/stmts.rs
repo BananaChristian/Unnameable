@@ -107,17 +107,16 @@ impl<'a> TypeChecker<'a> {
     fn check_var(&mut self, stmt: &HirStmt) {
         let mut _annotated_ty = self.unknown(stmt.span.clone());
         if let HirStmtKind::HirVarDecl { ty, init, .. } = &stmt.kind {
-            let mut init_ty = self.expr_type(init);
+            let init_ty = self.expr_type(init);
             _annotated_ty = match ty {
                 Some(ty) => self.type_from_hir_type(ty),
                 None => init_ty.clone(),
             };
-            if self.is_ty_coercable(&_annotated_ty, init) {
-                init_ty = _annotated_ty.clone();
-            }
+            self.coerce_ty(&_annotated_ty, init);
 
-            if !TypeInfo::types_match(&_annotated_ty, &init_ty) {
-                self.type_mismatch(&_annotated_ty, &init_ty, stmt.span.clone());
+            let coerced_init_ty = self.expr_type(init);
+            if !TypeInfo::types_match(&_annotated_ty, &coerced_init_ty) {
+                self.type_mismatch(&_annotated_ty, &coerced_init_ty, stmt.span.clone());
             }
 
             self.insert(stmt.hir_id, _annotated_ty);

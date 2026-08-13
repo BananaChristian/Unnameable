@@ -152,6 +152,10 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
                 self.bind_dest(dest, val);
             }
+            MIRInstruction::AddrOf { dest, src } => {
+                let src_ptr_val = self.lower_value(src);
+                self.bind_dest(dest, src_ptr_val);
+            }
             MIRInstruction::Store { ptr, val, align } => {
                 let ptr_val = self.lower_value(ptr).into_pointer_value();
                 let val_val = self.lower_value(val);

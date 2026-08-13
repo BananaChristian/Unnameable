@@ -134,8 +134,10 @@ impl<'a> MIRBuilder<'a> {
                     },
                     None,
                 );
-                self.build_alloca(alloc_dest.clone(), param_ty, span.clone());
-                self.build_store(alloc_dest.clone(), param_val, span.clone());
+                self.build_alloca(alloc_dest.clone(), param_ty.clone(), span.clone());
+                let align = param_ty.align;
+
+                self.build_store(alloc_dest.clone(), param_val, align, span.clone());
 
                 // Bind name in scope map to the local stack pointer (%name.addr)
                 self.declare_var(name, alloc_dest);
@@ -237,7 +239,8 @@ impl<'a> MIRBuilder<'a> {
         if matches!(op, HirBinaryOp::Assign) {
             let rhs_value = self.expr_value(rhs);
             let ptr = self.lookup_ptr(lhs);
-            self.build_store(ptr, rhs_value, span);
+            let align = self.get_alignment(lhs);
+            self.build_store(ptr, rhs_value, align, span);
             return;
         }
 
@@ -288,7 +291,8 @@ impl<'a> MIRBuilder<'a> {
                 };
 
                 let ptr = self.lookup_ptr(lhs);
-                self.build_store(ptr, result, span);
+                let align = self.get_alignment(lhs);
+                self.build_store(ptr, result, align, span);
             }
             HirBinaryOp::Eq
             | HirBinaryOp::Neq
@@ -321,25 +325,28 @@ impl<'a> MIRBuilder<'a> {
         };
 
         let ptr = self.lookup_ptr(operand);
-        self.build_store(ptr, new_val, span);
+        let align = self.get_alignment(operand);
+        self.build_store(ptr, new_val, align, span);
 
         self.last_value = Some(old_val)
     }
 
     fn build_unary(&mut self, op: &HirUnaryOp, ty: MIRTy, operand: &HirExpr) {
         let span = Some(operand.span.clone());
-        let operand_val = self.expr_value(operand);
 
         match op {
             HirUnaryOp::Not => {
+                let operand_val = self.expr_value(operand);
                 let true_val = MIRValue::Constant(ConstantValue::Bool(true));
                 self.build_binary(MIROps::Xor, operand_val, true_val, ty, span);
             }
             HirUnaryOp::Neg => {
+                let operand_val = self.expr_value(operand);
                 let zero_val = MIRValue::Constant(ConstantValue::Int(0));
                 self.build_binary(MIROps::Sub, zero_val, operand_val, ty, span);
             }
             HirUnaryOp::Increment | HirUnaryOp::Decrement => {
+                let operand_val = self.expr_value(operand);
                 let base_op = if matches!(op, HirUnaryOp::Increment) {
                     MIROps::Add
                 } else {
@@ -355,21 +362,38 @@ impl<'a> MIRBuilder<'a> {
                 };
 
                 let ptr = self.lookup_ptr(operand);
-                self.build_store(ptr, new_val.clone(), span);
-                self.last_value = Some(new_val)
+                let align = self.get_alignment(operand);
+                self.build_store(ptr, new_val.clone(), align, span);
+                self.last_value = Some(new_val);
             }
             HirUnaryOp::BitNot => {
+                let operand_val = self.expr_value(operand);
                 let neg_val = self.get_corresponding_neg_val(&ty);
                 self.build_binary(MIROps::Xor, operand_val, neg_val, ty, span);
             }
-            _ => (),
+            HirUnaryOp::AddressOf => {
+                let src_ptr = self.lookup_ptr(operand);
+                let dest = self.new_register(ty, None);
+                let addr_of_instruction = MIRInstruction::AddrOf {
+                    dest: dest.clone(),
+                    src: src_ptr,
+                };
+                self.add_instruction(addr_of_instruction, span);
+                self.last_value = Some(dest);
+            }
+            HirUnaryOp::Dereference => {
+                let ptr_val = self.expr_value(operand);
+                let dest = self.new_register(ty.clone(), None);
+                self.build_load(dest.clone(), ptr_val, ty, span);
+                self.last_value = Some(dest);
+            }
         }
     }
 
     pub fn expr_value(&mut self, expr: &HirExpr) -> MIRValue {
         let span = Some(expr.span.clone());
         match &expr.kind {
-            HirExprKind::Literal(lit) => self.literal_value(lit),
+            HirExprKind::Literal(_) => self.literal_value(expr),
 
             HirExprKind::Identifier(name) => {
                 let Some(ptr) = self.lookup_var(name).cloned() else {
@@ -398,9 +422,9 @@ impl<'a> MIRBuilder<'a> {
             }
             HirExprKind::BitCast(_, _) => {
                 self.build_bitcast(expr);
-                if let Some(val)= self.last_value.clone(){
+                if let Some(val) = self.last_value.clone() {
                     val
-                }else{
+                } else {
                     self.report_ice("Could not get bitcast value".to_string(), span)
                 }
             }
@@ -488,26 +512,82 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    fn literal_value(&mut self, lit: &HirLiteral) -> MIRValue {
-        match *lit {
-            HirLiteral::Int8(val) => MIRValue::Constant(ConstantValue::I8(val)),
-            HirLiteral::Uint8(val) => MIRValue::Constant(ConstantValue::U8(val)),
-            HirLiteral::Int16(val) => MIRValue::Constant(ConstantValue::I16(val)),
-            HirLiteral::Uint16(val) => MIRValue::Constant(ConstantValue::U16(val)),
-            HirLiteral::Int32(val) => MIRValue::Constant(ConstantValue::I32(val)),
-            HirLiteral::Uint32(val) => MIRValue::Constant(ConstantValue::U32(val)),
-            HirLiteral::Int64(val) => MIRValue::Constant(ConstantValue::I64(val)),
-            HirLiteral::Uint64(val) => MIRValue::Constant(ConstantValue::U64(val)),
-            HirLiteral::Int(val) => MIRValue::Constant(ConstantValue::Int(val)),
-            HirLiteral::IntSize(val) => MIRValue::Constant(ConstantValue::Int(val)),
-            HirLiteral::UintSize(val) => MIRValue::Constant(ConstantValue::UInt(val)),
-            HirLiteral::Int128(val) => MIRValue::Constant(ConstantValue::I128(val)),
-            HirLiteral::Uint128(val) => MIRValue::Constant(ConstantValue::U128(val)),
-            HirLiteral::F32(val) => MIRValue::Constant(ConstantValue::F32(val)),
-            HirLiteral::F64(val) => MIRValue::Constant(ConstantValue::F64(val)),
-            HirLiteral::Float(val) => MIRValue::Constant(ConstantValue::F64(val)),
-            HirLiteral::Bool(val) => MIRValue::Constant(ConstantValue::Bool(val)),
-            _ => todo!("Handle the other constants"),
+    fn literal_value(&mut self, expr: &HirExpr) -> MIRValue {
+        let mir_ty = self.get_type(&expr.hir_id);
+        let span = Some(expr.span.clone());
+
+        match &expr.kind {
+            HirExprKind::Literal(lit) => match lit {
+                HirLiteral::Int8(v) => MIRValue::Constant(ConstantValue::I8(*v)),
+                HirLiteral::Int16(v) => MIRValue::Constant(ConstantValue::I16(*v)),
+                HirLiteral::Int32(v) => MIRValue::Constant(ConstantValue::I32(*v)),
+                HirLiteral::Int64(v) => MIRValue::Constant(ConstantValue::I64(*v)),
+                HirLiteral::IntSize(v) => MIRValue::Constant(ConstantValue::Int(*v)),
+                HirLiteral::Int128(v) => MIRValue::Constant(ConstantValue::I128(*v)),
+
+                HirLiteral::Uint8(v) => MIRValue::Constant(ConstantValue::U8(*v)),
+                HirLiteral::Uint16(v) => MIRValue::Constant(ConstantValue::U16(*v)),
+                HirLiteral::Uint32(v) => MIRValue::Constant(ConstantValue::U32(*v)),
+                HirLiteral::Uint64(v) => MIRValue::Constant(ConstantValue::U64(*v)),
+                HirLiteral::UintSize(v) => MIRValue::Constant(ConstantValue::UInt(*v)),
+                HirLiteral::Uint128(v) => MIRValue::Constant(ConstantValue::U128(*v)),
+
+                HirLiteral::F32(v) => MIRValue::Constant(ConstantValue::F32(*v)),
+                HirLiteral::F64(v) => MIRValue::Constant(ConstantValue::F64(*v)),
+                HirLiteral::Bool(v) => MIRValue::Constant(ConstantValue::Bool(*v)),
+
+                HirLiteral::Int(v) => match &mir_ty.kind {
+                    MIRTykind::I8 => MIRValue::Constant(ConstantValue::I8(*v as i8)),
+                    MIRTykind::I16 => MIRValue::Constant(ConstantValue::I16(*v as i16)),
+                    MIRTykind::I32 => MIRValue::Constant(ConstantValue::I32(*v as i32)),
+                    MIRTykind::I64 => MIRValue::Constant(ConstantValue::I64(*v as i64)),
+                    MIRTykind::I128 => MIRValue::Constant(ConstantValue::I128(*v as i128)),
+                    MIRTykind::ISIZE => MIRValue::Constant(ConstantValue::Int(*v as isize)),
+
+                    MIRTykind::U8 => MIRValue::Constant(ConstantValue::U8(*v as u8)),
+                    MIRTykind::U16 => MIRValue::Constant(ConstantValue::U16(*v as u16)),
+                    MIRTykind::U32 => MIRValue::Constant(ConstantValue::U32(*v as u32)),
+                    MIRTykind::U64 => MIRValue::Constant(ConstantValue::U64(*v as u64)),
+                    MIRTykind::U128 => MIRValue::Constant(ConstantValue::U128(*v as u128)),
+                    MIRTykind::USIZE => MIRValue::Constant(ConstantValue::UInt(*v as usize)),
+
+                    _ => {
+                        self.report_ice(
+                            format!(
+                                "Integer literal {:?} was assigned non-integer type {:?}",
+                                lit, mir_ty.kind
+                            ),
+                            span,
+                        );
+                    }
+                },
+
+                // Generic Unsuffixed Float Literals
+                HirLiteral::Float(v) => match &mir_ty.kind {
+                    MIRTykind::F32 => MIRValue::Constant(ConstantValue::F32(*v as f32)),
+                    MIRTykind::F64 => MIRValue::Constant(ConstantValue::F64(*v)),
+                    _ => {
+                        self.report_ice(
+                            format!(
+                                "Float literal {:?} was assigned non-float type {:?}",
+                                lit, mir_ty.kind
+                            ),
+                            span,
+                        );
+                    }
+                },
+                _ => todo!("Handle other constants")
+            },
+
+            _ => {
+                self.report_ice(
+                    format!(
+                        "Non-literal expression passed to literal_value: {:?}",
+                        expr.kind
+                    ),
+                    span,
+                );
+            }
         }
     }
 }

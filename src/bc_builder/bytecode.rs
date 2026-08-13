@@ -92,6 +92,10 @@ pub enum VMOpcode {
         val: u16,
         mode: DollarMode,
     },
+    AddrOf {
+        dest: u16,
+        src: u16,
+    },
 
     // Global Memory Access
     LoadGlobal {

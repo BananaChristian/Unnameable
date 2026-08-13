@@ -11,6 +11,11 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn expr_type(&mut self, expr: &HirExpr) -> TypeInfo {
+
+        if let Some(ty) = self.ctxt.types.types.get(&expr.hir_id) {
+            return ty.clone();
+        }
+
         let ty = match &expr.kind {
             HirExprKind::SizeOf(_) => self.primitive(ResolvedTypeKind::USize, expr.span.clone()),
             HirExprKind::Identifier(_) => {
@@ -251,9 +256,10 @@ impl<'a> TypeChecker<'a> {
         if let HirExprKind::Binary(left, op, right) = &expr.kind {
             let left_ty = self.expr_type(left);
             let mut right_ty = self.expr_type(right);
-            if self.is_ty_coercable(&left_ty,right){
-                right_ty= left_ty.clone();
-            }
+            
+            self.coerce_ty(&left_ty, right);
+            right_ty= self.expr_type(right);
+
             match op {
                 HirBinaryOp::Add
                 | HirBinaryOp::Sub
@@ -389,9 +395,10 @@ impl<'a> TypeChecker<'a> {
 
                     for (arg, param_ty) in args.iter().zip(params.iter()) {
                         let mut arg_ty = self.expr_type(arg);
-                        if self.is_ty_coercable(param_ty,arg){
-                            arg_ty=param_ty.clone();
-                        }
+                        self.coerce_ty(param_ty, arg);
+                        let coerced_ty= self.expr_type(arg);
+                        arg_ty= coerced_ty;
+
                         if !TypeInfo::types_match(&arg_ty, param_ty) {
                             self.type_mismatch(&arg_ty, param_ty, expr.span.clone());
                         }

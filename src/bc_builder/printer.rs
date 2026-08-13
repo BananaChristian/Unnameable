@@ -128,6 +128,7 @@ impl BytecodePrinter {
             VMOpcode::Store { ptr, val, mode } => {
                 format!("store [r{}], r{} (mode: {})", ptr, val, mode)
             }
+            VMOpcode::AddrOf { dest, src } => format!("r{} = addr_of r{}", dest, src),
 
             VMOpcode::Cast { dest, src, to_ty } => {
                 format!("r{} = cast r{} {}", dest, src, to_ty)

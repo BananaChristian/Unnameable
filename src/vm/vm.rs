@@ -153,6 +153,11 @@ impl<'a> VM<'a> {
                         self.report_ice("Store to a non pointer".to_string());
                     }
                 }
+                VMOpcode::AddrOf { dest, src } => {
+                    let ptr_val = self.read_reg(src, frame);
+                    debug_assert!(matches!(ptr_val, VMValue::Ptr(_, _)));
+                    self.write_reg(frame, dest, ptr_val);
+                }
                 VMOpcode::Return { val } => {
                     return match val {
                         Some(v) => self.read_reg(v, frame),

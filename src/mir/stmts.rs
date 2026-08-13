@@ -69,15 +69,16 @@ impl<'a> MIRBuilder<'a> {
                     let dest = self.new_register(
                         MIRTy {
                             kind: MIRTykind::Ptr,
-                            size: 8,//Hard code for now
-                            align: 8,
+                            size: self.target_spec.pointer_width,
+                            align: self.target_spec.pointer_width,
                         },
                         Some(name),
                     );
                     self.build_alloca(dest.clone(), ty.clone(), Some(stmt.span.clone()));
                     self.declare_var(name.clone(), dest.clone());
                     let val = self.expr_value(init);
-                    self.build_store(dest, val, Some(stmt.span.clone()));
+                    let align = self.get_alignment(init);
+                    self.build_store(dest, val, align, Some(stmt.span.clone()));
                 }
             }
         }
@@ -165,9 +166,8 @@ impl<'a> MIRBuilder<'a> {
                 let slot = self.new_register(
                     MIRTy {
                         kind: MIRTykind::Ptr,
-                        size: 8, //Note that I have hardcoded it here I will
-                        //follow the target spec later
-                        align: 8,
+                        size: self.target_spec.pointer_width,
+                        align: self.target_spec.pointer_width,
                     },
                     Some(&format!("{}.addr", param.name)),
                 );
@@ -175,7 +175,8 @@ impl<'a> MIRBuilder<'a> {
 
                 let param_val = self.new_register(param.ty.clone(), Some(param.name.as_str()));
 
-                self.build_store(slot.clone(), param_val, span.clone());
+                let align = param.ty.align;
+                self.build_store(slot.clone(), param_val, align, span.clone());
                 self.declare_var(param.name.clone(), slot);
             }
 
