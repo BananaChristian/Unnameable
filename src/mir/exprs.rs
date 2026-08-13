@@ -336,8 +336,8 @@ impl<'a> MIRBuilder<'a> {
                 self.build_binary(MIROps::Xor, operand_val, true_val, ty, span);
             }
             HirUnaryOp::Neg => {
-                let zero_val = MIRValue::Constant(ConstantValue::Int(1));
-                self.build_binary(MIROps::Sub, operand_val, zero_val, ty, span);
+                let zero_val = MIRValue::Constant(ConstantValue::Int(0));
+                self.build_binary(MIROps::Sub, zero_val, operand_val, ty, span);
             }
             HirUnaryOp::Increment | HirUnaryOp::Decrement => {
                 let base_op = if matches!(op, HirUnaryOp::Increment) {
@@ -498,7 +498,7 @@ impl<'a> MIRBuilder<'a> {
             HirLiteral::Uint32(val) => MIRValue::Constant(ConstantValue::U32(val)),
             HirLiteral::Int64(val) => MIRValue::Constant(ConstantValue::I64(val)),
             HirLiteral::Uint64(val) => MIRValue::Constant(ConstantValue::U64(val)),
-            HirLiteral::Int(val) => MIRValue::Constant(ConstantValue::I64(val)),
+            HirLiteral::Int(val) => MIRValue::Constant(ConstantValue::Int(val)),
             HirLiteral::IntSize(val) => MIRValue::Constant(ConstantValue::Int(val)),
             HirLiteral::UintSize(val) => MIRValue::Constant(ConstantValue::UInt(val)),
             HirLiteral::Int128(val) => MIRValue::Constant(ConstantValue::I128(val)),

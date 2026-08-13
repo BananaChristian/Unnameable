@@ -354,7 +354,7 @@ impl Lowering {
         }
     }
 
-    pub fn eval_const_int(&self, expr: &Expr) -> Option<i64> {
+    pub fn eval_const_int(&self, expr: &Expr) -> Option<isize> {
         match &expr.kind {
             ExprKind::Literal(Literal::Int(n)) => Some(*n),
             ExprKind::Unary(UnaryOp::Neg, inner) => {

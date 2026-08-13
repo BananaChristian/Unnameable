@@ -125,6 +125,24 @@ impl VMValue {
         }
     }
 
+    pub fn is_integer(&self) -> bool {
+        matches!(
+            self,
+            VMValue::I8(_)
+                | VMValue::U8(_)
+                | VMValue::I16(_)
+                | VMValue::U16(_)
+                | VMValue::I32(_)
+                | VMValue::U32(_)
+                | VMValue::I64(_)
+                | VMValue::U64(_)
+                | VMValue::I128(_)
+                | VMValue::U128(_)
+                | VMValue::Int(_)  // represents isize
+                | VMValue::UInt(_) // represents usize
+        )
+    }
+
     fn matches_kind(&self, kind: &MIRTykind) -> bool {
         matches!(
             (self, kind),

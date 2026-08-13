@@ -1,4 +1,4 @@
-use std::fmt::{self, write};
+use std::fmt::{self};
 
 use crate::mir::{
     builder::MIRModule,
@@ -134,6 +134,11 @@ impl fmt::Display for ConstantValue {
             ConstantValue::F32(v) => write!(f, "{v}"),
             ConstantValue::F64(v) => write!(f, "{v}"),
             ConstantValue::Bool(v) => write!(f, "{v}"),
+            ConstantValue::Ptr(addr) => match *addr {
+                0 => write!(f, "ptr null"),
+                addr if addr == usize::MAX => write!(f, "ptr -1 (0x{:x})", addr),
+                addr => write!(f, "ptr {:#x}", addr),
+            },
         }
     }
 }

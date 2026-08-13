@@ -39,6 +39,7 @@ pub enum ConstantValue {
     F32(f32),
     F64(f64),
     Bool(bool),
+    Ptr(usize), //the pointer and the offset
 }
 
 #[derive(Debug, Clone)]

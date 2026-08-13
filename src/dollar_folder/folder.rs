@@ -74,8 +74,9 @@ impl<'a> Folder<'a> {
             VMValue::F32(f) => MIRValue::Constant(ConstantValue::F32(*f)),
             VMValue::F64(f) => MIRValue::Constant(ConstantValue::F64(*f)),
             VMValue::Bool(b) => MIRValue::Constant(ConstantValue::Bool(*b)),
+            VMValue::Ptr(_,offset)=> MIRValue::Constant(ConstantValue::Ptr(*offset)),
             VMValue::Poison => MIRValue::Poison,
-            VMValue::Unit | VMValue::Ptr(_, _) => {
+            VMValue::Unit  => {
                 todo!("Handle pointer/unit folding if dollar scopes return references")
             }
         }

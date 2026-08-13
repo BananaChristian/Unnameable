@@ -44,7 +44,7 @@ pub struct HirParam {
 pub struct HirEnumMember {
     pub hir_id: NodeId,
     pub name: String,
-    pub value: i64, // always resolved, auto incremented if not specified
+    pub value: isize, // always resolved, auto incremented if not specified
     pub span: Span,
 }
 

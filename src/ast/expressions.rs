@@ -22,8 +22,8 @@ pub enum Literal {
     IntSize(isize),  // iz
     UintSize(usize), // uz
 
-    // Plain int (no suffix) - default to i64
-    Int(i64),
+    // Plain int (no suffix) - default to isize
+    Int(isize),
 
     // Floats
     Float(f64),

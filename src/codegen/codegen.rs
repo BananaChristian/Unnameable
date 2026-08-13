@@ -142,6 +142,15 @@ impl<'ctx> Codegen<'ctx> {
             ConstantValue::F32(v) => self.context.f32_type().const_float(*v as f64).into(),
             ConstantValue::F64(v) => self.context.f64_type().const_float(*v).into(),
             ConstantValue::Bool(v) => self.context.bool_type().const_int(*v as u64, false).into(),
+            ConstantValue::Ptr(addr) => {
+                let ptr_bits = (self.target_spec.int_width * 8) as u32;
+                let int_type = self.context.custom_width_int_type(ptr_bits);
+                let int_val = int_type.const_int(*addr as u64, false);
+
+                // Casting the integer constant directly into an LLVM pointer constant (inttoptr)
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                int_val.const_to_pointer(ptr_type).into()
+            }
         }
     }
 

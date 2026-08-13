@@ -467,7 +467,7 @@ impl Parser {
 
         match token.token_type {
             TType::Int => {
-                let value = self.parse_number(lexeme)?;
+                let value = self.parse_number(lexeme)? as isize;
                 Some(Literal::Int(value))
             }
             TType::Int8 => {

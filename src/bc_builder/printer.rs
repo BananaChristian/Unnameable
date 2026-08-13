@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{self, Write, format};
+use std::fmt::{self, Write};
 
 use crate::bc_builder::bytecode::{BytecodeModule, DollarMode, VMOpcode};
 
@@ -114,6 +114,7 @@ impl BytecodePrinter {
             VMOpcode::ConstIsize { dest, val } => format!("r{} = {} (isize) ", dest, val),
             VMOpcode::ConstUSize { dest, val } => format!("r{} = {} (usize)", dest, val),
             VMOpcode::ConstBool { dest, val } => format!("r{} = {}", dest, val),
+            VMOpcode::ConstPtr { dest, addr } => format!("r{} = ptr {:#x}", dest, addr),
 
             VMOpcode::Move { dest, src } => format!("r{} = r{}", dest, src),
 
@@ -129,11 +130,11 @@ impl BytecodePrinter {
             }
 
             VMOpcode::Cast { dest, src, to_ty } => {
-                format!("cast r{}, r{} {}", dest, src, to_ty)
+                format!("r{} = cast r{} {}", dest, src, to_ty)
             }
 
             VMOpcode::BitCast { dest, src, to_ty } => {
-                format!("bitcast r{}, r{} {}", dest, src, to_ty)
+                format!("r{} = bitcast r{} {}", dest, src, to_ty)
             }
 
             VMOpcode::LoadGlobal { dest, global_id } => {
@@ -149,7 +150,7 @@ impl BytecodePrinter {
                 src1,
                 src2,
             } => {
-                format!("r{}= r{} {} r{}", dest, src1, op, src2)
+                format!("r{} = r{} {} r{}", dest, src1, op, src2)
             }
 
             VMOpcode::Add { dest, src1, src2 } => format!("r{} = r{} + r{}", dest, src1, src2),

@@ -28,7 +28,7 @@ impl<'a> VM<'a> {
             },
             memory: VMMemory {
                 allocations: HashMap::new(),
-                next_alloc: 0,
+                next_alloc: 1,
             },
             diagnostics,
             corrupted: false,
@@ -290,10 +290,7 @@ impl<'a> VM<'a> {
 
                     let res = match (val.clone(), &to_ty.kind) {
                         // Integer/Numeric -> Pointer (inttoptr)
-                        (v, MIRTykind::Ptr)
-                            if to_ty.is_integer()
-                                || matches!(v, VMValue::UInt(_) | VMValue::U64(_)) =>
-                        {
+                        (v, MIRTykind::Ptr) if v.is_integer() => {
                             let offset = v.as_u128() as usize;
                             // AllocId(0) denotes an unallocated/raw address space or null
                             VMValue::Ptr(AllocId(0), offset)
@@ -301,8 +298,6 @@ impl<'a> VM<'a> {
 
                         // Pointer -> Integer (ptrtoint)
                         (VMValue::Ptr(_, offset), _) if to_ty.is_integer() => {
-                            // For execution models without flat unified address spaces,
-                            // the numeric address is typically the allocation offset.
                             let raw_addr = offset as u128;
                             match &to_ty.kind {
                                 MIRTykind::I8 => VMValue::I8(raw_addr as i8),
@@ -324,7 +319,7 @@ impl<'a> VM<'a> {
                             }
                         }
 
-                        //  General Primitives -> Target Integer Types
+                        // General Primitives -> Target Integer Types
                         (v, target_kind) if to_ty.is_integer() => match target_kind {
                             MIRTykind::I8 => VMValue::I8(v.as_i128() as i8),
                             MIRTykind::U8 => VMValue::U8(v.as_u128() as u8),

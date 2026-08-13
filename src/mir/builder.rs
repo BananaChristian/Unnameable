@@ -390,7 +390,9 @@ impl<'a> MIRBuilder<'a> {
                 ConstantValue::I16(_) | ConstantValue::U16(_) => 2,
                 ConstantValue::I32(_) | ConstantValue::U32(_) | ConstantValue::F32(_) => 4,
                 ConstantValue::I64(_) | ConstantValue::U64(_) | ConstantValue::F64(_) => 8,
-                ConstantValue::Int(_) | ConstantValue::UInt(_) => self.target_spec.pointer_width,
+                ConstantValue::Int(_) | ConstantValue::UInt(_) | ConstantValue::Ptr(_) => {
+                    self.target_spec.pointer_width
+                }
                 ConstantValue::I128(_) | ConstantValue::U128(_) => 16,
             },
             MIRValue::Poison => 0,

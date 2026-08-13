@@ -185,9 +185,10 @@ impl<'a> TypeChecker<'a> {
             // Pointer to Pointer address reassignment
             (ResolvedTypeKind::Pointer{..}, ResolvedTypeKind::Pointer { .. }) => true,
 
-            // Pointer value conversions to raw address tracking limits
-            (ResolvedTypeKind::Pointer{..}, ResolvedTypeKind::USize) => true,
-            (ResolvedTypeKind::USize, ResolvedTypeKind::Pointer{..}) => true,
+
+            // Any Integer to Pointer (Handles isize, usize, i64, ...)
+            (src, ResolvedTypeKind::Pointer { .. }) if self.is_integer(src) => true,
+            (ResolvedTypeKind::Pointer { .. }, tgt) if self.is_integer(tgt) => true,            // Pointer value conversions to raw address tracking limits
 
             _ => false,
         };
@@ -450,8 +451,8 @@ impl<'a> TypeChecker<'a> {
                 HirLiteral::UintSize(_) => {
                     self.primitive(ResolvedTypeKind::USize, expr.span.clone())
                 }
-                HirLiteral::Int(_) => self.primitive(ResolvedTypeKind::USize, expr.span.clone()),
-                HirLiteral::Float(_) => self.primitive(ResolvedTypeKind::F32, expr.span.clone()),
+                HirLiteral::Int(_) => self.primitive(ResolvedTypeKind::ISize, expr.span.clone()),
+                HirLiteral::Float(_) => self.primitive(ResolvedTypeKind::F64, expr.span.clone()),
                 HirLiteral::F32(_) => self.primitive(ResolvedTypeKind::F32, expr.span.clone()),
                 HirLiteral::F64(_) => self.primitive(ResolvedTypeKind::F64, expr.span.clone()),
                 HirLiteral::Str(_) => self.primitive(ResolvedTypeKind::Str, expr.span.clone()),

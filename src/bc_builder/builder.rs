@@ -200,6 +200,7 @@ impl<'a> BytecodeBuilder<'a> {
             ConstantValue::UInt(v) => instructions.push(VMOpcode::ConstUSize { dest, val: *v }),
             ConstantValue::I128(v) => instructions.push(VMOpcode::ConstI128 { dest, val: *v }),
             ConstantValue::U128(v) => instructions.push(VMOpcode::ConstU128 { dest, val: *v }),
+            ConstantValue::Ptr(offset)=>instructions.push(VMOpcode::ConstPtr { dest, addr: *offset }),
             ConstantValue::F32(_) => todo!("float constants"),
             ConstantValue::F64(_) => todo!("float constants"),
         }
@@ -471,7 +472,7 @@ impl<'a> BytecodeBuilder<'a> {
                 });
             }
 
-            MIRInstruction::GetElementPtr { dest, ptr, offset } => {
+            MIRInstruction::GetElementPtr { .. } => {
                 todo!("GEP in bytecode")
             }
 

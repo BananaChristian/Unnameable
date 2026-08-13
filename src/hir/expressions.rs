@@ -20,7 +20,7 @@ pub enum HirLiteral {
     IntSize(isize),
     UintSize(usize),
     // Untyped int for the type checker to resolve later
-    Int(i64),
+    Int(isize),
     // Floats
     Float(f64),
     F32(f32),

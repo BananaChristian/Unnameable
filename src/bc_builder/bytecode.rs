@@ -64,7 +64,10 @@ pub enum VMOpcode {
         dest: u16,
         val: bool,
     },
-
+    ConstPtr {
+        dest: u16,
+        addr: usize,
+    },
     // Register Copy: r[dest] = r[src]
     Move {
         dest: u16,
