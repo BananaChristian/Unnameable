@@ -359,6 +359,34 @@ impl<'a> VM<'a> {
                     let res = val.bitcast_to(&to_ty);
                     self.write_reg(frame, dest, res);
                 }
+                VMOpcode::GetElementPtr { dest, ptr, index } => {
+                    let ptr_val = self.read_reg(ptr, frame);
+                    let index_val = self.read_reg(index, frame);
+
+                    if let VMValue::Ptr(alloc_id, offset) = ptr_val {
+                        let idx = match index_val.as_isize() {
+                            Some(i) => i,
+                            None => {
+                                self.report_ice(format!(
+                                    "GEP index register {:?} is not holding an integer",
+                                    index_val
+                                ));
+                                0
+                            }
+                        };
+                        let new_offset = (offset as isize) + idx;
+                        if new_offset < 0 {
+                            self.report_ice(format!(
+                                "GEP resulting offset {} underflowed below 0 on AllocId({})",
+                                new_offset, alloc_id.0
+                            ));
+                            return VMValue::Poison;
+                        }
+                        self.write_reg(frame, dest, VMValue::Ptr(alloc_id, new_offset as usize));
+                    } else {
+                        self.report_ice(format!("GEP target register {} is not a pointer", ptr));
+                    }
+                }
                 _ => todo!("VMOpcode {:?} not implemented", instr),
             }
         }

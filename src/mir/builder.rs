@@ -422,7 +422,7 @@ impl<'a> MIRBuilder<'a> {
                         span.clone(),
                     );
 
-                    let byte_diff= self.get_last_val(span.clone());
+                    let byte_diff = self.get_last_val(span.clone());
 
                     let elem_size_bytes = elem_ty.size;
                     let elem_size_val =

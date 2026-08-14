@@ -96,7 +96,11 @@ pub enum VMOpcode {
         dest: u16,
         src: u16,
     },
-
+    GetElementPtr {
+        dest: u16,
+        ptr: u16,
+        index: u16,
+    },
     // Global Memory Access
     LoadGlobal {
         dest: u16,

@@ -130,6 +130,10 @@ impl BytecodePrinter {
             }
             VMOpcode::AddrOf { dest, src } => format!("r{} = addr_of r{}", dest, src),
 
+            VMOpcode::GetElementPtr { dest, ptr, index } => {
+                format!("r{} = gep r{}, r{}", dest, ptr, index)
+            }
+
             VMOpcode::Cast { dest, src, to_ty } => {
                 format!("r{} = cast r{} {}", dest, src, to_ty)
             }

@@ -56,6 +56,24 @@ impl VMValue {
         }
     }
 
+    pub fn as_isize(&self) -> Option<isize> {
+        match *self {
+            VMValue::I8(v) => Some(v as isize),
+            VMValue::U8(v) => Some(v as isize),
+            VMValue::I16(v) => Some(v as isize),
+            VMValue::U16(v) => Some(v as isize),
+            VMValue::I32(v) => Some(v as isize),
+            VMValue::U32(v) => Some(v as isize),
+            VMValue::I64(v) => Some(v as isize),
+            VMValue::U64(v) => Some(v as isize),
+            VMValue::Int(v) => Some(v),
+            VMValue::UInt(v) => Some(v as isize),
+            VMValue::I128(v) => Some(v as isize),
+            VMValue::U128(v) => Some(v as isize),
+            _ => None,
+        }
+    }
+
     // Extract unsigned integer representation
     pub fn as_u128(&self) -> u128 {
         match *self {

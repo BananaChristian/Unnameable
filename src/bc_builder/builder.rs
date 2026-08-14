@@ -364,6 +364,19 @@ impl<'a> BytecodeBuilder<'a> {
                 });
             }
 
+            MIRInstruction::GetElementPtr {
+                dest, ptr, index, ..
+            } => {
+                let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
+                let ptr_reg = self.lower_mir_value(ptr, reg_map, instructions);
+                let index_reg = self.lower_mir_value(index, reg_map, instructions);
+                instructions.push(VMOpcode::GetElementPtr {
+                    dest: dest_reg,
+                    ptr: ptr_reg,
+                    index: index_reg,
+                });
+            }
+
             MIRInstruction::Assign { dest, src } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let src_reg = self.lower_mir_value(src, reg_map, instructions);
@@ -481,10 +494,6 @@ impl<'a> BytecodeBuilder<'a> {
                     fn_id: *fn_id,
                     args: arg_regs,
                 });
-            }
-
-            MIRInstruction::GetElementPtr { .. } => {
-                todo!("GEP in bytecode")
             }
 
             MIRInstruction::Cast {

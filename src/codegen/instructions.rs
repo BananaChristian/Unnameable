@@ -176,6 +176,24 @@ impl<'ctx> Codegen<'ctx> {
                     self.bind_dest(dest, res_val);
                 }
             }
+            MIRInstruction::GetElementPtr {
+                dest,
+                ptr,
+                index,
+                elem_ty,
+            } => {
+                let llvm_elem_ty = self.get_llvmty(elem_ty);
+                let ptr_val = self.lower_value(ptr).into_pointer_value();
+                let index_val = self.lower_value(index).into_int_value();
+
+                let gep_ptr = unsafe {
+                    self.builder
+                        .build_in_bounds_gep(llvm_elem_ty, ptr_val, &[index_val], "geptmp")
+                        .unwrap()
+                };
+
+                self.bind_dest(dest, gep_ptr.into());
+            }
             MIRInstruction::Cast {
                 dest,
                 src,
