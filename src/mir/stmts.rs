@@ -4,9 +4,7 @@ use crate::{
     hir::{HirStmt, HirStmtKind},
     mir::{
         builder::MIRBuilder,
-        instructions::{
-            MIRDollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRTy, MIRTykind, Terminator,
-        },
+        instructions::{MIRDollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, Terminator},
     },
 };
 
@@ -66,14 +64,7 @@ impl<'a> MIRBuilder<'a> {
                     self.module.globals.insert(global_id, mir_global);
                 }
                 Some(_) => {
-                    let dest = self.new_register(
-                        MIRTy {
-                            kind: MIRTykind::Ptr,
-                            size: self.target_spec.pointer_width,
-                            align: self.target_spec.pointer_width,
-                        },
-                        Some(name),
-                    );
+                    let dest = self.new_register(self.ptr_type(), Some(name));
                     self.build_alloca(dest.clone(), ty.clone(), Some(stmt.span.clone()));
                     self.declare_var(name.clone(), dest.clone());
                     let val = self.expr_value(init);
@@ -163,14 +154,8 @@ impl<'a> MIRBuilder<'a> {
                     continue;
                 }
 
-                let slot = self.new_register(
-                    MIRTy {
-                        kind: MIRTykind::Ptr,
-                        size: self.target_spec.pointer_width,
-                        align: self.target_spec.pointer_width,
-                    },
-                    Some(&format!("{}.addr", param.name)),
-                );
+                let slot =
+                    self.new_register(self.ptr_type(), Some(&format!("{}.addr", param.name)));
                 self.build_alloca(slot.clone(), param.ty.clone(), span.clone());
 
                 let param_val = self.new_register(param.ty.clone(), Some(param.name.as_str()));

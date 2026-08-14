@@ -131,6 +131,10 @@ impl MIRTy {
     pub fn bit_width(&self) -> usize {
         self.size * 8
     }
+
+    pub fn is_pointer(&self) -> bool {
+        matches!(self.kind, MIRTykind::Ptr)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -230,11 +234,11 @@ pub enum MIRInstruction {
         src: MIRValue,
     },
 
-    // GEP equivalent field/index access into structs and arrays
     GetElementPtr {
         dest: MIRValue,
         ptr: MIRValue,
-        offset: MIRValue, // byte offset
+        index: MIRValue, // Number of elements
+        elem_ty: MIRTy,  // The type of element being pointed to
     },
 
     // Cast operations

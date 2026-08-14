@@ -239,8 +239,13 @@ impl fmt::Display for MIRInstruction {
             MIRInstruction::Assign { dest, src } => {
                 write!(f, "    {dest} = {src}")
             }
-            MIRInstruction::GetElementPtr { dest, ptr, offset } => {
-                write!(f, "    {dest} = gep {ptr}, offset {offset}")
+            MIRInstruction::GetElementPtr {
+                dest,
+                ptr,
+                index,
+                elem_ty,
+            } => {
+                write!(f, "    {dest} = gep {elem_ty}, ptr {ptr}, index {index}")
             }
             MIRInstruction::Cast {
                 dest,

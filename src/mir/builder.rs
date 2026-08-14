@@ -9,7 +9,7 @@ use crate::{
         BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
         MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
     },
-    semantics::{ResolvedTypeKind, TypesTable},
+    semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
     target::TargetSpec,
 };
 
@@ -336,6 +336,122 @@ impl<'a> MIRBuilder<'a> {
         self.last_value = Some(dest)
     }
 
+    fn cast_value(
+        &mut self,
+        src: MIRValue,
+        from_ty: MIRTy,
+        to_ty: MIRTy,
+        span: Option<Span>,
+    ) -> MIRValue {
+        let dest = self.new_register(to_ty.clone(), Some("cast"));
+        let cast_instr = MIRInstruction::Cast {
+            dest: dest.clone(),
+            src,
+            from_ty,
+            to_ty,
+        };
+        self.add_instruction(cast_instr, span);
+        dest
+    }
+
+    fn build_gep(&mut self, ptr: MIRValue, index: MIRValue, elem_ty: MIRTy, span: Option<Span>) {
+        let ptr_ty = self.ptr_type();
+        let dest = self.new_register(ptr_ty, Some("gep"));
+
+        let gep_instr = MIRInstruction::GetElementPtr {
+            dest: dest.clone(),
+            ptr,
+            index,
+            elem_ty,
+        };
+        self.add_instruction(gep_instr, span);
+        self.last_value = Some(dest)
+    }
+
+    pub fn build_pointer_arithmetic(
+        &mut self,
+        op: &HirBinaryOp,
+        lhs: &HirExpr,
+        lhs_val: MIRValue,
+        rhs: &HirExpr,
+        rhs_val: MIRValue,
+        span: Option<Span>,
+    ) {
+        let left_ty = self.get_type(&lhs.hir_id);
+        let right_ty = self.get_type(&rhs.hir_id);
+
+        match op {
+            // Pointer Addition (Ptr + Int or Int + Ptr)
+            HirBinaryOp::Add => {
+                if left_ty.is_pointer() {
+                    // ptr + index
+                    let elem_ty = self.get_pointed_elem_mir_ty(lhs);
+                    self.build_gep(lhs_val, rhs_val, elem_ty, span);
+                } else if right_ty.is_pointer() {
+                    // index + ptr (commutative)
+                    let elem_ty = self.get_pointed_elem_mir_ty(rhs);
+                    self.build_gep(rhs_val, lhs_val, elem_ty, span);
+                } else {
+                    self.report_ice("Expected at least one pointer in ptr Add".to_string(), span);
+                }
+            }
+
+            // Pointer Subtraction
+            HirBinaryOp::Sub => {
+                if left_ty.is_pointer() && right_ty.is_pointer() {
+                    // Ptr - Ptr -> Pointer Difference (returns USize)
+                    let elem_ty = self.get_pointed_elem_mir_ty(lhs);
+
+                    let usize_ty = MIRTy {
+                        kind: MIRTykind::USIZE,
+                        size: self.target_spec.int_width,
+                        align: self.target_spec.int_width,
+                    };
+
+                    let ptr_ty = self.ptr_type();
+
+                    let lhs_int =
+                        self.cast_value(lhs_val, ptr_ty.clone(), usize_ty.clone(), span.clone());
+                    let rhs_int = self.cast_value(rhs_val, ptr_ty, usize_ty.clone(), span.clone());
+
+                    self.build_binary(
+                        MIROps::Sub,
+                        lhs_int,
+                        rhs_int,
+                        usize_ty.clone(),
+                        span.clone(),
+                    );
+
+                    let byte_diff= self.get_last_val(span.clone());
+
+                    let elem_size_bytes = elem_ty.size;
+                    let elem_size_val =
+                        MIRValue::Constant(ConstantValue::Int(elem_size_bytes as isize));
+
+                    self.build_binary(MIROps::Udiv, byte_diff, elem_size_val, usize_ty, span);
+                } else if left_ty.is_pointer() {
+                    // Ptr - Int -> GEP with negative index
+                    let elem_ty = self.get_pointed_elem_mir_ty(lhs);
+                    self.build_unary(&crate::hir::HirUnaryOp::Neg, right_ty, rhs);
+                    let neg_index = self.get_last_val(span.clone());
+
+                    self.build_gep(lhs_val, neg_index, elem_ty, span);
+                } else {
+                    self.report_ice("Invalid operands for pointer Sub".to_string(), span);
+                }
+            }
+
+            _ => self.report_ice("Unsupported pointer operation".to_string(), span),
+        }
+    }
+
+    pub fn get_last_val(&mut self, span: Option<Span>) -> MIRValue {
+        let Some(last_val) = self.last_value.as_ref() else {
+            self.report_ice(format!("Failed to get the last value register"), span)
+        };
+        last_val.clone()
+    }
+
     pub fn build_cmp(&mut self, cmp_op: CmpOp, lhs: MIRValue, rhs: MIRValue, span: Option<Span>) {
         let dest = self.new_register(
             MIRTy {
@@ -355,36 +471,73 @@ impl<'a> MIRBuilder<'a> {
         self.last_value = Some(dest)
     }
 
+    fn get_pointed_elem_mir_ty(&mut self, expr: &HirExpr) -> MIRTy {
+        let Some(hir_ty) = self.types_table.types.get(&expr.hir_id) else {
+            self.report_ice(
+                format!("Failed to get type info for id: {:?}", expr.hir_id),
+                Some(expr.span.clone()),
+            )
+        };
+
+        if let ResolvedTypeKind::Pointer { inner } = &hir_ty.kind {
+            let mir_tykind = self.convert_tyinfo_to_mirtykind(inner);
+            let size = inner.layout.size;
+            let align = inner.layout.alignment;
+            MIRTy {
+                kind: mir_tykind,
+                size,
+                align,
+            }
+        } else {
+            self.report_ice(
+                "Expected pointer type when lowering GEP".to_string(),
+                Some(expr.span.clone()),
+            );
+        }
+    }
+
+    fn convert_tyinfo_to_mirtykind(&self, ty_info: &TypeInfo) -> MIRTykind {
+        match ty_info.kind {
+            ResolvedTypeKind::I8 => MIRTykind::I8,
+            ResolvedTypeKind::U8 => MIRTykind::U8,
+            ResolvedTypeKind::I16 => MIRTykind::I16,
+            ResolvedTypeKind::U16 => MIRTykind::U16,
+            ResolvedTypeKind::I32 => MIRTykind::I32,
+            ResolvedTypeKind::U32 => MIRTykind::U32,
+            ResolvedTypeKind::I64 => MIRTykind::I64,
+            ResolvedTypeKind::U64 => MIRTykind::U64,
+            ResolvedTypeKind::I128 => MIRTykind::I128,
+            ResolvedTypeKind::U128 => MIRTykind::U128,
+            ResolvedTypeKind::USize => MIRTykind::USIZE,
+            ResolvedTypeKind::ISize => MIRTykind::ISIZE,
+            ResolvedTypeKind::Bool => MIRTykind::Bool,
+            ResolvedTypeKind::F32 => MIRTykind::F32,
+            ResolvedTypeKind::F64 => MIRTykind::F64,
+            ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
+            _ => todo!("Will map the other types later {}", ty_info.name),
+        }
+    }
+
     pub fn get_type(&self, id: &NodeId) -> MIRTy {
         let ty_info = self.types_table.types.get(id);
 
         match ty_info {
             Some(ty) => {
-                let kind = match ty.kind {
-                    ResolvedTypeKind::I8 => MIRTykind::I8,
-                    ResolvedTypeKind::U8 => MIRTykind::U8,
-                    ResolvedTypeKind::I16 => MIRTykind::I16,
-                    ResolvedTypeKind::U16 => MIRTykind::U16,
-                    ResolvedTypeKind::I32 => MIRTykind::I32,
-                    ResolvedTypeKind::U32 => MIRTykind::U32,
-                    ResolvedTypeKind::I64 => MIRTykind::I64,
-                    ResolvedTypeKind::U64 => MIRTykind::U64,
-                    ResolvedTypeKind::I128 => MIRTykind::I128,
-                    ResolvedTypeKind::U128 => MIRTykind::U128,
-                    ResolvedTypeKind::USize => MIRTykind::USIZE,
-                    ResolvedTypeKind::ISize => MIRTykind::ISIZE,
-                    ResolvedTypeKind::Bool => MIRTykind::Bool,
-                    ResolvedTypeKind::F32 => MIRTykind::F32,
-                    ResolvedTypeKind::F64 => MIRTykind::F64,
-                    ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
-                    _ => todo!("Will map the other types later {:?}", ty),
-                };
+                let kind = self.convert_tyinfo_to_mirtykind(ty);
                 let size = ty.layout.size;
                 let align = ty.layout.alignment;
                 MIRTy { kind, size, align }
             }
 
             None => todo!("Handle a failed type"),
+        }
+    }
+
+    pub fn ptr_type(&self) -> MIRTy {
+        MIRTy {
+            kind: MIRTykind::Ptr,
+            size: self.target_spec.pointer_width,
+            align: self.target_spec.pointer_width,
         }
     }
 

@@ -247,6 +247,9 @@ impl<'a> MIRBuilder<'a> {
         let lhs_value = self.expr_value(lhs);
         let rhs_value = self.expr_value(rhs);
 
+        let left_ty = self.get_type(&lhs.hir_id);
+        let right_ty = self.get_type(&rhs.hir_id);
+
         match op {
             HirBinaryOp::Xor
             | HirBinaryOp::BitAnd
@@ -261,8 +264,19 @@ impl<'a> MIRBuilder<'a> {
             | HirBinaryOp::Mul
             | HirBinaryOp::Div
             | HirBinaryOp::Mod => {
-                let op = self.map_arithmetic_op(op, &lhs_value);
-                self.build_binary(op, lhs_value, rhs_value, ty, span)
+                if left_ty.is_pointer() || right_ty.is_pointer() {
+                    self.build_pointer_arithmetic(
+                        op,
+                        lhs,
+                        lhs_value.clone(),
+                        rhs,
+                        rhs_value.clone(),
+                        span.clone(),
+                    );
+                    return;
+                }
+                let mir_op = self.map_arithmetic_op(op, &lhs_value);
+                self.build_binary(mir_op, lhs_value, rhs_value, ty, span)
             }
             HirBinaryOp::AddAssign
             | HirBinaryOp::SubAssign
@@ -331,7 +345,7 @@ impl<'a> MIRBuilder<'a> {
         self.last_value = Some(old_val)
     }
 
-    fn build_unary(&mut self, op: &HirUnaryOp, ty: MIRTy, operand: &HirExpr) {
+    pub fn build_unary(&mut self, op: &HirUnaryOp, ty: MIRTy, operand: &HirExpr) {
         let span = Some(operand.span.clone());
 
         match op {
@@ -576,7 +590,7 @@ impl<'a> MIRBuilder<'a> {
                         );
                     }
                 },
-                _ => todo!("Handle other constants")
+                _ => todo!("Handle other constants"),
             },
 
             _ => {

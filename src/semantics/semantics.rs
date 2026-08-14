@@ -204,6 +204,13 @@ impl TypeInfo {
         }
     }
 
+    pub fn is_pointer(&self) -> bool {
+        match self.kind {
+            ResolvedTypeKind::Pointer { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn types_match(expected: &TypeInfo, actual: &TypeInfo) -> bool {
         match (&expected.kind, &actual.kind) {
             (ResolvedTypeKind::Unknown, ResolvedTypeKind::Unknown) => true,

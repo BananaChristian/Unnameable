@@ -157,9 +157,15 @@ impl<'a> TypeChecker<'a> {
     fn deref_type(&mut self,src_ty: &TypeInfo) -> TypeInfo{
         match &src_ty.kind{
             ResolvedTypeKind::Pointer { inner } => {
+                if inner.kind == ResolvedTypeKind::Unit{
+                    self.report(format!("Cannot dereference a pointer of type '{}'",inner.name), Some(inner.span.clone()));
+                }
                 *inner.clone()
             }
-            _ => self.unknown(src_ty.span.clone())
+            _ => {
+                self.report(format!("Cannot dereference type '{}'",src_ty.name), Some(src_ty.span.clone()));
+                self.unknown(src_ty.span.clone())
+            }
         }
     }
 
@@ -265,7 +271,12 @@ impl<'a> TypeChecker<'a> {
                 | HirBinaryOp::Sub
                 | HirBinaryOp::Div
                 | HirBinaryOp::Mul
-                | HirBinaryOp::Mod => self.arithmetic_type(left_ty, right_ty, expr.span.clone()),
+                | HirBinaryOp::Mod =>{
+                    if left_ty.is_pointer() || right_ty.is_pointer(){
+                        return self.pointer_arithmetic_type(&left_ty, op, &right_ty, expr.span.clone())
+                    }
+                    self.arithmetic_type(left_ty, right_ty, expr.span.clone())
+                }
                 HirBinaryOp::Eq
                 | HirBinaryOp::Neq
                 | HirBinaryOp::Lt
@@ -438,6 +449,56 @@ impl<'a> TypeChecker<'a> {
 
         left_ty
     }
+
+
+fn pointer_arithmetic_type(
+    &mut self,
+    left_ty: &TypeInfo,
+    op: &HirBinaryOp,
+    right_ty: &TypeInfo,
+    span: Span,
+) -> TypeInfo {
+    match (op, &left_ty.kind, &right_ty.kind) {
+        // Ptr + Int = Ptr
+        (HirBinaryOp::Add, ResolvedTypeKind::Pointer{..}, _) if self.is_integer(&right_ty.kind) => {
+            left_ty.clone()
+        }
+
+        // Int + Ptr = Ptr 
+        (HirBinaryOp::Add, _, ResolvedTypeKind::Pointer{..}) if self.is_integer(&left_ty.kind) => {
+            right_ty.clone()
+        }
+
+        // Ptr - Int = Ptr
+        (HirBinaryOp::Sub, ResolvedTypeKind::Pointer{..}, _) if self.is_integer(&right_ty.kind) => {
+            left_ty.clone()
+        }
+
+        // Ptr - Ptr -> USize
+        (HirBinaryOp::Sub, ResolvedTypeKind::Pointer{inner: t1}, ResolvedTypeKind::Pointer{inner:t2}) => {
+            if !TypeInfo::types_match(t1, t2) {
+                self.report(
+                    format!("Cannot subtract pointers to different types `{}` and `{}`", t1.name, t2.name),
+                    Some(span.clone()),
+                );
+                return self.unknown(span);
+            }
+            self.primitive(ResolvedTypeKind::USize, span)
+        }
+
+        // Invalid Ops (like Ptr * Int, Ptr / Ptr, Ptr + Float)
+        _ => {
+            self.report(
+                format!(
+                    "Invalid pointer arithmetic operation: `{}` {:?} `{}`",
+                    left_ty.name, op, right_ty.name
+                ),
+                Some(span.clone()),
+            );
+            self.unknown(span)
+        }
+    }
+}
 
     fn literal_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::Literal(lit) = &expr.kind {
