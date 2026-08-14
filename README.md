@@ -47,7 +47,7 @@ Clone the repository and run a sample file using Cargo:
 
 ```bash
 # Clone the repository
-git clone https://github.com
+git clone https://github.com/BananaChristian/Unnameable
 cd Unnameable
 
 # Run the compiler on a source file
