@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    hir::{HirStmt, HirStmtKind},
+    hir::{HirExprKind, HirLiteral, HirStmt, HirStmtKind},
     mir::{
         builder::MIRBuilder,
         instructions::{MIRDollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, Terminator},
@@ -67,9 +67,17 @@ impl<'a> MIRBuilder<'a> {
                     let dest = self.new_register(self.ptr_type(), Some(name));
                     self.build_alloca(dest.clone(), ty.clone(), Some(stmt.span.clone()));
                     self.declare_var(name.clone(), dest.clone());
-                    let val = self.expr_value(init);
-                    let align = self.get_alignment(init);
-                    self.build_store(dest, val, align, Some(stmt.span.clone()));
+
+                    if matches!(
+                        &init.kind,
+                        HirExprKind::Literal(HirLiteral::ArrayLiteral(_))
+                    ) {
+                        self.build_array_literal_into(init, dest);
+                    } else {
+                        let val = self.expr_value(init);
+                        let align = self.get_alignment(init);
+                        self.build_store(dest, val, align, Some(stmt.span.clone()));
+                    }
                 }
             }
         }

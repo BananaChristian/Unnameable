@@ -106,6 +106,7 @@ impl fmt::Display for MIRTykind {
             MIRTykind::Bool => write!(f, "bool"),
             MIRTykind::Unit => write!(f, "unit"),
             MIRTykind::Ptr => write!(f, "ptr"),
+            MIRTykind::Array(elem_ty, len) => write!(f, "[{} x {}]", len, elem_ty.kind),
         }
     }
 }

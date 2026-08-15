@@ -354,7 +354,7 @@ impl<'a> MIRBuilder<'a> {
         dest
     }
 
-    fn build_gep(&mut self, ptr: MIRValue, index: MIRValue, elem_ty: MIRTy, span: Option<Span>) {
+    pub fn build_gep(&mut self, ptr: MIRValue, index: MIRValue, elem_ty: MIRTy, span: Option<Span>) {
         let ptr_ty = self.ptr_type();
         let dest = self.new_register(ptr_ty, Some("gep"));
 
@@ -497,7 +497,7 @@ impl<'a> MIRBuilder<'a> {
     }
 
     fn convert_tyinfo_to_mirtykind(&self, ty_info: &TypeInfo) -> MIRTykind {
-        match ty_info.kind {
+        match &ty_info.kind {
             ResolvedTypeKind::I8 => MIRTykind::I8,
             ResolvedTypeKind::U8 => MIRTykind::U8,
             ResolvedTypeKind::I16 => MIRTykind::I16,
@@ -514,6 +514,21 @@ impl<'a> MIRBuilder<'a> {
             ResolvedTypeKind::F32 => MIRTykind::F32,
             ResolvedTypeKind::F64 => MIRTykind::F64,
             ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
+            ResolvedTypeKind::Array { inner, size } => {
+                let elem_ty_kind = self.convert_tyinfo_to_mirtykind(&inner);
+                let elem_align = inner.layout.alignment;
+                let elem_size = inner.layout.size;
+                let elem_ty = MIRTy {
+                    kind: elem_ty_kind,
+                    size: elem_size,
+                    align: elem_align,
+                };
+                let arr_size = match size {
+                    Some(s) => *s as usize,
+                    None => 1,
+                };
+                MIRTykind::Array(Box::new(elem_ty), arr_size)
+            }
             _ => todo!("Will map the other types later {}", ty_info.name),
         }
     }

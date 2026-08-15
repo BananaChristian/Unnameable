@@ -82,7 +82,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn get_llvmty(&self, mirty: &MIRTy) -> BasicTypeEnum<'ctx> {
-        match mirty.kind {
+        match &mirty.kind {
             MIRTykind::Bool => self.context.bool_type().into(),
             MIRTykind::I8 | MIRTykind::U8 => self.context.i8_type().into(),
             MIRTykind::I16 | MIRTykind::U16 => self.context.i16_type().into(),
@@ -102,6 +102,19 @@ impl<'ctx> Codegen<'ctx> {
                 .context
                 .ptr_type(inkwell::AddressSpace::default())
                 .into(),
+
+            MIRTykind::Array(elem_ty, len) => {
+                let elem_llvm_ty = self.get_llvmty(&elem_ty);
+
+                match elem_llvm_ty {
+                    BasicTypeEnum::IntType(t) => t.array_type(*len as u32).into(),
+                    BasicTypeEnum::FloatType(t) => t.array_type(*len as u32).into(),
+                    BasicTypeEnum::PointerType(t) => t.array_type(*len as u32).into(),
+                    BasicTypeEnum::StructType(t) => t.array_type(*len as u32).into(),
+                    BasicTypeEnum::ArrayType(t) => t.array_type(*len as u32).into(),
+                    BasicTypeEnum::VectorType(t) => t.array_type(*len as u32).into(),
+                }
+            }
         }
     }
 

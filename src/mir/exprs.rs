@@ -18,7 +18,11 @@ impl<'a> MIRBuilder<'a> {
         let ty = self.get_type(&expr.hir_id);
         let span = Some(expr.span.clone());
         match &expr.kind {
-            HirExprKind::Literal(_) => {
+            HirExprKind::Literal(inner) => {
+                if let HirLiteral::ArrayLiteral(_) = inner {
+                    self.build_array_literal(expr);
+                    return;
+                }
                 let src = self.expr_value(expr);
                 self.build_assign(src, ty, span, None)
             }
@@ -36,6 +40,60 @@ impl<'a> MIRBuilder<'a> {
                 "Encountered an expression whose handler is yet to be added {:?}",
                 expr
             ),
+        }
+    }
+
+    fn build_array_literal(&mut self, expr: &HirExpr) -> MIRValue {
+        let array_ty = self.get_type(&expr.hir_id);
+        let arr_ptr = self.new_register(array_ty.clone(), None);
+        self.build_alloca(arr_ptr.clone(), array_ty, Some(expr.span.clone()));
+        self.fill_array_literal(expr, arr_ptr.clone());
+        arr_ptr
+    }
+
+    pub fn build_array_literal_into(&mut self, expr: &HirExpr, dest_ptr: MIRValue) {
+        self.fill_array_literal(expr, dest_ptr);
+    }
+
+    fn fill_array_literal(&mut self, expr: &HirExpr, dest_ptr: MIRValue) {
+        match &expr.kind {
+            HirExprKind::Literal(HirLiteral::ArrayLiteral(elements)) => {
+                let array_ty = self.get_type(&expr.hir_id);
+                let elem_ty = match &array_ty.kind {
+                    MIRTykind::Array(elem_ty, _) => elem_ty.as_ref().clone(),
+                    _ => self.report_ice(
+                        "Array literal does not have array type".to_string(),
+                        Some(expr.span.clone()),
+                    ),
+                };
+
+                for (index, elem_expr) in elements.iter().enumerate() {
+                    let index_val = MIRValue::Constant(ConstantValue::UInt(index));
+                    self.build_gep(
+                        dest_ptr.clone(),
+                        index_val,
+                        elem_ty.clone(),
+                        Some(expr.span.clone()),
+                    );
+                    let elem_ptr = self.get_last_val(Some(expr.span.clone()));
+
+                    if matches!(
+                        &elem_expr.kind,
+                        HirExprKind::Literal(HirLiteral::ArrayLiteral(_))
+                    ) {
+                        self.fill_array_literal(elem_expr, elem_ptr);
+                    } else {
+                        let elem_val = self.expr_value(elem_expr);
+                        self.build_store(
+                            elem_ptr,
+                            elem_val,
+                            elem_ty.align,
+                            Some(expr.span.clone()),
+                        );
+                    }
+                }
+            }
+            _ => self.report_ice("Not an array literal".to_string(), Some(expr.span.clone())),
         }
     }
 
@@ -237,10 +295,15 @@ impl<'a> MIRBuilder<'a> {
         ty: MIRTy,
     ) {
         if matches!(op, HirBinaryOp::Assign) {
-            let rhs_value = self.expr_value(rhs);
             let ptr = self.lookup_ptr(lhs);
-            let align = self.get_alignment(lhs);
-            self.build_store(ptr, rhs_value, align, span);
+
+            if matches!(&rhs.kind, HirExprKind::Literal(HirLiteral::ArrayLiteral(_))) {
+                self.build_array_literal_into(rhs, ptr);
+            } else {
+                let rhs_value = self.expr_value(rhs);
+                let align = self.get_alignment(lhs);
+                self.build_store(ptr, rhs_value, align, span);
+            }
             return;
         }
 
@@ -407,7 +470,12 @@ impl<'a> MIRBuilder<'a> {
     pub fn expr_value(&mut self, expr: &HirExpr) -> MIRValue {
         let span = Some(expr.span.clone());
         match &expr.kind {
-            HirExprKind::Literal(_) => self.literal_value(expr),
+            HirExprKind::Literal(lit) => {
+                if let HirLiteral::ArrayLiteral(_) = lit {
+                    return self.build_array_literal(expr);
+                }
+                self.literal_value(expr)
+            }
 
             HirExprKind::Identifier(name) => {
                 let Some(ptr) = self.lookup_var(name).cloned() else {

@@ -156,6 +156,7 @@ pub enum MIRTykind {
     Bool,
     Unit,
     Ptr, //All pointers are opaque
+    Array(Box<MIRTy>, usize),
 }
 
 #[derive(Debug, Clone)]
