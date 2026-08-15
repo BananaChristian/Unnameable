@@ -124,21 +124,31 @@ impl<'a> VM<'a> {
                     let val = self.read_reg(src, frame);
                     self.write_reg(frame, dest, val);
                 }
-                VMOpcode::Alloca { dest, .. } => {
+                VMOpcode::Alloca { dest, size, .. } => {
                     let alloc_id = AllocId(self.memory.next_alloc);
                     self.memory.next_alloc += 1;
 
                     let allocation = Allocation {
-                        data: vec![VMValue::Poison],
+                        data: vec![VMValue::Poison; size as usize],
                     };
 
                     self.memory.allocations.insert(alloc_id.clone(), allocation);
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
-                VMOpcode::Load { dest, ptr, .. } => {
+                VMOpcode::Load {
+                    dest, ptr, size, ..
+                } => {
                     let ptr_val = self.read_reg(ptr, frame);
                     if let VMValue::Ptr(alloc_id, offset) = ptr_val {
-                        let val = self.mem_read(&alloc_id, offset);
+                        let val = if size <= 1 {
+                            self.mem_read(&alloc_id, offset)
+                        } else {
+                            let mut elems = Vec::with_capacity(size as usize);
+                            for i in 0..size as usize {
+                                elems.push(self.mem_read(&alloc_id, offset + i));
+                            }
+                            VMValue::Array(elems)
+                        };
                         self.write_reg(frame, dest, val);
                     } else {
                         self.report_ice("Load from non pointer".to_string());
@@ -359,7 +369,12 @@ impl<'a> VM<'a> {
                     let res = val.bitcast_to(&to_ty);
                     self.write_reg(frame, dest, res);
                 }
-                VMOpcode::GetElementPtr { dest, ptr, index } => {
+                VMOpcode::GetElementPtr {
+                    dest,
+                    ptr,
+                    index,
+                    stride,
+                } => {
                     let ptr_val = self.read_reg(ptr, frame);
                     let index_val = self.read_reg(index, frame);
 
@@ -374,7 +389,7 @@ impl<'a> VM<'a> {
                                 0
                             }
                         };
-                        let new_offset = (offset as isize) + idx;
+                        let new_offset = (offset as isize) + idx * (stride as isize);
                         if new_offset < 0 {
                             self.report_ice(format!(
                                 "GEP resulting offset {} underflowed below 0 on AllocId({})",

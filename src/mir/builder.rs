@@ -354,7 +354,13 @@ impl<'a> MIRBuilder<'a> {
         dest
     }
 
-    pub fn build_gep(&mut self, ptr: MIRValue, index: MIRValue, elem_ty: MIRTy, span: Option<Span>) {
+    pub fn build_gep(
+        &mut self,
+        ptr: MIRValue,
+        index: MIRValue,
+        elem_ty: MIRTy,
+        span: Option<Span>,
+    ) {
         let ptr_ty = self.ptr_type();
         let dest = self.new_register(ptr_ty, Some("gep"));
 
@@ -568,6 +574,13 @@ impl<'a> MIRBuilder<'a> {
                     self.target_spec.pointer_width
                 }
                 ConstantValue::I128(_) | ConstantValue::U128(_) => 16,
+                ConstantValue::Array(elements) => {
+                    if let Some(first) = elements.first() {
+                        self.get_val_alignment(&MIRValue::Constant(first.clone()))
+                    } else {
+                        1 // empty array — no real alignment requirement, 1 is a safe default
+                    }
+                }
             },
             MIRValue::Poison => 0,
         }

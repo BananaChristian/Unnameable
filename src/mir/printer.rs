@@ -140,6 +140,16 @@ impl fmt::Display for ConstantValue {
                 addr if addr == usize::MAX => write!(f, "ptr -1 (0x{:x})", addr),
                 addr => write!(f, "ptr {:#x}", addr),
             },
+            ConstantValue::Array(elements) => {
+                write!(f, "[")?;
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{elem}")?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }

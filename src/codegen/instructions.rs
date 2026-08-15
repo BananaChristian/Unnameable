@@ -379,7 +379,7 @@ impl<'ctx> Codegen<'ctx> {
                 self.bind_dest(dest, res.into());
             }
             _ => {
-                self.report_ice(format!("Unhandled MIR instruction: {}", inst), None);
+                self.report_ice(format!("Unhandled MIR instruction: {}", inst));
             }
         }
     }

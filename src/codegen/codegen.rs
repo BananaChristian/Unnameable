@@ -6,7 +6,7 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     types::BasicTypeEnum,
-    values::BasicValueEnum,
+    values::{BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 
 use crate::{
@@ -118,7 +118,7 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn lower_constant(&self, constant: &ConstantValue) -> BasicValueEnum<'ctx> {
+    fn lower_constant(&mut self, constant: &ConstantValue) -> BasicValueEnum<'ctx> {
         match constant {
             ConstantValue::I8(v) => self.context.i8_type().const_int(*v as u64, true).into(),
             ConstantValue::U8(v) => self.context.i8_type().const_int(*v as u64, false).into(),
@@ -164,10 +164,43 @@ impl<'ctx> Codegen<'ctx> {
                 let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                 int_val.const_to_pointer(ptr_type).into()
             }
+
+            ConstantValue::Array(elements) => {
+                let elem_values: Vec<BasicValueEnum<'ctx>> =
+                    elements.iter().map(|e| self.lower_constant(e)).collect();
+
+                match elem_values[0] {
+                    BasicValueEnum::IntValue(_) => {
+                        let ints: Vec<IntValue<'ctx>> = elem_values
+                            .into_iter()
+                            .map(|v| v.into_int_value())
+                            .collect();
+                        let elem_ty = ints[0].get_type();
+                        elem_ty.const_array(&ints).into()
+                    }
+                    BasicValueEnum::FloatValue(_) => {
+                        let floats: Vec<FloatValue<'ctx>> = elem_values
+                            .into_iter()
+                            .map(|v| v.into_float_value())
+                            .collect();
+                        let elem_ty = floats[0].get_type();
+                        elem_ty.const_array(&floats).into()
+                    }
+                    BasicValueEnum::PointerValue(_) => {
+                        let ptrs: Vec<PointerValue<'ctx>> = elem_values
+                            .into_iter()
+                            .map(|v| v.into_pointer_value())
+                            .collect();
+                        let elem_ty = ptrs[0].get_type();
+                        elem_ty.const_array(&ptrs).into()
+                    }
+                    _ => self.report_ice("Unsupported element type in constant array".to_string()),
+                }
+            }
         }
     }
 
-    pub fn lower_value(&self, value: &MIRValue) -> BasicValueEnum<'ctx> {
+    pub fn lower_value(&mut self, value: &MIRValue) -> BasicValueEnum<'ctx> {
         match value {
             MIRValue::Constant(c) => self.lower_constant(c),
             MIRValue::Register { vreg, .. } => self
@@ -183,9 +216,9 @@ impl<'ctx> Codegen<'ctx> {
         self.module.print_to_string().to_string()
     }
 
-    pub fn report_ice(&mut self, message: String, span: Option<Span>) -> ! {
+    pub fn report_ice(&mut self, message: String) -> ! {
         self.corrupted = true;
-        let err = CompilerError::ice(message, Phase::Codegen, span);
+        let err = CompilerError::ice(message, Phase::Codegen, None);
 
         self.diagnostics.borrow_mut().report_ice_and_panic(err);
     }

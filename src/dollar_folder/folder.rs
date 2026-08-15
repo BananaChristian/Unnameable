@@ -74,9 +74,21 @@ impl<'a> Folder<'a> {
             VMValue::F32(f) => MIRValue::Constant(ConstantValue::F32(*f)),
             VMValue::F64(f) => MIRValue::Constant(ConstantValue::F64(*f)),
             VMValue::Bool(b) => MIRValue::Constant(ConstantValue::Bool(*b)),
-            VMValue::Ptr(_,offset)=> MIRValue::Constant(ConstantValue::Ptr(*offset)),
+            VMValue::Ptr(_, offset) => MIRValue::Constant(ConstantValue::Ptr(*offset)),
+            VMValue::Array(elements) => {
+                let mir_elements: Vec<ConstantValue> = elements
+                    .iter()
+                    .map(|e| match Self::vm_val_to_mir_val(e) {
+                        MIRValue::Constant(c) => c,
+                        other => {
+                            panic!("Array element folded to non-constant MIRValue: {:?}", other)
+                        }
+                    })
+                    .collect();
+                MIRValue::Constant(ConstantValue::Array(mir_elements))
+            }
             VMValue::Poison => MIRValue::Poison,
-            VMValue::Unit  => {
+            VMValue::Unit => {
                 todo!("Handle pointer/unit folding if dollar scopes return references")
             }
         }

@@ -111,6 +111,14 @@ impl BytecodePrinter {
             VMOpcode::ConstU128 { dest, val } => {
                 format!("r{} = {} (u128)", dest, val)
             }
+            VMOpcode::ConstArray { dest, elements } => {
+                let elems_str = elements
+                    .iter()
+                    .map(|r| format!("r{}", r))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("r{} = [{}] (array)", dest, elems_str)
+            }
             VMOpcode::ConstIsize { dest, val } => format!("r{} = {} (isize) ", dest, val),
             VMOpcode::ConstUSize { dest, val } => format!("r{} = {} (usize)", dest, val),
             VMOpcode::ConstBool { dest, val } => format!("r{} = {}", dest, val),
@@ -122,16 +130,29 @@ impl BytecodePrinter {
                 format!("r{} = alloca size: {}, align: {}", dest, size, align)
             }
 
-            VMOpcode::Load { dest, ptr, mode } => {
-                format!("load r{}, [r{}] (mode: {})", dest, ptr, mode)
+            VMOpcode::Load {
+                dest,
+                ptr,
+                size,
+                mode,
+            } => {
+                format!(
+                    "load r{}, [r{}] (size: {}) (mode: {})",
+                    dest, ptr, size, mode
+                )
             }
             VMOpcode::Store { ptr, val, mode } => {
                 format!("store [r{}], r{} (mode: {})", ptr, val, mode)
             }
             VMOpcode::AddrOf { dest, src } => format!("r{} = addr_of r{}", dest, src),
 
-            VMOpcode::GetElementPtr { dest, ptr, index } => {
-                format!("r{} = gep r{}, r{}", dest, ptr, index)
+            VMOpcode::GetElementPtr {
+                dest,
+                ptr,
+                index,
+                stride,
+            } => {
+                format!("r{} = gep r{}, r{} [stride: {}]", dest, ptr, index, stride)
             }
 
             VMOpcode::Cast { dest, src, to_ty } => {

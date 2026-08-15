@@ -184,6 +184,7 @@ impl<'a> BytecodeBuilder<'a> {
         &self,
         dest: u16,
         const_val: &ConstantValue,
+        reg_map: &mut RegisterMap,
         instructions: &mut Vec<VMOpcode>,
     ) {
         match const_val {
@@ -206,6 +207,22 @@ impl<'a> BytecodeBuilder<'a> {
             }),
             ConstantValue::F32(_) => todo!("float constants"),
             ConstantValue::F64(_) => todo!("float constants"),
+            ConstantValue::Array(elements) => {
+                let elem_regs: Vec<u16> = elements
+                    .iter()
+                    .map(|e| {
+                        let elem_reg = reg_map.next_index;
+                        reg_map.next_index += 1;
+                        self.lower_const_val(elem_reg, e, reg_map, instructions);
+                        elem_reg
+                    })
+                    .collect();
+
+                instructions.push(VMOpcode::ConstArray {
+                    dest,
+                    elements: elem_regs,
+                });
+            }
         }
     }
 
@@ -223,7 +240,7 @@ impl<'a> BytecodeBuilder<'a> {
             MIRValue::Constant(const_val) => {
                 let dest = reg_map.next_index;
                 reg_map.next_index += 1;
-                self.lower_const_val(dest, const_val, instructions);
+                self.lower_const_val(dest, const_val,reg_map, instructions);
                 dest
             }
             MIRValue::Poison => panic!("Poison value in bytecode lowering"),
@@ -328,7 +345,7 @@ impl<'a> BytecodeBuilder<'a> {
                 dest, ty, align, ..
             } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
-                let size = ty.align as u32; // size from type alignment for now
+                let size = ty.slot_counter();
                 instructions.push(VMOpcode::Alloca {
                     dest: dest_reg,
                     size,
@@ -336,12 +353,14 @@ impl<'a> BytecodeBuilder<'a> {
                 });
             }
 
-            MIRInstruction::Load { dest, ptr, .. } => {
+            MIRInstruction::Load { dest, ptr, ty, .. } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let ptr_reg = self.lower_mir_value(ptr, reg_map, instructions);
+                let size = ty.slot_counter();
                 instructions.push(VMOpcode::Load {
                     dest: dest_reg,
                     ptr: ptr_reg,
+                    size,
                     mode: current_mode,
                 });
             }
@@ -365,15 +384,20 @@ impl<'a> BytecodeBuilder<'a> {
             }
 
             MIRInstruction::GetElementPtr {
-                dest, ptr, index, ..
+                dest,
+                ptr,
+                index,
+                elem_ty,
             } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let ptr_reg = self.lower_mir_value(ptr, reg_map, instructions);
                 let index_reg = self.lower_mir_value(index, reg_map, instructions);
+                let stride = elem_ty.slot_counter();
                 instructions.push(VMOpcode::GetElementPtr {
                     dest: dest_reg,
                     ptr: ptr_reg,
                     index: index_reg,
+                    stride,
                 });
             }
 

@@ -68,7 +68,11 @@ pub enum VMOpcode {
         dest: u16,
         addr: usize,
     },
-    // Register Copy: r[dest] = r[src]
+    ConstArray {
+        dest: u16,
+        elements: Vec<u16>, // registers already holding each element's value
+    }, // Register Copy: r[dest] = r[src]
+
     Move {
         dest: u16,
         src: u16,
@@ -85,6 +89,7 @@ pub enum VMOpcode {
     Load {
         dest: u16,
         ptr: u16,
+        size: u32,
         mode: DollarMode,
     },
     Store {
@@ -100,6 +105,7 @@ pub enum VMOpcode {
         dest: u16,
         ptr: u16,
         index: u16,
+        stride: u32,
     },
     // Global Memory Access
     LoadGlobal {

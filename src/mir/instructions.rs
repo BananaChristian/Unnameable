@@ -40,6 +40,7 @@ pub enum ConstantValue {
     F64(f64),
     Bool(bool),
     Ptr(usize), //the pointer and the offset
+    Array(Vec<ConstantValue>)
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +135,13 @@ impl MIRTy {
 
     pub fn is_pointer(&self) -> bool {
         matches!(self.kind, MIRTykind::Ptr)
+    }
+
+    pub fn slot_counter(&self) -> u32 {
+        match &self.kind {
+            MIRTykind::Array(elem_ty, count) => *count as u32 * elem_ty.slot_counter(),
+            _ => 1,
+        }
     }
 }
 

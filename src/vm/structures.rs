@@ -31,6 +31,7 @@ pub enum VMValue {
     F64(f64),
     Bool(bool),
     Ptr(AllocId, usize), //allocation id + offset
+    Array(Vec<VMValue>),
     Unit,
     Poison,
 }
