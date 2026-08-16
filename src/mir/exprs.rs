@@ -36,10 +36,24 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::Call(_, _) => self.build_call(expr),
             HirExprKind::StaticCast(_, _) => self.build_cast(expr),
             HirExprKind::BitCast(_, _) => self.build_bitcast(expr),
+            HirExprKind::Index { .. } => self.build_index_access(expr),
             _ => todo!(
                 "Encountered an expression whose handler is yet to be added {:?}",
                 expr
             ),
+        }
+    }
+
+    fn build_index_access(&mut self, expr: &HirExpr) {
+        let expr_ty = self.get_type(&expr.hir_id);
+        let elem_ptr = self.lookup_ptr(expr);
+
+        if matches!(expr_ty.kind, MIRTykind::Array(_, _)) {
+            self.last_value = Some(elem_ptr);
+        } else {
+            let dest = self.new_register(expr_ty.clone(), None);
+            self.build_load(dest.clone(), elem_ptr, expr_ty, Some(expr.span.clone()));
+            self.last_value = Some(dest);
         }
     }
 
@@ -504,82 +518,42 @@ impl<'a> MIRBuilder<'a> {
             }
             HirExprKind::BitCast(_, _) => {
                 self.build_bitcast(expr);
-                if let Some(val) = self.last_value.clone() {
-                    val
-                } else {
-                    self.report_ice("Could not get bitcast value".to_string(), span)
-                }
+                self.get_last_val(Some(expr.span.clone()))
             }
 
             HirExprKind::Call(_, _) => {
                 self.build_call(expr);
-                if let Some(val) = self.last_value.clone() {
-                    val
-                } else {
-                    self.report_ice("Could not get call value".to_string(), span);
-                }
+                self.get_last_val(Some(expr.span.clone()))
             }
 
             HirExprKind::DollarScope { .. } => {
                 self.build_dollar_scope(expr);
-                if let Some(val) = self.last_value.clone() {
-                    val
-                } else {
-                    self.report_ice(
-                        "Dollar scope evaluation failed to produce a result register".to_string(),
-                        span,
-                    );
-                }
+                self.get_last_val(Some(expr.span.clone()))
             }
 
             HirExprKind::Binary(lhs, op, rhs) => {
                 let ty = self.get_type(&expr.hir_id);
                 self.build_bin(op, lhs, rhs, span.clone(), ty);
-                if let Some(val) = self.last_value.clone() {
-                    val
-                } else {
-                    self.report_ice(
-                        format!(
-                            "Binary operation '{:?}' failed to produce a result register",
-                            op
-                        ),
-                        span,
-                    );
-                }
+                self.get_last_val(Some(expr.span.clone()))
             }
 
             // Unary operations (e.g., -x or !x)
             HirExprKind::Unary(op, operand) => {
                 let ty = self.get_type(&expr.hir_id);
                 self.build_unary(op, ty, operand);
-                if let Some(val) = self.last_value.clone() {
-                    val
-                } else {
-                    self.report_ice(
-                        format!(
-                            "Unary operation '{:?}' failed to produce a result register",
-                            op
-                        ),
-                        span,
-                    );
-                }
+                self.get_last_val(Some(expr.span.clone()))
             }
 
             // Postfix operations (e.g., x++)
             HirExprKind::Postfix(operand, op) => {
                 let ty = self.get_type(&expr.hir_id);
                 self.build_postfix(op, operand, ty);
-                if let Some(val) = self.last_value.clone() {
-                    val
-                } else {
-                    self.report_ice(
-                        format!(
-                            "Postfix operation '{:?}' failed to produce a result register",
-                            op
-                        ),
-                        span,
-                    );
-                }
+                self.get_last_val(Some(expr.span.clone()))
+            }
+
+            HirExprKind::Index { .. } => {
+                self.build_index_access(expr);
+                self.get_last_val(Some(expr.span.clone()))
             }
 
             _ => {

@@ -663,13 +663,30 @@ impl<'a> MIRBuilder<'a> {
     }
 
     pub fn lookup_ptr(&mut self, expr: &HirExpr) -> MIRValue {
-        if let HirExprKind::Identifier(name) = &expr.kind {
-            self.lookup_var(name).cloned().expect("Variable not found")
-        } else {
-            self.report_ice(
-                "Cannot assign to a non-identifier".to_string(),
+        match &expr.kind {
+            HirExprKind::Identifier(name) => {
+                self.lookup_var(name).cloned().expect("Variable not found")
+            }
+            HirExprKind::Index { target, index } => {
+                let target_ptr = self.lookup_ptr(target);
+                let index_val = self.expr_value(index);
+
+                let target_ty = self.get_type(&target.hir_id);
+                let elem_ty = match &target_ty.kind {
+                    MIRTykind::Array(elem_ty, _) => elem_ty.as_ref().clone(),
+                    _ => self.report_ice(
+                        "Indexing into a non-array type".to_string(),
+                        Some(expr.span.clone()),
+                    ),
+                };
+
+                self.build_gep(target_ptr, index_val, elem_ty, Some(expr.span.clone()));
+                self.get_last_val(Some(expr.span.clone()))
+            }
+            _ => self.report_ice(
+                "Cannot resolve a pointer for this expression".to_string(),
                 Some(expr.span.clone()),
-            );
+            ),
         }
     }
 
