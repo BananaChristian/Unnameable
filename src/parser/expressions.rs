@@ -7,19 +7,13 @@ use crate::{
 
 impl Parser {
     pub fn parse_expression(&mut self, min_prec: Precedence) -> Option<Expr> {
-        let mut left = self.parse_prefix()?;
+        let mut left = self.parse_prefix_with_postfix()?;
 
         while let Some(token) = self.current_token() {
             let token_type = token.token_type;
 
             if token_type == TType::End {
                 break;
-            }
-
-            // postfix check BEFORE binary gate
-            if PostfixOp::is_valid(token) {
-                left = self.parse_postfix(left)?;
-                continue;
             }
 
             if !BinaryOp::is_valid(token) {
@@ -111,6 +105,18 @@ impl Parser {
         ))
     }
 
+    fn parse_prefix_with_postfix(&mut self) -> Option<Expr> {
+        let mut expr = self.parse_prefix()?;
+        while let Some(token) = self.current_token() {
+            if PostfixOp::is_valid(token) {
+                expr = self.parse_postfix(expr)?;
+            } else {
+                break;
+            }
+        }
+        Some(expr)
+    }
+
     fn parse_prefix(&mut self) -> Option<Expr> {
         let token = self.current_token()?.clone();
 
@@ -166,13 +172,14 @@ impl Parser {
                 let op_span = token.span;
                 self.advance();
 
-                let expr = self.parse_prefix()?;
+                let expr = self.parse_prefix_with_postfix()?;
                 let span = Span {
                     start: op_span.start,
                     end: expr.span.end,
                 };
                 Some(Expr::new(ExprKind::Unary(op, Box::new(expr)), span))
             }
+
             TType::DoubleDollar => self.parse_dollar_scope(),
             _ => {
                 let span = token.span;
