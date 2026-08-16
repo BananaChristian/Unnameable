@@ -51,7 +51,7 @@ git clone https://github.com/BananaChristian/Unnameable
 cd Unnameable
 
 # Run the compiler on a source file
-cargo run -- path/to/sample.unn
+cargo run path/to/sample.unn
 ```
 
 ---
