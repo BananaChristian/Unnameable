@@ -668,18 +668,34 @@ impl<'a> MIRBuilder<'a> {
                 self.lookup_var(name).cloned().expect("Variable not found")
             }
             HirExprKind::Index { target, index } => {
-                let target_ptr = self.lookup_ptr(target);
-                let index_val = self.expr_value(index);
-
                 let target_ty = self.get_type(&target.hir_id);
-                let elem_ty = match &target_ty.kind {
-                    MIRTykind::Array(elem_ty, _) => elem_ty.as_ref().clone(),
+
+                let (target_ptr, elem_ty) = match &target_ty.kind {
+                    MIRTykind::Array(elem_ty, _) => {
+                        // array case: lookup_ptr gives the array's own address, step in directly
+                        (self.lookup_ptr(target), elem_ty.as_ref().clone())
+                    }
+                    MIRTykind::Ptr => {
+                        // pointer case: expr_value loads the pointer's VALUE (the address it holds),
+                        // then get_pointed_elem_mir_ty tells us what that address points to
+                        let ptr_val = self.expr_value(target);
+                        let pointee_ty = self.get_pointed_elem_mir_ty(target);
+
+                        let elem_ty = match &pointee_ty.kind {
+                            MIRTykind::Array(elem_ty, _) => elem_ty.as_ref().clone(),
+                            // pointer directly to a scalar — p[0] treats it as a 1-element array,
+                            // C-array-arithmetic style; elem_ty is just the pointee itself
+                            _ => pointee_ty.clone(),
+                        };
+                        (ptr_val, elem_ty)
+                    }
                     _ => self.report_ice(
-                        "Indexing into a non-array type".to_string(),
+                        "Indexing into a non-array, non-pointer type".to_string(),
                         Some(expr.span.clone()),
                     ),
                 };
 
+                let index_val = self.expr_value(index);
                 self.build_gep(target_ptr, index_val, elem_ty, Some(expr.span.clone()));
                 self.get_last_val(Some(expr.span.clone()))
             }

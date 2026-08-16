@@ -95,7 +95,16 @@ impl<'a> TypeChecker<'a> {
                     *inner.clone()
                 }
                 ResolvedTypeKind::Pointer { inner } => {
-                    *inner.clone()
+                    match &inner.kind {
+                        ResolvedTypeKind::Array { inner: arr_elem, .. } => *arr_elem.clone(),
+                        _ => {
+                            self.report(
+                                format!("Cannot index into pointer to non-array type '{}'  use dereference or pointer arithmetic instead", inner.name),
+                                Some(expr.span.clone()),
+                            );
+                            self.unknown(expr.span.clone())
+                        }
+                    }
                 }
                 _ => {
                     self.report(format!("Cannot index into a non indexable type '{}'",target_ty.name), Some(expr.span.clone()));
