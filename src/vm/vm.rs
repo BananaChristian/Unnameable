@@ -114,6 +114,15 @@ impl<'a> VM<'a> {
                 VMOpcode::ConstU128 { dest, val } => {
                     self.write_reg(frame, dest, VMValue::U128(val));
                 }
+                VMOpcode::ConstChar8 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::Char8(val));
+                }
+                VMOpcode::ConstChar16 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::Char16(val));
+                }
+                VMOpcode::ConstChar32 { dest, val } => {
+                    self.write_reg(frame, dest, VMValue::Char32(val));
+                }
                 VMOpcode::ConstBool { dest, val } => {
                     self.write_reg(frame, dest, VMValue::Bool(val));
                 }

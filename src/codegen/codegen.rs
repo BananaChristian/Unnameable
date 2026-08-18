@@ -6,12 +6,14 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     types::BasicTypeEnum,
-    values::{BasicValueEnum, FloatValue, IntValue, PointerValue},
+    values::{BasicValueEnum, FloatValue, GlobalValue, IntValue, PointerValue},
 };
 
 use crate::{
-    diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    mir::{ConstantValue, MIRGlobal, MIRLinkage, MIRModule, MIRTy, MIRTykind, MIRValue, Vreg},
+    diagnostics::{CompilerError, Phase, SharedDiagnostics},
+    mir::{
+        ConstantValue, GlobalId, MIRGlobal, MIRLinkage, MIRModule, MIRTy, MIRTykind, MIRValue, Vreg,
+    },
     target::TargetSpec,
 };
 
@@ -21,6 +23,7 @@ pub struct Codegen<'ctx> {
     pub builder: Builder<'ctx>,
     target_spec: &'ctx TargetSpec,
     pub vreg_map: HashMap<Vreg, BasicValueEnum<'ctx>>,
+    pub global_map: HashMap<GlobalId, GlobalValue<'ctx>>,
     pub corrupted: bool,
     diagnostics: SharedDiagnostics,
 }
@@ -40,6 +43,7 @@ impl<'ctx> Codegen<'ctx> {
             builder,
             target_spec,
             vreg_map: HashMap::new(),
+            global_map: HashMap::new(),
             corrupted: false,
             diagnostics,
         }
@@ -79,14 +83,16 @@ impl<'ctx> Codegen<'ctx> {
             let init_val = self.lower_constant(const_val);
             global_val.set_initializer(&init_val);
         }
+
+        self.global_map.insert(global.global_id.clone(), global_val);
     }
 
     pub fn get_llvmty(&self, mirty: &MIRTy) -> BasicTypeEnum<'ctx> {
         match &mirty.kind {
             MIRTykind::Bool => self.context.bool_type().into(),
-            MIRTykind::I8 | MIRTykind::U8 => self.context.i8_type().into(),
-            MIRTykind::I16 | MIRTykind::U16 => self.context.i16_type().into(),
-            MIRTykind::I32 | MIRTykind::U32 => self.context.i32_type().into(),
+            MIRTykind::I8 | MIRTykind::U8 | MIRTykind::CHAR8 => self.context.i8_type().into(),
+            MIRTykind::I16 | MIRTykind::U16 | MIRTykind::CHAR16 => self.context.i16_type().into(),
+            MIRTykind::I32 | MIRTykind::U32 | MIRTykind::CHAR32 => self.context.i32_type().into(),
             MIRTykind::I64 | MIRTykind::U64 => self.context.i64_type().into(),
             MIRTykind::I128 | MIRTykind::U128 => self.context.custom_width_int_type(128).into(),
 
@@ -127,7 +133,7 @@ impl<'ctx> Codegen<'ctx> {
             ConstantValue::I32(v) => self.context.i32_type().const_int(*v as u64, true).into(),
             ConstantValue::U32(v) => self.context.i32_type().const_int(*v as u64, false).into(),
             ConstantValue::I64(v) => self.context.i64_type().const_int(*v as u64, true).into(),
-            ConstantValue::U64(v) => self.context.i64_type().const_int(*v as u64, *v < 0).into(),
+            ConstantValue::U64(v) => self.context.i64_type().const_int(*v as u64, false).into(),
             ConstantValue::I128(v) => self
                 .context
                 .custom_width_int_type(128)
@@ -154,6 +160,9 @@ impl<'ctx> Codegen<'ctx> {
             }
             ConstantValue::F32(v) => self.context.f32_type().const_float(*v as f64).into(),
             ConstantValue::F64(v) => self.context.f64_type().const_float(*v).into(),
+            ConstantValue::Char8(c) => self.context.i8_type().const_int(*c as u64, false).into(),
+            ConstantValue::Char16(c) => self.context.i16_type().const_int(*c as u64, false).into(),
+            ConstantValue::Char32(c) => self.context.i32_type().const_int(*c as u64, false).into(),
             ConstantValue::Bool(v) => self.context.bool_type().const_int(*v as u64, false).into(),
             ConstantValue::Ptr(addr) => {
                 let ptr_bits = (self.target_spec.int_width * 8) as u32;
@@ -208,6 +217,14 @@ impl<'ctx> Codegen<'ctx> {
                 .get(vreg)
                 .copied()
                 .unwrap_or_else(|| panic!("Undefined virtual register: {:?}", vreg)),
+            MIRValue::Global(global_id) => {
+                let global_val = self
+                    .global_map
+                    .get(global_id)
+                    .expect("Undefined global variable");
+                // Returns an opaque pointer to the global variable in LLVM
+                global_val.as_pointer_value().into()
+            }
             MIRValue::Poison => self.context.i32_type().get_undef().into(),
         }
     }

@@ -4,7 +4,7 @@ use crate::{
     diagnostics::Span,
     hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
     mir::{
-        MIRInstruction,
+        MIRGlobal, MIRInstruction,
         builder::MIRBuilder,
         instructions::{
             ConstantValue, MIRDollarMode, MIRFn, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind,
@@ -108,6 +108,58 @@ impl<'a> MIRBuilder<'a> {
                 }
             }
             _ => self.report_ice("Not an array literal".to_string(), Some(expr.span.clone())),
+        }
+    }
+
+    fn build_string_literal(&mut self, expr: &HirExpr) {
+        match &expr.kind {
+            HirExprKind::Literal(lit) => match lit {
+                HirLiteral::Str(string) => {
+                    let bytes = string.as_bytes();
+                    let len = bytes.len() + 1; //Cater for the null literal
+
+                    let char8_ty = MIRTy {
+                        kind: MIRTykind::CHAR8,
+                        size: 1,
+                        align: 1,
+                    };
+                    let array_ty = MIRTy {
+                        kind: MIRTykind::Array(Box::new(char8_ty.clone()), len),
+                        size: len,
+                        align: 1,
+                    };
+                    let global_id = self.alloc_global_id();
+                    let global_name = format!(".str.{}", global_id.0);
+
+                    let mut const_elements: Vec<ConstantValue> =
+                        bytes.iter().map(|&b| ConstantValue::Char8(b)).collect();
+                    const_elements.push(ConstantValue::Char8(0));
+                    let global_init = MIRValue::Constant(ConstantValue::Array(const_elements));
+
+                    let global = MIRGlobal {
+                        global_id: global_id.clone(),
+                        name: global_name.clone(),
+                        ty: array_ty.clone(),
+                        dollar_mode: self.current_dollar_mode,
+                        is_const: true,
+                        init: global_init,
+                        linkage: MIRLinkage::Private,
+                    };
+
+                    self.module.globals.insert(global_id.clone(), global);
+
+                    self.last_value = Some(MIRValue::Global(global_id));
+                }
+                _ => self.report_ice(
+                    "Invalid string literal".to_string(),
+                    Some(expr.span.clone()),
+                ),
+            },
+
+            _ => self.report_ice(
+                "Invalid string literal".to_string(),
+                Some(expr.span.clone()),
+            ),
         }
     }
 
@@ -632,6 +684,12 @@ impl<'a> MIRBuilder<'a> {
                         );
                     }
                 },
+
+                HirLiteral::Str(_) => {
+                    self.build_string_literal(expr);
+                    self.get_last_val(span)
+                }
+
                 _ => todo!("Handle other constants"),
             },
 

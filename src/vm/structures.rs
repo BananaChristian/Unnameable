@@ -29,6 +29,9 @@ pub enum VMValue {
     U128(u128),
     F32(f32),
     F64(f64),
+    Char8(u8),
+    Char16(u16),
+    Char32(u32),
     Bool(bool),
     Ptr(AllocId, usize), //allocation id + offset
     Array(Vec<VMValue>),

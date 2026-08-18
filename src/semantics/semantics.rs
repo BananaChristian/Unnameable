@@ -243,6 +243,9 @@ impl TypeInfo {
             (ResolvedTypeKind::Str, ResolvedTypeKind::Pointer { inner }) => {
                 matches!(inner.kind, ResolvedTypeKind::Char8)
             }
+            (ResolvedTypeKind::Pointer { inner }, ResolvedTypeKind::Str) => {
+                matches!(inner.kind, ResolvedTypeKind::Char8)
+            }
             (ResolvedTypeKind::Pointer { inner: a }, ResolvedTypeKind::Pointer { inner: b }) => {
                 TypeInfo::types_match(a, b)
             }

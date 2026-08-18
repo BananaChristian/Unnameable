@@ -106,6 +106,9 @@ impl fmt::Display for MIRTykind {
             MIRTykind::Bool => write!(f, "bool"),
             MIRTykind::Unit => write!(f, "unit"),
             MIRTykind::Ptr => write!(f, "ptr"),
+            MIRTykind::CHAR8 => write!(f, "char8"),
+            MIRTykind::CHAR16 => write!(f, "char16"),
+            MIRTykind::CHAR32 => write!(f, "char32"),
             MIRTykind::Array(elem_ty, len) => write!(f, "[{} x {}]", len, elem_ty.kind),
         }
     }
@@ -114,6 +117,21 @@ impl fmt::Display for MIRTykind {
 impl fmt::Display for MIRTy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)
+    }
+}
+
+fn format_escaped_char(f: &mut std::fmt::Formatter<'_>, ch: char) -> std::fmt::Result {
+    match ch {
+        '\0' => write!(f, "'\\0'"),
+        '\n' => write!(f, "'\\n'"),
+        '\r' => write!(f, "'\\r'"),
+        '\t' => write!(f, "'\\t'"),
+        '\\' => write!(f, "'\\\\'"),
+        '\'' => write!(f, "'\\''"),
+        // Printable ASCII and unicode characters
+        c if !c.is_control() => write!(f, "'{c}'"),
+        // Non-printable control characters output as hex escapes
+        c => write!(f, "'\\u{{{:04x}}}'", c as u32),
     }
 }
 
@@ -134,6 +152,15 @@ impl fmt::Display for ConstantValue {
             ConstantValue::U128(v) => write!(f, "{v}"),
             ConstantValue::F32(v) => write!(f, "{v}"),
             ConstantValue::F64(v) => write!(f, "{v}"),
+            ConstantValue::Char8(v) => format_escaped_char(f, *v as char),
+            ConstantValue::Char16(v) => {
+                let ch = char::from_u32(*v as u32).unwrap_or('\u{FFFD}');
+                format_escaped_char(f, ch)
+            }
+            ConstantValue::Char32(v) => {
+                let ch = char::from_u32(*v).unwrap_or('\u{FFFD}');
+                format_escaped_char(f, ch)
+            }
             ConstantValue::Bool(v) => write!(f, "{v}"),
             ConstantValue::Ptr(addr) => match *addr {
                 0 => write!(f, "ptr null"),
@@ -158,6 +185,7 @@ impl fmt::Display for MIRValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MIRValue::Register { vreg, .. } => write!(f, "{vreg}"),
+            MIRValue::Global(id) => write!(f, "@global_{}", id.0),
             MIRValue::Constant(c) => write!(f, "{c}"),
             MIRValue::Poison => write!(f, "poison"),
         }
@@ -346,7 +374,7 @@ impl fmt::Display for MIRFn {
         // Output signature: $$ expose func @my_fn(i32 %x) {
         writeln!(
             f,
-            "{} {}func @{}({}) {{",
+            "{}{}func @{}({}) {{",
             self.dollar_mode, linkage_str, self.name, params_str
         )?;
 
@@ -376,11 +404,10 @@ impl fmt::Display for MIRGlobal {
         };
         let mut_str = if self.is_const { "const" } else { "mut" };
 
-        // Output signature: expose global @MY_VAR mut: i32 [Full] = 42
         write!(
             f,
-            "{}global @{} {}: {} [{}] = {}",
-            linkage_str, self.name, mut_str, self.ty, self.dollar_mode, self.init
+            "{}{}global @{} {}: {} = {}",
+            self.dollar_mode, linkage_str, self.name, mut_str, self.ty, self.init
         )
     }
 }

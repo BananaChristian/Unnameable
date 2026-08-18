@@ -73,6 +73,9 @@ impl<'a> Folder<'a> {
             VMValue::U128(n) => MIRValue::Constant(ConstantValue::U128(*n)),
             VMValue::F32(f) => MIRValue::Constant(ConstantValue::F32(*f)),
             VMValue::F64(f) => MIRValue::Constant(ConstantValue::F64(*f)),
+            VMValue::Char8(c) => MIRValue::Constant(ConstantValue::Char8(*c)),
+            VMValue::Char16(c) => MIRValue::Constant(ConstantValue::Char16(*c)),
+            VMValue::Char32(c) => MIRValue::Constant(ConstantValue::Char32(*c)),
             VMValue::Bool(b) => MIRValue::Constant(ConstantValue::Bool(*b)),
             VMValue::Ptr(_, offset) => MIRValue::Constant(ConstantValue::Ptr(*offset)),
             VMValue::Array(elements) => {

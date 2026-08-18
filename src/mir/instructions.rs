@@ -38,14 +38,18 @@ pub enum ConstantValue {
     U128(u128),
     F32(f32),
     F64(f64),
+    Char8(u8),
+    Char16(u16),
+    Char32(u32),
     Bool(bool),
     Ptr(usize), //the pointer and the offset
-    Array(Vec<ConstantValue>)
+    Array(Vec<ConstantValue>),
 }
 
 #[derive(Debug, Clone)]
 pub enum MIRValue {
     Register { vreg: Vreg, ty: MIRTy },
+    Global(GlobalId),
     Constant(ConstantValue),
     Poison,
 }
@@ -161,6 +165,9 @@ pub enum MIRTykind {
     ISIZE,
     F32,
     F64,
+    CHAR8,
+    CHAR16,
+    CHAR32,
     Bool,
     Unit,
     Ptr, //All pointers are opaque

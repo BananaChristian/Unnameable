@@ -208,6 +208,7 @@ impl<'a> MIRBuilder<'a> {
                     | ConstantValue::I128(_)
                     | ConstantValue::Int(_)
             ),
+            MIRValue::Global(_) => false,
             MIRValue::Poison => false,
         }
     }
@@ -254,6 +255,7 @@ impl<'a> MIRBuilder<'a> {
             MIRValue::Constant(c) => {
                 matches!(c, ConstantValue::F32(_) | ConstantValue::F64(_))
             }
+            MIRValue::Global(_) => false,
             MIRValue::Poison => false,
         };
 
@@ -519,6 +521,9 @@ impl<'a> MIRBuilder<'a> {
             ResolvedTypeKind::Bool => MIRTykind::Bool,
             ResolvedTypeKind::F32 => MIRTykind::F32,
             ResolvedTypeKind::F64 => MIRTykind::F64,
+            ResolvedTypeKind::Char8 => MIRTykind::CHAR8,
+            ResolvedTypeKind::Char16 => MIRTykind::CHAR16,
+            ResolvedTypeKind::Char32 => MIRTykind::CHAR32,
             ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
             ResolvedTypeKind::Array { inner, size } => {
                 let elem_ty_kind = self.convert_tyinfo_to_mirtykind(&inner);
@@ -535,6 +540,7 @@ impl<'a> MIRBuilder<'a> {
                 };
                 MIRTykind::Array(Box::new(elem_ty), arr_size)
             }
+            ResolvedTypeKind::Str => MIRTykind::Ptr,
             _ => todo!("Will map the other types later {}", ty_info.name),
         }
     }
@@ -565,10 +571,17 @@ impl<'a> MIRBuilder<'a> {
     pub fn get_val_alignment(&self, val: &MIRValue) -> usize {
         match val {
             MIRValue::Register { ty, .. } => ty.align,
+            MIRValue::Global(_) => self.target_spec.pointer_width,
             MIRValue::Constant(c) => match c {
-                ConstantValue::I8(_) | ConstantValue::U8(_) | ConstantValue::Bool(_) => 1,
-                ConstantValue::I16(_) | ConstantValue::U16(_) => 2,
-                ConstantValue::I32(_) | ConstantValue::U32(_) | ConstantValue::F32(_) => 4,
+                ConstantValue::I8(_)
+                | ConstantValue::U8(_)
+                | ConstantValue::Char8(_)
+                | ConstantValue::Bool(_) => 1,
+                ConstantValue::I16(_) | ConstantValue::U16(_) | ConstantValue::Char16(_) => 2,
+                ConstantValue::I32(_)
+                | ConstantValue::U32(_)
+                | ConstantValue::Char32(_)
+                | ConstantValue::F32(_) => 4,
                 ConstantValue::I64(_) | ConstantValue::U64(_) | ConstantValue::F64(_) => 8,
                 ConstantValue::Int(_) | ConstantValue::UInt(_) | ConstantValue::Ptr(_) => {
                     self.target_spec.pointer_width

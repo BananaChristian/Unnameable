@@ -386,8 +386,8 @@ impl<'a> TypeChecker<'a> {
             HirType::F64 => self.primitive(ResolvedTypeKind::F64, ty.span.clone()),
             HirType::Str => self.primitive(ResolvedTypeKind::Str, ty.span.clone()),
             HirType::Char8 => self.primitive(ResolvedTypeKind::Char8, ty.span.clone()),
-            HirType::Char16 => self.primitive(ResolvedTypeKind::Char8, ty.span.clone()),
-            HirType::Char32 => self.primitive(ResolvedTypeKind::Char16, ty.span.clone()),
+            HirType::Char16 => self.primitive(ResolvedTypeKind::Char16, ty.span.clone()),
+            HirType::Char32 => self.primitive(ResolvedTypeKind::Char32, ty.span.clone()),
             HirType::Bool => self.primitive(ResolvedTypeKind::Bool, ty.span.clone()),
             HirType::Unit => self.unit(ty.span.clone()),
 

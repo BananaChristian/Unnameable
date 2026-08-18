@@ -207,6 +207,9 @@ impl<'a> BytecodeBuilder<'a> {
             }),
             ConstantValue::F32(_) => todo!("float constants"),
             ConstantValue::F64(_) => todo!("float constants"),
+            ConstantValue::Char8(c) => instructions.push(VMOpcode::ConstChar8 { dest, val: *c }),
+            ConstantValue::Char16(c) => instructions.push(VMOpcode::ConstChar16 { dest, val: *c }),
+            ConstantValue::Char32(c) => instructions.push(VMOpcode::ConstChar32 { dest, val: *c }),
             ConstantValue::Array(elements) => {
                 let elem_regs: Vec<u16> = elements
                     .iter()
@@ -240,7 +243,17 @@ impl<'a> BytecodeBuilder<'a> {
             MIRValue::Constant(const_val) => {
                 let dest = reg_map.next_index;
                 reg_map.next_index += 1;
-                self.lower_const_val(dest, const_val,reg_map, instructions);
+                self.lower_const_val(dest, const_val, reg_map, instructions);
+                dest
+            }
+            MIRValue::Global(global_id) => {
+                let dest = reg_map.next_index;
+                reg_map.next_index += 1;
+
+                instructions.push(VMOpcode::LoadGlobal {
+                    dest,
+                    global_id: global_id.0 as u32,
+                });
                 dest
             }
             MIRValue::Poison => panic!("Poison value in bytecode lowering"),

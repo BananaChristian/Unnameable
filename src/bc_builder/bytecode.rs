@@ -60,6 +60,18 @@ pub enum VMOpcode {
         dest: u16,
         val: u128,
     },
+    ConstChar8 {
+        dest: u16,
+        val: u8,
+    },
+    ConstChar16 {
+        dest: u16,
+        val: u16,
+    },
+    ConstChar32 {
+        dest: u16,
+        val: u32,
+    },
     ConstBool {
         dest: u16,
         val: bool,

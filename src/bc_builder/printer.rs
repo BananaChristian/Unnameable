@@ -111,6 +111,24 @@ impl BytecodePrinter {
             VMOpcode::ConstU128 { dest, val } => {
                 format!("r{} = {} (u128)", dest, val)
             }
+
+            VMOpcode::ConstChar8 { dest, val } => {
+                format!("r{} = {} (char8)", dest, *val as char)
+            }
+            VMOpcode::ConstChar16 { dest, val } => {
+                format!(
+                    "r{} = {} (char16)",
+                    dest,
+                    char::from_u32(*val as u32).unwrap_or('\u{FFFD}')
+                )
+            }
+            VMOpcode::ConstChar32 { dest, val } => {
+                format!(
+                    "r{} = {} (char32)",
+                    dest,
+                    char::from_u32(*val).unwrap_or('\u{FFFD}')
+                )
+            }
             VMOpcode::ConstArray { dest, elements } => {
                 let elems_str = elements
                     .iter()
