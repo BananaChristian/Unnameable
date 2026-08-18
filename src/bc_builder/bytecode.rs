@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::mir::{CmpOp, MIRTy};
+use crate::{mir::{CmpOp, MIRTy}, vm::VMValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DollarMode {
@@ -289,7 +289,7 @@ pub struct GlobalVar {
     pub id: u32,
     pub name: String,
     pub size_in_bytes: u32,
-    pub init_data: Option<Vec<u8>>,
+    pub init_data: Option<VMValue>,
 }
 
 #[derive(Debug, Clone, Default)]

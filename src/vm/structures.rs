@@ -11,6 +11,7 @@ pub struct AllocId(pub usize);
 #[derive(Debug, Clone)]
 pub struct EvalResultTable {
     pub results: HashMap<String, VMValue>,
+    pub global_allocs: HashMap<AllocId, u32>, //Reverse map for alloc id to global id
 }
 
 #[derive(Debug, Clone)]

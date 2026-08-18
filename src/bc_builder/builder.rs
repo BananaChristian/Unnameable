@@ -9,6 +9,7 @@ use crate::{
         BlockId, ConstantValue, MIRDollarMode, MIRFn, MIRInstruction, MIRModule, MIROps, MIRValue,
         Terminator, Vreg,
     },
+    vm::VMValue,
 };
 
 #[derive(Debug, Clone)]
@@ -83,12 +84,19 @@ impl<'a> BytecodeBuilder<'a> {
     fn translate_globals(&mut self) {
         for (id, global) in &self.mir_module.globals {
             let global_id = id.0 as u32;
+
+            let init_data = match &global.init {
+                MIRValue::Constant(c) => Some(self.lower_const_to_vm_value(c)),
+                _ => None,
+            };
+
             let gvar = GlobalVar {
                 id: global_id,
                 name: global.name.clone(),
-                size_in_bytes: 0,
-                init_data: None,
+                size_in_bytes: global.ty.size as u32,
+                init_data,
             };
+
             self.bytecode_module.globals.push(gvar);
             self.bytecode_module
                 .global_symbols
@@ -257,6 +265,37 @@ impl<'a> BytecodeBuilder<'a> {
                 dest
             }
             MIRValue::Poison => panic!("Poison value in bytecode lowering"),
+        }
+    }
+
+    pub fn lower_const_to_vm_value(&self, const_val: &ConstantValue) -> VMValue {
+        match const_val {
+            ConstantValue::Bool(v) => VMValue::Bool(*v),
+            ConstantValue::I8(v) => VMValue::I8(*v),
+            ConstantValue::U8(v) => VMValue::U8(*v),
+            ConstantValue::I16(v) => VMValue::I16(*v),
+            ConstantValue::U16(v) => VMValue::U16(*v),
+            ConstantValue::I32(v) => VMValue::I32(*v),
+            ConstantValue::U32(v) => VMValue::U32(*v),
+            ConstantValue::I64(v) => VMValue::I64(*v),
+            ConstantValue::U64(v) => VMValue::U64(*v),
+            ConstantValue::Int(v) => VMValue::Int(*v),
+            ConstantValue::UInt(v) => VMValue::UInt(*v),
+            ConstantValue::I128(v) => VMValue::I128(*v),
+            ConstantValue::U128(v) => VMValue::U128(*v),
+            ConstantValue::Char8(c) => VMValue::Char8(*c),
+            ConstantValue::Char16(c) => VMValue::Char16(*c),
+            ConstantValue::Char32(c) => VMValue::Char32(*c),
+            ConstantValue::F32(v) => VMValue::F32(*v),
+            ConstantValue::F64(v) => VMValue::F64(*v),
+            ConstantValue::Ptr(offset) => VMValue::UInt(*offset),
+            ConstantValue::Array(elements) => {
+                let vm_elems = elements
+                    .iter()
+                    .map(|e| self.lower_const_to_vm_value(e))
+                    .collect();
+                VMValue::Array(vm_elems)
+            }
         }
     }
 

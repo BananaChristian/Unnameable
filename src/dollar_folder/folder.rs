@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
-    mir::{ConstantValue, MIRInstruction, MIRModule, MIRValue},
-    vm::{EvalResultTable, VMValue},
+    mir::{ConstantValue, GlobalId, MIRInstruction, MIRModule, MIRValue},
+    vm::{AllocId, EvalResultTable, VMValue},
 };
 
 pub struct Folder<'a> {
@@ -33,7 +35,8 @@ impl<'a> Folder<'a> {
                         let vm_val = self.eval_table.results.get(scope_fn);
 
                         if let Some(val) = vm_val {
-                            let const_mir_val = Self::vm_val_to_mir_val(val);
+                            let const_mir_val =
+                                Self::vm_val_to_mir_val(val, &self.eval_table.global_allocs);
                             *inst = MIRInstruction::Assign {
                                 dest: dest.clone(),
                                 src: const_mir_val,
@@ -57,7 +60,7 @@ impl<'a> Folder<'a> {
             .retain(|_, func| !func.name.starts_with("$$scope"));
     }
 
-    fn vm_val_to_mir_val(vm_val: &VMValue) -> MIRValue {
+    fn vm_val_to_mir_val(vm_val: &VMValue, global_allocs: &HashMap<AllocId, u32>) -> MIRValue {
         match vm_val {
             VMValue::I8(n) => MIRValue::Constant(ConstantValue::I8(*n)),
             VMValue::U8(n) => MIRValue::Constant(ConstantValue::U8(*n)),
@@ -77,11 +80,14 @@ impl<'a> Folder<'a> {
             VMValue::Char16(c) => MIRValue::Constant(ConstantValue::Char16(*c)),
             VMValue::Char32(c) => MIRValue::Constant(ConstantValue::Char32(*c)),
             VMValue::Bool(b) => MIRValue::Constant(ConstantValue::Bool(*b)),
-            VMValue::Ptr(_, offset) => MIRValue::Constant(ConstantValue::Ptr(*offset)),
+            VMValue::Ptr(alloc_id, offset) => match global_allocs.get(alloc_id) {
+                Some(&global_id) => MIRValue::Global(GlobalId(global_id as usize)),
+                None => MIRValue::Constant(ConstantValue::Ptr(*offset)),
+            },
             VMValue::Array(elements) => {
                 let mir_elements: Vec<ConstantValue> = elements
                     .iter()
-                    .map(|e| match Self::vm_val_to_mir_val(e) {
+                    .map(|e| match Self::vm_val_to_mir_val(e, global_allocs) {
                         MIRValue::Constant(c) => c,
                         other => {
                             panic!("Array element folded to non-constant MIRValue: {:?}", other)

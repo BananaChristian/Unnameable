@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Write};
 
 use crate::bc_builder::bytecode::{BytecodeModule, DollarMode, VMOpcode};
+use crate::vm::VMValue;
 
 impl fmt::Display for DollarMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -9,6 +10,54 @@ impl fmt::Display for DollarMode {
             DollarMode::Full => write!(f, "Full"),
             DollarMode::Read => write!(f, "Read"),
             DollarMode::None => write!(f, "None"),
+        }
+    }
+}
+
+
+impl fmt::Display for VMValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VMValue::I8(v) => write!(f, "{}", v),
+            VMValue::U8(v) => write!(f, "{}", v),
+            VMValue::I16(v) => write!(f, "{}", v),
+            VMValue::U16(v) => write!(f, "{}", v),
+            VMValue::I32(v) => write!(f, "{}", v),
+            VMValue::U32(v) => write!(f, "{}", v),
+            VMValue::I64(v) => write!(f, "{}", v),
+            VMValue::U64(v) => write!(f, "{}", v),
+            VMValue::Int(v) => write!(f, "{}", v),
+            VMValue::UInt(v) => write!(f, "{}", v),
+            VMValue::I128(v) => write!(f, "{}", v),
+            VMValue::U128(v) => write!(f, "{}", v),
+            VMValue::F32(v) => write!(f, "{}", v),
+            VMValue::F64(v) => write!(f, "{}", v),
+            VMValue::Char8(c) => match std::char::from_u32(*c as u32) {
+                Some(ch) => write!(f, "{:?}", ch),
+                None => write!(f, "\\x{:02X}", c),
+            },
+            VMValue::Char16(c) => match std::char::from_u32(*c as u32) {
+                Some(ch) => write!(f, "{:?}", ch),
+                None => write!(f, "\\u{{{:04X}}}", c),
+            },
+            VMValue::Char32(c) => match std::char::from_u32(*c) {
+                Some(ch) => write!(f, "{:?}", ch),
+                None => write!(f, "\\u{{{:06X}}}", c),
+            },
+            VMValue::Bool(v) => write!(f, "{}", v),
+            VMValue::Ptr(alloc_id, offset) => write!(f, "&alloc_{}+{}", alloc_id.0, offset),
+            VMValue::Array(elems) => {
+                write!(f, "[")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", elem)?;
+                }
+                write!(f, "]")
+            }
+            VMValue::Unit => write!(f, "()"),
+            VMValue::Poison => write!(f, "poison"),
         }
     }
 }
@@ -28,13 +77,7 @@ impl BytecodePrinter {
         } else {
             for global in &module.globals {
                 let init_str = match &global.init_data {
-                    Some(bytes) => format!(
-                        " [init: {:?}]",
-                        bytes
-                            .iter()
-                            .map(|b| format!("{:02X}", b))
-                            .collect::<Vec<_>>()
-                    ),
+                    Some(val) => format!(" [init: {}]", val),
                     None => String::new(),
                 };
                 let _ = writeln!(

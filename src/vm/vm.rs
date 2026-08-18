@@ -15,23 +15,50 @@ pub struct VM<'a> {
     pub module: &'a BytecodeModule,
     pub eval_table: EvalResultTable,
     pub memory: VMMemory,
+    pub global_allocs: HashMap<u32, AllocId>, //Map global id to Alloc id
     diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
 
 impl<'a> VM<'a> {
     pub fn new(module: &'a BytecodeModule, diagnostics: SharedDiagnostics) -> Self {
-        VM {
+        let mut vm = VM {
             module,
             eval_table: EvalResultTable {
                 results: HashMap::new(),
+                global_allocs: HashMap::new(),
             },
             memory: VMMemory {
                 allocations: HashMap::new(),
                 next_alloc: 1,
             },
+            global_allocs: HashMap::new(),
             diagnostics,
             corrupted: false,
+        };
+        vm.init_globals();
+        vm
+    }
+
+    fn init_globals(&mut self) {
+        for global in &self.module.globals {
+            let alloc_id = AllocId(self.memory.next_alloc);
+            self.memory.next_alloc += 1;
+
+            let data = match &global.init_data {
+                Some(VMValue::Array(elems)) => elems.clone(),
+                Some(scalar) => vec![scalar.clone()],
+                None => {
+                    // Uninitialized space filled with Poison elements matching size
+                    vec![VMValue::Poison; global.size_in_bytes as usize]
+                }
+            };
+            self.memory
+                .allocations
+                .insert(alloc_id.clone(), Allocation { data });
+
+            self.global_allocs.insert(global.id, alloc_id.clone());
+            self.eval_table.global_allocs.insert(alloc_id, global.id);
         }
     }
 
@@ -125,6 +152,16 @@ impl<'a> VM<'a> {
                 }
                 VMOpcode::ConstBool { dest, val } => {
                     self.write_reg(frame, dest, VMValue::Bool(val));
+                }
+
+                VMOpcode::LoadGlobal { dest, global_id } => {
+                    let Some(alloc_id) = self.global_allocs.get(&global_id).cloned() else {
+                        self.report_ice(format!("Undefined global_id: {}", global_id));
+                        return VMValue::Poison;
+                    };
+
+                    // Load a base pointer referencing the global's allocation slot
+                    self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
                 VMOpcode::Jump { target_pc } => {
                     frame.ip = target_pc;
