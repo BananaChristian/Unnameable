@@ -684,6 +684,9 @@ impl<'a> MIRBuilder<'a> {
                         );
                     }
                 },
+                HirLiteral::Char8(c) => MIRValue::Constant(ConstantValue::Char8(*c)),
+                HirLiteral::Char16(c) => MIRValue::Constant(ConstantValue::Char16(*c)),
+                HirLiteral::Char32(c) => MIRValue::Constant(ConstantValue::Char32(*c as u32)),
 
                 HirLiteral::Str(_) => {
                     self.build_string_literal(expr);
