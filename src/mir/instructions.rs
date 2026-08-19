@@ -15,6 +15,9 @@ pub struct GlobalId(pub usize); //ID for global variables
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct FnId(pub usize); //ID for functions
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub struct StructId(pub usize); //ID for structs
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MIRDollarMode {
     None,     //Off limits to dollar bill engine
@@ -310,6 +313,13 @@ pub struct MIRFn {
 }
 
 #[derive(Debug, Clone)]
+pub struct MIRStructDecl {
+    pub struct_id: StructId,
+    pub name: String,
+    pub fields: Vec<(String, MIRTy)>,
+}
+
+#[derive(Debug, Clone)]
 pub struct MIRGlobal {
     pub global_id: GlobalId,
     pub name: String,
@@ -318,4 +328,12 @@ pub struct MIRGlobal {
     pub is_const: bool,
     pub init: MIRValue,
     pub linkage: MIRLinkage,
+}
+
+#[derive(Debug, Clone)]
+pub struct MIRModule {
+    pub name: String, //Module name
+    pub globals: HashMap<GlobalId, MIRGlobal>,
+    pub structs: HashMap<StructId, MIRStructDecl>,
+    pub functions: HashMap<FnId, MIRFn>,
 }

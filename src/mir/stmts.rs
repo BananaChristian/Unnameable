@@ -3,14 +3,18 @@ use std::collections::HashMap;
 use crate::{
     hir::{HirExprKind, HirLiteral, HirStmt, HirStmtKind},
     mir::{
+        MIRTy,
         builder::MIRBuilder,
-        instructions::{MIRDollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, Terminator},
+        instructions::{
+            MIRDollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRStructDecl, Terminator,
+        },
     },
 };
 
 impl<'a> MIRBuilder<'a> {
     pub fn build_stmt(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
+            HirStmtKind::HirStructDecl { .. } => self.build_struct(stmt),
             HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
@@ -18,6 +22,27 @@ impl<'a> MIRBuilder<'a> {
             HirStmtKind::HirWhile { .. } => self.build_while(stmt),
             HirStmtKind::HirExpr(_) => self.build_expr_stmt(stmt),
             _ => todo!("Implement all the different statement handlers"),
+        }
+    }
+
+    fn build_struct(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirStructDecl { name, fields, .. } = &stmt.kind {
+            let struct_id = self.alloc_struct_id();
+            let fields: Vec<(String, MIRTy)> = fields
+                .iter()
+                .map(|f| {
+                    let name = f.name.clone();
+                    let ty = self.get_type(&f.hir_id);
+                    (name, ty)
+                })
+                .collect();
+
+            let mir_struct = MIRStructDecl {
+                struct_id,
+                name: name.clone(),
+                fields,
+            };
+            self.module.structs.insert(struct_id, mir_struct);
         }
     }
 

@@ -176,7 +176,7 @@ impl Parser {
         while self.current_token()?.token_type != TType::Rbrace
             && self.current_token()?.token_type != TType::End
         {
-            if let Some(param) = self.parse_param_decl() {
+            if let Some(param) = self.parse_param_decl(false) {
                 fields.push(param);
             } else {
                 let token = self.current_token()?.clone();

@@ -1,16 +1,29 @@
 use std::fmt::{self};
 
 use crate::mir::{
-    builder::MIRModule,
+    MIRModule,
     instructions::{
         BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
-        MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
+        MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind, MIRValue,
+        Terminator, Vreg,
     },
 };
 
 impl fmt::Display for MIRModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "module \"{}\"\n", self.name)?;
+
+        // Print Structs
+        if !self.structs.is_empty() {
+            let mut struct_ids: Vec<_> = self.structs.keys().cloned().collect();
+            struct_ids.sort_by_key(|s| s.0);
+            for id in struct_ids {
+                if let Some(struct_decl) = self.structs.get(&id) {
+                    writeln!(f, "{struct_decl}")?;
+                }
+            }
+            writeln!(f)?;
+        }
 
         // Print Globals
         if !self.globals.is_empty() {
@@ -354,6 +367,19 @@ impl fmt::Display for MIRParam {
             format!("%{}", self.name)
         };
         write!(f, "{} {} {}", self.dollar_mode, self.ty, name_str)
+    }
+}
+
+impl fmt::Display for MIRStructDecl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "%{} = type {{ ", self.name)?;
+        for (i, (field_name, field_ty)) in self.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{field_name}: {field_ty}")?;
+        }
+        write!(f, " }}")
     }
 }
 

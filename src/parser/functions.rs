@@ -5,8 +5,8 @@ use crate::{
     parser::Parser,
 };
 
-impl  Parser {
-    pub fn parse_param_decl(&mut self) -> Option<Stmt> {
+impl Parser {
+    pub fn parse_param_decl(&mut self, parse_def: bool) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
 
         // Collect qualifiers
@@ -34,13 +34,16 @@ impl  Parser {
         let ty = self.parse_type()?;
 
         // Parse default value (optional)
-        let default = if self.current_token()?.token_type == TType::Bind {
-            self.advance(); // Consume :=
-            let value = self.parse_expression(Precedence::Lowest)?;
-            Some(Box::new(value))
-        } else {
-            None
-        };
+        let mut default = None;
+        if parse_def {
+            default = if self.current_token()?.token_type == TType::Bind {
+                self.advance(); // Consume :=
+                let value = self.parse_expression(Precedence::Lowest)?;
+                Some(Box::new(value))
+            } else {
+                None
+            };
+        }
 
         let end = self.current_token()?.span.end;
         let span = Span { start, end };
@@ -74,7 +77,7 @@ impl  Parser {
 
         // Parse parameters with commas
         loop {
-            let param = self.parse_param_decl()?;
+            let param = self.parse_param_decl(true)?;
             params.push(param);
 
             if self.match_token(TType::Comma) {

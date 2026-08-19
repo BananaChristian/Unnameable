@@ -5,20 +5,16 @@ use crate::{
     hir::{HirBinaryOp, HirExpr, HirExprKind},
     indexer::NodeIndex,
     lowering::NodeId,
-    mir::instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
-        MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
+    mir::{
+        MIRModule,
+        instructions::{
+            BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode,
+            MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, StructId, Terminator, Vreg,
+        },
     },
     semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
     target::TargetSpec,
 };
-
-#[derive(Debug, Clone)]
-pub struct MIRModule {
-    pub name: String, //Module name
-    pub globals: HashMap<GlobalId, MIRGlobal>,
-    pub functions: HashMap<FnId, MIRFn>,
-}
 
 pub struct MIRBuilder<'a> {
     //The imput hir to be convereted to MIR
@@ -32,6 +28,7 @@ pub struct MIRBuilder<'a> {
     block_counter: usize,
     fn_counter: usize,
     global_counter: usize,
+    struct_counter: usize,
     pub dollar_scope_counter: usize,
 
     pub current_block_id: Option<BlockId>,
@@ -62,6 +59,7 @@ impl<'a> MIRBuilder<'a> {
             block_counter: 0,
             fn_counter: 0,
             global_counter: 0,
+            struct_counter: 0,
             dollar_scope_counter: 0,
             current_block_id: None,
             current_func: None,
@@ -73,6 +71,7 @@ impl<'a> MIRBuilder<'a> {
             module: MIRModule {
                 name: module_name,
                 globals: HashMap::new(),
+                structs: HashMap::new(),
                 functions: HashMap::new(),
             },
             types_table,
@@ -118,6 +117,12 @@ impl<'a> MIRBuilder<'a> {
     pub fn alloc_global_id(&mut self) -> GlobalId {
         let current = GlobalId(self.global_counter);
         self.global_counter += 1;
+        current
+    }
+
+    pub fn alloc_struct_id(&mut self) -> StructId {
+        let current = StructId(self.struct_counter);
+        self.struct_counter += 1;
         current
     }
 
