@@ -506,6 +506,7 @@ impl<'a> TypeChecker<'a> {
 
     fn struct_field_type(&mut self, member: &HirParam) -> (String, TypeInfo) {
         let field_ty = self.type_from_hir_type(&member.ty);
+        self.insert(member.hir_id, field_ty.clone());
         (member.name.clone(), field_ty)
     }
 

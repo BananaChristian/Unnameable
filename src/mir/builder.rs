@@ -36,6 +36,8 @@ pub struct MIRBuilder<'a> {
     pub current_dollar_mode: MIRDollarMode,
     pub current_dollar_name: Option<String>,
 
+    pub struct_name_to_id: HashMap<String, StructId>,
+
     var_stack: Vec<HashMap<String, MIRValue>>,
     pub last_value: Option<MIRValue>,
 
@@ -74,6 +76,7 @@ impl<'a> MIRBuilder<'a> {
                 structs: HashMap::new(),
                 functions: HashMap::new(),
             },
+            struct_name_to_id: HashMap::new(),
             types_table,
             target_spec,
             corrupted: false,
@@ -509,7 +512,7 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    fn convert_tyinfo_to_mirtykind(&self, ty_info: &TypeInfo) -> MIRTykind {
+    fn convert_tyinfo_to_mirtykind(&mut self, ty_info: &TypeInfo) -> MIRTykind {
         match &ty_info.kind {
             ResolvedTypeKind::I8 => MIRTykind::I8,
             ResolvedTypeKind::U8 => MIRTykind::U8,
@@ -529,6 +532,15 @@ impl<'a> MIRBuilder<'a> {
             ResolvedTypeKind::Char8 => MIRTykind::CHAR8,
             ResolvedTypeKind::Char16 => MIRTykind::CHAR16,
             ResolvedTypeKind::Char32 => MIRTykind::CHAR32,
+            ResolvedTypeKind::Struct { name, .. } => {
+                let Some(struct_id) = self.struct_name_to_id.get(name) else {
+                    self.report_ice(
+                        format!("Failed to get the struct id corresponding to {}", name),
+                        Some(ty_info.span.clone()),
+                    );
+                };
+                MIRTykind::Struct(*struct_id, name.clone())
+            }
             ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
             ResolvedTypeKind::Array { inner, size } => {
                 let elem_ty_kind = self.convert_tyinfo_to_mirtykind(&inner);
@@ -550,7 +562,7 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    pub fn get_type(&self, id: &NodeId) -> MIRTy {
+    pub fn get_type(&mut self, id: &NodeId) -> MIRTy {
         let ty_info = self.types_table.types.get(id);
 
         match ty_info {
@@ -561,7 +573,7 @@ impl<'a> MIRBuilder<'a> {
                 MIRTy { kind, size, align }
             }
 
-            None => todo!("Handle a failed type"),
+            None => self.report_ice(format!("Type not found in types table"), None),
         }
     }
 

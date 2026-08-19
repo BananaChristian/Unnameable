@@ -7,5 +7,5 @@ mod stmts;
 pub use builder::MIRBuilder;
 pub use instructions::{
     BlockId, CmpOp, ConstantValue, GlobalId, MIRDollarMode, MIRFn, MIRGlobal, MIRInstruction,
-    MIRLinkage, MIRModule, MIROps, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
+    MIRLinkage, MIRModule, MIROps, MIRStructDecl, MIRTy, MIRTykind, MIRValue, Terminator, Vreg,
 };

@@ -175,6 +175,7 @@ pub enum MIRTykind {
     Unit,
     Ptr, //All pointers are opaque
     Array(Box<MIRTy>, usize),
+    Struct(StructId, String),
 }
 
 #[derive(Debug, Clone)]

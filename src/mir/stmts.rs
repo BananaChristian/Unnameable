@@ -28,6 +28,7 @@ impl<'a> MIRBuilder<'a> {
     fn build_struct(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirStructDecl { name, fields, .. } = &stmt.kind {
             let struct_id = self.alloc_struct_id();
+            self.struct_name_to_id.insert(name.clone(), struct_id.clone());
             let fields: Vec<(String, MIRTy)> = fields
                 .iter()
                 .map(|f| {

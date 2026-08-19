@@ -12,7 +12,8 @@ use inkwell::{
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     mir::{
-        ConstantValue, GlobalId, MIRGlobal, MIRLinkage, MIRModule, MIRTy, MIRTykind, MIRValue, Vreg,
+        ConstantValue, GlobalId, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl, MIRTy, MIRTykind,
+        MIRValue, Vreg,
     },
     target::TargetSpec,
 };
@@ -50,6 +51,10 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_module(&mut self, mir_module: &MIRModule) {
+        for struct_decl in mir_module.structs.values() {
+            self.lower_structs(struct_decl);
+        }
+
         for global in mir_module.globals.values() {
             self.lower_globals(global);
         }
@@ -65,6 +70,17 @@ impl<'ctx> Codegen<'ctx> {
                 self.lower_func_body(mir_fn, fn_val);
             }
         }
+    }
+
+    fn lower_structs(&mut self, struct_decl: &MIRStructDecl) {
+        let struct_ty = self.context.opaque_struct_type(&struct_decl.name);
+
+        let field_llvm_tys: Vec<BasicTypeEnum> = struct_decl
+            .fields
+            .iter()
+            .map(|(_, field_ty)| self.get_llvmty(field_ty))
+            .collect();
+        struct_ty.set_body(&field_llvm_tys, false);
     }
 
     fn lower_globals(&mut self, global: &MIRGlobal) {
@@ -107,6 +123,12 @@ impl<'ctx> Codegen<'ctx> {
             MIRTykind::Ptr => self
                 .context
                 .ptr_type(inkwell::AddressSpace::default())
+                .into(),
+
+            MIRTykind::Struct(_, name) => self
+                .context
+                .get_struct_type(name)
+                .expect("Struct type not yet declared, struct decl must be lowered before use")
                 .into(),
 
             MIRTykind::Array(elem_ty, len) => {
