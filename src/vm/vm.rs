@@ -426,10 +426,10 @@ impl<'a> VM<'a> {
                     if let VMValue::Ptr(alloc_id, current_offset) = ptr_val {
                         let mut total_offset = current_offset as isize;
 
-                        for index_reg in indices {
-                            let index_val = self.read_reg(index_reg, frame);
+                        for (i, index_reg) in indices.iter().enumerate() {
+                            let index_val = self.read_reg(*index_reg, frame);
                             let idx = match index_val.as_isize() {
-                                Some(i) => i,
+                                Some(idx_val) => idx_val,
                                 None => {
                                     self.report_ice(format!(
                                         "GEP index register r{} ({:?}) is not an integer",
@@ -439,8 +439,13 @@ impl<'a> VM<'a> {
                                 }
                             };
 
-                            // Accumulate offset based on stride
-                            total_offset += idx * (stride as isize);
+                            if i == 0 {
+                                // Index 0: Outer array/pointer offset scaled by total element stride
+                                total_offset += idx * (stride as isize);
+                            } else {
+                                // Index 1+: Member/field access inside the aggregate (1 slot per index step)
+                                total_offset += idx;
+                            }
                         }
 
                         if total_offset < 0 {

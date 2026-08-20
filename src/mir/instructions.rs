@@ -147,6 +147,7 @@ impl MIRTy {
     pub fn slot_counter(&self) -> u32 {
         match &self.kind {
             MIRTykind::Array(elem_ty, count) => *count as u32 * elem_ty.slot_counter(),
+            MIRTykind::Struct(_, _, total_slots) => *total_slots,
             _ => 1,
         }
     }
@@ -175,7 +176,7 @@ pub enum MIRTykind {
     Unit,
     Ptr, //All pointers are opaque
     Array(Box<MIRTy>, usize),
-    Struct(StructId, String),
+    Struct(StructId, String, u32),
 }
 
 #[derive(Debug, Clone)]
@@ -258,7 +259,7 @@ pub enum MIRInstruction {
         dest: MIRValue,
         ptr: MIRValue,
         indices: Vec<MIRValue>,
-        elem_ty: MIRTy,  // The type of element being pointed to
+        elem_ty: MIRTy, // The type of element being pointed to
     },
 
     // Cast operations

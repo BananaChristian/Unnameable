@@ -145,7 +145,7 @@ impl<'a> MIRBuilder<'a> {
         if let HirExprKind::Instantiation { body, .. } = &expr.kind {
             let struct_ty = self.get_type(&expr.hir_id);
             let (struct_id, struct_name) = match &struct_ty.kind {
-                MIRTykind::Struct(id, name) => (*id, name.clone()),
+                MIRTykind::Struct(id, name, _) => (*id, name.clone()),
                 _ => {
                     self.report_ice(
                         "Struct instantiation does not have struct type".to_string(),
@@ -158,7 +158,7 @@ impl<'a> MIRBuilder<'a> {
                 Some(decl) => decl.clone(),
                 None => {
                     self.report_ice(
-                        format!("Failed to get struct declaration for ID: {:?}", struct_id),
+                        format!("Failed to get struct declaration for ID: {}", struct_id),
                         Some(expr.span.clone()),
                     );
                 }
@@ -174,7 +174,7 @@ impl<'a> MIRBuilder<'a> {
                     Some(res) => res,
                     None => {
                         self.report_ice(
-                            format!("Unknown field '{}' in struct {}", field.name, struct_name),
+                            format!("Unknown field '{}' in struct '{}'", field.name, struct_name),
                             Some(expr.span.clone()),
                         );
                     }

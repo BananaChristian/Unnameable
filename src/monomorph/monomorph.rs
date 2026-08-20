@@ -149,7 +149,7 @@ impl<'a> Monomorphizer<'a> {
                         &mut production_stmt,
                         &[],
                         &[],
-                        current_name.to_string(),
+                        Some(current_name.to_string()),
                     );
                     monorphized_tree.push(production_stmt)
                 }
@@ -160,7 +160,7 @@ impl<'a> Monomorphizer<'a> {
                         &mut production_stmt,
                         &[],
                         &[],
-                        current_name.to_string(),
+                        Some(current_name.to_string()),
                     );
                     monorphized_tree.push(production_stmt)
                 }
@@ -215,7 +215,7 @@ impl<'a> Monomorphizer<'a> {
                     &mut concrete_clone,
                     &gens,
                     &instance.concrete_args,
-                    new_name.clone(),
+                    Some(new_name.clone()),
                 );
 
                 self.generated_stmts.push(concrete_clone);

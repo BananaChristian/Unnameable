@@ -14,7 +14,7 @@ use crate::{
 impl<'a> MIRBuilder<'a> {
     pub fn build_stmt(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
-            HirStmtKind::HirStructDecl { .. } => self.build_struct(stmt),
+            HirStmtKind::HirStructDecl { .. } => (),
             HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
@@ -25,7 +25,7 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    fn build_struct(&mut self, stmt: &HirStmt) {
+    pub fn build_struct(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirStructDecl { name, fields, .. } = &stmt.kind {
             let struct_id = self.alloc_struct_id();
             self.struct_name_to_id

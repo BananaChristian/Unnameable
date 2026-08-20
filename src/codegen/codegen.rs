@@ -125,7 +125,7 @@ impl<'ctx> Codegen<'ctx> {
                 .ptr_type(inkwell::AddressSpace::default())
                 .into(),
 
-            MIRTykind::Struct(_, name) => self
+            MIRTykind::Struct(_, name, _) => self
                 .context
                 .get_struct_type(name)
                 .expect("Struct type not yet declared, struct decl must be lowered before use")

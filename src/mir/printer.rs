@@ -129,7 +129,7 @@ impl fmt::Display for MIRTykind {
             MIRTykind::CHAR16 => write!(f, "char16"),
             MIRTykind::CHAR32 => write!(f, "char32"),
             MIRTykind::Array(elem_ty, len) => write!(f, "[{} x {}]", len, elem_ty.kind),
-            MIRTykind::Struct(_, name) => write!(f, "%{}", name),
+            MIRTykind::Struct(_, name,_) => write!(f, "%{}", name),
         }
     }
 }

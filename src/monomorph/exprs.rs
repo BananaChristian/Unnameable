@@ -75,7 +75,7 @@ impl<'a> Monomorphizer<'a> {
                 }
 
                 for st in body {
-                    self.monormophize_stmt(st, generic_params, concrete_args, new_name.clone());
+                    self.monormophize_stmt(st, generic_params, concrete_args, None);
                 }
                 if let Some(res) = result {
                     self.monomorphize_expr(res, generic_params, concrete_args, new_name);

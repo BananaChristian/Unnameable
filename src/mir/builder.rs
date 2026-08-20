@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    hir::{HirBinaryOp, HirExpr, HirExprKind},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirStmt, HirStmtKind},
     indexer::NodeIndex,
     lowering::NodeId,
     mir::{
@@ -86,12 +86,89 @@ impl<'a> MIRBuilder<'a> {
     pub fn build_module(&mut self) -> MIRModule {
         let root_ids = self.indexed_hir.roots.clone();
 
+        self.registration_pass(&root_ids);
+
         for root_id in root_ids {
             if let Some(stmt) = self.indexed_hir.get(&root_id) {
                 self.build_stmt(stmt);
             }
         }
         self.module.clone()
+    }
+
+    fn registration_pass(&mut self, root_ids: &[NodeId]) {
+        for root_id in root_ids {
+            if let Some(stmt) = self.indexed_hir.get(root_id).cloned() {
+                self.register_stmt(&stmt);
+            }
+        }
+    }
+
+    fn register_stmt(&mut self, stmt: &HirStmt) {
+        match &stmt.kind {
+            HirStmtKind::HirStructDecl { .. } => {
+                self.build_struct(stmt);
+            }
+
+            HirStmtKind::HirFunctionDef { body, .. } => {
+                for body_stmt in body {
+                    self.register_stmt(body_stmt);
+                }
+            }
+
+            HirStmtKind::HirVarDecl { init, .. } => {
+                self.register_expr(init);
+            }
+
+            HirStmtKind::HirIf {
+                body,
+                else_body,
+                condition,
+            } => {
+                self.register_expr(condition);
+                for s in body {
+                    self.register_stmt(s);
+                }
+                if let Some(else_stmts) = else_body {
+                    for s in else_stmts {
+                        self.register_stmt(s);
+                    }
+                }
+            }
+
+            HirStmtKind::HirWhile { condition, body } => {
+                self.register_expr(condition);
+                for s in body {
+                    self.register_stmt(s);
+                }
+            }
+
+            HirStmtKind::HirExpr(expr) => {
+                self.register_expr(expr);
+            }
+
+            _ => {}
+        }
+    }
+
+    fn register_expr(&mut self, expr: &HirExpr) {
+        match &expr.kind {
+            HirExprKind::DollarScope { body, result, .. } => {
+                for stmt in body {
+                    self.register_stmt(&stmt);
+                }
+
+                match result {
+                    Some(res) => self.register_expr(res),
+                    None => (),
+                }
+            }
+            HirExprKind::Binary(left, _, right) => {
+                self.register_expr(left);
+                self.register_expr(right);
+            }
+            _ => (),
+        }
     }
 
     fn alloc_vreg(&mut self, name: Option<&str>) -> Vreg {
@@ -542,14 +619,25 @@ impl<'a> MIRBuilder<'a> {
             ResolvedTypeKind::Char8 => MIRTykind::CHAR8,
             ResolvedTypeKind::Char16 => MIRTykind::CHAR16,
             ResolvedTypeKind::Char32 => MIRTykind::CHAR32,
-            ResolvedTypeKind::Struct { name, .. } => {
-                let Some(struct_id) = self.struct_name_to_id.get(name) else {
-                    self.report_ice(
-                        format!("Failed to get the struct id corresponding to {}", name),
-                        Some(ty_info.span.clone()),
-                    );
+            ResolvedTypeKind::Struct { name, members, .. } => {
+                let struct_id = match self.struct_name_to_id.get(name) {
+                    Some(id) => *id, // or id.clone() if StructId isn't Copy
+                    None => {
+                        self.report_ice(
+                            format!("Failed to get the struct id corresponding to {}", name),
+                            Some(ty_info.span.clone()),
+                        );
+                    }
                 };
-                MIRTykind::Struct(*struct_id, name.clone())
+
+                // 2. Use an explicit loop instead of iterator `.map()` to allow `&mut self` calls
+                let mut total_slots = 0;
+                for (_member_name, member_ty_info) in members {
+                    let field_mir_ty = self.lower_type_info_to_mir_ty(member_ty_info);
+                    total_slots += field_mir_ty.slot_counter();
+                }
+
+                MIRTykind::Struct(struct_id, name.clone(), total_slots)
             }
             ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
             ResolvedTypeKind::Array { inner, size } => {
@@ -593,6 +681,72 @@ impl<'a> MIRBuilder<'a> {
             size: self.target_spec.pointer_width,
             align: self.target_spec.pointer_width,
         }
+    }
+
+    pub fn lower_type_info_to_mir_ty(&mut self, ty_info: &TypeInfo) -> MIRTy {
+        let size = ty_info.layout.size;
+        let align = ty_info.layout.alignment;
+
+        let kind = match &ty_info.kind {
+            // Primitives
+            ResolvedTypeKind::I8 => MIRTykind::I8,
+            ResolvedTypeKind::U8 => MIRTykind::U8,
+            ResolvedTypeKind::I16 => MIRTykind::I16,
+            ResolvedTypeKind::U16 => MIRTykind::U16,
+            ResolvedTypeKind::I32 => MIRTykind::I32,
+            ResolvedTypeKind::U32 => MIRTykind::U32,
+            ResolvedTypeKind::I64 => MIRTykind::I64,
+            ResolvedTypeKind::U64 => MIRTykind::U64,
+            ResolvedTypeKind::I128 => MIRTykind::I128,
+            ResolvedTypeKind::U128 => MIRTykind::U128,
+            ResolvedTypeKind::ISize => MIRTykind::ISIZE,
+            ResolvedTypeKind::USize => MIRTykind::USIZE,
+            ResolvedTypeKind::F32 => MIRTykind::F32,
+            ResolvedTypeKind::F64 => MIRTykind::F64,
+            ResolvedTypeKind::Char8 => MIRTykind::CHAR8,
+            ResolvedTypeKind::Char16 => MIRTykind::CHAR16,
+            ResolvedTypeKind::Char32 => MIRTykind::CHAR32,
+            ResolvedTypeKind::Bool => MIRTykind::Bool,
+            ResolvedTypeKind::Unit => MIRTykind::Unit,
+
+            // Opaque Pointers / Handles
+            ResolvedTypeKind::Pointer { .. }
+            | ResolvedTypeKind::Ref { .. }
+            | ResolvedTypeKind::Func { .. }
+            | ResolvedTypeKind::Str => MIRTykind::Ptr,
+
+            // Arrays
+            ResolvedTypeKind::Array { inner, size } => {
+                let inner_mir = self.lower_type_info_to_mir_ty(inner);
+                let count = size.unwrap_or(0) as usize;
+                MIRTykind::Array(Box::new(inner_mir), count)
+            }
+
+            // Structs
+            ResolvedTypeKind::Struct { name, members, .. } => {
+                let struct_id = match self.struct_name_to_id.get(name).copied() {
+                    Some(id) => id, // use .cloned() instead of .copied() if StructId isn't Copy
+                    None => {
+                        self.report_ice(
+                            format!("Failed to get struct ID for {}", name),
+                            Some(ty_info.span.clone()),
+                        );
+                    }
+                };
+
+                let mut total_slots: u32 = 0;
+                for (_name, member_ty_info) in members {
+                    let field_mir = self.lower_type_info_to_mir_ty(member_ty_info);
+                    total_slots += field_mir.slot_counter();
+                }
+
+                MIRTykind::Struct(struct_id, name.clone(), total_slots)
+            }
+
+            _ => MIRTykind::Unit,
+        };
+
+        MIRTy { kind, size, align }
     }
 
     pub fn get_val_alignment(&self, val: &MIRValue) -> usize {

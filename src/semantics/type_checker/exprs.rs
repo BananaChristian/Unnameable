@@ -54,10 +54,11 @@ impl<'a> TypeChecker<'a> {
 
     fn handle_init_params(&mut self, struct_ty: &TypeInfo, init_p: &HirInstParam) {
         let ResolvedTypeKind::Struct { members, .. } = &struct_ty.kind else {
-            self.report_ice(
-                "Expected struct type for initialization parameter".to_string(),
+            self.report(
+                format!("Expected struct type for initialization parameter but got '{}'",struct_ty.name),
                 None,
             );
+            return;
         };
 
         let p_ty = members

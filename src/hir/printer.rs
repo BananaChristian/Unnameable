@@ -7,6 +7,7 @@ use crate::hir::{
 };
 
 /// Pretty printer for HIR (High-level Intermediate Representation) nodes.
+#[derive(Default)]
 pub struct HirPrinter {
     output: String,
     indent_level: usize,
@@ -14,10 +15,7 @@ pub struct HirPrinter {
 
 impl HirPrinter {
     pub fn new() -> Self {
-        Self {
-            output: String::new(),
-            indent_level: 0,
-        }
+        Self::default()
     }
 
     /// Entry point to print a full slice of HIR statements (a lowered AST module).
@@ -110,9 +108,9 @@ impl HirPrinter {
                 body,
             } => {
                 let exp = if *exposed { " (exposed)" } else { "" };
-                let dollar_read = if *dollar_read { "$" } else { "" };
+                let dollar = if *dollar_read { "$" } else { "" };
                 self.write_line(&format!(
-                    "HirFunctionDef \"{dollar_read}\"{name}\"{exp} [id: {id:?}]"
+                    "HirFunctionDef \"{dollar}{name}\"{exp} [id: {id:?}]"
                 ));
                 self.with_indent(|p| {
                     if !generic_type_params.is_empty() {
@@ -356,7 +354,7 @@ impl HirPrinter {
         let dollar_str = if param.dollar_read { "$" } else { "" };
         let mut_str = if param.mutable { "mut " } else { "" };
         self.write_line(&format!(
-            "Param \"{dollar_str}\"{mut_str}\"{}\" [id: {:?}]",
+            "Param \"{dollar_str}{mut_str}{}\" [id: {:?}]",
             param.name, param.hir_id
         ));
         self.with_indent(|p| {
@@ -489,21 +487,26 @@ impl HirPrinter {
                 body,
                 result,
             } => {
-                self.write_line(&format!("DollarScope [id: {id:?}"));
-                self.write_line("Captures:");
+                self.write_line(&format!("DollarScope [id: {id:?}]"));
                 self.with_indent(|p| {
-                    for param in params {
-                        p.fmt_expr(param);
+                    if !params.is_empty() {
+                        p.write_line("Captures:");
+                        p.with_indent(|p2| {
+                            for param in params {
+                                p2.fmt_expr(param);
+                            }
+                        });
                     }
-                });
-                self.with_indent(|p| {
+
                     p.write_line("Statements:");
                     p.with_indent(|p2| {
                         for st in body {
                             p2.fmt_stmt(st);
                         }
                     });
+
                     if let Some(res) = result {
+                        p.write_line("Result:");
                         p.with_indent(|p2| p2.fmt_expr(res));
                     }
                 });
@@ -565,7 +568,7 @@ impl HirPrinter {
                 self.with_indent(|p| p.fmt_type(inner));
             }
             HirType::Array(inner, sz) => {
-                let size_str = sz.map_or("".to_string(), |s| format!(" len: {s}"));
+                let size_str = sz.map_or(String::new(), |s| format!(" len: {s}"));
                 self.write_line(&format!("ArrayType{size_str} [id: {id:?}]"));
                 self.with_indent(|p| p.fmt_type(inner));
             }
