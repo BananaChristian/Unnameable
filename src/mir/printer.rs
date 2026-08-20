@@ -3,9 +3,7 @@ use std::fmt::{self};
 use crate::mir::{
     MIRModule,
     instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
-        MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind, MIRValue,
-        Terminator, Vreg,
+        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal, MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind, MIRValue, StructId, Terminator, Vreg
     },
 };
 
@@ -89,6 +87,12 @@ impl fmt::Display for GlobalId {
     }
 }
 
+impl fmt::Display for StructId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@s{}", self.0)
+    }
+}
+
 impl fmt::Display for MIRDollarMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -123,7 +127,7 @@ impl fmt::Display for MIRTykind {
             MIRTykind::CHAR16 => write!(f, "char16"),
             MIRTykind::CHAR32 => write!(f, "char32"),
             MIRTykind::Array(elem_ty, len) => write!(f, "[{} x {}]", len, elem_ty.kind),
-            MIRTykind::Struct(_,name) => write!(f, "%{}", name),
+            MIRTykind::Struct(_, name) => write!(f, "%{}", name),
         }
     }
 }

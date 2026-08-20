@@ -891,4 +891,11 @@ impl<'a> TypeChecker<'a> {
             .borrow_mut()
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
+
+    pub fn report_ice(&mut self, message: String, span: Option<Span>) -> ! {
+        self.corrupted = true;
+        let err = CompilerError::ice(message, Phase::Semantics, span);
+
+        self.diagnostics.borrow_mut().report_ice_and_panic(err);
+    }
 }

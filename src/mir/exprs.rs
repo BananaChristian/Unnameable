@@ -35,6 +35,10 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::DollarScope { .. } => self.build_dollar_scope(expr),
             HirExprKind::Call(_, _) => self.build_call(expr),
             HirExprKind::StaticCast(_, _) => self.build_cast(expr),
+            HirExprKind::Instantiation { .. } => {
+                self.build_struct_init(expr);
+                return;
+            }
             HirExprKind::BitCast(_, _) => self.build_bitcast(expr),
             HirExprKind::Index { .. } => self.build_index_access(expr),
             _ => todo!(
@@ -56,6 +60,20 @@ impl<'a> MIRBuilder<'a> {
             self.last_value = Some(dest);
         }
     }
+
+    pub fn build_into(&mut self, expr: &HirExpr, dest_ptr: MIRValue) -> bool {
+    match expr.kind {
+        HirExprKind::Literal(HirLiteral::ArrayLiteral(_)) => {
+            self.build_array_literal_into(expr, dest_ptr);
+            true
+        }
+        HirExprKind::Instantiation { .. } => {
+            self.build_struct_init_into(expr, dest_ptr);
+            true
+        }
+        _ => false,
+    }
+}
 
     fn build_array_literal(&mut self, expr: &HirExpr) -> MIRValue {
         let array_ty = self.get_type(&expr.hir_id);
@@ -108,6 +126,95 @@ impl<'a> MIRBuilder<'a> {
                 }
             }
             _ => self.report_ice("Not an array literal".to_string(), Some(expr.span.clone())),
+        }
+    }
+
+    pub fn build_struct_init(&mut self, expr: &HirExpr) -> MIRValue {
+        let struct_ty = self.get_type(&expr.hir_id);
+        let struct_ptr = self.new_register(struct_ty.clone(), None);
+        self.build_alloca(struct_ptr.clone(), struct_ty, Some(expr.span.clone()));
+        self.fill_struct_init(expr, struct_ptr.clone());
+        struct_ptr
+    }
+
+    pub fn build_struct_init_into(&mut self, expr: &HirExpr, dest_ptr: MIRValue) {
+        self.fill_struct_init(expr, dest_ptr);
+    }
+
+    fn fill_struct_init(&mut self, expr: &HirExpr, dest_ptr: MIRValue) {
+        if let HirExprKind::Instantiation { body, .. } = &expr.kind {
+            let struct_ty = self.get_type(&expr.hir_id);
+            let (struct_id, struct_name) = match &struct_ty.kind {
+                MIRTykind::Struct(id, name) => (*id, name.clone()),
+                _ => {
+                    self.report_ice(
+                        "Struct instantiation does not have struct type".to_string(),
+                        Some(expr.span.clone()),
+                    );
+                }
+            };
+
+            let struct_decl = match self.module.structs.get(&struct_id) {
+                Some(decl) => decl.clone(),
+                None => {
+                    self.report_ice(
+                        format!("Failed to get struct declaration for ID: {:?}", struct_id),
+                        Some(expr.span.clone()),
+                    );
+                }
+            };
+
+            for field in body {
+                let (field_idx, (_, field_ty)) = match struct_decl
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .find(|(_, (name, _))| name == &field.name)
+                {
+                    Some(res) => res,
+                    None => {
+                        self.report_ice(
+                            format!("Unknown field '{}' in struct {}", field.name, struct_name),
+                            Some(expr.span.clone()),
+                        );
+                    }
+                };
+
+                let index_val = MIRValue::Constant(ConstantValue::UInt(field_idx));
+
+                // Compute pointer to field offset inside dest_ptr
+                self.build_gep(
+                    dest_ptr.clone(),
+                    index_val,
+                    struct_ty.clone(),
+                    Some(expr.span.clone()),
+                );
+                let field_ptr = self.get_last_val(Some(expr.span.clone()));
+
+                // Recursively fill nested aggregates, or store scalar value directly
+                match &field.value.kind {
+                    HirExprKind::Instantiation { .. } => {
+                        self.fill_struct_init(&field.value, field_ptr);
+                    }
+                    HirExprKind::Literal(HirLiteral::ArrayLiteral(_)) => {
+                        self.fill_array_literal(&field.value, field_ptr);
+                    }
+                    _ => {
+                        let field_val = self.expr_value(&field.value);
+                        self.build_store(
+                            field_ptr,
+                            field_val,
+                            field_ty.align,
+                            Some(expr.span.clone()),
+                        );
+                    }
+                }
+            }
+        } else {
+            self.report_ice(
+                "Expected struct instantiation expression".to_string(),
+                Some(expr.span.clone()),
+            );
         }
     }
 
@@ -607,6 +714,8 @@ impl<'a> MIRBuilder<'a> {
                 self.build_index_access(expr);
                 self.get_last_val(Some(expr.span.clone()))
             }
+
+            HirExprKind::Instantiation { .. } => self.build_struct_init(expr),
 
             _ => {
                 self.report_ice(

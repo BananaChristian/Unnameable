@@ -376,7 +376,7 @@ impl Parser {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Dot)?;
         let name = self.parse_identifier()?;
-        self.expect_token(TType::Colon)?;
+        self.expect_token(TType::Assign)?;
         let value = self.parse_expression(Precedence::Lowest)?;
         let end = self.current_token()?.span.end;
         Some(InstParam {

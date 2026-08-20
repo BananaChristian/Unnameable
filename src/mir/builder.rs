@@ -573,7 +573,7 @@ impl<'a> MIRBuilder<'a> {
                 MIRTy { kind, size, align }
             }
 
-            None => self.report_ice(format!("Type not found in types table"), None),
+            None => self.report_ice(format!("Type for {:?} not found in types table",id), None),
         }
     }
 

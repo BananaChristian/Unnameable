@@ -87,7 +87,7 @@ impl Lowering {
                     .collect::<Option<Vec<_>>>()?;
 
                 HirExprKind::Instantiation {
-                    init_ty: hir_ty, // This field in HirExprKind must be an Option now!
+                    init_ty: hir_ty,
                     body: hir_body,
                 }
             }

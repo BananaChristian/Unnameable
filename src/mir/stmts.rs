@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    hir::{HirExprKind, HirLiteral, HirStmt, HirStmtKind},
+    hir::{HirStmt, HirStmtKind},
     mir::{
         MIRTy,
         builder::MIRBuilder,
@@ -28,7 +28,8 @@ impl<'a> MIRBuilder<'a> {
     fn build_struct(&mut self, stmt: &HirStmt) {
         if let HirStmtKind::HirStructDecl { name, fields, .. } = &stmt.kind {
             let struct_id = self.alloc_struct_id();
-            self.struct_name_to_id.insert(name.clone(), struct_id.clone());
+            self.struct_name_to_id
+                .insert(name.clone(), struct_id.clone());
             let fields: Vec<(String, MIRTy)> = fields
                 .iter()
                 .map(|f| {
@@ -94,12 +95,7 @@ impl<'a> MIRBuilder<'a> {
                     self.build_alloca(dest.clone(), ty.clone(), Some(stmt.span.clone()));
                     self.declare_var(name.clone(), dest.clone());
 
-                    if matches!(
-                        &init.kind,
-                        HirExprKind::Literal(HirLiteral::ArrayLiteral(_))
-                    ) {
-                        self.build_array_literal_into(init, dest);
-                    } else {
+                    if !self.build_into(init, dest.clone()) {
                         let val = self.expr_value(init);
                         let align = self.get_alignment(init);
                         self.build_store(dest, val, align, Some(stmt.span.clone()));

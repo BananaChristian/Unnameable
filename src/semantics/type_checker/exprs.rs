@@ -1,5 +1,5 @@
 use crate::{
-    diagnostics::Span, hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp}, lowering::NodeId, semantics::{
+    diagnostics::Span, hir::{HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirUnaryOp}, lowering::NodeId, semantics::{
         semantics::{InstanceKey, ResolvedTypeKind, TypeInfo},
         type_checker::checker::TypeChecker,
     }
@@ -30,6 +30,7 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::Unary(_,_ ) => self.unary_type(expr),
             HirExprKind::Postfix(_,_ ) => self.postfix_type(expr),
             HirExprKind::GenericInstantion { .. }=> self.gen_inst_type(expr),
+            HirExprKind::Instantiation { ..} => self.struct_init_type(expr),
             HirExprKind::DollarScope {params, body, result } =>{
                 for p in params{
                     self.check_expr(p);
@@ -51,6 +52,53 @@ impl<'a> TypeChecker<'a> {
         ty
     }
 
+    fn handle_init_params(&mut self, struct_ty: &TypeInfo, init_p: &HirInstParam) {
+        let ResolvedTypeKind::Struct { members, .. } = &struct_ty.kind else {
+            self.report_ice(
+                "Expected struct type for initialization parameter".to_string(),
+                None,
+            );
+        };
+
+        let p_ty = members
+            .iter()
+            .find(|(name, _)| name == &init_p.name)
+            .map(|(_, ty)| ty.clone());
+
+        let Some(p_ty) = p_ty else {
+            self.report(
+                format!("Unknown field '{}' in struct initialization", init_p.name),
+                None,
+            );
+            return;
+        };
+
+        self.expr_type(&init_p.value);  
+        self.coerce_ty(&p_ty, &init_p.value);
+        let init_ty= self.expr_type(&init_p.value);
+        if !TypeInfo::types_match(&p_ty, &init_ty){
+           self.type_mismatch(&p_ty, &init_ty, init_p.span.clone());
+        }
+
+        self.insert(init_p.hir_id, p_ty);
+}
+
+fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
+    let HirExprKind::Instantiation { init_ty, body } = &expr.kind else {
+        return self.unknown(expr.span.clone());
+    };
+
+    let ty = match init_ty {
+        Some(init_ty) => self.type_from_hir_type(init_ty),
+        None => self.unknown(expr.span.clone()),
+    };
+
+    for field in body {
+        self.handle_init_params(&ty, field);
+    }
+
+    ty
+}
     fn gen_inst_type(&mut self, expr: &HirExpr)-> TypeInfo{
         if let  HirExprKind::GenericInstantion {type_params ,..} =  &expr.kind{
             let template_decl_id: NodeId = *self.ctxt.names.resolved.get(&expr.hir_id)
@@ -270,10 +318,10 @@ impl<'a> TypeChecker<'a> {
     fn binary_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::Binary(left, op, right) = &expr.kind {
             let left_ty = self.expr_type(left);
-            let mut right_ty = self.expr_type(right);
+            self.expr_type(right);
             
             self.coerce_ty(&left_ty, right);
-            right_ty= self.expr_type(right);
+            let coerced_right_ty= self.expr_type(right);
 
             match op {
                 HirBinaryOp::Add
@@ -281,23 +329,23 @@ impl<'a> TypeChecker<'a> {
                 | HirBinaryOp::Div
                 | HirBinaryOp::Mul
                 | HirBinaryOp::Mod =>{
-                    if left_ty.is_pointer() || right_ty.is_pointer(){
-                        return self.pointer_arithmetic_type(&left_ty, op, &right_ty, expr.span.clone())
+                    if left_ty.is_pointer() || coerced_right_ty.is_pointer(){
+                        return self.pointer_arithmetic_type(&left_ty, op, &coerced_right_ty, expr.span.clone())
                     }
-                    self.arithmetic_type(left_ty, right_ty, expr.span.clone())
+                    self.arithmetic_type(left_ty, coerced_right_ty, expr.span.clone())
                 }
                 HirBinaryOp::Eq
                 | HirBinaryOp::Neq
                 | HirBinaryOp::Lt
                 | HirBinaryOp::Gt
                 | HirBinaryOp::Geq
-                | HirBinaryOp::Leq => self.comparison_binary_type(&left_ty, &right_ty, expr.span.clone()),
-                HirBinaryOp::And | HirBinaryOp::Or => self.logical_binary_type(&left_ty,&right_ty,expr.span.clone()),
+                | HirBinaryOp::Leq => self.comparison_binary_type(&left_ty, &coerced_right_ty, expr.span.clone()),
+                HirBinaryOp::And | HirBinaryOp::Or => self.logical_binary_type(&left_ty,&coerced_right_ty,expr.span.clone()),
                 HirBinaryOp::Assign| HirBinaryOp::AddAssign| HirBinaryOp::SubAssign| HirBinaryOp::MulAssign| HirBinaryOp::ModAssign| HirBinaryOp::DivAssign =>{ 
-                    self.assignment_type(&left_ty, &right_ty, expr.span.clone())
+                    self.assignment_type(&left_ty, &coerced_right_ty, expr.span.clone())
                 },
                 HirBinaryOp::Access => self.access_type(&left_ty, right),
-                HirBinaryOp::Shr| HirBinaryOp::Shl| HirBinaryOp::BitAnd | HirBinaryOp::BitOr |HirBinaryOp::Xor=> self.bitwise_type(&left_ty, &right_ty,op, expr.span.clone()),
+                HirBinaryOp::Shr| HirBinaryOp::Shl| HirBinaryOp::BitAnd | HirBinaryOp::BitOr |HirBinaryOp::Xor=> self.bitwise_type(&left_ty, &coerced_right_ty,expr.span.clone()),
                 _ => self.unknown(expr.span.clone()),
             }
         } else {
@@ -348,7 +396,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn bitwise_type(&mut self,left_ty: &TypeInfo,right_ty: &TypeInfo,op: &HirBinaryOp, span: Span) -> TypeInfo{
+    fn bitwise_type(&mut self,left_ty: &TypeInfo,right_ty: &TypeInfo, span: Span) -> TypeInfo{
         if !self.is_integer(&left_ty.kind) || !self.is_integer(&right_ty.kind){
             self.report(format!("Bitwise operators require integer operands but got {} and {}", left_ty.name, right_ty.name), Some(span.clone()));
             return self.unknown(span)
@@ -414,10 +462,9 @@ impl<'a> TypeChecker<'a> {
                     }
 
                     for (arg, param_ty) in args.iter().zip(params.iter()) {
-                        let mut arg_ty = self.expr_type(arg);
+                        self.expr_type(arg);
                         self.coerce_ty(param_ty, arg);
-                        let coerced_ty= self.expr_type(arg);
-                        arg_ty= coerced_ty;
+                        let arg_ty= self.expr_type(arg);
 
                         if !TypeInfo::types_match(&arg_ty, param_ty) {
                             self.type_mismatch(&arg_ty, param_ty, expr.span.clone());
