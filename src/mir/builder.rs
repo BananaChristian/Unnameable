@@ -367,7 +367,7 @@ impl<'a> MIRBuilder<'a> {
     pub fn build_gep(
         &mut self,
         ptr: MIRValue,
-        index: MIRValue,
+        indices: Vec<MIRValue>, // Changed from single index: MIRValue
         elem_ty: MIRTy,
         span: Option<Span>,
     ) {
@@ -377,11 +377,21 @@ impl<'a> MIRBuilder<'a> {
         let gep_instr = MIRInstruction::GetElementPtr {
             dest: dest.clone(),
             ptr,
-            index,
+            indices,
             elem_ty,
         };
         self.add_instruction(gep_instr, span);
-        self.last_value = Some(dest)
+        self.last_value = Some(dest);
+    }
+
+    pub fn build_gep_single(
+        &mut self,
+        ptr: MIRValue,
+        index: MIRValue,
+        elem_ty: MIRTy,
+        span: Option<Span>,
+    ) {
+        self.build_gep(ptr, vec![index], elem_ty, span);
     }
 
     pub fn build_pointer_arithmetic(
@@ -402,11 +412,11 @@ impl<'a> MIRBuilder<'a> {
                 if left_ty.is_pointer() {
                     // ptr + index
                     let elem_ty = self.get_pointed_elem_mir_ty(lhs);
-                    self.build_gep(lhs_val, rhs_val, elem_ty, span);
+                    self.build_gep_single(lhs_val, rhs_val, elem_ty, span);
                 } else if right_ty.is_pointer() {
                     // index + ptr (commutative)
                     let elem_ty = self.get_pointed_elem_mir_ty(rhs);
-                    self.build_gep(rhs_val, lhs_val, elem_ty, span);
+                    self.build_gep_single(rhs_val, lhs_val, elem_ty, span);
                 } else {
                     self.report_ice("Expected at least one pointer in ptr Add".to_string(), span);
                 }
@@ -451,7 +461,7 @@ impl<'a> MIRBuilder<'a> {
                     self.build_unary(&crate::hir::HirUnaryOp::Neg, right_ty, rhs);
                     let neg_index = self.get_last_val(span.clone());
 
-                    self.build_gep(lhs_val, neg_index, elem_ty, span);
+                    self.build_gep_single(lhs_val, neg_index, elem_ty, span);
                 } else {
                     self.report_ice("Invalid operands for pointer Sub".to_string(), span);
                 }
@@ -573,7 +583,7 @@ impl<'a> MIRBuilder<'a> {
                 MIRTy { kind, size, align }
             }
 
-            None => self.report_ice(format!("Type for {:?} not found in types table",id), None),
+            None => self.report_ice(format!("Type for {:?} not found in types table", id), None),
         }
     }
 
@@ -726,7 +736,7 @@ impl<'a> MIRBuilder<'a> {
                 };
 
                 let index_val = self.expr_value(index);
-                self.build_gep(target_ptr, index_val, elem_ty, Some(expr.span.clone()));
+                self.build_gep_single(target_ptr, index_val, elem_ty, Some(expr.span.clone()));
                 self.get_last_val(Some(expr.span.clone()))
             }
             _ => self.report_ice(

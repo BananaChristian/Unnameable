@@ -3,7 +3,9 @@ use std::fmt::{self};
 use crate::mir::{
     MIRModule,
     instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal, MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind, MIRValue, StructId, Terminator, Vreg
+        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
+        MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind, MIRValue,
+        StructId, Terminator, Vreg,
     },
 };
 
@@ -299,10 +301,19 @@ impl fmt::Display for MIRInstruction {
             MIRInstruction::GetElementPtr {
                 dest,
                 ptr,
-                index,
+                indices,
                 elem_ty,
             } => {
-                write!(f, "    {dest} = gep {elem_ty}, ptr {ptr}, index {index}")
+                let formatted_indices = indices
+                    .iter()
+                    .map(|idx| format!("{idx}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                write!(
+                    f,
+                    "    {dest} = gep {elem_ty}, ptr {ptr}, indices [{formatted_indices}]"
+                )
             }
             MIRInstruction::Cast {
                 dest,

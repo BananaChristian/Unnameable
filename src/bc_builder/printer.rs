@@ -14,7 +14,6 @@ impl fmt::Display for DollarMode {
     }
 }
 
-
 impl fmt::Display for VMValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -210,10 +209,19 @@ impl BytecodePrinter {
             VMOpcode::GetElementPtr {
                 dest,
                 ptr,
-                index,
+                indices,
                 stride,
             } => {
-                format!("r{} = gep r{}, r{} [stride: {}]", dest, ptr, index, stride)
+                let formatted_indices = indices
+                    .iter()
+                    .map(|r| format!("r{r}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                format!(
+                    "r{} = gep r{}, [{}] [stride: {}]",
+                    dest, ptr, formatted_indices, stride
+                )
             }
 
             VMOpcode::Cast { dest, src, to_ty } => {

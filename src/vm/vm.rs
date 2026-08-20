@@ -418,34 +418,42 @@ impl<'a> VM<'a> {
                 VMOpcode::GetElementPtr {
                     dest,
                     ptr,
-                    index,
+                    indices,
                     stride,
                 } => {
                     let ptr_val = self.read_reg(ptr, frame);
-                    let index_val = self.read_reg(index, frame);
 
-                    if let VMValue::Ptr(alloc_id, offset) = ptr_val {
-                        let idx = match index_val.as_isize() {
-                            Some(i) => i,
-                            None => {
-                                self.report_ice(format!(
-                                    "GEP index register {:?} is not holding an integer",
-                                    index_val
-                                ));
-                                0
-                            }
-                        };
-                        let new_offset = (offset as isize) + idx * (stride as isize);
-                        if new_offset < 0 {
+                    if let VMValue::Ptr(alloc_id, current_offset) = ptr_val {
+                        let mut total_offset = current_offset as isize;
+
+                        for index_reg in indices {
+                            let index_val = self.read_reg(index_reg, frame);
+                            let idx = match index_val.as_isize() {
+                                Some(i) => i,
+                                None => {
+                                    self.report_ice(format!(
+                                        "GEP index register r{} ({:?}) is not an integer",
+                                        index_reg, index_val
+                                    ));
+                                    0
+                                }
+                            };
+
+                            // Accumulate offset based on stride
+                            total_offset += idx * (stride as isize);
+                        }
+
+                        if total_offset < 0 {
                             self.report_ice(format!(
                                 "GEP resulting offset {} underflowed below 0 on AllocId({})",
-                                new_offset, alloc_id.0
+                                total_offset, alloc_id.0
                             ));
                             return VMValue::Poison;
                         }
-                        self.write_reg(frame, dest, VMValue::Ptr(alloc_id, new_offset as usize));
+
+                        self.write_reg(frame, dest, VMValue::Ptr(alloc_id, total_offset as usize));
                     } else {
-                        self.report_ice(format!("GEP target register {} is not a pointer", ptr));
+                        self.report_ice(format!("GEP target register r{} is not a pointer", ptr));
                     }
                 }
                 _ => todo!("VMOpcode {:?} not implemented", instr),

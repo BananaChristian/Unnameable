@@ -179,16 +179,26 @@ impl<'ctx> Codegen<'ctx> {
             MIRInstruction::GetElementPtr {
                 dest,
                 ptr,
-                index,
+                indices,
                 elem_ty,
             } => {
                 let llvm_elem_ty = self.get_llvmty(elem_ty);
                 let ptr_val = self.lower_value(ptr).into_pointer_value();
-                let index_val = self.lower_value(index).into_int_value();
+
+                // Map each MIR value in indices into an LLVM IntValue
+                let llvm_indices: Vec<_> = indices
+                    .iter()
+                    .map(|idx| self.lower_value(idx).into_int_value())
+                    .collect();
 
                 let gep_ptr = unsafe {
                     self.builder
-                        .build_in_bounds_gep(llvm_elem_ty, ptr_val, &[index_val], "geptmp")
+                        .build_in_bounds_gep(
+                            llvm_elem_ty,
+                            ptr_val,
+                            &llvm_indices, // Passes 1, 2, or N indices directly to LLVM
+                            "geptmp",
+                        )
                         .unwrap()
                 };
 

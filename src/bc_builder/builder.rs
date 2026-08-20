@@ -434,25 +434,29 @@ impl<'a> BytecodeBuilder<'a> {
                     src: src_reg,
                 });
             }
-
             MIRInstruction::GetElementPtr {
                 dest,
                 ptr,
-                index,
+                indices,
                 elem_ty,
             } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let ptr_reg = self.lower_mir_value(ptr, reg_map, instructions);
-                let index_reg = self.lower_mir_value(index, reg_map, instructions);
+
+                let index_regs: Vec<u16> = indices
+                    .iter()
+                    .map(|idx| self.lower_mir_value(idx, reg_map, instructions))
+                    .collect();
+
                 let stride = elem_ty.slot_counter();
+
                 instructions.push(VMOpcode::GetElementPtr {
                     dest: dest_reg,
                     ptr: ptr_reg,
-                    index: index_reg,
+                    indices: index_regs,
                     stride,
                 });
             }
-
             MIRInstruction::Assign { dest, src } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let src_reg = self.lower_mir_value(src, reg_map, instructions);
@@ -461,7 +465,6 @@ impl<'a> BytecodeBuilder<'a> {
                     src: src_reg,
                 });
             }
-
             MIRInstruction::BinaryOperation { dest, op, lhs, rhs } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let lhs_reg = self.lower_mir_value(lhs, reg_map, instructions);

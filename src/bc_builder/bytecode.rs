@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::{mir::{CmpOp, MIRTy}, vm::VMValue};
+use crate::{
+    mir::{CmpOp, MIRTy},
+    vm::VMValue,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DollarMode {
@@ -116,7 +119,7 @@ pub enum VMOpcode {
     GetElementPtr {
         dest: u16,
         ptr: u16,
-        index: u16,
+        indices: Vec<u16>,
         stride: u32,
     },
     // Global Memory Access

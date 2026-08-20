@@ -62,18 +62,18 @@ impl<'a> MIRBuilder<'a> {
     }
 
     pub fn build_into(&mut self, expr: &HirExpr, dest_ptr: MIRValue) -> bool {
-    match expr.kind {
-        HirExprKind::Literal(HirLiteral::ArrayLiteral(_)) => {
-            self.build_array_literal_into(expr, dest_ptr);
-            true
+        match expr.kind {
+            HirExprKind::Literal(HirLiteral::ArrayLiteral(_)) => {
+                self.build_array_literal_into(expr, dest_ptr);
+                true
+            }
+            HirExprKind::Instantiation { .. } => {
+                self.build_struct_init_into(expr, dest_ptr);
+                true
+            }
+            _ => false,
         }
-        HirExprKind::Instantiation { .. } => {
-            self.build_struct_init_into(expr, dest_ptr);
-            true
-        }
-        _ => false,
     }
-}
 
     fn build_array_literal(&mut self, expr: &HirExpr) -> MIRValue {
         let array_ty = self.get_type(&expr.hir_id);
@@ -101,7 +101,7 @@ impl<'a> MIRBuilder<'a> {
 
                 for (index, elem_expr) in elements.iter().enumerate() {
                     let index_val = MIRValue::Constant(ConstantValue::UInt(index));
-                    self.build_gep(
+                    self.build_gep_single(
                         dest_ptr.clone(),
                         index_val,
                         elem_ty.clone(),
@@ -180,12 +180,13 @@ impl<'a> MIRBuilder<'a> {
                     }
                 };
 
-                let index_val = MIRValue::Constant(ConstantValue::UInt(field_idx));
+                // Struct GEP requires 2 indices: [0 (pointer deref), field_idx (field select)]
+                let zero_idx = MIRValue::Constant(ConstantValue::UInt(0));
+                let field_idx_val = MIRValue::Constant(ConstantValue::UInt(field_idx));
 
-                // Compute pointer to field offset inside dest_ptr
                 self.build_gep(
                     dest_ptr.clone(),
-                    index_val,
+                    vec![zero_idx, field_idx_val], // Pass both indices!
                     struct_ty.clone(),
                     Some(expr.span.clone()),
                 );
@@ -217,7 +218,6 @@ impl<'a> MIRBuilder<'a> {
             );
         }
     }
-
     fn build_string_literal(&mut self, expr: &HirExpr) {
         match &expr.kind {
             HirExprKind::Literal(lit) => match lit {

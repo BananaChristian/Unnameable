@@ -257,7 +257,7 @@ pub enum MIRInstruction {
     GetElementPtr {
         dest: MIRValue,
         ptr: MIRValue,
-        index: MIRValue, // Number of elements
+        indices: Vec<MIRValue>,
         elem_ty: MIRTy,  // The type of element being pointed to
     },
 
