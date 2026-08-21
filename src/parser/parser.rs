@@ -1,5 +1,5 @@
 use crate::{
-    ast::{AnonStructField, Expr, ExprKind, Precedence, Stmt, Type, TypeKind},
+    ast::{Expr, ExprKind, Precedence, Stmt, Type, TypeKind},
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     lexer::{TType, token::Token},
 };
@@ -174,20 +174,6 @@ impl Parser {
         }
     }
 
-    fn parse_anon_struct_fields(&mut self) -> Option<AnonStructField> {
-        let start = self.current_token()?.span.start;
-        self.expect_token(TType::Dot)?;
-        let name = self.parse_identifier()?;
-        self.expect_token(TType::Colon)?;
-        let ty = self.parse_type()?;
-        let end = self.current_token()?.span.end;
-        Some(AnonStructField {
-            name: Box::new(name),
-            ty,
-            span: Span { start, end },
-        })
-    }
-
     pub fn parse_type(&mut self) -> Option<Type> {
         let token = self.current_token()?.clone();
         match token.token_type {
@@ -306,32 +292,6 @@ impl Parser {
                     ))
                 } else {
                     Some(base_type)
-                }
-            }
-            TType::Dot => {
-                if self.peek_token()?.token_type == TType::LBrace {
-                    let start = self.current_token()?.span.start;
-                    self.expect_token(TType::Dot)?;
-                    let mut fields = Vec::new();
-                    self.expect_token(TType::LBrace)?;
-                    while self.current_token()?.token_type != TType::Rbrace
-                        && self.current_token()?.token_type != TType::End
-                    {
-                        let field = self.parse_anon_struct_fields()?;
-                        fields.push(field);
-                        if self.current_token()?.token_type == TType::Comma {
-                            self.advance();
-                            continue;
-                        }
-                    }
-                    self.expect_token(TType::Rbrace)?;
-                    let end = self.current_token()?.span.end;
-                    Some(Type {
-                        kind: TypeKind::AnonStruct(fields),
-                        span: Span { start, end },
-                    })
-                } else {
-                    None
                 }
             }
             TType::DoubleExclaim => {

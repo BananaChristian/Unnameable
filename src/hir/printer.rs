@@ -3,7 +3,7 @@ use core::fmt;
 use crate::hir::{
     HirEnumMember, HirParam, HirStmt, HirStmtKind, HirVariantMember,
     expressions::{HirExpr, HirExprKind, HirInstParam},
-    types::{HirAnonStructField, HirType, HirTypeNode},
+    types::{HirType, HirTypeNode},
 };
 
 /// Pretty printer for HIR (High-level Intermediate Representation) nodes.
@@ -470,10 +470,9 @@ impl HirPrinter {
             HirExprKind::Instantiation { init_ty, body } => {
                 self.write_line(&format!("Instantiation [id: {id:?}]"));
                 self.with_indent(|p| {
-                    if let Some(ty) = init_ty {
-                        p.write_line("Type:");
-                        p.with_indent(|p2| p2.fmt_type(ty));
-                    }
+                    p.write_line("Type:");
+                    p.with_indent(|p2| p2.fmt_type(init_ty));
+
                     p.write_line("Fields:");
                     p.with_indent(|p2| {
                         for param in body {
@@ -625,20 +624,7 @@ impl HirPrinter {
                     }
                 });
             }
-            HirType::AnonymousStruct(fields) => {
-                self.write_line(&format!("AnonymousStructType [id: {id:?}]"));
-                self.with_indent(|p| {
-                    for field in fields {
-                        p.fmt_anon_field(field);
-                    }
-                });
-            }
         }
-    }
-
-    fn fmt_anon_field(&mut self, field: &HirAnonStructField) {
-        self.write_line(&format!("Field \"{}\":", field.name));
-        self.with_indent(|p| p.fmt_type(&field.ty));
     }
 }
 

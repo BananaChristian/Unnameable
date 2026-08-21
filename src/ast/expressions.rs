@@ -71,7 +71,7 @@ pub enum ExprKind {
     //cast<i32>(x)
     StaticCast(Box<Type>, Box<Expr>),
     Instantiation {
-        init_ty: Option<Box<Type>>,
+        init_ty: Box<Type>,
         body: Vec<InstParam>,
     },
     //The dollar scope $${}

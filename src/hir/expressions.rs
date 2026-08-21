@@ -135,9 +135,9 @@ pub enum HirExprKind {
     StaticCast(Box<HirTypeNode>, Box<HirExpr>),
     BitCast(Box<HirTypeNode>, Box<HirExpr>),
 
-    // Struct instantiation, Point .{ .x : 1 }
+    // Struct instantiation, .Point{ .x : 1 }
     Instantiation {
-        init_ty: Option<HirTypeNode>,
+        init_ty: Box<HirTypeNode>,
         body: Vec<HirInstParam>,
     },
 

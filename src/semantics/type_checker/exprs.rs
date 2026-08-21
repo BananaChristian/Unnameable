@@ -89,10 +89,7 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
         return self.unknown(expr.span.clone());
     };
 
-    let ty = match init_ty {
-        Some(init_ty) => self.type_from_hir_type(init_ty),
-        None => self.unknown(expr.span.clone()),
-    };
+    let ty= self.type_from_hir_type(init_ty);
 
     for field in body {
         self.handle_init_params(&ty, field);
@@ -379,15 +376,6 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
                     self.unknown_member(field_name, name, field_expr.span.clone());
                     self.unknown(field_expr.span.clone())
                 }
-            }
-            ResolvedTypeKind::Anonymous { fields } => {
-                if let Some(fields_tuple)= fields.iter().find(|m|m.0 == *field_name){
-                    fields_tuple.1.clone()
-                }else{
-                    self.report(format!("Unknown member '{}' in anonymous struct",field_name), Some(field_expr.span.clone()));
-                    self.unknown(field_expr.span.clone())
-                }
-
             }
             _ => {
                 self.report(format!("Cannot carryout an access operation on type '{}'",left_ty.name), Some(field_expr.span.clone()));

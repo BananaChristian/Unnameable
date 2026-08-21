@@ -5,13 +5,6 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AnonStructField {
-    pub name: Box<Expr>,
-    pub ty: Type,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum TypeKind {
     // Integer types
     I8,
@@ -68,8 +61,6 @@ pub enum TypeKind {
     //A tuple (i32, f32)
     Tuple(Vec<Type>),
 
-    //Anonymous struct .{.x: 10,.y: 10}
-    AnonStruct(Vec<AnonStructField>),
 
     //A type like ()
     Unit,

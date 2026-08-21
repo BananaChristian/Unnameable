@@ -11,4 +11,4 @@ pub use operators::{BinaryOp, PostfixOp, UnaryOp};
 pub use precedence::Precedence;
 pub use qualifiers::{Qualifier, QualifierKind};
 pub use statements::{Elif, EnumMember, Stmt, StmtKind, VariantMember};
-pub use types::{Type, TypeKind,AnonStructField};
+pub use types::{Type, TypeKind};

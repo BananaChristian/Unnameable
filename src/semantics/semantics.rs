@@ -95,9 +95,6 @@ pub enum ResolvedTypeKind {
     Tuple {
         fields: Vec<TypeInfo>,
     },
-    Anonymous {
-        fields: Vec<(String, TypeInfo)>,
-    },
     Failable {
         ok: Box<TypeInfo>,
         err: Box<TypeInfo>,
@@ -155,13 +152,6 @@ impl TypeInfo {
             ResolvedTypeKind::Tuple { fields } => {
                 let element_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
                 format!("({})", element_names.join(", "))
-            }
-            ResolvedTypeKind::Anonymous { fields } => {
-                let field_strings: Vec<String> = fields
-                    .iter()
-                    .map(|(name, info)| format!(".{}: {}", name, info.name))
-                    .collect();
-                format!(".{{ {} }}", field_strings.join(", "))
             }
             ResolvedTypeKind::GenericParam(name) => name,
 

@@ -1,8 +1,8 @@
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{
-        HirAnonStructField, HirEnumMember, HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt,
-        HirStmtKind, HirType, HirTypeNode, HirVariantMember,
+        HirEnumMember, HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt, HirStmtKind, HirType,
+        HirTypeNode, HirVariantMember,
     },
     import::ImportEngine,
     layout::LayoutEngine,
@@ -131,22 +131,6 @@ impl<'a> TypeChecker<'a> {
 
     pub fn tuple(&mut self, fields: Vec<TypeInfo>, span: Span) -> TypeInfo {
         let kind = ResolvedTypeKind::Tuple { fields };
-        let type_id = self.registry.issue_id(kind.clone());
-        let layout = self
-            .layout_engine
-            .layout_of(&kind, type_id.clone(), span.clone());
-
-        TypeInfo {
-            kind: kind.clone(),
-            name: TypeInfo::name(kind),
-            type_id,
-            layout,
-            span,
-        }
-    }
-
-    pub fn anonymous(&mut self, fields: Vec<(String, TypeInfo)>, span: Span) -> TypeInfo {
-        let kind = ResolvedTypeKind::Anonymous { fields };
         let type_id = self.registry.issue_id(kind.clone());
         let layout = self
             .layout_engine
@@ -427,15 +411,6 @@ impl<'a> TypeChecker<'a> {
                 let members = fields.iter().map(|f| self.type_from_hir_type(f)).collect();
                 self.tuple(members, ty.span.clone())
             }
-
-            HirType::AnonymousStruct(members) => {
-                let fields = members
-                    .iter()
-                    .map(|f| self.anon_struct_field_type(f))
-                    .collect();
-                self.anonymous(fields, ty.span.clone())
-            }
-
             HirType::GenericType { type_params, .. } => {
                 let decl_id: NodeId = *self
                     .ctxt
@@ -521,11 +496,6 @@ impl<'a> TypeChecker<'a> {
             .map(|ps| self.type_from_hir_type(ps))
             .collect();
         (member.name.clone(), variant_ty, payloads)
-    }
-
-    fn anon_struct_field_type(&mut self, member: &HirAnonStructField) -> (String, TypeInfo) {
-        let field_ty = self.type_from_hir_type(&member.ty);
-        (member.name.clone(), field_ty)
     }
 
     fn enum_member_type(
@@ -892,10 +862,4 @@ impl<'a> TypeChecker<'a> {
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
 
-    pub fn report_ice(&mut self, message: String, span: Option<Span>) -> ! {
-        self.corrupted = true;
-        let err = CompilerError::ice(message, Phase::Semantics, span);
-
-        self.diagnostics.borrow_mut().report_ice_and_panic(err);
-    }
 }

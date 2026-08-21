@@ -1,8 +1,8 @@
 use core::fmt;
 
 use crate::ast::{
-    AnonStructField, Elif, EnumMember, Expr, ExprKind, InstParam, Qualifier, QualifierKind, Stmt,
-    StmtKind, Type, TypeKind, VariantMember,
+    Elif, EnumMember, Expr, ExprKind, InstParam, Qualifier, QualifierKind, Stmt, StmtKind, Type,
+    TypeKind, VariantMember,
 };
 
 /// Pretty printer for AST nodes that renders human-readable tree structures.
@@ -554,10 +554,8 @@ impl AstPrinter {
             ExprKind::Instantiation { init_ty, body } => {
                 self.write_line("Instantiation");
                 self.with_indent(|p| {
-                    if let Some(ty) = init_ty {
-                        p.write_line("Type:");
-                        p.with_indent(|p2| p2.fmt_type(ty));
-                    }
+                    p.write_line("Type:");
+                    p.with_indent(|p2| p2.fmt_type(init_ty));
 
                     p.write_line("Fields:");
                     p.with_indent(|p2| {
@@ -703,26 +701,7 @@ impl AstPrinter {
                     }
                 });
             }
-            TypeKind::AnonStruct(fields) => {
-                self.write_line("AnonStructType");
-                self.with_indent(|p| {
-                    for field in fields {
-                        p.fmt_anon_field(field);
-                    }
-                });
-            }
         }
-    }
-
-    fn fmt_anon_field(&mut self, field: &AnonStructField) {
-        self.write_line("Field:");
-        self.with_indent(|p| {
-            p.write_line("Name:");
-            p.with_indent(|p2| p2.fmt_expr(&field.name));
-
-            p.write_line("Type:");
-            p.with_indent(|p2| p2.fmt_type(&field.ty));
-        });
     }
 }
 

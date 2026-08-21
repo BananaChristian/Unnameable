@@ -1,11 +1,11 @@
 use crate::{
     ast::{
-        AnonStructField, BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier,
+        BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier,
         QualifierKind, Type, TypeKind, UnaryOp,
     },
     diagnostics::Span,
     hir::{
-        HirAnonStructField, HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral,
+        HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral,
         HirPostfixOp, HirStmtKind, HirType, HirTypeNode, HirUnaryOp, QualifierMap,
     },
     lowering::lowering::Lowering,
@@ -76,10 +76,7 @@ impl Lowering {
 
             // Struct instantiation
             ExprKind::Instantiation { init_ty, body } => {
-                let hir_ty = match init_ty {
-                    Some(boxed_type) => Some(self.lower_type(boxed_type.as_ref())?),
-                    None => None, // Anonymous literal syntax, inferred later
-                };
+                let hir_ty = self.lower_type(init_ty)?;
 
                 let hir_body = body
                     .iter()
@@ -87,7 +84,7 @@ impl Lowering {
                     .collect::<Option<Vec<_>>>()?;
 
                 HirExprKind::Instantiation {
-                    init_ty: hir_ty,
+                    init_ty: Box::new(hir_ty),
                     body: hir_body,
                 }
             }
@@ -211,16 +208,6 @@ impl Lowering {
         })
     }
 
-    fn lower_anon_struct_fields(&mut self, field: &AnonStructField) -> Option<HirAnonStructField> {
-        let name = self.extract_name_string(&field.name)?;
-        let ty = self.lower_type(&field.ty)?;
-        Some(HirAnonStructField {
-            name: name.clone(),
-            ty,
-            span: field.span.clone(),
-        })
-    }
-
     fn is_generic(&mut self, type_node: &Type) -> bool {
         let current_name = match &type_node.kind {
             TypeKind::CustomType(expr) => self.extract_name_string(expr).unwrap_or_default(),
@@ -325,13 +312,6 @@ impl Lowering {
                     .collect::<Option<Vec<_>>>()?;
 
                 HirType::Tuple(hir_types)
-            }
-            TypeKind::AnonStruct(members) => {
-                let fields = members
-                    .iter()
-                    .map(|m| self.lower_anon_struct_fields(m))
-                    .collect::<Option<Vec<_>>>()?;
-                HirType::AnonymousStruct(fields)
             }
             TypeKind::None => {
                 return None;

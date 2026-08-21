@@ -389,7 +389,8 @@ impl Parser {
     fn parse_init(&mut self) -> Option<Expr> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Dot)?;
-        let ty = self.parse_type();
+        self.expect_token(TType::Identifier)?;
+        let ty = self.parse_type()?;
         self.expect_token(TType::LBrace)?;
         let mut params = Vec::new();
         while self.current_token()?.token_type != TType::Rbrace
@@ -407,11 +408,7 @@ impl Parser {
 
         Some(Expr::new(
             ExprKind::Instantiation {
-                init_ty: if let Some(cus_ty) = ty {
-                    Some(Box::new(cus_ty))
-                } else {
-                    None
-                },
+                init_ty: Box::new(ty),
                 body: params,
             },
             Span { start, end },

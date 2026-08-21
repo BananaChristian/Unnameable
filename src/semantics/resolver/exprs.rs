@@ -72,9 +72,7 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(right, table);
             }
             HirExprKind::Instantiation { init_ty, body } => {
-                if let Some(ty) = init_ty {
-                    self.resolve_type(ty, table);
-                };
+                self.resolve_type(init_ty, table);
                 for field in body {
                     self.resolve_expr(&field.value, table);
                 }
