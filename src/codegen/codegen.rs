@@ -51,16 +51,23 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_module(&mut self, mir_module: &MIRModule) {
-        for struct_decl in mir_module.structs.values() {
+        let mut sorted_structs: Vec<_> = mir_module.structs.values().collect();
+        sorted_structs.sort_by_key(|s| s.struct_id);
+        for struct_decl in sorted_structs {
             self.lower_structs(struct_decl);
         }
 
-        for global in mir_module.globals.values() {
+        let mut sorted_globals: Vec<_> = mir_module.globals.values().collect();
+        sorted_globals.sort_by_key(|g| g.global_id); // Or g.name
+        for global in sorted_globals {
             self.lower_globals(global);
         }
 
-        let mut fn_pairs = Vec::with_capacity(mir_module.functions.len());
-        for mir_fn in mir_module.functions.values() {
+        let mut sorted_fns: Vec<_> = mir_module.functions.values().collect();
+        sorted_fns.sort_by_key(|f| &f.fn_id);
+
+        let mut fn_pairs = Vec::with_capacity(sorted_fns.len());
+        for mir_fn in sorted_fns {
             let fn_val = self.lower_func(mir_fn);
             fn_pairs.push((mir_fn, fn_val));
         }
@@ -128,7 +135,13 @@ impl<'ctx> Codegen<'ctx> {
             MIRTykind::Struct(_, name, _) => self
                 .context
                 .get_struct_type(name)
-                .expect("Struct type not yet declared, struct decl must be lowered before use")
+                .expect(
+                    format!(
+                        "Struct type '{}' not yet declared, struct decl must be lowered before use",
+                        name
+                    )
+                    .as_str(),
+                )
                 .into(),
 
             MIRTykind::Array(elem_ty, len) => {

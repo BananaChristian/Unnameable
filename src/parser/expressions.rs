@@ -378,7 +378,7 @@ impl Parser {
         let name = self.parse_identifier()?;
         self.expect_token(TType::Assign)?;
         let value = self.parse_expression(Precedence::Lowest)?;
-        let end = self.current_token()?.span.end;
+        let end = value.span.end;
         Some(InstParam {
             name: Box::new(name),
             value: Box::new(value),
@@ -389,20 +389,26 @@ impl Parser {
     fn parse_init(&mut self) -> Option<Expr> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Dot)?;
-        self.expect_token(TType::Identifier)?;
+
         let ty = self.parse_type()?;
+
         self.expect_token(TType::LBrace)?;
         let mut params = Vec::new();
+
         while self.current_token()?.token_type != TType::Rbrace
             && self.current_token()?.token_type != TType::End
         {
             let param = self.parse_init_param()?;
             params.push(param);
+
             if self.current_token()?.token_type == TType::Comma {
                 self.advance();
-                continue;
+                if self.current_token()?.token_type == TType::Rbrace {
+                    break;
+                }
             }
         }
+
         let end = self.current_token()?.span.end;
         self.expect_token(TType::Rbrace)?;
 

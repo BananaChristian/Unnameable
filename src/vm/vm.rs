@@ -4,7 +4,7 @@ use crate::{
     bc_builder::{BytecodeModule, VMOpcode},
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     impl_cmp_op, impl_int_op, impl_numeric_op,
-    mir::{CmpOp, MIRTykind},
+    mir::{CmpOp, MIRTy, MIRTykind, StructId},
     vm::{
         Allocation,
         structures::{AllocId, EvalResultTable, VMFrame, VMMemory, VMValue},
@@ -202,6 +202,7 @@ impl<'a> VM<'a> {
                     self.memory.allocations.insert(alloc_id.clone(), allocation);
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
+
                 VMOpcode::Load {
                     dest,
                     ptr,
@@ -214,17 +215,16 @@ impl<'a> VM<'a> {
                         let val = if size <= 1 {
                             self.mem_read(&alloc_id, offset)
                         } else {
-                            let mut elems = Vec::with_capacity(size as usize);
-                            for i in 0..size as usize {
-                                elems.push(self.mem_read(&alloc_id, offset + i));
-                            }
-                            match ty.kind {
-                                MIRTykind::Struct(struct_id, name, _) => VMValue::Struct {
-                                    struct_id,
-                                    name: name.clone(),
-                                    fields: elems,
-                                },
-                                _ => VMValue::Array(elems),
+                            match &ty.kind {
+                                MIRTykind::Struct(struct_id, name, fields) => {
+                                    self.load_struct(*struct_id, name, fields, &alloc_id, offset)
+                                }
+                                _ => {
+                                    let elems: Vec<VMValue> = (0..size as usize)
+                                        .map(|i| self.mem_read(&alloc_id, offset + i))
+                                        .collect();
+                                    VMValue::Array(elems)
+                                }
                             }
                         };
                         self.write_reg(frame, dest, val);
@@ -495,6 +495,46 @@ impl<'a> VM<'a> {
                 }
                 _ => todo!("VMOpcode {:?} not implemented", instr),
             }
+        }
+    }
+
+    fn load_struct(
+        &mut self,
+        struct_id: StructId,
+        name: &str,
+        fields: &[(String, MIRTy)],
+        alloc_id: &AllocId,
+        base_offset: usize,
+    ) -> VMValue {
+        let mut field_offset = base_offset;
+        let mut field_vals = Vec::with_capacity(fields.len());
+
+        for (_, field_ty) in fields {
+            let field_slots = field_ty.slot_counter() as usize;
+            let field_val = match &field_ty.kind {
+                MIRTykind::Struct(nested_id, nested_name, nested_fields) => self.load_struct(
+                    *nested_id,
+                    nested_name,
+                    nested_fields,
+                    alloc_id,
+                    field_offset,
+                ),
+                _ if field_slots > 1 => {
+                    let elems: Vec<VMValue> = (0..field_slots)
+                        .map(|i| self.mem_read(alloc_id, field_offset + i as usize))
+                        .collect();
+                    VMValue::Array(elems)
+                }
+                _ => self.mem_read(alloc_id, field_offset),
+            };
+            field_vals.push(field_val);
+            field_offset += field_slots;
+        }
+
+        VMValue::Struct {
+            struct_id,
+            name: name.to_string(),
+            fields: field_vals,
         }
     }
 

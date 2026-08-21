@@ -9,13 +9,13 @@ pub enum Vreg {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
 pub struct BlockId(pub usize);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
 pub struct GlobalId(pub usize); //ID for global variables
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
 pub struct FnId(pub usize); //ID for functions
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
 pub struct StructId(pub usize); //ID for structs
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,7 +175,10 @@ impl MIRTy {
     pub fn slot_counter(&self) -> u32 {
         match &self.kind {
             MIRTykind::Array(elem_ty, count) => *count as u32 * elem_ty.slot_counter(),
-            MIRTykind::Struct(_, _, total_slots) => *total_slots,
+            MIRTykind::Struct(_, _, fields) => fields
+                .iter()
+                .map(|(_, field_ty)| field_ty.slot_counter())
+                .sum(),
             _ => 1,
         }
     }
@@ -204,7 +207,7 @@ pub enum MIRTykind {
     Unit,
     Ptr, //All pointers are opaque
     Array(Box<MIRTy>, usize),
-    Struct(StructId, String, u32),
+    Struct(StructId, String, Vec<(String, MIRTy)>),
 }
 
 #[derive(Debug, Clone)]

@@ -449,7 +449,7 @@ impl<'a> MIRBuilder<'a> {
         span: Option<Span>,
     ) {
         let ptr_ty = self.ptr_type();
-        let dest = self.new_register(ptr_ty, Some("gep"));
+        let dest = self.new_register(ptr_ty, None);
 
         let gep_instr = MIRInstruction::GetElementPtr {
             dest: dest.clone(),
@@ -621,7 +621,7 @@ impl<'a> MIRBuilder<'a> {
             ResolvedTypeKind::Char32 => MIRTykind::CHAR32,
             ResolvedTypeKind::Struct { name, members, .. } => {
                 let struct_id = match self.struct_name_to_id.get(name) {
-                    Some(id) => *id, // or id.clone() if StructId isn't Copy
+                    Some(id) => *id,
                     None => {
                         self.report_ice(
                             format!("Failed to get the struct id corresponding to {}", name),
@@ -630,14 +630,16 @@ impl<'a> MIRBuilder<'a> {
                     }
                 };
 
-                // 2. Use an explicit loop instead of iterator `.map()` to allow `&mut self` calls
-                let mut total_slots = 0;
-                for (_member_name, member_ty_info) in members {
-                    let field_mir_ty = self.lower_type_info_to_mir_ty(member_ty_info);
-                    total_slots += field_mir_ty.slot_counter();
-                }
+                let mems: Vec<(String, MIRTy)> = members
+                    .iter()
+                    .map(|m| {
+                        let name = m.0.clone();
+                        let ty = self.lower_type_info_to_mir_ty(&m.1);
+                        (name, ty)
+                    })
+                    .collect();
 
-                MIRTykind::Struct(struct_id, name.clone(), total_slots)
+                MIRTykind::Struct(struct_id, name.clone(), mems)
             }
             ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
             ResolvedTypeKind::Array { inner, size } => {
@@ -734,13 +736,16 @@ impl<'a> MIRBuilder<'a> {
                     }
                 };
 
-                let mut total_slots: u32 = 0;
-                for (_name, member_ty_info) in members {
-                    let field_mir = self.lower_type_info_to_mir_ty(member_ty_info);
-                    total_slots += field_mir.slot_counter();
-                }
+                let mems: Vec<(String, MIRTy)> = members
+                    .iter()
+                    .map(|m| {
+                        let name = m.0.clone();
+                        let ty = self.lower_type_info_to_mir_ty(&m.1);
+                        (name, ty)
+                    })
+                    .collect();
 
-                MIRTykind::Struct(struct_id, name.clone(), total_slots)
+                MIRTykind::Struct(struct_id, name.clone(), mems)
             }
 
             _ => MIRTykind::Unit,

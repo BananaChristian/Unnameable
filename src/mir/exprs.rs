@@ -180,19 +180,18 @@ impl<'a> MIRBuilder<'a> {
                     }
                 };
 
-                // Struct GEP requires 2 indices: [0 (pointer deref), field_idx (field select)]
                 let zero_idx = MIRValue::Constant(ConstantValue::UInt(0));
                 let field_idx_val = MIRValue::Constant(ConstantValue::UInt(field_idx));
 
                 self.build_gep(
                     dest_ptr.clone(),
-                    vec![zero_idx, field_idx_val], // Pass both indices!
+                    vec![zero_idx, field_idx_val],
                     struct_ty.clone(),
                     Some(expr.span.clone()),
                 );
-                let field_ptr = self.get_last_val(Some(expr.span.clone()));
 
-                // Recursively fill nested aggregates, or store scalar value directly
+                let field_ptr = self.last_value.clone().unwrap();
+
                 match &field.value.kind {
                     HirExprKind::Instantiation { .. } => {
                         self.fill_struct_init(&field.value, field_ptr);
@@ -218,6 +217,7 @@ impl<'a> MIRBuilder<'a> {
             );
         }
     }
+
     fn build_string_literal(&mut self, expr: &HirExpr) {
         match &expr.kind {
             HirExprKind::Literal(lit) => match lit {
