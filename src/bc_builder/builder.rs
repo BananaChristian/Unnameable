@@ -234,6 +234,28 @@ impl<'a> BytecodeBuilder<'a> {
                     elements: elem_regs,
                 });
             }
+            ConstantValue::Struct {
+                name,
+                fields,
+                struct_id,
+            } => {
+                let field_regs: Vec<u16> = fields
+                    .iter()
+                    .map(|f| {
+                        let field_reg = reg_map.next_index;
+                        reg_map.next_index += 1;
+                        self.lower_const_val(field_reg, f, reg_map, instructions);
+                        field_reg
+                    })
+                    .collect();
+
+                instructions.push(VMOpcode::ConstStruct {
+                    dest,
+                    struct_id: *struct_id,
+                    name: name.clone(),
+                    fields: field_regs,
+                });
+            }
         }
     }
 
@@ -295,6 +317,21 @@ impl<'a> BytecodeBuilder<'a> {
                     .map(|e| self.lower_const_to_vm_value(e))
                     .collect();
                 VMValue::Array(vm_elems)
+            }
+            ConstantValue::Struct {
+                name,
+                fields,
+                struct_id,
+            } => {
+                let vm_fields = fields
+                    .iter()
+                    .map(|f| self.lower_const_to_vm_value(f))
+                    .collect();
+                VMValue::Struct {
+                    struct_id: *struct_id,
+                    name: name.clone(),
+                    fields: vm_fields,
+                }
             }
         }
     }
@@ -413,6 +450,7 @@ impl<'a> BytecodeBuilder<'a> {
                     dest: dest_reg,
                     ptr: ptr_reg,
                     size,
+                    ty: ty.clone(),
                     mode: current_mode,
                 });
             }

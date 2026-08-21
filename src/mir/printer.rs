@@ -129,7 +129,7 @@ impl fmt::Display for MIRTykind {
             MIRTykind::CHAR16 => write!(f, "char16"),
             MIRTykind::CHAR32 => write!(f, "char32"),
             MIRTykind::Array(elem_ty, len) => write!(f, "[{} x {}]", len, elem_ty.kind),
-            MIRTykind::Struct(_, name,_) => write!(f, "%{}", name),
+            MIRTykind::Struct(_, name, _) => write!(f, "%{}", name),
         }
     }
 }
@@ -196,6 +196,16 @@ impl fmt::Display for ConstantValue {
                     write!(f, "{elem}")?;
                 }
                 write!(f, "]")
+            }
+            ConstantValue::Struct { name, fields, .. } => {
+                write!(f, "%{name} {{ ")?;
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{field}")?;
+                }
+                write!(f, " }}")
             }
         }
     }

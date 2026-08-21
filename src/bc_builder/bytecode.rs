@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    mir::{CmpOp, MIRTy},
+    mir::{CmpOp, MIRTy, StructId},
     vm::VMValue,
 };
 
@@ -86,7 +86,13 @@ pub enum VMOpcode {
     ConstArray {
         dest: u16,
         elements: Vec<u16>, // registers already holding each element's value
-    }, // Register Copy: r[dest] = r[src]
+    },
+    ConstStruct {
+        dest: u16,
+        struct_id: StructId,
+        name: String,
+        fields: Vec<u16>,
+    },
 
     Move {
         dest: u16,
@@ -105,6 +111,7 @@ pub enum VMOpcode {
         dest: u16,
         ptr: u16,
         size: u32,
+        ty: MIRTy,
         mode: DollarMode,
     },
     Store {

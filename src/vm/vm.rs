@@ -153,6 +153,27 @@ impl<'a> VM<'a> {
                 VMOpcode::ConstBool { dest, val } => {
                     self.write_reg(frame, dest, VMValue::Bool(val));
                 }
+                VMOpcode::ConstArray { dest, elements } => {
+                    let elems = elements.iter().map(|&r| self.read_reg(r, frame)).collect();
+                    self.write_reg(frame, dest, VMValue::Array(elems));
+                }
+                VMOpcode::ConstStruct {
+                    dest,
+                    name,
+                    fields,
+                    struct_id,
+                } => {
+                    let field_values = fields.iter().map(|&r| self.read_reg(r, frame)).collect();
+                    self.write_reg(
+                        frame,
+                        dest,
+                        VMValue::Struct {
+                            struct_id,
+                            name: name.clone(),
+                            fields: field_values,
+                        },
+                    );
+                }
 
                 VMOpcode::LoadGlobal { dest, global_id } => {
                     let Some(alloc_id) = self.global_allocs.get(&global_id).cloned() else {
@@ -182,7 +203,11 @@ impl<'a> VM<'a> {
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
                 VMOpcode::Load {
-                    dest, ptr, size, ..
+                    dest,
+                    ptr,
+                    size,
+                    ty,
+                    ..
                 } => {
                     let ptr_val = self.read_reg(ptr, frame);
                     if let VMValue::Ptr(alloc_id, offset) = ptr_val {
@@ -193,7 +218,14 @@ impl<'a> VM<'a> {
                             for i in 0..size as usize {
                                 elems.push(self.mem_read(&alloc_id, offset + i));
                             }
-                            VMValue::Array(elems)
+                            match ty.kind {
+                                MIRTykind::Struct(struct_id, name, _) => VMValue::Struct {
+                                    struct_id,
+                                    name: name.clone(),
+                                    fields: elems,
+                                },
+                                _ => VMValue::Array(elems),
+                            }
                         };
                         self.write_reg(frame, dest, val);
                     } else {

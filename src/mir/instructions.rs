@@ -47,6 +47,34 @@ pub enum ConstantValue {
     Bool(bool),
     Ptr(usize), //the pointer and the offset
     Array(Vec<ConstantValue>),
+    Struct {
+        struct_id: StructId,
+        name: String,
+        fields: Vec<ConstantValue>,
+    },
+}
+
+impl ConstantValue {
+    // Computes how many VM slots this constant occupies.
+    pub fn slot_counter(&self) -> u32 {
+        match self {
+            ConstantValue::Array(elems) => elems.iter().map(|e| e.slot_counter()).sum(),
+            ConstantValue::Struct { fields, .. } => fields.iter().map(|f| f.slot_counter()).sum(),
+            _ => 1,
+        }
+    }
+
+    // Flattens nested struct/array constants into a flat list of primitive scalar values
+    /// for writing directly to memory slots.
+    pub fn flatten(&self) -> Vec<ConstantValue> {
+        match self {
+            ConstantValue::Struct { fields, .. } => {
+                fields.iter().flat_map(|f| f.flatten()).collect()
+            }
+            ConstantValue::Array(elems) => elems.iter().flat_map(|e| e.flatten()).collect(),
+            scalar => vec![scalar.clone()],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

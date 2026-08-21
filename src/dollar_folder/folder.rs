@@ -96,6 +96,27 @@ impl<'a> Folder<'a> {
                     .collect();
                 MIRValue::Constant(ConstantValue::Array(mir_elements))
             }
+            VMValue::Struct {
+                name,
+                fields,
+                struct_id,
+            } => {
+                let mir_fields: Vec<ConstantValue> = fields
+                    .iter()
+                    .map(|f| match Self::vm_val_to_mir_val(f, global_allocs) {
+                        MIRValue::Constant(c) => c,
+                        other => {
+                            panic!("Struct field folded to non-constant MIRValue: {:?}", other)
+                        }
+                    })
+                    .collect();
+
+                MIRValue::Constant(ConstantValue::Struct {
+                    struct_id: *struct_id,
+                    name: name.clone(),
+                    fields: mir_fields,
+                })
+            }
             VMValue::Poison => MIRValue::Poison,
             VMValue::Unit => {
                 todo!("Handle pointer/unit folding if dollar scopes return references")

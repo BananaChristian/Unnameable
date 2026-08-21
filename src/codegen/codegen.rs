@@ -228,6 +228,12 @@ impl<'ctx> Codegen<'ctx> {
                     _ => self.report_ice("Unsupported element type in constant array".to_string()),
                 }
             }
+            ConstantValue::Struct { fields, .. } => {
+                let field_values: Vec<BasicValueEnum<'ctx>> =
+                    fields.iter().map(|f| self.lower_constant(f)).collect();
+
+                self.context.const_struct(&field_values, false).into()
+            }
         }
     }
 

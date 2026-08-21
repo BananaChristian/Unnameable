@@ -775,6 +775,13 @@ impl<'a> MIRBuilder<'a> {
                         1 // empty array — no real alignment requirement, 1 is a safe default
                     }
                 }
+                ConstantValue::Struct { fields, .. } => {
+                    fields
+                        .iter()
+                        .map(|field| self.get_val_alignment(&MIRValue::Constant(field.clone())))
+                        .max()
+                        .unwrap_or(1) // Empty struct defaults to alignment 1
+                }
             },
             MIRValue::Poison => 0,
         }

@@ -55,6 +55,16 @@ impl fmt::Display for VMValue {
                 }
                 write!(f, "]")
             }
+            VMValue::Struct { name, fields, .. } => {
+                write!(f, "{} {{ ", name)?;
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", field)?;
+                }
+                write!(f, " }}")
+            }
             VMValue::Unit => write!(f, "()"),
             VMValue::Poison => write!(f, "poison"),
         }
@@ -179,6 +189,16 @@ impl BytecodePrinter {
                     .join(", ");
                 format!("r{} = [{}] (array)", dest, elems_str)
             }
+            VMOpcode::ConstStruct {
+                dest, name, fields, ..
+            } => {
+                let fields_str = fields
+                    .iter()
+                    .map(|r| format!("r{}", r))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("r{} = %{} {{ {} }} (struct)", dest, name, fields_str)
+            }
             VMOpcode::ConstIsize { dest, val } => format!("r{} = {} (isize) ", dest, val),
             VMOpcode::ConstUSize { dest, val } => format!("r{} = {} (usize)", dest, val),
             VMOpcode::ConstBool { dest, val } => format!("r{} = {}", dest, val),
@@ -194,11 +214,12 @@ impl BytecodePrinter {
                 dest,
                 ptr,
                 size,
+                ty,
                 mode,
             } => {
                 format!(
-                    "load r{}, [r{}] (size: {}) (mode: {})",
-                    dest, ptr, size, mode
+                    "load r{}, [r{}] ({}) (size: {}) (mode: {})",
+                    dest, ptr, ty, size, mode
                 )
             }
             VMOpcode::Store { ptr, val, mode } => {

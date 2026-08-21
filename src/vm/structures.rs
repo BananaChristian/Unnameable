@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     bc_builder::DollarMode,
-    mir::{MIRTy, MIRTykind},
+    mir::{MIRTy, MIRTykind, StructId},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,6 +36,11 @@ pub enum VMValue {
     Bool(bool),
     Ptr(AllocId, usize), //allocation id + offset
     Array(Vec<VMValue>),
+    Struct {
+        struct_id: StructId,
+        name: String,
+        fields: Vec<VMValue>,
+    },
     Unit,
     Poison,
 }
