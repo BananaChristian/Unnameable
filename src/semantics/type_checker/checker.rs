@@ -278,7 +278,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         name: String,
         gen_params: Vec<TypeInfo>,
-        members: Vec<(String, TypeInfo)>,
+        members: Vec<(String, TypeInfo, NodeId)>,
         span: Span,
     ) -> TypeInfo {
         let kind = ResolvedTypeKind::Struct {
@@ -304,7 +304,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         name: String,
         underlying: TypeInfo,
-        members: Vec<(String, TypeInfo)>,
+        members: Vec<(String, TypeInfo, NodeId)>,
         span: Span,
     ) -> TypeInfo {
         let kind = ResolvedTypeKind::Enum {
@@ -330,7 +330,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         name: String,
         gen_params: Vec<TypeInfo>,
-        arms: Vec<(String, TypeInfo, Vec<TypeInfo>)>,
+        arms: Vec<(String, TypeInfo, NodeId, Vec<TypeInfo>)>,
         span: Span,
     ) -> TypeInfo {
         let kind = ResolvedTypeKind::Variant {
@@ -479,31 +479,39 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn struct_field_type(&mut self, member: &HirParam) -> (String, TypeInfo) {
+    fn struct_field_type(&mut self, member: &HirParam) -> (String, TypeInfo, NodeId) {
         let field_ty = self.type_from_hir_type(&member.ty);
         self.insert(member.hir_id, field_ty.clone());
-        (member.name.clone(), field_ty)
+        self.ctxt
+            .names
+            .resolved
+            .insert(member.hir_id, member.hir_id);
+        (member.name.clone(), field_ty, member.hir_id)
     }
 
     fn variant_field_ty(
         &mut self,
         member: &HirVariantMember,
         variant_ty: TypeInfo,
-    ) -> (String, TypeInfo, Vec<TypeInfo>) {
+    ) -> (String, TypeInfo, NodeId, Vec<TypeInfo>) {
         let payloads = member
             .member_types
             .iter()
             .map(|ps| self.type_from_hir_type(ps))
             .collect();
-        (member.name.clone(), variant_ty, payloads)
+        self.ctxt
+            .names
+            .resolved
+            .insert(member.hir_id, member.hir_id);
+        (member.name.clone(), variant_ty, member.hir_id, payloads)
     }
 
     fn enum_member_type(
         &mut self,
         member: &HirEnumMember,
         enum_ty: TypeInfo,
-    ) -> (String, TypeInfo) {
-        (member.name.clone(), enum_ty)
+    ) -> (String, TypeInfo, NodeId) {
+        (member.name.clone(), enum_ty, member.hir_id)
     }
 
     fn get_ty_node_name(&self, ty: &HirTypeNode) -> String {
@@ -724,10 +732,11 @@ impl<'a> TypeChecker<'a> {
             } => {
                 let specialized_members = members
                     .iter()
-                    .map(|(field_name, field_ty)| {
+                    .map(|(field_name, field_ty, id)| {
                         (
                             field_name.clone(),
                             self.substitute_type(field_ty, gen_type_params, concrete_args),
+                            *id,
                         )
                     })
                     .collect();
@@ -861,5 +870,4 @@ impl<'a> TypeChecker<'a> {
             .borrow_mut()
             .report(CompilerError::error(message, Phase::Semantics, span));
     }
-
 }

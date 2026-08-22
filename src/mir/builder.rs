@@ -905,11 +905,59 @@ impl<'a> MIRBuilder<'a> {
                 self.build_gep_single(target_ptr, index_val, elem_ty, Some(expr.span.clone()));
                 self.get_last_val(Some(expr.span.clone()))
             }
+            HirExprKind::Binary(lhs, op, rhs) if matches!(op, HirBinaryOp::Access) => {
+                let (field_ptr, _) = self.resolve_field_access(lhs, rhs, Some(expr.span.clone()));
+                field_ptr
+            }
             _ => self.report_ice(
                 "Cannot resolve a pointer for this expression".to_string(),
                 Some(expr.span.clone()),
             ),
         }
+    }
+
+    pub fn resolve_field_access(
+        &mut self,
+        lhs: &HirExpr,
+        rhs: &HirExpr,
+        span: Option<Span>,
+    ) -> (MIRValue, MIRTy) {
+        let struct_ptr = self.lookup_ptr(lhs);
+        let lhs_ty = self.get_type(&lhs.hir_id);
+
+        let fields = match &lhs_ty.kind {
+            MIRTykind::Struct(_, _, fields) => fields.clone(),
+            _ => self.report_ice(
+                "Cannot access a field on a non-struct type".to_string(),
+                span.clone(),
+            ),
+        };
+
+        let field_name = match &rhs.kind {
+            HirExprKind::Identifier(name) => name,
+            _ => self.report_ice(
+                "Expected identifier as field name".to_string(),
+                span.clone(),
+            ),
+        };
+
+        let field_index = fields
+            .iter()
+            .position(|(name, _)| name == field_name)
+            .expect("Field not found, should have been caught by type checker");
+        let field_ty = fields[field_index].1.clone();
+
+        let zero = MIRValue::Constant(ConstantValue::UInt(0));
+        let index_val = MIRValue::Constant(ConstantValue::UInt(field_index));
+        self.build_gep(
+            struct_ptr,
+            vec![zero, index_val],
+            lhs_ty.clone(),
+            span.clone(),
+        );
+        let field_ptr = self.get_last_val(span);
+
+        (field_ptr, field_ty) // field_ty still correctly returned for the caller's load/store
     }
 
     pub fn add_block(&mut self, block: &BasicBlock, span: Option<Span>) {

@@ -480,6 +480,11 @@ impl<'a> MIRBuilder<'a> {
             return;
         }
 
+        if matches!(op, HirBinaryOp::Access) {
+            self.build_access(lhs, rhs, ty, span);
+            return;
+        }
+
         let lhs_value = self.expr_value(lhs);
         let rhs_value = self.expr_value(rhs);
 
@@ -555,6 +560,13 @@ impl<'a> MIRBuilder<'a> {
             }
             _ => todo!(),
         }
+    }
+
+    fn build_access(&mut self, lhs: &HirExpr, rhs: &HirExpr, result_ty: MIRTy, span: Option<Span>) {
+        let (field_ptr, field_ty) = self.resolve_field_access(lhs, rhs, span.clone());
+        let dest = self.new_register(result_ty, None);
+        self.build_load(dest.clone(), field_ptr, field_ty, span);
+        self.last_value = Some(dest);
     }
 
     fn build_postfix(&mut self, op: &HirPostfixOp, operand: &HirExpr, ty: MIRTy) {

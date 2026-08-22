@@ -63,8 +63,8 @@ impl<'a> TypeChecker<'a> {
 
         let p_ty = members
             .iter()
-            .find(|(name, _)| name == &init_p.name)
-            .map(|(_, ty)| ty.clone());
+            .find(|(name, _, _)| name == &init_p.name)
+            .map(|(_, ty,_)| ty.clone());
 
         let Some(p_ty) = p_ty else {
             self.report(
@@ -363,6 +363,7 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
         match &left_ty.kind{
             ResolvedTypeKind::Struct { name,members ,..}| ResolvedTypeKind::Enum {name, members,..} =>{
                 if let Some(member_tuple)=members.iter().find(|m|m.0==*field_name){
+                    self.ctxt.names.resolved.insert(field_expr.hir_id, member_tuple.2);
                     member_tuple.1.clone()
                 }else{
                     self.unknown_member(field_name, name, field_expr.span.clone());
@@ -371,6 +372,7 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
             },
             ResolvedTypeKind::Variant { name, arms ,..} =>{
                 if let Some(arms_tuple)= arms.iter().find(|m|m.0 == *field_name){
+                    self.ctxt.names.resolved.insert(field_expr.hir_id, arms_tuple.2);
                     arms_tuple.1.clone()
                 }else{
                     self.unknown_member(field_name, name, field_expr.span.clone());

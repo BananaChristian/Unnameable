@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::Span,
+    lowering::NodeId,
     semantics::{ResolvedTypeKind, TypeId, TypeInfo},
     target::TargetSpec,
 };
@@ -122,11 +123,11 @@ impl<'a> LayoutEngine<'a> {
         }
     }
 
-    fn struct_layout(&mut self, members: &Vec<(String, TypeInfo)>) -> Layout {
+    fn struct_layout(&mut self, members: &Vec<(String, TypeInfo, NodeId)>) -> Layout {
         let mut offset = 0;
         let mut max_align = 1;
 
-        for (_, field_ty) in members {
+        for (_, field_ty, _) in members {
             let field_layout = self.layout_of(
                 &field_ty.kind,
                 field_ty.type_id.clone(),
@@ -169,14 +170,14 @@ impl<'a> LayoutEngine<'a> {
         }
     }
 
-    fn variant_layout(&mut self, arms: &Vec<(String, TypeInfo, Vec<TypeInfo>)>) -> Layout {
+    fn variant_layout(&mut self, arms: &Vec<(String, TypeInfo, NodeId, Vec<TypeInfo>)>) -> Layout {
         let tag_size: usize = 4;
         let tag_alignment: usize = 4;
 
         let mut max_payload_size: usize = 0;
         let mut max_payload_align: usize = 1;
 
-        for (_, _, payload_vec) in arms {
+        for (_, _, _, payload_vec) in arms {
             let mut arm_offset: usize = 0;
             let mut arm_max_align: usize = 1;
 

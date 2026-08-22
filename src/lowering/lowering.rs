@@ -1,10 +1,12 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
     ast::{Stmt, StmtKind, Type},
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::HirStmt
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId {
     pub local: usize,    //This is for nodes born within this particular module
     pub external: usize, //This is to be used externally by the import engine

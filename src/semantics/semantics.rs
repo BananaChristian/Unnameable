@@ -80,17 +80,17 @@ pub enum ResolvedTypeKind {
     Struct {
         name: String,
         gen_type_params: Vec<TypeInfo>,
-        members: Vec<(String, TypeInfo)>,
+        members: Vec<(String, TypeInfo, NodeId)>,
     },
     Enum {
         name: String,
         underlying: Box<TypeInfo>,
-        members: Vec<(String, TypeInfo)>,
+        members: Vec<(String, TypeInfo, NodeId)>,
     },
     Variant {
         name: String,
         gen_type_params: Vec<TypeInfo>,
-        arms: Vec<(String, TypeInfo, Vec<TypeInfo>)>,
+        arms: Vec<(String, TypeInfo, NodeId,Vec<TypeInfo>)>,
     },
     Tuple {
         fields: Vec<TypeInfo>,

@@ -1,5 +1,5 @@
 use crate::{
-    hir::{HirExpr, HirExprKind, HirType, HirTypeNode},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirType, HirTypeNode},
     semantics::{resolver::Resolver, semantics::NameTable},
 };
 
@@ -67,9 +67,13 @@ impl<'a> Resolver<'a> {
             HirExprKind::Postfix(inner, ..) => {
                 self.resolve_expr(inner, table);
             }
-            HirExprKind::Binary(left, .., right) => {
+            HirExprKind::Binary(left, op, right) => {
                 self.resolve_expr(left, table);
-                self.resolve_expr(right, table);
+                if matches!(op, HirBinaryOp::Access) {
+
+                } else {
+                    self.resolve_expr(right, table);
+                }
             }
             HirExprKind::Instantiation { init_ty, body } => {
                 self.resolve_type(init_ty, table);
