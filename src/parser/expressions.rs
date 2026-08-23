@@ -88,17 +88,31 @@ impl Parser {
 
     fn parse_binary(&mut self, left: Expr) -> Option<Expr> {
         let operator = self.current_token()?.clone();
-
         self.advance();
         let op_prec = Precedence::token_precedence(&operator.token_type);
-        let right = self.parse_expression(op_prec)?;
+        let op = BinaryOp::new(&operator);
+
+        let is_right_assoc = matches!(
+            op,
+            BinaryOp::Assign
+                | BinaryOp::AddAssign
+                | BinaryOp::SubAssign
+                | BinaryOp::MulAssign
+                | BinaryOp::DivAssign
+                | BinaryOp::ModAssign
+        );
+
+        let next_min_prec = if is_right_assoc {
+            op_prec
+        } else {
+            op_prec.next()
+        };
+        let right = self.parse_expression(next_min_prec)?;
 
         let span = Span {
             start: left.span.start,
             end: right.span.end,
         };
-        let op = BinaryOp::new(&operator);
-
         Some(Expr::new(
             ExprKind::Binary(Box::new(left), op, Box::new(right)),
             span,

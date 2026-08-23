@@ -475,7 +475,8 @@ impl<'a> MIRBuilder<'a> {
             } else {
                 let rhs_value = self.expr_value(rhs);
                 let align = self.get_alignment(lhs);
-                self.build_store(ptr, rhs_value, align, span);
+                self.build_store(ptr, rhs_value.clone(), align, span);
+                self.last_value = Some(rhs_value);
             }
             return;
         }

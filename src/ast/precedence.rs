@@ -15,8 +15,8 @@ pub enum Precedence {
     Shift,      //shl,shr
     Term,       // + -
     Factor,     // "* /"
-    Call,    // .
-    Primary, //::
+    Call,       // .
+    Primary,    //::
 }
 
 impl Precedence {
@@ -34,7 +34,7 @@ impl Precedence {
             TType::BitwiseAnd => Precedence::BitwiseAnd,
             TType::BitwiseOr => Precedence::BitwiseOr,
             TType::Xor => Precedence::BitwiseXor,
-            TType::Dot =>Precedence::Call,
+            TType::Dot => Precedence::Call,
             TType::Assign
             | TType::CompoundAdd
             | TType::CompoundSub
@@ -42,6 +42,26 @@ impl Precedence {
             | TType::CompoundMul
             | TType::CompoundDiv => Precedence::Assignment,
             _ => Precedence::Lowest,
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            Precedence::Lowest => Precedence::Assignment,
+            Precedence::Assignment => Precedence::Coalesce,
+            Precedence::Coalesce => Precedence::Or,
+            Precedence::Or => Precedence::And,
+            Precedence::And => Precedence::Equality,
+            Precedence::Equality => Precedence::Comparison,
+            Precedence::Comparison => Precedence::BitwiseOr,
+            Precedence::BitwiseOr => Precedence::BitwiseXor,
+            Precedence::BitwiseXor => Precedence::BitwiseAnd,
+            Precedence::BitwiseAnd => Precedence::Shift,
+            Precedence::Shift => Precedence::Term,
+            Precedence::Term => Precedence::Factor,
+            Precedence::Factor => Precedence::Call,
+            Precedence::Call => Precedence::Primary,
+            Precedence::Primary => Precedence::Primary,
         }
     }
 }
