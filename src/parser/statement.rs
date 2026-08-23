@@ -507,6 +507,9 @@ impl Parser {
         {
             let member = self.parse_enum_member()?;
             members.push(member);
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+            }
         }
 
         let end = self.current_token()?.span.end;

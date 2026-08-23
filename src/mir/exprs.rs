@@ -564,6 +564,45 @@ impl<'a> MIRBuilder<'a> {
     }
 
     fn build_access(&mut self, lhs: &HirExpr, rhs: &HirExpr, result_ty: MIRTy, span: Option<Span>) {
+        if let HirExprKind::Identifier(name) = &lhs.kind {
+            if let Some(&enum_id) = self.enum_name_to_id.get(name) {
+                let (underlying, value) = {
+                    let Some(enum_decl) = self.enums.get(&enum_id) else {
+                        self.report_ice(
+                            format!(
+                                "Enum id {:?} from '{}' points to a missing enum declaration",
+                                enum_id, name
+                            ),
+                            Some(lhs.span.clone()),
+                        )
+                    };
+                    let member_name = match &rhs.kind {
+                        HirExprKind::Identifier(name) => name,
+                        _ => self.report_ice(
+                            "Expected identifier as the enum member name".to_string(),
+                            Some(rhs.span.clone()),
+                        ),
+                    };
+                    let Some(value) = enum_decl
+                        .members
+                        .iter()
+                        .find(|(n, _)| n == member_name)
+                        .map(|(_, v)| *v)
+                    else {
+                        self.report_ice(
+                            format!("Enum member '{}' not found", member_name),
+                            Some(rhs.span.clone()),
+                        )
+                    };
+                    (enum_decl.underlying.clone(), value)
+                };
+
+                let const_val = self.make_constant_for_ty(&underlying, value);
+                self.last_value = Some(MIRValue::Constant(const_val));
+                return;
+            }
+        }
+
         let (field_ptr, field_ty) = self.resolve_field_access(lhs, rhs, span.clone());
         let dest = self.new_register(result_ty, None);
         self.build_load(dest.clone(), field_ptr, field_ty, span);

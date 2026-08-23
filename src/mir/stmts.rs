@@ -6,7 +6,8 @@ use crate::{
         MIRTy,
         builder::MIRBuilder,
         instructions::{
-            MIRDollarMode, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRStructDecl, Terminator,
+            MIRDollarMode, MIREnum, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRStructDecl,
+            Terminator,
         },
     },
 };
@@ -15,13 +16,17 @@ impl<'a> MIRBuilder<'a> {
     pub fn build_stmt(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
             HirStmtKind::HirStructDecl { .. } => (),
+            HirStmtKind::HirEnumDecl { .. } => (),
             HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
             HirStmtKind::HirIf { .. } => self.build_if(stmt),
             HirStmtKind::HirWhile { .. } => self.build_while(stmt),
             HirStmtKind::HirExpr(_) => self.build_expr_stmt(stmt),
-            _ => todo!("Implement all the different statement handlers"),
+            _ => todo!(
+                "Encountered {:?}, Implement all the different statement handlers",
+                stmt
+            ),
         }
     }
 
@@ -45,6 +50,25 @@ impl<'a> MIRBuilder<'a> {
                 fields,
             };
             self.module.structs.insert(struct_id, mir_struct);
+        }
+    }
+
+    pub fn build_enum(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirEnumDecl { name, members, .. } = &stmt.kind {
+            let enum_id = self.alloc_enum_id();
+            self.enum_name_to_id.insert(name.clone(), enum_id.clone());
+            let underlying_ty = self.get_type(&stmt.hir_id);
+
+            let mir_members: Vec<(String, isize)> =
+                members.iter().map(|m| (m.name.clone(), m.value)).collect();
+
+            let mir_enum = MIREnum {
+                enum_id: enum_id.clone(),
+                name: name.clone(),
+                underlying: underlying_ty,
+                members: mir_members,
+            };
+            self.enums.insert(enum_id, mir_enum);
         }
     }
 

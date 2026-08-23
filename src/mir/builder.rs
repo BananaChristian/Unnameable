@@ -8,8 +8,9 @@ use crate::{
     mir::{
         MIRModule,
         instructions::{
-            BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode,
-            MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, StructId, Terminator, Vreg,
+            BasicBlock, BlockId, CmpOp, ConstantValue, EnumId, FnId, GlobalId, MIRDollarMode,
+            MIREnum, MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, StructId, Terminator,
+            Vreg,
         },
     },
     semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
@@ -29,6 +30,7 @@ pub struct MIRBuilder<'a> {
     fn_counter: usize,
     global_counter: usize,
     struct_counter: usize,
+    enum_counter: usize,
     pub dollar_scope_counter: usize,
 
     pub current_block_id: Option<BlockId>,
@@ -36,7 +38,10 @@ pub struct MIRBuilder<'a> {
     pub current_dollar_mode: MIRDollarMode,
     pub current_dollar_name: Option<String>,
 
+    pub enums: HashMap<EnumId, MIREnum>, //Used by the builder in handling enums
+
     pub struct_name_to_id: HashMap<String, StructId>,
+    pub enum_name_to_id: HashMap<String, EnumId>,
 
     var_stack: Vec<HashMap<String, MIRValue>>,
     pub last_value: Option<MIRValue>,
@@ -62,11 +67,13 @@ impl<'a> MIRBuilder<'a> {
             fn_counter: 0,
             global_counter: 0,
             struct_counter: 0,
+            enum_counter: 0,
             dollar_scope_counter: 0,
             current_block_id: None,
             current_func: None,
             current_dollar_mode: MIRDollarMode::None,
             current_dollar_name: None,
+            enums: HashMap::new(),
             var_stack: Vec::new(),
             last_value: None,
             diagnostics,
@@ -77,6 +84,7 @@ impl<'a> MIRBuilder<'a> {
                 functions: HashMap::new(),
             },
             struct_name_to_id: HashMap::new(),
+            enum_name_to_id: HashMap::new(),
             types_table,
             target_spec,
             corrupted: false,
@@ -108,6 +116,10 @@ impl<'a> MIRBuilder<'a> {
         match &stmt.kind {
             HirStmtKind::HirStructDecl { .. } => {
                 self.build_struct(stmt);
+            }
+
+            HirStmtKind::HirEnumDecl { .. } => {
+                self.build_enum(stmt);
             }
 
             HirStmtKind::HirFunctionDef { body, .. } => {
@@ -203,6 +215,12 @@ impl<'a> MIRBuilder<'a> {
     pub fn alloc_struct_id(&mut self) -> StructId {
         let current = StructId(self.struct_counter);
         self.struct_counter += 1;
+        current
+    }
+
+    pub fn alloc_enum_id(&mut self) -> EnumId {
+        let current = EnumId(self.enum_counter);
+        self.enum_counter += 1;
         current
     }
 
@@ -386,6 +404,30 @@ impl<'a> MIRBuilder<'a> {
             HirBinaryOp::Eq => CmpOp::Eq,
             HirBinaryOp::Neq => CmpOp::Neq,
             _ => unreachable!("Not a comparison operator"),
+        }
+    }
+
+    pub fn make_constant_for_ty(&mut self, ty: &MIRTy, value: isize) -> ConstantValue {
+        match &ty.kind {
+            MIRTykind::I8 => ConstantValue::I8(value as i8),
+            MIRTykind::U8 => ConstantValue::U8(value as u8),
+            MIRTykind::I16 => ConstantValue::I16(value as i16),
+            MIRTykind::U16 => ConstantValue::U16(value as u16),
+            MIRTykind::I32 => ConstantValue::I32(value as i32),
+            MIRTykind::U32 => ConstantValue::U32(value as u32),
+            MIRTykind::I64 => ConstantValue::I64(value as i64),
+            MIRTykind::U64 => ConstantValue::U64(value as u64),
+            MIRTykind::I128 => ConstantValue::I128(value as i128),
+            MIRTykind::U128 => ConstantValue::U128(value as u128),
+            MIRTykind::ISIZE => ConstantValue::Int(value),
+            MIRTykind::USIZE => ConstantValue::UInt(value as usize),
+            _ => self.report_ice(
+                format!(
+                    "Enum underlying type '{}' cannot back an enum constant",
+                    ty.kind
+                ),
+                None,
+            ),
         }
     }
 
@@ -658,6 +700,9 @@ impl<'a> MIRBuilder<'a> {
                 MIRTykind::Array(Box::new(elem_ty), arr_size)
             }
             ResolvedTypeKind::Str => MIRTykind::Ptr,
+            ResolvedTypeKind::Enum { underlying, .. } => {
+                self.convert_tyinfo_to_mirtykind(underlying)
+            }
             _ => todo!("Will map the other types later {}", ty_info.name),
         }
     }

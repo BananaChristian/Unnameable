@@ -325,6 +325,23 @@ impl TypeInfo {
                     .all(|(a, b)| TypeInfo::types_match(a, b))
             }
             (ResolvedTypeKind::GenericParam(a), ResolvedTypeKind::GenericParam(b)) => a == b,
+            (
+                ResolvedTypeKind::Enum {
+                    name: name_a,
+                    underlying: under_a,
+                    ..
+                },
+                ResolvedTypeKind::Enum {
+                    name: name_b,
+                    underlying: under_b,
+                    ..
+                },
+            ) => {
+                let names_match = name_a == name_b;
+
+                let underlying_match = TypeInfo::types_match(under_a, under_b);
+                names_match && underlying_match
+            }
             _ => false,
         }
     }

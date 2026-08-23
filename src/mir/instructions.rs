@@ -18,6 +18,9 @@ pub struct FnId(pub usize); //ID for functions
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
 pub struct StructId(pub usize); //ID for structs
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
+pub struct EnumId(pub usize); //ID for enums
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MIRDollarMode {
     None,     //Off limits to dollar bill engine
@@ -350,6 +353,14 @@ pub struct MIRStructDecl {
     pub struct_id: StructId,
     pub name: String,
     pub fields: Vec<(String, MIRTy)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MIREnum {
+    pub enum_id: EnumId,
+    pub name: String,
+    pub underlying: MIRTy,
+    pub members: Vec<(String, isize)>,
 }
 
 #[derive(Debug, Clone)]
