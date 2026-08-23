@@ -340,6 +340,20 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
                 | HirBinaryOp::Leq => self.comparison_binary_type(&left_ty, &coerced_right_ty, expr.span.clone()),
                 HirBinaryOp::And | HirBinaryOp::Or => self.logical_binary_type(&left_ty,&coerced_right_ty,expr.span.clone()),
                 HirBinaryOp::Assign| HirBinaryOp::AddAssign| HirBinaryOp::SubAssign| HirBinaryOp::MulAssign| HirBinaryOp::ModAssign| HirBinaryOp::DivAssign =>{ 
+                    if let HirExprKind::Binary(_, inner_op, _) = &right.kind {
+                        if matches!(
+                            inner_op,
+                            HirBinaryOp::Assign | HirBinaryOp::AddAssign | HirBinaryOp::SubAssign
+                            | HirBinaryOp::MulAssign | HirBinaryOp::ModAssign | HirBinaryOp::DivAssign
+                        ) && coerced_right_ty.is_array()
+                        {
+                            self.report(
+                                "Cannot chain assignment through an array-typed assignment".to_string(),
+                                Some(expr.span.clone()),
+                            );
+                            return self.unknown(expr.span.clone());
+                        }
+                    }
                     self.assignment_type(&left_ty, &coerced_right_ty, expr.span.clone())
                 },
                 HirBinaryOp::Access => self.access_type(&left_ty, right),

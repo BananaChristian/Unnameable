@@ -90,7 +90,7 @@ pub enum ResolvedTypeKind {
     Variant {
         name: String,
         gen_type_params: Vec<TypeInfo>,
-        arms: Vec<(String, TypeInfo, NodeId,Vec<TypeInfo>)>,
+        arms: Vec<(String, TypeInfo, NodeId, Vec<TypeInfo>)>,
     },
     Tuple {
         fields: Vec<TypeInfo>,
@@ -197,6 +197,13 @@ impl TypeInfo {
     pub fn is_pointer(&self) -> bool {
         match self.kind {
             ResolvedTypeKind::Pointer { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_array(&self) -> bool {
+        match self.kind {
+            ResolvedTypeKind::Array { .. } => true,
             _ => false,
         }
     }

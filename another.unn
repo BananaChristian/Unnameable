@@ -1,0 +1,6 @@
+func main(): u32 {
+    mut var arr[isize, 2] a := [0, 0];
+    mut var arr[isize, 2] b := [0, 0];
+    a = b = [1, 2];
+    return 0u32;
+}
