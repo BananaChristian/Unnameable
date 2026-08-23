@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirStmt, HirStmtKind},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirStmt, HirStmtKind, HirUnaryOp},
     indexer::NodeIndex,
     lowering::NodeId,
     mir::{
@@ -908,6 +908,9 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::Binary(lhs, op, rhs) if matches!(op, HirBinaryOp::Access) => {
                 let (field_ptr, _) = self.resolve_field_access(lhs, rhs, Some(expr.span.clone()));
                 field_ptr
+            }
+            HirExprKind::Unary(op, inner) if matches!(op, HirUnaryOp::Dereference) => {
+                self.expr_value(inner)
             }
             _ => self.report_ice(
                 "Cannot resolve a pointer for this expression".to_string(),

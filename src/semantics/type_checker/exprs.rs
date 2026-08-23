@@ -373,7 +373,7 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
                 &"".to_string()
             }
         };
-
+        
         match &left_ty.kind{
             ResolvedTypeKind::Struct { name,members ,..}| ResolvedTypeKind::Enum {name, members,..} =>{
                 if let Some(member_tuple)=members.iter().find(|m|m.0==*field_name){
