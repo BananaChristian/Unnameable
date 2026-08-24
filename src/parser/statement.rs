@@ -579,6 +579,10 @@ impl Parser {
         {
             let member = self.parse_variant_member()?;
             members.push(member);
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+                continue;
+            }
         }
 
         let end = self.current_token()?.span.end;

@@ -313,16 +313,12 @@ impl TypeInfo {
                     ..
                 },
             ) => {
-                if name_a != name_b {
-                    return false;
-                }
-                if gens_a.len() != gens_b.len() {
-                    return false;
-                }
-                gens_a
-                    .iter()
-                    .zip(gens_b.iter())
-                    .all(|(a, b)| TypeInfo::types_match(a, b))
+                name_a == name_b
+                    && gens_a.len() == gens_b.len()
+                    && gens_a
+                        .iter()
+                        .zip(gens_b.iter())
+                        .all(|(a, b)| TypeInfo::types_match(a, b))
             }
             (ResolvedTypeKind::GenericParam(a), ResolvedTypeKind::GenericParam(b)) => a == b,
             (
@@ -336,11 +332,36 @@ impl TypeInfo {
                     underlying: under_b,
                     ..
                 },
+            ) => name_a == name_b && TypeInfo::types_match(under_a, under_b),
+            (
+                ResolvedTypeKind::Variant {
+                    name: name_a,
+                    gen_type_params: gens_a,
+                    ..
+                },
+                ResolvedTypeKind::Variant {
+                    name: name_b,
+                    gen_type_params: gens_b,
+                    ..
+                },
             ) => {
-                let names_match = name_a == name_b;
+                name_a == name_b
+                    && gens_a.len() == gens_b.len()
+                    && gens_a
+                        .iter()
+                        .zip(gens_b.iter())
+                        .all(|(a, b)| TypeInfo::types_match(a, b))
+            }
 
-                let underlying_match = TypeInfo::types_match(under_a, under_b);
-                names_match && underlying_match
+            (
+                ResolvedTypeKind::Tuple { fields: fields_a },
+                ResolvedTypeKind::Tuple { fields: fields_b },
+            ) => {
+                fields_a.len() == fields_b.len()
+                    && fields_a
+                        .iter()
+                        .zip(fields_b.iter())
+                        .all(|(a, b)| TypeInfo::types_match(a, b))
             }
             _ => false,
         }

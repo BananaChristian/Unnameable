@@ -97,6 +97,7 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
 
     ty
 }
+
     fn gen_inst_type(&mut self, expr: &HirExpr)-> TypeInfo{
         if let  HirExprKind::GenericInstantion {type_params ,..} =  &expr.kind{
             let template_decl_id: NodeId = *self.ctxt.names.resolved.get(&expr.hir_id)
@@ -365,41 +366,115 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
         }
     }
 
-    fn access_type(&mut self,left_ty: &TypeInfo, field_expr: &HirExpr) -> TypeInfo{
-        let field_name= match &field_expr.kind{
-            HirExprKind::Identifier(name) => name,
-            _ => {
-                self.report("The left of a field access must be an identifier".to_string(), Some(field_expr.span.clone()));
-                &"".to_string()
-            }
-        };
-        
-        match &left_ty.kind{
-            ResolvedTypeKind::Struct { name,members ,..}| ResolvedTypeKind::Enum {name, members,..} =>{
-                if let Some(member_tuple)=members.iter().find(|m|m.0==*field_name){
-                    self.ctxt.names.resolved.insert(field_expr.hir_id, member_tuple.2);
-                    member_tuple.1.clone()
-                }else{
-                    self.unknown_member(field_name, name, field_expr.span.clone());
-                    self.unknown(field_expr.span.clone())
+    fn access_type(&mut self, left_ty: &TypeInfo, field_expr: &HirExpr) -> TypeInfo {
+    match &left_ty.kind {
+        ResolvedTypeKind::Struct { name, members, .. }
+        | ResolvedTypeKind::Enum { name, members, .. } => {
+            let field_name = match &field_expr.kind {
+                HirExprKind::Identifier(n) => n,
+                _ => {
+                    self.report(
+                        "Right-hand side of struct/enum access must be an identifier".into(),
+                        Some(field_expr.span.clone()),
+                    );
+                    return self.unknown(field_expr.span.clone());
                 }
-            },
-            ResolvedTypeKind::Variant { name, arms ,..} =>{
-                if let Some(arms_tuple)= arms.iter().find(|m|m.0 == *field_name){
-                    self.ctxt.names.resolved.insert(field_expr.hir_id, arms_tuple.2);
-                    arms_tuple.1.clone()
-                }else{
-                    self.unknown_member(field_name, name, field_expr.span.clone());
-                    self.unknown(field_expr.span.clone())
-                }
-            }
-            _ => {
-                self.report(format!("Cannot carryout an access operation on type '{}'",left_ty.name), Some(field_expr.span.clone()));
+            };
+
+            if let Some(member_tuple) = members.iter().find(|m| m.0 == *field_name) {
+                self.ctxt.names.resolved.insert(field_expr.hir_id, member_tuple.2);
+                member_tuple.1.clone() // Returns field's type
+            } else {
+                self.unknown_member(field_name, name, field_expr.span.clone());
                 self.unknown(field_expr.span.clone())
             }
+        }
 
+        ResolvedTypeKind::Variant { name, arms, .. } => {
+            let (variant_name, provided_args) = match &field_expr.kind {
+                HirExprKind::Identifier(n) => (n.as_str(), None),
+                HirExprKind::Call(callee, args) => match &callee.kind {
+                    HirExprKind::Identifier(n) => (n.as_str(), Some(args)),
+                    _ => {
+                        self.report(
+                            "Expected variant constructor identifier".into(),
+                            Some(field_expr.span.clone()),
+                        );
+                        return self.unknown(field_expr.span.clone());
+                    }
+                },
+                _ => {
+                    self.report(
+                        "Right-hand side of variant access must be a constructor or identifier".into(),
+                        Some(field_expr.span.clone()),
+                    );
+                    return self.unknown(field_expr.span.clone());
+                }
+            };
+
+            if let Some(arm_tuple) = arms.iter().find(|m| m.0 == variant_name) {
+                self.ctxt.names.resolved.insert(field_expr.hir_id, arm_tuple.2);
+                let expected_arg_tys = &arm_tuple.3; 
+
+                match (provided_args, expected_arg_tys.is_empty()) {
+                    (None, true) => {}
+
+                    (Some(args), true) => {
+                        self.report(
+                            format!("Variant '{}.{}' does not take payload arguments", name, variant_name),
+                            Some(field_expr.span.clone()),
+                        );
+                    }
+
+                    (None, false) => {
+                        self.report(
+                            format!(
+                                "Variant '{}.{}' requires payload arguments ({})",
+                                name, variant_name, expected_arg_tys.len()
+                            ),
+                            Some(field_expr.span.clone()),
+                        );
+                    }
+
+                    (Some(args), false) => {
+                        if args.len() != expected_arg_tys.len() {
+                            self.report(
+                                format!(
+                                    "Variant '{}.{}' expects {} arguments, but got {}",
+                                    name, variant_name, expected_arg_tys.len(), args.len()
+                                ),
+                                Some(field_expr.span.clone()),
+                            );
+                        } else {
+                            for (arg_expr, expected_ty) in args.iter().zip(expected_arg_tys) {
+                                self.expr_type(arg_expr);
+                                self.coerce_ty(expected_ty, arg_expr);
+                                let arg_ty= self.expr_type(arg_expr);
+
+                                if !TypeInfo::types_match(expected_ty, &arg_ty) {
+                                    self.type_mismatch(expected_ty, &arg_ty, arg_expr.span.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                left_ty.clone()
+            } else {
+                self.unknown_member(&variant_name.to_string(), name, field_expr.span.clone());
+                self.unknown(field_expr.span.clone())
+            }
+        }
+
+        _ => {
+            self.report(
+                format!("Cannot carry out an access operation on type '{}'", left_ty.name),
+                Some(field_expr.span.clone()),
+            );
+            self.unknown(field_expr.span.clone())
         }
     }
+}
 
     fn bitwise_type(&mut self,left_ty: &TypeInfo,right_ty: &TypeInfo, span: Span) -> TypeInfo{
         if !self.is_integer(&left_ty.kind) || !self.is_integer(&right_ty.kind){
