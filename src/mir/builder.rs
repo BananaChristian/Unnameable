@@ -6,11 +6,11 @@ use crate::{
     indexer::NodeIndex,
     lowering::NodeId,
     mir::{
-        MIRModule,
+        MIRModule, MIRStructDecl, MIRVariant,
         instructions::{
-            BasicBlock, BlockId, CmpOp, ConstantValue, EnumId, FnId, GlobalId, MIRDollarMode,
-            MIREnum, MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, StructId, Terminator,
-            Vreg,
+            ArmInfo, BasicBlock, BlockId, CmpOp, ConstantValue, EnumId, FnId, GlobalId,
+            MIRDollarMode, MIREnum, MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, StructId,
+            Terminator, VariantId, Vreg,
         },
     },
     semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
@@ -31,6 +31,7 @@ pub struct MIRBuilder<'a> {
     global_counter: usize,
     struct_counter: usize,
     enum_counter: usize,
+    variant_counter: usize,
     pub dollar_scope_counter: usize,
 
     pub current_block_id: Option<BlockId>,
@@ -42,6 +43,10 @@ pub struct MIRBuilder<'a> {
 
     pub struct_name_to_id: HashMap<String, StructId>,
     pub enum_name_to_id: HashMap<String, EnumId>,
+    pub variant_name_to_id: HashMap<String, VariantId>,
+
+    // StructId to (Arm Name -> ArmInfo)
+    pub arm_map: HashMap<StructId, HashMap<String, ArmInfo>>,
 
     var_stack: Vec<HashMap<String, MIRValue>>,
     pub last_value: Option<MIRValue>,
@@ -68,6 +73,7 @@ impl<'a> MIRBuilder<'a> {
             global_counter: 0,
             struct_counter: 0,
             enum_counter: 0,
+            variant_counter: 0,
             dollar_scope_counter: 0,
             current_block_id: None,
             current_func: None,
@@ -75,6 +81,7 @@ impl<'a> MIRBuilder<'a> {
             current_dollar_name: None,
             enums: HashMap::new(),
             var_stack: Vec::new(),
+            arm_map: HashMap::new(),
             last_value: None,
             diagnostics,
             module: MIRModule {
@@ -85,6 +92,7 @@ impl<'a> MIRBuilder<'a> {
             },
             struct_name_to_id: HashMap::new(),
             enum_name_to_id: HashMap::new(),
+            variant_name_to_id: HashMap::new(),
             types_table,
             target_spec,
             corrupted: false,
@@ -120,6 +128,10 @@ impl<'a> MIRBuilder<'a> {
 
             HirStmtKind::HirEnumDecl { .. } => {
                 self.build_enum(stmt);
+            }
+
+            HirStmtKind::HirVariantDecl { .. } => {
+                self.build_variant(stmt);
             }
 
             HirStmtKind::HirFunctionDef { body, .. } => {
@@ -215,6 +227,12 @@ impl<'a> MIRBuilder<'a> {
     pub fn alloc_struct_id(&mut self) -> StructId {
         let current = StructId(self.struct_counter);
         self.struct_counter += 1;
+        current
+    }
+
+    pub fn alloc_variant_id(&mut self) -> VariantId {
+        let current = VariantId(self.variant_counter);
+        self.variant_counter += 1;
         current
     }
 
@@ -683,6 +701,31 @@ impl<'a> MIRBuilder<'a> {
 
                 MIRTykind::Struct(struct_id, name.clone(), mems)
             }
+            ResolvedTypeKind::Variant { name, .. } => {
+                let struct_id = match self.struct_name_to_id.get(name) {
+                    Some(id) => id,
+                    None => {
+                        self.report_ice(
+                            format!(
+                                "Failed to get the variant struct id corresponding to '{}'",
+                                name
+                            ),
+                            Some(ty_info.span.clone()),
+                        );
+                    }
+                };
+                let Some(struct_decl) = self.module.structs.get(struct_id) else {
+                    self.report_ice(
+                        format!(
+                            "Failed to get variant struct corresponding to id {}",
+                            struct_id
+                        ),
+                        Some(ty_info.span.clone()),
+                    )
+                };
+
+                MIRTykind::Struct(struct_id.clone(), name.clone(), struct_decl.fields.clone())
+            }
             ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
             ResolvedTypeKind::Array { inner, size } => {
                 let elem_ty_kind = self.convert_tyinfo_to_mirtykind(&inner);
@@ -703,8 +746,73 @@ impl<'a> MIRBuilder<'a> {
             ResolvedTypeKind::Enum { underlying, .. } => {
                 self.convert_tyinfo_to_mirtykind(underlying)
             }
-            _ => todo!("Will map the other types later {}", ty_info.name),
+            _ => self.report_ice(
+                format!("Unhandled type '{}'", ty_info.name),
+                Some(ty_info.span.clone()),
+            ),
         }
+    }
+
+    pub fn padding_for(offset: usize, align: usize) -> usize {
+        if align == 0 {
+            0
+        } else {
+            (align - (offset % align)) % align
+        }
+    }
+
+    fn padded_arm_size(&self, payload_tys: &[MIRTy]) -> usize {
+        let mut offset = 0;
+        for ty in payload_tys {
+            offset += Self::padding_for(offset, ty.align);
+            offset += ty.size;
+        }
+        offset
+    }
+
+    pub fn convert_variant_to_struct(
+        &mut self,
+        variant: &MIRVariant,
+        ty_info: &TypeInfo,
+    ) -> MIRStructDecl {
+        let max_payload_size = variant
+            .arms
+            .iter()
+            .map(|arm| self.padded_arm_size(&arm.payload_tys))
+            .max()
+            .unwrap_or(0);
+
+        let struct_id = self.alloc_struct_id();
+        self.struct_name_to_id
+            .insert(variant.name.clone(), struct_id);
+
+        let u8_ty = MIRTy {
+            kind: MIRTykind::U8,
+            size: 1,
+            align: 1,
+        };
+
+        let payload_arr_ty = MIRTy {
+            kind: MIRTykind::Array(Box::new(u8_ty), max_payload_size),
+            size: max_payload_size,
+            align: ty_info.layout.alignment,
+        };
+
+        MIRStructDecl {
+            struct_id,
+            name: variant.name.clone(),
+            fields: vec![
+                ("tag".to_string(), variant.discriminant_ty.clone()),
+                ("payload".to_string(), payload_arr_ty),
+            ],
+        }
+    }
+
+    pub fn get_type_info(&mut self, id: &NodeId, span: Option<Span>) -> TypeInfo {
+        let Some(ty_info) = self.types_table.types.get(id) else {
+            self.report_ice(format!("Failed to get from id {:?}", id), span)
+        };
+        ty_info.clone()
     }
 
     pub fn get_type(&mut self, id: &NodeId) -> MIRTy {
@@ -832,6 +940,7 @@ impl<'a> MIRBuilder<'a> {
                         .max()
                         .unwrap_or(1) // Empty struct defaults to alignment 1
                 }
+                ConstantValue::Undef => 0,
             },
             MIRValue::Poison => 0,
         }
@@ -915,9 +1024,13 @@ impl<'a> MIRBuilder<'a> {
 
     pub fn lookup_ptr(&mut self, expr: &HirExpr) -> MIRValue {
         match &expr.kind {
-            HirExprKind::Identifier(name) => {
-                self.lookup_var(name).cloned().expect("Variable not found")
-            }
+            HirExprKind::Identifier(name) => match self.lookup_var(name) {
+                Some(val) => val.clone(),
+                None => self.report_ice(
+                    format!("Could not find variable '{}'", name),
+                    Some(expr.span.clone()),
+                ),
+            },
             HirExprKind::Index { target, index } => {
                 let target_ty = self.get_type(&target.hir_id);
 
@@ -1008,6 +1121,26 @@ impl<'a> MIRBuilder<'a> {
         (field_ptr, field_ty) // field_ty still correctly returned for the caller's load/store
     }
 
+    pub fn get_struct_decl(&mut self, name: &String, span: Option<Span>) -> MIRStructDecl {
+        let Some(struct_id) = self.struct_name_to_id.get(name) else {
+            self.report_ice(
+                format!("Failed to get struct id corresponding to name '{}'", name),
+                span,
+            )
+        };
+        let Some(struct_decl) = self.module.structs.get(struct_id) else {
+            self.report_ice(
+                format!(
+                    "Failed to get struct declaration corresponding to id {}",
+                    struct_id
+                ),
+                span,
+            )
+        };
+
+        struct_decl.clone()
+    }
+
     pub fn add_block(&mut self, block: &BasicBlock, span: Option<Span>) {
         let Some(fn_id) = self.current_func else {
             self.report_ice(
@@ -1025,6 +1158,7 @@ impl<'a> MIRBuilder<'a> {
 
         func.blocks.insert(block.id, block.clone());
     }
+
     pub fn set_terminator(&mut self, terminator: Terminator, span: Option<Span>) {
         let Some(fn_id) = self.current_func else {
             self.report_ice(

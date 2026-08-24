@@ -208,7 +208,7 @@ impl<'ctx> Codegen<'ctx> {
                 let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                 int_val.const_to_pointer(ptr_type).into()
             }
-
+            ConstantValue::Undef => self.context.i32_type().get_undef().into(),
             ConstantValue::Array(elements) => {
                 let elem_values: Vec<BasicValueEnum<'ctx>> =
                     elements.iter().map(|e| self.lower_constant(e)).collect();
@@ -266,7 +266,7 @@ impl<'ctx> Codegen<'ctx> {
                 // Returns an opaque pointer to the global variable in LLVM
                 global_val.as_pointer_value().into()
             }
-            MIRValue::Poison => self.context.i32_type().get_undef().into(),
+            MIRValue::Poison => self.context.i32_type().get_poison().into(),
         }
     }
 

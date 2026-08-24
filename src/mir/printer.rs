@@ -172,6 +172,7 @@ impl fmt::Display for ConstantValue {
             ConstantValue::U128(v) => write!(f, "{v}"),
             ConstantValue::F32(v) => write!(f, "{v}"),
             ConstantValue::F64(v) => write!(f, "{v}"),
+            ConstantValue::Undef => write!(f, "undef"),
             ConstantValue::Char8(v) => format_escaped_char(f, *v as char),
             ConstantValue::Char16(v) => {
                 let ch = char::from_u32(*v as u32).unwrap_or('\u{FFFD}');

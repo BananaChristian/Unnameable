@@ -11,7 +11,6 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn expr_type(&mut self, expr: &HirExpr) -> TypeInfo {
-
         if let Some(ty) = self.ctxt.types.types.get(&expr.hir_id) {
             return ty.clone();
         }
@@ -414,12 +413,21 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
 
             if let Some(arm_tuple) = arms.iter().find(|m| m.0 == variant_name) {
                 self.ctxt.names.resolved.insert(field_expr.hir_id, arm_tuple.2);
+
+
+                self.ctxt.types.types.insert(field_expr.hir_id, left_ty.clone());
+
+                if let HirExprKind::Call(callee, _) = &field_expr.kind {
+                        self.ctxt.types.types.insert(callee.hir_id, left_ty.clone());
+                }
+
                 let expected_arg_tys = &arm_tuple.3; 
+                
 
                 match (provided_args, expected_arg_tys.is_empty()) {
                     (None, true) => {}
 
-                    (Some(args), true) => {
+                    (Some(_), true) => {
                         self.report(
                             format!("Variant '{}.{}' does not take payload arguments", name, variant_name),
                             Some(field_expr.span.clone()),

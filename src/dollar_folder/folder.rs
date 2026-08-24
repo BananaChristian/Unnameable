@@ -117,7 +117,7 @@ impl<'a> Folder<'a> {
                     fields: mir_fields,
                 })
             }
-            VMValue::Poison => MIRValue::Poison,
+            VMValue::Poison => MIRValue::Constant(ConstantValue::Undef),
             VMValue::Unit => {
                 todo!("Handle pointer/unit folding if dollar scopes return references")
             }

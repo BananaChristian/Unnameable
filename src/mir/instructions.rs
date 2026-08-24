@@ -21,6 +21,9 @@ pub struct StructId(pub usize); //ID for structs
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
 pub struct EnumId(pub usize); //ID for enums
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Ord, PartialOrd)]
+pub struct VariantId(pub usize); //ID for variants
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MIRDollarMode {
     None,     //Off limits to dollar bill engine
@@ -48,6 +51,7 @@ pub enum ConstantValue {
     Char16(u16),
     Char32(u32),
     Bool(bool),
+    Undef,
     Ptr(usize), //the pointer and the offset
     Array(Vec<ConstantValue>),
     Struct {
@@ -364,6 +368,20 @@ pub struct MIREnum {
 }
 
 #[derive(Debug, Clone)]
+pub struct MIRVariantArm {
+    pub name: String,
+    pub tag: usize,
+    pub payload_tys: Vec<MIRTy>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MIRVariant {
+    pub name: String,
+    pub discriminant_ty: MIRTy,
+    pub arms: Vec<MIRVariantArm>,
+}
+
+#[derive(Debug, Clone)]
 pub struct MIRGlobal {
     pub global_id: GlobalId,
     pub name: String,
@@ -380,4 +398,10 @@ pub struct MIRModule {
     pub globals: HashMap<GlobalId, MIRGlobal>,
     pub structs: HashMap<StructId, MIRStructDecl>,
     pub functions: HashMap<FnId, MIRFn>,
+}
+
+#[derive(Clone)]
+pub struct ArmInfo {
+    pub tag: u32,
+    pub payload_tys: Vec<MIRTy>,
 }

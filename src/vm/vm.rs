@@ -105,6 +105,9 @@ impl<'a> VM<'a> {
             frame.ip += 1;
 
             match instr {
+                VMOpcode::ConstUndef { dest } => {
+                    self.write_reg(frame, dest, VMValue::Poison);
+                }
                 VMOpcode::ConstI8 { dest, val } => {
                     self.write_reg(frame, dest, VMValue::I8(val));
                 }

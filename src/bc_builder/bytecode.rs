@@ -83,6 +83,9 @@ pub enum VMOpcode {
         dest: u16,
         addr: usize,
     },
+    ConstUndef{
+        dest: u16,
+    },
     ConstArray {
         dest: u16,
         elements: Vec<u16>, // registers already holding each element's value

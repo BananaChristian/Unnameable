@@ -181,6 +181,9 @@ impl BytecodePrinter {
                     char::from_u32(*val).unwrap_or('\u{FFFD}')
                 )
             }
+            VMOpcode::ConstUndef { dest } => {
+                format!("r{} = undef", dest)
+            }
             VMOpcode::ConstArray { dest, elements } => {
                 let elems_str = elements
                     .iter()

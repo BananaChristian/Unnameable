@@ -4,11 +4,11 @@ use crate::{
     diagnostics::Span,
     hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
     mir::{
-        MIRGlobal, MIRInstruction,
+        MIRGlobal, MIRInstruction, StructId,
         builder::MIRBuilder,
         instructions::{
-            ConstantValue, MIRDollarMode, MIRFn, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind,
-            MIRValue, Terminator,
+            ArmInfo, ConstantValue, MIRDollarMode, MIRFn, MIRLinkage, MIROps, MIRParam, MIRTy,
+            MIRTykind, MIRValue, Terminator,
         },
     },
 };
@@ -62,7 +62,7 @@ impl<'a> MIRBuilder<'a> {
     }
 
     pub fn build_into(&mut self, expr: &HirExpr, dest_ptr: MIRValue) -> bool {
-        match expr.kind {
+        match &expr.kind {
             HirExprKind::Literal(HirLiteral::ArrayLiteral(_)) => {
                 self.build_array_literal_into(expr, dest_ptr);
                 true
@@ -71,10 +71,18 @@ impl<'a> MIRBuilder<'a> {
                 self.build_struct_init_into(expr, dest_ptr);
                 true
             }
+            HirExprKind::Binary(lhs, op, rhs) if matches!(op, HirBinaryOp::Access) => {
+                if let HirExprKind::Identifier(variant_name) = &lhs.kind {
+                    if self.variant_name_to_id.contains_key(variant_name) {
+                        self.build_variant_construction_into(variant_name, rhs, dest_ptr, None);
+                        return true;
+                    }
+                }
+                false
+            }
             _ => false,
         }
     }
-
     fn build_array_literal(&mut self, expr: &HirExpr) -> MIRValue {
         let array_ty = self.get_type(&expr.hir_id);
         let arr_ptr = self.new_register(array_ty.clone(), None);
@@ -601,12 +609,151 @@ impl<'a> MIRBuilder<'a> {
                 self.last_value = Some(MIRValue::Constant(const_val));
                 return;
             }
+
+            if self.variant_name_to_id.contains_key(name) {
+                self.build_variant_construction(name, rhs, span.clone());
+                return;
+            }
         }
 
         let (field_ptr, field_ty) = self.resolve_field_access(lhs, rhs, span.clone());
         let dest = self.new_register(result_ty, None);
         self.build_load(dest.clone(), field_ptr, field_ty, span);
         self.last_value = Some(dest);
+    }
+
+    fn get_arm_info(
+        &mut self,
+        struct_id: &StructId,
+        arm_name: String,
+        span: Option<Span>,
+    ) -> ArmInfo {
+        let Some(map) = self.arm_map.get(struct_id) else {
+            self.report_ice(
+                format!("Failed to get arm mapping for struct id {}", struct_id),
+                span,
+            );
+        };
+
+        let Some(arm_info) = map.get(&arm_name) else {
+            self.report_ice(
+                format!("Failed to get arm info corresponding to '{}'", arm_name),
+                span,
+            )
+        };
+        arm_info.clone()
+    }
+
+    fn build_variant_construction(
+        &mut self,
+        variant_name: &str,
+        arm_expr: &HirExpr,
+        span: Option<Span>,
+    ) -> MIRValue {
+        let struct_ty = self.get_type(&arm_expr.hir_id);
+        let alloca_reg = self.new_register(struct_ty.clone(), None);
+        self.build_alloca(alloca_reg.clone(), struct_ty.clone(), span.clone());
+        self.fill_variant_construction(variant_name, arm_expr, alloca_reg.clone(), span);
+        alloca_reg
+    }
+
+    fn build_variant_construction_into(
+        &mut self,
+        variant_name: &str,
+        arm_expr: &HirExpr,
+        dest_ptr: MIRValue,
+        span: Option<Span>,
+    ) {
+        self.fill_variant_construction(variant_name, arm_expr, dest_ptr, span);
+    }
+
+    fn fill_variant_construction(
+        &mut self,
+        variant_name: &str,
+        arm_expr: &HirExpr,
+        dest_ptr: MIRValue,
+        span: Option<Span>,
+    ) {
+        let (arm_name, args) = match &arm_expr.kind {
+            HirExprKind::Call(callee, args) => {
+                if let HirExprKind::Identifier(name) = &callee.kind {
+                    (name.as_str(), args)
+                } else {
+                    self.report_ice("Expected identifier for variant arm".to_string(), span);
+                }
+            }
+            HirExprKind::Identifier(name) => (name.as_str(), &vec![]),
+            _ => self.report_ice("Invalid variant arm expression".to_string(), span),
+        };
+        let struct_decl = self.get_struct_decl(&variant_name.to_string(), span.clone());
+        let arm_info =
+            self.get_arm_info(&struct_decl.struct_id, arm_name.to_string(), span.clone());
+        let struct_ty = self.get_type(&arm_expr.hir_id);
+
+        // GEP to Field 0 (Tag) — off dest_ptr, not a freshly-alloca'd register
+        let zero = MIRValue::Constant(ConstantValue::UInt(0));
+        self.build_gep(
+            dest_ptr.clone(),
+            vec![zero.clone(), zero.clone()],
+            struct_ty.clone(),
+            span.clone(),
+        );
+        let tag_ptr = self.get_last_val(span.clone());
+
+        let tag_ty = &struct_decl.fields[0].1;
+        let tag_val = self.make_constant_for_ty(tag_ty, arm_info.tag as isize);
+        self.build_store(
+            tag_ptr,
+            MIRValue::Constant(tag_val),
+            tag_ty.align,
+            span.clone(),
+        );
+
+        if !args.is_empty() {
+            let one = MIRValue::Constant(ConstantValue::UInt(1));
+            self.build_gep(
+                dest_ptr.clone(),
+                vec![zero.clone(), one],
+                struct_ty.clone(),
+                span.clone(),
+            );
+            let raw_payload_ptr = self.get_last_val(span.clone());
+            let u8_ty = MIRTy {
+                kind: MIRTykind::U8,
+                size: 1,
+                align: 1,
+            };
+
+            // inside fill_variant_construction's loop:
+            let mut byte_offset = 0;
+            for (i, arg_expr) in args.iter().enumerate() {
+                let arg_val = self.expr_value(arg_expr);
+                let arg_ty = arm_info.payload_tys[i].clone();
+
+                byte_offset += Self::padding_for(byte_offset, arg_ty.align);
+
+                let offset_val = MIRValue::Constant(ConstantValue::UInt(byte_offset));
+                self.build_gep_single(
+                    raw_payload_ptr.clone(),
+                    offset_val,
+                    u8_ty.clone(),
+                    span.clone(),
+                );
+                let field_byte_ptr = self.get_last_val(span.clone());
+
+                let ptr_ty = self.ptr_type();
+                let typed_ptr = self.new_register(ptr_ty.clone(), Some("payload_ptr"));
+                let bitcast_instr = MIRInstruction::BitCast {
+                    dest: typed_ptr.clone(),
+                    src: field_byte_ptr,
+                    to_ty: ptr_ty,
+                };
+                self.add_instruction(bitcast_instr, span.clone());
+                self.build_store(typed_ptr, arg_val, arg_ty.align, span.clone());
+
+                byte_offset += arg_ty.size;
+            }
+        }
     }
 
     fn build_postfix(&mut self, op: &HirPostfixOp, operand: &HirExpr, ty: MIRTy) {

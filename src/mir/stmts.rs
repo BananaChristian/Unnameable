@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use crate::{
     hir::{HirStmt, HirStmtKind},
     mir::{
-        MIRTy,
+        MIRTy, MIRVariant,
         builder::MIRBuilder,
         instructions::{
-            MIRDollarMode, MIREnum, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRStructDecl,
-            Terminator,
+            ArmInfo, MIRDollarMode, MIREnum, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRStructDecl,
+            MIRTykind, MIRVariantArm, Terminator,
         },
     },
 };
@@ -15,8 +15,9 @@ use crate::{
 impl<'a> MIRBuilder<'a> {
     pub fn build_stmt(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
-            HirStmtKind::HirStructDecl { .. } => (),
-            HirStmtKind::HirEnumDecl { .. } => (),
+            HirStmtKind::HirStructDecl { .. }
+            | HirStmtKind::HirVariantDecl { .. }
+            | HirStmtKind::HirEnumDecl { .. } => (),
             HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
@@ -69,6 +70,79 @@ impl<'a> MIRBuilder<'a> {
                 members: mir_members,
             };
             self.enums.insert(enum_id, mir_enum);
+        }
+    }
+
+    pub fn build_variant(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirVariantDecl { name, members, .. } = &stmt.kind {
+            let variant_id = self.alloc_variant_id();
+            self.variant_name_to_id.insert(name.clone(), variant_id);
+            let total_arms = members.len();
+
+            let discriminant_ty = if total_arms <= 256 {
+                MIRTy {
+                    kind: MIRTykind::U8,
+                    size: 1,
+                    align: 1,
+                }
+            } else {
+                MIRTy {
+                    kind: MIRTykind::U32,
+                    size: 4,
+                    align: 4,
+                }
+            };
+
+            let variant_arms: Vec<MIRVariantArm> = members
+                .iter()
+                .enumerate()
+                .map(|(index, arm_hir)| {
+                    let payload_tys = arm_hir
+                        .member_types
+                        .iter()
+                        .map(|field| self.get_type(&field.hir_id))
+                        .collect();
+
+                    MIRVariantArm {
+                        name: arm_hir.name.clone(),
+                        tag: index,
+                        payload_tys,
+                    }
+                })
+                .collect();
+
+            let mir_variant = MIRVariant {
+                name: name.clone(),
+                discriminant_ty,
+                arms: variant_arms,
+            };
+
+            let ty_info = self.get_type_info(&stmt.hir_id, Some(stmt.span.clone()));
+            let struct_decl = self.convert_variant_to_struct(&mir_variant, &ty_info);
+
+            let mut arms_for_struct = HashMap::new();
+
+            for (tag_idx, arm_hir) in members.iter().enumerate() {
+                let payload_tys = arm_hir
+                    .member_types
+                    .iter()
+                    .map(|f| self.get_type(&f.hir_id))
+                    .collect();
+
+                arms_for_struct.insert(
+                    arm_hir.name.clone(),
+                    ArmInfo {
+                        tag: tag_idx as u32,
+                        payload_tys,
+                    },
+                );
+            }
+
+            self.arm_map
+                .insert(struct_decl.struct_id.clone(), arms_for_struct);
+            self.module
+                .structs
+                .insert(struct_decl.struct_id.clone(), struct_decl);
         }
     }
 

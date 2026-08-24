@@ -256,6 +256,9 @@ impl<'a> BytecodeBuilder<'a> {
                     fields: field_regs,
                 });
             }
+            ConstantValue::Undef => {
+                instructions.push(VMOpcode::ConstUndef { dest });
+            }
         }
     }
 
@@ -311,6 +314,7 @@ impl<'a> BytecodeBuilder<'a> {
             ConstantValue::F32(v) => VMValue::F32(*v),
             ConstantValue::F64(v) => VMValue::F64(*v),
             ConstantValue::Ptr(offset) => VMValue::UInt(*offset),
+            ConstantValue::Undef => VMValue::Poison,
             ConstantValue::Array(elements) => {
                 let vm_elems = elements
                     .iter()
