@@ -1,0 +1,68 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Food = type { power: i32, health: usize }
+
+func @foo() {
+bb0:
+    %x = alloca i32 , align 4
+    %5 = $$eval @$$scope_0
+    store %5, ptr %x, align 4, ty i32
+    ret 0
+}
+
+$$func @$$scope_0() {
+bb1:
+    %food = alloca %Food $$, align 8
+    %0 = gep %Food, ptr %food, indices [0, 0]
+    store 100, ptr %0, align 4, ty i32
+    %1 = gep %Food, ptr %food, indices [0, 1]
+    store 1000, ptr %1, align 8, ty usize
+    %2 = gep %Food, ptr %food, indices [0, 0]
+    store 99, ptr %2, align 4, ty i32
+    %3 = gep %Food, ptr %food, indices [0, 0]
+    %4 = load i32, ptr %3, align 4
+    ret %4
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (2):
+--------------------------------------------------
+func @$$scope_0 (mode: Full, params: 0, registers: 17)
+--------------------------------------------------
+  [0000] r0 = alloca size: 16, align: 8
+  [0001] r2 = 0 (usize)
+  [0002] r3 = 0 (usize)
+  [0003] r1 = gep r0, [r2, r3] (%Food)
+  [0004] r4 = 100 (i32)
+  [0005] store [r1], r4 (i32) (mode: Full)
+  [0006] r6 = 0 (usize)
+  [0007] r7 = 1 (usize)
+  [0008] r5 = gep r0, [r6, r7] (%Food)
+  [0009] r8 = 1000 (usize)
+  [0010] store [r5], r8 (usize) (mode: Full)
+  [0011] r10 = 0 (usize)
+  [0012] r11 = 0 (usize)
+  [0013] r9 = gep r0, [r10, r11] (%Food)
+  [0014] r12 = 99 (i32)
+  [0015] store [r9], r12 (i32) (mode: Full)
+  [0016] r14 = 0 (usize)
+  [0017] r15 = 0 (usize)
+  [0018] r13 = gep r0, [r14, r15] (%Food)
+  [0019] load r16, [r13] (i32) (mode: Full)
+  [0020] return r16
+
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 1)
+--------------------------------------------------
+  [0000] r0 = $$eval @$$scope_0()
+  [0001] return
+
+==================================================

@@ -46,9 +46,13 @@ impl<'a> VM<'a> {
             self.memory.next_alloc += 1;
 
             let data = vec![0u8; global.size_in_bytes as usize]; // zero-init the backing bytes
-            self.memory
-                .allocations
-                .insert(alloc_id.clone(), Allocation { data });
+            self.memory.allocations.insert(
+                alloc_id.clone(),
+                Allocation {
+                    data,
+                    relocations: HashMap::new(),
+                },
+            );
 
             if let Some(init_val) = &global.init_data {
                 self.write_typed(&alloc_id, 0, init_val, &global.ty);
@@ -196,11 +200,11 @@ impl<'a> VM<'a> {
                     self.memory.next_alloc += 1;
                     let allocation = Allocation {
                         data: vec![0u8; size as usize], // zero-init, or use a sentinel byte for "uninitialized" if you want poison-tracking at byte granularity
+                        relocations: HashMap::new(),
                     };
                     self.memory.allocations.insert(alloc_id.clone(), allocation);
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
-
                 VMOpcode::Load { dest, ptr, ty, .. } => {
                     let ptr_val = self.read_reg(ptr, frame);
                     if let VMValue::Ptr(alloc_id, offset) = ptr_val {
@@ -440,7 +444,8 @@ impl<'a> VM<'a> {
                             let idx_val = self.read_reg(idx_reg, frame).as_isize().unwrap();
 
                             if i == 0 {
-                                continue; // first index just dereferences the pointer
+                                offset += (idx_val as usize) * elem_ty.size;
+                                continue;
                             }
 
                             match &current_ty.kind {

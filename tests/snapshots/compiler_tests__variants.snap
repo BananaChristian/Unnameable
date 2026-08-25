@@ -1,0 +1,70 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Weird = type { tag: u8, payload: [16 x u8] }
+
+func @foo() {
+bb0:
+    %x = alloca %Weird , align 8
+    %5 = $$eval @$$scope_0
+    store %5, ptr %x, align 8, ty %Weird
+    ret 0
+}
+
+$$func @$$scope_0() {
+bb1:
+    %weird = alloca %Weird $$, align 8
+    %0 = gep %Weird, ptr %weird, indices [0, 0]
+    store 0, ptr %0, align 1, ty u8
+    %1 = gep %Weird, ptr %weird, indices [0, 1]
+    %2 = gep u8, ptr %1, indices [0]
+    %payload_ptr = bitcast %2 to ptr
+    store 5, ptr %payload_ptr, align 1, ty i8
+    %3 = gep u8, ptr %1, indices [8]
+    %payload_ptr = bitcast %3 to ptr
+    store 1000, ptr %payload_ptr, align 8, ty i64
+    %4 = load %Weird, ptr %weird, align 8
+    ret %4
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (2):
+--------------------------------------------------
+func @$$scope_0 (mode: Full, params: 0, registers: 16)
+--------------------------------------------------
+  [0000] r0 = alloca size: 24, align: 8
+  [0001] r2 = 0 (usize)
+  [0002] r3 = 0 (usize)
+  [0003] r1 = gep r0, [r2, r3] (%Weird)
+  [0004] r4 = 0 (u8)
+  [0005] store [r1], r4 (u8) (mode: Full)
+  [0006] r6 = 0 (usize)
+  [0007] r7 = 1 (usize)
+  [0008] r5 = gep r0, [r6, r7] (%Weird)
+  [0009] r9 = 0 (usize)
+  [0010] r8 = gep r5, [r9] (u8)
+  [0011] r10 = bitcast r8 ptr
+  [0012] r11 = 5 (i8)
+  [0013] store [r10], r11 (i8) (mode: Full)
+  [0014] r13 = 8 (usize)
+  [0015] r12 = gep r5, [r13] (u8)
+  [0016] r10 = bitcast r12 ptr
+  [0017] r14 = 1000 (i64)
+  [0018] store [r10], r14 (i64) (mode: Full)
+  [0019] load r15, [r0] (%Weird) (mode: Full)
+  [0020] return r15
+
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 1)
+--------------------------------------------------
+  [0000] r0 = $$eval @$$scope_0()
+  [0001] return
+
+==================================================

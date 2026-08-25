@@ -92,9 +92,18 @@ impl<'a> VM<'a> {
                 self.read_bytes(alloc_id, offset, 4).try_into().unwrap(),
             )),
             MIRTykind::Ptr => {
-                let addr =
-                    usize::from_le_bytes(self.read_bytes(alloc_id, offset, 8).try_into().unwrap());
-                VMValue::Ptr(AllocId(0), addr) // placeholder AllocId,pointer identity across byte-serialization is a real open question, flagged below
+                let offset_bytes = self.read_bytes(alloc_id, offset, 8);
+                let ptr_offset = usize::from_le_bytes(offset_bytes.try_into().unwrap());
+
+                // Retrieve target AllocId from relocations, defaulting to AllocId(0) if uninitialized/null
+                let target_alloc_id = self
+                    .memory
+                    .allocations
+                    .get(alloc_id)
+                    .and_then(|alloc| alloc.relocations.get(&offset).copied())
+                    .unwrap_or(AllocId(0));
+
+                VMValue::Ptr(target_alloc_id, ptr_offset)
             }
             MIRTykind::Array(elem_ty, count) => {
                 let elems = (0..*count)
@@ -204,9 +213,30 @@ impl<'a> VM<'a> {
                 self.write_bytes(alloc_id, offset, &bytes);
             }
             MIRTykind::Ptr => {
-                let addr = self.expect_ptr_addr(val);
-                let bytes = addr.to_le_bytes();
+                let (target_alloc_id, ptr_offset) = match val {
+                    VMValue::Ptr(target_id, offset_val) => (Some(*target_id), *offset_val),
+                    VMValue::UInt(addr) => (None, *addr),
+                    _ => {
+                        self.report_ice(format!(
+                            "Expected Ptr or UInt VMValue for pointer write, found {:?}",
+                            val
+                        ));
+                        (None, 0)
+                    }
+                };
+
+                // Write the raw 8-byte offset into memory
+                let bytes = ptr_offset.to_le_bytes();
                 self.write_bytes(alloc_id, offset, &bytes);
+
+                // Record or clear the relocation at this offset
+                if let Some(alloc) = self.memory.allocations.get_mut(alloc_id) {
+                    if let Some(target_id) = target_alloc_id {
+                        alloc.relocations.insert(offset, target_id);
+                    } else {
+                        alloc.relocations.remove(&offset);
+                    }
+                }
             }
             MIRTykind::Array(elem_ty, count) => {
                 let VMValue::Array(elems) = val else {

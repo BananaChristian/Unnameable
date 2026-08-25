@@ -26,8 +26,8 @@ bb1:
 
 === BYTECODE MODULE ===
 Globals (2):
-  @0: "global" (8 bytes) [init: 1000]
   @1: ".str.1" (5 bytes) [init: ['F', 'o', 'o', 'd', '\0']]
+  @0: "global" (8 bytes) [init: 1000]
 
 Functions (2):
 --------------------------------------------------

@@ -5,7 +5,7 @@ use crate::{
     mir::{MIRTy, MIRTykind, StructId},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AllocId(pub usize);
 
 #[derive(Debug, Clone)]
@@ -190,6 +190,7 @@ impl VMValue {
 #[derive(Debug, Clone)]
 pub struct Allocation {
     pub data: Vec<u8>,
+    pub relocations: HashMap<usize, AllocId>,
 }
 
 pub struct VMMemory {
