@@ -1,0 +1,13 @@
+struct Food{
+  power: i32,
+  health: usize,
+}
+
+func foo: i32{
+  var x := $${
+    var food:= .Food{.power= 100, .health= 1000};
+    food.power= 99;
+    food.power;
+  };
+  return 0i32;
+}

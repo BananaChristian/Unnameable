@@ -296,8 +296,13 @@ impl fmt::Display for MIRInstruction {
             } => {
                 write!(f, "    {dest} = load {ty}, ptr {ptr}, align {align}")
             }
-            MIRInstruction::Store { ptr, val, align } => {
-                write!(f, "    store {val}, ptr {ptr}, align {align}")
+            MIRInstruction::Store {
+                ptr,
+                val,
+                align,
+                ty,
+            } => {
+                write!(f, "    store {val}, ptr {ptr}, align {align}, ty {ty}")
             }
             MIRInstruction::AddrOf { dest, src } => {
                 write!(f, "    {dest} = addr_of {src}")

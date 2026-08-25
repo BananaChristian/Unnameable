@@ -1,0 +1,52 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+func @foo() {
+bb0:
+    %x = alloca isize , align 8
+    %3 = $$eval @$$scope_0
+    store %3, ptr %x, align 8, ty isize
+    ret 0
+}
+
+$$func @$$scope_0() {
+bb1:
+    %val = alloca isize $$, align 8
+    store 1000, ptr %val, align 8, ty isize
+    %p = alloca ptr $$, align 8
+    %0 = addr_of %val
+    store %0, ptr %p, align 8, ty ptr
+    %1 = load ptr, ptr %p, align 8
+    %2 = load isize, ptr %1, align 8
+    ret %2
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (2):
+--------------------------------------------------
+func @$$scope_0 (mode: Full, params: 0, registers: 6)
+--------------------------------------------------
+  [0000] r0 = alloca size: 8, align: 8
+  [0001] r1 = 1000 (isize) 
+  [0002] store [r0], r1 (isize) (mode: Full)
+  [0003] r2 = alloca size: 8, align: 8
+  [0004] r3 = addr_of r0
+  [0005] store [r2], r3 (ptr) (mode: Full)
+  [0006] load r4, [r2] (ptr) (mode: Full)
+  [0007] load r5, [r4] (isize) (mode: Full)
+  [0008] return r5
+
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 1)
+--------------------------------------------------
+  [0000] r0 = $$eval @$$scope_0()
+  [0001] return
+
+==================================================

@@ -1,0 +1,8 @@
+var global := 1000;
+func foo(): u32{
+  var x:= $${
+    var str_test:= "Food";
+    str_test;
+  }; 
+  return 0u32;
+}

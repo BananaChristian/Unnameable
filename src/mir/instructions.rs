@@ -278,6 +278,7 @@ pub enum MIRInstruction {
     Store {
         ptr: MIRValue,
         val: MIRValue,
+        ty: MIRTy,
         align: usize,
     },
 

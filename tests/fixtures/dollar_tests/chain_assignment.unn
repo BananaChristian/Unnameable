@@ -1,0 +1,9 @@
+func foo: u32{
+  var x:= $${
+    mut var y := 100;
+    mut var z:= 77;
+    y = z = 99;
+    z;
+  };
+  return 0u32;
+}

@@ -284,17 +284,14 @@ impl<'a> MIRBuilder<'a> {
         self.add_instruction(alloca, span);
     }
 
-    pub fn build_store(
-        &mut self,
-        ptr: MIRValue,
-        val: MIRValue,
-        alignment: usize,
-        span: Option<Span>,
-    ) {
+    pub fn build_store(&mut self, ptr: MIRValue, val: MIRValue, ty: MIRTy, span: Option<Span>) {
+        let alignment = ty.align;
+
         let store = MIRInstruction::Store {
             ptr,
             align: alignment,
             val,
+            ty,
         };
         self.add_instruction(store, span);
     }

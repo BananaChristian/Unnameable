@@ -1,0 +1,7 @@
+func foo: u32{
+  var x := $${
+    1+3;
+  };
+  return 0u32;
+
+}

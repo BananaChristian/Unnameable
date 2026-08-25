@@ -1,0 +1,55 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+func @foo() {
+bb0:
+    %x = alloca isize , align 8
+    %1 = $$eval @$$scope_0
+    store %1, ptr %x, align 8, ty isize
+    ret 0
+}
+
+$$func @$$scope_0() {
+bb1:
+    %y = alloca isize $$, align 8
+    store 100, ptr %y, align 8, ty isize
+    %z = alloca isize $$, align 8
+    store 77, ptr %z, align 8, ty isize
+    store 99, ptr %z, align 8, ty isize
+    store 99, ptr %y, align 8, ty isize
+    %0 = load isize, ptr %z, align 8
+    ret %0
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (2):
+--------------------------------------------------
+func @$$scope_0 (mode: Full, params: 0, registers: 7)
+--------------------------------------------------
+  [0000] r0 = alloca size: 8, align: 8
+  [0001] r1 = 100 (isize) 
+  [0002] store [r0], r1 (isize) (mode: Full)
+  [0003] r2 = alloca size: 8, align: 8
+  [0004] r3 = 77 (isize) 
+  [0005] store [r2], r3 (isize) (mode: Full)
+  [0006] r4 = 99 (isize) 
+  [0007] store [r2], r4 (isize) (mode: Full)
+  [0008] r5 = 99 (isize) 
+  [0009] store [r0], r5 (isize) (mode: Full)
+  [0010] load r6, [r2] (isize) (mode: Full)
+  [0011] return r6
+
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 1)
+--------------------------------------------------
+  [0000] r0 = $$eval @$$scope_0()
+  [0001] return
+
+==================================================

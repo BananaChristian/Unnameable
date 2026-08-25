@@ -5,10 +5,10 @@ expression: output
 === MIR OUTPUT ===
 module "test_module"
 
- func @foo() {
+func @foo() {
 bb0:
     %x = alloca u32 , align 4
-    store 0, ptr %x, align 4
+    store 0, ptr %x, align 4, ty u32
     goto bb1
 
 bb1:
@@ -19,10 +19,22 @@ bb1:
 bb2:
     %2 = load u32, ptr %x, align 4
     %3 = add %2, 2
-    store %3, ptr %x, align 4
+    store %3, ptr %x, align 4, ty u32
     goto bb1
 
 bb3:
     %4 = load u32, ptr %x, align 4
     ret %4
 }
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

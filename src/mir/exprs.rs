@@ -127,7 +127,7 @@ impl<'a> MIRBuilder<'a> {
                         self.build_store(
                             elem_ptr,
                             elem_val,
-                            elem_ty.align,
+                            elem_ty.clone(),
                             Some(expr.span.clone()),
                         );
                     }
@@ -212,7 +212,7 @@ impl<'a> MIRBuilder<'a> {
                         self.build_store(
                             field_ptr,
                             field_val,
-                            field_ty.align,
+                            field_ty.clone(),
                             Some(expr.span.clone()),
                         );
                     }
@@ -374,9 +374,8 @@ impl<'a> MIRBuilder<'a> {
                     None,
                 );
                 self.build_alloca(alloc_dest.clone(), param_ty.clone(), span.clone());
-                let align = param_ty.align;
 
-                self.build_store(alloc_dest.clone(), param_val, align, span.clone());
+                self.build_store(alloc_dest.clone(), param_val, param_ty, span.clone());
 
                 // Bind name in scope map to the local stack pointer (%name.addr)
                 self.declare_var(name, alloc_dest);
@@ -482,8 +481,8 @@ impl<'a> MIRBuilder<'a> {
                 self.build_array_literal_into(rhs, ptr);
             } else {
                 let rhs_value = self.expr_value(rhs);
-                let align = self.get_alignment(lhs);
-                self.build_store(ptr, rhs_value.clone(), align, span);
+                let lhs_ty = self.get_type(&lhs.hir_id);
+                self.build_store(ptr, rhs_value.clone(), lhs_ty, span);
                 self.last_value = Some(rhs_value);
             }
             return;
@@ -555,8 +554,8 @@ impl<'a> MIRBuilder<'a> {
                 };
 
                 let ptr = self.lookup_ptr(lhs);
-                let align = self.get_alignment(lhs);
-                self.build_store(ptr, result, align, span);
+                let lhs_ty = self.get_type(&lhs.hir_id);
+                self.build_store(ptr, result, lhs_ty, span);
             }
             HirBinaryOp::Eq
             | HirBinaryOp::Neq
@@ -705,7 +704,7 @@ impl<'a> MIRBuilder<'a> {
         self.build_store(
             tag_ptr,
             MIRValue::Constant(tag_val),
-            tag_ty.align,
+            tag_ty.clone(),
             span.clone(),
         );
 
@@ -749,7 +748,7 @@ impl<'a> MIRBuilder<'a> {
                     to_ty: ptr_ty,
                 };
                 self.add_instruction(bitcast_instr, span.clone());
-                self.build_store(typed_ptr, arg_val, arg_ty.align, span.clone());
+                self.build_store(typed_ptr, arg_val, arg_ty.clone(), span.clone());
 
                 byte_offset += arg_ty.size;
             }
@@ -774,8 +773,8 @@ impl<'a> MIRBuilder<'a> {
         };
 
         let ptr = self.lookup_ptr(operand);
-        let align = self.get_alignment(operand);
-        self.build_store(ptr, new_val, align, span);
+        let operand_ty = self.get_type(&operand.hir_id);
+        self.build_store(ptr, new_val, operand_ty, span);
 
         self.last_value = Some(old_val)
     }
@@ -811,8 +810,8 @@ impl<'a> MIRBuilder<'a> {
                 };
 
                 let ptr = self.lookup_ptr(operand);
-                let align = self.get_alignment(operand);
-                self.build_store(ptr, new_val.clone(), align, span);
+                let operand_ty = self.get_type(&operand.hir_id);
+                self.build_store(ptr, new_val.clone(), operand_ty, span);
                 self.last_value = Some(new_val);
             }
             HirUnaryOp::BitNot => {

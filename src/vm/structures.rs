@@ -189,7 +189,7 @@ impl VMValue {
 
 #[derive(Debug, Clone)]
 pub struct Allocation {
-    pub data: Vec<VMValue>,
+    pub data: Vec<u8>,
 }
 
 pub struct VMMemory {

@@ -1,0 +1,65 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+func @foo() {
+bb0:
+    %x = alloca [4 x isize] , align 8
+    %5 = $$eval @$$scope_0
+    store %5, ptr %x, align 8, ty [4 x isize]
+    ret 0
+}
+
+$$func @$$scope_0() {
+bb1:
+    %arr_test = alloca [4 x isize] $$, align 8
+    %0 = gep isize, ptr %arr_test, indices [0]
+    store 1, ptr %0, align 8, ty isize
+    %1 = gep isize, ptr %arr_test, indices [1]
+    store 3, ptr %1, align 8, ty isize
+    %2 = gep isize, ptr %arr_test, indices [2]
+    store 4, ptr %2, align 8, ty isize
+    %3 = gep isize, ptr %arr_test, indices [3]
+    store 7, ptr %3, align 8, ty isize
+    %4 = load [4 x isize], ptr %arr_test, align 8
+    ret %4
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (2):
+--------------------------------------------------
+func @$$scope_0 (mode: Full, params: 0, registers: 14)
+--------------------------------------------------
+  [0000] r0 = alloca size: 32, align: 8
+  [0001] r2 = 0 (usize)
+  [0002] r1 = gep r0, [r2] (isize)
+  [0003] r3 = 1 (isize) 
+  [0004] store [r1], r3 (isize) (mode: Full)
+  [0005] r5 = 1 (usize)
+  [0006] r4 = gep r0, [r5] (isize)
+  [0007] r6 = 3 (isize) 
+  [0008] store [r4], r6 (isize) (mode: Full)
+  [0009] r8 = 2 (usize)
+  [0010] r7 = gep r0, [r8] (isize)
+  [0011] r9 = 4 (isize) 
+  [0012] store [r7], r9 (isize) (mode: Full)
+  [0013] r11 = 3 (usize)
+  [0014] r10 = gep r0, [r11] (isize)
+  [0015] r12 = 7 (isize) 
+  [0016] store [r10], r12 (isize) (mode: Full)
+  [0017] load r13, [r0] ([4 x isize]) (mode: Full)
+  [0018] return r13
+
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 1)
+--------------------------------------------------
+  [0000] r0 = $$eval @$$scope_0()
+  [0001] return
+
+==================================================

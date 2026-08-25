@@ -94,6 +94,7 @@ impl<'a> BytecodeBuilder<'a> {
                 id: global_id,
                 name: global.name.clone(),
                 size_in_bytes: global.ty.size as u32,
+                ty: global.ty.clone(),
                 init_data,
             };
 
@@ -438,10 +439,10 @@ impl<'a> BytecodeBuilder<'a> {
                 dest, ty, align, ..
             } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
-                let size = ty.slot_counter();
+                let size = ty.size;
                 instructions.push(VMOpcode::Alloca {
                     dest: dest_reg,
-                    size,
+                    size: size as u32,
                     align: *align as u32,
                 });
             }
@@ -449,22 +450,21 @@ impl<'a> BytecodeBuilder<'a> {
             MIRInstruction::Load { dest, ptr, ty, .. } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let ptr_reg = self.lower_mir_value(ptr, reg_map, instructions);
-                let size = ty.slot_counter();
                 instructions.push(VMOpcode::Load {
                     dest: dest_reg,
                     ptr: ptr_reg,
-                    size,
                     ty: ty.clone(),
                     mode: current_mode,
                 });
             }
 
-            MIRInstruction::Store { ptr, val, .. } => {
+            MIRInstruction::Store { ptr, val, ty, .. } => {
                 let ptr_reg = self.lower_mir_value(ptr, reg_map, instructions);
                 let val_reg = self.lower_mir_value(val, reg_map, instructions);
                 instructions.push(VMOpcode::Store {
                     ptr: ptr_reg,
                     val: val_reg,
+                    ty: ty.clone(),
                     mode: current_mode,
                 });
             }
@@ -484,19 +484,16 @@ impl<'a> BytecodeBuilder<'a> {
             } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
                 let ptr_reg = self.lower_mir_value(ptr, reg_map, instructions);
-
                 let index_regs: Vec<u16> = indices
                     .iter()
                     .map(|idx| self.lower_mir_value(idx, reg_map, instructions))
                     .collect();
 
-                let stride = elem_ty.slot_counter();
-
                 instructions.push(VMOpcode::GetElementPtr {
                     dest: dest_reg,
                     ptr: ptr_reg,
                     indices: index_regs,
-                    stride,
+                    elem_ty: elem_ty.clone(),
                 });
             }
             MIRInstruction::Assign { dest, src } => {

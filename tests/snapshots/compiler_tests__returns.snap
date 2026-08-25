@@ -5,12 +5,12 @@ expression: output
 === MIR OUTPUT ===
 module "test_module"
 
- func @max( i32 %a,  i32 %b) {
+func @max( i32 %a,  i32 %b) {
 bb0:
     %a.addr = alloca i32 , align 4
-    store %a, ptr %a.addr, align 4
+    store %a, ptr %a.addr, align 4, ty i32
     %b.addr = alloca i32 , align 4
-    store %b, ptr %b.addr, align 4
+    store %b, ptr %b.addr, align 4, ty i32
     %0 = load i32, ptr %a.addr, align 4
     %1 = load i32, ptr %b.addr, align 4
     %2 = cmp sgt %0, %1
@@ -27,3 +27,15 @@ bb2:
 bb3:
     ret
 }
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

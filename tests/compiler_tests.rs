@@ -4,6 +4,8 @@ use std::panic;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use unnc::bc_builder::BytecodeBuilder;
+use unnc::bc_builder::BytecodePrinter;
 use unnc::{
     const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine,
     indexer::NodeIndex, lexer::Lexer, lowering::Lowering, mir::MIRBuilder, parser::Parser,
@@ -102,7 +104,13 @@ fn compile_source_for_test(filename: &str, source: &str) -> String {
         }
 
         let mir_module = mir_builder.build_module();
-        format!("=== MIR OUTPUT ===\n{}", mir_module)
+        let mir = format!("=== MIR OUTPUT ===\n{}", mir_module);
+
+        let mut bc_builder = BytecodeBuilder::new(&mir_module, diagnostics);
+        let bytecode = bc_builder.build();
+        let bytecode = BytecodePrinter::print_module(&bytecode);
+        let result = format!("{}\n{}", mir, bytecode);
+        result
     });
 
     match result {

@@ -83,7 +83,7 @@ pub enum VMOpcode {
         dest: u16,
         addr: usize,
     },
-    ConstUndef{
+    ConstUndef {
         dest: u16,
     },
     ConstArray {
@@ -113,13 +113,13 @@ pub enum VMOpcode {
     Load {
         dest: u16,
         ptr: u16,
-        size: u32,
         ty: MIRTy,
         mode: DollarMode,
     },
     Store {
         ptr: u16,
         val: u16,
+        ty: MIRTy,
         mode: DollarMode,
     },
     AddrOf {
@@ -130,7 +130,7 @@ pub enum VMOpcode {
         dest: u16,
         ptr: u16,
         indices: Vec<u16>,
-        stride: u32,
+        elem_ty: MIRTy,
     },
     // Global Memory Access
     LoadGlobal {
@@ -302,6 +302,7 @@ pub struct GlobalVar {
     pub id: u32,
     pub name: String,
     pub size_in_bytes: u32,
+    pub ty: MIRTy,
     pub init_data: Option<VMValue>,
 }
 

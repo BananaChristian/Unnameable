@@ -1,0 +1,11 @@
+variant Weird {
+  Pair(i8, i64)
+}
+
+func foo(): u32 {
+  var x := $${
+    var weird := Weird.Pair(5, 1000);
+    weird;
+  };
+  return 0u32;
+}

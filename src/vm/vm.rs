@@ -4,7 +4,7 @@ use crate::{
     bc_builder::{BytecodeModule, VMOpcode},
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     impl_cmp_op, impl_int_op, impl_numeric_op,
-    mir::{CmpOp, MIRTy, MIRTykind, StructId},
+    mir::{CmpOp, MIRTykind},
     vm::{
         Allocation,
         structures::{AllocId, EvalResultTable, VMFrame, VMMemory, VMValue},
@@ -45,17 +45,14 @@ impl<'a> VM<'a> {
             let alloc_id = AllocId(self.memory.next_alloc);
             self.memory.next_alloc += 1;
 
-            let data = match &global.init_data {
-                Some(VMValue::Array(elems)) => elems.clone(),
-                Some(scalar) => vec![scalar.clone()],
-                None => {
-                    // Uninitialized space filled with Poison elements matching size
-                    vec![VMValue::Poison; global.size_in_bytes as usize]
-                }
-            };
+            let data = vec![0u8; global.size_in_bytes as usize]; // zero-init the backing bytes
             self.memory
                 .allocations
                 .insert(alloc_id.clone(), Allocation { data });
+
+            if let Some(init_val) = &global.init_data {
+                self.write_typed(&alloc_id, 0, init_val, &global.ty);
+            }
 
             self.global_allocs.insert(global.id, alloc_id.clone());
             self.eval_table.global_allocs.insert(alloc_id, global.id);
@@ -197,49 +194,27 @@ impl<'a> VM<'a> {
                 VMOpcode::Alloca { dest, size, .. } => {
                     let alloc_id = AllocId(self.memory.next_alloc);
                     self.memory.next_alloc += 1;
-
                     let allocation = Allocation {
-                        data: vec![VMValue::Poison; size as usize],
+                        data: vec![0u8; size as usize], // zero-init, or use a sentinel byte for "uninitialized" if you want poison-tracking at byte granularity
                     };
-
                     self.memory.allocations.insert(alloc_id.clone(), allocation);
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
 
-                VMOpcode::Load {
-                    dest,
-                    ptr,
-                    size,
-                    ty,
-                    ..
-                } => {
+                VMOpcode::Load { dest, ptr, ty, .. } => {
                     let ptr_val = self.read_reg(ptr, frame);
                     if let VMValue::Ptr(alloc_id, offset) = ptr_val {
-                        let val = if size <= 1 {
-                            self.mem_read(&alloc_id, offset)
-                        } else {
-                            match &ty.kind {
-                                MIRTykind::Struct(struct_id, name, fields) => {
-                                    self.load_struct(*struct_id, name, fields, &alloc_id, offset)
-                                }
-                                _ => {
-                                    let elems: Vec<VMValue> = (0..size as usize)
-                                        .map(|i| self.mem_read(&alloc_id, offset + i))
-                                        .collect();
-                                    VMValue::Array(elems)
-                                }
-                            }
-                        };
+                        let val = self.read_typed(&alloc_id, offset, &ty);
                         self.write_reg(frame, dest, val);
                     } else {
                         self.report_ice("Load from non pointer".to_string());
                     }
                 }
-                VMOpcode::Store { ptr, val, .. } => {
+                VMOpcode::Store { ptr, val, ty, .. } => {
                     let ptr_val = self.read_reg(ptr, frame);
                     let src_val = self.read_reg(val, frame);
                     if let VMValue::Ptr(alloc_id, offset) = ptr_val {
-                        self.mem_write(&alloc_id, offset, src_val);
+                        self.write_typed(&alloc_id, offset, &src_val, &ty);
                     } else {
                         self.report_ice("Store to a non pointer".to_string());
                     }
@@ -454,90 +429,55 @@ impl<'a> VM<'a> {
                     dest,
                     ptr,
                     indices,
-                    stride,
+                    elem_ty,
                 } => {
                     let ptr_val = self.read_reg(ptr, frame);
+                    if let VMValue::Ptr(alloc_id, base_offset) = ptr_val {
+                        let mut offset = base_offset;
+                        let mut current_ty = elem_ty.clone();
 
-                    if let VMValue::Ptr(alloc_id, current_offset) = ptr_val {
-                        let mut total_offset = current_offset as isize;
-
-                        for (i, index_reg) in indices.iter().enumerate() {
-                            let index_val = self.read_reg(*index_reg, frame);
-                            let idx = match index_val.as_isize() {
-                                Some(idx_val) => idx_val,
-                                None => {
-                                    self.report_ice(format!(
-                                        "GEP index register r{} ({:?}) is not an integer",
-                                        index_reg, index_val
-                                    ));
-                                    0
-                                }
-                            };
+                        for (i, &idx_reg) in indices.iter().enumerate() {
+                            let idx_val = self.read_reg(idx_reg, frame).as_isize().unwrap();
 
                             if i == 0 {
-                                // Index 0: Outer array/pointer offset scaled by total element stride
-                                total_offset += idx * (stride as isize);
-                            } else {
-                                // Index 1+: Member/field access inside the aggregate (1 slot per index step)
-                                total_offset += idx;
+                                continue; // first index just dereferences the pointer
+                            }
+
+                            match &current_ty.kind {
+                                MIRTykind::Array(elem_ty, _) => {
+                                    offset += (idx_val as usize) * elem_ty.size;
+                                    current_ty = *elem_ty.clone();
+                                }
+                                MIRTykind::Struct(_, _, fields) => {
+                                    let mut field_offset = 0usize;
+                                    for (field_i, (_, field_ty)) in fields.iter().enumerate() {
+                                        let padding = if field_ty.align == 0 {
+                                            0
+                                        } else {
+                                            (field_ty.align - (field_offset % field_ty.align))
+                                                % field_ty.align
+                                        };
+                                        field_offset += padding;
+                                        if field_i as i64 == idx_val as i64 {
+                                            current_ty = field_ty.clone();
+                                            break;
+                                        }
+                                        field_offset += field_ty.size;
+                                    }
+                                    offset += field_offset;
+                                }
+                                _ => self.report_ice(
+                                    "Cannot GEP further into a non-aggregate type".to_string(),
+                                ),
                             }
                         }
-
-                        if total_offset < 0 {
-                            self.report_ice(format!(
-                                "GEP resulting offset {} underflowed below 0 on AllocId({})",
-                                total_offset, alloc_id.0
-                            ));
-                            return VMValue::Poison;
-                        }
-
-                        self.write_reg(frame, dest, VMValue::Ptr(alloc_id, total_offset as usize));
+                        self.write_reg(frame, dest, VMValue::Ptr(alloc_id, offset));
                     } else {
-                        self.report_ice(format!("GEP target register r{} is not a pointer", ptr));
+                        self.report_ice(format!("GEP target register {} is not a pointer", ptr));
                     }
                 }
                 _ => todo!("VMOpcode {:?} not implemented", instr),
             }
-        }
-    }
-
-    fn load_struct(
-        &mut self,
-        struct_id: StructId,
-        name: &str,
-        fields: &[(String, MIRTy)],
-        alloc_id: &AllocId,
-        base_offset: usize,
-    ) -> VMValue {
-        let mut field_offset = base_offset;
-        let mut field_vals = Vec::with_capacity(fields.len());
-
-        for (_, field_ty) in fields {
-            let field_slots = field_ty.slot_counter() as usize;
-            let field_val = match &field_ty.kind {
-                MIRTykind::Struct(nested_id, nested_name, nested_fields) => self.load_struct(
-                    *nested_id,
-                    nested_name,
-                    nested_fields,
-                    alloc_id,
-                    field_offset,
-                ),
-                _ if field_slots > 1 => {
-                    let elems: Vec<VMValue> = (0..field_slots)
-                        .map(|i| self.mem_read(alloc_id, field_offset + i as usize))
-                        .collect();
-                    VMValue::Array(elems)
-                }
-                _ => self.mem_read(alloc_id, field_offset),
-            };
-            field_vals.push(field_val);
-            field_offset += field_slots;
-        }
-
-        VMValue::Struct {
-            struct_id,
-            name: name.to_string(),
-            fields: field_vals,
         }
     }
 
@@ -551,46 +491,6 @@ impl<'a> VM<'a> {
 
     fn write_reg(&mut self, frame: &mut VMFrame, dest: u16, val: VMValue) {
         frame.registers[dest as usize] = Some(val)
-    }
-
-    fn mem_read(&mut self, alloc_id: &AllocId, offset: usize) -> VMValue {
-        let Some(alloc) = self.memory.allocations.get(alloc_id) else {
-            self.report_ice(format!("Invalid or freed allocation ID: {}", alloc_id.0));
-            return VMValue::Poison;
-        };
-
-        if offset >= alloc.data.len() {
-            self.report_ice(format!(
-                "Out-of-bounds read at AllocId({}) with offset {} (allocation size: {})",
-                alloc_id.0,
-                offset,
-                alloc.data.len()
-            ));
-            return VMValue::Poison;
-        }
-
-        alloc.data[offset].clone()
-    }
-
-    fn mem_write(&mut self, alloc_id: &AllocId, offset: usize, val: VMValue) {
-        let len = match self.memory.allocations.get(alloc_id) {
-            Some(alloc) => alloc.data.len(),
-            None => {
-                self.report_ice(format!("Invalid or freed allocation ID: {}", alloc_id.0));
-                return;
-            }
-        };
-
-        //  Perform bounds check using `self` safely
-        if offset >= len {
-            self.report_ice(format!(
-                "Out-of-bounds write at AllocId({}) with offset {} (allocation size: {})",
-                alloc_id.0, offset, len
-            ));
-            return;
-        }
-
-        self.memory.allocations.get_mut(alloc_id).unwrap().data[offset] = val;
     }
 
     pub fn report_ice(&mut self, message: String) {

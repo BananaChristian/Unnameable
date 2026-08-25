@@ -195,8 +195,8 @@ impl<'a> MIRBuilder<'a> {
 
                     if !self.build_into(init, dest.clone()) {
                         let val = self.expr_value(init);
-                        let align = self.get_alignment(init);
-                        self.build_store(dest, val, align, Some(stmt.span.clone()));
+                        let init_ty = self.get_type(&init.hir_id);
+                        self.build_store(dest, val, init_ty, Some(stmt.span.clone()));
                     }
                 }
             }
@@ -288,8 +288,7 @@ impl<'a> MIRBuilder<'a> {
 
                 let param_val = self.new_register(param.ty.clone(), Some(param.name.as_str()));
 
-                let align = param.ty.align;
-                self.build_store(slot.clone(), param_val, align, span.clone());
+                self.build_store(slot.clone(), param_val, param.ty.clone(), span.clone());
                 self.declare_var(param.name.clone(), slot);
             }
 

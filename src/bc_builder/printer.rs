@@ -216,25 +216,22 @@ impl BytecodePrinter {
             VMOpcode::Load {
                 dest,
                 ptr,
-                size,
                 ty,
                 mode,
             } => {
-                format!(
-                    "load r{}, [r{}] ({}) (size: {}) (mode: {})",
-                    dest, ptr, ty, size, mode
-                )
+                format!("load r{}, [r{}] ({}) (mode: {})", dest, ptr, ty, mode)
             }
-            VMOpcode::Store { ptr, val, mode } => {
-                format!("store [r{}], r{} (mode: {})", ptr, val, mode)
+            VMOpcode::Store { ptr, val, ty, mode } => {
+                format!("store [r{}], r{} ({}) (mode: {})", ptr, val, ty, mode)
             }
+
             VMOpcode::AddrOf { dest, src } => format!("r{} = addr_of r{}", dest, src),
 
             VMOpcode::GetElementPtr {
                 dest,
                 ptr,
                 indices,
-                stride,
+                elem_ty,
             } => {
                 let formatted_indices = indices
                     .iter()
@@ -243,8 +240,8 @@ impl BytecodePrinter {
                     .join(", ");
 
                 format!(
-                    "r{} = gep r{}, [{}] [stride: {}]",
-                    dest, ptr, formatted_indices, stride
+                    "r{} = gep r{}, [{}] ({})",
+                    dest, ptr, formatted_indices, elem_ty
                 )
             }
 

@@ -1,0 +1,13 @@
+enum Color{
+  RED,
+  BLUE = 100
+}
+
+func foo: u32{
+  var x := $${
+    var color := Color.BLUE;
+    color;
+  };
+
+  return 0u32;
+}
