@@ -119,6 +119,7 @@ impl<'a> LayoutEngine<'a> {
             ResolvedTypeKind::Struct { members, .. } => self.struct_layout(members),
             ResolvedTypeKind::Enum { underlying, .. } => self.enum_layout(underlying),
             ResolvedTypeKind::Variant { arms, .. } => self.variant_layout(arms),
+            ResolvedTypeKind::Tuple { fields } => self.tuple_layout(fields),
             _ => Layout::empty(),
         }
     }
@@ -221,6 +222,35 @@ impl<'a> LayoutEngine<'a> {
         Layout {
             size: total_size,
             alignment: final_max_align,
+        }
+    }
+
+    fn tuple_layout(&mut self, fields: &Vec<TypeInfo>) -> Layout {
+        let mut offset = 0;
+        let mut max_align = 1;
+        for field_ty in fields {
+            let field_layout = self.layout_of(
+                &field_ty.kind,
+                field_ty.type_id.clone(),
+                field_ty.span.clone(),
+            );
+            let padding = if field_layout.alignment == 0 {
+                0
+            } else {
+                (field_layout.alignment - (offset % field_layout.alignment))
+                    % field_layout.alignment
+            };
+            offset += padding;
+            offset += field_layout.size;
+            if field_layout.alignment > max_align {
+                max_align = field_layout.alignment
+            }
+        }
+        let tail_padding = (max_align - (offset % max_align)) % max_align;
+        offset += tail_padding;
+        Layout {
+            size: offset,
+            alignment: max_align,
         }
     }
 

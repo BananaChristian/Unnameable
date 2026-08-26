@@ -130,6 +130,22 @@ impl<'a> VM<'a> {
                     fields: field_vals,
                 }
             }
+            MIRTykind::Tuple(elem_tys) => {
+                let mut field_offset = 0usize;
+                let mut elem_vals = Vec::with_capacity(elem_tys.len());
+                for elem_ty in elem_tys {
+                    let padding = if elem_ty.align == 0 {
+                        0
+                    } else {
+                        (elem_ty.align - (field_offset % elem_ty.align)) % elem_ty.align
+                    };
+                    field_offset += padding;
+                    elem_vals.push(self.read_typed(alloc_id, offset + field_offset, elem_ty));
+                    field_offset += elem_ty.size;
+                }
+                VMValue::Tuple(elem_vals)
+            }
+
             MIRTykind::Unit => VMValue::Unit,
         }
     }
@@ -269,6 +285,25 @@ impl<'a> VM<'a> {
                     field_offset += padding;
                     self.write_typed(alloc_id, offset + field_offset, field_val, field_ty);
                     field_offset += field_ty.size;
+                }
+            }
+            MIRTykind::Tuple(elem_tys) => {
+                let VMValue::Tuple(elem_vals) = val else {
+                    self.report_ice(
+                        "Expected Tuple VMValue when writing tuple-typed data".to_string(),
+                    );
+                    return;
+                };
+                let mut field_offset = 0usize;
+                for (elem_ty, elem_val) in elem_tys.iter().zip(elem_vals.iter()) {
+                    let padding = if elem_ty.align == 0 {
+                        0
+                    } else {
+                        (elem_ty.align - (field_offset % elem_ty.align)) % elem_ty.align
+                    };
+                    field_offset += padding;
+                    self.write_typed(alloc_id, offset + field_offset, elem_val, elem_ty);
+                    field_offset += elem_ty.size;
                 }
             }
             MIRTykind::Unit => {}

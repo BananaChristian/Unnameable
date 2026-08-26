@@ -90,6 +90,10 @@ pub enum VMOpcode {
         dest: u16,
         elements: Vec<u16>, // registers already holding each element's value
     },
+    ConstTuple {
+        dest: u16,
+        fields: Vec<u16>,
+    },
     ConstStruct {
         dest: u16,
         struct_id: StructId,

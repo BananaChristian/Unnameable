@@ -59,6 +59,7 @@ pub enum ConstantValue {
         name: String,
         fields: Vec<ConstantValue>,
     },
+    Tuple(Vec<ConstantValue>),
 }
 
 impl ConstantValue {
@@ -67,6 +68,7 @@ impl ConstantValue {
         match self {
             ConstantValue::Array(elems) => elems.iter().map(|e| e.slot_counter()).sum(),
             ConstantValue::Struct { fields, .. } => fields.iter().map(|f| f.slot_counter()).sum(),
+            ConstantValue::Tuple(fields) => fields.iter().map(|f| f.slot_counter()).sum(),
             _ => 1,
         }
     }
@@ -186,6 +188,7 @@ impl MIRTy {
                 .iter()
                 .map(|(_, field_ty)| field_ty.slot_counter())
                 .sum(),
+            MIRTykind::Tuple(members) => members.iter().map(|m| m.slot_counter()).sum(),
             _ => 1,
         }
     }
@@ -215,6 +218,7 @@ pub enum MIRTykind {
     Ptr, //All pointers are opaque
     Array(Box<MIRTy>, usize),
     Struct(StructId, String, Vec<(String, MIRTy)>),
+    Tuple(Vec<MIRTy>),
 }
 
 #[derive(Debug, Clone)]

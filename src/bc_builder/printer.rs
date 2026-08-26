@@ -65,6 +65,20 @@ impl fmt::Display for VMValue {
                 }
                 write!(f, " }}")
             }
+            VMValue::Tuple(elems) => {
+                write!(f, "(")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", elem)?;
+                }
+                // Handle single-element tuple formatting trailing comma: (x,)
+                if elems.len() == 1 {
+                    write!(f, ",")?;
+                }
+                write!(f, ")")
+            }
             VMValue::Unit => write!(f, "()"),
             VMValue::Poison => write!(f, "poison"),
         }
@@ -201,6 +215,14 @@ impl BytecodePrinter {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("r{} = %{} {{ {} }} (struct)", dest, name, fields_str)
+            }
+            VMOpcode::ConstTuple { dest, fields } => {
+                let fields_str = fields
+                    .iter()
+                    .map(|r| format!("r{}", r))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("r{} = ({}) (tuple)", dest, fields_str)
             }
             VMOpcode::ConstIsize { dest, val } => format!("r{} = {} (isize) ", dest, val),
             VMOpcode::ConstUSize { dest, val } => format!("r{} = {} (usize)", dest, val),

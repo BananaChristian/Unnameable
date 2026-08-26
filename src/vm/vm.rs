@@ -161,6 +161,11 @@ impl<'a> VM<'a> {
                     let elems = elements.iter().map(|&r| self.read_reg(r, frame)).collect();
                     self.write_reg(frame, dest, VMValue::Array(elems));
                 }
+                VMOpcode::ConstTuple { dest, fields } => {
+                    let vals: Vec<VMValue> =
+                        fields.iter().map(|r| self.read_reg(*r, frame)).collect();
+                    self.write_reg(frame, dest, VMValue::Tuple(vals));
+                }
                 VMOpcode::ConstStruct {
                     dest,
                     name,
@@ -468,6 +473,25 @@ impl<'a> VM<'a> {
                                             break;
                                         }
                                         field_offset += field_ty.size;
+                                    }
+                                    offset += field_offset;
+                                }
+                                MIRTykind::Tuple(elem_tys) => {
+                                    let mut field_offset = 0usize;
+                                    for (field_i, elem_ty) in elem_tys.iter().enumerate() {
+                                        let padding = if elem_ty.align == 0 {
+                                            0
+                                        } else {
+                                            (elem_ty.align - (field_offset % elem_ty.align))
+                                                % elem_ty.align
+                                        };
+                                        field_offset += padding;
+                                        if field_i as i64 == idx_val as i64 {
+                                            // was `idx` — fixed to `idx_val`
+                                            current_ty = elem_ty.clone();
+                                            break;
+                                        }
+                                        field_offset += elem_ty.size;
                                     }
                                     offset += field_offset;
                                 }

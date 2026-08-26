@@ -743,6 +743,14 @@ impl<'a> MIRBuilder<'a> {
             ResolvedTypeKind::Enum { underlying, .. } => {
                 self.convert_tyinfo_to_mirtykind(underlying)
             }
+            ResolvedTypeKind::Tuple { fields } => {
+                let members: Vec<MIRTy> = fields
+                    .iter()
+                    .map(|f| self.lower_type_info_to_mir_ty(f))
+                    .collect();
+
+                MIRTykind::Tuple(members)
+            }
             _ => self.report_ice(
                 format!("Unhandled type '{}'", ty_info.name),
                 Some(ty_info.span.clone()),
@@ -930,7 +938,7 @@ impl<'a> MIRBuilder<'a> {
                         1 // empty array — no real alignment requirement, 1 is a safe default
                     }
                 }
-                ConstantValue::Struct { fields, .. } => {
+                ConstantValue::Struct { fields, .. } | ConstantValue::Tuple(fields) => {
                     fields
                         .iter()
                         .map(|field| self.get_val_alignment(&MIRValue::Constant(field.clone())))

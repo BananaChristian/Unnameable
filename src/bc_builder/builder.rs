@@ -257,6 +257,21 @@ impl<'a> BytecodeBuilder<'a> {
                     fields: field_regs,
                 });
             }
+            ConstantValue::Tuple(fields) => {
+                let field_regs: Vec<u16> = fields
+                    .iter()
+                    .map(|f| {
+                        let field_reg = reg_map.next_index;
+                        reg_map.next_index += 1;
+                        self.lower_const_val(field_reg, f, reg_map, instructions);
+                        field_reg
+                    })
+                    .collect();
+                instructions.push(VMOpcode::ConstTuple {
+                    dest,
+                    fields: field_regs,
+                });
+            }
             ConstantValue::Undef => {
                 instructions.push(VMOpcode::ConstUndef { dest });
             }
@@ -337,6 +352,14 @@ impl<'a> BytecodeBuilder<'a> {
                     name: name.clone(),
                     fields: vm_fields,
                 }
+            }
+            ConstantValue::Tuple(fields) => {
+                let vm_fields = fields
+                    .iter()
+                    .map(|f| self.lower_const_to_vm_value(f))
+                    .collect();
+
+                VMValue::Tuple(vm_fields)
             }
         }
     }

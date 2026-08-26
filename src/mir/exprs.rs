@@ -39,6 +39,10 @@ impl<'a> MIRBuilder<'a> {
                 self.build_struct_init(expr);
                 return;
             }
+            HirExprKind::TupleInst { .. } => {
+                self.build_tuple_init(expr);
+                return;
+            }
             HirExprKind::BitCast(_, _) => self.build_bitcast(expr),
             HirExprKind::Index { .. } => self.build_index_access(expr),
             _ => todo!(
@@ -71,6 +75,10 @@ impl<'a> MIRBuilder<'a> {
                 self.build_struct_init_into(expr, dest_ptr);
                 true
             }
+            HirExprKind::TupleInst { .. } => {
+                self.build_tuple_init_into(expr, dest_ptr);
+                true
+            }
             HirExprKind::Binary(lhs, op, rhs) if matches!(op, HirBinaryOp::Access) => {
                 if let HirExprKind::Identifier(variant_name) = &lhs.kind {
                     if self.variant_name_to_id.contains_key(variant_name) {
@@ -83,6 +91,7 @@ impl<'a> MIRBuilder<'a> {
             _ => false,
         }
     }
+
     fn build_array_literal(&mut self, expr: &HirExpr) -> MIRValue {
         let array_ty = self.get_type(&expr.hir_id);
         let arr_ptr = self.new_register(array_ty.clone(), None);
@@ -223,6 +232,54 @@ impl<'a> MIRBuilder<'a> {
                 "Expected struct instantiation expression".to_string(),
                 Some(expr.span.clone()),
             );
+        }
+    }
+
+    fn build_tuple_init(&mut self, expr: &HirExpr) -> MIRValue {
+        let tuple_ty = self.get_type(&expr.hir_id);
+        let alloca_reg = self.new_register(tuple_ty.clone(), None);
+        self.build_alloca(
+            alloca_reg.clone(),
+            tuple_ty.clone(),
+            Some(expr.span.clone()),
+        );
+        self.fill_tuple_init(expr, alloca_reg.clone());
+        alloca_reg
+    }
+
+    pub fn build_tuple_init_into(&mut self, expr: &HirExpr, dest: MIRValue) {
+        self.fill_tuple_init(expr, dest);
+    }
+
+    fn fill_tuple_init(&mut self, expr: &HirExpr, dest_ptr: MIRValue) {
+        let HirExprKind::TupleInst { body } = &expr.kind else {
+            self.report_ice(
+                "Expected tuple instantiation".to_string(),
+                Some(expr.span.clone()),
+            );
+        };
+
+        let tuple_ty = self.get_type(&expr.hir_id);
+        let MIRTykind::Tuple(elem_tys) = &tuple_ty.kind else {
+            self.report_ice("Expected tuple type".to_string(), Some(expr.span.clone()));
+        };
+
+        let zero = MIRValue::Constant(ConstantValue::UInt(0));
+
+        for (i, elem_expr) in body.iter().enumerate() {
+            let elem_val = self.expr_value(elem_expr);
+            let index_val = MIRValue::Constant(ConstantValue::UInt(i));
+
+            self.build_gep(
+                dest_ptr.clone(),
+                vec![zero.clone(), index_val],
+                tuple_ty.clone(),
+                None,
+            );
+            let elem_ptr = self.get_last_val(None);
+
+            let elem_ty = &elem_tys[i];
+            self.build_store(elem_ptr, elem_val, elem_ty.clone(), None);
         }
     }
 
@@ -914,6 +971,7 @@ impl<'a> MIRBuilder<'a> {
             }
 
             HirExprKind::Instantiation { .. } => self.build_struct_init(expr),
+            HirExprKind::TupleInst { .. } => self.build_tuple_init(expr),
 
             _ => {
                 self.report_ice(

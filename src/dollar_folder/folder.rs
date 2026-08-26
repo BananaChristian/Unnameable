@@ -117,6 +117,18 @@ impl<'a> Folder<'a> {
                     fields: mir_fields,
                 })
             }
+            VMValue::Tuple(elements) => {
+                let mir_elements: Vec<ConstantValue> = elements
+                    .iter()
+                    .map(|e| match Self::vm_val_to_mir_val(e, global_allocs) {
+                        MIRValue::Constant(c) => c,
+                        other => {
+                            panic!("Tuple element folded to non-constant MIRValue: {:?}", other)
+                        }
+                    })
+                    .collect();
+                MIRValue::Constant(ConstantValue::Tuple(mir_elements))
+            }
             VMValue::Poison => MIRValue::Constant(ConstantValue::Undef),
             VMValue::Unit => {
                 todo!("Handle pointer/unit folding if dollar scopes return references")

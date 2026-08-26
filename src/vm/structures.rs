@@ -41,6 +41,7 @@ pub enum VMValue {
         name: String,
         fields: Vec<VMValue>,
     },
+    Tuple(Vec<VMValue>),
     Unit,
     Poison,
 }

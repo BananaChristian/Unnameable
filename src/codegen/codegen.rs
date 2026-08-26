@@ -156,6 +156,11 @@ impl<'ctx> Codegen<'ctx> {
                     BasicTypeEnum::VectorType(t) => t.array_type(*len as u32).into(),
                 }
             }
+            MIRTykind::Tuple(elem_tys) => {
+                let elem_llvm_tys: Vec<BasicTypeEnum> =
+                    elem_tys.iter().map(|ty| self.get_llvmty(ty)).collect();
+                self.context.struct_type(&elem_llvm_tys, false).into()
+            }
         }
     }
 
@@ -246,6 +251,11 @@ impl<'ctx> Codegen<'ctx> {
                     fields.iter().map(|f| self.lower_constant(f)).collect();
 
                 self.context.const_struct(&field_values, false).into()
+            }
+            ConstantValue::Tuple(fields) => {
+                let field_vals: Vec<BasicValueEnum> =
+                    fields.iter().map(|f| self.lower_constant(f)).collect();
+                self.context.const_struct(&field_vals, false).into()
             }
         }
     }
