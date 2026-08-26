@@ -223,6 +223,7 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.borrow().print();
         std::process::exit(1);
     }
+    println!("{}",HirPrinter::print_hir(&hir));
 
     let mut importer = ImportEngine::new(Rc::clone(&diagnostics));
     importer.import(&mut hir, &load_stub_paths);

@@ -1,8 +1,11 @@
 use crate::{
-    diagnostics::Span, hir::{HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirUnaryOp}, lowering::NodeId, semantics::{
+    diagnostics::Span,
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirUnaryOp},
+    lowering::NodeId,
+    semantics::{
         semantics::{InstanceKey, ResolvedTypeKind, TypeInfo},
         type_checker::checker::TypeChecker,
-    }
+    },
 };
 
 impl<'a> TypeChecker<'a> {
@@ -25,26 +28,29 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::Binary(_, _, _) => self.binary_type(expr),
             HirExprKind::StaticCast(_, _) => self.cast_type(expr),
             HirExprKind::BitCast(_, _) => self.bitcast_type(expr),
-            HirExprKind::Index { ..} => self.index_type(expr),
-            HirExprKind::Unary(_,_ ) => self.unary_type(expr),
-            HirExprKind::Postfix(_,_ ) => self.postfix_type(expr),
-            HirExprKind::GenericInstantion { .. }=> self.gen_inst_type(expr),
-            HirExprKind::Instantiation { ..} => self.struct_init_type(expr),
+            HirExprKind::Index { .. } => self.index_type(expr),
+            HirExprKind::Unary(_, _) => self.unary_type(expr),
+            HirExprKind::Postfix(_, _) => self.postfix_type(expr),
+            HirExprKind::GenericInstantion { .. } => self.gen_inst_type(expr),
+            HirExprKind::Instantiation { .. } => self.struct_init_type(expr),
             HirExprKind::TupleInst { .. } => self.tuple_init_type(expr),
-            HirExprKind::DollarScope {params, body, result } =>{
-                for p in params{
+            HirExprKind::DollarScope {
+                params,
+                body,
+                result,
+            } => {
+                for p in params {
                     self.check_expr(p);
                 }
-                for st in body{
+                for st in body {
                     self.check_stmt(st);
                 }
                 //A dollar scope takes the type of the last expression if not its of
                 //unit type
-                match result{
+                match result {
                     Some(res) => self.expr_type(res),
-                    None => self.unit(expr.span.clone())
+                    None => self.unit(expr.span.clone()),
                 }
-
             }
             _ => self.unknown(expr.span.clone()),
         };
@@ -55,7 +61,10 @@ impl<'a> TypeChecker<'a> {
     fn handle_init_params(&mut self, struct_ty: &TypeInfo, init_p: &HirInstParam) {
         let ResolvedTypeKind::Struct { members, .. } = &struct_ty.kind else {
             self.report(
-                format!("Expected struct type for initialization parameter but got '{}'",struct_ty.name),
+                format!(
+                    "Expected struct type for initialization parameter but got '{}'",
+                    struct_ty.name
+                ),
                 None,
             );
             return;
@@ -64,7 +73,7 @@ impl<'a> TypeChecker<'a> {
         let p_ty = members
             .iter()
             .find(|(name, _, _)| name == &init_p.name)
-            .map(|(_, ty,_)| ty.clone());
+            .map(|(_, ty, _)| ty.clone());
 
         let Some(p_ty) = p_ty else {
             self.report(
@@ -74,51 +83,55 @@ impl<'a> TypeChecker<'a> {
             return;
         };
 
-        self.expr_type(&init_p.value);  
+        self.expr_type(&init_p.value);
         self.coerce_ty(&p_ty, &init_p.value);
-        let init_ty= self.expr_type(&init_p.value);
-        if !TypeInfo::types_match(&p_ty, &init_ty){
-           self.type_mismatch(&p_ty, &init_ty, init_p.span.clone());
+        let init_ty = self.expr_type(&init_p.value);
+        if !TypeInfo::types_match(&p_ty, &init_ty) {
+            self.type_mismatch(&p_ty, &init_ty, init_p.span.clone());
         }
 
         self.insert(init_p.hir_id, p_ty);
-}
-
-fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
-    let HirExprKind::Instantiation { init_ty, body } = &expr.kind else {
-        return self.unknown(expr.span.clone());
-    };
-
-    let ty= self.type_from_hir_type(init_ty);
-
-    for field in body {
-        self.handle_init_params(&ty, field);
     }
 
-    ty
-}
+    fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        let HirExprKind::Instantiation { init_ty, body } = &expr.kind else {
+            return self.unknown(expr.span.clone());
+        };
 
-fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
-    if let HirExprKind::TupleInst { body } =&expr.kind{
-        let field_tys: Vec<TypeInfo>= body.iter().map(|m|self.expr_type(m)).collect();
-        let tuple_inst_ty= self.tuple(field_tys, expr.span.clone());
-        tuple_inst_ty
-    }else{
-        self.unknown(expr.span.clone())
+        let ty = self.type_from_hir_type(init_ty);
+
+        for field in body {
+            self.handle_init_params(&ty, field);
+        }
+
+        ty
     }
-}
 
-    fn gen_inst_type(&mut self, expr: &HirExpr)-> TypeInfo{
-        if let  HirExprKind::GenericInstantion {type_params ,..} =  &expr.kind{
-            let template_decl_id: NodeId = *self.ctxt.names.resolved.get(&expr.hir_id)
-            .expect("Name resolver missing mapping for generic instantiation");
+    fn tuple_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        if let HirExprKind::TupleInst { body } = &expr.kind {
+            let field_tys: Vec<TypeInfo> = body.iter().map(|m| self.expr_type(m)).collect();
+            let tuple_inst_ty = self.tuple(field_tys, expr.span.clone());
+            tuple_inst_ty
+        } else {
+            self.unknown(expr.span.clone())
+        }
+    }
+
+    fn gen_inst_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        if let HirExprKind::GenericInstantion { type_params, .. } = &expr.kind {
+            let template_decl_id: NodeId = *self
+                .ctxt
+                .names
+                .resolved
+                .get(&expr.hir_id)
+                .expect("Name resolver missing mapping for generic instantiation");
 
             let template_info = self.get_decl_type(&template_decl_id, expr.span.clone());
 
             let concrete_args: Vec<TypeInfo> = type_params
-            .iter()
-            .map(|param_node| self.type_from_hir_type(param_node))
-            .collect();
+                .iter()
+                .map(|param_node| self.type_from_hir_type(param_node))
+                .collect();
 
             if !concrete_args.is_empty() {
                 let key = InstanceKey {
@@ -128,159 +141,184 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
                 self.ctxt.monomorph_backlog.insert(key);
             }
 
-            let specialized_type = self.specialize_signature(&template_info, &concrete_args, expr.span.clone());
-    
+            let specialized_type =
+                self.specialize_signature(&template_info, &concrete_args, expr.span.clone());
+
             self.insert(expr.hir_id, specialized_type.clone());
             specialized_type
-        }else{
+        } else {
             self.unknown(expr.span.clone())
         }
     }
 
-    fn index_type(&mut self,expr: &HirExpr) -> TypeInfo{
-        if let HirExprKind::Index { target, index } =  &expr.kind{
-            let target_ty= self.expr_type(target);
-            let index_ty= self.expr_type(index);
+    fn index_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        if let HirExprKind::Index { target, index } = &expr.kind {
+            let target_ty = self.expr_type(target);
+            let index_ty = self.expr_type(index);
 
             if !self.is_numeric(&index_ty) {
-                self.report(format!("Invalid index type '{}' array indexes must be integers",index_ty.name), Some(expr.span.clone()));
+                self.report(
+                    format!(
+                        "Invalid index type '{}' array indexes must be integers",
+                        index_ty.name
+                    ),
+                    Some(expr.span.clone()),
+                );
                 return self.unknown(expr.span.clone());
             }
 
-            match &target_ty.kind{
-                ResolvedTypeKind::Array { inner, .. } => {
-                    *inner.clone()
-                }
-                ResolvedTypeKind::Pointer { inner } => {
-                    match &inner.kind {
-                        ResolvedTypeKind::Array { inner: arr_elem, .. } => *arr_elem.clone(),
-                        _ => {
-                            self.report(
+            match &target_ty.kind {
+                ResolvedTypeKind::Array { inner, .. } => *inner.clone(),
+                ResolvedTypeKind::Pointer { inner } => match &inner.kind {
+                    ResolvedTypeKind::Array {
+                        inner: arr_elem, ..
+                    } => *arr_elem.clone(),
+                    _ => {
+                        self.report(
                                 format!("Cannot index into pointer to non-array type '{}'  use dereference or pointer arithmetic instead", inner.name),
                                 Some(expr.span.clone()),
                             );
-                            self.unknown(expr.span.clone())
-                        }
+                        self.unknown(expr.span.clone())
                     }
-                }
+                },
                 _ => {
-                    self.report(format!("Cannot index into a non indexable type '{}'",target_ty.name), Some(expr.span.clone()));
+                    self.report(
+                        format!(
+                            "Cannot index into a non indexable type '{}'",
+                            target_ty.name
+                        ),
+                        Some(expr.span.clone()),
+                    );
                     self.unknown(expr.span.clone())
                 }
             }
-
-        }else{
+        } else {
             self.unknown(expr.span.clone())
         }
     }
 
-
-    fn unary_type(&mut self,expr: &HirExpr) -> TypeInfo{
-        if let HirExprKind::Unary(op, target) = &expr.kind{
-            let target_ty= self.expr_type(target);
-            match op{
+    fn unary_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        if let HirExprKind::Unary(op, target) = &expr.kind {
+            let target_ty = self.expr_type(target);
+            match op {
                 HirUnaryOp::Dereference => self.deref_type(&target_ty),
                 HirUnaryOp::AddressOf => self.address_of_type(&target_ty),
-                HirUnaryOp::Increment|HirUnaryOp::Decrement => self.inc_dec_type(&target_ty), 
+                HirUnaryOp::Increment | HirUnaryOp::Decrement => self.inc_dec_type(&target_ty),
                 HirUnaryOp::Neg => self.neg_type(&target_ty),
                 HirUnaryOp::Not => self.logical_not_type(&target_ty),
-                HirUnaryOp::BitNot => target_ty,//The type doesnt change
+                HirUnaryOp::BitNot => target_ty, //The type doesnt change
             }
-        }else{
+        } else {
             self.unknown(expr.span.clone())
         }
-
     }
 
-    fn neg_type(&mut self, ty: &TypeInfo) -> TypeInfo{
-        if self.is_signed_numeric(ty){
+    fn neg_type(&mut self, ty: &TypeInfo) -> TypeInfo {
+        if self.is_signed_numeric(ty) {
             ty.clone()
-        }else{
-            self.report(format!("Cannot apply '-' to type '{}'",ty.name), Some(ty.span.clone()));
+        } else {
+            self.report(
+                format!("Cannot apply '-' to type '{}'", ty.name),
+                Some(ty.span.clone()),
+            );
             self.unknown(ty.span.clone())
         }
     }
 
-    fn logical_not_type(&mut self,ty: &TypeInfo) -> TypeInfo{
-        match ty.kind{
-            ResolvedTypeKind::Bool  => ty.clone(),
+    fn logical_not_type(&mut self, ty: &TypeInfo) -> TypeInfo {
+        match ty.kind {
+            ResolvedTypeKind::Bool => ty.clone(),
             _ => {
-                self.report("Operator '!' can only be applied to 'bool'".to_string(), Some(ty.span.clone()));
+                self.report(
+                    "Operator '!' can only be applied to 'bool'".to_string(),
+                    Some(ty.span.clone()),
+                );
                 self.unknown(ty.span.clone())
             }
         }
     }
 
-    fn inc_dec_type(&mut self, target_ty: &TypeInfo) ->  TypeInfo {
-        if !self.is_numeric(&target_ty){
-         self.report(format!("Cannot apply operator to numeric type '{}'",target_ty.name), Some(target_ty.span.clone()));
-          self.unknown(target_ty.span.clone())
-        }else{
-         target_ty.clone()
+    fn inc_dec_type(&mut self, target_ty: &TypeInfo) -> TypeInfo {
+        if !self.is_numeric(&target_ty) {
+            self.report(
+                format!("Cannot apply operator to numeric type '{}'", target_ty.name),
+                Some(target_ty.span.clone()),
+            );
+            self.unknown(target_ty.span.clone())
+        } else {
+            target_ty.clone()
         }
     }
 
-    fn deref_type(&mut self,src_ty: &TypeInfo) -> TypeInfo{
-        match &src_ty.kind{
+    fn deref_type(&mut self, src_ty: &TypeInfo) -> TypeInfo {
+        match &src_ty.kind {
             ResolvedTypeKind::Pointer { inner } => {
-                if inner.kind == ResolvedTypeKind::Unit{
-                    self.report(format!("Cannot dereference a pointer of type '{}'",inner.name), Some(inner.span.clone()));
+                if inner.kind == ResolvedTypeKind::Unit {
+                    self.report(
+                        format!("Cannot dereference a pointer of type '{}'", inner.name),
+                        Some(inner.span.clone()),
+                    );
                 }
                 *inner.clone()
             }
             _ => {
-                self.report(format!("Cannot dereference type '{}'",src_ty.name), Some(src_ty.span.clone()));
+                self.report(
+                    format!("Cannot dereference type '{}'", src_ty.name),
+                    Some(src_ty.span.clone()),
+                );
                 self.unknown(src_ty.span.clone())
             }
         }
     }
 
-    fn address_of_type(&mut self, src_ty: &TypeInfo) -> TypeInfo{
-        let ptr_kind=ResolvedTypeKind::Pointer { inner: Box::new(src_ty.clone()) };
-        let ptr_id= self.registry.issue_id(ptr_kind.clone());
-        let ptr_layout= self.layout_engine.layout_of(&ptr_kind, ptr_id.clone(), src_ty.span.clone());
-        TypeInfo{
+    fn address_of_type(&mut self, src_ty: &TypeInfo) -> TypeInfo {
+        let ptr_kind = ResolvedTypeKind::Pointer {
+            inner: Box::new(src_ty.clone()),
+        };
+        let ptr_id = self.registry.issue_id(ptr_kind.clone());
+        let ptr_layout =
+            self.layout_engine
+                .layout_of(&ptr_kind, ptr_id.clone(), src_ty.span.clone());
+        TypeInfo {
             type_id: ptr_id,
             name: TypeInfo::name(ptr_kind.clone()),
             kind: ptr_kind,
-            layout:ptr_layout,
+            layout: ptr_layout,
             span: src_ty.span.clone(),
         }
-
     }
 
     fn cast_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::StaticCast(target, src_expr) = &expr.kind {
             let target_ty = self.type_from_hir_type(target);
-            let src_ty=self.expr_type(src_expr);
+            let src_ty = self.expr_type(src_expr);
 
             let allowed = match (&src_ty.kind, &target_ty.kind) {
-            (_,_) if self.is_numeric(&src_ty) && self.is_numeric(&target_ty) => true,
+                (_, _) if self.is_numeric(&src_ty) && self.is_numeric(&target_ty) => true,
 
-            (ResolvedTypeKind::Enum { .. }, t) if self.is_integer(t) => true,
+                (ResolvedTypeKind::Enum { .. }, t) if self.is_integer(t) => true,
 
-            // Pointer to Pointer address reassignment
-            (ResolvedTypeKind::Pointer{..}, ResolvedTypeKind::Pointer { .. }) => true,
+                // Pointer to Pointer address reassignment
+                (ResolvedTypeKind::Pointer { .. }, ResolvedTypeKind::Pointer { .. }) => true,
 
+                // Any Integer to Pointer (Handles isize, usize, i64, ...)
+                (src, ResolvedTypeKind::Pointer { .. }) if self.is_integer(src) => true,
+                (ResolvedTypeKind::Pointer { .. }, tgt) if self.is_integer(tgt) => true, // Pointer value conversions to raw address tracking limits
 
-            // Any Integer to Pointer (Handles isize, usize, i64, ...)
-            (src, ResolvedTypeKind::Pointer { .. }) if self.is_integer(src) => true,
-            (ResolvedTypeKind::Pointer { .. }, tgt) if self.is_integer(tgt) => true,            // Pointer value conversions to raw address tracking limits
+                _ => false,
+            };
 
-            _ => false,
-        };
-
-            if !allowed{
+            if !allowed {
                 self.report(
-                    format!("Invalid cast cannot convert '{}' to '{}'",
-                    src_ty.name,
-                    target_ty.name),
-                    Some(expr.span.clone()));
+                    format!(
+                        "Invalid cast cannot convert '{}' to '{}'",
+                        src_ty.name, target_ty.name
+                    ),
+                    Some(expr.span.clone()),
+                );
                 self.unknown(expr.span.clone())
-            }else{
-
-            target_ty
-
+            } else {
+                target_ty
             }
 
             //Will have to apply some casting rules here
@@ -300,7 +338,7 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
                     src_ty.name,
                     src_ty.layout.size,
                     target_ty.name,
-                    target_ty.layout.size), 
+                    target_ty.layout.size),
                     Some(expr.span.clone()));
                 self.unknown(expr.span.clone())
             } else {
@@ -311,15 +349,14 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
         }
     }
 
-    fn postfix_type(&mut self,expr: &HirExpr) -> TypeInfo{
-        if let HirExprKind::Postfix(inner, op) = &expr.kind{
-            let inner_ty= self.expr_type(inner);
-            match op{
-                HirPostfixOp::Increment|HirPostfixOp::Decrement => inner_ty,
-                _ => self.unknown(expr.span.clone())
+    fn postfix_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        if let HirExprKind::Postfix(inner, op) = &expr.kind {
+            let inner_ty = self.expr_type(inner);
+            match op {
+                HirPostfixOp::Increment | HirPostfixOp::Decrement => inner_ty,
+                _ => self.unknown(expr.span.clone()),
             }
-
-        }else{
+        } else {
             self.unknown(expr.span.clone())
         }
     }
@@ -328,18 +365,23 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
         if let HirExprKind::Binary(left, op, right) = &expr.kind {
             let left_ty = self.expr_type(left);
             self.expr_type(right);
-            
+
             self.coerce_ty(&left_ty, right);
-            let coerced_right_ty= self.expr_type(right);
+            let coerced_right_ty = self.expr_type(right);
 
             match op {
                 HirBinaryOp::Add
                 | HirBinaryOp::Sub
                 | HirBinaryOp::Div
                 | HirBinaryOp::Mul
-                | HirBinaryOp::Mod =>{
-                    if left_ty.is_pointer() || coerced_right_ty.is_pointer(){
-                        return self.pointer_arithmetic_type(&left_ty, op, &coerced_right_ty, expr.span.clone())
+                | HirBinaryOp::Mod => {
+                    if left_ty.is_pointer() || coerced_right_ty.is_pointer() {
+                        return self.pointer_arithmetic_type(
+                            &left_ty,
+                            op,
+                            &coerced_right_ty,
+                            expr.span.clone(),
+                        );
                     }
                     self.arithmetic_type(left_ty, coerced_right_ty, expr.span.clone())
                 }
@@ -348,27 +390,47 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
                 | HirBinaryOp::Lt
                 | HirBinaryOp::Gt
                 | HirBinaryOp::Geq
-                | HirBinaryOp::Leq => self.comparison_binary_type(&left_ty, &coerced_right_ty, expr.span.clone()),
-                HirBinaryOp::And | HirBinaryOp::Or => self.logical_binary_type(&left_ty,&coerced_right_ty,expr.span.clone()),
-                HirBinaryOp::Assign| HirBinaryOp::AddAssign| HirBinaryOp::SubAssign| HirBinaryOp::MulAssign| HirBinaryOp::ModAssign| HirBinaryOp::DivAssign =>{ 
+                | HirBinaryOp::Leq => {
+                    self.comparison_binary_type(&left_ty, &coerced_right_ty, expr.span.clone())
+                }
+                HirBinaryOp::And | HirBinaryOp::Or => {
+                    self.logical_binary_type(&left_ty, &coerced_right_ty, expr.span.clone())
+                }
+                HirBinaryOp::Assign
+                | HirBinaryOp::AddAssign
+                | HirBinaryOp::SubAssign
+                | HirBinaryOp::MulAssign
+                | HirBinaryOp::ModAssign
+                | HirBinaryOp::DivAssign => {
                     if let HirExprKind::Binary(_, inner_op, _) = &right.kind {
                         if matches!(
                             inner_op,
-                            HirBinaryOp::Assign | HirBinaryOp::AddAssign | HirBinaryOp::SubAssign
-                            | HirBinaryOp::MulAssign | HirBinaryOp::ModAssign | HirBinaryOp::DivAssign
+                            HirBinaryOp::Assign
+                                | HirBinaryOp::AddAssign
+                                | HirBinaryOp::SubAssign
+                                | HirBinaryOp::MulAssign
+                                | HirBinaryOp::ModAssign
+                                | HirBinaryOp::DivAssign
                         ) && coerced_right_ty.is_array()
                         {
                             self.report(
-                                "Cannot chain assignment through an array-typed assignment".to_string(),
+                                "Cannot chain assignment through an array-typed assignment"
+                                    .to_string(),
                                 Some(expr.span.clone()),
                             );
                             return self.unknown(expr.span.clone());
                         }
                     }
                     self.assignment_type(&left_ty, &coerced_right_ty, expr.span.clone())
-                },
+                }
                 HirBinaryOp::Access => self.access_type(&left_ty, right),
-                HirBinaryOp::Shr| HirBinaryOp::Shl| HirBinaryOp::BitAnd | HirBinaryOp::BitOr |HirBinaryOp::Xor=> self.bitwise_type(&left_ty, &coerced_right_ty,expr.span.clone()),
+                HirBinaryOp::Shr
+                | HirBinaryOp::Shl
+                | HirBinaryOp::BitAnd
+                | HirBinaryOp::BitOr
+                | HirBinaryOp::Xor => {
+                    self.bitwise_type(&left_ty, &coerced_right_ty, expr.span.clone())
+                }
                 _ => self.unknown(expr.span.clone()),
             }
         } else {
@@ -377,169 +439,234 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
     }
 
     fn access_type(&mut self, left_ty: &TypeInfo, field_expr: &HirExpr) -> TypeInfo {
-    match &left_ty.kind {
-        ResolvedTypeKind::Struct { name, members, .. }
-        | ResolvedTypeKind::Enum { name, members, .. } => {
-            let field_name = match &field_expr.kind {
-                HirExprKind::Identifier(n) => n,
-                _ => {
-                    self.report(
-                        "Right-hand side of struct/enum access must be an identifier".into(),
-                        Some(field_expr.span.clone()),
-                    );
-                    return self.unknown(field_expr.span.clone());
-                }
-            };
-
-            if let Some(member_tuple) = members.iter().find(|m| m.0 == *field_name) {
-                self.ctxt.names.resolved.insert(field_expr.hir_id, member_tuple.2);
-                member_tuple.1.clone() // Returns field's type
-            } else {
-                self.unknown_member(field_name, name, field_expr.span.clone());
-                self.unknown(field_expr.span.clone())
-            }
-        }
-
-        ResolvedTypeKind::Variant { name, arms, .. } => {
-            let (variant_name, provided_args) = match &field_expr.kind {
-                HirExprKind::Identifier(n) => (n.as_str(), None),
-                HirExprKind::Call(callee, args) => match &callee.kind {
-                    HirExprKind::Identifier(n) => (n.as_str(), Some(args)),
+        match &left_ty.kind {
+            ResolvedTypeKind::Struct { name, members, .. }
+            | ResolvedTypeKind::Enum { name, members, .. } => {
+                let field_name = match &field_expr.kind {
+                    HirExprKind::Identifier(n) => n,
                     _ => {
                         self.report(
-                            "Expected variant constructor identifier".into(),
+                            "Right-hand side of struct/enum access must be an identifier".into(),
                             Some(field_expr.span.clone()),
                         );
                         return self.unknown(field_expr.span.clone());
                     }
-                },
-                _ => {
-                    self.report(
-                        "Right-hand side of variant access must be a constructor or identifier".into(),
-                        Some(field_expr.span.clone()),
-                    );
-                    return self.unknown(field_expr.span.clone());
+                };
+
+                if let Some(member_tuple) = members.iter().find(|m| m.0 == *field_name) {
+                    self.ctxt
+                        .names
+                        .resolved
+                        .insert(field_expr.hir_id, member_tuple.2);
+                    member_tuple.1.clone() // Returns field's type
+                } else {
+                    self.unknown_member(field_name, name, field_expr.span.clone());
+                    self.unknown(field_expr.span.clone())
                 }
-            };
+            }
 
-            if let Some(arm_tuple) = arms.iter().find(|m| m.0 == variant_name) {
-                self.ctxt.names.resolved.insert(field_expr.hir_id, arm_tuple.2);
+            ResolvedTypeKind::Variant { name, arms, .. } => {
+                let (variant_name, provided_args) = match &field_expr.kind {
+                    HirExprKind::Identifier(n) => (n.as_str(), None),
+                    HirExprKind::Call(callee, args) => match &callee.kind {
+                        HirExprKind::Identifier(n) => (n.as_str(), Some(args)),
+                        _ => {
+                            self.report(
+                                "Expected variant constructor identifier".into(),
+                                Some(field_expr.span.clone()),
+                            );
+                            return self.unknown(field_expr.span.clone());
+                        }
+                    },
+                    _ => {
+                        self.report(
+                            "Right-hand side of variant access must be a constructor or identifier"
+                                .into(),
+                            Some(field_expr.span.clone()),
+                        );
+                        return self.unknown(field_expr.span.clone());
+                    }
+                };
 
+                if let Some(arm_tuple) = arms.iter().find(|m| m.0 == variant_name) {
+                    self.ctxt
+                        .names
+                        .resolved
+                        .insert(field_expr.hir_id, arm_tuple.2);
 
-                self.ctxt.types.types.insert(field_expr.hir_id, left_ty.clone());
+                    self.ctxt
+                        .types
+                        .types
+                        .insert(field_expr.hir_id, left_ty.clone());
 
-                if let HirExprKind::Call(callee, _) = &field_expr.kind {
+                    if let HirExprKind::Call(callee, _) = &field_expr.kind {
                         self.ctxt.types.types.insert(callee.hir_id, left_ty.clone());
-                }
-
-                let expected_arg_tys = &arm_tuple.3; 
-                
-
-                match (provided_args, expected_arg_tys.is_empty()) {
-                    (None, true) => {}
-
-                    (Some(_), true) => {
-                        self.report(
-                            format!("Variant '{}.{}' does not take payload arguments", name, variant_name),
-                            Some(field_expr.span.clone()),
-                        );
                     }
 
-                    (None, false) => {
-                        self.report(
-                            format!(
-                                "Variant '{}.{}' requires payload arguments ({})",
-                                name, variant_name, expected_arg_tys.len()
-                            ),
-                            Some(field_expr.span.clone()),
-                        );
-                    }
+                    let expected_arg_tys = &arm_tuple.3;
 
-                    (Some(args), false) => {
-                        if args.len() != expected_arg_tys.len() {
+                    match (provided_args, expected_arg_tys.is_empty()) {
+                        (None, true) => {}
+
+                        (Some(_), true) => {
                             self.report(
                                 format!(
-                                    "Variant '{}.{}' expects {} arguments, but got {}",
-                                    name, variant_name, expected_arg_tys.len(), args.len()
+                                    "Variant '{}.{}' does not take payload arguments",
+                                    name, variant_name
                                 ),
                                 Some(field_expr.span.clone()),
                             );
-                        } else {
-                            for (arg_expr, expected_ty) in args.iter().zip(expected_arg_tys) {
-                                self.expr_type(arg_expr);
-                                self.coerce_ty(expected_ty, arg_expr);
-                                let arg_ty= self.expr_type(arg_expr);
+                        }
 
-                                if !TypeInfo::types_match(expected_ty, &arg_ty) {
-                                    self.type_mismatch(expected_ty, &arg_ty, arg_expr.span.clone());
+                        (None, false) => {
+                            self.report(
+                                format!(
+                                    "Variant '{}.{}' requires payload arguments ({})",
+                                    name,
+                                    variant_name,
+                                    expected_arg_tys.len()
+                                ),
+                                Some(field_expr.span.clone()),
+                            );
+                        }
+
+                        (Some(args), false) => {
+                            if args.len() != expected_arg_tys.len() {
+                                self.report(
+                                    format!(
+                                        "Variant '{}.{}' expects {} arguments, but got {}",
+                                        name,
+                                        variant_name,
+                                        expected_arg_tys.len(),
+                                        args.len()
+                                    ),
+                                    Some(field_expr.span.clone()),
+                                );
+                            } else {
+                                for (arg_expr, expected_ty) in args.iter().zip(expected_arg_tys) {
+                                    self.expr_type(arg_expr);
+                                    self.coerce_ty(expected_ty, arg_expr);
+                                    let arg_ty = self.expr_type(arg_expr);
+
+                                    if !TypeInfo::types_match(expected_ty, &arg_ty) {
+                                        self.type_mismatch(
+                                            expected_ty,
+                                            &arg_ty,
+                                            arg_expr.span.clone(),
+                                        );
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                left_ty.clone()
-            } else {
-                self.unknown_member(&variant_name.to_string(), name, field_expr.span.clone());
+                    left_ty.clone()
+                } else {
+                    self.unknown_member(&variant_name.to_string(), name, field_expr.span.clone());
+                    self.unknown(field_expr.span.clone())
+                }
+            }
+            ResolvedTypeKind::Tuple { fields } => {
+                let index = match &field_expr.kind {
+                    HirExprKind::Literal(HirLiteral::Int(idx)) => *idx as usize,
+                    _ => {
+                        self.report(
+                            "Right-hand side of tuple access must be an integer literal".into(),
+                            Some(field_expr.span.clone()),
+                        );
+                        return self.unknown(field_expr.span.clone());
+                    }
+                };
+
+                if index < fields.len() {
+                    fields[index].clone()
+                } else {
+                    self.report(
+                        format!(
+                            "Tuple index {} out of bounds for tuple of length {}",
+                            index,
+                            fields.len()
+                        ),
+                        Some(field_expr.span.clone()),
+                    );
+                    self.unknown(field_expr.span.clone())
+                }
+            }
+
+            _ => {
+                if left_ty.kind != ResolvedTypeKind::Unknown {
+                    self.report(
+                        format!(
+                            "Cannot carry out an access operation on type '{}'",
+                            left_ty.name
+                        ),
+                        Some(field_expr.span.clone()),
+                    );
+                }
                 self.unknown(field_expr.span.clone())
             }
         }
-
-        _ => {
-            self.report(
-                format!("Cannot carry out an access operation on type '{}'", left_ty.name),
-                Some(field_expr.span.clone()),
-            );
-            self.unknown(field_expr.span.clone())
-        }
     }
-}
 
-    fn bitwise_type(&mut self,left_ty: &TypeInfo,right_ty: &TypeInfo, span: Span) -> TypeInfo{
-        if !self.is_integer(&left_ty.kind) || !self.is_integer(&right_ty.kind){
-            self.report(format!("Bitwise operators require integer operands but got {} and {}", left_ty.name, right_ty.name), Some(span.clone()));
-            return self.unknown(span)
+    fn bitwise_type(&mut self, left_ty: &TypeInfo, right_ty: &TypeInfo, span: Span) -> TypeInfo {
+        if !self.is_integer(&left_ty.kind) || !self.is_integer(&right_ty.kind) {
+            self.report(
+                format!(
+                    "Bitwise operators require integer operands but got {} and {}",
+                    left_ty.name, right_ty.name
+                ),
+                Some(span.clone()),
+            );
+            return self.unknown(span);
         }
 
-        if !TypeInfo::types_match(left_ty, right_ty){
+        if !TypeInfo::types_match(left_ty, right_ty) {
             self.type_mismatch(left_ty, right_ty, span.clone());
             return self.unknown(span);
         }
 
         left_ty.clone()
-
     }
 
-    fn assignment_type(&mut self, left_ty: &TypeInfo, right_ty: &TypeInfo,span:Span) -> TypeInfo{
-        if  !TypeInfo::types_match(left_ty, right_ty){
+    fn assignment_type(&mut self, left_ty: &TypeInfo, right_ty: &TypeInfo, span: Span) -> TypeInfo {
+        if !TypeInfo::types_match(left_ty, right_ty) {
             self.type_mismatch(left_ty, right_ty, span.clone());
             self.unknown(span)
-        }else{
+        } else {
             left_ty.clone()
         }
-
     }
 
-    fn comparison_binary_type(&mut self, left_ty: &TypeInfo,right_ty: &TypeInfo,span:Span)-> TypeInfo{
-        if !TypeInfo::types_match(left_ty, right_ty){
+    fn comparison_binary_type(
+        &mut self,
+        left_ty: &TypeInfo,
+        right_ty: &TypeInfo,
+        span: Span,
+    ) -> TypeInfo {
+        if !TypeInfo::types_match(left_ty, right_ty) {
             self.type_mismatch(left_ty, right_ty, span.clone());
             self.unknown(span.clone())
-        }else{
+        } else {
             self.boolean(span)
         }
-
-
     }
 
-    fn logical_binary_type(&mut self, left_ty: &TypeInfo,right_ty: &TypeInfo, span: Span)-> TypeInfo{
-        if right_ty.kind != ResolvedTypeKind::Bool || left_ty.kind != ResolvedTypeKind::Bool{
+    fn logical_binary_type(
+        &mut self,
+        left_ty: &TypeInfo,
+        right_ty: &TypeInfo,
+        span: Span,
+    ) -> TypeInfo {
+        if right_ty.kind != ResolvedTypeKind::Bool || left_ty.kind != ResolvedTypeKind::Bool {
             self.report(
-                format!("logical binary operator cannot be applied to types '{}' and '{}'",
-                    left_ty.name, 
-                    right_ty.name), 
-                Some(span.clone()));
+                format!(
+                    "logical binary operator cannot be applied to types '{}' and '{}'",
+                    left_ty.name, right_ty.name
+                ),
+                Some(span.clone()),
+            );
             self.unknown(span.clone())
-        }else{
+        } else {
             self.boolean(span)
         }
     }
@@ -548,7 +675,9 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
         if let HirExprKind::Call(name, args) = &expr.kind {
             let overall_ty = self.expr_type(name);
             match &overall_ty.kind {
-                ResolvedTypeKind::Func { params, ret_type ,..} => {
+                ResolvedTypeKind::Func {
+                    params, ret_type, ..
+                } => {
                     if args.len() != params.len() {
                         self.report(
                             format!(
@@ -563,7 +692,7 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
                     for (arg, param_ty) in args.iter().zip(params.iter()) {
                         self.expr_type(arg);
                         self.coerce_ty(param_ty, arg);
-                        let arg_ty= self.expr_type(arg);
+                        let arg_ty = self.expr_type(arg);
 
                         if !TypeInfo::types_match(&arg_ty, param_ty) {
                             self.type_mismatch(&arg_ty, param_ty, expr.span.clone());
@@ -605,55 +734,67 @@ fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
         left_ty
     }
 
+    fn pointer_arithmetic_type(
+        &mut self,
+        left_ty: &TypeInfo,
+        op: &HirBinaryOp,
+        right_ty: &TypeInfo,
+        span: Span,
+    ) -> TypeInfo {
+        match (op, &left_ty.kind, &right_ty.kind) {
+            // Ptr + Int = Ptr
+            (HirBinaryOp::Add, ResolvedTypeKind::Pointer { .. }, _)
+                if self.is_integer(&right_ty.kind) =>
+            {
+                left_ty.clone()
+            }
 
-fn pointer_arithmetic_type(
-    &mut self,
-    left_ty: &TypeInfo,
-    op: &HirBinaryOp,
-    right_ty: &TypeInfo,
-    span: Span,
-) -> TypeInfo {
-    match (op, &left_ty.kind, &right_ty.kind) {
-        // Ptr + Int = Ptr
-        (HirBinaryOp::Add, ResolvedTypeKind::Pointer{..}, _) if self.is_integer(&right_ty.kind) => {
-            left_ty.clone()
-        }
+            // Int + Ptr = Ptr
+            (HirBinaryOp::Add, _, ResolvedTypeKind::Pointer { .. })
+                if self.is_integer(&left_ty.kind) =>
+            {
+                right_ty.clone()
+            }
 
-        // Int + Ptr = Ptr 
-        (HirBinaryOp::Add, _, ResolvedTypeKind::Pointer{..}) if self.is_integer(&left_ty.kind) => {
-            right_ty.clone()
-        }
+            // Ptr - Int = Ptr
+            (HirBinaryOp::Sub, ResolvedTypeKind::Pointer { .. }, _)
+                if self.is_integer(&right_ty.kind) =>
+            {
+                left_ty.clone()
+            }
 
-        // Ptr - Int = Ptr
-        (HirBinaryOp::Sub, ResolvedTypeKind::Pointer{..}, _) if self.is_integer(&right_ty.kind) => {
-            left_ty.clone()
-        }
+            // Ptr - Ptr -> USize
+            (
+                HirBinaryOp::Sub,
+                ResolvedTypeKind::Pointer { inner: t1 },
+                ResolvedTypeKind::Pointer { inner: t2 },
+            ) => {
+                if !TypeInfo::types_match(t1, t2) {
+                    self.report(
+                        format!(
+                            "Cannot subtract pointers to different types `{}` and `{}`",
+                            t1.name, t2.name
+                        ),
+                        Some(span.clone()),
+                    );
+                    return self.unknown(span);
+                }
+                self.primitive(ResolvedTypeKind::USize, span)
+            }
 
-        // Ptr - Ptr -> USize
-        (HirBinaryOp::Sub, ResolvedTypeKind::Pointer{inner: t1}, ResolvedTypeKind::Pointer{inner:t2}) => {
-            if !TypeInfo::types_match(t1, t2) {
+            // Invalid Ops (like Ptr * Int, Ptr / Ptr, Ptr + Float)
+            _ => {
                 self.report(
-                    format!("Cannot subtract pointers to different types `{}` and `{}`", t1.name, t2.name),
+                    format!(
+                        "Invalid pointer arithmetic operation: `{}` {:?} `{}`",
+                        left_ty.name, op, right_ty.name
+                    ),
                     Some(span.clone()),
                 );
-                return self.unknown(span);
+                self.unknown(span)
             }
-            self.primitive(ResolvedTypeKind::USize, span)
-        }
-
-        // Invalid Ops (like Ptr * Int, Ptr / Ptr, Ptr + Float)
-        _ => {
-            self.report(
-                format!(
-                    "Invalid pointer arithmetic operation: `{}` {:?} `{}`",
-                    left_ty.name, op, right_ty.name
-                ),
-                Some(span.clone()),
-            );
-            self.unknown(span)
         }
     }
-}
 
     fn literal_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::Literal(lit) = &expr.kind {
@@ -680,8 +821,12 @@ fn pointer_arithmetic_type(
                 HirLiteral::F64(_) => self.primitive(ResolvedTypeKind::F64, expr.span.clone()),
                 HirLiteral::Str(_) => self.primitive(ResolvedTypeKind::Str, expr.span.clone()),
                 HirLiteral::Char8(_) => self.primitive(ResolvedTypeKind::Char8, expr.span.clone()),
-                HirLiteral::Char16(_) => self.primitive(ResolvedTypeKind::Char16, expr.span.clone()),
-                HirLiteral::Char32(_) => self.primitive(ResolvedTypeKind::Char32, expr.span.clone()),
+                HirLiteral::Char16(_) => {
+                    self.primitive(ResolvedTypeKind::Char16, expr.span.clone())
+                }
+                HirLiteral::Char32(_) => {
+                    self.primitive(ResolvedTypeKind::Char32, expr.span.clone())
+                }
                 HirLiteral::Bool(_) => self.primitive(ResolvedTypeKind::Bool, expr.span.clone()),
                 HirLiteral::Null => {
                     let inner_ty = self.unknown(expr.span.clone());

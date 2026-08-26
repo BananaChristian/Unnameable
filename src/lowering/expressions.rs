@@ -24,6 +24,9 @@ impl Lowering {
             }
 
             ExprKind::Binary(left, op, right) => {
+                if *op == BinaryOp::Access {
+                    return self.lower_access_expr(left, right, expr.span.clone());
+                }
                 let hir_left = self.lower_expr(left)?;
                 let hir_right = self.lower_expr(right)?;
                 let hir_op = self.lower_binary_op(op)?;
@@ -147,6 +150,76 @@ impl Lowering {
         Some(HirExpr::new(self.next_id(), kind, expr.span.clone()))
     }
 
+    fn lower_access_expr(&mut self, left: &Expr, right: &Expr, span: Span) -> Option<HirExpr> {
+        let hir_left = self.lower_expr(left)?;
+
+        if let ExprKind::Literal(Literal::Float(val)) = &right.kind {
+            if let Some(chained) =
+                self.split_and_lower_float_access(hir_left.clone(), *val, right.span.clone(), span.clone())
+            {
+                return Some(chained);
+            }
+        }
+
+        let hir_right = self.lower_expr(right)?;
+
+        Some(HirExpr {
+            hir_id: self.next_id(),
+            kind: HirExprKind::Binary(Box::new(hir_left), HirBinaryOp::Access, Box::new(hir_right)),
+            span,
+        })
+    }
+
+    fn split_and_lower_float_access(
+        &mut self,
+        hir_base: HirExpr, 
+        float_val: f64,
+        right_span: Span,
+        total_span: Span,
+    ) -> Option<HirExpr> {
+        // Format explicitly to guarantee a decimal point exists even for whole float numbers like 0.0 or 1.0
+        let float_str = format!("{:.16}", float_val);
+        let parts: Vec<&str> = float_str.split('.').collect();
+
+        if parts.len() != 2 {
+            return None;
+        }
+
+        let first_idx: isize = parts[0].parse().ok()?;
+
+        // Extract the raw digit immediately after the dot
+        let second_digit_char = parts[1].chars().next()?;
+        let second_idx: isize = second_digit_char.to_digit(10)? as isize;
+
+        let inner_access = HirExpr {
+            hir_id: self.next_id(),
+            kind: HirExprKind::Binary(
+                Box::new(hir_base.clone()),
+                HirBinaryOp::Access,
+                Box::new(HirExpr {
+                    hir_id: self.next_id(),
+                    kind: HirExprKind::Literal(HirLiteral::Int(first_idx)),
+                    span: right_span.clone(),
+                }),
+            ),
+            span: hir_base.span,
+        };
+
+        Some(HirExpr {
+            hir_id: self.next_id(),
+            kind: HirExprKind::Binary(
+                Box::new(inner_access),
+                HirBinaryOp::Access,
+                Box::new(HirExpr {
+                    hir_id: self.next_id(),
+                    kind: HirExprKind::Literal(HirLiteral::Int(second_idx)),
+                    span: right_span,
+                }),
+            ),
+            span: total_span,
+        })
+    }
+
     fn lower_binary_op(&self, op: &BinaryOp) -> Option<HirBinaryOp> {
         match op {
             BinaryOp::Add => Some(HirBinaryOp::Add),
@@ -176,7 +249,7 @@ impl Lowering {
             BinaryOp::Access => Some(HirBinaryOp::Access),
             BinaryOp::Assign => Some(HirBinaryOp::Assign),
             BinaryOp::Scope => {
-                // Scope should never reach here — paths resolved earlier
+                // Scope should never reach here, paths resolved earlier
                 None
             }
         }
