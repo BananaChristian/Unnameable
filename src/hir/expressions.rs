@@ -135,10 +135,14 @@ pub enum HirExprKind {
     StaticCast(Box<HirTypeNode>, Box<HirExpr>),
     BitCast(Box<HirTypeNode>, Box<HirExpr>),
 
-    // Struct instantiation, .Point{ .x : 1 }
+    // Struct instantiation, .Point{ .x = 1 }
     Instantiation {
         init_ty: Box<HirTypeNode>,
         body: Vec<HirInstParam>,
+    },
+    //Tuple inst
+    TupleInst {
+        body: Vec<HirExpr>,
     },
 
     //Dollar scope
@@ -148,7 +152,7 @@ pub enum HirExprKind {
         result: Option<Box<HirExpr>>, //This is the final result
     },
 
-    // Index access — arr[0]
+    // Index access, array[0]
     Index {
         target: Box<HirExpr>,
         index: Box<HirExpr>,

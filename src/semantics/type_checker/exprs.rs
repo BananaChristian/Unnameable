@@ -30,6 +30,7 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::Postfix(_,_ ) => self.postfix_type(expr),
             HirExprKind::GenericInstantion { .. }=> self.gen_inst_type(expr),
             HirExprKind::Instantiation { ..} => self.struct_init_type(expr),
+            HirExprKind::TupleInst { .. } => self.tuple_init_type(expr),
             HirExprKind::DollarScope {params, body, result } =>{
                 for p in params{
                     self.check_expr(p);
@@ -95,6 +96,16 @@ fn struct_init_type(&mut self, expr: &HirExpr) -> TypeInfo {
     }
 
     ty
+}
+
+fn tuple_init_type(&mut self,expr:&HirExpr) -> TypeInfo{
+    if let HirExprKind::TupleInst { body } =&expr.kind{
+        let field_tys: Vec<TypeInfo>= body.iter().map(|m|self.expr_type(m)).collect();
+        let tuple_inst_ty= self.tuple(field_tys, expr.span.clone());
+        tuple_inst_ty
+    }else{
+        self.unknown(expr.span.clone())
+    }
 }
 
     fn gen_inst_type(&mut self, expr: &HirExpr)-> TypeInfo{

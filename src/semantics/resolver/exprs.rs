@@ -70,7 +70,6 @@ impl<'a> Resolver<'a> {
             HirExprKind::Binary(left, op, right) => {
                 self.resolve_expr(left, table);
                 if matches!(op, HirBinaryOp::Access) {
-
                 } else {
                     self.resolve_expr(right, table);
                 }
@@ -79,6 +78,11 @@ impl<'a> Resolver<'a> {
                 self.resolve_type(init_ty, table);
                 for field in body {
                     self.resolve_expr(&field.value, table);
+                }
+            }
+            HirExprKind::TupleInst { body } => {
+                for expr in body {
+                    self.resolve_expr(expr, table);
                 }
             }
             HirExprKind::Index { target, index } => {

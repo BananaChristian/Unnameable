@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::diagnostics::source::SourceMap;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash,Default)]
 pub struct Span {
     pub start: usize, // Byte offset
     pub end: usize,   // Byte offset

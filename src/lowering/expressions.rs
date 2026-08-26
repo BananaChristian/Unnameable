@@ -1,12 +1,12 @@
 use crate::{
     ast::{
-        BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier,
-        QualifierKind, Type, TypeKind, UnaryOp,
+        BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier, QualifierKind, Type,
+        TypeKind, UnaryOp,
     },
     diagnostics::Span,
     hir::{
-        HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral,
-        HirPostfixOp, HirStmtKind, HirType, HirTypeNode, HirUnaryOp, QualifierMap,
+        HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirStmtKind,
+        HirType, HirTypeNode, HirUnaryOp, QualifierMap,
     },
     lowering::lowering::Lowering,
 };
@@ -87,6 +87,14 @@ impl Lowering {
                     init_ty: Box::new(hir_ty),
                     body: hir_body,
                 }
+            }
+            //Tuple instantiation
+            ExprKind::TupleInst { body } => {
+                let members = body
+                    .iter()
+                    .map(|a| self.lower_expr(a))
+                    .collect::<Option<Vec<_>>>()?;
+                HirExprKind::TupleInst { body: members }
             }
 
             // Index access

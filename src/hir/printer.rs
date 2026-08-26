@@ -481,6 +481,17 @@ impl HirPrinter {
                     });
                 });
             }
+            HirExprKind::TupleInst { body } => {
+                self.write_line(&format!("Tuple instantiation [id: {id:?}]"));
+                self.with_indent(|p| {
+                    p.write_line("Members");
+                    p.with_indent(|p1| {
+                        for expr in body {
+                            p1.fmt_expr(expr);
+                        }
+                    });
+                });
+            }
             HirExprKind::DollarScope {
                 params,
                 body,

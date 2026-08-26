@@ -386,7 +386,7 @@ impl Parser {
         ))
     }
 
-    fn parse_init_param(&mut self) -> Option<InstParam> {
+    fn parse_struct_init_param(&mut self) -> Option<InstParam> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Dot)?;
         let name = self.parse_identifier()?;
@@ -400,7 +400,7 @@ impl Parser {
         })
     }
 
-    fn parse_init(&mut self) -> Option<Expr> {
+    fn parse_struct_init(&mut self) -> Option<Expr> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Dot)?;
 
@@ -412,7 +412,7 @@ impl Parser {
         while self.current_token()?.token_type != TType::Rbrace
             && self.current_token()?.token_type != TType::End
         {
-            let param = self.parse_init_param()?;
+            let param = self.parse_struct_init_param()?;
             params.push(param);
 
             if self.current_token()?.token_type == TType::Comma {
@@ -433,6 +433,48 @@ impl Parser {
             },
             Span { start, end },
         ))
+    }
+
+    fn parse_tuple_inst(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Dot)?;
+        self.expect_token(TType::Lparen)?;
+        let mut exprs = Vec::new();
+        while self.current_token()?.token_type != TType::Rparen
+            && self.current_token()?.token_type != TType::End
+        {
+            let expr = self.parse_expression(Precedence::Lowest)?;
+            exprs.push(expr);
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+                if self.current_token()?.token_type == TType::Rparen {
+                    break;
+                }
+            }
+        }
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rparen)?;
+
+        Some(Expr::new(
+            ExprKind::TupleInst { body: exprs },
+            Span { start, end },
+        ))
+    }
+
+    fn parse_init(&mut self) -> Option<Expr> {
+        let peeked = self.peek_token()?;
+        match peeked.token_type {
+            TType::Identifier => self.parse_struct_init(),
+            TType::Lparen => self.parse_tuple_inst(),
+            _ => {
+                let span = peeked.span.clone();
+                self.report(
+                    format!("Invalid instantiation pattern {:?}", peeked.token_type),
+                    Some(span),
+                );
+                None
+            }
+        }
     }
 
     fn parse_bitcast_expr(&mut self) -> Option<Expr> {

@@ -66,13 +66,18 @@ pub enum ExprKind {
     Call(Box<Expr>, Vec<Expr>),
     Postfix(Box<Expr>, PostfixOp),
     SizeOfExpr(Box<Type>),
-    //bitcast<i32>(x)
+    //bitcast<i32>(x);
     BitcastExpr(Box<Type>, Box<Expr>),
-    //cast<i32>(x)
+    //cast<i32>(x);
     StaticCast(Box<Type>, Box<Expr>),
+    //Struct Instantiation .Struct{.a= val, .b=val};
     Instantiation {
         init_ty: Box<Type>,
         body: Vec<InstParam>,
+    },
+    //Tuple instantiation
+    TupleInst{
+        body: Vec<Expr>,
     },
     //The dollar scope $${}
     DollarScope {

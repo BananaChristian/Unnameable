@@ -565,6 +565,17 @@ impl AstPrinter {
                     });
                 });
             }
+            ExprKind::TupleInst { body } => {
+                self.write_line("Tuple Instantiation");
+                self.with_indent(|p| {
+                    p.write_line("members");
+                    p.with_indent(|p1| {
+                        for expr in body {
+                            p1.fmt_expr(expr);
+                        }
+                    });
+                });
+            }
             ExprKind::DollarScope { params, body } => {
                 self.write_line("$$");
                 self.write_line("captures:");
