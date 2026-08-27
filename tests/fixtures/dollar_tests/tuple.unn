@@ -1,0 +1,47 @@
+func test_deep_indexing(): u32 {
+    # 4-level deep nested tuple: (((2i32, 1000i64), 42u32), 99i32)
+    var nested := .(
+        .(
+            .(2i32, 1000i64),
+            42u32
+        ),
+        99i32
+    );
+
+    # Test 1: Lexer float ambiguity split across multiple dots
+    # Equivalent to: ((nested.0).0).1 -> 1000i64
+    var val1 := nested.0.0.1;
+
+    # Test 2: Access with trailing integer index
+    # Equivalent to: ((nested.0).0).0 -> 2i32
+    var val2 := nested.0.0.0;
+
+    # Test 3: Standard single index on outer tuple
+    # Equivalent to: nested.1 -> 99i32
+    var val3 := nested.1;
+
+    # Return 0 for success
+    return 0u32;
+}
+
+func foo(): u32 {
+    var x := $${
+        # 3-level deep nested tuple: ( (10i32, 20i32), (30i32, 40i32) )
+        var matrix := .(
+            .(10i32, 20i32),
+            .(30i32, 40i32)
+        );
+
+        # Lexed as `matrix` + `Access` + `Float(0.1)`
+        # Lowered into: (matrix.0).1 -> 20i32
+        var elem1 := matrix.0.1;
+
+        # Lexed as `matrix` + `Access` + `Float(1.0)`
+        # Lowered into: (matrix.1).0 -> 30i32
+        var elem2 := matrix.1.0;
+
+        elem1;
+    };
+
+    return 0u32;
+}

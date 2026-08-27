@@ -1,0 +1,137 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+func @test_deep_indexing() {
+bb0:
+    %nested = alloca %{%{%{i32, i64}, u32}, i32} , align 8
+    %0 = gep %{%{%{i32, i64}, u32}, i32}, ptr %nested, indices [0, 0]
+    %1 = gep %{%{i32, i64}, u32}, ptr %0, indices [0, 0]
+    %2 = gep %{i32, i64}, ptr %1, indices [0, 0]
+    store 2, ptr %2, align 4, ty i32
+    %3 = gep %{i32, i64}, ptr %1, indices [0, 1]
+    store 1000, ptr %3, align 8, ty i64
+    %4 = gep %{%{i32, i64}, u32}, ptr %0, indices [0, 1]
+    store 42, ptr %4, align 4, ty u32
+    %5 = gep %{%{%{i32, i64}, u32}, i32}, ptr %nested, indices [0, 1]
+    store 99, ptr %5, align 4, ty i32
+    %val1 = alloca i64 , align 8
+    %6 = gep %{%{%{i32, i64}, u32}, i32}, ptr %nested, indices [0, 0]
+    %7 = gep %{%{i32, i64}, u32}, ptr %6, indices [0, 0]
+    %8 = gep %{i32, i64}, ptr %7, indices [0, 1]
+    %9 = load i64, ptr %8, align 8
+    store %9, ptr %val1, align 8, ty i64
+    %val2 = alloca i32 , align 4
+    %10 = gep %{%{%{i32, i64}, u32}, i32}, ptr %nested, indices [0, 0]
+    %11 = gep %{%{i32, i64}, u32}, ptr %10, indices [0, 0]
+    %12 = gep %{i32, i64}, ptr %11, indices [0, 0]
+    %13 = load i32, ptr %12, align 4
+    store %13, ptr %val2, align 4, ty i32
+    %val3 = alloca i32 , align 4
+    %14 = gep %{%{%{i32, i64}, u32}, i32}, ptr %nested, indices [0, 1]
+    %15 = load i32, ptr %14, align 4
+    store %15, ptr %val3, align 4, ty i32
+    ret 0
+}
+
+func @foo() {
+bb1:
+    %x = alloca i32 , align 4
+    %29 = $$eval @$$scope_0
+    store %29, ptr %x, align 4, ty i32
+    ret 0
+}
+
+$$func @$$scope_0() {
+bb2:
+    %matrix = alloca %{%{i32, i32}, %{i32, i32}} $$, align 4
+    %16 = gep %{%{i32, i32}, %{i32, i32}}, ptr %matrix, indices [0, 0]
+    %17 = gep %{i32, i32}, ptr %16, indices [0, 0]
+    store 10, ptr %17, align 4, ty i32
+    %18 = gep %{i32, i32}, ptr %16, indices [0, 1]
+    store 20, ptr %18, align 4, ty i32
+    %19 = gep %{%{i32, i32}, %{i32, i32}}, ptr %matrix, indices [0, 1]
+    %20 = gep %{i32, i32}, ptr %19, indices [0, 0]
+    store 30, ptr %20, align 4, ty i32
+    %21 = gep %{i32, i32}, ptr %19, indices [0, 1]
+    store 40, ptr %21, align 4, ty i32
+    %elem1 = alloca i32 $$, align 4
+    %22 = gep %{%{i32, i32}, %{i32, i32}}, ptr %matrix, indices [0, 0]
+    %23 = gep %{i32, i32}, ptr %22, indices [0, 1]
+    %24 = load i32, ptr %23, align 4
+    store %24, ptr %elem1, align 4, ty i32
+    %elem2 = alloca i32 $$, align 4
+    %25 = gep %{%{i32, i32}, %{i32, i32}}, ptr %matrix, indices [0, 1]
+    %26 = gep %{i32, i32}, ptr %25, indices [0, 0]
+    %27 = load i32, ptr %26, align 4
+    store %27, ptr %elem2, align 4, ty i32
+    %28 = load i32, ptr %elem1, align 4
+    ret %28
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (2):
+--------------------------------------------------
+func @$$scope_0 (mode: Full, params: 0, registers: 40)
+--------------------------------------------------
+  [0000] r0 = alloca size: 16, align: 4
+  [0001] r2 = 0 (usize)
+  [0002] r3 = 0 (usize)
+  [0003] r1 = gep r0, [r2, r3] (%{%{i32, i32}, %{i32, i32}})
+  [0004] r5 = 0 (usize)
+  [0005] r6 = 0 (usize)
+  [0006] r4 = gep r1, [r5, r6] (%{i32, i32})
+  [0007] r7 = 10 (i32)
+  [0008] store [r4], r7 (i32) (mode: Full)
+  [0009] r9 = 0 (usize)
+  [0010] r10 = 1 (usize)
+  [0011] r8 = gep r1, [r9, r10] (%{i32, i32})
+  [0012] r11 = 20 (i32)
+  [0013] store [r8], r11 (i32) (mode: Full)
+  [0014] r13 = 0 (usize)
+  [0015] r14 = 1 (usize)
+  [0016] r12 = gep r0, [r13, r14] (%{%{i32, i32}, %{i32, i32}})
+  [0017] r16 = 0 (usize)
+  [0018] r17 = 0 (usize)
+  [0019] r15 = gep r12, [r16, r17] (%{i32, i32})
+  [0020] r18 = 30 (i32)
+  [0021] store [r15], r18 (i32) (mode: Full)
+  [0022] r20 = 0 (usize)
+  [0023] r21 = 1 (usize)
+  [0024] r19 = gep r12, [r20, r21] (%{i32, i32})
+  [0025] r22 = 40 (i32)
+  [0026] store [r19], r22 (i32) (mode: Full)
+  [0027] r23 = alloca size: 4, align: 4
+  [0028] r25 = 0 (usize)
+  [0029] r26 = 0 (usize)
+  [0030] r24 = gep r0, [r25, r26] (%{%{i32, i32}, %{i32, i32}})
+  [0031] r28 = 0 (usize)
+  [0032] r29 = 1 (usize)
+  [0033] r27 = gep r24, [r28, r29] (%{i32, i32})
+  [0034] load r30, [r27] (i32) (mode: Full)
+  [0035] store [r23], r30 (i32) (mode: Full)
+  [0036] r31 = alloca size: 4, align: 4
+  [0037] r33 = 0 (usize)
+  [0038] r34 = 1 (usize)
+  [0039] r32 = gep r0, [r33, r34] (%{%{i32, i32}, %{i32, i32}})
+  [0040] r36 = 0 (usize)
+  [0041] r37 = 0 (usize)
+  [0042] r35 = gep r32, [r36, r37] (%{i32, i32})
+  [0043] load r38, [r35] (i32) (mode: Full)
+  [0044] store [r31], r38 (i32) (mode: Full)
+  [0045] load r39, [r23] (i32) (mode: Full)
+  [0046] return r39
+
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 1)
+--------------------------------------------------
+  [0000] r0 = $$eval @$$scope_0()
+  [0001] return
+
+==================================================
