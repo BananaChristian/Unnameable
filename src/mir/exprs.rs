@@ -267,7 +267,6 @@ impl<'a> MIRBuilder<'a> {
         let zero = MIRValue::Constant(ConstantValue::UInt(0));
 
         for (i, elem_expr) in body.iter().enumerate() {
-            let elem_val = self.expr_value(elem_expr);
             let index_val = MIRValue::Constant(ConstantValue::UInt(i));
 
             self.build_gep(
@@ -279,7 +278,12 @@ impl<'a> MIRBuilder<'a> {
             let elem_ptr = self.get_last_val(None);
 
             let elem_ty = &elem_tys[i];
-            self.build_store(elem_ptr, elem_val, elem_ty.clone(), None);
+            if matches!(&elem_expr.kind, HirExprKind::TupleInst { .. }) {
+                self.build_tuple_init_into(elem_expr, elem_ptr);
+            } else {
+                let elem_val = self.expr_value(elem_expr);
+                self.build_store(elem_ptr, elem_val, elem_ty.clone(), None);
+            }
         }
     }
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirStmt, HirStmtKind, HirUnaryOp},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirStmt, HirStmtKind, HirUnaryOp},
     indexer::NodeIndex,
     lowering::NodeId,
     mir::{
@@ -906,6 +906,15 @@ impl<'a> MIRBuilder<'a> {
                 MIRTykind::Struct(struct_id, name.clone(), mems)
             }
 
+            //Tuples
+            ResolvedTypeKind::Tuple { fields } => {
+                let members: Vec<MIRTy> = fields
+                    .iter()
+                    .map(|m| self.lower_type_info_to_mir_ty(m))
+                    .collect();
+                MIRTykind::Tuple(members)
+            }
+
             _ => MIRTykind::Unit,
         };
 
@@ -979,7 +988,7 @@ impl<'a> MIRBuilder<'a> {
 
         let Some(func) = self.module.functions.get_mut(&fn_id) else {
             self.report_ice(
-                format!("Active function {:?} not found in module", fn_id),
+                format!("Active function {} not found in module", fn_id),
                 span,
             );
         };
@@ -987,7 +996,7 @@ impl<'a> MIRBuilder<'a> {
         let Some(block) = func.blocks.get_mut(&block_id) else {
             self.report_ice(
                 format!(
-                    "Active block {:?} not found in function {:?}",
+                    "Active block {} not found in function {}",
                     block_id, fn_id
                 ),
                 span,
@@ -1091,39 +1100,58 @@ impl<'a> MIRBuilder<'a> {
         let struct_ptr = self.lookup_ptr(lhs);
         let lhs_ty = self.get_type(&lhs.hir_id);
 
-        let fields = match &lhs_ty.kind {
-            MIRTykind::Struct(_, _, fields) => fields.clone(),
+        match &lhs_ty.kind {
+            MIRTykind::Struct(_, _, fields) => {
+                let field_name = match &rhs.kind {
+                    HirExprKind::Identifier(name) => name,
+                    _ => self.report_ice(
+                        "Expected identifier as field name".to_string(),
+                        span.clone(),
+                    ),
+                };
+                let field_index = fields
+                    .iter()
+                    .position(|(name, _)| name == field_name)
+                    .expect("Field not found, should have been caught by type checker");
+                let field_ty = fields[field_index].1.clone();
+
+                let zero = MIRValue::Constant(ConstantValue::UInt(0));
+                let index_val = MIRValue::Constant(ConstantValue::UInt(field_index));
+                self.build_gep(
+                    struct_ptr,
+                    vec![zero, index_val],
+                    lhs_ty.clone(),
+                    span.clone(),
+                );
+                let field_ptr = self.get_last_val(span);
+                (field_ptr, field_ty)
+            }
+            MIRTykind::Tuple(elem_tys) => {
+                let tuple_index = match &rhs.kind {
+                    HirExprKind::Literal(HirLiteral::Int(i)) => *i as usize,
+                    _ => self.report_ice(
+                        "Expected integer literal as tuple index".to_string(),
+                        span.clone(),
+                    ),
+                };
+                let elem_ty = elem_tys[tuple_index].clone();
+
+                let zero = MIRValue::Constant(ConstantValue::UInt(0));
+                let index_val = MIRValue::Constant(ConstantValue::UInt(tuple_index));
+                self.build_gep(
+                    struct_ptr,
+                    vec![zero, index_val],
+                    lhs_ty.clone(),
+                    span.clone(),
+                );
+                let field_ptr = self.get_last_val(span);
+                (field_ptr, elem_ty)
+            }
             _ => self.report_ice(
-                "Cannot access a field on a non-struct type".to_string(),
+                "Cannot access a field on this type".to_string(),
                 span.clone(),
             ),
-        };
-
-        let field_name = match &rhs.kind {
-            HirExprKind::Identifier(name) => name,
-            _ => self.report_ice(
-                "Expected identifier as field name".to_string(),
-                span.clone(),
-            ),
-        };
-
-        let field_index = fields
-            .iter()
-            .position(|(name, _)| name == field_name)
-            .expect("Field not found, should have been caught by type checker");
-        let field_ty = fields[field_index].1.clone();
-
-        let zero = MIRValue::Constant(ConstantValue::UInt(0));
-        let index_val = MIRValue::Constant(ConstantValue::UInt(field_index));
-        self.build_gep(
-            struct_ptr,
-            vec![zero, index_val],
-            lhs_ty.clone(),
-            span.clone(),
-        );
-        let field_ptr = self.get_last_val(span);
-
-        (field_ptr, field_ty) // field_ty still correctly returned for the caller's load/store
+        }
     }
 
     pub fn get_struct_decl(&mut self, name: &String, span: Option<Span>) -> MIRStructDecl {

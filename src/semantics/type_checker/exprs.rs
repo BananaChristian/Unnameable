@@ -111,6 +111,7 @@ impl<'a> TypeChecker<'a> {
         if let HirExprKind::TupleInst { body } = &expr.kind {
             let field_tys: Vec<TypeInfo> = body.iter().map(|m| self.expr_type(m)).collect();
             let tuple_inst_ty = self.tuple(field_tys, expr.span.clone());
+            self.insert(expr.hir_id, tuple_inst_ty.clone());
             tuple_inst_ty
         } else {
             self.unknown(expr.span.clone())
