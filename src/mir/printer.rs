@@ -3,9 +3,9 @@ use std::fmt::{self};
 use crate::mir::{
     MIRModule,
     instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRGlobal,
-        MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind, MIRValue,
-        StructId, Terminator, Vreg,
+        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRFnDecl,
+        MIRGlobal, MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind,
+        MIRValue, StructId, Terminator, Vreg,
     },
 };
 
@@ -33,6 +33,14 @@ impl fmt::Display for MIRModule {
                 if let Some(global) = self.globals.get(&id) {
                     writeln!(f, "{global}")?;
                 }
+            }
+            writeln!(f)?;
+        }
+
+        // Print function declarations
+        if !self.func_declarations.is_empty() {
+            for decl in &self.func_declarations {
+                writeln!(f, "{decl}")?;
             }
             writeln!(f)?;
         }
@@ -438,6 +446,28 @@ impl fmt::Display for MIRStructDecl {
     }
 }
 
+impl fmt::Display for MIRFnDecl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let params_str = self
+            .params
+            .iter()
+            .map(|p| format!("{}", p.ty))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let linkage_str = match self.linkage {
+            MIRLinkage::Public => "expose ",
+            MIRLinkage::Private => "",
+        };
+
+        write!(
+            f,
+            "{}declare func @{}({}): {};",
+            linkage_str,self.name, params_str, self.ret_ty
+        )
+    }
+}
+
 impl fmt::Display for MIRFn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let params_str = self
@@ -452,11 +482,11 @@ impl fmt::Display for MIRFn {
             MIRLinkage::Private => "",
         };
 
-        // Output signature: $$ expose func @my_fn(i32 %x) {
+        // Output signature: $$ expose func @my_fn(i32 %x): i32 {
         writeln!(
             f,
-            "{}{}func @{}({}) {{",
-            self.dollar_mode, linkage_str, self.name, params_str
+            "{}{}func @{}({}) : {} {{",
+            self.dollar_mode, linkage_str, self.name, params_str, self.ret_ty
         )?;
 
         // Deterministic sorting of basic blocks starting from entry_block

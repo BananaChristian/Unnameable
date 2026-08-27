@@ -358,6 +358,14 @@ pub struct MIRFn {
 }
 
 #[derive(Debug, Clone)]
+pub struct MIRFnDecl {
+    pub name: String,
+    pub params: Vec<MIRParam>,
+    pub ret_ty: MIRTy,
+    pub linkage: MIRLinkage,
+}
+
+#[derive(Debug, Clone)]
 pub struct MIRStructDecl {
     pub struct_id: StructId,
     pub name: String,
@@ -402,6 +410,7 @@ pub struct MIRModule {
     pub name: String, //Module name
     pub globals: HashMap<GlobalId, MIRGlobal>,
     pub structs: HashMap<StructId, MIRStructDecl>,
+    pub func_declarations: Vec<MIRFnDecl>,
     pub functions: HashMap<FnId, MIRFn>,
 }
 

@@ -6,8 +6,8 @@ use crate::{
         MIRTy, MIRVariant,
         builder::MIRBuilder,
         instructions::{
-            ArmInfo, MIRDollarMode, MIREnum, MIRFn, MIRGlobal, MIRLinkage, MIRParam, MIRStructDecl,
-            MIRTykind, MIRVariantArm, Terminator,
+            ArmInfo, MIRDollarMode, MIREnum, MIRFn, MIRFnDecl, MIRGlobal, MIRLinkage, MIRParam,
+            MIRStructDecl, MIRTykind, MIRVariantArm, Terminator,
         },
     },
 };
@@ -17,7 +17,8 @@ impl<'a> MIRBuilder<'a> {
         match &stmt.kind {
             HirStmtKind::HirStructDecl { .. }
             | HirStmtKind::HirVariantDecl { .. }
-            | HirStmtKind::HirEnumDecl { .. } => (),
+            | HirStmtKind::HirEnumDecl { .. }
+            | HirStmtKind::HirFunctionDecl { .. } => (),
             HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
@@ -200,6 +201,44 @@ impl<'a> MIRBuilder<'a> {
                     }
                 }
             }
+        }
+    }
+
+    pub fn build_fn_decl(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirFunctionDecl {
+            name,
+            params,
+            return_type,
+            exposed,
+            ..
+        } = &stmt.kind
+        {
+            let linkage = match *exposed {
+                true => MIRLinkage::Public,
+                false => MIRLinkage::Private,
+            };
+
+            let mir_params: Vec<MIRParam> = params
+                .iter()
+                .map(|p| MIRParam {
+                    name: p.name.clone(),
+                    dollar_mode: match p.dollar_read {
+                        true => MIRDollarMode::ReadOnly,
+                        false => MIRDollarMode::None, //For now
+                    },
+                    ty: self.get_type(&p.hir_id),
+                })
+                .collect();
+
+            let ret_ty = self.get_type(&return_type.hir_id);
+
+            let declaration = MIRFnDecl {
+                name: name.clone(),
+                params: mir_params.clone(),
+                linkage,
+                ret_ty,
+            };
+            self.module.func_declarations.push(declaration);
         }
     }
 

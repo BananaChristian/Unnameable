@@ -7,7 +7,7 @@ module "test_module"
 
 %Food = type { power: i32, health: usize }
 
-func @foo() {
+func @foo() : i32 {
 bb0:
     %x = alloca i32 , align 4
     %5 = $$eval @$$scope_0
@@ -15,7 +15,7 @@ bb0:
     ret 0
 }
 
-$$func @$$scope_0() {
+$$func @$$scope_0() : i32 {
 bb1:
     %food = alloca %Food $$, align 8
     %0 = gep %Food, ptr %food, indices [0, 0]

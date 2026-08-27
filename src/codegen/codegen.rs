@@ -5,15 +5,15 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
-    types::BasicTypeEnum,
-    values::{BasicValueEnum, FloatValue, GlobalValue, IntValue, PointerValue},
+    types::{BasicTypeEnum, FunctionType},
+    values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
 };
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     mir::{
-        ConstantValue, GlobalId, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl, MIRTy, MIRTykind,
-        MIRValue, Vreg,
+        ConstantValue, GlobalId, MIRFnDecl, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl, MIRTy,
+        MIRTykind, MIRValue, Vreg,
     },
     target::TargetSpec,
 };
@@ -63,6 +63,10 @@ impl<'ctx> Codegen<'ctx> {
             self.lower_globals(global);
         }
 
+        for decl in &mir_module.func_declarations {
+            self.lower_func_decls(decl);
+        }
+
         let mut sorted_fns: Vec<_> = mir_module.functions.values().collect();
         sorted_fns.sort_by_key(|f| &f.fn_id);
 
@@ -77,6 +81,37 @@ impl<'ctx> Codegen<'ctx> {
                 self.lower_func_body(mir_fn, fn_val);
             }
         }
+    }
+
+    fn lower_func_decls(&mut self, fn_decl: &MIRFnDecl) -> FunctionValue<'ctx> {
+        let param_types: Vec<BasicTypeEnum<'ctx>> = fn_decl
+            .params
+            .iter()
+            .map(|param| self.get_llvmty(&param.ty).into())
+            .collect();
+
+        let param_types_meta: Vec<_> = param_types.iter().map(|t| (*t).into()).collect();
+
+        let fn_type: FunctionType<'ctx> = match &fn_decl.ret_ty.kind {
+            MIRTykind::Unit => self.context.void_type().fn_type(&param_types_meta, false),
+            _ => match self.get_llvmty(&fn_decl.ret_ty) {
+                BasicTypeEnum::IntType(t) => t.fn_type(&param_types_meta, false),
+                BasicTypeEnum::FloatType(t) => t.fn_type(&param_types_meta, false),
+                BasicTypeEnum::PointerType(t) => t.fn_type(&param_types_meta, false),
+                BasicTypeEnum::StructType(t) => t.fn_type(&param_types_meta, false),
+                BasicTypeEnum::ArrayType(t) => t.fn_type(&param_types_meta, false),
+                BasicTypeEnum::VectorType(t) => t.fn_type(&param_types_meta, false),
+            },
+        };
+
+        let linkage = match &fn_decl.linkage {
+            MIRLinkage::Public => None,
+            MIRLinkage::Private => Some(Linkage::Private),
+        };
+
+        let fn_val = self.module.add_function(&fn_decl.name, fn_type, linkage);
+
+        fn_val
     }
 
     fn lower_structs(&mut self, struct_decl: &MIRStructDecl) {

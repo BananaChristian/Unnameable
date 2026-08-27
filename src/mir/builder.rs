@@ -88,6 +88,7 @@ impl<'a> MIRBuilder<'a> {
                 name: module_name,
                 globals: HashMap::new(),
                 structs: HashMap::new(),
+                func_declarations: Vec::new(),
                 functions: HashMap::new(),
             },
             struct_name_to_id: HashMap::new(),
@@ -132,6 +133,10 @@ impl<'a> MIRBuilder<'a> {
 
             HirStmtKind::HirVariantDecl { .. } => {
                 self.build_variant(stmt);
+            }
+
+            HirStmtKind::HirFunctionDecl { .. } => {
+                self.build_fn_decl(stmt);
             }
 
             HirStmtKind::HirFunctionDef { body, .. } => {
@@ -995,10 +1000,7 @@ impl<'a> MIRBuilder<'a> {
 
         let Some(block) = func.blocks.get_mut(&block_id) else {
             self.report_ice(
-                format!(
-                    "Active block {} not found in function {}",
-                    block_id, fn_id
-                ),
+                format!("Active block {} not found in function {}", block_id, fn_id),
                 span,
             );
         };

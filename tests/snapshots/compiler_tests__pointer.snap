@@ -5,7 +5,7 @@ expression: output
 === MIR OUTPUT ===
 module "test_module"
 
-func @foo() {
+func @foo() : u32 {
 bb0:
     %x = alloca isize , align 8
     %3 = $$eval @$$scope_0
@@ -13,7 +13,7 @@ bb0:
     ret 0
 }
 
-$$func @$$scope_0() {
+$$func @$$scope_0() : isize {
 bb1:
     %val = alloca isize $$, align 8
     store 1000, ptr %val, align 8, ty isize
