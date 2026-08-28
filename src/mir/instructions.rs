@@ -60,6 +60,7 @@ pub enum ConstantValue {
         fields: Vec<ConstantValue>,
     },
     Tuple(Vec<ConstantValue>),
+    Func(FnId),
 }
 
 impl ConstantValue {

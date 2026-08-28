@@ -37,7 +37,10 @@ impl<'ctx> Codegen<'ctx> {
             MIRLinkage::Private => Some(Linkage::Private),
         };
 
-        self.module.add_function(&func.name, fn_type, linkage)
+
+        let fn_val=self.module.add_function(&func.name, fn_type, linkage);
+        self.func_map.insert(func.fn_id.clone(),fn_val );
+        fn_val
     }
 
     pub fn lower_func_body(&mut self, func: &MIRFn, function: FunctionValue<'ctx>) {

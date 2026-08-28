@@ -44,6 +44,7 @@ pub struct MIRBuilder<'a> {
     pub struct_name_to_id: HashMap<String, StructId>,
     pub enum_name_to_id: HashMap<String, EnumId>,
     pub variant_name_to_id: HashMap<String, VariantId>,
+    pub fn_name_to_id: HashMap<String, FnId>,
 
     // StructId to (Arm Name -> ArmInfo)
     pub arm_map: HashMap<StructId, HashMap<String, ArmInfo>>,
@@ -94,6 +95,7 @@ impl<'a> MIRBuilder<'a> {
             struct_name_to_id: HashMap::new(),
             enum_name_to_id: HashMap::new(),
             variant_name_to_id: HashMap::new(),
+            fn_name_to_id: HashMap::new(),
             types_table,
             target_spec,
             corrupted: false,
@@ -728,7 +730,9 @@ impl<'a> MIRBuilder<'a> {
 
                 MIRTykind::Struct(struct_id.clone(), name.clone(), struct_decl.fields.clone())
             }
-            ResolvedTypeKind::Pointer { .. } => MIRTykind::Ptr,
+            ResolvedTypeKind::Pointer { .. }
+            | ResolvedTypeKind::Ref { .. }
+            | ResolvedTypeKind::Func { .. } => MIRTykind::Ptr,
             ResolvedTypeKind::Array { inner, size } => {
                 let elem_ty_kind = self.convert_tyinfo_to_mirtykind(&inner);
                 let elem_align = inner.layout.alignment;
@@ -851,77 +855,7 @@ impl<'a> MIRBuilder<'a> {
     pub fn lower_type_info_to_mir_ty(&mut self, ty_info: &TypeInfo) -> MIRTy {
         let size = ty_info.layout.size;
         let align = ty_info.layout.alignment;
-
-        let kind = match &ty_info.kind {
-            // Primitives
-            ResolvedTypeKind::I8 => MIRTykind::I8,
-            ResolvedTypeKind::U8 => MIRTykind::U8,
-            ResolvedTypeKind::I16 => MIRTykind::I16,
-            ResolvedTypeKind::U16 => MIRTykind::U16,
-            ResolvedTypeKind::I32 => MIRTykind::I32,
-            ResolvedTypeKind::U32 => MIRTykind::U32,
-            ResolvedTypeKind::I64 => MIRTykind::I64,
-            ResolvedTypeKind::U64 => MIRTykind::U64,
-            ResolvedTypeKind::I128 => MIRTykind::I128,
-            ResolvedTypeKind::U128 => MIRTykind::U128,
-            ResolvedTypeKind::ISize => MIRTykind::ISIZE,
-            ResolvedTypeKind::USize => MIRTykind::USIZE,
-            ResolvedTypeKind::F32 => MIRTykind::F32,
-            ResolvedTypeKind::F64 => MIRTykind::F64,
-            ResolvedTypeKind::Char8 => MIRTykind::CHAR8,
-            ResolvedTypeKind::Char16 => MIRTykind::CHAR16,
-            ResolvedTypeKind::Char32 => MIRTykind::CHAR32,
-            ResolvedTypeKind::Bool => MIRTykind::Bool,
-            ResolvedTypeKind::Unit => MIRTykind::Unit,
-
-            // Opaque Pointers / Handles
-            ResolvedTypeKind::Pointer { .. }
-            | ResolvedTypeKind::Ref { .. }
-            | ResolvedTypeKind::Func { .. }
-            | ResolvedTypeKind::Str => MIRTykind::Ptr,
-
-            // Arrays
-            ResolvedTypeKind::Array { inner, size } => {
-                let inner_mir = self.lower_type_info_to_mir_ty(inner);
-                let count = size.unwrap_or(0) as usize;
-                MIRTykind::Array(Box::new(inner_mir), count)
-            }
-
-            // Structs
-            ResolvedTypeKind::Struct { name, members, .. } => {
-                let struct_id = match self.struct_name_to_id.get(name).copied() {
-                    Some(id) => id, // use .cloned() instead of .copied() if StructId isn't Copy
-                    None => {
-                        self.report_ice(
-                            format!("Failed to get struct ID for {}", name),
-                            Some(ty_info.span.clone()),
-                        );
-                    }
-                };
-
-                let mems: Vec<(String, MIRTy)> = members
-                    .iter()
-                    .map(|m| {
-                        let name = m.0.clone();
-                        let ty = self.lower_type_info_to_mir_ty(&m.1);
-                        (name, ty)
-                    })
-                    .collect();
-
-                MIRTykind::Struct(struct_id, name.clone(), mems)
-            }
-
-            //Tuples
-            ResolvedTypeKind::Tuple { fields } => {
-                let members: Vec<MIRTy> = fields
-                    .iter()
-                    .map(|m| self.lower_type_info_to_mir_ty(m))
-                    .collect();
-                MIRTykind::Tuple(members)
-            }
-
-            _ => MIRTykind::Unit,
-        };
+        let kind = self.convert_tyinfo_to_mirtykind(ty_info);
 
         MIRTy { kind, size, align }
     }
@@ -941,9 +875,10 @@ impl<'a> MIRBuilder<'a> {
                 | ConstantValue::Char32(_)
                 | ConstantValue::F32(_) => 4,
                 ConstantValue::I64(_) | ConstantValue::U64(_) | ConstantValue::F64(_) => 8,
-                ConstantValue::Int(_) | ConstantValue::UInt(_) | ConstantValue::Ptr(_) => {
-                    self.target_spec.pointer_width
-                }
+                ConstantValue::Int(_)
+                | ConstantValue::UInt(_)
+                | ConstantValue::Ptr(_)
+                | ConstantValue::Func(_) => self.target_spec.pointer_width,
                 ConstantValue::I128(_) | ConstantValue::U128(_) => 16,
                 ConstantValue::Array(elements) => {
                     if let Some(first) = elements.first() {
@@ -1175,6 +1110,7 @@ impl<'a> MIRBuilder<'a> {
 
         struct_decl.clone()
     }
+
 
     pub fn add_block(&mut self, block: &BasicBlock, span: Option<Span>) {
         let Some(fn_id) = self.current_func else {

@@ -7,7 +7,7 @@ module "test_module"
 
 %Weird = type { tag: u8, payload: [16 x u8] }
 
-func @foo() : u32 {
+func @foo() {
 bb0:
     %x = alloca %Weird , align 8
     %5 = $$eval @$$scope_0
@@ -15,7 +15,7 @@ bb0:
     ret 0
 }
 
-$$func @$$scope_0() : %Weird {
+$$func @$$scope_0() {
 bb1:
     %weird = alloca %Weird $$, align 8
     %0 = gep %Weird, ptr %weird, indices [0, 0]

@@ -87,7 +87,7 @@ impl fmt::Display for BlockId {
 
 impl fmt::Display for FnId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "fn{}", self.0)
+        write!(f, "func{}", self.0)
     }
 }
 
@@ -206,6 +206,7 @@ impl fmt::Display for ConstantValue {
                 addr if addr == usize::MAX => write!(f, "ptr -1 (0x{:x})", addr),
                 addr => write!(f, "ptr {:#x}", addr),
             },
+            ConstantValue::Func(fn_id) => write!(f, "ptr @{fn_id}"),
             ConstantValue::Array(elements) => {
                 write!(f, "[")?;
                 for (i, elem) in elements.iter().enumerate() {
@@ -451,7 +452,7 @@ impl fmt::Display for MIRFnDecl {
         let params_str = self
             .params
             .iter()
-            .map(|p| format!("{}", p.ty))
+            .map(|p| p.to_string())
             .collect::<Vec<_>>()
             .join(", ");
 
@@ -460,11 +461,8 @@ impl fmt::Display for MIRFnDecl {
             MIRLinkage::Private => "",
         };
 
-        write!(
-            f,
-            "{}declare func @{}({}): {};",
-            linkage_str,self.name, params_str, self.ret_ty
-        )
+        // Output signature: $$ expose func @my_fn(i32 %x) {
+        writeln!(f, "{}func @{}({})", linkage_str, self.name, params_str)
     }
 }
 
@@ -482,11 +480,11 @@ impl fmt::Display for MIRFn {
             MIRLinkage::Private => "",
         };
 
-        // Output signature: $$ expose func @my_fn(i32 %x): i32 {
+        // Output signature: $$ expose func @my_fn(i32 %x) {
         writeln!(
             f,
-            "{}{}func @{}({}) : {} {{",
-            self.dollar_mode, linkage_str, self.name, params_str, self.ret_ty
+            "{}{}func @{}({}) {{",
+            self.dollar_mode, linkage_str, self.name, params_str
         )?;
 
         // Deterministic sorting of basic blocks starting from entry_block

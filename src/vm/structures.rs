@@ -6,12 +6,23 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AllocId(pub usize);
+pub enum MemoryKind {
+    ROData,
+    Data,
+    Code,
+    Stack,
+    Heap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AllocId{
+    pub kind: MemoryKind,
+    pub id: u32,
+}
 
 #[derive(Debug, Clone)]
 pub struct EvalResultTable {
     pub results: HashMap<String, VMValue>,
-    pub global_allocs: HashMap<AllocId, u32>, //Reverse map for alloc id to global id
 }
 
 #[derive(Debug, Clone)]
@@ -197,6 +208,24 @@ pub struct Allocation {
 pub struct VMMemory {
     pub allocations: HashMap<AllocId, Allocation>,
     pub next_alloc: usize,
+}
+
+impl VMMemory {
+    pub fn allocate_stack(&mut self, size: usize) -> AllocId {
+        let alloc_id = AllocId {
+            kind: MemoryKind::Stack,
+            id: self.next_alloc as u32,
+        };
+        self.next_alloc += 1;
+
+        let allocation = Allocation {
+            data: vec![0u8; size],
+            relocations: HashMap::new(),
+        };
+
+        self.allocations.insert(alloc_id, allocation);
+        alloc_id
+    }
 }
 
 pub struct VMFrame {

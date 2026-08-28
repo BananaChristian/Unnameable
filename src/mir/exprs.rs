@@ -910,20 +910,27 @@ impl<'a> MIRBuilder<'a> {
             }
 
             HirExprKind::Identifier(name) => {
-                let Some(ptr) = self.lookup_var(name).cloned() else {
-                    self.report_ice(
-                        format!(
-                            "Variable '{}' not found in symbol table during evaluation",
-                            name
-                        ),
-                        span.clone(),
-                    );
+                if let Some(ptr) = self.lookup_var(name).cloned() {
+                    let ty = self.get_type(&expr.hir_id);
+                    let dest = self.new_register(ty.clone(), None);
+                    self.build_load(dest.clone(), ptr, ty, span);
+                    return dest;
+                }
+
+                match self.fn_name_to_id.get(name) {
+                    Some(fn_id) => {
+                        return MIRValue::Constant(ConstantValue::Func(*fn_id));
+                    }
+                    None => MIRValue::Poison,
                 };
 
-                let ty = self.get_type(&expr.hir_id);
-                let dest = self.new_register(ty.clone(), None);
-                self.build_load(dest.clone(), ptr, ty, span);
-                dest
+                self.report_ice(
+                    format!(
+                        "Symbol '{}' not found in local scope or module functions",
+                        name
+                    ),
+                    span,
+                );
             }
 
             HirExprKind::StaticCast(_, _) => {

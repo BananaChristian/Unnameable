@@ -9,7 +9,7 @@ use crate::{
         BlockId, ConstantValue, MIRDollarMode, MIRFn, MIRInstruction, MIRModule, MIROps, MIRValue,
         Terminator, Vreg,
     },
-    vm::VMValue,
+    vm::{AllocId, MemoryKind, VMValue},
 };
 
 #[derive(Debug, Clone)]
@@ -93,6 +93,7 @@ impl<'a> BytecodeBuilder<'a> {
             let gvar = GlobalVar {
                 id: global_id,
                 name: global.name.clone(),
+                is_const: global.is_const,
                 size_in_bytes: global.ty.size as u32,
                 ty: global.ty.clone(),
                 init_data,
@@ -210,10 +211,29 @@ impl<'a> BytecodeBuilder<'a> {
             ConstantValue::UInt(v) => instructions.push(VMOpcode::ConstUSize { dest, val: *v }),
             ConstantValue::I128(v) => instructions.push(VMOpcode::ConstI128 { dest, val: *v }),
             ConstantValue::U128(v) => instructions.push(VMOpcode::ConstU128 { dest, val: *v }),
-            ConstantValue::Ptr(offset) => instructions.push(VMOpcode::ConstPtr {
-                dest,
-                addr: *offset,
-            }),
+            ConstantValue::Ptr(offset) => {
+                let alloc_id = AllocId {
+                    kind: MemoryKind::Data,
+                    id: u32::MAX,
+                };
+                instructions.push(VMOpcode::ConstPtr {
+                    dest,
+                    alloc_id,
+                    addr: *offset,
+                });
+            }
+
+            ConstantValue::Func(fn_id) => {
+                let alloc_id = AllocId {
+                    kind: MemoryKind::Code,
+                    id: fn_id.0 as u32,
+                };
+                instructions.push(VMOpcode::ConstPtr {
+                    dest,
+                    alloc_id,
+                    addr: 0,
+                });
+            }
             ConstantValue::F32(_) => todo!("float constants"),
             ConstantValue::F64(_) => todo!("float constants"),
             ConstantValue::Char8(c) => instructions.push(VMOpcode::ConstChar8 { dest, val: *c }),
@@ -279,7 +299,7 @@ impl<'a> BytecodeBuilder<'a> {
     }
 
     fn lower_mir_value(
-        &self,
+        &mut self,
         val: &MIRValue,
         reg_map: &mut RegisterMap,
         instructions: &mut Vec<VMOpcode>,
@@ -298,10 +318,15 @@ impl<'a> BytecodeBuilder<'a> {
             MIRValue::Global(global_id) => {
                 let dest = reg_map.next_index;
                 reg_map.next_index += 1;
+                let Some(global) = self.mir_module.globals.get(global_id) else {
+                    self.report_ice("Failed to get global corresponding to id {}".to_string());
+                };
+                let is_const = global.is_const;
 
                 instructions.push(VMOpcode::LoadGlobal {
                     dest,
                     global_id: global_id.0 as u32,
+                    is_const,
                 });
                 dest
             }
@@ -330,6 +355,7 @@ impl<'a> BytecodeBuilder<'a> {
             ConstantValue::F32(v) => VMValue::F32(*v),
             ConstantValue::F64(v) => VMValue::F64(*v),
             ConstantValue::Ptr(offset) => VMValue::UInt(*offset),
+            ConstantValue::Func(id) => VMValue::UInt(id.0),
             ConstantValue::Undef => VMValue::Poison,
             ConstantValue::Array(elements) => {
                 let vm_elems = elements
@@ -365,7 +391,7 @@ impl<'a> BytecodeBuilder<'a> {
     }
 
     fn lower_terminator(
-        &self,
+        &mut self,
         term: &Terminator,
         reg_map: &mut RegisterMap,
         instructions: &mut Vec<VMOpcode>,
@@ -623,16 +649,22 @@ impl<'a> BytecodeBuilder<'a> {
                 args,
             } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
-                let Some(fn_id) = self.bytecode_module.fn_symbols.get(scope_fn) else {
-                    self.report_ice(format!("Failed to get MIR function '{}'", scope_fn));
+
+                let fn_id = match self.bytecode_module.fn_symbols.get(scope_fn) {
+                    Some(id) => *id,
+                    None => {
+                        self.report_ice(format!("Failed to get MIR function '{}'", scope_fn));
+                    }
                 };
+
                 let arg_regs = args
                     .iter()
                     .map(|a| self.lower_mir_value(a, reg_map, instructions))
                     .collect();
+
                 instructions.push(VMOpcode::DollarEval {
                     dest: Some(dest_reg),
-                    fn_id: *fn_id,
+                    fn_id,
                     args: arg_regs,
                 });
             }

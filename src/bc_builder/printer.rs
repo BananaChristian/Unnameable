@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Write};
 
 use crate::bc_builder::bytecode::{BytecodeModule, DollarMode, VMOpcode};
-use crate::vm::VMValue;
+use crate::vm::{AllocId, VMValue};
 
 impl fmt::Display for DollarMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -11,6 +11,12 @@ impl fmt::Display for DollarMode {
             DollarMode::Read => write!(f, "Read"),
             DollarMode::None => write!(f, "None"),
         }
+    }
+}
+
+impl fmt::Display for AllocId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}#{}", self.kind, self.id)
     }
 }
 
@@ -44,7 +50,7 @@ impl fmt::Display for VMValue {
                 None => write!(f, "\\u{{{:06X}}}", c),
             },
             VMValue::Bool(v) => write!(f, "{}", v),
-            VMValue::Ptr(alloc_id, offset) => write!(f, "&alloc_{}+{}", alloc_id.0, offset),
+            VMValue::Ptr(alloc_id, offset) => write!(f, "&alloc_{}+{}", alloc_id, offset),
             VMValue::Array(elems) => {
                 write!(f, "[")?;
                 for (i, elem) in elems.iter().enumerate() {
@@ -227,7 +233,7 @@ impl BytecodePrinter {
             VMOpcode::ConstIsize { dest, val } => format!("r{} = {} (isize) ", dest, val),
             VMOpcode::ConstUSize { dest, val } => format!("r{} = {} (usize)", dest, val),
             VMOpcode::ConstBool { dest, val } => format!("r{} = {}", dest, val),
-            VMOpcode::ConstPtr { dest, addr } => format!("r{} = ptr {:#x}", dest, addr),
+            VMOpcode::ConstPtr { dest, addr, .. } => format!("r{} = ptr {:#x}", dest, addr),
 
             VMOpcode::Move { dest, src } => format!("r{} = r{}", dest, src),
 
@@ -275,7 +281,9 @@ impl BytecodePrinter {
                 format!("r{} = bitcast r{} {}", dest, src, to_ty)
             }
 
-            VMOpcode::LoadGlobal { dest, global_id } => {
+            VMOpcode::LoadGlobal {
+                dest, global_id, ..
+            } => {
                 format!("r{} = load_global @{}", dest, global_id)
             }
             VMOpcode::StoreGlobal { global_id, src } => {

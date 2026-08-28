@@ -5,7 +5,7 @@ expression: output
 === MIR OUTPUT ===
 module "test_module"
 
-func @foo() : u32 {
+func @foo() {
 bb0:
     %x = alloca u32 , align 4
     store 0, ptr %x, align 4, ty u32

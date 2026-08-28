@@ -1,21 +1,24 @@
 use crate::{
     mir::{MIRTy, MIRTykind},
-    vm::{AllocId, VM, VMValue},
+    vm::{AllocId, VM, VMValue, structures::MemoryKind},
 };
 
 impl<'a> VM<'a> {
     fn read_bytes(&mut self, alloc_id: &AllocId, offset: usize, len: usize) -> Vec<u8> {
         let Some(alloc) = self.memory.allocations.get(alloc_id) else {
-            self.report_ice(format!("Invalid or freed allocation ID: {}", alloc_id.0));
+            self.report_ice(format!("Invalid or freed allocation ID: {}", alloc_id));
             return vec![0u8; len];
         };
 
         let end = offset + len;
         if end > alloc.data.len() {
             self.report_ice(format!(
-            "Out-of-bounds read at AllocId({}) with offset {} and length {} (allocation size: {})",
-            alloc_id.0, offset, len, alloc.data.len()
-        ));
+                "Out-of-bounds read at {} with offset {} and length {} (allocation size: {})",
+                alloc_id,
+                offset,
+                len,
+                alloc.data.len()
+            ));
             return vec![0u8; len];
         }
 
@@ -23,10 +26,30 @@ impl<'a> VM<'a> {
     }
 
     fn write_bytes(&mut self, alloc_id: &AllocId, offset: usize, bytes: &[u8]) {
+        match alloc_id.kind {
+            MemoryKind::Code => {
+                self.report_ice(format!(
+                    "Attempted write to immutable .text (Code) segment at {} + offset {}",
+                    alloc_id, offset
+                ));
+                return;
+            }
+            MemoryKind::ROData => {
+                self.report_ice(format!(
+                    "Attempted write to read-only .rodata segment at {} + offset {}",
+                    alloc_id, offset
+                ));
+                return;
+            }
+            MemoryKind::Data | MemoryKind::Stack | MemoryKind::Heap => {
+                // Writable segments, proceed normally
+            }
+        }
+
         let len = match self.memory.allocations.get(alloc_id) {
             Some(alloc) => alloc.data.len(),
             None => {
-                self.report_ice(format!("Invalid or freed allocation ID: {}", alloc_id.0));
+                self.report_ice(format!("Invalid or freed allocation ID: {}", alloc_id));
                 return;
             }
         };
@@ -34,9 +57,12 @@ impl<'a> VM<'a> {
         let end = offset + bytes.len();
         if end > len {
             self.report_ice(format!(
-            "Out-of-bounds write at AllocId({}) with offset {} and length {} (allocation size: {})",
-            alloc_id.0, offset, bytes.len(), len
-        ));
+                "Out-of-bounds write {} with offset {} and length {} (allocation size: {})",
+                alloc_id,
+                offset,
+                bytes.len(),
+                len
+            ));
             return;
         }
 
@@ -93,17 +119,29 @@ impl<'a> VM<'a> {
             )),
             MIRTykind::Ptr => {
                 let offset_bytes = self.read_bytes(alloc_id, offset, 8);
-                let ptr_offset = usize::from_le_bytes(offset_bytes.try_into().unwrap());
+                let ptr_offset =
+                    usize::from_le_bytes(offset_bytes.try_into().unwrap_or_else(|_| [0u8; 8]));
 
-                // Retrieve target AllocId from relocations, defaulting to AllocId(0) if uninitialized/null
+                // Look up relocation at this memory offset
                 let target_alloc_id = self
                     .memory
                     .allocations
                     .get(alloc_id)
-                    .and_then(|alloc| alloc.relocations.get(&offset).copied())
-                    .unwrap_or(AllocId(0));
+                    .and_then(|alloc| alloc.relocations.get(&offset).copied());
 
-                VMValue::Ptr(target_alloc_id, ptr_offset)
+                match target_alloc_id {
+                    Some(target_id) => VMValue::Ptr(target_id, ptr_offset),
+                    None => {
+                        // Uninitialized or raw integer/null pointer:
+                        // You can represent null as VMValue::UInt(ptr_offset) or a null AllocId sentinel.
+                        if ptr_offset == 0 {
+                            VMValue::UInt(0)
+                        } else {
+                            // Raw numeric pointer offset with no tracked allocation relocation
+                            VMValue::UInt(ptr_offset)
+                        }
+                    }
+                }
             }
             MIRTykind::Array(elem_ty, count) => {
                 let elems = (0..*count)
@@ -231,21 +269,20 @@ impl<'a> VM<'a> {
             MIRTykind::Ptr => {
                 let (target_alloc_id, ptr_offset) = match val {
                     VMValue::Ptr(target_id, offset_val) => (Some(*target_id), *offset_val),
-                    VMValue::UInt(addr) => (None, *addr),
+                    VMValue::UInt(addr) => (None, *addr as usize),
+                    VMValue::Int(addr) => (None, *addr as usize),
                     _ => {
                         self.report_ice(format!(
-                            "Expected Ptr or UInt VMValue for pointer write, found {:?}",
-                            val
+                            "Expected Ptr, UInt, or Int VMValue for pointer write at {}, found {:?}",
+                            alloc_id, val
                         ));
                         (None, 0)
                     }
                 };
 
-                // Write the raw 8-byte offset into memory
                 let bytes = ptr_offset.to_le_bytes();
                 self.write_bytes(alloc_id, offset, &bytes);
 
-                // Record or clear the relocation at this offset
                 if let Some(alloc) = self.memory.allocations.get_mut(alloc_id) {
                     if let Some(target_id) = target_alloc_id {
                         alloc.relocations.insert(offset, target_id);
@@ -254,6 +291,7 @@ impl<'a> VM<'a> {
                     }
                 }
             }
+
             MIRTykind::Array(elem_ty, count) => {
                 let VMValue::Array(elems) = val else {
                     self.report_ice(

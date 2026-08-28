@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    mir::{CmpOp, MIRTy, StructId},
-    vm::VMValue,
+    mir::{CmpOp, MIRTy, StructId}, vm::{AllocId, VMValue},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +80,7 @@ pub enum VMOpcode {
     },
     ConstPtr {
         dest: u16,
+        alloc_id: AllocId,
         addr: usize,
     },
     ConstUndef {
@@ -140,6 +140,7 @@ pub enum VMOpcode {
     LoadGlobal {
         dest: u16,
         global_id: u32,
+        is_const: bool,
     },
     StoreGlobal {
         global_id: u32,
@@ -306,6 +307,7 @@ pub struct GlobalVar {
     pub id: u32,
     pub name: String,
     pub size_in_bytes: u32,
+    pub is_const: bool,
     pub ty: MIRTy,
     pub init_data: Option<VMValue>,
 }

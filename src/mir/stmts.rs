@@ -295,7 +295,7 @@ impl<'a> MIRBuilder<'a> {
 
             let mir_fn = MIRFn {
                 fn_id: new_fn_id,
-                name: mangled_name,
+                name: mangled_name.clone(),
                 params: mir_params.clone(),
                 dollar_mode,
                 linkage,
@@ -305,6 +305,7 @@ impl<'a> MIRBuilder<'a> {
             };
 
             self.module.functions.insert(new_fn_id, mir_fn);
+            self.fn_name_to_id.insert(mangled_name, new_fn_id);
 
             //  Save previous context
             let prev_fn = self.current_func;

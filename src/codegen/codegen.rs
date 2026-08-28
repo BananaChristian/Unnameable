@@ -12,8 +12,8 @@ use inkwell::{
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     mir::{
-        ConstantValue, GlobalId, MIRFnDecl, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl, MIRTy,
-        MIRTykind, MIRValue, Vreg,
+        ConstantValue, FnId, GlobalId, MIRFnDecl, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl,
+        MIRTy, MIRTykind, MIRValue, Vreg,
     },
     target::TargetSpec,
 };
@@ -25,6 +25,7 @@ pub struct Codegen<'ctx> {
     target_spec: &'ctx TargetSpec,
     pub vreg_map: HashMap<Vreg, BasicValueEnum<'ctx>>,
     pub global_map: HashMap<GlobalId, GlobalValue<'ctx>>,
+    pub func_map: HashMap<FnId, FunctionValue<'ctx>>,
     pub corrupted: bool,
     diagnostics: SharedDiagnostics,
 }
@@ -45,6 +46,7 @@ impl<'ctx> Codegen<'ctx> {
             target_spec,
             vreg_map: HashMap::new(),
             global_map: HashMap::new(),
+            func_map: HashMap::new(),
             corrupted: false,
             diagnostics,
         }
@@ -199,6 +201,10 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    pub fn get_llvm_fn(&self, fn_id: FnId) -> Option<FunctionValue<'ctx>> {
+        self.func_map.get(&fn_id).copied()
+    }
+
     fn lower_constant(&mut self, constant: &ConstantValue) -> BasicValueEnum<'ctx> {
         match constant {
             ConstantValue::I8(v) => self.context.i8_type().const_int(*v as u64, true).into(),
@@ -247,6 +253,18 @@ impl<'ctx> Codegen<'ctx> {
                 // Casting the integer constant directly into an LLVM pointer constant (inttoptr)
                 let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                 int_val.const_to_pointer(ptr_type).into()
+            }
+            ConstantValue::Func(fn_id) => {
+                // 1. Look up the LLVM FunctionValue using your fn_id map/table
+                let llvm_fn = self.get_llvm_fn(*fn_id).unwrap_or_else(|| {
+                    self.report_ice(format!("LLVM Codegen: FunctionId {:?} not emitted", fn_id))
+                });
+
+                // 2. Convert FunctionValue into a PointerValue (ptr @foo)
+                let ptr_val = llvm_fn.as_global_value().as_pointer_value();
+
+                // 3. Wrap as BasicValueEnum
+                ptr_val.into()
             }
             ConstantValue::Undef => self.context.i32_type().get_undef().into(),
             ConstantValue::Array(elements) => {

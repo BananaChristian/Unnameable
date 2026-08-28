@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
-    mir::{ConstantValue, GlobalId, MIRInstruction, MIRModule, MIRValue},
-    vm::{AllocId, EvalResultTable, VMValue},
+    mir::{ConstantValue, FnId, GlobalId, MIRInstruction, MIRModule, MIRValue},
+    vm::{EvalResultTable, MemoryKind, VMValue},
 };
 
 pub struct Folder<'a> {
@@ -36,7 +34,7 @@ impl<'a> Folder<'a> {
 
                         if let Some(val) = vm_val {
                             let const_mir_val =
-                                Self::vm_val_to_mir_val(val, &self.eval_table.global_allocs);
+                                Self::vm_val_to_mir_val(val);
                             *inst = MIRInstruction::Assign {
                                 dest: dest.clone(),
                                 src: const_mir_val,
@@ -60,7 +58,7 @@ impl<'a> Folder<'a> {
             .retain(|_, func| !func.name.starts_with("$$scope"));
     }
 
-    fn vm_val_to_mir_val(vm_val: &VMValue, global_allocs: &HashMap<AllocId, u32>) -> MIRValue {
+    fn vm_val_to_mir_val(vm_val: &VMValue) -> MIRValue {
         match vm_val {
             VMValue::I8(n) => MIRValue::Constant(ConstantValue::I8(*n)),
             VMValue::U8(n) => MIRValue::Constant(ConstantValue::U8(*n)),
@@ -80,14 +78,24 @@ impl<'a> Folder<'a> {
             VMValue::Char16(c) => MIRValue::Constant(ConstantValue::Char16(*c)),
             VMValue::Char32(c) => MIRValue::Constant(ConstantValue::Char32(*c)),
             VMValue::Bool(b) => MIRValue::Constant(ConstantValue::Bool(*b)),
-            VMValue::Ptr(alloc_id, offset) => match global_allocs.get(alloc_id) {
-                Some(&global_id) => MIRValue::Global(GlobalId(global_id as usize)),
-                None => MIRValue::Constant(ConstantValue::Ptr(*offset)),
+            VMValue::Ptr(alloc_id, offset) => match alloc_id.kind {
+                // Global data segments (mutable or read-only)
+                MemoryKind::Data | MemoryKind::ROData => {
+                    MIRValue::Global(GlobalId(alloc_id.id as usize))
+                }
+                // Code pointers (.text segment)
+                MemoryKind::Code => {
+                    MIRValue::Constant(ConstantValue::Func(FnId(alloc_id.id as usize)))
+                }
+                // Stack, Heap, or Raw Pointer offsets
+                MemoryKind::Stack | MemoryKind::Heap => {
+                    MIRValue::Constant(ConstantValue::Ptr(*offset))
+                }
             },
             VMValue::Array(elements) => {
                 let mir_elements: Vec<ConstantValue> = elements
                     .iter()
-                    .map(|e| match Self::vm_val_to_mir_val(e, global_allocs) {
+                    .map(|e| match Self::vm_val_to_mir_val(e) {
                         MIRValue::Constant(c) => c,
                         other => {
                             panic!("Array element folded to non-constant MIRValue: {:?}", other)
@@ -103,7 +111,7 @@ impl<'a> Folder<'a> {
             } => {
                 let mir_fields: Vec<ConstantValue> = fields
                     .iter()
-                    .map(|f| match Self::vm_val_to_mir_val(f, global_allocs) {
+                    .map(|f| match Self::vm_val_to_mir_val(f) {
                         MIRValue::Constant(c) => c,
                         other => {
                             panic!("Struct field folded to non-constant MIRValue: {:?}", other)
@@ -120,7 +128,7 @@ impl<'a> Folder<'a> {
             VMValue::Tuple(elements) => {
                 let mir_elements: Vec<ConstantValue> = elements
                     .iter()
-                    .map(|e| match Self::vm_val_to_mir_val(e, global_allocs) {
+                    .map(|e| match Self::vm_val_to_mir_val(e) {
                         MIRValue::Constant(c) => c,
                         other => {
                             panic!("Tuple element folded to non-constant MIRValue: {:?}", other)

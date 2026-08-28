@@ -4,5 +4,5 @@ mod vm;
 mod ops;
 mod helpers;
 
-pub use structures::{AllocId, Allocation, EvalResultTable, VMValue};
+pub use structures::{AllocId, Allocation, EvalResultTable, VMValue, MemoryKind};
 pub use vm::VM;

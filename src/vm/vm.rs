@@ -7,7 +7,7 @@ use crate::{
     mir::{CmpOp, MIRTykind},
     vm::{
         Allocation,
-        structures::{AllocId, EvalResultTable, VMFrame, VMMemory, VMValue},
+        structures::{AllocId, EvalResultTable, MemoryKind, VMFrame, VMMemory, VMValue},
     },
 };
 
@@ -15,7 +15,6 @@ pub struct VM<'a> {
     pub module: &'a BytecodeModule,
     pub eval_table: EvalResultTable,
     pub memory: VMMemory,
-    pub global_allocs: HashMap<u32, AllocId>, //Map global id to Alloc id
     diagnostics: SharedDiagnostics,
     pub corrupted: bool,
 }
@@ -26,13 +25,11 @@ impl<'a> VM<'a> {
             module,
             eval_table: EvalResultTable {
                 results: HashMap::new(),
-                global_allocs: HashMap::new(),
             },
             memory: VMMemory {
                 allocations: HashMap::new(),
                 next_alloc: 1,
             },
-            global_allocs: HashMap::new(),
             diagnostics,
             corrupted: false,
         };
@@ -42,8 +39,15 @@ impl<'a> VM<'a> {
 
     fn init_globals(&mut self) {
         for global in &self.module.globals {
-            let alloc_id = AllocId(self.memory.next_alloc);
-            self.memory.next_alloc += 1;
+            let kind = match global.is_const {
+                true => MemoryKind::ROData,
+                false => MemoryKind::Data,
+            };
+
+            let alloc_id = AllocId {
+                kind,
+                id: global.id,
+            };
 
             let data = vec![0u8; global.size_in_bytes as usize]; // zero-init the backing bytes
             self.memory.allocations.insert(
@@ -57,9 +61,6 @@ impl<'a> VM<'a> {
             if let Some(init_val) = &global.init_data {
                 self.write_typed(&alloc_id, 0, init_val, &global.ty);
             }
-
-            self.global_allocs.insert(global.id, alloc_id.clone());
-            self.eval_table.global_allocs.insert(alloc_id, global.id);
         }
     }
 
@@ -166,6 +167,13 @@ impl<'a> VM<'a> {
                         fields.iter().map(|r| self.read_reg(*r, frame)).collect();
                     self.write_reg(frame, dest, VMValue::Tuple(vals));
                 }
+                VMOpcode::ConstPtr {
+                    dest,
+                    alloc_id,
+                    addr,
+                } => {
+                    self.write_reg(frame, dest, VMValue::Ptr(alloc_id, addr));
+                }
                 VMOpcode::ConstStruct {
                     dest,
                     name,
@@ -184,10 +192,19 @@ impl<'a> VM<'a> {
                     );
                 }
 
-                VMOpcode::LoadGlobal { dest, global_id } => {
-                    let Some(alloc_id) = self.global_allocs.get(&global_id).cloned() else {
-                        self.report_ice(format!("Undefined global_id: {}", global_id));
-                        return VMValue::Poison;
+                VMOpcode::LoadGlobal {
+                    dest,
+                    global_id,
+                    is_const,
+                } => {
+                    let kind = if is_const {
+                        MemoryKind::ROData
+                    } else {
+                        MemoryKind::Data
+                    };
+                    let alloc_id = AllocId {
+                        kind,
+                        id: global_id,
                     };
 
                     // Load a base pointer referencing the global's allocation slot
@@ -201,13 +218,7 @@ impl<'a> VM<'a> {
                     self.write_reg(frame, dest, val);
                 }
                 VMOpcode::Alloca { dest, size, .. } => {
-                    let alloc_id = AllocId(self.memory.next_alloc);
-                    self.memory.next_alloc += 1;
-                    let allocation = Allocation {
-                        data: vec![0u8; size as usize], // zero-init, or use a sentinel byte for "uninitialized" if you want poison-tracking at byte granularity
-                        relocations: HashMap::new(),
-                    };
-                    self.memory.allocations.insert(alloc_id.clone(), allocation);
+                    let alloc_id = self.memory.allocate_stack(size as usize);
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
                 VMOpcode::Load { dest, ptr, ty, .. } => {
@@ -372,8 +383,11 @@ impl<'a> VM<'a> {
                         // Integer/Numeric -> Pointer (inttoptr)
                         (v, MIRTykind::Ptr) if v.is_integer() => {
                             let offset = v.as_u128() as usize;
-                            // AllocId(0) denotes an unallocated/raw address space or null
-                            VMValue::Ptr(AllocId(0), offset)
+                            let null_alloc_id = AllocId {
+                                kind: MemoryKind::Data,
+                                id: u32::MAX,
+                            };
+                            VMValue::Ptr(null_alloc_id, offset)
                         }
 
                         // Pointer -> Integer (ptrtoint)
