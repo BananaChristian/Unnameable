@@ -1,3 +1,3 @@
 mod layout;
 
-pub use layout::{Layout,LayoutEngine};
+pub use layout::{Layout,LayoutEngine, LayoutError};

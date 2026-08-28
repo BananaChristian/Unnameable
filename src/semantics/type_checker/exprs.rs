@@ -278,8 +278,7 @@ impl<'a> TypeChecker<'a> {
         };
         let ptr_id = self.registry.issue_id(ptr_kind.clone());
         let ptr_layout =
-            self.layout_engine
-                .layout_of(&ptr_kind, ptr_id.clone(), src_ty.span.clone());
+            self.get_layout(&ptr_kind, ptr_id.clone(), src_ty.span.clone());
         TypeInfo {
             type_id: ptr_id,
             name: TypeInfo::name(ptr_kind.clone()),

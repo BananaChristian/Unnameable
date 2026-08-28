@@ -208,6 +208,13 @@ impl TypeInfo {
         }
     }
 
+    pub fn is_unknown(&self) -> bool {
+        match self.kind {
+            ResolvedTypeKind::Unknown => true,
+            _ => false,
+        }
+    }
+
     pub fn types_match(expected: &TypeInfo, actual: &TypeInfo) -> bool {
         match (&expected.kind, &actual.kind) {
             (ResolvedTypeKind::Unknown, ResolvedTypeKind::Unknown) => true,
@@ -447,7 +454,6 @@ impl<'a> Semantics<'a> {
         checker.check();
         if checker.corrupted {
             self.corrupted = true;
-            checker.flush_layout_errors();
         }
     }
 

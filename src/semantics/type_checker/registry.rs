@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 pub struct StructuralTypeKey(pub ResolvedTypeKind);
 
 impl StructuralTypeKey {
-    pub fn strip_spans(kind: &ResolvedTypeKind) -> ResolvedTypeKind {
+    pub fn strip_type(kind: &ResolvedTypeKind) -> ResolvedTypeKind {
         match kind {
             ResolvedTypeKind::Pointer { inner } => ResolvedTypeKind::Pointer {
                 inner: Box::new(Self::clean_type_info(inner)),
@@ -43,18 +43,11 @@ impl StructuralTypeKey {
             },
 
             ResolvedTypeKind::Struct {
-                name,
-                gen_type_params,
-                members,
+                name,..
             } => ResolvedTypeKind::Struct {
                 name: name.clone(),
-                gen_type_params: gen_type_params.iter().map(Self::clean_type_info).collect(),
-                members: members
-                    .iter()
-                    .map(|(name, info, _node_id)| {
-                        (name.clone(), Self::clean_type_info(info), NodeId::default())
-                    })
-                    .collect(),
+                gen_type_params: Vec::new(),
+                members: Vec::new(),
             },
             ResolvedTypeKind::Enum {
                 name,
@@ -98,20 +91,21 @@ impl StructuralTypeKey {
     fn clean_type_info(info: &TypeInfo) -> TypeInfo {
         let mut clean = info.clone();
         clean.span = Span::default();
-        clean.kind = Self::strip_spans(&info.kind);
+        clean.kind = Self::strip_type(&info.kind);
         clean
     }
 }
 
 impl PartialEq for StructuralTypeKey {
     fn eq(&self, other: &Self) -> bool {
-        Self::strip_spans(&self.0) == Self::strip_spans(&other.0)
+        Self::strip_type(&self.0) == Self::strip_type(&other.0)
     }
 }
 
+
 impl Hash for StructuralTypeKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        Self::strip_spans(&self.0).hash(state);
+        Self::strip_type(&self.0).hash(state);
     }
 }
 
