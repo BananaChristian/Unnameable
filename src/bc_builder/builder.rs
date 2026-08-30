@@ -110,7 +110,7 @@ impl<'a> BytecodeBuilder<'a> {
         }
     }
 
-    fn collect_root_dollar_scopes(&self, sorted_fns: &Vec<&MIRFn>) -> Vec<RootDollarEval> {
+    fn collect_root_dollar_scopes(&self, sorted_fns: &[&MIRFn]) -> Vec<RootDollarEval> {
         let mut inner_scopes = std::collections::HashSet::new();
         let mut candidates: Vec<RootDollarEval> = Vec::new();
 
