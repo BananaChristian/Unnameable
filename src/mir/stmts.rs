@@ -6,8 +6,8 @@ use crate::{
         MIRTy, MIRVariant,
         builder::MIRBuilder,
         instructions::{
-            ArmInfo, MIRDollarMode, MIREnum, MIRFn, MIRFnDecl, MIRGlobal, MIRLinkage, MIRParam,
-            MIRStructDecl, MIRTykind, MIRVariantArm, Terminator,
+            ArmInfo, MIRBody, MIRDollarMode, MIREnum, MIRFn, MIRGlobal, MIRLinkage,
+            MIRParam, MIRStructDecl, MIRTykind, MIRVariantArm, Terminator,
         },
     },
 };
@@ -213,6 +213,7 @@ impl<'a> MIRBuilder<'a> {
             ..
         } = &stmt.kind
         {
+            let fn_id = self.alloc_fn_id();
             let linkage = match *exposed {
                 true => MIRLinkage::Public,
                 false => MIRLinkage::Private,
@@ -232,13 +233,17 @@ impl<'a> MIRBuilder<'a> {
 
             let ret_ty = self.get_type(&return_type.hir_id);
 
-            let declaration = MIRFnDecl {
+            let declaration = MIRFn {
+                fn_id,
                 name: name.clone(),
                 params: mir_params.clone(),
                 linkage,
                 ret_ty,
+                body: None,
             };
-            self.module.func_declarations.push(declaration);
+
+            self.module.functions.insert(fn_id, declaration);
+            self.fn_name_to_id.insert(name.clone(), fn_id);
         }
     }
 
@@ -292,16 +297,19 @@ impl<'a> MIRBuilder<'a> {
                 .collect();
 
             let ret_ty = self.get_type(&return_type.hir_id);
+            let mir_body = MIRBody {
+                blocks: HashMap::new(),
+                entry_block: entry_block_id,
+                dollar_mode,
+            };
 
             let mir_fn = MIRFn {
                 fn_id: new_fn_id,
                 name: mangled_name.clone(),
                 params: mir_params.clone(),
-                dollar_mode,
                 linkage,
-                blocks: HashMap::new(),
-                entry_block: entry_block_id,
                 ret_ty,
+                body: Some(mir_body),
             };
 
             self.module.functions.insert(new_fn_id, mir_fn);

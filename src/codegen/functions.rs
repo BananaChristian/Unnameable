@@ -37,22 +37,26 @@ impl<'ctx> Codegen<'ctx> {
             MIRLinkage::Private => Some(Linkage::Private),
         };
 
-
-        let fn_val=self.module.add_function(&func.name, fn_type, linkage);
-        self.func_map.insert(func.fn_id.clone(),fn_val );
+        let fn_val = self.module.add_function(&func.name, fn_type, linkage);
+        self.func_map.insert(func.fn_id.clone(), fn_val);
         fn_val
     }
 
     pub fn lower_func_body(&mut self, func: &MIRFn, function: FunctionValue<'ctx>) {
+        let body = func
+            .body
+            .as_ref()
+            .expect("lower_func_body called on function declaration");
+
         let mut bb_map: HashMap<BlockId, BasicBlock<'ctx>> = HashMap::new();
 
         let entry_bb = self
             .context
-            .append_basic_block(function, &format!("bb{}", func.entry_block.0));
-        bb_map.insert(func.entry_block, entry_bb);
+            .append_basic_block(function, &format!("bb{}", body.entry_block.0));
+        bb_map.insert(body.entry_block, entry_bb);
 
-        for (&block_id, _) in func.blocks.iter() {
-            if block_id != func.entry_block {
+        for (&block_id, _) in body.blocks.iter() {
+            if block_id != body.entry_block {
                 let bb = self
                     .context
                     .append_basic_block(function, &format!("bb{}", block_id.0));
@@ -68,7 +72,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        for (&block_id, block) in func.blocks.iter() {
+        for (&block_id, block) in body.blocks.iter() {
             let llvm_bb = bb_map.get(&block_id).expect("Missing bb");
             self.builder.position_at_end(*llvm_bb);
             for instr in &block.instructions {

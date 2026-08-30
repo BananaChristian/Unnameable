@@ -1,13 +1,18 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    AddressSpace, builder::Builder, context::Context, module::{self, Linkage, Module}, types::{BasicTypeEnum, FunctionType}, values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
+    AddressSpace,
+    builder::Builder,
+    context::Context,
+    module::{Linkage, Module},
+    types::{BasicTypeEnum},
+    values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
 };
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     mir::{
-        ConstantValue, FnId, GlobalId, MIRFnDecl, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl,
+        ConstantValue, FnId, GlobalId, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl,
         MIRTy, MIRTykind, MIRValue, Vreg,
     },
     target::TargetSpec,
@@ -33,7 +38,7 @@ impl<'ctx> Codegen<'ctx> {
         mir_module: &'ctx MIRModule,
         diagnostics: SharedDiagnostics,
     ) -> Self {
-        let module_name= &mir_module.name;
+        let module_name = &mir_module.name;
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         Codegen {
@@ -58,17 +63,13 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         let mut sorted_globals: Vec<_> = self.mir_module.globals.values().collect();
-        sorted_globals.sort_by_key(|g| g.global_id); // Or g.name
+        sorted_globals.sort_by_key(|g| g.global_id);
         for global in sorted_globals {
             self.lower_globals(global);
         }
 
-        for decl in &self.mir_module.func_declarations {
-            self.lower_func_decls(decl);
-        }
-
         let mut sorted_fns: Vec<_> = self.mir_module.functions.values().collect();
-        sorted_fns.sort_by_key(|f| &f.fn_id);
+        sorted_fns.sort_by_key(|f| f.fn_id);
 
         let mut fn_pairs = Vec::with_capacity(sorted_fns.len());
         for mir_fn in sorted_fns {
@@ -77,42 +78,12 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         for (mir_fn, fn_val) in fn_pairs {
-            if !mir_fn.blocks.is_empty() {
+            if mir_fn.body.is_some() {
                 self.lower_func_body(mir_fn, fn_val);
             }
         }
     }
 
-    fn lower_func_decls(&mut self, fn_decl: &MIRFnDecl) -> FunctionValue<'ctx> {
-        let param_types: Vec<BasicTypeEnum<'ctx>> = fn_decl
-            .params
-            .iter()
-            .map(|param| self.get_llvmty(&param.ty).into())
-            .collect();
-
-        let param_types_meta: Vec<_> = param_types.iter().map(|t| (*t).into()).collect();
-
-        let fn_type: FunctionType<'ctx> = match &fn_decl.ret_ty.kind {
-            MIRTykind::Unit => self.context.void_type().fn_type(&param_types_meta, false),
-            _ => match self.get_llvmty(&fn_decl.ret_ty) {
-                BasicTypeEnum::IntType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::FloatType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::PointerType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::StructType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::ArrayType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::VectorType(t) => t.fn_type(&param_types_meta, false),
-            },
-        };
-
-        let linkage = match &fn_decl.linkage {
-            MIRLinkage::Public => None,
-            MIRLinkage::Private => Some(Linkage::Private),
-        };
-
-        let fn_val = self.module.add_function(&fn_decl.name, fn_type, linkage);
-
-        fn_val
-    }
 
     fn lower_structs(&mut self, struct_decl: &MIRStructDecl) {
         let struct_ty = self.context.opaque_struct_type(&struct_decl.name);

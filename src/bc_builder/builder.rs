@@ -43,38 +43,42 @@ impl<'a> BytecodeBuilder<'a> {
     pub fn build(&mut self) -> BytecodeModule {
         self.translate_globals();
 
-        // Sort functions by name
         let mut sorted_fns: Vec<_> = self.mir_module.functions.values().collect();
-        sorted_fns.sort_by(|a, b| a.name.cmp(&b.name));
+        sorted_fns.sort_by_key(|f| f.fn_id);
 
         for func in &sorted_fns {
-            if func.dollar_mode != MIRDollarMode::None {
-                let fn_idx = self.bytecode_module.functions.len() as u32;
-                self.bytecode_module
-                    .fn_symbols
-                    .insert(func.name.clone(), fn_idx);
-
-                // Push a placeholder BytecodeFn so indices match vector positions
-                let mut placeholder = BytecodeFn::new();
-                placeholder.name = func.name.clone();
-                placeholder.mode = self.convert_dollar_mode(&func.dollar_mode);
-                placeholder.param_count = func.params.len() as u16;
-                self.bytecode_module.functions.push(placeholder);
+            let Some(body) = func.body.as_ref() else {
+                continue;
+            };
+            if body.dollar_mode == MIRDollarMode::None {
+                continue;
             }
+
+            let fn_idx = self.bytecode_module.functions.len() as u32;
+            self.bytecode_module
+                .fn_symbols
+                .insert(func.name.clone(), fn_idx);
+
+            let mut placeholder = BytecodeFn::new();
+            placeholder.name = func.name.clone();
+            placeholder.mode = self.convert_dollar_mode(&body.dollar_mode);
+            placeholder.param_count = func.params.len() as u16;
+            self.bytecode_module.functions.push(placeholder);
         }
 
-        // Translate function bodies into pre-allocated slots
         for func in &sorted_fns {
-            if func.dollar_mode != MIRDollarMode::None {
-                let &fn_idx = self.bytecode_module.fn_symbols.get(&func.name).unwrap();
-
-                // Translate function and write directly to its pre-allocated slot
-                let bc_func = self.translate_fn_body(func);
-                self.bytecode_module.functions[fn_idx as usize] = bc_func;
+            let Some(body) = func.body.as_ref() else {
+                continue;
+            };
+            if body.dollar_mode == MIRDollarMode::None {
+                continue;
             }
+
+            let &fn_idx = self.bytecode_module.fn_symbols.get(&func.name).unwrap();
+            let bc_func = self.translate_fn_body(func);
+            self.bytecode_module.functions[fn_idx as usize] = bc_func;
         }
 
-        // Discover root scopes and emit orchestrator
         let root_scopes = self.collect_root_dollar_scopes(&sorted_fns);
         self.emit_top_level_orchestrator(&root_scopes);
 
@@ -106,18 +110,22 @@ impl<'a> BytecodeBuilder<'a> {
         }
     }
 
-    fn collect_root_dollar_scopes(&self, sorted_fns: &[&MIRFn]) -> Vec<RootDollarEval> {
+    fn collect_root_dollar_scopes(&self, sorted_fns: &Vec<&MIRFn>) -> Vec<RootDollarEval> {
         let mut inner_scopes = std::collections::HashSet::new();
         let mut candidates: Vec<RootDollarEval> = Vec::new();
 
         // Collect all dollar scopes invoked inside any dollar scope
         for func in sorted_fns {
-            if func.name.starts_with("$$scope") {
-                for block in func.blocks.values() {
-                    for inst in &block.instructions {
-                        if let MIRInstruction::DollarEval { scope_fn, .. } = inst {
-                            inner_scopes.insert(scope_fn.clone());
-                        }
+            if !func.name.starts_with("$$scope") {
+                continue;
+            }
+            let Some(body) = func.body.as_ref() else {
+                continue;
+            };
+            for block in body.blocks.values() {
+                for inst in &block.instructions {
+                    if let MIRInstruction::DollarEval { scope_fn, .. } = inst {
+                        inner_scopes.insert(scope_fn.clone());
                     }
                 }
             }
@@ -125,16 +133,20 @@ impl<'a> BytecodeBuilder<'a> {
 
         // Collect dollar scopes invoked outside dollar scopes
         for func in sorted_fns {
-            if !func.name.starts_with("$$scope") {
-                for block in func.blocks.values() {
-                    for inst in &block.instructions {
-                        if let MIRInstruction::DollarEval { scope_fn, args, .. } = inst {
-                            if !candidates.iter().any(|r| &r.scope_fn == scope_fn) {
-                                candidates.push(RootDollarEval {
-                                    scope_fn: scope_fn.clone(),
-                                    args: args.clone(),
-                                });
-                            }
+            if func.name.starts_with("$$scope") {
+                continue;
+            }
+            let Some(body) = func.body.as_ref() else {
+                continue;
+            };
+            for block in body.blocks.values() {
+                for inst in &block.instructions {
+                    if let MIRInstruction::DollarEval { scope_fn, args, .. } = inst {
+                        if !candidates.iter().any(|r| &r.scope_fn == scope_fn) {
+                            candidates.push(RootDollarEval {
+                                scope_fn: scope_fn.clone(),
+                                args: args.clone(),
+                            });
                         }
                     }
                 }
@@ -321,9 +333,19 @@ impl<'a> BytecodeBuilder<'a> {
             MIRValue::FunctionRef(func_id) => {
                 let dest = reg_map.next_index;
                 reg_map.next_index += 1;
+                let Some(mir_fn) = self.mir_module.functions.get(func_id) else {
+                    self.report_ice(format!("FunctionRef {:?} not found in MIR module", func_id));
+                };
+                let Some(&bc_idx) = self.bytecode_module.fn_symbols.get(&mir_fn.name) else {
+                    self.report_ice(format!(
+                        "Function '{}' not in bytecode module (declarations and runtime functions cannot be used as function pointers in VM)",
+                        mir_fn.name
+                    ));
+                };
+
                 instructions.push(VMOpcode::LoadFunc {
                     dest,
-                    fn_id: func_id.0 as u32,
+                    fn_id: bc_idx,
                 });
                 dest
             }
@@ -422,9 +444,14 @@ impl<'a> BytecodeBuilder<'a> {
     }
 
     fn translate_fn_body(&mut self, func: &MIRFn) -> BytecodeFn {
+        let body = func
+            .body
+            .as_ref()
+            .expect("translate_fn_body called on declaration");
+
         let mut bc_func = BytecodeFn::new();
         bc_func.name = func.name.clone();
-        bc_func.mode = self.convert_dollar_mode(&func.dollar_mode);
+        bc_func.mode = self.convert_dollar_mode(&body.dollar_mode);
         bc_func.param_count = func.params.len() as u16;
 
         let mut reg_map = RegisterMap::new();
@@ -434,12 +461,12 @@ impl<'a> BytecodeBuilder<'a> {
             reg_map.get_or_insert(&param.name);
         }
 
-        let mut block_order = vec![func.entry_block];
-        let mut sorted_block_ids: Vec<_> = func.blocks.keys().copied().collect();
-        sorted_block_ids.sort(); // Deterministic block order
+        let mut block_order = vec![body.entry_block];
+        let mut sorted_block_ids: Vec<_> = body.blocks.keys().copied().collect();
+        sorted_block_ids.sort();
 
         for id in sorted_block_ids {
-            if id != func.entry_block {
+            if id != body.entry_block {
                 block_order.push(id);
             }
         }
@@ -447,7 +474,7 @@ impl<'a> BytecodeBuilder<'a> {
         let mut block_offsets: HashMap<BlockId, usize> = HashMap::new();
 
         for block_id in &block_order {
-            let block = &func.blocks[block_id];
+            let block = &body.blocks[block_id];
             block_offsets.insert(*block_id, instructions.len());
 
             for inst in &block.instructions {
@@ -455,7 +482,7 @@ impl<'a> BytecodeBuilder<'a> {
                     inst,
                     &mut reg_map,
                     &mut instructions,
-                    &func.dollar_mode,
+                    &body.dollar_mode,
                 );
             }
 

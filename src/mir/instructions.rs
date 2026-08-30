@@ -358,19 +358,16 @@ pub struct MIRFn {
     pub fn_id: FnId,
     pub name: String,
     pub params: Vec<MIRParam>,
-    pub dollar_mode: MIRDollarMode,
-    pub linkage: MIRLinkage,
-    pub blocks: HashMap<BlockId, BasicBlock>,
-    pub entry_block: BlockId,
     pub ret_ty: MIRTy,
+    pub linkage: MIRLinkage,
+    pub body: Option<MIRBody>, // None for declarations
 }
 
 #[derive(Debug, Clone)]
-pub struct MIRFnDecl {
-    pub name: String,
-    pub params: Vec<MIRParam>,
-    pub ret_ty: MIRTy,
-    pub linkage: MIRLinkage,
+pub struct MIRBody {
+    pub blocks: HashMap<BlockId, BasicBlock>,
+    pub entry_block: BlockId,
+    pub dollar_mode: MIRDollarMode,
 }
 
 #[derive(Debug, Clone)]
@@ -418,7 +415,6 @@ pub struct MIRModule {
     pub name: String, //Module name
     pub globals: HashMap<GlobalId, MIRGlobal>,
     pub structs: HashMap<StructId, MIRStructDecl>,
-    pub func_declarations: Vec<MIRFnDecl>,
     pub functions: HashMap<FnId, MIRFn>,
 }
 

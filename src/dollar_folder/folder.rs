@@ -27,7 +27,11 @@ impl<'a> Folder<'a> {
 
     pub fn fold(&mut self) {
         for func in self.mir_module.functions.values_mut() {
-            for block in func.blocks.values_mut() {
+            let Some(body) = func.body.as_mut() else {
+                continue;
+            };
+
+            for block in body.blocks.values_mut() {
                 for inst in &mut block.instructions {
                     if let MIRInstruction::DollarEval { dest, scope_fn, .. } = inst {
                         let vm_val = self.eval_table.results.get(scope_fn);
@@ -41,11 +45,13 @@ impl<'a> Folder<'a> {
                         } else {
                             self.corrupted = true;
                             self.diagnostics.borrow_mut().report(CompilerError::ice(
-                                format!(
+                            format!(
                                 "Dollar scope '{}' was evaluated but missing in EvalResultTable",
-                                scope_fn),Phase::MIRBuilder,
-                                None,
-                            ));
+                                scope_fn
+                            ),
+                            Phase::MIRBuilder,
+                            None,
+                        ));
                         }
                     }
                 }
@@ -56,7 +62,6 @@ impl<'a> Folder<'a> {
             .functions
             .retain(|_, func| !func.name.starts_with("$$scope"));
     }
-
     fn vm_val_to_mir_val(vm_val: &VMValue) -> MIRValue {
         match vm_val {
             VMValue::I8(n) => MIRValue::Constant(ConstantValue::I8(*n)),

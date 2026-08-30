@@ -3,7 +3,7 @@ use std::fmt::{self};
 use crate::mir::{
     MIRModule,
     instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRDollarMode, MIRFn, MIRFnDecl,
+        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRBody, MIRDollarMode, MIRFn,
         MIRGlobal, MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind,
         MIRValue, StructId, Terminator, Vreg,
     },
@@ -33,14 +33,6 @@ impl fmt::Display for MIRModule {
                 if let Some(global) = self.globals.get(&id) {
                     writeln!(f, "{global}")?;
                 }
-            }
-            writeln!(f)?;
-        }
-
-        // Print function declarations
-        if !self.func_declarations.is_empty() {
-            for decl in &self.func_declarations {
-                writeln!(f, "{decl}")?;
             }
             writeln!(f)?;
         }
@@ -449,22 +441,28 @@ impl fmt::Display for MIRStructDecl {
     }
 }
 
-impl fmt::Display for MIRFnDecl {
+impl fmt::Display for MIRBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let params_str = self
-            .params
-            .iter()
-            .map(|p| p.to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
+        let mut block_ids: Vec<_> = self.blocks.keys().cloned().collect();
+        block_ids.sort_by_key(|b| b.0);
 
-        let linkage_str = match self.linkage {
-            MIRLinkage::Public => "expose ",
-            MIRLinkage::Private => "",
-        };
+        // Entry block first, then the rest
+        if let Some(pos) = block_ids.iter().position(|id| *id == self.entry_block) {
+            let entry = block_ids.remove(pos);
+            block_ids.insert(0, entry);
+        }
 
-        // Output signature: $$ expose func @my_fn(i32 %x) {
-        writeln!(f, "{}func @{}({})", linkage_str, self.name, params_str)
+        for (i, id) in block_ids.iter().enumerate() {
+            if let Some(block) = self.blocks.get(id) {
+                write!(f, "{block}")?;
+                if i < block_ids.len() - 1 {
+                    writeln!(f, "\n")?;
+                } else {
+                    writeln!(f)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -482,28 +480,20 @@ impl fmt::Display for MIRFn {
             MIRLinkage::Private => "",
         };
 
-        // Output signature: $$ expose func @my_fn(i32 %x) {
-        writeln!(
-            f,
-            "{}{}func @{}({}) {{",
-            self.dollar_mode, linkage_str, self.name, params_str
-        )?;
-
-        // Deterministic sorting of basic blocks starting from entry_block
-        let mut block_ids: Vec<_> = self.blocks.keys().cloned().collect();
-        block_ids.sort_by_key(|b| b.0);
-
-        for (i, id) in block_ids.iter().enumerate() {
-            if let Some(block) = self.blocks.get(id) {
-                write!(f, "{block}")?;
-                if i < block_ids.len() - 1 {
-                    writeln!(f, "\n")?;
-                } else {
-                    writeln!(f)?;
-                }
+        match &self.body {
+            Some(body) => {
+                writeln!(
+                    f,
+                    "<{}> {}func @{}({}) {{",
+                    self.fn_id, linkage_str, self.name, params_str
+                )?;
+                write!(f, "{body}")?;
+                write!(f, "}}")
+            }
+            None => {
+                writeln!(f, "<{}> {}func @{}({});",self.fn_id, linkage_str, self.name, params_str)
             }
         }
-        write!(f, "}}")
     }
 }
 

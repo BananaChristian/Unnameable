@@ -89,7 +89,6 @@ impl<'a> MIRBuilder<'a> {
                 name: module_name,
                 globals: HashMap::new(),
                 structs: HashMap::new(),
-                func_declarations: Vec::new(),
                 functions: HashMap::new(),
             },
             struct_name_to_id: HashMap::new(),
@@ -934,11 +933,27 @@ impl<'a> MIRBuilder<'a> {
             );
         };
 
-        let Some(block) = func.blocks.get_mut(&block_id) else {
-            self.report_ice(
-                format!("Active block {} not found in function {}", block_id, fn_id),
-                span,
-            );
+        let body = match func.body.as_mut() {
+            Some(b) => b,
+            None => {
+                self.report_ice(
+                    format!(
+                        "Cannot insert instructions to a function declaration {}",
+                        fn_id
+                    ),
+                    span,
+                );
+            }
+        };
+
+        let block = match body.blocks.get_mut(&block_id) {
+            Some(b) => b,
+            None => {
+                self.report_ice(
+                    format!("active block {} not found in function {}", block_id, fn_id),
+                    span,
+                );
+            }
         };
 
         block.instructions.push(instruction);
@@ -1127,7 +1142,20 @@ impl<'a> MIRBuilder<'a> {
             );
         };
 
-        func.blocks.insert(block.id, block.clone());
+        let body = match func.body.as_mut() {
+            Some(b) => b,
+            None => {
+                self.report_ice(
+                    format!(
+                        "Cannot insert instructions to a function declaration {}",
+                        fn_id
+                    ),
+                    span,
+                );
+            }
+        };
+
+        body.blocks.insert(block.id, block.clone());
     }
 
     pub fn set_terminator(&mut self, terminator: Terminator, span: Option<Span>) {
@@ -1145,18 +1173,37 @@ impl<'a> MIRBuilder<'a> {
             );
         };
 
-        let Some(func) = self.module.functions.get_mut(&fn_id) else {
-            self.report_ice(
-                format!("Active function {} not found in module", fn_id),
-                None,
-            );
+        let func = match self.module.functions.get_mut(&fn_id) {
+            Some(f) => f,
+            None => {
+                self.report_ice(
+                    format!("Active function {} not found in module", fn_id),
+                    span,
+                );
+            }
         };
 
-        let Some(block) = func.blocks.get_mut(&block_id) else {
-            self.report_ice(
-                format!("Active block {} not found in function {}", block_id, fn_id),
-                None,
-            );
+        let body = match func.body.as_mut() {
+            Some(b) => b,
+            None => {
+                self.report_ice(
+                    format!(
+                        "Cannot insert instructions to a function declaration {}",
+                        fn_id
+                    ),
+                    span,
+                );
+            }
+        };
+
+        let block = match body.blocks.get_mut(&block_id) {
+            Some(b) => b,
+            None => {
+                self.report_ice(
+                    format!("active block {} not found in function {}", block_id, fn_id),
+                    span,
+                );
+            }
         };
 
         block.terminator = terminator;

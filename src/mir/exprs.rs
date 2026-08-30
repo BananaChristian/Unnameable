@@ -7,8 +7,8 @@ use crate::{
         MIRGlobal, MIRInstruction, StructId,
         builder::MIRBuilder,
         instructions::{
-            ArmInfo, ConstantValue, FuncSig, MIRDollarMode, MIRFn, MIRLinkage, MIROps, MIRParam,
-            MIRTy, MIRTykind, MIRValue, Terminator,
+            ArmInfo, ConstantValue, FuncSig, MIRBody, MIRDollarMode, MIRFn, MIRLinkage, MIROps,
+            MIRParam, MIRTy, MIRTykind, MIRValue, Terminator,
         },
     },
 };
@@ -392,6 +392,11 @@ impl<'a> MIRBuilder<'a> {
 
             let mut blocks = HashMap::new();
             blocks.insert(entry_block_id, entry_block);
+            let mir_body = MIRBody {
+                blocks,
+                entry_block: entry_block_id,
+                dollar_mode: MIRDollarMode::Full,
+            };
 
             let ret_ty = match result {
                 Some(res) => self.get_type(&res.hir_id),
@@ -406,11 +411,9 @@ impl<'a> MIRBuilder<'a> {
                 fn_id: fn_id.clone(),
                 name: scope_fn_name.clone(),
                 params: scope_fn_params.clone(), // Pass the populated parameter list
-                dollar_mode: MIRDollarMode::Full,
                 linkage: MIRLinkage::Private,
-                entry_block: entry_block_id,
-                blocks,
                 ret_ty,
+                body: Some(mir_body),
             };
 
             self.module.functions.insert(fn_id, scope_fn);
