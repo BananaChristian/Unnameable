@@ -222,18 +222,6 @@ impl<'a> BytecodeBuilder<'a> {
                     addr: *offset,
                 });
             }
-
-            ConstantValue::Func(fn_id) => {
-                let alloc_id = AllocId {
-                    kind: MemoryKind::Code,
-                    id: fn_id.0 as u32,
-                };
-                instructions.push(VMOpcode::ConstPtr {
-                    dest,
-                    alloc_id,
-                    addr: 0,
-                });
-            }
             ConstantValue::F32(_) => todo!("float constants"),
             ConstantValue::F64(_) => todo!("float constants"),
             ConstantValue::Char8(c) => instructions.push(VMOpcode::ConstChar8 { dest, val: *c }),
@@ -330,6 +318,15 @@ impl<'a> BytecodeBuilder<'a> {
                 });
                 dest
             }
+            MIRValue::FunctionRef(func_id) => {
+                let dest = reg_map.next_index;
+                reg_map.next_index += 1;
+                instructions.push(VMOpcode::LoadFunc {
+                    dest,
+                    fn_id: func_id.0 as u32,
+                });
+                dest
+            }
             MIRValue::Poison => panic!("Poison value in bytecode lowering"),
         }
     }
@@ -355,7 +352,6 @@ impl<'a> BytecodeBuilder<'a> {
             ConstantValue::F32(v) => VMValue::F32(*v),
             ConstantValue::F64(v) => VMValue::F64(*v),
             ConstantValue::Ptr(offset) => VMValue::UInt(*offset),
-            ConstantValue::Func(id) => VMValue::UInt(id.0),
             ConstantValue::Undef => VMValue::Poison,
             ConstantValue::Array(elements) => {
                 let vm_elems = elements
@@ -629,18 +625,32 @@ impl<'a> BytecodeBuilder<'a> {
                 });
             }
 
-            MIRInstruction::Call { dest, callee, args } => {
+            MIRInstruction::Call {
+                dest, callee, args, ..
+            } => {
                 let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
-                let fn_id = self.bytecode_module.fn_symbols[callee];
+
                 let arg_regs = args
                     .iter()
                     .map(|a| self.lower_mir_value(a, reg_map, instructions))
                     .collect();
-                instructions.push(VMOpcode::Call {
-                    dest: Some(dest_reg),
-                    fn_id,
-                    args: arg_regs,
-                });
+
+                let call_inst = match callee {
+                    MIRValue::FunctionRef(id) => VMOpcode::CallDirect {
+                        dest: Some(dest_reg),
+                        fn_id: id.0 as u32,
+                        args: arg_regs,
+                    },
+                    other => {
+                        let callee_reg = self.lower_mir_value(other, reg_map, instructions);
+                        VMOpcode::CallIndirect {
+                            dest: Some(dest_reg),
+                            callee: callee_reg,
+                            args: arg_regs,
+                        }
+                    }
+                };
+                instructions.push(call_inst);
             }
 
             MIRInstruction::DollarEval {

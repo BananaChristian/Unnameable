@@ -1,12 +1,7 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    AddressSpace,
-    builder::Builder,
-    context::Context,
-    module::{Linkage, Module},
-    types::{BasicTypeEnum, FunctionType},
-    values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
+    AddressSpace, builder::Builder, context::Context, module::{self, Linkage, Module}, types::{BasicTypeEnum, FunctionType}, values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
 };
 
 use crate::{
@@ -26,6 +21,7 @@ pub struct Codegen<'ctx> {
     pub vreg_map: HashMap<Vreg, BasicValueEnum<'ctx>>,
     pub global_map: HashMap<GlobalId, GlobalValue<'ctx>>,
     pub func_map: HashMap<FnId, FunctionValue<'ctx>>,
+    pub mir_module: &'ctx MIRModule,
     pub corrupted: bool,
     diagnostics: SharedDiagnostics,
 }
@@ -34,9 +30,10 @@ impl<'ctx> Codegen<'ctx> {
     pub fn new(
         context: &'ctx Context,
         target_spec: &'ctx TargetSpec,
-        module_name: &str,
+        mir_module: &'ctx MIRModule,
         diagnostics: SharedDiagnostics,
     ) -> Self {
+        let module_name= &mir_module.name;
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         Codegen {
@@ -47,29 +44,30 @@ impl<'ctx> Codegen<'ctx> {
             vreg_map: HashMap::new(),
             global_map: HashMap::new(),
             func_map: HashMap::new(),
+            mir_module,
             corrupted: false,
             diagnostics,
         }
     }
 
-    pub fn compile_module(&mut self, mir_module: &MIRModule) {
-        let mut sorted_structs: Vec<_> = mir_module.structs.values().collect();
+    pub fn compile_module(&mut self) {
+        let mut sorted_structs: Vec<_> = self.mir_module.structs.values().collect();
         sorted_structs.sort_by_key(|s| s.struct_id);
         for struct_decl in sorted_structs {
             self.lower_structs(struct_decl);
         }
 
-        let mut sorted_globals: Vec<_> = mir_module.globals.values().collect();
+        let mut sorted_globals: Vec<_> = self.mir_module.globals.values().collect();
         sorted_globals.sort_by_key(|g| g.global_id); // Or g.name
         for global in sorted_globals {
             self.lower_globals(global);
         }
 
-        for decl in &mir_module.func_declarations {
+        for decl in &self.mir_module.func_declarations {
             self.lower_func_decls(decl);
         }
 
-        let mut sorted_fns: Vec<_> = mir_module.functions.values().collect();
+        let mut sorted_fns: Vec<_> = self.mir_module.functions.values().collect();
         sorted_fns.sort_by_key(|f| &f.fn_id);
 
         let mut fn_pairs = Vec::with_capacity(sorted_fns.len());
@@ -254,18 +252,6 @@ impl<'ctx> Codegen<'ctx> {
                 let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                 int_val.const_to_pointer(ptr_type).into()
             }
-            ConstantValue::Func(fn_id) => {
-                // 1. Look up the LLVM FunctionValue using your fn_id map/table
-                let llvm_fn = self.get_llvm_fn(*fn_id).unwrap_or_else(|| {
-                    self.report_ice(format!("LLVM Codegen: FunctionId {:?} not emitted", fn_id))
-                });
-
-                // 2. Convert FunctionValue into a PointerValue (ptr @foo)
-                let ptr_val = llvm_fn.as_global_value().as_pointer_value();
-
-                // 3. Wrap as BasicValueEnum
-                ptr_val.into()
-            }
             ConstantValue::Undef => self.context.i32_type().get_undef().into(),
             ConstantValue::Array(elements) => {
                 let elem_values: Vec<BasicValueEnum<'ctx>> =
@@ -328,6 +314,15 @@ impl<'ctx> Codegen<'ctx> {
                     .expect("Undefined global variable");
                 // Returns an opaque pointer to the global variable in LLVM
                 global_val.as_pointer_value().into()
+            }
+            MIRValue::FunctionRef(id) => {
+                let llvm_fn = self.get_llvm_fn(*id).unwrap_or_else(|| {
+                    self.report_ice(format!("LLVM Codegen: FunctionId {} not emitted", id))
+                });
+
+                let ptr_val = llvm_fn.as_global_value().as_pointer_value();
+
+                ptr_val.into()
             }
             MIRValue::Poison => self.context.i32_type().get_poison().into(),
         }

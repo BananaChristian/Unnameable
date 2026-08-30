@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    mir::{CmpOp, MIRTy, StructId}, vm::{AllocId, VMValue},
+    mir::{CmpOp, MIRTy, StructId},
+    vm::{AllocId, VMValue},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -147,6 +148,11 @@ pub enum VMOpcode {
         src: u16,
     },
 
+    LoadFunc {
+        dest: u16,
+        fn_id: u32,
+    },
+
     // Primitive Arithmetic
     Add {
         dest: u16,
@@ -231,9 +237,14 @@ pub enum VMOpcode {
     },
 
     // Function Call
-    Call {
+    CallDirect {
         dest: Option<u16>,
         fn_id: u32,
+        args: Vec<u16>,
+    },
+    CallIndirect {
+        dest: Option<u16>,
+        callee: u16,
         args: Vec<u16>,
     },
 

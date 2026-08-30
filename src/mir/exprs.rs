@@ -7,8 +7,8 @@ use crate::{
         MIRGlobal, MIRInstruction, StructId,
         builder::MIRBuilder,
         instructions::{
-            ArmInfo, ConstantValue, MIRDollarMode, MIRFn, MIRLinkage, MIROps, MIRParam, MIRTy,
-            MIRTykind, MIRValue, Terminator,
+            ArmInfo, ConstantValue, FuncSig, MIRDollarMode, MIRFn, MIRLinkage, MIROps, MIRParam,
+            MIRTy, MIRTykind, MIRValue, Terminator,
         },
     },
 };
@@ -469,23 +469,23 @@ impl<'a> MIRBuilder<'a> {
 
     fn build_call(&mut self, expr: &HirExpr) {
         if let HirExprKind::Call(callee, args) = &expr.kind {
-            let name = match &callee.kind {
-                HirExprKind::Identifier(s) => s.clone(),
-                _ => self.report_ice(
-                    "Failed to get callee name as it is not an identifier".to_string(),
-                    Some(expr.span.clone()),
-                ),
-            };
-
-            let ty = self.get_type(&expr.hir_id);
+            let mir_callee = self.expr_value(callee);
 
             let mir_args: Vec<MIRValue> = args.iter().map(|a| self.expr_value(a)).collect();
-            let dest = self.new_register(ty, Some(name.as_str()));
+
+            let ret_ty = self.get_type(&expr.hir_id);
+            let arg_tys: Vec<MIRTy> = args.iter().map(|a| self.get_type(&a.hir_id)).collect();
+            let sig = FuncSig {
+                params: arg_tys,
+                ret: ret_ty.clone(),
+            };
+            let dest = self.new_register(ret_ty, None);
 
             let call = MIRInstruction::Call {
                 dest: dest.clone(),
-                callee: name,
+                callee: mir_callee,
                 args: mir_args,
+                sig,
             };
             self.add_instruction(call, Some(expr.span.clone()));
 
@@ -919,7 +919,7 @@ impl<'a> MIRBuilder<'a> {
 
                 match self.fn_name_to_id.get(name) {
                     Some(fn_id) => {
-                        return MIRValue::Constant(ConstantValue::Func(*fn_id));
+                        return MIRValue::FunctionRef(*fn_id);
                     }
                     None => MIRValue::Poison,
                 };

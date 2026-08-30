@@ -33,8 +33,7 @@ impl<'a> Folder<'a> {
                         let vm_val = self.eval_table.results.get(scope_fn);
 
                         if let Some(val) = vm_val {
-                            let const_mir_val =
-                                Self::vm_val_to_mir_val(val);
+                            let const_mir_val = Self::vm_val_to_mir_val(val);
                             *inst = MIRInstruction::Assign {
                                 dest: dest.clone(),
                                 src: const_mir_val,
@@ -84,9 +83,7 @@ impl<'a> Folder<'a> {
                     MIRValue::Global(GlobalId(alloc_id.id as usize))
                 }
                 // Code pointers (.text segment)
-                MemoryKind::Code => {
-                    MIRValue::Constant(ConstantValue::Func(FnId(alloc_id.id as usize)))
-                }
+                MemoryKind::Code => MIRValue::FunctionRef(FnId(alloc_id.id as usize)),
                 // Stack, Heap, or Raw Pointer offsets
                 MemoryKind::Stack | MemoryKind::Heap => {
                     MIRValue::Constant(ConstantValue::Ptr(*offset))

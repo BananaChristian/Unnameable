@@ -210,6 +210,11 @@ impl<'a> VM<'a> {
                     // Load a base pointer referencing the global's allocation slot
                     self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
                 }
+                VMOpcode::LoadFunc { dest, fn_id } => {
+                    let kind = MemoryKind::Code;
+                    let alloc_id = AllocId { kind, id: fn_id };
+                    self.write_reg(frame, dest, VMValue::Ptr(alloc_id, 0));
+                }
                 VMOpcode::Jump { target_pc } => {
                     frame.ip = target_pc;
                 }
@@ -250,11 +255,29 @@ impl<'a> VM<'a> {
                         None => VMValue::Unit,
                     };
                 }
-                VMOpcode::Call { dest, fn_id, args } => {
+                VMOpcode::CallDirect { dest, fn_id, args } => {
                     let fn_name = self.module.functions[fn_id as usize].name.clone();
                     let arg_vals: Vec<VMValue> =
                         args.iter().map(|r| self.read_reg(*r, frame)).collect();
                     let result = self.execute_fn(fn_name.as_str(), arg_vals);
+                    if let Some(dest_reg) = dest {
+                        self.write_reg(frame, dest_reg, result);
+                    }
+                }
+                VMOpcode::CallIndirect { dest, callee, args } => {
+                    let callee_val = self.read_reg(callee, frame);
+                    let fn_id = match callee_val {
+                        VMValue::Ptr(alloc_id, 0) if alloc_id.kind == MemoryKind::Code => {
+                            alloc_id.id
+                        }
+                        other => panic!("CallIndirect expected function pointer, got {}", other),
+                    };
+
+                    let fn_name = self.module.functions[fn_id as usize].name.clone();
+                    let arg_vals: Vec<VMValue> =
+                        args.iter().map(|r| self.read_reg(*r, frame)).collect();
+                    let result = self.execute_fn(fn_name.as_str(), arg_vals);
+
                     if let Some(dest_reg) = dest {
                         self.write_reg(frame, dest_reg, result);
                     }

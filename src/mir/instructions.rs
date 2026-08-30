@@ -60,7 +60,6 @@ pub enum ConstantValue {
         fields: Vec<ConstantValue>,
     },
     Tuple(Vec<ConstantValue>),
-    Func(FnId),
 }
 
 impl ConstantValue {
@@ -91,6 +90,7 @@ impl ConstantValue {
 pub enum MIRValue {
     Register { vreg: Vreg, ty: MIRTy },
     Global(GlobalId),
+    FunctionRef(FnId),
     Constant(ConstantValue),
     Poison,
 }
@@ -223,6 +223,12 @@ pub enum MIRTykind {
 }
 
 #[derive(Debug, Clone)]
+pub struct FuncSig {
+    pub params: Vec<MIRTy>,
+    pub ret: MIRTy,
+}
+
+#[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BlockId,
     pub instructions: Vec<MIRInstruction>,
@@ -290,8 +296,9 @@ pub enum MIRInstruction {
     //%dest= call %func_name(%arg1,%arg2)
     Call {
         dest: MIRValue,
-        callee: String,
+        callee: MIRValue,
         args: Vec<MIRValue>,
+        sig: FuncSig,
     },
 
     Assign {

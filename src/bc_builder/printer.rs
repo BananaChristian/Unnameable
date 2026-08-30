@@ -280,14 +280,21 @@ impl BytecodePrinter {
             VMOpcode::BitCast { dest, src, to_ty } => {
                 format!("r{} = bitcast r{} {}", dest, src, to_ty)
             }
+            VMOpcode::LoadFunc { dest, fn_id } => {
+                let fn_label = fn_id_to_name
+                    .get(fn_id)
+                    .map(|name| format!("@{}", name))
+                    .unwrap_or_else(|| format!("func@{}", fn_id));
+                format!("r{} = loadfunc {}", dest, fn_label)
+            }
 
             VMOpcode::LoadGlobal {
                 dest, global_id, ..
             } => {
-                format!("r{} = load_global @{}", dest, global_id)
+                format!("r{} = loadglobal @{}", dest, global_id)
             }
             VMOpcode::StoreGlobal { global_id, src } => {
-                format!("store_global @{}, r{}", global_id, src)
+                format!("storeglobal @{}, r{}", global_id, src)
             }
 
             VMOpcode::Compare {
@@ -324,7 +331,7 @@ impl BytecodePrinter {
                 )
             }
 
-            VMOpcode::Call { dest, fn_id, args } => {
+            VMOpcode::CallDirect { dest, fn_id, args } => {
                 let fn_label = fn_id_to_name
                     .get(fn_id)
                     .map(|name| format!("@{}", name))
@@ -341,6 +348,18 @@ impl BytecodePrinter {
                 }
             }
 
+            VMOpcode::CallIndirect { dest, callee, args } => {
+                let args_str = args
+                    .iter()
+                    .map(|a| format!("r{}", a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                match dest {
+                    Some(d) => format!("r{} = call r{}({})", d, callee, args_str),
+                    None => format!("call r{}({})", callee, args_str),
+                }
+            }
             VMOpcode::DollarEval { dest, fn_id, args } => {
                 let fn_label = fn_id_to_name
                     .get(fn_id)

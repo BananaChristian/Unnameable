@@ -206,7 +206,6 @@ impl fmt::Display for ConstantValue {
                 addr if addr == usize::MAX => write!(f, "ptr -1 (0x{:x})", addr),
                 addr => write!(f, "ptr {:#x}", addr),
             },
-            ConstantValue::Func(fn_id) => write!(f, "ptr @{fn_id}"),
             ConstantValue::Array(elements) => {
                 write!(f, "[")?;
                 for (i, elem) in elements.iter().enumerate() {
@@ -250,6 +249,7 @@ impl fmt::Display for MIRValue {
             MIRValue::Register { vreg, .. } => write!(f, "{vreg}"),
             MIRValue::Global(id) => write!(f, "@global_{}", id.0),
             MIRValue::Constant(c) => write!(f, "{c}"),
+            MIRValue::FunctionRef(func) => write!(f, "ptr @{func}"),
             MIRValue::Poison => write!(f, "poison"),
         }
     }
@@ -339,9 +339,11 @@ impl fmt::Display for MIRInstruction {
             MIRInstruction::AddrOf { dest, src } => {
                 write!(f, "    {dest} = addr_of {src}")
             }
-            MIRInstruction::Call { dest, callee, args } => {
+            MIRInstruction::Call {
+                dest, callee, args, ..
+            } => {
                 let arg_strs: Vec<String> = args.iter().map(|a| a.to_string()).collect();
-                write!(f, "    {dest} = call @{callee}({})", arg_strs.join(", "))
+                write!(f, "    {dest} = call {callee}({})", arg_strs.join(", "))
             }
             MIRInstruction::Assign { dest, src } => {
                 write!(f, "    {dest} = {src}")

@@ -209,6 +209,7 @@ fn main() -> Result<(), std::io::Error> {
         diagnostics.borrow().print();
         std::process::exit(1);
     }
+
     if dump_ast {
         println!("=== AST Tree ===");
         for stmt in &ast {
@@ -310,10 +311,10 @@ fn main() -> Result<(), std::io::Error> {
     let mut codegen = Codegen::new(
         &context,
         &target_spec,
-        module_name.as_str(),
+        &mir_module,
         Rc::clone(&diagnostics),
     );
-    codegen.compile_module(&mir_module);
+    codegen.compile_module();
     if dump_ir {
         println!("=== LLVM IR ===");
         println!("{}", codegen.print_ir())

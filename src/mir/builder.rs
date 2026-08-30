@@ -334,6 +334,7 @@ impl<'a> MIRBuilder<'a> {
                     | ConstantValue::Int(_)
             ),
             MIRValue::Global(_) => false,
+            MIRValue::FunctionRef(_) => false,
             MIRValue::Poison => false,
         }
     }
@@ -381,6 +382,7 @@ impl<'a> MIRBuilder<'a> {
                 matches!(c, ConstantValue::F32(_) | ConstantValue::F64(_))
             }
             MIRValue::Global(_) => false,
+            MIRValue::FunctionRef(_) => false,
             MIRValue::Poison => false,
         };
 
@@ -863,7 +865,7 @@ impl<'a> MIRBuilder<'a> {
     pub fn get_val_alignment(&self, val: &MIRValue) -> usize {
         match val {
             MIRValue::Register { ty, .. } => ty.align,
-            MIRValue::Global(_) => self.target_spec.pointer_width,
+            MIRValue::Global(_) | MIRValue::FunctionRef(_) => self.target_spec.pointer_width,
             MIRValue::Constant(c) => match c {
                 ConstantValue::I8(_)
                 | ConstantValue::U8(_)
@@ -875,10 +877,9 @@ impl<'a> MIRBuilder<'a> {
                 | ConstantValue::Char32(_)
                 | ConstantValue::F32(_) => 4,
                 ConstantValue::I64(_) | ConstantValue::U64(_) | ConstantValue::F64(_) => 8,
-                ConstantValue::Int(_)
-                | ConstantValue::UInt(_)
-                | ConstantValue::Ptr(_)
-                | ConstantValue::Func(_) => self.target_spec.pointer_width,
+                ConstantValue::Int(_) | ConstantValue::UInt(_) | ConstantValue::Ptr(_) => {
+                    self.target_spec.pointer_width
+                }
                 ConstantValue::I128(_) | ConstantValue::U128(_) => 16,
                 ConstantValue::Array(elements) => {
                     if let Some(first) = elements.first() {
@@ -1110,7 +1111,6 @@ impl<'a> MIRBuilder<'a> {
 
         struct_decl.clone()
     }
-
 
     pub fn add_block(&mut self, block: &BasicBlock, span: Option<Span>) {
         let Some(fn_id) = self.current_func else {

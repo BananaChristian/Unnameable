@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use inkwell::{
     FloatPredicate, IntPredicate,
     basic_block::BasicBlock,
+    types::{BasicTypeEnum, FunctionType},
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum},
 };
 
@@ -164,18 +165,73 @@ impl<'ctx> Codegen<'ctx> {
                 let store_inst = self.builder.build_store(ptr_val, val_val).unwrap();
                 store_inst.set_alignment(*align as u32).unwrap();
             }
-            MIRInstruction::Call { dest, callee, args } => {
-                let func = self
-                    .module
-                    .get_function(callee)
-                    .unwrap_or_else(|| panic!("Calle @{} not found in module", callee));
-
+            MIRInstruction::Call {
+                dest,
+                callee,
+                args,
+                sig,
+            } => {
                 let arg_vals: Vec<BasicMetadataValueEnum<'ctx>> =
                     args.iter().map(|a| self.lower_value(a).into()).collect();
 
-                let call_site = self.builder.build_call(func, &arg_vals, callee).unwrap();
-                if let Some(res_val) = call_site.try_as_basic_value().left() {
-                    self.bind_dest(dest, res_val);
+                match callee {
+                    MIRValue::FunctionRef(fn_id) => {
+                        let func = self
+                            .func_map
+                            .get(fn_id)
+                            .copied()
+                            .or_else(|| {
+                                let name = &self.mir_module.functions.get(fn_id)?.name;
+                                self.module.get_function(name)
+                            })
+                            .unwrap_or_else(|| {
+                                panic!("Function {} not found in LLVM module", fn_id)
+                            });
+
+                        let call_site = self.builder.build_call(func, &arg_vals, "call").unwrap();
+                        if let Some(res_val) = call_site.try_as_basic_value().left() {
+                            self.bind_dest(dest, res_val);
+                        }
+                    }
+
+                    MIRValue::Register { .. } => {
+                        let callee_ptr = self.lower_value(callee).into_pointer_value();
+
+                        let param_types: Vec<BasicTypeEnum<'ctx>> = sig
+                            .params
+                            .iter()
+                            .map(|t| self.get_llvmty(t).into())
+                            .collect();
+
+                        let param_types_meta: Vec<_> =
+                            param_types.iter().map(|t| (*t).into()).collect();
+
+                        let fn_type: FunctionType<'ctx> = match &sig.ret.kind {
+                            MIRTykind::Unit => {
+                                self.context.void_type().fn_type(&param_types_meta, false)
+                            }
+                            _ => match self.get_llvmty(&sig.ret) {
+                                BasicTypeEnum::IntType(t) => t.fn_type(&param_types_meta, false),
+                                BasicTypeEnum::FloatType(t) => t.fn_type(&param_types_meta, false),
+                                BasicTypeEnum::PointerType(t) => {
+                                    t.fn_type(&param_types_meta, false)
+                                }
+                                BasicTypeEnum::StructType(t) => t.fn_type(&param_types_meta, false),
+                                BasicTypeEnum::ArrayType(t) => t.fn_type(&param_types_meta, false),
+                                BasicTypeEnum::VectorType(t) => t.fn_type(&param_types_meta, false),
+                            },
+                        };
+                        let call_site = self
+                            .builder
+                            .build_indirect_call(fn_type, callee_ptr, &arg_vals, "call")
+                            .unwrap();
+
+                        if let Some(res_val) = call_site.try_as_basic_value().left() {
+                            self.bind_dest(dest, res_val);
+                        }
+                    }
+
+                    other => panic!("Invalid callee: {:?}", other),
                 }
             }
             MIRInstruction::GetElementPtr {
