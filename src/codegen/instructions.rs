@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use inkwell::{
     FloatPredicate, IntPredicate,
     basic_block::BasicBlock,
-    types::{BasicTypeEnum, FunctionType},
+    types::BasicTypeEnum,
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum},
 };
 
@@ -203,24 +203,8 @@ impl<'ctx> Codegen<'ctx> {
                             .map(|t| self.get_llvmty(t).into())
                             .collect();
 
-                        let param_types_meta: Vec<_> =
-                            param_types.iter().map(|t| (*t).into()).collect();
+                        let fn_type = self.build_fn_type(&sig.ret, &param_types, false);
 
-                        let fn_type: FunctionType<'ctx> = match &sig.ret.kind {
-                            MIRTykind::Unit => {
-                                self.context.void_type().fn_type(&param_types_meta, false)
-                            }
-                            _ => match self.get_llvmty(&sig.ret) {
-                                BasicTypeEnum::IntType(t) => t.fn_type(&param_types_meta, false),
-                                BasicTypeEnum::FloatType(t) => t.fn_type(&param_types_meta, false),
-                                BasicTypeEnum::PointerType(t) => {
-                                    t.fn_type(&param_types_meta, false)
-                                }
-                                BasicTypeEnum::StructType(t) => t.fn_type(&param_types_meta, false),
-                                BasicTypeEnum::ArrayType(t) => t.fn_type(&param_types_meta, false),
-                                BasicTypeEnum::VectorType(t) => t.fn_type(&param_types_meta, false),
-                            },
-                        };
                         let call_site = self
                             .builder
                             .build_indirect_call(fn_type, callee_ptr, &arg_vals, "call")
@@ -231,7 +215,7 @@ impl<'ctx> Codegen<'ctx> {
                         }
                     }
 
-                    other => panic!("Invalid callee: {:?}", other),
+                    other => self.report_ice(format!("Invalid callee {}", other)),
                 }
             }
             MIRInstruction::GetElementPtr {

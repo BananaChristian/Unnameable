@@ -603,7 +603,6 @@ impl Parser {
         self.expect_token(TType::Return)?;
 
         let mut expr = None;
-        println!("Current token {:?}", self.current_token()?);
         if self.current_token()?.token_type == TType::Semicolon {
             let end = self.current_token()?.span.end;
             self.advance();

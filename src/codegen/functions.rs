@@ -18,19 +18,7 @@ impl<'ctx> Codegen<'ctx> {
         let param_types: Vec<BasicTypeEnum<'ctx>> =
             func.params.iter().map(|p| self.get_llvmty(&p.ty)).collect();
 
-        let param_types_meta: Vec<_> = param_types.iter().map(|t| (*t).into()).collect();
-
-        let fn_type: FunctionType<'ctx> = match &func.ret_ty.kind {
-            MIRTykind::Unit => self.context.void_type().fn_type(&param_types_meta, false),
-            _ => match self.get_llvmty(&func.ret_ty) {
-                BasicTypeEnum::IntType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::FloatType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::PointerType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::StructType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::ArrayType(t) => t.fn_type(&param_types_meta, false),
-                BasicTypeEnum::VectorType(t) => t.fn_type(&param_types_meta, false),
-            },
-        };
+        let fn_type = self.build_fn_type(&func.ret_ty, &param_types, false);
 
         let linkage = match &func.linkage {
             MIRLinkage::Public => None,

@@ -133,6 +133,10 @@ impl<'a> LayoutEngine<'a> {
             ResolvedTypeKind::Enum { underlying, .. } => self.enum_layout(underlying),
             ResolvedTypeKind::Variant { arms, .. } => self.variant_layout(arms),
             ResolvedTypeKind::Tuple { fields } => self.tuple_layout(fields),
+            ResolvedTypeKind::Unit => Ok(Layout {
+                size: 0,
+                alignment: 1,
+            }),
 
             _ => Ok(Layout::empty()),
         }

@@ -1,19 +1,14 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    AddressSpace,
-    builder::Builder,
-    context::Context,
-    module::{Linkage, Module},
-    types::{BasicTypeEnum},
-    values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
+    AddressSpace, builder::Builder, context::Context, module::{Linkage, Module}, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType}, values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
 };
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     mir::{
-        ConstantValue, FnId, GlobalId, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl,
-        MIRTy, MIRTykind, MIRValue, Vreg,
+        ConstantValue, FnId, GlobalId, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl, MIRTy,
+        MIRTykind, MIRValue, Vreg,
     },
     target::TargetSpec,
 };
@@ -84,7 +79,6 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-
     fn lower_structs(&mut self, struct_decl: &MIRStructDecl) {
         let struct_ty = self.context.opaque_struct_type(&struct_decl.name);
 
@@ -114,6 +108,27 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         self.global_map.insert(global.global_id.clone(), global_val);
+    }
+
+    pub fn build_fn_type(
+        &self,
+        ret_ty: &MIRTy,
+        param_tys: &[BasicTypeEnum<'ctx>],
+        is_var_args: bool,
+    ) -> FunctionType<'ctx> {
+        let param_meta_tys: Vec<BasicMetadataTypeEnum> =
+            param_tys.iter().map(|t| (*t).into()).collect();
+
+        match &ret_ty.kind {
+            MIRTykind::Unit => self
+                .context
+                .void_type()
+                .fn_type(&param_meta_tys, is_var_args),
+            _ => {
+                let llvm_ret_ty = self.get_llvmty(ret_ty);
+                llvm_ret_ty.fn_type(&param_meta_tys, is_var_args)
+            }
+        }
     }
 
     pub fn get_llvmty(&self, mirty: &MIRTy) -> BasicTypeEnum<'ctx> {
