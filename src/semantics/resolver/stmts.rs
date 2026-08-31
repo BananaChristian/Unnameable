@@ -1,6 +1,9 @@
 use crate::{
     hir::{HirStmt, HirStmtKind, HirType},
-    semantics::{resolver::Resolver, semantics::NameTable},
+    semantics::{
+        resolver::{Resolver, resolver::SymbolKind},
+        semantics::NameTable,
+    },
 };
 
 impl<'a> Resolver<'a> {
@@ -50,15 +53,13 @@ impl<'a> Resolver<'a> {
             ..
         } = &stmt.kind
         {
-            let exists_in_current = self
-                .scope_stack
-                .last()
-                .map_or(false, |scope| scope.contains_key(name));
-            if !exists_in_current {
-                self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
-            }
-
-            self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
+            self.declare_with_kind(
+                name.clone(),
+                stmt.hir_id,
+                stmt.span.clone(),
+                SymbolKind::Declaration,
+            );
+            self.resolve_name(name, stmt.hir_id, stmt.span.clone(), table);
 
             self.push_scope();
             for gen_ty_param in generic_type_params {
@@ -72,7 +73,11 @@ impl<'a> Resolver<'a> {
             }
             for param in params {
                 self.resolve_type(&param.ty, table);
-                self.declare(param.name.clone(), param.hir_id, param.span.clone());
+                self.declare(
+                    param.name.clone(),
+                    param.hir_id,
+                    param.span.clone(),
+                );
                 if let Some(def) = &param.default {
                     self.resolve_expr(def, table);
                 }
@@ -92,23 +97,30 @@ impl<'a> Resolver<'a> {
             ..
         } = &stmt.kind
         {
-            let exists_in_current = self
-                .scope_stack
-                .last()
-                .map_or(false, |scope| scope.contains_key(name));
-            if !exists_in_current {
-                self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
-            }
-            self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
+            self.declare(
+                name.clone(),
+                stmt.hir_id,
+                stmt.span.clone(),
+            );
+            self.resolve_name(name, stmt.hir_id, stmt.span.clone(), table);
+
             self.push_scope();
             for gen_ty_param in generic_type_params {
                 if let HirType::CustomType(na) = &gen_ty_param.kind {
-                    self.declare(na.clone(), gen_ty_param.hir_id, gen_ty_param.span.clone());
+                    self.declare(
+                        na.clone(),
+                        gen_ty_param.hir_id,
+                        gen_ty_param.span.clone(),
+                    );
                 }
             }
             for param in params {
                 self.resolve_type(&param.ty, table);
-                self.declare(param.name.clone(), param.hir_id, param.span.clone());
+                self.declare(
+                    param.name.clone(),
+                    param.hir_id,
+                    param.span.clone(),
+                );
                 if let Some(def) = &param.default {
                     self.resolve_expr(def, table);
                 }
