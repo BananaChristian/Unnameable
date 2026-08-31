@@ -295,7 +295,7 @@ pub enum MIRInstruction {
 
     //%dest= call %func_name(%arg1,%arg2)
     Call {
-        dest: MIRValue,
+        dest: Option<MIRValue>,
         callee: MIRValue,
         args: Vec<MIRValue>,
         sig: FuncSig,

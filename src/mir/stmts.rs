@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     hir::{HirStmt, HirStmtKind},
     mir::{
-        MIRTy, MIRVariant,
+        MIRTy, MIRValue, MIRVariant,
         builder::MIRBuilder,
         instructions::{
             ArmInfo, MIRBody, MIRDollarMode, MIREnum, MIRGlobal, MIRLinkage, MIRParam,
@@ -190,6 +190,11 @@ impl<'a> MIRBuilder<'a> {
                     self.module.globals.insert(global_id, mir_global);
                 }
                 Some(_) => {
+                    if ty.kind == MIRTykind::Unit {
+                        self.expr_value(init);
+                        self.declare_var(name.clone(), MIRValue::Poison);
+                        return;
+                    }
                     let dest = self.new_register(self.ptr_type(), Some(name));
                     self.build_alloca(dest.clone(), ty.clone(), Some(stmt.span.clone()));
                     self.declare_var(name.clone(), dest.clone());

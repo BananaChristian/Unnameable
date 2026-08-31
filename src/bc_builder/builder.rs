@@ -655,7 +655,9 @@ impl<'a> BytecodeBuilder<'a> {
             MIRInstruction::Call {
                 dest, callee, args, ..
             } => {
-                let dest_reg = self.lower_mir_value(dest, reg_map, instructions);
+                let dest_reg = dest
+                    .as_ref()
+                    .map(|d| self.lower_mir_value(d, reg_map, instructions));
 
                 let arg_regs = args
                     .iter()
@@ -664,14 +666,14 @@ impl<'a> BytecodeBuilder<'a> {
 
                 let call_inst = match callee {
                     MIRValue::FunctionRef(id) => VMOpcode::CallDirect {
-                        dest: Some(dest_reg),
+                        dest: dest_reg,
                         fn_id: id.0 as u32,
                         args: arg_regs,
                     },
                     other => {
                         let callee_reg = self.lower_mir_value(other, reg_map, instructions);
                         VMOpcode::CallIndirect {
-                            dest: Some(dest_reg),
+                            dest: dest_reg,
                             callee: callee_reg,
                             args: arg_regs,
                         }

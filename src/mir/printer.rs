@@ -335,7 +335,23 @@ impl fmt::Display for MIRInstruction {
                 dest, callee, args, ..
             } => {
                 let arg_strs: Vec<String> = args.iter().map(|a| a.to_string()).collect();
-                write!(f, "    {dest} = call {callee}({})", arg_strs.join(", "))
+
+                let callee_str = match callee {
+                    MIRValue::FunctionRef(id) => format!("@func{}", id.0),
+                    MIRValue::Register { vreg, .. } => format!("{}", vreg),
+                    other => other.to_string(),
+                };
+
+                match dest {
+                    Some(d) => write!(
+                        f,
+                        "    {} = call {}({})",
+                        d,
+                        callee_str,
+                        arg_strs.join(", ")
+                    ),
+                    None => write!(f, "    call {}({})", callee_str, arg_strs.join(", ")),
+                }
             }
             MIRInstruction::Assign { dest, src } => {
                 write!(f, "    {dest} = {src}")
@@ -491,7 +507,11 @@ impl fmt::Display for MIRFn {
                 write!(f, "}}")
             }
             None => {
-                writeln!(f, "<{}> {}func @{}({});",self.fn_id, linkage_str, self.name, params_str)
+                writeln!(
+                    f,
+                    "<{}> {}func @{}({});",
+                    self.fn_id, linkage_str, self.name, params_str
+                )
             }
         }
     }

@@ -482,7 +482,12 @@ impl<'a> MIRBuilder<'a> {
                 params: arg_tys,
                 ret: ret_ty.clone(),
             };
-            let dest = self.new_register(ret_ty, None);
+
+            let dest = if ret_ty.kind == MIRTykind::Unit {
+                None
+            } else {
+                Some(self.new_register(ret_ty, None))
+            };
 
             let call = MIRInstruction::Call {
                 dest: dest.clone(),
@@ -492,7 +497,7 @@ impl<'a> MIRBuilder<'a> {
             };
             self.add_instruction(call, Some(expr.span.clone()));
 
-            self.last_value = Some(dest);
+            self.last_value = dest;
         }
     }
 
@@ -951,7 +956,10 @@ impl<'a> MIRBuilder<'a> {
 
             HirExprKind::Call(_, _) => {
                 self.build_call(expr);
-                self.get_last_val(Some(expr.span.clone()))
+                match self.last_value.take() {
+                    Some(val) => val,
+                    None => MIRValue::Poison,
+                }
             }
 
             HirExprKind::DollarScope { .. } => {

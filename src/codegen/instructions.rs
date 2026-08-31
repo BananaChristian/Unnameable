@@ -189,8 +189,11 @@ impl<'ctx> Codegen<'ctx> {
                             });
 
                         let call_site = self.builder.build_call(func, &arg_vals, "call").unwrap();
-                        if let Some(res_val) = call_site.try_as_basic_value().left() {
-                            self.bind_dest(dest, res_val);
+
+                        if let Some(dest_val) = dest {
+                            if let Some(res_val) = call_site.try_as_basic_value().left() {
+                                self.bind_dest(dest_val, res_val);
+                            }
                         }
                     }
 
@@ -210,8 +213,10 @@ impl<'ctx> Codegen<'ctx> {
                             .build_indirect_call(fn_type, callee_ptr, &arg_vals, "call")
                             .unwrap();
 
-                        if let Some(res_val) = call_site.try_as_basic_value().left() {
-                            self.bind_dest(dest, res_val);
+                        if let Some(dest_val) = dest {
+                            if let Some(res_val) = call_site.try_as_basic_value().left() {
+                                self.bind_dest(dest_val, res_val);
+                            }
                         }
                     }
 

@@ -91,6 +91,10 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn lower_globals(&mut self, global: &MIRGlobal) {
+        if global.ty.kind == MIRTykind::Unit{
+            return;
+        }
+
         let llvm_ty = self.get_llvmty(&global.ty);
 
         let global_val =
