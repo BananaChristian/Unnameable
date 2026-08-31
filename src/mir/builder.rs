@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::format};
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
@@ -6,11 +6,11 @@ use crate::{
     indexer::NodeIndex,
     lowering::NodeId,
     mir::{
-        MIRModule, MIRStructDecl, MIRVariant,
+        MIRFn, MIRLinkage, MIRModule, MIRStructDecl, MIRVariant,
         instructions::{
-            ArmInfo, BasicBlock, BlockId, CmpOp, ConstantValue, EnumId, FnId, GlobalId,
-            MIRDollarMode, MIREnum, MIRInstruction, MIROps, MIRTy, MIRTykind, MIRValue, StructId,
-            Terminator, VariantId, Vreg,
+            ArmInfo, BasicBlock, BlockId, CmpOp, ConstantValue, EnumId, FnId, GlobalId, MIRBody,
+            MIRDollarMode, MIREnum, MIRInstruction, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue,
+            StructId, Terminator, VariantId, Vreg,
         },
     },
     semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
@@ -851,6 +851,61 @@ impl<'a> MIRBuilder<'a> {
             size: self.target_spec.pointer_width,
             align: self.target_spec.pointer_width,
         }
+    }
+
+    pub fn get_or_create_func(
+        &mut self,
+        name: &str,
+        params: &[MIRParam],
+        ret_ty: &MIRTy,
+        linkage: MIRLinkage,
+        body: Option<MIRBody>,
+    ) -> FnId {
+        if let Some(&existing_id) = self.fn_name_to_id.get(name) {
+            let Some(existing) = self.module.functions.get_mut(&existing_id) else {
+                self.report_ice(format!("Cannot find function '{}", name), None);
+            };
+
+            let mismatch = existing.params.len() != params.len()
+                || existing
+                    .params
+                    .iter()
+                    .zip(params.iter())
+                    .any(|(a, b)| a.name != b.name || a.ty != b.ty)
+                || existing.ret_ty != *ret_ty;
+
+            if mismatch {
+                self.report_ice(
+                    format!(
+                        "Declaration and definition signature mismatch for '{}'",
+                        name
+                    ),
+                    None,
+                );
+            }
+
+            if existing.body.is_some() && body.is_some() {
+                self.report_ice(format!("Duplicate function body for {}", existing_id), None);
+            }
+
+            if existing.body.is_none() && body.is_some() {
+                existing.body = body;
+            }
+            return existing_id;
+        }
+
+        let id = self.alloc_fn_id();
+        let placeholder = MIRFn {
+            fn_id: id,
+            name: name.to_string(),
+            params: params.to_vec(),
+            linkage,
+            ret_ty: ret_ty.clone(),
+            body,
+        };
+        self.module.functions.insert(id, placeholder);
+        self.fn_name_to_id.insert(name.to_string(), id);
+        id
     }
 
     pub fn lower_type_info_to_mir_ty(&mut self, ty_info: &TypeInfo) -> MIRTy {

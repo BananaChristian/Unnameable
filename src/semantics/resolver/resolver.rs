@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub struct Resolver<'a> {
-    scope_stack: Vec<HashMap<String, NodeId>>,
+    pub scope_stack: Vec<HashMap<String, NodeId>>,
     diagnostics: SharedDiagnostics,
     import: &'a ImportEngine,
     pub corrupted: bool,

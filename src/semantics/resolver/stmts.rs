@@ -50,7 +50,14 @@ impl<'a> Resolver<'a> {
             ..
         } = &stmt.kind
         {
-            self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            let exists_in_current = self
+                .scope_stack
+                .last()
+                .map_or(false, |scope| scope.contains_key(name));
+            if !exists_in_current {
+                self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            }
+
             self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
 
             self.push_scope();
@@ -85,7 +92,13 @@ impl<'a> Resolver<'a> {
             ..
         } = &stmt.kind
         {
-            self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            let exists_in_current = self
+                .scope_stack
+                .last()
+                .map_or(false, |scope| scope.contains_key(name));
+            if !exists_in_current {
+                self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
+            }
             self.resolve_name(&name, stmt.hir_id, stmt.span.clone(), table);
             self.push_scope();
             for gen_ty_param in generic_type_params {
