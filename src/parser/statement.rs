@@ -603,16 +603,23 @@ impl Parser {
         self.expect_token(TType::Return)?;
 
         let mut expr = None;
-        if !Stmt::is_valid(self.current_token()?)
-            && self.current_token()?.token_type != TType::End
-            && self.current_token()?.token_type != TType::Rbrace
-        {
-            expr = self.parse_expression(Precedence::Lowest);
-        }
+        println!("Current token {:?}", self.current_token()?);
+        if self.current_token()?.token_type == TType::Semicolon {
+            let end = self.current_token()?.span.end;
+            self.advance();
+            return Some(Stmt::new(StmtKind::Return(expr), Span { start, end }));
+        } else {
+            if self.current_token()?.token_type != TType::Semicolon
+                && self.current_token()?.token_type != TType::End
+                && self.current_token()?.token_type != TType::Rbrace
+            {
+                expr = self.parse_expression(Precedence::Lowest);
+            }
 
-        self.expect_token(TType::Semicolon);
-        let end = self.current_token()?.span.end;
-        Some(Stmt::new(StmtKind::Return(expr), Span { start, end }))
+            self.expect_token(TType::Semicolon)?;
+            let end = self.current_token()?.span.end;
+            return Some(Stmt::new(StmtKind::Return(expr), Span { start, end }));
+        }
     }
 
     fn parse_break_or_cont(&mut self) -> Option<Stmt> {
