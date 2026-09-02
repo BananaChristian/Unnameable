@@ -63,7 +63,7 @@ pub enum ConstantValue {
 }
 
 impl ConstantValue {
-    // Computes how many VM slots this constant occupies.
+    /// Computes how many VM slots this constant occupies.
     pub fn slot_counter(&self) -> u32 {
         match self {
             ConstantValue::Array(elems) => elems.iter().map(|e| e.slot_counter()).sum(),
@@ -73,7 +73,7 @@ impl ConstantValue {
         }
     }
 
-    // Flattens nested struct/array constants into a flat list of primitive scalar values
+    /// Flattens nested struct/array constants into a flat list of primitive scalar values
     /// for writing directly to memory slots.
     pub fn flatten(&self) -> Vec<ConstantValue> {
         match self {
@@ -251,7 +251,7 @@ pub enum Terminator {
 
 #[derive(Debug, Clone)]
 pub enum MIRInstruction {
-    //%dest= op %lhs, %rhs
+    ///%dest= op %lhs, %rhs
     BinaryOperation {
         dest: MIRValue,
         op: MIROps,
@@ -266,7 +266,7 @@ pub enum MIRInstruction {
         rhs: MIRValue,
     },
 
-    //%dest= phi [%val1,bb0], [%val2,bb1]
+    ///%dest= phi [%val1,bb0], [%val2,bb1]
     Phi {
         dest: MIRValue,
         incoming: Vec<(MIRValue, BlockId)>,
@@ -293,7 +293,7 @@ pub enum MIRInstruction {
         align: usize,
     },
 
-    //%dest= call %func_name(%arg1,%arg2)
+    ///%dest= call %func_name(%arg1,%arg2)
     Call {
         dest: Option<MIRValue>,
         callee: MIRValue,
@@ -326,13 +326,13 @@ pub enum MIRInstruction {
         to_ty: MIRTy,
     },
 
-    // %dest = &%src (yields a pointer to an lvalue / stack location / global)
+    /// %dest = &%src (yields a pointer to an lvalue / stack location / global)
     AddrOf {
         dest: MIRValue,
         src: MIRValue,
     },
 
-    // Evaluates a compile-time dollar scope in the Dollar Bill engine
+    /// Evaluates a compile-time dollar scope in the Dollar Bill engine
     DollarEval {
         dest: MIRValue,      // Where the trailing result of the block goes
         scope_fn: String,    // Name of the synthesized function, e.g. "@$$scope_0"
@@ -360,6 +360,7 @@ pub struct MIRFn {
     pub params: Vec<MIRParam>,
     pub ret_ty: MIRTy,
     pub linkage: MIRLinkage,
+    pub dollar_mode: MIRDollarMode,
     pub body: Option<MIRBody>, // None for declarations
 }
 
@@ -367,7 +368,6 @@ pub struct MIRFn {
 pub struct MIRBody {
     pub blocks: HashMap<BlockId, BasicBlock>,
     pub entry_block: BlockId,
-    pub dollar_mode: MIRDollarMode,
 }
 
 #[derive(Debug, Clone)]

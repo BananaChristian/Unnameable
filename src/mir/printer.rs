@@ -496,12 +496,18 @@ impl fmt::Display for MIRFn {
             MIRLinkage::Private => "",
         };
 
+        let dollar_str = match self.dollar_mode {
+            MIRDollarMode::Full => "$$",
+            MIRDollarMode::ReadOnly => "$",
+            MIRDollarMode::None => "",
+        };
+
         match &self.body {
             Some(body) => {
                 writeln!(
                     f,
-                    "<{}> {}func @{}({}) {{",
-                    self.fn_id, linkage_str, self.name, params_str
+                    "<{}> {}{}func @{}({}) {{",
+                    self.fn_id, dollar_str, linkage_str, self.name, params_str
                 )?;
                 write!(f, "{body}")?;
                 write!(f, "}}")

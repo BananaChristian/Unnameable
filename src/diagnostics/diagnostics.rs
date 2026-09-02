@@ -160,7 +160,7 @@ impl Diagnostics {
             let length = span.length().max(1);
             let line_num_str = line.to_string();
             let padding = " ".repeat(line_num_str.len());
-            let line_snippet = self.source_map.get_line_snippet(span.start); // add this
+            let line_snippet = self.source_map.get_line_snippet(span.start);
 
             // header
             println!(

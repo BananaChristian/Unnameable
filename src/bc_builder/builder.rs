@@ -47,10 +47,7 @@ impl<'a> BytecodeBuilder<'a> {
         sorted_fns.sort_by_key(|f| f.fn_id);
 
         for func in &sorted_fns {
-            let Some(body) = func.body.as_ref() else {
-                continue;
-            };
-            if body.dollar_mode == MIRDollarMode::None {
+            if func.dollar_mode == MIRDollarMode::None {
                 continue;
             }
 
@@ -61,16 +58,13 @@ impl<'a> BytecodeBuilder<'a> {
 
             let mut placeholder = BytecodeFn::new();
             placeholder.name = func.name.clone();
-            placeholder.mode = self.convert_dollar_mode(&body.dollar_mode);
+            placeholder.mode = self.convert_dollar_mode(&func.dollar_mode);
             placeholder.param_count = func.params.len() as u16;
             self.bytecode_module.functions.push(placeholder);
         }
 
         for func in &sorted_fns {
-            let Some(body) = func.body.as_ref() else {
-                continue;
-            };
-            if body.dollar_mode == MIRDollarMode::None {
+            if func.dollar_mode == MIRDollarMode::None {
                 continue;
             }
 
@@ -451,7 +445,7 @@ impl<'a> BytecodeBuilder<'a> {
 
         let mut bc_func = BytecodeFn::new();
         bc_func.name = func.name.clone();
-        bc_func.mode = self.convert_dollar_mode(&body.dollar_mode);
+        bc_func.mode = self.convert_dollar_mode(&func.dollar_mode);
         bc_func.param_count = func.params.len() as u16;
 
         let mut reg_map = RegisterMap::new();
@@ -482,7 +476,7 @@ impl<'a> BytecodeBuilder<'a> {
                     inst,
                     &mut reg_map,
                     &mut instructions,
-                    &body.dollar_mode,
+                    &func.dollar_mode,
                 );
             }
 

@@ -859,6 +859,7 @@ impl<'a> MIRBuilder<'a> {
         name: &str,
         params: &[MIRParam],
         ret_ty: &MIRTy,
+        dollar_mode: MIRDollarMode,
         linkage: MIRLinkage,
         body: Option<MIRBody>,
     ) -> FnId {
@@ -901,6 +902,7 @@ impl<'a> MIRBuilder<'a> {
             name: name.to_string(),
             params: params.to_vec(),
             linkage,
+            dollar_mode,
             ret_ty: ret_ty.clone(),
             body,
         };

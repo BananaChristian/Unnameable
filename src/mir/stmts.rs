@@ -236,7 +236,8 @@ impl<'a> MIRBuilder<'a> {
                 .collect();
 
             let ret_ty = self.get_type(&return_type.hir_id);
-            self.get_or_create_func(name, &mir_params, &ret_ty, linkage, None);
+            let dollar_mode = self.current_dollar_mode; //To be watched carefully
+            self.get_or_create_func(name, &mir_params, &ret_ty, dollar_mode, linkage, None);
         }
     }
 
@@ -293,13 +294,13 @@ impl<'a> MIRBuilder<'a> {
             let mir_body = MIRBody {
                 blocks: HashMap::new(),
                 entry_block: entry_block_id,
-                dollar_mode,
             };
 
             let fn_id = self.get_or_create_func(
                 mangled_name.as_str(),
                 &mir_params,
                 &ret_ty,
+                dollar_mode,
                 linkage,
                 Some(mir_body),
             );

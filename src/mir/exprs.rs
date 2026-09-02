@@ -7,8 +7,8 @@ use crate::{
         MIRGlobal, MIRInstruction, StructId,
         builder::MIRBuilder,
         instructions::{
-            ArmInfo, ConstantValue, FuncSig, MIRBody, MIRDollarMode, MIRFn, MIRLinkage, MIROps,
-            MIRParam, MIRTy, MIRTykind, MIRValue, Terminator,
+            ArmInfo, ConstantValue, FuncSig, MIRBody, MIRDollarMode, MIRLinkage, MIROps, MIRParam,
+            MIRTy, MIRTykind, MIRValue, Terminator,
         },
     },
 };
@@ -386,7 +386,6 @@ impl<'a> MIRBuilder<'a> {
             let parent_block = self.current_block_id;
             let parent_dollar_mode = self.current_dollar_mode;
 
-            let fn_id = self.alloc_fn_id();
             let entry_block = self.create_basic_block();
             let entry_block_id = entry_block.id;
 
@@ -395,7 +394,6 @@ impl<'a> MIRBuilder<'a> {
             let mir_body = MIRBody {
                 blocks,
                 entry_block: entry_block_id,
-                dollar_mode: MIRDollarMode::Full,
             };
 
             let ret_ty = match result {
@@ -406,17 +404,15 @@ impl<'a> MIRBuilder<'a> {
                     align: 0,
                 },
             };
+            let fn_id = self.get_or_create_func(
+                &scope_fn_name,
+                &scope_fn_params,
+                &ret_ty,
+                MIRDollarMode::Full,
+                MIRLinkage::Private,
+                Some(mir_body),
+            );
 
-            let scope_fn = MIRFn {
-                fn_id: fn_id.clone(),
-                name: scope_fn_name.clone(),
-                params: scope_fn_params.clone(), // Pass the populated parameter list
-                linkage: MIRLinkage::Private,
-                ret_ty,
-                body: Some(mir_body),
-            };
-
-            self.module.functions.insert(fn_id, scope_fn);
             self.current_func = Some(fn_id);
             self.current_block_id = Some(entry_block_id);
             self.current_dollar_mode = MIRDollarMode::Full;
