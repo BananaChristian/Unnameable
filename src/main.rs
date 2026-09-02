@@ -5,6 +5,7 @@ use unnc::{
     const_and_mut_validator::Validator,
     diagnostics::Diagnostics,
     dollar_folder::Folder,
+    dollar_verifier::DollarVerifier,
     hir::HirPrinter,
     import::ImportEngine,
     indexer::NodeIndex,
@@ -290,6 +291,13 @@ fn main() -> Result<(), std::io::Error> {
         println!("{}", mir_module);
     }
 
+    let mut dollar_verifier = DollarVerifier::new(&mir_module, Rc::clone(&diagnostics));
+    dollar_verifier.verify();
+    if dollar_verifier.corrupted {
+        diagnostics.borrow().print();
+        std::process::exit(1);
+    }
+
     let mut bc_builder = BytecodeBuilder::new(&mir_module, Rc::clone(&diagnostics));
     let bytecode = bc_builder.build();
     if dump_bytecode {
@@ -308,12 +316,7 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     let context = Context::create();
-    let mut codegen = Codegen::new(
-        &context,
-        &target_spec,
-        &mir_module,
-        Rc::clone(&diagnostics),
-    );
+    let mut codegen = Codegen::new(&context, &target_spec, &mir_module, Rc::clone(&diagnostics));
     codegen.compile_module();
     if dump_ir {
         println!("=== LLVM IR ===");

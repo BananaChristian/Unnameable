@@ -45,7 +45,7 @@ bb1:
     ret 0
 }
 
-<func2> func @$$scope_0() {
+<func2> $$func @$$scope_0() {
 bb2:
     %matrix = alloca %{%{i32, i32}, %{i32, i32}} $$, align 4
     %16 = gep %{%{i32, i32}, %{i32, i32}}, ptr %matrix, indices [0, 0]
