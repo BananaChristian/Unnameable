@@ -136,7 +136,19 @@ impl<'a> BytecodeBuilder<'a> {
             for block in body.blocks.values() {
                 for inst in &block.instructions {
                     if let MIRInstruction::DollarEval { scope_fn, args, .. } = inst {
-                        if !candidates.iter().any(|r| &r.scope_fn == scope_fn) {
+                        // Only root-eligible if every argument is frame-independent — a register
+                        // reference only means something inside the function it came from, and
+                        // @$top_level has no access to that function's frame.
+                        let all_liftable = args.iter().all(|a| {
+                            matches!(
+                                a,
+                                MIRValue::Constant(_)
+                                    | MIRValue::FunctionRef(_)
+                                    | MIRValue::Global(_)
+                            )
+                        });
+
+                        if all_liftable && !candidates.iter().any(|r| &r.scope_fn == scope_fn) {
                             candidates.push(RootDollarEval {
                                 scope_fn: scope_fn.clone(),
                                 args: args.clone(),

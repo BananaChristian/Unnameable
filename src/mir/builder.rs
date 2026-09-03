@@ -45,11 +45,13 @@ pub struct MIRBuilder<'a> {
     pub enum_name_to_id: HashMap<String, EnumId>,
     pub variant_name_to_id: HashMap<String, VariantId>,
     pub fn_name_to_id: HashMap<String, FnId>,
+    pub global_name_to_id: HashMap<String, GlobalId>,
 
     // StructId to (Arm Name -> ArmInfo)
     pub arm_map: HashMap<StructId, HashMap<String, ArmInfo>>,
 
     var_stack: Vec<HashMap<String, MIRValue>>,
+    var_dollar_stack: Vec<HashMap<String, MIRDollarMode>>,
     pub last_value: Option<MIRValue>,
 
     pub module: MIRModule, //The builder writes to this
@@ -82,6 +84,7 @@ impl<'a> MIRBuilder<'a> {
             current_dollar_name: None,
             enums: HashMap::new(),
             var_stack: Vec::new(),
+            var_dollar_stack: Vec::new(),
             arm_map: HashMap::new(),
             last_value: None,
             diagnostics,
@@ -95,6 +98,7 @@ impl<'a> MIRBuilder<'a> {
             enum_name_to_id: HashMap::new(),
             variant_name_to_id: HashMap::new(),
             fn_name_to_id: HashMap::new(),
+            global_name_to_id: HashMap::new(),
             types_table,
             target_spec,
             corrupted: false,
@@ -1028,14 +1032,20 @@ impl<'a> MIRBuilder<'a> {
 
     pub fn push_scope(&mut self) {
         self.var_stack.push(HashMap::new());
+        self.var_dollar_stack.push(HashMap::new());
     }
 
     pub fn pop_scope(&mut self) {
         self.var_stack.pop();
+        self.var_dollar_stack.pop();
     }
 
     pub fn declare_var(&mut self, name: String, ptr: MIRValue) {
         self.var_stack.last_mut().unwrap().insert(name, ptr);
+    }
+
+    pub fn declare_var_dollar(&mut self, name: String, mode: MIRDollarMode) {
+        self.var_dollar_stack.last_mut().unwrap().insert(name, mode);
     }
 
     pub fn lookup_var(&self, name: &str) -> Option<&MIRValue> {
@@ -1045,6 +1055,20 @@ impl<'a> MIRBuilder<'a> {
             }
         }
         None
+    }
+
+    pub fn lookup_var_dollar_mode(&self, name: &str) -> MIRDollarMode {
+        for scope in self.var_dollar_stack.iter().rev() {
+            if let Some(mode) = scope.get(name) {
+                return *mode;
+            }
+        }
+        if let Some(global_id) = self.global_name_to_id.get(name) {
+            if let Some(global) = self.module.globals.get(global_id) {
+                return global.dollar_mode;
+            }
+        }
+        MIRDollarMode::None
     }
 
     pub fn lookup_ptr(&mut self, expr: &HirExpr) -> MIRValue {
@@ -1267,11 +1291,17 @@ impl<'a> MIRBuilder<'a> {
         block.terminator = terminator;
     }
 
-    //All errors in the MIR builder are ICE in nature
     pub fn report_ice(&mut self, message: String, span: Option<Span>) -> ! {
         self.corrupted = true;
         let err = CompilerError::ice(message, Phase::MIRBuilder, span);
 
         self.diagnostics.borrow_mut().report_ice_and_panic(err);
+    }
+
+    pub fn report(&mut self, message: String, span: Option<Span>) {
+        self.corrupted = true;
+        let err = CompilerError::error(message, Phase::MIRBuilder, span);
+
+        self.diagnostics.borrow_mut().report(err);
     }
 }

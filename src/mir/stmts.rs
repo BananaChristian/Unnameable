@@ -158,10 +158,18 @@ impl<'a> MIRBuilder<'a> {
         } = &stmt.kind
         {
             let ty = self.get_type(&stmt.hir_id);
+            let dollar_mode = if *dollar_read {
+                MIRDollarMode::ReadOnly
+            } else {
+                MIRDollarMode::None
+            };
 
             match self.current_func {
                 None => {
                     let global_id = self.alloc_global_id();
+                    self.global_name_to_id
+                        .insert(name.clone(), global_id.clone());
+                    self.declare_var_dollar(name.clone(), dollar_mode);
 
                     let linkage = |is_exposed| {
                         if is_exposed {
@@ -169,12 +177,6 @@ impl<'a> MIRBuilder<'a> {
                         } else {
                             MIRLinkage::Private
                         }
-                    };
-
-                    let dollar_mode = if *dollar_read {
-                        MIRDollarMode::ReadOnly
-                    } else {
-                        MIRDollarMode::None
                     };
 
                     let mir_global = MIRGlobal {
@@ -190,6 +192,22 @@ impl<'a> MIRBuilder<'a> {
                     self.module.globals.insert(global_id, mir_global);
                 }
                 Some(_) => {
+                    if *constant {
+                        let const_val = self.expr_value(init);
+                        if !matches!(const_val, MIRValue::Constant(_)) {
+                            self.report(
+                                format!(
+                                    "'const {}' requires a compile-time-constant initializer",
+                                    name
+                                ),
+                                Some(stmt.span.clone()),
+                            );
+                        }
+                        self.declare_var(name.clone(), const_val);
+                        self.declare_var_dollar(name.clone(), dollar_mode);
+
+                        return;
+                    }
                     if ty.kind == MIRTykind::Unit {
                         self.expr_value(init);
                         self.declare_var(name.clone(), MIRValue::Poison);
@@ -198,6 +216,7 @@ impl<'a> MIRBuilder<'a> {
                     let dest = self.new_register(self.ptr_type(), Some(name));
                     self.build_alloca(dest.clone(), ty.clone(), Some(stmt.span.clone()));
                     self.declare_var(name.clone(), dest.clone());
+                    self.declare_var_dollar(name.clone(), dollar_mode);
 
                     if !self.build_into(init, dest.clone()) {
                         let val = self.expr_value(init);

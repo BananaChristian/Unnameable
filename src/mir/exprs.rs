@@ -364,18 +364,33 @@ impl<'a> MIRBuilder<'a> {
                 let param_ty = self.get_type(&param_expr.hir_id);
                 let name = match &param_expr.kind {
                     HirExprKind::Identifier(ident) => ident.clone(),
-                    _ => panic!("Expected identifier in dollar scope capture list"),
+                    _ => self.report_ice(
+                        "Expected identifier in dollar scope capture list".to_string(),
+                        Some(expr.span.clone()),
+                    ),
                 };
+
+                let param_dollar_mode = self.lookup_var_dollar_mode(&name);
 
                 // Evaluate the argument in the parent context (loads the external value)
                 let arg_val = self.expr_value(param_expr);
+                if !matches!(arg_val, MIRValue::Constant(_)) {
+                    self.report(
+                    format!(
+                        "Cannot capture '{}' into dollar scope, captured values must be compile-time constants (declare with 'const'), not runtime variables",
+                        name
+                    ),
+                    Some(expr.span.clone()),
+                    );
+                }
+
                 eval_args.push(arg_val);
 
                 // Construct the parameter representation for the target scope function
                 scope_fn_params.push(MIRParam {
                     name: name.clone(),
                     ty: param_ty.clone(),
-                    dollar_mode: MIRDollarMode::Full,
+                    dollar_mode: param_dollar_mode,
                 });
 
                 param_bindings.push((name, param_ty));
@@ -914,10 +929,13 @@ impl<'a> MIRBuilder<'a> {
             }
 
             HirExprKind::Identifier(name) => {
-                if let Some(ptr) = self.lookup_var(name).cloned() {
+                if let Some(val) = self.lookup_var(name).cloned() {
+                    if matches!(val, MIRValue::Constant(_)) {
+                        return val;
+                    }
                     let ty = self.get_type(&expr.hir_id);
                     let dest = self.new_register(ty.clone(), None);
-                    self.build_load(dest.clone(), ptr, ty, span);
+                    self.build_load(dest.clone(), val, ty, span);
                     return dest;
                 }
 

@@ -281,11 +281,11 @@ fn main() -> Result<(), std::io::Error> {
         Rc::clone(&diagnostics),
         module_name.clone(),
     );
+    let mut mir_module = mir_builder.build_module();
     if mir_builder.corrupted {
         diagnostics.borrow().print();
         std::process::exit(1);
     }
-    let mut mir_module = mir_builder.build_module();
     if dump_mir {
         println!("=== MIR Dump ===");
         println!("{}", mir_module);
