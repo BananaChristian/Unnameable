@@ -59,7 +59,7 @@ impl<'a> VM<'a> {
             );
 
             if let Some(init_val) = &global.init_data {
-                self.write_typed(&alloc_id, 0, init_val, &global.ty);
+                self.write_typed(&alloc_id, 0, init_val, &global.ty,true);
             }
         }
     }
@@ -239,7 +239,7 @@ impl<'a> VM<'a> {
                     let ptr_val = self.read_reg(ptr, frame);
                     let src_val = self.read_reg(val, frame);
                     if let VMValue::Ptr(alloc_id, offset) = ptr_val {
-                        self.write_typed(&alloc_id, offset, &src_val, &ty);
+                        self.write_typed(&alloc_id, offset, &src_val, &ty,false);
                     } else {
                         self.report_ice("Store to a non pointer".to_string());
                     }

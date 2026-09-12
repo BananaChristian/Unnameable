@@ -25,24 +25,26 @@ impl<'a> VM<'a> {
         alloc.data[offset..end].to_vec()
     }
 
-    fn write_bytes(&mut self, alloc_id: &AllocId, offset: usize, bytes: &[u8]) {
-        match alloc_id.kind {
-            MemoryKind::Code => {
-                self.report_ice(format!(
-                    "Attempted write to immutable .text (Code) segment at {} + offset {}",
-                    alloc_id, offset
-                ));
-                return;
-            }
-            MemoryKind::ROData => {
-                self.report_ice(format!(
-                    "Attempted write to read-only .rodata segment at {} + offset {}",
-                    alloc_id, offset
-                ));
-                return;
-            }
-            MemoryKind::Data | MemoryKind::Stack | MemoryKind::Heap => {
-                // Writable segments, proceed normally
+    fn write_bytes(&mut self, alloc_id: &AllocId, offset: usize, bytes: &[u8], unchecked: bool) {
+        if !unchecked {
+            match alloc_id.kind {
+                MemoryKind::Code => {
+                    self.report_ice(format!(
+                        "Attempted write to immutable .text (Code) segment at {} + offset {}",
+                        alloc_id, offset
+                    ));
+                    return;
+                }
+                MemoryKind::ROData => {
+                    self.report_ice(format!(
+                        "Attempted write to read-only .rodata segment at {} + offset {}",
+                        alloc_id, offset
+                    ));
+                    return;
+                }
+                MemoryKind::Data | MemoryKind::Stack | MemoryKind::Heap => {
+                    // Writable segments, proceed normally
+                }
             }
         }
 
@@ -188,7 +190,14 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn write_typed(&mut self, alloc_id: &AllocId, offset: usize, val: &VMValue, ty: &MIRTy) {
+    pub fn write_typed(
+        &mut self,
+        alloc_id: &AllocId,
+        offset: usize,
+        val: &VMValue,
+        ty: &MIRTy,
+        unchecked: bool,
+    ) {
         if matches!(val, VMValue::Poison) {
             return;
         }
@@ -196,75 +205,75 @@ impl<'a> VM<'a> {
         match &ty.kind {
             MIRTykind::I8 => {
                 let byte = self.expect_i8(val) as u8;
-                self.write_bytes(alloc_id, offset, &[byte]);
+                self.write_bytes(alloc_id, offset, &[byte], unchecked);
             }
             MIRTykind::U8 => {
                 let byte = self.expect_u8(val);
-                self.write_bytes(alloc_id, offset, &[byte]);
+                self.write_bytes(alloc_id, offset, &[byte], unchecked);
             }
             MIRTykind::I16 => {
                 let bytes = self.expect_i16(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::U16 => {
                 let bytes = self.expect_u16(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::I32 => {
                 let bytes = self.expect_i32(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::U32 => {
                 let bytes = self.expect_u32(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::I64 => {
                 let bytes = self.expect_i64(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::U64 => {
                 let bytes = self.expect_u64(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::ISIZE => {
                 let bytes = self.expect_isize(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::USIZE => {
                 let bytes = self.expect_usize(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::I128 => {
                 let bytes = self.expect_i128(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, false);
             }
             MIRTykind::U128 => {
                 let bytes = self.expect_u128(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::F32 => {
                 let bytes = self.expect_f32(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::F64 => {
                 let bytes = self.expect_f64(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::Bool => {
                 let byte = self.expect_bool(val) as u8;
-                self.write_bytes(alloc_id, offset, &[byte]);
+                self.write_bytes(alloc_id, offset, &[byte], unchecked);
             }
             MIRTykind::CHAR8 => {
                 let byte = self.expect_char8(val);
-                self.write_bytes(alloc_id, offset, &[byte]);
+                self.write_bytes(alloc_id, offset, &[byte], unchecked);
             }
             MIRTykind::CHAR16 => {
                 let bytes = self.expect_char16(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::CHAR32 => {
                 let bytes = self.expect_char32(val).to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
             MIRTykind::Ptr => {
                 let (target_alloc_id, ptr_offset) = match val {
@@ -281,7 +290,7 @@ impl<'a> VM<'a> {
                 };
 
                 let bytes = ptr_offset.to_le_bytes();
-                self.write_bytes(alloc_id, offset, &bytes);
+                self.write_bytes(alloc_id, offset, &bytes, false);
 
                 if let Some(alloc) = self.memory.allocations.get_mut(alloc_id) {
                     if let Some(target_id) = target_alloc_id {
@@ -300,7 +309,7 @@ impl<'a> VM<'a> {
                     return;
                 };
                 for i in 0..*count {
-                    self.write_typed(alloc_id, offset + i * elem_ty.size, &elems[i], elem_ty);
+                    self.write_typed(alloc_id, offset + i * elem_ty.size, &elems[i], elem_ty,unchecked);
                 }
             }
             MIRTykind::Struct(_, _, fields) => {
@@ -321,7 +330,7 @@ impl<'a> VM<'a> {
                         (field_ty.align - (field_offset % field_ty.align)) % field_ty.align
                     };
                     field_offset += padding;
-                    self.write_typed(alloc_id, offset + field_offset, field_val, field_ty);
+                    self.write_typed(alloc_id, offset + field_offset, field_val, field_ty,unchecked);
                     field_offset += field_ty.size;
                 }
             }
@@ -340,7 +349,7 @@ impl<'a> VM<'a> {
                         (elem_ty.align - (field_offset % elem_ty.align)) % elem_ty.align
                     };
                     field_offset += padding;
-                    self.write_typed(alloc_id, offset + field_offset, elem_val, elem_ty);
+                    self.write_typed(alloc_id, offset + field_offset, elem_val, elem_ty,unchecked);
                     field_offset += elem_ty.size;
                 }
             }

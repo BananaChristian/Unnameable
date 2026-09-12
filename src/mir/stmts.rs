@@ -169,6 +169,7 @@ impl<'a> MIRBuilder<'a> {
                     let global_id = self.alloc_global_id();
                     self.global_name_to_id
                         .insert(name.clone(), global_id.clone());
+                    self.declare_var(name.clone(), MIRValue::Global(global_id));
                     self.declare_var_dollar(name.clone(), dollar_mode);
 
                     let linkage = |is_exposed| {

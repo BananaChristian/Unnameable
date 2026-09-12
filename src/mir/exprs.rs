@@ -374,13 +374,25 @@ impl<'a> MIRBuilder<'a> {
 
                 // Evaluate the argument in the parent context (loads the external value)
                 let arg_val = self.expr_value(param_expr);
-                if !matches!(arg_val, MIRValue::Constant(_)) {
+
+                let is_capturable = match &arg_val {
+                    MIRValue::Constant(_) => true,
+                    MIRValue::Global(global_id) => self
+                        .module
+                        .globals
+                        .get(global_id)
+                        .map(|g| g.is_const)
+                        .unwrap_or(false),
+                    _ => false,
+                };
+
+                if !is_capturable {
                     self.report(
-                    format!(
-                        "Cannot capture '{}' into dollar scope, captured values must be compile-time constants (declare with 'const'), not runtime variables",
+                        format!(
+                                "Cannot capture '{}' into dollar scope, captured values must be compile-time constants (declare with 'const')",
                         name
-                    ),
-                    Some(expr.span.clone()),
+                        ),
+                        Some(expr.span.clone()),
                     );
                 }
 
@@ -927,12 +939,20 @@ impl<'a> MIRBuilder<'a> {
                 }
                 self.literal_value(expr)
             }
-
             HirExprKind::Identifier(name) => {
                 if let Some(val) = self.lookup_var(name).cloned() {
                     if matches!(val, MIRValue::Constant(_)) {
                         return val;
                     }
+
+                    if let MIRValue::Global(global_id) = &val {
+                        if let Some(global) = self.module.globals.get(global_id) {
+                            if global.is_const {
+                                return global.init.clone();
+                            }
+                        }
+                    }
+
                     let ty = self.get_type(&expr.hir_id);
                     let dest = self.new_register(ty.clone(), None);
                     self.build_load(dest.clone(), val, ty, span);
@@ -954,7 +974,6 @@ impl<'a> MIRBuilder<'a> {
                     span,
                 );
             }
-
             HirExprKind::StaticCast(_, _) => {
                 self.build_cast(expr);
                 if let Some(val) = self.last_value.clone() {
