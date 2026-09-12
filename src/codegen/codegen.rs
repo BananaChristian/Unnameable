@@ -1,7 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use inkwell::{
-    AddressSpace, builder::Builder, context::Context, module::{Linkage, Module}, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType}, values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
+    AddressSpace, OptimizationLevel,
+    builder::Builder,
+    context::Context,
+    module::{Linkage, Module},
+    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
+    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
+    values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
 };
 
 use crate::{
@@ -18,6 +24,7 @@ pub struct Codegen<'ctx> {
     pub module: Module<'ctx>,
     pub builder: Builder<'ctx>,
     target_spec: &'ctx TargetSpec,
+    opt_level: OptimizationLevel,
     pub vreg_map: HashMap<Vreg, BasicValueEnum<'ctx>>,
     pub global_map: HashMap<GlobalId, GlobalValue<'ctx>>,
     pub func_map: HashMap<FnId, FunctionValue<'ctx>>,
@@ -31,6 +38,7 @@ impl<'ctx> Codegen<'ctx> {
         context: &'ctx Context,
         target_spec: &'ctx TargetSpec,
         mir_module: &'ctx MIRModule,
+        opt_level: OptimizationLevel,
         diagnostics: SharedDiagnostics,
     ) -> Self {
         let module_name = &mir_module.name;
@@ -41,6 +49,7 @@ impl<'ctx> Codegen<'ctx> {
             module,
             builder,
             target_spec,
+            opt_level,
             vreg_map: HashMap::new(),
             global_map: HashMap::new(),
             func_map: HashMap::new(),
@@ -91,7 +100,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn lower_globals(&mut self, global: &MIRGlobal) {
-        if global.ty.kind == MIRTykind::Unit{
+        if global.ty.kind == MIRTykind::Unit {
             return;
         }
 
@@ -103,7 +112,7 @@ impl<'ctx> Codegen<'ctx> {
 
         match global.linkage {
             MIRLinkage::Public => {} // Default external linkage
-            MIRLinkage::Private => global_val.set_linkage(Linkage::Private),
+            MIRLinkage::Private => global_val.set_linkage(Linkage::Internal),
         }
         global_val.set_constant(global.is_const);
         if let MIRValue::Constant(ref const_val) = global.init {
@@ -316,6 +325,34 @@ impl<'ctx> Codegen<'ctx> {
             }
             MIRValue::Poison => self.context.i32_type().get_poison().into(),
         }
+    }
+
+    pub fn emit_object<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        Target::initialize_native(&InitializationConfig::default())
+            .map_err(|e| format!("Failed to initialize native target: {}", e))?;
+
+        let triple_str = self.target_spec.llvm_triple();
+        let triple = TargetTriple::create(&triple_str);
+
+        let target = Target::from_triple(&triple)
+            .map_err(|e| format!("Invalid target triple '{}': {}", triple_str, e))?;
+
+        let target_machine = target
+            .create_target_machine(
+                &triple,
+                "generic",
+                "",
+                self.opt_level,
+                RelocMode::Default,
+                CodeModel::Default,
+            )
+            .ok_or_else(|| "Failed to create target machine".to_string())?;
+
+        self.module.set_triple(&triple);
+
+        target_machine
+            .write_to_file(&self.module, FileType::Object, path.as_ref())
+            .map_err(|e| format!("Failed to write object file: {}", e))
     }
 
     pub fn print_ir(&self) -> String {

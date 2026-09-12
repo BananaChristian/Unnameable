@@ -1,4 +1,4 @@
-use inkwell::context::Context;
+use inkwell::{OptimizationLevel, context::Context};
 use unnc::{
     bc_builder::{BytecodeBuilder, BytecodePrinter},
     codegen::Codegen,
@@ -42,6 +42,11 @@ fn print_help(program_name: &str) {
     println!(
         "  --load-stub <path>    Specify the path that the compiler should load the stub file from"
     );
+    println!("  --no-optimize         Disable all optimizations");
+    println!("  --optimize-basic      Enable basic optimizations");
+    println!("  --optimize            Enable standard optimizations (default)");
+    println!("  --optimize-aggressive Enable aggressive optimizations");
+    println!("  --emit-obj [name]     Produce a native object file, optionally with a custom name");
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -67,6 +72,10 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut emit_stub_path: Option<PathBuf> = None;
     let mut load_stub_paths: Vec<String> = Vec::new();
+
+    let mut opt_level = OptimizationLevel::Default;
+    let mut object_name = None;
+    let mut emit_obj = false;
 
     // Debug output flags
     let mut dump_ast = false;
@@ -162,6 +171,31 @@ fn main() -> Result<(), std::io::Error> {
                     cli_error("Missing value for --load-stub");
                 }
             }
+            "--no-optimize" => {
+                opt_level = OptimizationLevel::None;
+                i += 1;
+            }
+            "--optimize-basic" => {
+                opt_level = OptimizationLevel::Less;
+                i += 1;
+            }
+            "--optimize" => {
+                opt_level = OptimizationLevel::Default;
+                i += 1;
+            }
+            "--optimize-aggressive" => {
+                opt_level = OptimizationLevel::Aggressive;
+                i += 1;
+            }
+            "--emit-obj" => {
+                emit_obj = true;
+                if i + 1 < args.len() && !args[i + 1].starts_with('-') {
+                    object_name = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
             flag if flag.starts_with('-') => {
                 eprintln!("Unknown compilation flag: {}", flag);
                 std::process::exit(1);
@@ -181,6 +215,18 @@ fn main() -> Result<(), std::io::Error> {
             std::process::exit(1);
         }
     };
+
+    if std::path::Path::new(filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        != Some("unn")
+    {
+        eprintln!(
+            "Error: Input file '{}' must have a `.unn` extension.",
+            filename
+        );
+        std::process::exit(1);
+    }
 
     let module_name = std::path::Path::new(filename)
         .file_stem()
@@ -316,11 +362,25 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     let context = Context::create();
-    let mut codegen = Codegen::new(&context, &target_spec, &mir_module, Rc::clone(&diagnostics));
+    let mut codegen = Codegen::new(
+        &context,
+        &target_spec,
+        &mir_module,
+        opt_level,
+        Rc::clone(&diagnostics),
+    );
     codegen.compile_module();
     if dump_ir {
         println!("=== LLVM IR ===");
         println!("{}", codegen.print_ir())
+    }
+    if emit_obj {
+        let obj_path = object_name.unwrap_or_else(|| format!("{}.o", module_name));
+        if let Err(e) = codegen.emit_object(&obj_path) {
+            eprintln!("Codegen Error: {}", e);
+            std::process::exit(1);
+        }
+        println!("Object file written to: {}", obj_path);
     }
 
     Ok(())

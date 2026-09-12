@@ -1,15 +1,12 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    basic_block::BasicBlock,
-    module::Linkage,
-    types::{BasicTypeEnum, FunctionType},
-    values::FunctionValue,
+    basic_block::BasicBlock, module::Linkage, types::BasicTypeEnum, values::FunctionValue,
 };
 
 use crate::{
     codegen::Codegen,
-    mir::{BlockId, MIRFn, MIRLinkage, MIRTykind, Terminator, Vreg},
+    mir::{BlockId, MIRFn, MIRLinkage, Terminator, Vreg},
 };
 
 impl<'ctx> Codegen<'ctx> {
@@ -22,7 +19,7 @@ impl<'ctx> Codegen<'ctx> {
 
         let linkage = match &func.linkage {
             MIRLinkage::Public => None,
-            MIRLinkage::Private => Some(Linkage::Private),
+            MIRLinkage::Private => Some(Linkage::Internal),
         };
 
         let fn_val = self.module.add_function(&func.name, fn_type, linkage);
