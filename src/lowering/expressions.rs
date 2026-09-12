@@ -24,6 +24,9 @@ impl Lowering {
             }
 
             ExprKind::Binary(left, op, right) => {
+                if *op == BinaryOp::Scope {
+                    return self.lower_scope_expr(left, right, expr.span.clone());
+                }
                 if *op == BinaryOp::Access {
                     return self.lower_access_expr(left, right, expr.span.clone());
                 }
@@ -191,6 +194,18 @@ impl Lowering {
         let second_digit_char = parts[1].chars().next()?;
         let second_idx: isize = second_digit_char.to_digit(10)? as isize;
 
+        // Recover the span each index digit occupies within the float token.
+        // For "0.1" the first index is "0" at (start, start+1) and the second
+        // index "1" sits one char past the dot: (start+2, start+3).
+        let first_span = Span {
+            start: right_span.start,
+            end: right_span.start + parts[0].len(),
+        };
+        let second_span = Span {
+            start: right_span.start + parts[0].len() + 1,
+            end: right_span.start + parts[0].len() + 2,
+        };
+
         let inner_access = HirExpr {
             hir_id: self.next_id(),
             kind: HirExprKind::Binary(
@@ -199,7 +214,7 @@ impl Lowering {
                 Box::new(HirExpr {
                     hir_id: self.next_id(),
                     kind: HirExprKind::Literal(HirLiteral::Int(first_idx)),
-                    span: right_span.clone(),
+                    span: first_span,
                 }),
             ),
             span: hir_base.span,
@@ -213,7 +228,7 @@ impl Lowering {
                 Box::new(HirExpr {
                     hir_id: self.next_id(),
                     kind: HirExprKind::Literal(HirLiteral::Int(second_idx)),
-                    span: right_span,
+                    span: second_span,
                 }),
             ),
             span: total_span,
@@ -341,7 +356,13 @@ impl Lowering {
             }
             TypeKind::Nullable(inner) => {
                 let inner_hir = self.lower_type(inner)?;
-                HirType::Nullable(Box::new(inner_hir))
+                // `(i32)?` parses the parenthesized type as a one-element tuple;
+                // unwrap it so the nullable wraps the actual type, not a spurious singleton tuple.
+                let unwrapped = match &inner_hir.kind {
+                    HirType::Tuple(types) if types.len() == 1 => types[0].clone(),
+                    _ => inner_hir,
+                };
+                HirType::Nullable(Box::new(unwrapped))
             }
             TypeKind::Failable(ok, err) => {
                 let ok_hir = self.lower_type(ok)?;
@@ -434,6 +455,109 @@ impl Lowering {
                 Some(format!("{}_{}", left_str, right_str))
             }
             _ => None,
+        }
+    }
+
+    // Flattens a `::` chain into its constituent expressions. The general expression parser
+    // produces `Binary(.., BinaryOp::Scope, ..)` trees for `::`, so resolving a scope chain
+    // means walking those bins left-to-right the same way extract_name_string walks Path nodes.
+    fn scope_chain<'e>(&self, expr: &'e Expr, acc: &mut Vec<&'e Expr>) {
+        if let ExprKind::Binary(left, BinaryOp::Scope, right) = &expr.kind {
+            self.scope_chain(left, acc);
+            self.scope_chain(right, acc);
+        } else {
+            acc.push(expr);
+        }
+    }
+
+    // Name string for a single chain element, plus its type params if it carries any
+    // (i.e. it is a generic instantiation, which must survive resolution/monomorphization).
+    fn scope_parts(&mut self, expr: &Expr) -> Option<(String, Option<Vec<HirTypeNode>>)> {
+        match &expr.kind {
+            ExprKind::Identifier(name) => Some((name.clone(), None)),
+            ExprKind::Path(left, right) => {
+                let (left_str, left_tp) = self.scope_parts(left)?;
+                let (right_str, right_tp) = self.scope_parts(right)?;
+                Some((
+                    format!("{}_{}", left_str, right_str),
+                    left_tp.or(right_tp),
+                ))
+            }
+            ExprKind::GenericInstantion { name, type_params } => {
+                let (name_str, _) = self.scope_parts(name)?;
+                let hir_params = type_params
+                    .iter()
+                    .map(|p| self.lower_type(p))
+                    .collect::<Option<Vec<_>>>()?;
+                Some((name_str, Some(hir_params)))
+            }
+            _ => None,
+        }
+    }
+
+    // Resolve a `::` chain into a flat mangled identifier. A trailing call names the function
+    // being invoked: A::B::make() -> Call(Identifier("A_B_make"), args). If the chain contains
+    // a generic instantiation, the type params are carried into a GenericInstantion callee so
+    // the resolver/monomorphizer can specialize it.
+    fn lower_scope_expr(&mut self, left: &Expr, right: &Expr, span: Span) -> Option<HirExpr> {
+        let mut chain = Vec::new();
+        self.scope_chain(left, &mut chain);
+        self.scope_chain(right, &mut chain);
+
+        let last_is_call = matches!(
+            chain.last().map(|e| &e.kind),
+            Some(ExprKind::Call(..))
+        );
+
+        let name_count = if last_is_call {
+            chain.len() - 1
+        } else {
+            chain.len()
+        };
+
+        let mut names = Vec::new();
+        let mut type_params: Option<Vec<HirTypeNode>> = None;
+        for part in &chain[..name_count] {
+            let (part_name, part_tp) = self.scope_parts(part)?;
+            names.push(part_name);
+            if part_tp.is_some() {
+                type_params = part_tp;
+            }
+        }
+        let joined = names.join("_");
+
+        if last_is_call {
+            let ExprKind::Call(callee, args) = &chain.last()?.kind else {
+                return None;
+            };
+            let (callee_name, _) = self.scope_parts(callee)?;
+            let full = format!("{}_{}", joined, callee_name);
+            let hir_args = args
+                .iter()
+                .map(|a| self.lower_expr(a))
+                .collect::<Option<Vec<_>>>()?;
+            let callee_kind = match type_params {
+                Some(tp) => HirExprKind::GenericInstantion {
+                    name: full,
+                    type_params: tp,
+                },
+                None => HirExprKind::Identifier(full),
+            };
+            let callee_expr = HirExpr::new(self.next_id(), callee_kind, span.clone());
+            Some(HirExpr::new(
+                self.next_id(),
+                HirExprKind::Call(Box::new(callee_expr), hir_args),
+                span,
+            ))
+        } else {
+            let hir_kind = match type_params {
+                Some(tp) => HirExprKind::GenericInstantion {
+                    name: joined,
+                    type_params: tp,
+                },
+                None => HirExprKind::Identifier(joined),
+            };
+            Some(HirExpr::new(self.next_id(), hir_kind, span))
         }
     }
 

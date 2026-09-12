@@ -123,7 +123,14 @@ impl Lowering {
 
             let return_type = match type_annotation {
                 Some(t) => self.lower_type(t)?,
-                None => HirTypeNode::unit(self.next_id(), stmt.span.clone()),
+                None => HirTypeNode::unit(
+                    self.next_id(),
+                    // mark the slot where an explicit return type would sit (end of the name)
+                    Span {
+                        start: name.span.end,
+                        end: name.span.end,
+                    },
+                ),
             };
 
             let hir_body = self.lower_block(body)?;
@@ -165,7 +172,13 @@ impl Lowering {
 
             let return_type = match type_annotation {
                 Some(t) => self.lower_type(t)?,
-                None => HirTypeNode::unit(self.next_id(), stmt.span.clone()),
+                None => HirTypeNode::unit(
+                    self.next_id(),
+                    Span {
+                        start: name.span.end,
+                        end: name.span.end,
+                    },
+                ),
             };
 
             Some(HirStmt {
@@ -301,7 +314,15 @@ impl Lowering {
 
             let underly = match underlying {
                 Some(ty) => self.lower_type(ty)?,
-                None => HirTypeNode::new(self.next_id(), HirType::U32, stmt.span.clone()),
+                // default underlying type spans the slot where `: ty` would be declared
+                None => HirTypeNode::new(
+                    self.next_id(),
+                    HirType::U32,
+                    Span {
+                        start: name.span.end,
+                        end: name.span.end,
+                    },
+                ),
             };
 
             let members = self.lower_enum_member(content)?;
@@ -438,10 +459,11 @@ impl Lowering {
             let mut body = self.lower_block(body)?;
 
             //Push the update into the body
+            let update_span = update.span.clone();
             body.push(HirStmt {
                 hir_id: self.next_id(),
                 kind: HirStmtKind::HirExpr(Box::new(update)),
-                span: stmt.span.clone(),
+                span: update_span,
             });
 
             let hir_while = HirStmt {
@@ -468,48 +490,65 @@ impl Lowering {
         {
             let span = stmt.span.clone();
             let item_name = self.extract_name_string(item)?;
-            let hir_collection = self.lower_expr(collection)?;
+
+            // Synthesized scaffolding is anchored to the collection expression, plus the
+            // implicit `.next()` (7 chars) appended to it, rather than the whole each-stmt.
+            let next_span = Span {
+                start: collection.span.start,
+                end: collection.span.end + 7,
+            };
 
             let iter_var = format!("__iter_val_{}", self.iter_counter);
             self.iter_counter += 1;
 
             // var __iter_val_N := collection.next()
-            let next_call =
-                self.make_method_call(hir_collection.clone(), "next", vec![], span.clone());
-            let init_stmt = self.make_var(iter_var.clone(), true, next_call, span.clone());
+            let hir_collection_init = self.lower_expr(collection)?;
+            let next_call = self.make_method_call(
+                hir_collection_init,
+                "next",
+                vec![],
+                next_span.clone(),
+            );
+            let init_stmt = self.make_var(iter_var.clone(), true, next_call, next_span.clone());
 
             // condition: __iter_val_N != null
-            let left = self.make_identifier(&iter_var, span.clone());
+            let left = self.make_identifier(&iter_var, next_span.clone());
             let right = HirExpr::new(
                 self.next_id(),
                 HirExprKind::Literal(HirLiteral::Null),
-                span.clone(),
+                next_span.clone(),
             );
-            let condition = self.make_binary(left, HirBinaryOp::Neq, right, span.clone());
+            let condition = self.make_binary(left, HirBinaryOp::Neq, right, next_span.clone());
 
             // var item := unwrap[__iter_val_N]
-            let target = self.make_identifier(&iter_var, span.clone());
+            let target = self.make_identifier(&iter_var, next_span.clone());
             let unwrap_trigger = HirExpr::new(
                 self.next_id(),
                 HirExprKind::Unwrap(Box::new(target)),
-                span.clone(),
+                next_span.clone(),
             );
-            let item_decl = self.make_var(item_name, false, unwrap_trigger, span.clone());
+            let item_decl = self.make_var(item_name, false, unwrap_trigger, item.span.clone());
 
             // lower original body, prepend item decl
             let hir_body = self.lower_block(body)?;
             let mut full_body = vec![item_decl];
             full_body.extend(hir_body);
 
-            // __iter_val_N = collection.next() — advance at end
-            let advance_call =
-                self.make_method_call(hir_collection.clone(), "next", vec![], span.clone());
-            let left = self.make_identifier(&iter_var, span.clone());
-            let inner = self.make_binary(left, HirBinaryOp::Assign, advance_call, span.clone());
+            // __iter_val_N = collection.next() — advance at end.
+            // Lower the collection again so this `list` node gets its own hir_id.
+            let hir_collection_advance = self.lower_expr(collection)?;
+            let advance_call = self.make_method_call(
+                hir_collection_advance,
+                "next",
+                vec![],
+                next_span.clone(),
+            );
+            let left = self.make_identifier(&iter_var, next_span.clone());
+            let inner = self.make_binary(left, HirBinaryOp::Assign, advance_call, next_span.clone());
             let advance_stmt = HirStmt {
                 hir_id: self.next_id(),
                 kind: HirStmtKind::HirExpr(Box::new(inner)),
-                span: span.clone(),
+                span: next_span.clone(),
             };
             full_body.push(advance_stmt);
 

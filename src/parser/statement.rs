@@ -438,7 +438,6 @@ impl Parser {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::For)?;
         let init = self.parse_var()?;
-        self.expect_token(TType::Semicolon)?;
         let condition = self.parse_expression(Precedence::Lowest)?;
         self.expect_token(TType::Semicolon)?;
         let update = self.parse_expression(Precedence::Lowest)?;

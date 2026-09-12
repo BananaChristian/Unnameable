@@ -41,6 +41,16 @@ impl Diagnostics {
         }
     }
 
+    /// Number of reported errors, counting `Error` and `Fatal` severities.
+    /// Warnings and ICEs (which panic out before completion) are excluded,
+    /// so this matches what `print` reports as "aborting due to N error(s)".
+    pub fn error_count(&self) -> usize {
+        self.errors
+            .iter()
+            .filter(|e| matches!(e.severity, Severity::Error | Severity::Fatal))
+            .count()
+    }
+
     fn print_ice_header(&self, count: usize) {
         eprintln!(
             "\n{}",
@@ -118,11 +128,7 @@ impl Diagnostics {
             self.print_error(warning);
         }
 
-        let err_count = self
-            .errors
-            .iter()
-            .filter(|e| e.severity == Severity::Error)
-            .count();
+        let err_count = self.error_count();
         let warn_count = self.warnings.len();
 
         if err_count > 0 || warn_count > 0 {
@@ -157,7 +163,17 @@ impl Diagnostics {
 
         if let Some(span) = &error.span {
             let (line, col) = self.source_map.get_line_col(span.start);
-            let length = span.length().max(1);
+            // Caret length is the span's extent on this line, counted in
+            // characters (not bytes), so multi-byte tokens underline correctly.
+            let line_end_byte = if line < self.source_map.line_starts.len() {
+                self.source_map.line_starts[line] - 1
+            } else {
+                self.source_map.source.len()
+            };
+            let length = self
+                .source_map
+                .char_count(span.start, span.end.min(line_end_byte))
+                .max(1);
             let line_num_str = line.to_string();
             let padding = " ".repeat(line_num_str.len());
             let line_snippet = self.source_map.get_line_snippet(span.start);

@@ -88,16 +88,29 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn current_char(&self) -> Option<char> {
-        self.source.chars().nth(self.pos)
+    /// The character starting at byte offset `byte`, if any.
+    fn char_at(&self, byte: usize) -> Option<char> {
+        self.source.get(byte..)?.chars().next()
     }
 
+    fn current_char(&self) -> Option<char> {
+        self.char_at(self.pos)
+    }
+
+    /// The character immediately after the current one (not `pos + 1` as a
+    /// byte — the current char may be multi-byte).
     fn peek_char(&self) -> Option<char> {
-        self.source.chars().nth(self.pos + 1)
+        if let Some(c) = self.current_char() {
+            self.char_at(self.pos + c.len_utf8())
+        } else {
+            None
+        }
     }
 
     fn advance(&mut self) {
-        self.pos += 1;
+        if let Some(c) = self.current_char() {
+            self.pos += c.len_utf8();
+        }
     }
 
     fn skip_whitespace(&mut self) {
@@ -115,6 +128,7 @@ impl<'a> Lexer<'a> {
     fn skip_comment(&mut self) {
         if let Some(ch) = self.current_char() {
             if ch == '#' {
+                let comment_start = self.pos;
                 self.advance(); // Consume the initial #
 
                 if let Some(nch) = self.current_char() {
@@ -135,8 +149,8 @@ impl<'a> Lexer<'a> {
 
                         if !closed {
                             let span = Span {
-                                start: self.pos,
-                                end: self.pos + 1,
+                                start: comment_start,
+                                end: self.pos,
                             };
                             self.report("Unterminated multi-line comment".to_string(), Some(span));
                         }
@@ -157,13 +171,15 @@ impl<'a> Lexer<'a> {
     fn read_number(&mut self) -> Token {
         let start = self.pos;
 
-        // Check for hex and binary
+        // Check for hex, binary, and octal
         if let Some('0') = self.current_char() {
             if let Some(next) = self.peek_char() {
                 if next == 'x' || next == 'X' {
                     return self.read_hex();
                 } else if next == 'b' || next == 'B' {
                     return self.read_binary();
+                } else if next == 'o' || next == 'O' {
+                    return self.read_octal();
                 }
             }
         }
@@ -180,8 +196,10 @@ impl<'a> Lexer<'a> {
         }
 
         // Check for float
+        let mut is_float = false;
         if let Some('.') = self.current_char() {
             self.advance();
+            is_float = true;
             while let Some(ch) = self.current_char() {
                 if ch.is_ascii_digit() {
                     self.advance();
@@ -189,13 +207,86 @@ impl<'a> Lexer<'a> {
                     break;
                 }
             }
-            let end = self.pos;
-            let lexeme = self.source[start..end].replace('_', "");
-            return self.parse_float_suffix(lexeme, Span { start, end });
+        }
+
+        // Check for exponent (1e5, 1.5e3, 1.5E-3, 2e+4)
+        let mut has_exponent = false;
+        if self.has_exponent_at(self.pos) {
+            self.advance(); // 'e' or 'E'
+            if let Some(sign) = self.current_char() {
+                if sign == '+' || sign == '-' {
+                    self.advance();
+                }
+            }
+            while let Some(ch) = self.current_char() {
+                if ch.is_ascii_digit() {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            has_exponent = true;
         }
 
         let end = self.pos;
         let lexeme = self.source[start..end].replace('_', "");
+
+        if is_float || has_exponent {
+            self.parse_float_suffix(lexeme, Span { start, end })
+        } else {
+            self.parse_suffix(lexeme, Span { start, end })
+        }
+    }
+
+    /// True if a valid exponent part (`e`/`E` with optional sign and at least
+    /// one digit) starts at byte offset `at`. Used as lookahead so that a
+    /// bare `e` with no exponent digits is left alone (and can be reported
+    /// as an invalid suffix instead).
+    fn has_exponent_at(&self, at: usize) -> bool {
+        let Some(ch) = self.char_at(at) else {
+            return false;
+        };
+        if ch != 'e' && ch != 'E' {
+            return false;
+        }
+        let mut i = at + ch.len_utf8();
+        if let Some(sign) = self.char_at(i) {
+            if sign == '+' || sign == '-' {
+                i += sign.len_utf8();
+            }
+        }
+        matches!(self.char_at(i), Some(d) if d.is_ascii_digit())
+    }
+
+    fn read_octal(&mut self) -> Token {
+        let start = self.pos;
+        self.advance(); // 0
+        self.advance(); // o / O
+
+        let mut has_digit = false;
+        while let Some(ch) = self.current_char() {
+            if ('0'..='7').contains(&ch) {
+                has_digit = true;
+                self.advance();
+            } else if ch == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        let end = self.pos;
+        let lexeme = self.source[start..end].replace('_', "");
+
+        if !has_digit {
+            let span = Span { start, end };
+            self.report(
+                "Invalid octal number: expected octal digit after '0o'".to_string(),
+                Some(span.clone()),
+            );
+            return Token::new(lexeme, TType::Illegal, span);
+        }
+
         self.parse_suffix(lexeme, Span { start, end })
     }
 
@@ -264,7 +355,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn parse_suffix(&mut self, value: String, span: Span) -> Token {
-        let start = self.pos;
+        let suffix_start = self.pos;
         while let Some(ch) = self.current_char() {
             if ch.is_ascii_alphabetic() || ch.is_ascii_digit() {
                 self.advance();
@@ -272,11 +363,15 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+        let suffix_end = self.pos;
 
-        let end = self.pos;
-        let suffix = self.source[start..end].to_string();
+        if suffix_end == suffix_start {
+            return Token::new(value, TType::Int, span);
+        }
 
-        let token_type = match suffix.as_str() {
+        let suffix = &self.source[suffix_start..suffix_end];
+
+        let token_type = match suffix {
             "i64" => TType::Int64,
             "u64" => TType::Uint64,
             "i16" => TType::Int16,
@@ -289,7 +384,20 @@ impl<'a> Lexer<'a> {
             "u8" => TType::Uint8,
             "iz" => TType::IntSize,
             "uz" => TType::UintSize,
-            _ => TType::Int,
+            _ => {
+                self.report(
+                    format!("Invalid suffix '{}' for integer literal", suffix),
+                    Some(Span {
+                        start: suffix_start,
+                        end: suffix_end,
+                    }),
+                );
+                // Do not swallow the unknown suffix: rewind so it lexes as
+                // its own token (e.g. an identifier), with the error above
+                // failing the compilation.
+                self.pos = suffix_start;
+                return Token::new(value, TType::Int, span);
+            }
         };
 
         Token::new(
@@ -297,13 +405,13 @@ impl<'a> Lexer<'a> {
             token_type,
             Span {
                 start: span.start,
-                end,
+                end: suffix_end,
             },
         )
     }
 
     fn parse_float_suffix(&mut self, value: String, span: Span) -> Token {
-        let start = self.pos;
+        let suffix_start = self.pos;
         while let Some(ch) = self.current_char() {
             if ch.is_ascii_alphabetic() || ch.is_ascii_digit() {
                 self.advance();
@@ -311,14 +419,28 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+        let suffix_end = self.pos;
 
-        let end = self.pos;
-        let suffix = self.source[start..end].to_string();
+        if suffix_end == suffix_start {
+            return Token::new(value, TType::Float, span);
+        }
 
-        let token_type = match suffix.as_str() {
+        let suffix = &self.source[suffix_start..suffix_end];
+
+        let token_type = match suffix {
             "f64" => TType::F64,
             "f32" => TType::F32,
-            _ => TType::Float,
+            _ => {
+                self.report(
+                    format!("Invalid suffix '{}' for float literal", suffix),
+                    Some(Span {
+                        start: suffix_start,
+                        end: suffix_end,
+                    }),
+                );
+                self.pos = suffix_start;
+                return Token::new(value, TType::Float, span);
+            }
         };
 
         Token::new(
@@ -326,7 +448,7 @@ impl<'a> Lexer<'a> {
             token_type,
             Span {
                 start: span.start,
-                end,
+                end: suffix_end,
             },
         )
     }
@@ -974,6 +1096,59 @@ impl<'a> Lexer<'a> {
                                 self.advance();
                                 '\0'
                             }
+                            Some('u') => {
+                                // unicode escape \u{1F600}
+                                self.advance(); // consume u
+                                if self.current_char() != Some('{') {
+                                    self.report(
+                                        "Invalid unicode escape in char literal: expected '\\u{...}'"
+                                            .to_string(),
+                                        None,
+                                    );
+                                    '\u{FFFD}'
+                                } else {
+                                    self.advance(); // consume {
+                                    let mut hex = String::new();
+                                    loop {
+                                        match self.current_char() {
+                                            Some('}') => {
+                                                self.advance();
+                                                break;
+                                            }
+                                            Some(h) if h.is_ascii_hexdigit() => {
+                                                hex.push(h);
+                                                self.advance();
+                                            }
+                                            _ => break,
+                                        }
+                                    }
+                                    match u32::from_str_radix(&hex, 16) {
+                                        Ok(code) => match char::from_u32(code) {
+                                            Some(c) => c,
+                                            None => {
+                                                self.report(
+                                                    format!(
+                                                        "Invalid unicode codepoint: {}",
+                                                        hex
+                                                    ),
+                                                    None,
+                                                );
+                                                '\u{FFFD}'
+                                            }
+                                        },
+                                        Err(_) => {
+                                            self.report(
+                                                format!(
+                                                    "Invalid unicode escape in char literal: \\u{{{}}}",
+                                                    hex
+                                                ),
+                                                None,
+                                            );
+                                            '\u{FFFD}'
+                                        }
+                                    }
+                                }
+                            }
                             Some(c) => {
                                 self.report(format!("Unknown escape sequence: \\{}", c), None);
                                 self.advance();
@@ -1093,7 +1268,7 @@ impl<'a> Lexer<'a> {
             Some(ch) => {
                 let span = Span {
                     start,
-                    end: self.pos + 1,
+                    end: start + ch.len_utf8(),
                 };
                 self.report(format!("Invalid character: '{}'", ch), Some(span.clone()));
                 self.advance();
