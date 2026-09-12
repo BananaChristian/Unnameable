@@ -78,7 +78,7 @@ impl<'a> TypeChecker<'a> {
         let Some(p_ty) = p_ty else {
             self.report(
                 format!("Unknown field '{}' in struct initialization", init_p.name),
-                None,
+                Some(init_p.span.clone()),
             );
             return;
         };
@@ -157,7 +157,7 @@ impl<'a> TypeChecker<'a> {
             let target_ty = self.expr_type(target);
             let index_ty = self.expr_type(index);
 
-            if !self.is_numeric(&index_ty) {
+            if !self.is_integer(&index_ty.kind) {
                 self.report(
                     format!(
                         "Invalid index type '{}' array indexes must be integers",
@@ -458,6 +458,10 @@ impl<'a> TypeChecker<'a> {
                         .names
                         .resolved
                         .insert(field_expr.hir_id, member_tuple.2);
+                    // The field identifier itself carries no error and is a plain reference
+                    // expression: type it as Unit rather than leaving it Unknown.
+                    let field_ty = self.unit(field_expr.span.clone());
+                    self.insert(field_expr.hir_id, field_ty);
                     member_tuple.1.clone() // Returns field's type
                 } else {
                     self.unknown_member(field_name, name, field_expr.span.clone());
@@ -676,13 +680,25 @@ impl<'a> TypeChecker<'a> {
             let overall_ty = self.expr_type(name);
             match &overall_ty.kind {
                 ResolvedTypeKind::Func {
-                    params, ret_type, ..
+                    params,
+                    ret_type,
+                    param_defaults,
+                    ..
                 } => {
-                    if args.len() != params.len() {
+                    let min_args = params
+                        .len()
+                        .saturating_sub(param_defaults.iter().filter(|d| **d).count());
+
+                    if args.len() < min_args || args.len() > params.len() {
+                        let expected = if min_args == params.len() {
+                            params.len().to_string()
+                        } else {
+                            format!("{min_args}-{}", params.len())
+                        };
                         self.report(
                             format!(
                                 "Invalid argument count expected '{}' but got '{}'",
-                                params.len(),
+                                expected,
                                 args.len()
                             ),
                             Some(expr.span.clone()),

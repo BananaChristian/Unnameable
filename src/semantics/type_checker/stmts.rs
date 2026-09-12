@@ -82,6 +82,8 @@ impl<'a> TypeChecker<'a> {
     pub fn check_func_param_type(&mut self, param: &HirParam) {
         let param_ty = self.type_from_hir_type(&param.ty);
         if let Some(def) = &param.default {
+            self.expr_type(def);
+            self.coerce_ty(&param_ty, def);
             let def_ty = self.expr_type(def);
             if !TypeInfo::types_match(&param_ty, &def_ty) {
                 self.type_mismatch(&param_ty, &def_ty, param.span.clone());
@@ -91,12 +93,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_func(&mut self, stmt: &HirStmt) {
-        if let HirStmtKind::HirFunctionDef { params, body, .. } = &stmt.kind {
-            //Declare the function type
+        if let HirStmtKind::HirFunctionDef { body, .. } = &stmt.kind {
+            //Declare the function type (this also validates and types the params)
             self.declare_custom_types(stmt);
-            for param in params {
-                self.check_func_param_type(param);
-            }
 
             for s in body {
                 self.check_stmt(s);

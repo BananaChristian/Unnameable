@@ -74,6 +74,9 @@ pub enum ResolvedTypeKind {
     Func {
         params: Vec<TypeInfo>,
         gen_type_params: Vec<TypeInfo>,
+        // Parallel to `params`: whether each param may be omitted at a call site
+        // because it has a default value in its declaration.
+        param_defaults: Vec<bool>,
         ret_type: Box<TypeInfo>,
     },
     //User defined

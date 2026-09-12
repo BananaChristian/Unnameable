@@ -147,6 +147,12 @@ impl<'a> LayoutEngine<'a> {
         let mut max_align = 1;
 
         for (field_name, field_ty, _node_id) in members {
+            // A generic template member is a placeholder: its layout is only
+            // known once specialized, so skip it when shaping a template.
+            if matches!(field_ty.kind, ResolvedTypeKind::GenericParam(_)) {
+                continue;
+            }
+
             let field_layout = self.layout_of(&field_ty.kind, field_ty.type_id.clone())?;
 
             if field_layout.alignment == 0 {
@@ -195,6 +201,10 @@ impl<'a> LayoutEngine<'a> {
             let mut arm_max_align = 1;
 
             for field_ty in payloads {
+                if matches!(field_ty.kind, ResolvedTypeKind::GenericParam(_)) {
+                    continue;
+                }
+
                 let field_layout = self.layout_of(&field_ty.kind, field_ty.type_id.clone())?;
 
                 if field_layout.alignment == 0 {
@@ -246,6 +256,10 @@ impl<'a> LayoutEngine<'a> {
         let mut max_align = 1;
 
         for field_ty in fields {
+            if matches!(field_ty.kind, ResolvedTypeKind::GenericParam(_)) {
+                continue;
+            }
+
             let field_layout = self.layout_of(&field_ty.kind, field_ty.type_id.clone())?;
 
             if field_layout.alignment == 0 {

@@ -36,17 +36,22 @@ impl StructuralTypeKey {
                 params,
                 gen_type_params,
                 ret_type,
+                param_defaults: _,
             } => ResolvedTypeKind::Func {
                 params: params.iter().map(Self::clean_type_info).collect(),
                 gen_type_params: gen_type_params.iter().map(Self::clean_type_info).collect(),
                 ret_type: Box::new(Self::clean_type_info(ret_type)),
+                // Defaults are a call-site arity concern, not part of structural identity.
+                param_defaults: Vec::new(),
             },
 
             ResolvedTypeKind::Struct {
-                name,..
+                name,
+                gen_type_params,
+                ..
             } => ResolvedTypeKind::Struct {
                 name: name.clone(),
-                gen_type_params: Vec::new(),
+                gen_type_params: gen_type_params.iter().map(Self::clean_type_info).collect(),
                 members: Vec::new(),
             },
             ResolvedTypeKind::Enum {

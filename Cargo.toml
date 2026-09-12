@@ -13,4 +13,7 @@ insta = "1.39"
 
 [dev-dependencies]
 insta = "1.39"
+bincode = "1.3"
+
+
 

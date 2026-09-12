@@ -85,6 +85,7 @@ impl ImportEngine {
             .resolved_imports
             .values()
             .any(|alias| alias.as_ref().map_or(false, |val| val == alias_name))
+            && !self.symbol_declarations.contains_key(alias_name)
     }
 
     fn swap_ids(&mut self, input: &mut NodeId) {
@@ -118,14 +119,21 @@ impl ImportEngine {
                         }
                     } else {
                         if let Some(symbol_name) = demangled.1 {
-                            self.swap_ids(&mut stmt.hir_id);
-                            self.resolved_imports
-                                .entry(module_candidate)
-                                .or_insert(None);
-                            self.symbol_aliases
-                                .insert(symbol_name.clone(), name.clone());
-                            self.symbol_declarations
-                                .insert(symbol_name.clone(), stmt.hir_id.clone());
+                            if self.symbol_declarations.contains_key(&symbol_name) {
+                                self.report(
+                                    format!("Already imported '{}'", symbol_name),
+                                    Some(stmt.span.clone()),
+                                );
+                            } else {
+                                self.swap_ids(&mut stmt.hir_id);
+                                self.resolved_imports
+                                    .entry(module_candidate)
+                                    .or_insert(None);
+                                self.symbol_aliases
+                                    .insert(symbol_name.clone(), name.clone());
+                                self.symbol_declarations
+                                    .insert(symbol_name.clone(), stmt.hir_id.clone());
+                            }
                         }
                     }
                 } else {

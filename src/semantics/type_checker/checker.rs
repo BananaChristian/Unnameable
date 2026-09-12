@@ -48,6 +48,14 @@ impl<'a> TypeChecker<'a> {
 
     pub fn check(&mut self) {
         for stmt in self.hir {
+            // Expression statements share their NodeId with the single inner
+            // expression, so a stub here would shadow it: expr_type would hit
+            // the cached Unit entry and never type the expression or its
+            // children. Nest-bodies don't get stubs, so top-level behaves
+            // differently from inside a function unless we skip them too.
+            if matches!(stmt.kind, HirStmtKind::HirExpr(..)) {
+                continue;
+            }
             self.declare_stub(stmt);
         }
         for stmt in self.hir {
@@ -60,20 +68,6 @@ impl<'a> TypeChecker<'a> {
             info.kind = new_kind;
         }
     }
-
-    /*pub fn flush_layout_errors(&mut self) {
-        println!("LayoutEngine error flush triggered");
-        if self.layout_engine.corrupted {
-            self.corrupted = true;
-        }
-        for (message, span) in self.layout_engine.errors.drain(..) {
-            self.diagnostics.borrow_mut().report(CompilerError::error(
-                message,
-                Phase::Semantics,
-                Some(span),
-            ));
-        }
-    }*/
 
     pub fn unknown(&mut self, span: Span) -> TypeInfo {
         let kind = ResolvedTypeKind::Unknown;
@@ -106,15 +100,13 @@ impl<'a> TypeChecker<'a> {
         gen_params: Vec<TypeInfo>,
         params: Vec<TypeInfo>,
         ret: TypeInfo,
+        param_defaults: Vec<bool>,
     ) -> TypeInfo {
-        let _ps: Vec<String> = params
-            .iter()
-            .map(|param| format!("{}", param.name.clone()))
-            .collect();
         let kind = ResolvedTypeKind::Func {
             params,
             gen_type_params: gen_params,
             ret_type: Box::new(ret),
+            param_defaults,
         };
         let type_id = self.registry.issue_id(kind.clone());
         let layout = self.get_layout(&kind, type_id.clone(), span.clone());
@@ -380,24 +372,25 @@ impl<'a> TypeChecker<'a> {
             }
 
             HirType::Func(params, return_type) => {
-                let _ps = params
+                let ps: Vec<TypeInfo> = params
                     .iter()
                     .map(|p| self.type_from_hir_type(p).clone())
                     .collect();
                 let ret_ty = self.type_from_hir_type(return_type);
-                self.func(ty.span.clone(), _ps, vec![], ret_ty)
+                self.func(ty.span.clone(), vec![], ps, ret_ty, Vec::new())
             }
             HirType::Tuple(fields) => {
                 let members = fields.iter().map(|f| self.type_from_hir_type(f)).collect();
                 self.tuple(members, ty.span.clone())
             }
-            HirType::GenericType { type_params, .. } => {
-                let decl_id: NodeId = *self
-                    .ctxt
-                    .names
-                    .resolved
-                    .get(&ty.hir_id)
-                    .expect("Resolver already linked this ID");
+            HirType::GenericType { name, type_params } => {
+                let Some(decl_id) = self.ctxt.names.resolved.get(&ty.hir_id).copied() else {
+                    self.report(
+                        format!("'{}' is not declared", name),
+                        Some(ty.span.clone()),
+                    );
+                    return self.unknown(ty.span.clone());
+                };
 
                 let concrete_args = type_params
                     .iter()
@@ -409,9 +402,10 @@ impl<'a> TypeChecker<'a> {
                     concrete_args,
                 };
 
-                self.ctxt.monomorph_backlog.insert(key);
+                self.ctxt.monomorph_backlog.insert(key.clone());
 
-                self.look_up_declared_type(ty.hir_id, ty.span.clone())
+                let template = self.get_decl_type(&decl_id, ty.span.clone());
+                self.specialize_signature(&template, &key.concrete_args, ty.span.clone())
             }
 
             HirType::CustomType(_) => self.look_up_declared_type(ty.hir_id, ty.span.clone()),
@@ -510,7 +504,7 @@ impl<'a> TypeChecker<'a> {
                 gen_type_params: Vec::new(),
                 members: Vec::new(),
             },
-            _ => ResolvedTypeKind::Unknown,
+            _ => ResolvedTypeKind::Unit,
         };
         let ty_id = self.registry.issue_id(ty_kind.clone());
         let layout = Layout::empty();
@@ -654,6 +648,7 @@ impl<'a> TypeChecker<'a> {
                         })
                         .collect(),
                     ret_type: Box::new(ret_ty),
+                    param_defaults: params.iter().map(|p| p.default.is_some()).collect(),
                 }
             }
             HirStmtKind::HirAlias { original, .. } => {
@@ -749,6 +744,7 @@ impl<'a> TypeChecker<'a> {
                 params,
                 gen_type_params,
                 ret_type,
+                param_defaults,
             } => {
                 let specialized_params = params
                     .iter()
@@ -762,6 +758,7 @@ impl<'a> TypeChecker<'a> {
                     params: specialized_params,
                     gen_type_params: Vec::new(),
                     ret_type: Box::new(specialized_ret),
+                    param_defaults: param_defaults.clone(),
                 };
 
                 let ty_id = self.registry.issue_id(specialized_kind.clone());
