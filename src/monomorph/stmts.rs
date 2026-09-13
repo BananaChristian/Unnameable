@@ -48,6 +48,14 @@ impl<'a> Monomorphizer<'a> {
             HirStmtKind::HirExpr(expr) => {
                 self.monomorphize_expr(expr, generic_params, concrete_args, target_name)
             }
+            HirStmtKind::HirReturn(Some(expr)) => {
+                self.monomorphize_expr(expr, generic_params, concrete_args, target_name)
+            }
+            HirStmtKind::HirContractDecl { functions, .. } => {
+                for func in functions {
+                    self.monormophize_stmt(func, generic_params, concrete_args, None);
+                }
+            }
             HirStmtKind::HirVarDecl { .. } => {
                 self.monomorphize_var_decl(stmt, generic_params, concrete_args, target_name);
             }
@@ -74,9 +82,11 @@ impl<'a> Monomorphizer<'a> {
             generic_type_params.clear();
             for param in params {
                 self.substitute_type(&mut param.ty, generic_params, concrete_args);
+                self.monomorphize_type(&mut param.ty);
             }
 
             self.substitute_type(return_type, generic_params, concrete_args);
+            self.monomorphize_type(return_type);
 
             for body_stmt in body {
                 self.monormophize_stmt(body_stmt, generic_params, concrete_args, None);
@@ -103,9 +113,11 @@ impl<'a> Monomorphizer<'a> {
             generic_type_params.clear();
             for param in params {
                 self.substitute_type(&mut param.ty, generic_params, concrete_args);
+                self.monomorphize_type(&mut param.ty);
             }
 
             self.substitute_type(return_type, generic_params, concrete_args);
+            self.monomorphize_type(return_type);
         }
     }
 
@@ -127,6 +139,7 @@ impl<'a> Monomorphizer<'a> {
             generic_type_params.clear();
             for field in fields {
                 self.substitute_type(&mut field.ty, generic_params, concrete_args);
+                self.monomorphize_type(&mut field.ty);
             }
         }
     }
@@ -182,7 +195,8 @@ impl<'a> Monomorphizer<'a> {
     ) {
         if let HirStmtKind::HirVarDecl { ty, init, .. } = &mut stmt.kind {
             if let Some(ty_n) = ty {
-                self.monomorphize_type(ty_n)
+                self.substitute_type(ty_n, generic_params, concrete_args);
+                self.monomorphize_type(ty_n);
             }
 
             self.monomorphize_expr(init, generic_params, concrete_args, new_name);

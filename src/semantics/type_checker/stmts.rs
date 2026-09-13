@@ -93,13 +93,42 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_func(&mut self, stmt: &HirStmt) {
-        if let HirStmtKind::HirFunctionDef { body, .. } = &stmt.kind {
+        if let HirStmtKind::HirFunctionDef {
+            generic_type_params,
+            return_type,
+            body,
+            ..
+        } = &stmt.kind
+        {
             //Declare the function type (this also validates and types the params)
             self.declare_custom_types(stmt);
 
+            // Reuse the already-resolved return type (same identity the CF
+            // checker reads) instead of re-resolving, so an unsuffixed numeric
+            // literal can adopt it without allocating new type identity.
+            let function_return_ty = self.ctxt.types.types.get(&return_type.hir_id).cloned();
+
+            // Keep the function's generic params in scope while checking the
+            // body: parameter/return/usages of `T` inside must resolve to the
+            // generic param (matching the param/return types declared above),
+            // otherwise `T` falls through to `unknown` and every use is a type
+            // mismatch. Restore whatever was active before this function.
+            let saved_active_generic_params = std::mem::take(&mut self.active_generic_params);
+            self.active_generic_params = generic_type_params
+                .iter()
+                .map(|p| self.get_ty_node_name(p))
+                .collect();
+
             for s in body {
+                // An unsuffixed numeric literal returned from a function takes
+                // the function's declared return type instead of the default.
+                if let (Some(ret_ty), HirStmtKind::HirReturn(Some(expr))) = (&function_return_ty, &s.kind) {
+                    self.coerce_ty(ret_ty, expr);
+                }
                 self.check_stmt(s);
             }
+
+            self.active_generic_params = saved_active_generic_params;
         }
     }
 

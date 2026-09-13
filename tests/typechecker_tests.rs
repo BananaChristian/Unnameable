@@ -377,11 +377,11 @@ fn return_and_call_coerce_unsuffixed_literals_silently() {
         &[],
     ));
     assert_entry(&s, 3, "func() : f32", 2, 8, 8);
-    assert_entry(&s, 7, "func() : i32", 5, 8, 8);
+    assert_entry(&s, 7, "func() : i32", 4, 8, 8);
     assert_span(&s, 7, 30, 64);
     // call results are the declared ret types
     assert_entry(&s, 10, "f32", 1, 4, 4);
-    assert_entry(&s, 13, "i32", 4, 4, 4);
+    assert_entry(&s, 13, "i32", 3, 4, 4);
 }
 
 #[test]
@@ -571,7 +571,9 @@ fn numeric_cast_is_allowed_bool_cast_is_not() {
 fn bitcast_requires_matching_sizes() {
     let s = assert_errors(
         analyze("var bm := bitcast<u64>(1i32);", &[]),
-        &["bitcast size mismatch, cannot reinterpret 'i32' (4 bytes) as 'u64' (8 bytes), ensure sizes match"],
+        &[
+            "bitcast size mismatch, cannot reinterpret 'i32' (4 bytes) as 'u64' (8 bytes), ensure sizes match",
+        ],
     );
     assert_entry(&s, 2, "unknown", 1, 0, 0);
     assert_entry(&s, 3, "unknown", 1, 0, 0);
@@ -1050,4 +1052,219 @@ fn array_typed_chained_assignment_reports_error() {
     assert_entry(&s, 8, "arr[isize,2]", 3, 16, 8);
     assert_entry(&s, 11, "arr[isize,2]", 3, 16, 8);
     assert_entry(&s, 12, "unknown", 1, 0, 0);
+}
+
+// bitwise operators (keyword form: and/or/xor/shr/shl)
+#[test]
+fn bitwise_keywords_type_as_left_operand() {
+    let s = assert_clean(analyze(
+        "var a := 5 and 3;\nvar b := 5 or 3;\nvar c := 5 xor 3;\nvar d := 5 shr 1;\nvar e := 5 shl 1;",
+        &[],
+    ));
+    for id in [2, 6, 10, 14, 18] {
+        assert_entry(&s, id, "isize", 2, 8, 8); // each bitwise expression
+    }
+    assert_entry(&s, 3, "isize", 2, 8, 8);
+    assert_entry(&s, 19, "isize", 2, 8, 8);
+}
+
+#[test]
+fn bitwise_non_integer_operand_reports_error() {
+    let s = assert_errors(
+        analyze("var a := 5 and \"s\";", &[]),
+        &["Bitwise operators require integer operands but got isize and str"],
+    );
+    assert_entry(&s, 2, "unknown", 1, 0, 0);
+    assert_entry(&s, 3, "unknown", 1, 0, 0);
+}
+
+#[test]
+fn bitwise_mismatched_integer_types_reports_error() {
+    let s = assert_errors(
+        analyze("var i32 x := 1;\nvar u32 y := 2;\nvar a := x and y;", &[]),
+        &["Type mismatch between 'i32' and 'u32'"],
+    );
+    assert_entry(&s, 6, "i32", 3, 4, 4);
+    assert_entry(&s, 7, "u32", 4, 4, 4);
+    assert_entry(&s, 8, "unknown", 1, 0, 0);
+}
+
+// unary operators
+#[test]
+fn unary_negate_keeps_type() {
+    let s = assert_clean(analyze("var a := -5;", &[]));
+    assert_entry(&s, 0, "isize", 2, 8, 8); // literal 5
+    assert_entry(&s, 1, "isize", 2, 8, 8); // -5 expression
+    assert_entry(&s, 2, "isize", 2, 8, 8);
+}
+
+#[test]
+fn unary_negate_on_bool_reports_error() {
+    let s = assert_errors(
+        analyze("var a := -true;", &[]),
+        &["Cannot apply '-' to type 'bool'"],
+    );
+    assert_entry(&s, 1, "unknown", 1, 0, 0);
+    assert_entry(&s, 2, "unknown", 1, 0, 0);
+}
+
+#[test]
+fn logical_not_requires_bool() {
+    let s = assert_clean(analyze("var a := !true;", &[]));
+    assert_entry(&s, 1, "bool", 2, 1, 1);
+    assert_entry(&s, 2, "bool", 2, 1, 1);
+}
+
+#[test]
+fn logical_not_on_integer_reports_error() {
+    let s = assert_errors(
+        analyze("var a := !5;", &[]),
+        &["Operator '!' can only be applied to 'bool'"],
+    );
+    assert_entry(&s, 1, "unknown", 1, 0, 0);
+}
+
+#[test]
+fn bitnot_requires_integer_operand() {
+    let s = assert_clean(analyze("var a := not 5;", &[]));
+    assert_entry(&s, 1, "isize", 2, 8, 8);
+    assert_entry(&s, 2, "isize", 2, 8, 8);
+}
+
+#[test]
+fn bitnot_on_bool_reports_error() {
+    let s = assert_errors(
+        analyze("var a := not true;", &[]),
+        &["Bitwise operators require integer operands but got bool"],
+    );
+    assert_entry(&s, 1, "unknown", 1, 0, 0);
+}
+
+#[test]
+fn prefix_increment_decrement_keep_type() {
+    let s = assert_clean(analyze(
+        "mut var x := 5;\nvar a := ++x;\nvar b := --x;",
+        &[],
+    ));
+    assert_entry(&s, 3, "isize", 2, 8, 8); // ++x
+    assert_entry(&s, 6, "isize", 2, 8, 8); // --x
+}
+
+#[test]
+fn prefix_increment_on_non_numeric_reports_error() {
+    let s = assert_errors(
+        analyze("var s := \"s\";\nvar a := ++s;", &[]),
+        &["Cannot apply operator to non-numeric type 'str'"],
+    );
+    assert_entry(&s, 3, "unknown", 1, 0, 0);
+}
+
+#[test]
+fn postfix_increment_decrement_keep_type() {
+    let s = assert_clean(analyze(
+        "mut var x := 5;\nvar a := x++;\nvar b := x--;",
+        &[],
+    ));
+    assert_entry(&s, 3, "isize", 2, 8, 8); // x++
+    assert_entry(&s, 6, "isize", 2, 8, 8); // x--
+}
+
+#[test]
+fn postfix_increment_on_non_numeric_reports_error() {
+    let s = assert_errors(
+        analyze("var t := true;\nvar a := t++;", &[]),
+        &["Cannot apply operator to non-numeric type 'bool'"],
+    );
+    assert_entry(&s, 3, "unknown", 1, 0, 0);
+    assert_entry(&s, 4, "unknown", 1, 0, 0);
+}
+
+// sizeof
+#[test]
+fn sizeof_returns_usize() {
+    let s = assert_clean(analyze("var a := sizeof<i32>;", &[]));
+    assert_entry(&s, 1, "usize", 2, 8, 8);
+    assert_entry(&s, 2, "usize", 2, 8, 8);
+    assert_span(&s, 1, 9, 21);
+}
+
+#[test]
+fn sizeof_pointer_returns_usize() {
+    let s = assert_clean(analyze("var x := 5;\nvar a := sizeof<ptr<isize>>;", &[]));
+    assert_entry(&s, 4, "usize", 3, 8, 8);
+    assert_entry(&s, 5, "usize", 3, 8, 8);
+}
+
+// pointer arithmetic
+#[test]
+fn pointer_arithmetic_add_sub_rules() {
+    let s = assert_clean(analyze(
+        "var x := 5;\nvar p := @x;\nvar a := p + 1;\nvar b := 1 + p;\nvar c := p - 1;\nvar d := p - p;",
+        &[],
+    ));
+    assert_entry(&s, 3, "ptr<isize>", 3, 8, 8); // @x
+    assert_entry(&s, 7, "ptr<isize>", 3, 8, 8); // p + 1
+    assert_entry(&s, 11, "ptr<isize>", 3, 8, 8); // 1 + p
+    assert_entry(&s, 15, "ptr<isize>", 3, 8, 8); // p - 1
+    assert_entry(&s, 19, "usize", 4, 8, 8); // p - p
+}
+
+#[test]
+fn pointer_arithmetic_invalid_op_reports_error() {
+    let s = assert_errors(
+        analyze("var x := 5;\nvar p := @x;\nvar a := p * 2;", &[]),
+        &["Invalid pointer arithmetic operation: `ptr<isize>` Mul `isize`"],
+    );
+    assert_entry(&s, 7, "unknown", 1, 0, 0);
+}
+
+#[test]
+fn pointer_add_non_integer_reports_error() {
+    let s = assert_errors(
+        analyze("var x := 5;\nvar p := @x;\nvar a := p + 1.5;", &[]),
+        &["Invalid pointer arithmetic operation: `ptr<isize>` Add `f64`"],
+    );
+    assert_entry(&s, 7, "unknown", 1, 0, 0);
+}
+
+#[test]
+fn pointer_add_pointer_reports_error() {
+    let s = assert_errors(
+        analyze("var x := 5;\nvar p := @x;\nvar a := p + p;", &[]),
+        &["Invalid pointer arithmetic operation: `ptr<isize>` Add `ptr<isize>`"],
+    );
+    assert_entry(&s, 7, "unknown", 1, 0, 0);
+}
+
+#[test]
+fn pointer_subtract_different_pointees_reports_error() {
+    let s = assert_errors(
+        analyze(
+            "var x := 5;\nvar s := \"s\";\nvar a := @x;\nvar b := @s;\nvar c := a - b;",
+            &[],
+        ),
+        &["Cannot subtract pointers to different types `isize` and `str`"],
+    );
+    assert_entry(&s, 12, "unknown", 1, 0, 0);
+}
+
+// indexing
+#[test]
+fn index_array_yields_element_type() {
+    let s = assert_clean(analyze("var a := [1, 2];\nvar b := a[0];", &[]));
+    assert_entry(&s, 4, "arr[isize,2]", 3, 16, 8); // a usage
+    assert_entry(&s, 5, "isize", 2, 8, 8); // index 0
+    assert_entry(&s, 6, "isize", 2, 8, 8); // a[0]
+    assert_entry(&s, 7, "isize", 2, 8, 8);
+}
+
+#[test]
+fn index_pointer_to_array_yields_element_type() {
+    let s = assert_clean(analyze(
+        "var a := [1, 2];\nvar p := @a;\nvar b := p[0];",
+        &[],
+    ));
+    assert_entry(&s, 7, "ptr<arr[isize,2]>", 4, 8, 8); // p usage
+    assert_entry(&s, 9, "isize", 2, 8, 8); // p[0]
+    assert_entry(&s, 10, "isize", 2, 8, 8);
 }

@@ -10,12 +10,14 @@ impl Validator {
             HirExprKind::Postfix(operand, op) => match op {
                 HirPostfixOp::Increment => self.check_mutation_target(operand, "increment"),
                 HirPostfixOp::Decrement => self.check_mutation_target(operand, "decrement"),
-                _ => (),
+                // Propagate carries the operand; walk it so embedded mutations
+                // don't slip past the validator.
+                HirPostfixOp::Propagate => self.check_expr(operand),
             },
             HirExprKind::Unary(op, operand) => match op {
                 HirUnaryOp::Increment => self.check_mutation_target(operand, "increment"),
                 HirUnaryOp::Decrement => self.check_mutation_target(operand, "decrement"),
-                _ => (),
+                _ => self.check_expr(operand),
             },
             HirExprKind::DollarScope {
                 params,
@@ -42,6 +44,19 @@ impl Validator {
                     self.check_expr(arg);
                 }
             }
+            HirExprKind::StaticCast(_, inner) => self.check_expr(inner),
+            HirExprKind::BitCast(_, inner) => self.check_expr(inner),
+            HirExprKind::TupleInst { body } => {
+                for elem in body {
+                    self.check_expr(elem);
+                }
+            }
+            HirExprKind::Instantiation { body, .. } => {
+                for param in body {
+                    self.check_expr(&param.value);
+                }
+            }
+            HirExprKind::Unwrap(inner) => self.check_expr(inner),
             _ => (),
         }
     }
@@ -54,7 +69,12 @@ impl Validator {
             | HirBinaryOp::MulAssign
             | HirBinaryOp::DivAssign
             | HirBinaryOp::ModAssign => self.check_opassign(op, right, left),
-            _ => (),
+            // Not a mutation op, but the operands may still contain embedded
+            // mutations (e.g. `1 + (y = 3)`); walk both sides.
+            _ => {
+                self.check_expr(right);
+                self.check_expr(left);
+            }
         }
     }
 
@@ -111,11 +131,20 @@ impl Validator {
                     }
                 }
             }
-            // If dereferencing or field accessing, you might want to recurse down to verify
-            // base objects, but for basic local variables, validating identifier targets covers 95%.
+            // Field access: walk the field side for embedded mutations, then
+            // recurse into the base expression.
+            HirExprKind::Binary(left, HirBinaryOp::Access, right) => {
+                self.check_expr(right);
+                self.check_mutation_target(left, action_description);
+            }
+            // Element access: walk the index for embedded mutations, then
+            // recurse into the target expression.
+            HirExprKind::Index { target, index } => {
+                self.check_expr(index);
+                self.check_mutation_target(target, action_description);
+            }
+            // Non-chain targets: walk for embedded mutations only.
             _ => {
-                // If the target expression isn't an identifier (e.g. assigning to a literal `5 = x`),
-                // your parser likely caught this, but we recurse just in case.
                 self.check_expr(expr);
             }
         }

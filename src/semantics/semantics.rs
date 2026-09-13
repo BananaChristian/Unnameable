@@ -383,12 +383,43 @@ pub struct TypesTable {
     pub types: HashMap<NodeId, TypeInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug)]
+/// A request to generate a concrete instance of a generic definition.
+///
+/// Instance identity is canonicalised by the *names* of the concrete type
+/// arguments (the same normalisation `mangle_name` uses). This keeps two
+/// syntactically distinct-but-equivalent requests for the same instance
+/// (`identity::<i32>` written in two places, or discovered lazily during
+/// monomorphization after the fact) colliding on one key, exactly like their
+/// mangled names would.
+#[derive(Clone)]
 pub struct InstanceKey {
     // The unique ID of the original generic function or struct definition
     pub original_def_id: NodeId,
     // The actual concrete types chosen for this specific call (e.g., [Int32])
     pub concrete_args: Vec<TypeInfo>,
+}
+
+impl InstanceKey {
+    fn canonical_args(&self) -> Vec<String> {
+        self.concrete_args.iter().map(|a| a.name.clone()).collect()
+    }
+}
+
+impl PartialEq for InstanceKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.original_def_id == other.original_def_id
+            && self.canonical_args() == other.canonical_args()
+    }
+}
+
+impl Eq for InstanceKey {}
+
+impl std::hash::Hash for InstanceKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.original_def_id.hash(state);
+        self.canonical_args().hash(state);
+    }
 }
 
 #[derive(Debug)]

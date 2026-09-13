@@ -125,7 +125,13 @@ impl<'a> TypeChecker<'a> {
                 .names
                 .resolved
                 .get(&expr.hir_id)
-                .expect("Name resolver missing mapping for generic instantiation");
+                .expect(
+                    format!(
+                        "Name resolver missing mapping for generic instantiation with id {:?}",
+                        expr.hir_id
+                    )
+                    .as_str(),
+                );
 
             let template_info = self.get_decl_type(&template_decl_id, expr.span.clone());
 
@@ -134,7 +140,11 @@ impl<'a> TypeChecker<'a> {
                 .map(|param_node| self.type_from_hir_type(param_node))
                 .collect();
 
-            if !concrete_args.is_empty() {
+            if !concrete_args.is_empty()
+                && !concrete_args
+                    .iter()
+                    .any(|a| matches!(a.kind, ResolvedTypeKind::GenericParam(_) | ResolvedTypeKind::Unknown))
+            {
                 let key = InstanceKey {
                     original_def_id: template_decl_id,
                     concrete_args: concrete_args.clone(),
@@ -207,7 +217,21 @@ impl<'a> TypeChecker<'a> {
                 HirUnaryOp::Increment | HirUnaryOp::Decrement => self.inc_dec_type(&target_ty),
                 HirUnaryOp::Neg => self.neg_type(&target_ty),
                 HirUnaryOp::Not => self.logical_not_type(&target_ty),
-                HirUnaryOp::BitNot => target_ty, //The type doesnt change
+                HirUnaryOp::BitNot => {
+                    if self.is_integer(&target_ty.kind) {
+                        // The type doesn't change
+                        target_ty
+                    } else {
+                        self.report(
+                            format!(
+                                "Bitwise operators require integer operands but got {}",
+                                target_ty.name
+                            ),
+                            Some(target_ty.span.clone()),
+                        );
+                        self.unknown(target_ty.span.clone())
+                    }
+                }
             }
         } else {
             self.unknown(expr.span.clone())
@@ -242,7 +266,10 @@ impl<'a> TypeChecker<'a> {
     fn inc_dec_type(&mut self, target_ty: &TypeInfo) -> TypeInfo {
         if !self.is_numeric(&target_ty) {
             self.report(
-                format!("Cannot apply operator to numeric type '{}'", target_ty.name),
+                format!(
+                    "Cannot apply operator to non-numeric type '{}'",
+                    target_ty.name
+                ),
                 Some(target_ty.span.clone()),
             );
             self.unknown(target_ty.span.clone())
@@ -277,8 +304,7 @@ impl<'a> TypeChecker<'a> {
             inner: Box::new(src_ty.clone()),
         };
         let ptr_id = self.registry.issue_id(ptr_kind.clone());
-        let ptr_layout =
-            self.get_layout(&ptr_kind, ptr_id.clone(), src_ty.span.clone());
+        let ptr_layout = self.get_layout(&ptr_kind, ptr_id.clone(), src_ty.span.clone());
         TypeInfo {
             type_id: ptr_id,
             name: TypeInfo::name(ptr_kind.clone()),
@@ -353,7 +379,7 @@ impl<'a> TypeChecker<'a> {
         if let HirExprKind::Postfix(inner, op) = &expr.kind {
             let inner_ty = self.expr_type(inner);
             match op {
-                HirPostfixOp::Increment | HirPostfixOp::Decrement => inner_ty,
+                HirPostfixOp::Increment | HirPostfixOp::Decrement => self.inc_dec_type(&inner_ty),
                 _ => self.unknown(expr.span.clone()),
             }
         } else {

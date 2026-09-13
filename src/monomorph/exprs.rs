@@ -14,42 +14,41 @@ impl<'a> Monomorphizer<'a> {
     ) {
         match &mut expr.kind {
             HirExprKind::GenericInstantion { type_params, .. } => {
-                for tp in &mut type_params.clone() {
+                for tp in type_params.iter_mut() {
                     self.substitute_type(tp, generic_params, concrete_args);
                 }
 
-                let evaluated_args = type_params
+                let evaluated_args: Vec<TypeInfo> = type_params
                     .iter()
-                    .map(|tp| {
-                        self.ctxt
-                            .types
-                            .types
-                            .get(&tp.hir_id)
-                            .expect(
-                                format!(
-                                    "Failed to get type info for corresponding id {:?}",
-                                    tp.hir_id
-                                )
-                                .as_str(),
-                            )
-                            .clone()
-                    })
+                    .filter_map(|tp| self.type_info_for(tp))
                     .collect();
+
+                if evaluated_args.len() != type_params.len() {
+                    // Still abstract (contains an unresolved generic); leave the
+                    // instantiation node in place until its args are concrete.
+                    return;
+                }
 
                 let original_def_id = self
                     .ctxt
                     .names
                     .resolved
                     .get(&expr.hir_id)
-                    .expect("Failed to get id");
+                    .expect(&format!(
+                        "Name resolver missing mapping for generic instantiation with id {:?}",
+                        expr.hir_id
+                    ))
+                    .clone();
 
                 let search_key = InstanceKey {
-                    original_def_id: *original_def_id,
+                    original_def_id,
                     concrete_args: evaluated_args,
                 };
 
                 if let Some(flat_mangled_name) = self.mangled_mappings.get(&search_key) {
                     expr.kind = HirExprKind::Identifier(flat_mangled_name.clone());
+                } else if let Some(mangled_name) = self.ensure_instance(&search_key) {
+                    expr.kind = HirExprKind::Identifier(mangled_name);
                 }
             }
             HirExprKind::Call(callee, args) => {
@@ -62,8 +61,40 @@ impl<'a> Monomorphizer<'a> {
                 self.monomorphize_expr(right, generic_params, concrete_args, new_name.clone());
                 self.monomorphize_expr(left, generic_params, concrete_args, new_name);
             }
-            HirExprKind::Unary(_, operand) => {
+            HirExprKind::Unary(_, operand)
+            | HirExprKind::Unwrap(operand)
+            | HirExprKind::Postfix(operand, _) => {
                 self.monomorphize_expr(operand, generic_params, concrete_args, new_name)
+            }
+            HirExprKind::StaticCast(ty, operand) | HirExprKind::BitCast(ty, operand) => {
+                self.substitute_type(ty, generic_params, concrete_args);
+                self.monomorphize_type(ty);
+                self.monomorphize_expr(operand, generic_params, concrete_args, new_name);
+            }
+            HirExprKind::SizeOf(ty) => {
+                self.substitute_type(ty, generic_params, concrete_args);
+                self.monomorphize_type(ty);
+            }
+            HirExprKind::Index { target, index } => {
+                self.monomorphize_expr(target, generic_params, concrete_args, new_name.clone());
+                self.monomorphize_expr(index, generic_params, concrete_args, new_name);
+            }
+            HirExprKind::TupleInst { body } => {
+                for e in body {
+                    self.monomorphize_expr(e, generic_params, concrete_args, new_name.clone());
+                }
+            }
+            HirExprKind::Instantiation { init_ty, body } => {
+                self.substitute_type(init_ty, generic_params, concrete_args);
+                self.monomorphize_type(init_ty);
+                for field in body {
+                    self.monomorphize_expr(
+                        &mut field.value,
+                        generic_params,
+                        concrete_args,
+                        new_name.clone(),
+                    );
+                }
             }
             HirExprKind::DollarScope {
                 params,
@@ -94,33 +125,27 @@ impl<'a> Monomorphizer<'a> {
 
                 let evaluated_args: Vec<TypeInfo> = type_params
                     .iter()
-                    .map(|param| {
-                        self.ctxt
-                            .types
-                            .types
-                            .get(&param.hir_id)
-                            .expect(
-                                format!("Failed to get type info for this id {:?}", param.hir_id)
-                                    .as_str(),
-                            )
-                            .clone()
-                    })
+                    .filter_map(|param| self.ctxt.types.types.get(&param.hir_id).cloned())
                     .collect();
 
-                let original_def_id = self
-                    .ctxt
-                    .names
-                    .resolved
-                    .get(&ty_node.hir_id)
-                    .expect("Failed to get id");
+                if evaluated_args.len() != type_params.len() {
+                    return;
+                }
+
+                let Some(original_def_id) = self.ctxt.names.resolved.get(&ty_node.hir_id).cloned()
+                else {
+                    return;
+                };
 
                 let search_key = InstanceKey {
-                    original_def_id: *original_def_id,
+                    original_def_id,
                     concrete_args: evaluated_args,
                 };
 
                 if let Some(mangled_name) = self.mangled_mappings.get(&search_key) {
                     ty_node.kind = HirType::CustomType(mangled_name.clone());
+                } else if let Some(mangled_name) = self.ensure_instance(&search_key) {
+                    ty_node.kind = HirType::CustomType(mangled_name);
                 }
             }
             HirType::Func(params, ret) => {

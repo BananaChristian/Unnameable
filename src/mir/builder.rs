@@ -108,7 +108,24 @@ impl<'a> MIRBuilder<'a> {
     pub fn build_module(&mut self) -> MIRModule {
         let root_ids = self.indexed_hir.roots.clone();
 
+        // Register all declarations (structs, enums, variants, function
+        // signatures) *before* pre-registering the monomorphizer's appended
+        // generic instances: lowering a struct-typed parameter during
+        // signature registration needs `struct_name_to_id` to be populated.
         self.registration_pass(&root_ids);
+
+        // Pre-register the signatures of the mangled instance definitions
+        // appended to the end of the unified tree, so a root calling
+        // `_U_identity_i32` resolves before the instance def is reached in
+        // the build loop. Root function signatures were already registered
+        // by `registration_pass`, keeping their original build order.
+        for root_id in &root_ids {
+            if let Some(stmt) = self.indexed_hir.get(root_id).cloned() {
+                if self.is_mangled_instance_fn(&stmt) {
+                    self.register_fn_signature(&stmt);
+                }
+            }
+        }
 
         for root_id in root_ids {
             if let Some(stmt) = self.indexed_hir.get(&root_id) {
@@ -116,6 +133,56 @@ impl<'a> MIRBuilder<'a> {
             }
         }
         self.module.clone()
+    }
+
+    /// True when a top-level declaration is one of the monomorphizer's
+    /// mangled, concrete instances appended at the end of the unified tree.
+    /// Only these need the pre-build signature registration; root functions
+    /// keep their original source-order build.
+    fn is_mangled_instance_fn(&self, stmt: &HirStmt) -> bool {
+        if let HirStmtKind::HirFunctionDef { name, .. } = &stmt.kind {
+            name.starts_with('_') && name.contains("_U_")
+        } else {
+            false
+        }
+    }
+
+    fn register_fn_signature(&mut self, stmt: &HirStmt) {
+        if let HirStmtKind::HirFunctionDef {
+            name,
+            params,
+            return_type,
+            dollar_read,
+            exposed,
+            ..
+        } = &stmt.kind
+        {
+            let linkage = match *exposed {
+                true => MIRLinkage::Public,
+                false => MIRLinkage::Private,
+            };
+
+            let dollar_mode = match *dollar_read {
+                true => MIRDollarMode::ReadOnly,
+                false => MIRDollarMode::None,
+            };
+
+            let mir_params: Vec<MIRParam> = params
+                .iter()
+                .map(|p| MIRParam {
+                    name: p.name.clone(),
+                    dollar_mode: match p.dollar_read {
+                        true => MIRDollarMode::ReadOnly,
+                        false => MIRDollarMode::None, //For now
+                    },
+                    ty: self.get_type(&p.hir_id),
+                })
+                .collect();
+
+            let ret_ty = self.get_type(&return_type.hir_id);
+
+            self.get_or_create_func(name, &mir_params, &ret_ty, dollar_mode, linkage, None);
+        }
     }
 
     fn registration_pass(&mut self, root_ids: &[NodeId]) {

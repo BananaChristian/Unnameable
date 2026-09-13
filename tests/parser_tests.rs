@@ -1168,12 +1168,12 @@ fn while_loop() {
 
 #[test]
 fn while_loop_break_and_continue() {
-    // `break`/`continue` take NO trailing semicolon.
-    let (stmts, errors, corrupted) = parse_src("while a { break }");
+    // `break`/`continue` may carry an optional trailing semicolon.
+    let (stmts, errors, corrupted) = parse_src("while a { break; }");
     assert!(!corrupted, "{:?}", errors);
     assert!(errors.is_empty(), "{:?}", errors);
-    let body = block(vec![st(StmtKind::Break, 10, 15)], 8, 17);
-    let expected = st(StmtKind::WhileStmt { condition: Box::new(id("a", 6, 7)), body: Box::new(body) }, 0, 17);
+    let body = block(vec![st(StmtKind::Break, 10, 15)], 8, 18);
+    let expected = st(StmtKind::WhileStmt { condition: Box::new(id("a", 6, 7)), body: Box::new(body) }, 0, 18);
     assert_eq!(stmts, vec![expected]);
 
     let (stmts2, errors2, corrupted2) = parse_src("while a { continue }");
@@ -1874,14 +1874,31 @@ fn statement_level_bind_rejected() {
 }
 
 #[test]
-fn break_continue_with_trailing_semicolon_rejected() {
-    let (_, errors, corrupted) = parse_src("break;");
-    assert!(corrupted);
-    assert_single_error(&errors, "Unexpected prefix token: Semicolon", Some(sp(5, 6)));
+fn break_continue_trailing_semicolon_optional() {
+    let (stmts, errors, corrupted) = parse_src("break;");
+    assert!(!corrupted, "{:?}", errors);
+    assert!(errors.is_empty(), "{:?}", errors);
+    assert_eq!(stmts, vec![st(StmtKind::Break, 0, 5)]);
 
-    let (_, errors2, corrupted2) = parse_src("continue;");
-    assert!(corrupted2);
-    assert_single_error(&errors2, "Unexpected prefix token: Semicolon", Some(sp(8, 9)));
+    let (stmts2, errors2, corrupted2) = parse_src("continue;");
+    assert!(!corrupted2, "{:?}", errors2);
+    assert!(errors2.is_empty(), "{:?}", errors2);
+    assert_eq!(stmts2, vec![st(StmtKind::Continue, 0, 8)]);
+
+    let (stmts3, errors3, corrupted3) = parse_src("break\nx = 1;");
+    assert!(!corrupted3, "{:?}", errors3);
+    assert!(errors3.is_empty(), "{:?}", errors3);
+    assert_eq!(
+        stmts3,
+        vec![
+            st(StmtKind::Break, 0, 5),
+            st(
+                StmtKind::Expr(bin(id("x", 6, 7), BinaryOp::Assign, lit(Literal::Int(1), 10, 11), 6, 11)),
+                6,
+                11,
+            ),
+        ]
+    );
 }
 
 #[test]

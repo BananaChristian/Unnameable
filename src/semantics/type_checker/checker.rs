@@ -488,7 +488,7 @@ impl<'a> TypeChecker<'a> {
         (member.name.clone(), enum_ty, member.hir_id)
     }
 
-    fn get_ty_node_name(&self, ty: &HirTypeNode) -> String {
+    pub fn get_ty_node_name(&self, ty: &HirTypeNode) -> String {
         if let HirType::GenericPlaceHolder(name) = &ty.kind {
             name.clone()
         } else {

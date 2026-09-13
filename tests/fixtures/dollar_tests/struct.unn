@@ -5,7 +5,7 @@ struct Food{
 
 func foo: i32{
   var x := $${
-    var food:= .Food{.power= 100, .health= 1000};
+    mut var food:= .Food{.power= 100, .health= 1000};
     food.power= 99;
     food.power;
   };

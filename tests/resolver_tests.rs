@@ -45,10 +45,7 @@ fn assert_clean(
     semantics
 }
 
-// ---------------------------------------------------------------------------
 // basic decl self-resolution
-// ---------------------------------------------------------------------------
-
 #[test]
 fn var_decl_self_resolves() {
     let s = assert_clean(analyze("var x := 1;", &[]));
@@ -112,10 +109,7 @@ fn two_contracts_allow_same_func_name() {
     assert_eq!(resolved_names(&s), map(&[(1, 1), (4, 4)]));
 }
 
-// ---------------------------------------------------------------------------
 // diagnostics on unresolved references
-// ---------------------------------------------------------------------------
-
 #[test]
 fn undeclared_identifier_reported() {
     let (s, diag) = analyze("x + 1;", &[]);
@@ -146,10 +140,7 @@ fn undeclared_param_type_reported() {
     assert_eq!(resolved_names(&s), map(&[(5, 5)]));
 }
 
-// ---------------------------------------------------------------------------
 // duplicate definitions
-// ---------------------------------------------------------------------------
-
 #[test]
 fn duplicate_var_definition_rejected() {
     let (s, diag) = analyze("var x := 1;\nvar x := 2;", &[]);
@@ -176,10 +167,7 @@ fn func_param_and_body_var_same_scope_conflict() {
     assert_eq!(messages(&diag), vec!["'x' already defined in this scope"]);
 }
 
-// ---------------------------------------------------------------------------
 // scoping
-// ---------------------------------------------------------------------------
-
 #[test]
 fn if_body_reuses_enclosing_scope() {
     let s = assert_clean(analyze("var x := 1;\nif x > 0 { var y := 2; }", &[]));
@@ -226,10 +214,7 @@ fn if_body_new_var_does_not_escape() {
     assert_eq!(resolved_names(&s), map(&[(3, 3), (7, 7)]));
 }
 
-// ---------------------------------------------------------------------------
 // usage resolution across constructs
-// ---------------------------------------------------------------------------
-
 #[test]
 fn struct_usage_in_func_param_and_field_access() {
     let s = assert_clean(analyze(
@@ -257,10 +242,7 @@ fn sizeof_type_usage_resolves_to_struct() {
     assert_eq!(resolved_names(&s), map(&[(1, 1), (2, 2), (3, 2), (5, 5)]));
 }
 
-// ---------------------------------------------------------------------------
 // alias
-// ---------------------------------------------------------------------------
-
 #[test]
 fn alias_target_is_not_resolved_on_its_own() {
     let s = assert_clean(analyze("alias i32 as Int", &[]));
@@ -272,10 +254,6 @@ fn alias_usage_in_annotation_resolves_to_alias_decl() {
     let s = assert_clean(analyze("alias i32 as Int\nvar Int y := 5;", &[]));
     assert_eq!(resolved_names(&s), map(&[(2, 1), (4, 4)]));
 }
-
-// ---------------------------------------------------------------------------
-// quirk-documenting tests (current behavior locked in)
-// ---------------------------------------------------------------------------
 
 #[test]
 fn dollar_scope_capture_params_resolve_to_outer_consts() {

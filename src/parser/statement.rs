@@ -623,6 +623,12 @@ impl Parser {
     fn parse_break_or_cont(&mut self) -> Option<Stmt> {
         let token = self.current_token()?.clone();
         self.advance();
+        // A trailing semicolon is optional.
+        if let Some(next) = self.current_token() {
+            if next.token_type == TType::Semicolon {
+                self.advance();
+            }
+        }
         match token.token_type {
             TType::Break => Some(Stmt::new(StmtKind::Break, token.span)),
             TType::Continue => Some(Stmt::new(StmtKind::Continue, token.span)),

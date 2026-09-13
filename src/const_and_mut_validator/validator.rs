@@ -157,6 +157,10 @@ impl Validator {
             let is_constant = *constant;
             let is_mutable = *mutable;
 
+            // The initializer may itself contain mutations
+            // (e.g. `var z := y = 3;`); walk it.
+            self.check_expr(init);
+
             //Mut and const are mutually exclusive
             if is_mutable && is_constant {
                 self.report(
