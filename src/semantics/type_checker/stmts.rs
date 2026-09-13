@@ -17,6 +17,15 @@ impl<'a> TypeChecker<'a> {
             HirStmtKind::HirFunctionDef { .. } => self.check_func(stmt),
             HirStmtKind::HirVarDecl { .. } => self.check_var(stmt),
             HirStmtKind::HirReturn(_) => self.check_return(stmt),
+            // Contract requirement functions carry signatures the contract
+            // verifier must compare against impls; record them in the type
+            // table under their own hir_id (the shape declared_custom_types
+            // produces for a FunctionDecl).
+            HirStmtKind::HirContractDecl { functions, .. } => {
+                for f in functions {
+                    self.declare_custom_types(f);
+                }
+            }
             _ => (),
         }
     }

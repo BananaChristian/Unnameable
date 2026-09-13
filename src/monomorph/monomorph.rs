@@ -30,7 +30,7 @@ impl<'a> Monomorphizer<'a> {
         let mut named_types: HashMap<String, TypeInfo> = HashMap::new();
 
         for stmt in hir {
-            next_fresh_local = next_fresh_local.max(stmt_max_id(stmt));
+            next_fresh_local = next_fresh_local.max(tree_max_id(stmt));
             if let Some(name) = stmt_name(stmt) {
                 if let Some(info) = ctxt.types.types.get(&stmt.hir_id) {
                     named_types.insert(name, info.clone());
@@ -46,6 +46,7 @@ impl<'a> Monomorphizer<'a> {
                 }
             }
         }
+        next_fresh_local += 1;
 
         // Harvest already-specialized user type infos (e.g. `Pair<i32>` from a
         // resolved `GenericType` usage) so generated instance nodes can reuse
@@ -70,9 +71,7 @@ impl<'a> Monomorphizer<'a> {
             .types
             .types
             .values()
-            .filter_map(|info| {
-                primitive_key_of_kind(&info.kind).map(|key| (key, info.clone()))
-            })
+            .filter_map(|info| primitive_key_of_kind(&info.kind).map(|key| (key, info.clone())))
             .collect();
         for (key, info) in primitives {
             native_types.insert(key, info);
@@ -160,14 +159,10 @@ impl<'a> Monomorphizer<'a> {
                 HirType::Array(Box::new(inner_ty), *size)
             }
             ResolvedTypeKind::Func {
-                params,
-                ret_type,
-                ..
+                params, ret_type, ..
             } => {
-                let ps: Vec<HirTypeNode> = params
-                    .iter()
-                    .map(|p| self.build_type_node(p, id))
-                    .collect();
+                let ps: Vec<HirTypeNode> =
+                    params.iter().map(|p| self.build_type_node(p, id)).collect();
                 let ret = self.build_type_node(ret_type, id);
                 HirType::Func(ps, Box::new(ret))
             }
@@ -203,14 +198,10 @@ impl<'a> Monomorphizer<'a> {
 
         let mut generic_replacement: Option<String> = None;
         match &mut ty_node.kind {
-            HirType::Ptr(inner)
-            | HirType::Ref(inner)
-            | HirType::Nullable(inner) => {
+            HirType::Ptr(inner) | HirType::Ref(inner) | HirType::Nullable(inner) => {
                 self.substitute_type(inner, generic_params, concrete_args)
             }
-            HirType::Array(inner, _) => {
-                self.substitute_type(inner, generic_params, concrete_args)
-            }
+            HirType::Array(inner, _) => self.substitute_type(inner, generic_params, concrete_args),
             HirType::Func(params, ret) => {
                 for p in params.iter_mut() {
                     self.substitute_type(p, generic_params, concrete_args);
@@ -232,10 +223,13 @@ impl<'a> Monomorphizer<'a> {
                 }
                 // If every argument is now concrete, resolve the user type so
                 // downstream HIR/MIR sees a mangled CustomType reference.
-                let evaluated_args: Option<Vec<TypeInfo>> =
-                    type_params.iter().map(|tp| self.type_info_for(tp)).collect();
+                let evaluated_args: Option<Vec<TypeInfo>> = type_params
+                    .iter()
+                    .map(|tp| self.type_info_for(tp))
+                    .collect();
                 if let Some(args) = evaluated_args {
-                    if let Some(original_def_id) = self.ctxt.names.resolved.get(&ty_node.hir_id).cloned()
+                    if let Some(original_def_id) =
+                        self.ctxt.names.resolved.get(&ty_node.hir_id).cloned()
                     {
                         let search_key = InstanceKey {
                             original_def_id,
@@ -284,22 +278,43 @@ impl<'a> Monomorphizer<'a> {
             HirType::Unit => self.native_types.get("unit")?.clone(),
             HirType::Ptr(inner) => {
                 let inner_info = self.type_info_for(inner)?;
-                self.wrapped_info("ptr", ResolvedTypeKind::Pointer { inner: Box::new(inner_info) }, span.clone())
+                self.wrapped_info(
+                    "ptr",
+                    ResolvedTypeKind::Pointer {
+                        inner: Box::new(inner_info),
+                    },
+                    span.clone(),
+                )
             }
             HirType::Ref(inner) => {
                 let inner_info = self.type_info_for(inner)?;
-                self.wrapped_info("ref", ResolvedTypeKind::Ref { inner: Box::new(inner_info) }, span.clone())
+                self.wrapped_info(
+                    "ref",
+                    ResolvedTypeKind::Ref {
+                        inner: Box::new(inner_info),
+                    },
+                    span.clone(),
+                )
             }
             HirType::Nullable(inner) => {
                 let inner_info = self.type_info_for(inner)?;
-                self.wrapped_info("nullable", ResolvedTypeKind::Nullable { ty: Box::new(inner_info) }, span.clone())
+                self.wrapped_info(
+                    "nullable",
+                    ResolvedTypeKind::Nullable {
+                        ty: Box::new(inner_info),
+                    },
+                    span.clone(),
+                )
             }
             HirType::Array(inner, size) => {
                 let inner_info = self.type_info_for(inner)?;
                 let mult = size.unwrap_or(1) as usize;
                 let inner_size = inner_info.layout.size * mult;
                 let inner_align = inner_info.layout.alignment;
-                let kind = ResolvedTypeKind::Array { inner: Box::new(inner_info), size: *size };
+                let kind = ResolvedTypeKind::Array {
+                    inner: Box::new(inner_info),
+                    size: *size,
+                };
                 let mut info = self.native_types.get("array")?.clone();
                 info.layout.size = inner_size;
                 info.layout.alignment = inner_align.max(info.layout.alignment);
@@ -308,8 +323,10 @@ impl<'a> Monomorphizer<'a> {
                 info
             }
             HirType::Func(params, ret) => {
-                let ps: Vec<TypeInfo> =
-                    params.iter().map(|p| self.type_info_for(p)).collect::<Option<_>>()?;
+                let ps: Vec<TypeInfo> = params
+                    .iter()
+                    .map(|p| self.type_info_for(p))
+                    .collect::<Option<_>>()?;
                 let ret_info = self.type_info_for(ret)?;
                 let kind = ResolvedTypeKind::Func {
                     params: ps,
@@ -317,15 +334,26 @@ impl<'a> Monomorphizer<'a> {
                     ret_type: Box::new(ret_info),
                     param_defaults: Vec::new(),
                 };
-                let mut info = self.native_types.get("func").or(self.native_types.get("ptr"))?.clone();
+                let mut info = self
+                    .native_types
+                    .get("func")
+                    .or(self.native_types.get("ptr"))?
+                    .clone();
                 info.kind = kind.clone();
                 info.name = TypeInfo::name(kind);
                 info
             }
             HirType::Tuple(fields) => {
-                let fts = fields.iter().map(|f| self.type_info_for(f)).collect::<Option<Vec<_>>>()?;
+                let fts = fields
+                    .iter()
+                    .map(|f| self.type_info_for(f))
+                    .collect::<Option<Vec<_>>>()?;
                 let kind = ResolvedTypeKind::Tuple { fields: fts };
-                let mut info = self.native_types.get("tuple").or(self.native_types.get("ptr"))?.clone();
+                let mut info = self
+                    .native_types
+                    .get("tuple")
+                    .or(self.native_types.get("ptr"))?
+                    .clone();
                 info.kind = kind.clone();
                 info.name = TypeInfo::name(kind);
                 info
@@ -333,8 +361,15 @@ impl<'a> Monomorphizer<'a> {
             HirType::Failable(ok, err) => {
                 let ok_i = self.type_info_for(ok)?;
                 let err_i = self.type_info_for(err)?;
-                let kind = ResolvedTypeKind::Failable { ok: Box::new(ok_i), err: Box::new(err_i) };
-                let mut info = self.native_types.get("failable").or(self.native_types.get("ptr"))?.clone();
+                let kind = ResolvedTypeKind::Failable {
+                    ok: Box::new(ok_i),
+                    err: Box::new(err_i),
+                };
+                let mut info = self
+                    .native_types
+                    .get("failable")
+                    .or(self.native_types.get("ptr"))?
+                    .clone();
                 info.kind = kind.clone();
                 info.name = TypeInfo::name(kind);
                 info
@@ -347,18 +382,24 @@ impl<'a> Monomorphizer<'a> {
         Some(info)
     }
 
-    fn wrapped_info(&mut self, key: &'static str, kind: ResolvedTypeKind, span: crate::diagnostics::Span) -> TypeInfo {
-        let mut info = self
-            .native_types
-            .get(key)
-            .cloned()
-            .unwrap_or_else(|| self.native_types.get("ptr").cloned().unwrap_or_else(|| TypeInfo {
-                kind: ResolvedTypeKind::Unknown,
-                name: "unknown".to_string(),
-                type_id: crate::semantics::TypeId(0),
-                layout: crate::layout::Layout::empty(),
-                span: span.clone(),
-            }));
+    fn wrapped_info(
+        &mut self,
+        key: &'static str,
+        kind: ResolvedTypeKind,
+        span: crate::diagnostics::Span,
+    ) -> TypeInfo {
+        let mut info = self.native_types.get(key).cloned().unwrap_or_else(|| {
+            self.native_types
+                .get("ptr")
+                .cloned()
+                .unwrap_or_else(|| TypeInfo {
+                    kind: ResolvedTypeKind::Unknown,
+                    name: "unknown".to_string(),
+                    type_id: crate::semantics::TypeId(0),
+                    layout: crate::layout::Layout::empty(),
+                    span: span.clone(),
+                })
+        });
         info.kind = kind.clone();
         info.name = TypeInfo::name(kind);
         info.span = span.clone();
@@ -415,10 +456,7 @@ impl<'a> Monomorphizer<'a> {
     fn fresh_type_node(&mut self, ty: &mut HirTypeNode) {
         ty.hir_id = self.new_id();
         if let Some(info) = self.type_info_for(ty) {
-            self.ctxt
-                .types
-                .types
-                .insert(ty.hir_id.clone(), info);
+            self.ctxt.types.types.insert(ty.hir_id.clone(), info);
         }
         match &mut ty.kind {
             HirType::Ptr(inner) | HirType::Ref(inner) | HirType::Nullable(inner) => {
@@ -449,7 +487,12 @@ impl<'a> Monomorphizer<'a> {
         }
     }
 
-    fn fresh_param(&mut self, param: &mut crate::hir::HirParam, gens: &[HirTypeNode], args: &[TypeInfo]) {
+    fn fresh_param(
+        &mut self,
+        param: &mut crate::hir::HirParam,
+        gens: &[HirTypeNode],
+        args: &[TypeInfo],
+    ) {
         let original_id = param.hir_id.clone();
         param.hir_id = self.new_id();
         self.record_fresh_type(&original_id, &param.hir_id, gens, args);
@@ -637,7 +680,9 @@ impl<'a> Monomorphizer<'a> {
                 }
             }
             HirStmtKind::HirContractDecl {
-                functions, generic_type_params, ..
+                functions,
+                generic_type_params,
+                ..
             } => {
                 for t in generic_type_params {
                     self.fresh_type_node(t);
@@ -699,7 +744,11 @@ impl<'a> Monomorphizer<'a> {
 
     /// Build a concrete Struct TypeInfo for an instance by substituting the
     /// template's own generic params inside its member types.
-    fn specialize_struct_info(&mut self, template: &HirStmt, key: &InstanceKey) -> Option<TypeInfo> {
+    fn specialize_struct_info(
+        &mut self,
+        template: &HirStmt,
+        key: &InstanceKey,
+    ) -> Option<TypeInfo> {
         if let HirStmtKind::HirStructDecl { name, .. } = &template.kind {
             let template_info = self.ctxt.types.types.get(&template.hir_id)?.clone();
             match &template_info.kind {
@@ -713,7 +762,11 @@ impl<'a> Monomorphizer<'a> {
                         .map(|(field_name, field_ty, id)| {
                             (
                                 field_name.clone(),
-                                self.substitute_type_info(field_ty, gen_type_params, &key.concrete_args),
+                                self.substitute_type_info(
+                                    field_ty,
+                                    gen_type_params,
+                                    &key.concrete_args,
+                                ),
                                 *id,
                             )
                         })
@@ -759,21 +812,18 @@ impl<'a> Monomorphizer<'a> {
                 }
                 current.clone()
             }
-            ResolvedTypeKind::Struct {
-                name,
-                gen_type_params,
-                members,
-            } => {
+            ResolvedTypeKind::Struct { name, members, .. } => {
                 let substituted_members = members
                     .iter()
                     .map(|(field_name, field_ty, id)| {
-                        let sub = self.substitute_type_info(field_ty, template_gen_params, concrete_args);
+                        let sub =
+                            self.substitute_type_info(field_ty, template_gen_params, concrete_args);
                         (field_name.clone(), sub, *id)
                     })
                     .collect::<Vec<_>>();
                 let kind = ResolvedTypeKind::Struct {
                     name: name.clone(),
-                    gen_type_params: gen_type_params.clone(),
+                    gen_type_params: Vec::new(),
                     members: substituted_members,
                 };
                 let mut info = current.clone();
@@ -781,11 +831,7 @@ impl<'a> Monomorphizer<'a> {
                 info.name = TypeInfo::name(kind);
                 info
             }
-            ResolvedTypeKind::Variant {
-                name,
-                gen_type_params,
-                arms,
-            } => {
+            ResolvedTypeKind::Variant { name, arms, .. } => {
                 let substituted_arms = arms
                     .iter()
                     .map(|(arm_name, arm_ty, id, payload_tys)| {
@@ -795,7 +841,9 @@ impl<'a> Monomorphizer<'a> {
                             *id,
                             payload_tys
                                 .iter()
-                                .map(|t| self.substitute_type_info(t, template_gen_params, concrete_args))
+                                .map(|t| {
+                                    self.substitute_type_info(t, template_gen_params, concrete_args)
+                                })
                                 .collect::<Vec<_>>(),
                         );
                         sub
@@ -803,7 +851,7 @@ impl<'a> Monomorphizer<'a> {
                     .collect::<Vec<_>>();
                 let kind = ResolvedTypeKind::Variant {
                     name: name.clone(),
-                    gen_type_params: gen_type_params.clone(),
+                    gen_type_params: Vec::new(),
                     arms: substituted_arms,
                 };
                 let mut info = current.clone();
@@ -813,7 +861,9 @@ impl<'a> Monomorphizer<'a> {
             }
             ResolvedTypeKind::Pointer { inner } => {
                 let inner = self.substitute_type_info(inner, template_gen_params, concrete_args);
-                let kind = ResolvedTypeKind::Pointer { inner: Box::new(inner) };
+                let kind = ResolvedTypeKind::Pointer {
+                    inner: Box::new(inner),
+                };
                 let mut info = current.clone();
                 info.kind = kind.clone();
                 info.name = TypeInfo::name(kind);
@@ -821,7 +871,9 @@ impl<'a> Monomorphizer<'a> {
             }
             ResolvedTypeKind::Ref { inner } => {
                 let inner = self.substitute_type_info(inner, template_gen_params, concrete_args);
-                let kind = ResolvedTypeKind::Ref { inner: Box::new(inner) };
+                let kind = ResolvedTypeKind::Ref {
+                    inner: Box::new(inner),
+                };
                 let mut info = current.clone();
                 info.kind = kind.clone();
                 info.name = TypeInfo::name(kind);
@@ -952,13 +1004,23 @@ impl<'a> Monomorphizer<'a> {
                 ResolvedTypeKind::Struct { members, .. } => members
                     .iter()
                     .map(|(n, t, _)| {
-                        (n.clone(), format!("{:?}", std::mem::discriminant(&t.kind)), t.layout.size, t.layout.alignment)
+                        (
+                            n.clone(),
+                            format!("{:?}", std::mem::discriminant(&t.kind)),
+                            t.layout.size,
+                            t.layout.alignment,
+                        )
                     })
                     .collect::<Vec<_>>(),
                 ResolvedTypeKind::Variant { arms, .. } => arms
                     .iter()
                     .map(|(n, t, _, _)| {
-                        (n.clone(), format!("{:?}", std::mem::discriminant(&t.kind)), t.layout.size, t.layout.alignment)
+                        (
+                            n.clone(),
+                            format!("{:?}", std::mem::discriminant(&t.kind)),
+                            t.layout.size,
+                            t.layout.alignment,
+                        )
                     })
                     .collect::<Vec<_>>(),
                 _ => continue,
@@ -978,7 +1040,12 @@ impl<'a> Monomorphizer<'a> {
                         let fingerprint: Vec<(String, String, usize, usize)> = members
                             .iter()
                             .map(|(n, t, _)| {
-                                (n.clone(), format!("{:?}", std::mem::discriminant(&t.kind)), t.layout.size, t.layout.alignment)
+                                (
+                                    n.clone(),
+                                    format!("{:?}", std::mem::discriminant(&t.kind)),
+                                    t.layout.size,
+                                    t.layout.alignment,
+                                )
                             })
                             .collect();
                         mangled_by_members
@@ -994,7 +1061,12 @@ impl<'a> Monomorphizer<'a> {
                         let fingerprint: Vec<(String, String, usize, usize)> = arms
                             .iter()
                             .map(|(n, t, _, _)| {
-                                (n.clone(), format!("{:?}", std::mem::discriminant(&t.kind)), t.layout.size, t.layout.alignment)
+                                (
+                                    n.clone(),
+                                    format!("{:?}", std::mem::discriminant(&t.kind)),
+                                    t.layout.size,
+                                    t.layout.alignment,
+                                )
                             })
                             .collect();
                         mangled_by_members
@@ -1011,6 +1083,10 @@ impl<'a> Monomorphizer<'a> {
                     ResolvedTypeKind::Variant { name, .. } => *name = mangled,
                     _ => {}
                 }
+                // The string `name` descends from the *old* kind (e.g. a stale
+                // "Pair" / "Pair<T>"), which would leak into serialized stubs;
+                // recompute it from the re-pointed kind.
+                info.name = TypeInfo::name(info.kind.clone());
             }
         }
     }
@@ -1018,11 +1094,26 @@ impl<'a> Monomorphizer<'a> {
 
 fn generic_type_params_of(stmt: &HirStmt) -> Vec<HirTypeNode> {
     match &stmt.kind {
-        HirStmtKind::HirFunctionDecl { generic_type_params, .. }
-        | HirStmtKind::HirFunctionDef { generic_type_params, .. }
-        | HirStmtKind::HirStructDecl { generic_type_params, .. }
-        | HirStmtKind::HirVariantDecl { generic_type_params, .. }
-        | HirStmtKind::HirContractDecl { generic_type_params, .. } => generic_type_params.clone(),
+        HirStmtKind::HirFunctionDecl {
+            generic_type_params,
+            ..
+        }
+        | HirStmtKind::HirFunctionDef {
+            generic_type_params,
+            ..
+        }
+        | HirStmtKind::HirStructDecl {
+            generic_type_params,
+            ..
+        }
+        | HirStmtKind::HirVariantDecl {
+            generic_type_params,
+            ..
+        }
+        | HirStmtKind::HirContractDecl {
+            generic_type_params,
+            ..
+        } => generic_type_params.clone(),
         _ => Vec::new(),
     }
 }
@@ -1059,13 +1150,15 @@ fn contains_generic(info: &TypeInfo) -> bool {
         ResolvedTypeKind::Pointer { inner }
         | ResolvedTypeKind::Ref { inner }
         | ResolvedTypeKind::Nullable { ty: inner } => contains_generic(inner),
-        ResolvedTypeKind::Failable { ok: inner, err: other } => {
-            contains_generic(inner) || contains_generic(other)
-        }
-        ResolvedTypeKind::Enum { underlying, members, .. } => {
-            contains_generic(underlying)
-                || members.iter().any(|(_, t, _)| contains_generic(t))
-        }
+        ResolvedTypeKind::Failable {
+            ok: inner,
+            err: other,
+        } => contains_generic(inner) || contains_generic(other),
+        ResolvedTypeKind::Enum {
+            underlying,
+            members,
+            ..
+        } => contains_generic(underlying) || members.iter().any(|(_, t, _)| contains_generic(t)),
         ResolvedTypeKind::Array { inner, .. } => contains_generic(inner),
         ResolvedTypeKind::Func {
             params,
@@ -1078,10 +1171,12 @@ fn contains_generic(info: &TypeInfo) -> bool {
                 || gen_type_params.iter().any(contains_generic)
         }
         ResolvedTypeKind::Tuple { fields } => fields.iter().any(contains_generic),
-        ResolvedTypeKind::Struct { members, .. } => members.iter().any(|(_, t, _)| contains_generic(t)),
-        ResolvedTypeKind::Variant { arms, .. } => arms
-            .iter()
-            .any(|(_, t, _, payloads)| contains_generic(t) || payloads.iter().any(contains_generic)),
+        ResolvedTypeKind::Struct { members, .. } => {
+            members.iter().any(|(_, t, _)| contains_generic(t))
+        }
+        ResolvedTypeKind::Variant { arms, .. } => arms.iter().any(|(_, t, _, payloads)| {
+            contains_generic(t) || payloads.iter().any(contains_generic)
+        }),
         _ => false,
     }
 }
@@ -1098,7 +1193,10 @@ fn specialized_name(info: &TypeInfo) -> Option<String> {
             gen_type_params,
             ..
         } if !gen_type_params.is_empty() => {
-            let args: Vec<String> = gen_type_params.iter().map(|p| sanitize_name(&p.name)).collect();
+            let args: Vec<String> = gen_type_params
+                .iter()
+                .map(|p| sanitize_name(&p.name))
+                .collect();
             Some(format!("_U_{}_{}", name, args.join("_")))
         }
         _ => None,
@@ -1231,7 +1329,11 @@ fn collect_type_nodes<'k>(stmt: &'k HirStmt, out: &mut Vec<&'k HirTypeNode>) {
                 }
             }
         }
-        HirStmtKind::HirIf { condition, body, else_body } => {
+        HirStmtKind::HirIf {
+            condition,
+            body,
+            else_body,
+        } => {
             collect_expr_type_refs(condition, out);
             for s in body {
                 collect_type_nodes(s, out);
@@ -1250,7 +1352,11 @@ fn collect_type_nodes<'k>(stmt: &'k HirStmt, out: &mut Vec<&'k HirTypeNode>) {
         }
         HirStmtKind::HirReturn(Some(e)) | HirStmtKind::HirExpr(e) => collect_expr_type_refs(e, out),
         HirStmtKind::HirAlias { original, .. } => collect_type_refs(original, out),
-        HirStmtKind::HirContractDecl { functions, generic_type_params, .. } => {
+        HirStmtKind::HirContractDecl {
+            functions,
+            generic_type_params,
+            ..
+        } => {
             for t in generic_type_params {
                 collect_type_refs(t, out);
             }
@@ -1299,7 +1405,11 @@ fn collect_expr_type_refs<'k>(expr: &'k HirExpr, out: &mut Vec<&'k HirTypeNode>)
                 collect_expr_type_refs(e, out);
             }
         }
-        HirExprKind::DollarScope { params, body, result } => {
+        HirExprKind::DollarScope {
+            params,
+            body,
+            result,
+        } => {
             for p in params {
                 collect_expr_type_refs(p, out);
             }
@@ -1343,23 +1453,148 @@ fn collect_type_refs<'k>(ty: &'k HirTypeNode, out: &mut Vec<&'k HirTypeNode>) {
     }
 }
 
-fn stmt_max_id(stmt: &HirStmt) -> usize {
+/// Maximum `NodeId.local` reachable from `stmt`, walking *every* child node
+/// the fresh-id walker will re-id: statements, params (id + type + default),
+/// expressions (including instantiation fields), and type nodes in every HIR
+/// container. Seeding `next_fresh_local` from this guarantees fresh ids never
+/// collide with an original id anywhere in the input tree — including the
+/// `NodeIndex` (which keys statements) and the type table (which also keys
+/// expressions and type nodes).
+fn tree_max_id(stmt: &HirStmt) -> usize {
     let mut max = stmt.hir_id.local;
     let mut tys = Vec::new();
     collect_type_nodes(stmt, &mut tys);
     for t in tys {
         max = max.max(t.hir_id.local);
     }
+
+    fn param_max(max: usize, params: &[crate::hir::HirParam]) -> usize {
+        let mut m = max;
+        for p in params {
+            m = m.max(p.hir_id.local).max(p.ty.hir_id.local);
+            if let Some(d) = &p.default {
+                m = m.max(expr_max_id(d));
+            }
+        }
+        m
+    }
+
     match &stmt.kind {
-        HirStmtKind::HirFunctionDef { params, body, .. } => {
-            for p in params {
-                if let Some(d) = &p.default {
-                    max = max.max(expr_max_id(d));
-                }
+        HirStmtKind::HirReturn(Some(expr)) | HirStmtKind::HirExpr(expr) => {
+            max = max.max(expr_max_id(expr));
+        }
+        HirStmtKind::HirVarDecl { ty, init, .. } => {
+            if let Some(t) = ty {
+                max = max.max(t.hir_id.local);
+            }
+            max = max.max(expr_max_id(init));
+        }
+        HirStmtKind::HirFunctionDef {
+            params,
+            return_type,
+            generic_type_params,
+            body,
+            ..
+        } => {
+            max = param_max(max, params);
+            max = max.max(return_type.hir_id.local);
+            for t in generic_type_params {
+                max = max.max(t.hir_id.local);
             }
             for s in body {
-                max = max.max(stmt_max_id(s));
+                max = max.max(tree_max_id(s));
             }
+        }
+        HirStmtKind::HirFunctionDecl {
+            params,
+            return_type,
+            generic_type_params,
+            ..
+        } => {
+            max = param_max(max, params);
+            max = max.max(return_type.hir_id.local);
+            for t in generic_type_params {
+                max = max.max(t.hir_id.local);
+            }
+        }
+        HirStmtKind::HirStructDecl {
+            contracts,
+            generic_type_params,
+            fields,
+            ..
+        } => {
+            for c in contracts {
+                max = max.max(c.hir_id.local);
+            }
+            for t in generic_type_params {
+                max = max.max(t.hir_id.local);
+            }
+            max = param_max(max, fields);
+        }
+        HirStmtKind::HirEnumDecl {
+            underlying,
+            members,
+            ..
+        } => {
+            max = max.max(underlying.hir_id.local);
+            for m in members {
+                max = max.max(m.hir_id.local);
+            }
+        }
+        HirStmtKind::HirVariantDecl {
+            contracts,
+            generic_type_params,
+            members,
+            ..
+        } => {
+            for c in contracts {
+                max = max.max(c.hir_id.local);
+            }
+            for t in generic_type_params {
+                max = max.max(t.hir_id.local);
+            }
+            for m in members {
+                max = max.max(m.hir_id.local);
+                for mt in &m.member_types {
+                    max = max.max(mt.hir_id.local);
+                }
+            }
+        }
+        HirStmtKind::HirIf {
+            condition,
+            body,
+            else_body,
+        } => {
+            max = max.max(expr_max_id(condition));
+            for s in body {
+                max = max.max(tree_max_id(s));
+            }
+            if let Some(el) = else_body {
+                for s in el {
+                    max = max.max(tree_max_id(s));
+                }
+            }
+        }
+        HirStmtKind::HirWhile { condition, body } => {
+            max = max.max(expr_max_id(condition));
+            for s in body {
+                max = max.max(tree_max_id(s));
+            }
+        }
+        HirStmtKind::HirContractDecl {
+            functions,
+            generic_type_params,
+            ..
+        } => {
+            for t in generic_type_params {
+                max = max.max(t.hir_id.local);
+            }
+            for f in functions {
+                max = max.max(tree_max_id(f));
+            }
+        }
+        HirStmtKind::HirAlias { original, .. } => {
+            max = max.max(original.hir_id.local);
         }
         _ => {}
     }
@@ -1379,7 +1614,9 @@ fn expr_max_id(expr: &HirExpr) -> usize {
                 max = max.max(expr_max_id(a));
             }
         }
-        HirExprKind::Index { target, index } => max = max.max(expr_max_id(target)).max(expr_max_id(index)),
+        HirExprKind::Index { target, index } => {
+            max = max.max(expr_max_id(target)).max(expr_max_id(index))
+        }
         HirExprKind::TupleInst { body } => {
             for e in body {
                 max = max.max(expr_max_id(e));
@@ -1397,15 +1634,20 @@ fn expr_max_id(expr: &HirExpr) -> usize {
         HirExprKind::Instantiation { init_ty, body } => {
             max = max.max(init_ty.hir_id.local);
             for f in body {
+                max = max.max(f.hir_id.local);
                 max = max.max(expr_max_id(&f.value));
             }
         }
-        HirExprKind::DollarScope { params, body, result } => {
+        HirExprKind::DollarScope {
+            params,
+            body,
+            result,
+        } => {
             for p in params {
                 max = max.max(expr_max_id(p));
             }
             for s in body {
-                max = max.max(stmt_max_id(s));
+                max = max.max(tree_max_id(s));
             }
             if let Some(r) = result {
                 max = max.max(expr_max_id(r));

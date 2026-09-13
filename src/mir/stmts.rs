@@ -18,16 +18,20 @@ impl<'a> MIRBuilder<'a> {
             HirStmtKind::HirStructDecl { .. }
             | HirStmtKind::HirVariantDecl { .. }
             | HirStmtKind::HirEnumDecl { .. }
-            | HirStmtKind::HirFunctionDecl { .. } => (),
+            | HirStmtKind::HirFunctionDecl { .. }
+            | HirStmtKind::HirContractDecl { .. } => (),
             HirStmtKind::HirVarDecl { .. } => self.build_var(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.build_fn(stmt),
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
             HirStmtKind::HirIf { .. } => self.build_if(stmt),
             HirStmtKind::HirWhile { .. } => self.build_while(stmt),
             HirStmtKind::HirExpr(_) => self.build_expr_stmt(stmt),
-            _ => todo!(
-                "Encountered {:?}, Implement all the different statement handlers",
-                stmt
+            _ => self.report_ice(
+                format!(
+                    "Encountered {:?}, no statement handler implemented",
+                    stmt.kind
+                ),
+                Some(stmt.span.clone()),
             ),
         }
     }

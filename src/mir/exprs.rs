@@ -45,9 +45,12 @@ impl<'a> MIRBuilder<'a> {
             }
             HirExprKind::BitCast(_, _) => self.build_bitcast(expr),
             HirExprKind::Index { .. } => self.build_index_access(expr),
-            _ => todo!(
-                "Encountered an expression whose handler is yet to be added {:?}",
-                expr
+            _ => self.report_ice(
+                format!(
+                    "Encountered an expression whose handler is yet to be added {:?}",
+                    expr.kind
+                ),
+                span,
             ),
         }
     }
@@ -207,7 +210,12 @@ impl<'a> MIRBuilder<'a> {
                     Some(expr.span.clone()),
                 );
 
-                let field_ptr = self.last_value.clone().unwrap();
+                let Some(field_ptr) = self.last_value.clone() else {
+                    self.report_ice(
+                        "Failed to get field pointer after struct field GEP".to_string(),
+                        Some(expr.span.clone()),
+                    );
+                };
 
                 match &field.value.kind {
                     HirExprKind::Instantiation { .. } => {
@@ -636,7 +644,10 @@ impl<'a> MIRBuilder<'a> {
                             MIROps::Udiv
                         }
                     }
-                    _ => unreachable!(),
+                    _ => self.report_ice(
+                        format!("Unhandled assignment base operator {:?}", op),
+                        span.clone(),
+                    ),
                 };
 
                 self.build_binary(base_op, lhs_value, rhs_value, ty, span.clone());
@@ -658,7 +669,10 @@ impl<'a> MIRBuilder<'a> {
                 let cmp_op = self.map_cmp_op(op, &lhs_value);
                 self.build_cmp(cmp_op, lhs_value, rhs_value, span)
             }
-            _ => todo!(),
+            _ => self.report_ice(
+                format!("Unhandled binary operator {:?} in build_bin", op),
+                span,
+            ),
         }
     }
 
@@ -854,7 +868,13 @@ impl<'a> MIRBuilder<'a> {
         let base_op = match op {
             HirPostfixOp::Increment => MIROps::Add,
             HirPostfixOp::Decrement => MIROps::Sub,
-            _ => todo!("Add propagate later"),
+            _ => self.report_ice(
+                format!(
+                    "Postfix operator {:?} is not yet supported by the MIR builder",
+                    op
+                ),
+                span.clone(),
+            ),
         };
 
         let one_val = MIRValue::Constant(ConstantValue::Int(1));
@@ -1113,7 +1133,10 @@ impl<'a> MIRBuilder<'a> {
                     self.get_last_val(span)
                 }
 
-                _ => todo!("Handle other constants"),
+                _ => self.report_ice(
+                    format!("Unhandled literal kind {:?} in literal_value", lit),
+                    span.clone(),
+                ),
             },
 
             _ => {

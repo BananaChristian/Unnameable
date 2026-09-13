@@ -447,3 +447,345 @@ fn end_to_end_struct_arg_and_return_generics_build_mir() {
          func main(): i32 { var p := .Point{.x = 1i32, .y = 2i32}; var q := tag::<Point>(p); var r := pp(p); return 0i32; }\n",
     );
 }
+
+/// Collects every statement id in `stmt`'s subtree, including if/while bodies
+/// and any nested function definitions (the shapes the node indexer indexes).
+fn collect_stmt_ids<'a>(stmt: &'a HirStmt, out: &mut Vec<unnc::lowering::NodeId>) {
+    out.push(stmt.hir_id.clone());
+    match &stmt.kind {
+        HirStmtKind::HirIf {
+            body,
+            else_body,
+            ..
+        } => {
+            for s in body {
+                collect_stmt_ids(s, out);
+            }
+            if let Some(el) = else_body {
+                for s in el {
+                    collect_stmt_ids(s, out);
+                }
+            }
+        }
+        HirStmtKind::HirWhile { body, .. } => {
+            for s in body {
+                collect_stmt_ids(s, out);
+            }
+        }
+        HirStmtKind::HirFunctionDef { body, .. } => {
+            for s in body {
+                collect_stmt_ids(s, out);
+            }
+        }
+        HirStmtKind::HirContractDecl { functions, .. } => {
+            for f in functions {
+                collect_stmt_ids(f, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn node_index_round_trips_monomorphized_tree_without_collisions() {
+    // The NodeIndex keys statements by `NodeId`. Monomorphized trees mix
+    // original ids (root functions/structs, kept in place) with the fresh
+    // ids allocated for appended instances — every statement must land in
+    // the index exactly once, and `get` must return that exact statement.
+    let (hir, _) = mono(
+        "generics <T> { struct Pair { a: T, b: T } func identity(v: T): T { return v; } }\n\
+         func main(): i32 {\n\
+             var pr := .Pair<i32>{.a = 1i32, .b = 2i32};\n\
+             var g := identity::<i32>(pr.a);\n\
+             if g > 0i32 {\n\
+                 var alt := identity::<i32>(g);\n\
+                 return alt;\n\
+             }\n\
+             return g;\n\
+         }\n",
+    );
+
+    let index = NodeIndex::build(&hir);
+
+    // Templates are dropped from the unified tree; only main + instances.
+    assert_eq!(index.roots.len(), 3, "roots = {:?}", index.roots);
+    assert!(
+        index.get(&index.roots[1]).is_some() && index.get(&index.roots[2]).is_some(),
+        "appended instances must be reachable roots"
+    );
+
+    // Bijection: every statement in the tree is in the index, unique.
+    let mut all_ids = Vec::new();
+    for root in &hir {
+        collect_stmt_ids(root, &mut all_ids);
+    }
+    assert_eq!(
+        all_ids.len(),
+        index.nodes.len(),
+        "node ids in the tree must map 1:1 into the index (fresh-id collisions?)"
+    );
+    assert_eq!(
+        all_ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        all_ids.len(),
+        "duplicate statement ids in the monomorphized tree"
+    );
+
+    for stmt in &hir {
+        assert_stmt_indexed(stmt, &index);
+    }
+
+    // Fresh ids live strictly above every original id: no overlap that could
+    // let two statements share a key.
+    let mut original_max = 0usize;
+    let mut fresh_min = usize::MAX;
+    for root in &hir {
+        let name = match &root.kind {
+            HirStmtKind::HirStructDecl { name, .. } | HirStmtKind::HirFunctionDef { name, .. } => Some(name.clone()),
+            _ => None,
+        };
+        let id = root.hir_id.local;
+        match name {
+            Some(n) if n.starts_with("_U_") => fresh_min = fresh_min.min(id),
+            Some(_) => original_max = original_max.max(id),
+            None => original_max = original_max.max(id),
+        }
+    }
+    assert!(
+        fresh_min > original_max,
+        "fresh instance ids ({fresh_min}) must exceed original ids ({original_max})"
+    );
+}
+
+fn assert_stmt_indexed(stmt: &HirStmt, index: &NodeIndex) {
+    match index.get(&stmt.hir_id) {
+        Some(found) => assert_eq!(found.hir_id, stmt.hir_id),
+        None => panic!("statement {:?} missing from node index", stmt.hir_id),
+    }
+    match &stmt.kind {
+        HirStmtKind::HirIf {
+            body,
+            else_body,
+            ..
+        } => {
+            for s in body {
+                assert_stmt_indexed(s, index);
+            }
+            if let Some(el) = else_body {
+                for s in el {
+                    assert_stmt_indexed(s, index);
+                }
+            }
+        }
+        HirStmtKind::HirWhile { body, .. } => {
+            for s in body {
+                assert_stmt_indexed(s, index);
+            }
+        }
+        HirStmtKind::HirFunctionDef { body, .. } => {
+            for s in body {
+                assert_stmt_indexed(s, index);
+            }
+        }
+        HirStmtKind::HirContractDecl { functions, .. } => {
+            for f in functions {
+                assert_stmt_indexed(f, index);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Runs analyze → monomorphize → index → contract verification and returns
+/// every diagnostic. Asserts analysis stays clean first, so a failure is
+/// attributable to the contract verifier rather than an earlier phase.
+fn mono_verify_contracts(src: &str) -> Vec<String> {
+    let (mut semantics, diag) = analyze(src, &[]);
+    if semantics.corrupted {
+        panic!(
+            "analysis should stay clean before contract verification for:\n{src}\ngot: {:?}",
+            common::messages(&diag),
+        );
+    }
+    let monomorphized_hir = semantics.generate_monormophizer_hir();
+    let hir_index = NodeIndex::build(&monomorphized_hir);
+    semantics.verify_contracts(&hir_index, common::Rc::clone(&diag));
+    common::messages(&diag)
+}
+
+#[test]
+fn end_to_end_contract_satisfied_by_methods_builds_mir() {
+    // The contract verifier consumes the *monomorphized* tree (root structs
+    // keep their original contract-node ids, so the decl stays resolvable).
+    // This proves the whole pipeline handles a satisfied contract: verification
+    // passes and the mangled method `Point_get` reaches the MIR module.
+    let mir = mono_e2e(
+        "contract HasGet { func get(): i32 }\n\
+         struct Point: HasGet { x: i32, y: i32 }\n\
+         methods Point { func get(): i32 { return 42i32; } }\n\
+         func main(): i32 { var p := .Point{.x = 1i32, .y = 2i32}; return 0i32; }\n",
+    );
+    assert!(
+        mir.functions.iter().any(|(_, f)| f.name == "Point_get"),
+        "expected Point_get in MIR module"
+    );
+}
+
+#[test]
+fn contract_missing_implementation_is_reported() {
+    let msgs = mono_verify_contracts(
+        "contract HasGet { func get(): i32 }\n\
+         struct Point: HasGet { x: i32 }\n\
+         func main(): i32 { var p := .Point{.x = 1i32}; return 0i32; }\n",
+    );
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("'Point' missing implementation of 'get'")),
+        "expected missing-implementation report, got {msgs:?}",
+    );
+}
+
+#[test]
+fn contract_wrong_param_count_is_reported() {
+    let msgs = mono_verify_contracts(
+        "contract HasGet { func get(): i32 }\n\
+         struct Point: HasGet { x: i32 }\n\
+         methods Point { func get(n: i32): i32 { return n; } }\n\
+         func main(): i32 { var p := .Point{.x = 1i32}; return 0i32; }\n",
+    );
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("wrong number of parameters")),
+        "expected param-count report, got {msgs:?}",
+    );
+}
+
+#[test]
+fn contract_wrong_return_type_is_reported() {
+    let msgs = mono_verify_contracts(
+        "contract HasGet { func get(): i32 }\n\
+         struct Point: HasGet { x: i32 }\n\
+         methods Point { func get(): u64 { return 1u64; } }\n\
+         func main(): i32 { var p := .Point{.x = 1i32}; return 0i32; }\n",
+    );
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("return type does not match contract")),
+        "expected return-type report, got {msgs:?}",
+    );
+}
+
+#[test]
+fn free_function_wearing_method_name_is_reported_not_panicked() {
+    // The impl lookup matches `Point_get` by name alone; a *free* function
+    // with zero params reaches `verify_signature` with no `self` to skip. The
+    // old `params[1..]` slice panicked on this — it must surface as a report.
+    let msgs = mono_verify_contracts(
+        "contract HasGet { func get(): i32 }\n\
+         struct Point: HasGet { x: i32 }\n\
+         func Point_get(): i32 { return 5i32; }\n\
+         func main(): i32 { var p := .Point{.x = 1i32}; return 0i32; }\n",
+    );
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("without a 'self' receiver")),
+        "expected receiver report instead of a panic, got {msgs:?}",
+    );
+}
+
+#[test]
+fn generic_struct_instance_with_contract_is_skipped_not_reported() {
+    // Contract-verification boundary for monomorphized generic instances:
+    // `_U_Pair_i32` carries contract usages with fresh ids the name table
+    // never sees, so the verifier skips it. There is no way to write the
+    // `_U_Pair_i32_get` impl it would otherwise demand (generic methods don't
+    // exist), so clean here is the guarantee: the instance duplicate must
+    // never turn into a false 'missing implementation' error.
+    let msgs = mono_verify_contracts(
+        "contract HasGet { func get(): i32 }\n\
+         generics <T> { struct Pair: HasGet { a: T, b: T } }\n\
+         func main(): i32 { var pr := .Pair<i32>{.a = 1i32, .b = 2i32}; var g := pr.b; return g; }\n",
+    );
+    assert!(msgs.is_empty(), "expected no reports, got {msgs:?}");
+}
+
+/// Runs analyze → monomorphize → index → serialize and returns the exported
+/// stub, the same shape `write_stub_for_module` writes to disk (minus bincode).
+fn serialize_stub(src: &str) -> unnc::serializer::ExportStub {
+    let (mut semantics, diag) = analyze(src, &[]);
+    if semantics.corrupted {
+        panic!(
+            "analysis should succeed for:\n{src}\ngot: {:?}",
+            common::messages(&diag),
+        );
+    }
+    let monomorphized_hir = semantics.generate_monormophizer_hir();
+    let hir_index = NodeIndex::build(&monomorphized_hir);
+    unnc::serializer::Serializer::new("foo".to_string(), &semantics.ctxt, &hir_index, diag).serialize()
+}
+
+#[test]
+fn exposed_generic_instances_serialize_as_concrete_symbols() {
+    // The serializer consumes the monomorphized tree, so an `expose`-d
+    // generic template surfaces only through its concrete instances. Both the
+    // func and struct instance must export fully concrete signatures — the
+    // struct instance must NOT carry the template's generic param list (that
+    // stale `[T]` used to leak into the stub and name it `Pair<T>`).
+    let stub = serialize_stub(
+        "generics <T> { expose func identity(v: T): T { return v; } expose struct Pair { a: T, b: T } }\n\
+         func main(): i32 { var x := identity::<i32>(5); var pr := .Pair<i32>{.a = 1i32, .b = 2i32}; return 0i32; }\n",
+    );
+
+    let func = stub
+        .exposed_symbols
+        .get("foo__U_identity_i32")
+        .unwrap_or_else(|| panic!("missing foo__U_identity_i32 in {:?}", stub.exposed_symbols.keys().collect::<Vec<_>>()));
+    match &func.kind {
+        unnc::semantics::ResolvedTypeKind::Func {
+            params, ret_type, ..
+        } => {
+            assert_eq!(params.len(), 1);
+            assert!(matches!(params[0].kind, unnc::semantics::ResolvedTypeKind::I32));
+            assert!(matches!(ret_type.kind, unnc::semantics::ResolvedTypeKind::I32));
+        }
+        other => panic!("expected func instance, got {other:?}"),
+    }
+
+    let st = stub
+        .exposed_symbols
+        .get("foo__U_Pair_i32")
+        .unwrap_or_else(|| panic!("missing foo__U_Pair_i32 in {:?}", stub.exposed_symbols.keys().collect::<Vec<_>>()));
+    match &st.kind {
+        unnc::semantics::ResolvedTypeKind::Struct {
+            name,
+            gen_type_params,
+            members,
+        } => {
+            assert_eq!(name, "_U_Pair_i32");
+            assert!(
+                gen_type_params.is_empty(),
+                "concrete instance must not re-export a generic param, got {gen_type_params:?}"
+            );
+            assert_eq!(st.name, "_U_Pair_i32");
+            assert_eq!(members.len(), 2);
+            assert!(
+                matches!(members[1].1.kind, unnc::semantics::ResolvedTypeKind::I32),
+                "substituted member expected: {:?}",
+                members[1].1.kind
+            );
+        }
+        other => panic!("expected struct instance, got {other:?}"),
+    }
+}
+
+#[test]
+fn uninstantiated_exposed_template_exports_nothing() {
+    // Boundary, documented: only *instances* cross module boundaries — an
+    // expose-d template that is never instantiated is dropped from the unified
+    // tree and produces no stub symbol (cross-module *generic* imports are not
+    // part of the import model yet).
+    let stub = serialize_stub(
+        "generics <T> { expose func identity(v: T): T { return v; } }\n\
+         func main(): i32 { return 0i32; }\n",
+    );
+    assert!(stub.exposed_symbols.is_empty(), "{:?}", stub.exposed_symbols);
+}

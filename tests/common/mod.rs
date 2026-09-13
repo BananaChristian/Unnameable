@@ -88,7 +88,12 @@ pub fn write_stub_for_module(module_name: &str, src: &str, path: &std::path::Pat
     );
     let monomorph_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monomorph_hir);
-    let serializer = Serializer::new(module_name.to_string(), &semantics.ctxt, &hir_index);
+    let serializer = Serializer::new(
+        module_name.to_string(),
+        &semantics.ctxt,
+        &hir_index,
+        diagnostics.clone(),
+    );
     let stub = serializer.serialize();
     let bytes = bincode::serialize(&stub).expect("stub serialization failed");
     std::fs::write(path, bytes).expect("stub write failed");

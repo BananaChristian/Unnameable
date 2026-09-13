@@ -107,11 +107,6 @@ impl<'a> MIRBuilder<'a> {
 
     pub fn build_module(&mut self) -> MIRModule {
         let root_ids = self.indexed_hir.roots.clone();
-
-        // Register all declarations (structs, enums, variants, function
-        // signatures) *before* pre-registering the monomorphizer's appended
-        // generic instances: lowering a struct-typed parameter during
-        // signature registration needs `struct_name_to_id` to be populated.
         self.registration_pass(&root_ids);
 
         // Pre-register the signatures of the mangled instance definitions
@@ -409,7 +404,7 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    pub fn map_arithmetic_op(&self, op: &HirBinaryOp, lhs: &MIRValue) -> MIROps {
+    pub fn map_arithmetic_op(&mut self, op: &HirBinaryOp, lhs: &MIRValue) -> MIROps {
         match op {
             HirBinaryOp::Add => MIROps::Add,
             HirBinaryOp::Sub => MIROps::Sub,
@@ -422,7 +417,7 @@ impl<'a> MIRBuilder<'a> {
                     MIROps::Udiv
                 }
             }
-            _ => unreachable!("Not an arithmetic operator"),
+            _ => self.report_ice(format!("Not an arithmetic operator: {:?}", op), None),
         }
     }
 
@@ -443,7 +438,7 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    pub fn map_cmp_op(&self, op: &HirBinaryOp, lhs: &MIRValue) -> CmpOp {
+    pub fn map_cmp_op(&mut self, op: &HirBinaryOp, lhs: &MIRValue) -> CmpOp {
         let is_float = match lhs {
             MIRValue::Register { ty, .. } => {
                 matches!(ty.kind, MIRTykind::F32 | MIRTykind::F64)
@@ -497,7 +492,7 @@ impl<'a> MIRBuilder<'a> {
             }
             HirBinaryOp::Eq => CmpOp::Eq,
             HirBinaryOp::Neq => CmpOp::Neq,
-            _ => unreachable!("Not a comparison operator"),
+            _ => self.report_ice(format!("Not a comparison operator: {:?}", op), None),
         }
     }
 
@@ -1108,11 +1103,20 @@ impl<'a> MIRBuilder<'a> {
     }
 
     pub fn declare_var(&mut self, name: String, ptr: MIRValue) {
-        self.var_stack.last_mut().unwrap().insert(name, ptr);
+        let Some(scope) = self.var_stack.last_mut() else {
+            self.report_ice("declare_var called with no active scope".to_string(), None);
+        };
+        scope.insert(name, ptr);
     }
 
     pub fn declare_var_dollar(&mut self, name: String, mode: MIRDollarMode) {
-        self.var_dollar_stack.last_mut().unwrap().insert(name, mode);
+        let Some(scope) = self.var_dollar_stack.last_mut() else {
+            self.report_ice(
+                "declare_var_dollar called with no active scope".to_string(),
+                None,
+            );
+        };
+        scope.insert(name, mode);
     }
 
     pub fn lookup_var(&self, name: &str) -> Option<&MIRValue> {
@@ -1211,10 +1215,15 @@ impl<'a> MIRBuilder<'a> {
                         span.clone(),
                     ),
                 };
-                let field_index = fields
-                    .iter()
-                    .position(|(name, _)| name == field_name)
-                    .expect("Field not found, should have been caught by type checker");
+                let Some(field_index) = fields.iter().position(|(name, _)| name == field_name)
+                else {
+                    self.report_ice(
+                        format!(
+                            "Field '{field_name}' not found; should have been caught by type checker"
+                        ),
+                        span.clone(),
+                    );
+                };
                 let field_ty = fields[field_index].1.clone();
 
                 let zero = MIRValue::Constant(ConstantValue::UInt(0));

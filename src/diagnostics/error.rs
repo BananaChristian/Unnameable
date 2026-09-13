@@ -10,6 +10,7 @@ pub enum Phase {
     MIRBuilder,
     BytecodeBuilder,
     Codegen,
+    Serializer,
     None,
 }
 

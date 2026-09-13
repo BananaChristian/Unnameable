@@ -312,7 +312,12 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     if let Some(stub_path) = emit_stub_path {
-        let serializer = Serializer::new(module_name.clone(), &semantics.ctxt, &hir_index);
+        let serializer = Serializer::new(
+            module_name.clone(),
+            &semantics.ctxt,
+            &hir_index,
+            Rc::clone(&diagnostics),
+        );
         let stub = serializer.serialize();
 
         let binary_bytes =

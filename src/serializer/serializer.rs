@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    diagnostics::{CompilerError, Phase, SharedDiagnostics},
     hir::{HirStmt, HirStmtKind},
     indexer::NodeIndex,
     lowering::NodeId,
@@ -19,15 +20,22 @@ pub struct Serializer<'a> {
     module_name: String,
     ctxt: &'a SemanticCtxt,
     hir_index: &'a NodeIndex,
+    diagnostics: SharedDiagnostics,
     stub: ExportStub,
 }
 
 impl<'a> Serializer<'a> {
-    pub fn new(module_name: String, ctxt: &'a SemanticCtxt, hir_index: &'a NodeIndex) -> Self {
+    pub fn new(
+        module_name: String,
+        ctxt: &'a SemanticCtxt,
+        hir_index: &'a NodeIndex,
+        diagnostics: SharedDiagnostics,
+    ) -> Self {
         Serializer {
             module_name: module_name.clone(),
             ctxt,
             hir_index,
+            diagnostics,
             stub: ExportStub {
                 module_name,
                 exposed_symbols: HashMap::new(),
@@ -47,11 +55,18 @@ impl<'a> Serializer<'a> {
     }
 
     fn get_ty_info(&self, id: &NodeId) -> &TypeInfo {
-        self.ctxt
-            .types
-            .types
-            .get(id)
-            .expect("Failed to get type info for this id")
+        match self.ctxt.types.types.get(id) {
+            Some(info) => info,
+            None => {
+                self.diagnostics.borrow_mut().report_ice_and_panic(
+                    CompilerError::ice(
+                        format!("Serializer: no type info for exposed node {:?}", id),
+                        Phase::Serializer,
+                        None,
+                    ),
+                );
+            }
+        }
     }
 
     fn serialize_stmt(&mut self, stmt: &HirStmt) {
