@@ -504,7 +504,7 @@ impl fmt::Display for MIRFn {
 
         let conv = match self.conv {
             MIRConv::C => "{c}",
-            MIRConv::None => "",
+            MIRConv::Internal => "",
         };
 
         match &self.body {
@@ -520,8 +520,8 @@ impl fmt::Display for MIRFn {
             None => {
                 writeln!(
                     f,
-                    "<{}> {}func @{}({});",
-                    self.fn_id, linkage_str, self.name, params_str
+                    "<{}> {} {}func @{}({});",
+                    self.fn_id, conv, linkage_str, self.name, params_str
                 )
             }
         }

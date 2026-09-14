@@ -35,7 +35,7 @@ pub enum MIRDollarMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MIRConv {
     C, //For now only C
-    None,
+    Internal,
 }
 
 #[derive(Debug, Clone)]
@@ -231,6 +231,7 @@ pub enum MIRTykind {
 
 #[derive(Debug, Clone)]
 pub struct FuncSig {
+    pub conv: MIRConv,
     pub params: Vec<MIRTy>,
     pub ret: MIRTy,
 }

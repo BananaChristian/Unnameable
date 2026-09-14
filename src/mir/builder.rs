@@ -182,7 +182,7 @@ impl<'a> MIRBuilder<'a> {
                 &ret_ty,
                 dollar_mode,
                 linkage,
-                MIRConv::None,
+                MIRConv::Internal,
                 None,
             );
         }
@@ -931,6 +931,19 @@ impl<'a> MIRBuilder<'a> {
     pub fn convert_conv(&mut self, conv: Conv) -> MIRConv {
         match conv {
             Conv::C => MIRConv::C,
+        }
+    }
+
+    pub fn get_func_conv(&mut self, expr: &HirExpr) -> MIRConv {
+        match &expr.kind {
+            HirExprKind::Identifier(name) => match self.fn_name_to_id.get(name) {
+                Some(fn_id) => match self.module.functions.get(fn_id) {
+                    Some(func) => func.conv,
+                    None => MIRConv::Internal,
+                },
+                None => MIRConv::Internal,
+            },
+            _ => MIRConv::Internal,
         }
     }
 

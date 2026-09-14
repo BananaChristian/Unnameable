@@ -1,8 +1,8 @@
 use std::env::consts::{ARCH, OS};
 
 pub struct TargetSpec {
-    architecture: String,
-    os: String,
+    pub architecture: String,
+    pub os: String,
     pub pointer_width: usize, //Size for the pointer width
     pub int_width: usize,     //Default size for usize and isize
 }

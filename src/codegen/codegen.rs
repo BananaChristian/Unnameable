@@ -1,20 +1,21 @@
 use std::{collections::HashMap, path::Path};
 
 use inkwell::{
+    AddressSpace, OptimizationLevel,
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
-    AddressSpace, OptimizationLevel,
 };
 
 use crate::{
+    codegen::abi::{ABIContract, InternalABI, SysV64},
     diagnostics::{CompilerError, Phase, SharedDiagnostics},
     mir::{
-        ConstantValue, FnId, GlobalId, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl, MIRTy,
-        MIRTykind, MIRValue, Vreg,
+        ConstantValue, FnId, GlobalId, MIRConv, MIRGlobal, MIRLinkage, MIRModule, MIRStructDecl,
+        MIRTy, MIRTykind, MIRValue, Vreg,
     },
     target::TargetSpec,
 };
@@ -56,6 +57,19 @@ impl<'ctx> Codegen<'ctx> {
             mir_module,
             corrupted: false,
             diagnostics,
+        }
+    }
+
+    pub fn abi_contract(&mut self, conv: MIRConv) -> Box<dyn ABIContract<'ctx>> {
+        match conv {
+            MIRConv::Internal => Box::new(InternalABI),
+            MIRConv::C => match (
+                self.target_spec.architecture.as_str(),
+                self.target_spec.os.as_str(),
+            ) {
+                ("x86_64", "linux") => Box::new(SysV64),
+                _ => panic!("Unsupported ABI"),
+            },
         }
     }
 
@@ -202,7 +216,7 @@ impl<'ctx> Codegen<'ctx> {
         self.func_map.get(&fn_id).copied()
     }
 
-    fn lower_constant(&mut self, constant: &ConstantValue) -> BasicValueEnum<'ctx> {
+    pub fn lower_constant(&mut self, constant: &ConstantValue) -> BasicValueEnum<'ctx> {
         match constant {
             ConstantValue::I8(v) => self.context.i8_type().const_int(*v as u64, true).into(),
             ConstantValue::U8(v) => self.context.i8_type().const_int(*v as u64, false).into(),

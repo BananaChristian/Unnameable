@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 
 use crate::{
-    diagnostics::Span, hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp}, mir::{
-        MIRGlobal, MIRInstruction, StructId, builder::MIRBuilder, instructions::{
-            ArmInfo, ConstantValue, FuncSig, MIRBody, MIRConv, MIRDollarMode, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator,
+    diagnostics::Span,
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
+    mir::{
+        MIRGlobal, MIRInstruction, StructId,
+        builder::MIRBuilder,
+        instructions::{
+            ArmInfo, ConstantValue, FuncSig, MIRBody, MIRConv, MIRDollarMode, MIRLinkage, MIROps,
+            MIRParam, MIRTy, MIRTykind, MIRValue, Terminator,
         },
     },
 };
@@ -440,7 +445,7 @@ impl<'a> MIRBuilder<'a> {
                 &ret_ty,
                 MIRDollarMode::Full,
                 MIRLinkage::Private,
-                MIRConv::None,
+                MIRConv::Internal,
                 Some(mir_body),
             );
 
@@ -505,7 +510,9 @@ impl<'a> MIRBuilder<'a> {
 
             let ret_ty = self.get_type(&expr.hir_id);
             let arg_tys: Vec<MIRTy> = args.iter().map(|a| self.get_type(&a.hir_id)).collect();
+            let conv = self.get_func_conv(callee);
             let sig = FuncSig {
+                conv,
                 params: arg_tys,
                 ret: ret_ty.clone(),
             };

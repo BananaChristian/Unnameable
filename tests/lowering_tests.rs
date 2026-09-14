@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use unnc::diagnostics::{Diagnostics, Span};
 use unnc::hir::{
-    HirBinaryOp, HirEnumMember, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirParam,
+    Conv, HirBinaryOp, HirEnumMember, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirParam,
     HirPostfixOp, HirStmt, HirStmtKind, HirType, HirTypeNode, HirUnaryOp, HirVariantMember,
 };
 use unnc::lexer::Lexer;
@@ -134,6 +134,7 @@ fn func_def(
     return_type: HirTypeNode,
     generic_type_params: Vec<HirTypeNode>,
     exposed: bool,
+    conv: Option<Conv>,
     dollar_read: bool,
     body: Vec<HirStmt>,
     span: Span,
@@ -147,6 +148,7 @@ fn func_def(
             exposed,
             dollar_read,
             body,
+            conv,
         },
         span,
     )
@@ -187,12 +189,14 @@ fn norm_stmt(mut s: HirStmt) -> HirStmt {
             exposed,
             dollar_read,
             body,
+            conv,
         } => HirStmtKind::HirFunctionDef {
             name,
             params: params.into_iter().map(norm_param).collect(),
             return_type: norm_ty(return_type),
             generic_type_params: generic_type_params.into_iter().map(norm_ty).collect(),
             exposed,
+            conv,
             dollar_read,
             body: body.into_iter().map(norm_stmt).collect(),
         },
@@ -202,12 +206,14 @@ fn norm_stmt(mut s: HirStmt) -> HirStmt {
             return_type,
             generic_type_params,
             exposed,
+            conv,
         } => HirStmtKind::HirFunctionDecl {
             name,
             params: params.into_iter().map(norm_param).collect(),
             return_type: norm_ty(return_type),
             generic_type_params: generic_type_params.into_iter().map(norm_ty).collect(),
             exposed,
+            conv,
         },
         HirStmtKind::HirStructDecl {
             name,
@@ -1706,6 +1712,7 @@ fn function_def() {
             tn(HirType::I32, span(26, 29)),
             vec![],
             false,
+            None,
             false,
             vec![stmt(
                 HirStmtKind::HirReturn(Some(Box::new(bin(
@@ -1786,6 +1793,7 @@ fn function_def_multiple_body_statements() {
             tn(HirType::I32, span(12, 15)),
             vec![],
             false,
+            None,
             false,
             vec![body_x, while_stmt, if_stmt],
             span(0, 104),
@@ -1804,6 +1812,7 @@ fn function_def_empty_body() {
             tn(HirType::U32, span(13, 16)),
             vec![],
             false,
+            None,
             false,
             vec![],
             span(0, 20)
@@ -1822,6 +1831,7 @@ fn function_def_no_return_type_becomes_unit_type_node_with_full_span() {
             tn(HirType::Unit, span(10, 10)),
             vec![],
             false,
+            None,
             false,
             vec![stmt(HirStmtKind::HirReturn(None), span(15, 22))],
             span(0, 24),
@@ -1847,6 +1857,7 @@ fn function_param_default_value() {
             tn(HirType::I32, span(22, 25)),
             vec![],
             false,
+            None,
             false,
             vec![stmt(
                 HirStmtKind::HirReturn(Some(Box::new(ident("a", span(35, 36))))),
@@ -1867,6 +1878,7 @@ fn contract_function_decl() {
             return_type: tn(HirType::I32, span(28, 31)),
             generic_type_params: vec![],
             exposed: false,
+            conv: None,
         },
         span(16, 33),
     );
@@ -2112,6 +2124,7 @@ fn methods_desugar_injects_self_param() {
             tn(HirType::F32, span(29, 32)),
             vec![],
             false,
+            None,
             false,
             vec![stmt(
                 HirStmtKind::HirReturn(Some(Box::new(lit(HirLiteral::F32(0.0), span(42, 48))))),
@@ -2133,6 +2146,7 @@ fn seal_desugars_to_mangled_function() {
             tn(HirType::I32, span(29, 32)),
             vec![],
             false,
+            None,
             false,
             vec![stmt(
                 HirStmtKind::HirReturn(Some(Box::new(lit(HirLiteral::Int(0), span(42, 43))))),
@@ -2164,6 +2178,7 @@ fn generics_block_annotates_function_with_type_params() {
                 span(10, 11)
             )],
             false,
+            None,
             false,
             vec![stmt(
                 HirStmtKind::HirReturn(Some(Box::new(ident("v", span(47, 48))))),
@@ -2431,4 +2446,3 @@ fn generic_associated_call_keeps_type_params_in_callee() {
         )]
     );
 }
-

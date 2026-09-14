@@ -5,7 +5,7 @@ expression: output
 === MIR OUTPUT ===
 module "test_module"
 
-<func0> func @test_deep_indexing() {
+<func0>  func @test_deep_indexing() {
 bb0:
     %nested = alloca %{%{%{i32, i64}, u32}, i32} , align 8
     %0 = gep %{%{%{i32, i64}, u32}, i32}, ptr %nested, indices [0, 0]
@@ -37,7 +37,7 @@ bb0:
     ret 0
 }
 
-<func1> func @foo() {
+<func1>  func @foo() {
 bb1:
     %x = alloca i32 , align 4
     %29 = $$eval @$$scope_0
@@ -45,7 +45,7 @@ bb1:
     ret 0
 }
 
-<func2> $$func @$$scope_0() {
+<func2>  $$func @$$scope_0() {
 bb2:
     %matrix = alloca %{%{i32, i32}, %{i32, i32}} $$, align 4
     %16 = gep %{%{i32, i32}, %{i32, i32}}, ptr %matrix, indices [0, 0]

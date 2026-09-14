@@ -1,28 +1,39 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    basic_block::BasicBlock, module::Linkage, types::BasicTypeEnum, values::FunctionValue,
+    attributes::AttributeLoc, basic_block::BasicBlock, module::Linkage, values::FunctionValue,
 };
 
 use crate::{
     codegen::Codegen,
-    mir::{BlockId, MIRFn, MIRLinkage, Terminator, Vreg},
+    mir::{BlockId, FuncSig, MIRFn, MIRLinkage, Terminator, Vreg},
 };
 
 impl<'ctx> Codegen<'ctx> {
     pub fn lower_func(&mut self, func: &MIRFn) -> FunctionValue<'ctx> {
         self.vreg_map.clear();
-        let param_types: Vec<BasicTypeEnum<'ctx>> =
-            func.params.iter().map(|p| self.get_llvmty(&p.ty)).collect();
 
-        let fn_type = self.build_fn_type(&func.ret_ty, &param_types, false);
+        let sig = FuncSig {
+            conv: func.conv,
+            params: func.params.iter().map(|p| p.ty.clone()).collect(),
+            ret: func.ret_ty.clone(),
+        };
+        let contract = self.abi_contract(func.conv);
+        let lowered = contract.lower_signature(self, &sig);
 
         let linkage = match &func.linkage {
             MIRLinkage::Public => None,
             MIRLinkage::Private => Some(Linkage::Internal),
         };
 
-        let fn_val = self.module.add_function(&func.name, fn_type, linkage);
+        let fn_val = self
+            .module
+            .add_function(&func.name, lowered.fn_type, linkage);
+
+        for (idx, attr) in lowered.param_attrs {
+            fn_val.add_attribute(AttributeLoc::Param(idx), attr);
+        }
+
         self.func_map.insert(func.fn_id.clone(), fn_val);
         fn_val
     }

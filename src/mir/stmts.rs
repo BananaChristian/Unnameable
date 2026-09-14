@@ -250,7 +250,7 @@ impl<'a> MIRBuilder<'a> {
 
             let convention = match conv {
                 Some(c) => self.convert_conv(c.clone()),
-                None => MIRConv::None,
+                None => MIRConv::Internal,
             };
 
             let mir_params: Vec<MIRParam> = params
@@ -303,7 +303,7 @@ impl<'a> MIRBuilder<'a> {
 
             let convention = match conv {
                 Some(c) => self.convert_conv(c.clone()),
-                None => MIRConv::None,
+                None => MIRConv::Internal,
             };
 
             let dollar_mode = match *dollar_read {

@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    basic_block::BasicBlock,
-    types::BasicTypeEnum,
-    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum},
     FloatPredicate, IntPredicate,
+    attributes::AttributeLoc,
+    basic_block::BasicBlock,
+    values::{BasicValue, BasicValueEnum, CallSiteValue, PointerValue},
 };
 
 use crate::{
-    codegen::Codegen,
-    mir::{BlockId, CmpOp, MIRInstruction, MIROps, MIRTykind, MIRValue},
+    codegen::{Codegen, abi::RetKind},
+    mir::{BlockId, CmpOp, FuncSig, MIRInstruction, MIROps, MIRTykind, MIRValue},
 };
 
 impl<'ctx> Codegen<'ctx> {
@@ -171,8 +171,8 @@ impl<'ctx> Codegen<'ctx> {
                 args,
                 sig,
             } => {
-                let arg_vals: Vec<BasicMetadataValueEnum<'ctx>> =
-                    args.iter().map(|a| self.lower_value(a).into()).collect();
+                let contract = self.abi_contract(sig.conv);
+                let coerced = contract.coerce_call(self, sig, args);
 
                 match callee {
                     MIRValue::FunctionRef(fn_id) => {
@@ -184,40 +184,34 @@ impl<'ctx> Codegen<'ctx> {
                                 let name = &self.mir_module.functions.get(fn_id)?.name;
                                 self.module.get_function(name)
                             })
-                            .unwrap_or_else(|| {
-                                panic!("Function {} not found in LLVM module", fn_id)
-                            });
+                            .unwrap_or_else(|| panic!("Function {} not found", fn_id));
 
-                        let call_site = self.builder.build_call(func, &arg_vals, "call").unwrap();
+                        let call_site = self
+                            .builder
+                            .build_call(func, &coerced.args, "call")
+                            .unwrap();
 
-                        if let Some(dest_val) = dest {
-                            if let Some(res_val) = call_site.try_as_basic_value().left() {
-                                self.bind_dest(dest_val, res_val);
-                            }
+                        for (idx, attr) in &coerced.call_attrs {
+                            call_site.add_attribute(AttributeLoc::Param(*idx), *attr);
                         }
+
+                        self.handle_call_return(dest, sig, coerced.sret_ptr, call_site);
                     }
 
                     MIRValue::Register { .. } => {
                         let callee_ptr = self.lower_value(callee).into_pointer_value();
-
-                        let param_types: Vec<BasicTypeEnum<'ctx>> = sig
-                            .params
-                            .iter()
-                            .map(|t| self.get_llvmty(t).into())
-                            .collect();
-
-                        let fn_type = self.build_fn_type(&sig.ret, &param_types, false);
+                        let lowered = contract.lower_signature(self, sig);
 
                         let call_site = self
                             .builder
-                            .build_indirect_call(fn_type, callee_ptr, &arg_vals, "call")
+                            .build_indirect_call(lowered.fn_type, callee_ptr, &coerced.args, "call")
                             .unwrap();
 
-                        if let Some(dest_val) = dest {
-                            if let Some(res_val) = call_site.try_as_basic_value().left() {
-                                self.bind_dest(dest_val, res_val);
-                            }
+                        for (idx, attr) in &coerced.call_attrs {
+                            call_site.add_attribute(AttributeLoc::Param(*idx), *attr);
                         }
+
+                        self.handle_call_return(dest, sig, coerced.sret_ptr, call_site);
                     }
 
                     other => self.report_ice(format!("Invalid callee {}", other)),
@@ -437,6 +431,37 @@ impl<'ctx> Codegen<'ctx> {
             }
             _ => {
                 self.report_ice(format!("Unhandled MIR instruction: {}", inst));
+            }
+        }
+    }
+
+    fn handle_call_return(
+        &mut self,
+        dest: &Option<MIRValue>,
+        sig: &FuncSig,
+        sret_ptr: Option<PointerValue<'ctx>>,
+        call_site: CallSiteValue<'ctx>,
+    ) {
+        let contract = self.abi_contract(sig.conv);
+        let lowered = contract.lower_signature(self, sig);
+
+        match lowered.ret_kind {
+            RetKind::Void => {}
+            RetKind::Direct => {
+                if let Some(dest_val) = dest {
+                    if let Some(res_val) = call_site.try_as_basic_value().left() {
+                        self.bind_dest(dest_val, res_val);
+                    }
+                }
+            }
+            RetKind::SRet => {
+                if let Some(ptr) = sret_ptr {
+                    let ret_ty = self.get_llvmty(&sig.ret);
+                    let loaded = self.builder.build_load(ret_ty, ptr, "sret.load").unwrap();
+                    if let Some(dest_val) = dest {
+                        self.bind_dest(dest_val, loaded);
+                    }
+                }
             }
         }
     }
