@@ -5,8 +5,8 @@ use crate::{
     },
     diagnostics::Span,
     hir::{
-        HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirStmtKind,
-        HirType, HirTypeNode, HirUnaryOp, QualifierMap,
+        Conv, HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp,
+        HirStmtKind, HirType, HirTypeNode, HirUnaryOp, QualifierMap,
     },
     lowering::lowering::Lowering,
 };
@@ -157,9 +157,12 @@ impl Lowering {
         let hir_left = self.lower_expr(left)?;
 
         if let ExprKind::Literal(Literal::Float(val)) = &right.kind {
-            if let Some(chained) =
-                self.split_and_lower_float_access(hir_left.clone(), *val, right.span.clone(), span.clone())
-            {
+            if let Some(chained) = self.split_and_lower_float_access(
+                hir_left.clone(),
+                *val,
+                right.span.clone(),
+                span.clone(),
+            ) {
                 return Some(chained);
             }
         }
@@ -175,7 +178,7 @@ impl Lowering {
 
     fn split_and_lower_float_access(
         &mut self,
-        hir_base: HirExpr, 
+        hir_base: HirExpr,
         float_val: f64,
         right_span: Span,
         total_span: Span,
@@ -478,10 +481,7 @@ impl Lowering {
             ExprKind::Path(left, right) => {
                 let (left_str, left_tp) = self.scope_parts(left)?;
                 let (right_str, right_tp) = self.scope_parts(right)?;
-                Some((
-                    format!("{}_{}", left_str, right_str),
-                    left_tp.or(right_tp),
-                ))
+                Some((format!("{}_{}", left_str, right_str), left_tp.or(right_tp)))
             }
             ExprKind::GenericInstantion { name, type_params } => {
                 let (name_str, _) = self.scope_parts(name)?;
@@ -504,10 +504,7 @@ impl Lowering {
         self.scope_chain(left, &mut chain);
         self.scope_chain(right, &mut chain);
 
-        let last_is_call = matches!(
-            chain.last().map(|e| &e.kind),
-            Some(ExprKind::Call(..))
-        );
+        let last_is_call = matches!(chain.last().map(|e| &e.kind), Some(ExprKind::Call(..)));
 
         let name_count = if last_is_call {
             chain.len() - 1
@@ -561,7 +558,7 @@ impl Lowering {
         }
     }
 
-    pub fn map_qualifiers(&self, qualifiers: &Vec<Qualifier>) -> QualifierMap {
+    pub fn map_qualifiers(&mut self, qualifiers: &[Qualifier]) -> QualifierMap {
         let mut map = QualifierMap::new();
         map.mutable = qualifiers.iter().any(|q| q.kind == QualifierKind::Mut);
         map.constant = qualifiers.iter().any(|q| q.kind == QualifierKind::Const);
@@ -569,6 +566,30 @@ impl Lowering {
             .iter()
             .any(|q| q.kind == QualifierKind::DollarRead);
         map.expose = qualifiers.iter().any(|q| q.kind == QualifierKind::Exposed);
+
+        map.extern_conv = qualifiers.iter().find_map(|q| {
+            if let QualifierKind::Extern(abi) = &q.kind {
+                let abi_str = match *abi.clone() {
+                    Some(e) => match e.kind {
+                        ExprKind::Identifier(name) => name,
+                        _ => "C".to_string(),
+                    },
+                    _ => "C".to_string(), // fallback
+                };
+
+                if abi_str == "C".to_string() || abi_str == "c".to_string() {
+                    Some(Conv::C)
+                } else {
+                    self.report(
+                        format!("Invalid extern convention '{}'", abi_str),
+                        Some(q.span.clone()),
+                    );
+                    None
+                }
+            } else {
+                None
+            }
+        });
 
         map
     }

@@ -15,6 +15,18 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str, diagnostics: SharedDiagnostics) -> Self {
+        let keywords = Self::load_keywords();
+
+        Lexer {
+            pos: 0,
+            source: src,
+            keywords,
+            corrupted: false,
+            diagnostics,
+        }
+    }
+
+    fn load_keywords() -> HashMap<String, TType> {
         let keywords = HashMap::from([
             ("mut".to_string(), TType::Mut),
             ("const".to_string(), TType::Const),
@@ -70,6 +82,7 @@ impl<'a> Lexer<'a> {
             ("enum".to_string(), TType::Enum),
             ("variant".to_string(), TType::Variant),
             ("expose".to_string(), TType::Expose),
+            ("extern".to_string(), TType::Extern),
             ("null".to_string(), TType::Null),
             ("unwrap".to_string(), TType::Unwrap),
             ("bitcast".to_string(), TType::Bitcast),
@@ -78,14 +91,7 @@ impl<'a> Lexer<'a> {
             ("as".to_string(), TType::As),
             ("import".to_string(), TType::Import),
         ]);
-
-        Lexer {
-            pos: 0,
-            source: src,
-            keywords,
-            corrupted: false,
-            diagnostics,
-        }
+        keywords
     }
 
     /// The character starting at byte offset `byte`, if any.
@@ -1127,10 +1133,7 @@ impl<'a> Lexer<'a> {
                                             Some(c) => c,
                                             None => {
                                                 self.report(
-                                                    format!(
-                                                        "Invalid unicode codepoint: {}",
-                                                        hex
-                                                    ),
+                                                    format!("Invalid unicode codepoint: {}", hex),
                                                     None,
                                                 );
                                                 '\u{FFFD}'

@@ -1,13 +1,13 @@
 use std::{collections::HashMap, path::Path};
 
 use inkwell::{
-    AddressSpace, OptimizationLevel,
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
+    AddressSpace, OptimizationLevel,
 };
 
 use crate::{

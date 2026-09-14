@@ -2,15 +2,15 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirStmt, HirStmtKind, HirUnaryOp},
+    hir::{Conv, HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirStmt, HirStmtKind, HirUnaryOp},
     indexer::NodeIndex,
     lowering::NodeId,
     mir::{
         MIRFn, MIRLinkage, MIRModule, MIRStructDecl, MIRVariant,
         instructions::{
             ArmInfo, BasicBlock, BlockId, CmpOp, ConstantValue, EnumId, FnId, GlobalId, MIRBody,
-            MIRDollarMode, MIREnum, MIRInstruction, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue,
-            StructId, Terminator, VariantId, Vreg,
+            MIRConv, MIRDollarMode, MIREnum, MIRInstruction, MIROps, MIRParam, MIRTy, MIRTykind,
+            MIRValue, StructId, Terminator, VariantId, Vreg,
         },
     },
     semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
@@ -176,7 +176,15 @@ impl<'a> MIRBuilder<'a> {
 
             let ret_ty = self.get_type(&return_type.hir_id);
 
-            self.get_or_create_func(name, &mir_params, &ret_ty, dollar_mode, linkage, None);
+            self.get_or_create_func(
+                name,
+                &mir_params,
+                &ret_ty,
+                dollar_mode,
+                linkage,
+                MIRConv::None,
+                None,
+            );
         }
     }
 
@@ -920,6 +928,12 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
+    pub fn convert_conv(&mut self, conv: Conv) -> MIRConv {
+        match conv {
+            Conv::C => MIRConv::C,
+        }
+    }
+
     pub fn get_or_create_func(
         &mut self,
         name: &str,
@@ -927,6 +941,7 @@ impl<'a> MIRBuilder<'a> {
         ret_ty: &MIRTy,
         dollar_mode: MIRDollarMode,
         linkage: MIRLinkage,
+        conv: MIRConv,
         body: Option<MIRBody>,
     ) -> FnId {
         if let Some(&existing_id) = self.fn_name_to_id.get(name) {
@@ -968,6 +983,7 @@ impl<'a> MIRBuilder<'a> {
             name: name.to_string(),
             params: params.to_vec(),
             linkage,
+            conv,
             dollar_mode,
             ret_ty: ret_ty.clone(),
             body,

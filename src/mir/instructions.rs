@@ -31,6 +31,13 @@ pub enum MIRDollarMode {
     Full,     //$$
 }
 
+///These are just hints for llvm later
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MIRConv {
+    C, //For now only C
+    None,
+}
+
 #[derive(Debug, Clone)]
 pub enum ConstantValue {
     I8(i8),
@@ -360,6 +367,7 @@ pub struct MIRFn {
     pub params: Vec<MIRParam>,
     pub ret_ty: MIRTy,
     pub linkage: MIRLinkage,
+    pub conv: MIRConv,
     pub dollar_mode: MIRDollarMode,
     pub body: Option<MIRBody>, // None for declarations
 }

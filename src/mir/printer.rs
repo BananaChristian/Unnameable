@@ -3,9 +3,9 @@ use std::fmt::{self};
 use crate::mir::{
     MIRModule,
     instructions::{
-        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRBody, MIRDollarMode, MIRFn,
-        MIRGlobal, MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy, MIRTykind,
-        MIRValue, StructId, Terminator, Vreg,
+        BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRBody, MIRConv, MIRDollarMode,
+        MIRFn, MIRGlobal, MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy,
+        MIRTykind, MIRValue, StructId, Terminator, Vreg,
     },
 };
 
@@ -502,12 +502,17 @@ impl fmt::Display for MIRFn {
             MIRDollarMode::None => "",
         };
 
+        let conv = match self.conv {
+            MIRConv::C => "{c}",
+            MIRConv::None => "",
+        };
+
         match &self.body {
             Some(body) => {
                 writeln!(
                     f,
-                    "<{}> {}{}func @{}({}) {{",
-                    self.fn_id, dollar_str, linkage_str, self.name, params_str
+                    "<{}> {} {}{}func @{}({}) {{",
+                    self.fn_id, conv, dollar_str, linkage_str, self.name, params_str
                 )?;
                 write!(f, "{body}")?;
                 write!(f, "}}")

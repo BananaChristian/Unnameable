@@ -143,6 +143,7 @@ impl Lowering {
                     return_type,
                     generic_type_params: Vec::new(),
                     exposed: map.expose,
+                    conv: map.extern_conv,
                     dollar_read: map.dollar_read,
                     body: hir_body,
                 },
@@ -189,6 +190,7 @@ impl Lowering {
                     return_type,
                     generic_type_params: Vec::new(),
                     exposed: map.expose,
+                    conv: map.extern_conv,
                 },
                 span: stmt.span.clone(),
             })
@@ -503,12 +505,8 @@ impl Lowering {
 
             // var __iter_val_N := collection.next()
             let hir_collection_init = self.lower_expr(collection)?;
-            let next_call = self.make_method_call(
-                hir_collection_init,
-                "next",
-                vec![],
-                next_span.clone(),
-            );
+            let next_call =
+                self.make_method_call(hir_collection_init, "next", vec![], next_span.clone());
             let init_stmt = self.make_var(iter_var.clone(), true, next_call, next_span.clone());
 
             // condition: __iter_val_N != null
@@ -537,14 +535,11 @@ impl Lowering {
             // __iter_val_N = collection.next() — advance at end.
             // Lower the collection again so this `list` node gets its own hir_id.
             let hir_collection_advance = self.lower_expr(collection)?;
-            let advance_call = self.make_method_call(
-                hir_collection_advance,
-                "next",
-                vec![],
-                next_span.clone(),
-            );
+            let advance_call =
+                self.make_method_call(hir_collection_advance, "next", vec![], next_span.clone());
             let left = self.make_identifier(&iter_var, next_span.clone());
-            let inner = self.make_binary(left, HirBinaryOp::Assign, advance_call, next_span.clone());
+            let inner =
+                self.make_binary(left, HirBinaryOp::Assign, advance_call, next_span.clone());
             let advance_stmt = HirStmt {
                 hir_id: self.next_id(),
                 kind: HirStmtKind::HirExpr(Box::new(inner)),

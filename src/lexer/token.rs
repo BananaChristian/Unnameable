@@ -103,6 +103,7 @@ pub enum TType {
     SizeOf,
     Enum,
     Variant,
+    Extern,
     Null,
     Unwrap,
     Expose,

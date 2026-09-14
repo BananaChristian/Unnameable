@@ -1,7 +1,7 @@
 use core::fmt;
 
 use crate::hir::{
-    HirEnumMember, HirParam, HirStmt, HirStmtKind, HirVariantMember,
+    Conv, HirEnumMember, HirParam, HirStmt, HirStmtKind, HirVariantMember,
     expressions::{HirExpr, HirExprKind, HirInstParam},
     types::{HirType, HirTypeNode},
 };
@@ -106,11 +106,19 @@ impl HirPrinter {
                 exposed,
                 dollar_read,
                 body,
+                conv,
+                ..
             } => {
                 let exp = if *exposed { " (exposed)" } else { "" };
                 let dollar = if *dollar_read { "$" } else { "" };
+                let conv = match conv {
+                    Some(co) => match co {
+                        Conv::C => "{c}",
+                    },
+                    None => "",
+                };
                 self.write_line(&format!(
-                    "HirFunctionDef \"{dollar}{name}\"{exp} [id: {id:?}]"
+                    "HirFunctionDef \"{conv}{dollar}{name}\"{exp} [id: {id:?}]"
                 ));
                 self.with_indent(|p| {
                     if !generic_type_params.is_empty() {
@@ -148,9 +156,19 @@ impl HirPrinter {
                 return_type,
                 generic_type_params,
                 exposed,
+                conv,
+                ..
             } => {
                 let exp = if *exposed { " (exposed)" } else { "" };
-                self.write_line(&format!("HirFunctionDecl \"{name}\"{exp} [id: {id:?}]"));
+                let conve = match conv {
+                    Some(co) => match co {
+                        Conv::C => "{c}",
+                    },
+                    None => "",
+                };
+                self.write_line(&format!(
+                    "HirFunctionDecl \"{conve}{name}\"{exp} [id: {id:?}]"
+                ));
                 self.with_indent(|p| {
                     if !generic_type_params.is_empty() {
                         p.write_line("GenericTypeParams:");

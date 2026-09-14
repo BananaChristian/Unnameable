@@ -1,14 +1,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    diagnostics::Span,
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
-    mir::{
-        MIRGlobal, MIRInstruction, StructId,
-        builder::MIRBuilder,
-        instructions::{
-            ArmInfo, ConstantValue, FuncSig, MIRBody, MIRDollarMode, MIRLinkage, MIROps, MIRParam,
-            MIRTy, MIRTykind, MIRValue, Terminator,
+    diagnostics::Span, hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp}, mir::{
+        MIRGlobal, MIRInstruction, StructId, builder::MIRBuilder, instructions::{
+            ArmInfo, ConstantValue, FuncSig, MIRBody, MIRConv, MIRDollarMode, MIRLinkage, MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator,
         },
     },
 };
@@ -445,6 +440,7 @@ impl<'a> MIRBuilder<'a> {
                 &ret_ty,
                 MIRDollarMode::Full,
                 MIRLinkage::Private,
+                MIRConv::None,
                 Some(mir_body),
             );
 

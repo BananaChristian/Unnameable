@@ -723,12 +723,16 @@ fn format_qualifiers(quals: &[Qualifier]) -> String {
 
     let names: Vec<String> = quals
         .iter()
-        .map(|q| match q.kind {
-            QualifierKind::Mut => "mut",
-            QualifierKind::Const => "const",
-            QualifierKind::DollarRead => "$",
-            QualifierKind::Exposed => "expose",
-            QualifierKind::None => "none",
+        .map(|q| match q.kind.clone() {
+            QualifierKind::Mut => "mut".to_string(),
+            QualifierKind::Const => "const".to_string(),
+            QualifierKind::DollarRead => "$".to_string(),
+            QualifierKind::Exposed => "expose".to_string(),
+            QualifierKind::Extern(abi) => match *abi {
+                Some(ab) => format!("{}", ab),
+                None => "".to_string(),
+            },
+            QualifierKind::None => "none".to_string(),
         })
         .map(String::from)
         .collect();

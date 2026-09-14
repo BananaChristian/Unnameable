@@ -1,14 +1,16 @@
 use crate::{
+    ast::Expr,
     diagnostics::Span,
     lexer::{TType, token::Token},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum QualifierKind {
     Mut,
     Const,
     DollarRead, //This is like $
     Exposed,
+    Extern(Box<Option<Expr>>),
     None,
 }
 
@@ -24,7 +26,7 @@ impl Qualifier {
             TType::Mut => QualifierKind::Mut,
             TType::Const => QualifierKind::Const,
             TType::Dollar => QualifierKind::DollarRead,
-            TType::Expose=> QualifierKind::Exposed,
+            TType::Expose => QualifierKind::Exposed,
             _ => QualifierKind::None,
         };
 
@@ -37,7 +39,7 @@ impl Qualifier {
     pub fn is_valid(token: &Token) -> bool {
         matches!(
             token.token_type,
-            TType::Mut | TType::Const | TType::Dollar | TType::Expose
+            TType::Mut | TType::Const | TType::Dollar | TType::Expose | TType::Extern
         )
     }
 }

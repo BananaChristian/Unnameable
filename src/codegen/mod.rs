@@ -1,3 +1,4 @@
+mod abi;
 mod codegen;
 mod functions;
 mod instructions;

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use inkwell::{
-    FloatPredicate, IntPredicate,
     basic_block::BasicBlock,
     types::BasicTypeEnum,
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum},
+    FloatPredicate, IntPredicate,
 };
 
 use crate::{

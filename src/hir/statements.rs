@@ -4,11 +4,17 @@ use crate::{
     lowering::NodeId,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Conv {
+    C, //For now only C
+}
+
 pub struct QualifierMap {
     pub mutable: bool,
     pub expose: bool,
     pub constant: bool,
     pub dollar_read: bool,
+    pub extern_conv: Option<Conv>,
 }
 
 impl QualifierMap {
@@ -18,6 +24,7 @@ impl QualifierMap {
             expose: false,
             constant: false,
             dollar_read: false,
+            extern_conv: None,
         }
     }
 }
@@ -79,6 +86,7 @@ pub enum HirStmtKind {
         return_type: HirTypeNode, // never optional, Unit if not specified
         generic_type_params: Vec<HirTypeNode>,
         exposed: bool, // was in qualifiers
+        conv: Option<Conv>,
         dollar_read: bool,
         body: Vec<HirStmt>, // flat list, no Block wrapper
     },
@@ -89,6 +97,7 @@ pub enum HirStmtKind {
         return_type: HirTypeNode, // Unit if not specified
         generic_type_params: Vec<HirTypeNode>,
         exposed: bool,
+        conv: Option<Conv>,
     },
     HirStructDecl {
         name: String,

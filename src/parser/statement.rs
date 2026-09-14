@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Elif, EnumMember, Precedence, Qualifier, Stmt, StmtKind, VariantMember},
+    ast::{Elif, EnumMember, Precedence, Qualifier, QualifierKind, Stmt, StmtKind, VariantMember},
     diagnostics::Span,
     lexer::TType,
     parser::Parser,
@@ -9,7 +9,7 @@ impl Parser {
     pub fn parse_stmt(&mut self) -> Option<Stmt> {
         let token = self.current_token()?.clone();
         match token.token_type {
-            TType::Mut | TType::Expose | TType::Const | TType::Dollar => {
+            TType::Mut | TType::Expose | TType::Const | TType::Dollar | TType::Extern => {
                 self.parse_qualified_stmt()
             }
             TType::Var => self.parse_var(),
@@ -45,11 +45,28 @@ impl Parser {
 
         // collect all qualifiers first
         while let Some(token) = self.current_token() {
-            if Qualifier::is_valid(token) {
-                qualifiers.push(Qualifier::new(token));
-                self.advance();
-            } else {
+            if !Qualifier::is_valid(token) {
                 break;
+            }
+
+            if token.token_type == TType::Extern {
+                let start = token.span.start;
+                self.advance();
+                let (abi_str,end) =if self.current_token()?.token_type == TType::Identifier{
+                    let ident=self.parse_identifier()?;
+                    let end= ident.span.end;
+                    (Some(ident),end)
+                }else{
+                    (None,self.current_token()?.span.end)
+                };
+                qualifiers.push(Qualifier {
+                    kind: QualifierKind::Extern(Box::new(abi_str)),
+                    span: Span::new(start, end),
+                });
+            } else {
+                let qual = Qualifier::new(token);
+                self.advance();
+                qualifiers.push(qual);
             }
         }
 

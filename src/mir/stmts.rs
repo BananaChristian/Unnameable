@@ -6,7 +6,7 @@ use crate::{
         MIRTy, MIRValue, MIRVariant,
         builder::MIRBuilder,
         instructions::{
-            ArmInfo, MIRBody, MIRDollarMode, MIREnum, MIRGlobal, MIRLinkage, MIRParam,
+            ArmInfo, MIRBody, MIRConv, MIRDollarMode, MIREnum, MIRGlobal, MIRLinkage, MIRParam,
             MIRStructDecl, MIRTykind, MIRVariantArm, Terminator,
         },
     },
@@ -239,12 +239,18 @@ impl<'a> MIRBuilder<'a> {
             params,
             return_type,
             exposed,
+            conv,
             ..
         } = &stmt.kind
         {
             let linkage = match *exposed {
                 true => MIRLinkage::Public,
                 false => MIRLinkage::Private,
+            };
+
+            let convention = match conv {
+                Some(c) => self.convert_conv(c.clone()),
+                None => MIRConv::None,
             };
 
             let mir_params: Vec<MIRParam> = params
@@ -261,7 +267,15 @@ impl<'a> MIRBuilder<'a> {
 
             let ret_ty = self.get_type(&return_type.hir_id);
             let dollar_mode = self.current_dollar_mode; //To be watched carefully
-            self.get_or_create_func(name, &mir_params, &ret_ty, dollar_mode, linkage, None);
+            self.get_or_create_func(
+                name,
+                &mir_params,
+                &ret_ty,
+                dollar_mode,
+                linkage,
+                convention,
+                None,
+            );
         }
     }
 
@@ -272,6 +286,7 @@ impl<'a> MIRBuilder<'a> {
             body,
             dollar_read,
             exposed,
+            conv,
             return_type,
             ..
         } = &stmt.kind
@@ -284,6 +299,11 @@ impl<'a> MIRBuilder<'a> {
             let linkage = match *exposed {
                 true => MIRLinkage::Public,
                 false => MIRLinkage::Private,
+            };
+
+            let convention = match conv {
+                Some(c) => self.convert_conv(c.clone()),
+                None => MIRConv::None,
             };
 
             let dollar_mode = match *dollar_read {
@@ -326,6 +346,7 @@ impl<'a> MIRBuilder<'a> {
                 &ret_ty,
                 dollar_mode,
                 linkage,
+                convention,
                 Some(mir_body),
             );
 
