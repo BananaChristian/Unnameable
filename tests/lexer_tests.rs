@@ -266,7 +266,6 @@ fn all_keywords_map_to_keyword_tokens() {
             (TType::Ref, "ref"),
             (TType::Arr, "arr"),
             (TType::Seal, "seal"),
-            (TType::Methods, "methods"),
             (TType::Generics, "generics"),
             (TType::Contract, "contract"),
             (TType::SizeOf, "sizeof"),

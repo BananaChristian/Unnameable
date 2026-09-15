@@ -78,7 +78,6 @@ impl Parser {
                 TType::Func
                 | TType::Seal
                 | TType::Generics
-                | TType::Methods
                 | TType::Var
                 | TType::Struct
                 | TType::Enum

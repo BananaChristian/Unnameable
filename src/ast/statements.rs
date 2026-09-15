@@ -69,10 +69,6 @@ pub enum StmtKind {
         name: Box<Expr>,
         contents: Vec<Stmt>,
     },
-    MethodsStmt {
-        name: Box<Expr>,
-        contents: Vec<Stmt>,
-    },
     AliasStmt {
         original: Box<Type>,
         new: Box<Expr>,
@@ -142,7 +138,7 @@ impl Stmt {
             TType::Var
                 | TType::Func
                 | TType::Struct
-                | TType::Methods
+                | TType::Seal
                 | TType::Alias
                 | TType::Return
                 | TType::Break

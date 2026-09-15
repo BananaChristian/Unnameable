@@ -586,10 +586,12 @@ impl Lowering {
                             HirStmtKind::HirFunctionDef {
                                 name: struct_name,
                                 exposed,
+                                conv,
                                 ..
                             } => {
                                 *struct_name = mangled_name; // Update the mangled name
                                 *exposed = map.expose; // Update the boolean flag
+                                *conv = map.extern_conv.clone();
                             }
                             _ => unreachable!(),
                         }
@@ -604,63 +606,6 @@ impl Lowering {
                 }
             }
             Some(fns)
-        } else {
-            None
-        }
-    }
-
-    fn lower_methods(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
-        if let StmtKind::MethodsStmt { name, contents } = &stmt.kind {
-            let type_name = self.extract_name_string(name)?;
-            let mut methods = Vec::new();
-            for metfunc in contents {
-                if let Some(mut func) = self.lower_stmt(metfunc) {
-                    let name_to_mangle = match &func.kind {
-                        HirStmtKind::HirFunctionDef { name, .. } => Some(name.clone()),
-                        _ => None,
-                    };
-
-                    if let Some(name) = name_to_mangle {
-                        let mangled_name = self.mangle_name(type_name.clone(), name.clone());
-
-                        match &mut func.kind {
-                            HirStmtKind::HirFunctionDef {
-                                name: fn_name,
-                                params,
-                                ..
-                            } => {
-                                *fn_name = mangled_name;
-                                let self_param = HirParam {
-                                    hir_id: self.next_id(),
-                                    name: "self".to_string(),
-                                    ty: HirTypeNode::new(
-                                        self.next_id(),
-                                        HirType::Ref(Box::new(HirTypeNode::custom(
-                                            self.next_id(),
-                                            type_name.to_string(),
-                                            func.span.clone(),
-                                        ))),
-                                        func.span.clone(),
-                                    ),
-                                    mutable: false,
-                                    dollar_read: false,
-                                    default: None,
-                                    span: func.span.clone(),
-                                };
-                                params.insert(0, self_param);
-                            }
-                            _ => unreachable!(),
-                        }
-                        methods.push(func);
-                    } else {
-                        self.report(
-                            "Only function definitions are allowed in methods".to_string(),
-                            Some(stmt.span.clone()),
-                        );
-                    }
-                }
-            }
-            Some(methods)
         } else {
             None
         }
@@ -802,7 +747,6 @@ impl Lowering {
     pub fn lower_constructs(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
         match stmt.kind {
             StmtKind::SealStmt { .. } => self.lower_seals(stmt),
-            StmtKind::MethodsStmt { .. } => self.lower_methods(stmt),
             StmtKind::GenericBlock { .. } => self.lower_generics(stmt),
             StmtKind::ForStmt { .. } => self.lower_for(stmt),
             StmtKind::EachStmt { .. } => self.lower_each(stmt),
@@ -857,7 +801,7 @@ impl Lowering {
             let mut contents = Vec::new();
             for victim in content {
                 match &victim.kind {
-                    StmtKind::SealStmt { .. } | StmtKind::MethodsStmt { .. } => {
+                    StmtKind::SealStmt { .. } => {
                         let construct_vec = self.lower_constructs(victim)?;
                         contents.extend(construct_vec);
                     }

@@ -96,7 +96,6 @@ pub enum TType {
     Each,
     In,
     Struct,
-    Methods,
     Seal,
     Generics,
     Contract,

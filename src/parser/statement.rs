@@ -16,7 +16,6 @@ impl Parser {
             TType::Func => self.parse_func(),
             TType::Struct => self.parse_struct(),
             TType::Seal => self.parse_seal(),
-            TType::Methods => self.parse_methods(),
             TType::If => self.parse_if_stmt(),
             TType::While => self.parse_while(),
             TType::Each => self.parse_each(),
@@ -52,12 +51,12 @@ impl Parser {
             if token.token_type == TType::Extern {
                 let start = token.span.start;
                 self.advance();
-                let (abi_str,end) =if self.current_token()?.token_type == TType::Identifier{
-                    let ident=self.parse_identifier()?;
-                    let end= ident.span.end;
-                    (Some(ident),end)
-                }else{
-                    (None,self.current_token()?.span.end)
+                let (abi_str, end) = if self.current_token()?.token_type == TType::Identifier {
+                    let ident = self.parse_identifier()?;
+                    let end = ident.span.end;
+                    (Some(ident), end)
+                } else {
+                    (None, self.current_token()?.span.end)
                 };
                 qualifiers.push(Qualifier {
                     kind: QualifierKind::Extern(Box::new(abi_str)),
@@ -283,43 +282,6 @@ impl Parser {
         Some(Stmt::new(
             StmtKind::SealStmt {
                 qualifiers: Vec::new(),
-                name: Box::new(name),
-                contents,
-            },
-            span,
-        ))
-    }
-
-    fn parse_methods(&mut self) -> Option<Stmt> {
-        let start = self.current_token()?.span.start;
-        self.expect_token(TType::Methods)?;
-        let name = self.parse_identifier()?;
-        let mut contents = Vec::new();
-        self.expect_token(TType::LBrace)?;
-        while self.current_token()?.token_type != TType::Rbrace
-            && self.current_token()?.token_type != TType::End
-        {
-            if let Some(stmt) = self.parse_func() {
-                match stmt.kind {
-                    StmtKind::FunctionDef { .. } => {
-                        contents.push(stmt);
-                    }
-                    _ => {
-                        self.report(
-                            "Only function definitions are allowed in methods".to_string(),
-                            Some(stmt.span),
-                        );
-                    }
-                }
-            } else {
-                self.advance();
-            }
-        }
-        self.expect_token(TType::Rbrace)?;
-        let end = self.current_token()?.span.end;
-        let span = Span { start, end };
-        Some(Stmt::new(
-            StmtKind::MethodsStmt {
                 name: Box::new(name),
                 contents,
             },

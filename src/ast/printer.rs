@@ -226,20 +226,6 @@ impl AstPrinter {
                     });
                 });
             }
-            StmtKind::MethodsStmt { name, contents } => {
-                self.write_line("MethodsStmt");
-                self.with_indent(|p| {
-                    p.write_line("Target:");
-                    p.with_indent(|p2| p2.fmt_expr(name));
-
-                    p.write_line("Methods:");
-                    p.with_indent(|p2| {
-                        for stmt in contents {
-                            p2.fmt_stmt(stmt);
-                        }
-                    });
-                });
-            }
             StmtKind::AliasStmt { original, new } => {
                 self.write_line("AliasStmt");
                 self.with_indent(|p| {

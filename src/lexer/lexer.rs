@@ -75,7 +75,6 @@ impl<'a> Lexer<'a> {
             ("ref".to_string(), TType::Ref),
             ("arr".to_string(), TType::Arr),
             ("seal".to_string(), TType::Seal),
-            ("methods".to_string(), TType::Methods),
             ("generics".to_string(), TType::Generics),
             ("contract".to_string(), TType::Contract),
             ("sizeof".to_string(), TType::SizeOf),

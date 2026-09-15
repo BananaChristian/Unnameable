@@ -56,11 +56,20 @@ fn call(callee: Expr, args: Vec<Expr>, s: usize, e: usize) -> Expr {
 }
 
 fn index(target: Expr, idx: Expr, s: usize, e: usize) -> Expr {
-    Expr::new(ExprKind::Index { target: Box::new(target), index: Box::new(idx) }, sp(s, e))
+    Expr::new(
+        ExprKind::Index {
+            target: Box::new(target),
+            index: Box::new(idx),
+        },
+        sp(s, e),
+    )
 }
 
 fn ty(kind: TypeKind, s: usize, e: usize) -> Type {
-    Type { kind, span: sp(s, e) }
+    Type {
+        kind,
+        span: sp(s, e),
+    }
 }
 
 fn block(content: Vec<Stmt>, s: usize, e: usize) -> Stmt {
@@ -105,7 +114,10 @@ fn param_decl(name: Expr, type_annotation: Type, s: usize, e: usize) -> Stmt {
 }
 
 fn qualifier(kind: QualifierKind, s: usize, e: usize) -> Qualifier {
-    Qualifier { kind, span: sp(s, e) }
+    Qualifier {
+        kind,
+        span: sp(s, e),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +255,14 @@ fn suffixed_integer_literals() {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
         assert!(errors.is_empty(), "errors for {src}: {:?}", errors);
-        let expected = vec![var_decl(vec![], None, id("x", 4, 5), lit(lit_exp, span_s, span_e), 0, decl_e)];
+        let expected = vec![var_decl(
+            vec![],
+            None,
+            id("x", 4, 5),
+            lit(lit_exp, span_s, span_e),
+            0,
+            decl_e,
+        )];
         assert_eq!(stmts, expected, "mismatch for {src}");
     }
 }
@@ -258,7 +277,14 @@ fn suffixed_float_and_char_literals() {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
         assert!(errors.is_empty(), "errors for {src}: {:?}", errors);
-        let expected = vec![var_decl(vec![], None, id("x", 4, 5), lit(lit_exp, span_s, span_e), 0, decl_e)];
+        let expected = vec![var_decl(
+            vec![],
+            None,
+            id("x", 4, 5),
+            lit(lit_exp, span_s, span_e),
+            0,
+            decl_e,
+        )];
         assert_eq!(stmts, expected, "mismatch for {src}");
     }
 }
@@ -273,7 +299,14 @@ fn radix_literals() {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
         assert!(errors.is_empty(), "errors for {src}: {:?}", errors);
-        let expected = vec![var_decl(vec![], None, id("x", 4, 5), lit(Literal::Int(value), span_s, span_e), 0, span_e + 1)];
+        let expected = vec![var_decl(
+            vec![],
+            None,
+            id("x", 4, 5),
+            lit(Literal::Int(value), span_s, span_e),
+            0,
+            span_e + 1,
+        )];
         assert_eq!(stmts, expected, "mismatch for {src}");
     }
 }
@@ -415,7 +448,11 @@ fn custom_type() {
     assert!(errors.is_empty());
     let expected = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::CustomType(Box::new(id("MyType", 4, 10))), 4, 10)),
+        Some(ty(
+            TypeKind::CustomType(Box::new(id("MyType", 4, 10))),
+            4,
+            10,
+        )),
         id("m", 11, 12),
         id("n", 16, 17),
         0,
@@ -518,11 +555,21 @@ fn add_mul_precedence() {
     let rhs = bin(
         lit(Literal::Int(1), 4, 5),
         BinaryOp::Add,
-        bin(lit(Literal::Int(2), 8, 9), BinaryOp::Mul, lit(Literal::Int(3), 12, 13), 8, 13),
+        bin(
+            lit(Literal::Int(2), 8, 9),
+            BinaryOp::Mul,
+            lit(Literal::Int(3), 12, 13),
+            8,
+            13,
+        ),
         4,
         13,
     );
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 13)), 0, 13);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 13)),
+        0,
+        13,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -532,9 +579,19 @@ fn mul_add_left_assoc() {
     let (stmts, errors, corrupted) = parse_src("x = 1 * 2 + 3;");
     assert!(!corrupted);
     assert!(errors.is_empty());
-    let lhs = bin(lit(Literal::Int(1), 4, 5), BinaryOp::Mul, lit(Literal::Int(2), 8, 9), 4, 9);
+    let lhs = bin(
+        lit(Literal::Int(1), 4, 5),
+        BinaryOp::Mul,
+        lit(Literal::Int(2), 8, 9),
+        4,
+        9,
+    );
     let rhs = bin(lhs, BinaryOp::Add, lit(Literal::Int(3), 12, 13), 4, 13);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 13)), 0, 13);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 13)),
+        0,
+        13,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -550,7 +607,11 @@ fn assignment_is_right_associative() {
         4,
         13,
     );
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 13)), 0, 13);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 13)),
+        0,
+        13,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -563,7 +624,11 @@ fn equality_and_logical_precedence() {
     let summed = bin(id("a", 4, 5), BinaryOp::Add, id("b", 8, 9), 4, 9);
     let equality = bin(summed, BinaryOp::Eq, id("c", 13, 14), 4, 14);
     let rhs = bin(equality, BinaryOp::And, id("d", 18, 19), 4, 19);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 19)), 0, 19);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 19)),
+        0,
+        19,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -572,9 +637,19 @@ fn grouping_overrides_precedence() {
     let (stmts, errors, corrupted) = parse_src("x = (1 + 2) * 3;");
     assert!(!corrupted);
     assert!(errors.is_empty());
-    let grouped = bin(lit(Literal::Int(1), 5, 6), BinaryOp::Add, lit(Literal::Int(2), 9, 10), 4, 11);
+    let grouped = bin(
+        lit(Literal::Int(1), 5, 6),
+        BinaryOp::Add,
+        lit(Literal::Int(2), 9, 10),
+        4,
+        11,
+    );
     let rhs = bin(grouped, BinaryOp::Mul, lit(Literal::Int(3), 14, 15), 4, 15);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 15)), 0, 15);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 15)),
+        0,
+        15,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -591,7 +666,13 @@ fn shift_operators() {
             vec![],
             None,
             id("x", 4, 5),
-            bin(lit(Literal::Int(1), 9, 10), op, lit(Literal::Int(2), 15, 16), 9, 16),
+            bin(
+                lit(Literal::Int(1), 9, 10),
+                op,
+                lit(Literal::Int(2), 15, 16),
+                9,
+                16,
+            ),
             0,
             17,
         )];
@@ -613,7 +694,13 @@ fn bitwise_and_or_xor() {
             vec![],
             None,
             id("x", 4, 5),
-            bin(lit(Literal::Int(1), 9, 10), op, lit(Literal::Int(2), rhs_s, rhs_s + 1), 9, rhs_s + 1),
+            bin(
+                lit(Literal::Int(1), 9, 10),
+                op,
+                lit(Literal::Int(2), rhs_s, rhs_s + 1),
+                9,
+                rhs_s + 1,
+            ),
             0,
             decl_e,
         )];
@@ -669,7 +756,11 @@ fn coalesce_operator() {
     assert!(!corrupted);
     assert!(errors.is_empty());
     let rhs = bin(id("a", 4, 5), BinaryOp::Coalesce, id("b", 9, 10), 4, 10);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 10)), 0, 10);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 10)),
+        0,
+        10,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -679,7 +770,11 @@ fn not_equals() {
     assert!(!corrupted);
     assert!(errors.is_empty());
     let rhs = bin(id("a", 4, 5), BinaryOp::Neq, id("b", 9, 10), 4, 10);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 10)), 0, 10);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 10)),
+        0,
+        10,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -692,7 +787,13 @@ fn modulo_operator() {
         vec![],
         None,
         id("x", 4, 5),
-        bin(lit(Literal::Int(5), 9, 10), BinaryOp::Mod, lit(Literal::Int(2), 13, 14), 9, 14),
+        bin(
+            lit(Literal::Int(5), 9, 10),
+            BinaryOp::Mod,
+            lit(Literal::Int(2), 13, 14),
+            9,
+            14,
+        ),
         0,
         15,
     )];
@@ -715,7 +816,11 @@ fn unary_operators() {
         assert!(!corrupted, "corrupted for {src}");
         assert!(errors.is_empty(), "errors for {src}: {:?}", errors);
         let rhs = unr(op, id("y", ue - 1, ue), us, ue);
-        let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, ue)), 0, ue);
+        let expected = st(
+            StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, ue)),
+            0,
+            ue,
+        );
         assert_eq!(stmts, vec![expected], "mismatch for {src}");
     }
 }
@@ -731,7 +836,11 @@ fn postfix_operators() {
         assert!(!corrupted, "corrupted for {src}");
         assert!(errors.is_empty(), "errors for {src}: {:?}", errors);
         let rhs = post(id("y", 4, 5), op, 4, 7);
-        let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 7)), 0, 7);
+        let expected = st(
+            StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 7)),
+            0,
+            7,
+        );
         assert_eq!(stmts, vec![expected], "mismatch for {src}");
     }
 }
@@ -764,7 +873,11 @@ fn indexing() {
     assert!(!corrupted);
     assert!(errors.is_empty());
     let rhs = index(id("a", 4, 5), lit(Literal::Int(1), 6, 7), 4, 8);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 8)), 0, 8);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 8)),
+        0,
+        8,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -775,7 +888,11 @@ fn nested_indexing() {
     assert!(errors.is_empty());
     let inner = index(id("a", 4, 5), lit(Literal::Int(1), 6, 7), 4, 8);
     let rhs = index(inner, lit(Literal::Int(2), 9, 10), 4, 11);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 11)), 0, 11);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 11)),
+        0,
+        11,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -785,7 +902,11 @@ fn call_with_multiple_args() {
     assert!(!corrupted);
     assert!(errors.is_empty());
     let rhs = call(id("f", 4, 5), vec![id("a", 6, 7), id("b", 9, 10)], 4, 12);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 12)), 0, 12);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 12)),
+        0,
+        12,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -832,7 +953,11 @@ fn scope_resolution_and_call() {
     let f_call = call(id("f", 10, 11), vec![], 10, 14);
     let b_scope = bin(id("B", 7, 8), BinaryOp::Scope, f_call, 7, 14);
     let rhs = bin(id("A", 4, 5), BinaryOp::Scope, b_scope, 4, 14);
-    let expected = st(StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 14)), 0, 14);
+    let expected = st(
+        StmtKind::Expr(bin(id("x", 0, 1), BinaryOp::Assign, rhs, 0, 14)),
+        0,
+        14,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -923,7 +1048,13 @@ fn tuple_member_access_float_ambiguity() {
         vec![],
         None,
         id("x", 4, 5),
-        bin(id("a", 9, 10), BinaryOp::Access, lit(Literal::Float(0.1), 11, 14), 9, 14),
+        bin(
+            id("a", 9, 10),
+            BinaryOp::Access,
+            lit(Literal::Float(0.1), 11, 14),
+            9,
+            14,
+        ),
         0,
         15,
     )];
@@ -934,7 +1065,16 @@ fn tuple_member_access_float_ambiguity() {
 fn tuple_member_access_int() {
     for (src, member, target_name, target_s, target_e, ms, me, end) in [
         ("var x := a.0;", Literal::Int(0), "a", 9, 10, 11, 12, 13),
-        ("var x := nested.1;", Literal::Int(1), "nested", 9, 15, 16, 17, 18),
+        (
+            "var x := nested.1;",
+            Literal::Int(1),
+            "nested",
+            9,
+            15,
+            16,
+            17,
+            18,
+        ),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -943,7 +1083,13 @@ fn tuple_member_access_int() {
             vec![],
             None,
             id("x", 4, 5),
-            bin(id(target_name, target_s, target_e), BinaryOp::Access, lit(member, ms, me), 9, me),
+            bin(
+                id(target_name, target_s, target_e),
+                BinaryOp::Access,
+                lit(member, ms, me),
+                9,
+                me,
+            ),
             0,
             end,
         )];
@@ -975,7 +1121,13 @@ fn unwrap_expression() {
         None,
         id("x", 4, 5),
         Expr::new(
-            ExprKind::Unwrap(Box::new(bin(id("a", 16, 17), BinaryOp::Add, id("b", 20, 21), 16, 21))),
+            ExprKind::Unwrap(Box::new(bin(
+                id("a", 16, 17),
+                BinaryOp::Add,
+                id("b", 20, 21),
+                16,
+                21,
+            ))),
             sp(9, 23),
         ),
         0,
@@ -1016,7 +1168,13 @@ fn cast_expression() {
         vec![],
         None,
         id("x", 4, 5),
-        Expr::new(ExprKind::StaticCast(Box::new(ty(TypeKind::I32, 14, 17)), Box::new(id("y", 19, 20))), sp(9, 21)),
+        Expr::new(
+            ExprKind::StaticCast(
+                Box::new(ty(TypeKind::I32, 14, 17)),
+                Box::new(id("y", 19, 20)),
+            ),
+            sp(9, 21),
+        ),
         0,
         22,
     )];
@@ -1033,7 +1191,10 @@ fn sizeof_expression() {
         vec![],
         None,
         id("x", 4, 5),
-        Expr::new(ExprKind::SizeOfExpr(Box::new(ty(TypeKind::I32, 16, 19))), sp(9, 21)),
+        Expr::new(
+            ExprKind::SizeOfExpr(Box::new(ty(TypeKind::I32, 16, 19))),
+            sp(9, 21),
+        ),
         0,
         21,
     )];
@@ -1051,9 +1212,22 @@ fn compound_assignment() {
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![
-        var_decl(vec![], None, id("x", 4, 5), lit(Literal::Int(1), 9, 10), 0, 13),
+        var_decl(
+            vec![],
+            None,
+            id("x", 4, 5),
+            lit(Literal::Int(1), 9, 10),
+            0,
+            13,
+        ),
         st(
-            StmtKind::Expr(bin(id("x", 12, 13), BinaryOp::AddAssign, lit(Literal::Int(2), 17, 18), 12, 18)),
+            StmtKind::Expr(bin(
+                id("x", 12, 13),
+                BinaryOp::AddAssign,
+                lit(Literal::Int(2), 17, 18),
+                12,
+                18,
+            )),
             12,
             18,
         ),
@@ -1077,7 +1251,13 @@ fn simple_assignment_and_read_as_expr_stmt() {
         assert!(errors.is_empty(), "errors for {src}: {:?}", errors);
         let rhs_start = n - 2; // literal operand is the second-to-last character (`2;`)
         let rhs = st(
-            StmtKind::Expr(bin(id("x", 12, 13), op, lit(Literal::Int(2), rhs_start, rhs_start + 1), 12, rhs_start + 1)),
+            StmtKind::Expr(bin(
+                id("x", 12, 13),
+                op,
+                lit(Literal::Int(2), rhs_start, rhs_start + 1),
+                12,
+                rhs_start + 1,
+            )),
             12,
             rhs_start + 1,
         );
@@ -1091,14 +1271,41 @@ fn if_else_statement() {
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
-    let decl = var_decl(vec![], None, id("x", 4, 5), lit(Literal::Int(0), 9, 10), 0, 14);
+    let decl = var_decl(
+        vec![],
+        None,
+        id("x", 4, 5),
+        lit(Literal::Int(0), 9, 10),
+        0,
+        14,
+    );
     let then_body = block(
-        vec![st(StmtKind::Expr(bin(id("x", 19, 20), BinaryOp::Assign, lit(Literal::Int(1), 23, 24), 19, 24)), 19, 24)],
+        vec![st(
+            StmtKind::Expr(bin(
+                id("x", 19, 20),
+                BinaryOp::Assign,
+                lit(Literal::Int(1), 23, 24),
+                19,
+                24,
+            )),
+            19,
+            24,
+        )],
         17,
         32,
     );
     let else_body = block(
-        vec![st(StmtKind::Expr(bin(id("x", 35, 36), BinaryOp::Assign, lit(Literal::Int(2), 39, 40), 35, 40)), 35, 40)],
+        vec![st(
+            StmtKind::Expr(bin(
+                id("x", 35, 36),
+                BinaryOp::Assign,
+                lit(Literal::Int(2), 39, 40),
+                35,
+                40,
+            )),
+            35,
+            40,
+        )],
         33,
         43,
     );
@@ -1122,17 +1329,47 @@ fn if_elif_else_statement() {
     assert!(!corrupted);
     assert!(errors.is_empty());
     let then_body = block(
-        vec![st(StmtKind::Expr(bin(id("x", 7, 8), BinaryOp::Assign, lit(Literal::Int(1), 11, 12), 7, 12)), 7, 12)],
+        vec![st(
+            StmtKind::Expr(bin(
+                id("x", 7, 8),
+                BinaryOp::Assign,
+                lit(Literal::Int(1), 11, 12),
+                7,
+                12,
+            )),
+            7,
+            12,
+        )],
         5,
         20,
     );
     let elif_body = block(
-        vec![st(StmtKind::Expr(bin(id("y", 25, 26), BinaryOp::Assign, lit(Literal::Int(2), 29, 30), 25, 30)), 25, 30)],
+        vec![st(
+            StmtKind::Expr(bin(
+                id("y", 25, 26),
+                BinaryOp::Assign,
+                lit(Literal::Int(2), 29, 30),
+                25,
+                30,
+            )),
+            25,
+            30,
+        )],
         23,
         38,
     );
     let else_body = block(
-        vec![st(StmtKind::Expr(bin(id("z", 41, 42), BinaryOp::Assign, lit(Literal::Int(3), 45, 46), 41, 46)), 41, 46)],
+        vec![st(
+            StmtKind::Expr(bin(
+                id("z", 41, 42),
+                BinaryOp::Assign,
+                lit(Literal::Int(3), 45, 46),
+                41,
+                46,
+            )),
+            41,
+            46,
+        )],
         39,
         49,
     );
@@ -1158,11 +1395,28 @@ fn while_loop() {
     assert!(!corrupted);
     assert!(errors.is_empty());
     let body = block(
-        vec![st(StmtKind::Expr(bin(id("x", 10, 11), BinaryOp::Assign, lit(Literal::Int(1), 14, 15), 10, 15)), 10, 15)],
+        vec![st(
+            StmtKind::Expr(bin(
+                id("x", 10, 11),
+                BinaryOp::Assign,
+                lit(Literal::Int(1), 14, 15),
+                10,
+                15,
+            )),
+            10,
+            15,
+        )],
         8,
         18,
     );
-    let expected = st(StmtKind::WhileStmt { condition: Box::new(id("a", 6, 7)), body: Box::new(body) }, 0, 18);
+    let expected = st(
+        StmtKind::WhileStmt {
+            condition: Box::new(id("a", 6, 7)),
+            body: Box::new(body),
+        },
+        0,
+        18,
+    );
     assert_eq!(stmts, vec![expected]);
 }
 
@@ -1173,14 +1427,28 @@ fn while_loop_break_and_continue() {
     assert!(!corrupted, "{:?}", errors);
     assert!(errors.is_empty(), "{:?}", errors);
     let body = block(vec![st(StmtKind::Break, 10, 15)], 8, 18);
-    let expected = st(StmtKind::WhileStmt { condition: Box::new(id("a", 6, 7)), body: Box::new(body) }, 0, 18);
+    let expected = st(
+        StmtKind::WhileStmt {
+            condition: Box::new(id("a", 6, 7)),
+            body: Box::new(body),
+        },
+        0,
+        18,
+    );
     assert_eq!(stmts, vec![expected]);
 
     let (stmts2, errors2, corrupted2) = parse_src("while a { continue }");
     assert!(!corrupted2, "{:?}", errors2);
     assert!(errors2.is_empty(), "{:?}", errors2);
     let body2 = block(vec![st(StmtKind::Continue, 10, 18)], 8, 20);
-    let expected2 = st(StmtKind::WhileStmt { condition: Box::new(id("a", 6, 7)), body: Box::new(body2) }, 0, 20);
+    let expected2 = st(
+        StmtKind::WhileStmt {
+            condition: Box::new(id("a", 6, 7)),
+            body: Box::new(body2),
+        },
+        0,
+        20,
+    );
     assert_eq!(stmts2, vec![expected2]);
 }
 
@@ -1201,15 +1469,37 @@ fn for_loop() {
         17,
     );
     let body = block(
-        vec![st(StmtKind::Expr(bin(id("x", 33, 34), BinaryOp::Assign, lit(Literal::Int(1), 37, 38), 33, 38)), 33, 38)],
+        vec![st(
+            StmtKind::Expr(bin(
+                id("x", 33, 34),
+                BinaryOp::Assign,
+                lit(Literal::Int(1), 37, 38),
+                33,
+                38,
+            )),
+            33,
+            38,
+        )],
         31,
         41,
     );
     let expected = st(
         StmtKind::ForStmt {
             init: Box::new(init_stmt),
-            condition: Box::new(bin(id("i", 16, 17), BinaryOp::Lt, lit(Literal::Int(10), 20, 22), 16, 22)),
-            update: Box::new(bin(id("i", 24, 25), BinaryOp::AddAssign, lit(Literal::Int(1), 29, 30), 24, 30)),
+            condition: Box::new(bin(
+                id("i", 16, 17),
+                BinaryOp::Lt,
+                lit(Literal::Int(10), 20, 22),
+                16,
+                22,
+            )),
+            update: Box::new(bin(
+                id("i", 24, 25),
+                BinaryOp::AddAssign,
+                lit(Literal::Int(1), 29, 30),
+                24,
+                30,
+            )),
             body: Box::new(body),
         },
         0,
@@ -1237,7 +1527,17 @@ fn each_loop() {
     assert!(!corrupted);
     assert!(errors.is_empty());
     let body = block(
-        vec![st(StmtKind::Expr(bin(id("x", 20, 21), BinaryOp::Assign, id("item", 24, 28), 20, 28)), 20, 28)],
+        vec![st(
+            StmtKind::Expr(bin(
+                id("x", 20, 21),
+                BinaryOp::Assign,
+                id("item", 24, 28),
+                20,
+                28,
+            )),
+            20,
+            28,
+        )],
         18,
         31,
     );
@@ -1272,7 +1572,11 @@ fn function_with_params_and_return() {
                 param_decl(id("b", 17, 18), ty(TypeKind::U8, 20, 22), 17, 23),
             ],
             type_annotation: Some(ty(TypeKind::Bool, 26, 30)),
-            body: Box::new(block(vec![ret(Some(lit(Literal::Bool(true), 40, 44)), 33, 47)], 31, 47)),
+            body: Box::new(block(
+                vec![ret(Some(lit(Literal::Bool(true), 40, 44)), 33, 47)],
+                31,
+                47,
+            )),
         },
         0,
         47,
@@ -1293,7 +1597,11 @@ fn function_without_parens_return_type() {
             name: Box::new(id("foo", 5, 8)),
             params: vec![],
             type_annotation: Some(ty(TypeKind::I32, 10, 13)),
-            body: Box::new(block(vec![ret(Some(lit(Literal::Int(0), 23, 24)), 16, 27)], 14, 27)),
+            body: Box::new(block(
+                vec![ret(Some(lit(Literal::Int(0), 23, 24)), 16, 27)],
+                14,
+                27,
+            )),
         },
         0,
         27,
@@ -1312,8 +1620,16 @@ fn function_returning_ptr() {
             qualifiers: vec![],
             name: Box::new(id("foo", 5, 8)),
             params: vec![param_decl(id("a", 9, 10), ty(TypeKind::I32, 12, 15), 9, 16)],
-            type_annotation: Some(ty(TypeKind::Ptr(Box::new(ty(TypeKind::I32, 22, 25))), 18, 25)),
-            body: Box::new(block(vec![ret(Some(lit(Literal::Int(0), 36, 37)), 29, 40)], 27, 40)),
+            type_annotation: Some(ty(
+                TypeKind::Ptr(Box::new(ty(TypeKind::I32, 22, 25))),
+                18,
+                25,
+            )),
+            body: Box::new(block(
+                vec![ret(Some(lit(Literal::Int(0), 36, 37)), 29, 40)],
+                27,
+                40,
+            )),
         },
         0,
         40,
@@ -1337,7 +1653,11 @@ fn function_returning_tuple() {
                 13,
                 25,
             )),
-            body: Box::new(block(vec![ret(Some(lit(Literal::Int(1), 33, 34)), 26, 37)], 24, 37)),
+            body: Box::new(block(
+                vec![ret(Some(lit(Literal::Int(1), 33, 34)), 26, 37)],
+                24,
+                37,
+            )),
         },
         0,
         37,
@@ -1389,7 +1709,16 @@ fn struct_with_contracts() {
                 ty(TypeKind::CustomType(Box::new(id("HasX", 14, 18))), 14, 18),
                 ty(TypeKind::CustomType(Box::new(id("HasY", 20, 24))), 20, 24),
             ],
-            contents: Box::new(block(vec![param_decl(id("x", 27, 28), ty(TypeKind::I32, 30, 33), 27, 35)], 25, 35)),
+            contents: Box::new(block(
+                vec![param_decl(
+                    id("x", 27, 28),
+                    ty(TypeKind::I32, 30, 33),
+                    27,
+                    35,
+                )],
+                25,
+                35,
+            )),
         },
         0,
         35,
@@ -1409,13 +1738,21 @@ fn enum_decl() {
             name: Box::new(id("Color", 5, 10)),
             underlying: Some(ty(TypeKind::U8, 12, 14)),
             content: vec![
-                EnumMember { name: id("Red", 17, 20), value: None, span: sp(17, 21) },
+                EnumMember {
+                    name: id("Red", 17, 20),
+                    value: None,
+                    span: sp(17, 21),
+                },
                 EnumMember {
                     name: id("Green", 22, 27),
                     value: Some(lit(Literal::Int(5), 30, 31)),
                     span: sp(22, 32),
                 },
-                EnumMember { name: id("Blue", 33, 37), value: None, span: sp(33, 39) },
+                EnumMember {
+                    name: id("Blue", 33, 37),
+                    value: None,
+                    span: sp(33, 39),
+                },
             ],
         },
         0,
@@ -1491,33 +1828,6 @@ fn seal_decl() {
         },
         0,
         36,
-    );
-    assert_eq!(stmts, vec![expected]);
-}
-
-#[test]
-fn methods_decl() {
-    let src = "methods Point { func get(): i32 { return 0; } }";
-    let (stmts, errors, corrupted) = parse_src(src);
-    assert!(!corrupted);
-    assert!(errors.is_empty());
-    let expected = st(
-        StmtKind::MethodsStmt {
-            name: Box::new(id("Point", 8, 13)),
-            contents: vec![st(
-                StmtKind::FunctionDef {
-                    qualifiers: vec![],
-                    name: Box::new(id("get", 21, 24)),
-                    params: vec![],
-                    type_annotation: Some(ty(TypeKind::I32, 28, 31)),
-                    body: Box::new(block(vec![ret(Some(lit(Literal::Int(0), 41, 42)), 34, 45)], 32, 47)),
-                },
-                16,
-                47,
-            )],
-        },
-        0,
-        47,
     );
     assert_eq!(stmts, vec![expected]);
 }
@@ -1608,16 +1918,32 @@ fn import_decl() {
     let (stmts, errors, corrupted) = parse_src("import foo::bar");
     assert!(!corrupted);
     assert!(errors.is_empty());
-    let path = Expr::new(ExprKind::Path(Box::new(id("foo", 7, 10)), Box::new(id("bar", 12, 15))), sp(7, 15));
-    let expected = st(StmtKind::ImportStmt { name: Box::new(path), alias: None }, 0, 15);
+    let path = Expr::new(
+        ExprKind::Path(Box::new(id("foo", 7, 10)), Box::new(id("bar", 12, 15))),
+        sp(7, 15),
+    );
+    let expected = st(
+        StmtKind::ImportStmt {
+            name: Box::new(path),
+            alias: None,
+        },
+        0,
+        15,
+    );
     assert_eq!(stmts, vec![expected]);
 
     let (stmts2, errors2, corrupted2) = parse_src("import foo::bar as baz");
     assert!(!corrupted2);
     assert!(errors2.is_empty());
-    let path2 = Expr::new(ExprKind::Path(Box::new(id("foo", 7, 10)), Box::new(id("bar", 12, 15))), sp(7, 18));
+    let path2 = Expr::new(
+        ExprKind::Path(Box::new(id("foo", 7, 10)), Box::new(id("bar", 12, 15))),
+        sp(7, 18),
+    );
     let expected2 = st(
-        StmtKind::ImportStmt { name: Box::new(path2), alias: Some(id("baz", 19, 22)) },
+        StmtKind::ImportStmt {
+            name: Box::new(path2),
+            alias: Some(id("baz", 19, 22)),
+        },
         0,
         22,
     );
@@ -1643,8 +1969,16 @@ fn struct_instantiation() {
         ExprKind::Instantiation {
             init_ty: Box::new(point_ty),
             body: vec![
-                InstParam { name: Box::new(id("x", 21, 22)), value: Box::new(lit(Literal::Int(1), 25, 26)), span: sp(20, 26) },
-                InstParam { name: Box::new(id("y", 29, 30)), value: Box::new(lit(Literal::Int(2), 33, 34)), span: sp(28, 34) },
+                InstParam {
+                    name: Box::new(id("x", 21, 22)),
+                    value: Box::new(lit(Literal::Int(1), 25, 26)),
+                    span: sp(20, 26),
+                },
+                InstParam {
+                    name: Box::new(id("y", 29, 30)),
+                    value: Box::new(lit(Literal::Int(2), 33, 34)),
+                    span: sp(28, 34),
+                },
             ],
         },
         sp(13, 35),
@@ -1708,7 +2042,9 @@ fn nested_tuple_instantiation() {
         sp(14, 30),
     );
     let inst = Expr::new(
-        ExprKind::TupleInst { body: vec![inner, lit(Literal::Uint32(42), 32, 37)] },
+        ExprKind::TupleInst {
+            body: vec![inner, lit(Literal::Uint32(42), 32, 37)],
+        },
         sp(12, 38),
     );
     let expected = vec![var_decl(vec![], None, id("deep", 4, 8), inst, 0, 39)];
@@ -1724,7 +2060,11 @@ fn dollar_scope_no_params() {
     let scope = Expr::new(
         ExprKind::DollarScope {
             params: vec![],
-            body: Box::new(block(vec![ret(Some(lit(Literal::Int(5), 20, 21)), 13, 24)], 11, 25)),
+            body: Box::new(block(
+                vec![ret(Some(lit(Literal::Int(5), 20, 21)), 13, 24)],
+                11,
+                25,
+            )),
         },
         sp(9, 25),
     );
@@ -1861,7 +2201,11 @@ fn missing_semicolon() {
 fn dangling_binary_operator() {
     let (_, errors, corrupted) = parse_src("var x := 1 + ;");
     assert!(corrupted);
-    assert_single_error(&errors, "Unexpected prefix token: Semicolon", Some(sp(13, 14)));
+    assert_single_error(
+        &errors,
+        "Unexpected prefix token: Semicolon",
+        Some(sp(13, 14)),
+    );
 }
 
 #[test]
@@ -1893,7 +2237,13 @@ fn break_continue_trailing_semicolon_optional() {
         vec![
             st(StmtKind::Break, 0, 5),
             st(
-                StmtKind::Expr(bin(id("x", 6, 7), BinaryOp::Assign, lit(Literal::Int(1), 10, 11), 6, 11)),
+                StmtKind::Expr(bin(
+                    id("x", 6, 7),
+                    BinaryOp::Assign,
+                    lit(Literal::Int(1), 10, 11),
+                    6,
+                    11
+                )),
                 6,
                 11,
             ),
@@ -1906,7 +2256,11 @@ fn amp_bitwise_operator_not_supported() {
     // `&` does not lex as a binary operator; bitwise-and is the `and` keyword.
     let (_, errors, corrupted) = parse_src("var x := 1 shl 2 & 3;");
     assert!(corrupted);
-    assert_single_error(&errors, "Expected Semicolon, found Ampersand", Some(sp(17, 18)));
+    assert_single_error(
+        &errors,
+        "Expected Semicolon, found Ampersand",
+        Some(sp(17, 18)),
+    );
 }
 
 #[test]
@@ -1982,14 +2336,22 @@ fn propagate_prefix_index_not_supported() {
     // `!?` is a postfix propagate operator; as a prefix it is an error.
     let (_, errors, corrupted) = parse_src("x = !? a;");
     assert!(corrupted);
-    assert_single_error(&errors, "Unexpected prefix token: Propagate", Some(sp(4, 6)));
+    assert_single_error(
+        &errors,
+        "Unexpected prefix token: Propagate",
+        Some(sp(4, 6)),
+    );
 }
 
 #[test]
 fn func_decl_missing_param_name() {
     let (_, errors, corrupted) = parse_src("func foo( {");
     assert!(corrupted);
-    assert_single_error(&errors, "Expected Identifier, found LBrace", Some(sp(10, 11)));
+    assert_single_error(
+        &errors,
+        "Expected Identifier, found LBrace",
+        Some(sp(10, 11)),
+    );
 }
 
 #[test]
@@ -1999,3 +2361,4 @@ fn nested_plain_parens_not_a_tuple_literal() {
     assert!(corrupted);
     assert_single_error(&errors, "Expected Rparen, found Comma", Some(sp(21, 22)));
 }
+

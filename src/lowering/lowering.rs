@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ast::{Stmt, StmtKind, Type},
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    hir::HirStmt
+    hir::HirStmt,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct NodeId {
     pub local: usize,    //This is for nodes born within this particular module
     pub external: usize, //This is to be used externally by the import engine
@@ -47,7 +47,6 @@ impl Lowering {
         for stmt in self.ast.clone() {
             match &stmt.kind {
                 StmtKind::SealStmt { .. }
-                | StmtKind::MethodsStmt { .. }
                 | StmtKind::GenericBlock { .. }
                 | StmtKind::ForStmt { .. }
                 | StmtKind::EachStmt { .. } => {
