@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use inkwell::{
     attributes::AttributeLoc, basic_block::BasicBlock, module::Linkage, values::FunctionValue,
@@ -6,7 +6,7 @@ use inkwell::{
 
 use crate::{
     codegen::Codegen,
-    mir::{BlockId, FuncSig, MIRFn, MIRLinkage, Terminator, Vreg},
+    mir::{BasicBlock as MIRBlock, BlockId, FuncSig, MIRBody, MIRFn, MIRLinkage, Terminator, Vreg},
 };
 
 impl<'ctx> Codegen<'ctx> {
@@ -68,7 +68,8 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        for (&block_id, block) in body.blocks.iter() {
+        for block_id in Self::compute_block_order(body) {
+            let block = body.blocks.get(&block_id).expect("Missing block");
             let llvm_bb = bb_map.get(&block_id).expect("Missing bb");
             self.builder.position_at_end(*llvm_bb);
             for instr in &block.instructions {
@@ -77,6 +78,55 @@ impl<'ctx> Codegen<'ctx> {
 
             self.lower_terminator(&block.terminator, &bb_map);
         }
+    }
+
+    fn successors(block: &MIRBlock) -> Vec<BlockId> {
+        match &block.terminator {
+            Terminator::Goto(target) => vec![*target],
+            Terminator::Branch {
+                then,
+                else_block,
+                ..
+            } => vec![*then, *else_block],
+            Terminator::Return(_) | Terminator::Unreachable => Vec::new(),
+        }
+    }
+
+    fn dfs_postorder(
+        id: BlockId,
+        blocks: &HashMap<BlockId, MIRBlock>,
+        visited: &mut HashSet<BlockId>,
+        post: &mut Vec<BlockId>,
+    ) {
+        if !visited.insert(id) {
+            return;
+        }
+        for succ in Self::successors(&blocks[&id]) {
+            Self::dfs_postorder(succ, blocks, visited, post);
+        }
+        post.push(id);
+    }
+
+    /// Returns the blocks of `body` in definition-before-use (reverse
+    /// postorder) order so that lowering a register's producer before its
+    /// consumers doesn't depend on HashMap iteration order. Unreachable
+    /// blocks are appended afterward (sorted) so they are still emitted.
+    fn compute_block_order(body: &MIRBody) -> Vec<BlockId> {
+        let mut visited = HashSet::new();
+        let mut post = Vec::new();
+        Self::dfs_postorder(body.entry_block, &body.blocks, &mut visited, &mut post);
+
+        let mut order: Vec<BlockId> = post.into_iter().rev().collect();
+
+        let mut leftovers: Vec<BlockId> = body
+            .blocks
+            .keys()
+            .filter(|id| !visited.contains(id))
+            .cloned()
+            .collect();
+        leftovers.sort_by_key(|id| id.0);
+        order.extend(leftovers);
+        order
     }
 
     fn lower_terminator(

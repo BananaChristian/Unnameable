@@ -1,6 +1,6 @@
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    hir::{HirExpr, HirExprKind, HirLiteral, HirStmt, HirStmtKind},
+    hir::{HirExpr, HirExprKind, HirLiteral, HirPattern, HirStmt, HirStmtKind},
     indexer::NodeIndex,
     semantics::{ResolvedTypeKind, SemanticCtxt, TypeInfo},
 };
@@ -315,6 +315,21 @@ impl<'a> ControlFlowChecker<'a> {
                 self.walk_expr(target);
                 self.walk_expr(index);
             }
+            HirExprKind::Match { scrutinee, arms } => {
+                self.walk_expr(scrutinee);
+                for arm in arms {
+                    self.walk_pattern(&arm.pattern);
+                    if let Some(guard) = &arm.guard {
+                        self.walk_expr(guard);
+                    }
+                    self.walk_expr(&arm.body);
+                }
+            }
+            HirExprKind::Block(body) => {
+                for stmt in body {
+                    self.check_stmt(stmt);
+                }
+            }
             HirExprKind::DollarScope {
                 params, body, result, ..
             } => {
@@ -332,6 +347,33 @@ impl<'a> ControlFlowChecker<'a> {
 
     fn unreachable_code(&mut self, span: Span) {
         self.report(format!("Unreachable code"), Some(span.clone()));
+    }
+
+    fn walk_pattern(&mut self, pattern: &HirPattern) {
+        match pattern {
+            HirPattern::Wildcard | HirPattern::Binding { .. } => {}
+            HirPattern::Literal(expr) => self.walk_expr(expr),
+            HirPattern::Path { payloads, .. } => {
+                for payload in payloads {
+                    self.walk_pattern(payload);
+                }
+            }
+            HirPattern::Tuple { elements, .. } => {
+                for element in elements {
+                    self.walk_pattern(element);
+                }
+            }
+            HirPattern::StructPattern { fields, .. } => {
+                for field in fields {
+                    self.walk_pattern(&field.pattern);
+                }
+            }
+            HirPattern::Or(alts) => {
+                for alt in alts {
+                    self.walk_pattern(alt);
+                }
+            }
+        }
     }
 
     pub fn report(&mut self, message: String, span: Option<Span>) {

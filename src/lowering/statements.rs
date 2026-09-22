@@ -1,11 +1,8 @@
 use crate::{
-    ast::{EnumMember, Stmt, StmtKind, VariantMember},
-    diagnostics::Span,
-    hir::{
+    ast::{EnumMember, ExprKind, Stmt, StmtKind, VariantMember}, diagnostics::Span, hir::{
         HirBinaryOp, HirEnumMember, HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt,
         HirStmtKind, HirType, HirTypeNode, HirVariantMember,
-    },
-    lowering::lowering::Lowering,
+    }, lowering::lowering::Lowering,
 };
 
 impl Lowering {
@@ -243,7 +240,7 @@ impl Lowering {
                 let cont = self.lower_type(contract)?;
                 extracted_contracts.push(cont);
             }
-            let fields = if let StmtKind::Block { content } = &contents.kind {
+            let fields = if let ExprKind::Block(content) = &contents.kind {
                 content
                     .iter()
                     .map(|p| self.lower_param(p))
@@ -791,28 +788,6 @@ impl Lowering {
                     span: stmt.span.clone(),
                 })
             }
-        } else {
-            None
-        }
-    }
-
-    pub fn lower_block(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
-        if let StmtKind::Block { content } = &stmt.kind {
-            let mut contents = Vec::new();
-            for victim in content {
-                match &victim.kind {
-                    StmtKind::SealStmt { .. } => {
-                        let construct_vec = self.lower_constructs(victim)?;
-                        contents.extend(construct_vec);
-                    }
-                    _ => {
-                        let lowered_stmt = self.lower_stmt(victim)?;
-                        contents.push(lowered_stmt);
-                    }
-                }
-            }
-
-            Some(contents)
         } else {
             None
         }

@@ -89,6 +89,7 @@ impl<'a> Lexer<'a> {
             ("alias".to_string(), TType::Alias),
             ("as".to_string(), TType::As),
             ("import".to_string(), TType::Import),
+            ("match".to_string(), TType::Match),
         ]);
         keywords
     }
@@ -621,6 +622,16 @@ impl<'a> Lexer<'a> {
                             end: self.pos,
                         },
                     )
+                } else if let Some('>') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "=>".to_string(),
+                        TType::FatArrow,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
                 } else {
                     Token::new(
                         "=".to_string(),
@@ -792,14 +803,26 @@ impl<'a> Lexer<'a> {
             }
             Some('.') => {
                 self.advance();
-                Token::new(
-                    ".".to_string(),
-                    TType::Dot,
-                    Span {
-                        start,
-                        end: self.pos,
-                    },
-                )
+                if let Some('.') = self.current_char() {
+                    self.advance();
+                    Token::new(
+                        "..".to_string(),
+                        TType::DotDot,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                } else {
+                    Token::new(
+                        ".".to_string(),
+                        TType::Dot,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    )
+                }
             }
             Some('(') => {
                 self.advance();

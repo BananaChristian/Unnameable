@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::Span,
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPostfixOp, HirUnaryOp},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPattern, HirPostfixOp, HirStmtKind,
+        HirUnaryOp},
     mir::{
         MIRGlobal, MIRInstruction, StructId,
         builder::MIRBuilder,
         instructions::{
-            ArmInfo, ConstantValue, FuncSig, MIRBody, MIRConv, MIRDollarMode, MIRLinkage, MIROps,
-            MIRParam, MIRTy, MIRTykind, MIRValue, Terminator,
+            ArmInfo, ConstantValue, CmpOp, FuncSig, MIRBody, MIRConv, MIRDollarMode, MIRLinkage,
+            MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator,
         },
     },
 };
@@ -45,6 +46,10 @@ impl<'a> MIRBuilder<'a> {
             }
             HirExprKind::BitCast(_, _) => self.build_bitcast(expr),
             HirExprKind::Index { .. } => self.build_index_access(expr),
+            HirExprKind::Match { .. } => self.build_match(expr),
+            HirExprKind::Block(_) => {
+                self.block_codegen(expr);
+            }
             _ => self.report_ice(
                 format!(
                     "Encountered an expression whose handler is yet to be added {:?}",
@@ -65,6 +70,502 @@ impl<'a> MIRBuilder<'a> {
             let dest = self.new_register(expr_ty.clone(), None);
             self.build_load(dest.clone(), elem_ptr, expr_ty, Some(expr.span.clone()));
             self.last_value = Some(dest);
+        }
+    }
+
+    fn bool_ty() -> MIRTy {
+        MIRTy {
+            kind: MIRTykind::Bool,
+            size: 1,
+            align: 1,
+        }
+    }
+
+    /// Compiles a `match` expression. Every arm assigns its value into the same
+    /// frame-wide result register (register joins are per-frame in the VM), so
+    /// the arms branch into a shared merge block.
+    fn build_match(&mut self, expr: &HirExpr) {
+        if let HirExprKind::Match { scrutinee, arms } = &expr.kind {
+            let span = Some(expr.span.clone());
+            let match_ty = self.get_type(&expr.hir_id);
+            let scrub_ty = self.get_type(&scrutinee.hir_id);
+
+            // Resolve a pointer to the scrutinee so we can GEP into it for
+            // pattern bindings. Non-lvalue scrutinees get spilled to a temp.
+            let scr_ptr = self.match_scrutinee_ptr(scrutinee);
+
+            let is_aggregate = matches!(
+                scrub_ty.kind,
+                MIRTykind::Struct(..) | MIRTykind::Tuple(_) | MIRTykind::Array(..)
+            );
+
+            // Scalar matches compare a loaded value against literals / enums.
+            let scrut_value = if is_aggregate {
+                None
+            } else {
+                let dest = self.new_register(scrub_ty.clone(), None);
+                self.build_load(
+                    dest.clone(),
+                    scr_ptr.clone(),
+                    scrub_ty.clone(),
+                    span.clone(),
+                );
+                Some(dest)
+            };
+
+            // Variant matches compare a tag loaded once, up front.
+            let tag_value = if let MIRTykind::Struct(struct_id, name, _) = &scrub_ty.kind {
+                if self.arm_map.contains_key(struct_id) {
+                    Some(self.load_variant_tag(
+                        name,
+                        scr_ptr.clone(),
+                        scrub_ty.clone(),
+                        span.clone(),
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let merge_block = self.create_basic_block();
+
+            // The match result is produced in each arm block and consumed in
+            // the merge block. A single virtual register assigned from several
+            // blocks would be non-SSA and invalid for LLVM codegen, so the
+            // arms store into a stack slot and the merge block loads it.
+            let result_slot = if match_ty.kind == MIRTykind::Unit {
+                None
+            } else {
+                let slot = self.new_register(self.ptr_type(), None);
+                self.build_alloca(slot.clone(), match_ty.clone(), span.clone());
+                Some(slot)
+            };
+
+            let n = arms.len();
+            let mut test_blocks = Vec::new();
+            let mut entry_blocks = Vec::new();
+            let mut body_blocks = Vec::new();
+            for _ in 0..n {
+                test_blocks.push(self.create_basic_block());
+                entry_blocks.push(self.create_basic_block());
+                body_blocks.push(self.create_basic_block());
+            }
+            let unreachable_block = self.create_basic_block();
+
+            if n > 0 {
+                self.set_terminator(Terminator::Goto(test_blocks[0].id), span.clone());
+            } else {
+                // An empty match can never match anything (type checker
+                // rejects it as non-exhaustive); emit unreachable for safety.
+                self.set_terminator(Terminator::Unreachable, span.clone());
+            }
+
+            for (arm_idx, arm) in arms.iter().enumerate() {
+                // ---- test block: decide whether this arm applies ----
+                self.add_block(&test_blocks[arm_idx], span.clone());
+                self.current_block_id = Some(test_blocks[arm_idx].id);
+
+                let next_id = if arm_idx + 1 < n {
+                    test_blocks[arm_idx + 1].id
+                } else {
+                    unreachable_block.id
+                };
+
+                let cond = self.pattern_condition(
+                    &arm.pattern,
+                    &scrut_value,
+                    &tag_value,
+                    span.clone(),
+                );
+
+                match cond {
+                    Some(cond_val) => self.set_terminator(
+                        Terminator::Branch {
+                            cond: cond_val,
+                            then: entry_blocks[arm_idx].id,
+                            else_block: next_id,
+                        },
+                        span.clone(),
+                    ),
+                    None => {
+                        // Unconditional arm (wildcard / binding / struct / tuple).
+                        self.set_terminator(
+                            Terminator::Goto(entry_blocks[arm_idx].id),
+                            span.clone(),
+                        );
+                    }
+                }
+
+                // ---- entry block: bind pattern names, evaluate the guard ----
+                self.add_block(&entry_blocks[arm_idx], span.clone());
+                self.current_block_id = Some(entry_blocks[arm_idx].id);
+                self.push_scope();
+                self.bind_pattern_into_scope(
+                    &arm.pattern,
+                    scr_ptr.clone(),
+                    scrub_ty.clone(),
+                    span.clone(),
+                );
+
+                match &arm.guard {
+                    Some(guard) => {
+                        self.build_expr(guard);
+                        let guard_val = self.get_last_val(span.clone());
+                        self.set_terminator(
+                            Terminator::Branch {
+                                cond: guard_val,
+                                then: body_blocks[arm_idx].id,
+                                else_block: next_id,
+                            },
+                            span.clone(),
+                        );
+                    }
+                    None => {
+                        self.set_terminator(
+                            Terminator::Goto(body_blocks[arm_idx].id),
+                            span.clone(),
+                        );
+                    }
+                }
+
+                // ---- body block: compute the arm value into the shared result
+                self.add_block(&body_blocks[arm_idx], span.clone());
+                self.current_block_id = Some(body_blocks[arm_idx].id);
+                if let Some(body_val) = self.arm_body_value(&arm.body) {
+                    if let Some(slot) = result_slot.clone() {
+                        self.build_store(slot, body_val, match_ty.clone(), span.clone());
+                    }
+                }
+                self.set_terminator(Terminator::Goto(merge_block.id), span.clone());
+                self.pop_scope();
+            }
+
+            // A failing last test means the match was not exhaustive; the type
+            // checker enforces exhaustiveness, this is just a safety net.
+            self.add_block(&unreachable_block, span.clone());
+            self.current_block_id = Some(unreachable_block.id);
+            self.set_terminator(Terminator::Unreachable, span.clone());
+
+            // Execution continues after the merged match.
+            self.add_block(&merge_block, span.clone());
+            self.current_block_id = Some(merge_block.id);
+            self.last_value = match result_slot {
+                Some(slot) => {
+                    let result_val = self.new_register(match_ty.clone(), None);
+                    self.build_load(result_val.clone(), slot, match_ty.clone(), span);
+                    Some(result_val)
+                }
+                None => None,
+            };
+        }
+    }
+
+    /// Produces the boolean condition guarding an arm, or `None` when the arm
+    /// matches unconditionally (wildcard, binding, struct/tuple patterns).
+    fn pattern_condition(
+        &mut self,
+        pattern: &HirPattern,
+        scrut_value: &Option<MIRValue>,
+        tag_value: &Option<MIRValue>,
+        span: Option<Span>,
+    ) -> Option<MIRValue> {
+        match pattern {
+            HirPattern::Literal(lit_expr) => {
+                let lit_val = self.literal_value(lit_expr);
+                let scrut = match scrut_value {
+                    Some(v) => v.clone(),
+                    None => self.report_ice(
+                        "Literal pattern requires a scalar scrutinee".to_string(),
+                        span,
+                    ),
+                };
+                self.build_cmp(CmpOp::Eq, scrut, lit_val, span.clone());
+                Some(self.get_last_val(span))
+            }
+            HirPattern::Path {
+                type_name, member, ..
+            } => {
+                if let Some(&enum_id) = self.enum_name_to_id.get(type_name) {
+                    let (underlying, value) = {
+                        let Some(enum_decl) = self.enums.get(&enum_id) else {
+                            self.report_ice(
+                                format!(
+                                    "Enum id {:?} from '{}' points to a missing enum declaration",
+                                    enum_id, type_name
+                                ),
+                                span,
+                            )
+                        };
+                        let Some(value) = enum_decl
+                            .members
+                            .iter()
+                            .find(|(n, _)| n == member)
+                            .map(|(_, v)| *v)
+                        else {
+                            self.report_ice(
+                                format!("Enum member '{}' not found", member),
+                                span,
+                            )
+                        };
+                        (enum_decl.underlying.clone(), value)
+                    };
+                    let scrut = match scrut_value {
+                        Some(v) => v.clone(),
+                        None => self.report_ice(
+                            "Enum pattern requires a scalar scrutinee".to_string(),
+                            span,
+                        ),
+                    };
+                    let const_val = self.make_constant_for_ty(&underlying, value);
+                    self.build_cmp(CmpOp::Eq, scrut, MIRValue::Constant(const_val), span.clone());
+                    Some(self.get_last_val(span))
+                } else {
+                    // Variant arm: compare the tag against the arm's tag
+                    // constant.
+                    let struct_decl = self.get_struct_decl(type_name, span.clone());
+                    let arm_info =
+                        self.get_arm_info(&struct_decl.struct_id, member.clone(), span.clone());
+                    let tag_ty = struct_decl.fields[0].1.clone();
+                    let tag_reg = match tag_value {
+                        Some(v) => v.clone(),
+                        None => self.report_ice(
+                            "Variant pattern requires a variant scrutinee".to_string(),
+                            span,
+                        ),
+                    };
+                    let tag_constant =
+                        self.make_constant_for_ty(&tag_ty, arm_info.tag as isize);
+                    self.build_cmp(CmpOp::Eq, tag_reg, MIRValue::Constant(tag_constant), span.clone());
+                    Some(self.get_last_val(span))
+                }
+            }
+            HirPattern::Or(alts) => {
+                let mut cond: Option<MIRValue> = None;
+                for alt in alts {
+                    let alt_cond =
+                        self.pattern_condition(alt, scrut_value, tag_value, span.clone());
+                    if let Some(alt_cond) = alt_cond {
+                        cond = Some(match cond {
+                            None => alt_cond,
+                            Some(prev) => {
+                                self.build_binary(
+                                    MIROps::Or,
+                                    prev,
+                                    alt_cond,
+                                    Self::bool_ty(),
+                                    span.clone(),
+                                );
+                                self.get_last_val(span.clone())
+                            }
+                        });
+                    }
+                }
+                cond
+            }
+            _ => None,
+        }
+    }
+
+    /// Declares every binding captured by `pattern` rooted at `base_ptr` in the
+    /// current scope.
+    fn bind_pattern_into_scope(
+        &mut self,
+        pattern: &HirPattern,
+        base_ptr: MIRValue,
+        base_ty: MIRTy,
+        span: Option<Span>,
+    ) {
+        match pattern {
+            HirPattern::Binding { name, .. } => {
+                self.declare_var(name.clone(), base_ptr);
+            }
+            HirPattern::Wildcard | HirPattern::Literal(_) => {}
+            HirPattern::Or(alts) => {
+                // Bindings inside `Or` alternatives are rejected by the type
+                // checker; recurse purely to keep the walk uniform.
+                for alt in alts {
+                    self.bind_pattern_into_scope(alt, base_ptr.clone(), base_ty.clone(), span.clone());
+                }
+            }
+            HirPattern::Tuple { elements, .. } => {
+                let elem_tys = match &base_ty.kind {
+                    MIRTykind::Tuple(members) => members.clone(),
+                    _ => self.report_ice("Tuple pattern on non-tuple type".to_string(), span),
+                };
+                let zero = MIRValue::Constant(ConstantValue::UInt(0));
+                for (i, element) in elements.iter().enumerate() {
+                    let elem_ty = elem_tys[i].clone();
+                    let idx = MIRValue::Constant(ConstantValue::UInt(i));
+                    self.build_gep(
+                        base_ptr.clone(),
+                        vec![zero.clone(), idx],
+                        base_ty.clone(),
+                        span.clone(),
+                    );
+                    let elem_ptr = self.get_last_val(span.clone());
+                    self.bind_pattern_into_scope(element, elem_ptr, elem_ty, span.clone());
+                }
+            }
+            HirPattern::StructPattern {
+                type_name, fields, ..
+            } => {
+                let struct_decl = self.get_struct_decl(type_name, span.clone());
+                let zero = MIRValue::Constant(ConstantValue::UInt(0));
+                for field in fields {
+                    let Some(field_index) =
+                        struct_decl.fields.iter().position(|(n, _)| n == &field.name)
+                    else {
+                        self.report_ice(
+                            format!(
+                                "Field '{}' not found in struct '{}'; should have been caught by type checker",
+                                field.name, type_name
+                            ),
+                            span.clone(),
+                        );
+                    };
+                    let field_ty = struct_decl.fields[field_index].1.clone();
+                    let idx = MIRValue::Constant(ConstantValue::UInt(field_index));
+                    self.build_gep(
+                        base_ptr.clone(),
+                        vec![zero.clone(), idx],
+                        base_ty.clone(),
+                        span.clone(),
+                    );
+                    let field_ptr = self.get_last_val(span.clone());
+                    self.bind_pattern_into_scope(&field.pattern, field_ptr, field_ty, span.clone());
+                }
+            }
+            HirPattern::Path {
+                type_name,
+                member,
+                payloads,
+                ..
+            } => {
+                // Variant arm payload destructuring: bind each payload field to
+                // its byte-offset address inside the tag+payload struct.
+                if payloads.is_empty() {
+                    return;
+                }
+                let struct_decl = self.get_struct_decl(type_name, span.clone());
+                let arm_info =
+                    self.get_arm_info(&struct_decl.struct_id, member.clone(), span.clone());
+
+                let zero = MIRValue::Constant(ConstantValue::UInt(0));
+                let one = MIRValue::Constant(ConstantValue::UInt(1));
+                self.build_gep(
+                    base_ptr.clone(),
+                    vec![zero.clone(), one],
+                    base_ty.clone(),
+                    span.clone(),
+                );
+                let raw_payload = self.get_last_val(span.clone());
+                let u8_ty = MIRTy {
+                    kind: MIRTykind::U8,
+                    size: 1,
+                    align: 1,
+                };
+                let ptr_ty = self.ptr_type();
+
+                let mut byte_offset = 0;
+                for (i, payload) in payloads.iter().enumerate() {
+                    let payload_ty = arm_info.payload_tys[i].clone();
+                    byte_offset += Self::padding_for(byte_offset, payload_ty.align);
+
+                    let offset_val = MIRValue::Constant(ConstantValue::UInt(byte_offset));
+                    self.build_gep_single(
+                        raw_payload.clone(),
+                        offset_val,
+                        u8_ty.clone(),
+                        span.clone(),
+                    );
+                    let field_byte_ptr = self.get_last_val(span.clone());
+
+                    let typed_ptr = self.new_register(ptr_ty.clone(), Some("payload_ptr"));
+                    let bitcast = MIRInstruction::BitCast {
+                        dest: typed_ptr.clone(),
+                        src: field_byte_ptr,
+                        to_ty: ptr_ty.clone(),
+                    };
+                    self.add_instruction(bitcast, span.clone());
+
+                    self.bind_pattern_into_scope(payload, typed_ptr, payload_ty.clone(), span.clone());
+                    byte_offset += payload_ty.size;
+                }
+            }
+        }
+    }
+
+    /// Resolves an address for the scrutinee expression. Lvalues resolve
+    /// directly, anything else is evaluated and spilled to a temporary.
+    fn match_scrutinee_ptr(&mut self, scrutinee: &HirExpr) -> MIRValue {
+        let span = Some(scrutinee.span.clone());
+        match &scrutinee.kind {
+            HirExprKind::Identifier(_)
+            | HirExprKind::Index { .. }
+            | HirExprKind::Binary(_, HirBinaryOp::Access, _)
+            | HirExprKind::Unary(HirUnaryOp::Dereference, _) => self.lookup_ptr(scrutinee),
+            _ => {
+                let ty = self.get_type(&scrutinee.hir_id);
+                let tmp = self.new_register(ty.clone(), None);
+                self.build_alloca(tmp.clone(), ty.clone(), span.clone());
+                let val = self.expr_value(scrutinee);
+                self.build_store(tmp.clone(), val, ty.clone(), span.clone());
+                tmp
+            }
+        }
+    }
+
+    /// Loads the tag of a variant value (field 0 of the tag+payload struct).
+    fn load_variant_tag(
+        &mut self,
+        variant_name: &str,
+        scr_ptr: MIRValue,
+        scrub_ty: MIRTy,
+        span: Option<Span>,
+    ) -> MIRValue {
+        let struct_decl = self.get_struct_decl(&variant_name.to_string(), span.clone());
+        let tag_ty = struct_decl.fields[0].1.clone();
+        let zero = MIRValue::Constant(ConstantValue::UInt(0));
+        self.build_gep(
+            scr_ptr,
+            vec![zero.clone(), zero.clone()],
+            scrub_ty,
+            span.clone(),
+        );
+        let tag_ptr = self.get_last_val(span.clone());
+        let tag_reg = self.new_register(tag_ty.clone(), None);
+        self.build_load(tag_reg.clone(), tag_ptr, tag_ty, span.clone());
+        tag_reg
+    }
+
+    /// Compiles a block expression, returning the value of its trailing
+    /// expression statement (if any) and leaving it in `last_value`.
+    fn block_codegen(&mut self, expr: &HirExpr) -> Option<MIRValue> {
+        if let HirExprKind::Block(stmts) = &expr.kind {
+            self.push_scope();
+            let mut last: Option<MIRValue> = None;
+            for stmt in stmts {
+                if let HirStmtKind::HirExpr(inner) = &stmt.kind {
+                    last = Some(self.expr_value(inner));
+                } else {
+                    self.build_stmt(stmt);
+                }
+            }
+            self.pop_scope();
+            self.last_value = last.clone();
+            last
+        } else {
+            self.report_ice("Expected a block expression".to_string(), Some(expr.span.clone()));
+        }
+    }
+
+    /// Value produced by a match arm body (block or plain expression).
+    fn arm_body_value(&mut self, body: &HirExpr) -> Option<MIRValue> {
+        match &body.kind {
+            HirExprKind::Block(_) => self.block_codegen(body),
+            _ => Some(self.expr_value(body)),
         }
     }
 
@@ -455,6 +956,7 @@ impl<'a> MIRBuilder<'a> {
             self.current_dollar_name = Some(scope_fn_name.clone());
 
             // Set up the inner scope and allocate local memory for parameters
+            self.push_dollar_boundary();
             self.push_scope();
 
             for (name, param_ty) in param_bindings {
@@ -489,6 +991,7 @@ impl<'a> MIRBuilder<'a> {
             }
 
             self.pop_scope();
+            self.pop_dollar_boundary();
 
             //  Restore context back to parent
             self.current_func = parent_func;
@@ -963,7 +1466,10 @@ impl<'a> MIRBuilder<'a> {
                 self.literal_value(expr)
             }
             HirExprKind::Identifier(name) => {
-                if let Some(val) = self.lookup_var(name).cloned() {
+                if let Some((index, val)) =
+                    self.lookup_var_with_index(name).map(|(i, v)| (i, v.clone()))
+                {
+                    self.guard_dollar_capture(name, index, &val, span.clone());
                     if matches!(val, MIRValue::Constant(_)) {
                         return val;
                     }
@@ -1050,6 +1556,19 @@ impl<'a> MIRBuilder<'a> {
 
             HirExprKind::Instantiation { .. } => self.build_struct_init(expr),
             HirExprKind::TupleInst { .. } => self.build_tuple_init(expr),
+
+            HirExprKind::Match { .. } => {
+                self.build_match(expr);
+                self.get_last_val(Some(expr.span.clone()))
+            }
+
+            HirExprKind::Block(_) => match self.block_codegen(expr) {
+                Some(val) => val,
+                None => self.report_ice(
+                    "Block expression produced no value".to_string(),
+                    Some(expr.span.clone()),
+                ),
+            },
 
             _ => {
                 self.report_ice(

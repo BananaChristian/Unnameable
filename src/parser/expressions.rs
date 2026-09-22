@@ -1,5 +1,8 @@
 use crate::{
-    ast::{BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Precedence, UnaryOp},
+    ast::{
+        BinaryOp, Expr, ExprKind, InstParam, Literal, MatchArm, Pattern, PostfixOp, Precedence,
+        StructPatternField, UnaryOp,
+    },
     diagnostics::Span,
     lexer::{TType, token::Token},
     parser::Parser,
@@ -28,6 +31,60 @@ impl Parser {
             left = self.parse_binary(left)?;
         }
         Some(left)
+    }
+
+    pub fn parse_body(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        let mut stmts = Vec::new();
+        self.expect_token(TType::LBrace)?;
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            if let Some(stmt) = self.parse_stmt() {
+                stmts.push(stmt);
+            } else {
+                match self.current_token()?.token_type {
+                    TType::Rbrace | TType::End => break,
+                    _ => {
+                        self.synchronize();
+                    }
+                }
+            }
+        }
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
+        let span = Span { start, end };
+        Some(Expr::new(ExprKind::Block(stmts), span))
+    }
+
+    pub fn parse_struct_body(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        let mut fields = Vec::new();
+
+        self.expect_token(TType::LBrace)?;
+
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            if let Some(param) = self.parse_param_decl(false) {
+                fields.push(param);
+            } else {
+                let token = self.current_token()?.clone();
+                self.report("Expected field declaration".to_string(), Some(token.span));
+                self.advance(); // Skip
+            }
+
+            // Optional comma
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+            }
+        }
+
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
+        let span = Span { start, end };
+
+        Some(Expr::new(ExprKind::Block(fields), span))
     }
 
     fn parse_postfix(&mut self, left: Expr) -> Option<Expr> {
@@ -174,6 +231,8 @@ impl Parser {
             TType::SizeOf => self.parse_sizeof_expr(),
             TType::Lparen => self.parse_grouping(),
             TType::Unwrap => self.parse_unwrap_expr(),
+            TType::Match => self.parse_match(),
+            TType::LBrace => self.parse_body(),
 
             TType::Minus
             | TType::Bang
@@ -370,6 +429,226 @@ impl Parser {
             ExprKind::SizeOfExpr(Box::new(ty)),
             Span { start, end },
         ))
+    }
+
+    fn parse_match(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Match)?;
+        let scrutinee = self.parse_expression(Precedence::Lowest)?;
+        let mut arms = Vec::new();
+        self.expect_token(TType::LBrace)?;
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            let arm = self.parse_arm()?;
+            arms.push(arm);
+        }
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
+        let span = Span { start, end };
+
+        Some(Expr::new(
+            ExprKind::Match {
+                scrutinee: Box::new(scrutinee),
+                arms,
+            },
+            span,
+        ))
+    }
+
+    fn parse_arm(&mut self) -> Option<MatchArm> {
+        let start = self.current_token()?.span.start;
+
+        let pattern = self.parse_pattern()?;
+
+        let guard = if self.current_token()?.token_type == TType::If {
+            self.advance();
+            Some(self.parse_expression(Precedence::Lowest)?)
+        } else {
+            None
+        };
+
+        self.expect_token(TType::FatArrow)?;
+
+        let body = self.parse_expression(Precedence::Lowest)?;
+        let end = self.current_token()?.span.end;
+
+        if self.current_token()?.token_type == TType::Comma {
+            self.advance();
+        }
+
+        Some(MatchArm {
+            pattern,
+            guard,
+            body: Box::new(body),
+            span: Span { start, end },
+        })
+    }
+
+    fn parse_pattern(&mut self) -> Option<Pattern> {
+        let mut alts = Vec::new();
+        loop {
+            alts.push(self.parse_single_pattern()?);
+            if self.current_token()?.token_type == TType::Stick {
+                self.advance();
+                continue;
+            }
+            break;
+        }
+
+        if alts.len() == 1 {
+            Some(alts.pop().unwrap())
+        } else {
+            Some(Pattern::Or(alts))
+        }
+    }
+
+    fn parse_single_pattern(&mut self) -> Option<Pattern> {
+        let token = self.current_token()?.clone();
+
+        // Wildcard: bare `_` identifier
+        if token.token_type == TType::Identifier && token.lexeme == "_" {
+            self.advance();
+            return Some(Pattern::Wildcard);
+        }
+
+        match token.token_type {
+            TType::Dot => self.parse_struct_pattern(),
+            TType::Lparen => self.parse_tuple_pattern(),
+            TType::Identifier => self.parse_path_or_binding_pattern(),
+            _ if Expr::is_literal(&token) => {
+                let expr = self.parse_expression(Precedence::Lowest)?;
+                Some(Pattern::Literal(Box::new(expr)))
+            }
+            _ => {
+                self.report("Expected a pattern".to_string(), Some(token.span));
+                None
+            }
+        }
+    }
+
+    fn parse_ident_lexeme(&mut self) -> Option<String> {
+        let token = self.current_token()?.clone();
+        self.expect_token(TType::Identifier)?;
+        Some(token.lexeme.clone())
+    }
+
+    fn parse_path_or_binding_pattern(&mut self) -> Option<Pattern> {
+        let start = self.current_token()?.span.start;
+        let type_name = self.parse_ident_lexeme()?;
+
+        if self.current_token()?.token_type == TType::Dot {
+            self.advance();
+            let member = self.parse_ident_lexeme()?;
+            let mut payloads = Vec::new();
+
+            if self.current_token()?.token_type == TType::Lparen {
+                self.expect_token(TType::Lparen)?;
+                while self.current_token()?.token_type != TType::Rparen
+                    && self.current_token()?.token_type != TType::End
+                {
+                    payloads.push(self.parse_pattern()?);
+                    if self.current_token()?.token_type == TType::Comma {
+                        self.advance();
+                        if self.current_token()?.token_type == TType::Rparen {
+                            break;
+                        }
+                    }
+                }
+                self.expect_token(TType::Rparen)?;
+            }
+
+            let end = self.current_token()?.span.end;
+            return Some(Pattern::Path {
+                type_name,
+                member,
+                payloads,
+                span: Span { start, end },
+            });
+        }
+
+        let end = self.current_token()?.span.end;
+        Some(Pattern::Binding {
+            name: type_name,
+            span: Span { start, end },
+        })
+    }
+
+    fn parse_tuple_pattern(&mut self) -> Option<Pattern> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Lparen)?;
+        let mut elements = Vec::new();
+        while self.current_token()?.token_type != TType::Rparen
+            && self.current_token()?.token_type != TType::End
+        {
+            elements.push(self.parse_pattern()?);
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+                if self.current_token()?.token_type == TType::Rparen {
+                    break;
+                }
+            }
+        }
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rparen)?;
+        Some(Pattern::Tuple {
+            elements,
+            span: Span { start, end },
+        })
+    }
+
+    fn parse_struct_pattern(&mut self) -> Option<Pattern> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Dot)?;
+        let type_name = self.parse_ident_lexeme()?;
+        self.expect_token(TType::LBrace)?;
+
+        let mut fields = Vec::new();
+        let mut rest = false;
+
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            if self.current_token()?.token_type == TType::DotDot {
+                self.advance();
+                rest = true;
+                if self.current_token()?.token_type == TType::Comma {
+                    self.advance();
+                }
+                continue;
+            }
+
+            let field_start = self.current_token()?.span.start;
+            self.expect_token(TType::Dot)?;
+            let name = self.parse_ident_lexeme()?;
+            self.expect_token(TType::Assign)?;
+            let pattern = self.parse_pattern()?;
+            let field_end = self.current_token()?.span.end;
+            fields.push(StructPatternField {
+                name,
+                pattern,
+                span: Span {
+                    start: field_start,
+                    end: field_end,
+                },
+            });
+
+            if self.current_token()?.token_type == TType::Comma {
+                self.advance();
+                if self.current_token()?.token_type == TType::Rbrace {
+                    break;
+                }
+            }
+        }
+
+        let end = self.current_token()?.span.end;
+        self.expect_token(TType::Rbrace)?;
+        Some(Pattern::StructPattern {
+            type_name,
+            fields,
+            rest,
+            span: Span { start, end },
+        })
     }
 
     fn parse_unwrap_expr(&mut self) -> Option<Expr> {

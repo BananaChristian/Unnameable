@@ -4,7 +4,8 @@ mod statements;
 mod types;
 
 pub use expressions::{
-    HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirUnaryOp,
+    HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirMatchArm, HirPattern,
+    HirPostfixOp, HirStructPatternField, HirUnaryOp,
 };
 pub use printer::HirPrinter;
 pub use statements::{

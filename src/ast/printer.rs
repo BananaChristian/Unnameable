@@ -1,8 +1,7 @@
 use core::fmt;
 
 use crate::ast::{
-    Elif, EnumMember, Expr, ExprKind, InstParam, Qualifier, QualifierKind, Stmt, StmtKind, Type,
-    TypeKind, VariantMember,
+    Elif, EnumMember, Expr, ExprKind, InstParam, MatchArm, Pattern, Qualifier, QualifierKind, Stmt, StmtKind, Type, TypeKind, VariantMember,
 };
 
 /// Pretty printer for AST nodes that renders human-readable tree structures.
@@ -116,14 +115,7 @@ impl AstPrinter {
                     }
                 });
             }
-            StmtKind::Block { content } => {
-                self.write_line("Block");
-                self.with_indent(|p| {
-                    for stmt in content {
-                        p.fmt_stmt(stmt);
-                    }
-                });
-            }
+
             StmtKind::FunctionDef {
                 qualifiers,
                 name,
@@ -152,7 +144,7 @@ impl AstPrinter {
                     }
 
                     p.write_line("Body:");
-                    p.with_indent(|p2| p2.fmt_stmt(body));
+                    p.with_indent(|p2| p2.fmt_expr(body));
                 });
             }
             StmtKind::FunctionDecl {
@@ -204,7 +196,7 @@ impl AstPrinter {
                     }
 
                     p.write_line("Fields:");
-                    p.with_indent(|p2| p2.fmt_stmt(contents));
+                    p.with_indent(|p2| p2.fmt_expr(contents));
                 });
             }
             StmtKind::SealStmt {
@@ -260,7 +252,7 @@ impl AstPrinter {
                     p.with_indent(|p2| p2.fmt_expr(condition));
 
                     p.write_line("Then:");
-                    p.with_indent(|p2| p2.fmt_stmt(body));
+                    p.with_indent(|p2| p2.fmt_expr(body));
 
                     for elif in elifs {
                         p.fmt_elif(elif);
@@ -268,7 +260,7 @@ impl AstPrinter {
 
                     if let Some(el) = else_body {
                         p.write_line("Else:");
-                        p.with_indent(|p2| p2.fmt_stmt(el));
+                        p.with_indent(|p2| p2.fmt_expr(el));
                     }
                 });
             }
@@ -283,7 +275,7 @@ impl AstPrinter {
                     });
 
                     p.write_line("Body:");
-                    p.with_indent(|p2| p2.fmt_stmt(body));
+                    p.with_indent(|p2| p2.fmt_expr(body));
                 });
             }
             StmtKind::ContractBlock {
@@ -312,7 +304,7 @@ impl AstPrinter {
                     p.with_indent(|p2| p2.fmt_expr(condition));
 
                     p.write_line("Body:");
-                    p.with_indent(|p2| p2.fmt_stmt(body));
+                    p.with_indent(|p2| p2.fmt_expr(body));
                 });
             }
             StmtKind::ForStmt {
@@ -333,7 +325,7 @@ impl AstPrinter {
                     p.with_indent(|p2| p2.fmt_expr(update));
 
                     p.write_line("Body:");
-                    p.with_indent(|p2| p2.fmt_stmt(body));
+                    p.with_indent(|p2| p2.fmt_expr(body));
                 });
             }
             StmtKind::EachStmt {
@@ -350,7 +342,7 @@ impl AstPrinter {
                     p.with_indent(|p2| p2.fmt_expr(collection));
 
                     p.write_line("Body:");
-                    p.with_indent(|p2| p2.fmt_stmt(body));
+                    p.with_indent(|p2| p2.fmt_expr(body));
                 });
             }
             StmtKind::EnumStmt {
@@ -417,7 +409,7 @@ impl AstPrinter {
             p.with_indent(|p2| p2.fmt_expr(&elif.condition));
 
             p.write_line("Body:");
-            p.with_indent(|p2| p2.fmt_stmt(&elif.body));
+            p.with_indent(|p2| p2.fmt_expr(&elif.body));
         });
     }
 
@@ -451,8 +443,84 @@ impl AstPrinter {
         });
     }
 
-    // --- Expression Formatting ---
+    pub fn fmt_match_arm(&mut self, arm: &MatchArm) {
+        self.write_line("Arm");
+        self.with_indent(|p| {
+            p.write_line("Pattern:");
+            p.with_indent(|p2| p2.fmt_pattern(&arm.pattern));
 
+            if let Some(guard) = &arm.guard {
+                p.write_line("Guard:");
+                p.with_indent(|p2| p2.fmt_expr(guard));
+            }
+
+            p.write_line("Body:");
+            p.with_indent(|p2| p2.fmt_expr(&arm.body));
+        });
+    }
+
+    pub fn fmt_pattern(&mut self, pat: &Pattern) {
+        match pat {
+            Pattern::Wildcard => self.write_line("Wildcard(_)"),
+            Pattern::Literal(expr) => {
+                self.write_line("PatternLiteral:");
+                self.with_indent(|p| p.fmt_expr(expr));
+            }
+            Pattern::Path {
+                type_name,
+                member,
+                payloads,
+                span,
+            } => {
+                self.write_line(&format!("PatternPath({}::{})", type_name, member));
+                if !payloads.is_empty() {
+                    self.with_indent(|p| {
+                        for pat in payloads {
+                            p.fmt_pattern(pat);
+                        }
+                    });
+                }
+                let _ = span;
+            }
+            Pattern::Binding { name, span } => {
+                self.write_line(&format!("PatternBinding({})", name));
+                let _ = span;
+            }
+            Pattern::Tuple { elements, span } => {
+                self.write_line("PatternTuple");
+                self.with_indent(|p| {
+                    for pat in elements {
+                        p.fmt_pattern(pat);
+                    }
+                });
+                let _ = span;
+            }
+            Pattern::StructPattern {
+                type_name,
+                fields,
+                rest,
+                span,
+            } => {
+                self.write_line(&format!("PatternStruct({}{})", type_name, if *rest { ",.." } else { "" }));
+                self.with_indent(|p| {
+                    for field in fields {
+                        p.write_line(&format!("Field({}):", field.name));
+                        p.with_indent(|p2| p2.fmt_pattern(&field.pattern));
+                    }
+                });
+                let _ = span;
+            }
+            Pattern::Or(pats) => {
+                self.write_line("PatternOr:");
+                self.with_indent(|p| {
+                    for pat in pats {
+                        p.fmt_pattern(pat);
+                    }
+                });
+            }
+        }
+    }
+    // --- Expression Formatting ---
     pub fn fmt_expr(&mut self, expr: &Expr) {
         match &expr.kind {
             ExprKind::Literal(lit) => self.write_line(&format!("Literal({:?})", lit)),
@@ -491,6 +559,22 @@ impl AstPrinter {
                             p2.fmt_type(tp);
                         }
                     });
+                });
+            }
+            ExprKind::Match { scrutinee, arms } => {
+                self.write_line("Match");
+                self.with_indent(|p| {
+                    p.write_line("Scrutinee:");
+                    p.with_indent(|p2| p2.fmt_expr(scrutinee));
+
+                    if !arms.is_empty() {
+                        p.write_line("Arms:");
+                        p.with_indent(|p2| {
+                            for arm in arms {
+                                p2.fmt_match_arm(arm);
+                            }
+                        });
+                    }
                 });
             }
             ExprKind::Call(callee, args) => {
@@ -562,13 +646,21 @@ impl AstPrinter {
                     });
                 });
             }
+            ExprKind::Block(content) => {
+                self.write_line("Block");
+                self.with_indent(|p| {
+                    for stmt in content {
+                        p.fmt_stmt(stmt);
+                    }
+                });
+            }
             ExprKind::DollarScope { params, body } => {
                 self.write_line("$$");
                 self.write_line("captures:");
                 for param in params {
                     self.fmt_expr(param);
                 }
-                self.fmt_stmt(body);
+                self.fmt_expr(body);
             }
             ExprKind::Index { target, index } => {
                 self.write_line("IndexAccess");

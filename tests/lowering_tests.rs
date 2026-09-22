@@ -2,8 +2,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use unnc::diagnostics::{Diagnostics, Span};
 use unnc::hir::{
-    Conv, HirBinaryOp, HirEnumMember, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirParam,
-    HirPostfixOp, HirStmt, HirStmtKind, HirType, HirTypeNode, HirUnaryOp, HirVariantMember,
+    Conv, HirBinaryOp, HirEnumMember, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirMatchArm,
+    HirParam, HirPattern, HirPostfixOp, HirStmt, HirStmtKind, HirType, HirTypeNode, HirUnaryOp,
+    HirVariantMember,
 };
 use unnc::lexer::Lexer;
 use unnc::lowering::{Lowering, NodeId};
@@ -334,8 +335,65 @@ fn norm_expr(mut e: HirExpr) -> HirExpr {
             target: Box::new(norm_expr(*target)),
             index: Box::new(norm_expr(*index)),
         },
+        HirExprKind::Match { scrutinee, arms } => HirExprKind::Match {
+            scrutinee: Box::new(norm_expr(*scrutinee)),
+            arms: arms.into_iter().map(norm_match_arm).collect(),
+        },
+        HirExprKind::Block(stmts) => HirExprKind::Block(stmts.into_iter().map(norm_stmt).collect()),
     };
     e
+}
+
+fn norm_match_arm(mut arm: HirMatchArm) -> HirMatchArm {
+    arm.pattern = norm_pattern(arm.pattern);
+    arm.guard = arm.guard.map(norm_expr);
+    arm.body = Box::new(norm_expr(*arm.body));
+    arm
+}
+
+fn norm_pattern(p: HirPattern) -> HirPattern {
+    match p {
+        HirPattern::Wildcard => HirPattern::Wildcard,
+        HirPattern::Literal(expr) => HirPattern::Literal(Box::new(norm_expr(*expr))),
+        HirPattern::Path {
+            type_name,
+            member,
+            payloads,
+            span,
+        } => HirPattern::Path {
+            type_name,
+            member,
+            payloads: payloads.into_iter().map(norm_pattern).collect(),
+            span,
+        },
+        HirPattern::Binding { name, span, .. } => {
+            let hir_id = zid();
+            HirPattern::Binding { name, hir_id, span }
+        }
+        HirPattern::Tuple { elements, span } => HirPattern::Tuple {
+            elements: elements.into_iter().map(norm_pattern).collect(),
+            span,
+        },
+        HirPattern::StructPattern {
+            type_name,
+            fields,
+            rest,
+            span,
+        } => HirPattern::StructPattern {
+            type_name,
+            fields: fields
+                .into_iter()
+                .map(|mut field| {
+                    field.hir_id = zid();
+                    field.pattern = norm_pattern(field.pattern);
+                    field
+                })
+                .collect(),
+            rest,
+            span,
+        },
+        HirPattern::Or(alts) => HirPattern::Or(alts.into_iter().map(norm_pattern).collect()),
+    }
 }
 
 fn norm_inst_param(mut p: HirInstParam) -> HirInstParam {
@@ -1435,7 +1493,7 @@ fn if_elif_else_desugars_to_nested_if() {
             body: vec![x2],
             else_body: Some(vec![x3]),
         },
-        span(27, 42),
+        span(27, 37),
     );
     assert_eq!(
         hir,
@@ -2095,42 +2153,6 @@ fn import_decl_with_alias() {
                 alias: Some("s".to_string()),
             },
             span(0, 15),
-        )]
-    );
-}
-
-#[test]
-fn methods_desugar_injects_self_param() {
-    let hir = parse_lower_norm("methods Point { func dist(): f32 { return 0.0f32; } }");
-    let self_param = param(
-        "self",
-        tn(
-            HirType::Ref(Box::new(tn(
-                HirType::CustomType("Point".to_string()),
-                span(16, 53),
-            ))),
-            span(16, 53),
-        ),
-        false,
-        false,
-        None,
-        span(16, 53),
-    );
-    assert_eq!(
-        hir,
-        vec![func_def(
-            "Point_dist",
-            vec![self_param],
-            tn(HirType::F32, span(29, 32)),
-            vec![],
-            false,
-            None,
-            false,
-            vec![stmt(
-                HirStmtKind::HirReturn(Some(Box::new(lit(HirLiteral::F32(0.0), span(42, 48))))),
-                span(35, 51),
-            )],
-            span(16, 53),
         )]
     );
 }

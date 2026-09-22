@@ -218,7 +218,7 @@ fn all_keywords_map_to_keyword_tokens() {
         "mut const var heap func return continue break true false if elif while for \
          each in else shr shl and or xor not i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 \
          isize usize bool f32 f64 str char8 char16 char32 ptr ref arr seal methods \
-         generics contract sizeof enum variant expose null unwrap bitcast cast alias as import",
+         generics contract sizeof enum variant expose null unwrap bitcast cast alias as import match",
         &[
             (TType::Mut, "mut"),
             (TType::Const, "const"),
@@ -266,6 +266,7 @@ fn all_keywords_map_to_keyword_tokens() {
             (TType::Ref, "ref"),
             (TType::Arr, "arr"),
             (TType::Seal, "seal"),
+            (TType::Identifier, "methods"),
             (TType::Generics, "generics"),
             (TType::Contract, "contract"),
             (TType::SizeOf, "sizeof"),
@@ -279,6 +280,7 @@ fn all_keywords_map_to_keyword_tokens() {
             (TType::Alias, "alias"),
             (TType::As, "as"),
             (TType::Import, "import"),
+            (TType::Match, "match"),
             (TType::End, ""),
         ],
     );

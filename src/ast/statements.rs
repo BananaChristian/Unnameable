@@ -7,7 +7,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct Elif {
     pub condition: Box<Expr>,
-    pub body: Box<Stmt>,
+    pub body: Box<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,15 +42,12 @@ pub enum StmtKind {
         type_annotation: Type,
         def: Option<Box<Expr>>,
     },
-    Block {
-        content: Vec<Stmt>,
-    },
     FunctionDef {
         qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         params: Vec<Stmt>,
         type_annotation: Option<Type>,
-        body: Box<Stmt>,
+        body: Box<Expr>,
     },
     FunctionDecl {
         qualifiers: Vec<Qualifier>,
@@ -62,7 +59,7 @@ pub enum StmtKind {
         qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         contracts: Vec<Type>,
-        contents: Box<Stmt>,
+        contents: Box<Expr>,
     },
     SealStmt {
         qualifiers: Vec<Qualifier>,
@@ -79,13 +76,13 @@ pub enum StmtKind {
     },
     IfStmt {
         condition: Box<Expr>,
-        body: Box<Stmt>,
+        body: Box<Expr>,
         elifs: Vec<Elif>,
-        else_body: Option<Box<Stmt>>,
+        else_body: Option<Box<Expr>>,
     },
     GenericBlock {
         params: Vec<Type>,
-        body: Box<Stmt>,
+        body: Box<Expr>,
     },
     ContractBlock {
         qualifiers: Vec<Qualifier>,
@@ -94,18 +91,18 @@ pub enum StmtKind {
     },
     WhileStmt {
         condition: Box<Expr>,
-        body: Box<Stmt>,
+        body: Box<Expr>,
     },
     ForStmt {
         init: Box<Stmt>,
         condition: Box<Expr>,
         update: Box<Expr>,
-        body: Box<Stmt>,
+        body: Box<Expr>,
     },
     EachStmt {
         item: Box<Expr>,
         collection: Box<Expr>,
-        body: Box<Stmt>,
+        body: Box<Expr>,
     },
     EnumStmt {
         qualifiers: Vec<Qualifier>,

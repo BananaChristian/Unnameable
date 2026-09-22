@@ -1,5 +1,5 @@
 use crate::{
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirType, HirTypeNode},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirPattern, HirType, HirTypeNode},
     semantics::{resolver::Resolver, semantics::NameTable},
 };
 
@@ -117,7 +117,58 @@ impl<'a> Resolver<'a> {
                 }
                 self.pop_scope();
             }
+            HirExprKind::Match { scrutinee, arms } => {
+                self.resolve_expr(scrutinee, table);
+                for arm in arms {
+                    self.push_scope();
+                    self.resolve_pattern(&arm.pattern, table);
+                    if let Some(guard) = &arm.guard {
+                        self.resolve_expr(guard, table);
+                    }
+                    self.resolve_expr(&arm.body, table);
+                    self.pop_scope();
+                }
+            }
+            HirExprKind::Block(stmts) => {
+                self.push_scope();
+                for stmt in stmts {
+                    self.resolve_stmt(stmt, table);
+                }
+                self.pop_scope();
+            }
             _ => (),
+        }
+    }
+
+    pub fn resolve_pattern(&mut self, pattern: &HirPattern, table: &mut NameTable) {
+        match pattern {
+            HirPattern::Wildcard => {}
+            HirPattern::Literal(expr) => self.resolve_expr(expr, table),
+            HirPattern::Binding { name, hir_id, span } => {
+                self.declare(name.clone(), *hir_id, span.clone());
+            }
+            HirPattern::Path { payloads, .. } => {
+                for payload in payloads {
+                    self.resolve_pattern(payload, table);
+                }
+            }
+            HirPattern::Tuple { elements, .. } => {
+                for element in elements {
+                    self.resolve_pattern(element, table);
+                }
+            }
+            HirPattern::StructPattern { fields, .. } => {
+                for field in fields {
+                    self.resolve_pattern(&field.pattern, table);
+                }
+            }
+            HirPattern::Or(alts) => {
+                // Bindings inside `Or` alternatives are rejected by the type
+                // checker; recurse so literal sub-patterns are still walked.
+                for alt in alts {
+                    self.resolve_pattern(alt, table);
+                }
+            }
         }
     }
 }

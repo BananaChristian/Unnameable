@@ -26,9 +26,11 @@ pub enum TType {
     Lt,             //<
     Gte,            //>=
     Lte,            //<=
+    FatArrow,       //=>
     Star,           // *
     Slash,          // /
     Dot,            // .
+    DotDot,         // ..
     Percentage,     // %
     Bang,           // !
     Tilde,          //~
@@ -111,6 +113,7 @@ pub enum TType {
     Cast,
     As,
     Import,
+    Match,
 
     I8Key,
     U8Key,

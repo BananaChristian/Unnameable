@@ -1,11 +1,18 @@
 mod common;
 
+use std::{cell::RefCell, rc::Rc};
+
 use common::analyze;
+use unnc::bc_builder::BytecodeBuilder;
 use unnc::const_and_mut_validator::Validator;
+use unnc::diagnostics::Diagnostics;
+use unnc::dollar_folder::Folder;
+use unnc::dollar_verifier::DollarVerifier;
 use unnc::hir::{HirExpr, HirExprKind, HirStmt, HirStmtKind, HirType};
 use unnc::indexer::NodeIndex;
-use unnc::mir::MIRBuilder;
+use unnc::mir::{ConstantValue, MIRBuilder, MIRInstruction, MIRModule, MIRValue};
 use unnc::target::TargetSpec;
+use unnc::vm::{EvalResultTable, VMValue, VM};
 
 /// Runs the pipeline up through monomorphization and returns the
 /// monomorphized HIR tree plus the instance backlog recorded during type
@@ -230,6 +237,145 @@ fn mono_e2e(src: &str) -> unnc::mir::MIRModule {
         );
     }
     mir_module
+}
+
+/// Runs the front end down through MIR construction. Returns `Err` with the
+/// reported messages if any stage (including MIR construction) corrupted.
+fn mir_build_checked(src: &str) -> Result<(MIRModule, Rc<RefCell<Diagnostics>>), Vec<String>> {
+    let (mut semantics, diag) = analyze(src, &[]);
+    if semantics.corrupted {
+        return Err(common::messages(&diag));
+    }
+
+    let monomorphized_hir = semantics.generate_monormophizer_hir();
+    let hir_index = NodeIndex::build(&monomorphized_hir);
+
+    if semantics.verify_contracts(&hir_index, Rc::clone(&diag)) {
+        return Err(common::messages(&diag));
+    }
+    if semantics.check_control_flow(&hir_index, Rc::clone(&diag)) {
+        return Err(common::messages(&diag));
+    }
+
+    let mut validator = Validator::new(Rc::clone(&diag));
+    validator.run(&monomorphized_hir);
+    if validator.corrupted {
+        return Err(common::messages(&diag));
+    }
+
+    let target: &'static TargetSpec = Box::leak(Box::new(TargetSpec::new(None, None, None, None)));
+    let mut mir_builder = MIRBuilder::new(
+        &hir_index,
+        &semantics.ctxt.types,
+        target,
+        Rc::clone(&diag),
+        "test".to_string(),
+    );
+    let mir_module = mir_builder.build_module();
+    if mir_builder.corrupted {
+        return Err(common::messages(&diag));
+    }
+    Ok((mir_module, diag))
+}
+
+/// Runs the full Dollar pipeline (dollar verifier -> bytecode -> VM -> folder)
+/// over a successfully-built MIR module and returns the VM's eval table.
+fn dollar_pipeline_run(
+    mir_module: &mut MIRModule,
+    diag: &Rc<RefCell<Diagnostics>>,
+) -> EvalResultTable {
+    let mut dollar_verifier = DollarVerifier::new(mir_module, Rc::clone(diag));
+    dollar_verifier.verify();
+    assert!(
+        !dollar_verifier.corrupted,
+        "dollar verifier failed for: {:?}",
+        common::messages(diag),
+    );
+
+    let mut bc_builder = BytecodeBuilder::new(mir_module, Rc::clone(diag));
+    let bytecode = bc_builder.build();
+
+    let mut vm = VM::new(&bytecode, Rc::clone(diag));
+    let eval_table = vm.execute();
+
+    let mut folder = Folder::new(Rc::clone(diag), mir_module, &eval_table);
+    folder.fold();
+    assert!(
+        !folder.corrupted,
+        "dollar fold failed for: {:?}",
+        common::messages(diag),
+    );
+
+    eval_table
+}
+
+#[test]
+fn dollar_scope_non_const_capture_is_a_clean_error() {
+    let src = "variant Shape {\n  Circle(f32)\n}\n\
+        func dollar_test(s: Shape) {\n\
+        var x := $${ match s{ Shape.Circle(f) => f }; };\n\
+    }";
+    let err = match mir_build_checked(src) {
+        Ok(_) => panic!("runtime capture must be rejected at MIR build"),
+        Err(err) => err,
+    };
+    assert!(
+        err.iter()
+            .any(|m| m.contains("Cannot capture 's' into dollar scope")),
+        "expected capture error, got: {err:?}",
+    );
+}
+
+#[test]
+fn dollar_scope_const_capture_folds_match_arms() {
+    let src = r#"const var k := 7;
+const var j := 99;
+func dollar_a(){
+  var x := $$ |k| {
+    match k{
+      7 => 1
+      _ => 0
+    };
+  };
+}
+func dollar_b(){
+  var y := $$ |j| {
+    match j{
+      7 => 1
+      _ => 0
+    };
+  };
+}
+"#;
+    let (mut mir_module, diag) = mir_build_checked(src)
+        .unwrap_or_else(|err| panic!("const-capture dollar match should build: {err:?}"));
+
+    let eval_table = dollar_pipeline_run(&mut mir_module, &diag);
+    let mut folded: Vec<isize> = eval_table
+        .results
+        .values()
+        .map(|v| match v {
+            VMValue::Int(i) => *i,
+            other => panic!("expected Int eval result, got {other:?}"),
+        })
+        .collect();
+    folded.sort();
+    assert_eq!(folded, vec![0, 1]);
+
+    for func in mir_module.functions.values() {
+        if let Some(body) = &func.body {
+            for block in body.blocks.values() {
+                assert!(
+                    !block
+                        .instructions
+                        .iter()
+                        .any(|i| matches!(i, MIRInstruction::DollarEval { .. })),
+                    "DollarEval should be folded away in '{}'",
+                    func.name,
+                );
+            }
+        }
+    }
 }
 
 fn assert_call_rewritten_to(
@@ -788,4 +934,231 @@ fn uninstantiated_exposed_template_exports_nothing() {
          func main(): i32 { return 0i32; }\n",
     );
     assert!(stub.exposed_symbols.is_empty(), "{:?}", stub.exposed_symbols);
+}
+
+fn constant_to_i128(c: &ConstantValue) -> i128 {
+    match c {
+        ConstantValue::I8(v) => *v as i128,
+        ConstantValue::U8(v) => *v as i128,
+        ConstantValue::I16(v) => *v as i128,
+        ConstantValue::U16(v) => *v as i128,
+        ConstantValue::I32(v) => *v as i128,
+        ConstantValue::U32(v) => *v as i128,
+        ConstantValue::I64(v) => *v as i128,
+        ConstantValue::U64(v) => *v as i128,
+        ConstantValue::Int(v) => *v as i128,
+        ConstantValue::UInt(v) => *v as i128,
+        ConstantValue::I128(v) => *v as i128,
+        ConstantValue::U128(v) => *v as i128,
+        ConstantValue::Bool(v) => *v as i128,
+        other => panic!("unexpected constant {other:?}"),
+    }
+}
+
+/// Every integer constant an arm's test block compares the scrutinee (or its
+/// tag) against, sorted. Non-empty for any match built from the VM grammar.
+fn cmp_constants(f: &unnc::mir::MIRFn) -> Vec<i128> {
+    let body = f.body.as_ref().expect("function must have a body");
+    let mut out = Vec::new();
+    for bb in body.blocks.values() {
+        for inst in &bb.instructions {
+            if let MIRInstruction::Compare { rhs, .. } = inst {
+                if let MIRValue::Constant(c) = rhs {
+                    out.push(constant_to_i128(c));
+                }
+            }
+        }
+    }
+    out.sort_unstable();
+    out
+}
+
+#[test]
+fn end_to_end_scalar_match_builds_mir_with_arm_checks() {
+    // A scalar match with distinct literal arms must compare the scrutinee
+    // against each arm's constant (0 and 5 — non-coincidental), branch per
+    // arm, and merge every arm body into one function-wide result register.
+    let mir = mono_e2e(
+        "func pick(v: i32): i32 { return match v { 0 => 10i32, 5 => 50i32, _ => 0i32 }; }\n\
+         func main(): i32 { var r := pick(3); return 0i32; }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "pick")
+        .expect("pick should reach MIR");
+    assert_eq!(cmp_constants(f), vec![0, 5]);
+    // match + wildcard arm + unreachable block + merge, all distinct
+    let body = f.body.as_ref().unwrap();
+    assert!(body.blocks.len() >= 10, "match should emit test/entry/body blocks");
+}
+
+#[test]
+fn end_to_end_match_with_guard_builds_mir() {
+    // A bind-all arm guarded by a real condition is emitted as a branch: the
+    // first arm tests 0 and the guard tests 3 (both reach MIR as compares).
+    let mir = mono_e2e(
+        "func classify(v: i32): i32 {\n\
+             return match v {\n\
+                 0 => 10i32,\n\
+                 n if n > 3 => n,\n\
+                 _ => 0i32,\n\
+             };\n\
+         }\n\
+         func main(): i32 { var r := classify(7); return 0i32; }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "classify")
+        .expect("classify should reach MIR");
+    assert_eq!(cmp_constants(f), vec![0, 3]);
+    let body = f.body.as_ref().unwrap();
+    assert!(
+        body.blocks
+            .values()
+            .any(|bb| matches!(bb.terminator, unnc::mir::Terminator::Branch { .. })),
+        "guarded arm must branch on the guard condition"
+    );
+}
+
+#[test]
+fn end_to_end_or_pattern_match_builds_mir() {
+    // `1 | 2` lowers to a disjunction of the two arm checks; both constants
+    // must reach MIR compares.
+    let mir = mono_e2e(
+        "func classify(v: i32): i32 { return match v { 1 | 2 => 100i32, _ => 0i32 }; }\n\
+         func main(): i32 { var r := classify(2); return 0i32; }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "classify")
+        .expect("classify should reach MIR");
+    assert_eq!(cmp_constants(f), vec![1, 2]);
+}
+
+#[test]
+fn end_to_end_variant_match_compares_tags_and_binds_payloads() {
+    // Circle gets tag 0, Square tag 1. The match must compare the loaded tag
+    // against both discriminants and bind Circle's payload into the arm scope.
+    let mir = mono_e2e(
+        "variant Shape { Circle(i8, i64), Square }\n\
+         func area(s: Shape): i8 {\n\
+             return match s {\n\
+                 Shape.Circle(r, _) => r,\n\
+                 Shape.Square => 2i8,\n\
+             };\n\
+         }\n\
+         func main(): i32 { var s := Shape.Circle(3, 9); var a := area(s); return 0i32; }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "area")
+        .expect("area should reach MIR");
+    assert_eq!(cmp_constants(f), vec![0, 1]);
+}
+
+#[test]
+fn end_to_end_enum_match_compares_member_values() {
+    // Similarly for enums: RED and GREEN must both be tested against the
+    // scrutinee (their underlying value), and coverage is exhaustive.
+    let mir = mono_e2e(
+        "enum Color: u8 { RED, GREEN }\n\
+         func code(c: Color): i32 {\n\
+             return match c {\n\
+                 Color.RED => 1i32,\n\
+                 Color.GREEN => 2i32,\n\
+             };\n\
+         }\n\
+         func main(): i32 { var c := Color.RED; var k := code(c); return k; }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "code")
+        .expect("code should reach MIR");
+    assert_eq!(cmp_constants(f), vec![0, 1]);
+}
+
+#[test]
+fn end_to_end_tuple_pattern_binds_elements_into_scope() {
+    // A tuple pattern binds element 0 into the arm scope; returning it must
+    // load from the GEP reached into the scrutinee.
+    let mir = mono_e2e(
+        "func first(t: (i32, i64)): i32 {\n\
+             return match t {\n\
+                 (a, _) => a,\n\
+             };\n\
+         }\n\
+         func main(): i32 { var tup := .(7i32, 8i64); var r := first(tup); return 0i32; }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "first")
+        .expect("first should reach MIR");
+    let body = f.body.as_ref().unwrap();
+    assert!(
+        body.blocks
+            .values()
+            .flat_map(|bb| &bb.instructions)
+            .any(|i| matches!(i, MIRInstruction::GetElementPtr { .. })),
+        "binding a tuple element must GEP into the scrutinee"
+    );
+}
+
+#[test]
+fn end_to_end_struct_pattern_binds_named_fields() {
+    // Bind the SECOND field (i64, non-index-0) so an index-off-by-one bug in
+    // the GEP would produce a wrong type/offset and fail the load.
+    let mir = mono_e2e(
+        "struct Point { x: i32, y: i64 }\n\
+         func py(p: Point): i64 {\n\
+             return match p {\n\
+                 .Point{ .x = _, .y = b } => b,\n\
+             };\n\
+         }\n\
+         func main(): i32 { var p := .Point{.x = 1i32, .y = 2i64}; var b := py(p); return 0i32; }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "py")
+        .expect("py should reach MIR");
+    let body = f.body.as_ref().unwrap();
+    assert!(
+        body.blocks
+            .values()
+            .flat_map(|bb| &bb.instructions)
+            .any(|i| matches!(i, MIRInstruction::GetElementPtr { .. })),
+        "binding a struct field must GEP into the scrutinee"
+    );
+}
+
+#[test]
+fn end_to_end_match_as_value_and_block_bodies_build_mir() {
+    // A match used as an rvalue (`var v := match ...`) and block-expression
+    // arm bodies (with a trailing value) must both lower to MIR.
+    let mir = mono_e2e(
+        "func main(): i32 {\n\
+             var v := match 2 { 1 => 100i32, 2 => { var t := 50i32; t * 2; }, _ => 0i32 };\n\
+             return v;\n\
+         }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "main")
+        .expect("main should reach MIR");
+    assert_eq!(cmp_constants(f), vec![1, 2]);
+    let body = f.body.as_ref().unwrap();
+    assert!(
+        body.blocks
+            .values()
+            .flat_map(|bb| &bb.instructions)
+            .any(|i| matches!(i, MIRInstruction::Alloca { .. })),
+        "block arm body's var must alloca"
+    );
 }

@@ -1,6 +1,6 @@
 use crate::{
     const_and_mut_validator::validator::{BindingKind, Validator},
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirPostfixOp, HirUnaryOp},
+    hir::{HirBinaryOp, HirExpr, HirExprKind, HirPattern, HirPostfixOp, HirUnaryOp},
 };
 
 impl Validator {
@@ -57,7 +57,49 @@ impl Validator {
                 }
             }
             HirExprKind::Unwrap(inner) => self.check_expr(inner),
+            HirExprKind::Match { scrutinee, arms } => {
+                self.check_expr(scrutinee);
+                for arm in arms {
+                    self.check_pattern(&arm.pattern);
+                    if let Some(guard) = &arm.guard {
+                        self.check_expr(guard);
+                    }
+                    self.check_expr(&arm.body);
+                }
+            }
+            HirExprKind::Block(body) => {
+                for stmt in body {
+                    self.check_stmt(stmt);
+                }
+            }
             _ => (),
+        }
+    }
+
+    fn check_pattern(&mut self, pattern: &HirPattern) {
+        match pattern {
+            HirPattern::Wildcard | HirPattern::Binding { .. } => {}
+            HirPattern::Literal(expr) => self.check_expr(expr),
+            HirPattern::Path { payloads, .. } => {
+                for payload in payloads {
+                    self.check_pattern(payload);
+                }
+            }
+            HirPattern::Tuple { elements, .. } => {
+                for element in elements {
+                    self.check_pattern(element);
+                }
+            }
+            HirPattern::StructPattern { fields, .. } => {
+                for field in fields {
+                    self.check_pattern(&field.pattern);
+                }
+            }
+            HirPattern::Or(alts) => {
+                for alt in alts {
+                    self.check_pattern(alt);
+                }
+            }
         }
     }
 

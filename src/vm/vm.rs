@@ -218,6 +218,20 @@ impl<'a> VM<'a> {
                 VMOpcode::Jump { target_pc } => {
                     frame.ip = target_pc;
                 }
+                VMOpcode::BranchIf { cond, then_pc, else_pc } => {
+                    let cond_val = self.read_reg(cond, frame);
+                    let taken = match cond_val {
+                        VMValue::Bool(b) => b,
+                        other => {
+                            self.report_ice(format!(
+                                "BranchIf condition register did not hold a bool, got {}",
+                                other
+                            ));
+                            false
+                        }
+                    };
+                    frame.ip = if taken { then_pc } else { else_pc };
+                }
                 VMOpcode::Move { dest, src } => {
                     let val = self.read_reg(src, frame);
                     self.write_reg(frame, dest, val);

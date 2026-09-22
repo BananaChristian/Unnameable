@@ -1268,3 +1268,158 @@ fn index_pointer_to_array_yields_element_type() {
     assert_entry(&s, 9, "isize", 2, 8, 8); // p[0]
     assert_entry(&s, 10, "isize", 2, 8, 8);
 }
+
+// match expressions
+#[test]
+fn exhaustive_variant_match_binds_payloads_and_is_clean() {
+    let _s = assert_clean(analyze(
+        "variant Maybe { Some(i32), None }\n\
+         func get(m: Maybe): i32 {\n\
+             return match m {\n\
+                 Maybe.Some(x) => x,\n\
+                 Maybe.None => 0i32,\n\
+             };\n\
+         }\n",
+        &[],
+    ));
+}
+
+#[test]
+fn variant_match_missing_arm_is_non_exhaustive() {
+    assert_errors(
+        analyze(
+            "variant Shape { Circle(i8), Square }\n\
+             func area(s: Shape): i8 {\n\
+                 return match s {\n\
+                     Shape.Circle(r) => r,\n\
+                 };\n\
+             }\n",
+            &[],
+        ),
+        &["Non-exhaustive match on variant 'Shape' missing case: Square"],
+    );
+}
+
+#[test]
+fn variant_match_wildcard_covers_all_arms() {
+    let _s = assert_clean(analyze(
+        "variant Shape { Circle(i8), Square }\n\
+         func f(s: Shape): i8 {\n\
+             return match s {\n\
+                 Shape.Circle(r) => r,\n\
+                 _ => 0i8,\n\
+             };\n\
+         }\n",
+        &[],
+    ));
+}
+
+#[test]
+fn enum_match_missing_member_is_non_exhaustive() {
+    assert_errors(
+        analyze(
+            "enum Color: u8 { RED, GREEN, BLUE }\n\
+             func code(c: Color): i32 {\n\
+                 return match c {\n\
+                     Color.RED => 1i32,\n\
+                     Color.GREEN => 2i32,\n\
+                 };\n\
+             }\n",
+            &[],
+        ),
+        &["Non-exhaustive match on enum 'Color' missing case: BLUE"],
+    );
+}
+
+#[test]
+fn match_arm_bodies_must_agree_in_type() {
+    assert_errors(
+        analyze(
+            "func f(v: i32): i32 {\n\
+                 return match v {\n\
+                     0 => 1i64,\n\
+                     _ => 2i32,\n\
+                 };\n\
+             }\n",
+            &[],
+        ),
+        &["Type mismatch between 'i64' and 'i32'"],
+    );
+}
+
+#[test]
+fn match_guard_must_be_bool() {
+    assert_errors(
+        analyze(
+            "func f(v: i32): i32 {\n\
+                 return match v {\n\
+                     n if n + 2 => n,\n\
+                     _ => 0i32,\n\
+                 };\n\
+             }\n",
+            &[],
+        ),
+        &["Type mismatch between 'bool' and 'i32'"],
+    );
+}
+
+#[test]
+fn tuple_pattern_arity_mismatch_is_reported() {
+    assert_errors(
+        analyze(
+            "func f(t: (i32, i64)): i32 {\n\
+                 return match t {\n\
+                     (a) => a,\n\
+                 };\n\
+             }\n",
+            &[],
+        ),
+        &["Tuple pattern arity mismatch: expected 2 elements, but got 1"],
+    );
+}
+
+#[test]
+fn struct_pattern_unknown_field_is_reported() {
+    assert_errors(
+        analyze(
+            "struct Point { x: i32, y: i64 }\n\
+             func f(p: Point): i32 {\n\
+                 return match p {\n\
+                     .Point{ .z = a } => a,\n\
+                 };\n\
+             }\n",
+            &[],
+        ),
+        &["'z' is not a member of 'Point'"],
+    );
+}
+
+#[test]
+fn bindings_inside_or_pattern_are_rejected() {
+    assert_errors(
+        analyze(
+            "func f(v: i32): i32 {\n\
+                 return match v {\n\
+                     a | 2 => a,\n\
+                     _ => 0i32,\n\
+                 };\n\
+             }\n",
+            &[],
+        ),
+        &["Bindings are not allowed inside 'or' patterns"],
+    );
+}
+
+#[test]
+fn block_expression_value_takes_trailing_statement_type() {
+    // The block's trailing expr `x + 9` (i32) is the block value: the var's
+    // initializer and the i32 return type agree, so analysis stays clean
+    // (a Unit block value would have failed the return).
+    let _s = assert_clean(analyze(
+        "func f(): i32 {\n\
+             var b := { var x := 1; x + 9; };\n\
+             return b;\n\
+         }\n",
+        &[],
+    ));
+}

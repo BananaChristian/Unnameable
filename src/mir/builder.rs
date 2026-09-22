@@ -52,6 +52,12 @@ pub struct MIRBuilder<'a> {
 
     var_stack: Vec<HashMap<String, MIRValue>>,
     var_dollar_stack: Vec<HashMap<String, MIRDollarMode>>,
+    // While a `$${ ... }` scope body is being compiled, this holds the
+    // `var_stack` length that marks the scope's own bindings. Any identifier
+    // resolving to a binding pushed *below* this boundary is a free reference
+    // to the enclosing function's frame and must be rejected (dollar scopes
+    // only see their captured args and module-level globals).
+    dollar_var_boundaries: Vec<usize>,
     pub last_value: Option<MIRValue>,
 
     pub module: MIRModule, //The builder writes to this
@@ -85,6 +91,7 @@ impl<'a> MIRBuilder<'a> {
             enums: HashMap::new(),
             var_stack: vec![HashMap::new()],
             var_dollar_stack: vec![HashMap::new()],
+            dollar_var_boundaries: Vec::new(),
             arm_map: HashMap::new(),
             last_value: None,
             diagnostics,
@@ -270,6 +277,48 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::Binary(left, _, right) => {
                 self.register_expr(left);
                 self.register_expr(right);
+            }
+            HirExprKind::Match { scrutinee, arms } => {
+                self.register_expr(scrutinee);
+                for arm in arms {
+                    self.register_pattern_exprs(&arm.pattern);
+                    if let Some(guard) = &arm.guard {
+                        self.register_expr(guard);
+                    }
+                    self.register_expr(&arm.body);
+                }
+            }
+            HirExprKind::Block(stmts) => {
+                for stmt in stmts {
+                    self.register_stmt(stmt);
+                }
+            }
+            _ => (),
+        }
+    }
+
+    fn register_pattern_exprs(&mut self, pattern: &crate::hir::HirPattern) {
+        match pattern {
+            crate::hir::HirPattern::Literal(expr) => self.register_expr(expr),
+            crate::hir::HirPattern::Path { payloads, .. } => {
+                for payload in payloads {
+                    self.register_pattern_exprs(payload);
+                }
+            }
+            crate::hir::HirPattern::Tuple { elements, .. } => {
+                for element in elements {
+                    self.register_pattern_exprs(element);
+                }
+            }
+            crate::hir::HirPattern::StructPattern { fields, .. } => {
+                for field in fields {
+                    self.register_pattern_exprs(&field.pattern);
+                }
+            }
+            crate::hir::HirPattern::Or(alts) => {
+                for alt in alts {
+                    self.register_pattern_exprs(alt);
+                }
             }
             _ => (),
         }
@@ -1149,12 +1198,49 @@ impl<'a> MIRBuilder<'a> {
     }
 
     pub fn lookup_var(&self, name: &str) -> Option<&MIRValue> {
-        for scope in self.var_stack.iter().rev() {
+        self.lookup_var_with_index(name).map(|(_, val)| val)
+    }
+
+    pub fn lookup_var_with_index(&self, name: &str) -> Option<(usize, &MIRValue)> {
+        for (index, scope) in self.var_stack.iter().enumerate().rev() {
             if let Some(val) = scope.get(name) {
-                return Some(val);
+                return Some((index, val));
             }
         }
         None
+    }
+
+    /// Guard against an identifier inside a `$${ ... }` body resolving to a
+    /// binding of an enclosing (non-dollar) function frame. Per the dollar
+    /// rules, only captured args and module-level globals/constants may be
+    /// visible inside a scope; a frame-bound register would be copied into a
+    /// function it doesn't belong to ("uninitialized register" crashes), so
+    /// it is rejected here instead.
+    pub fn guard_dollar_capture(&mut self, name: &str, index: usize, val: &MIRValue, span: Option<Span>) {
+        let Some(boundary) = self.dollar_var_boundaries.last().copied() else {
+            return;
+        };
+        if index < boundary {
+            if matches!(val, MIRValue::Register { .. } | MIRValue::Poison) {
+                self.report(
+                    format!(
+                        "Cannot capture '{}' into dollar scope, captured values must be compile-time constants (declare with 'const')",
+                        name
+                    ),
+                    span,
+                );
+            }
+        }
+    }
+
+    /// Marks the start of a `$${ ... }` body: identifiers resolving below
+    /// this point are out of frame and rejected by `guard_dollar_capture`.
+    pub fn push_dollar_boundary(&mut self) {
+        self.dollar_var_boundaries.push(self.var_stack.len());
+    }
+
+    pub fn pop_dollar_boundary(&mut self) {
+        self.dollar_var_boundaries.pop();
     }
 
     pub fn lookup_var_dollar_mode(&self, name: &str) -> MIRDollarMode {
@@ -1173,8 +1259,12 @@ impl<'a> MIRBuilder<'a> {
 
     pub fn lookup_ptr(&mut self, expr: &HirExpr) -> MIRValue {
         match &expr.kind {
-            HirExprKind::Identifier(name) => match self.lookup_var(name) {
-                Some(val) => val.clone(),
+            HirExprKind::Identifier(name) => match self.lookup_var_with_index(name) {
+                Some((index, val)) => {
+                    let val = val.clone();
+                    self.guard_dollar_capture(name, index, &val, Some(expr.span.clone()));
+                    val
+                }
                 None => self.report_ice(
                     format!("Could not find variable '{}'", name),
                     Some(expr.span.clone()),

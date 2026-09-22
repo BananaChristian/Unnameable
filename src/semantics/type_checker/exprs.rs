@@ -1,6 +1,9 @@
 use crate::{
     diagnostics::Span,
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp, HirUnaryOp},
+    hir::{
+        HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPattern, HirPostfixOp,
+        HirStmt, HirStmtKind, HirUnaryOp,
+    },
     lowering::NodeId,
     semantics::{
         semantics::{InstanceKey, ResolvedTypeKind, TypeInfo},
@@ -34,6 +37,8 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::GenericInstantion { .. } => self.gen_inst_type(expr),
             HirExprKind::Instantiation { .. } => self.struct_init_type(expr),
             HirExprKind::TupleInst { .. } => self.tuple_init_type(expr),
+            HirExprKind::Match { .. } => self.match_type(expr),
+            HirExprKind::Block(body) => self.block_type(body, expr.span.clone()),
             HirExprKind::DollarScope {
                 params,
                 body,
@@ -116,6 +121,272 @@ impl<'a> TypeChecker<'a> {
         } else {
             self.unknown(expr.span.clone())
         }
+    }
+
+    /// Types a `match` expression: the scrutinee, each arm's pattern (binding
+    /// the pattern names to the scrutinee's parts), guards (must be `bool`),
+    /// and bodies (all of which must agree on a single type, which becomes the
+    /// match's type). Variant and enum matches must be exhaustive unless a
+    /// wildcard arm is present.
+    fn match_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        let HirExprKind::Match { scrutinee, arms } = &expr.kind else {
+            return self.unknown(expr.span.clone());
+        };
+
+        let scrutinee_ty = self.expr_type(scrutinee);
+
+        let mut covered: Vec<String> = Vec::new();
+        let mut exhaustive = false;
+        let mut result_ty: Option<TypeInfo> = None;
+
+        for arm in arms {
+            match &arm.pattern {
+                HirPattern::Wildcard => exhaustive = true,
+                HirPattern::Path { member, .. } => covered.push(member.clone()),
+                _ => {}
+            }
+
+            let pattern_span = match &arm.pattern {
+                HirPattern::Literal(inner) => inner.span.clone(),
+                HirPattern::Path { span, .. } => span.clone(),
+                HirPattern::Binding { span, .. } => span.clone(),
+                HirPattern::Tuple { span, .. } => span.clone(),
+                HirPattern::StructPattern { span, .. } => span.clone(),
+                HirPattern::Wildcard | HirPattern::Or(_) => arm.span.clone(),
+            };
+
+            self.check_pattern(&arm.pattern, &scrutinee_ty, pattern_span);
+
+            if let Some(guard) = &arm.guard {
+                let guard_ty = self.expr_type(guard);
+                let bool_ty = self.boolean(guard.span.clone());
+                if !TypeInfo::types_match(&bool_ty, &guard_ty) {
+                    self.type_mismatch(&bool_ty, &guard_ty, guard.span.clone());
+                }
+            }
+
+            let body_ty = self.expr_type(&arm.body);
+            match &result_ty {
+                None => result_ty = Some(body_ty),
+                Some(prev) => {
+                    if !TypeInfo::types_match(prev, &body_ty) {
+                        self.type_mismatch(prev, &body_ty, arm.body.span.clone());
+                    }
+                }
+            }
+        }
+
+        if !exhaustive {
+            match &scrutinee_ty.kind {
+                ResolvedTypeKind::Enum { name, members, .. } => {
+                    let all: Vec<String> = members.iter().map(|m| m.0.clone()).collect();
+                    let missing: Vec<String> = all
+                        .iter()
+                        .filter(|m| !covered.contains(m))
+                        .cloned()
+                        .collect();
+                    if !missing.is_empty() {
+                        self.report(
+                            format!(
+                                "Non-exhaustive match on enum '{}' missing case{}: {}",
+                                name,
+                                if missing.len() == 1 { "" } else { "s" },
+                                missing.join(", ")
+                            ),
+                            Some(expr.span.clone()),
+                        );
+                    }
+                }
+                ResolvedTypeKind::Variant { name, arms, .. } => {
+                    let all: Vec<String> = arms.iter().map(|a| a.0.clone()).collect();
+                    let missing: Vec<String> = all
+                        .iter()
+                        .filter(|m| !covered.contains(m))
+                        .cloned()
+                        .collect();
+                    if !missing.is_empty() {
+                        self.report(
+                            format!(
+                                "Non-exhaustive match on variant '{}' missing case{}: {}",
+                                name,
+                                if missing.len() == 1 { "" } else { "s" },
+                                missing.join(", ")
+                            ),
+                            Some(expr.span.clone()),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        match result_ty {
+            Some(ty) => ty,
+            None => self.unit(expr.span.clone()),
+        }
+    }
+
+    /// A block expression's type is the type of its trailing expression
+    /// statement, or `()` when it has none.
+    fn block_type(&mut self, body: &Vec<HirStmt>, span: Span) -> TypeInfo {
+        match body.last() {
+            Some(HirStmt {
+                kind: HirStmtKind::HirExpr(inner),
+                ..
+            }) => {
+                for stmt in &body[..body.len() - 1] {
+                    self.check_stmt(stmt);
+                }
+                self.expr_type(inner)
+            }
+            _ => {
+                for stmt in body {
+                    self.check_stmt(stmt);
+                }
+                self.unit(span)
+            }
+        }
+    }
+
+    /// Validates a pattern against the type of the value it matches against,
+    /// recording the expected type for every binding it introduces so uses of
+    /// the bound names resolve to the right type.
+    fn check_pattern(&mut self, pattern: &HirPattern, expected: &TypeInfo, span: Span) {
+        match pattern {
+            HirPattern::Wildcard => {}
+            HirPattern::Binding { hir_id, .. } => {
+                self.insert(*hir_id, expected.clone());
+            }
+            HirPattern::Literal(lit_expr) => {
+                self.expr_type(lit_expr);
+                self.coerce_ty(expected, lit_expr);
+                let coerced_lit_ty = self.expr_type(lit_expr);
+                if !self.pattern_literal_matches(expected, &coerced_lit_ty) {
+                    self.type_mismatch(expected, &coerced_lit_ty, span);
+                }
+            }
+            HirPattern::Path {
+                type_name,
+                member,
+                payloads,
+                ..
+            } => match &expected.kind {
+                ResolvedTypeKind::Enum { name, members, .. } => {
+                    if members.iter().any(|m| &m.0 == member) {
+                        if !payloads.is_empty() {
+                            self.report(
+                                format!(
+                                    "Enum member '{}.{}' does not take payload patterns",
+                                    name, member
+                                ),
+                                Some(span.clone()),
+                            );
+                        }
+                    } else {
+                        self.unknown_member(member, name, span.clone());
+                    }
+                }
+                ResolvedTypeKind::Variant { name, arms, .. } => {
+                    if let Some(arm_tuple) = arms.iter().find(|a| &a.0 == member) {
+                        let expected_payloads = &arm_tuple.3;
+                        if payloads.len() != expected_payloads.len() {
+                            self.report(
+                                format!(
+                                    "Variant arm '{}.{}' expects {} payload patterns, but got {}",
+                                    name,
+                                    member,
+                                    expected_payloads.len(),
+                                    payloads.len()
+                                ),
+                                Some(span.clone()),
+                            );
+                        } else {
+                            for (payload, payload_ty) in payloads.iter().zip(expected_payloads) {
+                                self.check_pattern(payload, payload_ty, span.clone());
+                            }
+                        }
+                    } else {
+                        self.unknown_member(member, name, span.clone());
+                    }
+                }
+                _ => {
+                    self.report(
+                        format!(
+                            "Path pattern '{}.{}' cannot match a value of type '{}'",
+                            type_name, member, expected.name
+                        ),
+                        Some(span),
+                    );
+                }
+            },
+            HirPattern::Tuple { elements, .. } => match &expected.kind {
+                ResolvedTypeKind::Tuple { fields } => {
+                    if elements.len() != fields.len() {
+                        self.report(
+                            format!(
+                                "Tuple pattern arity mismatch: expected {} elements, but got {}",
+                                fields.len(),
+                                elements.len()
+                            ),
+                            Some(span.clone()),
+                        );
+                    } else {
+                        for (element, field_ty) in elements.iter().zip(fields) {
+                            self.check_pattern(element, field_ty, span.clone());
+                        }
+                    }
+                }
+                _ => {
+                    self.report(
+                        format!(
+                            "Tuple pattern cannot match a value of type '{}'",
+                            expected.name
+                        ),
+                        Some(span),
+                    );
+                }
+            },
+            HirPattern::StructPattern {
+                type_name,
+                fields,
+                ..
+            } => match &expected.kind {
+                ResolvedTypeKind::Struct { name, members, .. } => {
+                    for field in fields {
+                        match members.iter().find(|f| &f.0 == &field.name) {
+                            Some((_, field_ty, _)) => {
+                                self.check_pattern(&field.pattern, field_ty, field.span.clone());
+                            }
+                            None => self.unknown_member(&field.name, name, field.span.clone()),
+                        }
+                    }
+                }
+                _ => {
+                    self.report(
+                        format!(
+                            "Struct pattern '.{}' cannot match a value of type '{}'",
+                            type_name, expected.name
+                        ),
+                        Some(span),
+                    );
+                }
+            },
+            HirPattern::Or(alts) => {
+                for alt in alts {
+                    if matches!(alt, HirPattern::Binding { .. }) {
+                        self.report(
+                            "Bindings are not allowed inside 'or' patterns".to_string(),
+                            Some(span.clone()),
+                        );
+                    }
+                    self.check_pattern(alt, expected, span.clone());
+                }
+            }
+        }
+    }
+
+    fn pattern_literal_matches(&self, expected: &TypeInfo, lit_ty: &TypeInfo) -> bool {
+        TypeInfo::types_match(expected, lit_ty) || (self.is_numeric(expected) && self.is_numeric(lit_ty))
     }
 
     fn gen_inst_type(&mut self, expr: &HirExpr) -> TypeInfo {

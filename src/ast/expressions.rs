@@ -4,6 +4,7 @@ use crate::{
         operators::{BinaryOp, UnaryOp},
     },
     diagnostics::Span,
+    lexer::{TType, token::Token},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +53,48 @@ pub struct InstParam {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    Wildcard, // _ matches anything, binds nothing
+    Literal(Box<Expr>),
+    Path {
+        type_name: String,
+        member: String,
+        payloads: Vec<Pattern>,
+        span: Span,
+    },
+    Binding {
+        name: String,
+        span: Span,
+    },
+    Tuple {
+        elements: Vec<Pattern>,
+        span: Span,
+    },
+    StructPattern {
+        type_name: String,
+        fields: Vec<StructPatternField>,
+        rest: bool,
+        span: Span,
+    },
+    Or(Vec<Pattern>), // a | b | c — same arm handles multiple patterns
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructPatternField {
+    pub name: String,
+    pub pattern: Pattern,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub guard: Option<Expr>, // `Circle(r) if r > 0.0 => ...`
+    pub body: Box<Expr>, // a bare expr, OR a Block(Vec<Stmt>) expr if that variant exists/gets added
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     Literal(Literal),
     Identifier(String),
@@ -76,14 +119,19 @@ pub enum ExprKind {
         body: Vec<InstParam>,
     },
     //Tuple instantiation
-    TupleInst{
+    TupleInst {
         body: Vec<Expr>,
     },
     //The dollar scope $${}
     DollarScope {
         params: Vec<Expr>,
-        body: Box<Stmt>,
+        body: Box<Expr>,
     },
+    Match {
+        scrutinee: Box<Expr>,
+        arms: Vec<MatchArm>,
+    },
+    Block(Vec<Stmt>),
     Index {
         target: Box<Expr>,
         index: Box<Expr>,
@@ -99,5 +147,34 @@ pub struct Expr {
 impl Expr {
     pub fn new(kind: ExprKind, span: Span) -> Self {
         Expr { kind, span }
+    }
+
+    pub fn is_literal(token: &Token) -> bool {
+        match token.token_type {
+            TType::Int
+            | TType::Int8
+            | TType::Uint8
+            | TType::Int16
+            | TType::Uint16
+            | TType::Int32
+            | TType::Uint32
+            | TType::Int64
+            | TType::Uint64
+            | TType::Int128
+            | TType::Uint128
+            | TType::IntSize
+            | TType::UintSize
+            | TType::Float
+            | TType::F32
+            | TType::F64
+            | TType::StringLiteral
+            | TType::Char8Literal
+            | TType::Char16Literal
+            | TType::Char32Literal
+            | TType::True
+            | TType::False
+            | TType::LBracket => true,
+            _ => false,
+        }
     }
 }

@@ -1,12 +1,12 @@
 mod expressions;
 mod operators;
 mod precedence;
+mod printer;
 mod qualifiers;
 mod statements;
 mod types;
-mod printer;
 
-pub use expressions::{Expr, ExprKind, InstParam, Literal};
+pub use expressions::{Expr, ExprKind, InstParam, Literal, MatchArm, Pattern, StructPatternField};
 pub use operators::{BinaryOp, PostfixOp, UnaryOp};
 pub use precedence::Precedence;
 pub use qualifiers::{Qualifier, QualifierKind};

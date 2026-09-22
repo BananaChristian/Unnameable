@@ -1,7 +1,8 @@
 use core::fmt;
 
 use crate::hir::{
-    Conv, HirEnumMember, HirParam, HirStmt, HirStmtKind, HirVariantMember,
+    Conv, HirEnumMember, HirMatchArm, HirParam, HirPattern, HirStmt, HirStmtKind,
+    HirVariantMember,
     expressions::{HirExpr, HirExprKind, HirInstParam},
     types::{HirType, HirTypeNode},
 };
@@ -546,6 +547,105 @@ impl HirPrinter {
                     p.with_indent(|p2| p2.fmt_expr(target));
                     p.write_line("Index:");
                     p.with_indent(|p2| p2.fmt_expr(index));
+                });
+            }
+            HirExprKind::Match { scrutinee, arms } => {
+                self.write_line(&format!("Match [id: {id:?}]"));
+                self.with_indent(|p| {
+                    p.write_line("Scrutinee:");
+                    p.with_indent(|p2| p2.fmt_expr(scrutinee));
+                    p.write_line("Arms:");
+                    p.with_indent(|p2| {
+                        for arm in arms {
+                            p2.fmt_match_arm(arm);
+                        }
+                    });
+                });
+            }
+            HirExprKind::Block(stmts) => {
+                self.write_line(&format!("Block [id: {id:?}]"));
+                self.with_indent(|p| {
+                    p.write_line("Statements:");
+                    p.with_indent(|p2| {
+                        for st in stmts {
+                            p2.fmt_stmt(st);
+                        }
+                    });
+                });
+            }
+        }
+    }
+
+    fn fmt_match_arm(&mut self, arm: &HirMatchArm) {
+        self.write_line("MatchArm");
+        self.with_indent(|p| {
+            p.write_line("Pattern:");
+            p.with_indent(|p2| p2.fmt_pattern(&arm.pattern));
+
+            if let Some(guard) = &arm.guard {
+                p.write_line("Guard:");
+                p.with_indent(|p2| p2.fmt_expr(guard));
+            }
+
+            p.write_line("Body:");
+            p.with_indent(|p2| p2.fmt_expr(&arm.body));
+        });
+    }
+
+    fn fmt_pattern(&mut self, pat: &HirPattern) {
+        match pat {
+            HirPattern::Wildcard => self.write_line("Wildcard(_)"),
+            HirPattern::Literal(expr) => {
+                self.write_line("PatternLiteral:");
+                self.with_indent(|p| p.fmt_expr(expr));
+            }
+            HirPattern::Path {
+                type_name,
+                member,
+                payloads,
+                ..
+            } => {
+                self.write_line(&format!("PatternPath({type_name}::{member})"));
+                self.with_indent(|p| {
+                    for payload in payloads {
+                        p.fmt_pattern(payload);
+                    }
+                });
+            }
+            HirPattern::Binding { name, hir_id, .. } => {
+                self.write_line(&format!("PatternBinding(\"{name}\") [id: {hir_id:?}]"));
+            }
+            HirPattern::Tuple { elements, .. } => {
+                self.write_line("PatternTuple:");
+                self.with_indent(|p| {
+                    for element in elements {
+                        p.fmt_pattern(element);
+                    }
+                });
+            }
+            HirPattern::StructPattern {
+                type_name,
+                fields,
+                rest,
+                ..
+            } => {
+                self.write_line(&format!(
+                    "PatternStruct(\"{type_name}\"{})",
+                    if *rest { ", .." } else { "" }
+                ));
+                self.with_indent(|p| {
+                    for field in fields {
+                        p.write_line(&format!("Field \"{}\" [id: {:?}]", field.name, field.hir_id));
+                        p.with_indent(|p2| p2.fmt_pattern(&field.pattern));
+                    }
+                });
+            }
+            HirPattern::Or(pats) => {
+                self.write_line("PatternOr:");
+                self.with_indent(|p| {
+                    for pat in pats {
+                        p.fmt_pattern(pat);
+                    }
                 });
             }
         }

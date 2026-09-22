@@ -39,6 +39,10 @@ fn lit(l: Literal, s: usize, e: usize) -> Expr {
     Expr::new(ExprKind::Literal(l), sp(s, e))
 }
 
+fn ex(kind: ExprKind, s: usize, e: usize) -> Expr {
+    Expr::new(kind, sp(s, e))
+}
+
 fn bin(l: Expr, op: BinaryOp, r: Expr, s: usize, e: usize) -> Expr {
     Expr::new(ExprKind::Binary(Box::new(l), op, Box::new(r)), sp(s, e))
 }
@@ -72,8 +76,8 @@ fn ty(kind: TypeKind, s: usize, e: usize) -> Type {
     }
 }
 
-fn block(content: Vec<Stmt>, s: usize, e: usize) -> Stmt {
-    st(StmtKind::Block { content }, s, e)
+fn block(content: Vec<Stmt>, s: usize, e: usize) -> Expr {
+    ex(ExprKind::Block(content), s, e)
 }
 
 fn ret(expr: Option<Expr>, s: usize, e: usize) -> Stmt {
@@ -1292,7 +1296,7 @@ fn if_else_statement() {
             24,
         )],
         17,
-        32,
+        27,
     );
     let else_body = block(
         vec![st(
@@ -1341,7 +1345,7 @@ fn if_elif_else_statement() {
             12,
         )],
         5,
-        20,
+        15,
     );
     let elif_body = block(
         vec![st(
@@ -1356,7 +1360,7 @@ fn if_elif_else_statement() {
             30,
         )],
         23,
-        38,
+        33,
     );
     let else_body = block(
         vec![st(
@@ -1808,7 +1812,7 @@ fn seal_decl() {
                         name: Box::new(id("a", 16, 17)),
                         params: vec![],
                         type_annotation: None,
-                        body: Box::new(block(vec![], 20, 27)),
+                        body: Box::new(block(vec![], 20, 22)),
                     },
                     11,
                     27,
@@ -1819,7 +1823,7 @@ fn seal_decl() {
                         name: Box::new(id("b", 28, 29)),
                         params: vec![],
                         type_annotation: None,
-                        body: Box::new(block(vec![], 32, 36)),
+                        body: Box::new(block(vec![], 32, 34)),
                     },
                     23,
                     36,
@@ -1851,7 +1855,7 @@ fn generics_block() {
                         name: Box::new(id("foo", 23, 26)),
                         params: vec![],
                         type_annotation: None,
-                        body: Box::new(block(vec![], 29, 33)),
+                        body: Box::new(block(vec![], 29, 31)),
                     },
                     18,
                     33,
@@ -2063,7 +2067,7 @@ fn dollar_scope_no_params() {
             body: Box::new(block(
                 vec![ret(Some(lit(Literal::Int(5), 20, 21)), 13, 24)],
                 11,
-                25,
+                24,
             )),
         },
         sp(9, 25),
@@ -2088,7 +2092,7 @@ fn dollar_scope_with_params_expr() {
                     24,
                 )],
                 17,
-                28,
+                27,
             )),
         },
         sp(9, 28),
@@ -2106,7 +2110,7 @@ fn dollar_scope_with_params_return() {
     let scope = Expr::new(
         ExprKind::DollarScope {
             params: vec![id("a", 12, 13), id("b", 15, 16)],
-            body: Box::new(block(vec![ret(Some(id("a", 26, 27)), 19, 30)], 17, 31)),
+            body: Box::new(block(vec![ret(Some(id("a", 26, 27)), 19, 30)], 17, 30)),
         },
         sp(9, 31),
     );

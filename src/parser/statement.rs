@@ -183,36 +183,6 @@ impl Parser {
         ))
     }
 
-    pub fn parse_struct_body(&mut self) -> Option<Stmt> {
-        let start = self.current_token()?.span.start;
-        let mut fields = Vec::new();
-
-        self.expect_token(TType::LBrace)?;
-
-        while self.current_token()?.token_type != TType::Rbrace
-            && self.current_token()?.token_type != TType::End
-        {
-            if let Some(param) = self.parse_param_decl(false) {
-                fields.push(param);
-            } else {
-                let token = self.current_token()?.clone();
-                self.report("Expected field declaration".to_string(), Some(token.span));
-                self.advance(); // Skip
-            }
-
-            // Optional comma
-            if self.current_token()?.token_type == TType::Comma {
-                self.advance();
-            }
-        }
-
-        let end = self.current_token()?.span.end;
-        self.expect_token(TType::Rbrace)?;
-        let span = Span { start, end };
-
-        Some(Stmt::new(StmtKind::Block { content: fields }, span))
-    }
-
     pub fn parse_struct(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Struct)?;
@@ -658,31 +628,5 @@ impl Parser {
                 span: Span { start, end: mid },
             })
         }
-    }
-
-    pub fn parse_body(&mut self) -> Option<Stmt> {
-        let start = self.current_token()?.span.start;
-        let mut stmts = Vec::new();
-        self.expect_token(TType::LBrace)?;
-
-        while self.current_token()?.token_type != TType::Rbrace
-            && self.current_token()?.token_type != TType::End
-        {
-            if let Some(stmt) = self.parse_stmt() {
-                stmts.push(stmt);
-            } else {
-                match self.current_token()?.token_type {
-                    TType::Rbrace | TType::End => break,
-                    _ => {
-                        self.synchronize();
-                    }
-                }
-            }
-        }
-        self.expect_token(TType::Rbrace)?;
-        let end = self.current_token()?.span.end;
-        let span = Span { start, end };
-
-        Some(Stmt::new(StmtKind::Block { content: stmts }, span))
     }
 }

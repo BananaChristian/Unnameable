@@ -94,6 +94,50 @@ pub enum HirPostfixOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum HirPattern {
+    Wildcard,
+    Literal(Box<HirExpr>),
+    Path {
+        type_name: String,
+        member: String,
+        payloads: Vec<HirPattern>,
+        span: Span,
+    },
+    Binding {
+        name: String,
+        hir_id: NodeId,
+        span: Span,
+    },
+    Tuple {
+        elements: Vec<HirPattern>,
+        span: Span,
+    },
+    StructPattern {
+        type_name: String,
+        fields: Vec<HirStructPatternField>,
+        rest: bool,
+        span: Span,
+    },
+    Or(Vec<HirPattern>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HirStructPatternField {
+    pub name: String,
+    pub hir_id: NodeId,
+    pub pattern: HirPattern,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HirMatchArm {
+    pub pattern: HirPattern,
+    pub guard: Option<HirExpr>,
+    pub body: Box<HirExpr>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct HirInstParam {
     pub hir_id: NodeId,
     pub name: String,
@@ -151,6 +195,11 @@ pub enum HirExprKind {
         body: Vec<HirStmt>,
         result: Option<Box<HirExpr>>, //This is the final result
     },
+    Match {
+        scrutinee: Box<HirExpr>,
+        arms: Vec<HirMatchArm>,
+    },
+    Block(Vec<HirStmt>),
 
     // Index access, array[0]
     Index {

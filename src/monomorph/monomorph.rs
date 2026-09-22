@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    hir::{HirExpr, HirExprKind, HirStmt, HirStmtKind, HirType, HirTypeNode},
+    hir::{HirExpr, HirExprKind, HirPattern, HirStmt, HirStmtKind, HirType, HirTypeNode},
     lowering::NodeId,
     semantics::{InstanceKey, ResolvedTypeKind, SemanticCtxt, TypeInfo},
 };
@@ -566,6 +566,61 @@ impl<'a> Monomorphizer<'a> {
                 }
                 if let Some(res) = result {
                     self.fresh_expr(res, gens, args);
+                }
+            }
+            HirExprKind::Match { scrutinee, arms } => {
+                self.fresh_expr(scrutinee, gens, args);
+                for arm in arms {
+                    self.fresh_pattern(&mut arm.pattern, gens, args);
+                    if let Some(guard) = &mut arm.guard {
+                        self.fresh_expr(guard, gens, args);
+                    }
+                    self.fresh_expr(&mut arm.body, gens, args);
+                }
+            }
+            HirExprKind::Block(stmts) => {
+                for st in stmts {
+                    self.fresh_stmt(st, gens, args);
+                }
+            }
+        }
+    }
+
+    fn fresh_pattern(&mut self, pattern: &mut HirPattern, gens: &[HirTypeNode], args: &[TypeInfo]) {
+        match pattern {
+            HirPattern::Wildcard => {}
+            HirPattern::Literal(expr) => self.fresh_expr(expr, gens, args),
+            HirPattern::Path { payloads, .. } => {
+                for payload in payloads {
+                    self.fresh_pattern(payload, gens, args);
+                }
+            }
+            HirPattern::Binding { hir_id, .. } => {
+                let original_id = hir_id.clone();
+                *hir_id = self.new_id();
+                self.record_fresh_type(
+                    &original_id,
+                    hir_id,
+                    gens,
+                    args,
+                );
+            }
+            HirPattern::Tuple { elements, .. } => {
+                for element in elements {
+                    self.fresh_pattern(element, gens, args);
+                }
+            }
+            HirPattern::StructPattern { fields, .. } => {
+                for field in fields {
+                    let original_id = field.hir_id.clone();
+                    field.hir_id = self.new_id();
+                    self.record_fresh_type(&original_id, &field.hir_id, gens, args);
+                    self.fresh_pattern(&mut field.pattern, gens, args);
+                }
+            }
+            HirPattern::Or(alts) => {
+                for alt in alts {
+                    self.fresh_pattern(alt, gens, args);
                 }
             }
         }
@@ -1420,7 +1475,50 @@ fn collect_expr_type_refs<'k>(expr: &'k HirExpr, out: &mut Vec<&'k HirTypeNode>)
                 collect_expr_type_refs(r, out);
             }
         }
+        HirExprKind::Match { scrutinee, arms } => {
+            collect_expr_type_refs(scrutinee, out);
+            for arm in arms {
+                collect_pattern_type_refs(&arm.pattern, out);
+                if let Some(guard) = &arm.guard {
+                    collect_expr_type_refs(guard, out);
+                }
+                collect_expr_type_refs(&arm.body, out);
+            }
+        }
+        HirExprKind::Block(stmts) => {
+            for s in stmts {
+                collect_type_nodes(s, out);
+            }
+        }
         _ => {}
+    }
+}
+
+fn collect_pattern_type_refs<'k>(pattern: &'k HirPattern, out: &mut Vec<&'k HirTypeNode>) {
+    match pattern {
+        HirPattern::Wildcard => {}
+        HirPattern::Literal(expr) => collect_expr_type_refs(expr, out),
+        HirPattern::Path { payloads, .. } => {
+            for payload in payloads {
+                collect_pattern_type_refs(payload, out);
+            }
+        }
+        HirPattern::Binding { .. } => {}
+        HirPattern::Tuple { elements, .. } => {
+            for element in elements {
+                collect_pattern_type_refs(element, out);
+            }
+        }
+        HirPattern::StructPattern { fields, .. } => {
+            for field in fields {
+                collect_pattern_type_refs(&field.pattern, out);
+            }
+        }
+        HirPattern::Or(alts) => {
+            for alt in alts {
+                collect_pattern_type_refs(alt, out);
+            }
+        }
     }
 }
 

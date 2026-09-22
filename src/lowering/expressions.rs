@@ -1,12 +1,13 @@
 use crate::{
     ast::{
-        BinaryOp, Expr, ExprKind, InstParam, Literal, PostfixOp, Qualifier, QualifierKind, Type,
-        TypeKind, UnaryOp,
+        BinaryOp, Expr, ExprKind, InstParam, Literal, Pattern, PostfixOp, Qualifier, QualifierKind,
+        StmtKind, Type, TypeKind, UnaryOp,
     },
     diagnostics::Span,
     hir::{
-        Conv, HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirPostfixOp,
-        HirStmtKind, HirType, HirTypeNode, HirUnaryOp, QualifierMap,
+        Conv, HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirMatchArm, HirPattern,
+        HirPostfixOp, HirStmt, HirStmtKind, HirStructPatternField, HirType, HirTypeNode, HirUnaryOp,
+        QualifierMap,
     },
     lowering::lowering::Lowering,
 };
@@ -148,9 +149,111 @@ impl Lowering {
                     body: stmts,
                 }
             }
+            ExprKind::Match { scrutinee, arms } => {
+                let hir_scrutinee = self.lower_expr(scrutinee)?;
+                let mut hir_arms = Vec::new();
+                for arm in arms {
+                    let hir_pattern = self.lower_pattern(&arm.pattern)?;
+                    let hir_guard = match &arm.guard {
+                        Some(guard) => Some(self.lower_expr(guard)?),
+                        None => None,
+                    };
+                    let hir_body = self.lower_expr(&arm.body)?;
+                    hir_arms.push(HirMatchArm {
+                        pattern: hir_pattern,
+                        guard: hir_guard,
+                        body: Box::new(hir_body),
+                        span: arm.span.clone(),
+                    });
+                }
+                HirExprKind::Match {
+                    scrutinee: Box::new(hir_scrutinee),
+                    arms: hir_arms,
+                }
+            }
+            ExprKind::Block(_) => {
+                let stmts = self.lower_block(expr)?;
+                HirExprKind::Block(stmts)
+            }
         };
 
         Some(HirExpr::new(self.next_id(), kind, expr.span.clone()))
+    }
+
+    fn lower_pattern(&mut self, pattern: &Pattern) -> Option<HirPattern> {
+        let pat = match pattern {
+            Pattern::Wildcard => HirPattern::Wildcard,
+            Pattern::Or(alts) => {
+                let mut alt_patterns = Vec::new();
+                for alt in alts {
+                    let lowered = self.lower_pattern(alt)?;
+                    alt_patterns.push(lowered);
+                }
+                HirPattern::Or(alt_patterns)
+            }
+            Pattern::Literal(expr) => {
+                let lowered_expr = self.lower_expr(expr)?;
+                HirPattern::Literal(Box::new(lowered_expr))
+            }
+            Pattern::Path {
+                type_name,
+                member,
+                payloads,
+                span,
+            } => {
+                let mut hir_payloads = Vec::new();
+                for payload in payloads {
+                    let lowered = self.lower_pattern(payload)?;
+                    hir_payloads.push(lowered);
+                }
+                HirPattern::Path {
+                    type_name: type_name.clone(),
+                    member: member.clone(),
+                    payloads: hir_payloads,
+                    span: span.clone(),
+                }
+            }
+            Pattern::Binding { name, span } => HirPattern::Binding {
+                name: name.clone(),
+                hir_id: self.next_id(),
+                span: span.clone(),
+            },
+            Pattern::Tuple { elements, span } => {
+                let mut hir_elements = Vec::new();
+                for element in elements {
+                    let lowered = self.lower_pattern(element)?;
+                    hir_elements.push(lowered);
+                }
+                HirPattern::Tuple {
+                    elements: hir_elements,
+                    span: span.clone(),
+                }
+            }
+            Pattern::StructPattern {
+                type_name,
+                fields,
+                rest,
+                span,
+            } => {
+                let mut hir_fields = Vec::new();
+                for field in fields {
+                    let lowered_field = self.lower_pattern(&field.pattern)?;
+                    hir_fields.push(HirStructPatternField {
+                        name: field.name.clone(),
+                        hir_id: self.next_id(),
+                        pattern: lowered_field,
+                        span: field.span.clone(),
+                    });
+                }
+                HirPattern::StructPattern {
+                    type_name: type_name.clone(),
+                    fields: hir_fields,
+                    rest: *rest,
+                    span: span.clone(),
+                }
+            }
+        };
+        Some(pat)
     }
 
     fn lower_access_expr(&mut self, left: &Expr, right: &Expr, span: Span) -> Option<HirExpr> {
@@ -592,6 +695,28 @@ impl Lowering {
         });
 
         map
+    }
+
+    pub fn lower_block(&mut self, expr: &Expr) -> Option<Vec<HirStmt>> {
+        if let ExprKind::Block(content) = &expr.kind {
+            let mut contents = Vec::new();
+            for victim in content {
+                match &victim.kind {
+                    StmtKind::SealStmt { .. } => {
+                        let construct_vec = self.lower_constructs(victim)?;
+                        contents.extend(construct_vec);
+                    }
+                    _ => {
+                        let lowered_stmt = self.lower_stmt(victim)?;
+                        contents.push(lowered_stmt);
+                    }
+                }
+            }
+
+            Some(contents)
+        } else {
+            None
+        }
     }
 
     fn lower_literal(&mut self, lit: &Literal) -> Option<HirLiteral> {
