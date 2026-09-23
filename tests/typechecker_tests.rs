@@ -722,7 +722,7 @@ fn fnptr_struct_field_accepts_function_value() {
 // dollar-block result typing
 #[test]
 fn dollar_scope_result_typing() {
-    let s = assert_clean(analyze("var d := $${ 5; };", &[]));
+    let s = assert_clean(analyze("var d := $${ 5 };", &[]));
     assert_entry(&s, 0, "isize", 2, 8, 8);
     assert_entry(&s, 1, "isize", 2, 8, 8);
     assert_entry(&s, 2, "isize", 2, 8, 8);
@@ -739,7 +739,7 @@ fn dollar_scope_empty_result_is_unit() {
 
 #[test]
 fn dollar_scope_capture_result_typing() {
-    let s = assert_clean(analyze("const var a := 5;\nvar d := $$|a|{ a; };", &[]));
+    let s = assert_clean(analyze("const var a := 5;\nvar d := $$|a|{ a };", &[]));
     assert_entry(&s, 0, "isize", 2, 8, 8);
     assert_entry(&s, 1, "isize", 2, 8, 8);
     assert_entry(&s, 2, "isize", 2, 8, 8);

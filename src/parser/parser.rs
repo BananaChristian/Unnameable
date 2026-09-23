@@ -112,7 +112,7 @@ impl Parser {
                 if token.token_type == TType::End {
                     break;
                 }
-                if let Some(stmt) = self.parse_stmt() {
+                if let Some(stmt) = self.parse_stmt(false) {
                     stmts.push(stmt);
                 } else {
                     if let Some(token) = self.current_token() {

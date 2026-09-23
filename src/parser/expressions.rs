@@ -40,7 +40,7 @@ impl Parser {
         while self.current_token()?.token_type != TType::Rbrace
             && self.current_token()?.token_type != TType::End
         {
-            if let Some(stmt) = self.parse_stmt() {
+            if let Some(stmt) = self.parse_stmt(true) {
                 stmts.push(stmt);
             } else {
                 match self.current_token()?.token_type {

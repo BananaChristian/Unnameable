@@ -85,9 +85,6 @@ impl<'a> ControlFlowChecker<'a> {
         }
     }
 
-    /// Walks a block of statements, flags dead code and computes how the block
-    /// terminates. Statements following the termination point are unreachable
-    /// and do not participate in the analysis.
     fn walk_block(&mut self, stmts: &[HirStmt]) -> Termination {
         let mut term = Termination::falls_through();
         let mut terminated = false;
@@ -139,7 +136,30 @@ impl<'a> ControlFlowChecker<'a> {
             let current_fn_ret_ty = self.ctxt.types.types.get(&return_type.hir_id).cloned();
             self.current_return_type = current_fn_ret_ty.clone();
 
-            let body_term = self.walk_block(body);
+            let mut body_term = self.walk_block(body);
+
+            if let Some(HirStmt {
+                kind: HirStmtKind::HirTailExpr(tail_expr),
+                span: tail_span,
+                ..
+            }) = body.last()
+            {
+                body_term.returns = true;
+                let tail_ty = self.ctxt.types.types.get(&tail_expr.hir_id).cloned();
+                if let (Some(current_r), Some(tail_ty)) = (&self.current_return_type, tail_ty) {
+                    let known = current_r.kind != ResolvedTypeKind::Unknown
+                        && tail_ty.kind != ResolvedTypeKind::Unknown;
+                    if known && !TypeInfo::types_match(current_r, &tail_ty) {
+                        self.report(
+                            format!(
+                                "Expected type '{}' but got '{}'",
+                                current_r.name, tail_ty.name
+                            ),
+                            Some(tail_span.clone()),
+                        );
+                    }
+                }
+            }
 
             if let Some(ty) = &current_fn_ret_ty {
                 if ty.kind != ResolvedTypeKind::Unit && !body_term.returns {
@@ -277,7 +297,7 @@ impl<'a> ControlFlowChecker<'a> {
 
     fn walk_stmt_exprs(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
-            HirStmtKind::HirExpr(expr) => self.walk_expr(expr),
+            HirStmtKind::HirExpr(expr) | HirStmtKind::HirTailExpr(expr) => self.walk_expr(expr),
             HirStmtKind::HirVarDecl { init, .. } => self.walk_expr(init),
             _ => (),
         }
@@ -331,7 +351,10 @@ impl<'a> ControlFlowChecker<'a> {
                 }
             }
             HirExprKind::DollarScope {
-                params, body, result, ..
+                params,
+                body,
+                result,
+                ..
             } => {
                 for param in params {
                     self.walk_expr(param);
@@ -387,3 +410,4 @@ impl<'a> ControlFlowChecker<'a> {
 fn is_literal_true(expr: &HirExpr) -> bool {
     matches!(&expr.kind, HirExprKind::Literal(HirLiteral::Bool(true)))
 }
+

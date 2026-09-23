@@ -1589,6 +1589,36 @@ fn function_with_params_and_return() {
 }
 
 #[test]
+fn function_body_tail_expression_parses() {
+    // A block's final statement may omit the `;`; it parses as the new
+    // TailExpr statement kind (the block's value under tail semantics).
+    let src = "func foo: i32 { 5 }";
+    let (stmts, errors, corrupted) = parse_src(src);
+    assert!(!corrupted);
+    assert!(errors.is_empty());
+    let expected = st(
+        StmtKind::FunctionDef {
+            qualifiers: vec![],
+            name: Box::new(id("foo", 5, 8)),
+            params: vec![],
+            type_annotation: Some(ty(TypeKind::I32, 10, 13)),
+            body: Box::new(block(
+                vec![st(
+                    StmtKind::TailExpr(Box::new(lit(Literal::Int(5), 16, 17))),
+                    16,
+                    17,
+                )],
+                14,
+                19,
+            )),
+        },
+        0,
+        19,
+    );
+    assert_eq!(stmts, vec![expected]);
+}
+
+#[test]
 fn function_without_parens_return_type() {
     // `func foo: i32 { ... }` — return type may omit parens.
     let src = "func foo: i32 { return 0; }";

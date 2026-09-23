@@ -6,8 +6,8 @@ use crate::{
     diagnostics::Span,
     hir::{
         Conv, HirBinaryOp, HirExpr, HirExprKind, HirInstParam, HirLiteral, HirMatchArm, HirPattern,
-        HirPostfixOp, HirStmt, HirStmtKind, HirStructPatternField, HirType, HirTypeNode, HirUnaryOp,
-        QualifierMap,
+        HirPostfixOp, HirStmt, HirStmtKind, HirStructPatternField, HirType, HirTypeNode,
+        HirUnaryOp, QualifierMap,
     },
     lowering::lowering::Lowering,
 };
@@ -133,13 +133,12 @@ impl Lowering {
                 let mut stmts = self.lower_block(body)?;
                 let mut result = None;
 
-                if let Some(last_stmt) = stmts.last() {
-                    if let HirStmtKind::HirExpr(expr) = &last_stmt.kind {
-                        result = Some(expr.clone());
-                    }
-                }
-
-                if result.is_some() {
+                if let Some(HirStmt {
+                    kind: HirStmtKind::HirTailExpr(expr),
+                    ..
+                }) = stmts.last()
+                {
+                    result = Some(Box::new((**expr).clone()));
                     stmts.pop();
                 }
 

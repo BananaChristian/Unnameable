@@ -6,7 +6,7 @@ enum Color{
 func foo: u32{
   var x := $${
     var color := Color.BLUE;
-    color;
+    color
   };
 
   return 0u32;

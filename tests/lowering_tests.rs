@@ -148,6 +148,7 @@ fn func_def(
             generic_type_params,
             exposed,
             dollar_read,
+            inferred_return: false,
             body,
             conv,
         },
@@ -165,6 +166,7 @@ fn norm_stmt(mut s: HirStmt) -> HirStmt {
         HirStmtKind::HirBreak => HirStmtKind::HirBreak,
         HirStmtKind::HirContinue => HirStmtKind::HirContinue,
         HirStmtKind::HirExpr(e) => HirStmtKind::HirExpr(Box::new(norm_expr(*e))),
+        HirStmtKind::HirTailExpr(e) => HirStmtKind::HirTailExpr(Box::new(norm_expr(*e))),
         HirStmtKind::HirVarDecl {
             name,
             mutable,
@@ -189,6 +191,7 @@ fn norm_stmt(mut s: HirStmt) -> HirStmt {
             generic_type_params,
             exposed,
             dollar_read,
+            inferred_return,
             body,
             conv,
         } => HirStmtKind::HirFunctionDef {
@@ -197,6 +200,7 @@ fn norm_stmt(mut s: HirStmt) -> HirStmt {
             return_type: norm_ty(return_type),
             generic_type_params: generic_type_params.into_iter().map(norm_ty).collect(),
             exposed,
+            inferred_return,
             conv,
             dollar_read,
             body: body.into_iter().map(norm_stmt).collect(),
@@ -1394,7 +1398,7 @@ fn tuple_instantiation() {
 
 #[test]
 fn dollar_scope() {
-    let hir = parse_lower_norm("var w := $${ var y := 5; y; };");
+    let hir = parse_lower_norm("var w := $${ var y := 5; y };");
     let scope = expr(
         HirExprKind::DollarScope {
             params: vec![],
@@ -1410,7 +1414,7 @@ fn dollar_scope() {
             )],
             result: Some(Box::new(ident("y", span(25, 26)))),
         },
-        span(9, 30),
+        span(9, 29),
     );
     assert_eq!(
         hir,
@@ -1422,7 +1426,7 @@ fn dollar_scope() {
             false,
             None,
             scope,
-            span(0, 30)
+            span(0, 29)
         )]
     );
 }
@@ -1883,15 +1887,18 @@ fn function_def_no_return_type_becomes_unit_type_node_with_full_span() {
     let hir = parse_lower_norm("func noop2() { return; }");
     assert_eq!(
         hir,
-        vec![func_def(
-            "noop2",
-            vec![],
-            tn(HirType::Unit, span(10, 10)),
-            vec![],
-            false,
-            None,
-            false,
-            vec![stmt(HirStmtKind::HirReturn(None), span(15, 22))],
+        vec![stmt(
+            HirStmtKind::HirFunctionDef {
+                name: "noop2".to_string(),
+                params: vec![],
+                return_type: tn(HirType::Unit, span(10, 10)),
+                generic_type_params: vec![],
+                exposed: false,
+                conv: None,
+                dollar_read: false,
+                inferred_return: true,
+                body: vec![stmt(HirStmtKind::HirReturn(None), span(15, 22))],
+            },
             span(0, 24),
         )]
     );

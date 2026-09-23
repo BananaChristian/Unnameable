@@ -70,6 +70,11 @@ pub enum HirStmtKind {
     HirBreak,
     HirContinue,
     HirExpr(Box<HirExpr>),
+    /// The final statement of a block/function body: an expression whose value
+    /// is the block's value (Rust-style tail expression). Only valid as the
+    /// last element of a statement list; a `;`-terminated `HirExpr` discards
+    /// its value instead.
+    HirTailExpr(Box<HirExpr>),
     HirVarDecl {
         name: String,
         mutable: bool,
@@ -88,6 +93,7 @@ pub enum HirStmtKind {
         exposed: bool, // was in qualifiers
         conv: Option<Conv>,
         dollar_read: bool,
+        inferred_return: bool, // true when the :ret annotation was omitted (infer from tail, else Unit)
         body: Vec<HirStmt>, // flat list, no Block wrapper
     },
 

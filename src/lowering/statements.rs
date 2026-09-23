@@ -26,19 +26,28 @@ impl Lowering {
     }
 
     fn lower_expr_stmt(&mut self, stmt: &Stmt) -> Option<HirStmt> {
-        if let StmtKind::Expr(expr) = &stmt.kind {
-            let lowered_expr = self.lower_expr(expr)?;
-            let hir_stmt = HirStmt {
-                hir_id: lowered_expr.hir_id,
-                kind: HirStmtKind::HirExpr(Box::new(lowered_expr)),
-                span: stmt.span.clone(),
-            };
-
-            Some(hir_stmt)
+        let (expr, is_tail) = match &stmt.kind {
+            StmtKind::Expr(expr) => (expr, false),
+            StmtKind::TailExpr(expr) => (expr.as_ref(), true),
+            _ => {
+                self.report("Unknown statement".to_string(), Some(stmt.span.clone()));
+                return None;
+            }
+        };
+        let lowered_expr = self.lower_expr(expr)?;
+        let hir_id = lowered_expr.hir_id.clone();
+        let kind = if is_tail {
+            HirStmtKind::HirTailExpr(Box::new(lowered_expr))
         } else {
-            self.report("Unknown statement".to_string(), Some(stmt.span.clone()));
-            None
-        }
+            HirStmtKind::HirExpr(Box::new(lowered_expr))
+        };
+        let hir_stmt = HirStmt {
+            hir_id,
+            kind,
+            span: stmt.span.clone(),
+        };
+
+        Some(hir_stmt)
     }
 
     pub fn make_var(&mut self, name: String, mutable: bool, init: HirExpr, span: Span) -> HirStmt {
@@ -142,6 +151,7 @@ impl Lowering {
                     exposed: map.expose,
                     conv: map.extern_conv,
                     dollar_read: map.dollar_read,
+                    inferred_return: type_annotation.is_none(),
                     body: hir_body,
                 },
                 span: stmt.span.clone(),

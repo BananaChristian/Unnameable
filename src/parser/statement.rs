@@ -6,7 +6,7 @@ use crate::{
 };
 
 impl Parser {
-    pub fn parse_stmt(&mut self) -> Option<Stmt> {
+    pub fn parse_stmt(&mut self, allow_tail: bool) -> Option<Stmt> {
         let token = self.current_token()?.clone();
         match token.token_type {
             TType::Mut | TType::Expose | TType::Const | TType::Dollar | TType::Extern => {
@@ -28,15 +28,31 @@ impl Parser {
             TType::Alias => self.parse_alias(),
             TType::Import => self.parse_import(),
             TType::Break | TType::Continue => self.parse_break_or_cont(),
-            _ => self.parse_expr_stmt(),
+            _ => self.parse_expr_stmt(allow_tail),
         }
     }
 
-    fn parse_expr_stmt(&mut self) -> Option<Stmt> {
+    fn parse_expr_stmt(&mut self, allow_tail: bool) -> Option<Stmt> {
         let expr = self.parse_expression(Precedence::Lowest)?;
         let span = expr.clone().span;
-        self.expect_token(TType::Semicolon)?;
-        Some(Stmt::new(StmtKind::Expr(expr), span))
+
+        let is_tail = self.current_token()?.token_type != TType::Semicolon
+            && allow_tail
+            && matches!(
+                self.current_token()?.token_type,
+                TType::Rbrace | TType::End
+            );
+
+        if !is_tail {
+            self.expect_token(TType::Semicolon)?;
+        }
+
+        let kind = if is_tail {
+            StmtKind::TailExpr(Box::new(expr))
+        } else {
+            StmtKind::Expr(expr)
+        };
+        Some(Stmt::new(kind, span))
     }
 
     fn parse_qualified_stmt(&mut self) -> Option<Stmt> {
@@ -78,7 +94,7 @@ impl Parser {
             | TType::Enum
             | TType::Contract
             | TType::Variant
-            | TType::Seal => self.parse_stmt()?,
+            | TType::Seal => self.parse_stmt(false)?,
             _ => {
                 self.report(
                     "Expected a declaration after qualifiers".to_string(),

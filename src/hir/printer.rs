@@ -71,6 +71,10 @@ impl HirPrinter {
                 self.write_line(&format!("HirExprStmt [id: {id:?}]"));
                 self.with_indent(|p| p.fmt_expr(expr));
             }
+            HirStmtKind::HirTailExpr(expr) => {
+                self.write_line(&format!("HirTailExprStmt [id: {id:?}]"));
+                self.with_indent(|p| p.fmt_expr(expr));
+            }
             HirStmtKind::HirReturn(val) => {
                 self.write_line(&format!("HirReturn [id: {id:?}]"));
                 if let Some(e) = val {

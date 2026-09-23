@@ -20,13 +20,13 @@ impl<'a> Resolver<'a> {
             HirStmtKind::HirContractDecl { .. } => self.resolve_contract(stmt, table),
             HirStmtKind::HirReturn(..) => self.resolve_return(stmt, table),
             HirStmtKind::HirAlias { .. } => self.resolve_alias(stmt, table),
-            HirStmtKind::HirExpr(_) => self.resolve_expr_stmt(stmt, table),
+            HirStmtKind::HirExpr(_) | HirStmtKind::HirTailExpr(_) => self.resolve_expr_stmt(stmt, table),
             _ => (),
         }
     }
 
     fn resolve_expr_stmt(&mut self, stmt: &HirStmt, table: &mut NameTable) {
-        if let HirStmtKind::HirExpr(expr) = &stmt.kind {
+        if let HirStmtKind::HirExpr(expr) | HirStmtKind::HirTailExpr(expr) = &stmt.kind {
             self.resolve_expr(expr, table);
         }
     }

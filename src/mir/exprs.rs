@@ -163,7 +163,6 @@ impl<'a> MIRBuilder<'a> {
             }
 
             for (arm_idx, arm) in arms.iter().enumerate() {
-                // ---- test block: decide whether this arm applies ----
                 self.add_block(&test_blocks[arm_idx], span.clone());
                 self.current_block_id = Some(test_blocks[arm_idx].id);
 
@@ -198,7 +197,6 @@ impl<'a> MIRBuilder<'a> {
                     }
                 }
 
-                // ---- entry block: bind pattern names, evaluate the guard ----
                 self.add_block(&entry_blocks[arm_idx], span.clone());
                 self.current_block_id = Some(entry_blocks[arm_idx].id);
                 self.push_scope();
@@ -230,7 +228,6 @@ impl<'a> MIRBuilder<'a> {
                     }
                 }
 
-                // ---- body block: compute the arm value into the shared result
                 self.add_block(&body_blocks[arm_idx], span.clone());
                 self.current_block_id = Some(body_blocks[arm_idx].id);
                 if let Some(body_val) = self.arm_body_value(&arm.body) {
@@ -517,7 +514,6 @@ impl<'a> MIRBuilder<'a> {
         }
     }
 
-    /// Loads the tag of a variant value (field 0 of the tag+payload struct).
     fn load_variant_tag(
         &mut self,
         variant_name: &str,
@@ -540,14 +536,12 @@ impl<'a> MIRBuilder<'a> {
         tag_reg
     }
 
-    /// Compiles a block expression, returning the value of its trailing
-    /// expression statement (if any) and leaving it in `last_value`.
     fn block_codegen(&mut self, expr: &HirExpr) -> Option<MIRValue> {
         if let HirExprKind::Block(stmts) = &expr.kind {
             self.push_scope();
             let mut last: Option<MIRValue> = None;
             for stmt in stmts {
-                if let HirStmtKind::HirExpr(inner) = &stmt.kind {
+                if let HirStmtKind::HirTailExpr(inner) = &stmt.kind {
                     last = Some(self.expr_value(inner));
                 } else {
                     self.build_stmt(stmt);
@@ -1564,10 +1558,11 @@ impl<'a> MIRBuilder<'a> {
 
             HirExprKind::Block(_) => match self.block_codegen(expr) {
                 Some(val) => val,
-                None => self.report_ice(
-                    "Block expression produced no value".to_string(),
-                    Some(expr.span.clone()),
-                ),
+                None => {
+                    // A block with no tail expression has unit value (the
+                    // trailing `;`-expression is discarded).
+                    MIRValue::Poison
+                }
             },
 
             _ => {

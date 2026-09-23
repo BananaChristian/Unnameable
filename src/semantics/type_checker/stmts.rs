@@ -8,7 +8,7 @@ impl<'a> TypeChecker<'a> {
         match &stmt.kind {
             HirStmtKind::HirIf { .. } => self.check_if(stmt),
             HirStmtKind::HirWhile { .. } => self.check_while(stmt),
-            HirStmtKind::HirExpr(..) => self.check_expr_stmt(stmt),
+            HirStmtKind::HirExpr(..) | HirStmtKind::HirTailExpr(..) => self.check_expr_stmt(stmt),
             HirStmtKind::HirVariantDecl { .. }
             | HirStmtKind::HirStructDecl { .. }
             | HirStmtKind::HirEnumDecl { .. }
@@ -17,10 +17,6 @@ impl<'a> TypeChecker<'a> {
             HirStmtKind::HirFunctionDef { .. } => self.check_func(stmt),
             HirStmtKind::HirVarDecl { .. } => self.check_var(stmt),
             HirStmtKind::HirReturn(_) => self.check_return(stmt),
-            // Contract requirement functions carry signatures the contract
-            // verifier must compare against impls; record them in the type
-            // table under their own hir_id (the shape declared_custom_types
-            // produces for a FunctionDecl).
             HirStmtKind::HirContractDecl { functions, .. } => {
                 for f in functions {
                     self.declare_custom_types(f);
@@ -31,8 +27,11 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_expr_stmt(&mut self, stmt: &HirStmt) {
-        if let HirStmtKind::HirExpr(expr) = &stmt.kind {
-            self.check_expr(expr);
+        match &stmt.kind {
+            HirStmtKind::HirExpr(expr) | HirStmtKind::HirTailExpr(expr) => {
+                self.check_expr(expr);
+            }
+            _ => {}
         }
     }
 
@@ -105,6 +104,7 @@ impl<'a> TypeChecker<'a> {
         if let HirStmtKind::HirFunctionDef {
             generic_type_params,
             return_type,
+            inferred_return: inferred_return_flag,
             body,
             ..
         } = &stmt.kind
@@ -112,16 +112,10 @@ impl<'a> TypeChecker<'a> {
             //Declare the function type (this also validates and types the params)
             self.declare_custom_types(stmt);
 
-            // Reuse the already-resolved return type (same identity the CF
-            // checker reads) instead of re-resolving, so an unsuffixed numeric
-            // literal can adopt it without allocating new type identity.
             let function_return_ty = self.ctxt.types.types.get(&return_type.hir_id).cloned();
 
-            // Keep the function's generic params in scope while checking the
-            // body: parameter/return/usages of `T` inside must resolve to the
-            // generic param (matching the param/return types declared above),
-            // otherwise `T` falls through to `unknown` and every use is a type
-            // mismatch. Restore whatever was active before this function.
+            let mut inferred_return = None;
+
             let saved_active_generic_params = std::mem::take(&mut self.active_generic_params);
             self.active_generic_params = generic_type_params
                 .iter()
@@ -131,10 +125,41 @@ impl<'a> TypeChecker<'a> {
             for s in body {
                 // An unsuffixed numeric literal returned from a function takes
                 // the function's declared return type instead of the default.
-                if let (Some(ret_ty), HirStmtKind::HirReturn(Some(expr))) = (&function_return_ty, &s.kind) {
-                    self.coerce_ty(ret_ty, expr);
+                match (&function_return_ty, &s.kind) {
+                    (Some(ret_ty), HirStmtKind::HirReturn(Some(expr)))
+                    | (Some(ret_ty), HirStmtKind::HirTailExpr(expr)) => {
+                        if *inferred_return_flag {
+                            // Tail-return inference: don't force the tail to
+                            // the baked Unit — record the tail's own type and
+                            // write it back after checking the body.
+                            self.check_stmt(s);
+                            inferred_return = Some(self.expr_type(&expr));
+                            continue;
+                        }
+                        self.coerce_ty(ret_ty, expr);
+                    }
+                    _ => {}
                 }
                 self.check_stmt(s);
+            }
+
+            if let Some(inferred_ty) = &inferred_return {
+                let mut ty_info = self.ctxt.types.types.get(&return_type.hir_id).cloned();
+                if let Some(ref mut slot) = ty_info {
+                    slot.kind = inferred_ty.kind.clone();
+                }
+                if let Some(ref mut slot) = ty_info.clone() {
+                    self.declare_custom_types(stmt);
+                    if let Some(ref mut slot) = ty_info {
+                        slot.type_id = inferred_ty.type_id.clone();
+                        slot.layout = inferred_ty.layout.clone();
+                        slot.name = inferred_ty.name.clone();
+                    }
+                    self.ctxt
+                        .types
+                        .types
+                        .insert(return_type.hir_id.clone(), slot.clone());
+                }
             }
 
             self.active_generic_params = saved_active_generic_params;

@@ -25,7 +25,7 @@ impl<'a> MIRBuilder<'a> {
             HirStmtKind::HirReturn(_) => self.build_return(stmt),
             HirStmtKind::HirIf { .. } => self.build_if(stmt),
             HirStmtKind::HirWhile { .. } => self.build_while(stmt),
-            HirStmtKind::HirExpr(_) => self.build_expr_stmt(stmt),
+            HirStmtKind::HirExpr(_) | HirStmtKind::HirTailExpr(_) => self.build_expr_stmt(stmt),
             _ => self.report_ice(
                 format!(
                     "Encountered {:?}, no statement handler implemented",
@@ -376,7 +376,18 @@ impl<'a> MIRBuilder<'a> {
             }
 
             for body_stmt in body {
+                let is_tail = matches!(&body_stmt.kind, HirStmtKind::HirTailExpr(_));
+                if is_tail && !self.current_block_is_terminable() {
+                    // A return/branch already claimed this path; the tail is
+                    // dead code (cf_checker already reported it).
+                    continue;
+                }
                 self.build_stmt(body_stmt);
+                if is_tail && self.current_block_is_terminable() {
+                    if let Some(tail_val) = self.last_value.as_ref().cloned() {
+                        self.set_implicit_tail_return(tail_val);
+                    }
+                }
             }
             self.pop_scope();
 
@@ -404,10 +415,7 @@ impl<'a> MIRBuilder<'a> {
         } = &stmt.kind
         {
             let span = Some(stmt.span.clone());
-            self.build_expr(condition);
-            let Some(cond_val) = self.last_value.as_ref().cloned() else {
-                self.report_ice("Failed to get last MIRValue".to_string(), span.clone());
-            };
+            let cond_val = self.expr_value(condition);
 
             let then_block = self.create_basic_block();
             let else_block = self.create_basic_block();
@@ -462,11 +470,8 @@ impl<'a> MIRBuilder<'a> {
 
             self.add_block(&cond_block, span.clone());
             self.current_block_id = Some(cond_block.id);
-            self.build_expr(condition);
+            let cond_val = self.expr_value(condition);
 
-            let Some(cond_val) = self.last_value.as_ref().cloned() else {
-                self.report_ice("Failed to get last MIRValue".to_string(), span.clone());
-            };
             self.set_terminator(
                 Terminator::Branch {
                     cond: cond_val,
@@ -493,8 +498,52 @@ impl<'a> MIRBuilder<'a> {
     }
 
     fn build_expr_stmt(&mut self, stmt: &HirStmt) {
-        if let HirStmtKind::HirExpr(inner) = &stmt.kind {
-            self.build_expr(inner);
+        match &stmt.kind {
+            HirStmtKind::HirExpr(inner) => self.build_expr(inner),
+            // The tail evaluates to a value even when the expression kind
+            // (e.g. an identifier) wouldn't otherwise populate `last_value`.
+            HirStmtKind::HirTailExpr(inner) => {
+                self.last_value = Some(self.expr_value(inner));
+            }
+            _ => {}
         }
+    }
+
+    /// True when the current block still has the default `Return(None)`
+    /// terminator; the only case where an implicit tail-return can still
+    /// claim the fall-through path.
+    fn current_block_is_terminable(&self) -> bool {
+        let (Some(fn_id), Some(block_id)) = (self.current_func, self.current_block_id) else {
+            return false;
+        };
+        let Some(func) = self.module.functions.get(&fn_id) else {
+            return false;
+        };
+        let Some(body) = &func.body else {
+            return false;
+        };
+        let Some(block) = body.blocks.get(&block_id) else {
+            return false;
+        };
+        matches!(block.terminator, Terminator::Return(None))
+    }
+
+    /// Rust-style implicit tail-return: turn the function body's trailing
+    /// expression into the return value of the current (still-fall-through)
+    /// block.
+    fn set_implicit_tail_return(&mut self, val: MIRValue) {
+        let (Some(fn_id), Some(block_id)) = (self.current_func, self.current_block_id) else {
+            return;
+        };
+        let Some(func) = self.module.functions.get_mut(&fn_id) else {
+            return;
+        };
+        let Some(body) = &mut func.body else {
+            return;
+        };
+        let Some(block) = body.blocks.get_mut(&block_id) else {
+            return;
+        };
+        block.terminator = Terminator::Return(Some(val));
     }
 }

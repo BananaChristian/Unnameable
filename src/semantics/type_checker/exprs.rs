@@ -226,12 +226,13 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    /// A block expression's type is the type of its trailing expression
-    /// statement, or `()` when it has none.
+    /// A block expression's type is the type of its trailing tail expression
+    /// statement, or `()` when it has none. A `;`-terminated trailing
+    /// expression is an ordinary statement and yields `()`.
     fn block_type(&mut self, body: &Vec<HirStmt>, span: Span) -> TypeInfo {
         match body.last() {
             Some(HirStmt {
-                kind: HirStmtKind::HirExpr(inner),
+                kind: HirStmtKind::HirTailExpr(inner),
                 ..
             }) => {
                 for stmt in &body[..body.len() - 1] {
@@ -347,9 +348,7 @@ impl<'a> TypeChecker<'a> {
                 }
             },
             HirPattern::StructPattern {
-                type_name,
-                fields,
-                ..
+                type_name, fields, ..
             } => match &expected.kind {
                 ResolvedTypeKind::Struct { name, members, .. } => {
                     for field in fields {
@@ -386,23 +385,19 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn pattern_literal_matches(&self, expected: &TypeInfo, lit_ty: &TypeInfo) -> bool {
-        TypeInfo::types_match(expected, lit_ty) || (self.is_numeric(expected) && self.is_numeric(lit_ty))
+        TypeInfo::types_match(expected, lit_ty)
+            || (self.is_numeric(expected) && self.is_numeric(lit_ty))
     }
 
     fn gen_inst_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::GenericInstantion { type_params, .. } = &expr.kind {
-            let template_decl_id: NodeId = *self
-                .ctxt
-                .names
-                .resolved
-                .get(&expr.hir_id)
-                .expect(
-                    format!(
-                        "Name resolver missing mapping for generic instantiation with id {:?}",
-                        expr.hir_id
-                    )
-                    .as_str(),
-                );
+            let template_decl_id: NodeId = *self.ctxt.names.resolved.get(&expr.hir_id).expect(
+                format!(
+                    "Name resolver missing mapping for generic instantiation with id {:?}",
+                    expr.hir_id
+                )
+                .as_str(),
+            );
 
             let template_info = self.get_decl_type(&template_decl_id, expr.span.clone());
 
@@ -412,9 +407,12 @@ impl<'a> TypeChecker<'a> {
                 .collect();
 
             if !concrete_args.is_empty()
-                && !concrete_args
-                    .iter()
-                    .any(|a| matches!(a.kind, ResolvedTypeKind::GenericParam(_) | ResolvedTypeKind::Unknown))
+                && !concrete_args.iter().any(|a| {
+                    matches!(
+                        a.kind,
+                        ResolvedTypeKind::GenericParam(_) | ResolvedTypeKind::Unknown
+                    )
+                })
             {
                 let key = InstanceKey {
                     original_def_id: template_decl_id,

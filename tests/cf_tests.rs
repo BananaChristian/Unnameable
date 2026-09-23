@@ -52,6 +52,30 @@ fn unit_function_bare_return_passes() {
 }
 
 #[test]
+fn implicit_tail_return_is_a_terminal_return() {
+    assert_clean("func f(): isize {\n    var x := 1;\n    x\n}\n");
+    assert_clean("func f(): isize {\n    42\n}\n");
+    // A trailing `;` discards the expression: no tail, so no terminal return.
+    assert_messages(
+        "func f(): isize {\n    42;\n}\n",
+        &["function missing  terminal return statement, expected return statement of type 'isize'"],
+    );
+}
+
+#[test]
+fn tail_return_type_is_checked() {
+    assert_messages(
+        "func f(): isize {\n    true\n}\n",
+        &["Expected type 'isize' but got 'bool'"],
+    );
+}
+
+#[test]
+fn implicit_tail_return_passes_type_matching() {
+    assert_clean("func f(): bool {\n    true\n}\n");
+}
+
+#[test]
 fn valid_return_type_passes() {
     assert_clean("func f(): isize {\n    return 1;\n}\n");
 }

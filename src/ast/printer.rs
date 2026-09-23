@@ -65,6 +65,10 @@ impl AstPrinter {
                 self.write_line("ExprStmt");
                 self.with_indent(|p| p.fmt_expr(expr));
             }
+            StmtKind::TailExpr(expr) => {
+                self.write_line("TailExprStmt");
+                self.with_indent(|p| p.fmt_expr(expr));
+            }
             StmtKind::Return(val) => {
                 self.write_line("Return");
                 if let Some(e) = val {

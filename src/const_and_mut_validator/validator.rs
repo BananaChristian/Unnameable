@@ -66,7 +66,7 @@ impl Validator {
             HirStmtKind::HirVarDecl { .. } => self.check_var_decl(stmt),
             HirStmtKind::HirIf { .. } => self.check_if(stmt),
             HirStmtKind::HirWhile { .. } => self.check_while(stmt),
-            HirStmtKind::HirExpr(_) => self.check_expr_stmt(stmt),
+            HirStmtKind::HirExpr(_) | HirStmtKind::HirTailExpr(_) => self.check_expr_stmt(stmt),
             HirStmtKind::HirFunctionDef { .. } => self.check_func_decl(stmt),
             HirStmtKind::HirReturn(val) => {
                 if let Some(e) = val {
@@ -78,7 +78,7 @@ impl Validator {
     }
 
     fn check_expr_stmt(&mut self, stmt: &HirStmt) {
-        if let HirStmtKind::HirExpr(inner) = &stmt.kind {
+        if let HirStmtKind::HirExpr(inner) | HirStmtKind::HirTailExpr(inner) = &stmt.kind {
             self.check_expr(inner);
         }
     }

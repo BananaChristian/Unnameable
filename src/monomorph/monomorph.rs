@@ -631,7 +631,9 @@ impl<'a> Monomorphizer<'a> {
         stmt.hir_id = self.new_id();
         self.record_fresh_type(&original_id, &stmt.hir_id, gens, args);
         match &mut stmt.kind {
-            HirStmtKind::HirReturn(Some(expr)) | HirStmtKind::HirExpr(expr) => {
+            HirStmtKind::HirReturn(Some(expr))
+            | HirStmtKind::HirExpr(expr)
+            | HirStmtKind::HirTailExpr(expr) => {
                 self.fresh_expr(expr, gens, args);
             }
             HirStmtKind::HirReturn(None)

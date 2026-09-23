@@ -27,6 +27,7 @@ pub struct VariantMember {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
     Expr(Expr),
+    TailExpr(Box<Expr>),
     Return(Option<Expr>),
     Break,
     Continue,

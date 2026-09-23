@@ -10,7 +10,9 @@ use unnc::dollar_folder::Folder;
 use unnc::dollar_verifier::DollarVerifier;
 use unnc::hir::{HirExpr, HirExprKind, HirStmt, HirStmtKind, HirType};
 use unnc::indexer::NodeIndex;
-use unnc::mir::{ConstantValue, MIRBuilder, MIRInstruction, MIRModule, MIRValue};
+use unnc::mir::{
+    ConstantValue, MIRBuilder, MIRInstruction, MIRModule, MIRValue, Terminator,
+};
 use unnc::target::TargetSpec;
 use unnc::vm::{EvalResultTable, VMValue, VM};
 
@@ -335,7 +337,7 @@ func dollar_a(){
     match k{
       7 => 1
       _ => 0
-    };
+    }
   };
 }
 func dollar_b(){
@@ -343,7 +345,7 @@ func dollar_b(){
     match j{
       7 => 1
       _ => 0
-    };
+    }
   };
 }
 "#;
@@ -1140,10 +1142,10 @@ fn end_to_end_struct_pattern_binds_named_fields() {
 #[test]
 fn end_to_end_match_as_value_and_block_bodies_build_mir() {
     // A match used as an rvalue (`var v := match ...`) and block-expression
-    // arm bodies (with a trailing value) must both lower to MIR.
+    // arm bodies (with a tail value) must both lower to MIR.
     let mir = mono_e2e(
         "func main(): i32 {\n\
-             var v := match 2 { 1 => 100i32, 2 => { var t := 50i32; t * 2; }, _ => 0i32 };\n\
+             var v := match 2 { 1 => 100i32, 2 => { var t := 50i32; t * 2 }, _ => 0i32 };\n\
              return v;\n\
          }\n",
     );
@@ -1160,5 +1162,54 @@ fn end_to_end_match_as_value_and_block_bodies_build_mir() {
             .flat_map(|bb| &bb.instructions)
             .any(|i| matches!(i, MIRInstruction::Alloca { .. })),
         "block arm body's var must alloca"
+    );
+}
+
+#[test]
+fn implicit_tail_return_builds_return_terminator() {
+    let mir = mono_e2e(
+        "func add(a: i32, b: i32): i32 {\n\
+             a + b\n\
+         }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "add")
+        .expect("add should reach MIR");
+    let body = f.body.as_ref().unwrap();
+    let terminator = body.blocks.get(&body.entry_block).unwrap().terminator.clone();
+    assert!(
+        matches!(terminator, Terminator::Return(Some(_))),
+        "implicit tail-return should produce Return(Some(_)), got {terminator:?}"
+    );
+}
+
+#[test]
+fn block_tail_is_the_value_semicolon_expr_is_unit() {
+    let mir = mono_e2e(
+        "func main(): i32 {\n\
+             var v := { 1i32 + 2i32 };\n\
+             var u := { 40i32; };\n\
+             v\n\
+         }\n",
+    );
+    let (_, f) = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "main")
+        .expect("main should reach MIR");
+    let body = f.body.as_ref().unwrap();
+    assert!(
+        body.blocks
+            .values()
+            .flat_map(|bb| &bb.instructions)
+            .any(|i| matches!(i, MIRInstruction::Store { .. })),
+        "block tail value must be stored into v"
+    );
+    let terminator = body.blocks.get(&body.entry_block).unwrap().terminator.clone();
+    assert!(
+        matches!(terminator, Terminator::Return(Some(_))),
+        "main must tail-return v, got {terminator:?}"
     );
 }

@@ -5,7 +5,7 @@ variant Weird {
 func foo(): u32 {
   var x := $${
     var weird := Weird.Pair(5, 1000);
-    weird;
+    weird
   };
   return 0u32;
 }
