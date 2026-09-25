@@ -627,6 +627,42 @@ impl<'a> TypeChecker<'a> {
             let target_ty = self.type_from_hir_type(target);
             let src_ty = self.expr_type(src_expr);
 
+            if let ResolvedTypeKind::Owned { inner: owned_inner } = &target_ty.kind {
+                return match &src_ty.kind {
+                    ResolvedTypeKind::Pointer { inner: ptr_inner } => {
+                        if !TypeInfo::types_match(ptr_inner, owned_inner) {
+                            self.report(
+                            format!(
+                                "Cannot promote pointer to '{}' into owned<{}> , pointee types must match",
+                                ptr_inner.name, owned_inner.name
+                            ),
+                            Some(expr.span.clone()),
+                        );
+                            return self.unknown(expr.span.clone());
+                        }
+                        if !self.marked_scope.last().copied().unwrap_or(false) {
+                            self.report(
+                                "Promoting a raw pointer to owned<T> requires a 'marked' block"
+                                    .to_string(),
+                                Some(expr.span.clone()),
+                            );
+                            return self.unknown(expr.span.clone());
+                        }
+                        target_ty
+                    }
+                    _ => {
+                        self.report(
+                        format!(
+                            "Cannot cast '{}' to owned<{}> ,only a raw pointer may be promoted to ownership",
+                            src_ty.name, owned_inner.name
+                        ),
+                        Some(expr.span.clone()),
+                    );
+                        self.unknown(expr.span.clone())
+                    }
+                };
+            }
+
             let allowed = match (&src_ty.kind, &target_ty.kind) {
                 (_, _) if self.is_numeric(&src_ty) && self.is_numeric(&target_ty) => true,
 
