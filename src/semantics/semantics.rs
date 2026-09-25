@@ -67,6 +67,9 @@ pub enum ResolvedTypeKind {
     Ref {
         inner: Box<TypeInfo>,
     },
+    Owned {
+        inner: Box<TypeInfo>,
+    },
     Array {
         inner: Box<TypeInfo>,
         size: Option<u64>,
@@ -135,9 +138,9 @@ impl TypeInfo {
             ResolvedTypeKind::Unknown => "unknown".to_string(),
             ResolvedTypeKind::Array { inner, size } => {
                 if let Some(s) = size {
-                    format!("arr[{},{}]", inner.name, s)
+                    format!("[{},{}]", inner.name, s)
                 } else {
-                    format!("arr[{}]", inner.name)
+                    format!("[{}]", inner.name)
                 }
             }
             ResolvedTypeKind::Nullable { ty } => {
@@ -151,6 +154,9 @@ impl TypeInfo {
             }
             ResolvedTypeKind::Ref { inner } => {
                 format!("ref<{}>", inner.name.clone())
+            }
+            ResolvedTypeKind::Owned { inner } => {
+                format!("owned<{}>", inner.name.clone())
             }
             ResolvedTypeKind::Tuple { fields } => {
                 let element_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();

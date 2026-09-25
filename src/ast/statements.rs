@@ -31,10 +31,11 @@ pub enum StmtKind {
     Return(Option<Expr>),
     Break,
     Continue,
+    ///Something like var x : u8 := init
     VarDecl {
         qualifiers: Vec<Qualifier>,    //Things like mut
-        type_annotation: Option<Type>, //The type like u8
         name: Box<Expr>,               //The name of the variable
+        type_annotation: Option<Type>, //The type like u8
         init: Box<Expr>,
     },
     ParamDecl {

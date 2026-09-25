@@ -190,6 +190,23 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    pub fn owned(&mut self, inner: TypeInfo, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Owned {
+            inner: Box::new(inner),
+        };
+        let type_id = self.registry.issue_id(kind.clone());
+        let layout = self.get_layout(&kind, type_id.clone(), span.clone());
+
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id,
+            layout,
+            span,
+        }
+    }
+
+
     pub fn pointer(&mut self, inner: TypeInfo, span: Span) -> TypeInfo {
         let kind = ResolvedTypeKind::Pointer {
             inner: Box::new(inner),
@@ -354,6 +371,11 @@ impl<'a> TypeChecker<'a> {
                 let inner_ty = self.type_from_hir_type(inner);
                 self.invalid_inner(&kind, &inner_ty, Some(ty.span.clone()));
                 self.reference(inner_ty.clone(), ty.span.clone())
+            }
+            HirType::Owned(inner) => {
+                let inner_ty = self.type_from_hir_type(inner);
+                self.invalid_inner(&kind, &inner_ty, Some(ty.span.clone()));
+                self.owned(inner_ty.clone(), ty.span.clone())
             }
             HirType::Nullable(inner) => {
                 let inner_ty = self.type_from_hir_type(inner);

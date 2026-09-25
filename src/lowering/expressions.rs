@@ -56,7 +56,10 @@ impl Lowering {
                 let hir_inner = self.lower_expr(inner)?;
                 HirExprKind::Unwrap(Box::new(hir_inner))
             }
-
+            ExprKind::Marked(inner) => {
+                let inner_expr = self.lower_expr(inner)?;
+                HirExprKind::Marked(Box::new(inner_expr))
+            }
             ExprKind::GenericInstantion { name, type_params } => {
                 let name_str = self.extract_name_string(name)?;
                 let hir_params = type_params
@@ -458,6 +461,10 @@ impl Lowering {
             TypeKind::Ref(inner) => {
                 let inner_hir = self.lower_type(inner)?;
                 HirType::Ref(Box::new(inner_hir))
+            }
+            TypeKind::Owned(inner) => {
+                let inner_hir = self.lower_type(inner)?;
+                HirType::Owned(Box::new(inner_hir))
             }
             TypeKind::Nullable(inner) => {
                 let inner_hir = self.lower_type(inner)?;

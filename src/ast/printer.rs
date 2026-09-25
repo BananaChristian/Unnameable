@@ -1,7 +1,8 @@
 use core::fmt;
 
 use crate::ast::{
-    Elif, EnumMember, Expr, ExprKind, InstParam, MatchArm, Pattern, Qualifier, QualifierKind, Stmt, StmtKind, Type, TypeKind, VariantMember,
+    Elif, EnumMember, Expr, ExprKind, InstParam, MatchArm, Pattern, Qualifier, QualifierKind, Stmt,
+    StmtKind, Type, TypeKind, VariantMember,
 };
 
 /// Pretty printer for AST nodes that renders human-readable tree structures.
@@ -505,7 +506,11 @@ impl AstPrinter {
                 rest,
                 span,
             } => {
-                self.write_line(&format!("PatternStruct({}{})", type_name, if *rest { ",.." } else { "" }));
+                self.write_line(&format!(
+                    "PatternStruct({}{})",
+                    type_name,
+                    if *rest { ",.." } else { "" }
+                ));
                 self.with_indent(|p| {
                     for field in fields {
                         p.write_line(&format!("Field({}):", field.name));
@@ -580,6 +585,10 @@ impl AstPrinter {
                         });
                     }
                 });
+            }
+            ExprKind::Marked(block) => {
+                self.write_line("Marked");
+                self.fmt_expr(block);
             }
             ExprKind::Call(callee, args) => {
                 self.write_line("Call");
@@ -718,6 +727,10 @@ impl AstPrinter {
 
             TypeKind::Ptr(inner) => {
                 self.write_line("PtrTo:");
+                self.with_indent(|p| p.fmt_type(inner));
+            }
+            TypeKind::Owned(inner) => {
+                self.write_line("OwnedTo:");
                 self.with_indent(|p| p.fmt_type(inner));
             }
             TypeKind::Ref(inner) => {

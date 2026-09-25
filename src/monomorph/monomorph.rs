@@ -296,6 +296,16 @@ impl<'a> Monomorphizer<'a> {
                     span.clone(),
                 )
             }
+            HirType::Owned(inner) => {
+                let inner_info = self.type_info_for(inner)?;
+                self.wrapped_info(
+                    "owned",
+                    ResolvedTypeKind::Owned {
+                        inner: Box::new(inner_info),
+                    },
+                    span.clone(),
+                )
+            }
             HirType::Nullable(inner) => {
                 let inner_info = self.type_info_for(inner)?;
                 self.wrapped_info(
@@ -507,6 +517,7 @@ impl<'a> Monomorphizer<'a> {
         expr.hir_id = self.new_id();
         self.record_fresh_type(&original_id, &expr.hir_id, gens, args);
         match &mut expr.kind {
+            HirExprKind::Marked(inner) => self.fresh_expr(inner, gens, args),
             HirExprKind::Literal(_) | HirExprKind::Identifier(_) => {}
             HirExprKind::Binary(left, _, right) => {
                 self.fresh_expr(left, gens, args);

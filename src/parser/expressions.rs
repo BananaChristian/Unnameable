@@ -232,6 +232,7 @@ impl Parser {
             TType::Lparen => self.parse_grouping(),
             TType::Unwrap => self.parse_unwrap_expr(),
             TType::Match => self.parse_match(),
+            TType::Marked => self.parse_marked(),
             TType::LBrace => self.parse_body(),
 
             TType::Minus
@@ -429,6 +430,15 @@ impl Parser {
             ExprKind::SizeOfExpr(Box::new(ty)),
             Span { start, end },
         ))
+    }
+
+    fn parse_marked(&mut self) -> Option<Expr> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Marked)?;
+        let body = self.parse_body()?;
+        let end = body.span.end;
+        let span = Span { start, end };
+        Some(Expr::new(ExprKind::Marked(Box::new(body)), span))
     }
 
     fn parse_match(&mut self) -> Option<Expr> {

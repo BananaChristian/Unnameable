@@ -38,10 +38,7 @@ impl Parser {
 
         let is_tail = self.current_token()?.token_type != TType::Semicolon
             && allow_tail
-            && matches!(
-                self.current_token()?.token_type,
-                TType::Rbrace | TType::End
-            );
+            && matches!(self.current_token()?.token_type, TType::Rbrace | TType::End);
 
         if !is_tail {
             self.expect_token(TType::Semicolon)?;
@@ -130,73 +127,29 @@ impl Parser {
     fn parse_var(&mut self) -> Option<Stmt> {
         let start = self.current_token()?.span.start;
         self.expect_token(TType::Var)?;
-
-        let mut ty = None;
-        let next_type = self.current_token()?.token_type;
-
-        let has_type_annotation = match next_type {
-            // Complex structural types definitely mean a type annotation is here
-            TType::Dot
-            | TType::Lparen
-            | TType::Ptr
-            | TType::Ref
-            | TType::Arr
-            | TType::Func
-            | TType::DoubleExclaim => true,
-
-            TType::ISIZEKey
-            | TType::USIZEKey
-            | TType::I128Key
-            | TType::U128Key
-            | TType::I64Key
-            | TType::U64Key
-            | TType::I32Key
-            | TType::U32key
-            | TType::I16Key
-            | TType::U16Key
-            | TType::I8Key
-            | TType::U8Key
-            | TType::BoolKey
-            | TType::F32Key
-            | TType::F64Key
-            | TType::StrKey
-            | TType::Char8Key
-            | TType::Char16Key
-            | TType::Char32Key => true,
-
-            TType::Identifier => {
-                if let Some(next) = self.peek_token() {
-                    next.token_type == TType::Identifier || next.token_type == TType::Lt
-                } else {
-                    false
-                }
-            }
-            _ => false,
+        let name = self.parse_identifier()?;
+        let ty = if self.current_token()?.token_type == TType::Colon {
+            self.advance();
+            let t = self.parse_type()?;
+            Some(t)
+        } else {
+            None
         };
 
-        if has_type_annotation {
-            ty = self.parse_type();
-        }
-
-        let name = self.parse_identifier()?;
-
-        self.expect_token(TType::Bind)?;
-        let init_val = self.parse_expression(Precedence::Lowest)?;
-
-        self.expect_token(TType::Semicolon)?;
-
+        self.expect_token(TType::Assign)?;
+        let init = self.parse_expression(Precedence::Lowest)?;
         let end = self.current_token()?.span.end;
+        self.expect_token(TType::Semicolon)?;
         let span = Span { start, end };
-
-        Some(Stmt::new(
-            StmtKind::VarDecl {
+        Some(Stmt {
+            kind: StmtKind::VarDecl {
                 qualifiers: Vec::new(),
-                type_annotation: ty,
                 name: Box::new(name),
-                init: Box::new(init_val),
+                type_annotation: ty,
+                init: Box::new(init),
             },
             span,
-        ))
+        })
     }
 
     pub fn parse_struct(&mut self) -> Option<Stmt> {

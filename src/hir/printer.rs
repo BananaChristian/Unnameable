@@ -419,6 +419,7 @@ impl HirPrinter {
         let id = expr.hir_id;
         match &expr.kind {
             HirExprKind::Literal(lit) => self.write_line(&format!("Literal({lit:?}) [id: {id:?}]")),
+            HirExprKind::Marked(inner) => self.fmt_expr(inner),
             HirExprKind::Identifier(name) => {
                 self.write_line(&format!("Identifier(\"{name}\") [id: {id:?}]"))
             }
@@ -693,6 +694,10 @@ impl HirPrinter {
 
             HirType::Ptr(inner) => {
                 self.write_line(&format!("PtrTo [id: {id:?}]"));
+                self.with_indent(|p| p.fmt_type(inner));
+            }
+            HirType::Owned(inner) => {
+                self.write_line(&format!("OwnedTo [id: {id:?}]"));
                 self.with_indent(|p| p.fmt_type(inner));
             }
             HirType::Ref(inner) => {

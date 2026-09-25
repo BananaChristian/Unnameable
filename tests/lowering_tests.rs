@@ -344,6 +344,7 @@ fn norm_expr(mut e: HirExpr) -> HirExpr {
             arms: arms.into_iter().map(norm_match_arm).collect(),
         },
         HirExprKind::Block(stmts) => HirExprKind::Block(stmts.into_iter().map(norm_stmt).collect()),
+        HirExprKind::Marked(inner) => HirExprKind::Marked(Box::new(norm_expr(*inner))),
     };
     e
 }

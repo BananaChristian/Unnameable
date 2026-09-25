@@ -36,7 +36,7 @@ impl Parser {
         // Parse default value (optional)
         let mut default = None;
         if parse_def {
-            default = if self.current_token()?.token_type == TType::Bind {
+            default = if self.current_token()?.token_type == TType::Assign {
                 self.advance(); // Consume :=
                 let value = self.parse_expression(Precedence::Lowest)?;
                 Some(Box::new(value))

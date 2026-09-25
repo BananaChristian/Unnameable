@@ -31,6 +31,7 @@ pub enum HirType {
     // Pointer types
     Ptr(Box<HirTypeNode>),
     Ref(Box<HirTypeNode>),
+    Owned(Box<HirTypeNode>),
     Array(Box<HirTypeNode>, Option<u64>),
     // Function pointer
     Func(Vec<HirTypeNode>, Box<HirTypeNode>),

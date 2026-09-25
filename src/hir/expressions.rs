@@ -199,6 +199,7 @@ pub enum HirExprKind {
         scrutinee: Box<HirExpr>,
         arms: Vec<HirMatchArm>,
     },
+    Marked(Box<HirExpr>),
     Block(Vec<HirStmt>),
 
     // Index access, array[0]

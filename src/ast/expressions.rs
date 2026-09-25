@@ -132,6 +132,7 @@ pub enum ExprKind {
         arms: Vec<MatchArm>,
     },
     Block(Vec<Stmt>),
+    Marked(Box<Expr>),
     Index {
         target: Box<Expr>,
         index: Box<Expr>,

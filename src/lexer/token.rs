@@ -10,7 +10,6 @@ pub enum TType {
     Colon,          //:
     Comma,          //,
     Eq,             //==
-    Bind,           //:=
     Assign,         //=
     CompoundAdd,    //+=
     CompoundSub,    //-=
@@ -83,7 +82,8 @@ pub enum TType {
     Mut,
     Const,
     Var,
-    Heap,
+    Owned,
+    Marked,
     Func,
     Return,
     Break,

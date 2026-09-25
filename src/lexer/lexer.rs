@@ -31,7 +31,6 @@ impl<'a> Lexer<'a> {
             ("mut".to_string(), TType::Mut),
             ("const".to_string(), TType::Const),
             ("var".to_string(), TType::Var),
-            ("heap".to_string(), TType::Heap),
             ("func".to_string(), TType::Func),
             ("struct".to_string(), TType::Struct),
             ("return".to_string(), TType::Return),
@@ -90,6 +89,8 @@ impl<'a> Lexer<'a> {
             ("as".to_string(), TType::As),
             ("import".to_string(), TType::Import),
             ("match".to_string(), TType::Match),
+            ("owned".to_string(), TType::Owned),
+            ("marked".to_string(), TType::Marked),
         ]);
         keywords
     }
@@ -584,16 +585,6 @@ impl<'a> Lexer<'a> {
                     Token::new(
                         "::".to_string(),
                         TType::Scope,
-                        Span {
-                            start,
-                            end: self.pos,
-                        },
-                    )
-                } else if let Some('=') = self.current_char() {
-                    self.advance();
-                    Token::new(
-                        ":=".to_string(),
-                        TType::Bind,
                         Span {
                             start,
                             end: self.pos,

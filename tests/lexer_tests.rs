@@ -215,7 +215,7 @@ fn keyword_like_identifiers_are_not_keywords() {
 #[test]
 fn all_keywords_map_to_keyword_tokens() {
     assert_tokens(
-        "mut const var heap func return continue break true false if elif while for \
+        "mut const var owned func return continue break true false if elif while for \
          each in else shr shl and or xor not i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 \
          isize usize bool f32 f64 str char8 char16 char32 ptr ref arr seal methods \
          generics contract sizeof enum variant expose null unwrap bitcast cast alias as import match",
@@ -223,7 +223,7 @@ fn all_keywords_map_to_keyword_tokens() {
             (TType::Mut, "mut"),
             (TType::Const, "const"),
             (TType::Var, "var"),
-            (TType::Heap, "heap"),
+            (TType::Owned, "owned"),
             (TType::Func, "func"),
             (TType::Return, "return"),
             (TType::Continue, "continue"),
@@ -333,7 +333,6 @@ fn assignment_family_is_disambiguated() {
         &[
             (TType::Assign, "="),
             (TType::Eq, "=="),
-            (TType::Bind, ":="),
             (TType::Colon, ":"),
             (TType::Scope, "::"),
             (TType::CompoundAdd, "+="),

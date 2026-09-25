@@ -886,7 +886,7 @@ impl<'a> MIRBuilder<'a> {
             }
             ResolvedTypeKind::Unit => MIRTykind::Unit,
             _ => self.report_ice(
-                format!("Unhandled type '{}'", ty_info.name),
+                format!("Unhandled type '{}', {:?}", ty_info.name, ty_info),
                 Some(ty_info.span.clone()),
             ),
         }
@@ -1216,7 +1216,13 @@ impl<'a> MIRBuilder<'a> {
     /// visible inside a scope; a frame-bound register would be copied into a
     /// function it doesn't belong to ("uninitialized register" crashes), so
     /// it is rejected here instead.
-    pub fn guard_dollar_capture(&mut self, name: &str, index: usize, val: &MIRValue, span: Option<Span>) {
+    pub fn guard_dollar_capture(
+        &mut self,
+        name: &str,
+        index: usize,
+        val: &MIRValue,
+        span: Option<Span>,
+    ) {
         let Some(boundary) = self.dollar_var_boundaries.last().copied() else {
             return;
         };
