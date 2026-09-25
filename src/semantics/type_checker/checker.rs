@@ -21,6 +21,7 @@ pub struct TypeChecker<'a> {
     pub registry: TypeRegistry,
     pub layout_engine: LayoutEngine<'a>,
     pub active_generic_params: Vec<String>,
+    pub marked_scope: Vec<bool>,
     import: &'a ImportEngine,
     diagnostics: SharedDiagnostics,
     pub corrupted: bool,
@@ -40,6 +41,7 @@ impl<'a> TypeChecker<'a> {
             registry: TypeRegistry::new(),
             layout_engine: LayoutEngine::new(target),
             active_generic_params: Vec::new(),
+            marked_scope: Vec::new(),
             import,
             diagnostics,
             corrupted: false,
@@ -205,7 +207,6 @@ impl<'a> TypeChecker<'a> {
             span,
         }
     }
-
 
     pub fn pointer(&mut self, inner: TypeInfo, span: Span) -> TypeInfo {
         let kind = ResolvedTypeKind::Pointer {
@@ -407,10 +408,7 @@ impl<'a> TypeChecker<'a> {
             }
             HirType::GenericType { name, type_params } => {
                 let Some(decl_id) = self.ctxt.names.resolved.get(&ty.hir_id).copied() else {
-                    self.report(
-                        format!("'{}' is not declared", name),
-                        Some(ty.span.clone()),
-                    );
+                    self.report(format!("'{}' is not declared", name), Some(ty.span.clone()));
                     return self.unknown(ty.span.clone());
                 };
 

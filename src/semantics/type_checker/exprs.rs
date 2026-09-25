@@ -39,7 +39,7 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::TupleInst { .. } => self.tuple_init_type(expr),
             HirExprKind::Match { .. } => self.match_type(expr),
             HirExprKind::Block(body) => self.block_type(body, expr.span.clone()),
-            HirExprKind::Marked(inner) => self.expr_type(inner),
+            HirExprKind::Marked(_) => self.marked_type(expr),
             HirExprKind::DollarScope {
                 params,
                 body,
@@ -119,6 +119,17 @@ impl<'a> TypeChecker<'a> {
             let tuple_inst_ty = self.tuple(field_tys, expr.span.clone());
             self.insert(expr.hir_id, tuple_inst_ty.clone());
             tuple_inst_ty
+        } else {
+            self.unknown(expr.span.clone())
+        }
+    }
+
+    fn marked_type(&mut self, expr: &HirExpr) -> TypeInfo {
+        if let HirExprKind::Marked(inner) = &expr.kind {
+            self.marked_scope.push(true);
+            let inner_ty = self.expr_type(inner);
+            self.marked_scope.pop();
+            inner_ty
         } else {
             self.unknown(expr.span.clone())
         }
@@ -453,7 +464,19 @@ impl<'a> TypeChecker<'a> {
                 ResolvedTypeKind::Pointer { inner } => match &inner.kind {
                     ResolvedTypeKind::Array {
                         inner: arr_elem, ..
-                    } => *arr_elem.clone(),
+                    } => {
+                        if !self.marked_scope.last().copied().unwrap_or(false) {
+                            self.report(
+                                format!(
+                                    "Indexing through '{}' requires a 'marked' block",
+                                    target_ty.name
+                                ),
+                                Some(expr.span.clone()),
+                            );
+                            return self.unknown(expr.span.clone());
+                        }
+                        *arr_elem.clone()
+                    }
                     _ => {
                         self.report(
                                 format!("Cannot index into pointer to non-array type '{}'  use dereference or pointer arithmetic instead", inner.name),
@@ -549,13 +572,28 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn deref_type(&mut self, src_ty: &TypeInfo) -> TypeInfo {
+        let mut inner_check = |inner: &TypeInfo| {
+            if inner.kind == ResolvedTypeKind::Unit {
+                self.report(
+                    format!("Cannot dereference a pointer of type '{}'", inner.name),
+                    Some(inner.span.clone()),
+                );
+            }
+        };
+
         match &src_ty.kind {
+            ResolvedTypeKind::Owned { inner } | ResolvedTypeKind::Ref { inner } => {
+                inner_check(inner);
+                *inner.clone()
+            }
             ResolvedTypeKind::Pointer { inner } => {
-                if inner.kind == ResolvedTypeKind::Unit {
+                inner_check(inner);
+                if !self.marked_scope.last().copied().unwrap_or(false) {
                     self.report(
-                        format!("Cannot dereference a pointer of type '{}'", inner.name),
-                        Some(inner.span.clone()),
+                        format!("Dereferencing '{}' requires a 'marked' block", src_ty.name),
+                        Some(src_ty.span.clone()),
                     );
+                    return self.unknown(src_ty.span.clone());
                 }
                 *inner.clone()
             }
@@ -1053,11 +1091,23 @@ impl<'a> TypeChecker<'a> {
         right_ty: &TypeInfo,
         span: Span,
     ) -> TypeInfo {
+        let is_marked = self.marked_scope.last().copied().unwrap_or(false);
+
         match (op, &left_ty.kind, &right_ty.kind) {
             // Ptr + Int = Ptr
             (HirBinaryOp::Add, ResolvedTypeKind::Pointer { .. }, _)
                 if self.is_integer(&right_ty.kind) =>
             {
+                if !is_marked {
+                    self.report(
+                        format!(
+                            "Pointer arithmetic on '{}' requires a 'marked' block",
+                            left_ty.name
+                        ),
+                        Some(span.clone()),
+                    );
+                    return self.unknown(span);
+                }
                 left_ty.clone()
             }
 
@@ -1065,6 +1115,16 @@ impl<'a> TypeChecker<'a> {
             (HirBinaryOp::Add, _, ResolvedTypeKind::Pointer { .. })
                 if self.is_integer(&left_ty.kind) =>
             {
+                if !is_marked {
+                    self.report(
+                        format!(
+                            "Pointer arithmetic on '{}' requires a 'marked' block",
+                            right_ty.name
+                        ),
+                        Some(span.clone()),
+                    );
+                    return self.unknown(span);
+                }
                 right_ty.clone()
             }
 
@@ -1072,6 +1132,16 @@ impl<'a> TypeChecker<'a> {
             (HirBinaryOp::Sub, ResolvedTypeKind::Pointer { .. }, _)
                 if self.is_integer(&right_ty.kind) =>
             {
+                if !is_marked {
+                    self.report(
+                        format!(
+                            "Pointer arithmetic on '{}' requires a 'marked' block",
+                            left_ty.name
+                        ),
+                        Some(span.clone()),
+                    );
+                    return self.unknown(span);
+                }
                 left_ty.clone()
             }
 
@@ -1081,6 +1151,16 @@ impl<'a> TypeChecker<'a> {
                 ResolvedTypeKind::Pointer { inner: t1 },
                 ResolvedTypeKind::Pointer { inner: t2 },
             ) => {
+                if !is_marked {
+                    self.report(
+                        format!(
+                            "Pointer arithmetic on '{}' requires a 'marked' block",
+                            left_ty.name
+                        ),
+                        Some(span.clone()),
+                    );
+                    return self.unknown(span);
+                }
                 if !TypeInfo::types_match(t1, t2) {
                     self.report(
                         format!(
