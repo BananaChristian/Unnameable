@@ -130,7 +130,7 @@ fn qualifier(kind: QualifierKind, s: usize, e: usize) -> Qualifier {
 
 #[test]
 fn int_literal_var_decl() {
-    let (stmts, errors, corrupted) = parse_src("var x := 42;");
+    let (stmts, errors, corrupted) = parse_src("var x = 42;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -146,8 +146,8 @@ fn int_literal_var_decl() {
 
 #[test]
 fn typed_int_var_decl() {
-    // Type annotation is type-FIRST: `var i32 y := 7;` not `var y: i32;`.
-    let (stmts, errors, corrupted) = parse_src("var i32 y := 7;");
+    // Type annotation is type-FIRST: `var i32 y = 7;` not `var y: i32;`.
+    let (stmts, errors, corrupted) = parse_src("var y: i32 = 7;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -163,7 +163,7 @@ fn typed_int_var_decl() {
 
 #[test]
 fn float_literal_var_decl() {
-    let (stmts, errors, corrupted) = parse_src("var f64 z := 1.5;");
+    let (stmts, errors, corrupted) = parse_src("var z: f64 = 1.5;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -179,7 +179,7 @@ fn float_literal_var_decl() {
 
 #[test]
 fn string_literal_var_decl() {
-    let (stmts, errors, corrupted) = parse_src("var str s := \"hi\";");
+    let (stmts, errors, corrupted) = parse_src("var s:str = \"hi\";");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -195,7 +195,7 @@ fn string_literal_var_decl() {
 
 #[test]
 fn char8_literal_var_decl() {
-    let (stmts, errors, corrupted) = parse_src("var char8 c := 'a';");
+    let (stmts, errors, corrupted) = parse_src("var c:char8 = 'a';");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -211,7 +211,7 @@ fn char8_literal_var_decl() {
 
 #[test]
 fn bool_literal_var_decl() {
-    let (stmts, errors, corrupted) = parse_src("var x := true;");
+    let (stmts, errors, corrupted) = parse_src("var x = true;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -227,7 +227,7 @@ fn bool_literal_var_decl() {
 
 #[test]
 fn array_literal_var_decl() {
-    let (stmts, errors, corrupted) = parse_src("var x := [1, 2, 3];");
+    let (stmts, errors, corrupted) = parse_src("var x = [1, 2, 3];");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -251,10 +251,10 @@ fn array_literal_var_decl() {
 #[test]
 fn suffixed_integer_literals() {
     for (src, lit_exp, span_s, span_e, decl_e) in [
-        ("var x := 2i32;", Literal::Int32(2), 9, 13, 14),
-        ("var x := 0u8;", Literal::Uint8(0), 9, 12, 13),
-        ("var x := 5iz;", Literal::IntSize(5), 9, 12, 13),
-        ("var x := 5uz;", Literal::UintSize(5), 9, 12, 13),
+        ("var x = 2i32;", Literal::Int32(2), 9, 13, 14),
+        ("var x = 0u8;", Literal::Uint8(0), 9, 12, 13),
+        ("var x = 5iz;", Literal::IntSize(5), 9, 12, 13),
+        ("var x = 5uz;", Literal::UintSize(5), 9, 12, 13),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -274,9 +274,9 @@ fn suffixed_integer_literals() {
 #[test]
 fn suffixed_float_and_char_literals() {
     for (src, lit_exp, span_s, span_e, decl_e) in [
-        ("var x := 1.5f32;", Literal::F32(1.5), 9, 15, 16),
-        ("var x := 'a'c16;", Literal::Char16(97), 9, 15, 16),
-        ("var x := 'a'c32;", Literal::Char32('a'), 9, 15, 16),
+        ("var x = 1.5f32;", Literal::F32(1.5), 9, 15, 16),
+        ("var x = 'a'c16;", Literal::Char16(97), 9, 15, 16),
+        ("var x = 'a'c32;", Literal::Char32('a'), 9, 15, 16),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -296,9 +296,9 @@ fn suffixed_float_and_char_literals() {
 #[test]
 fn radix_literals() {
     for (src, value, span_s, span_e) in [
-        ("var x := 0x1F;", 31, 9, 13),
-        ("var x := 0b101;", 5, 9, 14),
-        ("var x := 0o17;", 15, 9, 13),
+        ("var x = 0x1F;", 31, 9, 13),
+        ("var x = 0b101;", 5, 9, 14),
+        ("var x = 0o17;", 15, 9, 13),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -334,7 +334,7 @@ fn return_some_and_none() {
 
 #[test]
 fn ptr_and_ref_types() {
-    let (stmts, errors, corrupted) = parse_src("var ptr<i32> p := q;");
+    let (stmts, errors, corrupted) = parse_src("var p: ptr<i32> = q;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -347,7 +347,7 @@ fn ptr_and_ref_types() {
     )];
     assert_eq!(stmts, expected);
 
-    let (stmts2, errors2, corrupted2) = parse_src("var ref<i32> r := q;");
+    let (stmts2, errors2, corrupted2) = parse_src("var r: ref<i32>= q;");
     assert!(!corrupted2);
     assert!(errors2.is_empty());
     let expected2 = vec![var_decl(
@@ -363,7 +363,7 @@ fn ptr_and_ref_types() {
 
 #[test]
 fn tuple_type() {
-    let (stmts, errors, corrupted) = parse_src("var (i32, f32) t := pair;");
+    let (stmts, errors, corrupted) = parse_src("var t: (i32, f32) = pair;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -383,7 +383,7 @@ fn tuple_type() {
 
 #[test]
 fn nullable_type() {
-    let (stmts, errors, corrupted) = parse_src("var (i32)? o := p;");
+    let (stmts, errors, corrupted) = parse_src("var o: (i32)? = p;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -408,7 +408,7 @@ fn nullable_type() {
 #[test]
 fn failable_type() {
     // Failable type syntax: `!!(ok, err)` — the `!!` leads the paren group.
-    let (stmts, errors, corrupted) = parse_src("var !!(i32, str) f := g;");
+    let (stmts, errors, corrupted) = parse_src("var f: !!(i32, str) = g;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -431,7 +431,7 @@ fn failable_type() {
 
 #[test]
 fn unit_type() {
-    let (stmts, errors, corrupted) = parse_src("var () u := v;");
+    let (stmts, errors, corrupted) = parse_src("var u: ()  = v;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -447,7 +447,7 @@ fn unit_type() {
 
 #[test]
 fn custom_type() {
-    let (stmts, errors, corrupted) = parse_src("var MyType m := n;");
+    let (stmts, errors, corrupted) = parse_src("var m: MyType= n;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -467,7 +467,7 @@ fn custom_type() {
 
 #[test]
 fn generic_type() {
-    let (stmts, errors, corrupted) = parse_src("var Pair<i32, u32> m := n;");
+    let (stmts, errors, corrupted) = parse_src("var m: Pair<i32, u32> = n;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -490,7 +490,7 @@ fn generic_type() {
 
 #[test]
 fn func_pointer_type() {
-    let (stmts, errors, corrupted) = parse_src("var func(i32, f32): bool fp := g;");
+    let (stmts, errors, corrupted) = parse_src("var fp: func(i32, f32): bool = g;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -514,7 +514,7 @@ fn func_pointer_type() {
 #[test]
 fn array_type() {
     // Array types use square brackets: `arr[i32, 4]`.
-    let (stmts, errors, corrupted) = parse_src("var arr[i32, 4] a := b;");
+    let (stmts, errors, corrupted) = parse_src("var a: [i32, 4]  = b;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -538,7 +538,7 @@ fn array_type() {
 #[test]
 fn colon_type_annotation_rejected() {
     // `var name: Type` is NOT valid; the type must come first.
-    let (_, errors, corrupted) = parse_src("var x: ptr<i32> := 0;");
+    let (_, errors, corrupted) = parse_src("var x: ptr<i32> = 0;");
     assert!(corrupted);
     assert_eq!(errors.len(), 1, "errors: {:?}", errors);
     assert_eq!(errors[0].message, "Expected Bind, found Colon");
@@ -660,8 +660,8 @@ fn grouping_overrides_precedence() {
 #[test]
 fn shift_operators() {
     for (src, op) in [
-        ("var x := 1 shl 2;", BinaryOp::Shl),
-        ("var x := 1 shr 2;", BinaryOp::Shr),
+        ("var x = 1 shl 2;", BinaryOp::Shl),
+        ("var x = 1 shr 2;", BinaryOp::Shr),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -687,9 +687,9 @@ fn shift_operators() {
 #[test]
 fn bitwise_and_or_xor() {
     for (src, op, rhs_s, decl_e) in [
-        ("var x := 1 and 2;", BinaryOp::BitAnd, 15, 17),
-        ("var x := 1 or 2;", BinaryOp::BitOr, 14, 16),
-        ("var x := 1 xor 2;", BinaryOp::Xor, 15, 17),
+        ("var x = 1 and 2;", BinaryOp::BitAnd, 15, 17),
+        ("var x = 1 or 2;", BinaryOp::BitOr, 14, 16),
+        ("var x = 1 xor 2;", BinaryOp::Xor, 15, 17),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -716,7 +716,7 @@ fn bitwise_and_or_xor() {
 fn bitwise_binds_tighter_than_equality() {
     // `a and b == c or d` parses as (a and b) == (c or d),
     // because bitwise binds tighter than equality.
-    let (stmts, errors, corrupted) = parse_src("var x := a and b == c or d;");
+    let (stmts, errors, corrupted) = parse_src("var x = a and b == c or d;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let lhs = bin(id("a", 9, 10), BinaryOp::BitAnd, id("b", 15, 16), 9, 16);
@@ -734,7 +734,7 @@ fn bitwise_binds_tighter_than_equality() {
 
 #[test]
 fn comparison_chain_is_left_assoc() {
-    let (stmts, errors, corrupted) = parse_src("var x := a <= b >= c;");
+    let (stmts, errors, corrupted) = parse_src("var x = a <= b >= c;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -784,7 +784,7 @@ fn not_equals() {
 
 #[test]
 fn modulo_operator() {
-    let (stmts, errors, corrupted) = parse_src("var x := 5 % 2;");
+    let (stmts, errors, corrupted) = parse_src("var x = 5 % 2;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -851,7 +851,7 @@ fn postfix_operators() {
 
 #[test]
 fn unary_bitnot_under_equality() {
-    let (stmts, errors, corrupted) = parse_src("var x := not a == b;");
+    let (stmts, errors, corrupted) = parse_src("var x = not a == b;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -916,7 +916,7 @@ fn call_with_multiple_args() {
 
 #[test]
 fn nested_call_chain() {
-    let (stmts, errors, corrupted) = parse_src("var x := f(1)(2);");
+    let (stmts, errors, corrupted) = parse_src("var x = f(1)(2);");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let inner = call(id("f", 9, 10), vec![lit(Literal::Int(1), 11, 12)], 9, 14);
@@ -933,7 +933,7 @@ fn nested_call_chain() {
 
 #[test]
 fn member_access_chain() {
-    let (stmts, errors, corrupted) = parse_src("var x := a.b.c.d;");
+    let (stmts, errors, corrupted) = parse_src("var x = a.b.c.d;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let a_b = bin(id("a", 9, 10), BinaryOp::Access, id("b", 11, 12), 9, 12);
@@ -967,7 +967,7 @@ fn scope_resolution_and_call() {
 
 #[test]
 fn turbofish_generic_call() {
-    let (stmts, errors, corrupted) = parse_src("var p := Pair::<i32, u32>::new();");
+    let (stmts, errors, corrupted) = parse_src("var p = Pair::<i32, u32>::new();");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let instantiation = Expr::new(
@@ -996,7 +996,7 @@ fn turbofish_generic_call() {
 
 #[test]
 fn turbofish_in_named_scope_chain() {
-    let src = "var x := A::B::generic_helper::<i32>(1);";
+    let src = "var x = A::B::generic_helper::<i32>(1);";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -1022,7 +1022,7 @@ fn turbofish_in_named_scope_chain() {
 
 #[test]
 fn member_access_on_call_result() {
-    let (stmts, errors, corrupted) = parse_src("var x := foo().bar;");
+    let (stmts, errors, corrupted) = parse_src("var x = foo().bar;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -1045,7 +1045,7 @@ fn member_access_on_call_result() {
 #[test]
 fn tuple_member_access_float_ambiguity() {
     // `a.0.1` lexes as `a` Access `0.1` (a float member), documented fixture behavior.
-    let (stmts, errors, corrupted) = parse_src("var x := a.0.1;");
+    let (stmts, errors, corrupted) = parse_src("var x = a.0.1;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -1068,9 +1068,9 @@ fn tuple_member_access_float_ambiguity() {
 #[test]
 fn tuple_member_access_int() {
     for (src, member, target_name, target_s, target_e, ms, me, end) in [
-        ("var x := a.0;", Literal::Int(0), "a", 9, 10, 11, 12, 13),
+        ("var x = a.0;", Literal::Int(0), "a", 9, 10, 11, 12, 13),
         (
-            "var x := nested.1;",
+            "var x = nested.1;",
             Literal::Int(1),
             "nested",
             9,
@@ -1103,7 +1103,7 @@ fn tuple_member_access_int() {
 
 #[test]
 fn unwrap_expression() {
-    let (stmts, errors, corrupted) = parse_src("var x := unwrap[opt];");
+    let (stmts, errors, corrupted) = parse_src("var x = unwrap[opt];");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -1117,7 +1117,7 @@ fn unwrap_expression() {
     assert_eq!(stmts, expected);
 
     // unwrap of a binary expression inside the brackets
-    let (stmts2, errors2, corrupted2) = parse_src("var x := unwrap[a + b];");
+    let (stmts2, errors2, corrupted2) = parse_src("var x = unwrap[a + b];");
     assert!(!corrupted2);
     assert!(errors2.is_empty());
     let expected2 = vec![var_decl(
@@ -1140,7 +1140,7 @@ fn unwrap_expression() {
     assert_eq!(stmts2, expected2);
 
     // unwrap of an access expression
-    let (stmts3, errors3, corrupted3) = parse_src("var x := unwrap[opt.thing];");
+    let (stmts3, errors3, corrupted3) = parse_src("var x = unwrap[opt.thing];");
     assert!(!corrupted3);
     assert!(errors3.is_empty());
     let expected3 = vec![var_decl(
@@ -1165,7 +1165,7 @@ fn unwrap_expression() {
 
 #[test]
 fn cast_expression() {
-    let (stmts, errors, corrupted) = parse_src("var x := cast<i32>(y);");
+    let (stmts, errors, corrupted) = parse_src("var x = cast<i32>(y);");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -1188,7 +1188,7 @@ fn cast_expression() {
 #[test]
 fn sizeof_expression() {
     // `sizeof` must be lowercase; `sizeOf` is not recognized.
-    let (stmts, errors, corrupted) = parse_src("var x := sizeof<i32>;");
+    let (stmts, errors, corrupted) = parse_src("var x = sizeof<i32>;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -1211,7 +1211,7 @@ fn sizeof_expression() {
 
 #[test]
 fn compound_assignment() {
-    let src = "var x := 1; x += 2;";
+    let src = "var x = 1; x += 2;";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -1242,12 +1242,12 @@ fn compound_assignment() {
 #[test]
 fn simple_assignment_and_read_as_expr_stmt() {
     for (src, op) in [
-        ("var x := 1; x = 2;", BinaryOp::Assign),
-        ("var x := 1; x += 2;", BinaryOp::AddAssign),
-        ("var x := 1; x -= 2;", BinaryOp::SubAssign),
-        ("var x := 1; x *= 2;", BinaryOp::MulAssign),
-        ("var x := 1; x /= 2;", BinaryOp::DivAssign),
-        ("var x := 1; x %= 2;", BinaryOp::ModAssign),
+        ("var x = 1; x = 2;", BinaryOp::Assign),
+        ("var x = 1; x += 2;", BinaryOp::AddAssign),
+        ("var x = 1; x -= 2;", BinaryOp::SubAssign),
+        ("var x = 1; x *= 2;", BinaryOp::MulAssign),
+        ("var x = 1; x /= 2;", BinaryOp::DivAssign),
+        ("var x = 1; x %= 2;", BinaryOp::ModAssign),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         let n = src.len() as usize;
@@ -1271,7 +1271,7 @@ fn simple_assignment_and_read_as_expr_stmt() {
 
 #[test]
 fn if_else_statement() {
-    let src = "var x := 0; if a { x = 1; } else { x = 2; }";
+    let src = "var x = 0; if a { x = 1; } else { x = 2; }";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -1458,7 +1458,7 @@ fn while_loop_break_and_continue() {
 
 #[test]
 fn for_loop() {
-    let src = "for var i := 0; i < 10; i += 1 { x = 1; }";
+    let src = "for var i = 0; i < 10; i += 1 { x = 1; }";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted, "errors: {:#?}", errors);
     assert!(errors.is_empty(), "errors: {:#?}", errors);
@@ -1515,7 +1515,7 @@ fn for_loop() {
 #[test]
 fn for_loop_double_semicolon_now_rejected() {
     // The old `;;` workaround for the parse_var/parse_for bug is no longer valid.
-    let (_, errors, corrupted) = parse_src("for var i := 0;; i < 10; i += 1 { x = 1; }");
+    let (_, errors, corrupted) = parse_src("for var i = 0;; i < 10; i += 1 { x = 1; }");
     assert!(corrupted);
     assert_eq!(errors.len(), 2, "errors: {:#?}", errors);
     assert_eq!(errors[0].message, "Unexpected prefix token: Semicolon");
@@ -1994,7 +1994,7 @@ fn import_decl() {
 
 #[test]
 fn struct_instantiation() {
-    let src = "var point := .Point{.x = 1, .y = 2};";
+    let src = "var point = .Point{.x = 1, .y = 2};";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -2023,7 +2023,7 @@ fn struct_instantiation() {
 
 #[test]
 fn tuple_instantiation() {
-    let src = "var tup := .(1, 2, 3);";
+    let src = "var tup = .(1, 2, 3);";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -2043,7 +2043,7 @@ fn tuple_instantiation() {
 
 #[test]
 fn tuple_instantiation_typed() {
-    let src = "var tup := .(2i32, 1000i64);";
+    let src = "var tup = .(2i32, 1000i64);";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -2062,7 +2062,7 @@ fn tuple_instantiation_typed() {
 
 #[test]
 fn nested_tuple_instantiation() {
-    let src = "var deep := .(.(2i32, 1000i64), 42u32);";
+    let src = "var deep = .(.(2i32, 1000i64), 42u32);";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -2087,7 +2087,7 @@ fn nested_tuple_instantiation() {
 
 #[test]
 fn dollar_scope_no_params() {
-    let src = "var f := $${ return 5; };";
+    let src = "var f = $${ return 5; };";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -2108,7 +2108,7 @@ fn dollar_scope_no_params() {
 
 #[test]
 fn dollar_scope_with_params_expr() {
-    let src = "var g := $$|a, b|{ a + b; };";
+    let src = "var g = $$|a, b|{ a + b; };";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -2133,7 +2133,7 @@ fn dollar_scope_with_params_expr() {
 
 #[test]
 fn dollar_scope_with_params_return() {
-    let src = "var h := $$|a, b|{ return a; };";
+    let src = "var h = $$|a, b|{ return a; };";
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -2154,7 +2154,7 @@ fn dollar_scope_with_params_return() {
 
 #[test]
 fn var_qualifiers() {
-    let (stmts, errors, corrupted) = parse_src("mut var x := 1;");
+    let (stmts, errors, corrupted) = parse_src("mut var x = 1;");
     assert!(!corrupted);
     assert!(errors.is_empty());
     let expected = vec![var_decl(
@@ -2167,7 +2167,7 @@ fn var_qualifiers() {
     )];
     assert_eq!(stmts, expected);
 
-    let (stmts2, errors2, corrupted2) = parse_src("const var x := 1;");
+    let (stmts2, errors2, corrupted2) = parse_src("const var x = 1;");
     assert!(!corrupted2);
     assert!(errors2.is_empty());
     let expected2 = vec![var_decl(
@@ -2180,7 +2180,7 @@ fn var_qualifiers() {
     )];
     assert_eq!(stmts2, expected2);
 
-    let (stmts3, errors3, corrupted3) = parse_src("$ var x := 1;");
+    let (stmts3, errors3, corrupted3) = parse_src("$ var x = 1;");
     assert!(!corrupted3);
     assert!(errors3.is_empty());
     let expected3 = vec![var_decl(
@@ -2226,14 +2226,14 @@ fn assert_single_error(errors: &[CompilerError], msg: &str, span: Option<Span>) 
 
 #[test]
 fn missing_semicolon() {
-    let (_, errors, corrupted) = parse_src("var x := 42");
+    let (_, errors, corrupted) = parse_src("var x = 42");
     assert!(corrupted);
     assert_single_error(&errors, "Expected Semicolon, found End", Some(sp(11, 11)));
 }
 
 #[test]
 fn dangling_binary_operator() {
-    let (_, errors, corrupted) = parse_src("var x := 1 + ;");
+    let (_, errors, corrupted) = parse_src("var x = 1 + ;");
     assert!(corrupted);
     assert_single_error(
         &errors,
@@ -2244,7 +2244,7 @@ fn dangling_binary_operator() {
 
 #[test]
 fn statement_level_bind_rejected() {
-    let (_, errors, corrupted) = parse_src("x := 1;");
+    let (_, errors, corrupted) = parse_src("x = 1;");
     assert!(corrupted);
     assert_eq!(errors.len(), 1, "errors: {:#?}", errors);
     assert_eq!(errors[0].message, "Expected Semicolon, found Bind");
@@ -2288,7 +2288,7 @@ fn break_continue_trailing_semicolon_optional() {
 #[test]
 fn amp_bitwise_operator_not_supported() {
     // `&` does not lex as a binary operator; bitwise-and is the `and` keyword.
-    let (_, errors, corrupted) = parse_src("var x := 1 shl 2 & 3;");
+    let (_, errors, corrupted) = parse_src("var x = 1 shl 2 & 3;");
     assert!(corrupted);
     assert_single_error(
         &errors,
@@ -2308,7 +2308,7 @@ fn lt_gt_are_not_shift_operators() {
 
 #[test]
 fn mod_keyword_not_a_operator() {
-    let (_, errors, corrupted) = parse_src("var x := 5 mod 2;");
+    let (_, errors, corrupted) = parse_src("var x = 5 mod 2;");
     assert!(corrupted);
     assert_eq!(errors.len(), 1, "errors: {:#?}", errors);
     assert_eq!(errors[0].message, "Expected Semicolon, found Identifier");
@@ -2317,21 +2317,21 @@ fn mod_keyword_not_a_operator() {
 
 #[test]
 fn turbofish_requires_double_colon() {
-    let (_, errors, corrupted) = parse_src("var x := Pair<i32, u32>::new();");
+    let (_, errors, corrupted) = parse_src("var x = Pair<i32, u32>::new();");
     assert!(corrupted);
     assert_single_error(&errors, "Unexpected prefix token: I32Key", Some(sp(14, 17)));
 }
 
 #[test]
 fn unwrap_takes_expression_not_type() {
-    let (_, errors, corrupted) = parse_src("var x := unwrap[Option<i32>](o);");
+    let (_, errors, corrupted) = parse_src("var x = unwrap[Option<i32>](o);");
     assert!(corrupted);
     assert_single_error(&errors, "Unexpected prefix token: I32Key", Some(sp(23, 26)));
 }
 
 #[test]
 fn function_as_expression_not_supported() {
-    let (_, errors, corrupted) = parse_src("var f := func(a: i32): i32 { return a; };");
+    let (_, errors, corrupted) = parse_src("var f = func(a: i32): i32 { return a; };");
     assert!(corrupted);
     assert_eq!(errors.len(), 2, "errors: {:#?}", errors);
     assert_eq!(errors[0].message, "Unexpected prefix token: Func");
@@ -2391,7 +2391,7 @@ fn func_decl_missing_param_name() {
 #[test]
 fn nested_plain_parens_not_a_tuple_literal() {
     // Tuple literals must use `.(...)` at every nesting level.
-    let (_, errors, corrupted) = parse_src("var deep := .(.((2i32, 1000i64), 42u32), 99i32);");
+    let (_, errors, corrupted) = parse_src("var deep = .(.((2i32, 1000i64), 42u32), 99i32);");
     assert!(corrupted);
     assert_single_error(&errors, "Expected Rparen, found Comma", Some(sp(21, 22)));
 }

@@ -132,7 +132,6 @@ pub enum TType {
     F64Key,
     Ptr,
     Ref,
-    Arr,
     Char8Key,
     Char16Key,
     Char32Key,

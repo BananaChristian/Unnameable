@@ -39,6 +39,7 @@ impl<'a> TypeChecker<'a> {
             HirExprKind::TupleInst { .. } => self.tuple_init_type(expr),
             HirExprKind::Match { .. } => self.match_type(expr),
             HirExprKind::Block(body) => self.block_type(body, expr.span.clone()),
+            HirExprKind::Marked(inner) => self.expr_type(inner),
             HirExprKind::DollarScope {
                 params,
                 body,

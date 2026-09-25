@@ -96,6 +96,9 @@ impl<'a> Monomorphizer<'a> {
                     );
                 }
             }
+            HirExprKind::Marked(inner) => {
+                self.monomorphize_expr(inner, generic_params, concrete_args, new_name)
+            }
             HirExprKind::DollarScope {
                 params,
                 body,
@@ -157,6 +160,7 @@ impl<'a> Monomorphizer<'a> {
             }
             HirType::Ptr(inner)
             | HirType::Ref(inner)
+            | HirType::Owned(inner)
             | HirType::Array(inner, _)
             | HirType::Nullable(inner) => {
                 self.monomorphize_type(inner);
@@ -174,3 +178,4 @@ impl<'a> Monomorphizer<'a> {
         }
     }
 }
+

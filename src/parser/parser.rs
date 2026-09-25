@@ -191,9 +191,8 @@ impl Parser {
                 Some(Type::complex(&token, inner_type))
             }
             TType::Identifier => self.parse_type_generics(),
-            TType::Arr => {
+            TType::LBracket => {
                 self.advance();
-                self.expect_token(TType::LBracket)?;
                 let inner_type = self.parse_type()?;
                 let mut arr_size = None;
                 if self.current_token()?.token_type == TType::Comma {

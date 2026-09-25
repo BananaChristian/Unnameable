@@ -110,7 +110,7 @@ fn whitespace_only_yields_only_end() {
 
 #[test]
 fn every_stream_terminates_with_end() {
-    for src in ["x", "123", ":= :: == $$", "# c\n", "if while var"] {
+    for src in ["x", "123", "= :: == $$", "# c\n", "if while var"] {
         let tokens = lex(src).tokens;
         assert_eq!(
             tokens.last().unwrap().token_type,
@@ -217,7 +217,7 @@ fn all_keywords_map_to_keyword_tokens() {
     assert_tokens(
         "mut const var owned func return continue break true false if elif while for \
          each in else shr shl and or xor not i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 \
-         isize usize bool f32 f64 str char8 char16 char32 ptr ref arr seal methods \
+         isize usize bool f32 f64 str char8 char16 char32 ptr ref  seal methods \
          generics contract sizeof enum variant expose null unwrap bitcast cast alias as import match",
         &[
             (TType::Mut, "mut"),
@@ -264,7 +264,6 @@ fn all_keywords_map_to_keyword_tokens() {
             (TType::Char32Key, "char32"),
             (TType::Ptr, "ptr"),
             (TType::Ref, "ref"),
-            (TType::Arr, "arr"),
             (TType::Seal, "seal"),
             (TType::Identifier, "methods"),
             (TType::Generics, "generics"),
@@ -329,7 +328,7 @@ fn comparison_and_logical_operators() {
 #[test]
 fn assignment_family_is_disambiguated() {
     assert_tokens(
-        "= == := : :: += -= *= /= %=",
+        "= == : :: += -= *= /= %=",
         &[
             (TType::Assign, "="),
             (TType::Eq, "=="),
@@ -787,14 +786,14 @@ fn spans_cover_the_full_literal_including_suffix() {
 
 #[test]
 fn spans_are_byte_exact_on_ascii_statements() {
-    let src = "mut var x := 12;";
+    let src = "mut var x = 12;";
     assert_spans(
         src,
         &[
             (0, 3),   // mut
             (4, 7),   // var
             (8, 9),   // x
-            (10, 12), // :=
+            (10, 12), // =
             (13, 15), // 12
             (15, 16), // ;
             (16, 16), // End

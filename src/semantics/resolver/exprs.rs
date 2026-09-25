@@ -21,6 +21,9 @@ impl<'a> Resolver<'a> {
             HirType::Ref(inner) => {
                 self.resolve_type(inner, table);
             }
+            HirType::Owned(inner) => {
+                self.resolve_type(inner, table);
+            }
             HirType::Array(inner, ..) => {
                 self.resolve_type(inner, table);
             }
@@ -136,6 +139,7 @@ impl<'a> Resolver<'a> {
                 }
                 self.pop_scope();
             }
+            HirExprKind::Marked(inner) => self.resolve_expr(inner, table),
             _ => (),
         }
     }
