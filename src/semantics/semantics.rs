@@ -265,6 +265,9 @@ impl TypeInfo {
             (ResolvedTypeKind::Ref { inner: a }, ResolvedTypeKind::Ref { inner: b }) => {
                 TypeInfo::types_match(a, b)
             }
+            (ResolvedTypeKind::Ref { inner: a }, ResolvedTypeKind::Pointer { inner: b }) => {
+                TypeInfo::types_match(a, b)
+            }
             (
                 ResolvedTypeKind::Func {
                     params: params_a,
