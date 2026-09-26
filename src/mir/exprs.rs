@@ -2,13 +2,15 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::Span,
-    hir::{HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPattern, HirPostfixOp, HirStmtKind,
-        HirUnaryOp},
+    hir::{
+        HirBinaryOp, HirExpr, HirExprKind, HirLiteral, HirPattern, HirPostfixOp, HirStmtKind,
+        HirUnaryOp,
+    },
     mir::{
         MIRGlobal, MIRInstruction, StructId,
         builder::MIRBuilder,
         instructions::{
-            ArmInfo, ConstantValue, CmpOp, FuncSig, MIRBody, MIRConv, MIRDollarMode, MIRLinkage,
+            ArmInfo, CmpOp, ConstantValue, FuncSig, MIRBody, MIRConv, MIRDollarMode, MIRLinkage,
             MIROps, MIRParam, MIRTy, MIRTykind, MIRValue, Terminator,
         },
     },
@@ -36,6 +38,7 @@ impl<'a> MIRBuilder<'a> {
             HirExprKind::DollarScope { .. } => self.build_dollar_scope(expr),
             HirExprKind::Call(_, _) => self.build_call(expr),
             HirExprKind::StaticCast(_, _) => self.build_cast(expr),
+            HirExprKind::Marked(inner) => self.build_expr(inner),
             HirExprKind::Instantiation { .. } => {
                 self.build_struct_init(expr);
                 return;
@@ -172,12 +175,8 @@ impl<'a> MIRBuilder<'a> {
                     unreachable_block.id
                 };
 
-                let cond = self.pattern_condition(
-                    &arm.pattern,
-                    &scrut_value,
-                    &tag_value,
-                    span.clone(),
-                );
+                let cond =
+                    self.pattern_condition(&arm.pattern, &scrut_value, &tag_value, span.clone());
 
                 match cond {
                     Some(cond_val) => self.set_terminator(
@@ -301,10 +300,7 @@ impl<'a> MIRBuilder<'a> {
                             .find(|(n, _)| n == member)
                             .map(|(_, v)| *v)
                         else {
-                            self.report_ice(
-                                format!("Enum member '{}' not found", member),
-                                span,
-                            )
+                            self.report_ice(format!("Enum member '{}' not found", member), span)
                         };
                         (enum_decl.underlying.clone(), value)
                     };
@@ -316,7 +312,12 @@ impl<'a> MIRBuilder<'a> {
                         ),
                     };
                     let const_val = self.make_constant_for_ty(&underlying, value);
-                    self.build_cmp(CmpOp::Eq, scrut, MIRValue::Constant(const_val), span.clone());
+                    self.build_cmp(
+                        CmpOp::Eq,
+                        scrut,
+                        MIRValue::Constant(const_val),
+                        span.clone(),
+                    );
                     Some(self.get_last_val(span))
                 } else {
                     // Variant arm: compare the tag against the arm's tag
@@ -332,9 +333,13 @@ impl<'a> MIRBuilder<'a> {
                             span,
                         ),
                     };
-                    let tag_constant =
-                        self.make_constant_for_ty(&tag_ty, arm_info.tag as isize);
-                    self.build_cmp(CmpOp::Eq, tag_reg, MIRValue::Constant(tag_constant), span.clone());
+                    let tag_constant = self.make_constant_for_ty(&tag_ty, arm_info.tag as isize);
+                    self.build_cmp(
+                        CmpOp::Eq,
+                        tag_reg,
+                        MIRValue::Constant(tag_constant),
+                        span.clone(),
+                    );
                     Some(self.get_last_val(span))
                 }
             }
@@ -383,7 +388,12 @@ impl<'a> MIRBuilder<'a> {
                 // Bindings inside `Or` alternatives are rejected by the type
                 // checker; recurse purely to keep the walk uniform.
                 for alt in alts {
-                    self.bind_pattern_into_scope(alt, base_ptr.clone(), base_ty.clone(), span.clone());
+                    self.bind_pattern_into_scope(
+                        alt,
+                        base_ptr.clone(),
+                        base_ty.clone(),
+                        span.clone(),
+                    );
                 }
             }
             HirPattern::Tuple { elements, .. } => {
@@ -411,8 +421,10 @@ impl<'a> MIRBuilder<'a> {
                 let struct_decl = self.get_struct_decl(type_name, span.clone());
                 let zero = MIRValue::Constant(ConstantValue::UInt(0));
                 for field in fields {
-                    let Some(field_index) =
-                        struct_decl.fields.iter().position(|(n, _)| n == &field.name)
+                    let Some(field_index) = struct_decl
+                        .fields
+                        .iter()
+                        .position(|(n, _)| n == &field.name)
                     else {
                         self.report_ice(
                             format!(
@@ -487,7 +499,12 @@ impl<'a> MIRBuilder<'a> {
                     };
                     self.add_instruction(bitcast, span.clone());
 
-                    self.bind_pattern_into_scope(payload, typed_ptr, payload_ty.clone(), span.clone());
+                    self.bind_pattern_into_scope(
+                        payload,
+                        typed_ptr,
+                        payload_ty.clone(),
+                        span.clone(),
+                    );
                     byte_offset += payload_ty.size;
                 }
             }
@@ -551,7 +568,10 @@ impl<'a> MIRBuilder<'a> {
             self.last_value = last.clone();
             last
         } else {
-            self.report_ice("Expected a block expression".to_string(), Some(expr.span.clone()));
+            self.report_ice(
+                "Expected a block expression".to_string(),
+                Some(expr.span.clone()),
+            );
         }
     }
 
@@ -1460,8 +1480,9 @@ impl<'a> MIRBuilder<'a> {
                 self.literal_value(expr)
             }
             HirExprKind::Identifier(name) => {
-                if let Some((index, val)) =
-                    self.lookup_var_with_index(name).map(|(i, v)| (i, v.clone()))
+                if let Some((index, val)) = self
+                    .lookup_var_with_index(name)
+                    .map(|(i, v)| (i, v.clone()))
                 {
                     self.guard_dollar_capture(name, index, &val, span.clone());
                     if matches!(val, MIRValue::Constant(_)) {
@@ -1564,6 +1585,10 @@ impl<'a> MIRBuilder<'a> {
                     MIRValue::Poison
                 }
             },
+            HirExprKind::Marked(inner) => {
+                self.build_expr(inner);
+                self.get_last_val(Some(inner.span.clone()))
+            }
 
             _ => {
                 self.report_ice(
