@@ -1,0 +1,13 @@
+##
+   A boolean-valued dollar scope. The trailing expression is the scope's
+   result, so the comparison is what gets folded at compile time.
+##
+func foo(): u32 {
+  var x = $${
+    var a = 3;
+    var b = 10;
+    a < b
+  };
+
+  return 0u32;
+}

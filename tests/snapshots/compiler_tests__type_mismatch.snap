@@ -4,4 +4,4 @@ expression: output
 ---
 === COMPILATION FAILED ===
 Errors (1):
-  - CompilerError { message: "Type mismatch between 'i32' and 'u32'", span: Some(Span { start: 17, end: 39 }), severity: Error, phase: Semantics, hint: None }
+  - CompilerError { message: "Type mismatch between 'i32' and 'u32'", span: Some(Span { start: 17, end: 37 }), severity: Error, phase: Semantics, hint: None }

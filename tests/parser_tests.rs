@@ -137,9 +137,8 @@ fn int_literal_var_decl() {
         vec![],
         None,
         id("x", 4, 5),
-        lit(Literal::Int(42), 9, 11),
-        0,
-        12,
+        lit(Literal::Int(42), 8, 10),
+        0, 11,
     )];
     assert_eq!(stmts, expected);
 }
@@ -152,11 +151,10 @@ fn typed_int_var_decl() {
     assert!(errors.is_empty());
     let expected = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::I32, 4, 7)),
-        id("y", 8, 9),
+        Some(ty(TypeKind::I32, 7, 10)),
+        id("y", 4, 5),
         lit(Literal::Int(7), 13, 14),
-        0,
-        15,
+        0, 15,
     )];
     assert_eq!(stmts, expected);
 }
@@ -168,11 +166,10 @@ fn float_literal_var_decl() {
     assert!(errors.is_empty());
     let expected = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::F64, 4, 7)),
-        id("z", 8, 9),
+        Some(ty(TypeKind::F64, 7, 10)),
+        id("z", 4, 5),
         lit(Literal::Float(1.5), 13, 16),
-        0,
-        17,
+        0, 17,
     )];
     assert_eq!(stmts, expected);
 }
@@ -184,11 +181,10 @@ fn string_literal_var_decl() {
     assert!(errors.is_empty());
     let expected = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::Str, 4, 7)),
-        id("s", 8, 9),
-        lit(Literal::Str("hi".to_string()), 13, 17),
-        0,
-        18,
+        Some(ty(TypeKind::Str, 6, 9)),
+        id("s", 4, 5),
+        lit(Literal::Str("hi".to_string()), 12, 16),
+        0, 17,
     )];
     assert_eq!(stmts, expected);
 }
@@ -200,11 +196,10 @@ fn char8_literal_var_decl() {
     assert!(errors.is_empty());
     let expected = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::Char8, 4, 9)),
-        id("c", 10, 11),
-        lit(Literal::Char8(97), 15, 18),
-        0,
-        19,
+        Some(ty(TypeKind::Char8, 6, 11)),
+        id("c", 4, 5),
+        lit(Literal::Char8(97), 14, 17),
+        0, 18,
     )];
     assert_eq!(stmts, expected);
 }
@@ -218,9 +213,8 @@ fn bool_literal_var_decl() {
         vec![],
         None,
         id("x", 4, 5),
-        lit(Literal::Bool(true), 9, 13),
-        0,
-        14,
+        lit(Literal::Bool(true), 8, 12),
+        0, 13,
     )];
     assert_eq!(stmts, expected);
 }
@@ -236,14 +230,13 @@ fn array_literal_var_decl() {
         id("x", 4, 5),
         Expr::new(
             ExprKind::Literal(Literal::ArrayLiteral(vec![
-                lit(Literal::Int(1), 10, 11),
-                lit(Literal::Int(2), 13, 14),
-                lit(Literal::Int(3), 16, 17),
+                lit(Literal::Int(1), 9, 10),
+                lit(Literal::Int(2), 12, 13),
+                lit(Literal::Int(3), 15, 16),
             ])),
-            sp(9, 18),
+            sp(8, 17),
         ),
-        0,
-        19,
+        0, 18,
     )];
     assert_eq!(stmts, expected);
 }
@@ -251,10 +244,10 @@ fn array_literal_var_decl() {
 #[test]
 fn suffixed_integer_literals() {
     for (src, lit_exp, span_s, span_e, decl_e) in [
-        ("var x = 2i32;", Literal::Int32(2), 9, 13, 14),
-        ("var x = 0u8;", Literal::Uint8(0), 9, 12, 13),
-        ("var x = 5iz;", Literal::IntSize(5), 9, 12, 13),
-        ("var x = 5uz;", Literal::UintSize(5), 9, 12, 13),
+        ("var x = 2i32;", Literal::Int32(2), 8, 12, 13),
+        ("var x = 0u8;", Literal::Uint8(0), 8, 11, 12),
+        ("var x = 5iz;", Literal::IntSize(5), 8, 11, 12),
+        ("var x = 5uz;", Literal::UintSize(5), 8, 11, 12),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -274,9 +267,9 @@ fn suffixed_integer_literals() {
 #[test]
 fn suffixed_float_and_char_literals() {
     for (src, lit_exp, span_s, span_e, decl_e) in [
-        ("var x = 1.5f32;", Literal::F32(1.5), 9, 15, 16),
-        ("var x = 'a'c16;", Literal::Char16(97), 9, 15, 16),
-        ("var x = 'a'c32;", Literal::Char32('a'), 9, 15, 16),
+        ("var x = 1.5f32;", Literal::F32(1.5), 8, 14, 15),
+        ("var x = 'a'c16;", Literal::Char16(97), 8, 14, 15),
+        ("var x = 'a'c32;", Literal::Char32('a'), 8, 14, 15),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -296,9 +289,9 @@ fn suffixed_float_and_char_literals() {
 #[test]
 fn radix_literals() {
     for (src, value, span_s, span_e) in [
-        ("var x = 0x1F;", 31, 9, 13),
-        ("var x = 0b101;", 5, 9, 14),
-        ("var x = 0o17;", 15, 9, 13),
+        ("var x = 0x1F;", 31, 8, 12),
+        ("var x = 0b101;", 5, 8, 13),
+        ("var x = 0o17;", 15, 8, 12),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -339,24 +332,22 @@ fn ptr_and_ref_types() {
     assert!(errors.is_empty());
     let expected = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::Ptr(Box::new(ty(TypeKind::I32, 8, 11))), 4, 11)),
-        id("p", 13, 14),
+        Some(ty(TypeKind::Ptr(Box::new(ty(TypeKind::I32, 11, 14))), 7, 14)),
+        id("p", 4, 5),
         id("q", 18, 19),
-        0,
-        20,
+        0, 20,
     )];
     assert_eq!(stmts, expected);
 
-    let (stmts2, errors2, corrupted2) = parse_src("var r: ref<i32>= q;");
+    let (stmts2, errors2, corrupted2) = parse_src("var r: ref<i32> = q;");
     assert!(!corrupted2);
     assert!(errors2.is_empty());
     let expected2 = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::Ref(Box::new(ty(TypeKind::I32, 8, 11))), 4, 11)),
-        id("r", 13, 14),
+        Some(ty(TypeKind::Ref(Box::new(ty(TypeKind::I32, 11, 14))), 7, 14)),
+        id("r", 4, 5),
         id("q", 18, 19),
-        0,
-        20,
+        0, 20,
     )];
     assert_eq!(stmts2, expected2);
 }
@@ -369,14 +360,12 @@ fn tuple_type() {
     let expected = vec![var_decl(
         vec![],
         Some(ty(
-            TypeKind::Tuple(vec![ty(TypeKind::I32, 5, 8), ty(TypeKind::F32, 10, 13)]),
-            4,
-            16,
+            TypeKind::Tuple(vec![ty(TypeKind::I32, 8, 11), ty(TypeKind::F32, 13, 16)]),
+            7, 19,
         )),
-        id("t", 15, 16),
+        id("t", 4, 5),
         id("pair", 20, 24),
-        0,
-        25,
+        0, 25,
     )];
     assert_eq!(stmts, expected);
 }
@@ -390,17 +379,14 @@ fn nullable_type() {
         vec![],
         Some(ty(
             TypeKind::Nullable(Box::new(ty(
-                TypeKind::Tuple(vec![ty(TypeKind::I32, 5, 8)]),
-                4,
-                10,
+                TypeKind::Tuple(vec![ty(TypeKind::I32, 8, 11)]),
+                7, 13,
             ))),
-            4,
-            12,
+            7, 15,
         )),
-        id("o", 11, 12),
+        id("o", 4, 5),
         id("p", 16, 17),
-        0,
-        18,
+        0, 18,
     )];
     assert_eq!(stmts, expected);
 }
@@ -415,16 +401,14 @@ fn failable_type() {
         vec![],
         Some(ty(
             TypeKind::Failable(
-                Box::new(ty(TypeKind::I32, 7, 10)),
-                Box::new(ty(TypeKind::Str, 12, 15)),
+                Box::new(ty(TypeKind::I32, 10, 13)),
+                Box::new(ty(TypeKind::Str, 15, 18)),
             ),
-            4,
-            18,
+            7, 21,
         )),
-        id("f", 17, 18),
+        id("f", 4, 5),
         id("g", 22, 23),
-        0,
-        24,
+        0, 24,
     )];
     assert_eq!(stmts, expected);
 }
@@ -436,11 +420,10 @@ fn unit_type() {
     assert!(errors.is_empty());
     let expected = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::Unit, 4, 6)),
-        id("u", 7, 8),
-        id("v", 12, 13),
-        0,
-        14,
+        Some(ty(TypeKind::Unit, 7, 9)),
+        id("u", 4, 5),
+        id("v", 13, 14),
+        0, 15,
     )];
     assert_eq!(stmts, expected);
 }
@@ -453,14 +436,12 @@ fn custom_type() {
     let expected = vec![var_decl(
         vec![],
         Some(ty(
-            TypeKind::CustomType(Box::new(id("MyType", 4, 10))),
-            4,
-            10,
+            TypeKind::CustomType(Box::new(id("MyType", 7, 13))),
+            7, 13,
         )),
-        id("m", 11, 12),
-        id("n", 16, 17),
-        0,
-        18,
+        id("m", 4, 5),
+        id("n", 15, 16),
+        0, 17,
     )];
     assert_eq!(stmts, expected);
 }
@@ -474,16 +455,14 @@ fn generic_type() {
         vec![],
         Some(ty(
             TypeKind::GenericType {
-                name: Box::new(id("Pair", 4, 8)),
-                type_params: vec![ty(TypeKind::I32, 9, 12), ty(TypeKind::U32, 14, 17)],
+                name: Box::new(id("Pair", 7, 11)),
+                type_params: vec![ty(TypeKind::I32, 12, 15), ty(TypeKind::U32, 17, 20)],
             },
-            4,
-            8,
+            7, 11,
         )),
-        id("m", 19, 20),
+        id("m", 4, 5),
         id("n", 24, 25),
-        0,
-        26,
+        0, 26,
     )];
     assert_eq!(stmts, expected);
 }
@@ -497,23 +476,21 @@ fn func_pointer_type() {
         vec![],
         Some(ty(
             TypeKind::Func(
-                vec![ty(TypeKind::I32, 9, 12), ty(TypeKind::F32, 14, 17)],
-                Box::new(Some(ty(TypeKind::Bool, 20, 24))),
+                vec![ty(TypeKind::I32, 13, 16), ty(TypeKind::F32, 18, 21)],
+                Box::new(Some(ty(TypeKind::Bool, 24, 28))),
             ),
-            4,
-            27,
+            8, 30,
         )),
-        id("fp", 25, 27),
+        id("fp", 4, 6),
         id("g", 31, 32),
-        0,
-        33,
+        0, 33,
     )];
     assert_eq!(stmts, expected);
 }
 
 #[test]
 fn array_type() {
-    // Array types use square brackets: `arr[i32, 4]`.
+    // Array types use square brackets: `[i32, 4]`.
     let (stmts, errors, corrupted) = parse_src("var a: [i32, 4]  = b;");
     assert!(!corrupted);
     assert!(errors.is_empty());
@@ -524,25 +501,25 @@ fn array_type() {
                 Box::new(ty(TypeKind::I32, 8, 11)),
                 Some(lit(Literal::Int(4), 13, 14)),
             ),
-            8,
-            11,
+            8, 11,
         )),
-        id("a", 16, 17),
-        id("b", 21, 22),
-        0,
-        23,
+        id("a", 4, 5),
+        id("b", 19, 20),
+        0, 21,
     )];
     assert_eq!(stmts, expected);
 }
 
 #[test]
-fn colon_type_annotation_rejected() {
-    // `var name: Type` is NOT valid; the type must come first.
-    let (_, errors, corrupted) = parse_src("var x: ptr<i32> = 0;");
+fn type_first_annotation_rejected() {
+    // Annotations are `var name: Type = value`. The old type-FIRST spelling
+    // (`var Type name = value`) is no longer accepted: the parser reads `i32`
+    // where the name belongs and reports it.
+    let (_, errors, corrupted) = parse_src("var i32 x = 1;");
     assert!(corrupted);
     assert_eq!(errors.len(), 1, "errors: {:?}", errors);
-    assert_eq!(errors[0].message, "Expected Bind, found Colon");
-    assert_eq!(errors[0].span, Some(sp(5, 6)));
+    assert_eq!(errors[0].message, "Expected Identifier, found I32Key");
+    assert_eq!(errors[0].span, Some(sp(4, 7)));
     assert!(matches!(errors[0].phase, Phase::Parser));
 }
 
@@ -671,14 +648,12 @@ fn shift_operators() {
             None,
             id("x", 4, 5),
             bin(
-                lit(Literal::Int(1), 9, 10),
+                lit(Literal::Int(1), 8, 9),
                 op,
-                lit(Literal::Int(2), 15, 16),
-                9,
-                16,
+                lit(Literal::Int(2), 14, 15),
+                8, 15,
             ),
-            0,
-            17,
+            0, 16,
         )];
         assert_eq!(stmts, expected, "mismatch for {src}");
     }
@@ -687,9 +662,9 @@ fn shift_operators() {
 #[test]
 fn bitwise_and_or_xor() {
     for (src, op, rhs_s, decl_e) in [
-        ("var x = 1 and 2;", BinaryOp::BitAnd, 15, 17),
-        ("var x = 1 or 2;", BinaryOp::BitOr, 14, 16),
-        ("var x = 1 xor 2;", BinaryOp::Xor, 15, 17),
+        ("var x = 1 and 2;", BinaryOp::BitAnd, 14, 16),
+        ("var x = 1 or 2;", BinaryOp::BitOr, 13, 15),
+        ("var x = 1 xor 2;", BinaryOp::Xor, 14, 16),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
         assert!(!corrupted, "corrupted for {src}");
@@ -699,10 +674,10 @@ fn bitwise_and_or_xor() {
             None,
             id("x", 4, 5),
             bin(
-                lit(Literal::Int(1), 9, 10),
+                lit(Literal::Int(1), 8, 9),
                 op,
                 lit(Literal::Int(2), rhs_s, rhs_s + 1),
-                9,
+                8,
                 rhs_s + 1,
             ),
             0,
@@ -719,15 +694,14 @@ fn bitwise_binds_tighter_than_equality() {
     let (stmts, errors, corrupted) = parse_src("var x = a and b == c or d;");
     assert!(!corrupted);
     assert!(errors.is_empty());
-    let lhs = bin(id("a", 9, 10), BinaryOp::BitAnd, id("b", 15, 16), 9, 16);
-    let rhs = bin(id("c", 20, 21), BinaryOp::BitOr, id("d", 25, 26), 20, 26);
+    let lhs = bin(id("a", 8, 9), BinaryOp::BitAnd, id("b", 14, 15), 8, 15);
+    let rhs = bin(id("c", 19, 20), BinaryOp::BitOr, id("d", 24, 25), 19, 25);
     let expected = vec![var_decl(
         vec![],
         None,
         id("x", 4, 5),
-        bin(lhs, BinaryOp::Eq, rhs, 9, 26),
-        0,
-        27,
+        bin(lhs, BinaryOp::Eq, rhs, 8, 25),
+        0, 26,
     )];
     assert_eq!(stmts, expected);
 }
@@ -742,14 +716,12 @@ fn comparison_chain_is_left_assoc() {
         None,
         id("x", 4, 5),
         bin(
-            bin(id("a", 9, 10), BinaryOp::Leq, id("b", 14, 15), 9, 15),
+            bin(id("a", 8, 9), BinaryOp::Leq, id("b", 13, 14), 8, 14),
             BinaryOp::Geq,
-            id("c", 19, 20),
-            9,
-            20,
+            id("c", 18, 19),
+            8, 19,
         ),
-        0,
-        21,
+        0, 20,
     )];
     assert_eq!(stmts, expected);
 }
@@ -792,14 +764,12 @@ fn modulo_operator() {
         None,
         id("x", 4, 5),
         bin(
-            lit(Literal::Int(5), 9, 10),
+            lit(Literal::Int(5), 8, 9),
             BinaryOp::Mod,
-            lit(Literal::Int(2), 13, 14),
-            9,
-            14,
+            lit(Literal::Int(2), 12, 13),
+            8, 13,
         ),
-        0,
-        15,
+        0, 14,
     )];
     assert_eq!(stmts, expected);
 }
@@ -859,14 +829,12 @@ fn unary_bitnot_under_equality() {
         None,
         id("x", 4, 5),
         bin(
-            unr(UnaryOp::BitNot, id("a", 13, 14), 9, 14),
+            unr(UnaryOp::BitNot, id("a", 12, 13), 8, 13),
             BinaryOp::Eq,
-            id("b", 18, 19),
-            9,
-            19,
+            id("b", 17, 18),
+            8, 18,
         ),
-        0,
-        20,
+        0, 19,
     )];
     assert_eq!(stmts, expected);
 }
@@ -919,14 +887,13 @@ fn nested_call_chain() {
     let (stmts, errors, corrupted) = parse_src("var x = f(1)(2);");
     assert!(!corrupted);
     assert!(errors.is_empty());
-    let inner = call(id("f", 9, 10), vec![lit(Literal::Int(1), 11, 12)], 9, 14);
+    let inner = call(id("f", 8, 9), vec![lit(Literal::Int(1), 10, 11)], 8, 13);
     let expected = vec![var_decl(
         vec![],
         None,
         id("x", 4, 5),
-        call(inner, vec![lit(Literal::Int(2), 14, 15)], 9, 17),
-        0,
-        17,
+        call(inner, vec![lit(Literal::Int(2), 13, 14)], 8, 16),
+        0, 16,
     )];
     assert_eq!(stmts, expected);
 }
@@ -936,15 +903,14 @@ fn member_access_chain() {
     let (stmts, errors, corrupted) = parse_src("var x = a.b.c.d;");
     assert!(!corrupted);
     assert!(errors.is_empty());
-    let a_b = bin(id("a", 9, 10), BinaryOp::Access, id("b", 11, 12), 9, 12);
-    let a_b_c = bin(a_b, BinaryOp::Access, id("c", 13, 14), 9, 14);
+    let a_b = bin(id("a", 8, 9), BinaryOp::Access, id("b", 10, 11), 8, 11);
+    let a_b_c = bin(a_b, BinaryOp::Access, id("c", 12, 13), 8, 13);
     let expected = vec![var_decl(
         vec![],
         None,
         id("x", 4, 5),
-        bin(a_b_c, BinaryOp::Access, id("d", 15, 16), 9, 16),
-        0,
-        17,
+        bin(a_b_c, BinaryOp::Access, id("d", 14, 15), 8, 15),
+        0, 16,
     )];
     assert_eq!(stmts, expected);
 }
@@ -972,10 +938,10 @@ fn turbofish_generic_call() {
     assert!(errors.is_empty());
     let instantiation = Expr::new(
         ExprKind::GenericInstantion {
-            name: Box::new(id("Pair", 9, 13)),
-            type_params: vec![ty(TypeKind::I32, 16, 19), ty(TypeKind::U32, 21, 24)],
+            name: Box::new(id("Pair", 8, 12)),
+            type_params: vec![ty(TypeKind::I32, 15, 18), ty(TypeKind::U32, 20, 23)],
         },
-        sp(9, 25),
+        sp(8, 24),
     );
     let expected = vec![var_decl(
         vec![],
@@ -984,12 +950,10 @@ fn turbofish_generic_call() {
         bin(
             instantiation,
             BinaryOp::Scope,
-            call(id("new", 27, 30), vec![], 27, 33),
-            9,
-            33,
+            call(id("new", 26, 29), vec![], 26, 32),
+            8, 32,
         ),
-        0,
-        33,
+        0, 32,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1002,20 +966,19 @@ fn turbofish_in_named_scope_chain() {
     assert!(errors.is_empty());
     let instantiation = Expr::new(
         ExprKind::GenericInstantion {
-            name: Box::new(id("generic_helper", 15, 29)),
-            type_params: vec![ty(TypeKind::I32, 32, 35)],
+            name: Box::new(id("generic_helper", 14, 28)),
+            type_params: vec![ty(TypeKind::I32, 31, 34)],
         },
-        sp(15, 36),
+        sp(14, 35),
     );
-    let generic_call = call(instantiation, vec![lit(Literal::Int(1), 37, 38)], 15, 40);
-    let b_scope = bin(id("B", 12, 13), BinaryOp::Scope, generic_call, 12, 40);
+    let generic_call = call(instantiation, vec![lit(Literal::Int(1), 36, 37)], 14, 39);
+    let b_scope = bin(id("B", 11, 12), BinaryOp::Scope, generic_call, 11, 39);
     let expected = vec![var_decl(
         vec![],
         None,
         id("x", 4, 5),
-        bin(id("A", 9, 10), BinaryOp::Scope, b_scope, 9, 40),
-        0,
-        40,
+        bin(id("A", 8, 9), BinaryOp::Scope, b_scope, 8, 39),
+        0, 39,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1030,14 +993,12 @@ fn member_access_on_call_result() {
         None,
         id("x", 4, 5),
         bin(
-            call(id("foo", 9, 12), vec![], 9, 15),
+            call(id("foo", 8, 11), vec![], 8, 14),
             BinaryOp::Access,
-            id("bar", 15, 18),
-            9,
-            18,
+            id("bar", 14, 17),
+            8, 17,
         ),
-        0,
-        19,
+        0, 18,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1053,14 +1014,12 @@ fn tuple_member_access_float_ambiguity() {
         None,
         id("x", 4, 5),
         bin(
-            id("a", 9, 10),
+            id("a", 8, 9),
             BinaryOp::Access,
-            lit(Literal::Float(0.1), 11, 14),
-            9,
-            14,
+            lit(Literal::Float(0.1), 10, 13),
+            8, 13,
         ),
-        0,
-        15,
+        0, 14,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1068,16 +1027,16 @@ fn tuple_member_access_float_ambiguity() {
 #[test]
 fn tuple_member_access_int() {
     for (src, member, target_name, target_s, target_e, ms, me, end) in [
-        ("var x = a.0;", Literal::Int(0), "a", 9, 10, 11, 12, 13),
+        ("var x = a.0;", Literal::Int(0), "a", 8, 9, 10, 11, 12),
         (
             "var x = nested.1;",
             Literal::Int(1),
             "nested",
-            9,
+            8,
+            14,
             15,
             16,
             17,
-            18,
         ),
     ] {
         let (stmts, errors, corrupted) = parse_src(src);
@@ -1091,7 +1050,7 @@ fn tuple_member_access_int() {
                 id(target_name, target_s, target_e),
                 BinaryOp::Access,
                 lit(member, ms, me),
-                9,
+                8,
                 me,
             ),
             0,
@@ -1110,9 +1069,8 @@ fn unwrap_expression() {
         vec![],
         None,
         id("x", 4, 5),
-        Expr::new(ExprKind::Unwrap(Box::new(id("opt", 16, 19))), sp(9, 21)),
-        0,
-        21,
+        Expr::new(ExprKind::Unwrap(Box::new(id("opt", 15, 18))), sp(8, 20)),
+        0, 20,
     )];
     assert_eq!(stmts, expected);
 
@@ -1126,16 +1084,14 @@ fn unwrap_expression() {
         id("x", 4, 5),
         Expr::new(
             ExprKind::Unwrap(Box::new(bin(
-                id("a", 16, 17),
+                id("a", 15, 16),
                 BinaryOp::Add,
-                id("b", 20, 21),
-                16,
-                21,
+                id("b", 19, 20),
+                15, 20,
             ))),
-            sp(9, 23),
+            sp(8, 22),
         ),
-        0,
-        23,
+        0, 22,
     )];
     assert_eq!(stmts2, expected2);
 
@@ -1149,16 +1105,14 @@ fn unwrap_expression() {
         id("x", 4, 5),
         Expr::new(
             ExprKind::Unwrap(Box::new(bin(
-                id("opt", 16, 19),
+                id("opt", 15, 18),
                 BinaryOp::Access,
-                id("thing", 20, 25),
-                16,
-                25,
+                id("thing", 19, 24),
+                15, 24,
             ))),
-            sp(9, 27),
+            sp(8, 26),
         ),
-        0,
-        27,
+        0, 26,
     )];
     assert_eq!(stmts3, expected3);
 }
@@ -1174,13 +1128,12 @@ fn cast_expression() {
         id("x", 4, 5),
         Expr::new(
             ExprKind::StaticCast(
-                Box::new(ty(TypeKind::I32, 14, 17)),
-                Box::new(id("y", 19, 20)),
+                Box::new(ty(TypeKind::I32, 13, 16)),
+                Box::new(id("y", 18, 19)),
             ),
-            sp(9, 21),
+            sp(8, 20),
         ),
-        0,
-        22,
+        0, 21,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1196,11 +1149,10 @@ fn sizeof_expression() {
         None,
         id("x", 4, 5),
         Expr::new(
-            ExprKind::SizeOfExpr(Box::new(ty(TypeKind::I32, 16, 19))),
-            sp(9, 21),
+            ExprKind::SizeOfExpr(Box::new(ty(TypeKind::I32, 15, 18))),
+            sp(8, 20),
         ),
-        0,
-        21,
+        0, 20,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1220,20 +1172,17 @@ fn compound_assignment() {
             vec![],
             None,
             id("x", 4, 5),
-            lit(Literal::Int(1), 9, 10),
-            0,
-            13,
+            lit(Literal::Int(1), 8, 9),
+            0, 10,
         ),
         st(
             StmtKind::Expr(bin(
-                id("x", 12, 13),
+                id("x", 11, 12),
                 BinaryOp::AddAssign,
-                lit(Literal::Int(2), 17, 18),
-                12,
-                18,
+                lit(Literal::Int(2), 16, 17),
+                11, 17,
             )),
-            12,
-            18,
+            11, 17,
         ),
     ];
     assert_eq!(stmts, expected);
@@ -1256,13 +1205,13 @@ fn simple_assignment_and_read_as_expr_stmt() {
         let rhs_start = n - 2; // literal operand is the second-to-last character (`2;`)
         let rhs = st(
             StmtKind::Expr(bin(
-                id("x", 12, 13),
+                id("x", 11, 12),
                 op,
                 lit(Literal::Int(2), rhs_start, rhs_start + 1),
-                12,
+                11,
                 rhs_start + 1,
             )),
-            12,
+            11,
             rhs_start + 1,
         );
         assert_eq!(&stmts[1], &rhs, "mismatch for {src}");
@@ -1279,49 +1228,41 @@ fn if_else_statement() {
         vec![],
         None,
         id("x", 4, 5),
-        lit(Literal::Int(0), 9, 10),
-        0,
-        14,
+        lit(Literal::Int(0), 8, 9),
+        0, 10,
     );
     let then_body = block(
         vec![st(
             StmtKind::Expr(bin(
-                id("x", 19, 20),
+                id("x", 18, 19),
                 BinaryOp::Assign,
-                lit(Literal::Int(1), 23, 24),
-                19,
-                24,
+                lit(Literal::Int(1), 22, 23),
+                18, 23,
             )),
-            19,
-            24,
+            18, 23,
         )],
-        17,
-        27,
+        16, 26,
     );
     let else_body = block(
         vec![st(
             StmtKind::Expr(bin(
-                id("x", 35, 36),
+                id("x", 34, 35),
                 BinaryOp::Assign,
-                lit(Literal::Int(2), 39, 40),
-                35,
-                40,
+                lit(Literal::Int(2), 38, 39),
+                34, 39,
             )),
-            35,
-            40,
+            34, 39,
         )],
-        33,
-        43,
+        32, 42,
     );
     let if_stmt = st(
         StmtKind::IfStmt {
-            condition: Box::new(id("a", 15, 16)),
+            condition: Box::new(id("a", 14, 15)),
             body: Box::new(then_body),
             elifs: vec![],
             else_body: Some(Box::new(else_body)),
         },
-        12,
-        43,
+        11, 42,
     );
     assert_eq!(stmts, vec![decl, if_stmt]);
 }
@@ -1467,47 +1408,40 @@ fn for_loop() {
             qualifiers: vec![],
             type_annotation: None,
             name: Box::new(id("i", 8, 9)),
-            init: Box::new(lit(Literal::Int(0), 13, 14)),
+            init: Box::new(lit(Literal::Int(0), 12, 13)),
         },
-        4,
-        17,
+        4, 14,
     );
     let body = block(
         vec![st(
             StmtKind::Expr(bin(
-                id("x", 33, 34),
+                id("x", 32, 33),
                 BinaryOp::Assign,
-                lit(Literal::Int(1), 37, 38),
-                33,
-                38,
+                lit(Literal::Int(1), 36, 37),
+                32, 37,
             )),
-            33,
-            38,
+            32, 37,
         )],
-        31,
-        41,
+        30, 40,
     );
     let expected = st(
         StmtKind::ForStmt {
             init: Box::new(init_stmt),
             condition: Box::new(bin(
-                id("i", 16, 17),
+                id("i", 15, 16),
                 BinaryOp::Lt,
-                lit(Literal::Int(10), 20, 22),
-                16,
-                22,
+                lit(Literal::Int(10), 19, 21),
+                15, 21,
             )),
             update: Box::new(bin(
-                id("i", 24, 25),
+                id("i", 23, 24),
                 BinaryOp::AddAssign,
-                lit(Literal::Int(1), 29, 30),
-                24,
-                30,
+                lit(Literal::Int(1), 28, 29),
+                23, 29,
             )),
             body: Box::new(body),
         },
-        0,
-        41,
+        0, 40,
     );
     assert_eq!(stmts, vec![expected]);
 }
@@ -1519,9 +1453,9 @@ fn for_loop_double_semicolon_now_rejected() {
     assert!(corrupted);
     assert_eq!(errors.len(), 2, "errors: {:#?}", errors);
     assert_eq!(errors[0].message, "Unexpected prefix token: Semicolon");
-    assert_eq!(errors[0].span, Some(sp(15, 16)));
+    assert_eq!(errors[0].span, Some(sp(14, 15)));
     assert_eq!(errors[1].message, "Expected Semicolon, found LBrace");
-    assert_eq!(errors[1].span, Some(sp(32, 33)));
+    assert_eq!(errors[1].span, Some(sp(31, 32)));
     assert!(matches!(errors[0].phase, Phase::Parser));
 }
 
@@ -1998,26 +1932,26 @@ fn struct_instantiation() {
     let (stmts, errors, corrupted) = parse_src(src);
     assert!(!corrupted);
     assert!(errors.is_empty());
-    let point_ty = ty(TypeKind::CustomType(Box::new(id("Point", 14, 19))), 14, 19);
+    let point_ty = ty(TypeKind::CustomType(Box::new(id("Point", 13, 18))), 13, 18);
     let inst = Expr::new(
         ExprKind::Instantiation {
             init_ty: Box::new(point_ty),
             body: vec![
                 InstParam {
-                    name: Box::new(id("x", 21, 22)),
-                    value: Box::new(lit(Literal::Int(1), 25, 26)),
-                    span: sp(20, 26),
+                    name: Box::new(id("x", 20, 21)),
+                    value: Box::new(lit(Literal::Int(1), 24, 25)),
+                    span: sp(19, 25),
                 },
                 InstParam {
-                    name: Box::new(id("y", 29, 30)),
-                    value: Box::new(lit(Literal::Int(2), 33, 34)),
-                    span: sp(28, 34),
+                    name: Box::new(id("y", 28, 29)),
+                    value: Box::new(lit(Literal::Int(2), 32, 33)),
+                    span: sp(27, 33),
                 },
             ],
         },
-        sp(13, 35),
+        sp(12, 34),
     );
-    let expected = vec![var_decl(vec![], None, id("point", 4, 9), inst, 0, 36)];
+    let expected = vec![var_decl(vec![], None, id("point", 4, 9), inst, 0, 35)];
     assert_eq!(stmts, expected);
 }
 
@@ -2030,14 +1964,14 @@ fn tuple_instantiation() {
     let inst = Expr::new(
         ExprKind::TupleInst {
             body: vec![
-                lit(Literal::Int(1), 13, 14),
-                lit(Literal::Int(2), 16, 17),
-                lit(Literal::Int(3), 19, 20),
+                lit(Literal::Int(1), 12, 13),
+                lit(Literal::Int(2), 15, 16),
+                lit(Literal::Int(3), 18, 19),
             ],
         },
-        sp(11, 21),
+        sp(10, 20),
     );
-    let expected = vec![var_decl(vec![], None, id("tup", 4, 7), inst, 0, 22)];
+    let expected = vec![var_decl(vec![], None, id("tup", 4, 7), inst, 0, 21)];
     assert_eq!(stmts, expected);
 }
 
@@ -2050,13 +1984,13 @@ fn tuple_instantiation_typed() {
     let inst = Expr::new(
         ExprKind::TupleInst {
             body: vec![
-                lit(Literal::Int32(2), 13, 17),
-                lit(Literal::Int64(1000), 19, 26),
+                lit(Literal::Int32(2), 12, 16),
+                lit(Literal::Int64(1000), 18, 25),
             ],
         },
-        sp(11, 27),
+        sp(10, 26),
     );
-    let expected = vec![var_decl(vec![], None, id("tup", 4, 7), inst, 0, 28)];
+    let expected = vec![var_decl(vec![], None, id("tup", 4, 7), inst, 0, 27)];
     assert_eq!(stmts, expected);
 }
 
@@ -2069,19 +2003,19 @@ fn nested_tuple_instantiation() {
     let inner = Expr::new(
         ExprKind::TupleInst {
             body: vec![
-                lit(Literal::Int32(2), 16, 20),
-                lit(Literal::Int64(1000), 22, 29),
+                lit(Literal::Int32(2), 15, 19),
+                lit(Literal::Int64(1000), 21, 28),
             ],
         },
-        sp(14, 30),
+        sp(13, 29),
     );
     let inst = Expr::new(
         ExprKind::TupleInst {
-            body: vec![inner, lit(Literal::Uint32(42), 32, 37)],
+            body: vec![inner, lit(Literal::Uint32(42), 31, 36)],
         },
-        sp(12, 38),
+        sp(11, 37),
     );
-    let expected = vec![var_decl(vec![], None, id("deep", 4, 8), inst, 0, 39)];
+    let expected = vec![var_decl(vec![], None, id("deep", 4, 8), inst, 0, 38)];
     assert_eq!(stmts, expected);
 }
 
@@ -2095,14 +2029,13 @@ fn dollar_scope_no_params() {
         ExprKind::DollarScope {
             params: vec![],
             body: Box::new(block(
-                vec![ret(Some(lit(Literal::Int(5), 20, 21)), 13, 24)],
-                11,
-                24,
+                vec![ret(Some(lit(Literal::Int(5), 19, 20)), 12, 23)],
+                10, 23,
             )),
         },
-        sp(9, 25),
+        sp(8, 24),
     );
-    let expected = vec![var_decl(vec![], None, id("f", 4, 5), scope, 0, 25)];
+    let expected = vec![var_decl(vec![], None, id("f", 4, 5), scope, 0, 24)];
     assert_eq!(stmts, expected);
 }
 
@@ -2114,20 +2047,18 @@ fn dollar_scope_with_params_expr() {
     assert!(errors.is_empty());
     let scope = Expr::new(
         ExprKind::DollarScope {
-            params: vec![id("a", 12, 13), id("b", 15, 16)],
+            params: vec![id("a", 11, 12), id("b", 14, 15)],
             body: Box::new(block(
                 vec![st(
-                    StmtKind::Expr(bin(id("a", 19, 20), BinaryOp::Add, id("b", 23, 24), 19, 24)),
-                    19,
-                    24,
+                    StmtKind::Expr(bin(id("a", 18, 19), BinaryOp::Add, id("b", 22, 23), 18, 23)),
+                    18, 23,
                 )],
-                17,
-                27,
+                16, 26,
             )),
         },
-        sp(9, 28),
+        sp(8, 27),
     );
-    let expected = vec![var_decl(vec![], None, id("g", 4, 5), scope, 0, 28)];
+    let expected = vec![var_decl(vec![], None, id("g", 4, 5), scope, 0, 27)];
     assert_eq!(stmts, expected);
 }
 
@@ -2139,12 +2070,12 @@ fn dollar_scope_with_params_return() {
     assert!(errors.is_empty());
     let scope = Expr::new(
         ExprKind::DollarScope {
-            params: vec![id("a", 12, 13), id("b", 15, 16)],
-            body: Box::new(block(vec![ret(Some(id("a", 26, 27)), 19, 30)], 17, 30)),
+            params: vec![id("a", 11, 12), id("b", 14, 15)],
+            body: Box::new(block(vec![ret(Some(id("a", 25, 26)), 18, 29)], 16, 29)),
         },
-        sp(9, 31),
+        sp(8, 30),
     );
-    let expected = vec![var_decl(vec![], None, id("h", 4, 5), scope, 0, 31)];
+    let expected = vec![var_decl(vec![], None, id("h", 4, 5), scope, 0, 30)];
     assert_eq!(stmts, expected);
 }
 
@@ -2161,9 +2092,8 @@ fn var_qualifiers() {
         vec![qualifier(QualifierKind::Mut, 0, 3)],
         None,
         id("x", 8, 9),
-        lit(Literal::Int(1), 13, 14),
-        4,
-        15,
+        lit(Literal::Int(1), 12, 13),
+        4, 14,
     )];
     assert_eq!(stmts, expected);
 
@@ -2174,9 +2104,8 @@ fn var_qualifiers() {
         vec![qualifier(QualifierKind::Const, 0, 5)],
         None,
         id("x", 10, 11),
-        lit(Literal::Int(1), 15, 16),
-        6,
-        17,
+        lit(Literal::Int(1), 14, 15),
+        6, 16,
     )];
     assert_eq!(stmts2, expected2);
 
@@ -2187,9 +2116,8 @@ fn var_qualifiers() {
         vec![qualifier(QualifierKind::DollarRead, 0, 1)],
         None,
         id("x", 6, 7),
-        lit(Literal::Int(1), 11, 12),
-        2,
-        13,
+        lit(Literal::Int(1), 10, 11),
+        2, 12,
     )];
     assert_eq!(stmts3, expected3);
 }
@@ -2228,7 +2156,7 @@ fn assert_single_error(errors: &[CompilerError], msg: &str, span: Option<Span>) 
 fn missing_semicolon() {
     let (_, errors, corrupted) = parse_src("var x = 42");
     assert!(corrupted);
-    assert_single_error(&errors, "Expected Semicolon, found End", Some(sp(11, 11)));
+    assert_single_error(&errors, "Expected Semicolon, found End", Some(sp(10, 10)));
 }
 
 #[test]
@@ -2238,16 +2166,24 @@ fn dangling_binary_operator() {
     assert_single_error(
         &errors,
         "Unexpected prefix token: Semicolon",
-        Some(sp(13, 14)),
+        Some(sp(12, 13)),
     );
 }
 
 #[test]
-fn statement_level_bind_rejected() {
-    let (_, errors, corrupted) = parse_src("x = 1;");
+fn bind_operator_rejected() {
+    // The `:=` bind operator is gone; `x = 1;` is an ordinary assignment and
+    // parses, but `x := 1;` must still be a parse error.
+    let (stmts, errors, corrupted) = parse_src("x = 1;");
+    assert!(!corrupted, "{:?}", errors);
+    assert!(errors.is_empty());
+    assert_eq!(stmts.len(), 1);
+
+    let (_, errors, corrupted) = parse_src("x := 1;");
     assert!(corrupted);
     assert_eq!(errors.len(), 1, "errors: {:#?}", errors);
-    assert_eq!(errors[0].message, "Expected Semicolon, found Bind");
+    assert_eq!(errors[0].message, "Expected Semicolon, found Colon");
+    assert_eq!(errors[0].span, Some(sp(2, 3)));
     assert!(matches!(errors[0].phase, Phase::Parser));
 }
 
@@ -2293,7 +2229,7 @@ fn amp_bitwise_operator_not_supported() {
     assert_single_error(
         &errors,
         "Expected Semicolon, found Ampersand",
-        Some(sp(17, 18)),
+        Some(sp(16, 17)),
     );
 }
 
@@ -2319,14 +2255,14 @@ fn mod_keyword_not_a_operator() {
 fn turbofish_requires_double_colon() {
     let (_, errors, corrupted) = parse_src("var x = Pair<i32, u32>::new();");
     assert!(corrupted);
-    assert_single_error(&errors, "Unexpected prefix token: I32Key", Some(sp(14, 17)));
+    assert_single_error(&errors, "Unexpected prefix token: I32Key", Some(sp(13, 16)));
 }
 
 #[test]
 fn unwrap_takes_expression_not_type() {
     let (_, errors, corrupted) = parse_src("var x = unwrap[Option<i32>](o);");
     assert!(corrupted);
-    assert_single_error(&errors, "Unexpected prefix token: I32Key", Some(sp(23, 26)));
+    assert_single_error(&errors, "Unexpected prefix token: I32Key", Some(sp(22, 25)));
 }
 
 #[test]
@@ -2335,9 +2271,9 @@ fn function_as_expression_not_supported() {
     assert!(corrupted);
     assert_eq!(errors.len(), 2, "errors: {:#?}", errors);
     assert_eq!(errors[0].message, "Unexpected prefix token: Func");
-    assert_eq!(errors[0].span, Some(sp(9, 13)));
+    assert_eq!(errors[0].span, Some(sp(8, 12)));
     assert_eq!(errors[1].message, "Unexpected prefix token: Rbrace");
-    assert_eq!(errors[1].span, Some(sp(39, 40)));
+    assert_eq!(errors[1].span, Some(sp(38, 39)));
 }
 
 #[test]
@@ -2393,6 +2329,5 @@ fn nested_plain_parens_not_a_tuple_literal() {
     // Tuple literals must use `.(...)` at every nesting level.
     let (_, errors, corrupted) = parse_src("var deep = .(.((2i32, 1000i64), 42u32), 99i32);");
     assert!(corrupted);
-    assert_single_error(&errors, "Expected Rparen, found Comma", Some(sp(21, 22)));
+    assert_single_error(&errors, "Expected Rparen, found Comma", Some(sp(20, 21)));
 }
-

@@ -1,0 +1,19 @@
+##
+   Comparisons and boolean logic.
+   `!` is a prefix operator, and a bare `if` needs no `else`.
+   (`&&`/`||` are not lowered to MIR yet, so conditions are nested here.)
+##
+#
+func is_within(value: i32, lo: i32, hi: i32): bool {
+    if value < lo {
+        return false;
+    }
+    if value > hi {
+        return false;
+    }
+    return true;
+}
+
+func differs(a: i32, b: i32): bool {
+    return !(a == b);
+}

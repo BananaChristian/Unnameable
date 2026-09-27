@@ -48,13 +48,13 @@ fn assert_clean(
 // basic decl self-resolution
 #[test]
 fn var_decl_self_resolves() {
-    let s = assert_clean(analyze("var x := 1;", &[]));
+    let s = assert_clean(analyze("var x = 1;", &[]));
     assert_eq!(resolved_names(&s), map(&[(1, 1)]));
 }
 
 #[test]
 fn var_init_identifier_resolves_to_decl() {
-    let s = assert_clean(analyze("var x := 1;\nvar y := x;", &[]));
+    let s = assert_clean(analyze("var x = 1;\nvar y = x;", &[]));
     assert_eq!(resolved_names(&s), map(&[(1, 1), (2, 1), (3, 3)]));
 }
 
@@ -72,13 +72,13 @@ fn func_param_usage_resolves_to_param_decl() {
 
 #[test]
 fn func_local_var_usage_resolves() {
-    let s = assert_clean(analyze("func f(): i32 { var y := 5; return y; }", &[]));
+    let s = assert_clean(analyze("func f(): i32 { var y = 5; return y; }", &[]));
     assert_eq!(resolved_names(&s), map(&[(2, 2), (3, 2), (5, 5)]));
 }
 
 #[test]
 fn global_visible_inside_func_body() {
-    let s = assert_clean(analyze("var x := 1;\nfunc f(): i32 { return x; }", &[]));
+    let s = assert_clean(analyze("var x = 1;\nfunc f(): i32 { return x; }", &[]));
     assert_eq!(resolved_names(&s), map(&[(1, 1), (3, 1), (5, 5)]));
 }
 
@@ -126,7 +126,7 @@ fn undeclared_identifier_reported() {
 
 #[test]
 fn undeclared_local_in_func_reported() {
-    let (s, diag) = analyze("func f(): i32 { var y := x; return y; }", &[]);
+    let (s, diag) = analyze("func f(): i32 { var y = x; return y; }", &[]);
     assert!(s.corrupted);
     assert_eq!(messages(&diag), vec!["'x' is not declared"]);
     assert_eq!(resolved_names(&s), map(&[(2, 2), (3, 2), (5, 5)]));
@@ -143,7 +143,7 @@ fn undeclared_param_type_reported() {
 // duplicate definitions
 #[test]
 fn duplicate_var_definition_rejected() {
-    let (s, diag) = analyze("var x := 1;\nvar x := 2;", &[]);
+    let (s, diag) = analyze("var x = 1;\nvar x = 2;", &[]);
     assert!(s.corrupted);
     assert_eq!(messages(&diag), vec!["'x' already defined in this scope"]);
     assert_eq!(resolved_names(&s), map(&[(1, 1), (3, 1)]));
@@ -162,7 +162,7 @@ fn duplicate_func_definition_rejected() {
 
 #[test]
 fn func_param_and_body_var_same_scope_conflict() {
-    let (s, diag) = analyze("func f(x: i32): i32 { var x := 5; return x; }", &[]);
+    let (s, diag) = analyze("func f(x: i32): i32 { var x = 5; return x; }", &[]);
     assert!(s.corrupted);
     assert_eq!(messages(&diag), vec!["'x' already defined in this scope"]);
 }
@@ -170,13 +170,13 @@ fn func_param_and_body_var_same_scope_conflict() {
 // scoping
 #[test]
 fn if_body_reuses_enclosing_scope() {
-    let s = assert_clean(analyze("var x := 1;\nif x > 0 { var y := 2; }", &[]));
+    let s = assert_clean(analyze("var x = 1;\nif x > 0 { var y = 2; }", &[]));
     assert_eq!(resolved_names(&s), map(&[(1, 1), (2, 1), (6, 6)]));
 }
 
 #[test]
 fn if_body_cannot_shadow_outer_var() {
-    let (s, diag) = analyze("var x := 1;\nif x > 0 { var x := 2; }", &[]);
+    let (s, diag) = analyze("var x = 1;\nif x > 0 { var x = 2; }", &[]);
     assert!(s.corrupted);
     assert_eq!(messages(&diag), vec!["'x' already defined in this scope"]);
     assert_eq!(resolved_names(&s), map(&[(1, 1), (2, 1), (6, 1)]));
@@ -184,7 +184,7 @@ fn if_body_cannot_shadow_outer_var() {
 
 #[test]
 fn while_body_cannot_shadow_outer_var() {
-    let (s, diag) = analyze("var x := 1;\nwhile x > 0 { var x := 2; }", &[]);
+    let (s, diag) = analyze("var x = 1;\nwhile x > 0 { var x = 2; }", &[]);
     assert!(s.corrupted);
     assert_eq!(messages(&diag), vec!["'x' already defined in this scope"]);
     assert_eq!(resolved_names(&s), map(&[(1, 1), (2, 1), (6, 1)]));
@@ -192,14 +192,14 @@ fn while_body_cannot_shadow_outer_var() {
 
 #[test]
 fn while_body_var_is_fine_when_no_conflict() {
-    let s = assert_clean(analyze("while true { var w := 1; }", &[]));
+    let s = assert_clean(analyze("while true { var w = 1; }", &[]));
     assert_eq!(resolved_names(&s), map(&[(2, 2)]));
 }
 
 #[test]
 fn func_param_shadows_outer_var() {
     let s = assert_clean(analyze(
-        "var x := 1;\nfunc f(x: i32): i32 { return x; }",
+        "var x = 1;\nfunc f(x: i32): i32 { return x; }",
         &[],
     ));
     assert_eq!(resolved_names(&s), map(&[(1, 1), (5, 3), (7, 7)]));
@@ -208,7 +208,7 @@ fn func_param_shadows_outer_var() {
 #[test]
 fn if_body_new_var_does_not_escape() {
     let s = assert_clean(analyze(
-        "func f(): i32 { if true { var y := 2; } return 0; }",
+        "func f(): i32 { if true { var y = 2; } return 0; }",
         &[],
     ));
     assert_eq!(resolved_names(&s), map(&[(3, 3), (7, 7)]));
@@ -238,7 +238,7 @@ fn call_callee_resolves_to_func_decl() {
 
 #[test]
 fn sizeof_type_usage_resolves_to_struct() {
-    let s = assert_clean(analyze("struct Foo { a: i32 }\nvar s := sizeof<Foo>;", &[]));
+    let s = assert_clean(analyze("struct Foo { a: i32 }\nvar s = sizeof<Foo>;", &[]));
     assert_eq!(resolved_names(&s), map(&[(1, 1), (2, 2), (3, 2), (5, 5)]));
 }
 
@@ -251,14 +251,14 @@ fn alias_target_is_not_resolved_on_its_own() {
 
 #[test]
 fn alias_usage_in_annotation_resolves_to_alias_decl() {
-    let s = assert_clean(analyze("alias i32 as Int\nvar Int y := 5;", &[]));
+    let s = assert_clean(analyze("alias i32 as Int\nvar y: Int = 5;", &[]));
     assert_eq!(resolved_names(&s), map(&[(2, 1), (4, 4)]));
 }
 
 #[test]
 fn dollar_scope_capture_params_resolve_to_outer_consts() {
     let s = assert_clean(analyze(
-        "const var a := 5;\nconst var b := 3;\nvar g := $$|a, b|{ a + b; };",
+        "const var a = 5;\nconst var b = 3;\nvar g = $$|a, b|{ a + b; };",
         &[],
     ));
     // the capture list identifiers and their in-body uses resolve to the outer
@@ -271,7 +271,7 @@ fn dollar_scope_capture_params_resolve_to_outer_consts() {
 
 #[test]
 fn dollar_scope_capture_of_undeclared_name_is_rejected() {
-    let (s, diag) = analyze("var g := $$|a, b|{ a + b; };", &[]);
+    let (s, diag) = analyze("var g = $$|a, b|{ a + b; };", &[]);
     assert!(s.corrupted);
     let msgs = messages(&diag);
     assert!(

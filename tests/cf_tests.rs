@@ -37,7 +37,7 @@ fn assert_messages(src: &str, expected: &[&str]) {
 #[test]
 fn non_unit_function_without_terminal_return_reports() {
     assert_messages(
-        "func f(): isize {\n    var x := 1;\n}\n",
+        "func f(): isize {\n    var x = 1;\n}\n",
         &["function missing  terminal return statement, expected return statement of type 'isize'"],
     );
     assert_messages(
@@ -53,7 +53,7 @@ fn unit_function_bare_return_passes() {
 
 #[test]
 fn implicit_tail_return_is_a_terminal_return() {
-    assert_clean("func f(): isize {\n    var x := 1;\n    x\n}\n");
+    assert_clean("func f(): isize {\n    var x = 1;\n    x\n}\n");
     assert_clean("func f(): isize {\n    42\n}\n");
     // A trailing `;` discards the expression: no tail, so no terminal return.
     assert_messages(
@@ -90,10 +90,21 @@ fn wrong_return_type_reports() {
 
 #[test]
 fn return_value_in_unit_function_reports() {
+    // The unit return type has to be written explicitly: an *omitted* return
+    // type is inferred from the returned expression (see
+    // `omitted_return_type_is_inferred_from_return` below).
     assert_messages(
-        "func f() {\n    return \"s\";\n}\n",
+        "func f(): () {\n    return \"s\";\n}\n",
         &["Expected type '()' but got 'str'"],
     );
+}
+
+#[test]
+fn omitted_return_type_is_inferred_from_return() {
+    // `func f() { return "s"; }` declares no return type, so the returned
+    // expression's own type becomes the function's return type.
+    assert_clean("func f() {\n    return \"s\";\n}\n");
+    assert_clean("func f() {\n    return 1;\n}\n");
 }
 
 #[test]
@@ -132,7 +143,7 @@ fn return_then_return_is_unreachable() {
 #[test]
 fn statement_after_return_is_unreachable() {
     assert_messages(
-        "func f(): isize {\n    return 1;\n    var x := 2;\n}\n",
+        "func f(): isize {\n    return 1;\n    var x = 2;\n}\n",
         &["Unreachable code"],
     );
 }
@@ -144,14 +155,14 @@ fn statement_after_return_is_unreachable() {
 #[test]
 fn break_and_continue_inside_loop_passes() {
     assert_clean(
-        "func f(): isize {\n    mut var x := 0;\n    while x < 3 { x += 1; if x == 3 { break } }\n    return x;\n}\n",
+        "func f(): isize {\n    mut var x = 0;\n    while x < 3 { x += 1; if x == 3 { break } }\n    return x;\n}\n",
     );
     assert_clean(
-        "func f(): isize {\n    mut var x := 0;\n    while x < 3 { x += 1; continue }\n    return x;\n}\n",
+        "func f(): isize {\n    mut var x = 0;\n    while x < 3 { x += 1; continue }\n    return x;\n}\n",
     );
     assert_clean("func f(): isize {\n    while true { break; }\n    return 0;\n}\n");
     assert_clean(
-        "func f(): isize {\n    mut var x := 0;\n    while x < 3 { x += 1; continue; }\n    return x;\n}\n",
+        "func f(): isize {\n    mut var x = 0;\n    while x < 3 { x += 1; continue; }\n    return x;\n}\n",
     );
 }
 
@@ -187,7 +198,7 @@ fn break_inside_nested_loops_passes() {
 #[test]
 fn break_inside_if_inside_loop_passes() {
     assert_clean(
-        "func f(): isize {\n    mut var x := 0;\n    while true { if true { break } }\n    return x;\n}\n",
+        "func f(): isize {\n    mut var x = 0;\n    while true { if true { break } }\n    return x;\n}\n",
     );
 }
 
@@ -206,19 +217,19 @@ fn top_level_return_reports() {
 #[test]
 fn top_level_break_and_continue_report() {
     assert_messages(
-        "var a := 5;\nbreak\n",
+        "var a = 5;\nbreak\n",
         &["break statements must only exist inside a loop body"],
     );
     assert_messages(
-        "var a := 5;\ncontinue\n",
+        "var a = 5;\ncontinue\n",
         &["continue statements must only exist inside a loop body"],
     );
     assert_messages(
-        "var a := 5;\nbreak;\n",
+        "var a = 5;\nbreak;\n",
         &["break statements must only exist inside a loop body"],
     );
     assert_messages(
-        "var a := 5;\ncontinue;\n",
+        "var a = 5;\ncontinue;\n",
         &["continue statements must only exist inside a loop body"],
     );
 }
@@ -264,11 +275,11 @@ fn while_true_without_return_still_needs_terminal_return() {
 #[test]
 fn break_and_continue_make_following_statements_unreachable() {
     assert_messages(
-        "func f(): isize {\n    mut var x := 0;\n    while x < 3 { x += 1; break x = 7; }\n    return x;\n}\n",
+        "func f(): isize {\n    mut var x = 0;\n    while x < 3 { x += 1; break x = 7; }\n    return x;\n}\n",
         &["Unreachable code"],
     );
     assert_messages(
-        "func f(): isize {\n    mut var x := 0;\n    while x < 3 { x += 1; continue x = 7; }\n    return x;\n}\n",
+        "func f(): isize {\n    mut var x = 0;\n    while x < 3 { x += 1; continue x = 7; }\n    return x;\n}\n",
         &["Unreachable code"],
     );
 }
@@ -276,7 +287,7 @@ fn break_and_continue_make_following_statements_unreachable() {
 #[test]
 fn code_after_non_terminating_loop_branch_is_reachable() {
     assert_clean(
-        "func f(): isize {\n    mut var x := 0;\n    while x < 3 { x += 1; break }\n    return x;\n}\n",
+        "func f(): isize {\n    mut var x = 0;\n    while x < 3 { x += 1; break }\n    return x;\n}\n",
     );
 }
 
@@ -287,14 +298,14 @@ fn code_after_non_terminating_loop_branch_is_reachable() {
 #[test]
 fn dollar_scope_loop_flow_passes() {
     assert_clean(
-        "func f(): isize {\n    var a := $${\n        var x := 0;\n        while true { break }\n        x;\n    };\n    return 0;\n}\n",
+        "func f(): isize {\n    var a = $${\n        var x = 0;\n        while true { break }\n        x;\n    };\n    return 0;\n}\n",
     );
 }
 
 #[test]
 fn dollar_scope_break_outside_loop_reports() {
     assert_messages(
-        "func f(): isize {\n    var a := $${\n        break\n    };\n    return 0;\n}\n",
+        "func f(): isize {\n    var a = $${\n        break\n    };\n    return 0;\n}\n",
         &["break statements must only exist inside a loop body"],
     );
 }
@@ -302,7 +313,7 @@ fn dollar_scope_break_outside_loop_reports() {
 #[test]
 fn dollar_scope_return_must_match_scope_type() {
     assert_messages(
-        "func f(): isize {\n    var a := $${\n        return 5;\n    };\n    return 0;\n}\n",
+        "func f(): isize {\n    var a = $${\n        return 5;\n    };\n    return 0;\n}\n",
         &["Expected type '()' but got 'isize'"],
     );
 }
@@ -310,7 +321,7 @@ fn dollar_scope_return_must_match_scope_type() {
 #[test]
 fn dollar_scope_unreachable_after_return() {
     assert_messages(
-        "func f(): isize {\n    var a := $${\n        return 1;\n        var x := 2;\n    };\n    return 0;\n}\n",
+        "func f(): isize {\n    var a = $${\n        return 1;\n        var x = 2;\n    };\n    return 0;\n}\n",
         &["Expected type '()' but got 'isize'", "Unreachable code"],
     );
 }
@@ -341,7 +352,7 @@ fn suffixed_literal_returns_still_match() {
 #[test]
 fn non_literal_return_mismatch_still_reports() {
     assert_messages(
-        "func foo(): i32 {\n    var x := 0;\n    return x;\n}\n",
+        "func foo(): i32 {\n    var x = 0;\n    return x;\n}\n",
         &["Expected type 'i32' but got 'isize'"],
     );
 }

@@ -458,7 +458,7 @@ fn span(start: usize, end: usize) -> Span {
 // var declarations & qualifiers
 #[test]
 fn var_plain_lowers_with_deterministic_node_ids() {
-    let hir = parse_lower("var x := 1;");
+    let hir = parse_lower("var x = 1;");
     assert_eq!(
         hir[0].hir_id,
         NodeId {
@@ -481,7 +481,7 @@ fn var_plain_lowers_with_deterministic_node_ids() {
                     external: 0
                 },
                 kind: HirExprKind::Literal(HirLiteral::Int(1)),
-                span: span(9, 10),
+                span: span(8, 9),
             }),
         }
     );
@@ -489,7 +489,7 @@ fn var_plain_lowers_with_deterministic_node_ids() {
 
 #[test]
 fn var_with_type() {
-    let hir = parse_lower_norm("var i32 y := 5;");
+    let hir = parse_lower_norm("var y: i32 = 5;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -498,7 +498,7 @@ fn var_with_type() {
             false,
             false,
             false,
-            Some(tn(HirType::I32, span(4, 7))),
+            Some(tn(HirType::I32, span(7, 10))),
             lit(HirLiteral::Int(5), span(13, 14)),
             span(0, 15),
         )]
@@ -507,7 +507,7 @@ fn var_with_type() {
 
 #[test]
 fn var_mut() {
-    let hir = parse_lower_norm("mut var u8 z := 3;");
+    let hir = parse_lower_norm("mut var z: u8 = 3;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -516,7 +516,7 @@ fn var_mut() {
             false,
             false,
             false,
-            Some(tn(HirType::U8, span(8, 10))),
+            Some(tn(HirType::U8, span(11, 13))),
             lit(HirLiteral::Int(3), span(16, 17)),
             span(4, 18),
         )]
@@ -525,7 +525,7 @@ fn var_mut() {
 
 #[test]
 fn var_const_expose() {
-    let hir = parse_lower_norm("expose const var bool ok := true;");
+    let hir = parse_lower_norm("expose const var ok: bool = true;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -534,7 +534,7 @@ fn var_const_expose() {
             true,
             false,
             true,
-            Some(tn(HirType::Bool, span(17, 21))),
+            Some(tn(HirType::Bool, span(21, 25))),
             lit(HirLiteral::Bool(true), span(28, 32)),
             span(13, 33),
         )]
@@ -543,7 +543,7 @@ fn var_const_expose() {
 
 #[test]
 fn var_dollar_read() {
-    let hir = parse_lower_norm("$ var f32 w := 1.5;");
+    let hir = parse_lower_norm("$ var w: f32 = 1.5;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -552,7 +552,7 @@ fn var_dollar_read() {
             false,
             true,
             false,
-            Some(tn(HirType::F32, span(6, 9))),
+            Some(tn(HirType::F32, span(9, 12))),
             lit(HirLiteral::Float(1.5), span(15, 18)),
             span(2, 19),
         )]
@@ -561,7 +561,7 @@ fn var_dollar_read() {
 
 #[test]
 fn literal_types() {
-    let hir = parse_lower_norm("var a := 1.5f32; var b := 5i32; var c := 0u8; var d := \"hi\";");
+    let hir = parse_lower_norm("var a = 1.5f32; var b = 5i32; var c = 0u8; var d = \"hi\";");
     assert_eq!(
         hir,
         vec![
@@ -572,8 +572,8 @@ fn literal_types() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::F32(1.5), span(9, 15)),
-                span(0, 20),
+                lit(HirLiteral::F32(1.5), span(8, 14)),
+                span(0, 15),
             ),
             var_decl(
                 "b",
@@ -582,8 +582,8 @@ fn literal_types() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Int32(5), span(26, 30)),
-                span(17, 35),
+                lit(HirLiteral::Int32(5), span(24, 28)),
+                span(16, 29),
             ),
             var_decl(
                 "c",
@@ -592,8 +592,8 @@ fn literal_types() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Uint8(0), span(41, 44)),
-                span(32, 49),
+                lit(HirLiteral::Uint8(0), span(38, 41)),
+                span(30, 42),
             ),
             var_decl(
                 "d",
@@ -602,8 +602,8 @@ fn literal_types() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Str("hi".to_string()), span(55, 59)),
-                span(46, 60),
+                lit(HirLiteral::Str("hi".to_string()), span(51, 55)),
+                span(43, 56),
             ),
         ]
     );
@@ -611,7 +611,7 @@ fn literal_types() {
 
 #[test]
 fn char_literals() {
-    let hir = parse_lower_norm("var g := 'h'c8; var h := 'h'c16; var i := 'h'c32;");
+    let hir = parse_lower_norm("var g = 'h'c8; var h = 'h'c16; var i = 'h'c32;");
     assert_eq!(
         hir,
         vec![
@@ -622,8 +622,8 @@ fn char_literals() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Char8(104), span(9, 14)),
-                span(0, 19),
+                lit(HirLiteral::Char8(104), span(8, 13)),
+                span(0, 14),
             ),
             var_decl(
                 "h",
@@ -632,8 +632,8 @@ fn char_literals() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Char16(104), span(25, 31)),
-                span(16, 36),
+                lit(HirLiteral::Char16(104), span(23, 29)),
+                span(15, 30),
             ),
             var_decl(
                 "i",
@@ -642,8 +642,8 @@ fn char_literals() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Char32('h'), span(42, 48)),
-                span(33, 49),
+                lit(HirLiteral::Char32('h'), span(39, 45)),
+                span(31, 46),
             ),
         ]
     );
@@ -651,7 +651,7 @@ fn char_literals() {
 
 #[test]
 fn radix_literals() {
-    let hir = parse_lower_norm("var r := 0x1F; var s := 0b101; var o := 0o17;");
+    let hir = parse_lower_norm("var r = 0x1F; var s = 0b101; var o = 0o17;");
     assert_eq!(
         hir,
         vec![
@@ -662,8 +662,8 @@ fn radix_literals() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Int(31), span(9, 13)),
-                span(0, 18),
+                lit(HirLiteral::Int(31), span(8, 12)),
+                span(0, 13),
             ),
             var_decl(
                 "s",
@@ -672,8 +672,8 @@ fn radix_literals() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Int(5), span(24, 29)),
-                span(15, 34),
+                lit(HirLiteral::Int(5), span(22, 27)),
+                span(14, 28),
             ),
             var_decl(
                 "o",
@@ -682,8 +682,8 @@ fn radix_literals() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Int(15), span(40, 44)),
-                span(31, 45),
+                lit(HirLiteral::Int(15), span(37, 41)),
+                span(29, 42),
             ),
         ]
     );
@@ -691,7 +691,7 @@ fn radix_literals() {
 
 #[test]
 fn string_literal_is_not_interpolated_yet() {
-    let hir = parse_lower_norm("var t := \"hi {name}\";");
+    let hir = parse_lower_norm("var t = \"hi {name}\";");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -701,8 +701,8 @@ fn string_literal_is_not_interpolated_yet() {
             false,
             false,
             None,
-            lit(HirLiteral::Str("hi {name}".to_string()), span(9, 20)),
-            span(0, 21),
+            lit(HirLiteral::Str("hi {name}".to_string()), span(8, 19)),
+            span(0, 20),
         )]
     );
 }
@@ -710,17 +710,17 @@ fn string_literal_is_not_interpolated_yet() {
 // binary / unary / postfix expressions
 #[test]
 fn binary_arith_precedence() {
-    let hir = parse_lower_norm("var x := 1 + 2 * 3;");
+    let hir = parse_lower_norm("var x = 1 + 2 * 3;");
     let expected_init = bin(
-        lit(HirLiteral::Int(1), span(9, 10)),
+        lit(HirLiteral::Int(1), span(8, 9)),
         HirBinaryOp::Add,
         bin(
-            lit(HirLiteral::Int(2), span(13, 14)),
+            lit(HirLiteral::Int(2), span(12, 13)),
             HirBinaryOp::Mul,
-            lit(HirLiteral::Int(3), span(17, 18)),
-            span(13, 18),
+            lit(HirLiteral::Int(3), span(16, 17)),
+            span(12, 17),
         ),
-        span(9, 18),
+        span(8, 17),
     );
     assert_eq!(
         hir,
@@ -732,29 +732,29 @@ fn binary_arith_precedence() {
             false,
             None,
             expected_init,
-            span(0, 19)
+            span(0, 18)
         )]
     );
 }
 
 #[test]
 fn keyword_and_or_are_binary_ops() {
-    let hir = parse_lower_norm("var p := a and b == c or d;");
+    let hir = parse_lower_norm("var p = a and b == c or d;");
     let expected_init = bin(
         bin(
-            ident("a", span(9, 10)),
+            ident("a", span(8, 9)),
             HirBinaryOp::BitAnd,
-            ident("b", span(15, 16)),
-            span(9, 16),
+            ident("b", span(14, 15)),
+            span(8, 15),
         ),
         HirBinaryOp::Eq,
         bin(
-            ident("c", span(20, 21)),
+            ident("c", span(19, 20)),
             HirBinaryOp::BitOr,
-            ident("d", span(25, 26)),
-            span(20, 26),
+            ident("d", span(24, 25)),
+            span(19, 25),
         ),
-        span(9, 26),
+        span(8, 25),
     );
     assert_eq!(
         hir,
@@ -766,14 +766,14 @@ fn keyword_and_or_are_binary_ops() {
             false,
             None,
             expected_init,
-            span(0, 27)
+            span(0, 26)
         )]
     );
 }
 
 #[test]
 fn shift_operators() {
-    let hir = parse_lower_norm("var s := 1 shl 2; var t := 5 shr 1;");
+    let hir = parse_lower_norm("var s = 1 shl 2; var t = 5 shr 1;");
     assert_eq!(
         hir,
         vec![
@@ -785,12 +785,12 @@ fn shift_operators() {
                 false,
                 None,
                 bin(
-                    lit(HirLiteral::Int(1), span(9, 10)),
+                    lit(HirLiteral::Int(1), span(8, 9)),
                     HirBinaryOp::Shl,
-                    lit(HirLiteral::Int(2), span(15, 16)),
-                    span(9, 16),
+                    lit(HirLiteral::Int(2), span(14, 15)),
+                    span(8, 15),
                 ),
-                span(0, 21),
+                span(0, 16),
             ),
             var_decl(
                 "t",
@@ -800,12 +800,12 @@ fn shift_operators() {
                 false,
                 None,
                 bin(
-                    lit(HirLiteral::Int(5), span(27, 28)),
+                    lit(HirLiteral::Int(5), span(25, 26)),
                     HirBinaryOp::Shr,
-                    lit(HirLiteral::Int(1), span(33, 34)),
-                    span(27, 34),
+                    lit(HirLiteral::Int(1), span(31, 32)),
+                    span(25, 32),
                 ),
-                span(18, 35),
+                span(17, 33),
             ),
         ]
     );
@@ -813,7 +813,7 @@ fn shift_operators() {
 
 #[test]
 fn coalesce_operator() {
-    let hir = parse_lower_norm("var u := a ?? b;");
+    let hir = parse_lower_norm("var u = a ?? b;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -824,19 +824,19 @@ fn coalesce_operator() {
             false,
             None,
             bin(
-                ident("a", span(9, 10)),
+                ident("a", span(8, 9)),
                 HirBinaryOp::Coalesce,
-                ident("b", span(14, 15)),
-                span(9, 15)
+                ident("b", span(13, 14)),
+                span(8, 14)
             ),
-            span(0, 16),
+            span(0, 15),
         )]
     );
 }
 
 #[test]
 fn xor_operator() {
-    let hir = parse_lower_norm("var v := p xor q;");
+    let hir = parse_lower_norm("var v = p xor q;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -847,19 +847,19 @@ fn xor_operator() {
             false,
             None,
             bin(
-                ident("p", span(9, 10)),
+                ident("p", span(8, 9)),
                 HirBinaryOp::Xor,
-                ident("q", span(15, 16)),
-                span(9, 16)
+                ident("q", span(14, 15)),
+                span(8, 15)
             ),
-            span(0, 17),
+            span(0, 16),
         )]
     );
 }
 
 #[test]
 fn unary_operators() {
-    let hir = parse_lower_norm("var n := -5; var m := not ok; var a2 := @p; var pd := ^q;");
+    let hir = parse_lower_norm("var n = -5; var m = not ok; var a2 = @p; var pd = ^q;");
     assert_eq!(
         hir,
         vec![
@@ -873,11 +873,11 @@ fn unary_operators() {
                 expr(
                     HirExprKind::Unary(
                         HirUnaryOp::Neg,
-                        Box::new(lit(HirLiteral::Int(5), span(10, 11)))
+                        Box::new(lit(HirLiteral::Int(5), span(9, 10)))
                     ),
-                    span(9, 11),
+                    span(8, 10),
                 ),
-                span(0, 16),
+                span(0, 11),
             ),
             var_decl(
                 "m",
@@ -887,10 +887,10 @@ fn unary_operators() {
                 false,
                 None,
                 expr(
-                    HirExprKind::Unary(HirUnaryOp::BitNot, Box::new(ident("ok", span(26, 28)))),
-                    span(22, 28),
+                    HirExprKind::Unary(HirUnaryOp::BitNot, Box::new(ident("ok", span(24, 26)))),
+                    span(20, 26),
                 ),
-                span(13, 33),
+                span(12, 27),
             ),
             var_decl(
                 "a2",
@@ -900,10 +900,10 @@ fn unary_operators() {
                 false,
                 None,
                 expr(
-                    HirExprKind::Unary(HirUnaryOp::AddressOf, Box::new(ident("p", span(41, 42)))),
-                    span(40, 42),
+                    HirExprKind::Unary(HirUnaryOp::AddressOf, Box::new(ident("p", span(38, 39)))),
+                    span(37, 39),
                 ),
-                span(30, 47),
+                span(28, 40),
             ),
             var_decl(
                 "pd",
@@ -913,10 +913,10 @@ fn unary_operators() {
                 false,
                 None,
                 expr(
-                    HirExprKind::Unary(HirUnaryOp::Dereference, Box::new(ident("q", span(55, 56)))),
-                    span(54, 56),
+                    HirExprKind::Unary(HirUnaryOp::Dereference, Box::new(ident("q", span(51, 52)))),
+                    span(50, 52),
                 ),
-                span(44, 57),
+                span(41, 53),
             ),
         ]
     );
@@ -992,7 +992,7 @@ fn assignment_operators() {
 
 #[test]
 fn field_access() {
-    let hir = parse_lower_norm("var c := obj.field;");
+    let hir = parse_lower_norm("var c = obj.field;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -1003,24 +1003,24 @@ fn field_access() {
             false,
             None,
             bin(
-                ident("obj", span(9, 12)),
+                ident("obj", span(8, 11)),
                 HirBinaryOp::Access,
-                ident("field", span(13, 18)),
-                span(9, 18)
+                ident("field", span(12, 17)),
+                span(8, 17)
             ),
-            span(0, 19),
+            span(0, 18),
         )]
     );
 }
 
 #[test]
 fn method_call_lowers_as_access_plus_call() {
-    let hir = parse_lower_norm("var r := obj.method();");
+    let hir = parse_lower_norm("var r = obj.method();");
     let expected_init = bin(
-        ident("obj", span(9, 12)),
+        ident("obj", span(8, 11)),
         HirBinaryOp::Access,
-        call(ident("method", span(13, 19)), vec![], span(13, 22)),
-        span(9, 22),
+        call(ident("method", span(12, 18)), vec![], span(12, 21)),
+        span(8, 21),
     );
     assert_eq!(
         hir,
@@ -1032,14 +1032,14 @@ fn method_call_lowers_as_access_plus_call() {
             false,
             None,
             expected_init,
-            span(0, 22)
+            span(0, 21)
         )]
     );
 }
 
 #[test]
 fn tuple_member_access() {
-    let hir = parse_lower_norm("var t := pair.0; var t2 := pair.1;");
+    let hir = parse_lower_norm("var t = pair.0; var t2 = pair.1;");
     assert_eq!(
         hir,
         vec![
@@ -1051,12 +1051,12 @@ fn tuple_member_access() {
                 false,
                 None,
                 bin(
-                    ident("pair", span(9, 13)),
+                    ident("pair", span(8, 12)),
                     HirBinaryOp::Access,
-                    lit(HirLiteral::Int(0), span(14, 15)),
-                    span(9, 15)
+                    lit(HirLiteral::Int(0), span(13, 14)),
+                    span(8, 14)
                 ),
-                span(0, 20),
+                span(0, 15),
             ),
             var_decl(
                 "t2",
@@ -1066,12 +1066,12 @@ fn tuple_member_access() {
                 false,
                 None,
                 bin(
-                    ident("pair", span(27, 31)),
+                    ident("pair", span(25, 29)),
                     HirBinaryOp::Access,
-                    lit(HirLiteral::Int(1), span(32, 33)),
-                    span(27, 33)
+                    lit(HirLiteral::Int(1), span(30, 31)),
+                    span(25, 31)
                 ),
-                span(17, 34),
+                span(16, 32),
             ),
         ]
     );
@@ -1080,17 +1080,17 @@ fn tuple_member_access() {
 #[test]
 fn nested_tuple_member_access_spans_each_index_token() {
     // .0 spans (17,18) and .1 spans (19,20) — each index digit its own token.
-    let hir = parse_lower_norm("var t3 := nested.0.1;");
+    let hir = parse_lower_norm("var t3 = nested.0.1;");
     let expected_init = bin(
         bin(
-            ident("nested", span(10, 16)),
+            ident("nested", span(9, 15)),
             HirBinaryOp::Access,
-            lit(HirLiteral::Int(0), span(17, 18)),
-            span(10, 16),
+            lit(HirLiteral::Int(0), span(16, 17)),
+            span(9, 15),
         ),
         HirBinaryOp::Access,
-        lit(HirLiteral::Int(1), span(19, 20)),
-        span(10, 20),
+        lit(HirLiteral::Int(1), span(18, 19)),
+        span(9, 19),
     );
     assert_eq!(
         hir,
@@ -1102,7 +1102,7 @@ fn nested_tuple_member_access_spans_each_index_token() {
             false,
             None,
             expected_init,
-            span(0, 21)
+            span(0, 20)
         )]
     );
 }
@@ -1215,13 +1215,13 @@ fn index_after_field_access_in_assignment() {
 
 #[test]
 fn var_init_from_index() {
-    let hir = parse_lower_norm("var t := data[0];");
+    let hir = parse_lower_norm("var t = data[0];");
     let init = expr(
         HirExprKind::Index {
-            target: Box::new(ident("data", span(9, 13))),
-            index: Box::new(lit(HirLiteral::Int(0), span(14, 15))),
+            target: Box::new(ident("data", span(8, 12))),
+            index: Box::new(lit(HirLiteral::Int(0), span(13, 14))),
         },
-        span(9, 16),
+        span(8, 15),
     );
     assert_eq!(
         hir,
@@ -1233,7 +1233,7 @@ fn var_init_from_index() {
             false,
             None,
             init,
-            span(0, 17)
+            span(0, 16)
         )]
     );
 }
@@ -1241,7 +1241,7 @@ fn var_init_from_index() {
 // special expression forms
 #[test]
 fn unwrap_expression() {
-    let hir = parse_lower_norm("var u := unwrap[opt];");
+    let hir = parse_lower_norm("var u = unwrap[opt];");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -1252,17 +1252,17 @@ fn unwrap_expression() {
             false,
             None,
             expr(
-                HirExprKind::Unwrap(Box::new(ident("opt", span(16, 19)))),
-                span(9, 21)
+                HirExprKind::Unwrap(Box::new(ident("opt", span(15, 18)))),
+                span(8, 20)
             ),
-            span(0, 21),
+            span(0, 20),
         )]
     );
 }
 
 #[test]
 fn sizeof_expression() {
-    let hir = parse_lower_norm("var sz := sizeof<i32>;");
+    let hir = parse_lower_norm("var sz = sizeof<i32>;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -1273,23 +1273,23 @@ fn sizeof_expression() {
             false,
             None,
             expr(
-                HirExprKind::SizeOf(tn(HirType::I32, span(17, 20))),
-                span(10, 22)
+                HirExprKind::SizeOf(tn(HirType::I32, span(16, 19))),
+                span(9, 21)
             ),
-            span(0, 22),
+            span(0, 21),
         )]
     );
 }
 
 #[test]
 fn cast_expression() {
-    let hir = parse_lower_norm("var c := cast<f32>(x);");
+    let hir = parse_lower_norm("var c = cast<f32>(x);");
     let init = expr(
         HirExprKind::StaticCast(
-            Box::new(tn(HirType::F32, span(14, 17))),
-            Box::new(ident("x", span(19, 20))),
+            Box::new(tn(HirType::F32, span(13, 16))),
+            Box::new(ident("x", span(18, 19))),
         ),
-        span(9, 21),
+        span(8, 20),
     );
     assert_eq!(
         hir,
@@ -1301,20 +1301,20 @@ fn cast_expression() {
             false,
             None,
             init,
-            span(0, 22)
+            span(0, 21)
         )]
     );
 }
 
 #[test]
 fn bitcast_expression() {
-    let hir = parse_lower_norm("var b := bitcast<u32>(p);");
+    let hir = parse_lower_norm("var b = bitcast<u32>(p);");
     let init = expr(
         HirExprKind::BitCast(
-            Box::new(tn(HirType::U32, span(17, 20))),
-            Box::new(ident("p", span(22, 23))),
+            Box::new(tn(HirType::U32, span(16, 19))),
+            Box::new(ident("p", span(21, 22))),
         ),
-        span(9, 24),
+        span(8, 23),
     );
     assert_eq!(
         hir,
@@ -1326,33 +1326,33 @@ fn bitcast_expression() {
             false,
             None,
             init,
-            span(0, 25)
+            span(0, 24)
         )]
     );
 }
 
 #[test]
 fn struct_instantiation() {
-    let hir = parse_lower_norm("var f := .Food{ .power = 100, .health = 1000 };");
+    let hir = parse_lower_norm("var f = .Food{ .power = 100, .health = 1000 };");
     let inst = expr(
         HirExprKind::Instantiation {
-            init_ty: Box::new(tn(HirType::CustomType("Food".to_string()), span(10, 14))),
+            init_ty: Box::new(tn(HirType::CustomType("Food".to_string()), span(9, 13))),
             body: vec![
                 HirInstParam {
                     hir_id: zid(),
                     name: "power".to_string(),
-                    value: Box::new(lit(HirLiteral::Int(100), span(25, 28))),
-                    span: span(16, 28),
+                    value: Box::new(lit(HirLiteral::Int(100), span(24, 27))),
+                    span: span(15, 27),
                 },
                 HirInstParam {
                     hir_id: zid(),
                     name: "health".to_string(),
-                    value: Box::new(lit(HirLiteral::Int(1000), span(40, 44))),
-                    span: span(30, 44),
+                    value: Box::new(lit(HirLiteral::Int(1000), span(39, 43))),
+                    span: span(29, 43),
                 },
             ],
         },
-        span(9, 46),
+        span(8, 45),
     );
     assert_eq!(
         hir,
@@ -1364,23 +1364,23 @@ fn struct_instantiation() {
             false,
             None,
             inst,
-            span(0, 47)
+            span(0, 46)
         )]
     );
 }
 
 #[test]
 fn tuple_instantiation() {
-    let hir = parse_lower_norm("var t := .(1, 2, 3);");
+    let hir = parse_lower_norm("var t = .(1, 2, 3);");
     let inst = expr(
         HirExprKind::TupleInst {
             body: vec![
-                lit(HirLiteral::Int(1), span(11, 12)),
-                lit(HirLiteral::Int(2), span(14, 15)),
-                lit(HirLiteral::Int(3), span(17, 18)),
+                lit(HirLiteral::Int(1), span(10, 11)),
+                lit(HirLiteral::Int(2), span(13, 14)),
+                lit(HirLiteral::Int(3), span(16, 17)),
             ],
         },
-        span(9, 19),
+        span(8, 18),
     );
     assert_eq!(
         hir,
@@ -1392,14 +1392,14 @@ fn tuple_instantiation() {
             false,
             None,
             inst,
-            span(0, 20)
+            span(0, 19)
         )]
     );
 }
 
 #[test]
 fn dollar_scope() {
-    let hir = parse_lower_norm("var w := $${ var y := 5; y };");
+    let hir = parse_lower_norm("var w = $${ var y = 5; y };");
     let scope = expr(
         HirExprKind::DollarScope {
             params: vec![],
@@ -1410,12 +1410,12 @@ fn dollar_scope() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Int(5), span(22, 23)),
-                span(13, 26),
+                lit(HirLiteral::Int(5), span(20, 21)),
+                span(12, 22),
             )],
-            result: Some(Box::new(ident("y", span(25, 26)))),
+            result: Some(Box::new(ident("y", span(23, 24)))),
         },
-        span(9, 29),
+        span(8, 27),
     );
     assert_eq!(
         hir,
@@ -1427,21 +1427,21 @@ fn dollar_scope() {
             false,
             None,
             scope,
-            span(0, 29)
+            span(0, 27)
         )]
     );
 }
 
 #[test]
 fn array_literal() {
-    let hir = parse_lower_norm("var xs := [1, 2, 3];");
+    let hir = parse_lower_norm("var xs = [1, 2, 3];");
     let init = lit(
         HirLiteral::ArrayLiteral(vec![
-            lit(HirLiteral::Int(1), span(11, 12)),
-            lit(HirLiteral::Int(2), span(14, 15)),
-            lit(HirLiteral::Int(3), span(17, 18)),
+            lit(HirLiteral::Int(1), span(10, 11)),
+            lit(HirLiteral::Int(2), span(13, 14)),
+            lit(HirLiteral::Int(3), span(16, 17)),
         ]),
-        span(10, 19),
+        span(9, 18),
     );
     assert_eq!(
         hir,
@@ -1453,7 +1453,7 @@ fn array_literal() {
             false,
             None,
             init,
-            span(0, 20)
+            span(0, 19)
         )]
     );
 }
@@ -1548,24 +1548,24 @@ fn while_loop() {
 
 #[test]
 fn for_loop_desugars_to_var_plus_while() {
-    let hir = parse_lower_norm("for var i := 0; i < 10; i += 1 { x = i; }");
+    let hir = parse_lower_norm("for var i = 0; i < 10; i += 1 { x = i; }");
     let x_assign = expr_stmt(
         bin(
-            ident("x", span(33, 34)),
+            ident("x", span(32, 33)),
             HirBinaryOp::Assign,
-            ident("i", span(37, 38)),
-            span(33, 38),
+            ident("i", span(36, 37)),
+            span(32, 37),
         ),
-        span(33, 38),
+        span(32, 37),
     );
     let update = expr_stmt(
         bin(
-            ident("i", span(24, 25)),
+            ident("i", span(23, 24)),
             HirBinaryOp::AddAssign,
-            lit(HirLiteral::Int(1), span(29, 30)),
-            span(24, 30),
+            lit(HirLiteral::Int(1), span(28, 29)),
+            span(23, 29),
         ),
-        span(24, 30),
+        span(23, 29),
     );
     assert_eq!(
         hir,
@@ -1577,20 +1577,20 @@ fn for_loop_desugars_to_var_plus_while() {
                 false,
                 false,
                 None,
-                lit(HirLiteral::Int(0), span(13, 14)),
-                span(4, 17)
+                lit(HirLiteral::Int(0), span(12, 13)),
+                span(4, 14)
             ),
             stmt(
                 HirStmtKind::HirWhile {
                     condition: Box::new(bin(
-                        ident("i", span(16, 17)),
+                        ident("i", span(15, 16)),
                         HirBinaryOp::Lt,
-                        lit(HirLiteral::Int(10), span(20, 22)),
-                        span(16, 22)
+                        lit(HirLiteral::Int(10), span(19, 21)),
+                        span(15, 21)
                     )),
                     body: vec![x_assign, update],
                 },
-                span(0, 41),
+                span(0, 40),
             ),
         ]
     );
@@ -1794,7 +1794,7 @@ fn function_def() {
 #[test]
 fn function_def_multiple_body_statements() {
     let hir = parse_lower_norm(
-        "func fib(): i32 { mut var x := 0; while x < 10 { x += 1; } if x == 10 { return x; } else { return 0; } }",
+        "func fib(): i32 { mut var x = 0; while x < 10 { x += 1; } if x == 10 { return x; } else { return 0; } }",
     );
     let body_x = var_decl(
         "x",
@@ -1803,50 +1803,50 @@ fn function_def_multiple_body_statements() {
         false,
         false,
         None,
-        lit(HirLiteral::Int(0), span(31, 32)),
-        span(22, 39),
+        lit(HirLiteral::Int(0), span(30, 31)),
+        span(22, 32),
     );
     let while_body = expr_stmt(
         bin(
-            ident("x", span(49, 50)),
+            ident("x", span(48, 49)),
             HirBinaryOp::AddAssign,
-            lit(HirLiteral::Int(1), span(54, 55)),
-            span(49, 55),
+            lit(HirLiteral::Int(1), span(53, 54)),
+            span(48, 54),
         ),
-        span(49, 55),
+        span(48, 54),
     );
     let while_stmt = stmt(
         HirStmtKind::HirWhile {
             condition: Box::new(bin(
-                ident("x", span(40, 41)),
+                ident("x", span(39, 40)),
                 HirBinaryOp::Lt,
-                lit(HirLiteral::Int(10), span(44, 46)),
-                span(40, 46),
+                lit(HirLiteral::Int(10), span(43, 45)),
+                span(39, 45),
             )),
             body: vec![while_body],
         },
-        span(34, 61),
+        span(33, 60),
     );
     let ret_x = stmt(
-        HirStmtKind::HirReturn(Some(Box::new(ident("x", span(79, 80))))),
-        span(72, 83),
+        HirStmtKind::HirReturn(Some(Box::new(ident("x", span(78, 79))))),
+        span(71, 82),
     );
     let ret_0 = stmt(
-        HirStmtKind::HirReturn(Some(Box::new(lit(HirLiteral::Int(0), span(98, 99))))),
-        span(91, 102),
+        HirStmtKind::HirReturn(Some(Box::new(lit(HirLiteral::Int(0), span(97, 98))))),
+        span(90, 101),
     );
     let if_stmt = stmt(
         HirStmtKind::HirIf {
             condition: Box::new(bin(
-                ident("x", span(62, 63)),
+                ident("x", span(61, 62)),
                 HirBinaryOp::Eq,
-                lit(HirLiteral::Int(10), span(67, 69)),
-                span(62, 69),
+                lit(HirLiteral::Int(10), span(66, 68)),
+                span(61, 68),
             )),
             body: vec![ret_x],
             else_body: Some(vec![ret_0]),
         },
-        span(59, 104),
+        span(58, 103),
     );
     assert_eq!(
         hir,
@@ -1859,7 +1859,7 @@ fn function_def_multiple_body_statements() {
             None,
             false,
             vec![body_x, while_stmt, if_stmt],
-            span(0, 104),
+            span(0, 103),
         )]
     );
 }
@@ -1907,7 +1907,7 @@ fn function_def_no_return_type_becomes_unit_type_node_with_full_span() {
 
 #[test]
 fn function_param_default_value() {
-    let hir = parse_lower_norm("func fw(a: i32 := 7): i32 { return a; }");
+    let hir = parse_lower_norm("func fw(a: i32 = 7): i32 { return a; }");
     assert_eq!(
         hir,
         vec![func_def(
@@ -1917,19 +1917,19 @@ fn function_param_default_value() {
                 tn(HirType::I32, span(11, 14)),
                 false,
                 false,
-                Some(lit(HirLiteral::Int(7), span(18, 19))),
-                span(8, 20),
+                Some(lit(HirLiteral::Int(7), span(17, 18))),
+                span(8, 19),
             )],
-            tn(HirType::I32, span(22, 25)),
+            tn(HirType::I32, span(21, 24)),
             vec![],
             false,
             None,
             false,
             vec![stmt(
-                HirStmtKind::HirReturn(Some(Box::new(ident("a", span(35, 36))))),
-                span(28, 39)
+                HirStmtKind::HirReturn(Some(Box::new(ident("a", span(34, 35))))),
+                span(27, 38)
             )],
-            span(0, 39),
+            span(0, 38),
         )]
     );
 }
@@ -2225,7 +2225,7 @@ fn generics_block_annotates_function_with_type_params() {
 
 #[test]
 fn pointer_type_annotation() {
-    let hir = parse_lower_norm("var ptr<i32> x := p;");
+    let hir = parse_lower_norm("var x: ptr<i32> = p;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2235,8 +2235,8 @@ fn pointer_type_annotation() {
             false,
             false,
             Some(tn(
-                HirType::Ptr(Box::new(tn(HirType::I32, span(8, 11)))),
-                span(4, 11)
+                HirType::Ptr(Box::new(tn(HirType::I32, span(11, 14)))),
+                span(7, 14)
             )),
             ident("p", span(18, 19)),
             span(0, 20),
@@ -2246,7 +2246,7 @@ fn pointer_type_annotation() {
 
 #[test]
 fn ref_type_annotation() {
-    let hir = parse_lower_norm("var ref<u8> y := r;");
+    let hir = parse_lower_norm("var y: ref<u8> = r;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2256,8 +2256,8 @@ fn ref_type_annotation() {
             false,
             false,
             Some(tn(
-                HirType::Ref(Box::new(tn(HirType::U8, span(8, 10)))),
-                span(4, 10)
+                HirType::Ref(Box::new(tn(HirType::U8, span(11, 13)))),
+                span(7, 13)
             )),
             ident("r", span(17, 18)),
             span(0, 19),
@@ -2267,7 +2267,7 @@ fn ref_type_annotation() {
 
 #[test]
 fn array_type_annotation_with_size() {
-    let hir = parse_lower_norm("var arr[i32, 4] big := small;");
+    let hir = parse_lower_norm("var big: [i32, 4] = small;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2277,18 +2277,18 @@ fn array_type_annotation_with_size() {
             false,
             false,
             Some(tn(
-                HirType::Array(Box::new(tn(HirType::I32, span(8, 11))), Some(4)),
-                span(8, 11)
+                HirType::Array(Box::new(tn(HirType::I32, span(10, 13))), Some(4)),
+                span(10, 13)
             )),
-            ident("small", span(23, 28)),
-            span(0, 29),
+            ident("small", span(20, 25)),
+            span(0, 26),
         )]
     );
 }
 
 #[test]
 fn array_type_annotation_without_size() {
-    let hir = parse_lower_norm("var arr[i32] big2 := small2;");
+    let hir = parse_lower_norm("var big2: [i32] = small2;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2298,18 +2298,18 @@ fn array_type_annotation_without_size() {
             false,
             false,
             Some(tn(
-                HirType::Array(Box::new(tn(HirType::I32, span(8, 11))), None),
-                span(8, 11)
+                HirType::Array(Box::new(tn(HirType::I32, span(11, 14))), None),
+                span(11, 14)
             )),
-            ident("small2", span(21, 27)),
-            span(0, 28),
+            ident("small2", span(18, 24)),
+            span(0, 25),
         )]
     );
 }
 
 #[test]
 fn nullable_type_annotation_single_type_is_not_wrapped_in_tuple() {
-    let hir = parse_lower_norm("var (i32)? n := x;");
+    let hir = parse_lower_norm("var n: (i32)? = x;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2319,8 +2319,8 @@ fn nullable_type_annotation_single_type_is_not_wrapped_in_tuple() {
             false,
             false,
             Some(tn(
-                HirType::Nullable(Box::new(tn(HirType::I32, span(5, 8)))),
-                span(4, 12),
+                HirType::Nullable(Box::new(tn(HirType::I32, span(8, 11)))),
+                span(7, 15),
             )),
             ident("x", span(16, 17)),
             span(0, 18),
@@ -2330,7 +2330,7 @@ fn nullable_type_annotation_single_type_is_not_wrapped_in_tuple() {
 
 #[test]
 fn failable_type_annotation() {
-    let hir = parse_lower_norm("var !!(i32, str) fr := g;");
+    let hir = parse_lower_norm("var fr: !!(i32, str) = g;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2341,10 +2341,10 @@ fn failable_type_annotation() {
             false,
             Some(tn(
                 HirType::Failable(
-                    Box::new(tn(HirType::I32, span(7, 10))),
-                    Box::new(tn(HirType::Str, span(12, 15))),
+                    Box::new(tn(HirType::I32, span(11, 14))),
+                    Box::new(tn(HirType::Str, span(16, 19))),
                 ),
-                span(4, 19),
+                span(8, 22),
             )),
             ident("g", span(23, 24)),
             span(0, 25),
@@ -2354,7 +2354,7 @@ fn failable_type_annotation() {
 
 #[test]
 fn tuple_type_annotation() {
-    let hir = parse_lower_norm("var (i32, u8) pr := pair;");
+    let hir = parse_lower_norm("var pr: (i32, u8) = pair;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2365,10 +2365,10 @@ fn tuple_type_annotation() {
             false,
             Some(tn(
                 HirType::Tuple(vec![
-                    tn(HirType::I32, span(5, 8)),
-                    tn(HirType::U8, span(10, 12))
+                    tn(HirType::I32, span(9, 12)),
+                    tn(HirType::U8, span(14, 16))
                 ]),
-                span(4, 16),
+                span(8, 19),
             )),
             ident("pair", span(20, 24)),
             span(0, 25),
@@ -2378,7 +2378,7 @@ fn tuple_type_annotation() {
 
 #[test]
 fn funcptr_type_annotation() {
-    let hir = parse_lower_norm("var func(i32): i32 fp := g;");
+    let hir = parse_lower_norm("var fp: func(i32): i32 = g;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2389,10 +2389,10 @@ fn funcptr_type_annotation() {
             false,
             Some(tn(
                 HirType::Func(
-                    vec![tn(HirType::I32, span(9, 12))],
-                    Box::new(tn(HirType::I32, span(15, 18)))
+                    vec![tn(HirType::I32, span(13, 16))],
+                    Box::new(tn(HirType::I32, span(19, 22)))
                 ),
-                span(4, 21),
+                span(8, 24),
             )),
             ident("g", span(25, 26)),
             span(0, 27),
@@ -2403,7 +2403,7 @@ fn funcptr_type_annotation() {
 // scoped paths and generic instantiation calls
 #[test]
 fn scoped_path_expression_flattens_to_mangled_identifier() {
-    let hir = parse_lower_norm("var s := A::B;");
+    let hir = parse_lower_norm("var s = A::B;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2413,15 +2413,15 @@ fn scoped_path_expression_flattens_to_mangled_identifier() {
             false,
             false,
             None,
-            ident("A_B", span(9, 13)),
-            span(0, 14),
+            ident("A_B", span(8, 12)),
+            span(0, 13),
         )]
     );
 }
 
 #[test]
 fn namespaced_path_expression_flattens_to_mangled_identifier() {
-    let hir = parse_lower_norm("var p := A::B::C;");
+    let hir = parse_lower_norm("var p = A::B::C;");
     assert_eq!(
         hir,
         vec![var_decl(
@@ -2431,8 +2431,8 @@ fn namespaced_path_expression_flattens_to_mangled_identifier() {
             false,
             false,
             None,
-            ident("A_B_C", span(9, 16)),
-            span(0, 17),
+            ident("A_B_C", span(8, 15)),
+            span(0, 16),
         )]
     );
 }
@@ -2451,16 +2451,16 @@ fn namespaced_function_call_flattens_callee() {
 
 #[test]
 fn generic_associated_call_keeps_type_params_in_callee() {
-    let hir = parse_lower_norm("var g := Pair::<i32, u8>::make();");
+    let hir = parse_lower_norm("var g = Pair::<i32, u8>::make();");
     let callee = expr(
         HirExprKind::GenericInstantion {
             name: "Pair_make".to_string(),
             type_params: vec![
-                tn(HirType::I32, span(16, 19)),
-                tn(HirType::U8, span(21, 23)),
+                tn(HirType::I32, span(15, 18)),
+                tn(HirType::U8, span(20, 22)),
             ],
         },
-        span(9, 33),
+        span(8, 32),
     );
     assert_eq!(
         hir,
@@ -2471,8 +2471,8 @@ fn generic_associated_call_keeps_type_params_in_callee() {
             false,
             false,
             None,
-            call(callee, vec![], span(9, 33)),
-            span(0, 33),
+            call(callee, vec![], span(8, 32)),
+            span(0, 32),
         )]
     );
 }

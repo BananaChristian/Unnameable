@@ -1,0 +1,66 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+<func0>  func @is_within( i32 %value,  i32 %lo,  i32 %hi) {
+bb0:
+    %value.addr = alloca i32 , align 4
+    store %value, ptr %value.addr, align 4, ty i32
+    %lo.addr = alloca i32 , align 4
+    store %lo, ptr %lo.addr, align 4, ty i32
+    %hi.addr = alloca i32 , align 4
+    store %hi, ptr %hi.addr, align 4, ty i32
+    %0 = load i32, ptr %value.addr, align 4
+    %1 = load i32, ptr %lo.addr, align 4
+    %2 = cmp slt %0, %1
+    br %2, bb1, bb2
+
+bb1:
+    goto bb3
+
+bb2:
+    goto bb3
+
+bb3:
+    %3 = load i32, ptr %value.addr, align 4
+    %4 = load i32, ptr %hi.addr, align 4
+    %5 = cmp sgt %3, %4
+    br %5, bb4, bb5
+
+bb4:
+    goto bb6
+
+bb5:
+    goto bb6
+
+bb6:
+    ret true
+}
+
+<func1>  func @differs( i32 %a,  i32 %b) {
+bb7:
+    %a.addr = alloca i32 , align 4
+    store %a, ptr %a.addr, align 4, ty i32
+    %b.addr = alloca i32 , align 4
+    store %b, ptr %b.addr, align 4, ty i32
+    %6 = load i32, ptr %a.addr, align 4
+    %7 = load i32, ptr %b.addr, align 4
+    %8 = cmp eq %6, %7
+    %9 = xor %8, true
+    ret %9
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

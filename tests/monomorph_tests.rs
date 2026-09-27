@@ -92,7 +92,7 @@ fn single_instance_arg(backlog: &[String]) -> &str {
 fn generic_call_emits_mangled_instance_and_rewrites_call_site() {
     let (hir, backlog) = mono(
         "generics <T> { func identity(v: T): T { return v; } }\n\
-         func main(): i32 { var x := identity::<i32>(5); return 0i32; }\n",
+         func main(): i32 { var x = identity::<i32>(5); return 0i32; }\n",
     );
 
     assert_eq!(backlog, vec!["6[i32]"]);
@@ -144,7 +144,7 @@ fn generic_call_emits_mangled_instance_and_rewrites_call_site() {
 fn same_template_two_concrete_types_both_emitted() {
     let (hir, backlog) = mono(
         "generics <T> { func identity(v: T): T { return v; } }\n\
-         func main(): i32 { var a := identity::<i32>(5); var b := identity::<f64>(5.0); return 0i32; }\n",
+         func main(): i32 { var a = identity::<i32>(5); var b = identity::<f64>(5.0); return 0i32; }\n",
     );
 
     let entries: Vec<&str> = backlog.iter().map(|s| s.as_str()).collect();
@@ -315,7 +315,7 @@ fn dollar_pipeline_run(
 fn dollar_scope_non_const_capture_is_a_clean_error() {
     let src = "variant Shape {\n  Circle(f32)\n}\n\
         func dollar_test(s: Shape) {\n\
-        var x := $${ match s{ Shape.Circle(f) => f }; };\n\
+        var x = $${ match s{ Shape.Circle(f) => f }; };\n\
     }";
     let err = match mir_build_checked(src) {
         Ok(_) => panic!("runtime capture must be rejected at MIR build"),
@@ -330,10 +330,10 @@ fn dollar_scope_non_const_capture_is_a_clean_error() {
 
 #[test]
 fn dollar_scope_const_capture_folds_match_arms() {
-    let src = r#"const var k := 7;
-const var j := 99;
+    let src = r#"const var k = 7;
+const var j = 99;
 func dollar_a(){
-  var x := $$ |k| {
+  var x = $$ |k| {
     match k{
       7 => 1
       _ => 0
@@ -341,7 +341,7 @@ func dollar_a(){
   };
 }
 func dollar_b(){
-  var y := $$ |j| {
+  var y = $$ |j| {
     match j{
       7 => 1
       _ => 0
@@ -408,8 +408,8 @@ fn ptr_generic_arg_substitutes_inner_type() {
     // MONO-3: `substitute_type` must recurse into `Ptr`'s inner type, so the
     // instance's param is `ptr<i32>`, never a leftover `ptr<T>`.
     let (hir, backlog) = mono(
-        "generics <T> { func deref(p: ptr<T>): T { return ^p; } }\n\
-         func main(): i32 { var x := 7i32; var q := deref::<i32>(@x); return 0i32; }\n",
+        "generics <T> { func deref(p: ptr<T>): T { return marked { ^p }; } }\n\
+         func main(): i32 { var x = 7i32; var q = deref::<i32>(@x); return 0i32; }\n",
     );
 
     assert_eq!(single_instance_arg(&backlog), "i32");
@@ -437,7 +437,7 @@ fn generic_call_inside_return_gets_rewritten() {
     let (hir, backlog) = mono(
         "generics <T> { func identity(v: T): T { return v; } }\n\
          func pp(x: i32): i32 { return identity::<i32>(x); }\n\
-         func main(): i32 { var y := pp(5); return 0i32; }\n",
+         func main(): i32 { var y = pp(5); return 0i32; }\n",
     );
 
     assert_eq!(single_instance_arg(&backlog), "i32");
@@ -461,7 +461,7 @@ fn nested_generic_with_generic_arg_typechecks_and_emits_both_instances() {
     // lazily emit `_U_identity_i32` when `id2::<i32>` is instantiated.
     let (hir, backlog) = mono(
         "generics <T> { func identity(v: T): T { return v; } func id2(v: T): T { return identity::<T>(v); } }\n\
-         func main(): i32 { var z := id2::<i32>(5); return 0i32; }\n",
+         func main(): i32 { var z = id2::<i32>(5); return 0i32; }\n",
     );
 
     assert_eq!(single_instance_arg(&backlog), "i32");
@@ -491,7 +491,7 @@ fn struct_generic_arg_resolves_to_custom_type() {
     let (hir, backlog) = mono(
         "struct Point { x: i32, y: i32 }\n\
          generics <T> { func tag(v: T): i32 { return 1i32; } }\n\
-         func main(): i32 { var p := .Point{.x = 1i32, .y = 2i32}; var q := tag::<Point>(p); return 0i32; }\n",
+         func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; var q = tag::<Point>(p); return 0i32; }\n",
     );
 
     assert_eq!(single_instance_arg(&backlog), "Point");
@@ -514,7 +514,7 @@ fn generic_struct_value_emits_concrete_instance_and_field_access() {
     // mangled instance and its fields must be substituted.
     let (hir, backlog) = mono(
         "generics <T> { struct Pair { a: T, b: T } }\n\
-         func main(): i32 { var pr := .Pair<i32>{.a = 1i32, .b = 2i32}; var g := pr.b; return g; }\n",
+         func main(): i32 { var pr = .Pair<i32>{.a = 1i32, .b = 2i32}; var g = pr.b; return g; }\n",
     );
 
     assert_eq!(single_instance_arg(&backlog), "i32");
@@ -550,7 +550,7 @@ fn end_to_end_generic_functions_build_mir() {
     // (registration pre-pass + fresh-id type table) can lower them.
     let mir = mono_e2e(
         "generics <T> { func identity(v: T): T { return v; } }\n\
-         func main(): i32 { var a := identity::<i32>(5); var b := identity::<f64>(5.0); return 0i32; }\n",
+         func main(): i32 { var a = identity::<i32>(5); var b = identity::<f64>(5.0); return 0i32; }\n",
     );
     assert!(
         mir.functions.iter().any(|(_, f)| f.name == "_U_identity_i32"),
@@ -568,9 +568,9 @@ fn end_to_end_ptr_and_nested_generics_build_mir() {
     // plus a `ptr` instance, must all lower to MIR without missing type ids.
     mono_e2e(
         "generics <T> { func identity(v: T): T { return v; } }\n\
-         generics <U> { func deref(p: ptr<U>): U { return ^p; } }\n\
+         generics <U> { func deref(p: ptr<U>): U { return marked { ^p }; } }\n\
          generics <V> { func id2(v: V): V { return identity::<V>(v); } }\n\
-         func main(): i32 { var x := 7i32; var q := deref::<i32>(@x); var z := id2::<i32>(5); return 0i32; }\n",
+         func main(): i32 { var x = 7i32; var q = deref::<i32>(@x); var z = id2::<i32>(5); return 0i32; }\n",
     );
 }
 
@@ -580,7 +580,7 @@ fn end_to_end_generic_struct_value_builds_mir() {
     // before the root function body that uses it is lowered.
     mono_e2e(
         "generics <T> { struct Pair { a: T, b: T } }\n\
-         func main(): i32 { var pr := .Pair<i32>{.a = 1i32, .b = 2i32}; var g := pr.b; return g; }\n",
+         func main(): i32 { var pr = .Pair<i32>{.a = 1i32, .b = 2i32}; var g = pr.b; return g; }\n",
     );
 }
 
@@ -592,7 +592,7 @@ fn end_to_end_struct_arg_and_return_generics_build_mir() {
         "struct Point { x: i32, y: i32 }\n\
          generics <T> { func tag(v: T): i32 { return 1i32; } func identity(v: T): T { return v; } }\n\
          func pp(p: Point): Point { return identity::<Point>(p); }\n\
-         func main(): i32 { var p := .Point{.x = 1i32, .y = 2i32}; var q := tag::<Point>(p); var r := pp(p); return 0i32; }\n",
+         func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; var q = tag::<Point>(p); var r = pp(p); return 0i32; }\n",
     );
 }
 
@@ -643,10 +643,10 @@ fn node_index_round_trips_monomorphized_tree_without_collisions() {
     let (hir, _) = mono(
         "generics <T> { struct Pair { a: T, b: T } func identity(v: T): T { return v; } }\n\
          func main(): i32 {\n\
-             var pr := .Pair<i32>{.a = 1i32, .b = 2i32};\n\
-             var g := identity::<i32>(pr.a);\n\
+             var pr = .Pair<i32>{.a = 1i32, .b = 2i32};\n\
+             var g = identity::<i32>(pr.a);\n\
              if g > 0i32 {\n\
-                 var alt := identity::<i32>(g);\n\
+                 var alt = identity::<i32>(g);\n\
                  return alt;\n\
              }\n\
              return g;\n\
@@ -769,8 +769,8 @@ fn end_to_end_contract_satisfied_by_methods_builds_mir() {
     let mir = mono_e2e(
         "contract HasGet { func get(): i32 }\n\
          struct Point: HasGet { x: i32, y: i32 }\n\
-         methods Point { func get(): i32 { return 42i32; } }\n\
-         func main(): i32 { var p := .Point{.x = 1i32, .y = 2i32}; return 0i32; }\n",
+         func Point_get(self: Point): i32 { return 42i32; }\n\
+         func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; return 0i32; }\n",
     );
     assert!(
         mir.functions.iter().any(|(_, f)| f.name == "Point_get"),
@@ -783,7 +783,7 @@ fn contract_missing_implementation_is_reported() {
     let msgs = mono_verify_contracts(
         "contract HasGet { func get(): i32 }\n\
          struct Point: HasGet { x: i32 }\n\
-         func main(): i32 { var p := .Point{.x = 1i32}; return 0i32; }\n",
+         func main(): i32 { var p = .Point{.x = 1i32}; return 0i32; }\n",
     );
     assert!(
         msgs.iter()
@@ -797,8 +797,8 @@ fn contract_wrong_param_count_is_reported() {
     let msgs = mono_verify_contracts(
         "contract HasGet { func get(): i32 }\n\
          struct Point: HasGet { x: i32 }\n\
-         methods Point { func get(n: i32): i32 { return n; } }\n\
-         func main(): i32 { var p := .Point{.x = 1i32}; return 0i32; }\n",
+         func Point_get(self: Point, n: i32): i32 { return n; }\n\
+         func main(): i32 { var p = .Point{.x = 1i32}; return 0i32; }\n",
     );
     assert!(
         msgs.iter()
@@ -812,8 +812,8 @@ fn contract_wrong_return_type_is_reported() {
     let msgs = mono_verify_contracts(
         "contract HasGet { func get(): i32 }\n\
          struct Point: HasGet { x: i32 }\n\
-         methods Point { func get(): u64 { return 1u64; } }\n\
-         func main(): i32 { var p := .Point{.x = 1i32}; return 0i32; }\n",
+         func Point_get(self: Point): u64 { return 1u64; }\n\
+         func main(): i32 { var p = .Point{.x = 1i32}; return 0i32; }\n",
     );
     assert!(
         msgs.iter()
@@ -831,7 +831,7 @@ fn free_function_wearing_method_name_is_reported_not_panicked() {
         "contract HasGet { func get(): i32 }\n\
          struct Point: HasGet { x: i32 }\n\
          func Point_get(): i32 { return 5i32; }\n\
-         func main(): i32 { var p := .Point{.x = 1i32}; return 0i32; }\n",
+         func main(): i32 { var p = .Point{.x = 1i32}; return 0i32; }\n",
     );
     assert!(
         msgs.iter()
@@ -851,7 +851,7 @@ fn generic_struct_instance_with_contract_is_skipped_not_reported() {
     let msgs = mono_verify_contracts(
         "contract HasGet { func get(): i32 }\n\
          generics <T> { struct Pair: HasGet { a: T, b: T } }\n\
-         func main(): i32 { var pr := .Pair<i32>{.a = 1i32, .b = 2i32}; var g := pr.b; return g; }\n",
+         func main(): i32 { var pr = .Pair<i32>{.a = 1i32, .b = 2i32}; var g = pr.b; return g; }\n",
     );
     assert!(msgs.is_empty(), "expected no reports, got {msgs:?}");
 }
@@ -880,7 +880,7 @@ fn exposed_generic_instances_serialize_as_concrete_symbols() {
     // stale `[T]` used to leak into the stub and name it `Pair<T>`).
     let stub = serialize_stub(
         "generics <T> { expose func identity(v: T): T { return v; } expose struct Pair { a: T, b: T } }\n\
-         func main(): i32 { var x := identity::<i32>(5); var pr := .Pair<i32>{.a = 1i32, .b = 2i32}; return 0i32; }\n",
+         func main(): i32 { var x = identity::<i32>(5); var pr = .Pair<i32>{.a = 1i32, .b = 2i32}; return 0i32; }\n",
     );
 
     let func = stub
@@ -982,7 +982,7 @@ fn end_to_end_scalar_match_builds_mir_with_arm_checks() {
     // arm, and merge every arm body into one function-wide result register.
     let mir = mono_e2e(
         "func pick(v: i32): i32 { return match v { 0 => 10i32, 5 => 50i32, _ => 0i32 }; }\n\
-         func main(): i32 { var r := pick(3); return 0i32; }\n",
+         func main(): i32 { var r = pick(3); return 0i32; }\n",
     );
     let (_, f) = mir
         .functions
@@ -1007,7 +1007,7 @@ fn end_to_end_match_with_guard_builds_mir() {
                  _ => 0i32,\n\
              };\n\
          }\n\
-         func main(): i32 { var r := classify(7); return 0i32; }\n",
+         func main(): i32 { var r = classify(7); return 0i32; }\n",
     );
     let (_, f) = mir
         .functions
@@ -1030,7 +1030,7 @@ fn end_to_end_or_pattern_match_builds_mir() {
     // must reach MIR compares.
     let mir = mono_e2e(
         "func classify(v: i32): i32 { return match v { 1 | 2 => 100i32, _ => 0i32 }; }\n\
-         func main(): i32 { var r := classify(2); return 0i32; }\n",
+         func main(): i32 { var r = classify(2); return 0i32; }\n",
     );
     let (_, f) = mir
         .functions
@@ -1052,7 +1052,7 @@ fn end_to_end_variant_match_compares_tags_and_binds_payloads() {
                  Shape.Square => 2i8,\n\
              };\n\
          }\n\
-         func main(): i32 { var s := Shape.Circle(3, 9); var a := area(s); return 0i32; }\n",
+         func main(): i32 { var s = Shape.Circle(3, 9); var a = area(s); return 0i32; }\n",
     );
     let (_, f) = mir
         .functions
@@ -1074,7 +1074,7 @@ fn end_to_end_enum_match_compares_member_values() {
                  Color.GREEN => 2i32,\n\
              };\n\
          }\n\
-         func main(): i32 { var c := Color.RED; var k := code(c); return k; }\n",
+         func main(): i32 { var c = Color.RED; var k = code(c); return k; }\n",
     );
     let (_, f) = mir
         .functions
@@ -1094,7 +1094,7 @@ fn end_to_end_tuple_pattern_binds_elements_into_scope() {
                  (a, _) => a,\n\
              };\n\
          }\n\
-         func main(): i32 { var tup := .(7i32, 8i64); var r := first(tup); return 0i32; }\n",
+         func main(): i32 { var tup = .(7i32, 8i64); var r = first(tup); return 0i32; }\n",
     );
     let (_, f) = mir
         .functions
@@ -1122,7 +1122,7 @@ fn end_to_end_struct_pattern_binds_named_fields() {
                  .Point{ .x = _, .y = b } => b,\n\
              };\n\
          }\n\
-         func main(): i32 { var p := .Point{.x = 1i32, .y = 2i64}; var b := py(p); return 0i32; }\n",
+         func main(): i32 { var p = .Point{.x = 1i32, .y = 2i64}; var b = py(p); return 0i32; }\n",
     );
     let (_, f) = mir
         .functions
@@ -1141,11 +1141,11 @@ fn end_to_end_struct_pattern_binds_named_fields() {
 
 #[test]
 fn end_to_end_match_as_value_and_block_bodies_build_mir() {
-    // A match used as an rvalue (`var v := match ...`) and block-expression
+    // A match used as an rvalue (`var v = match ...`) and block-expression
     // arm bodies (with a tail value) must both lower to MIR.
     let mir = mono_e2e(
         "func main(): i32 {\n\
-             var v := match 2 { 1 => 100i32, 2 => { var t := 50i32; t * 2 }, _ => 0i32 };\n\
+             var v = match 2 { 1 => 100i32, 2 => { var t = 50i32; t * 2 }, _ => 0i32 };\n\
              return v;\n\
          }\n",
     );
@@ -1189,8 +1189,8 @@ fn implicit_tail_return_builds_return_terminator() {
 fn block_tail_is_the_value_semicolon_expr_is_unit() {
     let mir = mono_e2e(
         "func main(): i32 {\n\
-             var v := { 1i32 + 2i32 };\n\
-             var u := { 40i32; };\n\
+             var v = { 1i32 + 2i32 };\n\
+             var u = { 40i32; };\n\
              v\n\
          }\n",
     );

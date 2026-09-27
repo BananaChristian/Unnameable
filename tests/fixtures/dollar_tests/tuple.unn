@@ -25,7 +25,7 @@ func test_deep_indexing(): u32 {
 }
 
 func foo(): u32 {
-    var x := $${
+    var x = $${
         # 3-level deep nested tuple: ( (10i32, 20i32), (30i32, 40i32) )
         var matrix = .(
             .(10i32, 20i32),

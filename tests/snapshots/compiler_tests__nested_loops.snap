@@ -1,0 +1,61 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+<func0>  func @count_pairs() {
+bb0:
+    %total = alloca u32 , align 4
+    store 0, ptr %total, align 4, ty u32
+    %i = alloca u32 , align 4
+    store 0, ptr %i, align 4, ty u32
+    goto bb1
+
+bb1:
+    %0 = load u32, ptr %i, align 4
+    %1 = cmp ult %0, 3
+    br %1, bb2, bb3
+
+bb2:
+    %j = alloca u32 , align 4
+    store 0, ptr %j, align 4, ty u32
+    goto bb4
+
+bb3:
+    %10 = load u32, ptr %total, align 4
+    ret %10
+
+bb4:
+    %2 = load u32, ptr %j, align 4
+    %3 = cmp ult %2, 3
+    br %3, bb5, bb6
+
+bb5:
+    %4 = load u32, ptr %total, align 4
+    %5 = add %4, 1
+    store %5, ptr %total, align 4, ty u32
+    %6 = load u32, ptr %j, align 4
+    %7 = add %6, 1
+    store %7, ptr %j, align 4, ty u32
+    goto bb4
+
+bb6:
+    %8 = load u32, ptr %i, align 4
+    %9 = add %8, 1
+    store %9, ptr %i, align 4, ty u32
+    goto bb1
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

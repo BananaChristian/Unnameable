@@ -1,0 +1,9 @@
+##
+   A raw dereference outside a `marked` block must be rejected. `^p` is an
+   unchecked operation, so it is only legal inside `marked { ... }`.
+##
+func bad(): u32 {
+    var x = 1u32;
+    var p = @x;
+    return ^p;
+}

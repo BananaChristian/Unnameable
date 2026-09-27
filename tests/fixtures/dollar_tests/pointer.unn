@@ -1,8 +1,16 @@
+##
+   Pointer round-trip through a dollar scope.
+   `^p` (dereference) is a raw operation, so it must sit inside a
+   `marked { ... }` block to be legal.
+##
+
 func foo(): u32{
   var x = $${
     var val = 1000;
     var p = @val;
-    ^p
+    marked {
+      ^p
+    }
   };
   return 0u32;
 }

@@ -1,0 +1,18 @@
+##
+   Nested `while` loops. Each level gets its own MIR basic blocks, so this
+   checks that the inner loop's blocks nest and unwind correctly instead of
+   colliding with the outer loop's labels.
+##
+func count_pairs(): u32 {
+    mut var total: u32 = 0u32;
+    mut var i: u32 = 0u32;
+    while i < 3u32 {
+        mut var j: u32 = 0u32;
+        while j < 3u32 {
+            total += 1u32;
+            j += 1u32;
+        }
+        i += 1u32;
+    }
+    return total;
+}

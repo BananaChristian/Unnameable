@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "Dereferencing 'ptr<u32>' requires a 'marked' block", span: Some(Span { start: 180, end: 184 }), severity: Error, phase: Semantics, hint: None }
