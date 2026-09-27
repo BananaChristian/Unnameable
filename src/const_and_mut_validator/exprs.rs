@@ -177,26 +177,40 @@ impl Validator {
                 let op = action_description
                     .strip_suffix(" to")
                     .unwrap_or(action_description);
-                if binding.is_const {
+                if path.is_through() {
+                    // A through-write is refused because of the *type*, never
+                    // because of `const` -- a const binding to a mutable type is
+                    // permitted precisely so that its type governs. So do not
+                    // blame constness here.
+                    if path.is_deref() {
+                        // The binding is fine; it is the type it points at that
+                        // is immutable, so name that rather than the pointer.
+                        self.report(
+                            format!("Cannot {} through pointer to immutable type '{}'", op, name),
+                            Some(expr.span.clone()),
+                        );
+                    } else if binding.reassignable {
+                        // `mut var` but an immutable type: the binding may be
+                        // reassigned, but nothing may be written through it.
+                        self.report(
+                            format!(
+                                "Cannot {} through immutable type of variable '{}'",
+                                op, name
+                            ),
+                            Some(expr.span.clone()),
+                        );
+                    } else {
+                        self.report(
+                            format!(
+                                "Cannot {} immutable variable '{}'",
+                                action_description, name
+                            ),
+                            Some(expr.span.clone()),
+                        );
+                    }
+                } else if binding.is_const {
                     self.report(
                         format!("Cannot {} constant variable '{}'", action_description, name),
-                        Some(expr.span.clone()),
-                    );
-                } else if path.is_deref() {
-                    // The binding is fine; it is the type it points at that is
-                    // immutable, so name that rather than the pointer.
-                    self.report(
-                        format!("Cannot {} through pointer to immutable type '{}'", op, name),
-                        Some(expr.span.clone()),
-                    );
-                } else if path.is_through() && binding.reassignable {
-                    // `mut var` but an immutable type: the binding may be
-                    // reassigned, but nothing may be written through it.
-                    self.report(
-                        format!(
-                            "Cannot {} through immutable type of variable '{}'",
-                            op, name
-                        ),
                         Some(expr.span.clone()),
                     );
                 } else {

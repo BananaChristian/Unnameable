@@ -80,8 +80,19 @@ impl BindingKind {
 
     /// May a write go *through* this binding's type at `depth` dereferences?
     /// Only `mut T` grants this.
+    ///
+    /// Deliberately not gated on `is_const`: `const` qualifies the *binding* and
+    /// is enforced by [`BindingKind::allows_direct_write`]. Gating here too would
+    /// re-conflate the two permissions this type exists to keep apart.
+    ///
+    /// This is safe today because a `const` binding cannot have storage to write
+    /// through: `is_compile_time_literal` restricts its initializer to a scalar
+    /// `HirLiteral`, and every `HirLiteral` variant other than `ArrayLiteral` and
+    /// `Null` is a scalar (`ArrayLiteral`/`Null` are rejected outright). A scalar
+    /// has no fields, no elements, and is not a pointer, so no through-write is
+    /// even expressible against a `const` binding.
     pub(super) fn allows_write_through(&self, depth: usize) -> bool {
-        !self.is_const && self.mut_at_depth.get(depth).copied().unwrap_or(false)
+        self.mut_at_depth.get(depth).copied().unwrap_or(false)
     }
 }
 
@@ -279,16 +290,26 @@ impl Validator {
         } = &stmt.kind
         {
             let is_constant = *constant;
-            // `mut var` marks the binding, `mut T` marks the type. They are
-            // separate permissions, and `const` conflicts with either.
-            let type_is_mut = BindingKind::mut_depths(ty.as_ref()).iter().any(|m| *m);
 
             // The initializer may itself contain mutations
             // (e.g. `var z := y = 3;`); walk it.
             self.check_expr(init);
 
-            //Mut and const are mutually exclusive
-            if (*mutable || type_is_mut) && is_constant {
+            // `const` and `mut var` are two qualifiers on the *same* binding and
+            // genuinely contradict each other, so that pairing is rejected.
+            //
+            // `mut T` is not in that category: it qualifies the type, not the
+            // binding. `const var x: mut i32` is a compile-time-constant binding
+            // to a value of mutable type -- "constant name, mutable storage" --
+            // which is permitted. The binding still cannot be reassigned
+            // (`allows_direct_write` refuses when `is_const`); only writes that
+            // go *through* the type could ever be allowed, and a const binding
+            // additionally cannot have a type with reachable storage, because
+            // `is_compile_time_literal` limits its initializer to a scalar
+            // literal. So this grants no way to write through a `const` binding
+            // in practice; it just stops the type qualifier from being reported
+            // as if it were a binding qualifier.
+            if *mutable && is_constant {
                 self.report(
                     format!(
                         "Variable '{}' cannot be const and mutable at the same time",

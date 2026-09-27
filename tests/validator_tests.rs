@@ -495,17 +495,70 @@ fn mut_var_with_mut_type_allows_write() {
     assert_clean("mut var x: mut i32 = 1i32; x = 2i32;");
 }
 
+// `const` and `mut var` are two qualifiers on the *same* binding and genuinely
+// contradict each other, so that pairing is still rejected.
 #[test]
-fn const_with_mut_type_is_rejected() {
+fn const_mut_var_is_rejected() {
     assert_messages(
-        "const var x: mut i32 = 1i32;",
+        "const mut var x: i32 = 1i32;",
         &["Variable 'x' cannot be const and mutable at the same time"],
+    );
+}
+
+// `mut T` qualifies the type, not the binding, so a const binding may name a
+// mutable type: "constant name, mutable storage". The binding is still constant.
+#[test]
+fn const_with_mut_type_is_allowed() {
+    assert_clean("const var x: mut i32 = 1i32;");
+}
+
+#[test]
+fn const_with_mut_type_still_refuses_reassignment() {
+    assert_messages(
+        "const var x: mut i32 = 1i32; x = 2i32;",
+        &["Cannot assign to constant variable 'x'"],
     );
 }
 
 #[test]
 fn const_with_immutable_type_is_allowed() {
     assert_clean("const var x: i32 = 1i32;");
+}
+
+#[test]
+fn const_with_mut_type_is_readable() {
+    assert_clean("const var x: mut i32 = 1i32; var y: i32 = x;");
+}
+
+// The invariant that makes `allows_write_through` safe to leave ungated by
+// `is_const`: a `const` binding can only ever hold a scalar, so it has no
+// storage to write *through*. If this ever starts passing, the ungated through
+// check would be aiming a write at a binding that (per AGENTS.md 2.7) has no
+// alloca at all -- so this test is load-bearing, not incidental.
+#[test]
+fn const_binding_of_aggregate_type_is_rejected() {
+    assert_messages(
+        "struct S { p: i32 }\nconst var s: mut S = .S{.p = 1};",
+        &["Constant variable 's' must be initilialized with a compile time value"],
+    );
+}
+
+#[test]
+fn const_binding_of_array_type_is_rejected() {
+    assert_messages(
+        "const var a: mut [i32, 2] = [1i32, 2i32];",
+        &["Constant variable 'a' must be initilialized with a compile time value"],
+    );
+}
+
+// A const binding cannot hold a pointer either (`@x` is not a literal), so the
+// "constant pointer to mutable storage" case is not expressible yet.
+#[test]
+fn const_binding_of_ptr_type_is_rejected() {
+    assert_messages(
+        "func f(): i32 { var x: mut i32 = 1i32; const var p: ptr<mut i32> = @x; return 0i32; }",
+        &["Constant variable 'p' must be initilialized with a compile time value"],
+    );
 }
 
 // ---------------------------------------------------------------------------
