@@ -885,6 +885,7 @@ impl<'a> MIRBuilder<'a> {
                 MIRTykind::Tuple(members)
             }
             ResolvedTypeKind::Unit => MIRTykind::Unit,
+            ResolvedTypeKind::Mut { inner } => self.convert_tyinfo_to_mirtykind(inner),
             _ => self.report_ice(
                 format!("Unhandled type '{}', {:?}", ty_info.name, ty_info),
                 Some(ty_info.span.clone()),

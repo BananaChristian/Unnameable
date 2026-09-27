@@ -4,8 +4,8 @@ enum Color{
 }
 
 func foo: u32{
-  var x := $${
-    var color := Color.BLUE;
+  var x = $${
+    var color = Color.BLUE;
     color
   };
 

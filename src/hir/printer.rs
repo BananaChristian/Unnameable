@@ -1,8 +1,7 @@
 use core::fmt;
 
 use crate::hir::{
-    Conv, HirEnumMember, HirMatchArm, HirParam, HirPattern, HirStmt, HirStmtKind,
-    HirVariantMember,
+    Conv, HirEnumMember, HirMatchArm, HirParam, HirPattern, HirStmt, HirStmtKind, HirVariantMember,
     expressions::{HirExpr, HirExprKind, HirInstParam},
     types::{HirType, HirTypeNode},
 };
@@ -640,7 +639,10 @@ impl HirPrinter {
                 ));
                 self.with_indent(|p| {
                     for field in fields {
-                        p.write_line(&format!("Field \"{}\" [id: {:?}]", field.name, field.hir_id));
+                        p.write_line(&format!(
+                            "Field \"{}\" [id: {:?}]",
+                            field.name, field.hir_id
+                        ));
                         p.with_indent(|p2| p2.fmt_pattern(&field.pattern));
                     }
                 });
@@ -692,6 +694,10 @@ impl HirPrinter {
             HirType::Bool => self.write_line(&format!("Type(bool) [id: {id:?}]")),
             HirType::Unit => self.write_line(&format!("Type(()) [id: {id:?}]")),
 
+            HirType::Mut(inner) => {
+                self.write_line(&format!("Mut [id: {id:?}]"));
+                self.with_indent(|p| p.fmt_type(inner));
+            }
             HirType::Ptr(inner) => {
                 self.write_line(&format!("PtrTo [id: {id:?}]"));
                 self.with_indent(|p| p.fmt_type(inner));

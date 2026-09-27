@@ -725,6 +725,10 @@ impl AstPrinter {
             TypeKind::Unit => self.write_line("Type(())"),
             TypeKind::None => self.write_line("Type(None)"),
 
+            TypeKind::Mut(inner) => {
+                self.write_line("Mut:");
+                self.with_indent(|p| p.fmt_type(inner));
+            }
             TypeKind::Ptr(inner) => {
                 self.write_line("PtrTo:");
                 self.with_indent(|p| p.fmt_type(inner));

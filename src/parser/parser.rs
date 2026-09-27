@@ -190,6 +190,11 @@ impl Parser {
                 self.expect_token(TType::Gt)?;
                 Some(Type::complex(&token, inner_type))
             }
+            TType::Mut => {
+                self.advance();
+                let inner = self.parse_type()?;
+                Some(Type::complex(&token, inner))
+            }
             TType::Identifier => self.parse_type_generics(),
             TType::LBracket => {
                 self.advance();

@@ -7,7 +7,7 @@ func subtract(a: i32, b: i32): i32{
 }
 
 func addassign(): i32{
-  mut var i32 x := 100i32;
+  mut var x: i32 := 100i32;
   x += 11i32;
   return x;
 }

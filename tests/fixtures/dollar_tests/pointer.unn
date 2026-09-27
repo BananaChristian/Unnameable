@@ -1,7 +1,7 @@
 func foo(): u32{
-  var x := $${
-    var val:= 1000;
-    var p := @val;
+  var x = $${
+    var val = 1000;
+    var p = @val;
     ^p
   };
   return 0u32;

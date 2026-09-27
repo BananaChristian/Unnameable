@@ -61,6 +61,9 @@ pub enum ResolvedTypeKind {
     Unit,
     GenericParam(String),
     //Complex
+    Mut {
+        inner: Box<TypeInfo>,
+    },
     Pointer {
         inner: Box<TypeInfo>,
     },
@@ -148,6 +151,9 @@ impl TypeInfo {
             }
             ResolvedTypeKind::Failable { ok, err } => {
                 format!("!!({},{})", ok.name, err.name)
+            }
+            ResolvedTypeKind::Mut { inner } => {
+                format!("mut {}", inner.name)
             }
             ResolvedTypeKind::Pointer { inner } => {
                 format!("ptr<{}>", inner.name)

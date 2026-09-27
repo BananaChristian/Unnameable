@@ -32,6 +32,8 @@ pub enum HirType {
     Ptr(Box<HirTypeNode>),
     Ref(Box<HirTypeNode>),
     Owned(Box<HirTypeNode>),
+    //This is just the mut wrapper for types like mut T
+    Mut(Box<HirTypeNode>),
     Array(Box<HirTypeNode>, Option<u64>),
     // Function pointer
     Func(Vec<HirTypeNode>, Box<HirTypeNode>),

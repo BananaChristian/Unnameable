@@ -454,6 +454,10 @@ impl Lowering {
             TypeKind::Bool => HirType::Bool,
             TypeKind::Unit => HirType::Unit,
 
+            TypeKind::Mut(inner) => {
+                let inner_ty = self.lower_type(inner)?;
+                HirType::Mut(Box::new(inner_ty))
+            }
             TypeKind::Ptr(inner) => {
                 let inner_hir = self.lower_type(inner)?;
                 HirType::Ptr(Box::new(inner_hir))

@@ -1,5 +1,5 @@
 func foo(): u32 {
-    mut var u32 x := 0u32;
+    mut var x: u32 = 0u32;
     while x < 10u32 {
         x += 2u32;
     }

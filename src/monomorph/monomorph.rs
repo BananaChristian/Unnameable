@@ -276,6 +276,16 @@ impl<'a> Monomorphizer<'a> {
             HirType::Char32 => self.native_types.get("char32")?.clone(),
             HirType::Bool => self.native_types.get("bool")?.clone(),
             HirType::Unit => self.native_types.get("unit")?.clone(),
+            HirType::Mut(inner) => {
+                let inner_info = self.type_info_for(inner)?;
+                self.wrapped_info(
+                    "mut",
+                    ResolvedTypeKind::Mut {
+                        inner: Box::new(inner_info),
+                    },
+                    span.clone(),
+                )
+            }
             HirType::Ptr(inner) => {
                 let inner_info = self.type_info_for(inner)?;
                 self.wrapped_info(
@@ -609,12 +619,7 @@ impl<'a> Monomorphizer<'a> {
             HirPattern::Binding { hir_id, .. } => {
                 let original_id = hir_id.clone();
                 *hir_id = self.new_id();
-                self.record_fresh_type(
-                    &original_id,
-                    hir_id,
-                    gens,
-                    args,
-                );
+                self.record_fresh_type(&original_id, hir_id, gens, args);
             }
             HirPattern::Tuple { elements, .. } => {
                 for element in elements {

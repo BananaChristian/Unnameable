@@ -10,6 +10,9 @@ pub struct StructuralTypeKey(pub ResolvedTypeKind);
 impl StructuralTypeKey {
     pub fn strip_type(kind: &ResolvedTypeKind) -> ResolvedTypeKind {
         match kind {
+            ResolvedTypeKind::Mut { inner } => ResolvedTypeKind::Mut {
+                inner: Box::new(Self::clean_type_info(inner)),
+            },
             ResolvedTypeKind::Pointer { inner } => ResolvedTypeKind::Pointer {
                 inner: Box::new(Self::clean_type_info(inner)),
             },
@@ -106,7 +109,6 @@ impl PartialEq for StructuralTypeKey {
         Self::strip_type(&self.0) == Self::strip_type(&other.0)
     }
 }
-
 
 impl Hash for StructuralTypeKey {
     fn hash<H: Hasher>(&self, state: &mut H) {

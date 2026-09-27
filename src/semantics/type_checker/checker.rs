@@ -224,6 +224,21 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    pub fn mut_ty(&mut self, inner: TypeInfo, span: Span) -> TypeInfo {
+        let kind = ResolvedTypeKind::Mut {
+            inner: Box::new(inner),
+        };
+        let ty_id = self.registry.issue_id(kind.clone());
+        let layout = self.get_layout(&kind, ty_id.clone(), span.clone());
+        TypeInfo {
+            kind: kind.clone(),
+            name: TypeInfo::name(kind),
+            type_id: ty_id,
+            layout,
+            span,
+        }
+    }
+
     pub fn reference(&mut self, inner: TypeInfo, span: Span) -> TypeInfo {
         let kind = ResolvedTypeKind::Ref {
             inner: Box::new(inner),
@@ -363,6 +378,11 @@ impl<'a> TypeChecker<'a> {
             HirType::Bool => self.primitive(ResolvedTypeKind::Bool, ty.span.clone()),
             HirType::Unit => self.unit(ty.span.clone()),
 
+            HirType::Mut(inner) => {
+                let inner_ty = self.type_from_hir_type(inner);
+                self.invalid_inner(&kind, &inner_ty, Some(ty.span.clone()));
+                self.mut_ty(inner_ty.clone(), ty.span.clone())
+            }
             HirType::Ptr(inner) => {
                 let inner_ty = self.type_from_hir_type(inner);
                 self.invalid_inner(&kind, &inner_ty, Some(ty.span.clone()));
@@ -828,7 +848,23 @@ impl<'a> TypeChecker<'a> {
                     self.substitute_type(inner, template_gen_params, concrete_args);
                 self.reference(substituted_inner, current.span.clone())
             }
-            // ... check other variants like Arrays or Tuples if they contain nested generics
+            ResolvedTypeKind::Mut { inner } => {
+                let substituted_inner =
+                    self.substitute_type(inner, template_gen_params, concrete_args);
+                self.mut_ty(substituted_inner, current.span.clone())
+            }
+            ResolvedTypeKind::Array { inner, size } => {
+                let subbed_inner = self.substitute_type(inner, template_gen_params, concrete_args);
+                self.array(subbed_inner, *size, current.span.clone())
+            }
+            ResolvedTypeKind::Tuple { fields } => {
+                let subbed_inners = fields
+                    .iter()
+                    .map(|ty| self.substitute_type(ty, template_gen_params, concrete_args))
+                    .collect();
+                self.tuple(subbed_inners, current.span.clone())
+            }
+            // TODO... check other variants like Arrays or Tuples if they contain nested generics
             _ => current.clone(),
         }
     }
@@ -842,6 +878,7 @@ impl<'a> TypeChecker<'a> {
             HirType::Ptr(_) => "ptr",
             HirType::Ref(_) => "ref",
             HirType::Nullable(_) => "()?",
+            HirType::Mut(_) => "mut",
             _ => "unknown",
         };
         if inner.is_unknown() {

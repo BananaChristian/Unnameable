@@ -40,6 +40,8 @@ pub enum TypeKind {
     // Owned pointer — compiler primitive; auto-drop on last use, move-only.
     Owned(Box<Type>),
 
+    Mut(Box<Type>),
+
     // Array
     Array(Box<Type>, Option<Expr>),
 
@@ -63,7 +65,6 @@ pub enum TypeKind {
 
     //A tuple (i32, f32)
     Tuple(Vec<Type>),
-
 
     //A type like ()
     Unit,
@@ -113,6 +114,7 @@ impl Type {
         let kind = match token.token_type {
             TType::Ptr => TypeKind::Ptr(Box::new(inner.clone())),
             TType::Ref => TypeKind::Ref(Box::new(inner.clone())),
+            TType::Mut => TypeKind::Mut(Box::new(inner.clone())),
             _ => TypeKind::None,
         };
 
