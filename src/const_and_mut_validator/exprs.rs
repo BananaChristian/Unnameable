@@ -1,5 +1,5 @@
 use crate::{
-    const_and_mut_validator::validator::{BindingKind, Validator},
+    const_and_mut_validator::validator::{BindingKind, Validator, WritePath},
     hir::{HirBinaryOp, HirExpr, HirExprKind, HirPattern, HirPostfixOp, HirUnaryOp},
 };
 
@@ -140,51 +140,100 @@ impl Validator {
 
     fn check_identifier_binding(&mut self, expr: &HirExpr) -> BindingKind {
         if let HirExprKind::Identifier(name) = &expr.kind {
-            match self.look_up(name) {
-                Some(bind) => bind,
-                None => BindingKind::Immutable,
-            }
+            self.look_up(name).unwrap_or_else(BindingKind::deny_all)
         } else {
-            BindingKind::Immutable
+            BindingKind::deny_all()
         }
     }
 
     fn check_mutation_target(&mut self, expr: &HirExpr, action_description: &str) {
+        self.check_mutation_target_path(expr, action_description, WritePath::direct());
+    }
+
+    /// `path` records how the write reaches the binding. Anything other than
+    /// `Direct` goes *through* the binding's type and so requires `mut T`;
+    /// `mut var` on its own only permits reassigning the binding, because it
+    /// says nothing about the type.
+    fn check_mutation_target_path(
+        &mut self,
+        expr: &HirExpr,
+        action_description: &str,
+        path: WritePath,
+    ) {
         match &expr.kind {
             HirExprKind::Identifier(name) => {
                 let binding = self.check_identifier_binding(expr);
-                match binding {
-                    BindingKind::Const => {
-                        self.report(
-                            format!("Cannot {} constant variable '{}'", action_description, name),
-                            Some(expr.span.clone()),
-                        );
-                    }
-                    BindingKind::Immutable => {
-                        self.report(
-                            format!(
-                                "Cannot {} immutable variable '{}'",
-                                action_description, name
-                            ),
-                            Some(expr.span.clone()),
-                        );
-                    }
-                    BindingKind::Mutable => {
-                        // All clear! Mutating a mutable variable is perfectly valid.
-                    }
+                let allowed = if path.is_through() {
+                    binding.allows_write_through(path.deref_depth())
+                } else {
+                    binding.allows_direct_write()
+                };
+                if allowed {
+                    return;
+                }
+                // The action reads as "assign to" / "add and assign to" /
+                // "increment" / ..., so drop the trailing " to" when it has to
+                // fit into "... through ...".
+                let op = action_description
+                    .strip_suffix(" to")
+                    .unwrap_or(action_description);
+                if binding.is_const {
+                    self.report(
+                        format!("Cannot {} constant variable '{}'", action_description, name),
+                        Some(expr.span.clone()),
+                    );
+                } else if path.is_deref() {
+                    // The binding is fine; it is the type it points at that is
+                    // immutable, so name that rather than the pointer.
+                    self.report(
+                        format!("Cannot {} through pointer to immutable type '{}'", op, name),
+                        Some(expr.span.clone()),
+                    );
+                } else if path.is_through() && binding.reassignable {
+                    // `mut var` but an immutable type: the binding may be
+                    // reassigned, but nothing may be written through it.
+                    self.report(
+                        format!(
+                            "Cannot {} through immutable type of variable '{}'",
+                            op, name
+                        ),
+                        Some(expr.span.clone()),
+                    );
+                } else {
+                    self.report(
+                        format!(
+                            "Cannot {} immutable variable '{}'",
+                            action_description, name
+                        ),
+                        Some(expr.span.clone()),
+                    );
                 }
             }
             // Field access: walk the field side for embedded mutations, then
-            // recurse into the base expression.
+            // recurse into the base expression. Going through a field is a
+            // write through the base's type.
             HirExprKind::Binary(left, HirBinaryOp::Access, right) => {
                 self.check_expr(right);
-                self.check_mutation_target(left, action_description);
+                // A field access reaches into the same type rather than moving
+                // to another pointer depth, so `mut T` at the current depth is
+                // what authorizes it. Any derefs an enclosing arm already applied
+                // are carried forward.
+                self.check_mutation_target_path(left, action_description, path.through_aggregate());
             }
             // Element access: walk the index for embedded mutations, then
             // recurse into the target expression.
             HirExprKind::Index { target, index } => {
                 self.check_expr(index);
-                self.check_mutation_target(target, action_description);
+                self.check_mutation_target_path(
+                    target,
+                    action_description,
+                    path.through_aggregate(),
+                );
+            }
+            // A dereference writes through whatever the pointer points at, so it
+            // is always a write through a type: `^p = 1` needs `ptr<mut T>`.
+            HirExprKind::Unary(HirUnaryOp::Dereference, operand) => {
+                self.check_mutation_target_path(operand, action_description, path.through_deref());
             }
             // Non-chain targets: walk for embedded mutations only.
             _ => {

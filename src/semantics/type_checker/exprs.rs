@@ -445,8 +445,14 @@ impl<'a> TypeChecker<'a> {
 
     fn index_type(&mut self, expr: &HirExpr) -> TypeInfo {
         if let HirExprKind::Index { target, index } = &expr.kind {
-            let target_ty = self.expr_type(target);
+            let mut target_ty = self.expr_type(target);
             let index_ty = self.expr_type(index);
+
+            // `mut T` is a qualifier, not a distinct type, so indexing sees
+            // through it to the type it wraps.
+            while let ResolvedTypeKind::Mut { inner } = target_ty.kind.clone() {
+                target_ty.kind = inner.kind;
+            }
 
             if !self.is_integer(&index_ty.kind) {
                 self.report(
@@ -809,6 +815,11 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn access_type(&mut self, left_ty: &TypeInfo, field_expr: &HirExpr) -> TypeInfo {
+        // `mut T` is a qualifier, not a distinct type, so member access looks
+        // straight through it to the type it wraps.
+        if let ResolvedTypeKind::Mut { inner } = &left_ty.kind {
+            return self.access_type(inner, field_expr);
+        }
         match &left_ty.kind {
             ResolvedTypeKind::Struct { name, members, .. }
             | ResolvedTypeKind::Enum { name, members, .. } => {

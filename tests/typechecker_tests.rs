@@ -1440,3 +1440,114 @@ fn block_expression_value_takes_trailing_statement_type() {
         &[],
     ));
 }
+
+// ---------------------------------------------------------------------------
+// `mut T` -- a storage qualifier on the type, not a distinct type.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mut_type_resolves_named_type() {
+    // The inner name of a `mut T` has to be resolved by the resolver,
+    // otherwise the annotation collapses to `mut unknown`.
+    let _s = assert_clean(analyze(
+        "struct Food { power: i32 }\nvar s: mut Food = .Food{.power = 1};",
+        &[],
+    ));
+}
+
+#[test]
+fn mut_type_has_layout_of_wrapped_type() {
+    // `mut T` is a qualifier, so it must not become a zero-sized type.
+    let s = assert_clean(analyze("var x: mut i32 = 1i32;", &[]));
+    let mut seen = false;
+    for ti in s.ctxt.types.types.values() {
+        if ti.name == "mut i32" {
+            assert_eq!(
+                (ti.layout.size, ti.layout.alignment),
+                (4, 4),
+                "mut i32 must have i32's layout, got {:?}",
+                ti.layout
+            );
+            seen = true;
+        }
+    }
+    assert!(seen, "no `mut i32` entry in the type table");
+}
+
+#[test]
+fn mut_type_layout_tracks_a_struct() {
+    // Non-coincidental: a struct with mixed-width fields so a wrong answer
+    // (e.g. "always pointer sized" or "always zero sized") cannot pass.
+    let s = assert_clean(analyze(
+        "struct Mixed { a: u8, b: u64, c: i16 }\nvar m: mut Mixed = .Mixed{.a = 1, .b = 2, .c = 3};",
+        &[],
+    ));
+    let mut plain = None;
+    let mut qualified = None;
+    for ti in s.ctxt.types.types.values() {
+        if ti.name == "Mixed" {
+            plain = Some((ti.layout.size, ti.layout.alignment));
+        }
+        if ti.name == "mut Mixed" {
+            qualified = Some((ti.layout.size, ti.layout.alignment));
+        }
+    }
+    let plain = plain.expect("no `Mixed` entry");
+    let qualified = qualified.expect("no `mut Mixed` entry");
+    assert_eq!(plain, qualified, "mut Mixed must share Mixed's layout");
+    assert_ne!(plain, (0, 0), "layout must not be zero-sized");
+}
+
+#[test]
+fn mut_type_is_assignable_to_and_from_wrapped_type() {
+    // A qualifier must not create a distinct type, or plain `mut`-annotated
+    // values could never be passed to functions or stored in plain variables.
+    assert_clean(analyze("var a: mut i32 = 1i32;\nvar b: i32 = a;", &[]));
+    assert_clean(analyze("var a: i32 = 1i32;\nvar b: mut i32 = a;", &[]));
+}
+
+#[test]
+fn mut_type_coerces_unsuffixed_literal() {
+    assert_clean(analyze("var x: mut i32 = 1;", &[]));
+}
+
+#[test]
+fn mut_type_field_access_resolves() {
+    // `mut` has to be transparent to member access, otherwise `s.power`
+    // cannot be typed at all on a `mut` struct.
+    let s = assert_clean(analyze(
+        "struct Food { power: i32 }\nvar s: mut Food = .Food{.power = 1};\nvar p: i32 = s.power;",
+        &[],
+    ));
+    assert!(s.ctxt.types.types.values().any(|t| t.name == "i32"));
+}
+
+#[test]
+fn mut_type_index_resolves() {
+    assert_clean(analyze(
+        "var a: mut [i32, 3] = [1i32, 2i32, 3i32];\nvar x: i32 = a[1];",
+        &[],
+    ));
+}
+
+#[test]
+fn mut_type_is_assignable_through_params_and_returns() {
+    assert_clean(analyze(
+        "func f(a: mut i32): mut i32 { return a; }\nvar x: mut i32 = f(1i32);",
+        &[],
+    ));
+}
+
+#[test]
+fn nested_mut_type_resolves() {
+    assert_clean(analyze("var x: mut mut i32 = 1i32;", &[]));
+}
+
+#[test]
+fn mut_type_of_wrong_inner_type_still_reports_mismatch() {
+    // The new blanket `mut` compatibility must not swallow real mismatches.
+    assert_errors(
+        analyze("var x: mut i32 = true;", &[]),
+        &["Type mismatch between 'mut i32' and 'bool'"],
+    );
+}

@@ -2,7 +2,7 @@ use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
     hir::{
         HirEnumMember, HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt, HirStmtKind, HirType,
-        HirTypeNode, HirVariantMember,
+        HirTypeNode, HirUnaryOp, HirVariantMember,
     },
     import::ImportEngine,
     layout::{Layout, LayoutEngine, LayoutError},
@@ -456,6 +456,11 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn is_numeric(&self, ty: &TypeInfo) -> bool {
+        // `mut T` is a qualifier on the type, so numeric-ness has to be
+        // judged on the type underneath it.
+        if let ResolvedTypeKind::Mut { inner } = &ty.kind {
+            return self.is_numeric(inner);
+        }
         match ty.kind {
             ResolvedTypeKind::I8
             | ResolvedTypeKind::U8
@@ -894,34 +899,91 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn is_ty_coercable(&self, annotated_ty: &TypeInfo, expr: &HirExpr) -> bool {
-        if self.is_unsuffixed_literal(expr) {
-            if self.is_numeric(annotated_ty) {
-                return true;
-            } else {
-                return false;
-            }
-        } else {
-            return false;
+    /// The element type and length an array annotation coerces its literal to,
+    /// looking through a `mut` qualifier (`mut [i32, 3]` coerces to `i32`
+    /// elements). Returns `None` when the annotation is not an array.
+    fn annotated_array_inner(annotated_ty: &TypeInfo) -> Option<(&TypeInfo, Option<u64>)> {
+        match &annotated_ty.kind {
+            ResolvedTypeKind::Array { inner, size } => Some((inner, *size)),
+            ResolvedTypeKind::Mut { inner } => Self::annotated_array_inner(inner),
+            _ => None,
         }
     }
 
+    fn is_ty_coercable(&self, annotated_ty: &TypeInfo, expr: &HirExpr) -> bool {
+        if self.is_unsuffixed_literal(expr) {
+            return self.is_numeric(annotated_ty);
+        }
+        // An array literal coerces element-wise to an explicitly annotated
+        // array type, exactly the way a scalar literal coerces. Without this
+        // `var a: [i32, 3] = [1, 2, 3];` infers `[isize, 3]` and is reported
+        // as a type mismatch against the annotation.
+        //
+        // The length still has to agree, otherwise coercing would overwrite the
+        // literal's own length and hide `var a: [i32, 3] = [1, 2];`.
+        if let (HirExprKind::Literal(HirLiteral::ArrayLiteral(elements)), Some((inner, size))) =
+            (&expr.kind, Self::annotated_array_inner(annotated_ty))
+        {
+            let length_agrees = match size {
+                Some(n) => n == elements.len() as u64,
+                None => true,
+            };
+            return length_agrees && elements.iter().all(|e| self.is_ty_coercable(inner, e));
+        }
+        false
+    }
+
     pub fn coerce_ty(&mut self, annotated_ty: &TypeInfo, expr: &HirExpr) {
-        if self.is_ty_coercable(annotated_ty, expr) {
-            self.ctxt
-                .types
-                .types
-                .insert(expr.hir_id, annotated_ty.clone());
+        if !self.is_ty_coercable(annotated_ty, expr) {
+            return;
+        }
+        self.ctxt
+            .types
+            .types
+            .insert(expr.hir_id, annotated_ty.clone());
+
+        // Propagate the annotated element type down into the literal's own
+        // elements, so a nested array literal is coerced the same way and the
+        // element entries agree with the array's resolved element type.
+        if let (HirExprKind::Literal(HirLiteral::ArrayLiteral(elements)), Some((inner, _))) =
+            (&expr.kind, Self::annotated_array_inner(annotated_ty))
+        {
+            let inner = inner.clone();
+            for element in elements {
+                self.coerce_ty(&inner, element);
+            }
+        }
+
+        // A negative literal's inner operand has to be retyped to match, or the
+        // subexpression is left disagreeing with itself (`-1` as `i8` wrapping
+        // an `isize` operand).
+        if let Some(inner) = Self::negated_literal_operand(expr) {
+            self.coerce_ty(annotated_ty, inner);
         }
     }
 
     fn is_unsuffixed_literal(&self, expr: &HirExpr) -> bool {
+        Self::unsuffixed_literal_core(expr).is_some()
+    }
+
+    /// A negative numeric literal lowers to a unary `-` wrapped around the
+    /// literal, so `-1` is not itself a literal. Follow the sign so that
+    /// `var x: i8 = -1;` coerces the same way `var x: i8 = 1;` does. Only
+    /// `Neg` is followed: `!`, `@`, `^` and friends are not numeric literals
+    /// wearing a sign.
+    fn unsuffixed_literal_core(expr: &HirExpr) -> Option<&HirExpr> {
         match &expr.kind {
-            HirExprKind::Literal(lit) => match lit {
-                HirLiteral::Int(_) | HirLiteral::Float(_) => true,
-                _ => false,
-            },
-            _ => false,
+            HirExprKind::Literal(HirLiteral::Int(_) | HirLiteral::Float(_)) => Some(expr),
+            HirExprKind::Unary(HirUnaryOp::Neg, inner) => Self::unsuffixed_literal_core(inner),
+            _ => None,
+        }
+    }
+
+    /// The operand of a negated unsuffixed literal (`-1`), if `expr` is one.
+    fn negated_literal_operand(expr: &HirExpr) -> Option<&HirExpr> {
+        match &expr.kind {
+            HirExprKind::Unary(HirUnaryOp::Neg, inner) => Self::unsuffixed_literal_core(inner),
+            _ => None,
         }
     }
 

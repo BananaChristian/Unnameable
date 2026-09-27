@@ -281,9 +281,12 @@ fn struct_field_write_on_immutable_reports() {
 }
 
 #[test]
-fn struct_field_write_on_mutable_passes() {
-    assert_clean(
+fn struct_field_write_through_mut_var_only_reports() {
+    // `mut var` permits reassigning `s`, but writing `s.a` goes *through* the
+    // type `S`, which is immutable. `mut var` does not grant that.
+    assert_messages(
         "struct S { a: isize }\nfunc f(): isize {\n    mut var s = .S{.a = 1};\n    s.a = 2;\n    return 0;\n}",
+        &["Cannot assign through immutable type of variable 's'"],
     );
 }
 
@@ -296,9 +299,10 @@ fn struct_field_compound_on_immutable_reports() {
 }
 
 #[test]
-fn struct_field_compound_on_mutable_passes() {
-    assert_clean(
+fn struct_field_compound_through_mut_var_only_reports() {
+    assert_messages(
         "struct S { a: isize }\nfunc f(): isize {\n    mut var s = .S{.a = 1};\n    s.a += 1;\n    return 0;\n}",
+        &["Cannot add and assign through immutable type of variable 's'"],
     );
 }
 
@@ -311,8 +315,11 @@ fn array_element_write_on_immutable_reports() {
 }
 
 #[test]
-fn array_element_write_on_mutable_passes() {
-    assert_clean("func f(): isize {\n    mut var a = [1, 2];\n    a[0] = 3;\n    return 0;\n}");
+fn array_element_write_through_mut_var_only_reports() {
+    assert_messages(
+        "func f(): isize {\n    mut var a = [1, 2];\n    a[0] = 3;\n    return 0;\n}",
+        &["Cannot assign through immutable type of variable 'a'"],
+    );
 }
 
 #[test]
@@ -332,8 +339,11 @@ fn tuple_element_write_on_immutable_reports() {
 }
 
 #[test]
-fn tuple_element_write_on_mutable_passes() {
-    assert_clean("func f(): isize {\n    mut var t = .(1, 2);\n    t.0 = 5;\n    return 0;\n}");
+fn tuple_element_write_through_mut_var_only_reports() {
+    assert_messages(
+        "func f(): isize {\n    mut var t = .(1, 2);\n    t.0 = 5;\n    return 0;\n}",
+        &["Cannot assign through immutable type of variable 't'"],
+    );
 }
 
 #[test]
@@ -350,8 +360,13 @@ fn nested_field_write_checks_root_binding() {
         "struct Pos { x: isize }\nstruct S { p: Pos }\nfunc f(): isize {\n    var s = .S{.p = .Pos{.x = 1}};\n    s.p.x = 5;\n    return 0;\n}",
         &["Cannot assign to immutable variable 's'"],
     );
-    assert_clean(
+    assert_messages(
         "struct Pos { x: isize }\nstruct S { p: Pos }\nfunc f(): isize {\n    mut var s = .S{.p = .Pos{.x = 1}};\n    s.p.x = 5;\n    return 0;\n}",
+        &["Cannot assign through immutable type of variable 's'"],
+    );
+    // `mut T` on the root is what permits a write nested arbitrarily deep.
+    assert_clean(
+        "struct Pos { x: isize }\nstruct S { p: Pos }\nfunc f(): isize {\n    var s: mut S = .S{.p = .Pos{.x = 1}};\n    s.p.x = 5;\n    return 0;\n}",
     );
 }
 
@@ -361,4 +376,295 @@ fn array_element_index_checked_for_embedded_mutation() {
         "func f(): isize {\n    var y = 5;\n    var a = [1, 2];\n    a[y = 3] = 4;\n    return 0;\n}",
         &["Cannot assign to immutable variable 'y'", "Cannot assign to immutable variable 'a'"],
     );
+}
+
+// ---------------------------------------------------------------------------
+// `mut T` -- a qualifier on the type, distinct from `mut var` on the binding.
+//
+// The two answer different questions, so they are tracked separately:
+//   - `mut var x` permits reassigning the binding `x`.
+//   - `mut T` permits writing *through* the type `T` (a field, an element, a
+//     dereference), and a direct write of a `mut T` value counts as that too.
+//
+// So `mut var` alone is not enough for `x.f = 1`, and `mut T` on a *pointee*
+// is not enough to rebind the pointer. See the pointer section below.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn immutable_type_rejects_write() {
+    assert_messages(
+        "var x: i32 = 1i32; x = 2i32;",
+        &["Cannot assign to immutable variable 'x'"],
+    );
+}
+
+#[test]
+fn mut_type_allows_write() {
+    assert_clean("var x: mut i32 = 1i32; x = 2i32;");
+}
+
+#[test]
+fn mut_var_allows_write_of_immutable_type() {
+    assert_clean("mut var x: i32 = 1i32; x = 2i32;");
+}
+
+#[test]
+fn mut_type_allows_compound_assign() {
+    assert_clean("var x: mut i32 = 1i32; x += 2i32;");
+}
+
+#[test]
+fn immutable_type_rejects_compound_assign() {
+    assert_messages(
+        "var x: i32 = 1i32; x += 2i32;",
+        &["Cannot add and assign to immutable variable 'x'"],
+    );
+}
+
+#[test]
+fn mut_type_allows_increment() {
+    assert_clean("var x: mut i32 = 1i32; x++;");
+}
+
+#[test]
+fn immutable_type_rejects_increment() {
+    assert_messages(
+        "var x: i32 = 1i32; x++;",
+        &["Cannot increment immutable variable 'x'"],
+    );
+}
+
+#[test]
+fn mut_type_allows_struct_field_write() {
+    assert_clean(
+        "struct Food { power: i32 }\nvar s: mut Food = .Food{.power = 1}; s.power = 2i32;",
+    );
+}
+
+#[test]
+fn immutable_type_rejects_struct_field_write() {
+    assert_messages(
+        "struct Food { power: i32 }\nvar s: Food = .Food{.power = 1}; s.power = 2i32;",
+        &["Cannot assign to immutable variable 's'"],
+    );
+}
+
+#[test]
+fn mut_type_allows_tuple_element_write() {
+    assert_clean("var t: mut (i32, i32) = .(1i32, 2i32); t.0 = 5i32;");
+}
+
+#[test]
+fn immutable_type_rejects_tuple_element_write() {
+    assert_messages(
+        "var t: (i32, i32) = .(1i32, 2i32); t.0 = 5i32;",
+        &["Cannot assign to immutable variable 't'"],
+    );
+}
+
+#[test]
+fn mut_type_allows_array_element_write() {
+    assert_clean("var a: mut [i32, 3] = [1i32, 2i32, 3i32]; a[0] = 9i32;");
+}
+
+#[test]
+fn immutable_type_rejects_array_element_write() {
+    assert_messages(
+        "var a: [i32, 3] = [1i32, 2i32, 3i32]; a[1] = 9i32;",
+        &["Cannot assign to immutable variable 'a'"],
+    );
+}
+
+#[test]
+fn mut_type_param_allows_write() {
+    assert_clean("func f(a: mut i32): mut i32 { a = 1i32; return a; }");
+}
+
+#[test]
+fn immutable_type_param_rejects_write() {
+    assert_messages(
+        "func f(a: i32): i32 { a = 1i32; return a; }",
+        &["Cannot assign to immutable variable 'a'"],
+    );
+}
+
+// A `mut` on the type and a `mut var` on the binding are independent: either
+// one alone is enough, and they combine without complaint.
+#[test]
+fn mut_var_with_mut_type_allows_write() {
+    assert_clean("mut var x: mut i32 = 1i32; x = 2i32;");
+}
+
+#[test]
+fn const_with_mut_type_is_rejected() {
+    assert_messages(
+        "const var x: mut i32 = 1i32;",
+        &["Variable 'x' cannot be const and mutable at the same time"],
+    );
+}
+
+#[test]
+fn const_with_immutable_type_is_allowed() {
+    assert_clean("const var x: i32 = 1i32;");
+}
+
+// ---------------------------------------------------------------------------
+// `mut` inside a pointee: `ptr<mut T>`.
+//
+// A pointer carries the permission of what it points at, so `^p = 1` needs
+// `ptr<mut T>`. Crucially the `mut` belongs to the *pointee*, so it does not
+// let the pointer binding itself be reassigned -- `p = q` still needs
+// `mut var p`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn deref_write_through_ptr_of_mut_type_passes() {
+    assert_clean(
+        "func f(): i32 {\n    var x: mut i32 = 1i32;\n    var p: ptr<mut i32> = @x;\n    var v: i32 = marked { ^p = 5i32; 0i32 };\n    return 0i32;\n}",
+    );
+}
+
+#[test]
+fn deref_write_through_ptr_of_immutable_type_reports() {
+    assert_messages(
+        "func f(): i32 {\n    var x: i32 = 1i32;\n    var p: ptr<i32> = @x;\n    var v: i32 = marked { ^p = 5i32; 0i32 };\n    return 0i32;\n}",
+        &["Cannot assign through pointer to immutable type 'p'"],
+    );
+}
+
+// The decisive case: the *target* is `mut var`, but the write goes through the
+// pointee, so `mut var` must not license it. The pointer's declared type is
+// what decides.
+#[test]
+fn deref_write_of_mut_var_target_through_immutable_pointee_reports() {
+    assert_messages(
+        "func f(): i32 {\n    mut var x: i32 = 1i32;\n    var p: ptr<i32> = @x;\n    var v: i32 = marked { ^p = 5i32; 0i32 };\n    return 0i32;\n}",
+        &["Cannot assign through pointer to immutable type 'p'"],
+    );
+}
+
+#[test]
+fn deref_write_through_ptr_of_mut_type_from_mut_var_pointer_passes() {
+    assert_clean(
+        "func f(): i32 {\n    var x: mut i32 = 1i32;\n    mut var p: ptr<mut i32> = @x;\n    var v: i32 = marked { ^p = 5i32; 0i32 };\n    return 0i32;\n}",
+    );
+}
+
+#[test]
+fn deref_compound_assign_through_ptr_of_mut_type_passes() {
+    assert_clean(
+        "func f(): i32 {\n    var x: mut i32 = 1i32;\n    var p: ptr<mut i32> = @x;\n    var v: i32 = marked { ^p += 2i32; 0i32 };\n    return 0i32;\n}",
+    );
+}
+
+#[test]
+fn deref_compound_assign_through_ptr_of_immutable_type_reports() {
+    assert_messages(
+        "func f(): i32 {\n    var x: i32 = 1i32;\n    var p: ptr<i32> = @x;\n    var v: i32 = marked { ^p += 2i32; 0i32 };\n    return 0i32;\n}",
+        &["Cannot add and assign through pointer to immutable type 'p'"],
+    );
+}
+
+#[test]
+fn param_of_ptr_to_mut_type_allows_deref_write() {
+    assert_clean("func g(p: ptr<mut i32>): i32 {\n    var v: i32 = marked { ^p = 5i32; 0i32 };\n    return 0i32;\n}");
+}
+
+#[test]
+fn param_of_ptr_to_immutable_type_rejects_deref_write() {
+    assert_messages(
+        "func g(p: ptr<i32>): i32 {\n    var v: i32 = marked { ^p = 5i32; 0i32 };\n    return 0i32;\n}",
+        &["Cannot assign through pointer to immutable type 'p'"],
+    );
+}
+
+#[test]
+fn field_write_through_ptr_to_mut_struct_passes() {
+    assert_clean(
+        "struct S { p: i32 }\nfunc f(): i32 {\n    var s: mut S = .S{.p = 1};\n    var q: ptr<mut S> = @s;\n    var v: i32 = marked { ^q.p = 7i32; 0i32 };\n    return 0i32;\n}",
+    );
+}
+
+#[test]
+fn field_write_through_ptr_to_immutable_struct_reports() {
+    assert_messages(
+        "struct S { p: i32 }\nfunc f(): i32 {\n    var s: S = .S{.p = 1};\n    var q: ptr<S> = @s;\n    var v: i32 = marked { ^q.p = 7i32; 0i32 };\n    return 0i32;\n}",
+        &["Cannot assign through pointer to immutable type 'q'"],
+    );
+}
+
+#[test]
+fn field_write_through_mut_var_ptr_to_immutable_struct_reports() {
+    // `mut var q` permits `q = other`, not a write through the pointee.
+    assert_messages(
+        "struct S { p: i32 }\nfunc f(): i32 {\n    var s: S = .S{.p = 1};\n    mut var q: ptr<S> = @s;\n    var v: i32 = marked { ^q.p = 7i32; 0i32 };\n    return 0i32;\n}",
+        &["Cannot assign through pointer to immutable type 'q'"],
+    );
+}
+
+// The mirror image: a `mut` on the pointee must not let the pointer itself be
+// reassigned. This is what the per-depth tracking exists for.
+#[test]
+fn rebinding_ptr_to_mut_type_requires_mut_var_pointer() {
+    assert_messages(
+        "func f(): i32 {\n    var x: mut i32 = 1i32;\n    var y: mut i32 = 2i32;\n    var p: ptr<mut i32> = @x;\n    var q: ptr<mut i32> = @y;\n    p = q;\n    return 0i32;\n}",
+        &["Cannot assign to immutable variable 'p'"],
+    );
+}
+
+#[test]
+fn rebinding_mut_var_ptr_to_mut_type_passes() {
+    assert_clean(
+        "func f(): i32 {\n    var x: mut i32 = 1i32;\n    var y: mut i32 = 2i32;\n    mut var p: ptr<mut i32> = @x;\n    var q: ptr<mut i32> = @y;\n    p = q;\n    return 0i32;\n}",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Unsuffixed numeric literals coerce to an explicit annotation, element-wise
+// for aggregates.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn unsuffixed_array_literal_coerces_to_annotated_element_type() {
+    assert_clean("var a: [i32, 3] = [1, 2, 3];");
+}
+
+#[test]
+fn unsuffixed_array_literal_coerces_through_mut_element_type() {
+    assert_clean("var a: mut [i32, 3] = [1, 2, 3];");
+}
+
+#[test]
+fn unsuffixed_nested_array_literal_coerces() {
+    assert_clean("var a: [[i32, 2], 2] = [[1, 2], [3, 4]];");
+}
+
+#[test]
+fn unsuffixed_array_literal_length_mismatch_still_reports() {
+    // Coercion must not overwrite the literal's own length and hide this.
+    assert_messages(
+        "var a: [i32, 3] = [1, 2];",
+        &["Type mismatch between '[i32,3]' and '[isize,2]'"],
+    );
+}
+
+#[test]
+fn unsuffixed_array_literal_mixed_elements_still_reports() {
+    assert_messages(
+        "var a: [i32, 3] = [1, true, 3];",
+        &[
+            "array elements must all have the same type",
+            "Type mismatch between '[i32,3]' and 'unknown'",
+        ],
+    );
+}
+
+#[test]
+fn negative_literal_coerces_to_annotated_type() {
+    assert_clean("var x: i8 = -1;");
+}
+
+#[test]
+fn negative_literal_in_array_coerces_to_annotated_element_type() {
+    assert_clean("var a: [i8, 2] = [300, -1];");
 }

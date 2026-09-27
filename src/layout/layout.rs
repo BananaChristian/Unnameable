@@ -119,6 +119,10 @@ impl<'a> LayoutEngine<'a> {
                 size: self.target.pointer_width,
                 alignment: self.target.pointer_width,
             }),
+            // `mut T` is a qualifier, not a distinct representation: it has
+            // exactly the layout of the type it wraps. Falling through to the
+            // catch-all here would give every `mut T` a zero-sized layout.
+            ResolvedTypeKind::Mut { inner } => self.layout_of(&inner.kind, inner.type_id.clone()),
             ResolvedTypeKind::Array { inner, size } => {
                 let element_layout = self.layout_of(&inner.kind, inner.type_id.clone())?;
 

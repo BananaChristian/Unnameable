@@ -388,6 +388,16 @@ impl TypeInfo {
                         .zip(fields_b.iter())
                         .all(|(a, b)| TypeInfo::types_match(a, b))
             }
+
+            // `mut T` is a storage qualifier, not a distinct type, so it is
+            // compatible with the type it wraps in both directions. Without
+            // these arms `mut i32` matches nothing at all -- not even itself --
+            // so `var x: mut i32 = 1i32;` is reported as a type mismatch.
+            (ResolvedTypeKind::Mut { inner: a }, ResolvedTypeKind::Mut { inner: b }) => {
+                TypeInfo::types_match(a, b)
+            }
+            (ResolvedTypeKind::Mut { inner: a }, _) => TypeInfo::types_match(a, actual),
+            (_, ResolvedTypeKind::Mut { inner: b }) => TypeInfo::types_match(expected, b),
             _ => false,
         }
     }

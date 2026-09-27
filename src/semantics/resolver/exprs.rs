@@ -24,6 +24,9 @@ impl<'a> Resolver<'a> {
             HirType::Owned(inner) => {
                 self.resolve_type(inner, table);
             }
+            HirType::Mut(inner) => {
+                self.resolve_type(inner, table);
+            }
             HirType::Array(inner, ..) => {
                 self.resolve_type(inner, table);
             }

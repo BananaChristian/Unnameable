@@ -479,7 +479,10 @@ impl<'a> Monomorphizer<'a> {
             self.ctxt.types.types.insert(ty.hir_id.clone(), info);
         }
         match &mut ty.kind {
-            HirType::Ptr(inner) | HirType::Ref(inner) | HirType::Nullable(inner) => {
+            HirType::Ptr(inner)
+            | HirType::Ref(inner)
+            | HirType::Nullable(inner)
+            | HirType::Mut(inner) => {
                 self.fresh_type_node(inner);
             }
             HirType::Array(inner, _) => self.fresh_type_node(inner),
