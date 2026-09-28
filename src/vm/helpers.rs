@@ -1,6 +1,6 @@
 use crate::{
     mir::{MIRTy, MIRTykind},
-    vm::{AllocId, VM, VMValue, structures::MemoryKind},
+    vm::{structures::MemoryKind, AllocId, VMValue, VM},
 };
 
 impl<'a> VM<'a> {
@@ -119,7 +119,7 @@ impl<'a> VM<'a> {
             MIRTykind::CHAR32 => VMValue::Char32(u32::from_le_bytes(
                 self.read_bytes(alloc_id, offset, 4).try_into().unwrap(),
             )),
-            MIRTykind::Ptr => {
+            MIRTykind::Ptr | MIRTykind::Ref => {
                 let offset_bytes = self.read_bytes(alloc_id, offset, 8);
                 let ptr_offset =
                     usize::from_le_bytes(offset_bytes.try_into().unwrap_or_else(|_| [0u8; 8]));
@@ -275,7 +275,7 @@ impl<'a> VM<'a> {
                 let bytes = self.expect_char32(val).to_le_bytes();
                 self.write_bytes(alloc_id, offset, &bytes, unchecked);
             }
-            MIRTykind::Ptr => {
+            MIRTykind::Ptr | MIRTykind::Ref => {
                 let (target_alloc_id, ptr_offset) = match val {
                     VMValue::Ptr(target_id, offset_val) => (Some(*target_id), *offset_val),
                     VMValue::UInt(addr) => (None, *addr as usize),
@@ -309,7 +309,13 @@ impl<'a> VM<'a> {
                     return;
                 };
                 for i in 0..*count {
-                    self.write_typed(alloc_id, offset + i * elem_ty.size, &elems[i], elem_ty,unchecked);
+                    self.write_typed(
+                        alloc_id,
+                        offset + i * elem_ty.size,
+                        &elems[i],
+                        elem_ty,
+                        unchecked,
+                    );
                 }
             }
             MIRTykind::Struct(_, _, fields) => {
@@ -330,7 +336,13 @@ impl<'a> VM<'a> {
                         (field_ty.align - (field_offset % field_ty.align)) % field_ty.align
                     };
                     field_offset += padding;
-                    self.write_typed(alloc_id, offset + field_offset, field_val, field_ty,unchecked);
+                    self.write_typed(
+                        alloc_id,
+                        offset + field_offset,
+                        field_val,
+                        field_ty,
+                        unchecked,
+                    );
                     field_offset += field_ty.size;
                 }
             }
@@ -349,7 +361,13 @@ impl<'a> VM<'a> {
                         (elem_ty.align - (field_offset % elem_ty.align)) % elem_ty.align
                     };
                     field_offset += padding;
-                    self.write_typed(alloc_id, offset + field_offset, elem_val, elem_ty,unchecked);
+                    self.write_typed(
+                        alloc_id,
+                        offset + field_offset,
+                        elem_val,
+                        elem_ty,
+                        unchecked,
+                    );
                     field_offset += elem_ty.size;
                 }
             }

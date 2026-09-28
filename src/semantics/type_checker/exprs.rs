@@ -1274,7 +1274,13 @@ impl<'a> TypeChecker<'a> {
                         self.coerce_ty(param_ty, arg);
                         let arg_ty = self.expr_type(arg);
 
-                        if !TypeInfo::types_match(&arg_ty, param_ty) {
+                        // `@x` satisfies a `ref<T>` parameter, so `f(@x)` is
+                        // legal where `f(r: ref<T>)`. This used to be rejected
+                        // purely because `types_match` was called in the opposite
+                        // argument order from the annotated-var-decl path.
+                        if !TypeInfo::types_match(&arg_ty, param_ty)
+                            && !TypeInfo::address_of_coerces_to_ref(param_ty, &arg_ty, arg)
+                        {
                             self.type_mismatch(&arg_ty, param_ty, expr.span.clone());
                         }
                     }

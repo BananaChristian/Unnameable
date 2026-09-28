@@ -1,13 +1,13 @@
 use std::{collections::HashMap, path::Path};
 
 use inkwell::{
-    AddressSpace, OptimizationLevel,
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::{BasicValueEnum, FloatValue, FunctionValue, GlobalValue, IntValue, PointerValue},
+    AddressSpace, OptimizationLevel,
 };
 
 use crate::{
@@ -175,7 +175,7 @@ impl<'ctx> Codegen<'ctx> {
             MIRTykind::F32 => self.context.f32_type().into(),
             MIRTykind::F64 => self.context.f64_type().into(),
             MIRTykind::Unit => self.context.struct_type(&[], false).into(),
-            MIRTykind::Ptr => self
+            MIRTykind::Ptr | MIRTykind::Ref => self
                 .context
                 .ptr_type(inkwell::AddressSpace::default())
                 .into(),

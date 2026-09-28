@@ -1,12 +1,12 @@
 use std::fmt::{self};
 
 use crate::mir::{
-    MIRModule,
     instructions::{
         BasicBlock, BlockId, CmpOp, ConstantValue, FnId, GlobalId, MIRBody, MIRConv, MIRDollarMode,
         MIRFn, MIRGlobal, MIRInstruction, MIRLinkage, MIROps, MIRParam, MIRStructDecl, MIRTy,
         MIRTykind, MIRValue, StructId, Terminator, Vreg,
     },
+    MIRModule,
 };
 
 impl fmt::Display for MIRModule {
@@ -125,6 +125,9 @@ impl fmt::Display for MIRTykind {
             MIRTykind::Bool => write!(f, "bool"),
             MIRTykind::Unit => write!(f, "unit"),
             MIRTykind::Ptr => write!(f, "ptr"),
+            // Printed distinctly from `ptr` so a MIR dump shows which tier a
+            // value is, even though both are the same pointer-sized value.
+            MIRTykind::Ref => write!(f, "ref"),
             MIRTykind::CHAR8 => write!(f, "char8"),
             MIRTykind::CHAR16 => write!(f, "char16"),
             MIRTykind::CHAR32 => write!(f, "char32"),

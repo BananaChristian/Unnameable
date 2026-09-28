@@ -149,7 +149,12 @@ impl<'a> ControlFlowChecker<'a> {
                 if let (Some(current_r), Some(tail_ty)) = (&self.current_return_type, tail_ty) {
                     let known = current_r.kind != ResolvedTypeKind::Unknown
                         && tail_ty.kind != ResolvedTypeKind::Unknown;
-                    if known && !TypeInfo::types_match(current_r, &tail_ty) {
+                    // A tail expression of `@x` may stand in for a `ref<T>` return
+                    // type, matching what a `var r: ref<T> = @x;` declaration does.
+                    if known
+                        && !TypeInfo::types_match(current_r, &tail_ty)
+                        && !TypeInfo::address_of_coerces_to_ref(current_r, &tail_ty, tail_expr)
+                    {
                         self.report(
                             format!(
                                 "Expected type '{}' but got '{}'",
@@ -194,7 +199,14 @@ impl<'a> ControlFlowChecker<'a> {
                 if let Some(return_ty) = return_ty {
                     let known = current_r.kind != ResolvedTypeKind::Unknown
                         && return_ty.kind != ResolvedTypeKind::Unknown;
-                    if known && !TypeInfo::types_match(current_r, return_ty) {
+                    // Same rule as the tail expression: `return @x;` is the
+                    // legitimate way to return a `ref<T>`. Without this a function
+                    // declared `ref<T>` could not return a reference it had just
+                    // taken, and a `ptr` *variable* could be returned as one.
+                    let ret_addr_of_ok = val.as_deref().is_some_and(|e| {
+                        TypeInfo::address_of_coerces_to_ref(current_r, return_ty, e)
+                    });
+                    if known && !TypeInfo::types_match(current_r, return_ty) && !ret_addr_of_ok {
                         self.report(
                             format!(
                                 "Expected type '{}' but got '{}'",
@@ -410,4 +422,3 @@ impl<'a> ControlFlowChecker<'a> {
 fn is_literal_true(expr: &HirExpr) -> bool {
     matches!(&expr.kind, HirExprKind::Literal(HirLiteral::Bool(true)))
 }
-

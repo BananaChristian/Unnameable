@@ -9,7 +9,7 @@ use crate::{
     cf_checker::ControlFlowChecker,
     contract_verifier::ContractVerifier,
     diagnostics::{SharedDiagnostics, Span},
-    hir::HirStmt,
+    hir::{HirExpr, HirExprKind, HirStmt, HirUnaryOp},
     import::ImportEngine,
     indexer::NodeIndex,
     layout::Layout,
@@ -234,6 +234,48 @@ impl TypeInfo {
         }
     }
 
+    /// Whether an `@expr` (address-of) may stand in for a `ref<T>` where
+    /// `ref_ty` is expected.
+    ///
+    /// This is the *only* sanctioned way to produce a `ref<T>`, and it is
+    /// deliberately a rule about the expression rather than about the types. A
+    /// reference is something you create by taking an address, not something you
+    /// can paint onto an existing pointer.
+    ///
+    /// The distinction matters because `ref<T>` is the safe tier: dereferencing one
+    /// needs no `marked` block, while dereferencing a `ptr<T>` does
+    /// (`TypeChecker`, "Dereferencing '{}' requires a 'marked' block"). If a
+    /// `ptr<T>` value could simply be relabelled `ref<T>`, the whole escape hatch
+    /// would be bypassable by one annotated assignment.
+    ///
+    /// That was the previous behaviour, via an asymmetric arm in `types_match`:
+    /// `(Ref, Pointer) => types_match(..)`. Because it only matched one argument
+    /// order it behaved inconsistently -- it let `var r: ref<i32> = p;` forge a
+    /// reference from a pointer variable, while *rejecting* the perfectly
+    /// legitimate `f(@x)` where `f` takes a `ref`. The inconsistency was
+    /// argument order, not policy.
+    pub fn address_of_coerces_to_ref(
+        ref_ty: &TypeInfo,
+        actual_ty: &TypeInfo,
+        expr: &HirExpr,
+    ) -> bool {
+        let ResolvedTypeKind::Ref { inner: ref_inner } = &ref_ty.kind else {
+            return false;
+        };
+        // The expression must actually be an address-of, not merely something of
+        // pointer type. This is what distinguishes `var r: ref<i32> = @x;` (fine)
+        // from `var r: ref<i32> = p;` where `p` is a `ptr<i32>` variable (forgery).
+        let HirExprKind::Unary(HirUnaryOp::AddressOf, _) = &expr.kind else {
+            return false;
+        };
+        // And the address must be of the right type, so `&x` is a `ref<T>` rather
+        // than a `ref<U>`.
+        let ResolvedTypeKind::Pointer { inner: ptr_inner } = &actual_ty.kind else {
+            return false;
+        };
+        TypeInfo::types_match(ptr_inner, ref_inner)
+    }
+
     pub fn types_match(expected: &TypeInfo, actual: &TypeInfo) -> bool {
         match (&expected.kind, &actual.kind) {
             (ResolvedTypeKind::Unknown, ResolvedTypeKind::Unknown) => true,
@@ -275,9 +317,13 @@ impl TypeInfo {
             (ResolvedTypeKind::Ref { inner: a }, ResolvedTypeKind::Ref { inner: b }) => {
                 TypeInfo::types_match(a, b)
             }
-            (ResolvedTypeKind::Ref { inner: a }, ResolvedTypeKind::Pointer { inner: b }) => {
-                TypeInfo::types_match(a, b)
-            }
+            // NOTE: there is deliberately no `(Ref, Pointer)` arm here. One used to
+            // exist, and it was a hole: because it matched only one argument order
+            // it let `var r: ref<i32> = p;` relabel a `ptr` variable as a reference
+            // — and dereferencing a reference needs no `marked` block — while
+            // *rejecting* the legitimate `f(@x)`. A reference is now created only by
+            // taking an address, via `TypeInfo::address_of_coerces_to_ref`, which is
+            // applied at the coercion sites where it is meaningful.
             (
                 ResolvedTypeKind::Func {
                     params: params_a,

@@ -177,7 +177,13 @@ impl<'a> TypeChecker<'a> {
             self.coerce_ty(&_annotated_ty, init);
 
             let coerced_init_ty = self.expr_type(init);
-            if !TypeInfo::types_match(&_annotated_ty, &coerced_init_ty) {
+            if !TypeInfo::types_match(&_annotated_ty, &coerced_init_ty)
+                // `@x` is how a `ref<T>` is legitimately created. It is allowed
+                // here, and only here, when the initializer is syntactically an
+                // address-of -- so a `ptr` *variable* cannot be relabelled as a
+                // reference.
+                && !TypeInfo::address_of_coerces_to_ref(&_annotated_ty, &coerced_init_ty, init)
+            {
                 self.type_mismatch(&_annotated_ty, &coerced_init_ty, stmt.span.clone());
             }
 

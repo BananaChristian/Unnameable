@@ -224,6 +224,16 @@ pub enum MIRTykind {
     Bool,
     Unit,
     Ptr, //All pointers are opaque
+    /// A `ref<T>` -- the safe tier, distinct from `Ptr` even though the runtime
+    /// representation is the same pointer-sized value.
+    ///
+    /// The distinction exists so the tiers cannot be confused below the frontend.
+    /// It carries no representation change: same size, same alignment, same ABI
+    /// class, same codegen. A `ref<T>` is *created* only by taking an address
+    /// (`TypeInfo::address_of_coerces_to_ref`), and dereferencing one needs no
+    /// `marked` block while dereferencing a `Ptr` does -- so if the two shared a
+    /// kind, the escape hatch would be bypassable by relabelling.
+    Ref,
     Array(Box<MIRTy>, usize),
     Struct(StructId, String, Vec<(String, MIRTy)>),
     Tuple(Vec<MIRTy>),

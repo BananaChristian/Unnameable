@@ -187,11 +187,38 @@ impl Lowering {
     /// resolves implementations by that same `{Type}_{fn}` convention, so it
     /// needs no change either.
     fn lower_impl(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
-        if let StmtKind::ImplBlock { name, body, .. } = &stmt.kind {
+        if let StmtKind::ImplBlock {
+            qualifiers,
+            name,
+            body,
+        } = &stmt.kind
+        {
             let type_name = self.extract_name_string(name)?;
+            // A qualifier on the block applies to every member: `$ impl Point {...}`
+            // makes the whole block dollar-callable. A member may also carry its
+            // own qualifier (`impl Point { $ func get(...) }`) for the case where
+            // only one of them should be.
+            let block = self.map_qualifiers(qualifiers);
             let mut out = Vec::new();
             for member in body {
-                if let Some(hir) = self.lower_func_def_prefixed(member, Some(&type_name)) {
+                if let Some(mut hir) = self.lower_func_def_prefixed(member, Some(&type_name)) {
+                    // Merge rather than overwrite, unlike seals. Seals cannot
+                    // take member qualifiers at all, so a block value may safely
+                    // clobber a member's; here both can be present, and clobbering
+                    // would silently erase a member's own `$`.
+                    if let HirStmtKind::HirFunctionDef {
+                        exposed,
+                        dollar_read,
+                        conv,
+                        ..
+                    } = &mut hir.kind
+                    {
+                        *exposed = *exposed || block.expose;
+                        *dollar_read = *dollar_read || block.dollar_read;
+                        if block.extern_conv.is_some() {
+                            *conv = block.extern_conv.clone();
+                        }
+                    }
                     out.push(hir);
                 }
             }
@@ -633,12 +660,23 @@ impl Lowering {
                             HirStmtKind::HirFunctionDef {
                                 name: struct_name,
                                 exposed,
+                                dollar_read,
                                 conv,
                                 ..
                             } => {
                                 *struct_name = mangled_name; // Update the mangled name
-                                *exposed = map.expose; // Update the boolean flag
-                                *conv = map.extern_conv.clone();
+                                                             // Merge rather than overwrite. Members can now
+                                                             // carry their own qualifiers, so clobbering
+                                                             // would silently erase a member's `$` whenever
+                                                             // the seal supplied none. `dollar_read` was not
+                                                             // propagated at all before, which meant a
+                                                             // `$ seal` could not make its members
+                                                             // dollar-callable however it was written.
+                                *exposed = *exposed || map.expose;
+                                *dollar_read = *dollar_read || map.dollar_read;
+                                if map.extern_conv.is_some() {
+                                    *conv = map.extern_conv.clone();
+                                }
                             }
                             _ => unreachable!(),
                         }

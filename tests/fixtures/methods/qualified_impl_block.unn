@@ -1,0 +1,37 @@
+##
+   A qualifier on an `impl` block applies to every member.
+
+   `$ impl Counter { ... }` makes the whole block dollar-callable, which is what
+   lets its methods run in the VM at all (AGENTS.md 2.10). A member may also
+   carry its own qualifier -- `impl Counter { $ func get(...) }` -- when only one
+   of them should be, and the two merge rather than clobber, so a member's own
+   `$` survives a block that supplies none.
+
+   `extern` works the same way, and shows the extern-C convention marker on the
+   emitted function.
+
+   None of this leaves a trace below the frontend. `$ impl Counter { func get }`
+   produces MIR and bytecode byte-identical to a hand-written
+   `$ func Counter_get(self: Counter)`, and `extern impl` is identical to
+   `extern func Counter_get`. `impl_members_accept_qualifiers` and
+   `qualified_impl_block_lowers_identically_to_a_hand_written_function` pin both
+   halves of that.
+
+   Syntax note: the ABI is a bare identifier or omitted, so it is `extern impl`
+   or `extern C impl` -- not `extern "C" impl`, because the ABI token is parsed
+   as an identifier, not a string literal.
+##
+struct Counter { n: i32 }
+
+$ impl Counter {
+  func get(self: Counter): i32 { return self.n; }
+  func scaled(self: Counter, k: i32): i32 { return self.n * k; }
+}
+
+impl Counter {
+  $ func doubled(self: Counter): i32 { return self.n * 2i32; }
+}
+
+extern impl Counter {
+  func cconv(self: Counter): i32 { return self.n; }
+}

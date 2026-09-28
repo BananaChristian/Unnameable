@@ -1,0 +1,71 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%P = type { x: i32 }
+
+<func0>  func @by_annotation() {
+bb0:
+    %p = alloca %P , align 4
+    %0 = gep %P, ptr %p, indices [0, 0]
+    store 7, ptr %0, align 4, ty i32
+    %r = alloca ref , align 8
+    %1 = addr_of %p
+    store %1, ptr %r, align 8, ty ptr
+    %2 = load ref, ptr %r, align 8
+    %3 = gep %P, ptr %2, indices [0, 0]
+    %4 = load i32, ptr %3, align 4
+    ret %4
+}
+
+<func1>  func @by_parameter( ref %r) {
+bb1:
+    %r.addr = alloca ref , align 8
+    store %r, ptr %r.addr, align 8, ty ref
+    %5 = load ref, ptr %r.addr, align 8
+    %6 = gep %P, ptr %5, indices [0, 0]
+    %7 = load i32, ptr %6, align 4
+    ret %7
+}
+
+<func2>  func @by_return() {
+bb2:
+    %p = alloca %P , align 4
+    %8 = gep %P, ptr %p, indices [0, 0]
+    store 9, ptr %8, align 4, ty i32
+    %9 = addr_of %p
+    ret %9
+}
+
+<func3>  func @passed_directly() {
+bb3:
+    %p = alloca %P , align 4
+    %10 = gep %P, ptr %p, indices [0, 0]
+    store 5, ptr %10, align 4, ty i32
+    %11 = addr_of %p
+    %12 = call @func1(%11)
+    ret %12
+}
+
+<func4>  func @round_tripped() {
+bb4:
+    %13 = call @func2()
+    %14 = gep %P, ptr %13, indices [0, 0]
+    %15 = load i32, ptr %14, align 4
+    ret %15
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

@@ -6,12 +6,12 @@ use crate::{
     indexer::NodeIndex,
     lowering::NodeId,
     mir::{
-        MIRFn, MIRLinkage, MIRModule, MIRStructDecl, MIRVariant,
         instructions::{
             ArmInfo, BasicBlock, BlockId, CmpOp, ConstantValue, EnumId, FnId, GlobalId, MIRBody,
             MIRConv, MIRDollarMode, MIREnum, MIRInstruction, MIROps, MIRParam, MIRTy, MIRTykind,
             MIRValue, StructId, Terminator, VariantId, Vreg,
         },
+        MIRFn, MIRLinkage, MIRModule, MIRStructDecl, MIRVariant,
     },
     semantics::{ResolvedTypeKind, TypeInfo, TypesTable},
     target::TargetSpec,
@@ -854,9 +854,10 @@ impl<'a> MIRBuilder<'a> {
 
                 MIRTykind::Struct(struct_id.clone(), name.clone(), struct_decl.fields.clone())
             }
-            ResolvedTypeKind::Pointer { .. }
-            | ResolvedTypeKind::Ref { .. }
-            | ResolvedTypeKind::Func { .. } => MIRTykind::Ptr,
+            ResolvedTypeKind::Pointer { .. } | ResolvedTypeKind::Func { .. } => MIRTykind::Ptr,
+            // Its own kind, so the safe tier survives into MIR. Same
+            // representation, distinguishable by type.
+            ResolvedTypeKind::Ref { .. } => MIRTykind::Ref,
             ResolvedTypeKind::Array { inner, size } => {
                 let elem_ty_kind = self.convert_tyinfo_to_mirtykind(&inner);
                 let elem_align = inner.layout.alignment;

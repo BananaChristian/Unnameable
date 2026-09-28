@@ -636,16 +636,52 @@ fn annotated_pointer_var_accepts_address_of() {
 }
 
 #[test]
-fn reference_annotation_accepts_pointer_value() {
-    // `ref<T>` and `ptr<T>` unify whenever their inner types match, so a raw
-    // pointer value satisfies a `ref<T>` annotation. (The `ptr<isize>` type of
-    // the `@x` operand itself is unchanged -- only the annotation accepts it.)
+fn reference_annotation_accepts_an_address_of() {
+    // A `ref<T>` is created by taking an address, so `var r: ref<isize> = @x;` is
+    // the canonical form and is accepted. (The `ptr<isize>` type of the `@x`
+    // operand itself is unchanged -- only the annotation accepts it.)
     let s = assert_clean(analyze("var x = 5;\nvar r: ref<isize> = @x;", &[]));
     assert_entry(&s, 3, "ref<isize>", 4, 8, 8);
     assert_span(&s, 3, 18, 27);
     assert_entry(&s, 5, "ptr<isize>", 3, 8, 8); // @x stays ptr
     assert_entry(&s, 6, "ref<isize>", 4, 8, 8);
     assert_span(&s, 6, 18, 27);
+}
+
+#[test]
+fn pointer_value_cannot_be_relabelled_as_a_reference() {
+    // The forgery this closes. `ref<T>` is the safe tier -- dereferencing one needs
+    // no `marked` block -- so if a `ptr<T>` value could be relabelled `ref<T>`, the
+    // whole escape hatch would be bypassable by one annotated assignment.
+    //
+    // It used to be possible, via a one-directional `(Ref, Pointer)` arm in
+    // `types_match` that only fired when called in one argument order. That made
+    // the behaviour incoherent: it accepted this and rejected `f(@x)`.
+    assert_errors(
+        analyze(
+            "var x = 5;\nvar p: ptr<isize> = @x;\nvar r: ref<isize> = p;",
+            &[],
+        ),
+        &["Type mismatch between 'ref<isize>' and 'ptr<isize>'"],
+    );
+}
+
+#[test]
+fn address_of_satisfies_a_reference_parameter() {
+    // The legitimate case the old asymmetric arm *rejected*. Passing `@x` straight
+    // to a `ref<T>` parameter is how you call something that borrows a local.
+    assert_clean(analyze(
+        "func use_it(r: ref<i32>): i32 { return ^r; }\nfunc main(): i32 { var x: i32 = 7i32; return use_it(@x); }",
+        &[],
+    ));
+}
+
+#[test]
+fn address_of_satisfies_a_reference_return_type() {
+    assert_clean(analyze(
+        "func mk(): ref<i32> { var x: i32 = 7i32; return @x; }\nfunc main(): i32 { return 0i32; }",
+        &[],
+    ));
 }
 
 #[test]

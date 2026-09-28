@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "Expected type 'ref<i32>' but got 'ptr<i32>'", span: Some(Span { start: 425, end: 436 }), severity: Error, phase: Semantics, hint: None }

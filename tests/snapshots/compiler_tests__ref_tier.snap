@@ -1,0 +1,166 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%P = type { x: i32, y: i32 }
+
+<func0>  $func @by_param( ref %r) {
+bb0:
+    %r.addr = alloca ref , align 8
+    store %r, ptr %r.addr, align 8, ty ref
+    %0 = load ref, ptr %r.addr, align 8
+    %1 = load i32, ptr %0, align 4
+    ret %1
+}
+
+<func1>  $func @make() {
+bb1:
+    %n = alloca i32 , align 4
+    store 11, ptr %n, align 4, ty i32
+    %2 = addr_of %n
+    ret %2
+}
+
+<func2>  $func @struct_field( ref %r) {
+bb2:
+    %r.addr = alloca ref , align 8
+    store %r, ptr %r.addr, align 8, ty ref
+    %3 = load ref, ptr %r.addr, align 8
+    %4 = gep %P, ptr %3, indices [0, 0]
+    %5 = load i32, ptr %4, align 4
+    ret %5
+}
+
+<func3>  $func @foo() {
+bb3:
+    %a = alloca i32 , align 4
+    %20 = $$eval @$$scope_0
+    store %20, ptr %a, align 4, ty i32
+    ret 0
+}
+
+<func4>  $$func @$$scope_0() {
+bb4:
+    %n = alloca i32 $$, align 4
+    store 5, ptr %n, align 4, ty i32
+    %by_ann = alloca i32 $$, align 4
+    %6 = addr_of %n
+    %7 = call @func0(%6)
+    store %7, ptr %by_ann, align 4, ty i32
+    %m = alloca ref $$, align 8
+    %8 = call @func1()
+    store %8, ptr %m, align 8, ty ref
+    %by_ret = alloca i32 $$, align 4
+    %9 = load ref, ptr %m, align 8
+    %10 = load i32, ptr %9, align 4
+    store %10, ptr %by_ret, align 4, ty i32
+    %p = alloca %P $$, align 4
+    %11 = gep %P, ptr %p, indices [0, 0]
+    store 3, ptr %11, align 4, ty i32
+    %12 = gep %P, ptr %p, indices [0, 1]
+    store 4, ptr %12, align 4, ty i32
+    %by_field = alloca i32 $$, align 4
+    %13 = addr_of %p
+    %14 = call @func2(%13)
+    store %14, ptr %by_field, align 4, ty i32
+    %15 = load i32, ptr %by_ann, align 4
+    %16 = load i32, ptr %by_ret, align 4
+    %17 = add %15, %16
+    %18 = load i32, ptr %by_field, align 4
+    %19 = add %17, %18
+    ret %19
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (6):
+--------------------------------------------------
+func @by_param (mode: Read, params: 1, registers: 4)
+--------------------------------------------------
+  [0000] r1 = alloca size: 8, align: 8
+  [0001] store [r1], r0 (ref) (mode: Read)
+  [0002] load r2, [r1] (ref) (mode: Read)
+  [0003] load r3, [r2] (i32) (mode: Read)
+  [0004] return r3
+
+--------------------------------------------------
+func @make (mode: Read, params: 0, registers: 3)
+--------------------------------------------------
+  [0000] r0 = alloca size: 4, align: 4
+  [0001] r1 = 11 (i32)
+  [0002] store [r0], r1 (i32) (mode: Read)
+  [0003] r2 = addr_of r0
+  [0004] return r2
+
+--------------------------------------------------
+func @struct_field (mode: Read, params: 1, registers: 7)
+--------------------------------------------------
+  [0000] r1 = alloca size: 8, align: 8
+  [0001] store [r1], r0 (ref) (mode: Read)
+  [0002] load r2, [r1] (ref) (mode: Read)
+  [0003] r4 = 0 (usize)
+  [0004] r5 = 0 (usize)
+  [0005] r3 = gep r2, [r4, r5] (%P)
+  [0006] load r6, [r3] (i32) (mode: Read)
+  [0007] return r6
+
+--------------------------------------------------
+func @foo (mode: Read, params: 0, registers: 3)
+--------------------------------------------------
+  [0000] r0 = alloca size: 4, align: 4
+  [0001] r1 = $$eval @$$scope_0()
+  [0002] store [r0], r1 (i32) (mode: Read)
+  [0003] r2 = 0 (u32)
+  [0004] return r2
+
+--------------------------------------------------
+func @$$scope_0 (mode: Full, params: 0, registers: 27)
+--------------------------------------------------
+  [0000] r0 = alloca size: 4, align: 4
+  [0001] r1 = 5 (i32)
+  [0002] store [r0], r1 (i32) (mode: Full)
+  [0003] r2 = alloca size: 4, align: 4
+  [0004] r3 = addr_of r0
+  [0005] r4 = call @by_param(r3)
+  [0006] store [r2], r4 (i32) (mode: Full)
+  [0007] r5 = alloca size: 8, align: 8
+  [0008] r6 = call @make()
+  [0009] store [r5], r6 (ref) (mode: Full)
+  [0010] r7 = alloca size: 4, align: 4
+  [0011] load r8, [r5] (ref) (mode: Full)
+  [0012] load r9, [r8] (i32) (mode: Full)
+  [0013] store [r7], r9 (i32) (mode: Full)
+  [0014] r10 = alloca size: 8, align: 4
+  [0015] r12 = 0 (usize)
+  [0016] r13 = 0 (usize)
+  [0017] r11 = gep r10, [r12, r13] (%P)
+  [0018] r14 = 3 (i32)
+  [0019] store [r11], r14 (i32) (mode: Full)
+  [0020] r16 = 0 (usize)
+  [0021] r17 = 1 (usize)
+  [0022] r15 = gep r10, [r16, r17] (%P)
+  [0023] r18 = 4 (i32)
+  [0024] store [r15], r18 (i32) (mode: Full)
+  [0025] r19 = alloca size: 4, align: 4
+  [0026] r20 = addr_of r10
+  [0027] r21 = call @struct_field(r20)
+  [0028] store [r19], r21 (i32) (mode: Full)
+  [0029] load r22, [r2] (i32) (mode: Full)
+  [0030] load r23, [r7] (i32) (mode: Full)
+  [0031] r24 = r22 + r23
+  [0032] load r25, [r19] (i32) (mode: Full)
+  [0033] r26 = r24 + r25
+  [0034] return r26
+
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 1)
+--------------------------------------------------
+  [0000] r0 = $$eval @$$scope_0()
+  [0001] return
+
+==================================================

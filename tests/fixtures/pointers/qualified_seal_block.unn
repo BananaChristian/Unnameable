@@ -1,0 +1,31 @@
+##
+   A qualifier on a `seal` block applies to every member, and a member may carry
+   its own — the same two routes `impl` has.
+
+   This is what makes a seal reachable in the VM. `lower_seals` used to copy
+   `exposed` and `conv` from the block but not `dollar_read`, and `parse_seal`
+   called `parse_func` directly so a member could not be qualified either — so a
+   `$ seal` could not make its functions dollar-callable however it was written,
+   and a seal was native-only. Both are fixed, and the qualifiers merge rather
+   than clobber, so a member's own `$` survives a block that supplies none.
+
+   A seal is a namespace, not a receiver: members are mangled to `{Seal}_{fn}`
+   and take ordinary parameters. Compare `tests/fixtures/methods/`, where the
+   first parameter is a receiver.
+
+   As with `impl`, none of this leaves a trace below the frontend: `$ seal Math {
+   func twice }` produces MIR and bytecode byte-identical to a hand-written
+   `$ func Math_twice`.
+##
+$ seal Math {
+  func twice(v: i32): i32 { return v * 2i32; }
+  func square(v: i32): i32 { return v * v; }
+}
+
+seal Trig {
+  $ func hyp(a: i32, b: i32): i32 { return a + b; }
+}
+
+extern seal Abi {
+  func raw(v: i32): i32 { return v; }
+}

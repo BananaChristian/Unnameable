@@ -1,0 +1,39 @@
+##
+   `ref<T>` is the safe tier: dereferencing one needs no `marked` block, while
+   dereferencing a `ptr<T>` does.
+
+   A reference is *created by taking an address*. `@x` is the only sanctioned
+   way to produce one, and it is accepted anywhere a `ref<T>` is expected -- a
+   `var` annotation, a function parameter, and a return type, all shown here.
+   That consistency used not to exist: a single one-directional arm in
+   `types_match` accepted the `var` and return forms while *rejecting* `f(@x)`.
+
+   Note there is still no auto-deref: `r.x` is refused and you write `^r.x`.
+   Taking a reference does not make the pointer transparent.
+
+   In the MIR a `ref` is its own kind, distinct from `ptr`; in the LLVM IR both
+   are the same `ptr`, because the distinction is a frontend one.
+##
+struct P { x: i32 }
+
+func by_annotation(): i32 {
+  var p: P = .P{.x = 7i32};
+  var r: ref<P> = @p;
+  return ^r.x;
+}
+
+func by_parameter(r: ref<P>): i32 { return ^r.x; }
+
+func by_return(): ref<P> {
+  var p: P = .P{.x = 9i32};
+  return @p;
+}
+
+func passed_directly(): i32 {
+  var p: P = .P{.x = 5i32};
+  return by_parameter(@p);
+}
+
+func round_tripped(): i32 {
+  return ^by_return().x;
+}

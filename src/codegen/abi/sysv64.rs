@@ -1,11 +1,11 @@
 use inkwell::attributes::Attribute;
 use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
-use inkwell::{AddressSpace, types::BasicType};
+use inkwell::{types::BasicType, AddressSpace};
 
 use crate::{
     codegen::{
-        Codegen,
         abi::abi::{ABIContract, CoercedCall, LoweredSig, RetKind},
+        Codegen,
     },
     mir::{FuncSig, MIRTy, MIRTykind, MIRValue},
 };
@@ -47,6 +47,9 @@ impl SysV64 {
             | MIRTykind::I128
             | MIRTykind::U128
             | MIRTykind::Ptr
+            // A `ref<T>` is pointer-sized and passed in a register, exactly
+            // like a `ptr<T>`. The tier is a frontend distinction only.
+            | MIRTykind::Ref
             | MIRTykind::CHAR8
             | MIRTykind::CHAR16
             | MIRTykind::CHAR32 => Class::Integer,

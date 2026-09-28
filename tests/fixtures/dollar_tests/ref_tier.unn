@@ -1,0 +1,41 @@
+##
+   The `ref<T>` tier executing in the VM, which per AGENTS.md 2.10 is where a
+   construct has to work as well as in LLVM.
+
+   The `$` on the callees is what makes this reachable at all: without it
+   `dollar_verifier` correctly refuses a non-dollar call from a dollar scope, and
+   the bytecode builder erases the function. `$` is `MIRDollarMode::ReadOnly`,
+   and a read-only function may still be called from a `Full` (`$$`) scope.
+
+   All three ways of obtaining a reference are exercised, plus a field access
+   through one:
+
+     var r: ref<i32> = @n;   annotation
+     f(@n)                   argument
+     return @n;              return value
+
+   Dereferencing a `ref` needs no `marked` block -- that is the whole value of
+   the tier -- but reaching a *field* through it still does, because there is no
+   auto-deref.
+
+   Declaration order matters here as everywhere: `P` is declared before the
+   functions that name it in a signature.
+##
+struct P { x: i32, y: i32 }
+
+$ func by_param(r: ref<i32>): i32 { return ^r; }
+$ func make(): ref<i32> { var n: i32 = 11i32; return @n; }
+$ func struct_field(r: ref<P>): i32 { return marked { ^r.x }; }
+
+$ func foo(): u32 {
+  var a = $${
+    var n: i32 = 5i32;
+    var by_ann: i32 = by_param(@n);
+    var m = make();
+    var by_ret: i32 = ^m;
+    var p: P = .P{.x = 3i32, .y = 4i32};
+    var by_field: i32 = struct_field(@p);
+    by_ann + by_ret + by_field
+  };
+  return 0u32;
+}

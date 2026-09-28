@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "Type mismatch between 'ref<i32>' and 'ptr<i32>'", span: Some(Span { start: 594, end: 614 }), severity: Error, phase: Semantics, hint: None }

@@ -1,0 +1,18 @@
+##
+   A `ptr<T>` value cannot be relabelled as a `ref<T>`.
+
+   This is the forgery this closes. Because dereferencing a reference needs no
+   `marked` block, a `ptr` that could be relabelled would make the whole escape
+   hatch bypassable by one annotated assignment -- `var r: ref<i32> = p;` and
+   then `^r` with no `marked` anywhere.
+
+   It used to be possible, via a one-directional `(Ref, Pointer)` arm in
+   `types_match`. It was accepted here and, inconsistently, `f(@x)` was
+   rejected. See KNOWN_GAPS.md 4.2.
+##
+expose func run(): i32 {
+  var x: i32 = 7i32;
+  var p: ptr<i32> = @x;
+  var r: ref<i32> = p;
+  return ^r;
+}

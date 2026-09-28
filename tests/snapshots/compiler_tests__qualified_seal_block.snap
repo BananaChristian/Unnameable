@@ -1,0 +1,89 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+<func0>  $func @Math_twice( i32 %v) {
+bb0:
+    %v.addr = alloca i32 , align 4
+    store %v, ptr %v.addr, align 4, ty i32
+    %0 = load i32, ptr %v.addr, align 4
+    %1 = mul %0, 2
+    ret %1
+}
+
+<func1>  $func @Math_square( i32 %v) {
+bb1:
+    %v.addr = alloca i32 , align 4
+    store %v, ptr %v.addr, align 4, ty i32
+    %2 = load i32, ptr %v.addr, align 4
+    %3 = load i32, ptr %v.addr, align 4
+    %4 = mul %2, %3
+    ret %4
+}
+
+<func2>  $func @Trig_hyp( i32 %a,  i32 %b) {
+bb2:
+    %a.addr = alloca i32 , align 4
+    store %a, ptr %a.addr, align 4, ty i32
+    %b.addr = alloca i32 , align 4
+    store %b, ptr %b.addr, align 4, ty i32
+    %5 = load i32, ptr %a.addr, align 4
+    %6 = load i32, ptr %b.addr, align 4
+    %7 = add %5, %6
+    ret %7
+}
+
+<func3> {c} func @Abi_raw( i32 %v) {
+bb3:
+    %v.addr = alloca i32 , align 4
+    store %v, ptr %v.addr, align 4, ty i32
+    %8 = load i32, ptr %v.addr, align 4
+    ret %8
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (4):
+--------------------------------------------------
+func @Math_twice (mode: Read, params: 1, registers: 5)
+--------------------------------------------------
+  [0000] r1 = alloca size: 4, align: 4
+  [0001] store [r1], r0 (i32) (mode: Read)
+  [0002] load r2, [r1] (i32) (mode: Read)
+  [0003] r4 = 2 (i32)
+  [0004] r3 = r2 * r4
+  [0005] return r3
+
+--------------------------------------------------
+func @Math_square (mode: Read, params: 1, registers: 5)
+--------------------------------------------------
+  [0000] r1 = alloca size: 4, align: 4
+  [0001] store [r1], r0 (i32) (mode: Read)
+  [0002] load r2, [r1] (i32) (mode: Read)
+  [0003] load r3, [r1] (i32) (mode: Read)
+  [0004] r4 = r2 * r3
+  [0005] return r4
+
+--------------------------------------------------
+func @Trig_hyp (mode: Read, params: 2, registers: 7)
+--------------------------------------------------
+  [0000] r2 = alloca size: 4, align: 4
+  [0001] store [r2], r0 (i32) (mode: Read)
+  [0002] r3 = alloca size: 4, align: 4
+  [0003] store [r3], r1 (i32) (mode: Read)
+  [0004] load r4, [r2] (i32) (mode: Read)
+  [0005] load r5, [r3] (i32) (mode: Read)
+  [0006] r6 = r4 + r5
+  [0007] return r6
+
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

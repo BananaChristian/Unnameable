@@ -92,6 +92,7 @@ impl Parser {
             | TType::Enum
             | TType::Contract
             | TType::Variant
+            | TType::Impl
             | TType::Seal => self.parse_stmt(false)?,
             _ => {
                 self.report(
@@ -111,6 +112,7 @@ impl Parser {
             | StmtKind::EnumStmt { qualifiers: q, .. }
             | StmtKind::ContractBlock { qualifiers: q, .. }
             | StmtKind::VariantStmt { qualifiers: q, .. }
+            | StmtKind::ImplBlock { qualifiers: q, .. }
             | StmtKind::SealStmt { qualifiers: q, .. } => {
                 q.extend(qualifiers);
             }
@@ -198,7 +200,19 @@ impl Parser {
         while self.current_token()?.token_type != TType::Rbrace
             && self.current_token()?.token_type != TType::End
         {
-            if let Some(stmt) = self.parse_func() {
+            let before = self.current_token()?.span.start;
+            // Members may carry qualifiers, so a single one can be marked
+            // dollar-callable without marking the whole seal.
+            let is_qualified = self
+                .current_token()
+                .map(Qualifier::is_valid)
+                .unwrap_or(false);
+            let parsed = if is_qualified {
+                self.parse_qualified_stmt()
+            } else {
+                self.parse_func()
+            };
+            if let Some(stmt) = parsed {
                 match &stmt.kind {
                     StmtKind::FunctionDef { .. } => {
                         contents.push(stmt);
@@ -210,7 +224,13 @@ impl Parser {
                         );
                     }
                 }
-            } else {
+            } else if self.current_token()?.span.start == before {
+                // No progress: report once and skip so we cannot spin.
+                let token = self.current_token()?.clone();
+                self.report(
+                    "Expected a function definition inside seal".to_string(),
+                    Some(token.span),
+                );
                 self.advance();
             }
         }
@@ -355,7 +375,21 @@ impl Parser {
             && self.current_token()?.token_type != TType::End
         {
             let before = self.current_token()?.span.start;
-            if let Some(stmt) = self.parse_func() {
+            // Members may carry qualifiers, which is how a method is made
+            // reachable from a dollar scope: `$ func get(...)`. Without this,
+            // `impl` members could never be dollar-marked, and a method was
+            // unreachable in the VM (AGENTS.md 2.10) even though the identical
+            // hand-written `$ func Type_get(...)` worked fine.
+            let is_qualified = self
+                .current_token()
+                .map(Qualifier::is_valid)
+                .unwrap_or(false);
+            let parsed = if is_qualified {
+                self.parse_qualified_stmt()
+            } else {
+                self.parse_func()
+            };
+            if let Some(stmt) = parsed {
                 match stmt.kind {
                     StmtKind::FunctionDef { .. } => contents.push(stmt),
                     _ => {

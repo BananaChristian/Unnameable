@@ -1,0 +1,35 @@
+##
+   Methods executing in the VM, which AGENTS.md 2.10 requires of every construct.
+
+   The `$` on each `impl` member is the whole point of this fixture. Without it
+   a method is emitted as a plain `Counter_get` with no dollar marker, and every
+   attempt to call it from a dollar scope fails with "Cannot call a non dollar
+   function" -- so the entire method feature was unreachable in the VM even
+   though the byte-identical hand-written `$ func Counter_get(self: Counter)`
+   worked fine. The `impl` parser did not accept qualifiers on its members; it
+   now does, the same way a top-level `func` does.
+
+   Note the receiver is still an ordinary parameter and `marked` still applies to
+   field access through a reference -- `$` changes who may call a function, not
+   what the function may do.
+##
+contract HasGet { func get(): i32 }
+
+struct Counter: HasGet { n: i32 }
+
+impl Counter {
+  $ func get(self: Counter): i32 { return self.n; }
+  $ func scaled(self: Counter, k: i32): i32 { return self.n * k; }
+}
+
+$ func compute(): i32 {
+  var c: mut Counter = .Counter{.n = 3i32};
+  return c.get() + c.scaled(4i32);
+}
+
+expose func run(): i32 { return compute(); }
+
+$ func foo(): u32 {
+  var a = $${ compute() };
+  return 0u32;
+}

@@ -21,6 +21,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use inkwell::{context::Context, OptimizationLevel};
+mod common;
+
 use unnc::codegen::Codegen;
 use unnc::{
     const_and_mut_validator::Validator, diagnostics::Diagnostics, import::ImportEngine,
@@ -334,5 +336,84 @@ func f(): i32 { var s = Shape.Square(3i32); return s.tag(); }
     assert!(
         ir.contains("call i32 @Shape_tag("),
         "expected a direct call to the variant method, got:\n{ir}"
+    );
+}
+
+#[test]
+fn ref_tier_executes_in_the_vm() {
+    // Per AGENTS.md 2.10: what runs in LLVM must run in the VM. The `$` marker is
+    // what makes this reachable -- without it `dollar_verifier` correctly refuses
+    // a non-dollar call from a dollar scope, and the callee never reaches the VM.
+    //
+    // I previously wrote that ref-typed code could not be verified in the VM. That
+    // was wrong: it needed a `$` on the callees. This test pins the real answer so
+    // nobody re-derives the wrong conclusion.
+    //
+    // Covers all three legitimate creation routes plus a field access through a
+    // reference: annotation, parameter, and return.
+    let src = "\
+struct P { x: i32, y: i32 }
+$ func by_param(r: ref<i32>): i32 { return ^r; }
+$ func make(): ref<i32> { var n: i32 = 11i32; return @n; }
+$ func struct_field(r: ref<P>): i32 { return marked { ^r.x }; }
+$ func foo(): u32 {
+  var a = $${
+    var n: i32 = 5i32;
+    var by_ann: i32 = by_param(@n);
+    var m = make();
+    var by_ret: i32 = ^m;
+    var p: P = .P{.x = 3i32, .y = 4i32};
+    var by_field: i32 = struct_field(@p);
+    by_ann + by_ret + by_field
+  };
+  return 0u32;
+}
+";
+
+    let (mut semantics, diag) = common::analyze(src, &[]);
+    assert!(
+        !semantics.corrupted,
+        "analysis should be clean, got {:?}",
+        common::messages(&diag)
+    );
+
+    let hir = semantics.generate_monormophizer_hir();
+    let hir_index = unnc::indexer::NodeIndex::build(&hir);
+    assert!(
+        !semantics.verify_contracts(&hir_index, common::Rc::clone(&diag))
+            && !semantics.check_control_flow(&hir_index, common::Rc::clone(&diag)),
+        "verification failed: {:?}",
+        common::messages(&diag)
+    );
+
+    let target = TargetSpec::new(None, None, None, None);
+    let mut mir_builder = unnc::mir::MIRBuilder::new(
+        &hir_index,
+        &semantics.ctxt.types,
+        &target,
+        common::Rc::clone(&diag),
+        "test_module".to_string(),
+    );
+    let mir_module = mir_builder.build_module();
+
+    let mut dollar_verifier =
+        unnc::dollar_verifier::DollarVerifier::new(&mir_module, common::Rc::clone(&diag));
+    dollar_verifier.verify();
+    assert!(
+        !dollar_verifier.corrupted,
+        "dollar verifier rejected the $ calls: {:?}",
+        common::messages(&diag)
+    );
+
+    let bytecode =
+        unnc::bc_builder::BytecodeBuilder::new(&mir_module, common::Rc::clone(&diag)).build();
+    let mut vm = unnc::vm::VM::new(&bytecode, common::Rc::clone(&diag));
+    let table = vm.execute();
+
+    // VMValue derives Debug + Clone but not PartialEq, so match on it.
+    let got = table.results.get("$$scope_0");
+    assert!(
+        matches!(got, Some(unnc::vm::VMValue::I32(19))),
+        "expected 5 (by_param) + 11 (returned ref) + 3 (field through ref) = 19, got {got:?}"
     );
 }

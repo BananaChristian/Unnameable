@@ -1,0 +1,11 @@
+##
+   The same forgery through a return type. A function declared `ref<T>` cannot
+   return a `ptr` value; only `return @x;` is accepted.
+
+   This check lives in the control-flow checker rather than the type checker, so
+   it is a different code path with its own argument order -- which is exactly
+   why the old asymmetric arm produced two different answers for the same
+   question.
+##
+func forge(p: ptr<i32>): ref<i32> { return p; }
+expose func run(): i32 { var x: i32 = 7i32; return ^forge(@x); }
