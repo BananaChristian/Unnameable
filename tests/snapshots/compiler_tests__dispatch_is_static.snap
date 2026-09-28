@@ -1,0 +1,57 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Left = type { a: i32 }
+%Right = type { a: i32, b: i32 }
+
+<func0>  func @Left_get( %Left %self) {
+bb0:
+    %self.addr = alloca %Left , align 4
+    store %self, ptr %self.addr, align 4, ty %Left
+    %0 = gep %Left, ptr %self.addr, indices [0, 0]
+    %1 = load i32, ptr %0, align 4
+    ret %1
+}
+
+<func1>  func @Right_get( %Right %self) {
+bb1:
+    %self.addr = alloca %Right , align 4
+    store %self, ptr %self.addr, align 4, ty %Right
+    %2 = gep %Right, ptr %self.addr, indices [0, 1]
+    %3 = load i32, ptr %2, align 4
+    ret %3
+}
+
+<func2>  func @both() {
+bb2:
+    %l = alloca %Left , align 4
+    %4 = gep %Left, ptr %l, indices [0, 0]
+    store 5, ptr %4, align 4, ty i32
+    %r = alloca %Right , align 4
+    %5 = gep %Right, ptr %r, indices [0, 0]
+    store 1, ptr %5, align 4, ty i32
+    %6 = gep %Right, ptr %r, indices [0, 1]
+    store 2, ptr %6, align 4, ty i32
+    %7 = load %Left, ptr %l, align 4
+    %8 = call @func0(%7)
+    %9 = load %Right, ptr %r, align 4
+    %10 = call @func1(%9)
+    %11 = add %8, %10
+    ret %11
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

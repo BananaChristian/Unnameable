@@ -283,6 +283,25 @@ impl AstPrinter {
                     p.with_indent(|p2| p2.fmt_expr(body));
                 });
             }
+            StmtKind::ImplBlock {
+                qualifiers,
+                name,
+                body,
+            } => {
+                let quals = format_qualifiers(qualifiers);
+                self.write_line(&format!("ImplBlock {quals}"));
+                self.with_indent(|p| {
+                    p.write_line("Name:");
+                    p.with_indent(|p2| p2.fmt_expr(name));
+
+                    p.write_line("Body:");
+                    p.with_indent(|p2| {
+                        for stmt in body {
+                            p2.fmt_stmt(stmt);
+                        }
+                    });
+                });
+            }
             StmtKind::ContractBlock {
                 qualifiers,
                 name,

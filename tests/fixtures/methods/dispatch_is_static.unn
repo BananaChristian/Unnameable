@@ -1,0 +1,32 @@
+##
+   Two unrelated types may each declare a method of the same name. The callee is
+   chosen at compile time from the receiver's *declared* type, so `l.get()` and
+   `r.get()` call `Left_get` and `Right_get` respectively, and neither needs a
+   runtime type.
+
+   This is the guard against dynamic dispatch creeping in: there is no vtable,
+   because there is nothing to look one up in. If MIR ever grew a receiver
+   concept, the two `Call` instructions below would stop being plain
+   `FunctionRef` calls.
+
+   The two types deliberately differ in shape. Two *structurally identical*
+   struct declarations currently share a single MIR type -- a pre-existing
+   interning behaviour, unrelated to methods and reproducible with no `impl` at
+   all (see KNOWN_GAPS.md 2.13).
+##
+struct Left { a: i32 }
+struct Right { a: i32, b: i32 }
+
+impl Left {
+  func get(self: Left): i32 { return self.a; }
+}
+
+impl Right {
+  func get(self: Right): i32 { return self.b; }
+}
+
+func both(): i32 {
+  var l = .Left{.a = 5i32};
+  var r = .Right{.a = 1i32, .b = 2i32};
+  return l.get() + r.get();
+}

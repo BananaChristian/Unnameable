@@ -1,0 +1,29 @@
+##
+   A method inside a `generics` block never monomorphizes, and which way it
+   fails depends on how the receiver is spelled.
+
+   This is the quiet one. Written `self: Pair` -- no explicit type arguments --
+   the file compiles clean and no method is produced at all: the MIR contains
+   `%_U_Pair_i32` and `@run`, and nothing named `Pair_get` or
+   `_U_Pair_i32_get`. The monomorphizer skips the generic function rather than
+   failing.
+
+   The first symptom therefore appears at the *call site*, and it is about
+   types, which points at the wrong thing entirely:
+   `Type mismatch between 'Pair<i32>' and 'Pair<T>'`.
+
+   The sibling spelling `self: Pair<T>` fails loudly instead, with
+   `Unhandled type 'T'` from the MIR builder. Both are recorded in
+   KNOWN_GAPS.md 9.5.
+
+   Generic *structs* are fine; only generic methods are affected.
+##
+generics <T> {
+  struct Pair { a: T, b: T }
+  func Pair_get(self: Pair): T { return self.a; }
+}
+
+expose func run(): i32 {
+  var p = .Pair<i32>{.a = 7i32, .b = 8i32};
+  return p.get();
+}

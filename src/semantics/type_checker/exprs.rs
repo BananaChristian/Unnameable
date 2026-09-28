@@ -799,7 +799,7 @@ impl<'a> TypeChecker<'a> {
                     }
                     self.assignment_type(&left_ty, &coerced_right_ty, expr.span.clone())
                 }
-                HirBinaryOp::Access => self.access_type(&left_ty, right),
+                HirBinaryOp::Access => self.access_type(expr.hir_id, &left_ty, right),
                 HirBinaryOp::Shr
                 | HirBinaryOp::Shl
                 | HirBinaryOp::BitAnd
@@ -814,17 +814,200 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn access_type(&mut self, left_ty: &TypeInfo, field_expr: &HirExpr) -> TypeInfo {
+    /// Resolve `recv.method(args)` when `{Type}_{method}` is a declared function.
+    ///
+    /// Returns `None` when the right-hand side is not a call, or when the name is
+    /// not a method of the receiver's nominal type, so ordinary field access and
+    /// function-pointer fields keep their existing behaviour and diagnostics.
+    ///
+    /// The receiver's type is looked through `mut T` (a qualifier, not a distinct
+    /// type) but deliberately *not* through pointers: auto-deref is not a thing
+    /// here, so a method on what a pointer points at is reached with an explicit
+    /// `^`.
+    fn method_call_type(
+        &mut self,
+        access_id: NodeId,
+        left_ty: &TypeInfo,
+        receiver_ty: &TypeInfo,
+        field_expr: &HirExpr,
+    ) -> Option<TypeInfo> {
+        let HirExprKind::Call(callee, args) = &field_expr.kind else {
+            return None;
+        };
+        let HirExprKind::Identifier(method) = &callee.kind else {
+            return None;
+        };
+
+        // Which nominal type names the method. `mut T` is a qualifier, so it is
+        // looked through. A pointer receiver is looked through for the *name*
+        // only -- the pointer itself is still what gets passed as the receiver,
+        // and the method body must still use an explicit `^` (inside `marked`)
+        // to touch a field. This is not the implicit auto-deref this language
+        // rejects for field access: nothing is dereferenced implicitly, only the
+        // method's name is resolved through the pointer.
+        let type_name = match &left_ty.kind {
+            ResolvedTypeKind::Mut { inner } | ResolvedTypeKind::Pointer { inner } => {
+                return self.method_call_type(access_id, inner, receiver_ty, field_expr)
+            }
+            // The mangling convention is `{TypeName}_{fn}` regardless of which
+            // user-defined kind the type is, so structs, variants and enums all
+            // resolve the same way.
+            ResolvedTypeKind::Struct { name, .. }
+            | ResolvedTypeKind::Variant { name, .. }
+            | ResolvedTypeKind::Enum { name, .. } => name.clone(),
+            _ => return None,
+        };
+
+        let mangled = format!("{}_{}", type_name, method);
+        let Some(decl_id) = self.ctxt.methods.fn_decls.get(&mangled).copied() else {
+            return None;
+        };
+
+        // The method is declared, but its signature has not been typed yet: the
+        // checker walks statements in order, and this call appears earlier in the
+        // file than the declaration does. The entry exists but is still `Unit`.
+        // Report *that* rather than falling through to "not a member", which
+        // sends the reader hunting for a missing field or a typo when the real
+        // problem is simply that the impl block is too low in the file.
+        if !matches!(
+            self.ctxt.types.types.get(&decl_id).map(|t| &t.kind),
+            Some(ResolvedTypeKind::Func { .. })
+        ) {
+            self.report(
+                format!(
+                    "'{}' is declared after this use; move its impl block above the call",
+                    mangled
+                ),
+                Some(field_expr.span.clone()),
+            );
+            return Some(self.unknown(field_expr.span.clone()));
+        }
+
+        // A struct with both a field and a method of this name is ambiguous; say
+        // so rather than silently preferring one. Only structs have fields --
+        // a variant's arms and an enum's members are reached through the type
+        // name, not through a receiver, so there is no collision to detect.
+        if let ResolvedTypeKind::Struct { members, .. } = &left_ty.kind {
+            if members.iter().any(|m| &m.0 == method) {
+                self.report(
+                    format!(
+                        "'{}' has both a field and a method named '{}'; the name is ambiguous",
+                        type_name, method
+                    ),
+                    Some(field_expr.span.clone()),
+                );
+                return Some(self.unknown(field_expr.span.clone()));
+            }
+        }
+
+        // The method's own signature, so the call is typed exactly like the
+        // equivalent hand-written `{Type}_{method}(recv, ..)` call.
+        let sig = self.ctxt.types.types.get(&decl_id)?.clone();
+        let ResolvedTypeKind::Func {
+            params, ret_type, ..
+        } = &sig.kind
+        else {
+            return None;
+        };
+
+        // The receiver occupies the method's first parameter; the remaining
+        // parameters line up with the call's own arguments.
+        let Some(recv_param) = params.first() else {
+            self.report(
+                format!("Method '{}' takes no receiver parameter", mangled),
+                Some(field_expr.span.clone()),
+            );
+            return Some(self.unknown(field_expr.span.clone()));
+        };
+        let rest = &params[1..];
+        if args.len() != rest.len() {
+            self.report(
+                format!(
+                    "Invalid argument count for method '{}' expected '{}' but got '{}'",
+                    mangled,
+                    rest.len(),
+                    args.len()
+                ),
+                Some(field_expr.span.clone()),
+            );
+            return Some(self.unknown(field_expr.span.clone()));
+        }
+        for (arg, param_ty) in args.iter().zip(rest.iter()) {
+            self.expr_type(arg);
+            self.coerce_ty(param_ty, arg);
+            let arg_ty = self.expr_type(arg);
+            if !TypeInfo::types_match(&arg_ty, param_ty) {
+                self.type_mismatch(&arg_ty, param_ty, arg.span.clone());
+            }
+        }
+
+        // The receiver occupies the method's first parameter, so it is checked
+        // like any other argument. Without this, `c.set(v)` on a `mut Counter`
+        // would be accepted by a method whose receiver is `ptr<mut Counter>`:
+        // the callee would then dereference a struct where it expected a
+        // pointer, which type-checks fine and segfaults at run time. This is the
+        // difference between `Counter_set(p, v)` and `impl Counter { func set(
+        // self: ptr<mut Counter>, ..) }` called as `c.set(v)`.
+        if !TypeInfo::types_match(receiver_ty, recv_param) {
+            self.type_mismatch(receiver_ty, recv_param, field_expr.span.clone());
+        }
+
+        // Bind the callee identifier to the method's declaration and give it the
+        // method's own signature. The rewriter reuses this exact node as the
+        // callee of the flattened call, so it must already resolve to a function
+        // the MIR builder can find by name.
+        self.ctxt.names.resolved.insert(callee.hir_id, decl_id);
+        self.insert(callee.hir_id, sig.clone());
+
+        // Hand the rewrite to the frontend pass, keyed on the access node so the
+        // pass can find `recv.method(args)` and flatten it into a direct call.
+        self.ctxt.methods.method_calls.insert(access_id, mangled);
+
+        Some(*ret_type.clone())
+    }
+
+    fn access_type(
+        &mut self,
+        access_id: NodeId,
+        left_ty: &TypeInfo,
+        field_expr: &HirExpr,
+    ) -> TypeInfo {
+        // `recv.method(args)` parses with the call absorbed into the access's
+        // right-hand side, so `field_expr` arrives here as `Call(name, args)`.
+        // If the receiver's nominal type declares a `{Type}_{name}` function,
+        // this is a method call: resolve it, type it, and record the mapping so
+        // `method_resolver` can rewrite it into a plain call before MIR. When
+        // the name is not a method we fall through so a genuine bad field access
+        // still gets its existing diagnostic.
+        if let Some(ty) = self.method_call_type(access_id, left_ty, left_ty, field_expr) {
+            return ty;
+        }
+
         // `mut T` is a qualifier, not a distinct type, so member access looks
         // straight through it to the type it wraps.
         if let ResolvedTypeKind::Mut { inner } = &left_ty.kind {
-            return self.access_type(inner, field_expr);
+            return self.access_type(access_id, inner, field_expr);
         }
         match &left_ty.kind {
             ResolvedTypeKind::Struct { name, members, .. }
             | ResolvedTypeKind::Enum { name, members, .. } => {
                 let field_name = match &field_expr.kind {
                     HirExprKind::Identifier(n) => n,
+                    // `recv.typo(...)` reaches here when the name is neither a
+                    // field nor a `{Type}_{name}` method. Report the name the user
+                    // actually wrote rather than complaining about the shape,
+                    // which would send them looking for a syntax problem.
+                    HirExprKind::Call(callee, _) => match &callee.kind {
+                        HirExprKind::Identifier(n) => n,
+                        _ => {
+                            self.report(
+                                "Right-hand side of struct/enum access must be an identifier"
+                                    .into(),
+                                Some(field_expr.span.clone()),
+                            );
+                            return self.unknown(field_expr.span.clone());
+                        }
+                    },
                     _ => {
                         self.report(
                             "Right-hand side of struct/enum access must be an identifier".into(),

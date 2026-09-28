@@ -1,0 +1,33 @@
+##
+   Methods are not struct-only. A variant or enum receiver resolves through the
+   same `{TypeName}_{fn}` convention, so a variant method mangles to
+   `Shape_tag` and an enum method to `Color_code`, exactly as a struct method
+   does. The receiver's nominal type is all that selects the callee.
+
+   Scope note: these bodies deliberately do not read the variant's payload. A
+   variant has positional arms rather than named fields, and reading one
+   (`s.0`) is a separate pre-existing limitation unrelated to methods -- it is
+   rejected as a bad variant access before any method lookup happens.
+##
+variant Shape {
+  Circle(i32)
+  Square(i32)
+}
+
+impl Shape {
+  func tag(self: Shape): i32 { return 1; }
+}
+
+enum Color {
+  RED,
+  BLUE = 100
+}
+
+impl Color {
+  func code(self: Color): i32 { return 7; }
+}
+
+func shape_tag(): i32 {
+  var s = Shape.Square(3i32);
+  return s.tag();
+}

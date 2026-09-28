@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "Type mismatch between 'Pair<i32>' and 'Pair<T>'", span: Some(Span { start: 1026, end: 1032 }), severity: Error, phase: Semantics, hint: None }

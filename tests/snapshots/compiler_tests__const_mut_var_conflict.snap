@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "Variable 'x' cannot be const and mutable at the same time", span: Some(Span { start: 299, end: 317 }), severity: Error, phase: Semantics, hint: None }

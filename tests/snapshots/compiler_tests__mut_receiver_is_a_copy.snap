@@ -1,0 +1,47 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Counter = type { n: i32 }
+
+<func0>  func @Counter_bump( %Counter %self) {
+bb0:
+    %self.addr = alloca %Counter , align 4
+    store %self, ptr %self.addr, align 4, ty %Counter
+    %0 = gep %Counter, ptr %self.addr, indices [0, 0]
+    %1 = gep %Counter, ptr %self.addr, indices [0, 0]
+    %2 = load i32, ptr %1, align 4
+    %3 = add %2, 1
+    store %3, ptr %0, align 4, ty i32
+    %4 = gep %Counter, ptr %self.addr, indices [0, 0]
+    %5 = load i32, ptr %4, align 4
+    ret %5
+}
+
+<func1>  func @bumped_value_only() {
+bb1:
+    %c = alloca %Counter , align 4
+    %6 = gep %Counter, ptr %c, indices [0, 0]
+    store 5, ptr %6, align 4, ty i32
+    %got = alloca i32 , align 4
+    %7 = load %Counter, ptr %c, align 4
+    %8 = call @func0(%7)
+    store %8, ptr %got, align 4, ty i32
+    %9 = load i32, ptr %got, align 4
+    ret %9
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

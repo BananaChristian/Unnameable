@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "Cannot assign through immutable type of variable 's'", span: Some(Span { start: 401, end: 402 }), severity: Error, phase: Semantics, hint: None }

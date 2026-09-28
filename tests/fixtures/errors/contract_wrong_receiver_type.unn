@@ -1,0 +1,15 @@
+##
+   The receiver is the implementer's own first parameter, and it has to be the
+   implementer. A contract on `Point` is not satisfied by a method whose receiver
+   is a different type -- previously it was, and the only symptom was a type
+   mismatch at the call site, far from the actual mistake.
+##
+contract HasGet { func get(): i32 }
+
+struct Other { z: i32 }
+
+struct Point: HasGet { x: i32 }
+
+impl Point {
+  func get(self: Other): i32 { return 1i32; }
+}

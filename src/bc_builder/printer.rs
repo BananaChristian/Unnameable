@@ -104,7 +104,15 @@ impl BytecodePrinter {
         if module.globals.is_empty() {
             let _ = writeln!(out, "  (none)");
         } else {
-            for global in &module.globals {
+            // Print in `GlobalId` order. The vec's own order comes from wherever
+            // the module was assembled and is not stable across runs, so a
+            // snapshot of a module with two or more globals would otherwise
+            // flake on line order alone. Sorting by the allocated id keeps the
+            // output deterministic without changing what is printed.
+            let mut order: Vec<usize> = (0..module.globals.len()).collect();
+            order.sort_by_key(|&i| module.globals[i].id);
+            for i in order {
+                let global = &module.globals[i];
                 let init_str = match &global.init_data {
                     Some(val) => format!(" [init: {}]", val),
                     None => String::new(),

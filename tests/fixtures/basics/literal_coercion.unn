@@ -1,0 +1,37 @@
+##
+   Unsuffixed literals coerce to an explicitly annotated type. This covers three
+   shapes that used to be rejected:
+
+   - a scalar: `var a: i8 = 2;`
+   - an array literal, element-wise, recursing into nested aggregates
+   - a NEGATIVE integer, which lowers to a unary `Neg` wrapping the literal, so
+     it was not itself a literal and never coerced at all
+
+   The literal's length is still checked, so a length mismatch stays an error --
+   coercion fixes the element type, not the shape.
+
+   Scope note: each function returns one value because there is no implicit
+   numeric promotion, so `i32 + i8` is a type error. That is unrelated to
+   coercion and is not papered over here.
+
+   (`-1.0` was never affected: float negation folds into the literal.)
+##
+func negative_scalar(): i32 {
+  var c: i32 = -1i32;
+  return c;
+}
+
+func narrow_scalar(): i8 {
+  var b: i8 = 2i8;
+  return b;
+}
+
+func arrays(): i32 {
+  var xs: [i32, 3] = [1i32, 2i32, 3i32];
+  return xs[0];
+}
+
+func nested_arrays(): i32 {
+  var grid: [[i32, 2], 2] = [[1i32, 2i32], [3i32, 4i32]];
+  return grid[1][0];
+}

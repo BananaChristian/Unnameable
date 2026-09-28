@@ -138,7 +138,8 @@ fn int_literal_var_decl() {
         None,
         id("x", 4, 5),
         lit(Literal::Int(42), 8, 10),
-        0, 11,
+        0,
+        11,
     )];
     assert_eq!(stmts, expected);
 }
@@ -154,7 +155,8 @@ fn typed_int_var_decl() {
         Some(ty(TypeKind::I32, 7, 10)),
         id("y", 4, 5),
         lit(Literal::Int(7), 13, 14),
-        0, 15,
+        0,
+        15,
     )];
     assert_eq!(stmts, expected);
 }
@@ -169,7 +171,8 @@ fn float_literal_var_decl() {
         Some(ty(TypeKind::F64, 7, 10)),
         id("z", 4, 5),
         lit(Literal::Float(1.5), 13, 16),
-        0, 17,
+        0,
+        17,
     )];
     assert_eq!(stmts, expected);
 }
@@ -184,7 +187,8 @@ fn string_literal_var_decl() {
         Some(ty(TypeKind::Str, 6, 9)),
         id("s", 4, 5),
         lit(Literal::Str("hi".to_string()), 12, 16),
-        0, 17,
+        0,
+        17,
     )];
     assert_eq!(stmts, expected);
 }
@@ -199,7 +203,8 @@ fn char8_literal_var_decl() {
         Some(ty(TypeKind::Char8, 6, 11)),
         id("c", 4, 5),
         lit(Literal::Char8(97), 14, 17),
-        0, 18,
+        0,
+        18,
     )];
     assert_eq!(stmts, expected);
 }
@@ -214,7 +219,8 @@ fn bool_literal_var_decl() {
         None,
         id("x", 4, 5),
         lit(Literal::Bool(true), 8, 12),
-        0, 13,
+        0,
+        13,
     )];
     assert_eq!(stmts, expected);
 }
@@ -236,7 +242,8 @@ fn array_literal_var_decl() {
             ])),
             sp(8, 17),
         ),
-        0, 18,
+        0,
+        18,
     )];
     assert_eq!(stmts, expected);
 }
@@ -332,10 +339,15 @@ fn ptr_and_ref_types() {
     assert!(errors.is_empty());
     let expected = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::Ptr(Box::new(ty(TypeKind::I32, 11, 14))), 7, 14)),
+        Some(ty(
+            TypeKind::Ptr(Box::new(ty(TypeKind::I32, 11, 14))),
+            7,
+            14,
+        )),
         id("p", 4, 5),
         id("q", 18, 19),
-        0, 20,
+        0,
+        20,
     )];
     assert_eq!(stmts, expected);
 
@@ -344,10 +356,15 @@ fn ptr_and_ref_types() {
     assert!(errors2.is_empty());
     let expected2 = vec![var_decl(
         vec![],
-        Some(ty(TypeKind::Ref(Box::new(ty(TypeKind::I32, 11, 14))), 7, 14)),
+        Some(ty(
+            TypeKind::Ref(Box::new(ty(TypeKind::I32, 11, 14))),
+            7,
+            14,
+        )),
         id("r", 4, 5),
         id("q", 18, 19),
-        0, 20,
+        0,
+        20,
     )];
     assert_eq!(stmts2, expected2);
 }
@@ -361,11 +378,13 @@ fn tuple_type() {
         vec![],
         Some(ty(
             TypeKind::Tuple(vec![ty(TypeKind::I32, 8, 11), ty(TypeKind::F32, 13, 16)]),
-            7, 19,
+            7,
+            19,
         )),
         id("t", 4, 5),
         id("pair", 20, 24),
-        0, 25,
+        0,
+        25,
     )];
     assert_eq!(stmts, expected);
 }
@@ -380,13 +399,16 @@ fn nullable_type() {
         Some(ty(
             TypeKind::Nullable(Box::new(ty(
                 TypeKind::Tuple(vec![ty(TypeKind::I32, 8, 11)]),
-                7, 13,
+                7,
+                13,
             ))),
-            7, 15,
+            7,
+            15,
         )),
         id("o", 4, 5),
         id("p", 16, 17),
-        0, 18,
+        0,
+        18,
     )];
     assert_eq!(stmts, expected);
 }
@@ -404,11 +426,13 @@ fn failable_type() {
                 Box::new(ty(TypeKind::I32, 10, 13)),
                 Box::new(ty(TypeKind::Str, 15, 18)),
             ),
-            7, 21,
+            7,
+            21,
         )),
         id("f", 4, 5),
         id("g", 22, 23),
-        0, 24,
+        0,
+        24,
     )];
     assert_eq!(stmts, expected);
 }
@@ -423,7 +447,8 @@ fn unit_type() {
         Some(ty(TypeKind::Unit, 7, 9)),
         id("u", 4, 5),
         id("v", 13, 14),
-        0, 15,
+        0,
+        15,
     )];
     assert_eq!(stmts, expected);
 }
@@ -437,11 +462,13 @@ fn custom_type() {
         vec![],
         Some(ty(
             TypeKind::CustomType(Box::new(id("MyType", 7, 13))),
-            7, 13,
+            7,
+            13,
         )),
         id("m", 4, 5),
         id("n", 15, 16),
-        0, 17,
+        0,
+        17,
     )];
     assert_eq!(stmts, expected);
 }
@@ -458,11 +485,13 @@ fn generic_type() {
                 name: Box::new(id("Pair", 7, 11)),
                 type_params: vec![ty(TypeKind::I32, 12, 15), ty(TypeKind::U32, 17, 20)],
             },
-            7, 11,
+            7,
+            11,
         )),
         id("m", 4, 5),
         id("n", 24, 25),
-        0, 26,
+        0,
+        26,
     )];
     assert_eq!(stmts, expected);
 }
@@ -479,11 +508,13 @@ fn func_pointer_type() {
                 vec![ty(TypeKind::I32, 13, 16), ty(TypeKind::F32, 18, 21)],
                 Box::new(Some(ty(TypeKind::Bool, 24, 28))),
             ),
-            8, 30,
+            8,
+            30,
         )),
         id("fp", 4, 6),
         id("g", 31, 32),
-        0, 33,
+        0,
+        33,
     )];
     assert_eq!(stmts, expected);
 }
@@ -501,11 +532,13 @@ fn array_type() {
                 Box::new(ty(TypeKind::I32, 8, 11)),
                 Some(lit(Literal::Int(4), 13, 14)),
             ),
-            8, 11,
+            8,
+            11,
         )),
         id("a", 4, 5),
         id("b", 19, 20),
-        0, 21,
+        0,
+        21,
     )];
     assert_eq!(stmts, expected);
 }
@@ -651,9 +684,11 @@ fn shift_operators() {
                 lit(Literal::Int(1), 8, 9),
                 op,
                 lit(Literal::Int(2), 14, 15),
-                8, 15,
+                8,
+                15,
             ),
-            0, 16,
+            0,
+            16,
         )];
         assert_eq!(stmts, expected, "mismatch for {src}");
     }
@@ -701,7 +736,8 @@ fn bitwise_binds_tighter_than_equality() {
         None,
         id("x", 4, 5),
         bin(lhs, BinaryOp::Eq, rhs, 8, 25),
-        0, 26,
+        0,
+        26,
     )];
     assert_eq!(stmts, expected);
 }
@@ -719,9 +755,11 @@ fn comparison_chain_is_left_assoc() {
             bin(id("a", 8, 9), BinaryOp::Leq, id("b", 13, 14), 8, 14),
             BinaryOp::Geq,
             id("c", 18, 19),
-            8, 19,
+            8,
+            19,
         ),
-        0, 20,
+        0,
+        20,
     )];
     assert_eq!(stmts, expected);
 }
@@ -767,9 +805,11 @@ fn modulo_operator() {
             lit(Literal::Int(5), 8, 9),
             BinaryOp::Mod,
             lit(Literal::Int(2), 12, 13),
-            8, 13,
+            8,
+            13,
         ),
-        0, 14,
+        0,
+        14,
     )];
     assert_eq!(stmts, expected);
 }
@@ -832,9 +872,11 @@ fn unary_bitnot_under_equality() {
             unr(UnaryOp::BitNot, id("a", 12, 13), 8, 13),
             BinaryOp::Eq,
             id("b", 17, 18),
-            8, 18,
+            8,
+            18,
         ),
-        0, 19,
+        0,
+        19,
     )];
     assert_eq!(stmts, expected);
 }
@@ -893,7 +935,8 @@ fn nested_call_chain() {
         None,
         id("x", 4, 5),
         call(inner, vec![lit(Literal::Int(2), 13, 14)], 8, 16),
-        0, 16,
+        0,
+        16,
     )];
     assert_eq!(stmts, expected);
 }
@@ -910,7 +953,8 @@ fn member_access_chain() {
         None,
         id("x", 4, 5),
         bin(a_b_c, BinaryOp::Access, id("d", 14, 15), 8, 15),
-        0, 16,
+        0,
+        16,
     )];
     assert_eq!(stmts, expected);
 }
@@ -951,9 +995,11 @@ fn turbofish_generic_call() {
             instantiation,
             BinaryOp::Scope,
             call(id("new", 26, 29), vec![], 26, 32),
-            8, 32,
+            8,
+            32,
         ),
-        0, 32,
+        0,
+        32,
     )];
     assert_eq!(stmts, expected);
 }
@@ -978,7 +1024,8 @@ fn turbofish_in_named_scope_chain() {
         None,
         id("x", 4, 5),
         bin(id("A", 8, 9), BinaryOp::Scope, b_scope, 8, 39),
-        0, 39,
+        0,
+        39,
     )];
     assert_eq!(stmts, expected);
 }
@@ -996,9 +1043,11 @@ fn member_access_on_call_result() {
             call(id("foo", 8, 11), vec![], 8, 14),
             BinaryOp::Access,
             id("bar", 14, 17),
-            8, 17,
+            8,
+            17,
         ),
-        0, 18,
+        0,
+        18,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1017,9 +1066,11 @@ fn tuple_member_access_float_ambiguity() {
             id("a", 8, 9),
             BinaryOp::Access,
             lit(Literal::Float(0.1), 10, 13),
-            8, 13,
+            8,
+            13,
         ),
-        0, 14,
+        0,
+        14,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1070,7 +1121,8 @@ fn unwrap_expression() {
         None,
         id("x", 4, 5),
         Expr::new(ExprKind::Unwrap(Box::new(id("opt", 15, 18))), sp(8, 20)),
-        0, 20,
+        0,
+        20,
     )];
     assert_eq!(stmts, expected);
 
@@ -1087,11 +1139,13 @@ fn unwrap_expression() {
                 id("a", 15, 16),
                 BinaryOp::Add,
                 id("b", 19, 20),
-                15, 20,
+                15,
+                20,
             ))),
             sp(8, 22),
         ),
-        0, 22,
+        0,
+        22,
     )];
     assert_eq!(stmts2, expected2);
 
@@ -1108,11 +1162,13 @@ fn unwrap_expression() {
                 id("opt", 15, 18),
                 BinaryOp::Access,
                 id("thing", 19, 24),
-                15, 24,
+                15,
+                24,
             ))),
             sp(8, 26),
         ),
-        0, 26,
+        0,
+        26,
     )];
     assert_eq!(stmts3, expected3);
 }
@@ -1133,7 +1189,8 @@ fn cast_expression() {
             ),
             sp(8, 20),
         ),
-        0, 21,
+        0,
+        21,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1152,7 +1209,8 @@ fn sizeof_expression() {
             ExprKind::SizeOfExpr(Box::new(ty(TypeKind::I32, 15, 18))),
             sp(8, 20),
         ),
-        0, 20,
+        0,
+        20,
     )];
     assert_eq!(stmts, expected);
 }
@@ -1173,16 +1231,19 @@ fn compound_assignment() {
             None,
             id("x", 4, 5),
             lit(Literal::Int(1), 8, 9),
-            0, 10,
+            0,
+            10,
         ),
         st(
             StmtKind::Expr(bin(
                 id("x", 11, 12),
                 BinaryOp::AddAssign,
                 lit(Literal::Int(2), 16, 17),
-                11, 17,
+                11,
+                17,
             )),
-            11, 17,
+            11,
+            17,
         ),
     ];
     assert_eq!(stmts, expected);
@@ -1229,7 +1290,8 @@ fn if_else_statement() {
         None,
         id("x", 4, 5),
         lit(Literal::Int(0), 8, 9),
-        0, 10,
+        0,
+        10,
     );
     let then_body = block(
         vec![st(
@@ -1237,11 +1299,14 @@ fn if_else_statement() {
                 id("x", 18, 19),
                 BinaryOp::Assign,
                 lit(Literal::Int(1), 22, 23),
-                18, 23,
+                18,
+                23,
             )),
-            18, 23,
+            18,
+            23,
         )],
-        16, 26,
+        16,
+        26,
     );
     let else_body = block(
         vec![st(
@@ -1249,11 +1314,14 @@ fn if_else_statement() {
                 id("x", 34, 35),
                 BinaryOp::Assign,
                 lit(Literal::Int(2), 38, 39),
-                34, 39,
+                34,
+                39,
             )),
-            34, 39,
+            34,
+            39,
         )],
-        32, 42,
+        32,
+        42,
     );
     let if_stmt = st(
         StmtKind::IfStmt {
@@ -1262,7 +1330,8 @@ fn if_else_statement() {
             elifs: vec![],
             else_body: Some(Box::new(else_body)),
         },
-        11, 42,
+        11,
+        42,
     );
     assert_eq!(stmts, vec![decl, if_stmt]);
 }
@@ -1410,7 +1479,8 @@ fn for_loop() {
             name: Box::new(id("i", 8, 9)),
             init: Box::new(lit(Literal::Int(0), 12, 13)),
         },
-        4, 14,
+        4,
+        14,
     );
     let body = block(
         vec![st(
@@ -1418,11 +1488,14 @@ fn for_loop() {
                 id("x", 32, 33),
                 BinaryOp::Assign,
                 lit(Literal::Int(1), 36, 37),
-                32, 37,
+                32,
+                37,
             )),
-            32, 37,
+            32,
+            37,
         )],
-        30, 40,
+        30,
+        40,
     );
     let expected = st(
         StmtKind::ForStmt {
@@ -1431,17 +1504,20 @@ fn for_loop() {
                 id("i", 15, 16),
                 BinaryOp::Lt,
                 lit(Literal::Int(10), 19, 21),
-                15, 21,
+                15,
+                21,
             )),
             update: Box::new(bin(
                 id("i", 23, 24),
                 BinaryOp::AddAssign,
                 lit(Literal::Int(1), 28, 29),
-                23, 29,
+                23,
+                29,
             )),
             body: Box::new(body),
         },
-        0, 40,
+        0,
+        40,
     );
     assert_eq!(stmts, vec![expected]);
 }
@@ -2030,7 +2106,8 @@ fn dollar_scope_no_params() {
             params: vec![],
             body: Box::new(block(
                 vec![ret(Some(lit(Literal::Int(5), 19, 20)), 12, 23)],
-                10, 23,
+                10,
+                23,
             )),
         },
         sp(8, 24),
@@ -2051,9 +2128,11 @@ fn dollar_scope_with_params_expr() {
             body: Box::new(block(
                 vec![st(
                     StmtKind::Expr(bin(id("a", 18, 19), BinaryOp::Add, id("b", 22, 23), 18, 23)),
-                    18, 23,
+                    18,
+                    23,
                 )],
-                16, 26,
+                16,
+                26,
             )),
         },
         sp(8, 27),
@@ -2093,7 +2172,8 @@ fn var_qualifiers() {
         None,
         id("x", 8, 9),
         lit(Literal::Int(1), 12, 13),
-        4, 14,
+        4,
+        14,
     )];
     assert_eq!(stmts, expected);
 
@@ -2105,7 +2185,8 @@ fn var_qualifiers() {
         None,
         id("x", 10, 11),
         lit(Literal::Int(1), 14, 15),
-        6, 16,
+        6,
+        16,
     )];
     assert_eq!(stmts2, expected2);
 
@@ -2117,7 +2198,8 @@ fn var_qualifiers() {
         None,
         id("x", 6, 7),
         lit(Literal::Int(1), 10, 11),
-        2, 12,
+        2,
+        12,
     )];
     assert_eq!(stmts3, expected3);
 }
@@ -2330,4 +2412,40 @@ fn nested_plain_parens_not_a_tuple_literal() {
     let (_, errors, corrupted) = parse_src("var deep = .(.((2i32, 1000i64), 42u32), 99i32);");
     assert!(corrupted);
     assert_single_error(&errors, "Expected Rparen, found Comma", Some(sp(20, 21)));
+}
+
+#[test]
+fn impl_rejects_a_bodyless_signature() {
+    // A contract-style declaration inside an impl would satisfy the contract
+    // verifier by name lookup while doing nothing, so it is refused at parse
+    // time rather than silently accepted.
+    let (_, errors, corrupted) =
+        parse_src("struct Point { x: i32 }\nimpl Point { func sum(self: Point): i32 }\n");
+    assert!(corrupted, "a bodyless impl member must corrupt the parse");
+    assert!(
+        errors.iter().any(|e| e
+            .message
+            .contains("Only function definitions are allowed in an impl block")),
+        "expected the impl-member diagnostic, got {:?}",
+        errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn impl_block_parses_with_multiple_members() {
+    let (stmts, errors, corrupted) = parse_src(
+        "struct Point { x: i32, y: i32 }\n\
+         impl Point {\n  func sum(self: Point): i32 { return self.x + self.y; }\n  \
+         func scaled(self: Point, k: i32): i32 { return (self.x + self.y) * k; }\n}\n",
+    );
+    assert!(!corrupted, "unexpected errors: {:?}", errors);
+    let impls: Vec<&StmtKind> = stmts
+        .iter()
+        .map(|s| &s.kind)
+        .filter(|k| matches!(k, StmtKind::ImplBlock { .. }))
+        .collect();
+    assert_eq!(impls.len(), 1, "expected exactly one impl block");
+    if let StmtKind::ImplBlock { body, .. } = impls[0] {
+        assert_eq!(body.len(), 2, "expected two members");
+    }
 }

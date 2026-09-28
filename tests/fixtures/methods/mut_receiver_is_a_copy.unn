@@ -1,0 +1,28 @@
+##
+   The trap. `self: mut Counter` reads as though the receiver is mutable, and
+   `mut` on the *type* is what makes `self.n = ...` legal at all -- but structs
+   are passed BY VALUE, so the write lands on a local copy and the caller's
+   object is untouched.
+
+   In the MIR: `Counter_bump` allocates its own `%self.addr` from the
+   by-value parameter and stores into that. Nothing writes back through the
+   caller's slot, so `c.n` is still 5 after the call. `bumped_value_only`
+   returns the method's 6 and discards it.
+
+   To actually mutate the caller you need a pointer receiver -- see
+   pointer_receiver_writes_through.unn.
+##
+struct Counter { n: i32 }
+
+impl Counter {
+  func bump(self: mut Counter): i32 {
+    self.n = self.n + 1i32;
+    return self.n;
+  }
+}
+
+func bumped_value_only(): i32 {
+  var c: mut Counter = .Counter{.n = 5i32};
+  var got = c.bump();
+  return got;
+}

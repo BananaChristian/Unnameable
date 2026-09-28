@@ -1,0 +1,32 @@
+##
+   A method that constructs and returns an aggregate produces garbage. It
+   compiles clean here -- there is no guard -- so this fixture is the only thing
+   standing between the pattern and a wrong answer.
+
+   `make` returns a freshly-constructed literal; the return lowering never loads
+   the aggregate out of its alloca, so the caller receives the address of a dead
+   stack frame. The value read back is nondeterministic: 80, 208, 80 on one
+   machine, 144, 144, 112 on another.
+
+   `twin` returns its *parameter* and is correct on every run, because that path
+   happens to load the aggregate before the frame dies. Do not treat that as a
+   pattern -- the two differ only in where the aggregate came from.
+
+   KNOWN_GAPS.md 9.1 and 2.12.
+##
+struct P { x: i32, y: i32 }
+
+impl P {
+  func make(self: P): P { return .P{.x = self.x, .y = self.y}; }
+  func twin(self: P): P { return self; }
+}
+
+func constructed(): P {
+  var p = .P{.x = 40i32, .y = 2i32};
+  return p.make();
+}
+
+func resident(): P {
+  var p = .P{.x = 40i32, .y = 2i32};
+  return p.twin();
+}

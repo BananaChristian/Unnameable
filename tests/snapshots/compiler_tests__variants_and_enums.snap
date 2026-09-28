@@ -1,0 +1,48 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Shape = type { tag: u8, payload: [4 x u8] }
+
+<func0>  func @Shape_tag( %Shape %self) {
+bb0:
+    %self.addr = alloca %Shape , align 4
+    store %self, ptr %self.addr, align 4, ty %Shape
+    ret 1
+}
+
+<func1>  func @Color_code( u32 %self) {
+bb1:
+    %self.addr = alloca u32 , align 4
+    store %self, ptr %self.addr, align 4, ty u32
+    ret 7
+}
+
+<func2>  func @shape_tag() {
+bb2:
+    %s = alloca %Shape , align 4
+    %0 = gep %Shape, ptr %s, indices [0, 0]
+    store 1, ptr %0, align 1, ty u8
+    %1 = gep %Shape, ptr %s, indices [0, 1]
+    %2 = gep u8, ptr %1, indices [0]
+    %payload_ptr = bitcast %2 to ptr
+    store 3, ptr %payload_ptr, align 4, ty i32
+    %3 = load %Shape, ptr %s, align 4
+    %4 = call @func0(%3)
+    ret %4
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

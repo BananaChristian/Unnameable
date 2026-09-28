@@ -1,6 +1,6 @@
 mod checker;
 mod exprs;
-mod stmts;
 mod registry;
+mod stmts;
 
 pub use checker::TypeChecker;

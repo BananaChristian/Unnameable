@@ -1,3 +1,4 @@
+mod method_resolver;
 mod resolver;
 mod semantics;
 mod type_checker;

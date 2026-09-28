@@ -1,0 +1,57 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Point = type { x: i32, y: i32 }
+
+<func0>  func @Point_sum( %Point %self) {
+bb0:
+    %self.addr = alloca %Point , align 4
+    store %self, ptr %self.addr, align 4, ty %Point
+    %0 = gep %Point, ptr %self.addr, indices [0, 0]
+    %1 = load i32, ptr %0, align 4
+    %2 = gep %Point, ptr %self.addr, indices [0, 1]
+    %3 = load i32, ptr %2, align 4
+    %4 = add %1, %3
+    ret %4
+}
+
+<func1>  func @Point_scaled( %Point %self,  i32 %k) {
+bb1:
+    %self.addr = alloca %Point , align 4
+    store %self, ptr %self.addr, align 4, ty %Point
+    %k.addr = alloca i32 , align 4
+    store %k, ptr %k.addr, align 4, ty i32
+    %5 = gep %Point, ptr %self.addr, indices [0, 0]
+    %6 = load i32, ptr %5, align 4
+    %7 = gep %Point, ptr %self.addr, indices [0, 1]
+    %8 = load i32, ptr %7, align 4
+    %9 = add %6, %8
+    %10 = load i32, ptr %k.addr, align 4
+    %11 = mul %9, %10
+    ret %11
+}
+
+<func2>  func @sum_of( %Point %p) {
+bb2:
+    %p.addr = alloca %Point , align 4
+    store %p, ptr %p.addr, align 4, ty %Point
+    %12 = load %Point, ptr %p.addr, align 4
+    %13 = call @func0(%12)
+    ret %13
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

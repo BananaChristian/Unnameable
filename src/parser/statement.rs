@@ -22,6 +22,7 @@ impl Parser {
             TType::For => self.parse_for(),
             TType::Generics => self.parse_generics(),
             TType::Contract => self.parse_contract(),
+            TType::Impl => self.parse_impl(),
             TType::Enum => self.parse_enum(),
             TType::Variant => self.parse_variant(),
             TType::Return => self.parse_return(),
@@ -329,6 +330,55 @@ impl Parser {
         let end = self.current_token()?.span.end;
         Some(Stmt::new(
             StmtKind::ContractBlock {
+                qualifiers: Vec::new(),
+                name: Box::new(name),
+                body: contents,
+            },
+            Span { start, end },
+        ))
+    }
+
+    /// `impl TypeName { func ... }`
+    ///
+    /// Members are ordinary function *definitions* (bodies required), unlike a
+    /// contract block which only holds signatures. A bare signature with no body
+    /// is rejected here: the contract verifier discovers a missing
+    /// implementation by name, so a bodyless member would silently satisfy it
+    /// while doing nothing.
+    fn parse_impl(&mut self) -> Option<Stmt> {
+        let start = self.current_token()?.span.start;
+        self.expect_token(TType::Impl)?;
+        let name = self.parse_identifier()?;
+        let mut contents = Vec::new();
+        self.expect_token(TType::LBrace)?;
+        while self.current_token()?.token_type != TType::Rbrace
+            && self.current_token()?.token_type != TType::End
+        {
+            let before = self.current_token()?.span.start;
+            if let Some(stmt) = self.parse_func() {
+                match stmt.kind {
+                    StmtKind::FunctionDef { .. } => contents.push(stmt),
+                    _ => {
+                        self.report(
+                            "Only function definitions are allowed in an impl block".to_string(),
+                            Some(stmt.span),
+                        );
+                    }
+                }
+            } else if self.current_token()?.span.start == before {
+                // No progress: report once and skip so we cannot spin.
+                let token = self.current_token()?.clone();
+                self.report(
+                    "Expected a function definition inside impl block".to_string(),
+                    Some(token.span),
+                );
+                self.advance();
+            }
+        }
+        self.expect_token(TType::Rbrace)?;
+        let end = self.current_token()?.span.end;
+        Some(Stmt::new(
+            StmtKind::ImplBlock {
                 qualifiers: Vec::new(),
                 name: Box::new(name),
                 body: contents,

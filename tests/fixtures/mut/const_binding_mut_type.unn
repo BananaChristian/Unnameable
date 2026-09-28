@@ -1,0 +1,23 @@
+##
+   `const` and `mut var` are two qualifiers on the same binding and genuinely
+   contradict each other, so pairing them is rejected. `mut T` is not in that
+   category -- it qualifies the type, not the binding -- so a const binding may
+   name a mutable type. "Constant name, mutable storage."
+
+   The binding stays constant: `x = 2` is refused with a constant-variable
+   error, not a mutability one.
+
+   Scope note: a const binding can only ever hold a scalar, because
+   `is_compile_time_literal` restricts its initializer and every literal except
+   an array or null is a scalar. So there is currently no way to write through a
+   const binding -- the point of the rule is that the type qualifier is no
+   longer reported as if it were a binding qualifier.
+##
+const var x: mut i32 = 1i32;
+const var y: i32 = 1i32;
+
+func read_them(): i32 {
+  var a: i32 = x;
+  var b: i32 = y;
+  return a + b;
+}

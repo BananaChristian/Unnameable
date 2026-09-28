@@ -1,0 +1,13 @@
+##
+   `mut var` permits reassigning the binding, not writing through its type. A
+   field write goes through the type, so this is rejected -- and reported as a
+   write through an immutable type, which is the distinction that tells the user
+   what to change (`mut var s: mut S`, not a different binding-level keyword).
+##
+struct Point { x: i32 }
+
+func bad(): i32 {
+  mut var s = .Point{.x = 1i32};
+  s.x = 5i32;
+  return s.x;
+}

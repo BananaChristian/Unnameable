@@ -8,9 +8,9 @@ use crate::{
     layout::{Layout, LayoutEngine, LayoutError},
     lowering::NodeId,
     semantics::{
-        TypeId,
         semantics::{InstanceKey, ResolvedTypeKind, SemanticCtxt, TypeInfo},
         type_checker::registry::TypeRegistry,
+        TypeId,
     },
     target::TargetSpec,
 };
@@ -564,6 +564,44 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn declare_custom_types(&mut self, stmt: &HirStmt) {
+        // A generic type cannot honour a contract today, and saying so here --
+        // before monomorphization discards the template -- is the only place the
+        // template is still visible. Left unreported, the contract clause is
+        // silently dropped along with the template, and the user is left to infer
+        // the limitation from the absence of an error.
+        //
+        // The underlying reason is that generic methods do not monomorphize: they
+        // reach MIR with an unsubstituted type parameter and ICE. So the
+        // `{Type}_{fn}` implementation the contract verifier would demand on
+        // `_U_Pair_i32` is not something the user can write.
+        match &stmt.kind {
+            HirStmtKind::HirStructDecl {
+                name,
+                contracts,
+                generic_type_params,
+                ..
+            }
+            | HirStmtKind::HirVariantDecl {
+                name,
+                contracts,
+                generic_type_params,
+                ..
+            } => {
+                if !contracts.is_empty() && !generic_type_params.is_empty() {
+                    self.report(
+                        format!(
+                            "'{}' is generic and declares a contract, which is not supported yet: \
+                             generic methods do not monomorphize, so no implementation you can \
+                             write would satisfy it",
+                            name
+                        ),
+                        Some(stmt.span.clone()),
+                    );
+                }
+            }
+            _ => {}
+        }
+
         let ty_kind = match &stmt.kind {
             HirStmtKind::HirStructDecl {
                 name,

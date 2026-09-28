@@ -186,3 +186,39 @@ fn test_all_fixtures() {
         insta::assert_snapshot!(test_name, output);
     }
 }
+
+#[test]
+fn bytecode_output_is_deterministic_for_a_module_with_several_globals() {
+    // Regression, and a flaky-test fix rather than a feature test.
+    //
+    // `BytecodePrinter` walked `module.globals` in whatever order the module was
+    // assembled in, which is not stable across runs. A module with two or more
+    // globals therefore produced snapshot text whose *line order* changed from
+    // run to run, so the fixture suite failed intermittently -- and a test that
+    // fails one run in five is worse than no test, because it trains you to
+    // re-run. No existing fixture had two globals until
+    // `mut/const_binding_mut_type.unn` did, which is what finally exposed it.
+    //
+    // Globals are now printed in `GlobalId` order, so the output depends only on
+    // the ids and not on the vec's provenance. Compiling the same source twice
+    // must now be byte-identical.
+    let source =
+        "const var x: i32 = 1i32;\nconst var y: i32 = 2i32;\nfunc f(): i32 { return x + y; }\n";
+    let first = compile_source_for_test("globals.unn", source);
+    for _ in 0..8 {
+        assert_eq!(
+            first,
+            compile_source_for_test("globals.unn", source),
+            "bytecode output must be deterministic across compilations"
+        );
+    }
+    // Guard against the test passing vacuously: both globals must be printed.
+    assert!(
+        first.contains("\"x\""),
+        "expected global x in bytecode output, got:\n{first}"
+    );
+    assert!(
+        first.contains("\"y\""),
+        "expected global y in bytecode output, got:\n{first}"
+    );
+}

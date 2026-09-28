@@ -1,0 +1,25 @@
+##
+   What the contract system checks about an `impl`, and what it does not.
+
+   CHECKED, each reported by the contract verifier at the struct declaration:
+   - a required method that is not implemented at all
+   - a required method with the wrong number of parameters
+   - a required method with a wrong parameter type or return type
+   - a receiver that is not the implementing type
+
+   NOT CHECKED: the method *body*. A contract is a promise about shape, not
+   behaviour -- `get()` may return 999 instead of reading the field and the
+   verifier is content. If you want behavioural guarantees, that is a different
+   mechanism and this is not it.
+##
+contract HasGet {
+  func get(): i32
+}
+
+struct Point: HasGet {
+  x: i32
+}
+
+impl Point {
+  func get(self: Point): i32 { return 0i32; }
+}

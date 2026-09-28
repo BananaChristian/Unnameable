@@ -1,0 +1,19 @@
+##
+   Declaration order applies to impl blocks exactly as it does to functions: the
+   impl must appear above the call. The checker walks statements in order, so a
+   call earlier in the file finds the method's name but not its signature yet.
+
+   The diagnostic says so explicitly, because the alternative -- "not a member"
+   -- reads like a typo or a missing field and sends you looking in the wrong
+   place entirely.
+##
+struct Point { x: i32 }
+
+expose func run(): i32 {
+  var p = .Point{.x = 1i32};
+  return p.get();
+}
+
+impl Point {
+  func get(self: Point): i32 { return self.x; }
+}

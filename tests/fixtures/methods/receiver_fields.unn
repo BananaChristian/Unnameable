@@ -1,0 +1,13 @@
+##
+   Methods read the receiver's fields. `impl` members lower to ordinary
+   top-level functions named `Point_sum`, so `p.sum()` is exactly the call
+   `Point_sum(p)` -- MIR cannot tell the two apart.
+##
+struct Point { x: i32, y: i32 }
+
+impl Point {
+  func sum(self: Point): i32 { return self.x + self.y; }
+  func scaled(self: Point, k: i32): i32 { return (self.x + self.y) * k; }
+}
+
+func sum_of(p: Point): i32 { return p.sum(); }

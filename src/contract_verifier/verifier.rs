@@ -37,12 +37,17 @@ impl<'a> ContractVerifier<'a> {
             // The verifier runs *after* monomorphization, over the unified
             // tree. Concrete instances (`_U_Pair_i32`) keep their contract
             // usages but with fresh ids the name table never recorded, so the
-            // lookup below misses and the instance is skipped. That is the
-            // intended boundary, not a bug: a generic struct's instance
-            // functions (`_U_Pair_i32_get`, …) have no language-level way to
-            // exist yet, so there is nothing to verify its contracts against.
-            // Only non-generic structs/variants (original ids) reach the
-            // checks below.
+            // lookup below misses. Instances are skipped: a generic struct's
+            // instance functions (`_U_Pair_i32_get`, …) have no language-level
+            // way to exist yet -- generic methods do not monomorphize, they ICE
+            // with an unsubstituted type parameter -- so there is nothing to
+            // verify an instance's contracts against, and demanding one would
+            // demand the user write something they cannot write.
+            //
+            // Skipping the *instance* is right. The *template* is a separate
+            // matter and is reported during type checking, which still runs
+            // before monomorphization drops the template entirely -- see
+            // `TypeChecker::check_struct_decl`.
             let decl_id = match self.ctxt.names.resolved.get(&contract.hir_id) {
                 Some(id) => id,
                 None => continue,
@@ -74,11 +79,30 @@ impl<'a> ContractVerifier<'a> {
     fn verify_statement(&mut self, stmt: &HirStmt) {
         match &stmt.kind {
             HirStmtKind::HirStructDecl {
-                name, contracts, ..
+                name,
+                contracts,
+                generic_type_params,
+                ..
             }
             | HirStmtKind::HirVariantDecl {
-                name, contracts, ..
-            } => self.verify(name, contracts, stmt.span.clone()),
+                name,
+                contracts,
+                generic_type_params,
+                ..
+            } => {
+                if !contracts.is_empty() && !generic_type_params.is_empty() {
+                    self.report(
+                        format!(
+                            "'{}' is generic and declares a contract, which is not supported yet: \
+                             generic methods do not monomorphize, so the contract cannot be \
+                             satisfied by any implementation you can write",
+                            name
+                        ),
+                        Some(stmt.span.clone()),
+                    );
+                }
+                self.verify(name, contracts, stmt.span.clone())
+            }
 
             _ => (),
         }
@@ -192,6 +216,36 @@ impl<'a> ContractVerifier<'a> {
             }),
         ) = (impl_info.map(|i| &i.kind), req_info.map(|i| &i.kind))
         {
+            // The receiver is the implementer's own first parameter. The contract
+            // does not declare a receiver, so there is nothing in it to compare
+            // against -- but the receiver still has to *be* the implementer, or the
+            // promise is not being kept. `impl Point` with
+            // `func get(self: Other)` was accepted before this check, and the
+            // error only surfaced later and elsewhere, as a call-site type
+            // mismatch. The verifier is the pass whose job is to catch a broken
+            // promise, so it is where it belongs.
+            if let Some(recv_ty) = ip.first() {
+                let recv_named = match &recv_ty.kind {
+                    ResolvedTypeKind::Struct { name, .. } => Some(name.as_str()),
+                    ResolvedTypeKind::Mut { inner } => match &inner.kind {
+                        ResolvedTypeKind::Struct { name, .. } => Some(name.as_str()),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                match recv_named {
+                    Some(name) if name == implementer_name => {}
+                    Some(name) => type_errors.push(format!(
+                        "'{}::{}' takes a '{}' receiver but implements contract '{}' for '{}'",
+                        implementer_name, fn_name, name, contract_name, implementer_name
+                    )),
+                    None => type_errors.push(format!(
+                        "'{}::{}' has a receiver that is not the implementing type '{}'",
+                        implementer_name, fn_name, implementer_name
+                    )),
+                }
+            }
+
             // impl params include self at index 0
             for (impl_ty, req_ty) in ip.iter().skip(1).zip(rp.iter()) {
                 if !TypeInfo::types_match(impl_ty, req_ty) {

@@ -101,6 +101,7 @@ pub enum TType {
     Seal,
     Generics,
     Contract,
+    Impl,
     SizeOf,
     Enum,
     Variant,

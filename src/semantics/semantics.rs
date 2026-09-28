@@ -15,7 +15,11 @@ use crate::{
     layout::Layout,
     lowering::NodeId,
     monomorph::Monomorphizer,
-    semantics::{resolver::Resolver, type_checker::TypeChecker},
+    semantics::{
+        method_resolver::{collect_fn_decls, MethodResolver},
+        resolver::Resolver,
+        type_checker::TypeChecker,
+    },
     target::TargetSpec,
 };
 
@@ -452,12 +456,31 @@ pub struct ContractTable {
     pub implementations: HashMap<NodeId, Vec<String>>,
 }
 
+/// Frontend-only bookkeeping for `impl` methods.
+///
+/// `fn_decls` maps every declared function name to its declaration's `NodeId`,
+/// so a `{Type}_{fn}` method is confirmed to exist rather than assumed, and its
+/// signature can be read straight out of the type table. It is built after name
+/// resolution, because the receiver's method name is deliberately never
+/// resolved as an ordinary name.
+///
+/// `method_calls` maps the `hir_id` of a method-call expression to the mangled
+/// free function it resolves to; the pass in `method_resolver` reads it to
+/// rewrite the call. Nothing downstream of that pass is aware that methods
+/// exist.
+#[derive(Debug, Default)]
+pub struct MethodTable {
+    pub fn_decls: HashMap<String, NodeId>,
+    pub method_calls: HashMap<NodeId, String>,
+}
+
 #[derive(Debug)]
 pub struct SemanticCtxt {
     pub names: NameTable,
     pub types: TypesTable,
     pub monomorph_backlog: HashSet<InstanceKey>,
     pub contracts: ContractTable,
+    pub methods: MethodTable,
 }
 
 impl SemanticCtxt {
@@ -473,6 +496,7 @@ impl SemanticCtxt {
             contracts: ContractTable {
                 implementations: HashMap::new(),
             },
+            methods: MethodTable::default(),
         }
     }
 }
@@ -497,6 +521,11 @@ impl<'a> Semantics<'a> {
     fn run_resolver(&mut self, diagnostics: SharedDiagnostics, importer: &ImportEngine) {
         let mut resolver = Resolver::new(diagnostics, importer);
         resolver.run(&self.hir, &mut self.ctxt.names);
+        // Record every declared function name so the type checker can tell a
+        // method call (`{Type}_{fn}`) from a bad field access without guessing.
+        let mut fn_decls = std::mem::take(&mut self.ctxt.methods.fn_decls);
+        collect_fn_decls(&self.hir, &mut fn_decls);
+        self.ctxt.methods.fn_decls = fn_decls;
         if resolver.corrupted {
             self.corrupted = true;
         }
@@ -544,5 +573,17 @@ impl<'a> Semantics<'a> {
     pub fn analyze(&mut self, diagnostics: SharedDiagnostics, importer: &ImportEngine) {
         self.run_resolver(Rc::clone(&diagnostics), importer);
         self.run_type_checker(Rc::clone(&diagnostics), importer);
+        // After type checking (the receiver's resolved type is needed to know
+        // which `{Type}_{fn}` to call) and before monomorphization, so that MIR
+        // is built from an already-rewritten tree in which methods are
+        // indistinguishable from ordinary functions.
+        self.resolve_methods();
+    }
+
+    /// Rewrite `recv.method(args)` into the direct call `Type_method(recv, args)`.
+    /// Frontend-only: nothing downstream is aware that methods exist.
+    fn resolve_methods(&mut self) {
+        let mut resolver = MethodResolver::new(&self.ctxt);
+        resolver.run(&mut self.hir);
     }
 }

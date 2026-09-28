@@ -1,6 +1,6 @@
 use crate::{
     hir::{HirParam, HirStmt, HirStmtKind},
-    semantics::{TypeInfo, type_checker::checker::TypeChecker},
+    semantics::{type_checker::checker::TypeChecker, TypeInfo},
 };
 
 impl<'a> TypeChecker<'a> {

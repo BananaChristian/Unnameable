@@ -1,0 +1,43 @@
+##
+   `mut` means two unrelated things, and conflating them is the classic mistake.
+
+   - `mut var x` marks the BINDING: x itself may be reassigned.
+   - `mut T` marks the TYPE: a write may go THROUGH T -- a field, an element, a
+     dereference.
+
+   So `mut var s: S` alone does not permit `s.f = 1`: the binding is reassignable
+   but the type is not, and that write goes through the type. The const/mut
+   validator reports it as a write through an immutable type rather than as an
+   immutable-variable error, which is the distinction a user needs.
+
+   Meanwhile `var s: mut S` is a constant binding to mutable storage: the
+   binding cannot be reassigned, but `s.f = 1` is legal.
+##
+struct Point { x: i32, y: i32 }
+
+func reassign_binding(): i32 {
+  # mut var: the binding may be reassigned
+  mut var a: i32 = 1i32;
+  a = 2i32;
+  return a;
+}
+
+func reassign_mut_type(): i32 {
+  # mut T: writing the value is a write THROUGH the type
+  var b: mut i32 = 1i32;
+  b = 2i32;
+  return b;
+}
+
+func reassign_struct_binding(): i32 {
+  var s = .Point{.x = 1i32, .y = 2i32};
+  mut var t = s;
+  t = .Point{.x = 3i32, .y = 4i32};
+  return t.x;
+}
+
+func write_through_mut_type(): i32 {
+  var s: mut Point = .Point{.x = 1i32, .y = 2i32};
+  s.x = 9i32;
+  return s.x;
+}

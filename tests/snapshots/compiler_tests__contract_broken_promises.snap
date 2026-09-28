@@ -1,0 +1,27 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Point = type { x: i32 }
+
+<func0>  func @Point_get( %Point %self) {
+bb0:
+    %self.addr = alloca %Point , align 4
+    store %self, ptr %self.addr, align 4, ty %Point
+    ret 0
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

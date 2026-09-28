@@ -1,0 +1,68 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%P = type { x: i32, y: i32 }
+
+<func0>  func @P_make( %P %self) {
+bb0:
+    %self.addr = alloca %P , align 4
+    store %self, ptr %self.addr, align 4, ty %P
+    %0 = alloca %P , align 4
+    %1 = gep %P, ptr %0, indices [0, 0]
+    %2 = gep %P, ptr %self.addr, indices [0, 0]
+    %3 = load i32, ptr %2, align 4
+    store %3, ptr %1, align 4, ty i32
+    %4 = gep %P, ptr %0, indices [0, 1]
+    %5 = gep %P, ptr %self.addr, indices [0, 1]
+    %6 = load i32, ptr %5, align 4
+    store %6, ptr %4, align 4, ty i32
+    ret %0
+}
+
+<func1>  func @P_twin( %P %self) {
+bb1:
+    %self.addr = alloca %P , align 4
+    store %self, ptr %self.addr, align 4, ty %P
+    %7 = load %P, ptr %self.addr, align 4
+    ret %7
+}
+
+<func2>  func @constructed() {
+bb2:
+    %p = alloca %P , align 4
+    %8 = gep %P, ptr %p, indices [0, 0]
+    store 40, ptr %8, align 4, ty i32
+    %9 = gep %P, ptr %p, indices [0, 1]
+    store 2, ptr %9, align 4, ty i32
+    %10 = load %P, ptr %p, align 4
+    %11 = call @func0(%10)
+    ret %11
+}
+
+<func3>  func @resident() {
+bb3:
+    %p = alloca %P , align 4
+    %12 = gep %P, ptr %p, indices [0, 0]
+    store 40, ptr %12, align 4, ty i32
+    %13 = gep %P, ptr %p, indices [0, 1]
+    store 2, ptr %13, align 4, ty i32
+    %14 = load %P, ptr %p, align 4
+    %15 = call @func1(%14)
+    ret %15
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

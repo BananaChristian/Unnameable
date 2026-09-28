@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "'Point' has both a field and a method named 'sum'; the name is ambiguous", span: Some(Span { start: 457, end: 463 }), severity: Error, phase: Semantics, hint: None }

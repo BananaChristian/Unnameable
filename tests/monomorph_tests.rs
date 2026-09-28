@@ -11,7 +11,7 @@ use unnc::dollar_verifier::DollarVerifier;
 use unnc::hir::{HirExpr, HirExprKind, HirStmt, HirStmtKind, HirType};
 use unnc::indexer::NodeIndex;
 use unnc::mir::{
-    ConstantValue, MIRBuilder, MIRInstruction, MIRModule, MIRValue, Terminator,
+    ConstantValue, MIRBuilder, MIRFn, MIRInstruction, MIRModule, MIRValue, Terminator,
 };
 use unnc::target::TargetSpec;
 use unnc::vm::{EvalResultTable, VMValue, VM};
@@ -80,7 +80,11 @@ fn find_decl<'a>(hir: &'a [HirStmt], name: &str) -> &'a HirStmt {
 /// The concrete-args suffix of a single backlog entry (its def-id differs by
 /// node ordering, so assert only the argument type).
 fn single_instance_arg(backlog: &[String]) -> &str {
-    assert_eq!(backlog.len(), 1, "expected exactly one instance in {backlog:?}");
+    assert_eq!(
+        backlog.len(),
+        1,
+        "expected exactly one instance in {backlog:?}"
+    );
     let entry = &backlog[0];
     entry
         .split_once('[')
@@ -148,8 +152,14 @@ fn same_template_two_concrete_types_both_emitted() {
     );
 
     let entries: Vec<&str> = backlog.iter().map(|s| s.as_str()).collect();
-    assert!(entries.iter().any(|s| s.ends_with("[i32]")), "missing i32 in {backlog:?}");
-    assert!(entries.iter().any(|s| s.ends_with("[f64]")), "missing f64 in {backlog:?}");
+    assert!(
+        entries.iter().any(|s| s.ends_with("[i32]")),
+        "missing i32 in {backlog:?}"
+    );
+    assert!(
+        entries.iter().any(|s| s.ends_with("[f64]")),
+        "missing f64 in {backlog:?}"
+    );
 
     find_func(&hir, "_U_identity_i32");
     find_func(&hir, "_U_identity_f64");
@@ -553,11 +563,15 @@ fn end_to_end_generic_functions_build_mir() {
          func main(): i32 { var a = identity::<i32>(5); var b = identity::<f64>(5.0); return 0i32; }\n",
     );
     assert!(
-        mir.functions.iter().any(|(_, f)| f.name == "_U_identity_i32"),
+        mir.functions
+            .iter()
+            .any(|(_, f)| f.name == "_U_identity_i32"),
         "expected _U_identity_i32 in MIR module"
     );
     assert!(
-        mir.functions.iter().any(|(_, f)| f.name == "_U_identity_f64"),
+        mir.functions
+            .iter()
+            .any(|(_, f)| f.name == "_U_identity_f64"),
         "expected _U_identity_f64 in MIR module"
     );
 }
@@ -602,9 +616,7 @@ fn collect_stmt_ids<'a>(stmt: &'a HirStmt, out: &mut Vec<unnc::lowering::NodeId>
     out.push(stmt.hir_id.clone());
     match &stmt.kind {
         HirStmtKind::HirIf {
-            body,
-            else_body,
-            ..
+            body, else_body, ..
         } => {
             for s in body {
                 collect_stmt_ids(s, out);
@@ -673,7 +685,10 @@ fn node_index_round_trips_monomorphized_tree_without_collisions() {
         "node ids in the tree must map 1:1 into the index (fresh-id collisions?)"
     );
     assert_eq!(
-        all_ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        all_ids
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
         all_ids.len(),
         "duplicate statement ids in the monomorphized tree"
     );
@@ -688,7 +703,9 @@ fn node_index_round_trips_monomorphized_tree_without_collisions() {
     let mut fresh_min = usize::MAX;
     for root in &hir {
         let name = match &root.kind {
-            HirStmtKind::HirStructDecl { name, .. } | HirStmtKind::HirFunctionDef { name, .. } => Some(name.clone()),
+            HirStmtKind::HirStructDecl { name, .. } | HirStmtKind::HirFunctionDef { name, .. } => {
+                Some(name.clone())
+            }
             _ => None,
         };
         let id = root.hir_id.local;
@@ -711,9 +728,7 @@ fn assert_stmt_indexed(stmt: &HirStmt, index: &NodeIndex) {
     }
     match &stmt.kind {
         HirStmtKind::HirIf {
-            body,
-            else_body,
-            ..
+            body, else_body, ..
         } => {
             for s in body {
                 assert_stmt_indexed(s, index);
@@ -779,6 +794,45 @@ fn end_to_end_contract_satisfied_by_methods_builds_mir() {
 }
 
 #[test]
+fn method_body_may_reference_self_receiver() {
+    // Regression: the MIR builder used to skip declaring any parameter named
+    // `self`, on the assumption that a method's receiver was bound implicitly at
+    // the call site. With methods expressed as free functions nothing binds it,
+    // so *referencing* `self` in the body ICE'd with
+    // "Could not find variable 'self'".
+    //
+    // The test above could not catch that: its body is `return 42i32`, which
+    // never mentions `self`. This one reads a field off the receiver, which is
+    // what a real method does.
+    let mir = mono_e2e(
+        "struct Point { x: i32, y: i32 }\n\
+         func Point_sum(self: Point): i32 { return self.x + self.y; }\n\
+         func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; return 0i32; }\n",
+    );
+    let point_sum = mir
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "Point_sum")
+        .expect("expected Point_sum in MIR module");
+    let body = point_sum
+        .1
+        .body
+        .as_ref()
+        .expect("Point_sum should have a body");
+    // The receiver's field reads must have lowered to loads off the param's
+    // alloca rather than vanishing.
+    let has_load = body
+        .blocks
+        .values()
+        .flat_map(|b| b.instructions.iter())
+        .any(|i| matches!(i, MIRInstruction::Load { .. }));
+    assert!(
+        has_load,
+        "expected Point_sum to lower self.x/self.y into loads"
+    );
+}
+
+#[test]
 fn contract_missing_implementation_is_reported() {
     let msgs = mono_verify_contracts(
         "contract HasGet { func get(): i32 }\n\
@@ -834,26 +888,45 @@ fn free_function_wearing_method_name_is_reported_not_panicked() {
          func main(): i32 { var p = .Point{.x = 1i32}; return 0i32; }\n",
     );
     assert!(
-        msgs.iter()
-            .any(|m| m.contains("without a 'self' receiver")),
+        msgs.iter().any(|m| m.contains("without a 'self' receiver")),
         "expected receiver report instead of a panic, got {msgs:?}",
     );
 }
 
 #[test]
-fn generic_struct_instance_with_contract_is_skipped_not_reported() {
-    // Contract-verification boundary for monomorphized generic instances:
-    // `_U_Pair_i32` carries contract usages with fresh ids the name table
-    // never sees, so the verifier skips it. There is no way to write the
-    // `_U_Pair_i32_get` impl it would otherwise demand (generic methods don't
-    // exist), so clean here is the guarantee: the instance duplicate must
-    // never turn into a false 'missing implementation' error.
-    let msgs = mono_verify_contracts(
+fn generic_struct_declaring_a_contract_is_reported_not_silently_dropped() {
+    // A generic struct cannot honour a contract today, and the reason is
+    // concrete rather than incidental: generic methods do not monomorphize, so
+    // they reach MIR with an unsubstituted type parameter and ICE. The
+    // `{Type}_{fn}` implementation the verifier would demand on `_U_Pair_i32` is
+    // therefore not something the user can write.
+    //
+    // Skipping the monomorphized *instance* is still correct -- it must never
+    // turn into a false 'missing implementation'. But the *template* is where the
+    // clause was written, and monomorphization discards the template entirely,
+    // so if nothing reports it the contract clause vanishes with no diagnostic at
+    // all. The check therefore lives in type checking, which runs before
+    // monomorphization, and this test pins that it fires.
+    let (mut semantics, diag) = analyze(
         "contract HasGet { func get(): i32 }\n\
          generics <T> { struct Pair: HasGet { a: T, b: T } }\n\
          func main(): i32 { var pr = .Pair<i32>{.a = 1i32, .b = 2i32}; var g = pr.b; return g; }\n",
+        &[],
     );
-    assert!(msgs.is_empty(), "expected no reports, got {msgs:?}");
+    let msgs = common::messages(&diag);
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("'Pair' is generic and declares a contract")),
+        "expected the unsupported-generic-contract report, got {msgs:?}",
+    );
+    // And the instance still must not produce a bogus missing-implementation.
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| m.contains("missing implementation of 'get'")),
+        "instance must not be reported as missing an implementation, got {msgs:?}",
+    );
+    let _ = semantics.generate_monormophizer_hir();
 }
 
 /// Runs analyze → monomorphize → index → serialize and returns the exported
@@ -868,7 +941,8 @@ fn serialize_stub(src: &str) -> unnc::serializer::ExportStub {
     }
     let monomorphized_hir = semantics.generate_monormophizer_hir();
     let hir_index = NodeIndex::build(&monomorphized_hir);
-    unnc::serializer::Serializer::new("foo".to_string(), &semantics.ctxt, &hir_index, diag).serialize()
+    unnc::serializer::Serializer::new("foo".to_string(), &semantics.ctxt, &hir_index, diag)
+        .serialize()
 }
 
 #[test]
@@ -886,14 +960,25 @@ fn exposed_generic_instances_serialize_as_concrete_symbols() {
     let func = stub
         .exposed_symbols
         .get("foo__U_identity_i32")
-        .unwrap_or_else(|| panic!("missing foo__U_identity_i32 in {:?}", stub.exposed_symbols.keys().collect::<Vec<_>>()));
+        .unwrap_or_else(|| {
+            panic!(
+                "missing foo__U_identity_i32 in {:?}",
+                stub.exposed_symbols.keys().collect::<Vec<_>>()
+            )
+        });
     match &func.kind {
         unnc::semantics::ResolvedTypeKind::Func {
             params, ret_type, ..
         } => {
             assert_eq!(params.len(), 1);
-            assert!(matches!(params[0].kind, unnc::semantics::ResolvedTypeKind::I32));
-            assert!(matches!(ret_type.kind, unnc::semantics::ResolvedTypeKind::I32));
+            assert!(matches!(
+                params[0].kind,
+                unnc::semantics::ResolvedTypeKind::I32
+            ));
+            assert!(matches!(
+                ret_type.kind,
+                unnc::semantics::ResolvedTypeKind::I32
+            ));
         }
         other => panic!("expected func instance, got {other:?}"),
     }
@@ -901,7 +986,12 @@ fn exposed_generic_instances_serialize_as_concrete_symbols() {
     let st = stub
         .exposed_symbols
         .get("foo__U_Pair_i32")
-        .unwrap_or_else(|| panic!("missing foo__U_Pair_i32 in {:?}", stub.exposed_symbols.keys().collect::<Vec<_>>()));
+        .unwrap_or_else(|| {
+            panic!(
+                "missing foo__U_Pair_i32 in {:?}",
+                stub.exposed_symbols.keys().collect::<Vec<_>>()
+            )
+        });
     match &st.kind {
         unnc::semantics::ResolvedTypeKind::Struct {
             name,
@@ -935,7 +1025,11 @@ fn uninstantiated_exposed_template_exports_nothing() {
         "generics <T> { expose func identity(v: T): T { return v; } }\n\
          func main(): i32 { return 0i32; }\n",
     );
-    assert!(stub.exposed_symbols.is_empty(), "{:?}", stub.exposed_symbols);
+    assert!(
+        stub.exposed_symbols.is_empty(),
+        "{:?}",
+        stub.exposed_symbols
+    );
 }
 
 fn constant_to_i128(c: &ConstantValue) -> i128 {
@@ -992,7 +1086,10 @@ fn end_to_end_scalar_match_builds_mir_with_arm_checks() {
     assert_eq!(cmp_constants(f), vec![0, 5]);
     // match + wildcard arm + unreachable block + merge, all distinct
     let body = f.body.as_ref().unwrap();
-    assert!(body.blocks.len() >= 10, "match should emit test/entry/body blocks");
+    assert!(
+        body.blocks.len() >= 10,
+        "match should emit test/entry/body blocks"
+    );
 }
 
 #[test]
@@ -1178,7 +1275,12 @@ fn implicit_tail_return_builds_return_terminator() {
         .find(|(_, f)| f.name == "add")
         .expect("add should reach MIR");
     let body = f.body.as_ref().unwrap();
-    let terminator = body.blocks.get(&body.entry_block).unwrap().terminator.clone();
+    let terminator = body
+        .blocks
+        .get(&body.entry_block)
+        .unwrap()
+        .terminator
+        .clone();
     assert!(
         matches!(terminator, Terminator::Return(Some(_))),
         "implicit tail-return should produce Return(Some(_)), got {terminator:?}"
@@ -1207,9 +1309,125 @@ fn block_tail_is_the_value_semicolon_expr_is_unit() {
             .any(|i| matches!(i, MIRInstruction::Store { .. })),
         "block tail value must be stored into v"
     );
-    let terminator = body.blocks.get(&body.entry_block).unwrap().terminator.clone();
+    let terminator = body
+        .blocks
+        .get(&body.entry_block)
+        .unwrap()
+        .terminator
+        .clone();
     assert!(
         matches!(terminator, Terminator::Return(Some(_))),
         "main must tail-return v, got {terminator:?}"
+    );
+}
+
+#[test]
+fn impl_and_dot_call_lower_to_an_ordinary_mangled_function() {
+    // The load-bearing property of the whole feature: `impl` + `.` are frontend
+    // sugar. By the time MIR is built, `p.scaled(2)` must be indistinguishable
+    // from a hand-written call to `Point_scaled(p, 2)`, with `self` an ordinary
+    // parameter. If MIR ever grows a notion of a receiver or a vtable, this test
+    // is what should fail.
+    let via_sugar = mono_e2e(
+        "struct Point { x: i32, y: i32 }\n\
+         impl Point { func scaled(self: Point, k: i32): i32 { return (self.x + self.y) * k; } }\n\
+         func main(): i32 { var p = .Point{.x = 3i32, .y = 4i32}; return p.scaled(2i32); }\n",
+    );
+    let by_hand = mono_e2e(
+        "struct Point { x: i32, y: i32 }\n\
+         func Point_scaled(self: Point, k: i32): i32 { return (self.x + self.y) * k; }\n\
+         func main(): i32 { var p = .Point{.x = 3i32, .y = 4i32}; return Point_scaled(p, 2i32); }\n",
+    );
+
+    let strip = |m: &MIRModule| {
+        // Sorted by name: the module stores functions in a hash map, so iteration
+        // order is not stable between two separately-built modules and would
+        // otherwise show up as a spurious difference.
+        let mut funcs: Vec<&MIRFn> = m.functions.values().collect();
+        funcs.sort_by(|a, b| a.name.cmp(&b.name));
+        let mut out = String::new();
+        for f in funcs {
+            out.push_str(&f.name);
+            out.push('\n');
+            if let Some(body) = &f.body {
+                for (_, b) in body.blocks.iter() {
+                    for i in b.instructions.iter() {
+                        out.push_str(&format!("{i:?}\n"));
+                    }
+                }
+            }
+        }
+        out
+    };
+
+    assert_eq!(
+        strip(&via_sugar),
+        strip(&by_hand),
+        "impl + `.` must lower to the same MIR as the hand-written mangled call"
+    );
+
+    // And the receiver is an ordinary parameter, named `self`, with a normal
+    // alloca -- no receiver metadata of any kind.
+    let scaled = via_sugar
+        .functions
+        .iter()
+        .find(|(_, f)| f.name == "Point_scaled")
+        .expect("expected Point_scaled");
+    assert!(
+        scaled.1.params.iter().any(|p| p.name == "self"),
+        "receiver should be a normal parameter named self, got {:?}",
+        scaled.1.params
+    );
+}
+
+#[test]
+fn contract_receiver_must_be_the_implementing_type() {
+    // The receiver is the implementer's own first parameter. The contract does
+    // not declare one, so there was nothing to compare it against and the check
+    // was simply absent -- `impl Point` was satisfied by
+    // `func get(self: Other)`. The verifier is the pass whose job is catching a
+    // broken promise, so this belongs here rather than surfacing later as a
+    // call-site type mismatch far from the mistake.
+    let msgs = mono_verify_contracts(
+        "contract HasGet { func get(): i32 }\n\
+         struct Other { z: i32 }\n\
+         struct Point: HasGet { x: i32 }\n\
+         impl Point { func get(self: Other): i32 { return 1i32; } }\n\
+         func main(): i32 { var p = .Point{.x = 1i32}; return 0i32; }\n",
+    );
+    assert!(
+        msgs.iter().any(|m| m.contains("takes a 'Other' receiver")),
+        "expected a receiver-type report, got {msgs:?}",
+    );
+}
+
+#[test]
+fn contract_accepts_a_mut_qualified_receiver_of_the_implementing_type() {
+    // `mut T` is a qualifier, not a distinct type, so `self: mut Point` is still
+    // a `Point` receiver and must satisfy a contract declared on `Point`.
+    let msgs = mono_verify_contracts(
+        "contract HasGet { func get(): i32 }\n\
+         struct Point: HasGet { x: i32 }\n\
+         impl Point { func get(self: mut Point): i32 { return self.x; } }\n\
+         func main(): i32 { var p = .Point{.x = 1i32}; return 0i32; }\n",
+    );
+    assert!(msgs.is_empty(), "expected no reports, got {msgs:?}");
+}
+
+#[test]
+fn contract_is_not_satisfied_by_a_signature_only_declaration() {
+    // A bodyless declaration wears the right name but does nothing, so it must
+    // not count as an implementation. The parser already refuses one inside an
+    // `impl` block; this pins the hand-written equivalent too.
+    let msgs = mono_verify_contracts(
+        "contract HasGet { func get(): i32 }\n\
+         struct Point: HasGet { x: i32 }\n\
+         func Point_get(self: Point): i32\n\
+         func main(): i32 { var p = .Point{.x = 1i32}; return 0i32; }\n",
+    );
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("missing implementation of 'get'")),
+        "a bodyless declaration must not satisfy a contract, got {msgs:?}",
     );
 }

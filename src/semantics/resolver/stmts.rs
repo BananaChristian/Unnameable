@@ -1,7 +1,7 @@
 use crate::{
     hir::{HirStmt, HirStmtKind, HirType},
     semantics::{
-        resolver::{Resolver, resolver::SymbolKind},
+        resolver::{resolver::SymbolKind, Resolver},
         semantics::NameTable,
     },
 };
@@ -20,7 +20,9 @@ impl<'a> Resolver<'a> {
             HirStmtKind::HirContractDecl { .. } => self.resolve_contract(stmt, table),
             HirStmtKind::HirReturn(..) => self.resolve_return(stmt, table),
             HirStmtKind::HirAlias { .. } => self.resolve_alias(stmt, table),
-            HirStmtKind::HirExpr(_) | HirStmtKind::HirTailExpr(_) => self.resolve_expr_stmt(stmt, table),
+            HirStmtKind::HirExpr(_) | HirStmtKind::HirTailExpr(_) => {
+                self.resolve_expr_stmt(stmt, table)
+            }
             _ => (),
         }
     }
@@ -73,11 +75,7 @@ impl<'a> Resolver<'a> {
             }
             for param in params {
                 self.resolve_type(&param.ty, table);
-                self.declare(
-                    param.name.clone(),
-                    param.hir_id,
-                    param.span.clone(),
-                );
+                self.declare(param.name.clone(), param.hir_id, param.span.clone());
                 if let Some(def) = &param.default {
                     self.resolve_expr(def, table);
                 }
@@ -97,30 +95,18 @@ impl<'a> Resolver<'a> {
             ..
         } = &stmt.kind
         {
-            self.declare(
-                name.clone(),
-                stmt.hir_id,
-                stmt.span.clone(),
-            );
+            self.declare(name.clone(), stmt.hir_id, stmt.span.clone());
             self.resolve_name(name, stmt.hir_id, stmt.span.clone(), table);
 
             self.push_scope();
             for gen_ty_param in generic_type_params {
                 if let HirType::CustomType(na) = &gen_ty_param.kind {
-                    self.declare(
-                        na.clone(),
-                        gen_ty_param.hir_id,
-                        gen_ty_param.span.clone(),
-                    );
+                    self.declare(na.clone(), gen_ty_param.hir_id, gen_ty_param.span.clone());
                 }
             }
             for param in params {
                 self.resolve_type(&param.ty, table);
-                self.declare(
-                    param.name.clone(),
-                    param.hir_id,
-                    param.span.clone(),
-                );
+                self.declare(param.name.clone(), param.hir_id, param.span.clone());
                 if let Some(def) = &param.default {
                     self.resolve_expr(def, table);
                 }

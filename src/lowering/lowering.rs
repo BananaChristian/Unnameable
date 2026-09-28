@@ -48,6 +48,7 @@ impl Lowering {
             match &stmt.kind {
                 StmtKind::SealStmt { .. }
                 | StmtKind::GenericBlock { .. }
+                | StmtKind::ImplBlock { .. }
                 | StmtKind::ForStmt { .. }
                 | StmtKind::EachStmt { .. } => {
                     if let Some(hir_stmts) = self.lower_constructs(&stmt) {

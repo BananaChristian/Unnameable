@@ -258,10 +258,7 @@ fn variant_layout_is_tag_plus_max_payload() {
 // arrays, tuples, sizeof
 #[test]
 fn array_literal_infers_inner_from_unsuffixed_ints() {
-    let s = assert_clean(analyze(
-        "var l3 = [1, 2, 3];\nvar e3 = sizeof<isize>;",
-        &[],
-    ));
+    let s = assert_clean(analyze("var l3 = [1, 2, 3];\nvar e3 = sizeof<isize>;", &[]));
     assert_entry(&s, 3, "[isize,3]", 3, 24, 8);
     assert_span(&s, 3, 9, 18);
     // sizeof yields usize
@@ -653,7 +650,10 @@ fn reference_annotation_accepts_pointer_value() {
 
 #[test]
 fn pointer_chain_address_of_then_deref() {
-    let s = assert_clean(analyze("var x = 5;\nvar p = @x;\nvar v = marked { ^p };", &[]));
+    let s = assert_clean(analyze(
+        "var x = 5;\nvar p = @x;\nvar v = marked { ^p };",
+        &[],
+    ));
     assert_entry(&s, 0, "isize", 2, 8, 8);
     assert_entry(&s, 3, "ptr<isize>", 3, 8, 8);
     assert_entry(&s, 6, "isize", 2, 8, 8); // ^p deref result
@@ -1142,10 +1142,7 @@ fn bitnot_on_bool_reports_error() {
 
 #[test]
 fn prefix_increment_decrement_keep_type() {
-    let s = assert_clean(analyze(
-        "mut var x = 5;\nvar a = ++x;\nvar b = --x;",
-        &[],
-    ));
+    let s = assert_clean(analyze("mut var x = 5;\nvar a = ++x;\nvar b = --x;", &[]));
     assert_entry(&s, 3, "isize", 2, 8, 8); // ++x
     assert_entry(&s, 6, "isize", 2, 8, 8); // --x
 }
@@ -1161,10 +1158,7 @@ fn prefix_increment_on_non_numeric_reports_error() {
 
 #[test]
 fn postfix_increment_decrement_keep_type() {
-    let s = assert_clean(analyze(
-        "mut var x = 5;\nvar a = x++;\nvar b = x--;",
-        &[],
-    ));
+    let s = assert_clean(analyze("mut var x = 5;\nvar a = x++;\nvar b = x--;", &[]));
     assert_entry(&s, 3, "isize", 2, 8, 8); // x++
     assert_entry(&s, 6, "isize", 2, 8, 8); // x--
 }
@@ -1550,4 +1544,195 @@ fn mut_type_of_wrong_inner_type_still_reports_mismatch() {
         analyze("var x: mut i32 = true;", &[]),
         &["Type mismatch between 'mut i32' and 'bool'"],
     );
+}
+
+// ---------------------------------------------------------------------------
+// `impl` blocks and `.` method calls.
+//
+// An `impl` block is pure surface syntax: each member lowers to an ordinary
+// top-level function named `{Type}_{fn}` taking the receiver as a normal first
+// parameter, and `recv.method(args)` is rewritten into a direct call to that
+// function. Dispatch is therefore static by construction -- there is no runtime
+// type and nothing consulted at the call site.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn impl_block_mangles_member_to_type_prefixed_function() {
+    let s = assert_clean(analyze(
+        "struct Point { x: i32, y: i32 }\n\
+         impl Point {\n  func sum(self: Point): i32 { return self.x + self.y; }\n}\n",
+        &[],
+    ));
+    let names: Vec<String> = s.ctxt.methods.fn_decls.keys().cloned().collect();
+    assert!(
+        names.contains(&"Point_sum".to_string()),
+        "expected Point_sum in the declared function set, got {names:?}"
+    );
+}
+
+#[test]
+fn method_call_on_concrete_receiver_type_checks() {
+    assert_clean(analyze(
+        "struct Point { x: i32, y: i32 }\n\
+         impl Point { func sum(self: Point): i32 { return self.x + self.y; } }\n\
+         func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; return p.sum(); }\n",
+        &[],
+    ));
+}
+
+#[test]
+fn method_call_with_arguments_type_checks() {
+    assert_clean(analyze(
+        "struct Point { x: i32, y: i32 }\n\
+         impl Point { func scaled(self: Point, k: i32): i32 { return (self.x + self.y) * k; } }\n\
+         func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; return p.scaled(3i32); }\n",
+        &[],
+    ));
+}
+
+#[test]
+fn method_call_on_mut_qualified_receiver_type_checks() {
+    // `var p: mut Point` is the same nominal type; `mut` is a qualifier.
+    assert_clean(analyze(
+        "struct Point { x: i32, y: i32 }\n\
+         impl Point { func sum(self: Point): i32 { return self.x + self.y; } }\n\
+         func main(): i32 { var p: mut Point = .Point{.x = 1i32, .y = 2i32}; return p.sum(); }\n",
+        &[],
+    ));
+}
+
+#[test]
+fn method_call_wrong_argument_count_is_reported() {
+    assert_errors(
+        analyze(
+            "struct Point { x: i32, y: i32 }\n\
+             impl Point { func scaled(self: Point, k: i32): i32 { return k; } }\n\
+             func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; return p.scaled(); }\n",
+            &[],
+        ),
+        &["Invalid argument count for method 'Point_scaled' expected '1' but got '0'"],
+    );
+}
+
+#[test]
+fn method_call_unknown_method_is_reported_as_bad_member() {
+    // Not a field and not a method: the existing bad-member diagnostic stands,
+    // so a typo does not get a misleading "no such method" message.
+    assert_errors(
+        analyze(
+            "struct Point { x: i32, y: i32 }\n\
+             impl Point { func sum(self: Point): i32 { return self.x; } }\n\
+             func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; return p.summ(); }\n",
+            &[],
+        ),
+        &["'summ' is not a member of 'Point'"],
+    );
+}
+
+#[test]
+fn method_name_colliding_with_a_field_is_reported() {
+    // Declared-time ambiguity rather than a silent precedence rule.
+    assert_errors(
+        analyze(
+            "struct Point { sum: i32, x: i32 }\n\
+             impl Point { func sum(self: Point): i32 { return self.x; } }\n\
+             func main(): i32 { var p = .Point{.sum = 1i32, .x = 2i32}; return p.sum(); }\n",
+            &[],
+        ),
+        &["'Point' has both a field and a method named 'sum'; the name is ambiguous"],
+    );
+}
+
+#[test]
+fn field_access_is_unaffected_by_impl_blocks() {
+    assert_clean(analyze(
+        "struct Point { x: i32, y: i32 }\n\
+         impl Point { func sum(self: Point): i32 { return self.x + self.y; } }\n\
+         func main(): i32 { var p = .Point{.x = 1i32, .y = 2i32}; var f = p.x; return f; }\n",
+        &[],
+    ));
+}
+
+#[test]
+fn impl_satisfies_a_contract() {
+    // The contract verifier resolves implementations by the same
+    // `{Type}_{fn}` convention `impl` emits, so it needs no knowledge of
+    // `impl` at all.
+    let (mut semantics, diag) = analyze(
+        "contract HasGet { func get(): i32 }\n\
+         struct Point: HasGet { x: i32 }\n\
+         impl Point { func get(self: Point): i32 { return self.x; } }\n",
+        &[],
+    );
+    assert!(!semantics.corrupted, "unexpected: {:?}", messages(&diag));
+    let hir = semantics.generate_monormophizer_hir();
+    let index = unnc::indexer::NodeIndex::build(&hir);
+    assert!(
+        !semantics.verify_contracts(&index, Rc::clone(&diag)),
+        "contract should be satisfied: {:?}",
+        messages(&diag)
+    );
+}
+
+#[test]
+fn method_receiver_must_match_the_receivers_declared_type() {
+    // Regression, and a soundness one. The receiver occupies the method's
+    // first parameter, so it is checked like any other argument. This was
+    // initially left unchecked, which let `c.set(v)` -- `c` being a `mut
+    // Counter` -- satisfy a method declared `func set(self: ptr<mut Counter>,
+    // ..)`. That type-checks and then segfaults, because the callee
+    // dereferences a struct where it expected a pointer.
+    //
+    // It is a bug specific to methods: the equivalent free-function call
+    // `Counter_set(p, v)` was always checked, because there the receiver is
+    // just the first argument.
+    assert_errors(
+        analyze(
+            "struct Counter { n: i32 }\n\
+             impl Counter { func set(self: ptr<mut Counter>, v: i32): i32 { return v; } }\n\
+             func main(): i32 { var c: mut Counter = .Counter{.n = 1i32}; return c.set(7i32); }\n",
+            &[],
+        ),
+        &["Type mismatch between 'mut Counter' and 'ptr<mut Counter>'"],
+    );
+}
+
+#[test]
+fn pointer_receiver_method_accepts_a_pointer_receiver() {
+    // The positive counterpart: the receiver must *be* a pointer. `p.set(v)`
+    // passes `p`, so it matches `self: ptr<mut Counter>`. Passing the struct
+    // itself (`c.set(v)`) is the case the sibling test rejects.
+    assert_clean(analyze(
+        "struct Counter { n: i32 }\n\
+         impl Counter { func set(self: ptr<mut Counter>, v: i32): i32 { return v; } }\n\
+         func main(): i32 {\n    var c: mut Counter = .Counter{.n = 1i32};\n    var p: ptr<mut Counter> = @c;\n    return p.set(7i32);\n  }",
+        &[],
+    ));
+}
+
+#[test]
+fn method_declared_after_its_use_says_so() {
+    // The alternative diagnostic -- "'get' is not a member of 'Point'" -- reads
+    // like a typo or a missing field. The real problem is ordering: the checker
+    // walks statements in order, so the method's name is known but its signature
+    // is not typed yet.
+    assert_errors(
+        analyze(
+            "struct Point { x: i32 }\n\
+             func main(): i32 { var p = .Point{.x = 1i32}; return p.get(); }\n\
+             impl Point { func get(self: Point): i32 { return self.x; } }\n",
+            &[],
+        ),
+        &["'Point_get' is declared after this use; move its impl block above the call"],
+    );
+}
+
+#[test]
+fn method_declared_before_its_use_is_accepted() {
+    assert_clean(analyze(
+        "struct Point { x: i32 }\n\
+         impl Point { func get(self: Point): i32 { return self.x; } }\n\
+         func main(): i32 { var p = .Point{.x = 1i32}; return p.get(); }\n",
+        &[],
+    ));
 }

@@ -1,0 +1,48 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+<func0>  func @through_pointee() {
+bb0:
+    %x = alloca i32 , align 4
+    store 1, ptr %x, align 4, ty i32
+    %p = alloca ptr , align 8
+    %0 = addr_of %x
+    store %0, ptr %p, align 8, ty ptr
+    %v = alloca i32 , align 4
+    %1 = load ptr, ptr %p, align 8
+    store 5, ptr %1, align 4, ty i32
+    store 0, ptr %v, align 4, ty i32
+    %2 = load i32, ptr %v, align 4
+    ret %2
+}
+
+<func1>  func @read_immutable_pointee() {
+bb1:
+    %x = alloca i32 , align 4
+    store 1, ptr %x, align 4, ty i32
+    %p = alloca ptr , align 8
+    %3 = addr_of %x
+    store %3, ptr %p, align 8, ty ptr
+    %v = alloca i32 , align 4
+    %4 = load ptr, ptr %p, align 8
+    %5 = load i32, ptr %4, align 4
+    store 0, ptr %v, align 4, ty i32
+    %6 = load i32, ptr %v, align 4
+    ret %6
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

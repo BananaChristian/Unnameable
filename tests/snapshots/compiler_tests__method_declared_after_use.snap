@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "'Point_get' is declared after this use; move its impl block above the call", span: Some(Span { start: 514, end: 520 }), severity: Error, phase: Semantics, hint: None }

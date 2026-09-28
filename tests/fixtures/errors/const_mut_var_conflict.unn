@@ -1,0 +1,8 @@
+##
+   `const` and `mut var` are two qualifiers on the same binding, so pairing them
+   is a genuine contradiction and is rejected at the declaration.
+
+   This is deliberately different from `const var x: mut T`, which is allowed:
+   there the `mut` qualifies the type, not the binding.
+##
+const mut var x: i32 = 1i32;

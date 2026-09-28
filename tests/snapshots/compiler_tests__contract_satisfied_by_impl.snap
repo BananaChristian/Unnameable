@@ -1,0 +1,48 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Counter = type { n: i32 }
+
+<func0>  func @Counter_get( %Counter %self) {
+bb0:
+    %self.addr = alloca %Counter , align 4
+    store %self, ptr %self.addr, align 4, ty %Counter
+    %0 = gep %Counter, ptr %self.addr, indices [0, 0]
+    %1 = load i32, ptr %0, align 4
+    ret %1
+}
+
+<func1>  func @Counter_describe( %Counter %self) {
+bb1:
+    %self.addr = alloca %Counter , align 4
+    store %self, ptr %self.addr, align 4, ty %Counter
+    %2 = gep %Counter, ptr %self.addr, indices [0, 0]
+    %3 = load i32, ptr %2, align 4
+    %4 = mul %3, 100
+    ret %4
+}
+
+<func2>  func @read( %Counter %c) {
+bb2:
+    %c.addr = alloca %Counter , align 4
+    store %c, ptr %c.addr, align 4, ty %Counter
+    %5 = load %Counter, ptr %c.addr, align 4
+    %6 = call @func0(%5)
+    ret %6
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

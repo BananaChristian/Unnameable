@@ -1,0 +1,7 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== COMPILATION FAILED ===
+Errors (1):
+  - CompilerError { message: "'Point::get' takes a 'Other' receiver but implements contract 'HasGet' for 'Point'", span: Some(Span { start: 413, end: 458 }), severity: Error, phase: ContractVerifier, hint: None }

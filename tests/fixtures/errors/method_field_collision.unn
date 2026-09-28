@@ -1,0 +1,19 @@
+##
+   A struct with both a field and a method of the same name is ambiguous, and is
+   reported as such rather than silently resolved one way. A precedence rule
+   would mean one of the two declarations is unreachable, and the author would
+   have to read this to find out which.
+##
+struct Point {
+  sum: i32,
+  x: i32
+}
+
+impl Point {
+  func sum(self: Point): i32 { return self.x; }
+}
+
+func bad(): i32 {
+  var p = .Point{.sum = 1i32, .x = 2i32};
+  return p.sum();
+}

@@ -7,6 +7,7 @@ pub enum Phase {
     Lowering,
     Semantics,
     ContractVerifier,
+    MethodResolver,
     MIRBuilder,
     BytecodeBuilder,
     Codegen,
@@ -32,7 +33,7 @@ pub enum Severity {
 }
 
 impl CompilerError {
-    pub fn error(message: String,phase: Phase, span: Option<Span>) -> Self {
+    pub fn error(message: String, phase: Phase, span: Option<Span>) -> Self {
         CompilerError {
             message,
             span,
@@ -52,7 +53,7 @@ impl CompilerError {
         }
     }
 
-    pub fn fatal(message: String, span:Option<Span>) -> Self {
+    pub fn fatal(message: String, span: Option<Span>) -> Self {
         CompilerError {
             message,
             span,
@@ -62,7 +63,7 @@ impl CompilerError {
         }
     }
 
-    pub fn ice(message: String,phase: Phase, span: Option<Span>) -> Self {
+    pub fn ice(message: String, phase: Phase, span: Option<Span>) -> Self {
         CompilerError {
             message,
             span,

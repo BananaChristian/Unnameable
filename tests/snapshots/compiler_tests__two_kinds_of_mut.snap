@@ -1,0 +1,73 @@
+---
+source: tests/compiler_tests.rs
+expression: output
+---
+=== MIR OUTPUT ===
+module "test_module"
+
+%Point = type { x: i32, y: i32 }
+
+<func0>  func @reassign_binding() {
+bb0:
+    %a = alloca i32 , align 4
+    store 1, ptr %a, align 4, ty i32
+    store 2, ptr %a, align 4, ty i32
+    %0 = load i32, ptr %a, align 4
+    ret %0
+}
+
+<func1>  func @reassign_mut_type() {
+bb1:
+    %b = alloca i32 , align 4
+    store 1, ptr %b, align 4, ty i32
+    store 2, ptr %b, align 4, ty i32
+    %1 = load i32, ptr %b, align 4
+    ret %1
+}
+
+<func2>  func @reassign_struct_binding() {
+bb2:
+    %s = alloca %Point , align 4
+    %2 = gep %Point, ptr %s, indices [0, 0]
+    store 1, ptr %2, align 4, ty i32
+    %3 = gep %Point, ptr %s, indices [0, 1]
+    store 2, ptr %3, align 4, ty i32
+    %t = alloca %Point , align 4
+    %4 = load %Point, ptr %s, align 4
+    store %4, ptr %t, align 4, ty %Point
+    %5 = alloca %Point , align 4
+    %6 = gep %Point, ptr %5, indices [0, 0]
+    store 3, ptr %6, align 4, ty i32
+    %7 = gep %Point, ptr %5, indices [0, 1]
+    store 4, ptr %7, align 4, ty i32
+    store %5, ptr %t, align 4, ty %Point
+    %8 = gep %Point, ptr %t, indices [0, 0]
+    %9 = load i32, ptr %8, align 4
+    ret %9
+}
+
+<func3>  func @write_through_mut_type() {
+bb3:
+    %s = alloca %Point , align 4
+    %10 = gep %Point, ptr %s, indices [0, 0]
+    store 1, ptr %10, align 4, ty i32
+    %11 = gep %Point, ptr %s, indices [0, 1]
+    store 2, ptr %11, align 4, ty i32
+    %12 = gep %Point, ptr %s, indices [0, 0]
+    store 9, ptr %12, align 4, ty i32
+    %13 = gep %Point, ptr %s, indices [0, 0]
+    %14 = load i32, ptr %13, align 4
+    ret %14
+}
+
+=== BYTECODE MODULE ===
+Globals (0):
+  (none)
+
+Functions (1):
+--------------------------------------------------
+func @@$top_level (mode: Full, params: 0, registers: 0)
+--------------------------------------------------
+  [0000] return
+
+==================================================

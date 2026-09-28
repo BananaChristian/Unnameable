@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     diagnostics::{CompilerError, Phase, SharedDiagnostics, Span},
-    lexer::{TType, token::Token},
+    lexer::{token::Token, TType},
 };
 
 pub struct Lexer<'a> {
@@ -75,6 +75,7 @@ impl<'a> Lexer<'a> {
             ("seal".to_string(), TType::Seal),
             ("generics".to_string(), TType::Generics),
             ("contract".to_string(), TType::Contract),
+            ("impl".to_string(), TType::Impl),
             ("sizeof".to_string(), TType::SizeOf),
             ("enum".to_string(), TType::Enum),
             ("variant".to_string(), TType::Variant),

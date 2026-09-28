@@ -1,0 +1,25 @@
+##
+   A contract declares a signature; an `impl` block supplies the body. The
+   contract verifier resolves an implementation by looking for a function named
+   `{Type}_{fn}` whose first parameter is the receiver -- which is precisely
+   what `impl` emits -- so the contract system needed no change to support
+   methods, and needs no knowledge that `impl` exists.
+
+   Note the contract declares `func get(): i32` with no receiver: the receiver is
+   implied by the implementer, and the verifier checks arity and types around it.
+##
+contract HasGet {
+  func get(): i32
+  func describe(): i32
+}
+
+struct Counter: HasGet {
+  n: i32
+}
+
+impl Counter {
+  func get(self: Counter): i32 { return self.n; }
+  func describe(self: Counter): i32 { return self.n * 100; }
+}
+
+func read(c: Counter): i32 { return c.get(); }

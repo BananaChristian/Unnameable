@@ -1,0 +1,39 @@
+##
+   A pointer receiver is the form that actually reaches the caller's storage.
+
+   Three details this pins down:
+   - `mut` belongs on the *pointee* (`ptr<mut T>`), not the pointer. Dereferencing
+     does not strip a `mut` qualifier, so `mut ptr<T>` is not dereferenceable
+     at all.
+   - The receiver must *be* a pointer: the call is `p.set(99)`, not
+     `c.set(99)`. Passing the struct where a pointer is expected is rejected,
+     because the method's first parameter is checked like any other argument.
+   - Writing through it needs `marked`, because `^` is a raw dereference.
+
+   The receiver binding itself is still not reassignable -- `self` here is a
+   `ptr` value, not a `mut ptr` one -- which is exactly the per-depth rule the
+   const/mut validator applies to ordinary bindings.
+
+   Method *lookup* resolves through the pointer to find `Counter_set`, but the
+   pointer itself is what gets passed, and the body still needs an explicit `^`
+   to touch a field. Nothing is dereferenced implicitly.
+##
+struct Counter { n: i32 }
+
+impl Counter {
+  func set(self: ptr<mut Counter>, v: i32): i32 {
+    var wrote = marked { ^self.n = v; 0i32 };
+    return wrote;
+  }
+  func read(self: ptr<Counter>): i32 {
+    var got = marked { ^self.n; 0i32 };
+    return got;
+  }
+}
+
+func mutate_caller(): i32 {
+  var c: mut Counter = .Counter{.n = 5i32};
+  var p: ptr<mut Counter> = @c;
+  p.set(99i32);
+  return c.n;
+}

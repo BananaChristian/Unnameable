@@ -1,7 +1,7 @@
 use crate::{
     ast::{Expr, Qualifier, Type},
     diagnostics::Span,
-    lexer::{TType, token::Token},
+    lexer::{token::Token, TType},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,6 +87,16 @@ pub enum StmtKind {
         body: Box<Expr>,
     },
     ContractBlock {
+        qualifiers: Vec<Qualifier>,
+        name: Box<Expr>,
+        body: Vec<Stmt>,
+    },
+    /// `impl TypeName { func ... }` — methods for a type.
+    ///
+    /// Purely syntactic: each member is lowered to an ordinary top-level
+    /// function named `{TypeName}_{fn}`, taking its receiver as a normal first
+    /// parameter. No downstream phase is told that methods exist.
+    ImplBlock {
         qualifiers: Vec<Qualifier>,
         name: Box<Expr>,
         body: Vec<Stmt>,

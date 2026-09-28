@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use crate::{
     hir::{HirStmt, HirStmtKind},
     mir::{
-        MIRTy, MIRValue, MIRVariant,
         builder::MIRBuilder,
         instructions::{
             ArmInfo, MIRBody, MIRConv, MIRDollarMode, MIREnum, MIRGlobal, MIRLinkage, MIRParam,
             MIRStructDecl, MIRTykind, MIRVariantArm, Terminator,
         },
+        MIRTy, MIRValue, MIRVariant,
     },
 };
 
@@ -361,10 +361,6 @@ impl<'a> MIRBuilder<'a> {
 
             self.push_scope();
             for param in &mir_params {
-                if param.name == "self" {
-                    continue;
-                }
-
                 let slot =
                     self.new_register(self.ptr_type(), Some(&format!("{}.addr", param.name)));
                 self.build_alloca(slot.clone(), param.ty.clone(), span.clone());

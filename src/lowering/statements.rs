@@ -1,8 +1,11 @@
 use crate::{
-    ast::{EnumMember, ExprKind, Stmt, StmtKind, VariantMember}, diagnostics::Span, hir::{
+    ast::{EnumMember, ExprKind, Stmt, StmtKind, VariantMember},
+    diagnostics::Span,
+    hir::{
         HirBinaryOp, HirEnumMember, HirExpr, HirExprKind, HirLiteral, HirParam, HirStmt,
         HirStmtKind, HirType, HirTypeNode, HirVariantMember,
-    }, lowering::lowering::Lowering,
+    },
+    lowering::lowering::Lowering,
 };
 
 impl Lowering {
@@ -108,6 +111,15 @@ impl Lowering {
     }
 
     fn lower_func_def(&mut self, stmt: &Stmt) -> Option<HirStmt> {
+        self.lower_func_def_prefixed(stmt, None)
+    }
+
+    /// `prefix` is `Some(TypeName)` for an `impl` member, which mangles the
+    /// emitted name to `{TypeName}_{fn}`. That is the *entire* implementation of
+    /// methods: a method becomes an ordinary top-level function whose first
+    /// parameter happens to be the receiver. Nothing downstream is told that
+    /// methods exist.
+    fn lower_func_def_prefixed(&mut self, stmt: &Stmt, prefix: Option<&str>) -> Option<HirStmt> {
         if let StmtKind::FunctionDef {
             qualifiers,
             name,
@@ -120,6 +132,10 @@ impl Lowering {
 
             // Extract and mangle name
             let name_str = self.extract_name_string(name)?;
+            let name_str = match prefix {
+                Some(p) => self.mangle_name(p.to_string(), name_str),
+                None => name_str,
+            };
 
             // Lower params
             let hir_params = params
@@ -156,6 +172,30 @@ impl Lowering {
                 },
                 span: stmt.span.clone(),
             })
+        } else {
+            None
+        }
+    }
+
+    /// `impl TypeName { func ... }` — each member becomes a plain top-level
+    /// `HirFunctionDef` named `{TypeName}_{fn}`.
+    ///
+    /// This deliberately introduces no new HIR node. An `impl` block leaves the
+    /// HIR looking exactly as if the user had written the mangled free function
+    /// by hand, which is what keeps MIR, the bytecode builder, the VM and codegen
+    /// completely unaware that methods exist. The contract verifier already
+    /// resolves implementations by that same `{Type}_{fn}` convention, so it
+    /// needs no change either.
+    fn lower_impl(&mut self, stmt: &Stmt) -> Option<Vec<HirStmt>> {
+        if let StmtKind::ImplBlock { name, body, .. } = &stmt.kind {
+            let type_name = self.extract_name_string(name)?;
+            let mut out = Vec::new();
+            for member in body {
+                if let Some(hir) = self.lower_func_def_prefixed(member, Some(&type_name)) {
+                    out.push(hir);
+                }
+            }
+            Some(out)
         } else {
             None
         }
@@ -755,6 +795,7 @@ impl Lowering {
         match stmt.kind {
             StmtKind::SealStmt { .. } => self.lower_seals(stmt),
             StmtKind::GenericBlock { .. } => self.lower_generics(stmt),
+            StmtKind::ImplBlock { .. } => self.lower_impl(stmt),
             StmtKind::ForStmt { .. } => self.lower_for(stmt),
             StmtKind::EachStmt { .. } => self.lower_each(stmt),
             _ => {
